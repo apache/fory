@@ -127,6 +127,10 @@ public abstract class CodecBuilder {
     return ctx.sourcePublicAccessible(cls);
   }
 
+  protected boolean fieldNullable(Descriptor descriptor) {
+    return false;
+  }
+
   protected Expression tryInlineCast(Expression expression, TypeRef<?> targetType) {
     return tryCastIfPublic(expression, targetType, true);
   }
@@ -162,9 +166,6 @@ public abstract class CodecBuilder {
     return expression;
   }
 
-  // left null check in sub class encode method to reduce data dependence.
-  private final boolean fieldNullable = false;
-
   protected Reference getRecordCtrHandle() {
     String fieldName = "_record_ctr_";
     Reference fieldRef = fieldMap.get(fieldName);
@@ -192,8 +193,9 @@ public abstract class CodecBuilder {
     TypeRef<?> fieldType = descriptor.getTypeRef();
     Class<?> rawType = descriptor.getRawType();
     String fieldName = descriptor.getName();
+    boolean fieldNullable = fieldNullable(descriptor);
     if (isInterface) {
-      return new Invoke(inputBeanExpr, descriptor.getName(), fieldName, fieldType);
+      return new Invoke(inputBeanExpr, descriptor.getName(), fieldName, fieldType, fieldNullable);
     }
     if (isRecord) {
       return getRecordFieldValue(inputBeanExpr, descriptor);
@@ -243,6 +245,7 @@ public abstract class CodecBuilder {
       fieldType = OBJECT_TYPE;
     }
     String fieldName = descriptor.getName();
+    boolean fieldNullable = fieldNullable(descriptor);
     if (Modifier.isPublic(beanClass.getModifiers())) {
       Preconditions.checkNotNull(descriptor.getReadMethod());
       return new Invoke(
@@ -280,7 +283,8 @@ public abstract class CodecBuilder {
       Expression inputObject, Class<?> cls, Descriptor descriptor) {
     Reference fieldRef = getReflectField(cls, descriptor.getField());
     // boolean fieldNullable = !descriptor.getTypeToken().isPrimitive();
-    Invoke getObj = new Invoke(fieldRef, "get", OBJECT_TYPE, fieldNullable, inputObject);
+    Invoke getObj =
+        new Invoke(fieldRef, "get", OBJECT_TYPE, fieldNullable(descriptor), inputObject);
     return new Cast(getObj, descriptor.getTypeRef(), descriptor.getName());
   }
 
@@ -289,6 +293,7 @@ public abstract class CodecBuilder {
       Expression inputObject, Class<?> cls, Descriptor descriptor) {
     String fieldName = descriptor.getName();
     Expression fieldOffsetExpr = getFieldOffset(cls, descriptor);
+    boolean fieldNullable = fieldNullable(descriptor);
     if (descriptor.getTypeRef().isPrimitive()) {
       // ex: Platform.UNSAFE.getFloat(obj, fieldOffset)
       Preconditions.checkArgument(!fieldNullable);

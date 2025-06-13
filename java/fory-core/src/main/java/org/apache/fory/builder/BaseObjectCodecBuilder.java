@@ -1041,6 +1041,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     } else {
       return new ForEach(
           collection,
+          false,
           (i, elem) ->
               writeContainerElement(
                   exprHolder.get("buffer"),

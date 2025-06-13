@@ -30,6 +30,9 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
@@ -164,15 +167,21 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
           serializeFor(
               ordinal, newInputObject, writer, rewrittenType, arrowField, visitedCustomTypes);
       return new If(
-          ExpressionUtils.eqNull(inputObject),
+          new Expression.IsNull(inputObject),
           new Invoke(writer, "setNullAt", ordinal),
           doSerialize);
     } else if (rawType == Optional.class) {
       TypeRef<?> elemType = TypeUtils.getTypeArguments(typeRef).get(0);
       Invoke orNull =
-          new Invoke(inputObject, "orElse", TypeUtils.OBJECT_TYPE, new Expression.Null(elemType));
+          new Invoke(
+              inputObject,
+              "orElse",
+              "",
+              TypeUtils.OBJECT_TYPE,
+              true,
+              new Expression.Null(elemType));
       Expression unwrapped =
-          new If(ExpressionUtils.eqNull(inputObject), new Expression.Null(elemType), orNull);
+          new If(new Expression.IsNull(inputObject), new Expression.Null(elemType), orNull);
       return serializeFor(
           ordinal,
           new Expression.Cast(unwrapped, elemType),
@@ -192,6 +201,13 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     } else if (rawType == java.math.BigInteger.class) {
       Invoke value = new Invoke(inputObject, "toByteArray", TypeRef.of(byte[].class));
       return setValueOrNull(writer, ordinal, inputObject, value);
+    } else if (rawType == OptionalInt.class) {
+      return serializeForOptional(ordinal, inputObject, writer, "getAsInt", TypeUtils.INT_TYPE);
+    } else if (rawType == OptionalLong.class) {
+      return serializeForOptional(ordinal, inputObject, writer, "getAsLong", TypeUtils.LONG_TYPE);
+    } else if (rawType == OptionalDouble.class) {
+      return serializeForOptional(
+          ordinal, inputObject, writer, "getAsDouble", TypeUtils.DOUBLE_TYPE);
     } else if (rawType == java.time.LocalDate.class) {
       StaticInvoke value =
           new StaticInvoke(
@@ -306,6 +322,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
         ForEach forEach =
             new ForEach(
                 inputObject,
+                !rawType.getComponentType().isPrimitive(),
                 (i, value) ->
                     serializeFor(
                         i,
@@ -323,6 +340,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       ForEach forEach =
           new ForEach(
               listFromIterable,
+              !TypeUtils.getElementType(typeRef).isPrimitive(),
               (i, value) ->
                   serializeFor(
                       i,
@@ -338,6 +356,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       ForEach forEach =
           new ForEach(
               inputObject,
+              !TypeUtils.getElementType(typeRef).isPrimitive(),
               (i, value) ->
                   serializeFor(
                       i,
@@ -426,7 +445,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     expressions.add(setOffsetAndSize);
 
     return new If(
-        ExpressionUtils.eqNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expressions);
+        new Expression.IsNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expressions);
   }
 
   /**
@@ -486,7 +505,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
             setOffsetAndSize);
 
     return new If(
-        ExpressionUtils.eqNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expression);
+        new Expression.IsNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expression);
   }
 
   /**
@@ -515,14 +534,34 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
             increaseWriterIndexToAligned,
             setOffsetAndSize);
     return new If(
-        ExpressionUtils.eqNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expression);
+        new Expression.IsNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expression);
+  }
+
+  protected Expression serializeForOptional(
+      Expression ordinal,
+      Expression inputObject,
+      Expression writer,
+      String getMethod,
+      TypeRef<?> wrapType) {
+    Class<?> primType = TypeUtils.unwrap(wrapType.getRawType());
+    If value =
+        new If(
+            new Expression.LogicalAnd(
+                true,
+                new Expression.Not(new Expression.IsNull(inputObject)),
+                Invoke.inlineInvoke(inputObject, "isPresent", TypeUtils.PRIMITIVE_BOOLEAN_TYPE)),
+            new Invoke(inputObject, getMethod, TypeRef.of(primType)),
+            new Expression.Null(wrapType),
+            true,
+            wrapType);
+    return setValueOrNull(writer, ordinal, value, value);
   }
 
   protected Expression setValueOrNull(
       Expression writer, Expression ordinal, Expression inputObject, Expression value) {
     Expression action = new Invoke(writer, "write", ordinal, value);
     return new If(
-        ExpressionUtils.eqNull(inputObject), new Invoke(writer, "setNullAt", ordinal), action);
+        new Expression.IsNull(inputObject), new Invoke(writer, "setNullAt", ordinal), action);
   }
 
   /**
@@ -558,6 +597,10 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       return value;
     } else if (rawType == java.math.BigInteger.class) {
       return new NewInstance(TypeUtils.BIG_INTEGER_TYPE, value);
+    } else if (rawType == OptionalInt.class
+        || rawType == OptionalLong.class
+        || rawType == OptionalDouble.class) {
+      return deserializeForOptional(value, TypeRef.of(rawType));
     } else if (rawType == java.time.LocalDate.class) {
       return new StaticInvoke(
           DateTimeUtils.class, "daysToLocalDate", TypeUtils.LOCAL_DATE_TYPE, false, value);
@@ -652,6 +695,15 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  protected Expression deserializeForOptional(Expression value, TypeRef<?> type) {
+    return new Expression.If(
+        new Expression.IsNull(value),
+        new Expression.StaticInvoke(type.getRawType(), "empty", type),
+        new Expression.StaticInvoke(type.getRawType(), "of", type, value),
+        false,
+        type);
   }
 
   /**

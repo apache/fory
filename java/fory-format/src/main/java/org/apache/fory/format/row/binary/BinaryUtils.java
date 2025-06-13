@@ -35,13 +35,19 @@ public class BinaryUtils {
       return "getBoolean";
     } else if (TypeUtils.PRIMITIVE_SHORT_TYPE.equals(type) || TypeUtils.SHORT_TYPE.equals(type)) {
       return "getInt16";
-    } else if (TypeUtils.PRIMITIVE_INT_TYPE.equals(type) || TypeUtils.INT_TYPE.equals(type)) {
+    } else if (TypeUtils.PRIMITIVE_INT_TYPE.equals(type)
+        || TypeUtils.INT_TYPE.equals(type)
+        || TypeUtils.OPTIONAL_INT_TYPE.equals(type)) {
       return "getInt32";
-    } else if (TypeUtils.PRIMITIVE_LONG_TYPE.equals(type) || TypeUtils.LONG_TYPE.equals(type)) {
+    } else if (TypeUtils.PRIMITIVE_LONG_TYPE.equals(type)
+        || TypeUtils.LONG_TYPE.equals(type)
+        || TypeUtils.OPTIONAL_LONG_TYPE.equals(type)) {
       return "getInt64";
     } else if (TypeUtils.PRIMITIVE_FLOAT_TYPE.equals(type) || TypeUtils.FLOAT_TYPE.equals(type)) {
       return "getFloat32";
-    } else if (TypeUtils.PRIMITIVE_DOUBLE_TYPE.equals(type) || TypeUtils.DOUBLE_TYPE.equals(type)) {
+    } else if (TypeUtils.PRIMITIVE_DOUBLE_TYPE.equals(type)
+        || TypeUtils.DOUBLE_TYPE.equals(type)
+        || TypeUtils.OPTIONAL_DOUBLE_TYPE.equals(type)) {
       return "getFloat64";
     } else if (TypeUtils.BIG_DECIMAL_TYPE.equals(type)) {
       return "getDecimal";
@@ -81,13 +87,19 @@ public class BinaryUtils {
       return TypeUtils.PRIMITIVE_BOOLEAN_TYPE;
     } else if (TypeUtils.PRIMITIVE_SHORT_TYPE.equals(type) || TypeUtils.SHORT_TYPE.equals(type)) {
       return TypeUtils.PRIMITIVE_SHORT_TYPE;
-    } else if (TypeUtils.PRIMITIVE_INT_TYPE.equals(type) || TypeUtils.INT_TYPE.equals(type)) {
+    } else if (TypeUtils.PRIMITIVE_INT_TYPE.equals(type)
+        || TypeUtils.INT_TYPE.equals(type)
+        || TypeUtils.OPTIONAL_INT_TYPE.equals(type)) {
       return TypeUtils.PRIMITIVE_INT_TYPE;
-    } else if (TypeUtils.PRIMITIVE_LONG_TYPE.equals(type) || TypeUtils.LONG_TYPE.equals(type)) {
+    } else if (TypeUtils.PRIMITIVE_LONG_TYPE.equals(type)
+        || TypeUtils.LONG_TYPE.equals(type)
+        || TypeUtils.OPTIONAL_LONG_TYPE.equals(type)) {
       return TypeUtils.PRIMITIVE_LONG_TYPE;
     } else if (TypeUtils.PRIMITIVE_FLOAT_TYPE.equals(type) || TypeUtils.FLOAT_TYPE.equals(type)) {
       return TypeUtils.PRIMITIVE_FLOAT_TYPE;
-    } else if (TypeUtils.PRIMITIVE_DOUBLE_TYPE.equals(type) || TypeUtils.DOUBLE_TYPE.equals(type)) {
+    } else if (TypeUtils.PRIMITIVE_DOUBLE_TYPE.equals(type)
+        || TypeUtils.DOUBLE_TYPE.equals(type)
+        || TypeUtils.OPTIONAL_DOUBLE_TYPE.equals(type)) {
       return TypeUtils.PRIMITIVE_DOUBLE_TYPE;
     } else if (TypeUtils.BIG_DECIMAL_TYPE.equals(type)) {
       return TypeUtils.BIG_DECIMAL_TYPE;

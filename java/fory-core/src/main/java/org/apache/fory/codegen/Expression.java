@@ -891,7 +891,8 @@ public interface Expression {
         String value =
             StringUtils.format(
                 "((${withCast})${target})", "withCast", withCast, "target", targetExprCode.value());
-        return new ExprCode(codeBuilder.toString(), FalseLiteral, Code.variable(rawType, value));
+        return new ExprCode(
+            codeBuilder.toString(), targetExprCode.isNull(), Code.variable(rawType, value));
       } else {
         String castedValue = ctx.newName(castedValueNamePrefix);
         if (StringUtils.isNotBlank(targetExprCode.code())) {
@@ -2243,17 +2244,21 @@ public interface Expression {
     @ClosureVisitable final SerializableBiFunction<Expression, Expression, Expression> action;
 
     private final TypeRef<?> elementType;
+    private final boolean elementNullable;
 
     /**
      * inputObject.type() must be multi-dimension array or Collection, not allowed to be primitive
      * array
      */
     public ForEach(
-        Expression inputObject, SerializableBiFunction<Expression, Expression, Expression> action) {
+        Expression inputObject,
+        boolean elementNullable,
+        SerializableBiFunction<Expression, Expression, Expression> action) {
       super(inputObject);
       this.inputObject = inputObject;
+      this.elementNullable = elementNullable;
       this.action = action;
-      TypeRef elementType;
+      TypeRef<?> elementType;
       if (inputObject.type().isArray()) {
         elementType = inputObject.type().getComponentType();
       } else {
@@ -2265,11 +2270,13 @@ public interface Expression {
     public ForEach(
         Expression inputObject,
         TypeRef<?> beanType,
+        boolean elementNullable,
         SerializableBiFunction<Expression, Expression, Expression> action) {
       super(inputObject);
       this.inputObject = inputObject;
       this.action = action;
       this.elementType = beanType;
+      this.elementNullable = elementNullable;
     }
 
     @Override
@@ -2287,7 +2294,7 @@ public interface Expression {
       String i = ctx.newName("i");
       String elemValue = ctx.newName("elemValue");
       Expression elementExpr =
-          action.apply(new Reference(i), new Reference(elemValue, elementType, false));
+          action.apply(new Reference(i), new Reference(elemValue, elementType, elementNullable));
       ExprCode elementExprCode = elementExpr.genCode(ctx);
 
       if (inputObject.type().isArray()) {

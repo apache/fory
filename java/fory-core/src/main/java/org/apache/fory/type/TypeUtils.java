@@ -44,6 +44,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.fory.collection.IdentityMap;
@@ -104,6 +107,9 @@ public class TypeUtils {
   public static final TypeRef<?> MAP_ENTRY_TYPE = TypeRef.of(Map.Entry.class);
   public static final TypeRef<?> HASHMAP_TYPE = TypeRef.of(HashMap.class);
   public static final TypeRef<?> OPTIONAL_TYPE = TypeRef.of(Optional.class);
+  public static final TypeRef<?> OPTIONAL_INT_TYPE = TypeRef.of(OptionalInt.class);
+  public static final TypeRef<?> OPTIONAL_LONG_TYPE = TypeRef.of(OptionalLong.class);
+  public static final TypeRef<?> OPTIONAL_DOUBLE_TYPE = TypeRef.of(OptionalDouble.class);
   public static final TypeRef<?> OBJECT_TYPE = TypeRef.of(Object.class);
 
   public static Type ITERATOR_RETURN_TYPE;
@@ -159,6 +165,9 @@ public class TypeUtils {
     SUPPORTED_TYPES.add(TIMESTAMP_TYPE);
     SUPPORTED_TYPES.add(INSTANT_TYPE);
     SUPPORTED_TYPES.add(OPTIONAL_TYPE);
+    SUPPORTED_TYPES.add(OPTIONAL_INT_TYPE);
+    SUPPORTED_TYPES.add(OPTIONAL_LONG_TYPE);
+    SUPPORTED_TYPES.add(OPTIONAL_DOUBLE_TYPE);
   }
 
   static {

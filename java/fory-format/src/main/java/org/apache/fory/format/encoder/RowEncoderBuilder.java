@@ -27,6 +27,9 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.SortedMap;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
@@ -113,6 +116,11 @@ public class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
   @Override
   protected String codecSuffix() {
     return "RowCodec";
+  }
+
+  @Override
+  protected boolean fieldNullable(Descriptor descriptor) {
+    return descriptor.isNullable();
   }
 
   @Override
@@ -237,7 +245,13 @@ public class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
         values[i] = value;
         expressions.add(value);
         Expression.Invoke isNullAt =
-            new Expression.Invoke(row, "isNullAt", TypeUtils.PRIMITIVE_BOOLEAN_TYPE, ordinal);
+            new Expression.Invoke(
+                row,
+                "isNullAt",
+                "f" + i + "_" + d.getName() + "IsNull",
+                TypeUtils.PRIMITIVE_BOOLEAN_TYPE,
+                false,
+                ordinal);
         Expression decode =
             new Expression.If(
                 ExpressionUtils.not(isNullAt),
@@ -271,9 +285,11 @@ public class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   private static Expression nullValue(TypeRef<?> fieldType) {
     Class<?> rawType = fieldType.getRawType();
-    if (rawType == Optional.class) {
-      return new Expression.StaticInvoke(
-          Optional.class, "empty", "", TypeUtils.OPTIONAL_TYPE, false, true);
+    if (rawType == Optional.class
+        || rawType == OptionalInt.class
+        || rawType == OptionalLong.class
+        || rawType == OptionalDouble.class) {
+      return new Expression.StaticInvoke(rawType, "empty", "", fieldType, false, true);
     }
     return new Expression.Reference(TypeUtils.defaultValue(rawType), fieldType);
   }
@@ -359,7 +375,12 @@ public class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
           Expression isNotNullAt =
               new Expression.Not(
                   new Expression.Invoke(
-                      row, "isNullAt", TypeUtils.PRIMITIVE_BOOLEAN_TYPE, ordinal));
+                      row,
+                      "isNullAt",
+                      fieldName + "IsNull",
+                      TypeUtils.PRIMITIVE_BOOLEAN_TYPE,
+                      false,
+                      ordinal));
           assigner = new Expression.If(isNotNullAt, loadIfFieldIsNull);
         } else {
           assigner = loadIfFieldIsNull;

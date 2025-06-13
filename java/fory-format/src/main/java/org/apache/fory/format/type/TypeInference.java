@@ -28,6 +28,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import org.apache.arrow.vector.complex.MapVector;
 import org.apache.arrow.vector.types.DateUnit;
 import org.apache.arrow.vector.types.FloatingPointPrecision;
@@ -185,14 +188,14 @@ public class TypeInference {
       return field(name, FieldType.nullable((new ArrowType.Int(8, true))));
     } else if (rawType == Short.class) {
       return field(name, FieldType.nullable((new ArrowType.Int(16, true))));
-    } else if (rawType == Integer.class) {
+    } else if (rawType == Integer.class || rawType == OptionalInt.class) {
       return field(name, FieldType.nullable((new ArrowType.Int(32, true))));
-    } else if (rawType == Long.class) {
+    } else if (rawType == Long.class || rawType == OptionalLong.class) {
       return field(name, FieldType.nullable((new ArrowType.Int(64, true))));
     } else if (rawType == Float.class) {
       return field(
           name, FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.SINGLE)));
-    } else if (rawType == Double.class) {
+    } else if (rawType == Double.class || rawType == OptionalDouble.class) {
       return field(
           name, FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)));
     } else if (rawType == java.math.BigDecimal.class) {

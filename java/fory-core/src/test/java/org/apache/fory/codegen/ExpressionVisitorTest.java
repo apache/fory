@@ -52,6 +52,7 @@ public class ExpressionVisitorTest {
     Expression.ForEach forLoop =
         new Expression.ForEach(
             list,
+            false,
             (i, expr) -> ((Expression.ListExpression) (holder.get("e2"))).add(holder.get("e1")));
     List<Expression> expressions = new ArrayList<>();
     new ExpressionVisitor()
