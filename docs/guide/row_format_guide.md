@@ -115,7 +115,51 @@ for (int i = 0; i < 10; i++) {
 }
 return arrowWriter.finishAsRecordBatch();
 ```
+### Support for Interface and Extension Types
 
+Fury now supports row format mapping for Java `interface` types and subclassed (`extends`) types, enabling more dynamic and flexible data schemas.
+
+These enhancements were introduced in [#2243](https://github.com/apache/fury/pull/2243), [#2250](https://github.com/apache/fury/pull/2250), and [#2256](https://github.com/apache/fury/pull/2256).
+
+#### Example: Interface Mapping
+
+```java
+public interface Animal {
+  String speak();
+}
+
+public class Dog implements Animal {
+  public String name;
+
+  @Override
+  public String speak() {
+    return "Woof";
+  }
+}
+
+// Registering interface mapping
+fury.getLanguage(Fury.Language.JAVA)
+    .getClassResolver()
+    .registerInterfaceMapping(Animal.class, Dog.class);
+
+```
+
+```java
+public class Parent {
+  public String parentField;
+}
+
+public class Child extends Parent {
+  public String childField;
+}
+
+// Registering superclass for use with polymorphic decoding
+fury.getLanguage(Fury.Language.JAVA)
+    .getClassResolver()
+    .register(Parent.class);
+
+
+```
 Python:
 
 ```python
