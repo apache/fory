@@ -115,6 +115,7 @@ for (int i = 0; i < 10; i++) {
 }
 return arrowWriter.finishAsRecordBatch();
 ```
+
 ### Support for Interface and Extension Types
 
 Fury now supports row format mapping for Java `interface` types and subclassed (`extends`) types, enabling more dynamic and flexible data schemas.
@@ -158,8 +159,8 @@ fury.getLanguage(Fury.Language.JAVA)
     .getClassResolver()
     .register(Parent.class);
 
-
 ```
+
 Python:
 
 ```python
