@@ -122,7 +122,7 @@ Fury now supports row format mapping for Java `interface` types and subclassed (
 
 These enhancements were introduced in [#2243](https://github.com/apache/fury/pull/2243), [#2250](https://github.com/apache/fury/pull/2250), and [#2256](https://github.com/apache/fury/pull/2256).
 
-#### Example: Interface Mapping
+#### Example: Interface Mapping with RowEncoder
 
 ```java
 public interface Animal {
@@ -138,26 +138,34 @@ public class Dog implements Animal {
   }
 }
 
-// Registering interface mapping
-fury.getLanguage(Fury.Language.JAVA)
-    .getClassResolver()
-    .registerInterfaceMapping(Animal.class, Dog.class);
+// Encode and decode using RowEncoder with interface type
+RowEncoder<Animal> encoder = Encoders.bean(Animal.class);
+Dog dog = new Dog();
+dog.name = "Bingo";
+BinaryRow row = encoder.toRow(dog);
+Animal decoded = encoder.fromRow(row);
+System.out.println(decoded.speak()); // Woof
 
 ```
 
+#### Example: Extension Type with RowEncoder
+
 ```java
 public class Parent {
-  public String parentField;
+    public String parentField;
 }
 
 public class Child extends Parent {
-  public String childField;
+    public String childField;
 }
 
-// Registering superclass for use with polymorphic decoding
-fury.getLanguage(Fury.Language.JAVA)
-    .getClassResolver()
-    .register(Parent.class);
+// Encode and decode using RowEncoder with parent class type
+RowEncoder<Parent> encoder = Encoders.bean(Parent.class);
+Child child = new Child();
+child.parentField = "Hello";
+child.childField = "World";
+BinaryRow row = encoder.toRow(child);
+Parent decoded = encoder.fromRow(row);
 
 ```
 
