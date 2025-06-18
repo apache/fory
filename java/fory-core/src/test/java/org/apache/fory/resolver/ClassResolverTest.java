@@ -46,7 +46,6 @@ import lombok.EqualsAndHashCode;
 import lombok.ToString;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
-import org.apache.fory.ThreadSafeFory;
 import org.apache.fory.builder.Generated;
 import org.apache.fory.config.Language;
 import org.apache.fory.logging.Logger;
@@ -402,26 +401,16 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testFooCustomSerializer() {
-    ThreadSafeFory threadSafeFory =
-        Fory.builder().withLanguage(Language.JAVA).buildThreadSafeFory();
-    Assert.assertThrows(
-        () -> threadSafeFory.registerSerializer(Foo.class, FooCustomSerializer.class));
-    threadSafeFory.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).build();
+    Assert.assertThrows(() -> fory.registerSerializer(Foo.class, FooCustomSerializer.class));
+    fory.registerSerializer(Foo.class, f -> new FooCustomSerializer(f, Foo.class));
     final Foo foo = new Foo();
     foo.setF1(100);
 
-    threadSafeFory.execute(
-        fory -> {
-          Assert.assertEquals(foo, serDe(fory, foo));
-          return null;
-        });
-    threadSafeFory.execute(
-        fory -> {
-          Assert.assertEquals(
-              fory.getClassResolver().getSerializer(foo.getClass()).getClass(),
-              FooCustomSerializer.class);
-          return null;
-        });
+    Assert.assertEquals(foo, serDe(fory, foo));
+    Assert.assertEquals(
+        fory.getClassResolver().getSerializer(foo.getClass()).getClass(),
+        FooCustomSerializer.class);
   }
 
   interface ITest {
@@ -467,29 +456,31 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testInterfaceCustomSerializer() {
-    ThreadSafeFory threadSafeFory =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .requireClassRegistration(false)
-            .buildThreadSafeFory();
-    threadSafeFory.registerSerializer(
-        ITest.class, f -> new InterfaceCustomSerializer(f, ITest.class));
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    fory.registerSerializer(ITest.class, new InterfaceCustomSerializer(fory, ITest.class));
     final ITest iTest = new ImplTest();
     iTest.setF1(100);
 
-    threadSafeFory.execute(
-        fory -> {
-          Assert.assertEquals(iTest, serDe(fory, iTest));
-          return null;
-        });
-    threadSafeFory.execute(
-        fory -> {
-          Assert.assertEquals(
-              fory.getClassResolver().getSerializer(iTest.getClass()).getClass(),
-              InterfaceCustomSerializer.class);
-          return null;
-        });
+    Assert.assertEquals(iTest, serDe(fory, iTest));
+    Assert.assertEquals(
+        fory.getClassResolver().getSerializer(iTest.getClass()).getClass(),
+        InterfaceCustomSerializer.class);
+
+    fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    fory.register(ITest.class);
+    Assert.assertNotEquals(
+        fory.getClassResolver().getSerializer(ImplTest.class).getClass(),
+        InterfaceCustomSerializer.class);
+
+    fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    fory.registerSerializer(ITest.class, new InterfaceCustomSerializer(fory, ITest.class));
+    Assert.assertEquals(
+        fory.getClassResolver().getSerializer(ImplTest.class).getClass(),
+        InterfaceCustomSerializer.class);
   }
+
+  @Test
+  public void testRegisterAbstractClass() {}
 
   @Data
   abstract static class AbsTest {
@@ -530,43 +521,22 @@ public class ClassResolverTest extends ForyTestBase {
 
   @Test
   public void testAbstractCustomSerializer() {
-    ThreadSafeFory threadSafeFory =
-        Fory.builder()
-            .withLanguage(Language.JAVA)
-            .requireClassRegistration(false)
-            .buildThreadSafeFory();
-    threadSafeFory.registerSerializer(
-        AbsTest.class, f -> new AbstractCustomSerializer(f, AbsTest.class));
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
+    fory.registerSerializer(AbsTest.class, new AbstractCustomSerializer(fory, AbsTest.class));
     final AbsTest absTest = new SubAbsTest();
     absTest.setF1(100);
 
-    threadSafeFory.execute(
-        fory -> {
-          Assert.assertEquals(absTest, serDe(fory, absTest));
-          return null;
-        });
-    threadSafeFory.execute(
-        fory -> {
-          Assert.assertEquals(
-              fory.getClassResolver().getSerializer(absTest.getClass()).getClass(),
-              AbstractCustomSerializer.class);
-          return null;
-        });
+    Assert.assertEquals(absTest, serDe(fory, absTest));
+    Assert.assertEquals(
+        fory.getClassResolver().getSerializer(absTest.getClass()).getClass(),
+        AbstractCustomSerializer.class);
 
     final AbsTest abs2Test = new Sub2AbsTest();
     abs2Test.setF1(100);
 
-    threadSafeFory.execute(
-        fory -> {
-          Assert.assertEquals(abs2Test.getF1(), serDe(fory, abs2Test).getF1());
-          return null;
-        });
-    threadSafeFory.execute(
-        fory -> {
-          Assert.assertEquals(
-              fory.getClassResolver().getSerializer(abs2Test.getClass()).getClass(),
-              AbstractCustomSerializer.class);
-          return null;
-        });
+    Assert.assertEquals(abs2Test.getF1(), serDe(fory, abs2Test).getF1());
+    Assert.assertEquals(
+        fory.getClassResolver().getSerializer(abs2Test.getClass()).getClass(),
+        AbstractCustomSerializer.class);
   }
 }

@@ -61,7 +61,7 @@ import org.apache.fory.util.unsafe._JDKAccess;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class ReflectionUtils {
   public static boolean isAbstract(Class<?> clazz) {
-    if (clazz.isArray()) {
+    if (clazz.isArray() || clazz.isPrimitive()) {
       return false;
     }
     return Modifier.isAbstract(clazz.getModifiers());

@@ -469,7 +469,7 @@ public class ClassResolver implements TypeResolver {
       classInfo = new ClassInfo(this, cls, null, id, NOT_SUPPORT_XLANG);
       // make `extRegistry.registeredClassIdMap` and `classInfoMap` share same classInfo
       // instances.
-      setClassInfo(cls, classInfo);
+      classInfoMap.put(cls, classInfo);
     }
     // serializer will be set lazily in `addSerializer` method if it's null.
     registeredId2ClassInfo[id] = classInfo;
@@ -517,7 +517,7 @@ public class ClassResolver implements TypeResolver {
     MetaStringBytes nameBytes = metaStringResolver.getOrCreateMetaStringBytes(encodeTypeName(name));
     ClassInfo classInfo =
         new ClassInfo(cls, fullNameBytes, nsBytes, nameBytes, false, null, NO_CLASS_ID, (short) -1);
-    setClassInfo(cls, classInfo);
+    classInfoMap.put(cls, classInfo);
     compositeNameBytes2ClassInfo.put(
         new TypeNameBytes(nsBytes.hashCode, nameBytes.hashCode), classInfo);
     extRegistry.registeredClasses.put(fullname, cls);
@@ -748,6 +748,12 @@ public class ClassResolver implements TypeResolver {
       register(type);
     }
     addSerializer(type, serializer);
+    ClassInfo classInfo = classInfoMap.get(type);
+    classInfoMap.put(type, classInfo);
+    // in order to support customized serializer for abstract or interface.
+    if (!type.isPrimitive() && (ReflectionUtils.isAbstract(type) || type.isInterface())) {
+      extRegistry.absClassInfo.put(type, classInfo);
+    }
   }
 
   public void setSerializerFactory(SerializerFactory serializerFactory) {
@@ -860,7 +866,7 @@ public class ClassResolver implements TypeResolver {
 
     if (classInfo == null || classId != classInfo.classId) {
       classInfo = new ClassInfo(this, type, null, classId, (short) 0);
-      setClassInfo(type, classInfo);
+      classInfoMap.put(type, classInfo);
       if (registered) {
         registeredId2ClassInfo[classId] = classInfo;
       }
@@ -1292,14 +1298,6 @@ public class ClassResolver implements TypeResolver {
       return null;
     } else {
       return classInfoMap.get(cls);
-    }
-  }
-
-  void setClassInfo(Class<?> cls, ClassInfo classInfo) {
-    classInfoMap.put(cls, classInfo);
-    // in order to support customized serializer for abstract or interface.
-    if (!cls.isPrimitive() && (ReflectionUtils.isAbstract(cls) || cls.isInterface())) {
-      extRegistry.absClassInfo.put(cls, classInfo);
     }
   }
 
@@ -1796,7 +1794,7 @@ public class ClassResolver implements TypeResolver {
       classInfo =
           new ClassInfo(
               this, cls, null, classId == null ? NO_CLASS_ID : classId, NOT_SUPPORT_XLANG);
-      setClassInfo(cls, classInfo);
+      classInfoMap.put(cls, classInfo);
     }
     writeClassInternal(buffer, classInfo);
   }
@@ -1977,7 +1975,7 @@ public class ClassResolver implements TypeResolver {
       // don't create serializer here, if the class is an interface,
       // there won't be serializer since interface has no instance.
       if (!classInfoMap.containsKey(cls)) {
-        setClassInfo(cls, classInfo);
+        classInfoMap.put(cls, classInfo);
       }
     }
     compositeNameBytes2ClassInfo.put(typeNameBytes, classInfo);
