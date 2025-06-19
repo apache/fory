@@ -177,6 +177,10 @@ byte[] bytes = fory.serialize(object);
 System.out.println(fory.deserialize(bytes));
 ```
 
+Note that calling `buildThreadSafeFory()` on `ForyBuilder` will create an instance of `ThreadLocalFury`.
+This may not be appropriate in environments where virtual threads are used, as each thread will create its own fury instance, a relatively expensive operation.
+An alternative for virtual threads is to use `buildThreadSafeForyPool`.
+
 ### Handling Class Schema Evolution in Serialization
 
 In many systems, the schema of a class used for serialization may change over time. For instance, fields within a class
@@ -1231,6 +1235,9 @@ Object newObj = fory.execute(
   }
 );
 ```
+
+Note that `MetaContext` is not thread-safe and cannot be reused across instances of fory or multiple threads.
+In cases of multi-threading, a separate `MetaContext` must be created for each fory instance.
 
 ### Deserialize non-existent classes
 
