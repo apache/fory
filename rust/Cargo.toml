@@ -30,7 +30,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.12.0"
+version = "0.11.1"
 rust-version = "1.70"
 license = "Apache-2.0"
 readme = "README.md"
