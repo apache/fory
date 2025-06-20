@@ -46,41 +46,65 @@ install_pyfory() {
   popd
 }
 
+get_bazel_version() {
+    cat "$ROOT/.bazelversion"
+}
+
 install_bazel() {
   if command -v bazel >/dev/null; then
     echo "existing bazel location $(which bazel)"
     echo "existing bazel version $(bazel version)"
+    return
   fi
-  # GRPC support bazel 6.3.2 https://grpc.github.io/grpc/core/md_doc_bazel_support.html
-  UNAME_OUT="$(uname -s)"
-  case "${UNAME_OUT}" in
-    Linux*)     MACHINE=linux;;
-    Darwin*)    MACHINE=darwin;;
-    *)          echo "unknown machine: $UNAME_OUT"
+
+  ARCH="$(uname -m)"
+  OPERATING_SYSTEM="$(uname -s)"
+
+  # Normalize architecture names
+  case "${ARCH}" in
+    x86_64|amd64)  ARCH="x86_64" ;;
+    aarch64|arm64) ARCH="arm64" ;;
+    *)             echo "Unsupported architecture: $ARCH"; exit 1 ;;
   esac
-  URL="https://github.com/bazelbuild/bazel/releases/download/6.3.2/bazel-6.3.2-installer-$MACHINE-x86_64.sh"
-  wget -q -O install.sh $URL
-  chmod +x install.sh
-  set +x
-  ./install.sh --user
-  source ~/.bazel/bin/bazel-complete.bash
-  set -x
-  export PATH=~/bin:$PATH
-  echo "$HOME/bin/bazel version: $(~/bin/bazel version)"
-  rm -f install.sh
-  VERSION=`bazel version`
-  echo "bazel version: $VERSION"
+
+  # Handle OS-specific logic. Windows handled elsewhere
+  case "${OPERATING_SYSTEM}" in
+    Linux*)     OS="linux" ;;
+    Darwin*)    OS="darwin" ;;
+    *)          echo "Unsupported OS: $OPERATING_SYSTEM"; exit 1 ;;
+  esac
+
+  BAZEL_VERSION=$(get_bazel_version)
+  BAZEL_DIR="/usr/local/bin"
+
+  # Construct platform-specific URL
+  BINARY_URL="https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-${OS}-${ARCH}"
+
+  echo "Downloading bazel from: $BINARY_URL"
+  sudo wget -q -O "$BAZEL_DIR/bazel" "$BINARY_URL" || { echo "Failed to download bazel"; exit 1; }
+
+  sudo chmod +x "$BAZEL_DIR/bazel"
+
+  # Add to current shell's PATH
+  export PATH="$BAZEL_DIR:$PATH"
+
+  # Verify installation
+  echo "Checking bazel installation..."
+  bazel version || { echo "Bazel installation verification failed"; exit 1; }
+
+  # Configure number of jobs based on memory
   if [[ "$MACHINE" == linux ]]; then
-    MEM=`cat /proc/meminfo | grep MemTotal | awk '{print $2}'`
-    JOBS=`expr $MEM / 1024 / 1024 / 3`
-    echo "build --jobs="$JOBS >> ~/.bazelrc
+    MEM=$(grep MemTotal < /proc/meminfo | awk '{print $2}')
+    JOBS=$(( MEM / 1024 / 1024 / 3 ))
+    echo "build --jobs=$JOBS" >> /etc/bazel.bazelrc
     grep "jobs" ~/.bazelrc
   fi
 }
 
 install_bazel_windows() {
-  choco install bazel --version=6.3.2 --force
-  VERSION=`bazel version`
+  BAZEL_VERSION=$(get_bazel_version)
+  choco install bazel --version="${BAZEL_VERSION}" --force
+  VERSION=$(bazel version)
   echo "bazel version: $VERSION"
 }
 

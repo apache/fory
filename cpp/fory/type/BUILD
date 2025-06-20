@@ -4,8 +4,14 @@ cc_library(
     name = "fory_type",
     srcs = glob(["*.cc"], exclude=["*test.cc"]),
     hdrs = glob(["*.h"]),
-    copts = ["-mavx2"],  # Enable AVX2 support
-    linkopts = ["-mavx2"],  # Ensure linker also knows about AVX2
+    copts = select({
+        "@platforms//cpu:x86_64": ["-mavx2"],
+        "//conditions:default": [],
+    }),
+    linkopts = select({
+        "@platforms//cpu:x86_64": ["-mavx2"],
+        "//conditions:default": [],
+    }),
     strip_include_prefix = "/cpp",
     alwayslink=True,
     linkstatic=True,
