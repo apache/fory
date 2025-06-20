@@ -25,9 +25,11 @@ import os
 import logging
 import importlib
 
+
 def _get_bazel_version():
     with open(os.path.join(PROJECT_ROOT_DIR, ".bazelversion")) as f:
         return f.read().strip()
+
 
 PYARROW_VERSION = "15.0.0"
 
