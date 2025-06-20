@@ -51,7 +51,6 @@ class BinaryDistribution(Distribution):
             bazel_args += ["//:cp_fory_so"]
             subprocess.check_call(bazel_args)
 
-
     def has_ext_modules(self):
         return True
 

@@ -89,9 +89,11 @@ def _cd_project_subdir(subdir):
 
 def _run_cpp():
     _install_cpp_deps()
-    # run test
+    # collect all C++ targets
     query_result = _bazel("query //...")
-    _bazel("test {}".format(query_result.replace("\n", " ").replace("\r", " ")))
+    targets = query_result.replace("\n", " ").replace("\r", " ")
+    # run tests with the x86_64 config
+    _bazel(f"test --config=x86_64 {targets}")
 
 
 def _run_rust():
