@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -680,9 +681,16 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
 
   /** Returns an expression that deserialize <code>arrayData</code> as a java collection. */
   protected Expression deserializeForCollection(Expression arrayData, TypeRef<?> typeRef) {
+    TypeRef<?> elemType = TypeUtils.getElementType(typeRef);
+    if (typeRef.getRawType() == List.class) {
+      return new LazyArrayData(
+          arrayData,
+          elemType,
+          (i, value) -> deserializeFor(value, elemType, typeCtx, new HashSet<>()),
+          ExpressionUtils.nullValue(elemType));
+    }
     Expression collection = newCollection(arrayData, typeRef);
     try {
-      TypeRef<?> elemType = TypeUtils.getElementType(typeRef);
       ArrayDataForEach addElemsOp =
           new ArrayDataForEach(
               arrayData,
