@@ -274,26 +274,16 @@ func (f *Fory) writeValue(buffer *ByteBuffer, value reflect.Value, serializer Se
 	if value.Kind() == reflect.Interface {
 		value = value.Elem()
 	}
-
-	// Get type information for the value
-	typeInfo, err := f.typeResolver.getTypeInfo(value, true)
-	type_ := typeInfo.Type
-
-	// If no serializer provided, get one for the type
-	if serializer == nil {
-		serializer, err = f.typeResolver.getSerializerByType(type_)
-		if err != nil {
-			return err
-		}
+	if serializer != nil {
+		return serializer.Write(f, buffer, value)
 	}
 
-	// Write type information to buffer
+	typeInfo, _ := f.typeResolver.getTypeInfo(value, true)
 	err = f.typeResolver.writeTypeInfo(buffer, typeInfo)
 	if err != nil {
 		return err
 	}
-
-	// Serialize the actual value using the serializer
+	serializer = typeInfo.Serializer
 	return serializer.Write(f, buffer, value)
 }
 
@@ -372,66 +362,59 @@ func (f *Fory) ReadReferencable(buffer *ByteBuffer, value reflect.Value) error {
 }
 
 func (f *Fory) readReferencableBySerializer(buf *ByteBuffer, value reflect.Value, serializer Serializer) (err error) {
-	refId, err := f.refResolver.TryPreserveRefId(buf)
-	if err != nil {
-		return err
-	}
-	if refId >= int32(NotNullValueFlag) {
-		err = f.readData(buf, value, serializer)
+	// dynamic-with-refroute or unknown serializer
+	if serializer == nil || serializer.NeedWriteRef() {
+		refId, err := f.refResolver.TryPreserveRefId(buf)
 		if err != nil {
 			return err
 		}
-		// If value is not nil(reflect), then value is a pointer to some variable, we can update the `value`,
-		// then record `value` in the reference resolver.
-		if value.Kind() == reflect.Interface {
-			// If same value read again, and type isn't interface, call `Set` will fail.
-			// so we should save interface dynamic value.
-			value = value.Elem()
-		}
-		f.refResolver.SetReadObject(refId, value)
-		return nil
-	} else {
-		if refId == int32(NullFlag) {
+		// first read
+		if refId >= int32(NotNullValueFlag) {
+			// deserialize non-ref (may read typeinfo or use provided serializer)
+			err = f.readData(buf, value, serializer)
+			if err != nil {
+				return err
+			}
+			// record in resolver
+			f.refResolver.SetReadObject(refId, value)
 			return nil
 		}
-		value.Set(f.refResolver.GetCurrentReadObject())
+		// back-reference or null
+		if refId == int32(NullFlag) {
+			value.Set(reflect.Zero(value.Type()))
+			return nil
+		}
+		prev := f.refResolver.GetReadObject(refId)
+		value.Set(prev)
 		return nil
 	}
+
+	// static path: no references
+	headFlag := buf.ReadInt8()
+	if headFlag == NullFlag {
+		value.Set(reflect.Zero(value.Type()))
+		return nil
+	}
+	// directly read without altering serializer
+	return serializer.Read(f, buf, value.Type(), value)
 }
 
 func (f *Fory) readData(buffer *ByteBuffer, value reflect.Value, serializer Serializer) (err error) {
-	var typeInfo TypeInfo
-	var type_ reflect.Type
-
-	// Read type information from the buffer
-	typeInfo, err = f.typeResolver.readTypeInfo(buffer)
 	if serializer == nil {
-		serializer = typeInfo.Serializer // Use serializer from type info if none provided
-	}
-
-	// Determine concrete type (use value's type if type info is nil)
-	if typeInfo.Type == nil {
-		type_ = value.Type()
-	} else {
-		type_ = typeInfo.Type
-	}
-
-	// Handle interface types specially
-	if value.Kind() == reflect.Interface {
-		// Create a new concrete value since interface elements aren't addressable
-		newValue := reflect.New(type_).Elem()
-		err := serializer.Read(f, buffer, type_, newValue)
+		ti, err := f.typeResolver.readTypeInfo(buffer)
 		if err != nil {
 			return err
 		}
-		// Set the populated concrete value into the interface
-		value.Set(newValue)
+		serializer = ti.Serializer
+		concrete := reflect.New(ti.Type).Elem()
+
+		if err := serializer.Read(f, buffer, ti.Type, concrete); err != nil {
+			return err
+		}
+		value.Set(concrete)
 		return nil
-	} else {
-		// For non-interface types, read directly into the value
-		// (nil checks are handled by individual serializers)
-		return serializer.Read(f, buffer, typeInfo.Type, value)
 	}
+	return serializer.Read(f, buffer, value.Type(), value)
 }
 
 func (f *Fory) ReadBufferObject(buffer *ByteBuffer) (*ByteBuffer, error) {

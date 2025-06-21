@@ -19,6 +19,7 @@ package fory
 
 import (
 	"bytes"
+	"github.com/apache/fory/go/fory"
 	"strings"
 	"testing"
 
@@ -26,9 +27,9 @@ import (
 )
 
 func TestMetaStringResolver(t *testing.T) {
-	resolver := NewMetaStringResolver()
+	resolver := fory.NewMetaStringResolver()
 	encoder := meta.NewEncoder('$', '_')
-	buffer := NewByteBuffer(make([]byte, 512)) // Allocate enough space
+	buffer := fory.NewByteBuffer(make([]byte, 512)) // Allocate enough space
 
 	// Test 1: Regular English string
 	metaStr1, _ := encoder.Encode("hello, world")
@@ -43,7 +44,7 @@ func TestMetaStringResolver(t *testing.T) {
 
 	// Test 2: Manually constructed MetaStringBytes
 	data2 := []byte{0xBF, 0x05, 0xA4, 0x71, 0xA9, 0x92, 0x53, 0x96, 0xA6, 0x49, 0x4F, 0x72, 0x9C, 0x68, 0x29, 0x80}
-	metaBytes2 := NewMetaStringBytes(data2, int64(-5456063526933366015))
+	metaBytes2 := fory.NewMetaStringBytes(data2, int64(-5456063526933366015))
 	if err := resolver.WriteMetaStringBytes(buffer, metaBytes2); err != nil {
 		t.Fatalf("write failed: %v", err)
 	}
