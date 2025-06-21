@@ -48,6 +48,8 @@ class BinaryDistribution(Distribution):
             arch = platform.machine().lower()
             if arch in ("x86_64", "amd64"):
                 bazel_args += ["--config=x86_64"]
+            elif arch in ("aarch64", "arm64"):
+                bazel_args += ["--copt=-fsigned-char"]
             bazel_args += ["//:cp_fory_so"]
             subprocess.check_call(bazel_args)
 
