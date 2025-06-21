@@ -126,11 +126,19 @@ public class MetaSharedCodecBuilder extends ObjectCodecBuilder {
             MetaSharedCodecBuilder.class.getName(),
             "serializer",
             SERIALIZER_FIELD_NAME);
+    boolean xlang = fory.isCrossLanguage();
     ctx.clearExprState();
-    Expression decodeExpr = buildDecodeExpression();
-    String decodeCode = decodeExpr.genCode(ctx).code();
-    decodeCode = ctx.optimizeMethodCode(decodeCode);
-    ctx.overrideMethod("read", decodeCode, Object.class, MemoryBuffer.class, BUFFER_NAME);
+    if (!xlang) {
+      Expression decodeExpr = buildDecodeExpression();
+      String decodeCode = decodeExpr.genCode(ctx).code();
+      decodeCode = ctx.optimizeMethodCode(decodeCode);
+      ctx.overrideMethod("read", decodeCode, Object.class, MemoryBuffer.class, BUFFER_NAME);
+    } else {
+      Expression xlangDecodeExpression = buildXlangDecodeExpression();
+      String xlangDecodeCode = xlangDecodeExpression.genCode(ctx).code();
+      xlangDecodeCode = ctx.optimizeMethodCode(xlangDecodeCode);
+      ctx.overrideMethod("xread", xlangDecodeCode, Object.class, MemoryBuffer.class, BUFFER_NAME);
+    }
     registerJITNotifyCallback();
     ctx.addConstructor(constructorCode, Fory.class, "fory", Class.class, POJO_CLASS_TYPE_NAME);
     return ctx.genCode();
