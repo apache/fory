@@ -24,9 +24,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.TreeSet;
 import lombok.Data;
+import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryRow;
+import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.TypeRef;
@@ -81,6 +83,7 @@ public class ImplementInterfaceTest {
   static {
     Encoders.registerCustomCodec(PoisonPill.class, new PoisonPillCodec());
     Encoders.registerCustomCodec(Id.class, new IdCodec());
+    Encoders.registerCustomCodec(ListLazyElemInner.class, new ListLazyElemInnerCodec());
   }
 
   @Test
@@ -297,5 +300,80 @@ public class ImplementInterfaceTest {
     array.pointTo(buffer, 0, buffer.size());
     final TreeSet<Value> deserializedBean = encoder.fromArray(array);
     Assert.assertEquals(deserializedBean, expected);
+  }
+
+  public static class ListLazyElemInner {
+    private final int f1;
+    static boolean check;
+
+    ListLazyElemInner(final int f1) {
+      if (check) {
+        Assert.assertEquals(f1, 42);
+      }
+      this.f1 = f1;
+    }
+
+    public int f1() {
+      return f1;
+    }
+  }
+
+  static class ListLazyElemInnerCodec implements CustomCodec<ListLazyElemInner, Integer> {
+    @Override
+    public Field getField(final String fieldName) {
+      return DataTypes.field(fieldName, DataTypes.int32());
+    }
+
+    @Override
+    public TypeRef<Integer> encodedType() {
+      return TypeRef.of(Integer.class);
+    }
+
+    @Override
+    public Integer encode(final ListLazyElemInner value) {
+      return value.f1();
+    }
+
+    @Override
+    public ListLazyElemInner decode(final Integer value) {
+      return new ListLazyElemInner(value);
+    }
+  }
+
+  public interface ListLazyElemOuter {
+    List<ListLazyElemInner> f1();
+  }
+
+  static class ListLazyElemOuterImpl implements ListLazyElemOuter {
+    private final List<ListLazyElemInner> f1;
+
+    ListLazyElemOuterImpl(final List<ListLazyElemInner> f1) {
+      this.f1 = f1;
+    }
+
+    @Override
+    public List<ListLazyElemInner> f1() {
+      return f1;
+    }
+  }
+
+  @Test
+  public void testListElementsLazy() {
+    final ListLazyElemOuter bean1 =
+        new ListLazyElemOuterImpl(
+            Arrays.asList(
+                new ListLazyElemInner(0),
+                new ListLazyElemInner(1),
+                new ListLazyElemInner(42),
+                null,
+                new ListLazyElemInner(4)));
+    final RowEncoder<ListLazyElemOuter> encoder = Encoders.bean(ListLazyElemOuter.class);
+    final BinaryRow row = encoder.toRow(bean1);
+    ListLazyElemInner.check = true;
+    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final ListLazyElemOuter deserializedBean = encoder.fromRow(row);
+    Assert.assertEquals(deserializedBean.f1().get(2).f1(), 42);
+    Assert.assertEquals(deserializedBean.f1().get(3), null);
   }
 }
