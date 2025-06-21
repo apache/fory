@@ -123,13 +123,7 @@ build_pyfory() {
   # Fix strange installed deps not found
   pip install setuptools -U
 
-  # Detect host architecture and only pass x86_64 config when appropriate
-  ARCH=$(uname -m)
-  if [[ "$ARCH" == "x86_64" || "$ARCH" == "amd64" ]]; then
-    bazel build --config=x86_64 //:cp_fory_so
-  else
-    bazel build //:cp_fory_so
-  fi
+  bazel build //:cp_fory_so
 
   python setup.py bdist_wheel --dist-dir=../dist
   popd

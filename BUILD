@@ -19,6 +19,30 @@ load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@compile_commands_extractor//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
 
+config_setting(
+    name = "is_x86_64",
+    values = {"cpu": "x86_64"},
+)
+
+config_setting(
+    name = "is_arm64",
+    values = {"cpu": "aarch64"}, # Note: Bazel often identifies arm64 as 'aarch64'
+)
+
+ARCH_COPTS = select({
+    ":is_x86_64": [
+        "-mavx",
+        "-mavx2",
+        "-mbmi",
+        "-mbmi2",
+    ],
+    ":is_arm64": [
+        "-march=armv8-a",
+        "-fsigned-char",
+    ],
+    "//conditions:default": [],
+})
+
 pyx_library(
     name = "_util",
     srcs = glob([
@@ -29,6 +53,7 @@ pyx_library(
     ]),
     cc_kwargs = dict(
         linkstatic = 1,
+        copts = ARCH_COPTS,
     ),
     deps = [
         "//cpp/fory/util:fory_util",
@@ -44,6 +69,7 @@ pyx_library(
     ]),
     cc_kwargs = dict(
         linkstatic = 1,
+        copts = ARCH_COPTS,
     ),
     deps = [
         "//cpp/fory/thirdparty:libmmh3",
@@ -60,6 +86,7 @@ pyx_library(
     ]),
     cc_kwargs = dict(
         linkstatic = 1,
+        copts = ARCH_COPTS,
     ),
     deps = [
         "//cpp/fory/util:fory_util",
@@ -82,6 +109,7 @@ pyx_library(
     ]),
     cc_kwargs = dict(
         linkstatic = 1,
+        copts = ARCH_COPTS,
     ),
     deps = [
         "//cpp/fory:fory",

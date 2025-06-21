@@ -46,13 +46,3 @@ build:macos --cxxopt="-std=c++17" --linkopt="-pthread"
 build:clang-cl --cxxopt="-std=c++17"
 build:windows --cxxopt="/std:c++17" --cxxopt="/Zc:preprocessor" --cxxopt="/utf-8"
 build:msvc --cxxopt="/std:c++17" --cxxopt="/Zc:preprocessor" --cxxopt="/utf-8"
-
-# CPU-specific optimizations for x86_64
-build:x86_64 --copt=-mavx
-build:x86_64 --copt=-mavx2
-build:x86_64 --copt=-mbmi
-build:x86_64 --copt=-mbmi2
-
-# ARM64-specific optimizations (if any needed in the future)
-build:arm64 --copt=-march=armv8-a
-
