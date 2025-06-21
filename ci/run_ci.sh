@@ -96,7 +96,7 @@ install_bazel() {
   if [[ "$MACHINE" == linux ]]; then
     MEM=$(grep MemTotal < /proc/meminfo | awk '{print $2}')
     JOBS=$(( MEM / 1024 / 1024 / 3 ))
-    echo "build --jobs=$JOBS" >> /etc/bazel.bazelrc
+    echo "build --jobs=$JOBS" >> ~/.bazelrc
     grep "jobs" ~/.bazelrc
   fi
 }

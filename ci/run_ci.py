@@ -92,8 +92,10 @@ def _run_cpp():
     # collect all C++ targets
     query_result = _bazel("query //...")
     targets = query_result.replace("\n", " ").replace("\r", " ")
-    # run tests with the x86_64 config
-    _bazel(f"test --config=x86_64 {targets}")
+    test_command = "test"
+    if _get_os_machine() == "x86_64":
+        test_command += " --config=x86_64"
+    _bazel(f"{test_command} {targets}")
 
 
 def _run_rust():
