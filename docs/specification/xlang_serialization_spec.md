@@ -252,12 +252,10 @@ If schema evolution mode is enabled globally when creating fory, and enabled for
 using one of the following mode. Which mode to use is configured when creating fory.
 
 - Normal mode(meta share not enabled):
-
   - If type meta hasn't been written before, add `type def`
     to `captured_type_defs`: `captured_type_defs[type def] = map size`.
   - Get index of the meta in `captured_type_defs`, write that index as `| unsigned varint: index |`.
   - After finished the serialization of the object graph, fory will start to write `captured_type_defs`:
-
     - Firstly, set current to `meta start offset` of fory header
     - Then write `captured_type_defs` one by one:
 
@@ -284,7 +282,6 @@ using one of the following mode. Which mode to use is configured when creating f
   ```
 
 - Streaming mode(streaming mode doesn't support meta share):
-
   - If type meta hasn't been written before, the data will be written as:
 
     ```
