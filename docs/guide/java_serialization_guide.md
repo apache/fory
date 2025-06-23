@@ -178,7 +178,7 @@ System.out.println(fory.deserialize(bytes));
 ```
 
 Note that calling `buildThreadSafeFory()` on `ForyBuilder` will create an instance of `ThreadLocalFury`.
-This may not be appropriate in environments where virtual threads are used, as each thread will create its own fury instance, a relatively expensive operation.
+This may not be appropriate in environments where virtual threads are used, as each thread will create its own fory instance, a relatively expensive operation.
 An alternative for virtual threads is to use `buildThreadSafeForyPool`.
 
 ### Handling Class Schema Evolution in Serialization
