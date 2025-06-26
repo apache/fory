@@ -163,6 +163,10 @@ public class TypeInference {
       if (replacementField != null) {
         return replacementField;
       }
+      TypeRef<?> replacementType = customEncoder.encodedType();
+      if (replacementType != null && !typeRef.equals(replacementType)) {
+        return inferField(name, replacementType, ctx);
+      }
     }
     if (rawType == boolean.class) {
       return field(name, DataTypes.notNullFieldType(ArrowType.Bool.INSTANCE));
