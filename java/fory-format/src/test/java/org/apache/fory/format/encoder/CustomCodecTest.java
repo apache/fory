@@ -196,7 +196,7 @@ public class CustomCodecTest {
     }
   }
 
-  static class UuidEncoder implements CustomCodec.MemoryBufferCodec<UUID> {
+  public static class UuidEncoder implements CustomCodec.MemoryBufferCodec<UUID> {
     @Override
     public MemoryBuffer encode(final UUID value) {
       final MemoryBuffer result = MemoryBuffer.newHeapBuffer(16);
@@ -208,6 +208,11 @@ public class CustomCodecTest {
     @Override
     public UUID decode(final MemoryBuffer value) {
       return new UUID(value.readInt64(), value.readInt64());
+    }
+
+    @Override
+    public Field getField(final String fieldName) {
+      return Field.nullable(fieldName, new ArrowType.FixedSizeBinary(16));
     }
   }
 
