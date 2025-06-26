@@ -117,6 +117,8 @@ public abstract class CodecBuilder {
     // For example user class named as `Date`/`List`/`MemoryBuffer`
   }
 
+  public abstract String codecClassName(Class<?> cls);
+
   /** Generate codec class code. */
   public abstract String genCode();
 

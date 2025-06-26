@@ -31,13 +31,12 @@ import org.apache.arrow.util.Preconditions;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.Fory;
+import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
-import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.type.CustomTypeEncoderRegistry;
@@ -60,64 +59,35 @@ import org.apache.fory.type.TypeUtils;
 public class Encoders {
   private static final Logger LOG = LoggerFactory.getLogger(Encoders.class);
 
-  public static <T> RowEncoder<T> bean(Class<T> beanClass) {
+  /** Build a row codec with configurable options through a builder. */
+  public static <T> BeanCodecBuilder<T> buildBeanCodec(final Class<T> beanClass) {
+    return new BeanCodecBuilder<>(beanClass);
+  }
+
+  /** Build an array codec with configurable options through a builder. */
+  public static <C extends Collection<?>> ArrayCodecBuilder<C> buildArrayCodec(
+      final TypeRef<C> collectionType) {
+    return new ArrayCodecBuilder<>(collectionType);
+  }
+
+  public static <T> RowEncoder<T> bean(final Class<T> beanClass) {
     return bean(beanClass, 16);
   }
 
-  public static <T> RowEncoder<T> bean(Class<T> beanClass, int initialBufferSize) {
+  public static <T> RowEncoder<T> bean(final Class<T> beanClass, final int initialBufferSize) {
     return bean(beanClass, null, initialBufferSize);
   }
 
-  public static <T> RowEncoder<T> bean(Class<T> beanClass, Fory fory) {
+  public static <T> RowEncoder<T> bean(final Class<T> beanClass, final Fory fory) {
     return bean(beanClass, fory, 16);
   }
 
-  public static <T> RowEncoder<T> bean(Class<T> beanClass, Fory fory, int initialBufferSize) {
-    Schema schema = TypeInference.inferSchema(beanClass);
-    BinaryRowWriter writer = new BinaryRowWriter(schema);
-    RowEncoder<T> encoder = bean(beanClass, writer, fory);
-    return new RowEncoder<T>() {
-
-      @Override
-      public Schema schema() {
-        return encoder.schema();
-      }
-
-      @Override
-      public T fromRow(BinaryRow row) {
-        return encoder.fromRow(row);
-      }
-
-      @Override
-      public BinaryRow toRow(T obj) {
-        writer.setBuffer(MemoryUtils.buffer(initialBufferSize));
-        writer.reset();
-        return encoder.toRow(obj);
-      }
-
-      @Override
-      public T decode(MemoryBuffer buffer) {
-        return encoder.decode(buffer);
-      }
-
-      @Override
-      public T decode(byte[] bytes) {
-        return encoder.decode(bytes);
-      }
-
-      @Override
-      public byte[] encode(T obj) {
-        return encoder.encode(obj);
-      }
-
-      @Override
-      public void encode(MemoryBuffer buffer, T obj) {
-        encoder.encode(buffer, obj);
-      }
-    };
+  public static <T> RowEncoder<T> bean(
+      final Class<T> beanClass, final Fory fory, final int initialBufferSize) {
+    return buildBeanCodec(beanClass).fory(fory).initialBufferSize(initialBufferSize).build().get();
   }
 
-  public static <T> RowEncoder<T> bean(Class<T> beanClass, BinaryRowWriter writer) {
+  public static <T> RowEncoder<T> bean(final Class<T> beanClass, final BinaryRowWriter writer) {
     return bean(beanClass, writer, null);
   }
 
@@ -141,93 +111,9 @@ public class Encoders {
    *   <li>nested java bean
    * </ul>
    */
-  public static <T> RowEncoder<T> bean(Class<T> beanClass, BinaryRowWriter writer, Fory fory) {
-    Schema schema = writer.getSchema();
-
-    try {
-      Class<?> rowCodecClass = loadOrGenRowCodecClass(beanClass);
-      Object references = new Object[] {schema, writer, fory};
-      GeneratedRowEncoder codec =
-          rowCodecClass
-              .asSubclass(GeneratedRowEncoder.class)
-              .getConstructor(Object[].class)
-              .newInstance(references);
-      long schemaHash = DataTypes.computeSchemaHash(schema);
-
-      return new RowEncoder<T>() {
-        private final MemoryBuffer buffer = MemoryUtils.buffer(16);
-
-        @Override
-        public Schema schema() {
-          return schema;
-        }
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public T fromRow(BinaryRow row) {
-          return (T) codec.fromRow(row);
-        }
-
-        @Override
-        public BinaryRow toRow(T obj) {
-          return codec.toRow(obj);
-        }
-
-        @Override
-        public T decode(MemoryBuffer buffer) {
-          return decode(buffer, buffer.readInt32());
-        }
-
-        public T decode(MemoryBuffer buffer, int size) {
-          long peerSchemaHash = buffer.readInt64();
-          if (peerSchemaHash != schemaHash) {
-            throw new ClassNotCompatibleException(
-                String.format(
-                    "Schema is not consistent, encoder schema is %s. "
-                        + "self/peer schema hash are %s/%s. "
-                        + "Please check writer schema.",
-                    schema, schemaHash, peerSchemaHash));
-          }
-          BinaryRow row = new BinaryRow(schema);
-          row.pointTo(buffer, buffer.readerIndex(), size);
-          buffer.increaseReaderIndex(size - 8);
-          return fromRow(row);
-        }
-
-        @Override
-        public T decode(byte[] bytes) {
-          return decode(MemoryUtils.wrap(bytes), bytes.length);
-        }
-
-        @Override
-        public byte[] encode(T obj) {
-          buffer.writerIndex(0);
-          buffer.writeInt64(schemaHash);
-          writer.setBuffer(buffer);
-          writer.reset();
-          BinaryRow row = toRow(obj);
-          return buffer.getBytes(0, 8 + row.getSizeInBytes());
-        }
-
-        @Override
-        public void encode(MemoryBuffer buffer, T obj) {
-          int writerIndex = buffer.writerIndex();
-          buffer.writeInt32(-1);
-          try {
-            buffer.writeInt64(schemaHash);
-            writer.setBuffer(buffer);
-            writer.reset();
-            toRow(obj);
-            buffer.putInt32(writerIndex, buffer.writerIndex() - writerIndex - 4);
-          } finally {
-            writer.setBuffer(this.buffer);
-          }
-        }
-      };
-    } catch (Exception e) {
-      String msg = String.format("Create encoder failed, \nbeanClass: %s", beanClass);
-      throw new EncoderException(msg, e);
-    }
+  public static <T> RowEncoder<T> bean(
+      final Class<T> beanClass, final BinaryRowWriter writer, final Fory fory) {
+    return buildBeanCodec(beanClass).fory(fory).buildForCustomWriter().apply(writer);
   }
 
   /**
@@ -238,7 +124,7 @@ public class Encoders {
    * @param codec the codec to use
    */
   public static <T> void registerCustomCodec(
-      Class<?> beanType, Class<T> type, CustomCodec<T, ?> codec) {
+      final Class<?> beanType, final Class<T> type, final CustomCodec<T, ?> codec) {
     TypeInference.registerCustomCodec(new CustomTypeRegistration(beanType, type), codec);
   }
 
@@ -248,7 +134,7 @@ public class Encoders {
    * @param type the type of field to handle
    * @param codec the codec to use
    */
-  public static <T> void registerCustomCodec(Class<T> type, CustomCodec<T, ?> codec) {
+  public static <T> void registerCustomCodec(final Class<T> type, final CustomCodec<T, ?> codec) {
     registerCustomCodec(Object.class, type, codec);
   }
 
@@ -260,7 +146,9 @@ public class Encoders {
    * @param factory the factory to use
    */
   public static <E, C extends Collection<E>> void registerCustomCollectionFactory(
-      Class<?> collectionType, Class<E> elementType, CustomCollectionFactory<E, C> factory) {
+      final Class<?> collectionType,
+      final Class<E> elementType,
+      final CustomCollectionFactory<E, C> factory) {
     TypeInference.registerCustomCollectionFactory(collectionType, elementType, factory);
   }
 
@@ -273,167 +161,13 @@ public class Encoders {
    * @param <T> T is a array type, can be a nested list type.
    * @return
    */
-  public static <T extends Collection> ArrayEncoder<T> arrayEncoder(TypeRef<T> token) {
+  public static <T extends Collection<?>> ArrayEncoder<T> arrayEncoder(final TypeRef<T> token) {
     return arrayEncoder(token, null);
   }
 
-  public static <T extends Collection> ArrayEncoder<T> arrayEncoder(TypeRef<T> token, Fory fory) {
-    Schema schema = TypeInference.inferSchema(token, false);
-    Field field = DataTypes.fieldOfSchema(schema, 0);
-    BinaryArrayWriter writer = new BinaryArrayWriter(field);
-
-    Set<TypeRef<?>> set = new HashSet<>();
-    findBeanToken(token, set);
-    if (set.isEmpty()) {
-      throw new IllegalArgumentException("can not find bean class.");
-    }
-
-    TypeRef<?> typeRef = null;
-    for (TypeRef<?> tt : set) {
-      typeRef = set.iterator().next();
-      Encoders.loadOrGenRowCodecClass(getRawType(tt));
-    }
-    ArrayEncoder<T> encoder = arrayEncoder(token, typeRef, writer, fory);
-    return new ArrayEncoder<T>() {
-
-      @Override
-      public Field field() {
-        return encoder.field();
-      }
-
-      @Override
-      public T fromArray(BinaryArray array) {
-        return encoder.fromArray(array);
-      }
-
-      @Override
-      public BinaryArray toArray(T obj) {
-        return encoder.toArray(obj);
-      }
-
-      @Override
-      public T decode(MemoryBuffer buffer) {
-        return encoder.decode(buffer);
-      }
-
-      @Override
-      public T decode(byte[] bytes) {
-        return encoder.decode(bytes);
-      }
-
-      @Override
-      public byte[] encode(T obj) {
-        return encoder.encode(obj);
-      }
-
-      @Override
-      public void encode(MemoryBuffer buffer, T obj) {
-        encoder.encode(buffer, obj);
-      }
-    };
-  }
-
-  /**
-   * The underlying implementation uses array, only supported {@link Collection} format, because
-   * generic type such as List is erased to simply List, so a bean class input param is required.
-   *
-   * @return
-   */
-  public static <T extends Collection, B> ArrayEncoder<T> arrayEncoder(
-      Class<? extends Collection> arrayCls, Class<B> elementType) {
-    Preconditions.checkNotNull(elementType);
-
-    return (ArrayEncoder<T>) arrayEncoder(TypeUtils.collectionOf(elementType), null);
-  }
-
-  /**
-   * Creates an encoder for Java Bean of type T.
-   *
-   * <p>T must be publicly accessible.
-   *
-   * <p>supported types for java bean field: - primitive types: boolean, int, double, etc. - boxed
-   * types: Boolean, Integer, Double, etc. - String - java.math.BigDecimal, java.math.BigInteger -
-   * time related: java.sql.Date, java.sql.Timestamp, java.time.LocalDate, java.time.Instant -
-   * collection types: only array and java.util.List currently, map support is in progress - nested
-   * java bean.
-   */
-  public static <T extends Collection, B> ArrayEncoder<T> arrayEncoder(
-      TypeRef<? extends Collection> arrayToken,
-      TypeRef<B> elementType,
-      BinaryArrayWriter writer,
-      Fory fory) {
-    Field field = writer.getField();
-    try {
-      Class<?> rowCodecClass = loadOrGenArrayCodecClass(arrayToken, elementType);
-      Object references = new Object[] {field, writer, fory};
-      GeneratedArrayEncoder codec =
-          rowCodecClass
-              .asSubclass(GeneratedArrayEncoder.class)
-              .getConstructor(Object[].class)
-              .newInstance(references);
-
-      return new ArrayEncoder<T>() {
-
-        @Override
-        public Field field() {
-          return field;
-        }
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public T fromArray(BinaryArray array) {
-          return (T) codec.fromArray(array);
-        }
-
-        @Override
-        public BinaryArray toArray(T obj) {
-          return codec.toArray(obj);
-        }
-
-        @Override
-        public T decode(MemoryBuffer buffer) {
-          return decode(buffer, buffer.readInt32());
-        }
-
-        public T decode(MemoryBuffer buffer, int size) {
-          BinaryArray array = new BinaryArray(field);
-          int readerIndex = buffer.readerIndex();
-          array.pointTo(buffer, readerIndex, size);
-          buffer.readerIndex(readerIndex + size);
-          return fromArray(array);
-        }
-
-        @Override
-        public T decode(byte[] bytes) {
-          return decode(MemoryUtils.wrap(bytes), bytes.length);
-        }
-
-        @Override
-        public byte[] encode(T obj) {
-          BinaryArray array = toArray(obj);
-          return writer.getBuffer().getBytes(0, 8 + array.getSizeInBytes());
-        }
-
-        @Override
-        public void encode(MemoryBuffer buffer, T obj) {
-          MemoryBuffer prevBuffer = writer.getBuffer();
-          int writerIndex = buffer.writerIndex();
-          buffer.writeInt32(-1);
-          try {
-            writer.setBuffer(buffer);
-            BinaryArray array = toArray(obj);
-            int size = buffer.writerIndex() - writerIndex - 4;
-            assert size == array.getSizeInBytes();
-            buffer.putInt32(writerIndex, size);
-          } finally {
-            writer.setBuffer(prevBuffer);
-          }
-        }
-      };
-    } catch (Exception e) {
-      String msg = String.format("Create encoder failed, \nelementType: %s", elementType);
-      throw new EncoderException(msg, e);
-    }
+  public static <T extends Collection<?>> ArrayEncoder<T> arrayEncoder(
+      final TypeRef<T> token, final Fory fory) {
+    return buildArrayCodec(token).fory(fory).buildForArray().get();
   }
 
   /**
@@ -445,7 +179,7 @@ public class Encoders {
    * @param <T> T is a array type, can be a nested list type.
    * @return
    */
-  public static <T extends Map> MapEncoder<T> mapEncoder(TypeRef<T> token) {
+  public static <T extends Map> MapEncoder<T> mapEncoder(final TypeRef<T> token) {
     return mapEncoder(token, null);
   }
 
@@ -456,25 +190,25 @@ public class Encoders {
    * @return
    */
   public static <T extends Map, K, V> MapEncoder<T> mapEncoder(
-      Class<? extends Map> mapCls, Class<K> keyType, Class<V> valueType) {
+      final Class<? extends Map> mapCls, final Class<K> keyType, final Class<V> valueType) {
     Preconditions.checkNotNull(keyType);
     Preconditions.checkNotNull(valueType);
 
     return (MapEncoder<T>) mapEncoder(TypeUtils.mapOf(keyType, valueType), null);
   }
 
-  public static <T extends Map> MapEncoder<T> mapEncoder(TypeRef<T> token, Fory fory) {
+  public static <T extends Map> MapEncoder<T> mapEncoder(final TypeRef<T> token, final Fory fory) {
     Preconditions.checkNotNull(token);
-    Tuple2<TypeRef<?>, TypeRef<?>> tuple2 = TypeUtils.getMapKeyValueType(token);
+    final Tuple2<TypeRef<?>, TypeRef<?>> tuple2 = TypeUtils.getMapKeyValueType(token);
 
-    Set<TypeRef<?>> set1 = beanSet(tuple2.f0);
-    Set<TypeRef<?>> set2 = beanSet(tuple2.f1);
+    final Set<TypeRef<?>> set1 = beanSet(tuple2.f0);
+    final Set<TypeRef<?>> set2 = beanSet(tuple2.f1);
     LOG.info("Find beans to load: {}, {}", set1, set2);
 
-    TypeRef<?> keyToken = token4BeanLoad(set1, tuple2.f0);
-    TypeRef<?> valToken = token4BeanLoad(set2, tuple2.f1);
+    final TypeRef<?> keyToken = token4BeanLoad(set1, tuple2.f0);
+    final TypeRef<?> valToken = token4BeanLoad(set2, tuple2.f1);
 
-    MapEncoder<T> encoder = mapEncoder0(token, keyToken, valToken, fory);
+    final MapEncoder<T> encoder = mapEncoder0(token, keyToken, valToken, fory);
     return createMapEncoder(encoder);
   }
 
@@ -490,13 +224,16 @@ public class Encoders {
    * java bean.
    */
   public static <T extends Map, K, V> MapEncoder<T> mapEncoder(
-      TypeRef<? extends Map> mapToken, TypeRef<K> keyToken, TypeRef<V> valToken, Fory fory) {
+      final TypeRef<? extends Map> mapToken,
+      final TypeRef<K> keyToken,
+      final TypeRef<V> valToken,
+      final Fory fory) {
     Preconditions.checkNotNull(mapToken);
     Preconditions.checkNotNull(keyToken);
     Preconditions.checkNotNull(valToken);
 
-    Set<TypeRef<?>> set1 = beanSet(keyToken);
-    Set<TypeRef<?>> set2 = beanSet(valToken);
+    final Set<TypeRef<?>> set1 = beanSet(keyToken);
+    final Set<TypeRef<?>> set2 = beanSet(valToken);
     LOG.info("Find beans to load: {}, {}", set1, set2);
 
     token4BeanLoad(set1, keyToken);
@@ -506,21 +243,25 @@ public class Encoders {
   }
 
   private static <T extends Map, K, V> MapEncoder<T> mapEncoder0(
-      TypeRef<? extends Map> mapToken, TypeRef<K> keyToken, TypeRef<V> valToken, Fory fory) {
+      final TypeRef<? extends Map> mapToken,
+      final TypeRef<K> keyToken,
+      final TypeRef<V> valToken,
+      final Fory fory) {
     Preconditions.checkNotNull(mapToken);
     Preconditions.checkNotNull(keyToken);
     Preconditions.checkNotNull(valToken);
 
-    Schema schema = TypeInference.inferSchema(mapToken, false);
-    Field field = DataTypes.fieldOfSchema(schema, 0);
-    Field keyField = DataTypes.keyArrayFieldForMap(field);
-    Field valField = DataTypes.itemArrayFieldForMap(field);
-    BinaryArrayWriter keyWriter = new BinaryArrayWriter(keyField);
-    BinaryArrayWriter valWriter = new BinaryArrayWriter(valField, keyWriter.getBuffer());
+    final Schema schema = TypeInference.inferSchema(mapToken, false);
+    final Field field = DataTypes.fieldOfSchema(schema, 0);
+    final Field keyField = DataTypes.keyArrayFieldForMap(field);
+    final Field valField = DataTypes.itemArrayFieldForMap(field);
+    final BinaryArrayWriter keyWriter = new BinaryArrayWriter(keyField);
+    final BinaryArrayWriter valWriter = new BinaryArrayWriter(valField, keyWriter.getBuffer());
     try {
-      Class<?> rowCodecClass = loadOrGenMapCodecClass(mapToken, keyToken, valToken);
-      Object references = new Object[] {keyField, valField, keyWriter, valWriter, fory, field};
-      GeneratedMapEncoder codec =
+      final Class<?> rowCodecClass = loadOrGenMapCodecClass(mapToken, keyToken, valToken);
+      final Object references =
+          new Object[] {keyField, valField, keyWriter, valWriter, fory, field};
+      final GeneratedMapEncoder codec =
           rowCodecClass
               .asSubclass(GeneratedMapEncoder.class)
               .getConstructor(Object[].class)
@@ -539,43 +280,43 @@ public class Encoders {
 
         @SuppressWarnings("unchecked")
         @Override
-        public T fromMap(BinaryArray key, BinaryArray value) {
+        public T fromMap(final BinaryArray key, final BinaryArray value) {
           return (T) codec.fromMap(key, value);
         }
 
         @Override
-        public BinaryMap toMap(T obj) {
+        public BinaryMap toMap(final T obj) {
           return codec.toMap(obj);
         }
 
         @Override
-        public T decode(MemoryBuffer buffer) {
+        public T decode(final MemoryBuffer buffer) {
           return decode(buffer, buffer.readInt32());
         }
 
-        public T decode(MemoryBuffer buffer, int size) {
-          BinaryMap map = new BinaryMap(field);
-          int readerIndex = buffer.readerIndex();
+        public T decode(final MemoryBuffer buffer, final int size) {
+          final BinaryMap map = new BinaryMap(field);
+          final int readerIndex = buffer.readerIndex();
           map.pointTo(buffer, readerIndex, size);
           buffer.readerIndex(readerIndex + size);
           return fromMap(map);
         }
 
         @Override
-        public T decode(byte[] bytes) {
+        public T decode(final byte[] bytes) {
           return decode(MemoryUtils.wrap(bytes), bytes.length);
         }
 
         @Override
-        public byte[] encode(T obj) {
-          BinaryMap map = toMap(obj);
+        public byte[] encode(final T obj) {
+          final BinaryMap map = toMap(obj);
           return map.getBuf().getBytes(map.getBaseOffset(), map.getSizeInBytes());
         }
 
         @Override
-        public void encode(MemoryBuffer buffer, T obj) {
-          MemoryBuffer prevBuffer = keyWriter.getBuffer();
-          int writerIndex = buffer.writerIndex();
+        public void encode(final MemoryBuffer buffer, final T obj) {
+          final MemoryBuffer prevBuffer = keyWriter.getBuffer();
+          final int writerIndex = buffer.writerIndex();
           buffer.writeInt32(-1);
           try {
             keyWriter.setBuffer(buffer);
@@ -588,15 +329,15 @@ public class Encoders {
           }
         }
       };
-    } catch (Exception e) {
-      String msg =
+    } catch (final Exception e) {
+      final String msg =
           String.format("Create encoder failed, \nkeyType: %s, valueType: %s", keyToken, valToken);
       throw new EncoderException(msg, e);
     }
   }
 
-  private static Set<TypeRef<?>> beanSet(TypeRef<?> token) {
-    Set<TypeRef<?>> set = new HashSet<>();
+  private static Set<TypeRef<?>> beanSet(final TypeRef<?> token) {
+    final Set<TypeRef<?>> set = new HashSet<>();
     if (TypeUtils.isBean(
         token, new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true))) {
       set.add(token);
@@ -606,17 +347,17 @@ public class Encoders {
     return set;
   }
 
-  private static TypeRef<?> token4BeanLoad(Set<TypeRef<?>> set, TypeRef<?> init) {
+  private static TypeRef<?> token4BeanLoad(final Set<TypeRef<?>> set, final TypeRef<?> init) {
     TypeRef<?> keyToken = init;
-    for (TypeRef<?> tt : set) {
+    for (final TypeRef<?> tt : set) {
       keyToken = tt;
-      Encoders.loadOrGenRowCodecClass(getRawType(tt));
+      Encoders.loadOrGenRowCodecClass(getRawType(tt), DefaultCodecFactory.INSTANCE);
       LOG.info("bean {} load finished", getRawType(tt));
     }
     return keyToken;
   }
 
-  private static <T> MapEncoder<T> createMapEncoder(MapEncoder<T> encoder) {
+  private static <T> MapEncoder<T> createMapEncoder(final MapEncoder<T> encoder) {
     return new MapEncoder<T>() {
 
       @Override
@@ -630,41 +371,41 @@ public class Encoders {
       }
 
       @Override
-      public T fromMap(BinaryArray key, BinaryArray value) {
+      public T fromMap(final BinaryArray key, final BinaryArray value) {
         return encoder.fromMap(key, value);
       }
 
       @Override
-      public BinaryMap toMap(T obj) {
+      public BinaryMap toMap(final T obj) {
         return encoder.toMap(obj);
       }
 
       @Override
-      public T decode(MemoryBuffer buffer) {
+      public T decode(final MemoryBuffer buffer) {
         return encoder.decode(buffer);
       }
 
       @Override
-      public T decode(byte[] bytes) {
+      public T decode(final byte[] bytes) {
         return encoder.decode(bytes);
       }
 
       @Override
-      public byte[] encode(T obj) {
+      public byte[] encode(final T obj) {
         return encoder.encode(obj);
       }
 
       @Override
-      public void encode(MemoryBuffer buffer, T obj) {
+      public void encode(final MemoryBuffer buffer, final T obj) {
         encoder.encode(buffer, obj);
       }
     };
   }
 
-  private static void findBeanToken(TypeRef<?> typeRef, java.util.Set<TypeRef<?>> set) {
-    TypeResolutionContext typeCtx =
+  static void findBeanToken(TypeRef<?> typeRef, final java.util.Set<TypeRef<?>> set) {
+    final TypeResolutionContext typeCtx =
         new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true);
-    Set<TypeRef<?>> visited = new LinkedHashSet<>();
+    final Set<TypeRef<?>> visited = new LinkedHashSet<>();
     while (TypeUtils.ITERABLE_TYPE.isSupertypeOf(typeRef)
         || TypeUtils.MAP_TYPE.isSupertypeOf(typeRef)) {
       if (visited.contains(typeRef)) {
@@ -678,7 +419,7 @@ public class Encoders {
         }
         findBeanToken(typeRef, set);
       } else {
-        Tuple2<TypeRef<?>, TypeRef<?>> tuple2 = TypeUtils.getMapKeyValueType(typeRef);
+        final Tuple2<TypeRef<?>, TypeRef<?>> tuple2 = TypeUtils.getMapKeyValueType(typeRef);
         if (TypeUtils.isBean(tuple2.f0, typeCtx)) {
           set.add(tuple2.f0);
         } else {
@@ -696,20 +437,21 @@ public class Encoders {
     }
   }
 
-  public static Class<?> loadOrGenRowCodecClass(Class<?> beanClass) {
-    Set<Class<?>> classes =
+  static Class<?> loadOrGenRowCodecClass(
+      final Class<?> beanClass, final CodecFactory codecFactory) {
+    final Set<Class<?>> classes =
         TypeUtils.listBeansRecursiveInclusive(
             beanClass,
             new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
     if (classes.isEmpty()) {
       return null;
     }
-    LOG.info("Create RowCodec for classes {}", classes);
-    CompileUnit[] compileUnits =
+    LOG.info("Create codec for classes {}", classes);
+    final CompileUnit[] compileUnits =
         classes.stream()
             .map(
                 cls -> {
-                  RowEncoderBuilder codecBuilder = new RowEncoderBuilder(cls);
+                  final CodecBuilder codecBuilder = codecFactory.newRowEncoder(TypeRef.of(cls));
                   // use genCodeFunc to avoid gen code repeatedly
                   return new CompileUnit(
                       CodeGenerator.getPackage(cls),
@@ -720,15 +462,17 @@ public class Encoders {
     return loadCls(compileUnits);
   }
 
-  private static <B> Class<?> loadOrGenArrayCodecClass(
-      TypeRef<? extends Collection> arrayCls, TypeRef<B> elementType) {
+  static <B> Class<?> loadOrGenArrayCodecClass(
+      final TypeRef<? extends Collection<?>> arrayCls,
+      final TypeRef<B> elementType,
+      final CodecFactory codecFactory) {
     LOG.info("Create ArrayCodec for classes {}", elementType);
-    Class<?> cls = getRawType(elementType);
+    final Class<?> cls = getRawType(elementType);
     // class name prefix
-    String prefix = TypeInference.inferTypeName(arrayCls);
+    final String prefix = TypeInference.inferTypeName(arrayCls);
 
-    ArrayEncoderBuilder codecBuilder = new ArrayEncoderBuilder(arrayCls, elementType);
-    CompileUnit compileUnit =
+    final ArrayEncoderBuilder codecBuilder = codecFactory.newArrayEncoder(arrayCls, elementType);
+    final CompileUnit compileUnit =
         new CompileUnit(
             CodeGenerator.getPackage(cls),
             codecBuilder.codecClassName(cls, prefix),
@@ -738,10 +482,10 @@ public class Encoders {
   }
 
   private static <K, V> Class<?> loadOrGenMapCodecClass(
-      TypeRef<? extends Map> mapCls, TypeRef<K> keyToken, TypeRef<V> valueToken) {
+      final TypeRef<? extends Map> mapCls, final TypeRef<K> keyToken, final TypeRef<V> valueToken) {
     LOG.info("Create MapCodec for classes {}, {}", keyToken, valueToken);
-    boolean keyIsBean = TypeUtils.isBean(keyToken);
-    boolean valIsBean = TypeUtils.isBean(valueToken);
+    final boolean keyIsBean = TypeUtils.isBean(keyToken);
+    final boolean valIsBean = TypeUtils.isBean(valueToken);
     TypeRef<?> beanToken;
     Class<?> cls;
     if (keyIsBean) {
@@ -755,10 +499,10 @@ public class Encoders {
       beanToken = OBJECT_TYPE;
     }
     // class name prefix
-    String prefix = TypeInference.inferTypeName(mapCls);
+    final String prefix = TypeInference.inferTypeName(mapCls);
 
-    MapEncoderBuilder codecBuilder = new MapEncoderBuilder(mapCls, beanToken);
-    CompileUnit compileUnit =
+    final MapEncoderBuilder codecBuilder = new MapEncoderBuilder(mapCls, beanToken);
+    final CompileUnit compileUnit =
         new CompileUnit(
             CodeGenerator.getPackage(cls),
             codecBuilder.codecClassName(cls, prefix),
@@ -767,14 +511,14 @@ public class Encoders {
     return loadCls(compileUnit);
   }
 
-  private static Class<?> loadCls(CompileUnit... compileUnit) {
-    CodeGenerator codeGenerator =
+  private static Class<?> loadCls(final CompileUnit... compileUnit) {
+    final CodeGenerator codeGenerator =
         CodeGenerator.getSharedCodeGenerator(Thread.currentThread().getContextClassLoader());
-    ClassLoader classLoader = codeGenerator.compile(compileUnit);
-    String className = compileUnit[0].getQualifiedClassName();
+    final ClassLoader classLoader = codeGenerator.compile(compileUnit);
+    final String className = compileUnit[0].getQualifiedClassName();
     try {
       return classLoader.loadClass(className);
-    } catch (ClassNotFoundException e) {
+    } catch (final ClassNotFoundException e) {
       throw new IllegalStateException("Impossible because we just compiled class", e);
     }
   }

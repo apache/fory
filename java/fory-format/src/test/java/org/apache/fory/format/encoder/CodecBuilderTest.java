@@ -39,13 +39,15 @@ public class CodecBuilderTest {
 
   @Test
   public void loadOrGenRowCodecClass() {
-    Class<?> codecClass = Encoders.loadOrGenRowCodecClass(BeanA.class);
+    Class<?> codecClass =
+        Encoders.loadOrGenRowCodecClass(BeanA.class, DefaultCodecFactory.INSTANCE);
     assertTrue(GeneratedRowEncoder.class.isAssignableFrom(codecClass));
     assertTrue(
-        GeneratedRowEncoder.class.isAssignableFrom(Encoders.loadOrGenRowCodecClass(BeanB.class)));
+        GeneratedRowEncoder.class.isAssignableFrom(
+            Encoders.loadOrGenRowCodecClass(BeanB.class, DefaultCodecFactory.INSTANCE)));
     assertTrue(
         GeneratedRowEncoder.class.isAssignableFrom(
-            Encoders.loadOrGenRowCodecClass(AtomicLong.class)));
+            Encoders.loadOrGenRowCodecClass(AtomicLong.class, DefaultCodecFactory.INSTANCE)));
   }
 
   static void testStreamingEncode(Encoder encoder, Object object) {

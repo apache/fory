@@ -52,7 +52,6 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
   private static final String ROOT_KEY_WRITER_NAME = "keyArrayWriter";
   private static final String ROOT_VALUE_WRITER_NAME = "valueArrayWriter";
 
-  private static final TypeRef<Field> ARROW_FIELD_TYPE = TypeRef.of(Field.class);
   private final TypeRef<?> mapToken;
 
   public MapEncoderBuilder(Class<?> mapCls, Class<?> keyClass) {
@@ -158,9 +157,9 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
         new Expression.Cast(inputObject, mapToken, ctx.newName(getRawType(mapToken)), false, false);
 
     Expression.Reference keyArrayWriter =
-        new Expression.Reference(ROOT_KEY_WRITER_NAME, arrayWriterTypeToken, false);
+        new Expression.Reference(ROOT_KEY_WRITER_NAME, arrayWriterType(), false);
     Expression.Reference valArrayWriter =
-        new Expression.Reference(ROOT_VALUE_WRITER_NAME, arrayWriterTypeToken, false);
+        new Expression.Reference(ROOT_VALUE_WRITER_NAME, arrayWriterType(), false);
 
     Expression.Reference fieldExpr = new Expression.Reference(FIELD_NAME, ARROW_FIELD_TYPE, false);
     Expression.Reference keyFieldExpr =
@@ -180,7 +179,7 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
     expressions.add(
         new Expression.Invoke(keyArrayWriter, "writeDirectly", Expression.Literal.ofInt(-1)));
     Expression keySerializationExpr =
-        serializeForArrayByWriter(keySet, keyArrayWriter, keySetType, keyFieldExpr);
+        serializeForArrayByWriter(keySet, keyArrayWriter, keySetType, null, keyFieldExpr);
     Expression.Invoke keyArray =
         new Expression.Invoke(keyArrayWriter, "toArray", TypeRef.of(BinaryArray.class));
     expressions.add(map);
@@ -195,7 +194,7 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
 
     Expression.Invoke values = new Expression.Invoke(map, "values", valuesType);
     Expression valueSerializationExpr =
-        serializeForArrayByWriter(values, valArrayWriter, valuesType, valFieldExpr);
+        serializeForArrayByWriter(values, valArrayWriter, valuesType, null, valFieldExpr);
     Expression.Invoke valArray =
         new Expression.Invoke(valArrayWriter, "toArray", TypeRef.of(BinaryArray.class));
 
