@@ -20,16 +20,28 @@
 package org.apache.fory.format.encoder;
 
 import org.apache.arrow.vector.types.pojo.Schema;
-import org.apache.fory.format.row.binary.BinaryRow;
+import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
+import org.apache.fory.format.row.binary.writer.CompactRowWriter;
+import org.apache.fory.reflect.TypeRef;
 
-/**
- * Encoder to encode/decode object to/from row. A RowEncoder instance is reusable but not
- * thread-safe.
- */
-public interface RowEncoder<T> extends Encoder<T> {
-  Schema schema();
+/** Expression builder for building compact row encoder class. */
+class CompactRowEncoderBuilder extends RowEncoderBuilder {
+  public CompactRowEncoderBuilder(final Class<?> beanClass) {
+    super(beanClass);
+  }
 
-  T fromRow(BinaryRow row);
+  @Override
+  protected Schema inferSchema(final TypeRef<?> beanType) {
+    return CompactRowWriter.sortSchema(super.inferSchema(beanType));
+  }
 
-  BinaryRow toRow(T obj);
+  @Override
+  protected String codecSuffix() {
+    return "CompactCodec";
+  }
+
+  @Override
+  protected TypeRef<? extends BaseBinaryRowWriter> rowWriterType() {
+    return TypeRef.of(CompactRowWriter.class);
+  }
 }

@@ -64,6 +64,7 @@ import org.apache.fory.format.row.Row;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.BinaryUtils;
+import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryWriter;
@@ -86,7 +87,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   protected static final TypeRef<Field> ARROW_FIELD_TYPE = TypeRef.of(Field.class);
   protected static TypeRef<Schema> schemaTypeToken = TypeRef.of(Schema.class);
   protected static TypeRef<BinaryWriter> writerTypeToken = TypeRef.of(BinaryWriter.class);
-  protected static TypeRef<BinaryRowWriter> rowWriterTypeToken = TypeRef.of(BinaryRowWriter.class);
+
   protected static TypeRef<BinaryArrayWriter> arrayWriterTypeToken =
       TypeRef.of(BinaryArrayWriter.class);
   protected static TypeRef<Row> rowTypeToken = TypeRef.of(Row.class);
@@ -120,6 +121,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     this.typeCtx = typeCtx;
   }
 
+  @Override
   public String codecClassName(Class<?> beanClass) {
     return codecClassName(beanClass, "");
   }
@@ -143,6 +145,10 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
 
   public String codecQualifiedClassName(Class<?> beanClass, String prefix) {
     return CodeGenerator.getPackage(beanClass) + "." + codecClassName(beanClass, prefix);
+  }
+
+  protected TypeRef<? extends BaseBinaryRowWriter> rowWriterType() {
+    return TypeRef.of(BinaryRowWriter.class);
   }
 
   /**
@@ -469,8 +475,8 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
               DataTypes.class, "schemaFromStructField", "schema", SCHEMA_TYPE, false, structField);
       String rowWriterName =
           ctx.newName(StringUtils.uncapitalize(rawType.getSimpleName() + "RowWriter"));
-      NewInstance newRowWriter = new NewInstance(rowWriterTypeToken, schema, writer);
-      ctx.addField(ctx.type(rowWriterTypeToken), rowWriterName, newRowWriter);
+      NewInstance newRowWriter = new NewInstance(rowWriterType(), schema, writer);
+      ctx.addField(ctx.type(rowWriterType()), rowWriterName, newRowWriter);
 
       Preconditions.checkArgument(!codecClassName(rawType).contains("."));
       String encoderName = ctx.newName(StringUtils.uncapitalize(codecClassName(rawType)));
@@ -483,7 +489,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
               ExpressionUtils.newObjectArray(schema, newRowWriter, foryRef));
       ctx.addField(encoderClass, encoderName, newEncoder);
 
-      rowWriter = new Reference(rowWriterName, rowWriterTypeToken);
+      rowWriter = new Reference(rowWriterName, rowWriterType());
       rowWriterMap.put(typeRef, rowWriter);
       beanEncoder = new Reference(encoderName, codecTypeRef);
       beanEncoderMap.put(typeRef, beanEncoder);
