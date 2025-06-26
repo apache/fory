@@ -26,7 +26,6 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.TreeSet;
-
 import lombok.Data;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.annotation.ForyField;
