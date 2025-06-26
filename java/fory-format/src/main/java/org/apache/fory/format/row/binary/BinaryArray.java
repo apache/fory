@@ -47,34 +47,56 @@ import org.apache.fory.util.Preconditions;
  */
 public class BinaryArray extends UnsafeTrait implements ArrayData {
   private final Field field;
-  private final int elementSize;
+  protected final int elementSize;
   private MemoryBuffer buffer;
   private int numElements;
+  private int bitmapOffset;
   private int elementOffset;
   private int baseOffset;
   private int sizeInBytes;
 
   public BinaryArray(Field field) {
+    this(field, elementSize(field));
+  }
+
+  protected BinaryArray(Field field, int elementSize) {
     this.field = field;
-    int width = DataTypes.getTypeWidth(field.getChildren().get(0).getType());
-    // variable-length element type
-    if (width < 0) {
-      this.elementSize = 8;
-    } else {
-      this.elementSize = width;
-    }
+    this.elementSize = elementSize;
     initializeExtData(1); // Only require at most one slot to cache the schema for array type.
   }
 
+  private static int elementSize(Field field) {
+    int width = DataTypes.getTypeWidth(field.getChildren().get(0).getType());
+    // variable-length element type
+    if (width < 0) {
+      return 8;
+    } else {
+      return width;
+    }
+  }
+
   public void pointTo(MemoryBuffer buffer, int offset, int sizeInBytes) {
-    // Read the numElements of key array from the aligned first 8 bytes as int.
-    final int numElements = (int) buffer.getInt64(offset);
-    assert numElements >= 0 : "numElements (" + numElements + ") should >= 0";
-    this.numElements = numElements;
     this.buffer = buffer;
     this.baseOffset = offset;
+    // Read the numElements of key array from the aligned first 8 bytes as int.
+    final int numElements = readNumElements();
+    assert numElements >= 0 : "numElements (" + numElements + ") should >= 0";
+    this.numElements = numElements;
     this.sizeInBytes = sizeInBytes;
-    this.elementOffset = offset + calculateHeaderInBytes(this.numElements);
+    this.bitmapOffset = bitmapOffset();
+    this.elementOffset = elementOffset();
+  }
+
+  protected int readNumElements() {
+    return (int) buffer.getInt64(baseOffset);
+  }
+
+  protected int elementOffset() {
+    return baseOffset + calculateHeaderInBytes(this.numElements);
+  }
+
+  protected int bitmapOffset() {
+    return baseOffset + 8;
   }
 
   public Field getField() {
@@ -114,19 +136,19 @@ public class BinaryArray extends UnsafeTrait implements ArrayData {
   @Override
   public void setNotNullAt(int ordinal) {
     assertIndexIsValid(ordinal);
-    BitUtils.unset(buffer, baseOffset + 8, ordinal);
+    BitUtils.unset(buffer, bitmapOffset, ordinal);
   }
 
   @Override
   public void setNullAt(int ordinal) {
-    BitUtils.set(buffer, baseOffset + 8, ordinal);
+    BitUtils.set(buffer, bitmapOffset, ordinal);
     // we assume the corresponding column was already 0
     // or will be set to 0 later by the caller side
   }
 
   @Override
   public boolean isNullAt(int ordinal) {
-    return BitUtils.isSet(buffer, baseOffset + 8, ordinal);
+    return BitUtils.isSet(buffer, bitmapOffset, ordinal);
   }
 
   @Override
@@ -152,6 +174,10 @@ public class BinaryArray extends UnsafeTrait implements ArrayData {
   @Override
   public void setDecimal(int ordinal, BigDecimal value) {
     throw new UnsupportedOperationException();
+  }
+
+  public byte[] toBytes() {
+    return buffer.getBytes(baseOffset, sizeInBytes);
   }
 
   public boolean[] toBooleanArray() {
@@ -200,7 +226,7 @@ public class BinaryArray extends UnsafeTrait implements ArrayData {
   public ArrayData copy() {
     MemoryBuffer copyBuf = MemoryUtils.buffer(sizeInBytes);
     buffer.copyTo(baseOffset, copyBuf, 0, sizeInBytes);
-    BinaryArray arrayCopy = new BinaryArray(field);
+    BinaryArray arrayCopy = newArray(field);
     arrayCopy.pointTo(copyBuf, 0, sizeInBytes);
     return arrayCopy;
   }
