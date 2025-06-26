@@ -29,12 +29,22 @@ import org.apache.fory.memory.MemoryBuffer;
  * @param <T> type of value
  */
 public interface Encoder<T> {
-
+  /** Decode a buffer. */
   T decode(MemoryBuffer buffer);
 
+  /** Decode a byte array. */
   T decode(byte[] bytes);
 
+  /** Encode to a byte array. */
   byte[] encode(T obj);
 
-  void encode(MemoryBuffer buffer, T obj);
+  /** Encode to a buffer. Returns number of bytes written to the buffer. */
+  int encode(MemoryBuffer buffer, T obj);
+
+  /** Encode to a buffer. Returns a sliced buffer view of bytes written. */
+  default MemoryBuffer encodeSlice(final MemoryBuffer buffer, final T obj) {
+    final int initialIndex = buffer.writerIndex();
+    final int size = encode(buffer, obj);
+    return buffer.slice(initialIndex, size);
+  }
 }

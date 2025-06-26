@@ -19,12 +19,13 @@
 
 package org.apache.fory.format.encoder;
 
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.Generated;
 import org.apache.fory.format.row.binary.BinaryRow;
 
 /** A row format codec for java bean. */
+@Internal
 public interface GeneratedRowEncoder extends Generated {
-
   BinaryRow toRow(Object obj);
 
   Object fromRow(BinaryRow row);

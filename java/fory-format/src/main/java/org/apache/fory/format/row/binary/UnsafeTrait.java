@@ -36,7 +36,7 @@ import org.apache.fory.memory.MemoryBuffer;
 
 /** Internal to binary row format to reuse code, don't use it in anywhere else. */
 abstract class UnsafeTrait implements Getters, Setters {
-  private Object[] extData;
+  protected Object[] extData;
 
   abstract MemoryBuffer getBuffer();
 
@@ -65,46 +65,55 @@ abstract class UnsafeTrait implements Getters, Setters {
   // ####################### getters #######################
   // ###########################################################
 
+  @Override
   public boolean getBoolean(int ordinal) {
     assertIndexIsValid(ordinal);
     return getBuffer().getBoolean(getOffset(ordinal));
   }
 
+  @Override
   public byte getByte(int ordinal) {
     assertIndexIsValid(ordinal);
     return getBuffer().getByte(getOffset(ordinal));
   }
 
+  @Override
   public short getInt16(int ordinal) {
     assertIndexIsValid(ordinal);
     return getBuffer().getInt16(getOffset(ordinal));
   }
 
+  @Override
   public int getInt32(int ordinal) {
     assertIndexIsValid(ordinal);
     return getBuffer().getInt32(getOffset(ordinal));
   }
 
+  @Override
   public long getInt64(int ordinal) {
     assertIndexIsValid(ordinal);
     return getBuffer().getInt64(getOffset(ordinal));
   }
 
+  @Override
   public float getFloat32(int ordinal) {
     assertIndexIsValid(ordinal);
     return getBuffer().getFloat32(getOffset(ordinal));
   }
 
+  @Override
   public double getFloat64(int ordinal) {
     assertIndexIsValid(ordinal);
     return getBuffer().getFloat64(getOffset(ordinal));
   }
 
+  @Override
   public int getDate(int ordinal) {
     assertIndexIsValid(ordinal);
     return getBuffer().getInt32(getOffset(ordinal));
   }
 
+  @Override
   public long getTimestamp(int ordinal) {
     assertIndexIsValid(ordinal);
     return getBuffer().getInt64(getOffset(ordinal));
@@ -157,7 +166,7 @@ abstract class UnsafeTrait implements Getters, Setters {
    * @param extDataSlot the ext data slot used to cache the schema for the struct.
    * @return the binary row representation of the struct.
    */
-  BinaryRow getStruct(int ordinal, Field field, int extDataSlot) {
+  protected BinaryRow getStruct(int ordinal, Field field, int extDataSlot) {
     if (isNullAt(ordinal)) {
       return null;
     }
@@ -165,11 +174,19 @@ abstract class UnsafeTrait implements Getters, Setters {
     final int relativeOffset = (int) (offsetAndSize >> 32);
     final int size = (int) offsetAndSize;
     if (extData[extDataSlot] == null) {
-      extData[extDataSlot] = DataTypes.createSchema(field);
+      extData[extDataSlot] = newSchema(field);
     }
-    BinaryRow row = new BinaryRow((Schema) extData[extDataSlot]);
+    BinaryRow row = newRow((Schema) extData[extDataSlot]);
     row.pointTo(getBuffer(), getBaseOffset() + relativeOffset, size);
     return row;
+  }
+
+  protected Schema newSchema(Field field) {
+    return DataTypes.createSchema(field);
+  }
+
+  protected BinaryRow newRow(Schema schema) {
+    return new BinaryRow(schema);
   }
 
   BinaryArray getArray(int ordinal, Field field) {
@@ -179,9 +196,13 @@ abstract class UnsafeTrait implements Getters, Setters {
     final long offsetAndSize = getInt64(ordinal);
     final int relativeOffset = (int) (offsetAndSize >> 32);
     final int size = (int) offsetAndSize;
-    BinaryArray array = new BinaryArray(field);
+    BinaryArray array = newArray(field);
     array.pointTo(getBuffer(), getBaseOffset() + relativeOffset, size);
     return array;
+  }
+
+  protected BinaryArray newArray(Field field) {
+    return new BinaryArray(field);
   }
 
   BinaryMap getMap(int ordinal, Field field) {
@@ -191,9 +212,13 @@ abstract class UnsafeTrait implements Getters, Setters {
     final long offsetAndSize = getInt64(ordinal);
     final int relativeOffset = (int) (offsetAndSize >> 32);
     final int size = (int) offsetAndSize;
-    BinaryMap map = new BinaryMap(field);
+    BinaryMap map = newMap(field);
     map.pointTo(getBuffer(), getBaseOffset() + relativeOffset, size);
     return map;
+  }
+
+  protected BinaryMap newMap(Field field) {
+    return new BinaryMap(field);
   }
 
   // ###########################################################

@@ -48,10 +48,10 @@ import org.apache.fory.memory.Platform;
 public class BinaryArrayWriter extends BinaryWriter {
   public static int MAX_ROUNDED_ARRAY_LENGTH = Integer.MAX_VALUE - 15;
 
-  private final Field field;
-  private final int elementSize;
-  private int numElements;
-  private int headerInBytes;
+  protected final Field field;
+  protected final int elementSize;
+  protected int numElements;
+  protected int headerInBytes;
 
   /** Must call reset before using writer constructed by this constructor. */
   public BinaryArrayWriter(Field field) {
@@ -73,15 +73,24 @@ public class BinaryArrayWriter extends BinaryWriter {
   }
 
   public BinaryArrayWriter(Field field, MemoryBuffer buffer) {
-    super(buffer, 8);
-    this.field = field;
+    this(field, buffer, 8, elementWidth(field));
+  }
+
+  private static int elementWidth(Field field) {
     int width = DataTypes.getTypeWidth(field.getChildren().get(0).getType());
     // variable-length element type
     if (width < 0) {
-      this.elementSize = 8;
+      return 8;
     } else {
-      this.elementSize = width;
+      return width;
     }
+  }
+
+  protected BinaryArrayWriter(
+      Field field, MemoryBuffer buffer, int bytesBeforeBitMap, int elementSize) {
+    super(buffer, bytesBeforeBitMap);
+    this.field = field;
+    this.elementSize = elementSize;
   }
 
   /**
@@ -91,10 +100,9 @@ public class BinaryArrayWriter extends BinaryWriter {
    * will change writerIndex, please use it very carefully</em>.
    */
   public void reset(int numElements) {
-    super.startIndex = writerIndex();
+    startIndex = writerIndex();
     this.numElements = numElements;
-    // numElements use 8 byte, nullBitsSizeInBytes use multiple of 8 byte
-    this.headerInBytes = BinaryArray.calculateHeaderInBytes(numElements);
+    this.headerInBytes = calculateHeaderInBytes();
     long dataSize = numElements * (long) elementSize;
     if (dataSize > MAX_ROUNDED_ARRAY_LENGTH) {
       throw new UnsupportedOperationException("Can't alloc binary array, it's too big");
@@ -103,23 +111,32 @@ public class BinaryArrayWriter extends BinaryWriter {
     buffer.grow(headerInBytes + fixedPartInBytes);
 
     // Write numElements and clear out null bits to header
-    // store numElements in header in aligned 8 byte, though numElements is 4 byte int
-    buffer.putInt64(startIndex, numElements);
+    int numElementsSize = writeNumElements();
     int end = startIndex + headerInBytes;
-    for (int i = startIndex + 8; i < end; i += 8) {
-      buffer.putInt64(i, 0L);
+    for (int i = startIndex + numElementsSize; i < end; i += 1) {
+      buffer.putByte(i, 0);
     }
 
     // fill 0 into reminder part of 8-bytes alignment
     for (int i = elementSize * numElements; i < fixedPartInBytes; i++) {
       buffer.putByte(startIndex + headerInBytes + i, (byte) 0);
     }
+    resetAdvanceWriter(fixedPartInBytes);
+  }
+
+  protected void resetAdvanceWriter(int fixedPartInBytes) {
     buffer._increaseWriterIndexUnsafe(headerInBytes + fixedPartInBytes);
   }
 
-  private void assertIndexIsValid(int index) {
-    assert index >= 0 : "index (" + index + ") should >= 0";
-    assert index < numElements : "index (" + index + ") should < " + numElements;
+  protected int writeNumElements() {
+    // store numElements in header in aligned 8 byte, though numElements is 4 byte int
+    buffer.putInt64(startIndex, numElements);
+    return 8;
+  }
+
+  protected int calculateHeaderInBytes() {
+    // numElements use 8 byte, nullBitsSizeInBytes use multiple of 8 byte
+    return BinaryArray.calculateHeaderInBytes(numElements);
   }
 
   @Override
@@ -162,6 +179,10 @@ public class BinaryArrayWriter extends BinaryWriter {
     writeDecimal(ordinal, value, (ArrowType.Decimal) field.getChildren().get(0).getType());
   }
 
+  protected void primitiveArrayAdvance(int size) {
+    // no need to increasewriterIndex, because reset has already increased writerIndex
+  }
+
   private void fromPrimitiveArray(Object arr, int offset, int numElements, Field type) {
     if (DataTypes.getTypeId(type.getChildren().get(0).getType())
         != DataTypes.getTypeId(this.field.getChildren().get(0).getType())) {
@@ -171,9 +192,9 @@ public class BinaryArrayWriter extends BinaryWriter {
               type.getChildren().get(0).getType(), this.field.getChildren().get(0).getType());
       throw new IllegalArgumentException(msg);
     }
-    buffer.copyFromUnsafe(
-        startIndex + headerInBytes, arr, offset, numElements * (long) elementSize);
-    // no need to increasewriterIndex, because reset has already increased writerIndex
+    int size = numElements * elementSize;
+    buffer.copyFromUnsafe(startIndex + headerInBytes, arr, offset, size);
+    primitiveArrayAdvance(size);
   }
 
   public void fromPrimitiveArray(byte[] arr) {
@@ -206,10 +227,14 @@ public class BinaryArrayWriter extends BinaryWriter {
   }
 
   public BinaryArray toArray() {
-    BinaryArray array = new BinaryArray(field);
+    BinaryArray array = newArray();
     int size = size();
     array.pointTo(buffer, startIndex, size);
     return array;
+  }
+
+  public BinaryArray newArray() {
+    return new BinaryArray(field);
   }
 
   public Field getField() {

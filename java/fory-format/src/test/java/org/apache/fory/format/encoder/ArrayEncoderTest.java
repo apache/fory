@@ -44,7 +44,7 @@ public class ArrayEncoderTest {
     }
 
     ArrayEncoder<List<RowEncoderTest.Bar>> encoder =
-        Encoders.arrayEncoder(bars.getClass(), RowEncoderTest.Bar.class);
+        Encoders.arrayEncoder(new TypeRef<List<RowEncoderTest.Bar>>() {});
     BinaryArray array = encoder.toArray(bars);
     List<RowEncoderTest.Bar> newBars = encoder.fromArray(array);
 

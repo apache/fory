@@ -89,6 +89,11 @@ class ValueVisitor extends DefaultTypeVisitor<Function<Integer, Object>> {
   }
 
   @Override
+  public Function<Integer, Object> visit(ArrowType.FixedSizeBinary type) {
+    return getters::getBinary;
+  }
+
+  @Override
   public Function<Integer, Object> visit(ArrowType.Decimal type) {
     return getters::getDecimal;
   }
