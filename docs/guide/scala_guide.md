@@ -34,13 +34,13 @@ Scala 2 and 3 are both supported.
 To add a dependency on Fory scala for scala 2 with sbt, use the following:
 
 ```sbt
-libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.11.0"
+libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.11.1"
 ```
 
 To add a dependency on Fory scala for scala 3 with sbt, use the following:
 
 ```sbt
-libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.11.0"
+libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.11.1"
 ```
 
 ## Quict Start

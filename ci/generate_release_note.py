@@ -98,7 +98,7 @@ input_text = """
 ## New Contributors
 * @XXX made their first contribution in https://github.com/apache/fory/pull/XXX
 
-**Full Changelog**: https://github.com/apache/fory/compare/v0.10.3...v0.11.0-rc2
+**Full Changelog**: https://github.com/apache/fory/compare/v0.11.0...v0.11.1-rc1
 """
 
 # Generate release notes from given input
