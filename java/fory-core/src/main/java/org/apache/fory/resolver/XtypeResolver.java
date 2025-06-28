@@ -27,7 +27,9 @@ import static org.apache.fory.meta.Encoders.PACKAGE_ENCODER;
 import static org.apache.fory.meta.Encoders.TYPE_NAME_DECODER;
 import static org.apache.fory.resolver.ClassResolver.NIL_CLASS_INFO;
 import static org.apache.fory.resolver.ClassResolver.NO_CLASS_ID;
-import static org.apache.fory.serializer.CodegenSerializer.*;
+import static org.apache.fory.serializer.CodegenSerializer.loadCodegenSerializer;
+import static org.apache.fory.serializer.CodegenSerializer.loadCompatibleCodegenSerializer;
+import static org.apache.fory.serializer.CodegenSerializer.supportCodegenForJavaSerialization;
 import static org.apache.fory.serializer.collection.MapSerializers.HashMapSerializer;
 import static org.apache.fory.type.TypeUtils.qualifiedName;
 
@@ -228,34 +230,9 @@ public class XtypeResolver implements TypeResolver {
       if (type.isEnum()) {
         classInfo.serializer = new EnumSerializer(fory, (Class<Enum>) type);
       } else {
-        boolean codegen =
-            supportCodegenForJavaSerialization(type) && fory.getConfig().isCodeGenEnabled();
-        Class<? extends Serializer> objectSerializerClass =
-            getObjectSerializerClass(
-                type,
-                shareMeta,
-                codegen,
-                new JITContext.SerializerJITCallback<Class<? extends Serializer>>() {
-                  @Override
-                  public void onSuccess(Class<? extends Serializer> result) {
-                    setSerializer(
-                        type,
-                        Serializers.newSerializer(fory, type, result),
-                        namespace,
-                        typeName,
-                        xtypeId);
-                    if (classInfoCache.classInfo.cls == type) {
-                      classInfoCache.classInfo = NIL_CLASS_INFO; // clear class info cache
-                    }
-                    Preconditions.checkState(getSerializer(type).getClass() == result);
-                  }
-
-                  @Override
-                  public Object id() {
-                    return type;
-                  }
-                });
-        classInfo.serializer = Serializers.newSerializer(fory, type, objectSerializerClass);
+        classInfo.serializer =
+            new LazySerializer.LazyObjectSerializer(
+                fory, type, () -> new ObjectSerializer<>(fory, type));
       }
     }
     classInfoMap.put(type, classInfo);
@@ -263,30 +240,8 @@ public class XtypeResolver implements TypeResolver {
     xtypeIdToClassMap.put(xtypeId, classInfo);
   }
 
-  /**
-   * Set the serializer for <code>cls</code>, overwrite serializer if exists. Note if class info is
-   * already related with a class, this method should try to reuse that class info, otherwise jit
-   * callback to update serializer won't take effect in some cases since it can't change that
-   * classinfo.
-   */
-  public <T> void setSerializer(
-      Class<T> cls, Serializer<T> serializer, String namespace, String typeName, int xtypeId) {
-    addSerializer(cls, serializer, namespace, typeName, xtypeId);
-  }
-
-  /** Ass serializer for specified class. */
-  private void addSerializer(
-      Class<?> type, Serializer<?> serializer, String namespace, String typeName, int xtypeId) {
-    Preconditions.checkNotNull(serializer);
-    ClassInfo classInfo = classInfoMap.get(type);
-
-    if (classInfo == null) {
-      classInfo = newClassInfo(type, serializer, namespace, typeName, (short) xtypeId);
-      classInfoMap.put(type, classInfo);
-    }
-
-    // 2. Set `Serializer` for `ClassInfo`.
-    classInfo.serializer = serializer;
+  private void addSerializer(Class<?> type, ClassInfo classInfo) {
+    classInfoMap.put(type, classInfo);
   }
 
   private Class<? extends Serializer> getObjectSerializerClass(
@@ -312,8 +267,6 @@ public class XtypeResolver implements TypeResolver {
                           callback);
               return sc;
             case COMPATIBLE:
-              // If share class meta, compatible serializer won't be necessary, class
-              // definition will be sent to peer to create serializer for deserialization.
               sc =
                   fory.getJITContext()
                       .registerSerializerJITCallback(
@@ -340,7 +293,7 @@ public class XtypeResolver implements TypeResolver {
         case SCHEMA_CONSISTENT:
           return ObjectSerializer.class;
         case COMPATIBLE:
-          return shareMeta ? ObjectSerializer.class : CompatibleSerializer.class;
+          return shareMeta ? ObjectSerializer.class : MetaSharedSerializer.class;
         default:
           throw new UnsupportedOperationException(
               String.format("Unsupported mode %s", fory.getCompatibleMode()));
@@ -689,7 +642,36 @@ public class XtypeResolver implements TypeResolver {
 
   @Override
   public <T> Serializer<T> getSerializer(Class<T> cls) {
-    return (Serializer) getClassInfo(cls).serializer;
+    ClassInfo classInfo = getClassInfo(cls);
+    if (classInfo.serializer instanceof LazySerializer.LazyObjectSerializer) {
+      boolean codegen =
+          supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
+      Class<? extends Serializer> objectSerializerClass =
+          getObjectSerializerClass(
+              cls,
+              shareMeta,
+              codegen,
+              new JITContext.SerializerJITCallback<Class<? extends Serializer>>() {
+                @Override
+                public void onSuccess(Class<? extends Serializer> result) {
+                  Serializer<?> objectSerializer = Serializers.newSerializer(fory, cls, result);
+                  ClassInfo copy = ClassInfo.copy(classInfo);
+                  copy.serializer = objectSerializer;
+                  addSerializer(cls, copy);
+                  if (classInfoCache.classInfo.cls == cls) {
+                    classInfoCache.classInfo = NIL_CLASS_INFO; // clear class info cache
+                  }
+                  Preconditions.checkState(getSerializer(cls).getClass() == result);
+                }
+
+                @Override
+                public Object id() {
+                  return cls;
+                }
+              });
+      classInfo.serializer = Serializers.newSerializer(fory, cls, objectSerializerClass);
+    }
+    return (Serializer<T>) classInfo.serializer;
   }
 
   @Override
