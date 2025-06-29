@@ -25,7 +25,11 @@ import static org.apache.fory.meta.Encoders.GENERIC_ENCODER;
 import static org.apache.fory.meta.Encoders.PACKAGE_DECODER;
 import static org.apache.fory.meta.Encoders.PACKAGE_ENCODER;
 import static org.apache.fory.meta.Encoders.TYPE_NAME_DECODER;
+import static org.apache.fory.resolver.ClassResolver.NIL_CLASS_INFO;
 import static org.apache.fory.resolver.ClassResolver.NO_CLASS_ID;
+import static org.apache.fory.serializer.CodegenSerializer.loadCodegenSerializer;
+import static org.apache.fory.serializer.CodegenSerializer.loadCompatibleCodegenSerializer;
+import static org.apache.fory.serializer.CodegenSerializer.supportCodegenForJavaSerialization;
 import static org.apache.fory.serializer.collection.MapSerializers.HashMapSerializer;
 import static org.apache.fory.type.TypeUtils.qualifiedName;
 
@@ -49,6 +53,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.fory.Fory;
+import org.apache.fory.builder.JITContext;
 import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.collection.IdentityObjectIntMap;
 import org.apache.fory.collection.LongMap;
@@ -66,8 +71,11 @@ import org.apache.fory.meta.MetaString;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.ArraySerializers;
+import org.apache.fory.serializer.CodegenSerializer;
+import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.EnumSerializer;
 import org.apache.fory.serializer.LazySerializer;
+import org.apache.fory.serializer.MetaSharedSerializer;
 import org.apache.fory.serializer.NonexistentClass;
 import org.apache.fory.serializer.NonexistentClassSerializers;
 import org.apache.fory.serializer.ObjectSerializer;
@@ -98,7 +106,7 @@ public class XtypeResolver implements TypeResolver {
   private final Config config;
   private final Fory fory;
   private final ClassResolver classResolver;
-  private final ClassInfoHolder classInfoCache = new ClassInfoHolder(ClassResolver.NIL_CLASS_INFO);
+  private final ClassInfoHolder classInfoCache = new ClassInfoHolder(NIL_CLASS_INFO);
   private final MetaStringResolver metaStringResolver;
   // IdentityMap has better lookup performance, when loadFactor is 0.05f, performance is better
   private final IdentityMap<Class<?>, ClassInfo> classInfoMap = new IdentityMap<>(64, loadFactor);
@@ -109,6 +117,7 @@ public class XtypeResolver implements TypeResolver {
       new ObjectMap<>(16, loadFactor);
   private final Map<Class<?>, ClassDef> classDefMap = new HashMap<>();
   private final boolean shareMeta;
+  private final Set<Class<?>> classCtx = new HashSet<>();
   private int xtypeIdGenerator = 64;
 
   // Use ClassInfo[] or LongMap?
@@ -242,6 +251,67 @@ public class XtypeResolver implements TypeResolver {
     xtypeIdToClassMap.put(xtypeId, classInfo);
   }
 
+  private void addSerializer(Class<?> type, ClassInfo classInfo) {
+    classInfoMap.put(type, classInfo);
+  }
+
+  private Class<? extends Serializer> getObjectSerializerClass(
+      Class<?> cls,
+      boolean shareMeta,
+      boolean codegen,
+      JITContext.SerializerJITCallback<Class<? extends Serializer>> callback) {
+    if (codegen) {
+      if (classCtx.contains(cls)) {
+        // avoid potential recursive call for seq codec generation.
+        return CodegenSerializer.LazyInitBeanSerializer.class;
+      } else {
+        try {
+          classCtx.add(cls);
+          Class<? extends Serializer> sc;
+          switch (fory.getCompatibleMode()) {
+            case SCHEMA_CONSISTENT:
+              sc =
+                  fory.getJITContext()
+                      .registerSerializerJITCallback(
+                          () -> ObjectSerializer.class,
+                          () -> loadCodegenSerializer(fory, cls),
+                          callback);
+              return sc;
+            case COMPATIBLE:
+              sc =
+                  fory.getJITContext()
+                      .registerSerializerJITCallback(
+                          () -> shareMeta ? ObjectSerializer.class : CompatibleSerializer.class,
+                          () ->
+                              shareMeta
+                                  ? loadCodegenSerializer(fory, cls)
+                                  : loadCompatibleCodegenSerializer(fory, cls),
+                          callback);
+              return sc;
+            default:
+              throw new UnsupportedOperationException(
+                  String.format("Unsupported mode %s", fory.getCompatibleMode()));
+          }
+        } finally {
+          classCtx.remove(cls);
+        }
+      }
+    } else {
+      if (codegen) {
+        LOG.info("Object of type {} can't be serialized by jit", cls);
+      }
+      switch (fory.getCompatibleMode()) {
+        case SCHEMA_CONSISTENT:
+          return ObjectSerializer.class;
+        case COMPATIBLE:
+          return shareMeta ? ObjectSerializer.class : MetaSharedSerializer.class;
+        default:
+          throw new UnsupportedOperationException(
+              String.format("Unsupported mode %s", fory.getCompatibleMode()));
+      }
+    }
+  }
+
   private boolean isStructType(Serializer serializer) {
     if (serializer instanceof ObjectSerializer || serializer instanceof GeneratedSerializer) {
       return true;
@@ -362,6 +432,9 @@ public class XtypeResolver implements TypeResolver {
   public ClassInfo getClassInfo(Class<?> cls, boolean createIfAbsent) {
     if (createIfAbsent) {
       return getClassInfo(cls);
+    }
+    if (classCtx.contains(cls)) {
+      return null;
     }
     return classInfoMap.get(cls);
   }
@@ -580,7 +653,36 @@ public class XtypeResolver implements TypeResolver {
 
   @Override
   public <T> Serializer<T> getSerializer(Class<T> cls) {
-    return (Serializer) getClassInfo(cls).serializer;
+    ClassInfo classInfo = getClassInfo(cls);
+    if (classInfo.serializer instanceof LazySerializer.LazyObjectSerializer) {
+      boolean codegen =
+          supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
+      Class<? extends Serializer> objectSerializerClass =
+          getObjectSerializerClass(
+              cls,
+              shareMeta,
+              codegen,
+              new JITContext.SerializerJITCallback<Class<? extends Serializer>>() {
+                @Override
+                public void onSuccess(Class<? extends Serializer> result) {
+                  Serializer<?> objectSerializer = Serializers.newSerializer(fory, cls, result);
+                  ClassInfo copy = ClassInfo.copy(classInfo);
+                  copy.serializer = objectSerializer;
+                  addSerializer(cls, copy);
+                  if (classInfoCache.classInfo.cls == cls) {
+                    classInfoCache.classInfo = NIL_CLASS_INFO; // clear class info cache
+                  }
+                  Preconditions.checkState(getSerializer(cls).getClass() == result);
+                }
+
+                @Override
+                public Object id() {
+                  return cls;
+                }
+              });
+      classInfo.serializer = Serializers.newSerializer(fory, cls, objectSerializerClass);
+    }
+    return (Serializer<T>) classInfo.serializer;
   }
 
   @Override
