@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-val foryVersion = "0.12.0-SNAPSHOT"
+val foryVersion = "0.11.2"
 val scala213Version = "2.13.15"
 ThisBuild / apacheSonatypeProjectProfile := "fory"
 version := foryVersion

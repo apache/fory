@@ -20,7 +20,7 @@ name: Publish Fory
 on:
   push:
     tags:
-      - "v*"
+      - "disabled*"
 
 jobs:
   build-wheels:
