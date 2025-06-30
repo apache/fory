@@ -20,21 +20,25 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
   private final int[] fixedOffsets;
 
   public CompactRowWriter(final Schema schema) {
-    super(sortSchema(schema), computeFixedSize(schema));
+    super(sortSchema(schema), computeFixedRegionSize(schema));
     headerSize = headerBytes(schema);
     fixedSize = roundNumberOfBytesToNearestWord(headerSize + bytesBeforeBitMap);
     fixedOffsets = fixedOffsets(schema);
   }
 
   public CompactRowWriter(final Schema schema, final BinaryWriter writer) {
-    super(sortSchema(schema), writer, computeFixedSize(schema));
+    super(sortSchema(schema), writer, computeFixedRegionSize(schema));
     headerSize = headerBytes(schema);
     fixedSize = roundNumberOfBytesToNearestWord(headerSize + bytesBeforeBitMap);
     fixedOffsets = fixedOffsets(schema);
   }
 
   private int headerBytes(final Schema schema) {
-    return (schema.getFields().size() + 7) / 8;
+    return headerBytes(schema.getFields());
+  }
+
+  private static int headerBytes(final List<Field> fields) {
+    return (fields.size() + 7) / 8;
   }
 
   public static Schema sortSchema(final Schema schema) {
@@ -56,16 +60,19 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     return startIndex + fixedOffsets[ordinal];
   }
 
-  // TODO: this should use StableValue once it's available
   public static int fixedBinarySize(final Schema schema, final int ordinal) {
-    final ArrowType type = schema.getFields().get(ordinal).getType();
+    return fixedBinarySize(schema.getFields().get(ordinal));
+  }
+
+  private static int fixedBinarySize(final Field field) {
+    final ArrowType type = field.getType();
     if (type.getTypeID() == ArrowTypeID.FixedSizeBinary) {
       return ((ArrowType.FixedSizeBinary) type).getByteWidth();
     }
     return -1;
   }
 
-  static int computeFixedSize(final Schema schema) {
+  static int computeFixedRegionSize(final Schema schema) {
     int fixedSize = 0;
     for (final Field f : schema.getFields()) {
       fixedSize += fixedWidthFor(f);
@@ -73,8 +80,33 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     return fixedSize;
   }
 
+/**
+ * Number of bytes used for a field if fixed, -1 if variable sized.
+ */
+  static int fixedOrVariableWidthFor(final Field f) {
+    int fixedWidth = DataTypes.getTypeWidth(f.getType());
+    if (fixedWidth == -1) {
+        if (f.getType().getTypeID() == ArrowTypeID.Struct) {
+            int nestedWidth = headerBytes(f.getChildren());
+            for (final Field child : f.getChildren()) {
+                final int childWidth = fixedOrVariableWidthFor(child);
+                if (childWidth == -1) {
+                    return -1;
+                }
+                nestedWidth += childWidth;
+            }
+            return roundNumberOfBytesToNearestWord(nestedWidth);
+        }
+        fixedWidth = fixedBinarySize(f);
+    }
+    return fixedWidth;
+  }
+
+  /**
+   * Number of bytes used in fixed-data area for a field - 8 (combined offset + size) if variable-sized.
+   */
   static int fixedWidthFor(final Field f) {
-    final int fixedWidth = DataTypes.getTypeWidth(f.getType());
+    final int fixedWidth = fixedOrVariableWidthFor(f);
     if (fixedWidth == -1) {
       return 8;
     }
