@@ -253,6 +253,9 @@ public class XtypeResolver implements TypeResolver {
 
   private void addSerializer(Class<?> type, ClassInfo classInfo) {
     classInfoMap.put(type, classInfo);
+    xtypeIdToClassMap.put(classInfo.xtypeId, classInfo);
+    qualifiedType2ClassInfo.put(qualifiedName(classInfo.decodeTypeName(), classInfo.decodeTypeName()), classInfo);
+
   }
 
   private Class<? extends Serializer> getObjectSerializerClass(
