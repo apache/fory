@@ -124,15 +124,15 @@ public abstract class BinaryWriter {
    * Since writer is used for one-pass writer, same field won't be writer twice. There is no need to
    * put zero into the corresponding field when set null.
    */
-  public final void setNullAt(int ordinal) {
+  public void setNullAt(int ordinal) {
     BitUtils.set(buffer, startIndex + bytesBeforeBitMap, ordinal);
   }
 
-  public final void setNotNullAt(int ordinal) {
+  public void setNotNullAt(int ordinal) {
     BitUtils.unset(buffer, startIndex + bytesBeforeBitMap, ordinal);
   }
 
-  public final boolean isNullAt(int ordinal) {
+  public boolean isNullAt(int ordinal) {
     return BitUtils.isSet(buffer, startIndex + bytesBeforeBitMap, ordinal);
   }
 

@@ -36,7 +36,7 @@ import org.apache.fory.memory.MemoryBuffer;
 
 /** Internal to binary row format to reuse code, don't use it in anywhere else. */
 abstract class UnsafeTrait implements Getters, Setters {
-  private Object[] extData;
+  protected Object[] extData;
 
   abstract MemoryBuffer getBuffer();
 
@@ -166,7 +166,7 @@ abstract class UnsafeTrait implements Getters, Setters {
    * @param extDataSlot the ext data slot used to cache the schema for the struct.
    * @return the binary row representation of the struct.
    */
-  BinaryRow getStruct(int ordinal, Field field, int extDataSlot) {
+  protected BinaryRow getStruct(int ordinal, Field field, int extDataSlot) {
     if (isNullAt(ordinal)) {
       return null;
     }

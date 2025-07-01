@@ -72,8 +72,12 @@ public class BinaryRow extends UnsafeTrait implements Row {
     this.schema = schema;
     this.numFields = schema.getFields().size();
     Preconditions.checkArgument(numFields > 0);
-    this.bitmapWidthInBytes = BitUtils.calculateBitmapWidthInBytes(numFields);
+    this.bitmapWidthInBytes = computeBitmapWidthInBytes();
     initializeExtData(numFields);
+  }
+
+  protected int computeBitmapWidthInBytes() {
+    return BitUtils.calculateBitmapWidthInBytes(numFields);
   }
 
   public void pointTo(MemoryBuffer buffer, int offset, int sizeInBytes) {

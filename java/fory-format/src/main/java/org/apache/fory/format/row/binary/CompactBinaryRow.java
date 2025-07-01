@@ -22,15 +22,26 @@ package org.apache.fory.format.row.binary;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.writer.CompactRowWriter;
+import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.memory.MemoryBuffer;
 
 /**
  * A compact version of {@link BinaryRow}. The compact encoding includes additional optimizations:
- * fixed size binary objects are stored in the fixed size section with no pointer needed, smaller
- * values can take up fewer than 8 bytes, the header is packed better, and data alignment is
- * relaxed. The compact format is still under development and may not be stable yet.
+ *
+ * <ul>
+ *   <li>fixed size binary objects are stored in the fixed size section with no pointer needed
+ *   <li>small values can take up fewer than 8 bytes
+ *   <li>null bitmap is skipped if all fields are primitive / not-nullable
+ *   <li>the header is packed better, with the null-bitmap allowed to borrow alignment padding at
+ *       end of fixed section
+ *   <li>data alignment is relaxed, which could lead to less performance in very intensive memory
+ *       operations
+ * </ul>
+ *
+ * <b>The compact format is still under development and may not be stable yet.</b>
  */
 public class CompactBinaryRow extends BinaryRow {
+  private final boolean allFieldsNotNullable;
   private final int[] fixedOffsets;
   private final int bitmapOffset;
 
@@ -38,6 +49,24 @@ public class CompactBinaryRow extends BinaryRow {
     super(schema);
     this.fixedOffsets = fixedOffsets;
     bitmapOffset = fixedOffsets[fixedOffsets.length - 1];
+    allFieldsNotNullable = CompactRowWriter.allNotNullable(schema.getFields());
+  }
+
+  @Override
+  protected int computeBitmapWidthInBytes() {
+    // cannot use field due to initialization order
+    if (CompactRowWriter.allNotNullable(schema.getFields())) {
+      return 0;
+    }
+    return super.computeBitmapWidthInBytes();
+  }
+
+  @Override
+  public boolean isNullAt(final int ordinal) {
+    if (allFieldsNotNullable) {
+      return false;
+    }
+    return super.isNullAt(ordinal);
   }
 
   // TODO: this should use StableValue once it's available
@@ -57,6 +86,23 @@ public class CompactBinaryRow extends BinaryRow {
     } else {
       return super.getBuffer(ordinal);
     }
+  }
+
+  @Override
+  protected BinaryRow getStruct(final int ordinal, final Field field, final int extDataSlot) {
+    if (isNullAt(ordinal)) {
+      return null;
+    }
+    final int fixedWidthBinary = CompactRowWriter.fixedWidthFor(schema, ordinal);
+    if (fixedWidthBinary == -1) {
+      return super.getStruct(ordinal, field, extDataSlot);
+    }
+    if (extData[extDataSlot] == null) {
+      extData[extDataSlot] = DataTypes.createSchema(field);
+    }
+    final BinaryRow row = newRow((Schema) extData[extDataSlot]);
+    row.pointTo(getBuffer().slice(getOffset(ordinal), fixedWidthBinary), 0, fixedWidthBinary);
+    return row;
   }
 
   @Override

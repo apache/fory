@@ -19,7 +19,12 @@
 
 package org.apache.fory.format.encoder;
 
+import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
+import org.apache.fory.codegen.Expression;
+import org.apache.fory.codegen.Expression.Invoke;
+import org.apache.fory.codegen.Expression.ListExpression;
+import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.CompactRowWriter;
 import org.apache.fory.reflect.TypeRef;
@@ -43,5 +48,23 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
   @Override
   protected TypeRef<? extends BaseBinaryRowWriter> rowWriterType() {
     return TypeRef.of(CompactRowWriter.class);
+  }
+
+  @Override
+  protected Expression serializeForNotNullBean(
+      final Expression ordinal,
+      final Expression writer,
+      final Expression inputObject,
+      final Field fieldIfKnown,
+      final Reference rowWriter,
+      final Reference beanEncoder) {
+    if (fieldIfKnown == null || CompactRowWriter.fixedWidthFor(fieldIfKnown) == -1) {
+      return super.serializeForNotNullBean(
+          ordinal, writer, inputObject, fieldIfKnown, rowWriter, beanEncoder);
+    }
+    // resetFor will change writerIndex. must call reset and toRow in pair.
+    final Invoke reset = new Invoke(writer, "resetFor", rowWriter, ordinal);
+    final Invoke toRow = new Invoke(beanEncoder, "toRow", inputObject);
+    return new ListExpression(reset, toRow);
   }
 }

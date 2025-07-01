@@ -16,27 +16,48 @@ import org.apache.fory.memory.MemoryBuffer;
 public class CompactRowWriter extends BaseBinaryRowWriter {
 
   private final int headerSize;
-  private final boolean allNotNullable;
+  private final boolean allFieldsFixedSize;
+  private final boolean allFieldsNotNullable;
   private final int fixedSize;
   private final int[] fixedOffsets;
 
   public CompactRowWriter(final Schema schema) {
     super(sortSchema(schema), computeFixedRegionSize(schema));
     headerSize = headerBytes(schema);
-    fixedSize = roundNumberOfBytesToNearestWord(headerSize + bytesBeforeBitMap);
+    allFieldsFixedSize = allFieldsFixedSize(schema);
+    fixedSize = computeAlignedFixedRegionSize();
     fixedOffsets = fixedOffsets(schema);
-    allNotNullable = allNotNullable(schema.getFields());
+    allFieldsNotNullable = allNotNullable(schema.getFields());
   }
 
   public CompactRowWriter(final Schema schema, final BinaryWriter writer) {
     super(sortSchema(schema), writer, computeFixedRegionSize(schema));
     headerSize = headerBytes(schema);
-    fixedSize = roundNumberOfBytesToNearestWord(headerSize + bytesBeforeBitMap);
+    allFieldsFixedSize = allFieldsFixedSize(schema);
+    fixedSize = computeAlignedFixedRegionSize();
     fixedOffsets = fixedOffsets(schema);
-    allNotNullable = allNotNullable(schema.getFields());
+    allFieldsNotNullable = allNotNullable(schema.getFields());
   }
 
-  private static boolean allNotNullable(final List<Field> fields) {
+  private static boolean allFieldsFixedSize(final Schema schema) {
+    for (final Field f : schema.getFields()) {
+      if (fixedWidthFor(f) == -1) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private int computeAlignedFixedRegionSize() {
+    final int totalUnalignedSize = headerSize + bytesBeforeBitMap;
+    if (allFieldsFixedSize) {
+      return totalUnalignedSize;
+    }
+    return roundNumberOfBytesToNearestWord(totalUnalignedSize);
+  }
+
+  // TODO: this should use StableValue once it's available
+  public static boolean allNotNullable(final List<Field> fields) {
     for (final Field f : fields) {
       if (f.isNullable()) {
         return false;
@@ -45,14 +66,14 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     return true;
   }
 
-  private int headerBytes(final Schema schema) {
-    if (allNotNullable(schema.getFields())) {
-      return 0;
-    }
+  private static int headerBytes(final Schema schema) {
     return headerBytes(schema.getFields());
   }
 
   private static int headerBytes(final List<Field> fields) {
+    if (allNotNullable(fields)) {
+      return 0;
+    }
     return (fields.size() + 7) / 8;
   }
 
@@ -98,7 +119,7 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
   }
 
   /** Number of bytes used for a field if fixed, -1 if variable sized. */
-  static int fixedWidthFor(final Field f) {
+  public static int fixedWidthFor(final Field f) {
     int fixedWidth = DataTypes.getTypeWidth(f.getType());
     if (fixedWidth == -1) {
       if (f.getType().getTypeID() == ArrowTypeID.Struct) {
@@ -155,6 +176,35 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     }
     Collections.sort(sortedFields, new FieldAlignmentComparator());
     return sortedFields;
+  }
+
+  public void resetFor(final CompactRowWriter otherWriter, final int ordinal) {
+    otherWriter.startIndex = getOffset(ordinal);
+  }
+
+  @Override
+  public void setNullAt(final int ordinal) {
+    if (allFieldsNotNullable) {
+      throw new IllegalStateException(
+          "Field " + getSchema().getFields().get(ordinal) + " has null value for not-null field");
+    }
+    super.setNullAt(ordinal);
+  }
+
+  @Override
+  public void setNotNullAt(final int ordinal) {
+    if (allFieldsNotNullable) {
+      return;
+    }
+    super.setNotNullAt(ordinal);
+  }
+
+  @Override
+  public boolean isNullAt(final int ordinal) {
+    if (allFieldsNotNullable) {
+      return false;
+    }
+    return super.isNullAt(ordinal);
   }
 
   @Override

@@ -161,6 +161,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       Expression inputObject,
       Expression writer,
       TypeRef<?> typeRef,
+      Field fieldIfKnown,
       Expression arrowField,
       Set<TypeRef<?>> visitedCustomTypes) {
     Class<?> rawType = getRawType(typeRef);
@@ -172,7 +173,13 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       visitedCustomTypes.add(typeRef);
       Expression doSerialize =
           serializeFor(
-              ordinal, newInputObject, writer, rewrittenType, arrowField, visitedCustomTypes);
+              ordinal,
+              newInputObject,
+              writer,
+              rewrittenType,
+              fieldIfKnown,
+              arrowField,
+              visitedCustomTypes);
       return new If(
           new Expression.IsNull(inputObject),
           new Invoke(writer, "setNullAt", ordinal),
@@ -194,6 +201,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
           new Expression.Cast(unwrapped, elemType),
           writer,
           elemType,
+          fieldIfKnown,
           arrowField,
           visitedCustomTypes);
     } else if (TypeUtils.isPrimitive(rawType)) {
@@ -277,7 +285,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     } else if (TypeUtils.MAP_TYPE.isSupertypeOf(typeRef)) {
       return serializeForMap(ordinal, writer, inputObject, typeRef, arrowField);
     } else if (TypeUtils.isBean(rawType, typeCtx)) {
-      return serializeForBean(ordinal, writer, inputObject, typeRef, arrowField);
+      return serializeForBean(ordinal, writer, inputObject, fieldIfKnown, typeRef, arrowField);
     } else if (rawType == BinaryArray.class) {
       Invoke writeExp =
           new Invoke(
@@ -336,6 +344,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
                         value,
                         arrayWriter,
                         Objects.requireNonNull(typeRef.getComponentType()),
+                        null,
                         arrayElementField,
                         new HashSet<>()));
         return new ListExpression(reset, forEach, arrayWriter);
@@ -354,6 +363,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
                       value,
                       arrayWriter,
                       TypeUtils.getElementType(typeRef),
+                      null,
                       arrayElementField,
                       new HashSet<>()));
       return new ListExpression(reset, forEach, arrayWriter);
@@ -370,6 +380,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
                       value,
                       arrayWriter,
                       TypeUtils.getElementType(typeRef),
+                      null,
                       arrayElementField,
                       new HashSet<>()));
       return new ListExpression(reset, forEach, arrayWriter);
@@ -463,6 +474,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       Expression ordinal,
       Expression writer,
       Expression inputObject,
+      Field fieldIfKnown,
       TypeRef<?> typeRef,
       Expression structField) {
     Class<?> rawType = getRawType(typeRef);
@@ -496,6 +508,20 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     }
     rowWriter = rowWriterMap.get(typeRef);
 
+    Expression expression =
+        serializeForNotNullBean(ordinal, writer, inputObject, fieldIfKnown, rowWriter, beanEncoder);
+
+    return new If(
+        new Expression.IsNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expression);
+  }
+
+  protected Expression serializeForNotNullBean(
+      Expression ordinal,
+      Expression writer,
+      Expression inputObject,
+      Field fieldIfKnown,
+      Reference rowWriter,
+      Reference beanEncoder) {
     Invoke reset = new Invoke(rowWriter, "reset");
     Invoke offset = new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE);
     Invoke toRow = new Invoke(beanEncoder, "toRow", inputObject);
@@ -503,16 +529,12 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
         ExpressionUtils.subtract(
             new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE), offset);
     Invoke setOffsetAndSize = new Invoke(writer, "setOffsetAndSize", ordinal, offset, size);
-    ListExpression expression =
-        new ListExpression(
-            offset,
-            reset,
-            toRow, // reset will change writerIndex. must call reset and toRow in pair.
-            size,
-            setOffsetAndSize);
-
-    return new If(
-        new Expression.IsNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expression);
+    return new ListExpression(
+        offset,
+        reset,
+        toRow, // reset will change writerIndex. must call reset and toRow in pair.
+        size,
+        setOffsetAndSize);
   }
 
   /**

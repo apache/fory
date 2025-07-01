@@ -48,7 +48,6 @@ import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.BinaryUtils;
-import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.logging.Logger;
@@ -71,7 +70,7 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   private final String className;
   private final SortedMap<String, Descriptor> descriptorsMap;
-  private final Schema schema;
+  protected final Schema schema;
   protected static final String BEAN_CLASS_NAME = "beanClass";
   protected Reference beanClassRef = new Reference(BEAN_CLASS_NAME, CLASS_TYPE);
   private final CodegenContext generatedBeanImpl;
@@ -134,6 +133,7 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     // don't addImport(beanClass), because user class may name collide.
     // janino don't support generics, so GeneratedCodec has no generics
     ctx.implementsInterfaces(ctx.type(GeneratedRowEncoder.class));
+    String rowWriterType = ctx.type(rowWriterType());
     String constructorCode =
         StringUtils.format(
             "${schema} = (${schemaType})${references}[0];\n"
@@ -148,13 +148,13 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
             "rowWriter",
             ROOT_ROW_WRITER_NAME,
             "rowWriterType",
-            ctx.type(BaseBinaryRowWriter.class),
+            rowWriterType,
             "fory",
             FORY_NAME,
             "foryType",
             ctx.type(Fory.class));
     ctx.addField(ctx.type(Schema.class), SCHEMA_NAME);
-    ctx.addField(ctx.type(BaseBinaryRowWriter.class), ROOT_ROW_WRITER_NAME);
+    ctx.addField(rowWriterType, ROOT_ROW_WRITER_NAME);
     ctx.addField(ctx.type(Fory.class), FORY_NAME);
 
     Expression encodeExpr = buildEncodeExpression();
@@ -201,16 +201,17 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     Expression.ListExpression expressions = new Expression.ListExpression();
     // schema field's name must correspond to descriptor's name.
     for (int i = 0; i < numFields; i++) {
-      Descriptor d = getDescriptorByFieldName(schema.getFields().get(i).getName());
+      Field field = schema.getFields().get(i);
+      Descriptor d = getDescriptorByFieldName(field.getName());
       Preconditions.checkNotNull(d);
       TypeRef<?> fieldType = d.getTypeRef();
       Expression fieldValue = getFieldValue(bean, d);
       Literal ordinal = Literal.ofInt(i);
-      Expression.StaticInvoke field =
+      Expression.StaticInvoke arrowField =
           new Expression.StaticInvoke(
               DataTypes.class, "fieldOfSchema", ARROW_FIELD_TYPE, false, schemaExpr, ordinal);
       Expression fieldExpr =
-          serializeFor(ordinal, fieldValue, writer, fieldType, field, new HashSet<>());
+          serializeFor(ordinal, fieldValue, writer, fieldType, field, arrowField, new HashSet<>());
       expressions.add(fieldExpr);
     }
     expressions.add(

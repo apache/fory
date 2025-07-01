@@ -139,7 +139,7 @@ public class CompactCodecTest {
     row.pointTo(buffer, 0, buffer.size());
     final CompactUuidType deserializedBean = encoder.fromRow(row);
     assertEquals(bean1, deserializedBean);
-    assertEquals(buffer.size(), 16 + 8);
+    assertEquals(buffer.size(), 16 + 1);
   }
 
   static class CompactUUIDCodec implements CustomCodec.MemoryBufferCodec<UUID> {
@@ -193,7 +193,7 @@ public class CompactCodecTest {
     buffer = MemoryUtils.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final Nested2 deserializedBean2 = encoder2.fromRow(row);
-    assertEquals(bean1, deserializedBean2);
+    assertEquals(bean2, deserializedBean2);
     assertEquals(buffer.size(), 4);
   }
 
@@ -213,10 +213,14 @@ public class CompactCodecTest {
     final RowEncoder<InlineNestedType> encoder =
         Encoders.buildBeanCodec(InlineNestedType.class).compactEncoding().build().get();
     final BinaryRow row = encoder.toRow(bean1);
+    assertEquals(row.getSchema().getFields().get(0).getName(), "f2");
+    assertEquals(row.getSchema().getFields().get(1).getName(), "f1");
+    assertEquals(row.getOffset(0), 0);
+    assertEquals(row.getOffset(1), 4);
     final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final InlineNestedType deserializedBean = encoder.fromRow(row);
-    assertEquals(bean1, deserializedBean);
-    assertEquals(buffer.size(), 16 + 8);
+    assertEquals(deserializedBean, bean1);
+    assertEquals(buffer.size(), 7);
   }
 }
