@@ -70,9 +70,10 @@ public class BeanCodecBuilder<T> {
   }
 
   /**
-   * Create a codec factory with internal buffer management suitable for serializing individual objects.
-   * The resulting factory should be re-used if possible for creating subsequent encoder instances.
-   * Encoders are not thread-safe, so create a separate encoder for each thread that uses it.
+   * Create a codec factory with internal buffer management suitable for serializing individual
+   * objects. The resulting factory should be re-used if possible for creating subsequent encoder
+   * instances. Encoders are not thread-safe, so create a separate encoder for each thread that uses
+   * it.
    */
   public Supplier<RowEncoder<T>> build() {
     final Function<BaseBinaryRowWriter, GeneratedRowEncoder> codecFactory = codecFactory();
@@ -92,8 +93,9 @@ public class BeanCodecBuilder<T> {
   }
 
   /**
-   * Create a codec factory with an externally managed writer and buffer, for writing many objects to a stream.
-   * Encoders are not thread-safe so re-use the factory to create a new encoder for each writer needed.
+   * Create a codec factory with an externally managed writer and buffer, for writing many objects
+   * to a stream. Encoders are not thread-safe so re-use the factory to create a new encoder for
+   * each writer needed.
    */
   public Function<BaseBinaryRowWriter, RowEncoder<T>> buildForCustomWriter() {
     final Function<BaseBinaryRowWriter, GeneratedRowEncoder> codecFactory = codecFactory();

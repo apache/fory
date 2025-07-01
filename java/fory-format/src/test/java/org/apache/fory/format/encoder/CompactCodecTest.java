@@ -161,4 +161,37 @@ public class CompactCodecTest {
       return new UUID(value.readInt64(), value.readInt64());
     }
   }
+
+  @Data
+  public static class Nested1 {
+    public short f1;
+  }
+
+  @Data
+  public static class Nested2 {
+    public int f1;
+  }
+
+  @Data
+  public static class InlineNestedType {
+    public Nested1 f1;
+    public Nested2 f2;
+  }
+
+  @Test
+  public void testInlineNestedType() {
+    final InlineNestedType bean1 = new InlineNestedType();
+    bean1.f1 = new Nested1();
+    bean1.f1.f1 = 42;
+    bean1.f2 = new Nested2();
+    bean1.f2.f1 = 75;
+    final RowEncoder<InlineNestedType> encoder =
+        Encoders.buildBeanCodec(InlineNestedType.class).compactEncoding().build().get();
+    final BinaryRow row = encoder.toRow(bean1);
+    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final InlineNestedType deserializedBean = encoder.fromRow(row);
+    assertEquals(bean1, deserializedBean);
+    assertEquals(buffer.size(), 16 + 8);
+  }
 }

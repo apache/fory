@@ -48,7 +48,7 @@ public class CompactBinaryRow extends BinaryRow {
 
   @Override
   public MemoryBuffer getBuffer(final int ordinal) {
-    final int fixedWidthBinary = CompactRowWriter.fixedBinarySize(schema, ordinal);
+    final int fixedWidthBinary = CompactRowWriter.fixedWidthFor(schema, ordinal);
     if (fixedWidthBinary >= 0) {
       if (isNullAt(ordinal)) {
         return null;

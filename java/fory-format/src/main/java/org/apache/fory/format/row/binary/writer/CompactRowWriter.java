@@ -60,10 +60,6 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     return startIndex + fixedOffsets[ordinal];
   }
 
-  public static int fixedBinarySize(final Schema schema, final int ordinal) {
-    return fixedBinarySize(schema.getFields().get(ordinal));
-  }
-
   private static int fixedBinarySize(final Field field) {
     final ArrowType type = field.getType();
     if (type.getTypeID() == ArrowTypeID.FixedSizeBinary) {
@@ -72,41 +68,48 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     return -1;
   }
 
+  /**
+   * Total size of fixed region: fixed size inline values plus variable sized values' pointers.
+   */
   static int computeFixedRegionSize(final Schema schema) {
     int fixedSize = 0;
     for (final Field f : schema.getFields()) {
-      fixedSize += fixedWidthFor(f);
+      fixedSize += fixedRegionSpaceFor(f);
     }
     return fixedSize;
   }
 
-/**
- * Number of bytes used for a field if fixed, -1 if variable sized.
- */
-  static int fixedOrVariableWidthFor(final Field f) {
+  /** Number of bytes used for a field if fixed, -1 if variable sized. */
+  public static int fixedWidthFor(final Schema schema, final int ordinal) {
+      return fixedWidthFor(schema.getFields().get(ordinal));
+  }
+
+  /** Number of bytes used for a field if fixed, -1 if variable sized. */
+  static int fixedWidthFor(final Field f) {
     int fixedWidth = DataTypes.getTypeWidth(f.getType());
     if (fixedWidth == -1) {
-        if (f.getType().getTypeID() == ArrowTypeID.Struct) {
-            int nestedWidth = headerBytes(f.getChildren());
-            for (final Field child : f.getChildren()) {
-                final int childWidth = fixedOrVariableWidthFor(child);
-                if (childWidth == -1) {
-                    return -1;
-                }
-                nestedWidth += childWidth;
-            }
-            return roundNumberOfBytesToNearestWord(nestedWidth);
+      if (f.getType().getTypeID() == ArrowTypeID.Struct) {
+        int nestedWidth = headerBytes(f.getChildren());
+        for (final Field child : f.getChildren()) {
+          final int childWidth = fixedWidthFor(child);
+          if (childWidth == -1) {
+            return -1;
+          }
+          nestedWidth += childWidth;
         }
-        fixedWidth = fixedBinarySize(f);
+        return nestedWidth;
+      }
+      fixedWidth = fixedBinarySize(f);
     }
     return fixedWidth;
   }
 
   /**
-   * Number of bytes used in fixed-data area for a field - 8 (combined offset + size) if variable-sized.
+   * Number of bytes used in fixed-data area for a field - 8 (combined offset + size) if
+   * variable-sized.
    */
-  static int fixedWidthFor(final Field f) {
-    final int fixedWidth = fixedOrVariableWidthFor(f);
+  static int fixedRegionSpaceFor(final Field f) {
+    final int fixedWidth = fixedWidthFor(f);
     if (fixedWidth == -1) {
       return 8;
     }
@@ -120,7 +123,7 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     int off = 0;
     for (int i = 0; i < fields.size(); i++) {
       result[i] = off;
-      off += fixedWidthFor(fields.get(i));
+      off += fixedRegionSpaceFor(fields.get(i));
     }
     result[fields.size()] = off;
     return result;
@@ -174,8 +177,8 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
   @Override
   public void writeUnaligned(
       final int ordinal, final byte[] input, final int offset, final int numBytes) {
-    final int fixedWidthBinary = fixedBinarySize(getSchema(), ordinal);
-    if (fixedWidthBinary > 0) {
+    final int inlineWidth = fixedWidthFor(getSchema(), ordinal);
+    if (inlineWidth > 0) {
       buffer.put(getOffset(ordinal), input, 0, numBytes);
     } else {
       super.writeUnaligned(ordinal, input, offset, numBytes);
@@ -185,8 +188,8 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
   @Override
   public void writeUnaligned(
       final int ordinal, final MemoryBuffer input, final int offset, final int numBytes) {
-    final int fixedWidthBinary = fixedBinarySize(getSchema(), ordinal);
-    if (fixedWidthBinary > 0) {
+    final int inlineWidth = fixedWidthFor(getSchema(), ordinal);
+    if (inlineWidth > 0) {
       buffer.copyFrom(getOffset(ordinal), input, 0, numBytes);
     } else {
       super.writeUnaligned(ordinal, input, offset, numBytes);
@@ -196,8 +199,8 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
   @Override
   public void writeAlignedBytes(
       final int ordinal, final MemoryBuffer input, final int baseOffset, final int numBytes) {
-    final int fixedWidthBinary = fixedBinarySize(getSchema(), ordinal);
-    if (fixedWidthBinary > 0) {
+    final int inlineWidth = fixedWidthFor(getSchema(), ordinal);
+    if (inlineWidth > 0) {
       buffer.copyFrom(getOffset(ordinal), input, 0, numBytes);
     } else {
       super.writeAlignedBytes(ordinal, input, baseOffset, numBytes);
