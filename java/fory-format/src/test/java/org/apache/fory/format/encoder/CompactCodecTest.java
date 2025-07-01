@@ -172,6 +172,31 @@ public class CompactCodecTest {
     public int f1;
   }
 
+  @Test
+  public void testAllNonnullElideBitmap() {
+    final Nested1 bean1 = new Nested1();
+    bean1.f1 = 42;
+    final Nested2 bean2 = new Nested2();
+    bean2.f1 = 75;
+    final RowEncoder<Nested1> encoder =
+        Encoders.buildBeanCodec(Nested1.class).compactEncoding().build().get();
+    BinaryRow row = encoder.toRow(bean1);
+    MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final Nested1 deserializedBean = encoder.fromRow(row);
+    assertEquals(bean1, deserializedBean);
+    assertEquals(buffer.size(), 2);
+
+    final RowEncoder<Nested2> encoder2 =
+        Encoders.buildBeanCodec(Nested2.class).compactEncoding().build().get();
+    row = encoder2.toRow(bean2);
+    buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final Nested2 deserializedBean2 = encoder2.fromRow(row);
+    assertEquals(bean1, deserializedBean2);
+    assertEquals(buffer.size(), 4);
+  }
+
   @Data
   public static class InlineNestedType {
     public Nested1 f1;

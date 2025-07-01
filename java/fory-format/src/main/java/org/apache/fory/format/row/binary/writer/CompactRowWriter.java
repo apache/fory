@@ -16,6 +16,7 @@ import org.apache.fory.memory.MemoryBuffer;
 public class CompactRowWriter extends BaseBinaryRowWriter {
 
   private final int headerSize;
+  private final boolean allNotNullable;
   private final int fixedSize;
   private final int[] fixedOffsets;
 
@@ -24,6 +25,7 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     headerSize = headerBytes(schema);
     fixedSize = roundNumberOfBytesToNearestWord(headerSize + bytesBeforeBitMap);
     fixedOffsets = fixedOffsets(schema);
+    allNotNullable = allNotNullable(schema.getFields());
   }
 
   public CompactRowWriter(final Schema schema, final BinaryWriter writer) {
@@ -31,9 +33,22 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     headerSize = headerBytes(schema);
     fixedSize = roundNumberOfBytesToNearestWord(headerSize + bytesBeforeBitMap);
     fixedOffsets = fixedOffsets(schema);
+    allNotNullable = allNotNullable(schema.getFields());
+  }
+
+  private static boolean allNotNullable(final List<Field> fields) {
+    for (final Field f : fields) {
+      if (f.isNullable()) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private int headerBytes(final Schema schema) {
+    if (allNotNullable(schema.getFields())) {
+      return 0;
+    }
     return headerBytes(schema.getFields());
   }
 
@@ -68,9 +83,7 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     return -1;
   }
 
-  /**
-   * Total size of fixed region: fixed size inline values plus variable sized values' pointers.
-   */
+  /** Total size of fixed region: fixed size inline values plus variable sized values' pointers. */
   static int computeFixedRegionSize(final Schema schema) {
     int fixedSize = 0;
     for (final Field f : schema.getFields()) {
@@ -81,7 +94,7 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
 
   /** Number of bytes used for a field if fixed, -1 if variable sized. */
   public static int fixedWidthFor(final Schema schema, final int ordinal) {
-      return fixedWidthFor(schema.getFields().get(ordinal));
+    return fixedWidthFor(schema.getFields().get(ordinal));
   }
 
   /** Number of bytes used for a field if fixed, -1 if variable sized. */

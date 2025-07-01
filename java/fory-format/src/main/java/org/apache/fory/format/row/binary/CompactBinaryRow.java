@@ -25,10 +25,10 @@ import org.apache.fory.format.row.binary.writer.CompactRowWriter;
 import org.apache.fory.memory.MemoryBuffer;
 
 /**
- * A compact version of {@link BinaryRow}. The compact encoding includes additional optimizations -
+ * A compact version of {@link BinaryRow}. The compact encoding includes additional optimizations:
  * fixed size binary objects are stored in the fixed size section with no pointer needed, smaller
- * values can take up fewer than 8 bytes, and data alignment is preserved only for fields that might
- * actually benefit. The compact format is still under development and may not be stable yet.
+ * values can take up fewer than 8 bytes, the header is packed better, and data alignment is
+ * relaxed. The compact format is still under development and may not be stable yet.
  */
 public class CompactBinaryRow extends BinaryRow {
   private final int[] fixedOffsets;
