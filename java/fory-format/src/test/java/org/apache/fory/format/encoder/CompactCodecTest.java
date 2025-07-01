@@ -223,4 +223,31 @@ public class CompactCodecTest {
     assertEquals(deserializedBean, bean1);
     assertEquals(buffer.size(), 7);
   }
+
+  @Data
+  public static class InlineNestedArrayType {
+    public InlineNestedType f1;
+    public String f2;
+    public UUID[] f3;
+  }
+
+  @Test
+  public void testInlineNestedArrayType() {
+    final InlineNestedArrayType bean1 = new InlineNestedArrayType();
+    bean1.f1 = new InlineNestedType();
+    bean1.f1.f1 = new Nested1();
+    bean1.f1.f1.f1 = 42;
+    bean1.f1.f2 = new Nested2();
+    bean1.f1.f2.f1 = 75;
+    bean1.f2 = "luna";
+    bean1.f3 = new UUID[] {new UUID(1, 2), new UUID(3, 4), new UUID(5, 6)};
+    final RowEncoder<InlineNestedArrayType> encoder =
+        Encoders.buildBeanCodec(InlineNestedArrayType.class).compactEncoding().build().get();
+    final BinaryRow row = encoder.toRow(bean1);
+    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final InlineNestedArrayType deserializedBean = encoder.fromRow(row);
+    assertEquals(deserializedBean, bean1);
+    assertEquals(buffer.size(), 7 + 12 + 8 + 16 * 3);
+  }
 }

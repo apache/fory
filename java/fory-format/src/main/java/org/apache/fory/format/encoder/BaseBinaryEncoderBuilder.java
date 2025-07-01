@@ -396,9 +396,13 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
           ctx.addField(
               ctx.type(BinaryArrayWriter.class),
               name,
-              new NewInstance(arrayWriterTypeToken, arrayDataType, writer));
-          return new Reference(name, arrayWriterTypeToken, false);
+              new NewInstance(arrayWriterType(), arrayDataType, writer));
+          return new Reference(name, arrayWriterType(), false);
         });
+  }
+
+  protected TypeRef<? extends BinaryArrayWriter> arrayWriterType() {
+    return arrayWriterTypeToken;
   }
 
   /**

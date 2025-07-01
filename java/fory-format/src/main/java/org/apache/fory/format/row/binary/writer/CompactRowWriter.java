@@ -178,8 +178,8 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     return sortedFields;
   }
 
-  public void resetFor(final CompactRowWriter otherWriter, final int ordinal) {
-    otherWriter.startIndex = getOffset(ordinal);
+  public void resetFor(final CompactRowWriter nestedWriter, final int ordinal) {
+    nestedWriter.startIndex = getOffset(ordinal);
   }
 
   @Override

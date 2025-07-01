@@ -26,6 +26,8 @@ import org.apache.fory.codegen.Expression.Invoke;
 import org.apache.fory.codegen.Expression.ListExpression;
 import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
+import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
+import org.apache.fory.format.row.binary.writer.CompactBinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactRowWriter;
 import org.apache.fory.reflect.TypeRef;
 
@@ -66,5 +68,10 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
     final Invoke reset = new Invoke(writer, "resetFor", rowWriter, ordinal);
     final Invoke toRow = new Invoke(beanEncoder, "toRow", inputObject);
     return new ListExpression(reset, toRow);
+  }
+
+  @Override
+  protected TypeRef<? extends BinaryArrayWriter> arrayWriterType() {
+    return TypeRef.of(CompactBinaryArrayWriter.class);
   }
 }
