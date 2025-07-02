@@ -13,7 +13,7 @@ import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.memory.MemoryBuffer;
 
 /** Writer class to produce {@link CompactBinaryRow}-formatted rows. */
-public class CompactRowWriter extends BaseBinaryRowWriter {
+public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
 
   private final int headerSize;
   private final boolean allFieldsFixedSize;
@@ -21,7 +21,7 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
   private final int fixedSize;
   private final int[] fixedOffsets;
 
-  public CompactRowWriter(final Schema schema) {
+  public CompactBinaryRowWriter(final Schema schema) {
     super(sortSchema(schema), computeFixedRegionSize(schema));
     headerSize = headerBytes(schema);
     allFieldsFixedSize = allFieldsFixedSize(schema);
@@ -30,7 +30,7 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     allFieldsNotNullable = allNotNullable(schema.getFields());
   }
 
-  public CompactRowWriter(final Schema schema, final BinaryWriter writer) {
+  public CompactBinaryRowWriter(final Schema schema, final BinaryWriter writer) {
     super(sortSchema(schema), writer, computeFixedRegionSize(schema));
     headerSize = headerBytes(schema);
     allFieldsFixedSize = allFieldsFixedSize(schema);
@@ -178,7 +178,7 @@ public class CompactRowWriter extends BaseBinaryRowWriter {
     return sortedFields;
   }
 
-  public void resetFor(final CompactRowWriter nestedWriter, final int ordinal) {
+  public void resetFor(final CompactBinaryRowWriter nestedWriter, final int ordinal) {
     nestedWriter.startIndex = getOffset(ordinal);
   }
 

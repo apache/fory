@@ -6,8 +6,8 @@ import org.apache.arrow.vector.types.pojo.Field;
 class FieldAlignmentComparator implements Comparator<Field> {
   @Override
   public int compare(final Field f1, final Field f2) {
-    final int f1Size = CompactRowWriter.fixedRegionSpaceFor(f1);
-    final int f2Size = CompactRowWriter.fixedRegionSpaceFor(f2);
+    final int f1Size = CompactBinaryRowWriter.fixedRegionSpaceFor(f1);
+    final int f2Size = CompactBinaryRowWriter.fixedRegionSpaceFor(f2);
     final int f1Align = tryAlign(f1Size);
     final int f2Align = tryAlign(f2Size);
     final int alignCmp = Integer.compare(f1Align, f2Align);

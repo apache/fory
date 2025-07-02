@@ -119,8 +119,8 @@ public class CompactCodecTest {
     final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final CompactListType deserializedBean = encoder.fromRow(row);
-    assertEquals(list, deserializedBean);
-    assertEquals(buffer.size(), 48 + 48 + 48);
+    assertEquals(deserializedBean, list);
+    assertEquals(buffer.size(), 40 + 48 + 48);
   }
 
   @Data

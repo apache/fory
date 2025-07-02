@@ -28,7 +28,7 @@ import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
-import org.apache.fory.format.row.binary.writer.CompactRowWriter;
+import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.memory.MemoryBuffer;
 
@@ -63,8 +63,8 @@ public class BeanCodecBuilder<T> {
    * yet stable. See {@link CompactBinaryRow} for details.
    */
   public BeanCodecBuilder<T> compactEncoding() {
-    schema = CompactRowWriter.sortSchema(schema);
-    writerFactory = CompactRowWriter::new;
+    schema = CompactBinaryRowWriter.sortSchema(schema);
+    writerFactory = CompactBinaryRowWriter::new;
     codecFactory = CompactRowEncoderBuilder::new;
     return this;
   }

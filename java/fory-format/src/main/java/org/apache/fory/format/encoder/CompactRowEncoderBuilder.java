@@ -28,7 +28,7 @@ import org.apache.fory.codegen.Expression.Reference;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryArrayWriter;
-import org.apache.fory.format.row.binary.writer.CompactRowWriter;
+import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.reflect.TypeRef;
 
 /** Expression builder for building compact row encoder class. */
@@ -39,7 +39,7 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
 
   @Override
   protected Schema inferSchema(final TypeRef<?> beanType) {
-    return CompactRowWriter.sortSchema(super.inferSchema(beanType));
+    return CompactBinaryRowWriter.sortSchema(super.inferSchema(beanType));
   }
 
   @Override
@@ -49,7 +49,7 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
 
   @Override
   protected TypeRef<? extends BaseBinaryRowWriter> rowWriterType() {
-    return TypeRef.of(CompactRowWriter.class);
+    return TypeRef.of(CompactBinaryRowWriter.class);
   }
 
   @Override
@@ -60,7 +60,7 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
       final Field fieldIfKnown,
       final Reference rowWriter,
       final Reference beanEncoder) {
-    if (fieldIfKnown == null || CompactRowWriter.fixedWidthFor(fieldIfKnown) == -1) {
+    if (fieldIfKnown == null || CompactBinaryRowWriter.fixedWidthFor(fieldIfKnown) == -1) {
       return super.serializeForNotNullBean(
           ordinal, writer, inputObject, fieldIfKnown, rowWriter, beanEncoder);
     }

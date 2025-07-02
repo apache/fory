@@ -21,7 +21,7 @@ package org.apache.fory.format.row.binary;
 
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
-import org.apache.fory.format.row.binary.writer.CompactRowWriter;
+import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.memory.MemoryBuffer;
 
@@ -49,13 +49,13 @@ public class CompactBinaryRow extends BinaryRow {
     super(schema);
     this.fixedOffsets = fixedOffsets;
     bitmapOffset = fixedOffsets[fixedOffsets.length - 1];
-    allFieldsNotNullable = CompactRowWriter.allNotNullable(schema.getFields());
+    allFieldsNotNullable = CompactBinaryRowWriter.allNotNullable(schema.getFields());
   }
 
   @Override
   protected int computeBitmapWidthInBytes() {
     // cannot use field due to initialization order
-    if (CompactRowWriter.allNotNullable(schema.getFields())) {
+    if (CompactBinaryRowWriter.allNotNullable(schema.getFields())) {
       return 0;
     }
     return super.computeBitmapWidthInBytes();
@@ -77,7 +77,7 @@ public class CompactBinaryRow extends BinaryRow {
 
   @Override
   public MemoryBuffer getBuffer(final int ordinal) {
-    final int fixedWidthBinary = CompactRowWriter.fixedWidthFor(schema, ordinal);
+    final int fixedWidthBinary = CompactBinaryRowWriter.fixedWidthFor(schema, ordinal);
     if (fixedWidthBinary >= 0) {
       if (isNullAt(ordinal)) {
         return null;
@@ -93,7 +93,7 @@ public class CompactBinaryRow extends BinaryRow {
     if (isNullAt(ordinal)) {
       return null;
     }
-    final int fixedWidthBinary = CompactRowWriter.fixedWidthFor(schema, ordinal);
+    final int fixedWidthBinary = CompactBinaryRowWriter.fixedWidthFor(schema, ordinal);
     if (fixedWidthBinary == -1) {
       return super.getStruct(ordinal, field, extDataSlot);
     }
@@ -108,7 +108,7 @@ public class CompactBinaryRow extends BinaryRow {
   @Override
   protected BinaryRow newRow(final Schema schema) {
     // TODO: avoid re-computing these offsets
-    return new CompactBinaryRow(schema, CompactRowWriter.fixedOffsets(schema));
+    return new CompactBinaryRow(schema, CompactBinaryRowWriter.fixedOffsets(schema));
   }
 
   @Override

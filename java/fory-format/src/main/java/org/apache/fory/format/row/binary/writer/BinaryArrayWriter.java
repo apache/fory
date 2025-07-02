@@ -73,15 +73,24 @@ public class BinaryArrayWriter extends BinaryWriter {
   }
 
   public BinaryArrayWriter(Field field, MemoryBuffer buffer) {
-    super(buffer, 8);
-    this.field = field;
+    this(field, buffer, 8, elementWidth(field));
+  }
+
+  private static int elementWidth(Field field) {
     int width = DataTypes.getTypeWidth(field.getChildren().get(0).getType());
     // variable-length element type
     if (width < 0) {
-      this.elementSize = 8;
+      return 8;
     } else {
-      this.elementSize = width;
+      return width;
     }
+  }
+
+  protected BinaryArrayWriter(
+      Field field, MemoryBuffer buffer, int bytesBeforeBitMap, int elementSize) {
+    super(buffer, bytesBeforeBitMap);
+    this.field = field;
+    this.elementSize = elementSize;
   }
 
   /**
@@ -93,8 +102,7 @@ public class BinaryArrayWriter extends BinaryWriter {
   public void reset(int numElements) {
     super.startIndex = writerIndex();
     this.numElements = numElements;
-    // numElements use 8 byte, nullBitsSizeInBytes use multiple of 8 byte
-    this.headerInBytes = BinaryArray.calculateHeaderInBytes(numElements);
+    this.headerInBytes = calculateHeaderInBytes(numElements);
     long dataSize = numElements * (long) elementSize;
     if (dataSize > MAX_ROUNDED_ARRAY_LENGTH) {
       throw new UnsupportedOperationException("Can't alloc binary array, it's too big");
@@ -103,8 +111,7 @@ public class BinaryArrayWriter extends BinaryWriter {
     buffer.grow(headerInBytes + fixedPartInBytes);
 
     // Write numElements and clear out null bits to header
-    // store numElements in header in aligned 8 byte, though numElements is 4 byte int
-    buffer.putInt64(startIndex, numElements);
+    writeNumElements(numElements);
     int end = startIndex + headerInBytes;
     for (int i = startIndex + 8; i < end; i += 8) {
       buffer.putInt64(i, 0L);
@@ -115,6 +122,16 @@ public class BinaryArrayWriter extends BinaryWriter {
       buffer.putByte(startIndex + headerInBytes + i, (byte) 0);
     }
     buffer._increaseWriterIndexUnsafe(headerInBytes + fixedPartInBytes);
+  }
+
+  protected void writeNumElements(int numElements) {
+    // store numElements in header in aligned 8 byte, though numElements is 4 byte int
+    buffer.putInt64(startIndex, numElements);
+  }
+
+  protected int calculateHeaderInBytes(int numElements) {
+    // numElements use 8 byte, nullBitsSizeInBytes use multiple of 8 byte
+    return BinaryArray.calculateHeaderInBytes(numElements);
   }
 
   private void assertIndexIsValid(int index) {
