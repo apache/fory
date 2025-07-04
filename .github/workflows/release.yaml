@@ -40,7 +40,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install bazel
+      - name: Install bazel (for macOS and Windows)
+        if: "!startsWith(matrix.os, 'ubuntu')"
         shell: bash
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
@@ -67,12 +68,17 @@ jobs:
            fi
            docker run --rm -e PLAT=$PLAT \
              -v ${{ github.workspace }}:/work \
-             -w /work $DOCKER_IMAGE \
+             -w /work "$DOCKER_IMAGE" \
              bash -c "
-               # The container's yum might be out of date
-               yum install -y git && \
-               git config --global --add safe.directory /work && \
-               cd /work && \
+               set -e
+               # Install build dependencies inside the container
+               yum install -y git sudo wget
+               git config --global --add safe.directory /work
+
+               # Install Bazel inside the container
+               bash ci/run_ci.sh install_bazel
+
+               # Build the wheel inside the container
                bash ci/deploy.sh build_pyfory
              "
 
