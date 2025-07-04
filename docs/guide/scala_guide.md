@@ -31,19 +31,13 @@ Scala 2 and 3 are both supported.
 
 ## Install
 
-To add a dependency on Fory scala for scala 2 with sbt, use the following:
+To add a dependency on Fory scala for with sbt, use the following:
 
 ```sbt
-libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.11.1"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "0.11.1"
 ```
 
-To add a dependency on Fory scala for scala 3 with sbt, use the following:
-
-```sbt
-libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.11.1"
-```
-
-## Quict Start
+## Quick Start
 
 ```scala
 case class Person(name: String, id: Long, github: String)
@@ -93,7 +87,7 @@ Note that fory instance should be shared between multiple serialization, the cre
 
 If you use shared fory instance across multiple threads, you should create `ThreadSafeFory` instead by `ForyBuilder#buildThreadSafeFory()` instead.
 
-## Serialize case object
+## Serialize case class
 
 ```scala
 case class Person(github: String, age: Int, id: Long)
@@ -135,9 +129,9 @@ println(fory.deserialize(fory.serialize(map)))
 ## Serialize Tuple
 
 ```scala
-val tuple = Tuple2(100, 10000L)
+val tuple = (100, 10000L) //Tuple2
 println(fory.deserialize(fory.serialize(tuple)))
-val tuple = Tuple4(100, 10000L, 10000L, "str")
+val tuple = (100, 10000L, 10000L, "str") //Tuple4
 println(fory.deserialize(fory.serialize(tuple)))
 ```
 
