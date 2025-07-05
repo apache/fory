@@ -30,6 +30,9 @@ jobs:
       matrix:
         python-version: [3.8, 3.9, "3.10", 3.11, 3.12, 3.13]
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14, windows-2022]  # macos-13: x86, macos-14: arm64
+    env:
+      manylinux_x86_64_image: quay.io/pypa/manylinux_2_28_x86_64
+      manylinux_aarch64_image: quay.io/pypa/manylinux_2_28_aarch64
 
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +40,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install bazel
+      - name: Install bazel (for macOS and Windows)
+        if: "!startsWith(matrix.os, 'ubuntu')"
         shell: bash
         run: |
           if [ "$RUNNER_OS" == "Windows" ]; then
@@ -48,11 +52,42 @@ jobs:
       - name: Update version in setup.py
         shell: bash
         run: ci/deploy.sh bump_py_version
-      - name: Build a binary wheel
+       # --------- Use manylinux for Linux wheels ---------
+      - name: Build a binary wheel (Linux, manylinux)
+        if: startsWith(matrix.os, 'ubuntu')
         shell: bash
         run: |
-          ci/deploy.sh build_pyfory
-          ci/deploy.sh rename_wheels dist
+           DOCKER_IMAGE=""
+           PLAT=""
+           if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+             DOCKER_IMAGE="${{ env.manylinux_x86_64_image }}"
+             PLAT="manylinux_2_28_x86_64"
+           elif [[ "${{ matrix.os }}" == "ubuntu-24.04-arm" ]]; then
+             DOCKER_IMAGE="${{ env.manylinux_aarch64_image }}"
+             PLAT="manylinux_2_28_aarch64"
+           fi
+           docker run --rm -e PLAT=$PLAT \
+             -v ${{ github.workspace }}:/work \
+             -w /work "$DOCKER_IMAGE" \
+             bash -c "
+               set -e
+               # Install build dependencies inside the container
+               yum install -y git sudo wget
+               git config --global --add safe.directory /work
+
+               # Install Bazel inside the container
+               bash ci/run_ci.sh install_bazel
+
+               # Build the wheel inside the container
+               bash ci/deploy.sh build_pyfory
+             "
+
+       # --------- Native (not in container) for macOS and Windows ---------
+      - name: Build a binary wheel (native)
+        if: "!startsWith(matrix.os, 'ubuntu')"
+        shell: bash
+        run: |
+           ci/deploy.sh build_pyfory
       - name: Upload Wheel Artifact
         uses: actions/upload-artifact@v4
         with:

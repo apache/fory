@@ -31,57 +31,6 @@ set -e
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
-WHEEL_DIR="$ROOT/.whl"
-
-PYTHONS=("cp37-cp37m"
-         "cp38-cp38"
-         "cp39-cp39"
-         "cp310-cp310"
-         "cp310-cp311"
-         "cp312-cp312"
-         "cp313-cp313")
-
-VERSIONS=("3.7"
-          "3.8"
-          "3.9"
-          "3.10"
-          "3.11"
-          "3.12"
-          "3.13")
-
-create_py_envs() {
-  source $(conda info --base)/etc/profile.d/conda.sh
-  for version in "${VERSIONS[@]}"; do
-    conda create -y --name "py$version" python="$version"
-  done
-  conda env list
-}
-
-rename_wheels() {
-  for path in "$1"/*.whl; do
-    if [ -f "${path}" ]; then
-      # Rename linux to manylinux1
-      new_path="${path//linux/manylinux1}"
-      if [ "${path}" != "${new_path}" ]; then
-        mv "${path}" "${new_path}"
-      fi
-
-      # Copy macosx_14_0_x86_64 to macosx_10_12_x86_64
-      if [[ "${path}" == *macosx_14_0_x86_64.whl ]]; then
-        copy_path="${path//macosx_14_0_x86_64/macosx_10_12_x86_64}"
-        mv "${path}" "${copy_path}"
-      fi
-    fi
-  done
-}
-
-rename_mac_wheels() {
-  for path in "$WHEEL_DIR"/*.whl; do
-    if [ -f "${path}" ]; then
-      cp "${path}" "${path//macosx_12_0_x86_64/macosx_10_13_x86_64}"
-    fi
-  done
-}
 
 bump_version() {
   python "$ROOT/ci/release.py" bump_version -l all -version "$1"
@@ -116,7 +65,7 @@ deploy_jars() {
 build_pyfory() {
   echo "Python version $(python -V), path $(which python)"
   install_pyarrow
-  pip install Cython wheel pytest
+  pip install Cython wheel pytest auditwheel
   pushd "$ROOT/python"
   pip list
   echo "Install pyfory"
@@ -132,38 +81,32 @@ build_pyfory() {
   fi
 
   python setup.py bdist_wheel --dist-dir=../dist
-  popd
-}
 
-deploy_python() {
-  source $(conda info --base)/etc/profile.d/conda.sh
-  if command -v pyenv; then
-    pyenv local system
+  if [ -n "$PLAT" ]; then
+    # In manylinux container, repair the wheel to embed shared libraries
+    # and rename the wheel with the manylinux tag.
+    PYARROW_LIB_DIR=$(python -c 'import pyarrow; print(":".join(pyarrow.get_library_dirs()))')
+    export LD_LIBRARY_PATH="$PYARROW_LIB_DIR:$LD_LIBRARY_PATH"
+    auditwheel repair ../dist/pyfory-*-linux_*.whl --plat "$PLAT" -w ../dist/
+    rm ../dist/pyfory-*-linux_*.whl
+  elif [[ "$OSTYPE" == "darwin"* ]]; then
+    # macOS: use delocate to bundle dependencies and fix wheel tags
+    pip install delocate
+    mkdir -p ../dist_repaired
+    delocate-wheel -w ../dist_repaired/ ../dist/pyfory-*-macosx*.whl
+    rm ../dist/pyfory-*-macosx*.whl
+    mv ../dist_repaired/* ../dist/
+    rmdir ../dist_repaired
+  elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+    # Windows: use delvewheel to bundle dependencies
+    pip install delvewheel
+    mkdir -p ../dist_repaired
+    delvewheel repair ../dist/pyfory-*-win*.whl -w ../dist_repaired/
+    rm ../dist/pyfory-*-win*.whl
+    mv ../dist_repaired/* ../dist/
+    rmdir ../dist_repaired
   fi
-  cd "$ROOT/python"
-  rm -rf "$WHEEL_DIR"
-  mkdir -p "$WHEEL_DIR"
-  for ((i=0; i<${#PYTHONS[@]}; ++i)); do
-    PYTHON=${PYTHONS[i]}
-    ENV="py${VERSIONS[i]}"
-    conda activate "$ENV"
-    python -V
-    git clean -f -f -x -d -e .whl
-    # Ensure bazel select the right version of python
-    bazel clean --expunge
-    install_pyarrow
-    pip install --ignore-installed twine setuptools cython numpy
-    pyarrow_dir=$(python -c "import importlib.util; import os; print(os.path.dirname(importlib.util.find_spec('pyarrow').origin))")
-    # ensure pyarrow is clean
-    rm -rf "$pyarrow_dir"
-    pip install --ignore-installed pyarrow==$pyarrow_version
-    python setup.py clean
-    python setup.py bdist_wheel
-    mv dist/pyfory*.whl "$WHEEL_DIR"
-  done
-  rename_wheels "$WHEEL_DIR"
-  twine check "$WHEEL_DIR"/pyfory*.whl
-  twine upload -r pypi "$WHEEL_DIR"/pyfory*.whl
+  popd
 }
 
 install_pyarrow() {
@@ -190,9 +133,6 @@ deploy_scala() {
 case "$1" in
 java) # Deploy jars to maven repository.
   deploy_jars
-  ;;
-python) # Deploy wheel to pypi
-  deploy_python
   ;;
 *)
   echo "Execute command $*"
