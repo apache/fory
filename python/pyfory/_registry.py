@@ -480,7 +480,7 @@ class TypeResolver:
         elif not create:
             return None
         if self.require_registration and (
-           self.language != Language.PYTHON or not issubclass(cls, Enum)
+            self.language != Language.PYTHON or not issubclass(cls, Enum)
         ):
             raise TypeUnregisteredError(f"{cls} not registered")
         logger.info("Type %s not registered", cls)
