@@ -107,4 +107,16 @@ public class ClassDefEncoderTest {
       private Long itemId;
     }
   }
+
+  @Test
+  public void testPrependHeader() {
+    MemoryBuffer inputBuffer = MemoryBuffer.newHeapBuffer(ClassDef.META_SIZE_MASKS + 1);
+    inputBuffer.writerIndex(ClassDef.META_SIZE_MASKS + 1);
+    MemoryBuffer outputBuffer = ClassDefEncoder.prependHeader(inputBuffer, true, false);
+
+    long header = outputBuffer.readInt64();
+    Assert.assertEquals(header & ClassDef.META_SIZE_MASKS, ClassDef.META_SIZE_MASKS);
+    Assert.assertEquals(header & ClassDef.COMPRESS_META_FLAG, ClassDef.COMPRESS_META_FLAG);
+    Assert.assertEquals(header & ClassDef.HAS_FIELDS_META_FLAG, 0);
+  }
 }

@@ -195,10 +195,7 @@ class ClassDefEncoder {
     if (hasFieldsMeta) {
       header |= HAS_FIELDS_META_FLAG;
     }
-    if (metaSize > META_SIZE_MASKS) {
-      header |= META_SIZE_MASKS;
-    }
-    header |= metaSize;
+    header |= Math.min(metaSize, META_SIZE_MASKS);
     MemoryBuffer result = MemoryUtils.buffer(metaSize + 8);
     result.writeInt64(header);
     if (metaSize > META_SIZE_MASKS) {
