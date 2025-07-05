@@ -138,16 +138,11 @@ class MetaStringDecoder:
         strip_last_char = (data[0] & 0x80) != 0  # Check the first bit of the first byte
         bit_index = 1
         bit_mask = 0b11111
-        while bit_index + 5 <= num_bits and not (
-            strip_last_char and (bit_index + 2 * 5 > num_bits)
-        ):
+        while bit_index + 5 <= num_bits and not (strip_last_char and (bit_index + 2 * 5 > num_bits)):
             byte_index = bit_index // 8
             intra_byte_index = bit_index % 8
             # Extract the 5-bit character value across byte boundaries if needed
-            char_value = (
-                (data[byte_index] << 8)
-                | (data[byte_index + 1] if byte_index + 1 < len(data) else 0)
-            ) >> (11 - intra_byte_index) & bit_mask
+            char_value = ((data[byte_index] << 8) | (data[byte_index + 1] if byte_index + 1 < len(data) else 0)) >> (11 - intra_byte_index) & bit_mask
             bit_index += 5
             decoded.append(self._decode_lower_special_char(char_value))
 
@@ -168,16 +163,11 @@ class MetaStringDecoder:
         strip_last_char = (data[0] & 0x80) != 0
         bit_mask = 0b111111
         num_bits = len(data) * 8
-        while bit_index + 6 <= num_bits and not (
-            strip_last_char and (bit_index + 2 * 6 > num_bits)
-        ):
+        while bit_index + 6 <= num_bits and not (strip_last_char and (bit_index + 2 * 6 > num_bits)):
             byte_index = bit_index // 8
             intra_byte_index = bit_index % 8
             # Extract the 6-bit character value across byte boundaries if needed
-            char_value = (
-                (data[byte_index] << 8)
-                | (data[byte_index + 1] if byte_index + 1 < len(data) else 0)
-            ) >> (10 - intra_byte_index) & bit_mask
+            char_value = ((data[byte_index] << 8) | (data[byte_index + 1] if byte_index + 1 < len(data) else 0)) >> (10 - intra_byte_index) & bit_mask
             bit_index += 6
             decoded.append(self._decode_lower_upper_digit_special_char(char_value))
         return "".join(decoded)
@@ -226,9 +216,7 @@ class MetaStringDecoder:
         elif char_value == 63:
             return self.special_char2  # Use special_char2 for the encoding
         else:
-            raise ValueError(
-                f"Invalid character value for LOWER_UPPER_DIGIT_SPECIAL: {char_value}"
-            )
+            raise ValueError(f"Invalid character value for LOWER_UPPER_DIGIT_SPECIAL: {char_value}")
 
     def _decode_rep_first_lower_special(self, data: bytes) -> str:
         """
@@ -291,9 +279,7 @@ class MetaStringEncoder:
             MetaString: The encoded MetaString object.
         """
         # Long meta string than _METASTRING_NUM_CHARS_LIMIT is not allowed.
-        assert len(input_string) < _METASTRING_NUM_CHARS_LIMIT, (
-            "Long meta string than _METASTRING_NUM_CHARS_LIMIT is not allowed."
-        )
+        assert len(input_string) < _METASTRING_NUM_CHARS_LIMIT, "Long meta string than _METASTRING_NUM_CHARS_LIMIT is not allowed."
 
         if not input_string:
             return MetaString(
@@ -320,9 +306,7 @@ class MetaStringEncoder:
             MetaString: An encoded MetaString object.
         """
         # Long meta string than _METASTRING_NUM_CHARS_LIMIT is not allowed.
-        assert len(input_string) < _METASTRING_NUM_CHARS_LIMIT, (
-            "Long meta string than _METASTRING_NUM_CHARS_LIMIT is not allowed."
-        )
+        assert len(input_string) < _METASTRING_NUM_CHARS_LIMIT, "Long meta string than _METASTRING_NUM_CHARS_LIMIT is not allowed."
 
         if not input_string:
             return MetaString(
@@ -434,12 +418,7 @@ class MetaStringEncoder:
         upper_count = 0
         for c in chars:
             if can_lower_upper_digit_special_encoded:
-                if not (
-                    c.islower()
-                    or c.isupper()
-                    or c.isdigit()
-                    or c in {self.special_char1, self.special_char2}
-                ):
+                if not (c.islower() or c.isupper() or c.isdigit() or c in {self.special_char1, self.special_char2}):
                     can_lower_upper_digit_special_encoded = False
             if can_lower_special_encoded:
                 if not (c.islower() or c in {".", "_", "$", "|"}):
@@ -566,9 +545,7 @@ class MetaStringEncoder:
             elif c == "|":
                 return 29
             else:
-                raise ValueError(
-                    f"Unsupported character for LOWER_SPECIAL encoding: {c}"
-                )
+                raise ValueError(f"Unsupported character for LOWER_SPECIAL encoding: {c}")
         elif bits_per_char == 6:
             if "a" <= c <= "z":
                 return ord(c) - ord("a")
@@ -581,6 +558,4 @@ class MetaStringEncoder:
             elif c == self.special_char2:
                 return 63
             else:
-                raise ValueError(
-                    f"Unsupported character for LOWER_UPPER_DIGIT_SPECIAL encoding: {c}"
-                )
+                raise ValueError(f"Unsupported character for LOWER_UPPER_DIGIT_SPECIAL encoding: {c}")
