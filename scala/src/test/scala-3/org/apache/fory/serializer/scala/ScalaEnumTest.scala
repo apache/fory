@@ -39,7 +39,7 @@ class ScalaEnumTest extends AnyWordSpec with Matchers {
     .withScalaOptimizationEnabled(true)
     .requireClassRegistration(false).build()
 
-  "fury scala enum support" should {
+  "fory scala enum support" should {
     "serialize/deserialize ColorEnum" in {
       val bytes = fory.serialize(ColorEnum.Green)
       fory.deserialize(bytes) shouldBe ColorEnum.Green
