@@ -641,5 +641,71 @@ def test_map_fields_chunk_serializer():
     assert map_fields_object.large_dict == deserialized.large_dict
 
 
+class StatefulObject:
+    def __init__(self, value, transient_value=None):
+        self.value = value
+        self.transient_value = transient_value  # This should not be pickled
+        self.getstate_called = False
+        self.setstate_called = False
+
+    def __getstate__(self):
+        self.getstate_called = True
+        # Only pickle 'value'
+        return {"value": self.value, "getstate_was_called": True}
+
+    def __setstate__(self, state):
+        self.setstate_called = True
+        self.value = state["value"]
+        # transient_value is deliberately not restored from state
+        self.transient_value = "restored_transient"
+        self.getstate_was_called_during_pickle = state.get("getstate_was_called", False)
+
+
+@pytest.mark.parametrize("language", [Language.PYTHON, Language.XLANG])
+@pytest.mark.parametrize("ref_tracking", [True, False])
+def test_getstate_setstate_support(language, ref_tracking):
+    fory_instance = Fory(
+        language=language,
+        ref_tracking=ref_tracking,
+        require_type_registration=False,  # Important for fallback to pickle
+    )
+
+    original_obj = StatefulObject("important_data", "temporary_info")
+    assert original_obj.value == "important_data"
+    assert original_obj.transient_value == "temporary_info"
+    assert not original_obj.getstate_called
+    assert not original_obj.setstate_called
+
+    # Serialize the object
+    # We expect Fory's pickle fallback to call __getstate__
+    serialized_data = fory_instance.serialize(original_obj)
+
+    # Check if __getstate__ was called (on the original object)
+    # This check is tricky because serialization might happen on a copy
+    # or __getstate__ might be called by Python's pickle internals without
+    # Fory directly knowing. The most reliable check is on the deserialized object.
+
+    # Deserialize the object
+    deserialized_obj = fory_instance.deserialize(serialized_data)
+
+    assert isinstance(deserialized_obj, StatefulObject)
+    assert deserialized_obj.value == "important_data"
+
+    # Check if __getstate__ was noted as called during pickling by our custom state
+    assert deserialized_obj.getstate_was_called_during_pickle
+
+    # Check if __setstate__ was called
+    assert deserialized_obj.setstate_called
+
+    # Check that transient_value was initialized by __setstate__, not from pickled data
+    assert deserialized_obj.transient_value == "restored_transient"
+
+    # Verify original object's getstate_called flag (if not copied during serialization)
+    # This is less reliable due to potential copying by pickle.
+    # For this test, we'll primarily rely on flags set *within* the state or by __setstate__.
+    # If original_obj.getstate_called is True, it's a good sign.
+    # print(f"Original object getstate_called: {original_obj.getstate_called}")
+
+
 if __name__ == "__main__":
     test_string()

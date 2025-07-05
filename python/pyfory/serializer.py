@@ -653,14 +653,11 @@ class BytesBufferObject(BufferObject):
         return Buffer(self.binary)
 
 
-class PickleSerializer(Serializer):
+class PickleSerializer(CrossLanguageCompatibleSerializer):
     PICKLE_TYPE_ID = 96
 
-    def xwrite(self, buffer, value):
-        raise NotImplementedError
-
-    def xread(self, buffer):
-        raise NotImplementedError
+    # xwrite will now call write due to CrossLanguageCompatibleSerializer
+    # xread will now call read due to CrossLanguageCompatibleSerializer
 
     def write(self, buffer, value):
         self.fory.handle_unsupported_write(buffer, value)

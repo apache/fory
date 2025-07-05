@@ -479,9 +479,8 @@ class TypeResolver:
             return type_info
         elif not create:
             return None
-        if self.language != Language.PYTHON or (
-            self.require_registration and not issubclass(cls, Enum)
-        ):
+        if self.require_registration and \
+           (self.language != Language.PYTHON or not issubclass(cls, Enum)):
             raise TypeUnregisteredError(f"{cls} not registered")
         logger.info("Type %s not registered", cls)
         serializer = self._create_serializer(cls)
@@ -491,12 +490,23 @@ class TypeResolver:
                 type_id = TypeId.NAMED_ENUM
             elif type(serializer) is PickleSerializer:
                 type_id = PickleSerializer.PICKLE_TYPE_ID
-            if not self.require_registration:
+            if not self.require_registration: # This applies only if language is PYTHON
                 if isinstance(serializer, DataClassSerializer):
                     type_id = TypeId.NAMED_STRUCT
+        elif self.language == Language.XLANG:
+            # If registration is not required and it's a PickleSerializer, allow it.
+            if not self.require_registration and type(serializer) is PickleSerializer:
+                type_id = PickleSerializer.PICKLE_TYPE_ID
+            # Potentially handle other auto-detected XLANG serializers here if needed
+            # For example, if XLANG auto-detects Enums and has a generic Enum ID:
+            # elif isinstance(serializer, EnumSerializer):
+            #     type_id = TypeId.ENUM # Or some generic XLANG enum type
+
         if type_id is None:
+            # If type_id is still None here, it means for XLANG it wasn't a PickleSerializer fallback
+            # or for PYTHON it wasn't one of the auto-assignable types.
             raise TypeUnregisteredError(
-                f"{cls} must be registered using `fory.register_type` API"
+                f"{cls} must be registered using `fory.register_type` API for language {self.language}"
             )
         return self.__register_type(
             cls,
