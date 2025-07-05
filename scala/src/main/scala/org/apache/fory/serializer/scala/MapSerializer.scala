@@ -78,7 +78,7 @@ abstract class AbstractScalaMapSerializer[K, V, T](fory: Fory, cls: Class[T])
  *
  *
  */
-private class MapAdapter[K, V](var map: scala.collection.Map[K, V])
+private class MapAdapter[K, V](map: scala.collection.Map[K, V])
   extends util.AbstractMap[K, V] {
   override def entrySet(): util.Set[util.Map.Entry[K, V]] = new util.AbstractSet[util.Map.Entry[K, V]] {
     override def size(): Int = map.size
