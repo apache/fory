@@ -479,8 +479,9 @@ class TypeResolver:
             return type_info
         elif not create:
             return None
-        if self.require_registration and \
-           (self.language != Language.PYTHON or not issubclass(cls, Enum)):
+        if self.require_registration and (
+           self.language != Language.PYTHON or not issubclass(cls, Enum)
+        ):
             raise TypeUnregisteredError(f"{cls} not registered")
         logger.info("Type %s not registered", cls)
         serializer = self._create_serializer(cls)
@@ -490,7 +491,7 @@ class TypeResolver:
                 type_id = TypeId.NAMED_ENUM
             elif type(serializer) is PickleSerializer:
                 type_id = PickleSerializer.PICKLE_TYPE_ID
-            if not self.require_registration: # This applies only if language is PYTHON
+            if not self.require_registration:
                 if isinstance(serializer, DataClassSerializer):
                     type_id = TypeId.NAMED_STRUCT
         elif self.language == Language.XLANG:
