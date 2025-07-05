@@ -333,7 +333,7 @@ case $1 in
     ;;
     format)
       echo "Install format tools"
-      pip install black==22.1.0 flake8==3.9.1 flake8-quotes flake8-bugbear click==8.0.2
+      pip install ruff
       echo "Executing format check"
       bash ci/format.sh
       cd "$ROOT/java"

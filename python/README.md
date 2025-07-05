@@ -31,12 +31,8 @@ pytest -v -s .
 
 ```bash
 cd python
-# install dependencies fro styling
-pip install black==22.1.0 flake8==3.9.1 flake8-quotes flake8-bugbear click==8.0.2
-# flake8 pyfory: prompts for code to be formatted, but not formatted
-flake8 pyfory
-# black pyfory: format python code
-black pyfory
+pip install ruff
+ruff format python
 ```
 
 ## Debug
