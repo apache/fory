@@ -181,9 +181,9 @@ def _compute_hash(hash_: int, type_: pa.DataType):
     elif isinstance(type_, pa.StructType):
         types.extend([f.type for f in type_])
     else:
-        assert (
-            type_.num_fields == 0
-        ), f"field type should not be nested, but got type {type_}."
+        assert type_.num_fields == 0, (
+            f"field type should not be nested, but got type {type_}."
+        )
 
     for t in types:
         hash_ = _compute_hash(hash_, t)

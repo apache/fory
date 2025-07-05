@@ -77,9 +77,7 @@ def test_infer_field():
 
 def test_infer_class_schema():
     schema = infer_schema(Foo)
-    assert schema == foo_schema(), (
-        f"schema {schema}\n====\n," f"foo_schema {foo_schema()}"
-    )
+    assert schema == foo_schema(), f"schema {schema}\n====\n,foo_schema {foo_schema()}"
 
 
 def test_type_id():
