@@ -583,9 +583,12 @@ class PyDataClass1:
     f7: Dict
 
 
-def test_py_serialize_dataclass():
+@pytest.mark.parametrize("track_ref", [False, True])
+def test_py_serialize_dataclass(track_ref):
     fory = Fory(
-        language=Language.PYTHON, ref_tracking=True, require_type_registration=False
+        language=Language.PYTHON,
+        ref_tracking=track_ref,
+        require_type_registration=False,
     )
     obj1 = PyDataClass1(
         f1=1, f2=-2.0, f3="abc", f4=True, f5="xyz", f6=[1, 2], f7={"k1": "v1"}
@@ -595,9 +598,12 @@ def test_py_serialize_dataclass():
     assert ser_de(fory, obj2) == obj2
 
 
-def test_function():
+@pytest.mark.parametrize("track_ref", [False, True])
+def test_function(track_ref):
     fory = Fory(
-        language=Language.PYTHON, ref_tracking=True, require_type_registration=False
+        language=Language.PYTHON,
+        ref_tracking=track_ref,
+        require_type_registration=False,
     )
     c = fory.deserialize(fory.serialize(lambda x: x * 2))
     assert c(2) == 4
@@ -618,27 +624,63 @@ class MapFields:
     simple_dict: dict = None
     empty_dict: dict = None
     large_dict: dict = None
+    nested_dict: dict = None
+    int_key_dict: dict = None
+    tuple_key_dict: dict = None
+    dict_with_custom_obj: dict = None
+    single_key_dict: dict = None
 
 
-def test_map_fields_chunk_serializer():
+@pytest.mark.parametrize("track_ref", [False, True])
+def test_map_fields_chunk_serializer(track_ref):
     fory = Fory(
-        language=Language.PYTHON, ref_tracking=True, require_type_registration=False
+        language=Language.PYTHON,
+        ref_tracking=track_ref,
+        require_type_registration=False,
     )
 
+    # Test case
     simple_dict = {"a": 1, "b": 2, "c": 3}
     empty_dict = {}
     large_dict = {f"key{i}": i for i in range(1000)}
 
-    # MapSerializer test
-    map_fields_object = MapFields(
-        simple_dict=simple_dict, empty_dict=empty_dict, large_dict=large_dict
-    )
+    nested_dict = {"outer": {"inner": 1}}
+    int_key_dict = {1: [1, 2, 3], 2: [4, 5, 6]}
+    tuple_key_dict = {(1, 2): {1, 2, 3}, (3, 4): {4, 5, 6}}
+
+    class CustomClass:
+        def __init__(self, value):
+            self.value = value
+
+        def __eq__(self, other):
+            return isinstance(other, CustomClass) and self.value == other.value
+
+    custom_obj = CustomClass(1)
+    dict_with_custom_obj = {"custom": custom_obj}
+    single_key_dict = {"single": 1}
+
+    # Create MapFields Obj
+    map_fields_object = MapFields()
+    map_fields_object.simple_dict = simple_dict
+    map_fields_object.empty_dict = empty_dict
+    map_fields_object.large_dict = large_dict
+    map_fields_object.nested_dict = nested_dict
+    map_fields_object.int_key_dict = int_key_dict
+    map_fields_object.tuple_key_dict = tuple_key_dict
+    map_fields_object.dict_with_custom_obj = dict_with_custom_obj
+    map_fields_object.single_key_dict = single_key_dict
 
     serialized = fory.serialize(map_fields_object)
     deserialized = fory.deserialize(serialized)
+
     assert map_fields_object.simple_dict == deserialized.simple_dict
     assert map_fields_object.empty_dict == deserialized.empty_dict
     assert map_fields_object.large_dict == deserialized.large_dict
+    assert map_fields_object.nested_dict == deserialized.nested_dict
+    assert map_fields_object.int_key_dict == deserialized.int_key_dict
+    assert map_fields_object.tuple_key_dict == deserialized.tuple_key_dict
+    assert map_fields_object.dict_with_custom_obj == deserialized.dict_with_custom_obj
+    assert map_fields_object.single_key_dict == deserialized.single_key_dict
 
 
 if __name__ == "__main__":
