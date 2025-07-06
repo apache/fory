@@ -23,9 +23,9 @@ import typing
 from pyfory.buffer import Buffer
 from pyfory.error import TypeNotCompatibleError
 from pyfory.serializer import (
-    ListSerializer,
-    MapSerializer,
-    PickleSerializer,
+    # ListSerializer, # Moved to local import in ComplexTypeVisitor
+    # MapSerializer,  # Moved to local import in ComplexTypeVisitor
+    PickleSerializer, # Restoring top-level import
     Serializer,
 )
 from pyfory.type import (
@@ -81,11 +81,13 @@ class ComplexTypeVisitor(TypeVisitor):
         self.fory = fory
 
     def visit_list(self, field_name, elem_type, types_path=None):
+        from pyfory.serializer import ListSerializer  # Local import
         # Infer type recursively for type such as List[Dict[str, str]]
         elem_serializer = infer_field("item", elem_type, self, types_path=types_path)
         return ListSerializer(self.fory, list, elem_serializer)
 
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
+        from pyfory.serializer import MapSerializer  # Local import
         # Infer type recursively for type such as Dict[str, Dict[str, str]]
         key_serializer = infer_field("key", key_type, self, types_path=types_path)
         value_serializer = infer_field("value", value_type, self, types_path=types_path)
@@ -95,6 +97,8 @@ class ComplexTypeVisitor(TypeVisitor):
         return None
 
     def visit_other(self, field_name, type_, types_path=None):
+        # from pyfory.serializer import PickleSerializer  # Local import # Removing local import
+
         if is_subclass(type_, enum.Enum):
             return self.fory.type_resolver.get_serializer(type_)
         if type_ not in basic_types and not is_py_array_type(type_):
@@ -175,11 +179,13 @@ def _sort_fields(type_resolver, field_names, serializers):
 
 
 import warnings
-from pyfory.serializer import DataClassSerializer
-
+# Removed DataClassSerializer from here to break the cycle for the alias target.
+# Other serializers like ListSerializer, MapSerializer, Serializer are still imported at the top.
 
 class ComplexObjectSerializer(Serializer):
     def __new__(cls, fory, clz):
+        from pyfory.serializer import DataClassSerializer  # Local import
+
         warnings.warn(
             "`ComplexObjectSerializer` is deprecated and will be removed in a future version. "
             "Use `DataClassSerializer(fory, clz, xlang=True)` instead.",
@@ -219,6 +225,7 @@ class StructHashVisitor(TypeVisitor):
         self._hash = self._compute_field_hash(self._hash, hash_value)
 
     def visit_other(self, field_name, type_, types_path=None):
+        # from pyfory.serializer import PickleSerializer  # Local import # Removing local import
         typeinfo = self.fory.type_resolver.get_typeinfo(type_, create=False)
         if typeinfo is None:
             id_ = 0
