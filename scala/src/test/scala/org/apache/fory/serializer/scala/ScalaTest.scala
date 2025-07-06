@@ -89,5 +89,8 @@ object PkgObjectMain2 extends App {
 
   case class SomeClass(v: List[IdAnyVal])
   val p = SomeClass(List.empty)
-  println(fory.deserialize(fory.serialize(p)))
+  val result = fory.deserialize(fory.serialize(p))
+  if (result != p) {
+    throw new RuntimeException(s"$result is not equal to $p")
+  }
 }
