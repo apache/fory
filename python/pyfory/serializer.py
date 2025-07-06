@@ -32,6 +32,8 @@ from pyfory.codegen import (
 from pyfory.error import TypeNotCompatibleError
 from pyfory.lib.collection import WeakIdentityKeyDictionary
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
+from pyfory._struct import _get_hash, _sort_fields, ComplexTypeVisitor
+from pyfory import Language
 
 try:
     import numpy as np
@@ -285,20 +287,44 @@ _ENABLE_FORY_PYTHON_JIT = os.environ.get("ENABLE_FORY_PYTHON_JIT", "True").lower
 
 
 class DataClassSerializer(Serializer):
-    def __init__(self, fory, clz: type):
+    def __init__(self, fory, clz: type, xlang: bool = False):
         super().__init__(fory, clz)
+        self._xlang = xlang
         # This will get superclass type hints too.
         self._type_hints = typing.get_type_hints(clz)
         self._field_names = sorted(self._type_hints.keys())
         self._has_slots = hasattr(clz, "__slots__")
-        # TODO compute hash
-        self._hash = len(self._field_names)
-        self._generated_write_method = self._gen_write_method()
-        self._generated_read_method = self._gen_read_method()
-        if _ENABLE_FORY_PYTHON_JIT:
-            # don't use `__slots__`, which will make instance method readonly
-            self.write = self._gen_write_method()
-            self.read = self._gen_read_method()
+
+        if self._xlang:
+            self._serializers = [None] * len(self._field_names)
+            visitor = ComplexTypeVisitor(fory)
+            for index, key in enumerate(self._field_names):
+                serializer = self.fory.infer_field(
+                    key, self._type_hints[key], visitor, types_path=[]
+                )
+                self._serializers[index] = serializer
+            self._serializers, self._field_names = _sort_fields(
+                fory.type_resolver, self._field_names, self._serializers
+            )
+            self._hash = 0  # Will be computed on first xwrite/xread
+            if self.fory.language == Language.PYTHON:
+                import logging  # Import here to avoid circular dependency
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    "Type of class %s shouldn't be serialized using cross-language "
+                    "serializer",
+                    clz,
+                )
+        else:
+            # TODO compute hash for non-xlang mode more robustly
+            self._hash = len(self._field_names)
+            self._generated_write_method = self._gen_write_method()
+            self._generated_read_method = self._gen_read_method()
+            if _ENABLE_FORY_PYTHON_JIT:
+                # don't use `__slots__`, which will make instance method readonly
+                self.write = self._generated_write_method
+                self.read = self._generated_read_method
 
     def _gen_write_method(self):
         context = {}
@@ -415,10 +441,42 @@ class DataClassSerializer(Serializer):
         return obj
 
     def xwrite(self, buffer: Buffer, value):
-        raise NotImplementedError
+        if not self._xlang:
+            raise TypeError(
+                "xwrite can only be called when DataClassSerializer is in xlang mode"
+            )
+        if self._hash == 0:
+            self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
+        buffer.write_int32(self._hash)
+        for index, field_name in enumerate(self._field_names):
+            field_value = getattr(value, field_name)
+            serializer = self._serializers[index]
+            self.fory.xserialize_ref(buffer, field_value, serializer=serializer)
 
     def xread(self, buffer):
-        raise NotImplementedError
+        if not self._xlang:
+            raise TypeError(
+                "xread can only be called when DataClassSerializer is in xlang mode"
+            )
+        if self._hash == 0:
+            self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
+        hash_ = buffer.read_int32()
+        if hash_ != self._hash:
+            raise TypeNotCompatibleError(
+                f"Hash {hash_} is not consistent with {self._hash} "
+                f"for type {self.type_}",
+            )
+        obj = self.type_.__new__(self.type_)
+        self.fory.ref_resolver.reference(obj)
+        for index, field_name in enumerate(self._field_names):
+            serializer = self._serializers[index]
+            field_value = self.fory.xdeserialize_ref(buffer, serializer=serializer)
+            setattr(
+                obj,
+                field_name,
+                field_value,
+            )
+        return obj
 
 
 # Use numpy array or python array module.
