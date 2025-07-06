@@ -110,7 +110,7 @@ from pyfory.type import (
     Float32NDArrayType,
     Float64NDArrayType,
     TypeId,
-    infer_field, # Added infer_field
+    infer_field,  # Added infer_field
 )
 
 
@@ -289,6 +289,7 @@ _ENABLE_FORY_PYTHON_JIT = os.environ.get("ENABLE_FORY_PYTHON_JIT", "True").lower
 # like ListSerializer, MapSerializer, PickleSerializer are defined or imported
 # and before DataClassSerializer which uses ComplexTypeVisitor from _struct.
 from pyfory._struct import _get_hash, _sort_fields, ComplexTypeVisitor
+
 
 class DataClassSerializer(Serializer):
     def __init__(self, fory, clz: type, xlang: bool = False):
