@@ -59,12 +59,8 @@ def test_infer_field():
     assert _infer_field("", pa.float64).type == pa.float64()
     assert _infer_field("", str).type == pa.utf8()
     assert _infer_field("", bytes).type == pa.binary()
-    assert _infer_field("", List[Dict[str, str]]).type == pa.list_(
-        pa.map_(pa.utf8(), pa.utf8())
-    )
-    assert _infer_field(
-        "", List[Dict[str, Dict[str, List[pa.int32]]]]
-    ).type == pa.list_(pa.map_(pa.utf8(), pa.map_(pa.utf8(), pa.list_(pa.int32()))))
+    assert _infer_field("", List[Dict[str, str]]).type == pa.list_(pa.map_(pa.utf8(), pa.utf8()))
+    assert _infer_field("", List[Dict[str, Dict[str, List[pa.int32]]]]).type == pa.list_(pa.map_(pa.utf8(), pa.map_(pa.utf8(), pa.list_(pa.int32()))))
     with pytest.raises(TypeError):
         _infer_field("", pa.int8())
         _infer_field("", pa.utf8())
@@ -77,9 +73,7 @@ def test_infer_field():
 
 def test_infer_class_schema():
     schema = infer_schema(Foo)
-    assert schema == foo_schema(), (
-        f"schema {schema}\n====\n," f"foo_schema {foo_schema()}"
-    )
+    assert schema == foo_schema(), f"schema {schema}\n====\n,foo_schema {foo_schema()}"
 
 
 def test_type_id():

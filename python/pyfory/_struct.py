@@ -18,16 +18,8 @@
 import datetime
 import enum
 import logging
-import typing
 
-from pyfory.buffer import Buffer
-from pyfory.error import TypeNotCompatibleError
-from pyfory.serializer import (
-    ListSerializer,
-    MapSerializer,
-    PickleSerializer,
-    Serializer,
-)
+from pyfory.serializer import Serializer
 from pyfory.type import (
     TypeVisitor,
     infer_field,
@@ -81,11 +73,15 @@ class ComplexTypeVisitor(TypeVisitor):
         self.fory = fory
 
     def visit_list(self, field_name, elem_type, types_path=None):
+        from pyfory.serializer import ListSerializer  # Local import
+
         # Infer type recursively for type such as List[Dict[str, str]]
         elem_serializer = infer_field("item", elem_type, self, types_path=types_path)
         return ListSerializer(self.fory, list, elem_serializer)
 
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
+        from pyfory.serializer import MapSerializer  # Local import
+
         # Infer type recursively for type such as Dict[str, Dict[str, str]]
         key_serializer = infer_field("key", key_type, self, types_path=types_path)
         value_serializer = infer_field("value", value_type, self, types_path=types_path)
@@ -95,6 +91,8 @@ class ComplexTypeVisitor(TypeVisitor):
         return None
 
     def visit_other(self, field_name, type_, types_path=None):
+        from pyfory.serializer import PickleSerializer  # Local import
+
         if is_subclass(type_, enum.Enum):
             return self.fory.type_resolver.get_serializer(type_)
         if type_ not in basic_types and not is_py_array_type(type_):
@@ -174,65 +172,23 @@ def _sort_fields(type_resolver, field_names, serializers):
     return [t[1] for t in all_types], [t[2] for t in all_types]
 
 
+import warnings
+
+# Removed DataClassSerializer from here to break the cycle for the alias target.
+# Other serializers like ListSerializer, MapSerializer, Serializer are still imported at the top.
+
+
 class ComplexObjectSerializer(Serializer):
-    def __init__(self, fory, clz):
-        super().__init__(fory, clz)
-        self._type_hints = typing.get_type_hints(clz)
-        self._field_names = sorted(self._type_hints.keys())
-        self._serializers = [None] * len(self._field_names)
-        visitor = ComplexTypeVisitor(fory)
-        for index, key in enumerate(self._field_names):
-            serializer = infer_field(key, self._type_hints[key], visitor, types_path=[])
-            self._serializers[index] = serializer
-        self._serializers, self._field_names = _sort_fields(
-            fory.type_resolver, self._field_names, self._serializers
+    def __new__(cls, fory, clz):
+        from pyfory.serializer import DataClassSerializer  # Local import
+
+        warnings.warn(
+            "`ComplexObjectSerializer` is deprecated and will be removed in a future version. "
+            "Use `DataClassSerializer(fory, clz, xlang=True)` instead.",
+            DeprecationWarning,
+            stacklevel=2,
         )
-
-        from pyfory import Language
-
-        if self.fory.language == Language.PYTHON:
-            logger.warning(
-                "Type of class %s shouldn't be serialized using cross-language "
-                "serializer",
-                clz,
-            )
-        self._hash = 0
-
-    def write(self, buffer, value):
-        return self.xwrite(buffer, value)
-
-    def read(self, buffer):
-        return self.xread(buffer)
-
-    def xwrite(self, buffer: Buffer, value):
-        if self._hash == 0:
-            self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
-        buffer.write_int32(self._hash)
-        for index, field_name in enumerate(self._field_names):
-            field_value = getattr(value, field_name)
-            serializer = self._serializers[index]
-            self.fory.xserialize_ref(buffer, field_value, serializer=serializer)
-
-    def xread(self, buffer):
-        if self._hash == 0:
-            self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
-        hash_ = buffer.read_int32()
-        if hash_ != self._hash:
-            raise TypeNotCompatibleError(
-                f"Hash {hash_} is not consistent with {self._hash} "
-                f"for type {self.type_}",
-            )
-        obj = self.type_.__new__(self.type_)
-        self.fory.ref_resolver.reference(obj)
-        for index, field_name in enumerate(self._field_names):
-            serializer = self._serializers[index]
-            field_value = self.fory.xdeserialize_ref(buffer, serializer=serializer)
-            setattr(
-                obj,
-                field_name,
-                field_value,
-            )
-        return obj
+        return DataClassSerializer(fory, clz, xlang=True)
 
 
 class StructHashVisitor(TypeVisitor):
@@ -265,6 +221,8 @@ class StructHashVisitor(TypeVisitor):
         self._hash = self._compute_field_hash(self._hash, hash_value)
 
     def visit_other(self, field_name, type_, types_path=None):
+        from pyfory.serializer import PickleSerializer  # Local import
+
         typeinfo = self.fory.type_resolver.get_typeinfo(type_, create=False)
         if typeinfo is None:
             id_ = 0

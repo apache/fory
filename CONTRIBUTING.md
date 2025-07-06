@@ -96,10 +96,10 @@ mvn checkstyle:check
 
 ```bash
 cd python
-# install dependencies fro styling
-pip install black==22.1.0 flake8==3.9.1 flake8-quotes flake8-bugbear click==8.0.2
+# install dependencies for formatting
+pip install ruff
 # format python code
-black pyfory
+ruff format python
 ```
 
 ### C++

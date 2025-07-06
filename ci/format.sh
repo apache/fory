@@ -2,14 +2,12 @@
 
 # This script is derived from https://github.com/ray-project/ray/blob/5ce25a57a0949673d17f3a8784f05b2d65290524/ci/lint/format.sh.
 
-# Black + Clang formatter (if installed). This script formats all changed files from the last mergebase.
+# Ruff formatter (if installed). This script formats all changed files from the last mergebase.
 # You are encouraged to run this locally before pushing changes for review.
 
 # Cause the script to exit if a single command fails
 set -euox pipefail
 
-FLAKE8_VERSION_REQUIRED="3.9.1"
-BLACK_VERSION_REQUIRED="22.1.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 
 install_nodejs() {
@@ -26,27 +24,11 @@ install_nodejs() {
   npm -v
 }
 
-check_python_command_exist() {
-    VERSION=""
-    case "$1" in
-        black)
-            VERSION=$BLACK_VERSION_REQUIRED
-            ;;
-        flake8)
-            VERSION=$FLAKE8_VERSION_REQUIRED
-            ;;
-        *)
-            echo "$1 is not a required dependency"
-            exit 1
-    esac
-    if ! [ -x "$(command -v "$1")" ]; then
-        echo "$1 not installed. Install the python package with: pip install $1==$VERSION"
-        exit 1
-    fi
-}
-
-check_python_command_exist black
-check_python_command_exist flake8
+# Check for ruff
+if ! [ -x "$(command -v ruff)" ]; then
+    echo "ruff not installed. Install with: pip install ruff"
+    exit 1
+fi
 
 # this stops git rev-parse from failing if we run this from the .git directory
 builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
@@ -54,18 +36,12 @@ builtin cd "$(dirname "${BASH_SOURCE:-$0}")"
 ROOT="$(git rev-parse --show-toplevel)"
 builtin cd "$ROOT" || exit 1
 
-FLAKE8_VERSION=$(flake8 --version | head -n 1 | awk '{print $1}')
-BLACK_VERSION=$(black --version | awk '{print $2}')
-
 # params: tool name, tool version, required version
 tool_version_check() {
     if [ "$2" != "$3" ]; then
         echo "WARNING: Fory uses $1 $3, You currently are using $2. This might generate different results."
     fi
 }
-
-tool_version_check "flake8" "$FLAKE8_VERSION" "$FLAKE8_VERSION_REQUIRED"
-tool_version_check "black" "$BLACK_VERSION" "$BLACK_VERSION_REQUIRED"
 
 if command -v shellcheck >/dev/null; then
     SHELLCHECK_VERSION=$(shellcheck --version | awk '/^version:/ {print $2}')
@@ -100,32 +76,15 @@ else
     echo "WARNING:java is not installed, skip format java files!"
 fi
 
-if [[ $(flake8 --version) != *"flake8_quotes"* ]]; then
-    echo "WARNING: Fory uses flake8 with flake8_quotes. Might error without it. Install with: pip install flake8-quotes"
-fi
-
-if [[ $(flake8 --version) != *"flake8-bugbear"* ]]; then
-    echo "WARNING: Fory uses flake8 with flake8-bugbear. Might error without it. Install with: pip install flake8-bugbear"
-fi
-
 SHELLCHECK_FLAGS=(
   --exclude=1090  # "Can't follow non-constant source. Use a directive to specify location."
   --exclude=1091  # "Not following {file} due to some error"
   --exclude=2207  # "Prefer mapfile or read -a to split command output (or quote to avoid splitting)." -- these aren't compatible with macOS's old Bash
 )
 
-BLACK_EXCLUDES=(
-    '--extend-exclude' 'python/build/*|examples/*'
-)
-
 GIT_LS_EXCLUDES=(
   ':(exclude)src/thirdparty/'
 )
-
-# TODO(barakmich): This should be cleaned up. I've at least excised the copies
-# of these arguments to this location, but the long-term answer is to actually
-# make a flake8 config file
-FLAKE8_PYX_IGNORES="--ignore=C408,E121,E123,E126,E211,E225,E226,E227,E24,E402,E704,E999,W503,W504,W605"
 
 # Format specified files
 format_files() {
@@ -159,24 +118,19 @@ format_files() {
     done
 
     if [ 0 -lt "${#python_files[@]}" ]; then
-      black "${python_files[@]}"
+      ruff format "${python_files[@]}"
+      ruff check --fix "${python_files[@]}"
     fi
 }
 
 format_all_scripts() {
-    command -v flake8 &> /dev/null;
-    HAS_FLAKE8=$?
+    echo "$(date)" "Ruff format...."
+    git ls-files -- '*.py' '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
+      ruff format
 
-    echo "$(date)" "Black...."
-    git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
-      black "${BLACK_EXCLUDES[@]}"
-    if [ $HAS_FLAKE8 ]; then
-      echo "$(date)" "Flake8...."
-      git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs \
-        flake8 --config=.flake8
-      git ls-files -- '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs \
-        flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
-    fi
+    echo "$(date)" "Ruff check...."
+    git ls-files -- '*.py' '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs \
+      ruff check --fix
 }
 
 format_java() {
@@ -233,26 +187,17 @@ format_all() {
 format_changed() {
     # The `if` guard ensures that the list of filenames is not empty, which
     # could cause the formatter to receive 0 positional arguments, making
-    # Black error.
+    # it error.
     #
     # `diff-filter=ACRM` and $MERGEBASE is to ensure we only format files that
     # exist on both branches.
     MERGEBASE="$(git merge-base origin/main HEAD)"
 
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-            black "${BLACK_EXCLUDES[@]}"
-        if which flake8 >/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
-                 flake8 --config=.flake8
-        fi
-    fi
-
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
-        if which flake8 >/dev/null; then
-            git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
-                 flake8 --config=.flake8 "$FLAKE8_PYX_IGNORES"
-        fi
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
+            ruff format
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
+            ruff check --fix
     fi
 
     if which clang-format >/dev/null; then

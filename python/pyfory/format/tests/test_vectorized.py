@@ -42,9 +42,7 @@ def test_vectorized():
     num_rows = 10
     data = [[] for _ in range(len(field_names))]
     for i in range(num_rows):
-        obj = cls(
-            f1=2**63 - 1, f2=2**31 - 1, f3=2**15 - 1, f4=2**7 - 1, f5=f"str{i}"
-        )
+        obj = cls(f1=2**63 - 1, f2=2**31 - 1, f3=2**15 - 1, f4=2**7 - 1, f5=f"str{i}")
         fields_data = list(obj)
         for j in range(len(fields_data)):
             data[j].append(fields_data[j])

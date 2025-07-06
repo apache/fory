@@ -42,9 +42,7 @@ def get_cls_by_schema(schema):
         else:
             from pyfory.type import record_class_factory
 
-            cls_ = record_class_factory(
-                "Record" + str(id(schema)), [f.name for f in schema]
-            )
+            cls_ = record_class_factory("Record" + str(id(schema)), [f.name for f in schema])
         __type_map__[id_] = cls_
         __schemas__[id_] = schema
     return __type_map__[id_]
@@ -72,9 +70,7 @@ _supported_types = {
     typing.List,
     typing.Dict,
 }
-_supported_types_str = [
-    f"{t.__module__}.{getattr(t, '__name__', t)}" for t in _supported_types
-]
+_supported_types_str = [f"{t.__module__}.{getattr(t, '__name__', t)}" for t in _supported_types]
 _supported_types_mapping = {t: t for t in _supported_types}
 _supported_types_mapping.update(
     {
@@ -134,9 +130,7 @@ class ArrowTypeVisitor(TypeVisitor):
         # typing.List/typing.Dict's origin will be list/dict
         if type_ not in _supported_types_mapping:
             raise TypeError(
-                f"Type {type_} not supported, currently only "
-                f"compositions of {_supported_types_str} are supported. "
-                f"types_path is {types_path}"
+                f"Type {type_} not supported, currently only compositions of {_supported_types_str} are supported. types_path is {types_path}"
             )
         arrow_type_func = _supported_types_mapping.get(type_)
         return pa.field(field_name, arrow_type_func())
@@ -181,9 +175,7 @@ def _compute_hash(hash_: int, type_: pa.DataType):
     elif isinstance(type_, pa.StructType):
         types.extend([f.type for f in type_])
     else:
-        assert (
-            type_.num_fields == 0
-        ), f"field type should not be nested, but got type {type_}."
+        assert type_.num_fields == 0, f"field type should not be nested, but got type {type_}."
 
     for t in types:
         hash_ = _compute_hash(hash_, t)

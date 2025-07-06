@@ -85,7 +85,8 @@ import org.apache.fory.util.Preconditions;
 public class ClassDef implements Serializable {
   static final int COMPRESS_META_FLAG = 0b1 << 13;
   static final int HAS_FIELDS_META_FLAG = 0b1 << 12;
-  static final int META_SIZE_MASKS = 0b111_1111_1111;
+  // low 12 bits
+  static final int META_SIZE_MASKS = 0xfff;
   static final int NUM_HASH_BITS = 50;
   private static final Logger LOG = LoggerFactory.getLogger(ClassDef.class);
 
