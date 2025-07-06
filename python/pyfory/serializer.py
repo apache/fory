@@ -111,6 +111,7 @@ from pyfory.type import (
     Float32NDArrayType,
     Float64NDArrayType,
     TypeId,
+    infer_field, # Added infer_field
 )
 
 
@@ -303,7 +304,8 @@ class DataClassSerializer(Serializer):
             self._serializers = [None] * len(self._field_names)
             visitor = ComplexTypeVisitor(fory)
             for index, key in enumerate(self._field_names):
-                serializer = self.fory.infer_field(
+                # Changed from self.fory.infer_field to infer_field
+                serializer = infer_field(
                     key, self._type_hints[key], visitor, types_path=[]
                 )
                 self._serializers[index] = serializer
