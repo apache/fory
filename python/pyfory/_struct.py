@@ -25,7 +25,7 @@ from pyfory.error import TypeNotCompatibleError
 from pyfory.serializer import (
     # ListSerializer, # Moved to local import in ComplexTypeVisitor
     # MapSerializer,  # Moved to local import in ComplexTypeVisitor
-    PickleSerializer, # Restoring top-level import
+    # PickleSerializer, # Re-localizing this
     Serializer,
 )
 from pyfory.type import (
@@ -97,7 +97,7 @@ class ComplexTypeVisitor(TypeVisitor):
         return None
 
     def visit_other(self, field_name, type_, types_path=None):
-        # from pyfory.serializer import PickleSerializer  # Local import # Removing local import
+        from pyfory.serializer import PickleSerializer  # Local import
 
         if is_subclass(type_, enum.Enum):
             return self.fory.type_resolver.get_serializer(type_)
@@ -225,7 +225,7 @@ class StructHashVisitor(TypeVisitor):
         self._hash = self._compute_field_hash(self._hash, hash_value)
 
     def visit_other(self, field_name, type_, types_path=None):
-        # from pyfory.serializer import PickleSerializer  # Local import # Removing local import
+        from pyfory.serializer import PickleSerializer  # Local import
         typeinfo = self.fory.type_resolver.get_typeinfo(type_, create=False)
         if typeinfo is None:
             id_ = 0

@@ -32,7 +32,7 @@ from pyfory.codegen import (
 from pyfory.error import TypeNotCompatibleError
 from pyfory.lib.collection import WeakIdentityKeyDictionary
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
-from pyfory._struct import _get_hash, _sort_fields, ComplexTypeVisitor
+# from pyfory._struct import _get_hash, _sort_fields, ComplexTypeVisitor # MOVED
 from pyfory import Language
 
 try:
@@ -285,6 +285,10 @@ _ENABLE_FORY_PYTHON_JIT = os.environ.get("ENABLE_FORY_PYTHON_JIT", "True").lower
     "1",
 )
 
+# Moved from L32 to here, after all Serializer base classes and specific serializers
+# like ListSerializer, MapSerializer, PickleSerializer are defined or imported
+# and before DataClassSerializer which uses ComplexTypeVisitor from _struct.
+from pyfory._struct import _get_hash, _sort_fields, ComplexTypeVisitor
 
 class DataClassSerializer(Serializer):
     def __init__(self, fory, clz: type, xlang: bool = False):
