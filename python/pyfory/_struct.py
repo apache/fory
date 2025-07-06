@@ -18,16 +18,8 @@
 import datetime
 import enum
 import logging
-import typing
 
-from pyfory.buffer import Buffer
-from pyfory.error import TypeNotCompatibleError
-from pyfory.serializer import (
-    # ListSerializer, # Moved to local import in ComplexTypeVisitor
-    # MapSerializer,  # Moved to local import in ComplexTypeVisitor
-    # PickleSerializer, # Re-localizing this
-    Serializer,
-)
+from pyfory.serializer import Serializer
 from pyfory.type import (
     TypeVisitor,
     infer_field,

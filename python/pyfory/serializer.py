@@ -32,7 +32,6 @@ from pyfory.codegen import (
 from pyfory.error import TypeNotCompatibleError
 from pyfory.lib.collection import WeakIdentityKeyDictionary
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
-# from pyfory._struct import _get_hash, _sort_fields, ComplexTypeVisitor # MOVED
 from pyfory import Language
 
 try:
