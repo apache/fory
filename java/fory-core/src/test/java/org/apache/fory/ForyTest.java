@@ -673,4 +673,20 @@ public class ForyTest extends ForyTestBase {
     Assert.assertEquals(struct1.f1, struct2.f1);
     Assert.assertEquals(struct1.f2, struct2.f2);
   }
+
+  @Test
+  public void testCheckedDeserialize() {
+    Fory fory = Fory.builder()
+        .withLanguage(Language.JAVA)
+        .withRefTracking(true)
+        .requireClassRegistration(false)
+        .build();
+    LocalDate now = LocalDate.now();
+    byte[] bytes = fory.serialize(now);
+    LocalDate ld0 = fory.deserialize(bytes, LocalDate.class);
+    Assert.assertEquals(ld0, LocalDate.now());
+    // Deserialize with wrong type and get an IllegalStateException
+    assertThrows(IllegalStateException.class,
+        () -> fory.deserialize(bytes, String.class));
+  }
 }
