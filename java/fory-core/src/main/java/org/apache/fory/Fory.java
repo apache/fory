@@ -37,6 +37,7 @@ import org.apache.fory.config.Config;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.config.LongEncoding;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.logging.Logger;
@@ -953,7 +954,7 @@ public final class Fory implements BaseFory {
       // ref value or not-null value
       ClassInfo classInfo = classResolver.readClassInfo(buffer);
       if (!expectedType.isAssignableFrom(classInfo.getCls())) {
-        throw new IllegalStateException(String.format(
+        throw new DeserializationException(String.format(
             "Unexpected type %s which is not assignable to %s",
                 classInfo.getClass().getName(),
                 expectedType.getName()));
@@ -1108,7 +1109,7 @@ public final class Fory implements BaseFory {
     if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
       ClassInfo classInfo = xtypeResolver.readClassInfo(buffer);
       if (!expectedType.isAssignableFrom(classInfo.getCls())) {
-        throw new IllegalStateException(String.format(
+        throw new DeserializationException(String.format(
             "Unexpected type %s which is not assignable to %s",
             classInfo.getClass().getName(),
             expectedType.getName()));

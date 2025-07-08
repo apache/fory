@@ -58,6 +58,7 @@ import org.apache.fory.builder.Generated;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
@@ -685,8 +686,8 @@ public class ForyTest extends ForyTestBase {
     byte[] bytes = fory.serialize(now);
     LocalDate ld0 = fory.deserialize(bytes, LocalDate.class);
     Assert.assertEquals(ld0, LocalDate.now());
-    // Deserialize with wrong type and get an IllegalStateException
-    assertThrows(IllegalStateException.class,
+    // Deserialize with wrong type and get a DeserializationException
+    assertThrows(DeserializationException.class,
         () -> fory.deserialize(bytes, String.class));
   }
 }
