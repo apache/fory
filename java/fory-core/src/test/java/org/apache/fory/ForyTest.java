@@ -49,7 +49,6 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.WeakHashMap;
-
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -679,15 +678,13 @@ public class ForyTest extends ForyTestBase {
 
   @Test
   public void testDeserializeJavaObjectWrongType() {
-    Fory fory = Fory.builder()
-        .requireClassRegistration(false)
-        .build();
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
     Struct1 struct1 = new Struct1(10, "abc");
     byte[] bytes = fory.serializeJavaObject(struct1);
     // first deserialize as Struct1 (correct type)
     Assert.assertEquals(fory.deserializeJavaObject(bytes, Struct1.class), struct1);
     // then deserialize as Struct2 (wrong type)
-    Assert.assertThrows(DeserializationException.class,
-        () -> fory.deserializeJavaObject(bytes, Struct2.class));
+    Assert.assertThrows(
+        DeserializationException.class, () -> fory.deserializeJavaObject(bytes, Struct2.class));
   }
 }
