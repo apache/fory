@@ -37,6 +37,7 @@ import org.apache.fory.config.Config;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.config.LongEncoding;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.logging.Logger;
@@ -798,7 +799,7 @@ public final class Fory implements BaseFory {
   public <T> T deserialize(byte[] bytes, Class<T> type) {
     generics.pushGenericType(classResolver.buildGenericType(type));
     try {
-      return (T) deserialize(MemoryUtils.wrap(bytes), null);
+      return (T) checkedDeserialize(MemoryUtils.wrap(bytes), null, type);
     } finally {
       generics.popGenericType();
     }
@@ -834,6 +835,12 @@ public final class Fory implements BaseFory {
    */
   @Override
   public Object deserialize(MemoryBuffer buffer, Iterable<MemoryBuffer> outOfBandBuffers) {
+    return checkedDeserialize(buffer, outOfBandBuffers, null);
+  }
+
+  private Object checkedDeserialize(MemoryBuffer buffer,
+                                    Iterable<MemoryBuffer> outOfBandBuffers,
+                                    Class<?> expectedType) {
     try {
       jitContext.lock();
       if (depth != 0) {
@@ -878,7 +885,13 @@ public final class Fory implements BaseFory {
       }
       Object obj;
       if (isTargetXLang) {
-        obj = xreadRef(buffer);
+        if (expectedType != null) {
+          obj = checkedXreadRef(buffer, expectedType);
+        } else {
+          obj = xreadRef(buffer);
+        }
+      } else if (expectedType != null) {
+        obj = checkedReadRef(buffer, expectedType);
       } else {
         obj = readRef(buffer);
       }
@@ -927,6 +940,26 @@ public final class Fory implements BaseFory {
     if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
       // ref value or not-null value
       Object o = readDataInternal(buffer, classResolver.readClassInfo(buffer));
+      refResolver.setReadObject(nextReadRefId, o);
+      return o;
+    } else {
+      return refResolver.getReadObject();
+    }
+  }
+
+  private Object checkedReadRef(MemoryBuffer buffer, Class<?> expectedType) {
+    RefResolver refResolver = this.refResolver;
+    int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+    if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
+      // ref value or not-null value
+      ClassInfo classInfo = classResolver.readClassInfo(buffer);
+      if (!expectedType.isAssignableFrom(classInfo.getCls())) {
+        throw new DeserializationException(String.format(
+            "Unexpected type %s which is not assignable to %s",
+                classInfo.getClass().getName(),
+                expectedType.getName()));
+      }
+      Object o = readDataInternal(buffer, classInfo);
       refResolver.setReadObject(nextReadRefId, o);
       return o;
     } else {
@@ -1069,6 +1102,26 @@ public final class Fory implements BaseFory {
       return refResolver.getReadObject();
     }
   }
+
+  private Object checkedXreadRef(MemoryBuffer buffer, Class<?> expectedType) {
+    RefResolver refResolver = this.refResolver;
+    int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+    if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
+      ClassInfo classInfo = xtypeResolver.readClassInfo(buffer);
+      if (!expectedType.isAssignableFrom(classInfo.getCls())) {
+        throw new DeserializationException(String.format(
+            "Unexpected type %s which is not assignable to %s",
+            classInfo.getClass().getName(),
+            expectedType.getName()));
+      }
+      Object o = xreadNonRef(buffer, classInfo);
+      refResolver.setReadObject(nextReadRefId, o);
+      return o;
+    } else {
+      return refResolver.getReadObject();
+    }
+  }
+
 
   public Object xreadRef(MemoryBuffer buffer, Serializer<?> serializer) {
     if (serializer.needToWriteRef()) {
