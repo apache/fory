@@ -685,7 +685,7 @@ public class ForyTest extends ForyTestBase {
     LocalDate now = LocalDate.now();
     byte[] bytes = fory.serialize(now);
     LocalDate ld0 = fory.deserialize(bytes, LocalDate.class);
-    Assert.assertEquals(ld0, LocalDate.now());
+    Assert.assertEquals(ld0, now);
     // Deserialize with wrong type and get a DeserializationException
     assertThrows(DeserializationException.class,
         () -> fory.deserialize(bytes, String.class));
