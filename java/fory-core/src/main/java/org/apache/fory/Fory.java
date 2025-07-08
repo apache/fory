@@ -849,9 +849,9 @@ public final class Fory implements BaseFory {
         short magicNumber = buffer.readInt16();
         assert magicNumber == MAGIC_NUMBER
             : String.format(
-            "The fory xlang serialization must start with magic number 0x%x. Please "
-                + "check whether the serialization is based on the xlang protocol and the data didn't corrupt.",
-            MAGIC_NUMBER);
+                "The fory xlang serialization must start with magic number 0x%x. Please "
+                    + "check whether the serialization is based on the xlang protocol and the data didn't corrupt.",
+                MAGIC_NUMBER);
       }
       byte bitmap = buffer.readByte();
       if ((bitmap & isNilFlag) == isNilFlag) {
@@ -1102,7 +1102,7 @@ public final class Fory implements BaseFory {
     }
   }
 
-  public Object checkedXreadRef(MemoryBuffer buffer, Class<?> expectedType) {
+  private Object checkedXreadRef(MemoryBuffer buffer, Class<?> expectedType) {
     RefResolver refResolver = this.refResolver;
     int nextReadRefId = refResolver.tryPreserveRefId(buffer);
     if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
