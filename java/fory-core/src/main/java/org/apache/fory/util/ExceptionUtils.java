@@ -63,8 +63,7 @@ public class ExceptionUtils {
       throw new DeserializationException(objects, t);
     } else if (t instanceof Exception) {
       throw new DeserializationException(
-          String.format("Failed to deserialize input"),
-          t);
+          "Failed to deserialize input", t);
     } else {
       Platform.throwException(t);
       throw new IllegalStateException("unreachable");
