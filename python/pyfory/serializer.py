@@ -353,11 +353,11 @@ class DataClassSerializer(Serializer):
                 stmts.append(f"{field_value} = {value}.{field_name}")
             if field_type is bool:
                 stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, bool))
-            elif field_type == int:
+            elif field_type is int:
                 stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, int))
-            elif field_type == float:
+            elif field_type is float:
                 stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, float))
-            elif field_type == str:
+            elif field_type is str:
                 stmts.extend(gen_write_nullable_basic_stmts(buffer, field_value, str))
             else:
                 stmts.append(f"{fory}.write_ref_pyobject({buffer}, {field_value})")
@@ -406,11 +406,11 @@ class DataClassSerializer(Serializer):
             field_type = self._type_hints[field_name]
             if field_type is bool:
                 stmts.extend(gen_read_nullable_basic_stmts(buffer, bool, set_action))
-            elif field_type == int:
+            elif field_type is int:
                 stmts.extend(gen_read_nullable_basic_stmts(buffer, int, set_action))
-            elif field_type == float:
+            elif field_type is float:
                 stmts.extend(gen_read_nullable_basic_stmts(buffer, float, set_action))
-            elif field_type == str:
+            elif field_type is str:
                 stmts.extend(gen_read_nullable_basic_stmts(buffer, str, set_action))
             else:
                 stmts.append(f"{obj}.{field_name} = {fory}.read_ref_pyobject({buffer})")
