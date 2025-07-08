@@ -25,6 +25,7 @@ import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.ObjectArray;
 import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.MapRefResolver;
@@ -61,7 +62,7 @@ public class ExceptionUtils {
       // carry with read objects for better trouble shooting.
       List<Object> objects = Arrays.asList(readObjects.objects).subList(0, readObjects.size);
       throw new DeserializationException(objects, t);
-    } else if (t instanceof Exception) {
+    } else if (t instanceof Exception && !(t instanceof ForyException)) {
       throw new DeserializationException(
           "Failed to deserialize input", t);
     } else {
