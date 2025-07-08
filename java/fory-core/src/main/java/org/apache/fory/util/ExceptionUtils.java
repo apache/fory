@@ -61,6 +61,10 @@ public class ExceptionUtils {
       // carry with read objects for better trouble shooting.
       List<Object> objects = Arrays.asList(readObjects.objects).subList(0, readObjects.size);
       throw new DeserializationException(objects, t);
+    } else if (t instanceof Exception) {
+      throw new DeserializationException(
+          String.format("Failed to deserialize input"),
+          t);
     } else {
       Platform.throwException(t);
       throw new IllegalStateException("unreachable");

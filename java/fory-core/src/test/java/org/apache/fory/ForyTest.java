@@ -59,6 +59,7 @@ import org.apache.fory.builder.Generated;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
+import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
@@ -686,6 +687,7 @@ public class ForyTest extends ForyTestBase {
     // first deserialize as Struct1 (correct type)
     Assert.assertEquals(fory.deserializeJavaObject(bytes, Struct1.class), struct1);
     // then deserialize as Struct2 (wrong type)
-    Assert.assertEquals(fory.deserializeJavaObject(bytes, Struct2.class), struct1);
+    Assert.assertThrows(DeserializationException.class,
+        () -> fory.deserializeJavaObject(bytes, Struct2.class));
   }
 }
