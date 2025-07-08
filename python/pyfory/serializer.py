@@ -20,6 +20,7 @@ import itertools
 import os
 import pickle
 import typing
+import warnings
 from weakref import WeakValueDictionary
 
 import pyfory.lib.mmh3
@@ -731,3 +732,14 @@ class PickleSerializer(Serializer):
 
     def read(self, buffer):
         return self.fory.handle_unsupported_read(buffer)
+
+
+class ComplexObjectSerializer(DataClassSerializer):
+    def __new__(cls, fory, clz):
+        warnings.warn(
+            "`ComplexObjectSerializer` is deprecated and will be removed in a future version. "
+            "Use `DataClassSerializer(fory, clz, xlang=True)` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return DataClassSerializer(fory, clz, xlang=True)

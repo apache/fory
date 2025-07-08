@@ -60,7 +60,6 @@ from pyfory.serializer import (
     PickleSerializer,
     DataClassSerializer,
 )
-from pyfory._struct import ComplexObjectSerializer
 from pyfory.meta.metastring import MetaStringEncoder, MetaStringDecoder
 from pyfory.type import (
     TypeId,
@@ -364,7 +363,7 @@ class TypeResolver:
                     else ((type_id << 8) + TypeId.ENUM)
                 )
             else:
-                serializer = ComplexObjectSerializer(self.fory, cls)
+                serializer = DataClassSerializer(self.fory, cls, xlang=True)
                 type_id = (
                     TypeId.NAMED_STRUCT
                     if type_id is None

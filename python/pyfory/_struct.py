@@ -19,7 +19,6 @@ import datetime
 import enum
 import logging
 
-from pyfory.serializer import Serializer
 from pyfory.type import (
     TypeVisitor,
     infer_field,
@@ -170,25 +169,6 @@ def _sort_fields(type_resolver, field_names, serializers):
     other_types = sorted(other_types, key=sorter)
     all_types = boxed_types + final_types + other_types + collection_types + map_types
     return [t[1] for t in all_types], [t[2] for t in all_types]
-
-
-import warnings
-
-# Removed DataClassSerializer from here to break the cycle for the alias target.
-# Other serializers like ListSerializer, MapSerializer, Serializer are still imported at the top.
-
-
-class ComplexObjectSerializer(Serializer):
-    def __new__(cls, fory, clz):
-        from pyfory.serializer import DataClassSerializer  # Local import
-
-        warnings.warn(
-            "`ComplexObjectSerializer` is deprecated and will be removed in a future version. "
-            "Use `DataClassSerializer(fory, clz, xlang=True)` instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return DataClassSerializer(fory, clz, xlang=True)
 
 
 class StructHashVisitor(TypeVisitor):

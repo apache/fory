@@ -31,9 +31,6 @@ from pyfory._registry import TypeInfo
 if ENABLE_FORY_CYTHON_SERIALIZATION:
     from pyfory._serialization import Fory, TypeInfo  # noqa: F401,F811
 
-from pyfory._struct import (  # noqa: F401,F403,F811 # pylint: disable=unused-import
-    ComplexObjectSerializer,
-)
 from pyfory.serializer import *  # noqa: F401,F403 # pylint: disable=unused-import
 from pyfory.type import (  # noqa: F401 # pylint: disable=unused-import
     record_class_factory,
