@@ -306,21 +306,16 @@ class DataClassSerializer(Serializer):
             visitor = ComplexTypeVisitor(fory)
             for index, key in enumerate(self._field_names):
                 # Changed from self.fory.infer_field to infer_field
-                serializer = infer_field(
-                    key, self._type_hints[key], visitor, types_path=[]
-                )
+                serializer = infer_field(key, self._type_hints[key], visitor, types_path=[])
                 self._serializers[index] = serializer
-            self._serializers, self._field_names = _sort_fields(
-                fory.type_resolver, self._field_names, self._serializers
-            )
+            self._serializers, self._field_names = _sort_fields(fory.type_resolver, self._field_names, self._serializers)
             self._hash = 0  # Will be computed on first xwrite/xread
             if self.fory.language == Language.PYTHON:
                 import logging  # Import here to avoid circular dependency
 
                 logger = logging.getLogger(__name__)
                 logger.warning(
-                    "Type of class %s shouldn't be serialized using cross-language "
-                    "serializer",
+                    "Type of class %s shouldn't be serialized using cross-language serializer",
                     clz,
                 )
         else:
@@ -362,9 +357,7 @@ class DataClassSerializer(Serializer):
             else:
                 stmts.append(f"{fory}.write_ref_pyobject({buffer}, {field_value})")
         self._write_method_code, func = compile_function(
-            f"write_{self.type_.__module__}_{self.type_.__qualname__}".replace(
-                ".", "_"
-            ),
+            f"write_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
             [buffer, value],
             stmts,
             context,
@@ -433,8 +426,7 @@ class DataClassSerializer(Serializer):
         hash_ = buffer.read_int32()
         if hash_ != self._hash:
             raise TypeNotCompatibleError(
-                f"Hash {hash_} is not consistent with {self._hash} "
-                f"for type {self.type_}",
+                f"Hash {hash_} is not consistent with {self._hash} for type {self.type_}",
             )
         obj = self.type_.__new__(self.type_)
         self.fory.ref_resolver.reference(obj)
@@ -449,9 +441,7 @@ class DataClassSerializer(Serializer):
 
     def xwrite(self, buffer: Buffer, value):
         if not self._xlang:
-            raise TypeError(
-                "xwrite can only be called when DataClassSerializer is in xlang mode"
-            )
+            raise TypeError("xwrite can only be called when DataClassSerializer is in xlang mode")
         if self._hash == 0:
             self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
         buffer.write_int32(self._hash)
@@ -462,16 +452,13 @@ class DataClassSerializer(Serializer):
 
     def xread(self, buffer):
         if not self._xlang:
-            raise TypeError(
-                "xread can only be called when DataClassSerializer is in xlang mode"
-            )
+            raise TypeError("xread can only be called when DataClassSerializer is in xlang mode")
         if self._hash == 0:
             self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
         hash_ = buffer.read_int32()
         if hash_ != self._hash:
             raise TypeNotCompatibleError(
-                f"Hash {hash_} is not consistent with {self._hash} "
-                f"for type {self.type_}",
+                f"Hash {hash_} is not consistent with {self._hash} for type {self.type_}",
             )
         obj = self.type_.__new__(self.type_)
         self.fory.ref_resolver.reference(obj)
@@ -639,9 +626,7 @@ class Numpy1DArraySerializer(Serializer):
     def __init__(self, fory, ftype, dtype):
         super().__init__(fory, ftype)
         self.dtype = dtype
-        self.itemsize, self.format, self.typecode, self.type_id = _np_dtypes_dict[
-            self.dtype
-        ]
+        self.itemsize, self.format, self.typecode, self.type_id = _np_dtypes_dict[self.dtype]
 
     def xwrite(self, buffer, value):
         assert value.itemsize == self.itemsize

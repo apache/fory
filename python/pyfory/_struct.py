@@ -140,9 +140,7 @@ def _sort_fields(type_resolver, field_names, serializers):
         elif is_map_type(serializer.type_):
             container = map_types
         elif (
-            type_id in {TypeId.STRING}
-            or is_primitive_array_type(type_id)
-            or is_subclass(serializer.type_, enum.Enum)
+            type_id in {TypeId.STRING} or is_primitive_array_type(type_id) or is_subclass(serializer.type_, enum.Enum)
         ) or serializer.type_ in _time_types:
             container = final_types
         else:
