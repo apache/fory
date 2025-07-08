@@ -86,6 +86,8 @@ public final class ForyBuilder {
   boolean serializeEnumByName = false;
   int bufferSizeLimitBytes = 128 * 1024;
   MetaCompressor metaCompressor = new DeflaterMetaCompressor();
+  ExceptionLogMode exceptionLogMode = ExceptionLogMode.ALL_PRINT;
+  int logSampleStep;
 
   public ForyBuilder() {}
 
@@ -142,6 +144,18 @@ public final class ForyBuilder {
   /** deserialize and serialize enum by name. */
   public ForyBuilder serializeEnumByName(boolean serializeEnumByName) {
     this.serializeEnumByName = serializeEnumByName;
+    return this;
+  }
+
+  /** exception log level choose the log level, print the error message. */
+  public ForyBuilder withExceptionLogMode(ExceptionLogMode exceptionLogMode) {
+    this.exceptionLogMode = exceptionLogMode;
+    return this;
+  }
+
+  public ForyBuilder withExceptionLogMode(ExceptionLogMode exceptionLogMode, int logSampleStep) {
+    this.exceptionLogMode = exceptionLogMode;
+    this.logSampleStep = logSampleStep;
     return this;
   }
 

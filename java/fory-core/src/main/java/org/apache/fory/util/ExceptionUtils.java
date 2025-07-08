@@ -20,6 +20,7 @@
 package org.apache.fory.util;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.apache.fory.Fory;
@@ -57,14 +58,34 @@ public class ExceptionUtils {
 
   public static RuntimeException handleReadFailed(Fory fory, Throwable t) {
     if (fory.getRefResolver() instanceof MapRefResolver) {
-      ObjectArray readObjects = ((MapRefResolver) fory.getRefResolver()).getReadObjects();
-      // carry with read objects for better trouble shooting.
-      List<Object> objects = Arrays.asList(readObjects.objects).subList(0, readObjects.size);
-      throw new DeserializationException(objects, t);
+      List<Object> exceptionObjects = getExceptionObjects(fory);
+      throw new DeserializationException(exceptionObjects, t);
     } else {
       Platform.throwException(t);
       throw new IllegalStateException("unreachable");
     }
+  }
+
+  public static List<Object> getExceptionObjects(Fory fory) {
+    ObjectArray readObjects = ((MapRefResolver) fory.getRefResolver()).getReadObjects();
+    // carry with read objects for better trouble shooting.
+    List<Object> objects = Arrays.asList(readObjects.objects).subList(0, readObjects.size);
+    switch (fory.getConfig().getExceptionLogMode()) {
+      case NONE_PRINT:
+        return new ArrayList<>();
+      case SAMPLE_PRINT:
+        return systematicSample(objects, Math.max(1, fory.getConfig().getLogSampleStep()));
+      default:
+        return objects;
+    }
+  }
+
+  public static <T> List<T> systematicSample(List<T> list, int step) {
+    List<T> result = new ArrayList<>();
+    for (int i = 0; i < list.size(); i += step) {
+      result.add(list.get(i));
+    }
+    return result;
   }
 
   public static void ignore(Object... args) {}
