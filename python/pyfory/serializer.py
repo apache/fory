@@ -712,19 +712,18 @@ class StatefulSerializer(CrossLanguageCompatibleSerializer):
     def __init__(self, fory, cls):
         super().__init__(fory, cls)
         self.cls = cls
+        # Cache the method references as fields in the serializer.
+        self._getnewargs_ex = getattr(cls, "__getnewargs_ex__", None)
+        self._getnewargs = getattr(cls, "__getnewargs__", None)
 
     def write(self, buffer, value):
-        # Get the state using __getstate__
         state = value.__getstate__()
-
-        # Check for constructor arguments
         args = ()
         kwargs = {}
-
-        if hasattr(value, "__getnewargs_ex__"):
-            args, kwargs = value.__getnewargs_ex__()
-        elif hasattr(value, "__getnewargs__"):
-            args = value.__getnewargs__()
+        if self._getnewargs_ex is not None:
+            args, kwargs = self._getnewargs_ex(value)
+        elif self._getnewargs is not None:
+            args = self._getnewargs(value)
 
         # Serialize constructor arguments first
         self.fory.serialize_ref(buffer, args)
@@ -738,21 +737,15 @@ class StatefulSerializer(CrossLanguageCompatibleSerializer):
         kwargs = self.fory.deserialize_ref(buffer)
         state = self.fory.deserialize_ref(buffer)
 
-        # If the class actually declared __getnewargs_ex__ or __getnewargs__,
-        # we expect args/kwargs to be meaningful. Redundant but defensive.
-        has_newargs = hasattr(self.cls, "__getnewargs_ex__") or hasattr(self.cls, "__getnewargs__")
-
-        # Create an instance based on whether constructor arguments are available
-        if has_newargs and (args or kwargs):
-            # Object has __getnewargs_ex__ or __getnewargs__ - use constructor
+        if args or kwargs:
+            # Case 1: __getnewargs__ was used. Re-create by calling __init__.
             obj = self.cls(*args, **kwargs)
         else:
-            # Object only has __getstate__/__setstate__ - create bare instance
+            # Case 2: Only __getstate__ was used. Create without calling __init__.
             obj = self.cls.__new__(self.cls)
 
-        # Restore state using __setstate__
-        obj.__setstate__(state)
-
+        if state:
+            obj.__setstate__(state)
         return obj
 
 
