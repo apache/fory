@@ -703,6 +703,59 @@ class BytesBufferObject(BufferObject):
         return Buffer(self.binary)
 
 
+class StatefulSerializer(CrossLanguageCompatibleSerializer):
+    """
+    Serializer for objects that support __getstate__ and __setstate__.
+    Uses Fory's native serialization for better cross-language support.
+    """
+
+    def __init__(self, fory, cls):
+        super().__init__(fory, cls)
+        self.cls = cls
+
+    def write(self, buffer, value):
+        # Get the state using __getstate__
+        state = value.__getstate__()
+
+        # Check for constructor arguments
+        args = ()
+        kwargs = {}
+
+        if hasattr(value, "__getnewargs_ex__"):
+            args, kwargs = value.__getnewargs_ex__()
+        elif hasattr(value, "__getnewargs__"):
+            args = value.__getnewargs__()
+
+        # Serialize constructor arguments first
+        self.fory.serialize_ref(buffer, args)
+        self.fory.serialize_ref(buffer, kwargs)
+
+        # Then serialize the state
+        self.fory.serialize_ref(buffer, state)
+
+    def read(self, buffer):
+        args = self.fory.deserialize_ref(buffer)
+        kwargs = self.fory.deserialize_ref(buffer)
+        state = self.fory.deserialize_ref(buffer)
+
+        # If the class actually declared __getnewargs_ex__ or __getnewargs__,
+        # we expect args/kwargs to be meaningful. Redundant but defensive.
+        has_newargs = hasattr(self.cls, "__getnewargs_ex__") or hasattr(self.cls, "__getnewargs__")
+
+        # Create an instance based on whether constructor arguments are available
+        if has_newargs and (args or kwargs):
+            # Object has __getnewargs_ex__ or __getnewargs__ - use constructor
+            obj = self.cls(*args, **kwargs)
+        else:
+            # Object only has __getstate__/__setstate__ - create bare instance
+            obj = self.cls.__new__(self.cls)
+
+        # Restore state using __setstate__
+        obj.__setstate__(state)
+
+        return obj
+
+
 class PickleSerializer(Serializer):
     PICKLE_TYPE_ID = 96
 

@@ -59,6 +59,7 @@ from pyfory.serializer import (
     PickleStrongCacheSerializer,
     PickleSerializer,
     DataClassSerializer,
+    StatefulSerializer,
 )
 from pyfory.meta.metastring import MetaStringEncoder, MetaStringDecoder
 from pyfory.type import (
@@ -459,6 +460,8 @@ class TypeResolver:
                 type_id = TypeId.NAMED_ENUM
             elif type(serializer) is PickleSerializer:
                 type_id = PickleSerializer.PICKLE_TYPE_ID
+            elif isinstance(serializer, StatefulSerializer):
+                type_id = TypeId.NAMED_EXT
             if not self.require_registration:
                 if isinstance(serializer, DataClassSerializer):
                     type_id = TypeId.NAMED_STRUCT
@@ -485,6 +488,15 @@ class TypeResolver:
                 serializer = DataClassSerializer(self.fory, cls)
             elif issubclass(cls, enum.Enum):
                 serializer = EnumSerializer(self.fory, cls)
+            elif hasattr(cls, "__getstate__") and hasattr(cls, "__setstate__"):
+                # Use StatefulSerializer for objects that support __getstate__ and __setstate__
+                # But exclude certain types that have incompatible state methods
+                module_name = getattr(cls, "__module__", "")
+                if module_name.startswith("pandas."):
+                    # Pandas objects have __getstate__/__setstate__ but use incompatible pickle formats
+                    serializer = PickleSerializer(self.fory, cls)
+                else:
+                    serializer = StatefulSerializer(self.fory, cls)
             else:
                 serializer = PickleSerializer(self.fory, cls)
         return serializer
