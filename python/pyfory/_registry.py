@@ -74,7 +74,6 @@ from pyfory.type import (
     Float32Type,
     Float64Type,
     load_class,
-    is_function,
 )
 from pyfory._fory import (
     DYNAMIC_TYPE_ID,
