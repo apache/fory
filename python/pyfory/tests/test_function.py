@@ -24,7 +24,7 @@ def test_lambda_functions_serialization():
     test_input = 5
 
     # Simple lambda
-    simple_lambda = lambda x: x * 2
+    simple_lambda = lambda x: x * 2  # noqa: E731
     fory.register_type(type(simple_lambda))
     serialized = fory.serialize(simple_lambda)
     deserialized = fory.deserialize(serialized)
@@ -32,7 +32,7 @@ def test_lambda_functions_serialization():
 
     # Complex lambda with closure
     multiplier = 3
-    closure_lambda = lambda x: x * multiplier
+    closure_lambda = lambda x: x * multiplier  # noqa: E731
     serialized = fory.serialize(closure_lambda)
     deserialized = fory.deserialize(serialized)
     assert closure_lambda(test_input) == deserialized(test_input)
