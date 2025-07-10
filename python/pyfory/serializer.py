@@ -749,6 +749,106 @@ class StatefulSerializer(CrossLanguageCompatibleSerializer):
         return obj
 
 
+class ReduceSerializer(CrossLanguageCompatibleSerializer):
+    """
+    Serializer for objects that support __reduce__ or __reduce_ex__.
+    Uses Fory's native serialization for better cross-language support.
+    Has higher precedence than StatefulSerializer.
+    """
+
+    def __init__(self, fory, cls):
+        super().__init__(fory, cls)
+        self.cls = cls
+        # Cache the method references as fields in the serializer.
+        self._reduce_ex = getattr(cls, "__reduce_ex__", None)
+        self._reduce = getattr(cls, "__reduce__", None)
+        self._getnewargs_ex = getattr(cls, "__getnewargs_ex__", None)
+        self._getnewargs = getattr(cls, "__getnewargs__", None)
+
+    def write(self, buffer, value):
+        # Try __reduce_ex__ first (with protocol 2), then __reduce__
+        # Check if the object has a custom __reduce_ex__ method (not just the default from object)
+        if hasattr(value, "__reduce_ex__") and value.__class__.__reduce_ex__ is not object.__reduce_ex__:
+            try:
+                reduce_result = value.__reduce_ex__(2)
+            except TypeError:
+                # Some objects don't support protocol argument
+                reduce_result = value.__reduce_ex__()
+        elif hasattr(value, "__reduce__"):
+            reduce_result = value.__reduce__()
+        else:
+            raise ValueError(f"Object {value} has no __reduce__ or __reduce_ex__ method")
+
+        # Handle different __reduce__ return formats
+        if isinstance(reduce_result, str):
+            # Case 1: Just a global name (simple case)
+            self.fory.serialize_ref(buffer, ("global", reduce_result, None, None, None))
+        elif isinstance(reduce_result, tuple):
+            if len(reduce_result) == 2:
+                # Case 2: (callable, args)
+                callable_obj, args = reduce_result
+                self.fory.serialize_ref(buffer, ("callable", callable_obj, args, None, None))
+            elif len(reduce_result) == 3:
+                # Case 3: (callable, args, state)
+                callable_obj, args, state = reduce_result
+                self.fory.serialize_ref(buffer, ("callable", callable_obj, args, state, None))
+            elif len(reduce_result) == 4:
+                # Case 4: (callable, args, state, listitems)
+                callable_obj, args, state, listitems = reduce_result
+                self.fory.serialize_ref(buffer, ("callable", callable_obj, args, state, listitems))
+            elif len(reduce_result) == 5:
+                # Case 5: (callable, args, state, listitems, dictitems)
+                callable_obj, args, state, listitems, dictitems = reduce_result
+                self.fory.serialize_ref(buffer, ("callable", callable_obj, args, state, listitems, dictitems))
+            else:
+                raise ValueError(f"Invalid __reduce__ result length: {len(reduce_result)}")
+        else:
+            raise ValueError(f"Invalid __reduce__ result type: {type(reduce_result)}")
+
+    def read(self, buffer):
+        reduce_data = self.fory.deserialize_ref(buffer)
+
+        if reduce_data[0] == "global":
+            # Case 1: Global name
+            global_name = reduce_data[1]
+            # Import and return the global object
+            module_name, obj_name = global_name.rsplit(".", 1)
+            module = __import__(module_name, fromlist=[obj_name])
+            return getattr(module, obj_name)
+        elif reduce_data[0] == "callable":
+            # Case 2-5: Callable with args and optional state/items
+            callable_obj = reduce_data[1]
+            args = reduce_data[2] or ()
+            state = reduce_data[3]
+            listitems = reduce_data[4]
+            dictitems = reduce_data[5] if len(reduce_data) > 5 else None
+
+            # Create the object using the callable and args
+            obj = callable_obj(*args)
+
+            # Restore state if present
+            if state is not None:
+                if hasattr(obj, "__setstate__"):
+                    obj.__setstate__(state)
+                else:
+                    # Fallback: update __dict__ directly
+                    if hasattr(obj, "__dict__"):
+                        obj.__dict__.update(state)
+
+            # Restore list items if present
+            if listitems is not None:
+                obj.extend(listitems)
+
+            # Restore dict items if present
+            if dictitems is not None:
+                for key, value in dictitems:
+                    obj[key] = value
+
+            return obj
+        else:
+            raise ValueError(f"Invalid reduce data format: {reduce_data[0]}")
+
+
 class PickleSerializer(Serializer):
     PICKLE_TYPE_ID = 96
 
