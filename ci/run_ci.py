@@ -18,10 +18,12 @@
 import argparse
 import logging
 import os
+import shutil
 import subprocess
 import sys
 
 from tasks import cpp, java, javascript, kotlin, rust, python, go, format
+from tasks.common import is_windows
 
 # Configure logging
 logging.basicConfig(
@@ -70,19 +72,43 @@ USE_PYTHON_PYTHON = os.environ.get("USE_PYTHON_PYTHON", "0") == "1"
 USE_PYTHON_GO = os.environ.get("USE_PYTHON_GO", "0") == "1"
 USE_PYTHON_FORMAT = os.environ.get("USE_PYTHON_FORMAT", "0") == "1"
 
+
 def run_shell_script(command, *args):
     """Run the shell script with the given command and arguments."""
     script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run_ci.sh")
-    cmd = [script_path, command]
-    cmd.extend(args)
-    logging.info(f"Falling back to shell script: {' '.join(cmd)}")
-    return subprocess.call(cmd)
+
+    if is_windows():
+        # On Windows, try to use bash if available
+        bash_path = shutil.which("bash")
+        if bash_path:
+            cmd = [bash_path, script_path, command]
+            cmd.extend(args)
+            logging.info(f"Falling back to shell script with bash: {' '.join(cmd)}")
+            return subprocess.call(cmd)
+        else:
+            logging.error(
+                "Bash is not available on this Windows system. Cannot run shell script."
+            )
+            logging.error(
+                "Please install Git Bash, WSL, or Cygwin to run shell scripts on Windows."
+            )
+            logging.error(
+                "Alternatively, set USE_PYTHON_JAVA=1 to use the Python implementation."
+            )
+            sys.exit(1)
+    else:
+        # On Unix-like systems, run the script directly
+        cmd = [script_path, command]
+        cmd.extend(args)
+        logging.info(f"Falling back to shell script: {' '.join(cmd)}")
+        return subprocess.call(cmd)
+
 
 def parse_args():
     """Parse command-line arguments and dispatch to the appropriate task module."""
     parser = argparse.ArgumentParser(
         description="Fory CI Runner",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.set_defaults(func=lambda: parser.print_help())
     subparsers = parser.add_subparsers(dest="command")
@@ -97,7 +123,7 @@ def parse_args():
     cpp_parser.add_argument(
         "--install-deps-only",
         action="store_true",
-        help="Only install dependencies without running tests"
+        help="Only install dependencies without running tests",
     )
     cpp_parser.set_defaults(func=lambda install_deps_only: cpp.run(install_deps_only))
 
@@ -128,9 +154,18 @@ def parse_args():
     )
     java_parser.add_argument(
         "--version",
-        choices=["8", "11", "17", "21", "24", "windows_java21", "integration_tests", "graalvm"],
+        choices=[
+            "8",
+            "11",
+            "17",
+            "21",
+            "24",
+            "windows_java21",
+            "integration_tests",
+            "graalvm",
+        ],
         default="17",
-        help="Java version to use for testing"
+        help="Java version to use for testing",
     )
     java_parser.set_defaults(func=lambda version: java.run(version))
 
@@ -189,7 +224,13 @@ def parse_args():
         else:
             # Map Python version argument to shell script command
             version = arg_dict.get("version", "17")
-            if version == "integration_tests":
+            # For windows_java21 on Windows, use the Python implementation directly
+            if version == "windows_java21" and is_windows():
+                logging.info(
+                    "Using Python implementation for windows_java21 on Windows"
+                )
+                func(version)
+            elif version == "integration_tests":
                 run_shell_script("integration_tests")
             elif version == "windows_java21":
                 run_shell_script("windows_java21")
@@ -237,6 +278,7 @@ def parse_args():
             run_shell_script("format")
     else:
         func()
+
 
 if __name__ == "__main__":
     parse_args()

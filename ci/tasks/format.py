@@ -18,6 +18,7 @@
 import logging
 from . import common
 
+
 def run():
     """Run format checking tasks."""
     logging.info("Install format tools")

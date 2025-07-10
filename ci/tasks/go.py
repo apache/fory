@@ -18,6 +18,7 @@
 import logging
 from . import common
 
+
 def run():
     """Run Go CI tasks."""
     logging.info("Executing fory go tests")

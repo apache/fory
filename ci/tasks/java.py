@@ -29,12 +29,16 @@ JDKS = [
     "zulu8.72.0.17-ca-jdk8.0.382-linux_x64",
 ]
 
+
 def install_jdks():
     """Download and install JDKs."""
     common.cd_project_subdir("")  # Go to project root
     for jdk in JDKS:
-        common.exec_cmd(f"wget -q https://cdn.azul.com/zulu/bin/{jdk}.tar.gz -O {jdk}.tar.gz")
+        common.exec_cmd(
+            f"wget -q https://cdn.azul.com/zulu/bin/{jdk}.tar.gz -O {jdk}.tar.gz"
+        )
         common.exec_cmd(f"tar zxf {jdk}.tar.gz")
+
 
 def run_java8():
     """Run Java 8 tests."""
@@ -43,6 +47,7 @@ def run_java8():
     common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test")
     logging.info("Executing fory java tests succeeds")
 
+
 def run_java11():
     """Run Java 11 tests."""
     logging.info("Executing fory java tests with Java 11")
@@ -50,11 +55,14 @@ def run_java11():
     common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test")
     logging.info("Executing fory java tests succeeds")
 
+
 def run_jdk17_plus(java_version="17"):
     """Run Java 17+ tests."""
     logging.info(f"Executing fory java tests with Java {java_version}")
     common.exec_cmd("java -version")
-    os.environ["JDK_JAVA_OPTIONS"] = "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
+    os.environ["JDK_JAVA_OPTIONS"] = (
+        "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
+    )
 
     common.cd_project_subdir("java")
     common.exec_cmd("mvn -T10 --batch-mode --no-transfer-progress install")
@@ -67,15 +75,19 @@ def run_jdk17_plus(java_version="17"):
 
     logging.info("Executing latest_jdk_tests succeeds")
 
+
 def run_windows_java21():
     """Run Java 21 tests on Windows."""
     logging.info("Executing fory java tests on Windows with Java 21")
     common.exec_cmd("java -version")
 
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T10 --batch-mode --no-transfer-progress test -Dtest=!org.apache.fory.CrossLanguageTest install -pl '!fory-format,!fory-testsuite'")
+    common.exec_cmd(
+        "mvn -T10 --batch-mode --no-transfer-progress test -Dtest=!org.apache.fory.CrossLanguageTest install -pl '!fory-format,!fory-testsuite'"
+    )
 
     logging.info("Executing fory java tests succeeds")
+
 
 def run_integration_tests():
     """Run Java integration tests."""
@@ -117,7 +129,9 @@ def run_integration_tests():
         os.environ["PATH"] = f"{java_home}/bin:{os.environ.get('PATH', '')}"
 
         logging.info(f"First round for generate data: {jdk}")
-        common.exec_cmd("mvn -T10 --no-transfer-progress clean test -Dtest=org.apache.fory.integration_tests.JDKCompatibilityTest")
+        common.exec_cmd(
+            "mvn -T10 --no-transfer-progress clean test -Dtest=org.apache.fory.integration_tests.JDKCompatibilityTest"
+        )
 
     for jdk in JDKS:
         java_home = os.path.join(common.PROJECT_ROOT_DIR, jdk)
@@ -125,9 +139,12 @@ def run_integration_tests():
         os.environ["PATH"] = f"{java_home}/bin:{os.environ.get('PATH', '')}"
 
         logging.info(f"Second round for compatibility: {jdk}")
-        common.exec_cmd("mvn -T10 --no-transfer-progress clean test -Dtest=org.apache.fory.integration_tests.JDKCompatibilityTest")
+        common.exec_cmd(
+            "mvn -T10 --no-transfer-progress clean test -Dtest=org.apache.fory.integration_tests.JDKCompatibilityTest"
+        )
 
     logging.info("Executing fory integration tests succeeds")
+
 
 def run_graalvm_test():
     """Run GraalVM tests."""
@@ -145,6 +162,7 @@ def run_graalvm_test():
     common.exec_cmd("./target/main")
 
     logging.info("Execute graalvm tests succeed!")
+
 
 def run(java_version=None):
     """Run Java CI tasks based on the specified Java version."""

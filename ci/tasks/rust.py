@@ -18,6 +18,7 @@
 import logging
 from . import common
 
+
 def run():
     """Run Rust CI tasks."""
     logging.info("Executing fory rust tests")

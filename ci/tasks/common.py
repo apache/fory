@@ -32,10 +32,12 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+
 def get_bazel_version():
     """Get the bazel version from .bazelversion file."""
     with open(os.path.join(PROJECT_ROOT_DIR, ".bazelversion")) as f:
         return f.read().strip()
+
 
 def exec_cmd(cmd: str):
     """Execute a shell command and return its output."""
@@ -49,19 +51,27 @@ def exec_cmd(cmd: str):
     logging.info(f"command result: {result}")
     return result
 
+
 def get_os_name_lower():
     """Get the lowercase name of the operating system."""
     return platform.system().lower()
+
 
 def is_windows():
     """Check if the operating system is Windows."""
     return get_os_name_lower() == "windows"
 
+
 def get_os_machine():
     """Get the machine architecture, normalized."""
     machine = platform.machine().lower()
-    # Unified to x86_64 (Windows returns AMD64, others return x86_64).
-    return machine.replace("amd64", "x86_64")
+    # Normalize architecture names
+    if machine in ["x86_64", "amd64"]:
+        return "x86_64"
+    elif machine in ["aarch64", "arm64"]:
+        return "arm64"
+    return machine
+
 
 def get_bazel_download_url():
     """Construct the URL to download bazel."""
@@ -69,20 +79,25 @@ def get_bazel_download_url():
     download_url_base = (
         f"https://github.com/bazelbuild/bazel/releases/download/{bazel_version}"
     )
-    suffix = "exe" if is_windows() else "sh"
-    return (
-        f"{download_url_base}/bazel-{bazel_version}{'' if is_windows() else '-installer'}-"
-        f"{get_os_name_lower()}-{get_os_machine()}.{suffix}"
-    )
+
+    # For Windows, use the .exe installer
+    if is_windows():
+        return f"{download_url_base}/bazel-{bazel_version}-windows-x86_64.exe"
+
+    # For Unix-like systems, use the binary directly (not the installer)
+    return f"{download_url_base}/bazel-{bazel_version}-{get_os_name_lower()}-{get_os_machine()}"
+
 
 def cd_project_subdir(subdir):
     """Change to a subdirectory of the project."""
     os.chdir(os.path.join(PROJECT_ROOT_DIR, subdir))
 
+
 def bazel(cmd: str):
     """Execute a bazel command."""
     bazel_cmd = "bazel" if is_windows() else "~/bin/bazel"
     return exec_cmd(f"{bazel_cmd} {cmd}")
+
 
 def update_shell_profile():
     """Update shell profile to include bazel in PATH."""
@@ -99,23 +114,45 @@ def update_shell_profile():
     else:
         logging.info("No shell profile found. Please add Bazel to PATH manually.")
 
+
 def install_bazel():
     """Download and install bazel."""
-    local_name = "bazel.exe" if is_windows() else "bazel-installer.sh"
     bazel_download_url = get_bazel_download_url()
-    logging.info(bazel_download_url)
-    ulib.urlretrieve(bazel_download_url, local_name)
-    os.chmod(local_name, 0o777)
+    logging.info(f"Downloading bazel from: {bazel_download_url}")
 
     if is_windows():
+        # For Windows, download the installer and add it to PATH
+        local_name = "bazel.exe"
+        try:
+            ulib.urlretrieve(bazel_download_url, local_name)
+        except Exception as e:
+            logging.error(f"Failed to download bazel: {e}")
+            logging.error(f"URL: {bazel_download_url}")
+            logging.error(
+                f"OS: {get_os_name_lower()}, Machine: {get_os_machine()}, Original Machine: {platform.machine().lower()}"
+            )
+            raise
+        os.chmod(local_name, 0o777)
         bazel_path = os.path.join(os.getcwd(), local_name)
         exec_cmd(f'setx path "%PATH%;{bazel_path}"')
     else:
-        if shutil.which("bazel"):
-            os.remove(shutil.which("bazel"))
-        exec_cmd(f"./{local_name} --user")
+        # For Unix-like systems, download the binary directly to ~/bin/bazel
+        home_bin = os.path.expanduser("~/bin")
+        os.makedirs(home_bin, exist_ok=True)
+        bazel_path = os.path.join(home_bin, "bazel")
+
+        try:
+            ulib.urlretrieve(bazel_download_url, bazel_path)
+        except Exception as e:
+            logging.error(f"Failed to download bazel: {e}")
+            logging.error(f"URL: {bazel_download_url}")
+            logging.error(
+                f"OS: {get_os_name_lower()}, Machine: {get_os_machine()}, Original Machine: {platform.machine().lower()}"
+            )
+            raise
+
+        os.chmod(bazel_path, 0o755)
         update_shell_profile()
-        os.remove(local_name)
 
     # bazel install status check
     bazel("--version")
@@ -126,6 +163,7 @@ def install_bazel():
     limit_jobs = int(total_mem / 1024 / 1024 / 1024 / 3)
     with open(".bazelrc", "a") as file:
         file.write(f"\nbuild --jobs={limit_jobs}")
+
 
 def install_cpp_deps():
     """Install dependencies for C++ development."""

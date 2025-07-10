@@ -18,6 +18,7 @@
 import logging
 from . import common
 
+
 def run():
     """Run JavaScript CI tasks."""
     logging.info("Executing fory javascript tests.")
@@ -27,6 +28,8 @@ def run():
     # In run_ci.py, it's just "npm run test"
     # In run_ci.sh, it's "node ./node_modules/.bin/jest --ci --reporters=default --reporters=jest-junit"
     # Let's use the more specific command from run_ci.sh
-    common.exec_cmd("node ./node_modules/.bin/jest --ci --reporters=default --reporters=jest-junit")
+    common.exec_cmd(
+        "node ./node_modules/.bin/jest --ci --reporters=default --reporters=jest-junit"
+    )
 
     logging.info("Executing fory javascript tests succeeds.")

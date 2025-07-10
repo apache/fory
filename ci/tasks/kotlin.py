@@ -18,12 +18,15 @@
 import logging
 from . import common
 
+
 def run():
     """Run Kotlin CI tasks."""
     logging.info("Executing fory kotlin tests")
     common.cd_project_subdir("kotlin")
 
     # Using the same command as in run_ci.sh
-    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test -DfailIfNoTests=false")
+    common.exec_cmd(
+        "mvn -T16 --batch-mode --no-transfer-progress test -DfailIfNoTests=false"
+    )
 
     logging.info("Executing fory kotlin tests succeeds")
