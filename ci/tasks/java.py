@@ -82,9 +82,15 @@ def run_windows_java21():
     common.exec_cmd("java -version")
 
     common.cd_project_subdir("java")
-    common.exec_cmd(
-        "mvn -T10 --batch-mode --no-transfer-progress test -Dtest=!org.apache.fory.CrossLanguageTest install -pl '!fory-format,!fory-testsuite'"
-    )
+    # Use double quotes for Windows compatibility
+    if common.is_windows():
+        common.exec_cmd(
+            'mvn -T10 --batch-mode --no-transfer-progress test -Dtest=!org.apache.fory.CrossLanguageTest install -pl "!fory-format,!fory-testsuite"'
+        )
+    else:
+        common.exec_cmd(
+            "mvn -T10 --batch-mode --no-transfer-progress test -Dtest=!org.apache.fory.CrossLanguageTest install -pl '!fory-format,!fory-testsuite'"
+        )
 
     logging.info("Executing fory java tests succeeds")
 
