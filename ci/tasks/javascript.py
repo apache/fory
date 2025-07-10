@@ -24,12 +24,6 @@ def run():
     logging.info("Executing fory javascript tests.")
     common.cd_project_subdir("javascript")
     common.exec_cmd("npm install")
-
-    # In run_ci.py, it's just "npm run test"
-    # In run_ci.sh, it's "node ./node_modules/.bin/jest --ci --reporters=default --reporters=jest-junit"
-    # Let's use the more specific command from run_ci.sh
-    common.exec_cmd(
-        "node ./node_modules/.bin/jest --ci --reporters=default --reporters=jest-junit"
-    )
+    common.exec_cmd("npm run test")
 
     logging.info("Executing fory javascript tests succeeds.")
