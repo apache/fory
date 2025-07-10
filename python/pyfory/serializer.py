@@ -849,6 +849,39 @@ class ReduceSerializer(CrossLanguageCompatibleSerializer):
             raise ValueError(f"Invalid reduce data format: {reduce_data[0]}")
 
 
+class FunctionSerializer(CrossLanguageCompatibleSerializer):
+    """Serializer for function objects using cloudpickle."""
+
+    def __init__(self, fory, cls):
+        super().__init__(fory, cls)
+        try:
+            import cloudpickle
+
+            self.cloudpickle = cloudpickle
+        except ImportError:
+            raise ImportError("cloudpickle is required for function serialization")
+
+    def xwrite(self, buffer, value):
+        # Use cloudpickle to serialize the function
+        pickled_data = self.cloudpickle.dumps(value)
+        buffer.write_bytes_and_size(pickled_data)
+
+    def xread(self, buffer):
+        # Use cloudpickle to deserialize the function
+        pickled_data = buffer.read_bytes_and_size()
+        return self.cloudpickle.loads(pickled_data)
+
+    def write(self, buffer, value):
+        # For Python-only mode, also use cloudpickle
+        pickled_data = self.cloudpickle.dumps(value)
+        buffer.write_bytes_and_size(pickled_data)
+
+    def read(self, buffer):
+        # For Python-only mode, also use cloudpickle
+        pickled_data = buffer.read_bytes_and_size()
+        return self.cloudpickle.loads(pickled_data)
+
+
 class PickleSerializer(Serializer):
     PICKLE_TYPE_ID = 96
 

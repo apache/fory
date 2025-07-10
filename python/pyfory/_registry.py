@@ -21,6 +21,7 @@ import datetime
 import enum
 import functools
 import logging
+import types
 from typing import TypeVar, Union
 from enum import Enum
 
@@ -61,6 +62,7 @@ from pyfory.serializer import (
     DataClassSerializer,
     StatefulSerializer,
     ReduceSerializer,
+    FunctionSerializer,
 )
 from pyfory.meta.metastring import MetaStringEncoder, MetaStringDecoder
 from pyfory.type import (
@@ -72,6 +74,7 @@ from pyfory.type import (
     Float32Type,
     Float64Type,
     load_class,
+    is_function,
 )
 from pyfory._fory import (
     DYNAMIC_TYPE_ID,
@@ -345,6 +348,10 @@ class TypeResolver:
             if issubclass(cls, enum.Enum):
                 serializer = EnumSerializer(self.fory, cls)
                 type_id = TypeId.NAMED_ENUM if type_id is None else ((type_id << 8) + TypeId.ENUM)
+            elif cls is types.FunctionType:
+                # Use FunctionSerializer for function types (including lambdas)
+                serializer = FunctionSerializer(self.fory, cls)
+                type_id = TypeId.NAMED_EXT if type_id is None else ((type_id << 8) + TypeId.EXT)
             else:
                 serializer = DataClassSerializer(self.fory, cls, xlang=True)
                 type_id = TypeId.NAMED_STRUCT if type_id is None else ((type_id << 8) + TypeId.STRUCT)
@@ -483,7 +490,10 @@ class TypeResolver:
                 serializer = type(type_info.serializer)(self.fory, cls)
                 break
         else:
-            if dataclasses.is_dataclass(cls):
+            if cls is types.FunctionType:
+                # Use PickleSerializer for function types (including lambdas)
+                serializer = PickleSerializer(self.fory, cls)
+            elif dataclasses.is_dataclass(cls):
                 from pyfory import DataClassSerializer
 
                 serializer = DataClassSerializer(self.fory, cls)
