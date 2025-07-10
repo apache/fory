@@ -20,19 +20,6 @@ import os
 from . import common
 
 
-def install_python():
-    """Install Python using Miniconda."""
-    logging.info("Installing Python using Miniconda")
-    common.exec_cmd(
-        "wget -q https://repo.anaconda.com/miniconda/Miniconda3-py38_23.5.2-0-Linux-x86_64.sh -O Miniconda3.sh"
-    )
-    common.exec_cmd("bash Miniconda3.sh -b -p $HOME/miniconda && rm -f miniconda.*")
-    common.exec_cmd("which python")
-    python_version = common.exec_cmd("python -V")
-    python_path = common.exec_cmd("which python")
-    logging.info(f"Python version {python_version}, path {python_path}")
-
-
 def install_pyfory():
     """Install pyfory package."""
     logging.info("Installing pyfory package")

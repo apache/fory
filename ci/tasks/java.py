@@ -32,7 +32,7 @@ JDKS = [
 
 def install_jdks():
     """Download and install JDKs."""
-    common.cd_project_subdir("")  # Go to project root
+    common.cd_project_subdir("")  # Go to the project root
     for jdk in JDKS:
         common.exec_cmd(
             f"wget -q https://cdn.azul.com/zulu/bin/{jdk}.tar.gz -O {jdk}.tar.gz"
@@ -129,22 +129,30 @@ def run_integration_tests():
     common.exec_cmd("mvn -T10 -B --no-transfer-progress clean test")
 
     # Run tests with different JDK versions
+    # This is a two-phase process:
+    # 1. First round: Generate serialized data files for each JDK version
+    # 2. Second round: Test if these files can be deserialized correctly by each JDK version
+
+    # First round: Generate serialized data files
+    logging.info("First round: Generate serialized data files for each JDK version")
     for jdk in JDKS:
         java_home = os.path.join(common.PROJECT_ROOT_DIR, jdk)
         os.environ["JAVA_HOME"] = java_home
         os.environ["PATH"] = f"{java_home}/bin:{os.environ.get('PATH', '')}"
 
-        logging.info(f"First round for generate data: {jdk}")
+        logging.info(f"Generating data with JDK: {jdk}")
         common.exec_cmd(
             "mvn -T10 --no-transfer-progress clean test -Dtest=org.apache.fory.integration_tests.JDKCompatibilityTest"
         )
 
+    # Second round: Test cross-JDK compatibility
+    logging.info("Second round: Test cross-JDK compatibility")
     for jdk in JDKS:
         java_home = os.path.join(common.PROJECT_ROOT_DIR, jdk)
         os.environ["JAVA_HOME"] = java_home
         os.environ["PATH"] = f"{java_home}/bin:{os.environ.get('PATH', '')}"
 
-        logging.info(f"Second round for compatibility: {jdk}")
+        logging.info(f"Testing compatibility with JDK: {jdk}")
         common.exec_cmd(
             "mvn -T10 --no-transfer-progress clean test -Dtest=org.apache.fory.integration_tests.JDKCompatibilityTest"
         )
