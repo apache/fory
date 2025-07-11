@@ -56,8 +56,8 @@ impl<'a> MetaWriterResolver<'a> {
             None => {
                 let index = self.type_defs.len();
                 self.type_defs.push(
-                    fory.get_class_resolver()
-                        .get_class_info(type_id)
+                    fory.get_type_resolver()
+                        .get_type_info(type_id)
                         .get_type_def(),
                 );
                 self.type_id_index_map.insert(type_id, index);

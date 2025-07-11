@@ -43,7 +43,7 @@ impl Serializer for Box<dyn Any> {
     fn serialize(&self, context: &mut WriteContext) {
         context
             .get_fory()
-            .get_class_resolver()
+            .get_type_resolver()
             .get_harness_by_type(self.as_ref().type_id())
             .unwrap()
             .get_serializer()(self.as_ref(), context);
@@ -61,7 +61,7 @@ impl Serializer for Box<dyn Any> {
                 reset_cursor(&mut context.reader);
                 context
                     .get_fory()
-                    .get_class_resolver()
+                    .get_type_resolver()
                     .get_harness(type_id)
                     .unwrap()
                     .get_deserializer()(context)
@@ -70,7 +70,7 @@ impl Serializer for Box<dyn Any> {
                 reset_cursor(&mut context.reader);
                 context
                     .get_fory()
-                    .get_class_resolver()
+                    .get_type_resolver()
                     .get_harness(type_id as u32)
                     .unwrap()
                     .get_deserializer()(context)

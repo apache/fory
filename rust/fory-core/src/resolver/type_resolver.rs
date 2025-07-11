@@ -47,14 +47,14 @@ impl Harness {
     }
 }
 
-pub struct ClassInfo {
+pub struct TypeInfo {
     type_def: Vec<u8>,
     type_id: u32,
 }
 
-impl ClassInfo {
-    pub fn new<T: StructSerializer>(fory: &Fory, type_id: u32) -> ClassInfo {
-        ClassInfo {
+impl TypeInfo {
+    pub fn new<T: StructSerializer>(fory: &Fory, type_id: u32) -> TypeInfo {
+        TypeInfo {
             type_def: T::type_def(fory),
             type_id,
         }
@@ -70,18 +70,18 @@ impl ClassInfo {
 }
 
 #[derive(Default)]
-pub struct ClassResolver {
+pub struct TypeResolver {
     serialize_map: HashMap<u32, Harness>,
     type_id_map: HashMap<TypeId, u32>,
-    class_info_map: HashMap<TypeId, ClassInfo>,
+    type_info_map: HashMap<TypeId, TypeInfo>,
 }
 
-impl ClassResolver {
-    pub fn get_class_info(&self, type_id: TypeId) -> &ClassInfo {
-        self.class_info_map.get(&type_id).unwrap()
+impl TypeResolver {
+    pub fn get_type_info(&self, type_id: TypeId) -> &TypeInfo {
+        self.type_info_map.get(&type_id).unwrap()
     }
 
-    pub fn register<T: StructSerializer>(&mut self, class_info: ClassInfo, id: u32) {
+    pub fn register<T: StructSerializer>(&mut self, type_info: TypeInfo, id: u32) {
         fn serializer<T2: 'static + StructSerializer>(this: &dyn Any, context: &mut WriteContext) {
             let this = this.downcast_ref::<T2>();
             match this {
@@ -103,7 +103,7 @@ impl ClassResolver {
         self.type_id_map.insert(TypeId::of::<T>(), id);
         self.serialize_map
             .insert(id, Harness::new(serializer::<T>, deserializer::<T>));
-        self.class_info_map.insert(TypeId::of::<T>(), class_info);
+        self.type_info_map.insert(TypeId::of::<T>(), type_info);
     }
 
     pub fn get_harness_by_type(&self, type_id: TypeId) -> Option<&Harness> {

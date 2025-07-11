@@ -73,7 +73,7 @@ pub fn gen_in_struct_impl(fields: &[&Field]) -> TokenStream {
 pub fn gen() -> TokenStream {
     quote! {
             fn get_type_id(fory: &fory_core::fory::Fory) -> i16 {
-                fory.get_class_resolver().get_class_info(std::any::TypeId::of::<Self>()).get_type_id() as i16
+                fory.get_type_resolver().get_type_info(std::any::TypeId::of::<Self>()).get_type_id() as i16
             }
     }
 }
