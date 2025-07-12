@@ -227,42 +227,22 @@ interface SerializationBinding {
 
     @Override
     public void writeNullable(MemoryBuffer buffer, Object obj) {
-      if (obj == null) {
-        buffer.writeByte(Fory.NULL_FLAG);
-      } else {
-        buffer.writeByte(NOT_NULL_VALUE_FLAG);
-        writeNonRef(buffer, obj);
-      }
+      fory.writeNullable(buffer, obj);
     }
 
     @Override
     public void writeNullable(MemoryBuffer buffer, Object obj, Serializer serializer) {
-      if (obj == null) {
-        buffer.writeByte(Fory.NULL_FLAG);
-      } else {
-        buffer.writeByte(NOT_NULL_VALUE_FLAG);
-        serializer.write(buffer, obj);
-      }
+      fory.writeNullable(buffer, obj, serializer);
     }
 
     @Override
     public void writeNullable(MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder) {
-      if (obj == null) {
-        buffer.writeByte(Fory.NULL_FLAG);
-      } else {
-        buffer.writeByte(NOT_NULL_VALUE_FLAG);
-        fory.writeNonRef(buffer, obj, classResolver.getClassInfo(obj.getClass(), classInfoHolder));
-      }
+      fory.writeNullable(buffer, obj, classInfoHolder);
     }
 
     @Override
     public void writeNullable(MemoryBuffer buffer, Object obj, ClassInfo classInfo) {
-      if (obj == null) {
-        buffer.writeByte(Fory.NULL_FLAG);
-      } else {
-        buffer.writeByte(NOT_NULL_VALUE_FLAG);
-        fory.writeNonRef(buffer, obj, classInfo);
-      }
+      fory.writeNullable(buffer, obj, classInfo);
     }
 
     @Override
