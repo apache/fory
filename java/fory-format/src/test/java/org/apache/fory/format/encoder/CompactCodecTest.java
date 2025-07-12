@@ -269,12 +269,15 @@ public class CompactCodecTest {
     bean1.f2 = "luna";
     bean1.f3 = new short[] {1, 2, 3};
     final RowEncoder<InlinePrimitiveNestedArrayType> encoder =
-        Encoders.buildBeanCodec(InlinePrimitiveNestedArrayType.class).compactEncoding().build().get();
+        Encoders.buildBeanCodec(InlinePrimitiveNestedArrayType.class)
+            .compactEncoding()
+            .build()
+            .get();
     final BinaryRow row = encoder.toRow(bean1);
     final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final InlinePrimitiveNestedArrayType deserializedBean = encoder.fromRow(row);
     assertEquals(deserializedBean, bean1);
-    assertEquals(buffer.size(), 7 + 12 + 8 + 2 * 3);
+    assertEquals(buffer.size(), 48);
   }
 }

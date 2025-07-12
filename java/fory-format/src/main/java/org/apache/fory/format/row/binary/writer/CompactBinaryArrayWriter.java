@@ -26,6 +26,8 @@ import org.apache.fory.memory.MemoryUtils;
 
 public class CompactBinaryArrayWriter extends BinaryArrayWriter {
 
+  private final boolean fixedWidth;
+
   /** Must call reset before using writer constructed by this constructor. */
   public CompactBinaryArrayWriter(final Field field) {
     // buffer size can grow
@@ -47,6 +49,7 @@ public class CompactBinaryArrayWriter extends BinaryArrayWriter {
 
   public CompactBinaryArrayWriter(final Field field, final MemoryBuffer buffer) {
     super(field, buffer, 4, elementWidth(field.getChildren().get(0)));
+    fixedWidth = CompactBinaryRowWriter.fixedWidthFor(field) >= 0;
   }
 
   private static int elementWidth(final Field field) {
@@ -54,7 +57,7 @@ public class CompactBinaryArrayWriter extends BinaryArrayWriter {
     if (width < 0) {
       return 8;
     } else {
-      return BinaryWriter.roundNumberOfBytesToNearestWord(width);
+      return width;
     }
   }
 

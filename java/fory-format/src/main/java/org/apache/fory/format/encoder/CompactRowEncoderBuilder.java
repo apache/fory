@@ -30,6 +30,7 @@ import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.type.TypeUtils;
 
 /** Expression builder for building compact row encoder class. */
 class CompactRowEncoderBuilder extends RowEncoderBuilder {
@@ -68,6 +69,44 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
     final Invoke reset = new Invoke(writer, "resetFor", rowWriter, ordinal);
     final Invoke toRow = new Invoke(beanEncoder, "toRow", inputObject);
     return new ListExpression(reset, toRow);
+  }
+
+  @Override
+  protected Expression serializeForArrayByWriter(
+      Expression ordinal,
+      Expression inputObject,
+      Expression writer,
+      Expression arrayWriter,
+      TypeRef<?> typeRef,
+      Field fieldIfKnown,
+      Expression arrowField) {
+    Expression result =
+        super.serializeForArrayByWriter(
+            ordinal, inputObject, writer, arrayWriter, typeRef, fieldIfKnown, arrowField);
+    if (fieldIfKnown == null || CompactBinaryRowWriter.fixedWidthFor(fieldIfKnown) == -1) {
+      return result;
+    }
+    return new ListExpression(
+        result,
+        Invoke.inlineInvoke(
+            writer,
+            "writerIndex",
+            TypeUtils.PRIMITIVE_VOID_TYPE,
+            Invoke.inlineInvoke(arrayWriter, "getOffset", TypeUtils.PRIMITIVE_INT_TYPE, ordinal)));
+  }
+
+  @Override
+  protected Expression finishArrayWrite(
+      final Expression ordinal,
+      final Expression writer,
+      final TypeRef<?> typeRef,
+      final Field fieldIfKnown,
+      final Expression originalWriterIndex) {
+    if (fieldIfKnown == null || CompactBinaryRowWriter.fixedWidthFor(fieldIfKnown) == -1) {
+      return super.finishArrayWrite(ordinal, writer, typeRef, fieldIfKnown, originalWriterIndex);
+    }
+    return Invoke.inlineInvoke(
+        writer, "writerIndex", TypeUtils.PRIMITIVE_VOID_TYPE, originalWriterIndex);
   }
 
   @Override

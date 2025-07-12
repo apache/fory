@@ -270,20 +270,17 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       // but don't setOffsetAndSize for array.
       Invoke offset =
           new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE);
-      Expression serializeArray = serializeForArray(inputObject, writer, typeRef, arrowField);
-      Arithmetic size =
-          ExpressionUtils.subtract(
-              new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE),
-              offset);
-      Invoke setOffsetAndSize = new Invoke(writer, "setOffsetAndSize", ordinal, offset, size);
-      ListExpression expression =
-          new ListExpression(offset, serializeArray, size, setOffsetAndSize);
+      Expression serializeArray =
+          serializeForArray(ordinal, inputObject, writer, typeRef, fieldIfKnown, arrowField);
+      Expression finishArrayWrite =
+          finishArrayWrite(ordinal, writer, typeRef, fieldIfKnown, offset);
+      ListExpression expression = new ListExpression(offset, serializeArray, finishArrayWrite);
       return new If(
           ExpressionUtils.eqNull(inputObject),
           new Invoke(writer, "setNullAt", ordinal),
           expression);
     } else if (TypeUtils.MAP_TYPE.isSupertypeOf(typeRef)) {
-      return serializeForMap(ordinal, writer, inputObject, typeRef, arrowField);
+      return serializeForMap(ordinal, writer, inputObject, typeRef, fieldIfKnown, arrowField);
     } else if (TypeUtils.isBean(rawType, typeCtx)) {
       return serializeForBean(ordinal, writer, inputObject, fieldIfKnown, typeRef, arrowField);
     } else if (rawType == BinaryArray.class) {
@@ -315,14 +312,42 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     }
   }
 
+  protected Expression finishArrayWrite(
+      Expression ordinal,
+      Expression writer,
+      TypeRef<?> typeRef,
+      Field fieldIfKnown,
+      Expression originalWriterIndex) {
+    Arithmetic size =
+        ExpressionUtils.subtract(
+            new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE),
+            originalWriterIndex);
+    Invoke setOffsetAndSize =
+        new Invoke(writer, "setOffsetAndSize", ordinal, originalWriterIndex, size);
+    ListExpression finishArrayWrite = new ListExpression(size, setOffsetAndSize);
+    return finishArrayWrite;
+  }
+
   protected Expression serializeForArray(
-      Expression inputObject, Expression writer, TypeRef<?> typeRef, Expression arrowField) {
+      Expression ordinal,
+      Expression inputObject,
+      Expression writer,
+      TypeRef<?> typeRef,
+      Field fieldIfKnown,
+      Expression arrowField) {
     Reference arrayWriter = getOrCreateArrayWriter(typeRef, arrowField, writer);
-    return serializeForArrayByWriter(inputObject, arrayWriter, typeRef, arrowField);
+    return serializeForArrayByWriter(
+        ordinal, inputObject, writer, arrayWriter, typeRef, fieldIfKnown, arrowField);
   }
 
   protected Expression serializeForArrayByWriter(
-      Expression inputObject, Expression arrayWriter, TypeRef<?> typeRef, Expression arrowField) {
+      Expression ordinal,
+      Expression inputObject,
+      Expression writer,
+      Expression arrayWriter,
+      TypeRef<?> typeRef,
+      Field fieldIfKnown,
+      Expression arrowField) {
     StaticInvoke arrayElementField =
         new StaticInvoke(
             DataTypes.class, "arrayElementField", "elemField", ARROW_FIELD_TYPE, false, arrowField);
@@ -414,6 +439,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       Expression writer,
       Expression inputObject,
       TypeRef<?> typeRef,
+      Field fieldIfKnown,
       Expression arrowField) {
     StaticInvoke keyArrayField =
         new StaticInvoke(
@@ -445,7 +471,8 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     expressions.add(offset, preserve);
 
     Invoke keySet = new Invoke(inputObject, "keySet", keySetType);
-    Expression keySerializationExpr = serializeForArray(keySet, writer, keySetType, keyArrayField);
+    Expression keySerializationExpr =
+        serializeForArray(ordinal, keySet, writer, keySetType, fieldIfKnown, keyArrayField);
     expressions.add(keySet, keySerializationExpr);
 
     expressions.add(
@@ -457,7 +484,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
 
     Invoke values = new Invoke(inputObject, "values", valuesType);
     Expression valueSerializationExpr =
-        serializeForArray(values, writer, valuesType, valueArrayField);
+        serializeForArray(ordinal, values, writer, valuesType, fieldIfKnown, valueArrayField);
     expressions.add(values, valueSerializationExpr);
 
     Arithmetic size =
