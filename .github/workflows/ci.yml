@@ -59,13 +59,11 @@ jobs:
         with:
           python-version: 3.8
       - name: Install bazel
-        run: ./ci/run_ci.sh install_bazel
-      - name: Install python
-        run: ./ci/run_ci.sh install_python
-      - name: Install pyfory
-        run: ./ci/run_ci.sh install_pyfory
+        run: python ./ci/run_ci.py cpp --install-deps-only
+      - name: Install python dependencies
+        run: pip install pyarrow==15.0.0 Cython wheel pytest setuptools -U
       - name: Run CI with Maven
-        run: ./ci/run_ci.sh java${{ matrix.java-version }}
+        run: python ./ci/run_ci.py java --version ${{ matrix.java-version }}
       - name: Upload Test Report
         uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -94,13 +92,11 @@ jobs:
         with:
           python-version: 3.8
       - name: Install bazel
-        run: ./ci/run_ci.sh install_bazel
-      - name: Install python
-        run: ./ci/run_ci.sh install_python
-      - name: Install pyfory
-        run: ./ci/run_ci.sh install_pyfory
+        run: python ./ci/run_ci.py cpp --install-deps-only
+      - name: Install python dependencies
+        run: pip install pyarrow==15.0.0 Cython wheel pytest setuptools -U
       - name: Run CI with Maven
-        run: ./ci/run_ci.sh java${{ matrix.java-version }}
+        run: python ./ci/run_ci.py java --version ${{ matrix.java-version }}
 
   java21_windows:
     name: Windows Java 21 CI
@@ -117,9 +113,13 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "temurin"
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.8
       - name: Run CI with Maven
         shell: bash
-        run: ./ci/run_ci.sh windows_java21
+        run: python ./ci/run_ci.py java --version windows_java21
 
   graalvm:
     name: GraalVM CI
@@ -141,7 +141,7 @@ jobs:
           python-version: 3.8
       - name: Build native image and run
         shell: bash
-        run: ./ci/run_ci.sh graalvm_test
+        run: python ./ci/run_ci.py java --version graalvm
 
   kotlin:
     name: Kotlin CI
@@ -158,10 +158,14 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "temurin"
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.8
       - name: Install fory java
         run: cd java && mvn -T10 --no-transfer-progress clean install -DskipTests && cd -
       - name: Run Kotlin CI
-        run: ./ci/run_ci.sh kotlin
+        run: python ./ci/run_ci.py kotlin
 
   scala:
     name: Scala CI
@@ -191,8 +195,12 @@ jobs:
         with:
           java-version: 8
           distribution: "temurin"
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.8
       - name: Run CI
-        run: ./ci/run_ci.sh integration_tests
+        run: python ./ci/run_ci.py java --version integration_tests
 
   javascript:
     name: JavaScript CI
@@ -266,15 +274,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install bazel
         shell: bash
-        run: |
-             if [ "$RUNNER_OS" == "Windows" ]; then
-                 ./ci/run_ci.sh install_bazel_windows
-             else
-                 ./ci/run_ci.sh install_bazel
-             fi
+        run: python ./ci/run_ci.py cpp --install-deps-only
       - name: Run Python CI
         shell: bash
-        run: ./ci/run_ci.sh python
+        run: python ./ci/run_ci.py python
 
   go:
     name: Golang CI
@@ -295,13 +298,11 @@ jobs:
         with:
           python-version: 3.8
       - name: Install bazel
-        run: ./ci/run_ci.sh install_bazel
-      - name: Install python
-        run: ./ci/run_ci.sh install_python
-      - name: Install pyfory
-        run: ./ci/run_ci.sh install_pyfory
+        run: python ./ci/run_ci.py cpp --install-deps-only
+      - name: Install python dependencies
+        run: pip install pyarrow==15.0.0 Cython wheel pytest setuptools -U
       - name: Run Golang CI
-        run: ./ci/run_ci.sh go
+        run: python ./ci/run_ci.py go
 
   lint:
     name: Code Style Check
@@ -324,4 +325,4 @@ jobs:
         with:
           node-version: 20.x
       - name: Check code style
-        run: ./ci/run_ci.sh format
+        run: python ./ci/run_ci.py format
