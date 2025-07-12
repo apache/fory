@@ -121,6 +121,22 @@ public class ClassInfo {
     }
   }
 
+  public static ClassInfo copy(ClassInfo classInfo) {
+    final ClassInfo copy =
+        new ClassInfo(
+            classInfo.cls,
+            classInfo.fullNameBytes,
+            classInfo.namespaceBytes,
+            classInfo.typeNameBytes,
+            classInfo.isDynamicGeneratedClass,
+            classInfo.serializer,
+            classInfo.classId,
+            (short) classInfo.xtypeId);
+    copy.needToWriteClassDef = classInfo.needToWriteClassDef;
+    copy.classDef = classInfo.classDef;
+    return copy;
+  }
+
   public Class<?> getCls() {
     return cls;
   }
