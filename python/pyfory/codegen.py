@@ -16,8 +16,10 @@
 # under the License.
 
 import atexit
+import keyword
 import linecache
 import os
+import re
 import uuid
 from typing import List, Callable, Union
 
@@ -82,6 +84,23 @@ def gen_read_nullable_basic_stmts(
     ]
 
 
+def _sanitize_function_name(name: str) -> str:
+    """
+    Sanitize function names by replacing invalid characters with valid ones.
+    This is needed because function names with special characters like angle brackets
+    are not valid Python syntax.
+    """
+    # 1) Replace every non‐identifier character with underscore
+    sanitized = re.sub(r"[^0-9A-Za-z_]", "_", name)
+    # 2) Prevent leading digit
+    if re.match(r"^\d", sanitized):
+        sanitized = "_" + sanitized
+    # 3) Avoid plain keywords
+    if keyword.iskeyword(sanitized):
+        sanitized = "_" + sanitized
+    return sanitized
+
+
 def compile_function(
     function_name: str,
     params: List[str],
@@ -102,7 +121,9 @@ def compile_function(
         context["write_nullable_pystr"] = _serialization.write_nullable_pystr
         context["read_nullable_pystr"] = _serialization.read_nullable_pystr
     stmts = [f"{ident(statement)}" for statement in stmts]
-    stmts.insert(0, f"def {function_name}({', '.join(params)}):")
+    # Sanitize the function name to ensure it is valid Python syntax
+    sanitized_function_name = _sanitize_function_name(function_name)
+    stmts.insert(0, f"def {sanitized_function_name}({', '.join(params)}):")
     stmts = [f"{statement}  # line {idx + 1}" for idx, statement in enumerate(stmts)]
     code = "\n".join(stmts)
     filename = _generate_filename(function_name)
@@ -128,7 +149,9 @@ def compile_function(
         code.splitlines(True),
         filename,
     )
-    return code, context[function_name]
+    # Use the sanitized function name to retrieve the function from context
+    sanitized_function_name = _sanitize_function_name(function_name)
+    return code, context[sanitized_function_name]
 
 
 # Based on https://github.com/python-attrs/attrs/blob/32fb12789e5cba4b2e71c09e47196b10763ddd7d/src/attr/_make.py#L1863 # noqa: E501
@@ -136,12 +159,14 @@ def _generate_filename(func_name):
     """
     Create a "filename" suitable for a function being generated.
     """
+    # Sanitize the function name for filename
+    sanitized_name = _sanitize_function_name(func_name)
     unique_id = uuid.uuid4()
     extra = "0"
     count = 1
 
     while True:
-        filename = f"fory_generated_{func_name}_{extra}.py"
+        filename = f"fory_generated_{sanitized_name}_{extra}.py"
         # To handle concurrency we essentially "reserve" our spot in
         # the linecache with a dummy line.  The caller can then
         # set this value correctly.
