@@ -272,8 +272,13 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
           new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE);
       Expression serializeArray =
           serializeForArray(inputObject, writer, typeRef, fieldIfKnown, arrowField);
-      Expression finishArrayWrite =
-          finishArrayWrite(ordinal, writer, typeRef, fieldIfKnown, originalWriterIndex);
+      Arithmetic size =
+          ExpressionUtils.subtract(
+            new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE),
+            originalWriterIndex);
+      Invoke setOffsetAndSize =
+          new Invoke(writer, "setOffsetAndSize", ordinal, originalWriterIndex, size);
+      Expression finishArrayWrite = new ListExpression(size, setOffsetAndSize);
       ListExpression expression =
           new ListExpression(originalWriterIndex, serializeArray, finishArrayWrite);
       return new If(
@@ -335,7 +340,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     Class<?> rawType = getRawType(typeRef);
     if (rawType.isArray()) {
       FieldValue length = new FieldValue(inputObject, "length", TypeUtils.PRIMITIVE_INT_TYPE);
-      Expression reset = startArrayWrite(arrayWriter, fieldIfKnown, length);
+      Expression reset = new Invoke(arrayWriter, "reset", length);
       if (rawType.getComponentType().isPrimitive()) {
         return new ListExpression(
             reset, new Invoke(arrayWriter, "fromPrimitiveArray", inputObject), arrayWriter);
@@ -358,7 +363,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     } else if (getRawType(typeRef) == Iterable.class) {
       ListFromIterable listFromIterable = new ListFromIterable(inputObject);
       Invoke size = new Invoke(listFromIterable, "size", TypeUtils.PRIMITIVE_INT_TYPE);
-      Expression reset = startArrayWrite(arrayWriter, fieldIfKnown, size);
+      Expression reset = new Invoke(arrayWriter, "reset", size);
       ForEach forEach =
           new ForEach(
               listFromIterable,
@@ -375,7 +380,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       return new ListExpression(reset, forEach, arrayWriter);
     } else { // collection
       Invoke size = new Invoke(inputObject, "size", TypeUtils.PRIMITIVE_INT_TYPE);
-      Expression reset = startArrayWrite(arrayWriter, fieldIfKnown, size);
+      Expression reset = new Invoke(arrayWriter, "reset", size);
       ForEach forEach =
           new ForEach(
               inputObject,
@@ -391,27 +396,6 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
                       new HashSet<>()));
       return new ListExpression(reset, forEach, arrayWriter);
     }
-  }
-
-  protected Expression startArrayWrite(
-      Expression arrayWriter, Field fieldIfKnown, Expression size) {
-    return new Invoke(arrayWriter, "reset", size);
-  }
-
-  protected Expression finishArrayWrite(
-      Expression ordinal,
-      Expression writer,
-      TypeRef<?> typeRef,
-      Field fieldIfKnown,
-      Expression originalWriterIndex) {
-    Arithmetic size =
-        ExpressionUtils.subtract(
-            new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE),
-            originalWriterIndex);
-    Invoke setOffsetAndSize =
-        new Invoke(writer, "setOffsetAndSize", ordinal, originalWriterIndex, size);
-    ListExpression finishArrayWrite = new ListExpression(size, setOffsetAndSize);
-    return finishArrayWrite;
   }
 
   protected Reference getOrCreateArrayWriter(

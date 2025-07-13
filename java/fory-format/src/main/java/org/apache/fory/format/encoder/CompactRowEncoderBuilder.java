@@ -96,45 +96,6 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
     return fieldIfKnown.getChildren().get(0);
   }
 
-  /*
-  @Override
-  protected Expression startArrayWrite(
-      final Expression ordinal,
-      final Expression writer,
-      final Expression arrayWriter,
-      final Field fieldIfKnown,
-      final Expression size) {
-    final Expression startArrayWrite =
-        super.startArrayWrite(ordinal, writer, arrayWriter, fieldIfKnown, size);
-    if (fieldIfKnown == null
-        || CompactBinaryRowWriter.fixedWidthFor(itemType(fieldIfKnown)) == -1) {
-      return startArrayWrite;
-    }
-    return new ListExpression(
-        startArrayWrite,
-        new Invoke(
-            Invoke.inlineInvoke(arrayWriter, "getBuffer", TypeRef.of(MemoryBuffer.class)),
-            "writerIndex",
-            Invoke.inlineInvoke(writer, "getOffset", TypeUtils.PRIMITIVE_INT_TYPE, ordinal)));
-  }
-
-  @Override
-  protected Expression finishArrayWrite(
-      final Expression ordinal,
-      final Expression writer,
-      final TypeRef<?> typeRef,
-      final Field fieldIfKnown,
-      final Expression originalWriterIndex) {
-    if (fieldIfKnown == null
-        || CompactBinaryRowWriter.fixedWidthFor(itemType(fieldIfKnown)) == -1) {
-      return super.finishArrayWrite(ordinal, writer, typeRef, fieldIfKnown, originalWriterIndex);
-    }
-    return new Invoke(
-        Invoke.inlineInvoke(writer, "getBuffer", TypeRef.of(MemoryBuffer.class)),
-        "writerIndex",
-        originalWriterIndex);
-  }*/
-
   @Override
   protected TypeRef<? extends BinaryArrayWriter> arrayWriterType() {
     return TypeRef.of(CompactBinaryArrayWriter.class);
