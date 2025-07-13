@@ -17,7 +17,6 @@
 
 import array
 import builtins
-import inspect
 import itertools
 import marshal
 import os
@@ -874,7 +873,7 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
     def _serialize_function(self, buffer, func):
         """Serialize a function by capturing all its components."""
         # Get function metadata
-        is_method = hasattr(func, '__self__')
+        is_method = hasattr(func, "__self__")
         if is_method:
             # Handle bound methods
             self_obj = func.__self__
@@ -955,10 +954,9 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
         # Handle additional attributes
         attrs = {}
         for attr in dir(func):
-            if attr.startswith('__') and attr.endswith('__'):
+            if attr.startswith("__") and attr.endswith("__"):
                 continue
-            if attr in ('__code__', '__name__', '__defaults__', '__closure__',
-                       '__globals__', '__module__', '__qualname__'):
+            if attr in ("__code__", "__name__", "__defaults__", "__closure__", "__globals__", "__module__", "__qualname__"):
                 continue
             try:
                 attrs[attr] = getattr(func, attr)
@@ -1036,8 +1034,8 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
         func_globals.update(globals_dict)
 
         # Ensure __builtins__ is available
-        if '__builtins__' not in func_globals:
-            func_globals['__builtins__'] = builtins
+        if "__builtins__" not in func_globals:
+            func_globals["__builtins__"] = builtins
 
         # Create function
         func = types.FunctionType(code, func_globals, name, defaults, closure)
