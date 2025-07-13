@@ -103,11 +103,11 @@ public abstract class BinaryWriter {
     buffer.grow(neededSize);
   }
 
-  public final void setOffsetAndSize(int ordinal, int size) {
+  public void setOffsetAndSize(int ordinal, int size) {
     setOffsetAndSize(ordinal, buffer.writerIndex(), size);
   }
 
-  public final void setOffsetAndSize(int ordinal, int absoluteOffset, int size) {
+  public void setOffsetAndSize(int ordinal, int absoluteOffset, int size) {
     final long relativeOffset = absoluteOffset - startIndex;
     final long offsetAndSize = (relativeOffset << 32) | (long) size;
     write(ordinal, offsetAndSize);

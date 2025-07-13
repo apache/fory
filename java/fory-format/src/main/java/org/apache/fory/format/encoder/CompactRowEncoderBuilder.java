@@ -29,8 +29,8 @@ import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
+import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
-import org.apache.fory.type.TypeUtils;
 
 /** Expression builder for building compact row encoder class. */
 class CompactRowEncoderBuilder extends RowEncoderBuilder {
@@ -73,26 +73,49 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
 
   @Override
   protected Expression serializeForArrayByWriter(
-      Expression ordinal,
-      Expression inputObject,
-      Expression writer,
-      Expression arrayWriter,
-      TypeRef<?> typeRef,
-      Field fieldIfKnown,
-      Expression arrowField) {
-    Expression result =
+      final Expression inputObject,
+      final Expression arrayWriter,
+      final TypeRef<?> typeRef,
+      final Field fieldIfKnown,
+      final Expression arrowField) {
+    final Expression result =
         super.serializeForArrayByWriter(
-            ordinal, inputObject, writer, arrayWriter, typeRef, fieldIfKnown, arrowField);
-    if (fieldIfKnown == null || CompactBinaryRowWriter.fixedWidthFor(fieldIfKnown) == -1) {
+            inputObject, arrayWriter, typeRef, fieldIfKnown, arrowField);
+    if (fieldIfKnown == null
+        || CompactBinaryRowWriter.fixedWidthFor(itemType(fieldIfKnown)) == -1) {
       return result;
     }
     return new ListExpression(
         result,
-        Invoke.inlineInvoke(
-            writer,
+        new Invoke(
+            Invoke.inlineInvoke(arrayWriter, "getBuffer", TypeRef.of(MemoryBuffer.class)),
+            "writerIndex"));
+  }
+
+  private static Field itemType(final Field fieldIfKnown) {
+    return fieldIfKnown.getChildren().get(0);
+  }
+
+  /*
+  @Override
+  protected Expression startArrayWrite(
+      final Expression ordinal,
+      final Expression writer,
+      final Expression arrayWriter,
+      final Field fieldIfKnown,
+      final Expression size) {
+    final Expression startArrayWrite =
+        super.startArrayWrite(ordinal, writer, arrayWriter, fieldIfKnown, size);
+    if (fieldIfKnown == null
+        || CompactBinaryRowWriter.fixedWidthFor(itemType(fieldIfKnown)) == -1) {
+      return startArrayWrite;
+    }
+    return new ListExpression(
+        startArrayWrite,
+        new Invoke(
+            Invoke.inlineInvoke(arrayWriter, "getBuffer", TypeRef.of(MemoryBuffer.class)),
             "writerIndex",
-            TypeUtils.PRIMITIVE_VOID_TYPE,
-            Invoke.inlineInvoke(arrayWriter, "getOffset", TypeUtils.PRIMITIVE_INT_TYPE, ordinal)));
+            Invoke.inlineInvoke(writer, "getOffset", TypeUtils.PRIMITIVE_INT_TYPE, ordinal)));
   }
 
   @Override
@@ -102,12 +125,15 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
       final TypeRef<?> typeRef,
       final Field fieldIfKnown,
       final Expression originalWriterIndex) {
-    if (fieldIfKnown == null || CompactBinaryRowWriter.fixedWidthFor(fieldIfKnown) == -1) {
+    if (fieldIfKnown == null
+        || CompactBinaryRowWriter.fixedWidthFor(itemType(fieldIfKnown)) == -1) {
       return super.finishArrayWrite(ordinal, writer, typeRef, fieldIfKnown, originalWriterIndex);
     }
-    return Invoke.inlineInvoke(
-        writer, "writerIndex", TypeUtils.PRIMITIVE_VOID_TYPE, originalWriterIndex);
-  }
+    return new Invoke(
+        Invoke.inlineInvoke(writer, "getBuffer", TypeRef.of(MemoryBuffer.class)),
+        "writerIndex",
+        originalWriterIndex);
+  }*/
 
   @Override
   protected TypeRef<? extends BinaryArrayWriter> arrayWriterType() {

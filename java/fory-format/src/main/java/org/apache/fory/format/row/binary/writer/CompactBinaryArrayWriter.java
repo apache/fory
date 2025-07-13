@@ -19,6 +19,8 @@
 
 package org.apache.fory.format.row.binary.writer;
 
+import static org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter.fixedWidthFor;
+
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.binary.CompactBinaryArray;
 import org.apache.fory.memory.MemoryBuffer;
@@ -48,12 +50,12 @@ public class CompactBinaryArrayWriter extends BinaryArrayWriter {
   }
 
   public CompactBinaryArrayWriter(final Field field, final MemoryBuffer buffer) {
-    super(field, buffer, 4, elementWidth(field.getChildren().get(0)));
-    fixedWidth = CompactBinaryRowWriter.fixedWidthFor(field) >= 0;
+    super(field, buffer, 4, elementWidth(field));
+    fixedWidth = fixedWidthFor(field.getChildren().get(0)) >= 0;
   }
 
-  private static int elementWidth(final Field field) {
-    final int width = CompactBinaryRowWriter.fixedWidthFor(field);
+  public static int elementWidth(final Field field) {
+    final int width = fixedWidthFor(field.getChildren().get(0));
     if (width < 0) {
       return 8;
     } else {
@@ -62,12 +64,34 @@ public class CompactBinaryArrayWriter extends BinaryArrayWriter {
   }
 
   @Override
-  protected void writeNumElements(final int numElements) {
+  protected void writeNumElements() {
     buffer.putInt32(startIndex, numElements);
   }
 
   @Override
-  protected int calculateHeaderInBytes(final int numElements) {
+  protected int calculateHeaderInBytes() {
     return CompactBinaryArray.calculateHeaderInBytes(numElements);
+  }
+
+  @Override
+  protected void resetAdvanceWriter(final int fixedPartInBytes) {
+    if (fixedWidth) {
+      buffer._increaseWriterIndexUnsafe(headerInBytes);
+    } else {
+      super.resetAdvanceWriter(fixedPartInBytes);
+    }
+  }
+
+  @Override
+  protected void primitiveArrayAdvance(final int size) {
+    buffer._increaseWriterIndexUnsafe(size);
+  }
+
+  @Override
+  public void setOffsetAndSize(final int ordinal, final int absoluteOffset, final int size) {
+    if (fixedWidth) {
+      return;
+    }
+    super.setOffsetAndSize(ordinal, absoluteOffset, size);
   }
 }

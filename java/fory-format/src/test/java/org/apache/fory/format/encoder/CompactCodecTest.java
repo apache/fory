@@ -36,7 +36,7 @@ import org.testng.annotations.Test;
 public class CompactCodecTest {
 
   static {
-    Encoders.registerCustomCodec(CompactUuidType.class, UUID.class, new CompactUUIDCodec());
+    Encoders.registerCustomCodec(UUID.class, new CompactUUIDCodec());
   }
 
   @Data
@@ -248,7 +248,7 @@ public class CompactCodecTest {
     row.pointTo(buffer, 0, buffer.size());
     final InlineNestedArrayType deserializedBean = encoder.fromRow(row);
     assertEquals(deserializedBean, bean1);
-    assertEquals(buffer.size(), 7 + 12 + 8 + 16 * 3);
+    assertEquals(buffer.size(), 88);
   }
 
   @Data
@@ -278,6 +278,6 @@ public class CompactCodecTest {
     row.pointTo(buffer, 0, buffer.size());
     final InlinePrimitiveNestedArrayType deserializedBean = encoder.fromRow(row);
     assertEquals(deserializedBean, bean1);
-    assertEquals(buffer.size(), 48);
+    assertEquals(buffer.size(), 46);
   }
 }

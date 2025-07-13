@@ -268,13 +268,14 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       // place outer writer operations here, because map key/value arrays need to call
       // serializeForArray,
       // but don't setOffsetAndSize for array.
-      Invoke offset =
+      Invoke originalWriterIndex =
           new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE);
       Expression serializeArray =
-          serializeForArray(ordinal, inputObject, writer, typeRef, fieldIfKnown, arrowField);
+          serializeForArray(inputObject, writer, typeRef, fieldIfKnown, arrowField);
       Expression finishArrayWrite =
-          finishArrayWrite(ordinal, writer, typeRef, fieldIfKnown, offset);
-      ListExpression expression = new ListExpression(offset, serializeArray, finishArrayWrite);
+          finishArrayWrite(ordinal, writer, typeRef, fieldIfKnown, originalWriterIndex);
+      ListExpression expression =
+          new ListExpression(originalWriterIndex, serializeArray, finishArrayWrite);
       return new If(
           ExpressionUtils.eqNull(inputObject),
           new Invoke(writer, "setNullAt", ordinal),
@@ -312,38 +313,18 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     }
   }
 
-  protected Expression finishArrayWrite(
-      Expression ordinal,
-      Expression writer,
-      TypeRef<?> typeRef,
-      Field fieldIfKnown,
-      Expression originalWriterIndex) {
-    Arithmetic size =
-        ExpressionUtils.subtract(
-            new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE),
-            originalWriterIndex);
-    Invoke setOffsetAndSize =
-        new Invoke(writer, "setOffsetAndSize", ordinal, originalWriterIndex, size);
-    ListExpression finishArrayWrite = new ListExpression(size, setOffsetAndSize);
-    return finishArrayWrite;
-  }
-
   protected Expression serializeForArray(
-      Expression ordinal,
       Expression inputObject,
       Expression writer,
       TypeRef<?> typeRef,
       Field fieldIfKnown,
       Expression arrowField) {
     Reference arrayWriter = getOrCreateArrayWriter(typeRef, arrowField, writer);
-    return serializeForArrayByWriter(
-        ordinal, inputObject, writer, arrayWriter, typeRef, fieldIfKnown, arrowField);
+    return serializeForArrayByWriter(inputObject, arrayWriter, typeRef, fieldIfKnown, arrowField);
   }
 
   protected Expression serializeForArrayByWriter(
-      Expression ordinal,
       Expression inputObject,
-      Expression writer,
       Expression arrayWriter,
       TypeRef<?> typeRef,
       Field fieldIfKnown,
@@ -354,7 +335,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     Class<?> rawType = getRawType(typeRef);
     if (rawType.isArray()) {
       FieldValue length = new FieldValue(inputObject, "length", TypeUtils.PRIMITIVE_INT_TYPE);
-      Invoke reset = new Invoke(arrayWriter, "reset", length);
+      Expression reset = startArrayWrite(arrayWriter, fieldIfKnown, length);
       if (rawType.getComponentType().isPrimitive()) {
         return new ListExpression(
             reset, new Invoke(arrayWriter, "fromPrimitiveArray", inputObject), arrayWriter);
@@ -377,7 +358,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     } else if (getRawType(typeRef) == Iterable.class) {
       ListFromIterable listFromIterable = new ListFromIterable(inputObject);
       Invoke size = new Invoke(listFromIterable, "size", TypeUtils.PRIMITIVE_INT_TYPE);
-      Invoke reset = new Invoke(arrayWriter, "reset", size);
+      Expression reset = startArrayWrite(arrayWriter, fieldIfKnown, size);
       ForEach forEach =
           new ForEach(
               listFromIterable,
@@ -394,7 +375,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       return new ListExpression(reset, forEach, arrayWriter);
     } else { // collection
       Invoke size = new Invoke(inputObject, "size", TypeUtils.PRIMITIVE_INT_TYPE);
-      Invoke reset = new Invoke(arrayWriter, "reset", size);
+      Expression reset = startArrayWrite(arrayWriter, fieldIfKnown, size);
       ForEach forEach =
           new ForEach(
               inputObject,
@@ -410,6 +391,27 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
                       new HashSet<>()));
       return new ListExpression(reset, forEach, arrayWriter);
     }
+  }
+
+  protected Expression startArrayWrite(
+      Expression arrayWriter, Field fieldIfKnown, Expression size) {
+    return new Invoke(arrayWriter, "reset", size);
+  }
+
+  protected Expression finishArrayWrite(
+      Expression ordinal,
+      Expression writer,
+      TypeRef<?> typeRef,
+      Field fieldIfKnown,
+      Expression originalWriterIndex) {
+    Arithmetic size =
+        ExpressionUtils.subtract(
+            new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE),
+            originalWriterIndex);
+    Invoke setOffsetAndSize =
+        new Invoke(writer, "setOffsetAndSize", ordinal, originalWriterIndex, size);
+    ListExpression finishArrayWrite = new ListExpression(size, setOffsetAndSize);
+    return finishArrayWrite;
   }
 
   protected Reference getOrCreateArrayWriter(
@@ -472,7 +474,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
 
     Invoke keySet = new Invoke(inputObject, "keySet", keySetType);
     Expression keySerializationExpr =
-        serializeForArray(ordinal, keySet, writer, keySetType, fieldIfKnown, keyArrayField);
+        serializeForArray(keySet, writer, keySetType, fieldIfKnown, keyArrayField);
     expressions.add(keySet, keySerializationExpr);
 
     expressions.add(
@@ -484,7 +486,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
 
     Invoke values = new Invoke(inputObject, "values", valuesType);
     Expression valueSerializationExpr =
-        serializeForArray(ordinal, values, writer, valuesType, fieldIfKnown, valueArrayField);
+        serializeForArray(values, writer, valuesType, fieldIfKnown, valueArrayField);
     expressions.add(values, valueSerializationExpr);
 
     Arithmetic size =

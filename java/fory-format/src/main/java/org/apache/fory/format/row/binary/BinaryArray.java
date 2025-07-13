@@ -47,7 +47,7 @@ import org.apache.fory.util.Preconditions;
  */
 public class BinaryArray extends UnsafeTrait implements ArrayData {
   private final Field field;
-  private final int elementSize;
+  protected final int elementSize;
   private MemoryBuffer buffer;
   private int numElements;
   private int bitmapOffset;
@@ -56,15 +56,23 @@ public class BinaryArray extends UnsafeTrait implements ArrayData {
   private int sizeInBytes;
 
   public BinaryArray(Field field) {
+    this(field, elementSize(field));
+  }
+
+  protected BinaryArray(Field field, int elementSize) {
     this.field = field;
+    this.elementSize = elementSize;
+    initializeExtData(1); // Only require at most one slot to cache the schema for array type.
+  }
+
+  private static int elementSize(Field field) {
     int width = DataTypes.getTypeWidth(field.getChildren().get(0).getType());
     // variable-length element type
     if (width < 0) {
-      this.elementSize = 8;
+      return 8;
     } else {
-      this.elementSize = width;
+      return width;
     }
-    initializeExtData(1); // Only require at most one slot to cache the schema for array type.
   }
 
   public void pointTo(MemoryBuffer buffer, int offset, int sizeInBytes) {

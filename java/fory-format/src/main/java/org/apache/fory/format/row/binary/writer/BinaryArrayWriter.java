@@ -48,10 +48,10 @@ import org.apache.fory.memory.Platform;
 public class BinaryArrayWriter extends BinaryWriter {
   public static int MAX_ROUNDED_ARRAY_LENGTH = Integer.MAX_VALUE - 15;
 
-  private final Field field;
-  private final int elementSize;
-  private int numElements;
-  private int headerInBytes;
+  protected final Field field;
+  protected final int elementSize;
+  protected int numElements;
+  protected int headerInBytes;
 
   /** Must call reset before using writer constructed by this constructor. */
   public BinaryArrayWriter(Field field) {
@@ -102,7 +102,7 @@ public class BinaryArrayWriter extends BinaryWriter {
   public void reset(int numElements) {
     super.startIndex = writerIndex();
     this.numElements = numElements;
-    this.headerInBytes = calculateHeaderInBytes(numElements);
+    this.headerInBytes = calculateHeaderInBytes();
     long dataSize = numElements * (long) elementSize;
     if (dataSize > MAX_ROUNDED_ARRAY_LENGTH) {
       throw new UnsupportedOperationException("Can't alloc binary array, it's too big");
@@ -111,7 +111,7 @@ public class BinaryArrayWriter extends BinaryWriter {
     buffer.grow(headerInBytes + fixedPartInBytes);
 
     // Write numElements and clear out null bits to header
-    writeNumElements(numElements);
+    writeNumElements();
     int end = startIndex + headerInBytes;
     for (int i = startIndex + 8; i < end; i += 8) {
       buffer.putInt64(i, 0L);
@@ -121,15 +121,19 @@ public class BinaryArrayWriter extends BinaryWriter {
     for (int i = elementSize * numElements; i < fixedPartInBytes; i++) {
       buffer.putByte(startIndex + headerInBytes + i, (byte) 0);
     }
+    resetAdvanceWriter(fixedPartInBytes);
+  }
+
+  protected void resetAdvanceWriter(int fixedPartInBytes) {
     buffer._increaseWriterIndexUnsafe(headerInBytes + fixedPartInBytes);
   }
 
-  protected void writeNumElements(int numElements) {
+  protected void writeNumElements() {
     // store numElements in header in aligned 8 byte, though numElements is 4 byte int
     buffer.putInt64(startIndex, numElements);
   }
 
-  protected int calculateHeaderInBytes(int numElements) {
+  protected int calculateHeaderInBytes() {
     // numElements use 8 byte, nullBitsSizeInBytes use multiple of 8 byte
     return BinaryArray.calculateHeaderInBytes(numElements);
   }
@@ -188,8 +192,12 @@ public class BinaryArrayWriter extends BinaryWriter {
               type.getChildren().get(0).getType(), this.field.getChildren().get(0).getType());
       throw new IllegalArgumentException(msg);
     }
-    buffer.copyFromUnsafe(
-        startIndex + headerInBytes, arr, offset, numElements * (long) elementSize);
+    int size = numElements * elementSize;
+    buffer.copyFromUnsafe(startIndex + headerInBytes, arr, offset, size);
+    primitiveArrayAdvance(size);
+  }
+
+  protected void primitiveArrayAdvance(int size) {
     // no need to increasewriterIndex, because reset has already increased writerIndex
   }
 
