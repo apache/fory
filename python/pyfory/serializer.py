@@ -961,6 +961,9 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
     and reference tracking.
     """
 
+    # Cache for function attributes that are handled separately
+    _FUNCTION_ATTRS = frozenset(("__code__", "__name__", "__defaults__", "__closure__", "__globals__", "__module__", "__qualname__"))
+
     def _serialize_function(self, buffer, func):
         """Serialize a function by capturing all its components."""
         # Get function metadata
@@ -1047,7 +1050,7 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
         for attr in dir(func):
             if attr.startswith("__") and attr.endswith("__"):
                 continue
-            if attr in ("__code__", "__name__", "__defaults__", "__closure__", "__globals__", "__module__", "__qualname__"):
+            if attr in self._FUNCTION_ATTRS:
                 continue
             try:
                 attrs[attr] = getattr(func, attr)
