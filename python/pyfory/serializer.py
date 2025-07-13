@@ -302,7 +302,7 @@ class DataClassSerializer(Serializer):
         self._xlang = xlang
         # This will get superclass type hints too.
         self._type_hints = typing.get_type_hints(clz)
-        self._field_names = sorted(self._type_hints.keys())
+        self._field_names = self._get_field_names(clz)
         self._has_slots = hasattr(clz, "__slots__")
 
         if self._xlang:
@@ -334,6 +334,16 @@ class DataClassSerializer(Serializer):
                 # don't use `__slots__`, which will make instance method readonly
                 self.write = self._generated_write_method
                 self.read = self._generated_read_method
+
+    def _get_field_names(self, clz):
+        if hasattr(clz, "__dict__"):
+            # Regular object with __dict__
+            # We can't know the fields without an instance, so we rely on type hints
+            return sorted(self._type_hints.keys())
+        elif hasattr(clz, "__slots__"):
+            # Object with __slots__
+            return sorted(clz.__slots__)
+        return []
 
     def _gen_write_method(self):
         context = {}
@@ -397,10 +407,7 @@ class DataClassSerializer(Serializer):
             stmts.append(f"{obj_dict} = {obj}.__dict__")
 
         def set_action(value: str):
-            if not self._has_slots:
-                return f"{obj_dict}['{field_name}'] = {value}"
-            else:
-                return f"{obj}.{field_name} = {value}"
+            return f"setattr({obj}, '{field_name}', {value})"
 
         for field_name in self._field_names:
             field_type = self._type_hints[field_name]
@@ -497,10 +504,7 @@ class DataClassSerializer(Serializer):
             context[serializer_var] = self._serializers[index]
             field_value = f"field_value{index}"
             stmts.append(f"{field_value} = {fory}.xdeserialize_ref({buffer}, serializer={serializer_var})")
-            if not self._has_slots:
-                stmts.append(f"{obj_dict}['{field_name}'] = {field_value}")
-            else:
-                stmts.append(f"{obj}.{field_name} = {field_value}")
+            stmts.append(f"setattr({obj}, '{field_name}', {field_value})")
         stmts.append(f"return {obj}")
         self._xread_method_code, func = compile_function(
             f"xread_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
@@ -1176,6 +1180,45 @@ class PickleSerializer(Serializer):
 
     def read(self, buffer):
         return self.fory.handle_unsupported_read(buffer)
+
+
+class ObjectSerializer(Serializer):
+    """Serializer for regular Python objects.
+    It serializes objects based on `__dict__` or `__slots__`.
+    """
+
+    def write(self, buffer, value):
+        field_names = []
+        if hasattr(value, "__slots__"):
+            field_names = value.__slots__
+        elif hasattr(value, "__dict__"):
+            field_names = value.__dict__.keys()
+
+        sorted_field_names = sorted(field_names)
+
+        buffer.write_varuint32(len(sorted_field_names))
+        for field_name in sorted_field_names:
+            buffer.write_string(field_name)
+            field_value = getattr(value, field_name)
+            self.fory.serialize_ref(buffer, field_value)
+
+    def read(self, buffer):
+        obj = self.type_.__new__(self.type_)
+        self.fory.ref_resolver.reference(obj)
+        num_fields = buffer.read_varuint32()
+        for _ in range(num_fields):
+            field_name = buffer.read_string()
+            field_value = self.fory.deserialize_ref(buffer)
+            setattr(obj, field_name, field_value)
+        return obj
+
+    def xwrite(self, buffer, value):
+        # for cross-language or minimal framing, reuse the same logic
+        return self.write(buffer, value)
+
+    def xread(self, buffer):
+        # symmetric to xwrite
+        return self.read(buffer)
 
 
 class ComplexObjectSerializer(DataClassSerializer):

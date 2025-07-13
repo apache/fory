@@ -131,15 +131,11 @@ def test_big_chunk_dict(track_ref):
 def test_basic_serializer(language):
     fory = Fory(language=language, ref_tracking=True)
     typeinfo = fory.type_resolver.get_typeinfo(datetime.datetime)
-    assert isinstance(
-        typeinfo.serializer, (TimestampSerializer, _serialization.TimestampSerializer)
-    )
+    assert isinstance(typeinfo.serializer, (TimestampSerializer, _serialization.TimestampSerializer))
     if language == Language.XLANG:
         assert typeinfo.type_id == TypeId.TIMESTAMP
     typeinfo = fory.type_resolver.get_typeinfo(datetime.date)
-    assert isinstance(
-        typeinfo.serializer, (DateSerializer, _serialization.DateSerializer)
-    )
+    assert isinstance(typeinfo.serializer, (DateSerializer, _serialization.DateSerializer))
     if language == Language.XLANG:
         assert typeinfo.type_id == TypeId.LOCAL_DATE
     assert ser_de(fory, True) is True
@@ -364,9 +360,7 @@ def test_serialize_arrow_zero_copy():
     buffer_objects = []
     fory = Fory(language=Language.XLANG, ref_tracking=True)
     serialized_data = Buffer.allocate(32)
-    fory.serialize(
-        record_batch, buffer=serialized_data, buffer_callback=buffer_objects.append
-    )
+    fory.serialize(record_batch, buffer=serialized_data, buffer_callback=buffer_objects.append)
     fory.serialize(table, buffer=serialized_data, buffer_callback=buffer_objects.append)
     buffers = [o.to_buffer() for o in buffer_objects]
     new_batch = fory.deserialize(serialized_data, buffers=buffers[:1])
@@ -409,9 +403,7 @@ class RegisterClass:
 
 
 def test_register_py_serializer():
-    fory = Fory(
-        language=Language.PYTHON, ref_tracking=True, require_type_registration=False
-    )
+    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
 
     class Serializer(pyfory.Serializer):
         def write(self, buffer, value):
@@ -463,9 +455,7 @@ def test_register_type():
 
 
 def test_pickle_fallback():
-    fory = Fory(
-        language=Language.PYTHON, ref_tracking=True, require_type_registration=False
-    )
+    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
     o1 = [1, True, np.dtype(np.int32)]
     data1 = fory.serialize(o1)
     new_o1 = fory.deserialize(data1)
@@ -477,9 +467,7 @@ def test_pickle_fallback():
 
 
 def test_unsupported_callback():
-    fory = Fory(
-        language=Language.PYTHON, ref_tracking=True, require_type_registration=False
-    )
+    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
 
     def f1(x):
         return x
@@ -498,27 +486,27 @@ def test_unsupported_callback():
 
 def test_slice():
     fory = Fory(language=Language.PYTHON, ref_tracking=True)
-    assert fory.deserialize(fory.serialize(slice(1, None, "10"))) == slice(
-        1, None, "10"
-    )
+    assert fory.deserialize(fory.serialize(slice(1, None, "10"))) == slice(1, None, "10")
     assert fory.deserialize(fory.serialize(slice(1, 100, 10))) == slice(1, 100, 10)
     assert fory.deserialize(fory.serialize(slice(1, None, 10))) == slice(1, None, 10)
     assert fory.deserialize(fory.serialize(slice(10, 10, None))) == slice(10, 10, None)
-    assert fory.deserialize(fory.serialize(slice(None, None, 10))) == slice(
-        None, None, 10
-    )
-    assert fory.deserialize(fory.serialize(slice(None, None, None))) == slice(
-        None, None, None
-    )
-    assert fory.deserialize(
-        fory.serialize([1, 2, slice(1, 100, 10), slice(1, 100, 10)])
-    ) == [1, 2, slice(1, 100, 10), slice(1, 100, 10)]
-    assert fory.deserialize(
-        fory.serialize([1, slice(1, None, 10), False, [], slice(1, 100, 10)])
-    ) == [1, slice(1, None, 10), False, [], slice(1, 100, 10)]
-    assert fory.deserialize(
-        fory.serialize([1, slice(1, None, "10"), False, [], slice(1, 100, "10")])
-    ) == [1, slice(1, None, "10"), False, [], slice(1, 100, "10")]
+    assert fory.deserialize(fory.serialize(slice(None, None, 10))) == slice(None, None, 10)
+    assert fory.deserialize(fory.serialize(slice(None, None, None))) == slice(None, None, None)
+    assert fory.deserialize(fory.serialize([1, 2, slice(1, 100, 10), slice(1, 100, 10)])) == [1, 2, slice(1, 100, 10), slice(1, 100, 10)]
+    assert fory.deserialize(fory.serialize([1, slice(1, None, 10), False, [], slice(1, 100, 10)])) == [
+        1,
+        slice(1, None, 10),
+        False,
+        [],
+        slice(1, 100, 10),
+    ]
+    assert fory.deserialize(fory.serialize([1, slice(1, None, "10"), False, [], slice(1, 100, "10")])) == [
+        1,
+        slice(1, None, "10"),
+        False,
+        [],
+        slice(1, 100, "10"),
+    ]
 
 
 class EnumClass(Enum):
@@ -561,12 +549,8 @@ def test_cache_serializer():
 
 
 def test_pandas_range_index():
-    fory = Fory(
-        language=Language.PYTHON, ref_tracking=True, require_type_registration=False
-    )
-    fory.register_type(
-        pd.RangeIndex, serializer=pyfory.PandasRangeIndexSerializer(fory)
-    )
+    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory.register_type(pd.RangeIndex, serializer=pyfory.PandasRangeIndexSerializer(fory))
     index = pd.RangeIndex(1, 100, 2, name="a")
     new_index = ser_de(fory, index)
     pd.testing.assert_index_equal(new_index, new_index)
@@ -590,9 +574,7 @@ def test_py_serialize_dataclass(track_ref):
         ref_tracking=track_ref,
         require_type_registration=False,
     )
-    obj1 = PyDataClass1(
-        f1=1, f2=-2.0, f3="abc", f4=True, f5="xyz", f6=[1, 2], f7={"k1": "v1"}
-    )
+    obj1 = PyDataClass1(f1=1, f2=-2.0, f3="abc", f4=True, f5="xyz", f6=[1, 2], f7={"k1": "v1"})
     assert ser_de(fory, obj1) == obj1
     obj2 = PyDataClass1(f1=None, f2=-2.0, f3="abc", f4=None, f5="xyz", f6=None, f7=None)
     assert ser_de(fory, obj2) == obj2
@@ -649,6 +631,8 @@ def test_map_fields_chunk_serializer(track_ref):
     tuple_key_dict = {(1, 2): {1, 2, 3}, (3, 4): {4, 5, 6}}
 
     class CustomClass:
+        __slots__ = ["value"]
+
         def __init__(self, value):
             self.value = value
 
@@ -681,6 +665,41 @@ def test_map_fields_chunk_serializer(track_ref):
     assert map_fields_object.tuple_key_dict == deserialized.tuple_key_dict
     assert map_fields_object.dict_with_custom_obj == deserialized.dict_with_custom_obj
     assert map_fields_object.single_key_dict == deserialized.single_key_dict
+
+
+class SomeTestObject:
+    def __init__(self, f1: int, f2: str):
+        self.f1 = f1
+        self.f2 = f2
+
+    def __eq__(self, other):
+        return self.f1 == other.f1 and self.f2 == other.f2
+
+
+class SomeTestSlotsObject:
+    __slots__ = ["f1", "f2"]
+
+    def __init__(self, f1: int, f2: str):
+        self.f1 = f1
+        self.f2 = f2
+
+    def __eq__(self, other):
+        return self.f1 == other.f1 and self.f2 == other.f2
+
+
+@pytest.mark.parametrize("track_ref", [False, True])
+def test_py_serialize_object(track_ref):
+    fory = Fory(
+        language=Language.PYTHON,
+        ref_tracking=track_ref,
+        require_type_registration=False,
+    )
+    fory.register_type(SomeTestObject)
+    fory.register_type(SomeTestSlotsObject)
+    obj1 = SomeTestObject(f1=1, f2="abc")
+    assert ser_de(fory, obj1) == obj1
+    obj2 = SomeTestSlotsObject(f1=1, f2="abc")
+    assert ser_de(fory, obj2) == obj2
 
 
 if __name__ == "__main__":
