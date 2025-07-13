@@ -19,6 +19,7 @@ import array
 import builtins
 import itertools
 import marshal
+import logging
 import os
 import pickle
 import types
@@ -308,14 +309,17 @@ class DataClassSerializer(Serializer):
             self._serializers = [None] * len(self._field_names)
             visitor = ComplexTypeVisitor(fory)
             for index, key in enumerate(self._field_names):
-                # Changed from self.fory.infer_field to infer_field
                 serializer = infer_field(key, self._type_hints[key], visitor, types_path=[])
                 self._serializers[index] = serializer
             self._serializers, self._field_names = _sort_fields(fory.type_resolver, self._field_names, self._serializers)
             self._hash = 0  # Will be computed on first xwrite/xread
+            self._generated_xwrite_method = self._gen_xwrite_method()
+            self._generated_xread_method = self._gen_xread_method()
+            if _ENABLE_FORY_PYTHON_JIT:
+                # don't use `__slots__`, which will make the instance method read-only
+                self.xwrite = self._generated_xwrite_method
+                self.xread = self._generated_xread_method
             if self.fory.language == Language.PYTHON:
-                import logging  # Import here to avoid circular dependency
-
                 logger = logging.getLogger(__name__)
                 logger.warning(
                     "Type of class %s shouldn't be serialized using cross-language serializer",
@@ -413,6 +417,93 @@ class DataClassSerializer(Serializer):
         stmts.append(f"return {obj}")
         self._read_method_code, func = compile_function(
             f"read_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
+            [buffer],
+            stmts,
+            context,
+        )
+        return func
+
+    def _gen_xwrite_method(self):
+        context = {}
+        counter = itertools.count(0)
+        buffer, fory, value, value_dict = "buffer", "fory", "value", "value_dict"
+        get_hash_func = "_get_hash"
+        context[fory] = self.fory
+        context[get_hash_func] = _get_hash
+        context["_field_names"] = self._field_names
+        context["_type_hints"] = self._type_hints
+        context["_serializers"] = self._serializers
+        # Compute hash at generation time since we're in xlang mode
+        if self._hash == 0:
+            self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
+        stmts = [
+            f'"""xwrite method for {self.type_}"""',
+            f"{buffer}.write_int32({self._hash})",
+        ]
+        if not self._has_slots:
+            stmts.append(f"{value_dict} = {value}.__dict__")
+        for index, field_name in enumerate(self._field_names):
+            field_value = f"field_value{next(counter)}"
+            serializer_var = f"serializer{index}"
+            context[serializer_var] = self._serializers[index]
+            if not self._has_slots:
+                stmts.append(f"{field_value} = {value_dict}['{field_name}']")
+            else:
+                stmts.append(f"{field_value} = {value}.{field_name}")
+            stmts.append(f"{fory}.xserialize_ref({buffer}, {field_value}, serializer={serializer_var})")
+        self._xwrite_method_code, func = compile_function(
+            f"xwrite_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
+            [buffer, value],
+            stmts,
+            context,
+        )
+        return func
+
+    def _gen_xread_method(self):
+        context = dict(_jit_context)
+        buffer, fory, obj_class, obj, obj_dict = (
+            "buffer",
+            "fory",
+            "obj_class",
+            "obj",
+            "obj_dict",
+        )
+        ref_resolver = "ref_resolver"
+        get_hash_func = "_get_hash"
+        context[fory] = self.fory
+        context[obj_class] = self.type_
+        context[ref_resolver] = self.fory.ref_resolver
+        context[get_hash_func] = _get_hash
+        context["_field_names"] = self._field_names
+        context["_type_hints"] = self._type_hints
+        context["_serializers"] = self._serializers
+        # Compute hash at generation time since we're in xlang mode
+        if self._hash == 0:
+            self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
+        stmts = [
+            f'"""xread method for {self.type_}"""',
+            f"read_hash = {buffer}.read_int32()",
+            f"if read_hash != {self._hash}:",
+            f"""   raise TypeNotCompatibleError(
+            f"Hash {{read_hash}} is not consistent with {self._hash} for type {self.type_}")""",
+            f"{obj} = {obj_class}.__new__({obj_class})",
+            f"{ref_resolver}.reference({obj})",
+        ]
+        if not self._has_slots:
+            stmts.append(f"{obj_dict} = {obj}.__dict__")
+
+        for index, field_name in enumerate(self._field_names):
+            serializer_var = f"serializer{index}"
+            context[serializer_var] = self._serializers[index]
+            field_value = f"field_value{index}"
+            stmts.append(f"{field_value} = {fory}.xdeserialize_ref({buffer}, serializer={serializer_var})")
+            if not self._has_slots:
+                stmts.append(f"{obj_dict}['{field_name}'] = {field_value}")
+            else:
+                stmts.append(f"{obj}.{field_name} = {field_value}")
+        stmts.append(f"return {obj}")
+        self._xread_method_code, func = compile_function(
+            f"xread_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
             [buffer],
             stmts,
             context,

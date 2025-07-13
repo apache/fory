@@ -115,7 +115,7 @@ type Fory struct {
 }
 
 func (f *Fory) RegisterTagType(tag string, v interface{}) error {
-	return f.typeResolver.RegisterTypeTag(reflect.TypeOf(v), tag)
+	return f.typeResolver.RegisterTypeTag(reflect.ValueOf(v), tag)
 }
 
 func (f *Fory) Marshal(v interface{}) ([]byte, error) {
@@ -275,24 +275,30 @@ func (f *Fory) writeValue(buffer *ByteBuffer, value reflect.Value, serializer Se
 		value = value.Elem()
 	}
 
+	// For array types, pre-convert the value
+	// so the corresponding slice serializer can be reused
+	if value.Kind() == reflect.Array {
+		length := value.Len()
+		sliceType := reflect.SliceOf(value.Type().Elem())
+		slice := reflect.MakeSlice(sliceType, length, length)
+		reflect.Copy(slice, value)
+		value = slice
+	}
+
+	if serializer != nil {
+		return serializer.Write(f, buffer, value)
+	}
+
 	// Get type information for the value
 	typeInfo, err := f.typeResolver.getTypeInfo(value, true)
-	type_ := typeInfo.Type
-
-	// If no serializer provided, get one for the type
-	if serializer == nil {
-		serializer, err = f.typeResolver.getSerializerByType(type_)
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		return fmt.Errorf("cannot get typeinfo for value %v: %v", value, err)
 	}
-
-	// Write type information to buffer
 	err = f.typeResolver.writeTypeInfo(buffer, typeInfo)
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot write typeinfo for value %v: %v", value, err)
 	}
-
+	serializer = typeInfo.Serializer
 	// Serialize the actual value using the serializer
 	return serializer.Write(f, buffer, value)
 }
@@ -372,66 +378,73 @@ func (f *Fory) ReadReferencable(buffer *ByteBuffer, value reflect.Value) error {
 }
 
 func (f *Fory) readReferencableBySerializer(buf *ByteBuffer, value reflect.Value, serializer Serializer) (err error) {
-	refId, err := f.refResolver.TryPreserveRefId(buf)
-	if err != nil {
-		return err
-	}
-	if refId >= int32(NotNullValueFlag) {
-		err = f.readData(buf, value, serializer)
+	// dynamic-with-refroute or unknown serializer
+	if serializer == nil || serializer.NeedWriteRef() {
+		refId, err := f.refResolver.TryPreserveRefId(buf)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to preserve refID: %w", err)
 		}
-		// If value is not nil(reflect), then value is a pointer to some variable, we can update the `value`,
-		// then record `value` in the reference resolver.
-		if value.Kind() == reflect.Interface {
-			// If same value read again, and type isn't interface, call `Set` will fail.
-			// so we should save interface dynamic value.
-			value = value.Elem()
-		}
-		f.refResolver.SetReadObject(refId, value)
-		return nil
-	} else {
-		if refId == int32(NullFlag) {
+		// first read
+		if refId >= int32(NotNullValueFlag) {
+			// deserialize non-ref (may read typeinfo or use provided serializer)
+			if err := f.readData(buf, value, serializer); err != nil {
+				return fmt.Errorf("failed to read data: %w", err)
+			}
+			// record in resolver
+			f.refResolver.SetReadObject(refId, value)
 			return nil
 		}
-		value.Set(f.refResolver.GetCurrentReadObject())
+		// back-reference or null
+		if refId == int32(NullFlag) {
+			value.Set(reflect.Zero(value.Type()))
+			return nil
+		}
+		prev := f.refResolver.GetReadObject(refId)
+		value.Set(prev)
 		return nil
 	}
+
+	// static path: no references
+	headFlag := buf.ReadInt8()
+	if headFlag == NullFlag {
+		value.Set(reflect.Zero(value.Type()))
+		return nil
+	}
+	// directly read without altering serializer
+	return serializer.Read(f, buf, value.Type(), value)
 }
 
 func (f *Fory) readData(buffer *ByteBuffer, value reflect.Value, serializer Serializer) (err error) {
-	var typeInfo TypeInfo
-	var type_ reflect.Type
-
-	// Read type information from the buffer
-	typeInfo, err = f.typeResolver.readTypeInfo(buffer)
 	if serializer == nil {
-		serializer = typeInfo.Serializer // Use serializer from type info if none provided
-	}
-
-	// Determine concrete type (use value's type if type info is nil)
-	if typeInfo.Type == nil {
-		type_ = value.Type()
-	} else {
-		type_ = typeInfo.Type
-	}
-
-	// Handle interface types specially
-	if value.Kind() == reflect.Interface {
-		// Create a new concrete value since interface elements aren't addressable
-		newValue := reflect.New(type_).Elem()
-		err := serializer.Read(f, buffer, type_, newValue)
+		typeInfo, err := f.typeResolver.readTypeInfo(buffer)
 		if err != nil {
+			return fmt.Errorf("read typeinfo failed: %w", err)
+		}
+		serializer = typeInfo.Serializer
+		var concrete reflect.Value
+		var typ reflect.Type
+		/*
+		   Added logic to distinguish between:
+		   1. Deserialization into a specified interface type,
+		      which matches the behavior in the original tests.
+		   2. Deserialization into a user-defined concrete type.
+		*/
+		switch {
+		case value.Kind() == reflect.Interface,
+			!value.CanSet():
+			concrete = reflect.New(typeInfo.Type).Elem()
+			typ = typeInfo.Type
+		default:
+			concrete = value
+			typ = concrete.Type()
+		}
+		if err := serializer.Read(f, buffer, typ, concrete); err != nil {
 			return err
 		}
-		// Set the populated concrete value into the interface
-		value.Set(newValue)
+		value.Set(concrete)
 		return nil
-	} else {
-		// For non-interface types, read directly into the value
-		// (nil checks are handled by individual serializers)
-		return serializer.Read(f, buffer, typeInfo.Type, value)
 	}
+	return serializer.Read(f, buffer, value.Type(), value)
 }
 
 func (f *Fory) ReadBufferObject(buffer *ByteBuffer) (*ByteBuffer, error) {

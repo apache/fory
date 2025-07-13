@@ -18,6 +18,7 @@
 package fory
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"unsafe"
@@ -41,6 +42,9 @@ type RefResolver struct {
 	readObjects    []reflect.Value
 	readRefIds     []int32
 	readObject     reflect.Value // last read object which is not a reference
+
+	// basicValueCache caches boxed struct pointers keyed by their JSON representation to support reference tracking
+	basicValueCache map[interface{}]reflect.Value
 }
 
 type refKey struct {
@@ -50,8 +54,9 @@ type refKey struct {
 
 func newRefResolver(refTracking bool) *RefResolver {
 	refResolver := &RefResolver{
-		refTracking:    refTracking,
-		writtenObjects: map[refKey]int32{},
+		refTracking:     refTracking,
+		writtenObjects:  map[refKey]int32{},
+		basicValueCache: map[interface{}]reflect.Value{},
 	}
 	return refResolver
 }
@@ -97,6 +102,30 @@ func (r *RefResolver) WriteRefOrNull(buffer *ByteBuffer, value reflect.Value) (r
 		length = len(str)
 	case reflect.Invalid:
 		isNil = true
+	case reflect.Struct:
+		// Adds reference tracking for struct types
+		raw, _ := json.Marshal(value.Interface())
+		key := string(raw)
+		boxed, ok := r.basicValueCache[key]
+		if !ok {
+			boxed = reflect.New(value.Type())
+			boxed.Elem().Set(value)
+			r.basicValueCache[key] = boxed
+		}
+		ptr := unsafe.Pointer(boxed.Pointer())
+		refKey := refKey{pointer: ptr, length: 0}
+		if writtenId, ok := r.writtenObjects[refKey]; ok {
+			buffer.WriteInt8(RefFlag)
+			buffer.WriteVarInt32(writtenId)
+			return true, nil
+		}
+		newWriteRefId := len(r.writtenObjects)
+		if newWriteRefId >= MaxInt32 {
+			return false, fmt.Errorf("too many objects execced %d to serialize", MaxInt32)
+		}
+		r.writtenObjects[refKey] = int32(newWriteRefId)
+		buffer.WriteInt8(RefValueFlag)
+		return false, nil
 	default:
 		// The object is being written for the first time.
 		buffer.WriteInt8(NotNullValueFlag)
@@ -195,6 +224,9 @@ func (r *RefResolver) GetReadObject(refId int32) reflect.Value {
 	if !r.refTracking {
 		return reflect.Value{}
 	}
+	if refId < 0 {
+		return r.readObject
+	}
 	return r.readObjects[refId]
 }
 
@@ -237,7 +269,7 @@ func (r *RefResolver) resetWrite() {
 func nullable(type_ reflect.Type) bool {
 	// Since we can't get value type from interface type, so we return true for interface type
 	switch type_.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Map, reflect.Ptr, reflect.Slice, reflect.Interface, reflect.String:
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Ptr, reflect.Slice, reflect.Interface, reflect.String, reflect.Array:
 		return true
 	}
 	return false

@@ -18,7 +18,6 @@
 package fory
 
 import (
-	"fmt"
 	"github.com/stretchr/testify/require"
 	"reflect"
 	"testing"
@@ -35,9 +34,8 @@ func TestTypeResolver(t *testing.T) {
 	type A struct {
 		F1 string
 	}
-	fmt.Println(reflect.TypeOf(A{}).String())
-	require.Nil(t, typeResolver.RegisterTypeTag(reflect.TypeOf(A{}), "example.A"))
-	require.Error(t, typeResolver.RegisterTypeTag(reflect.TypeOf(A{}), "example.A"))
+	require.Nil(t, typeResolver.RegisterTypeTag(reflect.ValueOf(A{}), "example.A"))
+	require.Error(t, typeResolver.RegisterTypeTag(reflect.ValueOf(A{}), "example.A"))
 
 	var tests = []struct {
 		type_    reflect.Type

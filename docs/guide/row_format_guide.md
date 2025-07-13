@@ -116,9 +116,9 @@ return arrowWriter.finishAsRecordBatch();
 
 ## Support for Interface and Extension Types
 
-Fury now supports row format mapping for Java `interface` types and subclassed (`extends`) types, enabling more dynamic and flexible data schemas.
+Fory now supports row format mapping for Java `interface` types and subclassed (`extends`) types, enabling more dynamic and flexible data schemas.
 
-These enhancements were introduced in [#2243](https://github.com/apache/fury/pull/2243), [#2250](https://github.com/apache/fury/pull/2250), and [#2256](https://github.com/apache/fury/pull/2256).
+These enhancements were introduced in [#2243](https://github.com/apache/fory/pull/2243), [#2250](https://github.com/apache/fory/pull/2250), and [#2256](https://github.com/apache/fory/pull/2256).
 
 ### Example: Interface Mapping with RowEncoder
 

@@ -36,6 +36,10 @@ func (s setSerializer) TypeId() TypeId {
 	return SET
 }
 
+func (s setSerializer) NeedWriteRef() bool {
+	return true
+}
+
 func (s setSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
 	// Get all map keys (set elements)
 	keys := value.MapKeys()
