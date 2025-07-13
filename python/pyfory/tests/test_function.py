@@ -23,6 +23,11 @@ def test_lambda_functions_serialization():
     fory = pyfory.Fory()
     test_input = 5
 
+    # Register the necessary types
+    fory.register_type(tuple)
+    fory.register_type(list)
+    fory.register_type(dict)
+
     # Simple lambda
     simple_lambda = lambda x: x * 2  # noqa: E731
     fory.register_type(type(simple_lambda))
@@ -56,6 +61,11 @@ def test_regular_functions_serialization():
     deserialized = fory.deserialize(serialized)
     assert add_one(test_input) == deserialized(test_input)
 
+    # Register the necessary types for complex functions
+    fory.register_type(tuple)
+    fory.register_type(list)
+    fory.register_type(dict)
+
     # Test complex function
     serialized = fory.serialize(complex_function)
     deserialized = fory.deserialize(serialized)
@@ -65,6 +75,11 @@ def test_regular_functions_serialization():
 def test_nested_functions_serialization():
     """Tests serialization of nested functions."""
     fory = pyfory.Fory()
+
+    # Register the necessary types
+    fory.register_type(tuple)
+    fory.register_type(list)
+    fory.register_type(dict)
 
     def outer_function(x):
         def inner_function(y):
@@ -85,6 +100,11 @@ def test_nested_functions_serialization():
 def test_local_class_serialization():
     """Tests serialization of local classes."""
     fory = pyfory.Fory()
+
+    # Register the necessary types
+    fory.register_type(tuple)
+    fory.register_type(list)
+    fory.register_type(dict)
 
     def create_local_class():
         from dataclasses import dataclass

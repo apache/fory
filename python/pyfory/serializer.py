@@ -16,9 +16,13 @@
 # under the License.
 
 import array
+import builtins
+import inspect
 import itertools
+import marshal
 import os
 import pickle
+import types
 import typing
 import warnings
 from weakref import WeakValueDictionary
@@ -850,36 +854,220 @@ class ReduceSerializer(CrossLanguageCompatibleSerializer):
 
 
 class FunctionSerializer(CrossLanguageCompatibleSerializer):
-    """Serializer for function objects using cloudpickle."""
+    """Serializer for function objects
 
-    def __init__(self, fory, cls):
-        super().__init__(fory, cls)
+    This serializer captures all the necessary information to recreate a function:
+    - Function code
+    - Function name
+    - Module name
+    - Closure variables
+    - Global variables
+    - Default arguments
+    - Function attributes
+
+    The code object is serialized with marshal, and all other components
+    (defaults, globals, closure cells, attrs) go through Fory’s own
+    serialize_ref/deserialize_ref pipeline to ensure proper type registration
+    and reference tracking.
+    """
+
+    def _serialize_function(self, buffer, func):
+        """Serialize a function by capturing all its components."""
+        # Get function metadata
+        is_method = hasattr(func, '__self__')
+        if is_method:
+            # Handle bound methods
+            self_obj = func.__self__
+            func_name = func.__name__
+            # Serialize as a tuple (is_method, self_obj, method_name)
+            buffer.write_bool(True)  # is a method
+            # For the 'self' object, we need to use fory's serialization
+            self.fory.serialize_ref(buffer, self_obj)
+            buffer.write_string(func_name)
+            return
+
+        # Regular function or lambda
+        code = func.__code__
+        name = func.__name__
+        defaults = func.__defaults__
+        closure = func.__closure__
+        globals_dict = func.__globals__
+        module = func.__module__
+        qualname = func.__qualname__
+
+        # Serialize function metadata
+        buffer.write_bool(False)  # Not a method
+        buffer.write_string(name)
+        buffer.write_string(module)
+        buffer.write_string(qualname)
+
+        # Instead of trying to serialize the code object in parts, use marshal
+        # which is specifically designed for code objects
+        marshalled_code = marshal.dumps(code)
+        buffer.write_bytes_and_size(marshalled_code)
+
+        # Serialize defaults (or None if no defaults)
+        # Write whether defaults exist
+        buffer.write_bool(defaults is not None)
+        if defaults is not None:
+            # Write the number of default arguments
+            buffer.write_varuint32(len(defaults))
+            # Serialize each default value individually
+            for default_value in defaults:
+                self.fory.serialize_ref(buffer, default_value)
+
+        # Handle closure
+        # We need to serialize both the closure values and the fact that there is a closure
+        # The code object's co_freevars tells us what variables are in the closure
+        buffer.write_bool(closure is not None)
+        buffer.write_varuint32(len(code.co_freevars) if code.co_freevars else 0)
+
+        if closure:
+            # Extract and serialize each closure cell's contents
+            for cell in closure:
+                self.fory.serialize_ref(buffer, cell.cell_contents)
+
+        # Serialize free variable names as a list of strings
+        # Convert tuple to list since tuple might not be registered
+        freevars_list = list(code.co_freevars) if code.co_freevars else []
+        buffer.write_varuint32(len(freevars_list))
+        for name in freevars_list:
+            buffer.write_string(name)
+
+        # Handle globals
+        # Identify which globals are actually used by the function
+        global_names = set()
+        for name in code.co_names:
+            if name in globals_dict and not hasattr(builtins, name):
+                global_names.add(name)
+
+        # Add any globals referenced by nested functions in co_consts
+        for const in code.co_consts:
+            if isinstance(const, types.CodeType):
+                for name in const.co_names:
+                    if name in globals_dict and not hasattr(builtins, name):
+                        global_names.add(name)
+
+        # Create and serialize a dictionary with only the necessary globals
+        globals_to_serialize = {name: globals_dict[name] for name in global_names if name in globals_dict}
+        self.fory.serialize_ref(buffer, globals_to_serialize)
+
+        # Handle additional attributes
+        attrs = {}
+        for attr in dir(func):
+            if attr.startswith('__') and attr.endswith('__'):
+                continue
+            if attr in ('__code__', '__name__', '__defaults__', '__closure__',
+                       '__globals__', '__module__', '__qualname__'):
+                continue
+            try:
+                attrs[attr] = getattr(func, attr)
+            except (AttributeError, TypeError):
+                pass
+
+        self.fory.serialize_ref(buffer, attrs)
+
+    def _deserialize_function(self, buffer):
+        """Deserialize a function from its components."""
+        import sys
+
+        # Check if it's a method
+        is_method = buffer.read_bool()
+        if is_method:
+            # Handle bound methods
+            self_obj = self.fory.deserialize_ref(buffer)
+            method_name = buffer.read_string()
+            return getattr(self_obj, method_name)
+
+        # Regular function or lambda
+        name = buffer.read_string()
+        module = buffer.read_string()
+        qualname = buffer.read_string()
+
+        # Use marshal to load the code object, which handles all Python versions correctly
+        marshalled_code = buffer.read_bytes_and_size()
+        code = marshal.loads(marshalled_code)
+
+        # Deserialize defaults
+        has_defaults = buffer.read_bool()
+        defaults = None
+        if has_defaults:
+            # Read the number of default arguments
+            num_defaults = buffer.read_varuint32()
+            # Deserialize each default value
+            default_values = []
+            for _ in range(num_defaults):
+                default_values.append(self.fory.deserialize_ref(buffer))
+            defaults = tuple(default_values)
+
+        # Handle closure
+        has_closure = buffer.read_bool()
+        num_freevars = buffer.read_varuint32()
+        closure = None
+
+        # Read closure values if there are any
+        closure_values = []
+        if has_closure:
+            for _ in range(num_freevars):
+                closure_values.append(self.fory.deserialize_ref(buffer))
+
+            # Create closure cells
+            closure = tuple(types.CellType(value) for value in closure_values)
+
+        # Read free variable names from strings
+        num_freevars = buffer.read_varuint32()
+        freevars = []
+        for _ in range(num_freevars):
+            freevars.append(buffer.read_string())
+
+        # Handle globals
+        globals_dict = self.fory.deserialize_ref(buffer)
+
+        # Create a globals dictionary with module's globals as the base
+        func_globals = {}
         try:
-            import cloudpickle
+            mod = sys.modules.get(module)
+            if mod:
+                func_globals.update(mod.__dict__)
+        except (KeyError, AttributeError):
+            pass
 
-            self.cloudpickle = cloudpickle
-        except ImportError:
-            raise ImportError("cloudpickle is required for function serialization")
+        # Add the deserialized globals
+        func_globals.update(globals_dict)
+
+        # Ensure __builtins__ is available
+        if '__builtins__' not in func_globals:
+            func_globals['__builtins__'] = builtins
+
+        # Create function
+        func = types.FunctionType(code, func_globals, name, defaults, closure)
+
+        # Set function attributes
+        func.__module__ = module
+        func.__qualname__ = qualname
+
+        # Deserialize and set additional attributes
+        attrs = self.fory.deserialize_ref(buffer)
+        for attr_name, attr_value in attrs.items():
+            setattr(func, attr_name, attr_value)
+
+        return func
 
     def xwrite(self, buffer, value):
-        # Use cloudpickle to serialize the function
-        pickled_data = self.cloudpickle.dumps(value)
-        buffer.write_bytes_and_size(pickled_data)
+        """Serialize a function for cross-language compatibility."""
+        self._serialize_function(buffer, value)
 
     def xread(self, buffer):
-        # Use cloudpickle to deserialize the function
-        pickled_data = buffer.read_bytes_and_size()
-        return self.cloudpickle.loads(pickled_data)
+        """Deserialize a function for cross-language compatibility."""
+        return self._deserialize_function(buffer)
 
     def write(self, buffer, value):
-        # For Python-only mode, also use cloudpickle
-        pickled_data = self.cloudpickle.dumps(value)
-        buffer.write_bytes_and_size(pickled_data)
+        """Serialize a function for Python-only mode."""
+        self._serialize_function(buffer, value)
 
     def read(self, buffer):
-        # For Python-only mode, also use cloudpickle
-        pickled_data = buffer.read_bytes_and_size()
-        return self.cloudpickle.loads(pickled_data)
+        """Deserialize a function for Python-only mode."""
+        return self._deserialize_function(buffer)
 
 
 class PickleSerializer(Serializer):
