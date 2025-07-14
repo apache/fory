@@ -1193,14 +1193,23 @@ class ObjectSerializer(Serializer):
     It serializes objects based on `__dict__` or `__slots__`.
     """
 
-    def write(self, buffer, value):
-        field_names = []
-        if hasattr(value, "__slots__"):
-            field_names = value.__slots__
-        elif hasattr(value, "__dict__"):
-            field_names = value.__dict__.keys()
+    def __init__(self, fory, clz: type):
+        super().__init__(fory, clz)
+        # If the class defines __slots__, compute and store a sorted list once
+        slots = getattr(clz, "__slots__", None)
+        self._slot_field_names = None
+        if slots is not None:
+            # __slots__ can be a string or iterable of strings
+            if isinstance(slots, str):
+                slots = [slots]
+            self._slot_field_names = sorted(slots)
 
-        sorted_field_names = sorted(field_names)
+    def write(self, buffer, value):
+        # Use precomputed slots if available, otherwise sort instance __dict__ keys
+        if self._slot_field_names is not None:
+            sorted_field_names = self._slot_field_names
+        else:
+            sorted_field_names = sorted(value.__dict__.keys())
 
         buffer.write_varuint32(len(sorted_field_names))
         for field_name in sorted_field_names:
