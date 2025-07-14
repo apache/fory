@@ -407,7 +407,10 @@ class DataClassSerializer(Serializer):
             stmts.append(f"{obj_dict} = {obj}.__dict__")
 
         def set_action(value: str):
-            return f"setattr({obj}, '{field_name}', {value})"
+            if not self._has_slots:
+                return f"{obj_dict}['{field_name}'] = {value}"
+            else:
+                return f"{obj}.{field_name} = {value}"
 
         for field_name in self._field_names:
             field_type = self._type_hints[field_name]
@@ -504,7 +507,10 @@ class DataClassSerializer(Serializer):
             context[serializer_var] = self._serializers[index]
             field_value = f"field_value{index}"
             stmts.append(f"{field_value} = {fory}.xdeserialize_ref({buffer}, serializer={serializer_var})")
-            stmts.append(f"setattr({obj}, '{field_name}', {field_value})")
+            if not self._has_slots:
+                stmts.append(f"{obj_dict}['{field_name}'] = {field_value}")
+            else:
+                stmts.append(f"{obj}.{field_name} = {field_value}")
         stmts.append(f"return {obj}")
         self._xread_method_code, func = compile_function(
             f"xread_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),

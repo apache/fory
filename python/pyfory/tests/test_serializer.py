@@ -109,7 +109,7 @@ def test_multi_chunk_complex_dict(track_ref):
     fory = Fory(language=Language.PYTHON, ref_tracking=track_ref)
     now = datetime.datetime.now()
     day = datetime.date(2021, 11, 23)
-    dict0 = {"a": "a", 1: 1, -1.0: -1.0, True: True, now: now, day: day}
+    dict0 = {"a": "a", 1: 1, -1.0: -1.0, True: True, now: now, day: day}  # noqa: F601
     assert ser_de(fory, dict0) == dict0
 
 
@@ -159,7 +159,7 @@ def test_basic_serializer(language):
     assert ser_de(fory, list_) == list_
     dict1_ = {"k1": "a", "k2": 1, "k3": -1.0, "k4": True, "k5": now, "k6": day}
     assert ser_de(fory, dict1_) == dict1_
-    dict2_ = {"a": "a", 1: 1, -1.0: -1.0, True: True, now: now, day: day}
+    dict2_ = {"a": "a", 1: 1, -1.0: -1.0, True: True, now: now, day: day}  # noqa: F601
     assert ser_de(fory, dict2_) == dict2_
     set_ = {"a", 1, -1.0, True, now, day}
     assert ser_de(fory, set_) == set_
