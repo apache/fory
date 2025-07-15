@@ -19,6 +19,7 @@
 
 package org.apache.fory.format.encoder;
 
+import java.util.function.Function;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryRow;
@@ -29,14 +30,19 @@ import org.apache.fory.memory.MemoryUtils;
 
 class BeanEncoder<T> implements RowEncoder<T> {
   private final Schema schema;
+  private final Function<Schema, BinaryRow> rowFactory;
   private final GeneratedRowEncoder codec;
   private final BaseBinaryRowWriter writer;
   private final long schemaHash;
   private final MemoryBuffer buffer = MemoryUtils.buffer(16);
 
   BeanEncoder(
-      final Schema schema, final GeneratedRowEncoder codec, final BaseBinaryRowWriter writer) {
+      final Schema schema,
+      final Function<Schema, BinaryRow> rowFactory,
+      final GeneratedRowEncoder codec,
+      final BaseBinaryRowWriter writer) {
     this.schema = schema;
+    this.rowFactory = rowFactory;
     this.codec = codec;
     this.writer = writer;
     this.schemaHash = DataTypes.computeSchemaHash(schema);
@@ -76,7 +82,7 @@ class BeanEncoder<T> implements RowEncoder<T> {
                   + "Please check writer schema.",
               schema, schemaHash, peerSchemaHash));
     }
-    final BinaryRow row = new BinaryRow(schema);
+    final BinaryRow row = rowFactory.apply(schema);
     row.pointTo(buffer, buffer.readerIndex(), size);
     buffer.increaseReaderIndex(size - 8);
     return fromRow(row);

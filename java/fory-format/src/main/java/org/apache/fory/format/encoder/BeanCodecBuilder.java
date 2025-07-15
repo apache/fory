@@ -25,6 +25,7 @@ import java.util.function.Supplier;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.Fory;
 import org.apache.fory.builder.CodecBuilder;
+import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
@@ -40,6 +41,7 @@ public class BeanCodecBuilder<T> {
   private Fory fory;
   private Function<Schema, BaseBinaryRowWriter> writerFactory = BinaryRowWriter::new;
   private Function<Class<?>, CodecBuilder> codecFactory = RowEncoderBuilder::new;
+  private Function<Schema, BinaryRow> rowFactory = BinaryRow::new;
 
   BeanCodecBuilder(final Class<T> beanClass) {
     this.beanClass = beanClass;
@@ -66,6 +68,7 @@ public class BeanCodecBuilder<T> {
     schema = CompactBinaryRowWriter.sortSchema(schema);
     writerFactory = CompactBinaryRowWriter::new;
     codecFactory = CompactRowEncoderBuilder::new;
+    rowFactory = CompactBinaryRow::new;
     return this;
   }
 
@@ -81,7 +84,7 @@ public class BeanCodecBuilder<T> {
       @Override
       public RowEncoder<T> get() {
         final BaseBinaryRowWriter writer = writerFactory.apply(schema);
-        return new BeanEncoder<T>(schema, codecFactory.apply(writer), writer) {
+        return new BeanEncoder<T>(schema, rowFactory, codecFactory.apply(writer), writer) {
           @Override
           protected void reset() {
             writer.setBuffer(MemoryBuffer.newHeapBuffer(initialBufferSize));
@@ -102,7 +105,7 @@ public class BeanCodecBuilder<T> {
     return new Function<BaseBinaryRowWriter, RowEncoder<T>>() {
       @Override
       public RowEncoder<T> apply(final BaseBinaryRowWriter writer) {
-        return new BeanEncoder<T>(schema, codecFactory.apply(writer), writer);
+        return new BeanEncoder<T>(schema, rowFactory, codecFactory.apply(writer), writer);
       }
     };
   }

@@ -45,6 +45,10 @@ public class CompactBinaryRow extends BinaryRow {
   private final int[] fixedOffsets;
   private final int bitmapOffset;
 
+  public CompactBinaryRow(final Schema schema) {
+    this(schema, CompactBinaryRowWriter.fixedOffsets(schema));
+  }
+
   public CompactBinaryRow(final Schema schema, final int[] fixedOffsets) {
     super(schema);
     this.fixedOffsets = fixedOffsets;
