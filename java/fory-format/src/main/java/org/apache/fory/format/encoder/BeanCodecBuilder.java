@@ -42,6 +42,7 @@ public class BeanCodecBuilder<T> {
   private Function<Schema, BaseBinaryRowWriter> writerFactory = BinaryRowWriter::new;
   private Function<Class<?>, CodecBuilder> codecFactory = RowEncoderBuilder::new;
   private Function<Schema, BinaryRow> rowFactory = BinaryRow::new;
+  private final BaseImpl impl = new BaseImpl();
 
   BeanCodecBuilder(final Class<T> beanClass) {
     this.beanClass = beanClass;
@@ -76,7 +77,8 @@ public class BeanCodecBuilder<T> {
    * Create a codec factory with internal buffer management suitable for serializing individual
    * objects. The resulting factory should be re-used if possible for creating subsequent encoder
    * instances. Encoders are not thread-safe, so create a separate encoder for each thread that uses
-   * it.
+   * it. For platform threads consider {@link ThreadLocal#withInitial(Supplier)}, or get a new
+   * encoder instance for each virtual thread.
    */
   public Supplier<RowEncoder<T>> build() {
     final Function<BaseBinaryRowWriter, GeneratedRowEncoder> codecFactory = codecFactory();
@@ -130,5 +132,9 @@ public class BeanCodecBuilder<T> {
         }
       }
     };
+  }
+
+  class BaseImpl {
+
   }
 }
