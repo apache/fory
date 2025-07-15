@@ -142,7 +142,7 @@ public class CompactBinaryRow extends BinaryRow {
 
   @Override
   protected int isNullBitmapOffset() {
-    return bitmapOffset;
+    return baseOffset + bitmapOffset;
   }
 
   @Override
