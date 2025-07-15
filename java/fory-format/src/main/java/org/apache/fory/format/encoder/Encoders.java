@@ -172,44 +172,7 @@ public class Encoders {
       typeRef = set.iterator().next();
       Encoders.loadOrGenRowCodecClass(getRawType(tt));
     }
-    ArrayEncoder<T> encoder = arrayEncoder(token, typeRef, writer, fory);
-    return new ArrayEncoder<T>() {
-
-      @Override
-      public Field field() {
-        return encoder.field();
-      }
-
-      @Override
-      public T fromArray(BinaryArray array) {
-        return encoder.fromArray(array);
-      }
-
-      @Override
-      public BinaryArray toArray(T obj) {
-        return encoder.toArray(obj);
-      }
-
-      @Override
-      public T decode(MemoryBuffer buffer) {
-        return encoder.decode(buffer);
-      }
-
-      @Override
-      public T decode(byte[] bytes) {
-        return encoder.decode(bytes);
-      }
-
-      @Override
-      public byte[] encode(T obj) {
-        return encoder.encode(obj);
-      }
-
-      @Override
-      public void encode(MemoryBuffer buffer, T obj) {
-        encoder.encode(buffer, obj);
-      }
-    };
+    return arrayEncoder(token, typeRef, writer, fory);
   }
 
   /**
