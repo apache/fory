@@ -89,6 +89,21 @@ public class CompactBinaryRow extends BinaryRow {
   }
 
   @Override
+  public byte[] getBinary(final int ordinal) {
+    final int fixedWidthBinary = CompactBinaryRowWriter.fixedWidthFor(schema, ordinal);
+    if (fixedWidthBinary >= 0) {
+      if (isNullAt(ordinal)) {
+        return null;
+      }
+      final byte[] bytes = new byte[fixedWidthBinary];
+      getBuffer().get(getOffset(ordinal), bytes, 0, fixedWidthBinary);
+      return bytes;
+    } else {
+      return super.getBinary(ordinal);
+    }
+  }
+
+  @Override
   protected BinaryRow getStruct(final int ordinal, final Field field, final int extDataSlot) {
     if (isNullAt(ordinal)) {
       return null;

@@ -47,6 +47,19 @@ public class CompactBinaryArray extends BinaryArray {
   }
 
   @Override
+  public byte[] getBinary(final int ordinal) {
+    if (!fixedWidth) {
+      return super.getBinary(ordinal);
+    }
+    if (isNullAt(ordinal)) {
+      return null;
+    }
+    final byte[] bytes = new byte[elementSize];
+    getBuffer().get(getOffset(ordinal), bytes, 0, elementSize);
+    return bytes;
+  }
+
+  @Override
   protected BinaryRow getStruct(final int ordinal, final Field field, final int extDataSlot) {
     if (isNullAt(ordinal)) {
       return null;

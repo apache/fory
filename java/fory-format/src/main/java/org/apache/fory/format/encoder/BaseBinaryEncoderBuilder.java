@@ -274,8 +274,8 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
           serializeForArray(inputObject, writer, typeRef, fieldIfKnown, arrowField);
       Arithmetic size =
           ExpressionUtils.subtract(
-            new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE),
-            originalWriterIndex);
+              new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE),
+              originalWriterIndex);
       Invoke setOffsetAndSize =
           new Invoke(writer, "setOffsetAndSize", ordinal, originalWriterIndex, size);
       Expression finishArrayWrite = new ListExpression(size, setOffsetAndSize);

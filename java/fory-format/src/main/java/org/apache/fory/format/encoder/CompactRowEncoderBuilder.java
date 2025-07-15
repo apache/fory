@@ -89,7 +89,8 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
         result,
         new Invoke(
             Invoke.inlineInvoke(arrayWriter, "getBuffer", TypeRef.of(MemoryBuffer.class)),
-            "writerIndex"));
+            "writerIndex"),
+        arrayWriter);
   }
 
   private static Field itemType(final Field fieldIfKnown) {

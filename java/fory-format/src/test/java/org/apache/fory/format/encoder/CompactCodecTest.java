@@ -22,7 +22,9 @@ package org.apache.fory.format.encoder;
 import static org.testng.Assert.assertEquals;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.Data;
 import org.apache.arrow.vector.types.pojo.ArrowType;
@@ -126,6 +128,12 @@ public class CompactCodecTest {
   @Data
   public static class CompactUuidType {
     public UUID f1;
+
+    public CompactUuidType() {}
+
+    public CompactUuidType(UUID f1) {
+      this.f1 = f1;
+    }
   }
 
   @Test
@@ -279,5 +287,34 @@ public class CompactCodecTest {
     final InlinePrimitiveNestedArrayType deserializedBean = encoder.fromRow(row);
     assertEquals(deserializedBean, bean1);
     assertEquals(buffer.size(), 46);
+  }
+
+  @Data
+  public static class CompactMapType {
+    public Map<UUID, CompactUuidType> map;
+  }
+
+  @Test
+  public void testCompactMapType() {
+    final CompactMapType bean1 = new CompactMapType();
+    bean1.map = new HashMap<>();
+    UUID u1 = new UUID(42, 24);
+    bean1.map.put(u1, new CompactUuidType(u1));
+    UUID u2 = new UUID(55, 66);
+    bean1.map.put(u2, new CompactUuidType(u2));
+    final RowEncoder<CompactMapType> encoder =
+        Encoders.buildBeanCodec(CompactMapType.class).compactEncoding().build().get();
+    final BinaryRow row = encoder.toRow(bean1);
+    assertEquals(
+        row.getMap(0).keyArray().toString(),
+        "[0x2a000000000000001800000000000000,0x37000000000000004200000000000000]");
+    assertEquals(
+        row.getMap(0).valueArray().toString(),
+        "[{f1=0x2a000000000000001800000000000000},{f1=0x37000000000000004200000000000000}]");
+    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final CompactMapType deserializedBean = encoder.fromRow(row);
+    assertEquals(deserializedBean, bean1);
+    assertEquals(buffer.size(), 106);
   }
 }
