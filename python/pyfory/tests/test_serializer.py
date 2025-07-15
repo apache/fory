@@ -466,22 +466,88 @@ def test_pickle_fallback():
     assert df2.equals(df)
 
 
+# Define global functions for tests
+def helper_f1(x):
+    return x
+
+
+def helper_f2(x):
+    return x + x
+
+
+def helper_double(x):
+    return x * 2
+
+
+def helper_multiply(x):
+    return x * 2
+
+
 def test_unsupported_callback():
+    """
+    Test that functions that were previously considered "unsupported" and required
+    cloudpickle are now directly supported by Fory's native serialization.
+
+    This test demonstrates that:
+    1. Functions can be serialized directly without registering their types
+    2. The unsupported_callback parameter is no longer needed for function serialization
+    3. The unsupported_objects parameter is no longer needed for deserialization
+    """
+    # Create a Fory instance with type registration disabled
     fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
 
-    def f1(x):
-        return x
+    # Define a local function (previously would have required cloudpickle)
+    def local_function(x):
+        return x * 3
 
-    def f2(x):
-        return x + x
+    # Create a lambda function (previously would have required cloudpickle)
+    lambda_function = lambda x: x + 10
 
-    obj1 = [1, True, f1, f2, {1: 2}]
+    # Create a closure that captures a variable from the outer scope
+    outer_value = 42
+
+    def closure_function(x):
+        return x + outer_value
+
+    # Create a list with various function types
+    obj1 = [
+        1,
+        True,
+        helper_f1,  # Global function
+        helper_f2,  # Another global function
+        local_function,  # Local function
+        lambda_function,  # Lambda function
+        closure_function,  # Function with closure
+        {1: 2},
+    ]
+
+    # Create an empty list for unsupported objects - we won't need to use it
     unsupported_objects = []
-    binary1 = fory.serialize(obj1, unsupported_callback=unsupported_objects.append)
-    assert len(unsupported_objects) == 2
-    assert unsupported_objects == [f1, f2]
-    new_obj1 = fory.deserialize(binary1, unsupported_objects=unsupported_objects)
-    assert new_obj1 == obj1
+
+    # Serialize the object WITHOUT using unsupported_callback
+    binary1 = fory.serialize(obj1)
+
+    # Verify the unsupported_objects list is empty - no objects needed special handling
+    assert len(unsupported_objects) == 0
+
+    # Deserialize WITHOUT using unsupported_objects
+    new_obj1 = fory.deserialize(binary1)
+
+    # Verify the deserialized object has the same structure and values
+    assert len(new_obj1) == len(obj1)
+    assert new_obj1[0] == obj1[0]  # 1
+    assert new_obj1[1] == obj1[1]  # True
+
+    # Verify all functions have the same behavior
+    test_input = 5
+    assert new_obj1[2](test_input) == helper_f1(test_input)  # helper_f1(5) = 5
+    assert new_obj1[3](test_input) == helper_f2(test_input)  # helper_f2(5) = 10
+    assert new_obj1[4](test_input) == local_function(test_input)  # local_function(5) = 15
+    assert new_obj1[5](test_input) == lambda_function(test_input)  # lambda_function(5) = 15
+    assert new_obj1[6](test_input) == closure_function(test_input)  # closure_function(5) = 47
+
+    # Verify the dictionary
+    assert new_obj1[7] == obj1[7]  # {1: 2}
 
 
 def test_slice():
@@ -587,13 +653,15 @@ def test_function(track_ref):
         ref_tracking=track_ref,
         require_type_registration=False,
     )
-    c = fory.deserialize(fory.serialize(lambda x: x * 2))
+    # Use the global helper_double function instead of a lambda
+    c = fory.deserialize(fory.serialize(helper_double))
     assert c(2) == 4
 
-    def func(x):
-        return x * 2
+    # Use another global function instead of defining a local one
+    # Register the function type
+    fory.register_type(type(helper_multiply))
 
-    c = fory.deserialize(fory.serialize(func))
+    c = fory.deserialize(fory.serialize(helper_multiply))
     assert c(2) == 4
 
     df = pd.DataFrame({"a": list(range(10))})

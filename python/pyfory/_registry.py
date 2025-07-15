@@ -468,6 +468,8 @@ class TypeResolver:
                 type_id = TypeId.NAMED_ENUM
             elif type(serializer) is PickleSerializer:
                 type_id = PickleSerializer.PICKLE_TYPE_ID
+            elif isinstance(serializer, FunctionSerializer):
+                type_id = TypeId.NAMED_EXT
             elif isinstance(serializer, (ObjectSerializer, StatefulSerializer, ReduceSerializer)):
                 type_id = TypeId.NAMED_EXT
             if not self.require_registration:
@@ -491,8 +493,8 @@ class TypeResolver:
                 break
         else:
             if cls is types.FunctionType:
-                # Use PickleSerializer for function types (including lambdas)
-                serializer = PickleSerializer(self.fory, cls)
+                # Use FunctionSerializer for function types (including lambdas)
+                serializer = FunctionSerializer(self.fory, cls)
             elif dataclasses.is_dataclass(cls):
                 serializer = DataClassSerializer(self.fory, cls)
             elif issubclass(cls, enum.Enum):

@@ -16,6 +16,12 @@ pip install pyarrow==15.0.0 Cython wheel pytest
 pip install -v -e .
 ```
 
+If the last steps fails with an error like `libarrow_python.dylib: No such file or directory`,
+you are probably suffering from bazel's aggressive caching; the sought library is longer at the
+temporary directory it was the last time bazel ran. To remedy this run
+
+> bazel clean --expunge
+
 ### Environment Requirements
 
 - python 3.8+

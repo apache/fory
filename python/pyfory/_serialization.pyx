@@ -30,7 +30,6 @@ from typing import TypeVar, Union, Iterable
 from pyfory._util import get_bit, set_bit, clear_bit
 from pyfory import _fory as fmod
 from pyfory._fory import Language
-from pyfory._fory import _PicklerStub, _UnpicklerStub, Pickler, Unpickler
 from pyfory._fory import _ENABLE_TYPE_REGISTRATION_FORCIBLY
 from pyfory.lib import mmh3
 from pyfory.meta.metastring import Encoding
@@ -581,8 +580,6 @@ cdef class Fory:
     cdef readonly MetaStringResolver metastring_resolver
     cdef readonly SerializationContext serialization_context
     cdef Buffer buffer
-    cdef public object pickler  # pickle.Pickler
-    cdef public object unpickler  # Optional[pickle.Unpickler]
     cdef object _buffer_callback
     cdef object _buffers  # iterator
     cdef object _unsupported_callback
@@ -625,11 +622,6 @@ cdef class Fory:
                 RuntimeWarning,
                 stacklevel=2,
             )
-            self.pickler = Pickler(self.buffer)
-        else:
-            self.pickler = _PicklerStub()
-            self.unpickler = _UnpicklerStub()
-        self.unpickler = None
         self._buffer_callback = None
         self._buffers = None
         self._unsupported_callback = None
@@ -670,9 +662,7 @@ cdef class Fory:
             self, obj, Buffer buffer, buffer_callback=None, unsupported_callback=None):
         self._buffer_callback = buffer_callback
         self._unsupported_callback = unsupported_callback
-        if buffer is not None:
-            self.pickler = Pickler(self.buffer)
-        else:
+        if buffer is None:
             self.buffer.writer_index = 0
             buffer = self.buffer
         if self.language == Language.XLANG:
@@ -800,8 +790,6 @@ cdef class Fory:
 
     cpdef inline _deserialize(
             self, Buffer buffer, buffers=None, unsupported_objects=None):
-        if not self.require_type_registration:
-            self.unpickler = Unpickler(buffer)
         if unsupported_objects is not None:
             self._unsupported_objects = iter(unsupported_objects)
         if self.language == Language.XLANG:
@@ -931,16 +919,16 @@ cdef class Fory:
     cpdef inline handle_unsupported_write(self, Buffer buffer, obj):
         if self._unsupported_callback is None or self._unsupported_callback(obj):
             buffer.write_bool(True)
-            self.pickler.dump(obj)
+            # Use native serialization for all objects
+            self.serialize_ref(buffer, obj)
         else:
             buffer.write_bool(False)
 
     cpdef inline handle_unsupported_read(self, Buffer buffer):
         cdef c_bool in_band = buffer.read_bool()
         if in_band:
-            if self.unpickler is None:
-                self.unpickler.buffer = Unpickler(buffer)
-            return self.unpickler.load()
+            # The appropriate serializer will be determined by the type ID
+            return self.deserialize_ref(buffer)
         else:
             assert self._unsupported_objects is not None
             return next(self._unsupported_objects)
@@ -970,7 +958,6 @@ cdef class Fory:
         self.type_resolver.reset_write()
         self.metastring_resolver.reset_write()
         self.serialization_context.reset()
-        self.pickler.clear_memo()
         self._unsupported_callback = None
 
     cpdef inline reset_read(self):
@@ -979,7 +966,6 @@ cdef class Fory:
         self.metastring_resolver.reset_read()
         self.serialization_context.reset()
         self._buffers = None
-        self.unpickler = None
         self._unsupported_objects = None
 
     cpdef inline reset(self):

@@ -692,11 +692,12 @@ class DynamicPyArraySerializer(Serializer):
         return arr
 
     def write(self, buffer, value):
-        buffer.write_varuint32(PickleSerializer.PICKLE_TYPE_ID)
-        self.fory.handle_unsupported_write(buffer, value)
+        # Use the xwrite method for Python arrays
+        self.xwrite(buffer, value)
 
     def read(self, buffer):
-        return self.fory.handle_unsupported_read(buffer)
+        # Use the xread method for Python arrays
+        return self.xread(buffer)
 
 
 if np:
@@ -752,11 +753,12 @@ class Numpy1DArraySerializer(Serializer):
         return np.frombuffer(data, dtype=self.dtype)
 
     def write(self, buffer, value):
-        buffer.write_int8(PickleSerializer.PICKLE_TYPE_ID)
-        self.fory.handle_unsupported_write(buffer, value)
+        # Use the xwrite method for NumPy arrays
+        self.xwrite(buffer, value)
 
     def read(self, buffer):
-        return self.fory.handle_unsupported_read(buffer)
+        # Use the xread method for NumPy arrays
+        return self.xread(buffer)
 
 
 class NDArraySerializer(Serializer):
@@ -775,36 +777,28 @@ class NDArraySerializer(Serializer):
         raise NotImplementedError("Multi-dimensional array not supported currently")
 
     def write(self, buffer, value):
-        buffer.write_int8(PickleSerializer.PICKLE_TYPE_ID)
-        self.fory.handle_unsupported_write(buffer, value)
+        # Use the xwrite method for NumPy arrays
+        self.xwrite(buffer, value)
 
     def read(self, buffer):
-        return self.fory.handle_unsupported_read(buffer)
+        # Use the xread method for NumPy arrays
+        return self.xread(buffer)
 
 
 class BytesSerializer(CrossLanguageCompatibleSerializer):
+    def xwrite(self, buffer, value):
+        buffer.write_bytes_and_size(value)
+
+    def xread(self, buffer):
+        return buffer.read_bytes_and_size()
+
     def write(self, buffer, value):
-        self.fory.write_buffer_object(buffer, BytesBufferObject(value))
+        # Use the xwrite method for bytes
+        self.xwrite(buffer, value)
 
     def read(self, buffer):
-        fory_buf = self.fory.read_buffer_object(buffer)
-        return fory_buf.to_pybytes()
-
-
-class BytesBufferObject(BufferObject):
-    __slots__ = ("binary",)
-
-    def __init__(self, binary: bytes):
-        self.binary = binary
-
-    def total_bytes(self) -> int:
-        return len(self.binary)
-
-    def write_to(self, buffer: "Buffer"):
-        buffer.write_bytes(self.binary)
-
-    def to_buffer(self) -> "Buffer":
-        return Buffer(self.binary)
+        # Use the xread method for bytes
+        return self.xread(buffer)
 
 
 class StatefulSerializer(CrossLanguageCompatibleSerializer):
@@ -1182,10 +1176,14 @@ class PickleSerializer(Serializer):
         raise NotImplementedError
 
     def write(self, buffer, value):
-        self.fory.handle_unsupported_write(buffer, value)
+        # Use standard pickle module instead of cloudpickle
+        serialized = pickle.dumps(value)
+        buffer.write_bytes_and_size(serialized)
 
     def read(self, buffer):
-        return self.fory.handle_unsupported_read(buffer)
+        # Use standard pickle module instead of cloudpickle
+        serialized = buffer.read_bytes_and_size()
+        return pickle.loads(serialized)
 
 
 class ObjectSerializer(Serializer):
