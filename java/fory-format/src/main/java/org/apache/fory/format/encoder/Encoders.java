@@ -214,64 +214,7 @@ public class Encoders {
               .getConstructor(Object[].class)
               .newInstance(references);
 
-      return new ArrayEncoder<T>() {
-
-        @Override
-        public Field field() {
-          return field;
-        }
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public T fromArray(BinaryArray array) {
-          return (T) codec.fromArray(array);
-        }
-
-        @Override
-        public BinaryArray toArray(T obj) {
-          return codec.toArray(obj);
-        }
-
-        @Override
-        public T decode(MemoryBuffer buffer) {
-          return decode(buffer, buffer.readInt32());
-        }
-
-        public T decode(MemoryBuffer buffer, int size) {
-          BinaryArray array = new BinaryArray(field);
-          int readerIndex = buffer.readerIndex();
-          array.pointTo(buffer, readerIndex, size);
-          buffer.readerIndex(readerIndex + size);
-          return fromArray(array);
-        }
-
-        @Override
-        public T decode(byte[] bytes) {
-          return decode(MemoryUtils.wrap(bytes), bytes.length);
-        }
-
-        @Override
-        public byte[] encode(T obj) {
-          BinaryArray array = toArray(obj);
-          return writer.getBuffer().getBytes(0, 8 + array.getSizeInBytes());
-        }
-
-        @Override
-        public void encode(MemoryBuffer buffer, T obj) {
-          MemoryBuffer prevBuffer = writer.getBuffer();
-          int writerIndex = buffer.writerIndex();
-          buffer.writeInt32(-1);
-          try {
-            writer.setBuffer(buffer);
-            BinaryArray array = toArray(obj);
-            int size = buffer.writerIndex() - writerIndex - 4;
-            assert size == array.getSizeInBytes();
-            buffer.putInt32(writerIndex, size);
-          } finally {
-            writer.setBuffer(prevBuffer);
-          }
-        }
-      };
+      return new BeanArrayEncoder<T>(writer, field, codec);
     } catch (Exception e) {
       String msg = String.format("Create encoder failed, \nelementType: %s", elementType);
       throw new EncoderException(msg, e);

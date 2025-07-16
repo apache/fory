@@ -20,18 +20,28 @@
 package org.apache.fory.format.encoder;
 
 import java.lang.reflect.Constructor;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
+
+import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.Fory;
 import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
+import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
+import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.reflect.TypeRef;
+
+import static org.apache.fory.type.TypeUtils.getRawType;
 
 public class BeanCodecBuilder<T> {
 
@@ -111,6 +121,25 @@ public class BeanCodecBuilder<T> {
       }
     };
   }
+
+  public <C extends Collection<T>> Supplier<ArrayEncoder<T>> arrayEncoder(final TypeRef<T> token, final Fory fory) {
+      final Schema schema = TypeInference.inferSchema(token, false);
+      final Field field = DataTypes.fieldOfSchema(schema, 0);
+      final BinaryArrayWriter writer = new BinaryArrayWriter(field);
+
+      final Set<TypeRef<?>> set = new HashSet<>();
+      findBeanToken(token, set);
+      if (set.isEmpty()) {
+        throw new IllegalArgumentException("can not find bean class.");
+      }
+
+      TypeRef<?> typeRef = null;
+      for (final TypeRef<?> tt : set) {
+        typeRef = set.iterator().next();
+        Encoders.loadOrGenRowCodecClass(getRawType(tt));
+      }
+      return arrayEncoder(token, typeRef, writer, fory);
+    }
 
   Function<BaseBinaryRowWriter, GeneratedRowEncoder> codecFactory() {
     final Class<?> rowCodecClass = Encoders.loadOrGenRowCodecClass(beanClass, codecFactory);
