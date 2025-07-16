@@ -38,7 +38,7 @@
   <properties>
     <maven.compiler.source>11</maven.compiler.source>
     <maven.compiler.target>11</maven.compiler.target>
-    <arrow.version>15.0.0</arrow.version>
+    <arrow.version>18.3.0</arrow.version>
     <jackson-bom.version>2.16.0</jackson-bom.version>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
   </properties>
