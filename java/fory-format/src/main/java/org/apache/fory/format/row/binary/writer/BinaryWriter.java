@@ -53,7 +53,7 @@ public abstract class BinaryWriter {
 
   // avoid polymorphic setNullAt/setNotNullAt to inline for performance.
   // array use 8 byte for numElements
-  private final int bytesBeforeBitMap;
+  protected final int bytesBeforeBitMap;
   protected final List<BinaryWriter> children;
 
   protected BinaryWriter(MemoryBuffer buffer, int bytesBeforeBitMap) {
@@ -103,11 +103,11 @@ public abstract class BinaryWriter {
     buffer.grow(neededSize);
   }
 
-  public final void setOffsetAndSize(int ordinal, int size) {
+  public void setOffsetAndSize(int ordinal, int size) {
     setOffsetAndSize(ordinal, buffer.writerIndex(), size);
   }
 
-  public final void setOffsetAndSize(int ordinal, int absoluteOffset, int size) {
+  public void setOffsetAndSize(int ordinal, int absoluteOffset, int size) {
     final long relativeOffset = absoluteOffset - startIndex;
     final long offsetAndSize = (relativeOffset << 32) | (long) size;
     write(ordinal, offsetAndSize);
@@ -124,15 +124,15 @@ public abstract class BinaryWriter {
    * Since writer is used for one-pass writer, same field won't be writer twice. There is no need to
    * put zero into the corresponding field when set null.
    */
-  public final void setNullAt(int ordinal) {
+  public void setNullAt(int ordinal) {
     BitUtils.set(buffer, startIndex + bytesBeforeBitMap, ordinal);
   }
 
-  public final void setNotNullAt(int ordinal) {
+  public void setNotNullAt(int ordinal) {
     BitUtils.unset(buffer, startIndex + bytesBeforeBitMap, ordinal);
   }
 
-  public final boolean isNullAt(int ordinal) {
+  public boolean isNullAt(int ordinal) {
     return BitUtils.isSet(buffer, startIndex + bytesBeforeBitMap, ordinal);
   }
 
@@ -184,7 +184,7 @@ public abstract class BinaryWriter {
   }
 
   /** This operation will increase writerIndex by aligned 8-byte. */
-  public final void writeUnaligned(int ordinal, byte[] input, int offset, int numBytes) {
+  public void writeUnaligned(int ordinal, byte[] input, int offset, int numBytes) {
     final int roundedSize = roundNumberOfBytesToNearestWord(numBytes);
     buffer.grow(roundedSize);
     zeroOutPaddingBytes(numBytes);
@@ -194,7 +194,7 @@ public abstract class BinaryWriter {
   }
 
   /** This operation will increase writerIndex by aligned 8-byte. */
-  public final void writeUnaligned(int ordinal, MemoryBuffer input, int offset, int numBytes) {
+  public void writeUnaligned(int ordinal, MemoryBuffer input, int offset, int numBytes) {
     final int roundedSize = roundNumberOfBytesToNearestWord(numBytes);
     buffer.grow(roundedSize);
     zeroOutPaddingBytes(numBytes);
@@ -203,8 +203,7 @@ public abstract class BinaryWriter {
     buffer._increaseWriterIndexUnsafe(roundedSize);
   }
 
-  public final void writeAlignedBytes(
-      int ordinal, MemoryBuffer input, int baseOffset, int numBytes) {
+  public void writeAlignedBytes(int ordinal, MemoryBuffer input, int baseOffset, int numBytes) {
     buffer.grow(numBytes);
     buffer.copyFrom(buffer.writerIndex(), input, baseOffset, numBytes);
     setOffsetAndSize(ordinal, numBytes);
