@@ -20,6 +20,11 @@
 package org.apache.fory.format.type;
 
 import org.apache.arrow.vector.types.pojo.ArrowType;
+import org.apache.arrow.vector.types.pojo.ArrowType.BinaryView;
+import org.apache.arrow.vector.types.pojo.ArrowType.LargeListView;
+import org.apache.arrow.vector.types.pojo.ArrowType.ListView;
+import org.apache.arrow.vector.types.pojo.ArrowType.RunEndEncoded;
+import org.apache.arrow.vector.types.pojo.ArrowType.Utf8View;
 
 /** A default arrow type visitor to make overriding easier. */
 public class DefaultTypeVisitor<T> implements ArrowType.ArrowTypeVisitor<T> {
@@ -126,6 +131,31 @@ public class DefaultTypeVisitor<T> implements ArrowType.ArrowTypeVisitor<T> {
 
   @Override
   public T visit(ArrowType.Duration type) {
+    return unsupported(type);
+  }
+
+  @Override
+  public T visit(RunEndEncoded type) {
+    return unsupported(type);
+  }
+
+  @Override
+  public T visit(BinaryView type) {
+    return unsupported(type);
+  }
+
+  @Override
+  public T visit(LargeListView type) {
+    return unsupported(type);
+  }
+
+  @Override
+  public T visit(ListView type) {
+    return unsupported(type);
+  }
+
+  @Override
+  public T visit(Utf8View type) {
     return unsupported(type);
   }
 
