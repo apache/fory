@@ -184,7 +184,7 @@ func (s sliceSerializer) writeDifferentTypes(f *Fory, buf *ByteBuffer, value ref
 
 		// Get and write type info for each element (since types vary)
 		typeInfo, _ := f.typeResolver.getTypeInfo(elem, true)
-		buf.WriteVarInt32(typeInfo.TypeID)
+		f.typeResolver.writeTypeInfo(buf, typeInfo)
 		// When writing the actual value, detect if elem is an array and convert it
 		// to the corresponding slice type so the existing slice serializer can be reused
 		if elem.Kind() == reflect.Array {
@@ -288,9 +288,7 @@ func (s sliceSerializer) readDifferentTypes(f *Fory, buf *ByteBuffer, value refl
 			continue
 		}
 
-		// Read type ID for each element (since types vary)
-		typeID := buf.ReadVarUint32()
-		typeInfo, _ := f.typeResolver.getTypeInfoById(int16(typeID))
+		typeInfo, _ := f.typeResolver.readTypeInfo(buf)
 
 		// Create new element and deserialize from buffer
 		elem := reflect.New(typeInfo.Type).Elem()

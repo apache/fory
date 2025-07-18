@@ -627,6 +627,35 @@ func TestSliceEachIndividually(t *testing.T) {
 	}
 }
 
+// Test Fory's serialization and deserialization of a struct with a slice of nested structs.
+func TestStructWithNestedSlice(t *testing.T) {
+	type Item struct {
+		Name string
+	}
+
+	type Example struct {
+		Items []Item
+	}
+
+	fory := NewFory(true)
+	if err := fory.RegisterTagType("Example", Example{}); err != nil {
+		panic(err)
+	}
+	if err := fory.RegisterTagType("Item", Item{}); err != nil {
+		panic(err)
+	}
+
+	example := &Example{Items: []Item{
+		{Name: "test"},
+	}}
+	bytes, _ := fory.Marshal(example)
+	var deserialized2 interface{}
+	if err := fory.Unmarshal(bytes, &deserialized2); err != nil {
+		panic(err)
+	}
+	require.Equal(t, deserialized2, example)
+}
+
 func convertRecursively(newVal, tmplVal reflect.Value) (reflect.Value, error) {
 	// Unwrap any interface{}
 	if newVal.Kind() == reflect.Interface && !newVal.IsNil() {
