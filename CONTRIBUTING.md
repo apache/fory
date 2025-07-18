@@ -99,7 +99,7 @@ cd python
 # install dependencies for formatting
 pip install ruff
 # format python code
-ruff format python
+ruff format
 ```
 
 ### C++
