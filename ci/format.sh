@@ -11,7 +11,7 @@ set -euox pipefail
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 
 install_nodejs() {
-  #intall nodejs
+  #install nodejs
   filename="node-v16.17.1-linux-x64"
   pkg="$filename.tar.gz"
   NODE_URL="https://nodejs.org/dist/v16.17.1/$pkg"

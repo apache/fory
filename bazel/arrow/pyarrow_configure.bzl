@@ -132,7 +132,7 @@ def _symlink_genrule_for_dir(
         dest_dir: directory to create symlink in.
         genrule_name: genrule name.
         src_files: list of source files instead of src_dir.
-        dest_files: list of corresonding destination files.
+        dest_files: list of corresponding destination files.
 
     Returns:
         genrule target that creates the symlinks.

@@ -701,7 +701,7 @@ Note that this implementation provides better performance at the cost of flexibi
 
 When implementing a serializer for a custom Map type, you must extend `MapSerializer` or `AbstractMapSerializer`. The key difference between these two is that `AbstractMapSerializer` can serialize a class which has a map-like structure but is not a java Map subtype.
 
-Similiar to collection serializer, this is a special parameter `supportCodegenHook` needs be configured:
+Similar to collection serializer, this is a special parameter `supportCodegenHook` needs be configured:
 
 - When `true`:
   - Enables optimized access to map elements and JIT compilation for better performance
@@ -710,7 +710,7 @@ Similiar to collection serializer, this is a special parameter `supportCodegenHo
   - Recommended for most maps
 
 - When `false`:
-  - Uses interfaced-based element access and dynamic serializer dispatch for elements, which have higer cost
+  - Uses interfaced-based element access and dynamic serializer dispatch for elements, which have higher cost
   - More flexible for custom map types
   - Required when map has special serialization needs
   - Handles complex map implementations

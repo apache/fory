@@ -356,7 +356,7 @@ func (f *Fory) Deserialize(buf *ByteBuffer, v interface{}, buffers []*ByteBuffer
 	isCallBackFlag := bitmap&CallBackFlag == CallBackFlag
 	if isCallBackFlag {
 		if buffers == nil {
-			return fmt.Errorf("uffers shouldn't be null when the serialized stream is " +
+			return fmt.Errorf("buffers shouldn't be null when the serialized stream is " +
 				"produced with buffer_callback not null")
 		}
 		f.buffers = buffers
