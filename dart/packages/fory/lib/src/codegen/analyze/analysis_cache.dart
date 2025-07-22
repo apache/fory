@@ -18,7 +18,7 @@
  */
 
 import 'dart:collection';
-import 'package:fory/src/codegen/entity/contructor_params.dart';
+import 'package:fory/src/codegen/entity/constructor_params.dart';
 import 'package:fory/src/codegen/entity/fields_cache_unit.dart';
 import 'package:fory/src/codegen/meta/impl/type_immutable.dart';
 import 'package:fory/src/codegen/meta/lib_import_pack.dart';

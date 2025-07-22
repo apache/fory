@@ -27,7 +27,7 @@ import 'package:fory/src/codegen/analyze/analysis_type_identifier.dart';
 import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/constructor_param.dart';
-import 'package:fory/src/codegen/entity/contructor_params.dart';
+import 'package:fory/src/codegen/entity/constructor_params.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/exception/constraint_violation_exception.dart' show CircularIncapableRisk, InformalConstructorParamException, NoUsableConstructorException;
 import 'package:fory/src/codegen/meta/impl/constructor_info.dart' show ConstructorInfo;

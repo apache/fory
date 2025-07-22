@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import 'package:fory/src/codegen/entity/contructor_params.dart';
+import 'package:fory/src/codegen/entity/constructor_params.dart';
 
 class ConstructorInfo {
   final bool flexibleOrUnnamedCons;
