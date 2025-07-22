@@ -23,7 +23,7 @@ import 'package:fory/src/codegen/analyze/impl/annotation/key_annotation_analyzer
 import 'package:fory/src/codegen/analyze/impl/constructor/constructor_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/field/access_info_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/field/field_analyzer_impl.dart';
-import 'package:fory/src/codegen/analyze/impl/field/field_sortor.dart';
+import 'package:fory/src/codegen/analyze/impl/field/field_sorter.dart';
 import 'package:fory/src/codegen/analyze/impl/field/fields_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/imports/imports_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/struct/class_analyzer_impl.dart';
