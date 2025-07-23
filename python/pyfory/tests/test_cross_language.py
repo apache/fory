@@ -676,6 +676,12 @@ def test_oob_buffer(in_band_file_path, out_of_band_file_path):
 
 
 if __name__ == "__main__":
+    """This file will be executed by CrossLanguageTest.java in fory-core/fory-format module and
+    fory_xlang_test.go in go/fory module
+    The test cases in this file are used to test the cross-language serialization and deserialization
+    functionality.
+    """
+    
     import sys
 
     print(f"Execute {sys.argv}")
