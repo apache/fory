@@ -82,7 +82,7 @@ public final class LongLongByteMap<V> {
 
   /**
    * Returns the index of the key if already present, else -(index + 1) for the next empty index.
-   * This can be overridden in this pacakge to compare for equality differently than {@link
+   * This can be overridden in this package to compare for equality differently than {@link
    * Object#equals(Object)}.
    */
   private int locateKey(long k1, long k2, byte k3) {

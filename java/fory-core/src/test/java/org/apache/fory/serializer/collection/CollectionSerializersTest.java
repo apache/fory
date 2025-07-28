@@ -612,7 +612,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     public EnumSet<TestEnum> enumSet2;
     public List<String> emptyList1;
     public Set<String> emptySet1;
-    // TODO add support for common emtpy
+    // TODO add support for common empty
     public Set<String> emptySortedSet;
     public List<String> singleList1;
     public Set<String> singleSet1;

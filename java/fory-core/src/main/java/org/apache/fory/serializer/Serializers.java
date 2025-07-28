@@ -544,7 +544,7 @@ public class Serializers {
    * object is safe and used sometimes, so fory should support its serialization without disable
    * serializable or class registration checks.
    */
-  // Use a separate serializer to avoid codegen for emtpy object.
+  // Use a separate serializer to avoid codegen for empty object.
   public static final class EmptyObjectSerializer extends ImmutableSerializer<Object> {
 
     public EmptyObjectSerializer(Fory fory) {

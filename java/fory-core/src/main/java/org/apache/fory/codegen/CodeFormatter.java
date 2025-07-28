@@ -19,7 +19,7 @@
 
 package org.apache.fory.codegen;
 
-/** Code formatter to format generated code for better readbility. */
+/** Code formatter to format generated code for better readability. */
 public class CodeFormatter {
 
   /** Format code to add line number for debug. */

@@ -1478,7 +1478,7 @@ public class ClassResolver implements TypeResolver {
     }
   }
 
-  // The jit-compiled native code fot this method will be too big for inline, so we generated
+  // The jit-compiled native code for this method will be too big for inline, so we generated
   // `getClassInfo`
   // in fory-jit, see `BaseSeqCodecBuilder#writeAndGetClassInfo`
   // public ClassInfo writeClassInfo(MemoryBuffer buffer, Class<?> cls, ClassInfoHolder
@@ -1767,24 +1767,24 @@ public class ClassResolver implements TypeResolver {
    * <p>See `already compiled into a big method` in <a
    * href="https://wiki.openjdk.org/display/HotSpot/Server+Compiler+Inlining+Messages">Server+Compiler+Inlining+Messages</a>
    */
-  // Note: Thread safe fot jit thread to call.
+  // Note: Thread safe for jit thread to call.
   public Expression writeClassExpr(
       Expression classResolverRef, Expression buffer, Expression classInfo) {
     return new Invoke(classResolverRef, "writeClassInfo", buffer, classInfo);
   }
 
-  // Note: Thread safe fot jit thread to call.
+  // Note: Thread safe for jit thread to call.
   public Expression writeClassExpr(Expression buffer, short classId) {
     Preconditions.checkArgument(classId != NO_CLASS_ID);
     return writeClassExpr(buffer, Literal.ofShort(classId));
   }
 
-  // Note: Thread safe fot jit thread to call.
+  // Note: Thread safe for jit thread to call.
   public Expression writeClassExpr(Expression buffer, Expression classId) {
     return new Invoke(buffer, "writeVarUint32", new Expression.BitShift("<<", classId, 1));
   }
 
-  // Note: Thread safe fot jit thread to call.
+  // Note: Thread safe for jit thread to call.
   public Expression skipRegisteredClassExpr(Expression buffer) {
     return new Invoke(buffer, "readVarUint32Small14");
   }

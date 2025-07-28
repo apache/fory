@@ -1654,7 +1654,7 @@ public final class MemoryBuffer {
     }
   }
 
-  /** Reads the 1-5 byte as a varint on a little endian mache. */
+  /** Reads the 1-5 byte as a varint on a little endian machine. */
   @CodegenInvoke
   // CHECKSTYLE.OFF:MethodName
   public int _readVarInt32OnLE() {
@@ -1697,7 +1697,7 @@ public final class MemoryBuffer {
     return (result >>> 1) ^ -(result & 1);
   }
 
-  /** Reads the 1-5 byte as a varint on a big endian mache. */
+  /** Reads the 1-5 byte as a varint on a big endian machine. */
   @CodegenInvoke
   // CHECKSTYLE.OFF:MethodName
   public int _readVarInt32OnBE() {

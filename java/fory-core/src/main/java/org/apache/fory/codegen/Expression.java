@@ -2183,7 +2183,7 @@ public interface Expression {
 
     /**
      * Use lambda to create a new context, and by capturing variables, we can make the codegen of
-     * thoese variable expressions happen before while loop.
+     * those variable expressions happen before while loop.
      */
     public While(Expression predicate, SerializableSupplier<Expression> action) {
       this(

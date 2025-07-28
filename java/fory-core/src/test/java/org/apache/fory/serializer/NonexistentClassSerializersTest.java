@@ -104,7 +104,7 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
               .withClassLoader(classLoader)
               .build();
       Object o = fory2.deserialize(bytes);
-      assertTrue(o instanceof NonexistentClass, "Unexpect type " + o.getClass());
+      assertTrue(o instanceof NonexistentClass, "Unexpected type " + o.getClass());
     }
   }
 

@@ -48,7 +48,7 @@ export class AnySerializer {
       serializer = this.fory.classResolver.getSerializerById(typeId);
     }
     if (!serializer) {
-      throw new Error(`cant find implements of typeId: ${typeId}`);
+      throw new Error(`can't find implements of typeId: ${typeId}`);
     }
     return serializer;
   }

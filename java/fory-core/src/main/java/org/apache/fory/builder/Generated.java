@@ -49,7 +49,7 @@ public interface Generated {
      * Register notify callback to update final field type serializers if it's jit-able.
      *
      * @param serializerFieldInfos fields name and types whose field value will be updated when jit
-     *     succeed fot these field types.
+     *     succeed for these field types.
      * @see BaseObjectCodecBuilder#getOrCreateSerializer(Class)
      * @see BaseObjectCodecBuilder#genCode
      */

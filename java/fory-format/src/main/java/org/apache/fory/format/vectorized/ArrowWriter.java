@@ -48,7 +48,7 @@ import org.apache.fory.format.row.MapData;
 import org.apache.fory.format.row.Row;
 import org.apache.fory.format.type.DefaultTypeVisitor;
 
-// Drived from
+// Derived from
 // https://github.com/apache/spark/blob/921fb289f003317d89120faa6937e4abd359195c/sql/catalyst/src/main/scala/org/apache/spark/sql/execution/arrow/ArrowWriter.scala.
 
 /** Converter between fory {@link Row} and arrow {@link ArrowRecordBatch}. */

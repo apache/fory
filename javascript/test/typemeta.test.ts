@@ -23,7 +23,7 @@ import * as beautify from 'js-beautify';
 
 
 describe('typemeta', () => {
-  test('should evoluation scheme work', () => {
+  test('should evaluation scheme work', () => {
     
     const fory = new Fory({
         mode: Mode.Compatible

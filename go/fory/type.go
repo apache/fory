@@ -156,7 +156,7 @@ const (
 	DECIMAL = DECIMAL128
 
 	// Fory added type for cross-language serialization.
-	// FORY_TYPE_TAG for type idendified by the tag
+	// FORY_TYPE_TAG for type identified by the tag
 	FORY_TYPE_TAG               = 256
 	FORY_SET                    = 257
 	FORY_PRIMITIVE_BOOL_ARRAY   = 258

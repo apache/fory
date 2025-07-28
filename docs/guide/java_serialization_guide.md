@@ -320,7 +320,7 @@ For collection serializer, this is a special parameter `supportCodegenHook` need
   - Recommended for most collections
 
 - When `false`:
-  - Uses interfaced-based element access and dynamic serializer dispatch for elements, which have higer cost
+  - Uses interfaced-based element access and dynamic serializer dispatch for elements, which have higher cost
   - More flexible for custom collection types
   - Required when collection has special serialization needs
   - Handles complex collection implementations

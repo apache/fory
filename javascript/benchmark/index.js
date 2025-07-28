@@ -87,7 +87,7 @@ export const data2TypeInfo = (
     );
   }
 
-  throw new Error(`unkonw data type ${typeof data}`);
+  throw new Error(`unknown data type ${typeof data}`);
 };
 
 

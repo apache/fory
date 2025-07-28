@@ -31,7 +31,7 @@ import org.apache.fory.util.Preconditions;
 
 /**
  * Serializer for java serializable lambda. Use fory to serialize java lambda instead of JDK
- * serialization to avoid serialization captured values in closure using JDK, which mis slow and not
+ * serialization to avoid serialization captured values in closure using JDK, which is slow and not
  * secure(will work around type white-list).
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
