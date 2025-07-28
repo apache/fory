@@ -56,7 +56,7 @@ def build(v: str):
     os.mkdir("dist")
     subprocess.check_call(f"git checkout releases-{v}", shell=True)
     branch = f"releases-{v}"
-    src_tar = f"apache-fory-{v}-incubating-src.tar.gz"
+    src_tar = f"apache-fory-{v}-src.tar.gz"
     _check_all_committed()
     _strip_unnecessary_license()
     subprocess.check_call(
@@ -65,7 +65,7 @@ def build(v: str):
     subprocess.check_call(
         f"git archive --format=tar.gz "
         f"--output=dist/{src_tar} "
-        f"--prefix=apache-fory-{v}-incubating-src/ {branch}",
+        f"--prefix=apache-fory-{v}-src/ {branch}",
         shell=True,
     )
     subprocess.check_call("git reset --hard HEAD~", shell=True)
@@ -116,7 +116,7 @@ def _strip_unnecessary_license():
 
 
 def verify(v):
-    src_tar = f"apache-fory-{v}-incubating-src.tar.gz"
+    src_tar = f"apache-fory-{v}-src.tar.gz"
     subprocess.check_call(f"gpg --verify {src_tar}.asc {src_tar}", shell=True)
     logger.info("Verified signature")
     subprocess.check_call(f"sha512sum --check {src_tar}.sha512", shell=True)

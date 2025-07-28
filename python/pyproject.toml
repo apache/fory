@@ -29,7 +29,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pyfory"
 dynamic = ["version"]
-description = "Apache Fory™(incubating) is a blazingly fast multi-language serialization framework powered by jit and zero-copy"
+description = "Apache Fory™ is a blazingly fast multi-language serialization framework powered by jit and zero-copy"
 authors = [
     {name = "chaokunyang", email = "shawn.ck.yang@gmail.com"},
 ]
