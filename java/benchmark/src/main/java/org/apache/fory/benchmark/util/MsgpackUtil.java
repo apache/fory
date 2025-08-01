@@ -119,7 +119,7 @@ public class MsgpackUtil {
   }
 
   private static void packMedia(MessagePacker messagePacker, Media media) throws IOException {
-    messagePacker.packMapHeader(9);  // Media object's field count
+    messagePacker.packMapHeader(9); // Media object's field count
 
     messagePacker.packString("uri");
     messagePacker.packString(media.uri);
