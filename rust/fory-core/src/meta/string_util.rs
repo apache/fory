@@ -137,7 +137,7 @@ pub fn is_latin(s: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    // 导入外部模块中的内容
+    // Import content from external modules
     use super::*;
     use rand::Rng;
 

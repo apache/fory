@@ -305,8 +305,8 @@ class MetaStringEncoder:
         Returns:
             MetaString: An encoded MetaString object.
         """
-        # Long meta string than _METASTRING_NUM_CHARS_LIMIT is not allowed.
-        assert len(input_string) < _METASTRING_NUM_CHARS_LIMIT, "Long meta string than _METASTRING_NUM_CHARS_LIMIT is not allowed."
+        # Long meta string longer than _METASTRING_NUM_CHARS_LIMIT is not allowed.
+        assert len(input_string) < _METASTRING_NUM_CHARS_LIMIT, "Long meta string longer than _METASTRING_NUM_CHARS_LIMIT is not allowed."
 
         if not input_string:
             return MetaString(

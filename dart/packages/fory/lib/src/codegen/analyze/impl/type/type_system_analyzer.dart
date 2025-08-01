@@ -38,7 +38,7 @@ class TypeSystemAnalyzer{
     @LocationEnsure(LocationLevel.fieldLevel)LocationMark locationMark,
   ){
     assert(locationMark.ensureFieldLevel);
-    // 确认现在的ObjType
+    // Confirm the current ObjType
     Either<ObjTypeWrapper, DartTypeEnum> res = Analyzer.customTypeAnalyzer.analyzeType(element);
     if (res.isRight){
       throw UnsupportedTypeException(

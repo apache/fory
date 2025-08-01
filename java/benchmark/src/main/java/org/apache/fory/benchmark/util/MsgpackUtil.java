@@ -119,7 +119,7 @@ public class MsgpackUtil {
   }
 
   private static void packMedia(MessagePacker messagePacker, Media media) throws IOException {
-    messagePacker.packMapHeader(9); // Media 对象的字段数
+    messagePacker.packMapHeader(9);  // Media object's field count
 
     messagePacker.packString("uri");
     messagePacker.packString(media.uri);
@@ -302,7 +302,7 @@ public class MsgpackUtil {
   private static void packSample(MessagePacker messagePacker, Sample sample) throws IOException {
     messagePacker.packMapHeader(23);
 
-    // 基本类型
+    // Basic type
     messagePacker.packString("intValue");
     messagePacker.packInt(sample.intValue);
     messagePacker.packString("longValue");
@@ -318,7 +318,7 @@ public class MsgpackUtil {
     messagePacker.packString("booleanValue");
     messagePacker.packBoolean(sample.booleanValue);
 
-    // 包装类型
+    // Boxed type
     messagePacker.packString("intValueBoxed");
     if (sample.intValueBoxed != null) messagePacker.packInt(sample.intValueBoxed);
     else messagePacker.packNil();
@@ -348,7 +348,7 @@ public class MsgpackUtil {
     if (sample.booleanValueBoxed != null) messagePacker.packBoolean(sample.booleanValueBoxed);
     else messagePacker.packNil();
 
-    // 数组类型
+    // Array type
     messagePacker.packString("intArray");
     if (sample.intArray != null) {
       messagePacker.packArrayHeader(sample.intArray.length);

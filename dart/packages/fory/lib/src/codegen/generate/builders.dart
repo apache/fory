@@ -25,7 +25,7 @@ import 'obj_spec_generator.dart';
 
 Builder foryObjSpecBuilder(BuilderOptions options) {
   return SharedPartBuilder(
-    [ObjSpecGenerator()],  // 提供生成器
-    ForyConst.intermediateMark,     // 输出文件的名称
+    [ObjSpecGenerator()],  // Provide a generator
+    ForyConst.intermediateMark,     // Name of the output file
   );
 }

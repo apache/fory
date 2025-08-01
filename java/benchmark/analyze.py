@@ -132,9 +132,9 @@ def plot(df: pd.DataFrame, file_dir, filename, column="Tps"):
         fory_color = plot_color_map["Fory"]
         plot_color_map["Fory"] = fory_metashared_color
         plot_color_map["Forymetashared"] = fory_color
-    ylable = column
+    ylabel = column
     if column == "Tps":
-        ylable = f"Tps/{scaler}"
+        ylabel = f"Tps/{scaler}"
         data[column] = (data[column] / scaler).apply(format_scaler)
     grouped = data.groupby(group_cols)
     files_dict = {}
@@ -168,7 +168,7 @@ def plot(df: pd.DataFrame, file_dir, filename, column="Tps"):
         for container in ax.containers:
             ax.bar_label(container)
         ax.set_xlabel("enable_references")
-        ax.set_ylabel(ylable)
+        ax.set_ylabel(ylabel)
         libs = libs.str.replace("metashared", "meta\nshared")
         ax.legend(libs, loc="upper right", prop={"size": 13})
         save_dir = get_plot_dir(file_dir)
@@ -183,9 +183,9 @@ def plot_zero_copy(df: pd.DataFrame, file_dir, filename, column="Tps"):
         group_cols = ["Benchmark", "dataType", "bufferType"]
     else:
         group_cols = ["Benchmark", "bufferType"]
-    ylable = column
+    ylabel = column
     if column == "Tps":
-        ylable = f"Tps/{scaler}"
+        ylabel = f"Tps/{scaler}"
         data[column] = (data[column] / scaler).apply(format_scaler)
     grouped = data.groupby(group_cols)
     files_dict = {}
@@ -217,7 +217,7 @@ def plot_zero_copy(df: pd.DataFrame, file_dir, filename, column="Tps"):
         for container in ax.containers:
             ax.bar_label(container)
         ax.set_xlabel("array_size")
-        ax.set_ylabel(ylable)
+        ax.set_ylabel(ylabel)
         ax.legend(libs, bbox_to_anchor=(0.23, 0.99), prop={"size": 13})
         save_dir = get_plot_dir(file_dir)
         sub_plot.get_figure().savefig(save_dir + "/" + save_filename)
