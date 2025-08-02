@@ -38,7 +38,7 @@ import sun.misc.Unsafe;
 public final class Platform {
     @SuppressWarnings("restriction")
     public static final Unsafe UNSAFE = _JDKAccess.UNSAFE;
-
+    public static final boolean IS_ANDROID = _JDKAccess.IS_ANDROID;
     public static final int JAVA_VERSION = _JDKAccess.JAVA_VERSION;
     public static final boolean IS_LITTLE_ENDIAN = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
     public static final Class<?> HEAP_BYTE_BUFFER_CLASS = ByteBuffer.allocate(1).getClass();
