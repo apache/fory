@@ -549,7 +549,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
       writerIndex += arrIndex - targetIndex + numBytes;
       if (Platform.IS_LITTLE_ENDIAN) {
         // FIXME JDK11 utf16 string uses little-endian order.
-        Platform.UNSAFE.copyMemory(
+        Platform.copyMemory(
             chars,
             Platform.CHAR_ARRAY_OFFSET,
             targetArray,

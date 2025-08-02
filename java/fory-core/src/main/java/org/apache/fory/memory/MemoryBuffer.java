@@ -2334,7 +2334,7 @@ public final class MemoryBuffer {
     if (heapMemory != null) {
       System.arraycopy(heapMemory, heapOffset + readerIdx, arr, 0, numBytes);
     } else {
-      Platform.UNSAFE.copyMemory(
+      Platform.copyMemory(
           null, address + readerIdx, arr, Platform.BYTE_ARRAY_OFFSET, numBytes);
     }
     readerIndex = readerIdx + numBytes;
@@ -2350,7 +2350,7 @@ public final class MemoryBuffer {
       streamReader.readTo(arr, 0, numBytes);
       return arr;
     }
-    Platform.UNSAFE.copyMemory(
+    Platform.copyMemory(
         this.heapMemory, this.address + readerIdx, arr, Platform.BYTE_ARRAY_OFFSET, numBytes);
     readerIndex = readerIdx + numBytes;
     return arr;
@@ -2392,7 +2392,7 @@ public final class MemoryBuffer {
       streamReader.readToUnsafe(arr, 0, numBytes);
       return arr;
     }
-    Platform.UNSAFE.copyMemory(
+    Platform.copyMemory(
         heapMemory, address + readerIdx, arr, Platform.CHAR_ARRAY_OFFSET, numBytes);
     readerIndex = readerIdx + numBytes;
     return arr;
@@ -2484,7 +2484,7 @@ public final class MemoryBuffer {
     if ((numBytes | offset | targetOffset) >= 0
         && thisPointer <= this.addressLimit - numBytes
         && otherPointer <= target.addressLimit - numBytes) {
-      UNSAFE.copyMemory(thisHeapRef, thisPointer, otherHeapRef, otherPointer, numBytes);
+      Platform.copyMemory(thisHeapRef, thisPointer, otherHeapRef, otherPointer, numBytes);
     } else {
       throw new IndexOutOfBoundsException(
           String.format(
