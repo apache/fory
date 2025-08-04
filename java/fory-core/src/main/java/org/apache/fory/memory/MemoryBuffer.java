@@ -2409,7 +2409,7 @@ public final class MemoryBuffer {
     final long[] longs = new long[numElements];
     // use subtract to avoid overflow
     if (readerIdx > size - numBytes) {
-      streamReader.readToUnsafe(longs, Platform.LONG_ARRAY_OFFSET, numElements);
+      streamReader.readToUnsafe(longs, Platform.LONG_ARRAY_OFFSET, numBytes);
       return longs;
     }
     Platform.copyMemory(
