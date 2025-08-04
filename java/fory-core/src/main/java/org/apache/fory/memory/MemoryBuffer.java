@@ -2362,7 +2362,7 @@ public final class MemoryBuffer {
     final char[] chars = new char[numBytes >> 1];
     // use subtract to avoid overflow
     if (readerIdx > size - numBytes) {
-      streamReader.readToUnsafe(chars, 0, numBytes);
+      streamReader.readToUnsafe(chars, Platform.CHAR_ARRAY_OFFSET, numBytes);
       return chars;
     }
     Platform.copyMemory(
