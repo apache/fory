@@ -30,7 +30,6 @@ import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
 import org.testng.annotations.Test;
 
@@ -40,7 +39,7 @@ public class BinaryRowTest {
   // test align to see whether align can bring us performance gains.
   @Test(enabled = false)
   public void testAlign() {
-    MemoryBuffer buf = MemoryUtils.buffer(64);
+    MemoryBuffer buf = MemoryBuffer.buffer(64);
     buf.putInt64(6, 100L);
     buf.putInt64(14, 100L);
     long nums = 1000_000_000;
@@ -57,7 +56,7 @@ public class BinaryRowTest {
     long duration = System.nanoTime() - t;
     System.out.format("non-aligned cost:\ttotal %sns %sms\n", duration, duration / 1000_000);
 
-    MemoryBuffer buf2 = MemoryUtils.buffer(64);
+    MemoryBuffer buf2 = MemoryBuffer.buffer(64);
     buf2.putInt64(8, 100L);
     buf2.putInt64(16, 100L);
     // warm

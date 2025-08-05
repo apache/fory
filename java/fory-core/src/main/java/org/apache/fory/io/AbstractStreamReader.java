@@ -33,9 +33,6 @@ public abstract class AbstractStreamReader implements ForyStreamReader {
   public void readTo(byte[] dst, int dstIndex, int length) {}
 
   @Override
-  public void readToUnsafe(Object target, long targetPointer, int numBytes) {}
-
-  @Override
   public void readToByteBuffer(ByteBuffer dst, int length) {}
 
   @Override

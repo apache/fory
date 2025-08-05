@@ -33,8 +33,7 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
-import org.apache.fory.memory.Platform;
+import org.apache.fory.type.Types.JavaArray;
 
 /**
  * Writer for binary array. See {@link BinaryArray}
@@ -56,7 +55,7 @@ public class BinaryArrayWriter extends BinaryWriter {
   /** Must call reset before using writer constructed by this constructor. */
   public BinaryArrayWriter(Field field) {
     // buffer size can grow
-    this(field, MemoryUtils.buffer(64));
+    this(field, MemoryBuffer.buffer(64));
     super.startIndex = 0;
   }
 
@@ -162,7 +161,8 @@ public class BinaryArrayWriter extends BinaryWriter {
     writeDecimal(ordinal, value, (ArrowType.Decimal) field.getChildren().get(0).getType());
   }
 
-  private void fromPrimitiveArray(Object arr, int offset, int numElements, Field type) {
+  private void fromPrimitiveArray(
+      Object arr, int offset, int numElements, Field type, JavaArray eleType) {
     if (DataTypes.getTypeId(type.getChildren().get(0).getType())
         != DataTypes.getTypeId(this.field.getChildren().get(0).getType())) {
       String msg =
@@ -171,38 +171,36 @@ public class BinaryArrayWriter extends BinaryWriter {
               type.getChildren().get(0).getType(), this.field.getChildren().get(0).getType());
       throw new IllegalArgumentException(msg);
     }
-    buffer.copyFromUnsafe(
-        startIndex + headerInBytes, arr, offset, numElements * (long) elementSize);
-    // no need to increasewriterIndex, because reset has already increased writerIndex
+    buffer.copyTo(startIndex + headerInBytes, arr, offset, numElements, eleType, false);
+    // no need to increase writerIndex, because reset has already increased writerIndex
   }
 
   public void fromPrimitiveArray(byte[] arr) {
-    fromPrimitiveArray(arr, Platform.BYTE_ARRAY_OFFSET, arr.length, PRIMITIVE_BYTE_ARRAY_FIELD);
+    fromPrimitiveArray(arr, 0, arr.length, PRIMITIVE_BYTE_ARRAY_FIELD, JavaArray.BYTE);
   }
 
   public void fromPrimitiveArray(boolean[] arr) {
-    fromPrimitiveArray(
-        arr, Platform.BOOLEAN_ARRAY_OFFSET, arr.length, PRIMITIVE_BOOLEAN_ARRAY_FIELD);
+    fromPrimitiveArray(arr, 0, arr.length, PRIMITIVE_BOOLEAN_ARRAY_FIELD, JavaArray.BOOL);
   }
 
   public void fromPrimitiveArray(short[] arr) {
-    fromPrimitiveArray(arr, Platform.SHORT_ARRAY_OFFSET, arr.length, PRIMITIVE_SHORT_ARRAY_FIELD);
+    fromPrimitiveArray(arr, 0, arr.length, PRIMITIVE_SHORT_ARRAY_FIELD, JavaArray.SHORT);
   }
 
   public void fromPrimitiveArray(int[] arr) {
-    fromPrimitiveArray(arr, Platform.INT_ARRAY_OFFSET, arr.length, PRIMITIVE_INT_ARRAY_FIELD);
+    fromPrimitiveArray(arr, 0, arr.length, PRIMITIVE_INT_ARRAY_FIELD, JavaArray.INT);
   }
 
   public void fromPrimitiveArray(long[] arr) {
-    fromPrimitiveArray(arr, Platform.LONG_ARRAY_OFFSET, arr.length, PRIMITIVE_LONG_ARRAY_FIELD);
+    fromPrimitiveArray(arr, 0, arr.length, PRIMITIVE_LONG_ARRAY_FIELD, JavaArray.LONG);
   }
 
   public void fromPrimitiveArray(float[] arr) {
-    fromPrimitiveArray(arr, Platform.FLOAT_ARRAY_OFFSET, arr.length, PRIMITIVE_FLOAT_ARRAY_FIELD);
+    fromPrimitiveArray(arr, 0, arr.length, PRIMITIVE_FLOAT_ARRAY_FIELD, JavaArray.FLOAT);
   }
 
   public void fromPrimitiveArray(double[] arr) {
-    fromPrimitiveArray(arr, Platform.DOUBLE_ARRAY_OFFSET, arr.length, PRIMITIVE_DOUBLE_ARRAY_FIELD);
+    fromPrimitiveArray(arr, 0, arr.length, PRIMITIVE_DOUBLE_ARRAY_FIELD, JavaArray.DOUBLE);
   }
 
   public BinaryArray toArray() {

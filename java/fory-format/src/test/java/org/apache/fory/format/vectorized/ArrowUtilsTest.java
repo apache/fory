@@ -32,7 +32,6 @@ import org.apache.arrow.vector.VectorUnloader;
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.testng.annotations.Test;
 
 public class ArrowUtilsTest {
@@ -56,7 +55,7 @@ public class ArrowUtilsTest {
     VectorSchemaRoot vectorSchemaRoot = createVectorSchemaRoot(2);
     VectorUnloader unloader = new VectorUnloader(vectorSchemaRoot);
     ArrowRecordBatch recordBatch = unloader.getRecordBatch();
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     ArrowUtils.serializeRecordBatch(recordBatch, buffer);
     try (ArrowRecordBatch batch = ArrowUtils.deserializeRecordBatch(buffer)) {
       System.out.println("newRecordBatch " + batch);

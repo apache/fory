@@ -24,7 +24,6 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import javax.annotation.concurrent.NotThreadSafe;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.Platform;
 
 /**
  * A buffered stream by fory. Do not use original {@link InputStream} when this stream object
@@ -45,7 +44,7 @@ public class ForyInputStream extends InputStream implements ForyStreamReader {
     this.stream = stream;
     this.bufferSize = bufferSize;
     byte[] bytes = new byte[bufferSize];
-    this.buffer = MemoryBuffer.fromByteArray(bytes, 0, 0, this);
+    this.buffer = new MemoryBuffer(bytes, 0, 0, this);
   }
 
   @Override
@@ -115,18 +114,50 @@ public class ForyInputStream extends InputStream implements ForyStreamReader {
     }
   }
 
-  @Override
-  public void readToUnsafe(Object target, long targetPointer, int numBytes) {
-    MemoryBuffer buf = buffer;
-    int remaining = buf.remaining();
-    if (remaining < numBytes) {
-      fillBuffer(numBytes - remaining);
-    }
-    byte[] heapMemory = buf.getHeapMemory();
-    long address = buf.getUnsafeReaderAddress();
-    Platform.copyMemory(heapMemory, address, target, targetPointer, numBytes);
-    buf.increaseReaderIndex(numBytes);
-  }
+  //  @Override
+  //  public void readCharsTo(char[] target, int offset, int length) {
+  //    int numBytes = length * 2;
+  //    MemoryBuffer buf = buffer;
+  //    int remaining = buf.remaining();
+  //    if (remaining < numBytes) {
+  //      fillBuffer(numBytes - remaining);
+  //    }
+  //    buf.readCharsDirect(target, offset, length);
+  //  }
+  //
+  //  @Override
+  //  public void readLongsTo(long[] target, int offset, int length) {
+  //    int numBytes = length * 8;
+  //    MemoryBuffer buf = buffer;
+  //    int remaining = buf.remaining();
+  //    if (remaining < numBytes) {
+  //      fillBuffer(numBytes - remaining);
+  //    }
+  //    buf.readLongsDirect(target, offset, length);
+  //  }
+  //
+  //  @Override
+  //  public void readBoolsTo(boolean[] target, int offset, int length) {
+  //    MemoryBuffer buf = buffer;
+  //    int remaining = buf.remaining();
+  //    if (remaining < length) {
+  //      fillBuffer(length - remaining);
+  //    }
+  //    buf.readBoolsDirect(target, offset, length);
+  //  }
+
+  //  @Override
+  //  public void readToUnsafe(Object target, long targetPointer, int numBytes) {
+  //    MemoryBuffer buf = buffer;
+  //    int remaining = buf.remaining();
+  //    if (remaining < numBytes) {
+  //      fillBuffer(numBytes - remaining);
+  //    }
+  //    byte[] heapMemory = buf.getHeapMemory();
+  //    long address = buf.getUnsafeReaderAddress();
+  //    Platform.copyMemory(heapMemory, address, target, targetPointer, numBytes);
+  //    buf.increaseReaderIndex(numBytes);
+  //  }
 
   @Override
   public void readToByteBuffer(ByteBuffer dst, int length) {

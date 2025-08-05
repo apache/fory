@@ -84,7 +84,7 @@ public class StreamTest extends ForyTestBase {
                 return 1;
               }
             });
-    MemoryBuffer buffer = MemoryBuffer.fromByteArray(bytes, 0, 0, stream);
+    MemoryBuffer buffer = new MemoryBuffer(bytes, 0, 0, stream);
     for (int i = 0; i < 10; i++) {
       assertEquals(buffer.readByte(), i);
       assertEquals(buffer.readChar(), i);
@@ -164,7 +164,7 @@ public class StreamTest extends ForyTestBase {
     bas.flush();
     ByteArrayInputStream bis = new ByteArrayInputStream(bas.toByteArray());
     ForyInputStream stream = of(bis);
-    MemoryBuffer buf = MemoryBuffer.fromByteArray(bas.toByteArray());
+    MemoryBuffer buf = MemoryBuffer.wrap(bas.toByteArray());
     Object newObj = fory.deserialize(stream);
     assertEquals(newObj, beanA);
     newObj = fory.deserialize(buf);
@@ -178,7 +178,7 @@ public class StreamTest extends ForyTestBase {
     // test reader buffer grow
     bis = new ByteArrayInputStream(bas.toByteArray());
     stream = of(bis);
-    buf = MemoryBuffer.fromByteArray(bas.toByteArray());
+    buf = MemoryBuffer.wrap(bas.toByteArray());
     newObj = fory.deserialize(stream);
     assertEquals(newObj, beanA);
     newObj = fory.deserialize(buf);
@@ -215,7 +215,7 @@ public class StreamTest extends ForyTestBase {
     // test reader buffer grow
     bis = new ByteArrayInputStream(bas.toByteArray());
     stream = of(bis);
-    MemoryBuffer buf = MemoryBuffer.fromByteArray(bas.toByteArray());
+    MemoryBuffer buf = MemoryBuffer.wrap(bas.toByteArray());
     newObj = fory.deserialize(stream);
     assertEquals(newObj, beanA);
     newObj = fory.deserialize(buf);
@@ -238,7 +238,7 @@ public class StreamTest extends ForyTestBase {
       bas.flush();
       ByteArrayInputStream bis = new ByteArrayInputStream(bas.toByteArray());
       ForyInputStream stream = of(bis);
-      MemoryBuffer buf = MemoryBuffer.fromByteArray(bas.toByteArray());
+      MemoryBuffer buf = MemoryBuffer.wrap(bas.toByteArray());
       Object newObj = fory.deserializeJavaObject(stream, BeanA.class);
       assertEquals(newObj, beanA);
       newObj = fory.deserializeJavaObject(buf, BeanA.class);
@@ -255,7 +255,7 @@ public class StreamTest extends ForyTestBase {
       bas.flush();
       ByteArrayInputStream bis = new ByteArrayInputStream(bas.toByteArray());
       ForyInputStream stream = of(bis);
-      MemoryBuffer buf = MemoryBuffer.fromByteArray(bas.toByteArray());
+      MemoryBuffer buf = MemoryBuffer.wrap(bas.toByteArray());
       Object newObj = fory.deserializeJavaObjectAndClass(stream);
       assertEquals(newObj, beanA);
       newObj = fory.deserializeJavaObjectAndClass(buf);
@@ -269,7 +269,7 @@ public class StreamTest extends ForyTestBase {
       // test reader buffer grow
       bis = new ByteArrayInputStream(bas.toByteArray());
       stream = of(bis);
-      buf = MemoryBuffer.fromByteArray(bas.toByteArray());
+      buf = MemoryBuffer.wrap(bas.toByteArray());
       newObj = fory.deserializeJavaObjectAndClass(stream);
       assertEquals(newObj, beanA);
       newObj = fory.deserializeJavaObjectAndClass(buf);

@@ -35,7 +35,6 @@ import org.apache.fory.io.MemoryBufferReadableChannel;
 import org.apache.fory.io.MemoryBufferWritableChannel;
 import org.apache.fory.io.MockWritableChannel;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.serializer.BufferObject;
 import org.apache.fory.serializer.Serializers.CrossLanguageCompatibleSerializer;
@@ -118,7 +117,7 @@ public class ArrowSerializers {
 
     @Override
     public MemoryBuffer toBuffer() {
-      MemoryBuffer buffer = MemoryUtils.buffer(totalBytes);
+      MemoryBuffer buffer = MemoryBuffer.buffer(totalBytes);
       write(root, new MemoryBufferWritableChannel(buffer));
       return buffer.slice(0, buffer.writerIndex());
     }
@@ -159,7 +158,7 @@ public class ArrowSerializers {
 
     @Override
     public MemoryBuffer toBuffer() {
-      MemoryBuffer buffer = MemoryUtils.buffer(totalBytes);
+      MemoryBuffer buffer = MemoryBuffer.buffer(totalBytes);
       write(table, new MemoryBufferWritableChannel(buffer));
       return buffer.slice(0, buffer.writerIndex());
     }

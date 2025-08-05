@@ -42,6 +42,7 @@ import org.apache.fory.memory.LittleEndian;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.type.Types;
 import org.apache.fory.util.MathUtils;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringEncodingUtils;
@@ -337,23 +338,9 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     // The `ensure` ensure next operations are safe without bound checks,
     // and inner heap buffer doesn't change.
     buffer.ensure(writerIndex + 9 + bytesLen); // 1 byte coder + varint max 8 bytes
-    final byte[] targetArray = buffer.getHeapMemory();
-    if (targetArray != null) {
-      // Some JDK11 Unsafe.copyMemory will `copyMemoryChecks`, and
-      // jvm doesn't eliminate well in some jdk.
-      final int targetIndex = buffer._unsafeHeapWriterIndex();
-      int arrIndex = targetIndex;
-      arrIndex += LittleEndian.putVarUint36Small(targetArray, arrIndex, header);
-      writerIndex += arrIndex - targetIndex;
-      System.arraycopy(bytes, 0, targetArray, arrIndex, bytesLen);
-    } else {
-      writerIndex += buffer._unsafePutVarUint36Small(writerIndex, header);
-      long offHeapAddress = buffer.getUnsafeAddress();
-      Platform.copyMemory(
-          bytes, Platform.BYTE_ARRAY_OFFSET, null, offHeapAddress + writerIndex, bytesLen);
-    }
-    writerIndex += bytesLen;
-    buffer._unsafeWriterIndex(writerIndex);
+    int consumedLen = buffer._unsafePutVarUint36Small(writerIndex, header);
+    buffer._increaseWriterIndexUnsafe(consumedLen);
+    buffer.writeArray(bytes, 0, bytesLen, Types.JavaArray.BYTE, false);
   }
 
   @CodegenInvoke
@@ -440,10 +427,12 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   }
 
   public char[] readCharsUTF16(MemoryBuffer buffer, int numBytes) {
-    char[] chars = new char[numBytes >> 1];
+    int elementNum = numBytes >> 1;
+    assert (numBytes & 1) == 0;
+    char[] chars = new char[elementNum];
     if (Platform.IS_LITTLE_ENDIAN) {
       // FIXME JDK11 utf16 string uses little-endian order.
-      buffer.readChars(chars, Platform.CHAR_ARRAY_OFFSET, numBytes);
+      buffer.readTo(chars, 0, elementNum, Types.JavaArray.CHAR);
     } else {
       buffer.checkReadableBytes(numBytes);
       final byte[] targetArray = buffer.getHeapMemory();
@@ -517,10 +506,10 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     buffer.ensure(writerIndex + 5 + numBytes);
     byte[] targetArray = buffer.getHeapMemory();
     if (targetArray != null) {
-      final int targetIndex = buffer._unsafeHeapWriterIndex();
-      int arrIndex = targetIndex;
-      arrIndex += LittleEndian.putVarUint36Small(targetArray, arrIndex, header);
-      writerIndex += arrIndex - targetIndex;
+      int arrIndex = buffer._unsafeHeapWriterIndex();
+      int varLen = LittleEndian.putVarUint36Small(targetArray, arrIndex, header);
+      arrIndex += varLen;
+      writerIndex += varLen;
       for (int i = 0; i < numBytes; i++) {
         targetArray[arrIndex + i] = (byte) chars[i];
       }
@@ -543,21 +532,18 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     buffer.ensure(writerIndex + 5 + numBytes);
     final byte[] targetArray = buffer.getHeapMemory();
     if (targetArray != null) {
-      final int targetIndex = buffer._unsafeHeapWriterIndex();
-      int arrIndex = targetIndex;
-      arrIndex += LittleEndian.putVarUint36Small(targetArray, arrIndex, header);
-      writerIndex += arrIndex - targetIndex + numBytes;
+      int targetIndex = buffer._unsafeHeapWriterIndex();
+      int varIntLen = LittleEndian.putVarUint36Small(targetArray, targetIndex, header);
+      writerIndex += varIntLen;
+      targetIndex += varIntLen;
       if (Platform.IS_LITTLE_ENDIAN) {
         // FIXME JDK11 utf16 string uses little-endian order.
-        Platform.copyMemory(
-            chars,
-            Platform.CHAR_ARRAY_OFFSET,
-            targetArray,
-            Platform.BYTE_ARRAY_OFFSET + arrIndex,
-            numBytes);
+        buffer.coverMemoryWithArray(
+            writerIndex, chars, 0, numBytes / 2, Types.JavaArray.CHAR, false);
       } else {
-        heapWriteCharsUTF16BE(chars, arrIndex, numBytes, targetArray);
+        heapWriteCharsUTF16BE(chars, targetIndex, numBytes, targetArray);
       }
+      writerIndex += numBytes;
     } else {
       writerIndex += buffer._unsafePutVarUint36Small(writerIndex, header);
       writerIndex = offHeapWriteCharsUTF16(buffer, chars, writerIndex, numBytes);

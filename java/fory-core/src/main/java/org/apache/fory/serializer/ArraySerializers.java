@@ -21,11 +21,9 @@ package org.apache.fory.serializer;
 
 import java.lang.reflect.Array;
 import java.util.Arrays;
-import java.util.IdentityHashMap;
 import org.apache.fory.Fory;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.Platform;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
@@ -34,7 +32,7 @@ import org.apache.fory.serializer.collection.CollectionFlags;
 import org.apache.fory.serializer.collection.ForyArrayAsListSerializer;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
-import org.apache.fory.type.Types;
+import org.apache.fory.type.Types.JavaArray;
 import org.apache.fory.util.Preconditions;
 
 /** Serializers for array types. */
@@ -212,14 +210,14 @@ public class ArraySerializers {
 
   public static final class PrimitiveArrayBufferObject implements BufferObject {
     private final Object array;
-    private final int offset;
     private final int elemSize;
     private final int length;
+    private final JavaArray eleType;
 
-    public PrimitiveArrayBufferObject(Object array, int offset, int elemSize, int length) {
+    public PrimitiveArrayBufferObject(Object array, int length, JavaArray eleType) {
       this.array = array;
-      this.offset = offset;
-      this.elemSize = elemSize;
+      this.eleType = eleType;
+      this.elemSize = eleType.bytesPerEle;
       this.length = length;
     }
 
@@ -230,12 +228,7 @@ public class ArraySerializers {
 
     @Override
     public void writeTo(MemoryBuffer buffer) {
-      int size = Math.multiplyExact(length, elemSize);
-      int writerIndex = buffer.writerIndex();
-      int end = writerIndex + size;
-      buffer.ensure(end);
-      buffer.copyFromUnsafe(writerIndex, array, offset, size);
-      buffer.writerIndex(end);
+      buffer.writeArray(array, 0, length, eleType, true);
     }
 
     @Override
@@ -252,12 +245,14 @@ public class ArraySerializers {
       extends Serializers.CrossLanguageCompatibleSerializer<T> {
     protected final int offset;
     protected final int elemSize;
+    protected final JavaArray eleType;
 
-    public PrimitiveArraySerializer(Fory fory, Class<T> cls) {
+    public PrimitiveArraySerializer(Fory fory, Class<T> cls, JavaArray eleType) {
       super(fory, cls);
-      Class<?> innerType = TypeUtils.getArrayComponentInfo(cls).f0;
-      this.offset = primitiveInfo.get(innerType)[0];
-      this.elemSize = primitiveInfo.get(innerType)[1];
+      this.eleType = eleType;
+      // Class<?> innerType = TypeUtils.getArrayComponentInfo(cls).f0;
+      this.offset = eleType.arrayMemOffset;
+      this.elemSize = eleType.bytesPerEle;
     }
 
     @Override
@@ -274,17 +269,18 @@ public class ArraySerializers {
   public static final class BooleanArraySerializer extends PrimitiveArraySerializer<boolean[]> {
 
     public BooleanArraySerializer(Fory fory) {
-      super(fory, boolean[].class);
+      super(fory, boolean[].class, JavaArray.BOOL);
     }
 
     @Override
     public void write(MemoryBuffer buffer, boolean[] value) {
       if (fory.getBufferCallback() == null) {
-        int size = Math.multiplyExact(value.length, elemSize);
-        buffer.writePrimitiveArrayWithSize(value, offset, size);
+        // int size = Math.multiplyExact(value.length, elemSize);
+        // buffer.writePrimitiveArrayWithSize(value, offset, size);
+        buffer.writeArrayWithSize(value, 0, value.length, eleType);
       } else {
         fory.writeBufferObject(
-            buffer, new PrimitiveArrayBufferObject(value, offset, elemSize, value.length));
+            buffer, new PrimitiveArrayBufferObject(value, value.length, eleType));
       }
     }
 
@@ -300,13 +296,14 @@ public class ArraySerializers {
         int size = buf.remaining();
         int numElements = size / elemSize;
         boolean[] values = new boolean[numElements];
-        buf.copyToUnsafe(0, values, offset, size);
+        // buf.copyToUnsafe(0, values, offset, size);
+        buf.copyTo(0, values, 0, numElements, eleType, false);
         return values;
       } else {
         int size = buffer.readVarUint32Small7();
         int numElements = size / elemSize;
         boolean[] values = new boolean[numElements];
-        buffer.readToUnsafe(values, offset, size);
+        buffer.readTo(values, 0, numElements, eleType);
         return values;
       }
     }
@@ -315,17 +312,18 @@ public class ArraySerializers {
   public static final class ByteArraySerializer extends PrimitiveArraySerializer<byte[]> {
 
     public ByteArraySerializer(Fory fory) {
-      super(fory, byte[].class);
+      super(fory, byte[].class, JavaArray.BYTE);
     }
 
     @Override
     public void write(MemoryBuffer buffer, byte[] value) {
       if (fory.getBufferCallback() == null) {
-        int size = Math.multiplyExact(value.length, 1);
-        buffer.writePrimitiveArrayWithSize(value, offset, size);
+        // int size = Math.multiplyExact(value.length, 1);
+        // buffer.writePrimitiveArrayWithSize(value, offset, size);
+        buffer.writeArrayWithSize(value, 0, value.length, eleType);
       } else {
         fory.writeBufferObject(
-            buffer, new PrimitiveArrayBufferObject(value, offset, 1, value.length));
+            buffer, new PrimitiveArrayBufferObject(value, value.length, eleType));
       }
     }
 
@@ -340,12 +338,13 @@ public class ArraySerializers {
         MemoryBuffer buf = fory.readBufferObject(buffer);
         int size = buf.remaining();
         byte[] values = new byte[size];
-        buf.copyToUnsafe(0, values, offset, size);
+        // buf.copyToUnsafe(0, values, offset, size);
+        buf.copyTo(0, values, 0, size, eleType, false);
         return values;
       } else {
         int size = buffer.readVarUint32Small7();
         byte[] values = new byte[size];
-        buffer.readToUnsafe(values, offset, size);
+        buffer.readTo(values, 0, size, eleType);
         return values;
       }
     }
@@ -354,17 +353,18 @@ public class ArraySerializers {
   public static final class CharArraySerializer extends PrimitiveArraySerializer<char[]> {
 
     public CharArraySerializer(Fory fory) {
-      super(fory, char[].class);
+      super(fory, char[].class, JavaArray.CHAR);
     }
 
     @Override
     public void write(MemoryBuffer buffer, char[] value) {
       if (fory.getBufferCallback() == null) {
-        int size = Math.multiplyExact(value.length, elemSize);
-        buffer.writePrimitiveArrayWithSize(value, offset, size);
+        // int size = Math.multiplyExact(value.length, elemSize);
+        // buffer.writePrimitiveArrayWithSize(value, offset, size);
+        buffer.writeArrayWithSize(value, 0, value.length, eleType);
       } else {
         fory.writeBufferObject(
-            buffer, new PrimitiveArrayBufferObject(value, offset, elemSize, value.length));
+            buffer, new PrimitiveArrayBufferObject(value, value.length, eleType));
       }
     }
 
@@ -380,13 +380,14 @@ public class ArraySerializers {
         int size = buf.remaining();
         int numElements = size / elemSize;
         char[] values = new char[numElements];
-        buf.copyToUnsafe(0, values, offset, size);
+        // buf.copyToUnsafe(0, values, offset, size);
+        buf.copyTo(0, values, 0, numElements, eleType, false);
         return values;
       } else {
         int size = buffer.readVarUint32Small7();
         int numElements = size / elemSize;
         char[] values = new char[numElements];
-        buffer.readToUnsafe(values, offset, size);
+        buffer.readTo(values, 0, numElements, eleType);
         return values;
       }
     }
@@ -405,17 +406,18 @@ public class ArraySerializers {
   public static final class ShortArraySerializer extends PrimitiveArraySerializer<short[]> {
 
     public ShortArraySerializer(Fory fory) {
-      super(fory, short[].class);
+      super(fory, short[].class, JavaArray.SHORT);
     }
 
     @Override
     public void write(MemoryBuffer buffer, short[] value) {
       if (fory.getBufferCallback() == null) {
-        int size = Math.multiplyExact(value.length, elemSize);
-        buffer.writePrimitiveArrayWithSize(value, offset, size);
+        // int size = Math.multiplyExact(value.length, elemSize);
+        // buffer.writePrimitiveArrayWithSize(value, offset, size);
+        buffer.writeArrayWithSize(value, 0, value.length, eleType);
       } else {
         fory.writeBufferObject(
-            buffer, new PrimitiveArrayBufferObject(value, offset, elemSize, value.length));
+            buffer, new PrimitiveArrayBufferObject(value, value.length, eleType));
       }
     }
 
@@ -431,13 +433,14 @@ public class ArraySerializers {
         int size = buf.remaining();
         int numElements = size / elemSize;
         short[] values = new short[numElements];
-        buf.copyToUnsafe(0, values, offset, size);
+        // buf.copyToUnsafe(0, values, offset, size);
+        buf.copyTo(0, values, 0, numElements, eleType, false);
         return values;
       } else {
         int size = buffer.readVarUint32Small7();
         int numElements = size / elemSize;
         short[] values = new short[numElements];
-        buffer.readToUnsafe(values, offset, size);
+        buffer.readTo(values, 0, numElements, eleType);
         return values;
       }
     }
@@ -446,17 +449,18 @@ public class ArraySerializers {
   public static final class IntArraySerializer extends PrimitiveArraySerializer<int[]> {
 
     public IntArraySerializer(Fory fory) {
-      super(fory, int[].class);
+      super(fory, int[].class, JavaArray.INT);
     }
 
     @Override
     public void write(MemoryBuffer buffer, int[] value) {
       if (fory.getBufferCallback() == null) {
-        int size = Math.multiplyExact(value.length, elemSize);
-        buffer.writePrimitiveArrayWithSize(value, offset, size);
+        // int size = Math.multiplyExact(value.length, elemSize);
+        // buffer.writePrimitiveArrayWithSize(value, offset, size);
+        buffer.writeArrayWithSize(value, 0, value.length, eleType);
       } else {
         fory.writeBufferObject(
-            buffer, new PrimitiveArrayBufferObject(value, offset, elemSize, value.length));
+            buffer, new PrimitiveArrayBufferObject(value, value.length, eleType));
       }
     }
 
@@ -472,13 +476,14 @@ public class ArraySerializers {
         int size = buf.remaining();
         int numElements = size / elemSize;
         int[] values = new int[numElements];
-        buf.copyToUnsafe(0, values, offset, size);
+        // buf.copyToUnsafe(0, values, offset, size);
+        buf.copyTo(0, values, 0, numElements, eleType, false);
         return values;
       } else {
         int size = buffer.readVarUint32Small7();
         int numElements = size / elemSize;
         int[] values = new int[numElements];
-        buffer.readToUnsafe(values, offset, size);
+        buffer.readTo(values, 0, numElements, eleType);
         return values;
       }
     }
@@ -487,17 +492,18 @@ public class ArraySerializers {
   public static final class LongArraySerializer extends PrimitiveArraySerializer<long[]> {
 
     public LongArraySerializer(Fory fory) {
-      super(fory, long[].class);
+      super(fory, long[].class, JavaArray.LONG);
     }
 
     @Override
     public void write(MemoryBuffer buffer, long[] value) {
       if (fory.getBufferCallback() == null) {
-        int size = Math.multiplyExact(value.length, elemSize);
-        buffer.writePrimitiveArrayWithSize(value, offset, size);
+        // int size = Math.multiplyExact(value.length, elemSize);
+        // buffer.writePrimitiveArrayWithSize(value, offset, size);
+        buffer.writeArrayWithSize(value, 0, value.length, eleType);
       } else {
         fory.writeBufferObject(
-            buffer, new PrimitiveArrayBufferObject(value, offset, elemSize, value.length));
+            buffer, new PrimitiveArrayBufferObject(value, value.length, eleType));
       }
     }
 
@@ -513,13 +519,14 @@ public class ArraySerializers {
         int size = buf.remaining();
         int numElements = size / elemSize;
         long[] values = new long[numElements];
-        buf.copyToUnsafe(0, values, offset, size);
+        // buf.copyToUnsafe(0, values, offset, size);
+        buf.copyTo(0, values, 0, numElements, eleType, false);
         return values;
       } else {
         int size = buffer.readVarUint32Small7();
         int numElements = size / elemSize;
         long[] values = new long[numElements];
-        buffer.readToUnsafe(values, offset, size);
+        buffer.readTo(values, 0, numElements, eleType);
         return values;
       }
     }
@@ -528,17 +535,18 @@ public class ArraySerializers {
   public static final class FloatArraySerializer extends PrimitiveArraySerializer<float[]> {
 
     public FloatArraySerializer(Fory fory) {
-      super(fory, float[].class);
+      super(fory, float[].class, JavaArray.FLOAT);
     }
 
     @Override
     public void write(MemoryBuffer buffer, float[] value) {
       if (fory.getBufferCallback() == null) {
-        int size = Math.multiplyExact(value.length, elemSize);
-        buffer.writePrimitiveArrayWithSize(value, offset, size);
+        // int size = Math.multiplyExact(value.length, elemSize);
+        // buffer.writePrimitiveArrayWithSize(value, offset, size);
+        buffer.writeArrayWithSize(value, 0, value.length, eleType);
       } else {
         fory.writeBufferObject(
-            buffer, new PrimitiveArrayBufferObject(value, offset, elemSize, value.length));
+            buffer, new PrimitiveArrayBufferObject(value, value.length, eleType));
       }
     }
 
@@ -554,13 +562,14 @@ public class ArraySerializers {
         int size = buf.remaining();
         int numElements = size / elemSize;
         float[] values = new float[numElements];
-        buf.copyToUnsafe(0, values, offset, size);
+        // buf.copyToUnsafe(0, values, offset, size);
+        buf.copyTo(0, values, 0, numElements, eleType, false);
         return values;
       } else {
         int size = buffer.readVarUint32Small7();
         int numElements = size / elemSize;
         float[] values = new float[numElements];
-        buffer.readToUnsafe(values, offset, size);
+        buffer.readTo(values, 0, numElements, eleType);
         return values;
       }
     }
@@ -569,17 +578,18 @@ public class ArraySerializers {
   public static final class DoubleArraySerializer extends PrimitiveArraySerializer<double[]> {
 
     public DoubleArraySerializer(Fory fory) {
-      super(fory, double[].class);
+      super(fory, double[].class, JavaArray.DOUBLE);
     }
 
     @Override
     public void write(MemoryBuffer buffer, double[] value) {
       if (fory.getBufferCallback() == null) {
-        int size = Math.multiplyExact(value.length, elemSize);
-        buffer.writePrimitiveArrayWithSize(value, offset, size);
+        // int size = Math.multiplyExact(value.length, elemSize);
+        // buffer.writePrimitiveArrayWithSize(value, offset, size);
+        buffer.writeArrayWithSize(value, 0, value.length, eleType);
       } else {
         fory.writeBufferObject(
-            buffer, new PrimitiveArrayBufferObject(value, offset, elemSize, value.length));
+            buffer, new PrimitiveArrayBufferObject(value, value.length, eleType));
       }
     }
 
@@ -595,13 +605,14 @@ public class ArraySerializers {
         int size = buf.remaining();
         int numElements = size / elemSize;
         double[] values = new double[numElements];
-        buf.copyToUnsafe(0, values, offset, size);
+        // buf.copyToUnsafe(0, values, offset, size);
+        buf.copyTo(0, values, 0, numElements, eleType, false);
         return values;
       } else {
         int size = buffer.readVarUint32Small7();
         int numElements = size / elemSize;
         double[] values = new double[numElements];
-        buffer.readToUnsafe(values, offset, size);
+        buffer.readTo(values, 0, numElements, eleType);
         return values;
       }
     }
@@ -735,38 +746,6 @@ public class ArraySerializers {
   }
 
   // ########################## utils ##########################
-
-  static void writePrimitiveArray(
-      MemoryBuffer buffer, Object arr, int offset, int numElements, int elemSize) {
-    int size = Math.multiplyExact(numElements, elemSize);
-    buffer.writeVarUint32Small7(size);
-    int writerIndex = buffer.writerIndex();
-    int end = writerIndex + size;
-    buffer.ensure(end);
-    buffer.copyFromUnsafe(writerIndex, arr, offset, size);
-    buffer.writerIndex(end);
-  }
-
-  public static PrimitiveArrayBufferObject byteArrayBufferObject(byte[] array) {
-    return new PrimitiveArrayBufferObject(array, Platform.BYTE_ARRAY_OFFSET, 1, array.length);
-  }
-
-  static final IdentityHashMap<Class<?>, int[]> primitiveInfo = new IdentityHashMap<>();
-
-  static {
-    primitiveInfo.put(
-        boolean.class, new int[] {Platform.BOOLEAN_ARRAY_OFFSET, 1, Types.BOOL_ARRAY});
-    primitiveInfo.put(byte.class, new int[] {Platform.BYTE_ARRAY_OFFSET, 1, Types.BINARY});
-    primitiveInfo.put(
-        char.class, new int[] {Platform.CHAR_ARRAY_OFFSET, 2, Fory.NOT_SUPPORT_XLANG});
-    primitiveInfo.put(short.class, new int[] {Platform.SHORT_ARRAY_OFFSET, 2, Types.INT16_ARRAY});
-    primitiveInfo.put(int.class, new int[] {Platform.INT_ARRAY_OFFSET, 4, Types.INT32_ARRAY});
-    primitiveInfo.put(long.class, new int[] {Platform.LONG_ARRAY_OFFSET, 8, Types.INT64_ARRAY});
-    primitiveInfo.put(float.class, new int[] {Platform.FLOAT_ARRAY_OFFSET, 4, Types.FLOAT32_ARRAY});
-    primitiveInfo.put(
-        double.class, new int[] {Platform.DOUBLE_ARRAY_OFFSET, 8, Types.FLOAT64_ARRAY});
-  }
-
   public abstract static class AbstractedNonexistentArrayClassSerializer extends Serializer {
     protected final String className;
     private final int dims;

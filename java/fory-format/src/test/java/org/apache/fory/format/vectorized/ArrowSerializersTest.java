@@ -39,7 +39,6 @@ import org.apache.fory.config.Language;
 import org.apache.fory.io.MemoryBufferReadableChannel;
 import org.apache.fory.io.MemoryBufferWritableChannel;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.serializer.BufferObject;
 import org.testng.Assert;
@@ -96,7 +95,7 @@ public class ArrowSerializersTest {
         bufferObjects.stream().map(BufferObject::toBuffer).collect(Collectors.toList());
     MemoryBuffer buffer = buffers.get(0);
 
-    MemoryBuffer buffer2 = MemoryUtils.buffer(32);
+    MemoryBuffer buffer2 = MemoryBuffer.buffer(32);
     try (ArrowStreamWriter writer =
         new ArrowStreamWriter(root, null, new MemoryBufferWritableChannel(buffer2))) {
       // this will make root empty.

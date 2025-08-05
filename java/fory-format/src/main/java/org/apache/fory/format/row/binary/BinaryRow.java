@@ -31,7 +31,6 @@ import org.apache.fory.format.row.Row;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.memory.BitUtils;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.util.Preconditions;
 
 /**
@@ -171,7 +170,7 @@ public class BinaryRow extends UnsafeTrait implements Row {
 
   @Override
   public Row copy() {
-    MemoryBuffer copyBuf = MemoryUtils.buffer(sizeInBytes);
+    MemoryBuffer copyBuf = MemoryBuffer.buffer(sizeInBytes);
     buffer.copyTo(baseOffset, copyBuf, 0, sizeInBytes);
     BinaryRow copyRow = new BinaryRow(schema);
     copyRow.pointTo(copyBuf, 0, sizeInBytes);

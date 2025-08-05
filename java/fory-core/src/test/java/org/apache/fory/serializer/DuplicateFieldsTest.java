@@ -30,7 +30,6 @@ import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.testng.annotations.Test;
 
 public class DuplicateFieldsTest extends ForyTestBase {
@@ -64,7 +63,7 @@ public class DuplicateFieldsTest extends ForyTestBase {
             .build();
     {
       ObjectSerializer<C> serializer = new ObjectSerializer<>(fory, C.class);
-      MemoryBuffer buffer = MemoryUtils.buffer(32);
+      MemoryBuffer buffer = MemoryBuffer.buffer(32);
       serializer.write(buffer, c);
       C newC = serializer.read(buffer);
       assertEquals(newC.f1, c.f1);
@@ -75,7 +74,7 @@ public class DuplicateFieldsTest extends ForyTestBase {
       Serializer<C> serializer =
           Serializers.newSerializer(
               fory, C.class, CodecUtils.loadOrGenObjectCodecClass(C.class, fory));
-      MemoryBuffer buffer = MemoryUtils.buffer(32);
+      MemoryBuffer buffer = MemoryBuffer.buffer(32);
       serializer.write(buffer, c);
       C newC = serializer.read(buffer);
       assertEquals(newC.f1, c.f1);
@@ -116,7 +115,7 @@ public class DuplicateFieldsTest extends ForyTestBase {
     Fory fory = builder.build();
     {
       CompatibleSerializer<C> serializer = new CompatibleSerializer<>(fory, C.class);
-      MemoryBuffer buffer = MemoryUtils.buffer(32);
+      MemoryBuffer buffer = MemoryBuffer.buffer(32);
       serializer.write(buffer, c);
       C newC = serializer.read(buffer);
       assertEquals(newC.f1, c.f1);
@@ -127,7 +126,7 @@ public class DuplicateFieldsTest extends ForyTestBase {
       Serializer<C> serializer =
           Serializers.newSerializer(
               fory, C.class, CodecUtils.loadOrGenCompatibleCodecClass(C.class, fory));
-      MemoryBuffer buffer = MemoryUtils.buffer(32);
+      MemoryBuffer buffer = MemoryBuffer.buffer(32);
       serializer.write(buffer, c);
       C newC = serializer.read(buffer);
       assertEquals(newC.f1, c.f1);

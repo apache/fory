@@ -24,6 +24,7 @@ import static org.testng.Assert.assertTrue;
 
 import java.nio.ByteBuffer;
 import java.util.Random;
+import org.apache.fory.type.Types;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -31,7 +32,7 @@ public class MemoryBufferTest {
 
   @Test
   public void testBufferPut() {
-    MemoryBuffer buffer = MemoryUtils.buffer(16);
+    MemoryBuffer buffer = MemoryBuffer.buffer(16);
     buffer.putByte(0, (byte) 10);
     assertEquals(buffer.getByte(0), (byte) 10);
     buffer.putChar(0, 'a');
@@ -50,7 +51,7 @@ public class MemoryBufferTest {
 
   @Test
   public void testBufferWrite() {
-    MemoryBuffer buffer = MemoryUtils.buffer(8);
+    MemoryBuffer buffer = MemoryBuffer.buffer(8);
     buffer.writeBoolean(true);
     buffer.writeByte(Byte.MIN_VALUE);
     buffer.writeChar('a');
@@ -77,7 +78,7 @@ public class MemoryBufferTest {
   @Test
   public void testBufferUnsafeWrite() {
     {
-      MemoryBuffer buffer = MemoryUtils.buffer(1024);
+      MemoryBuffer buffer = MemoryBuffer.buffer(1024);
       byte[] heapMemory = buffer.getHeapMemory();
       long pos = buffer.getUnsafeAddress();
       assertEquals(buffer._unsafeWriterAddress(), pos);
@@ -106,7 +107,7 @@ public class MemoryBufferTest {
       assertEquals(buffer.getByte((int) (pos - Platform.BYTE_ARRAY_OFFSET)), Byte.MIN_VALUE);
     }
     {
-      MemoryBuffer buffer = MemoryUtils.buffer(1024);
+      MemoryBuffer buffer = MemoryBuffer.buffer(1024);
       int index = 0;
       buffer.putByte(index, Byte.MIN_VALUE);
       index += 1;
@@ -139,13 +140,13 @@ public class MemoryBufferTest {
       byte[] bytes = new byte[8];
       int offset = 2;
       bytes[offset] = 1;
-      MemoryBuffer buffer = MemoryUtils.wrap(bytes, offset, 2);
+      MemoryBuffer buffer = new MemoryBuffer(bytes, offset, 2);
       assertEquals(buffer.readByte(), bytes[offset]);
     }
     {
       byte[] bytes = new byte[8];
       int offset = 2;
-      MemoryBuffer buffer = MemoryUtils.wrap(ByteBuffer.wrap(bytes, offset, 2));
+      MemoryBuffer buffer = MemoryBuffer.wrap(ByteBuffer.wrap(bytes, offset, 2));
       assertEquals(buffer.readByte(), bytes[offset]);
     }
     {
@@ -153,7 +154,7 @@ public class MemoryBufferTest {
       int offset = 2;
       direct.put(offset, (byte) 1);
       direct.position(offset);
-      MemoryBuffer buffer = MemoryUtils.wrap(direct);
+      MemoryBuffer buffer = MemoryBuffer.wrap(direct);
       assertEquals(buffer.readByte(), direct.get(offset));
     }
   }
@@ -163,7 +164,7 @@ public class MemoryBufferTest {
     byte[] data = new byte[10];
     new Random().nextBytes(data);
     {
-      MemoryBuffer buffer = MemoryUtils.wrap(data, 5, 5);
+      MemoryBuffer buffer = new MemoryBuffer(data, 5, 5);
       assertEquals(buffer.sliceAsByteBuffer(), ByteBuffer.wrap(data, 5, 5));
     }
     {
@@ -171,7 +172,7 @@ public class MemoryBufferTest {
       direct.put(data);
       direct.flip();
       direct.position(5);
-      MemoryBuffer buffer = MemoryUtils.wrap(direct);
+      MemoryBuffer buffer = MemoryBuffer.wrap(direct);
       assertEquals(buffer.sliceAsByteBuffer(), direct);
       Assert.assertEquals(
           ByteBufferUtil.getAddress(buffer.sliceAsByteBuffer()),
@@ -185,7 +186,7 @@ public class MemoryBufferTest {
         direct.put(data);
         direct.flip();
         direct.position(5);
-        MemoryBuffer buffer = MemoryUtils.wrap(direct);
+        MemoryBuffer buffer = MemoryBuffer.wrap(direct);
         assertEquals(buffer.sliceAsByteBuffer(), direct);
         assertEquals(ByteBufferUtil.getAddress(buffer.sliceAsByteBuffer()), address + 5);
       } finally {
@@ -207,8 +208,8 @@ public class MemoryBufferTest {
 
   @Test
   public void testEqualTo() {
-    MemoryBuffer buf1 = MemoryUtils.buffer(16);
-    MemoryBuffer buf2 = MemoryUtils.buffer(16);
+    MemoryBuffer buf1 = MemoryBuffer.buffer(16);
+    MemoryBuffer buf2 = MemoryBuffer.buffer(16);
     buf1.putInt64(0, 10);
     buf2.putInt64(0, 10);
     buf1.putByte(9, (byte) 1);
@@ -220,7 +221,7 @@ public class MemoryBufferTest {
 
   @Test
   public void testWritePrimitiveArrayWithSizeEmbedded() {
-    MemoryBuffer buf = MemoryUtils.buffer(16);
+    MemoryBuffer buf = MemoryBuffer.buffer(16);
     Random random = new Random(0);
     byte[] bytes = new byte[100];
     random.nextBytes(bytes);
@@ -228,12 +229,12 @@ public class MemoryBufferTest {
     for (int i = 0; i < chars.length; i++) {
       chars[i] = (char) random.nextInt();
     }
-    buf.writePrimitiveArrayWithSize(bytes, Platform.BYTE_ARRAY_OFFSET, bytes.length);
-    buf.writePrimitiveArrayWithSize(chars, Platform.CHAR_ARRAY_OFFSET, chars.length * 2);
+    buf.writeArrayWithSize(bytes, 0, bytes.length, Types.JavaArray.BYTE);
+    buf.writeArrayWithSize(chars, 0, chars.length, Types.JavaArray.CHAR);
     assertEquals(bytes, buf.readBytesAndSize());
     assertEquals(chars, buf.readChars(buf.readVarUint32()));
-    buf.writePrimitiveArrayAlignedSize(bytes, Platform.BYTE_ARRAY_OFFSET, bytes.length);
-    buf.writePrimitiveArrayAlignedSize(chars, Platform.CHAR_ARRAY_OFFSET, chars.length * 2);
+    buf.writeArrayAlignedSize(bytes, 0, bytes.length, Types.JavaArray.BYTE);
+    buf.writeArrayAlignedSize(chars, 0, chars.length, Types.JavaArray.CHAR);
     assertEquals(bytes, buf.readBytesWithAlignedSize());
     assertEquals(chars, buf.readCharsWithAlignedSize());
   }
@@ -241,7 +242,7 @@ public class MemoryBufferTest {
   @Test
   public void testWriteVarUint32() {
     for (int i = 0; i < 32; i++) {
-      MemoryBuffer buf = MemoryUtils.buffer(8);
+      MemoryBuffer buf = MemoryBuffer.buffer(8);
       for (int j = 0; j < i; j++) {
         buf.writeByte((byte) 1); // make address unaligned.
         buf.readByte();
@@ -328,7 +329,7 @@ public class MemoryBufferTest {
   }
 
   private MemoryBuffer buf(int numUnaligned) {
-    MemoryBuffer buf = MemoryUtils.buffer(1);
+    MemoryBuffer buf = MemoryBuffer.buffer(1);
     for (int j = 0; j < numUnaligned; j++) {
       buf.writeByte((byte) 1); // make address unaligned.
       buf.readByte();
@@ -350,7 +351,7 @@ public class MemoryBufferTest {
 
   @Test
   public void testWriteVarInt64() {
-    MemoryBuffer buf = MemoryUtils.buffer(8);
+    MemoryBuffer buf = MemoryBuffer.buffer(8);
     checkVarInt64(buf, -1, 1);
     for (int i = 0; i < 9; i++) {
       for (int j = 0; j < i; j++) {
@@ -422,7 +423,7 @@ public class MemoryBufferTest {
 
   @Test
   public void testWriteVarUint64() {
-    MemoryBuffer buf = MemoryUtils.buffer(8);
+    MemoryBuffer buf = MemoryBuffer.buffer(8);
     checkVarUint64(buf, -1, 9);
     for (int i = 0; i < 9; i++) {
       for (int j = 0; j < i; j++) {
@@ -490,7 +491,7 @@ public class MemoryBufferTest {
 
   @Test
   public void testWriteVarUint32Aligned() {
-    MemoryBuffer buf = MemoryUtils.buffer(16);
+    MemoryBuffer buf = MemoryBuffer.buffer(16);
     assertEquals(buf.writeVarUint32Aligned(1), 4);
     assertEquals(buf.readAlignedVarUint(), 1);
     assertEquals(buf.writeVarUint32Aligned(1 << 5), 4);
@@ -514,10 +515,10 @@ public class MemoryBufferTest {
     buf.readInt16();
     assertEquals(buf.readAlignedVarUint(), Integer.MAX_VALUE);
     for (int i = 0; i < 32; i++) {
-      MemoryBuffer buf1 = MemoryUtils.buffer(16);
+      MemoryBuffer buf1 = MemoryBuffer.buffer(16);
       assertAligned(i, buf1);
     }
-    MemoryBuffer buf1 = MemoryUtils.buffer(16);
+    MemoryBuffer buf1 = MemoryBuffer.buffer(16);
     for (int i = 0; i < 32; i++) {
       assertAligned(i, buf1);
     }
@@ -555,7 +556,7 @@ public class MemoryBufferTest {
 
   @Test
   public void testWriteSliInt64() {
-    MemoryBuffer buf = MemoryUtils.buffer(8);
+    MemoryBuffer buf = MemoryBuffer.buffer(8);
     checkSliInt64(buf, -1, 4);
     for (int i = 0; i < 10; i++) {
       for (int j = 0; j < i; j++) {
@@ -595,7 +596,7 @@ public class MemoryBufferTest {
 
   @Test
   public void testVarUint32Small7() {
-    MemoryBuffer buf = MemoryUtils.buffer(1);
+    MemoryBuffer buf = MemoryBuffer.buffer(1);
     buf.writeVarUint32Small7(1);
     assertEquals(buf.readVarUint32Small7(), 1);
     assertEquals(buf.writeVarUint32Small7(127), 1);
@@ -612,7 +613,7 @@ public class MemoryBufferTest {
 
   @Test
   public void testVarUint36Small() {
-    MemoryBuffer buf = MemoryUtils.buffer(80);
+    MemoryBuffer buf = MemoryBuffer.buffer(80);
     int index = 0;
     {
       int diff = LittleEndian.putVarUint36Small(buf.getHeapMemory(), index, 10);
@@ -661,7 +662,7 @@ public class MemoryBufferTest {
   public void testReadBytesAsInt64() {
     for (MemoryBuffer buffer :
         new MemoryBuffer[] {
-          MemoryUtils.buffer(16), MemoryUtils.wrap(ByteBuffer.allocateDirect(32)),
+          MemoryBuffer.buffer(16), MemoryBuffer.bufferDirect(32),
         }) {
       buffer.writeByte(10);
       buffer.writeByte(20);

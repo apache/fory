@@ -22,14 +22,14 @@ import static org.apache.fory.util.Preconditions.checkArgument;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import javax.naming.OperationNotSupportedException;
 import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.annotation.NotForAndroid;
+import org.apache.fory.annotation.PartialAndroidSupport;
 import org.apache.fory.io.AbstractStreamReader;
 import org.apache.fory.io.ForyStreamReader;
 import org.apache.fory.type.Types;
 import sun.misc.Unsafe;
-
-import javax.naming.OperationNotSupportedException;
 
 /**
  * A class for operations on memory managed by Fory. The buffer may be backed by heap memory (byte
@@ -77,10 +77,11 @@ public final class MemoryBuffer {
   // buffer faults.
   private byte[] heapMemory;
 
-  // the offset in the heap memory byte array, i.e. the relative offset to the // `heapMemory` byte array.
+  // the offset in the heap memory byte array, i.e. the relative offset to the // `heapMemory` byte
+  // array.
   // 注意当是 off-heap时，这个是一开始传入时buffer的position
   // 如果是 on-heap, 这个是一开始传入数组的offset
-  private int memoryOffset;
+  private int memoryOffset; // 用于记录为相对于最底层的内存的偏移(忽略中间任何切片)
 
   // represents the both off-heap and on-heap memory.
   private ByteBuffer buffer;
@@ -90,6 +91,7 @@ public final class MemoryBuffer {
   // If the data is off the heap, this is the absolute memory address.
   // 注意，当是off-heap, 这个是是算上一开始传入时buffer的position的
   // 当是heap，Platform.BYTE_ARRAY_OFFSET + 一开始传入数组的offset
+  // 用于代表第一个可以(允许读取的字节，onHeap: Platform._ARRAY_OFFSET + elementOffset, offHeap: address + position)
   private long address;
   // The address one byte after the last addressable byte, i.e. `address + size` while the
   // buffer is not disposed.
@@ -108,7 +110,7 @@ public final class MemoryBuffer {
    *     <tt>array.length</tt>.
    * @param length buffer size
    */
-  private MemoryBuffer(byte[] buffer, int offset, int length) {
+  public MemoryBuffer(byte[] buffer, int offset, int length) {
     this(buffer, offset, length, null);
   }
 
@@ -121,7 +123,7 @@ public final class MemoryBuffer {
    * @param length buffer size
    * @param streamReader a reader for reading from a stream.
    */
-  private MemoryBuffer(byte[] buffer, int offset, int length, ForyStreamReader streamReader) {
+  public MemoryBuffer(byte[] buffer, int offset, int length, ForyStreamReader streamReader) {
     checkArgument(offset >= 0 && length >= 0);
     if (offset + length > buffer.length) {
       throw new IllegalArgumentException(
@@ -140,33 +142,22 @@ public final class MemoryBuffer {
    * Creates a new memory buffer that represents the native memory at the absolute address given by
    * the pointer.
    *
-   * @param offHeapAddress The address of the memory represented by this memory buffer.
-   * @param size The size of this memory buffer.
-   * @param offsetPos The position in the off-heap buffer, if any.
    * @param offHeapBuffer The byte buffer whose memory is represented by this memory buffer which
    *     may be null if the memory is not allocated by `DirectByteBuffer`. Hold this buffer to avoid
    *     the memory being released.
-   */
-  private MemoryBuffer(long offHeapAddress, int offsetPos, int size, ByteBuffer offHeapBuffer) {
-    this(offHeapAddress, offsetPos, size, offHeapBuffer, null);
-  }
-
-  /**
-   * Creates a new memory buffer that represents the native memory at the absolute address given by
-   * the pointer.
-   *
-   * @param offHeapAddress The address of the memory represented by this memory buffer.
-   * @param size The size of this memory buffer.
-   * @param offHeapBuffer The byte buffer whose memory is represented by this memory buffer which
-   *     may be null if the memory is not allocated by `DirectByteBuffer`. Hold this buffer to avoid
-   *     the memory being released.
-   * @param offsetPos The position in the off-heap buffer, if any.
+   * @param length The size of this memory buffer.
    * @param streamReader a reader for reading from a stream.
    */
   private MemoryBuffer(
-    long offHeapAddress, int offsetPos, int size, ByteBuffer offHeapBuffer, ForyStreamReader streamReader) {
+      long offHeapAddress,
+      ByteBuffer offHeapBuffer,
+      int length,
+      ForyStreamReader streamReader,
+      boolean useBufferObject) {
+    assert (offHeapAddress == -1 && offHeapBuffer != null)
+        || (offHeapAddress != -1 && offHeapBuffer == null);
     this.onHeap = false;
-    initDirectBuffer(offHeapAddress, offsetPos, size, offHeapBuffer);
+    initDirectBuffer(offHeapAddress, offHeapBuffer, length, useBufferObject);
     if (streamReader != null) {
       this.streamReader = streamReader;
     } else {
@@ -178,33 +169,51 @@ public final class MemoryBuffer {
    * Creates a new memory buffer that represents the native memory at the absolute address given by
    * the pointer.
    *
-   * @param offHeapAddress The address of the memory represented by this memory buffer.
-   * @param size The size of this memory buffer.
-   * @param pos The position in the off-heap buffer, if any.
+   * @param length The size of this memory buffer.
    * @param offHeapBuffer The byte buffer whose memory is represented by this memory buffer which
-   *                      may be null if the memory is not allocated by `DirectByteBuffer`. Hold this buffer to avoid
-   *                      the memory being released.
+   *     may be null if the memory is not allocated by `DirectByteBuffer`. Hold this buffer to avoid
+   *     the memory being released.
    */
-  public void initDirectBuffer(long offHeapAddress, int pos, int size, ByteBuffer offHeapBuffer) {
-    this.buffer = offHeapBuffer.order(Platform.NATIVE_BYTE_ORDER);
-    this.buffer.position(pos);
-    this.memoryOffset = pos;
-    if (offHeapAddress <= 0) {
+  public void initDirectBuffer(ByteBuffer offHeapBuffer, int length) {
+    initDirectBuffer(-1, offHeapBuffer, length, false);
+  }
+
+  private void initDirectBuffer(
+      long offHeapAddress, ByteBuffer offHeapBuffer, int length, boolean useBufferObject) {
+    assert (offHeapAddress == -1 && offHeapBuffer != null)
+        || (offHeapAddress != -1 && offHeapBuffer == null);
+    if (offHeapBuffer == null && Platform.IS_ANDROID) {
+      Platform.throwException(
+          new OperationNotSupportedException(
+              "Android does not support off-heap memory only by address, use ByteBuffer instead"));
+    }
+    if (offHeapBuffer != null) {
+      if (useBufferObject) {
+        this.buffer = offHeapBuffer; // 不进行slice, 直接使用传入的buffer对象
+      } else {
+        this.buffer =
+            offHeapBuffer.slice().order(Platform.NATIVE_BYTE_ORDER); // 先slice再order, 防止影响到参数buffer
+      }
+      this.address =
+          ByteBufferUtil.getAddress(this.buffer); // 注意要用被赋值的this.buffer而不是参数offHeapBuffer
+      this.buffer.limit(length);
+    } else {
+      this.address = offHeapAddress;
+    }
+    if (this.address <= 0) {
       throw new IllegalArgumentException("negative pointer or size");
     }
-    if (offHeapAddress >= Long.MAX_VALUE - Integer.MAX_VALUE) {
+    if (this.address >= Long.MAX_VALUE - Integer.MAX_VALUE) {
       // this is necessary to make sure the collapsed checks are safe against numeric overflows
       throw new IllegalArgumentException(
           "Buffer initialized with too large address: "
-              + offHeapAddress
+              + this.address
               + " ; Max allowed address is "
               + (Long.MAX_VALUE - Integer.MAX_VALUE - 1));
     }
-
     this.heapMemory = null;
-    this.address = offHeapAddress;
+    this.size = length;
     this.addressLimit = this.address + size;
-    this.size = size;
   }
 
   private class BoundChecker extends AbstractStreamReader {
@@ -222,17 +231,18 @@ public final class MemoryBuffer {
     }
   }
 
-  public void initHeapBuffer(byte[] buffer, int offset, int length) {
-    if (buffer == null) {
+  public void initHeapBuffer(byte[] bytes, int offset, int length) {
+    if (bytes == null) {
       throw new NullPointerException("buffer");
     }
-    this.heapMemory = buffer;
+    this.heapMemory = bytes;
     this.memoryOffset = offset;
     final long startPos = Platform.BYTE_ARRAY_OFFSET + offset;
     this.address = startPos;
     this.size = length;
     this.addressLimit = startPos + length;
-    this.buffer = ByteBuffer.wrap(buffer, offset, length).order(Platform.NATIVE_BYTE_ORDER);
+    // 若不进行slice(), 则ByteBuffer[offset=0, pos = offset], 切片后ByteBuffer[offset=offset, pos=0]
+    this.buffer = ByteBuffer.wrap(bytes, offset, length).slice().order(Platform.NATIVE_BYTE_ORDER);
   }
 
   // ------------------------------------------------------------------------
@@ -250,16 +260,6 @@ public final class MemoryBuffer {
 
   public void increaseSize(int diff) {
     this.addressLimit = address + (size += diff);
-  }
-
-  /**
-   * Checks whether this memory buffer is backed by off-heap memory.
-   *
-   * @return <tt>true</tt>, if the memory buffer is backed by off-heap memory, <tt>false</tt> if it
-   *     is backed by heap memory.
-   */
-  public boolean isOffHeap() {
-    return !onHeap;
   }
 
   /**
@@ -376,14 +376,14 @@ public final class MemoryBuffer {
         }
         // Android只支持这个三个参数的copyMemory
         else Platform.UNSAFE.copyMemory(sourceOffset, targetAddr, numBytes);
-      }else {
+      } else {
         Platform.copyMemory(heapMemory, sourceOffset, null, targetAddr, numBytes);
       }
     } else {
       assert target.hasArray();
       get(offset, target.array(), targetPos + target.arrayOffset(), numBytes);
     }
-    ByteBufferUtil.position(target, targetPos + numBytes);
+    target.position(targetPos + numBytes);
   }
 
   public void put(int offset, ByteBuffer source, int numBytes) {
@@ -403,14 +403,14 @@ public final class MemoryBuffer {
         }
         // Android只支持这个三个参数的copyMemory
         Platform.UNSAFE.copyMemory(sourceAddr, targetAddr, numBytes);
-      }else {
+      } else {
         Platform.copyMemory(null, sourceAddr, heapMemory, targetAddr, numBytes);
       }
     } else {
       assert source.hasArray();
       put(offset, source.array(), sourcePos + source.arrayOffset(), numBytes);
     }
-    ByteBufferUtil.position(source, sourcePos + numBytes);
+    source.position(sourcePos + numBytes);
   }
 
   public void put(int index, byte[] src) {
@@ -1239,12 +1239,12 @@ public final class MemoryBuffer {
   /*--------------------------------------------------------------------------------*/
   /**
    * Writes a boolean array to the buffer using an optimized chunking strategy.
-   * <p>
-   * For large arrays, it borrows a temporary byte buffer from a pool to convert
-   * booleans to bytes in chunks, minimizing method call overhead. For small arrays
-   * or if the pool is exhausted, it falls back to a simple, direct loop.
    *
-   * @param arr    The source boolean array.
+   * <p>For large arrays, it borrows a temporary byte buffer from a pool to convert booleans to
+   * bytes in chunks, minimizing method call overhead. For small arrays or if the pool is exhausted,
+   * it falls back to a simple, direct loop.
+   *
+   * @param arr The source boolean array.
    * @param offset The starting offset in the source array.
    * @param length The number of booleans to write.
    */
@@ -1279,7 +1279,13 @@ public final class MemoryBuffer {
 
   @SuppressWarnings("deprecation")
   // 此函数不会自动扩容，在保证空间足够的情况下使用
-  public void coverMemoryWithArray(int bufOffset, Object arr, int offset, int length, Types.JavaArray eleType, boolean autoFill) {
+  public void coverMemoryWithArray(
+      int bufOffset,
+      Object arr,
+      int offset,
+      int length,
+      Types.JavaArray eleType,
+      boolean autoFill) {
     boolean writeMode = bufOffset < 0;
     if (writeMode) bufOffset = writerIndex;
     int numBytes = length * eleType.bytesPerEle;
@@ -1288,17 +1294,16 @@ public final class MemoryBuffer {
     }
     if (eleType == Types.JavaArray.BYTE && onHeap) {
       System.arraycopy(arr, offset, heapMemory, memoryOffset + bufOffset, numBytes);
-    }else {
+    } else {
       if (!Platform.IS_ANDROID) {
         Platform.copyMemory(
-          arr,
-          eleType.arrayMemOffset + (long) offset * eleType.bytesPerEle,
-          heapMemory,
-          address + bufOffset,
-          numBytes
-        );
-      }else {
-        buffer.position(memoryOffset + bufOffset);
+            arr,
+            eleType.arrayMemOffset + (long) offset * eleType.bytesPerEle,
+            heapMemory,
+            address + bufOffset,
+            numBytes);
+      } else {
+        buffer.position(bufOffset);
         switch (eleType) {
           case BOOL:
             coverMemoryWithBoolArrayInner((boolean[]) arr, offset, length);
@@ -1322,7 +1327,8 @@ public final class MemoryBuffer {
     if (writeMode) writerIndex += numBytes;
   }
 
-  public void writeArray(Object arr, int offset, int length, Types.JavaArray eleType, boolean autoFill) {
+  public void writeArray(
+      Object arr, int offset, int length, Types.JavaArray eleType, boolean autoFill) {
     coverMemoryWithArray(-1, arr, offset, length, eleType, autoFill);
   }
 
@@ -1341,6 +1347,7 @@ public final class MemoryBuffer {
     ensure(writerIndex + numBytes);
     writeArray(arr, offset, length, eleType, false);
   }
+
   /*--------------------------------------------------------------------------------*/
 
   /** For off-heap buffer, this will make a heap buffer internally. */
@@ -1390,10 +1397,6 @@ public final class MemoryBuffer {
   /** Returns the {@code readerIndex} of this buffer. */
   public int readerIndex() {
     return readerIndex;
-  }
-
-  public int getPosition() {
-    return memoryOffset + readerIndex;
   }
 
   /**
@@ -2443,8 +2446,7 @@ public final class MemoryBuffer {
     if (heapMemory != null) {
       System.arraycopy(heapMemory, memoryOffset + readerIdx, arr, 0, numBytes);
     } else {
-      Platform.copyMemory(
-          null, address + readerIdx, arr, Platform.BYTE_ARRAY_OFFSET, numBytes);
+      Platform.copyMemory(null, address + readerIdx, arr, Platform.BYTE_ARRAY_OFFSET, numBytes);
     }
     readerIndex = readerIdx + numBytes;
     return arr;
@@ -2536,7 +2538,13 @@ public final class MemoryBuffer {
 
   @SuppressWarnings("deprecation")
   // bufOffset为负数代表为阅读模式，使用readerIndex, 否则为纯copy, 不会对指针有影响
-  public void copyTo(int bufOffset, Object target, int offset, int length, Types.JavaArray eleType, boolean checkSize) {
+  public void copyTo(
+      int bufOffset,
+      Object target,
+      int offset,
+      int length,
+      Types.JavaArray eleType,
+      boolean checkSize) {
     boolean readMode = bufOffset < 0;
     if (readMode) bufOffset = readerIndex;
     int numBytes = length * eleType.bytesPerEle;
@@ -2548,17 +2556,16 @@ public final class MemoryBuffer {
     }
     if (eleType == Types.JavaArray.BYTE && onHeap) {
       System.arraycopy(heapMemory, memoryOffset + bufOffset, target, offset, numBytes);
-    }else {
+    } else {
       if (!Platform.IS_ANDROID) {
         Platform.copyMemory(
-          heapMemory,
-          address + bufOffset,
-          target,
-          eleType.arrayMemOffset + (long) offset * eleType.bytesPerEle,
-          numBytes
-        );
-      }else {
-        buffer.position(memoryOffset + bufOffset);
+            heapMemory,
+            address + bufOffset,
+            target,
+            eleType.arrayMemOffset + (long) offset * eleType.bytesPerEle,
+            numBytes);
+      } else {
+        buffer.position(bufOffset);
         switch (eleType) {
           case BOOL:
             copyToBoolsInner((boolean[]) target, offset, length);
@@ -2590,9 +2597,8 @@ public final class MemoryBuffer {
   public void readToUnchecked(Object target, int offset, int length, Types.JavaArray eleType) {
     copyTo(-1, target, offset, length, eleType, false);
   }
+
   /*--------------------------------------------------------------------------------*/
-
-
 
   /*--------------------------------------------------------------------------------*/
 
@@ -2629,8 +2635,10 @@ public final class MemoryBuffer {
     checkArgument(thisPointer + numBytes <= addressLimit);
     if (Platform.IS_ANDROID) {
       if (onHeap) {
-        Platform.throwException(new OperationNotSupportedException("Cannot copy heap memory to native address on Android."));
-      }else {
+        Platform.throwException(
+            new OperationNotSupportedException(
+                "Cannot copy heap memory to native address on Android."));
+      } else {
         // android的copyMemory只支持这个三个参数的(堆外内存拷贝)
         Platform.UNSAFE.copyMemory(thisPointer, targetAddress, numBytes);
       }
@@ -2650,8 +2658,10 @@ public final class MemoryBuffer {
     checkArgument(thisPointer + numBytes <= addressLimit);
     if (Platform.IS_ANDROID) {
       if (onHeap) {
-        Platform.throwException(new OperationNotSupportedException("Cannot copy heap memory to native address on Android."));
-      }else {
+        Platform.throwException(
+            new OperationNotSupportedException(
+                "Cannot copy heap memory to native address on Android."));
+      } else {
         // android的copyMemory只支持这个三个参数的(堆外内存拷贝)
         Platform.UNSAFE.copyMemory(sourcePointer, thisPointer, numBytes);
       }
@@ -2659,7 +2669,6 @@ public final class MemoryBuffer {
     }
     Platform.copyMemory(null, sourcePointer, this.heapMemory, thisPointer, numBytes);
   }
-
 
   public void copyTo(int offset, MemoryBuffer target, int targetOffset, int numBytes) {
     final long thisPointer = this.address + offset;
@@ -2669,13 +2678,14 @@ public final class MemoryBuffer {
         && otherPointer <= target.addressLimit - numBytes) {
       if (Platform.IS_ANDROID) {
         int thisOldLimit = this.buffer.limit();
-        this.buffer.position(memoryOffset + offset);
-        this.buffer.limit(memoryOffset + offset + numBytes);
-        target.buffer.position(target.memoryOffset + targetOffset);
+        this.buffer.position(offset);
+        this.buffer.limit(offset + numBytes);
+        target.buffer.position(targetOffset);
         target.buffer.put(this.buffer);
         this.buffer.limit(thisOldLimit);
-      }else {
-        Platform.copyMemory(this.heapMemory, thisPointer, target.heapMemory, otherPointer, numBytes);
+      } else {
+        Platform.copyMemory(
+            this.heapMemory, thisPointer, target.heapMemory, otherPointer, numBytes);
       }
     } else {
       throw new IndexOutOfBoundsException(
@@ -2713,7 +2723,13 @@ public final class MemoryBuffer {
     if (onHeap) {
       return new MemoryBuffer(heapMemory, memoryOffset + offset, length);
     } else {
-      return new MemoryBuffer(address + offset, memoryOffset + offset, length, buffer);
+      if (this.buffer == null) {
+        // for android, can't construct a ByteBuffer from native address directly
+        return MemoryBuffer.fromNativeAddress(address + offset, length);
+      } else {
+        buffer.position(offset);
+        return MemoryBuffer.fromByteBuffer(buffer, length);
+      }
     }
   }
 
@@ -2721,6 +2737,7 @@ public final class MemoryBuffer {
     return sliceAsByteBuffer(readerIndex, size - readerIndex);
   }
 
+  @PartialAndroidSupport
   public ByteBuffer sliceAsByteBuffer(int offset, int length) {
     if (offset + length > size) {
       throwOOBExceptionForRange(offset, length);
@@ -2728,14 +2745,11 @@ public final class MemoryBuffer {
     if (heapMemory != null) {
       return ByteBuffer.wrap(heapMemory, memoryOffset + offset, length).slice();
     } else {
-      ByteBuffer offHeapBuffer = this.buffer;
-      if (offHeapBuffer != null) {
-        ByteBuffer duplicate = offHeapBuffer.duplicate();
-        int start = (int) (address - ByteBufferUtil.getAddress(duplicate));
-        ByteBufferUtil.position(duplicate, start + offset);
-        duplicate.limit(start + offset + length);
-        return duplicate.slice();
+      if (this.buffer != null) {
+        this.buffer.position(offset);
+        return buffer.slice();
       } else {
+        // for android, can't construct a ByteBuffer from native address directly
         return ByteBufferUtil.createDirectByteBufferFromNativeAddress(address + offset, length);
       }
     }
@@ -2790,44 +2804,6 @@ public final class MemoryBuffer {
     initHeapBuffer(buffer, offset, length);
   }
 
-  /** Creates a new memory buffer that targets to the given heap memory region. */
-  public static MemoryBuffer fromByteArray(byte[] buffer, int offset, int length) {
-    return new MemoryBuffer(buffer, offset, length, null);
-  }
-
-  public static MemoryBuffer fromByteArray(
-      byte[] buffer, int offset, int length, ForyStreamReader streamReader) {
-    return new MemoryBuffer(buffer, offset, length, streamReader);
-  }
-
-  /** Creates a new memory buffer that targets to the given heap memory region. */
-  public static MemoryBuffer fromByteArray(byte[] buffer) {
-    return new MemoryBuffer(buffer, 0, buffer.length);
-  }
-
-  /**
-   * Creates a new memory buffer that represents the memory backing the given byte buffer section of
-   * {@code [buffer.position(), buffer.limit())}. The buffer will change into a heap buffer
-   * automatically if not enough.
-   *
-   * @param buffer a direct buffer or heap buffer
-   */
-  public static MemoryBuffer fromByteBuffer(ByteBuffer buffer) {
-    if (buffer.isDirect()) {
-      return new MemoryBuffer(
-          ByteBufferUtil.getAddress(buffer) + buffer.position(), buffer.position(), buffer.remaining(), buffer);
-    } else {
-      int offset = buffer.arrayOffset() + buffer.position();
-      return new MemoryBuffer(buffer.array(), offset, buffer.remaining());
-    }
-  }
-
-  public static MemoryBuffer fromDirectByteBuffer(
-      ByteBuffer buffer, int size, ForyStreamReader streamReader) {
-    long offHeapAddress = ByteBufferUtil.getAddress(buffer) + buffer.position();
-    return new MemoryBuffer(offHeapAddress, buffer.position(), size, buffer, streamReader);
-  }
-
   /**
    * Creates a new memory buffer that represents the provided native memory. The buffer will change
    * into a heap buffer automatically if not enough.
@@ -2835,8 +2811,21 @@ public final class MemoryBuffer {
   // TODO: support android
   @NotForAndroid(reason = "Android does not support support off-heap memory only by address")
   public static MemoryBuffer fromNativeAddress(long address, int size) {
-    if (Platform.IS_ANDROID) throw new UnsupportedOperationException("Android does not support support off-heap memory only by address");
-    return new MemoryBuffer(address, -1, size, null);
+    if (Platform.IS_ANDROID)
+      throw new UnsupportedOperationException(
+          "Android does not support support off-heap memory only by address");
+    return new MemoryBuffer(address, null, size, null, false);
+  }
+
+  /*-------------------------------static named constructor----------------------------------*/
+
+  /** Creates a new memory buffer that targets to the given heap memory region. */
+  public static MemoryBuffer wrap(byte[] buffer) {
+    return new MemoryBuffer(buffer, 0, buffer.length);
+  }
+
+  public static MemoryBuffer buffer(int size) {
+    return newHeapBuffer(size);
   }
 
   /**
@@ -2844,6 +2833,41 @@ public final class MemoryBuffer {
    * enough.
    */
   public static MemoryBuffer newHeapBuffer(int initialSize) {
-    return fromByteArray(new byte[initialSize]);
+    return wrap(new byte[initialSize]);
+  }
+
+  public static MemoryBuffer bufferDirect(int size) {
+    return new MemoryBuffer(-1, ByteBuffer.allocateDirect(size), size, null, true);
+  }
+
+  /**
+   * Creates a new memory segment that represents the memory backing the given byte buffer section
+   * of [buffer.position(), buffer,limit()].
+   *
+   * @param byteBuffer a direct buffer or heap buffer
+   */
+  public static MemoryBuffer wrap(ByteBuffer byteBuffer) {
+    return fromByteBuffer(byteBuffer, byteBuffer.remaining());
+  }
+
+  /**
+   * Creates a new memory buffer that represents the native memory at the absolute address given by
+   * the pointer.
+   *
+   * @param length The size of this memory buffer.
+   * @param byteBuffer The byte buffer whose memory is represented by this memory buffer which
+   */
+  private static MemoryBuffer fromByteBuffer(ByteBuffer byteBuffer, int length) {
+    if (byteBuffer.isDirect()) {
+      return new MemoryBuffer(-1, byteBuffer, length, null, false);
+    } else {
+      int offset = byteBuffer.arrayOffset() + byteBuffer.position();
+      return new MemoryBuffer(byteBuffer.array(), offset, byteBuffer.remaining());
+    }
+  }
+
+  public static MemoryBuffer fromDirectByteBuffer(
+      ByteBuffer buffer, int size, ForyStreamReader streamReader) {
+    return new MemoryBuffer(-1, buffer, size, streamReader, false);
   }
 }

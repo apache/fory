@@ -22,6 +22,7 @@ package org.apache.fory.memory;
 import java.lang.reflect.Field;
 import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import org.apache.fory.annotation.NotForAndroid;
 import org.apache.fory.util.Preconditions;
 
 public class ByteBufferUtil {
@@ -33,9 +34,14 @@ public class ByteBufferUtil {
       Field addressField = Buffer.class.getDeclaredField("address");
       BUFFER_ADDRESS_FIELD_OFFSET = Platform.objectFieldOffset(addressField);
       Preconditions.checkArgument(BUFFER_ADDRESS_FIELD_OFFSET != 0);
-      Field capacityField = Buffer.class.getDeclaredField("capacity");
-      BUFFER_CAPACITY_FIELD_OFFSET = Platform.objectFieldOffset(capacityField);
-      Preconditions.checkArgument(BUFFER_CAPACITY_FIELD_OFFSET != 0);
+      if (Platform.IS_ANDROID) {
+        BUFFER_CAPACITY_FIELD_OFFSET = -1;
+      } else {
+        Field capacityField =
+            Buffer.class.getDeclaredField("capacity"); // Android does not support this field
+        BUFFER_CAPACITY_FIELD_OFFSET = Platform.objectFieldOffset(capacityField);
+        Preconditions.checkArgument(BUFFER_CAPACITY_FIELD_OFFSET != 0);
+      }
     } catch (NoSuchFieldException e) {
       throw new IllegalStateException(e);
     }
@@ -56,6 +62,7 @@ public class ByteBufferUtil {
   private static final ByteBuffer localBuffer = ByteBuffer.allocateDirect(0);
 
   /** Create a direct buffer from native memory represented by address [address, address + size). */
+  @NotForAndroid(reason = "Android cannot directly operate the capacity field")
   public static ByteBuffer createDirectByteBufferFromNativeAddress(long address, int size) {
     try {
       // ByteBuffer.allocateDirect(0) is about 30x slower than `localBuffer.duplicate()`.
@@ -69,21 +76,24 @@ public class ByteBufferUtil {
     }
   }
 
-  /** Wrap a buffer [address, address + size) into provided <code>buffer</code>. */
-  public static void wrapDirectByteBufferFromNativeAddress(
-      ByteBuffer buffer, long address, int size) {
-    Preconditions.checkArgument(
-        buffer.isDirect(), "Can't wrap native memory into a non-direct ByteBuffer.");
-    Platform.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
-    Platform.putInt(buffer, BUFFER_CAPACITY_FIELD_OFFSET, size);
-    buffer.clear();
-  }
+  //  /** Wrap a buffer [address, address + size) into provided <code>buffer</code>. */
+  //  @NotForAndroid(reason = "Android cannot directly operate the capacity field")
+  //  public static void wrapDirectByteBufferFromNativeAddress(
+  //      ByteBuffer buffer, long address, int size) {
+  //    Preconditions.checkArgument(
+  //        buffer.isDirect(), "Can't wrap native memory into a non-direct ByteBuffer.");
+  //    Platform.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
+  //    Platform.putInt(buffer, BUFFER_CAPACITY_FIELD_OFFSET, size);
+  //    buffer.clear();
+  //  }
 
+  @NotForAndroid
   public static ByteBuffer wrapDirectBuffer(long address, int size) {
     return createDirectByteBufferFromNativeAddress(address, size);
   }
 
   /** Wrap a buffer [address, address + size) into provided <code>buffer</code>. */
+  @NotForAndroid(reason = "Android cannot directly operate the capacity field")
   public static void wrapDirectBuffer(ByteBuffer buffer, long address, int size) {
     Platform.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
     Platform.putInt(buffer, BUFFER_CAPACITY_FIELD_OFFSET, size);
@@ -100,9 +110,5 @@ public class ByteBufferUtil {
 
   public static void rewind(Buffer buffer) {
     buffer.rewind();
-  }
-
-  public static void position(Buffer buffer, int pos) {
-    buffer.position(pos);
   }
 }

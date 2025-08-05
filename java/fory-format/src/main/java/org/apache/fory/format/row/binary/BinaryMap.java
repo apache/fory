@@ -24,8 +24,7 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.MapData;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
-import org.apache.fory.memory.Platform;
+import org.apache.fory.type.Types;
 
 /**
  * An BinaryMap implementation of Map which is backed by two BinaryArray./ForyObjectOutput
@@ -109,15 +108,16 @@ public class BinaryMap implements MapData {
 
   @Override
   public MapData copy() {
-    MemoryBuffer copyBuf = MemoryUtils.buffer(sizeInBytes);
+    MemoryBuffer copyBuf = MemoryBuffer.buffer(sizeInBytes);
     buf.copyTo(baseOffset, copyBuf, 0, sizeInBytes);
     BinaryMap mapCopy = new BinaryMap(field);
     mapCopy.pointTo(copyBuf, 0, sizeInBytes);
     return mapCopy;
   }
 
-  public void writeToMemory(Object target, long targetOffset) {
-    buf.copyToUnsafe(baseOffset, target, targetOffset, sizeInBytes);
+  public void writeToBytes(byte[] target, int targetOffset) {
+    // buf.copyToUnsafe(baseOffset, target, targetOffset, sizeInBytes);
+    buf.copyTo(baseOffset, target, targetOffset, sizeInBytes, Types.JavaArray.BYTE, false);
   }
 
   public void writeTo(ByteBuffer buffer) {
@@ -125,7 +125,7 @@ public class BinaryMap implements MapData {
     byte[] target = buffer.array();
     int offset = buffer.arrayOffset();
     int pos = buffer.position();
-    writeToMemory(target, Platform.BYTE_ARRAY_OFFSET + offset + pos);
+    writeToBytes(target, offset + pos);
     buffer.position(pos + sizeInBytes);
   }
 

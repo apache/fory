@@ -142,7 +142,7 @@ abstract class UnsafeTrait implements Getters, Setters {
     }
     MemoryBuffer buffer = getBuffer(ordinal);
     ArrowBuf arrowBuf = ArrowUtils.decimalArrowBuf();
-    buffer.copyToUnsafe(0, null, arrowBuf.memoryAddress(), DECIMAL_BYTE_LENGTH);
+    buffer.copyToDirectUnsafe(0, arrowBuf.memoryAddress(), DECIMAL_BYTE_LENGTH);
     BigDecimal decimal =
         DecimalUtility.getBigDecimalFromArrowBuf(
             arrowBuf, 0, decimalType.getScale(), DECIMAL_BYTE_LENGTH);

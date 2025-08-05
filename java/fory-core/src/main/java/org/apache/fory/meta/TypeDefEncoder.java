@@ -123,7 +123,7 @@ class TypeDefEncoder {
     boolean isCompressed = false;
     if (compressed.length < buffer.writerIndex()) {
       isCompressed = true;
-      buffer = MemoryBuffer.fromByteArray(compressed);
+      buffer = MemoryBuffer.wrap(compressed);
       buffer.writerIndex(compressed.length);
     }
     return prependHeader(buffer, isCompressed, true);

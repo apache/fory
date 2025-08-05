@@ -37,7 +37,6 @@ import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.meta.ClassDef.FieldInfo;
 import org.apache.fory.meta.ClassDef.FieldType;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -176,7 +175,7 @@ class ClassDefEncoder {
     boolean isCompressed = false;
     if (compressed.length < classDefBuf.writerIndex()) {
       isCompressed = true;
-      classDefBuf = MemoryBuffer.fromByteArray(compressed);
+      classDefBuf = MemoryBuffer.wrap(compressed);
       classDefBuf.writerIndex(compressed.length);
     }
     return prependHeader(classDefBuf, isCompressed, hasFieldsMeta);
@@ -196,7 +195,7 @@ class ClassDefEncoder {
       header |= HAS_FIELDS_META_FLAG;
     }
     header |= Math.min(metaSize, META_SIZE_MASKS);
-    MemoryBuffer result = MemoryUtils.buffer(metaSize + 8);
+    MemoryBuffer result = MemoryBuffer.buffer(metaSize + 8);
     result.writeInt64(header);
     if (metaSize > META_SIZE_MASKS) {
       result.writeVarUint32(metaSize - META_SIZE_MASKS);

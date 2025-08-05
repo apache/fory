@@ -65,7 +65,6 @@ import org.apache.fory.io.MemoryBufferOutputStream;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.serializer.BufferObject;
 import org.apache.fory.test.TestUtils;
 import org.testng.Assert;
@@ -138,7 +137,7 @@ public class CrossLanguageTest {
       Assert.assertTrue(executeCommand(command, 30));
     }
 
-    MemoryBuffer buffer = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+    MemoryBuffer buffer = MemoryBuffer.wrap(Files.readAllBytes(dataFile));
     BinaryRow newRow = new BinaryRow(encoder.schema());
     newRow.pointTo(buffer, 0, buffer.size());
     Assert.assertEquals(foo, encoder.fromRow(newRow));
@@ -167,7 +166,7 @@ public class CrossLanguageTest {
       Assert.assertTrue(executeCommand(command, 30));
     }
 
-    MemoryBuffer buffer = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+    MemoryBuffer buffer = MemoryBuffer.wrap(Files.readAllBytes(dataFile));
     BinaryRow newRow = new BinaryRow(encoder.schema());
     newRow.pointTo(buffer, 0, buffer.size());
     Assert.assertEquals(foo, encoder.fromRow(newRow));
@@ -182,7 +181,7 @@ public class CrossLanguageTest {
     VectorSchemaRoot root =
         new VectorSchemaRoot(Collections.singletonList(field), Collections.singletonList(vector));
     Path dataFile = Files.createTempFile("foo", "data");
-    MemoryBuffer buffer = MemoryUtils.buffer(128);
+    MemoryBuffer buffer = MemoryBuffer.buffer(128);
     try (ArrowStreamWriter writer =
         new ArrowStreamWriter(root, null, new MemoryBufferOutputStream(buffer))) {
       writer.start();
@@ -213,7 +212,7 @@ public class CrossLanguageTest {
     Foo foo = Foo.create();
     RowEncoder<Foo> encoder = Encoders.bean(Foo.class);
     Path dataFile = Files.createTempFile("foo", "data");
-    MemoryBuffer buffer = MemoryUtils.buffer(128);
+    MemoryBuffer buffer = MemoryBuffer.buffer(128);
     ImmutableList<String> command =
         ImmutableList.of(
             PYTHON_EXECUTABLE,
@@ -272,7 +271,7 @@ public class CrossLanguageTest {
             schemaFile.toAbsolutePath().toString(),
             dataFile.toAbsolutePath().toString());
     {
-      MemoryBuffer buffer = MemoryUtils.buffer(128);
+      MemoryBuffer buffer = MemoryBuffer.buffer(128);
       buffer.writerIndex(0);
       DataTypes.serializeSchema(encoder.schema(), buffer);
       Files.write(schemaFile, buffer.getBytes(0, buffer.writerIndex()));
@@ -286,7 +285,7 @@ public class CrossLanguageTest {
         arrowWriter.write(row);
       }
       ArrowRecordBatch recordBatch = arrowWriter.finishAsRecordBatch();
-      MemoryBuffer buffer = MemoryUtils.buffer(128);
+      MemoryBuffer buffer = MemoryBuffer.buffer(128);
       ArrowUtils.serializeRecordBatch(recordBatch, buffer);
       arrowWriter.reset();
       Files.write(
@@ -358,7 +357,7 @@ public class CrossLanguageTest {
             .requireClassRegistration(false)
             .build();
     ArrowSerializers.registerSerializers(fory);
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     int size = 2000;
     VectorSchemaRoot root = createVectorSchemaRoot(size);
     fory.serialize(buffer, root);
@@ -384,7 +383,7 @@ public class CrossLanguageTest {
             dataFile.toAbsolutePath().toString());
     Assert.assertTrue(executeCommand(command, 30));
 
-    MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+    MemoryBuffer buffer2 = MemoryBuffer.wrap(Files.readAllBytes(dataFile));
     assertRecordBatchEqual((VectorSchemaRoot) fory.deserialize(buffer2), root);
     assertTableEqual((ArrowTable) fory.deserialize(buffer2), table);
   }
@@ -400,7 +399,7 @@ public class CrossLanguageTest {
             .build();
     ArrowSerializers.registerSerializers(fory);
 
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     int size = 2000;
     VectorSchemaRoot root = createVectorSchemaRoot(size);
     Schema schema = root.getSchema();
@@ -429,7 +428,7 @@ public class CrossLanguageTest {
     Files.write(intBandDataFile, buffer.getBytes(0, buffer.writerIndex()));
     Path outOfBandDataFile =
         Files.createTempFile("test_serialize_arrow_out_of_band", "out_of_band.data");
-    MemoryBuffer outOfBandBuffer = MemoryUtils.buffer(32);
+    MemoryBuffer outOfBandBuffer = MemoryBuffer.buffer(32);
     outOfBandBuffer.writeInt32(bufferObjects.get(0).totalBytes());
     outOfBandBuffer.writeInt32(bufferObjects.get(1).totalBytes());
     bufferObjects.get(0).writeTo(outOfBandBuffer);
@@ -445,8 +444,8 @@ public class CrossLanguageTest {
             outOfBandDataFile.toAbsolutePath().toString());
     Assert.assertTrue(executeCommand(command, 30));
 
-    MemoryBuffer intBandBuffer = MemoryUtils.wrap(Files.readAllBytes(intBandDataFile));
-    outOfBandBuffer = MemoryUtils.wrap(Files.readAllBytes(outOfBandDataFile));
+    MemoryBuffer intBandBuffer = MemoryBuffer.wrap(Files.readAllBytes(intBandDataFile));
+    outOfBandBuffer = MemoryBuffer.wrap(Files.readAllBytes(outOfBandDataFile));
     int len1 = outOfBandBuffer.readInt32();
     int len2 = outOfBandBuffer.readInt32();
     buffers = Arrays.asList(outOfBandBuffer.slice(8, len1), outOfBandBuffer.slice(8 + len1, len2));

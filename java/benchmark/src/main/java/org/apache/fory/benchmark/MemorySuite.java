@@ -170,7 +170,7 @@ public class MemorySuite {
   }
 
   private static final byte[] array1 = getByteArray(256);
-  private static final MemoryBuffer buffer1 = MemoryUtils.wrap(getByteArray(256));
+  private static final MemoryBuffer buffer1 = MemoryBuffer.wrap(getByteArray(256));
 
   // @org.openjdk.jmh.annotations.Benchmark
   public Object bufferUnsafeReadByte(MemoryState state) {

@@ -60,7 +60,6 @@ import org.apache.fory.config.Language;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.serializer.ArraySerializersTest;
 import org.apache.fory.serializer.BufferObject;
 import org.apache.fory.serializer.EnumSerializerTest;
@@ -114,7 +113,7 @@ public class CrossLanguageTest extends ForyTestBase {
 
   @Test
   public void testBuffer() throws IOException {
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     buffer.writeBoolean(true);
     buffer.writeByte(Byte.MAX_VALUE);
     buffer.writeInt16(Short.MAX_VALUE);
@@ -136,7 +135,7 @@ public class CrossLanguageTest extends ForyTestBase {
             "test_buffer",
             dataFile.toAbsolutePath().toString());
     Assert.assertTrue(executeCommand(command, 30));
-    buffer = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+    buffer = MemoryBuffer.wrap(Files.readAllBytes(dataFile));
     Assert.assertTrue(buffer.readBoolean());
     Assert.assertEquals(buffer.readByte(), Byte.MAX_VALUE);
     Assert.assertEquals(buffer.readInt16(), Short.MAX_VALUE);
@@ -150,7 +149,7 @@ public class CrossLanguageTest extends ForyTestBase {
 
   @Test
   public void testMurmurHash3() throws IOException {
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     byte[] hash1 = Hashing.murmur3_128(47).hashBytes(new byte[] {1, 2, 8}).asBytes();
     buffer.writeBytes(hash1);
     byte[] hash2 =
@@ -229,7 +228,7 @@ public class CrossLanguageTest extends ForyTestBase {
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     fory.serialize(buffer, true);
     fory.serialize(buffer, false);
     fory.serialize(buffer, -1);
@@ -309,7 +308,7 @@ public class CrossLanguageTest extends ForyTestBase {
             "test_cross_language_serializer",
             dataFile.toAbsolutePath().toString());
     Assert.assertTrue(executeCommand(command, 30));
-    MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+    MemoryBuffer buffer2 = MemoryBuffer.wrap(Files.readAllBytes(dataFile));
     function.accept(buffer2, true);
   }
 
@@ -407,7 +406,7 @@ public class CrossLanguageTest extends ForyTestBase {
     list.add(map);
     map.put("k1", map);
     map.put("k2", list);
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     fory.serialize(buffer, list);
 
     Consumer<MemoryBuffer> function =
@@ -432,7 +431,7 @@ public class CrossLanguageTest extends ForyTestBase {
             "test_cross_language_reference",
             dataFile.toAbsolutePath().toString());
     Assert.assertTrue(executeCommand(command, 30));
-    MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+    MemoryBuffer buffer2 = MemoryBuffer.wrap(Files.readAllBytes(dataFile));
     function.accept(buffer2);
   }
 
@@ -670,8 +669,8 @@ public class CrossLanguageTest extends ForyTestBase {
             outOfBandDataFile.toAbsolutePath().toString());
     Assert.assertTrue(executeCommand(command, 30));
 
-    MemoryBuffer inBandBuffer = MemoryUtils.wrap(Files.readAllBytes(intBandDataFile));
-    outOfBandBuffer = MemoryUtils.wrap(Files.readAllBytes(outOfBandDataFile));
+    MemoryBuffer inBandBuffer = MemoryBuffer.wrap(Files.readAllBytes(intBandDataFile));
+    outOfBandBuffer = MemoryBuffer.wrap(Files.readAllBytes(outOfBandDataFile));
     int numBuffers = outOfBandBuffer.readInt32();
     buffers = new ArrayList<>();
     for (int i = 0; i < numBuffers; i++) {

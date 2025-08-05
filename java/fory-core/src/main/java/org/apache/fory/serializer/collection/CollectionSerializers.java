@@ -57,6 +57,7 @@ import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
+import org.apache.fory.type.Types;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.unsafe._JDKAccess;
 
@@ -634,8 +635,7 @@ public class CollectionSerializers {
     @Override
     public void write(MemoryBuffer buffer, BitSet set) {
       long[] values = set.toLongArray();
-      buffer.writePrimitiveArrayWithSize(
-          values, Platform.LONG_ARRAY_OFFSET, Math.multiplyExact(values.length, 8));
+      buffer.writeArrayWithSize(values, 0, values.length, Types.JavaArray.LONG);
     }
 
     @Override

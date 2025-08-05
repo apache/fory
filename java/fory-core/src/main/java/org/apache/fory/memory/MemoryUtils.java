@@ -21,50 +21,10 @@ package org.apache.fory.memory;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.nio.ByteBuffer;
 import org.apache.fory.util.Preconditions;
 
 /** Memory utils for fory. */
 public class MemoryUtils {
-
-  public static MemoryBuffer buffer(int size) {
-    return wrap(new byte[size]);
-  }
-
-  public static MemoryBuffer buffer(long address, int size) {
-    return MemoryBuffer.fromNativeAddress(address, size);
-  }
-
-  /**
-   * Creates a new memory segment that targets to the given heap memory region.
-   *
-   * <p>This method should be used to turn short lived byte arrays into memory segments.
-   *
-   * @param buffer The heap memory region.
-   * @return A new memory segment that targets the given heap memory region.
-   */
-  public static MemoryBuffer wrap(byte[] buffer, int offset, int length) {
-    return MemoryBuffer.fromByteArray(buffer, offset, length);
-  }
-
-  public static MemoryBuffer wrap(byte[] buffer) {
-    return MemoryBuffer.fromByteArray(buffer);
-  }
-
-  /**
-   * Creates a new memory segment that represents the memory backing the given byte buffer section
-   * of [buffer.position(), buffer,limit()).
-   *
-   * @param buffer a direct buffer or heap buffer
-   */
-  public static MemoryBuffer wrap(ByteBuffer buffer) {
-    if (buffer.isDirect()) {
-      return MemoryBuffer.fromByteBuffer(buffer);
-    } else {
-      int offset = buffer.arrayOffset() + buffer.position();
-      return MemoryBuffer.fromByteArray(buffer.array(), offset, buffer.remaining());
-    }
-  }
 
   // Lazy load offset and also follow graalvm offset auto replace pattern.
   private static class Offset {
@@ -105,7 +65,7 @@ public class MemoryUtils {
   }
 
   /**
-   * Wrap a @link MemoryBuffer} into a {@link ByteArrayOutputStream}. The count of stream will be
+   * Wrap a @{link MemoryBuffer} into a {@link ByteArrayOutputStream}. The count of stream will be
    * the writerIndex of buffer.
    */
   public static void wrap(MemoryBuffer buffer, ByteArrayOutputStream stream) {

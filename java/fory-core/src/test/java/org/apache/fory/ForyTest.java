@@ -62,7 +62,6 @@ import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.serializer.ArraySerializersTest;
@@ -168,7 +167,7 @@ public class ForyTest extends ForyTestBase {
   public void testSerializationToBuffer(Language language) {
     Fory fory1 = Fory.builder().withLanguage(language).requireClassRegistration(false).build();
     Fory fory2 = Fory.builder().withLanguage(language).requireClassRegistration(false).build();
-    MemoryBuffer buffer = MemoryUtils.buffer(64);
+    MemoryBuffer buffer = MemoryBuffer.buffer(64);
     assertSerializationToBuffer(fory1, fory2, buffer);
   }
 
@@ -176,7 +175,7 @@ public class ForyTest extends ForyTestBase {
   public void testSerializationSlicedBuffer(Language language) {
     Fory fory1 = Fory.builder().withLanguage(language).requireClassRegistration(false).build();
     Fory fory2 = Fory.builder().withLanguage(language).requireClassRegistration(false).build();
-    MemoryBuffer buffer0 = MemoryUtils.buffer(64);
+    MemoryBuffer buffer0 = MemoryBuffer.buffer(64);
     buffer0.writeInt64(-1);
     buffer0.writeInt64(-1);
     buffer0.readInt64();
@@ -520,7 +519,7 @@ public class ForyTest extends ForyTestBase {
         fory.deserializeJavaObjectAndClass(fory.serializeJavaObjectAndClass(beanA)), beanA);
     assertEquals(
         fory.deserializeJavaObjectAndClass(
-            MemoryBuffer.fromByteArray(fory.serializeJavaObjectAndClass(beanA))),
+            MemoryBuffer.wrap(fory.serializeJavaObjectAndClass(beanA))),
         beanA);
   }
 

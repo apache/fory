@@ -22,7 +22,6 @@ package org.apache.fory.format.encoder;
 import lombok.Data;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -49,7 +48,7 @@ public class GenericTypeTest {
     bean.id.id = 42;
     final RowEncoder<TestEntity> encoder = Encoders.bean(TestEntity.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final TestEntity deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);

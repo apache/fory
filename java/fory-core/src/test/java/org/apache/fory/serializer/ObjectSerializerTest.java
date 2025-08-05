@@ -27,7 +27,6 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.bean.Cyclic;
 import org.apache.fory.util.Preconditions;
 import org.testng.Assert;
@@ -51,7 +50,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .build();
     ObjectSerializer serializer = new ObjectSerializer(fory, Foo.class);
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     Foo foo = new Foo();
     serializer.write(buffer, foo);
     Object obj = serializer.read(buffer);
@@ -95,7 +94,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .build();
     ObjectSerializer serializer = new ObjectSerializer(fory, foo.getClass());
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     serializer.write(buffer, foo);
     Object obj = serializer.read(buffer);
     assertEquals(foo.foo("str"), ((Foo) obj).foo("str"));
@@ -131,7 +130,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
 
     ObjectSerializer<Cyclic> serializer = new ObjectSerializer<>(fory, Cyclic.class);
     fory.getRefResolver().writeRefOrNull(buffer, cyclic);
@@ -172,7 +171,7 @@ public class ObjectSerializerTest extends ForyTestBase {
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     ObjectSerializer<A> serializer = new ObjectSerializer<>(fory, A.class);
     A a = new A();
     serializer.write(buffer, a);

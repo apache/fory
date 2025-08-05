@@ -28,7 +28,6 @@ import javax.annotation.concurrent.ThreadSafe;
 import org.apache.fory.Fory;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.util.LoaderBinding;
 import org.apache.fory.util.LoaderBinding.StagingType;
@@ -89,7 +88,7 @@ public class ForwardSerializer {
     }
 
     protected Object deserialize(T serializer, ByteBuffer byteBuffer) {
-      return deserialize(serializer, MemoryUtils.wrap(byteBuffer));
+      return deserialize(serializer, MemoryBuffer.wrap(byteBuffer));
     }
 
     protected Object deserialize(T serializer, MemoryBuffer buffer) {
@@ -105,7 +104,7 @@ public class ForwardSerializer {
   public static class DefaultForyProxy extends SerializerProxy<LoaderBinding> {
 
     private final ThreadLocal<MemoryBuffer> bufferLocal =
-        ThreadLocal.withInitial(() -> MemoryUtils.buffer(32));
+        ThreadLocal.withInitial(() -> MemoryBuffer.buffer(32));
 
     /** Override this method to register custom serializers. */
     @Override

@@ -66,7 +66,7 @@ class ClassDefDecoder {
 
   public static ClassDef decodeClassDef(ClassResolver resolver, MemoryBuffer buffer, long id) {
     Tuple2<byte[], byte[]> decoded = decodeClassDefBuf(buffer, resolver, id);
-    MemoryBuffer classDefBuf = MemoryBuffer.fromByteArray(decoded.f0);
+    MemoryBuffer classDefBuf = MemoryBuffer.wrap(decoded.f0);
     int numClasses = classDefBuf.readByte();
     if (numClasses == NUM_CLASS_THRESHOLD) {
       numClasses += classDefBuf.readVarUint32Small7();

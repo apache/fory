@@ -65,7 +65,7 @@ public class _JDKAccess {
     if (IS_ANDROID) {
       IS_OPEN_J9 = false;
       JAVA_VERSION = 8; // TODO: 只是一个尝试，之后一定要改
-    }else {
+    } else {
       String property = System.getProperty("java.specification.version");
       if (property.startsWith("1.")) {
         property = property.substring(2);
@@ -111,12 +111,12 @@ public class _JDKAccess {
   }
 
   private static final ClassValue<Lookup> lookupCache =
-    new ClassValue<Lookup>() {
-      @Override
-      protected Lookup computeValue(Class type) {
-        return _Lookup._trustedLookup(type);
-      }
-    };
+      new ClassValue<Lookup>() {
+        @Override
+        protected Lookup computeValue(Class type) {
+          return _Lookup._trustedLookup(type);
+        }
+      };
 
   // CHECKSTYLE.OFF:MethodName
 
@@ -131,7 +131,7 @@ public class _JDKAccess {
   }
 
   public static <T> T tryMakeFunction(
-    Lookup lookup, MethodHandle handle, Class<T> functionInterface) {
+      Lookup lookup, MethodHandle handle, Class<T> functionInterface) {
     try {
       return makeFunction(lookup, handle, functionInterface);
     } catch (Throwable e) {
@@ -141,7 +141,7 @@ public class _JDKAccess {
   }
 
   private static final MethodType jdkFunctionMethodType =
-    MethodType.methodType(Object.class, Object.class);
+      MethodType.methodType(Object.class, Object.class);
 
   @SuppressWarnings("unchecked")
   public static <T, R> Function<T, R> makeJDKFunction(Lookup lookup, MethodHandle handle) {
@@ -150,16 +150,16 @@ public class _JDKAccess {
 
   @SuppressWarnings("unchecked")
   public static <T, R> Function<T, R> makeJDKFunction(
-    Lookup lookup, MethodHandle handle, MethodType methodType) {
+      Lookup lookup, MethodHandle handle, MethodType methodType) {
     try {
       CallSite callSite =
-        LambdaMetafactory.metafactory(
-          lookup,
-          "apply",
-          MethodType.methodType(Function.class),
-          methodType,
-          handle,
-          boxedMethodType(handle.type()));
+          LambdaMetafactory.metafactory(
+              lookup,
+              "apply",
+              MethodType.methodType(Function.class),
+              methodType,
+              handle,
+              boxedMethodType(handle.type()));
       return (Function<T, R>) callSite.getTarget().invokeExact();
     } catch (Throwable e) {
       UNSAFE.throwException(e);
@@ -168,19 +168,19 @@ public class _JDKAccess {
   }
 
   private static final MethodType jdkConsumerMethodType =
-    MethodType.methodType(void.class, Object.class);
+      MethodType.methodType(void.class, Object.class);
 
   @SuppressWarnings("unchecked")
   public static <T> Consumer<T> makeJDKConsumer(Lookup lookup, MethodHandle handle) {
     try {
       CallSite callSite =
-        LambdaMetafactory.metafactory(
-          lookup,
-          "accept",
-          MethodType.methodType(Consumer.class),
-          jdkConsumerMethodType,
-          handle,
-          boxedMethodType(handle.type()));
+          LambdaMetafactory.metafactory(
+              lookup,
+              "accept",
+              MethodType.methodType(Consumer.class),
+              jdkConsumerMethodType,
+              handle,
+              boxedMethodType(handle.type()));
       return (Consumer<T>) callSite.getTarget().invokeExact();
     } catch (Throwable e) {
       UNSAFE.throwException(e);
@@ -189,19 +189,19 @@ public class _JDKAccess {
   }
 
   private static final MethodType jdkBiConsumerMethodType =
-    MethodType.methodType(void.class, Object.class, Object.class);
+      MethodType.methodType(void.class, Object.class, Object.class);
 
   @SuppressWarnings("unchecked")
   public static <T, U> BiConsumer<T, U> makeJDKBiConsumer(Lookup lookup, MethodHandle handle) {
     try {
       CallSite callSite =
-        LambdaMetafactory.metafactory(
-          lookup,
-          "accept",
-          MethodType.methodType(BiConsumer.class),
-          jdkBiConsumerMethodType,
-          handle,
-          boxedMethodType(handle.type()));
+          LambdaMetafactory.metafactory(
+              lookup,
+              "accept",
+              MethodType.methodType(BiConsumer.class),
+              jdkBiConsumerMethodType,
+              handle,
+              boxedMethodType(handle.type()));
       return (BiConsumer<T, U>) callSite.getTarget().invokeExact();
     } catch (Throwable e) {
       UNSAFE.throwException(e);
@@ -225,17 +225,17 @@ public class _JDKAccess {
   public static <T> T makeFunction(Lookup lookup, MethodHandle handle, Method methodToImpl) {
     MethodType instantiatedMethodType = boxedMethodType(handle.type());
     MethodType methodToImplType =
-      MethodType.methodType(methodToImpl.getReturnType(), methodToImpl.getParameterTypes());
+        MethodType.methodType(methodToImpl.getReturnType(), methodToImpl.getParameterTypes());
     try {
       // Faster than handle.invokeExact.
       CallSite callSite =
-        LambdaMetafactory.metafactory(
-          lookup,
-          methodToImpl.getName(),
-          MethodType.methodType(methodToImpl.getDeclaringClass()),
-          methodToImplType,
-          handle,
-          instantiatedMethodType);
+          LambdaMetafactory.metafactory(
+              lookup,
+              methodToImpl.getName(),
+              MethodType.methodType(methodToImpl.getDeclaringClass()),
+              methodToImplType,
+              handle,
+              instantiatedMethodType);
       return (T) callSite.getTarget().invokeExact();
     } catch (Throwable e) {
       UNSAFE.throwException(e);
@@ -260,16 +260,16 @@ public class _JDKAccess {
         invokedName = method.getName();
       }
       MethodType interfaceType =
-        MethodType.methodType(method.getReturnType(), method.getParameterTypes());
+          MethodType.methodType(method.getReturnType(), method.getParameterTypes());
       // Faster than handle.invokeExact.
       CallSite callSite =
-        LambdaMetafactory.metafactory(
-          lookup,
-          invokedName,
-          MethodType.methodType(functionInterface),
-          interfaceType,
-          handle,
-          interfaceType);
+          LambdaMetafactory.metafactory(
+              lookup,
+              invokedName,
+              MethodType.methodType(functionInterface),
+              interfaceType,
+              handle,
+              interfaceType);
       // FIXME(chaokunyang) why use invokeExact will fail.
       return (T) callSite.getTarget().invoke();
     } catch (Throwable e) {
@@ -300,7 +300,7 @@ public class _JDKAccess {
   }
 
   public static Object makeGetterFunction(
-    MethodHandles.Lookup lookup, MethodHandle handle, Class<?> returnType) {
+      MethodHandles.Lookup lookup, MethodHandle handle, Class<?> returnType) {
     Tuple2<Class<?>, String> methodInfo = methodMap.get(returnType);
     MethodType factoryType;
     if (methodInfo == null) {
@@ -311,13 +311,13 @@ public class _JDKAccess {
     }
     try {
       CallSite callSite =
-        LambdaMetafactory.metafactory(
-          lookup,
-          methodInfo.f1,
-          MethodType.methodType(methodInfo.f0),
-          factoryType,
-          handle,
-          handle.type());
+          LambdaMetafactory.metafactory(
+              lookup,
+              methodInfo.f1,
+              MethodType.methodType(methodInfo.f0),
+              factoryType,
+              handle,
+              handle.type());
       // Can't use invokeExact, since we can't specify exact target type for return variable.
       return callSite.getTarget().invoke();
     } catch (ClassNotFoundException | NoClassDefFoundError e) {

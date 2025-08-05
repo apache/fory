@@ -22,9 +22,7 @@ package org.apache.fory.resolver;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
-import java.nio.ByteBuffer;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.meta.MetaString;
 import org.apache.fory.meta.MetaStringEncoder;
 import org.apache.fory.util.StringUtils;
@@ -34,7 +32,7 @@ public class MetaStringResolverTest {
 
   @Test
   public void testWriteMetaString() {
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     String str = StringUtils.random(128, 0);
     MetaStringResolver stringResolver = new MetaStringResolver();
     for (int i = 0; i < 128; i++) {
@@ -54,7 +52,7 @@ public class MetaStringResolverTest {
   public void testWriteSmallMetaString() {
     for (MemoryBuffer buffer :
         new MemoryBuffer[] {
-          MemoryUtils.buffer(32), MemoryUtils.wrap(ByteBuffer.allocateDirect(32)),
+          MemoryBuffer.buffer(32), MemoryBuffer.bufferDirect(32),
         }) {
       for (int i = 0; i < 32; i++) {
         String str = StringUtils.random(i, 0);

@@ -37,7 +37,6 @@ import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.bean.Cyclic;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -88,7 +87,7 @@ public class CodegenSerializerTest extends ForyTestBase {
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
 
     fory.serialize(buffer, cyclic);
     fory.deserialize(buffer);

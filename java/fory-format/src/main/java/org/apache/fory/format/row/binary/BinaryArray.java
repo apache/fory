@@ -33,8 +33,8 @@ import org.apache.fory.format.row.ArrayData;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.memory.BitUtils;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
+import org.apache.fory.type.Types;
 import org.apache.fory.util.Preconditions;
 
 /**
@@ -156,49 +156,56 @@ public class BinaryArray extends UnsafeTrait implements ArrayData {
 
   public boolean[] toBooleanArray() {
     boolean[] values = new boolean[numElements];
-    buffer.copyToUnsafe(elementOffset, values, Platform.BOOLEAN_ARRAY_OFFSET, numElements);
+    // buffer.copyToUnsafe(elementOffset, values, Platform.BOOLEAN_ARRAY_OFFSET, numElements);
+    buffer.copyTo(elementOffset, values, 0, numElements, Types.JavaArray.BOOL, false);
     return values;
   }
 
   public byte[] toByteArray() {
     byte[] values = new byte[numElements];
-    buffer.copyToUnsafe(elementOffset, values, Platform.BYTE_ARRAY_OFFSET, numElements);
+    // buffer.copyToUnsafe(elementOffset, values, Platform.BYTE_ARRAY_OFFSET, numElements);
+    buffer.copyTo(elementOffset, values, 0, numElements, Types.JavaArray.BYTE, false);
     return values;
   }
 
   public short[] toShortArray() {
     short[] values = new short[numElements];
-    buffer.copyToUnsafe(elementOffset, values, Platform.SHORT_ARRAY_OFFSET, numElements * 2);
+    // buffer.copyToUnsafe(elementOffset, values, Platform.SHORT_ARRAY_OFFSET, numElements * 2);
+    buffer.copyTo(elementOffset, values, 0, numElements, Types.JavaArray.SHORT, false);
     return values;
   }
 
   public int[] toIntArray() {
     int[] values = new int[numElements];
-    buffer.copyToUnsafe(elementOffset, values, Platform.INT_ARRAY_OFFSET, numElements * 4);
+    // buffer.copyToUnsafe(elementOffset, values, Platform.INT_ARRAY_OFFSET, numElements * 4);
+    buffer.copyTo(elementOffset, values, 0, numElements, Types.JavaArray.INT, false);
     return values;
   }
 
   public long[] toLongArray() {
     long[] values = new long[numElements];
-    buffer.copyToUnsafe(elementOffset, values, Platform.LONG_ARRAY_OFFSET, numElements * 8);
+    // buffer.copyToUnsafe(elementOffset, values, Platform.LONG_ARRAY_OFFSET, numElements * 8);
+    buffer.copyTo(elementOffset, values, 0, numElements, Types.JavaArray.LONG, false);
     return values;
   }
 
   public float[] toFloatArray() {
     float[] values = new float[numElements];
-    buffer.copyToUnsafe(elementOffset, values, Platform.FLOAT_ARRAY_OFFSET, numElements * 4);
+    // buffer.copyToUnsafe(elementOffset, values, Platform.FLOAT_ARRAY_OFFSET, numElements * 4);
+    buffer.copyTo(elementOffset, values, 0, numElements, Types.JavaArray.FLOAT, false);
     return values;
   }
 
   public double[] toDoubleArray() {
     double[] values = new double[numElements];
-    buffer.copyToUnsafe(elementOffset, values, Platform.DOUBLE_ARRAY_OFFSET, numElements * 8);
+    // buffer.copyToUnsafe(elementOffset, values, Platform.DOUBLE_ARRAY_OFFSET, numElements * 8);
+    buffer.copyTo(elementOffset, values, 0, numElements, Types.JavaArray.DOUBLE, false);
     return values;
   }
 
   @Override
   public ArrayData copy() {
-    MemoryBuffer copyBuf = MemoryUtils.buffer(sizeInBytes);
+    MemoryBuffer copyBuf = MemoryBuffer.buffer(sizeInBytes);
     buffer.copyTo(baseOffset, copyBuf, 0, sizeInBytes);
     BinaryArray arrayCopy = new BinaryArray(field);
     arrayCopy.pointTo(copyBuf, 0, sizeInBytes);
@@ -235,7 +242,7 @@ public class BinaryArray extends UnsafeTrait implements ArrayData {
     Platform.copyMemory(
         arr, offset, data, Platform.BYTE_ARRAY_OFFSET + headerInBytes, valueRegionInBytes);
 
-    MemoryBuffer memoryBuffer = MemoryUtils.wrap(data);
+    MemoryBuffer memoryBuffer = MemoryBuffer.wrap(data);
     result.pointTo(memoryBuffer, 0, (int) totalSize);
     return result;
   }

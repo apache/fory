@@ -58,8 +58,7 @@ public class ClassDefEncoderTest {
         }) {
       Fory fory = Fory.builder().withMetaShare(true).build();
       ClassDef classDef = ClassDef.buildClassDef(fory, type);
-      ClassDef classDef1 =
-          ClassDef.readClassDef(fory, MemoryBuffer.fromByteArray(classDef.getEncoded()));
+      ClassDef classDef1 = ClassDef.readClassDef(fory, MemoryBuffer.wrap(classDef.getEncoded()));
       Assert.assertEquals(classDef1, classDef);
     }
   }
@@ -75,8 +74,7 @@ public class ClassDefEncoderTest {
   public void testEmptySubClassSerializer() {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
     ClassDef classDef = ClassDef.buildClassDef(fory, Foo2.class);
-    ClassDef classDef1 =
-        ClassDef.readClassDef(fory, MemoryBuffer.fromByteArray(classDef.getEncoded()));
+    ClassDef classDef1 = ClassDef.readClassDef(fory, MemoryBuffer.wrap(classDef.getEncoded()));
     Assert.assertEquals(classDef, classDef1);
   }
 
@@ -88,8 +86,7 @@ public class ClassDefEncoderTest {
             fory,
             TestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLengthTestClassLength
                 .InnerClassTestLengthInnerClassTestLengthInnerClassTestLength.class);
-    ClassDef classDef1 =
-        ClassDef.readClassDef(fory, MemoryBuffer.fromByteArray(classDef.getEncoded()));
+    ClassDef classDef1 = ClassDef.readClassDef(fory, MemoryBuffer.wrap(classDef.getEncoded()));
     Assert.assertEquals(classDef1, classDef);
   }
 
