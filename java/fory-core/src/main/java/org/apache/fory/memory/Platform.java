@@ -285,8 +285,15 @@ public final class Platform {
     return true;
   }
 
+  private static <T extends Throwable> void sneakyThrow(Throwable throwable) throws T {
+    throw (T) throwable; // 将受检异常强制转换为一个未知的泛型异常类型并抛出
+  }
+
   /** Raises an exception bypassing compiler checks for checked exceptions. */
   public static void throwException(Throwable t) {
+    if (IS_ANDROID) {
+      sneakyThrow(t);
+    }
     UNSAFE.throwException(t);
   }
 
