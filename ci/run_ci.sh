@@ -17,6 +17,21 @@
 # specific language governing permissions and limitations
 # under the License.
 
+# NOTE: This script is being gradually migrated to Python (run_ci.py).
+# It can be called directly or from run_ci.py as a fallback.
+# To control which languages use the Python implementation, set environment variables:
+#   USE_PYTHON_CPP=0        # Use shell script for C++
+#   USE_PYTHON_RUST=0       # Use shell script for Rust
+#   USE_PYTHON_JAVASCRIPT=0 # Use shell script for JavaScript
+#   USE_PYTHON_JAVA=0       # Use shell script for Java
+#   USE_PYTHON_KOTLIN=0     # Use shell script for Kotlin
+#   USE_PYTHON_PYTHON=0     # Use shell script for Python
+#   USE_PYTHON_GO=0         # Use shell script for Go
+#   USE_PYTHON_FORMAT=0     # Use shell script for Format
+#
+# By default, JavaScript, Rust, and C++ use the Python implementation,
+# while Java, Kotlin, Python, Go, and Format use the shell script implementation.
+
 set -e
 set -x
 
