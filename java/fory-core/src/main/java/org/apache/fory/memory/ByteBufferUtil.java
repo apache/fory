@@ -76,17 +76,6 @@ public class ByteBufferUtil {
     }
   }
 
-  //  /** Wrap a buffer [address, address + size) into provided <code>buffer</code>. */
-  //  @NotForAndroid(reason = "Android cannot directly operate the capacity field")
-  //  public static void wrapDirectByteBufferFromNativeAddress(
-  //      ByteBuffer buffer, long address, int size) {
-  //    Preconditions.checkArgument(
-  //        buffer.isDirect(), "Can't wrap native memory into a non-direct ByteBuffer.");
-  //    Platform.putLong(buffer, BUFFER_ADDRESS_FIELD_OFFSET, address);
-  //    Platform.putInt(buffer, BUFFER_CAPACITY_FIELD_OFFSET, size);
-  //    buffer.clear();
-  //  }
-
   @NotForAndroid
   public static ByteBuffer wrapDirectBuffer(long address, int size) {
     return createDirectByteBufferFromNativeAddress(address, size);

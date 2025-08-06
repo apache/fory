@@ -1307,20 +1307,28 @@ public final class MemoryBuffer {
         switch (eleType) {
           case BOOL:
             coverMemoryWithBoolArrayInner((boolean[]) arr, offset, length);
+            break;
           case BYTE:
             buffer.put((byte[]) arr, offset, length);
+            break;
           case CHAR:
             buffer.asCharBuffer().put((char[]) arr, offset, length);
+            break;
           case SHORT:
             buffer.asShortBuffer().put((short[]) arr, offset, length);
+            break;
           case INT:
             buffer.asIntBuffer().put((int[]) arr, offset, length);
+            break;
           case LONG:
             buffer.asLongBuffer().put((long[]) arr, offset, length);
+            break;
           case FLOAT:
             buffer.asFloatBuffer().put((float[]) arr, offset, length);
+            break;
           case DOUBLE:
             buffer.asDoubleBuffer().put((double[]) arr, offset, length);
+            break;
         }
       }
     }
@@ -2569,21 +2577,28 @@ public final class MemoryBuffer {
         switch (eleType) {
           case BOOL:
             copyToBoolsInner((boolean[]) target, offset, length);
-            return;
+            break;
           case BYTE:
             buffer.get((byte[]) target, offset, length);
+            break;
           case CHAR:
             buffer.asCharBuffer().get((char[]) target, offset, length);
+            break;
           case SHORT:
             buffer.asShortBuffer().get((short[]) target, offset, length);
+            break;
           case INT:
             buffer.asIntBuffer().get((int[]) target, offset, length);
+            break;
           case LONG:
             buffer.asLongBuffer().get((long[]) target, offset, length);
+            break;
           case FLOAT:
             buffer.asFloatBuffer().get((float[]) target, offset, length);
+            break;
           case DOUBLE:
             buffer.asDoubleBuffer().get((double[]) target, offset, length);
+            break;
         }
       }
     }

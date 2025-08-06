@@ -29,12 +29,14 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Field;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.CodegenInvoke;
+import org.apache.fory.annotation.NotForAndroid;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Invoke;
 import org.apache.fory.codegen.Expression.StaticInvoke;
@@ -67,44 +69,55 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   private static final Byte UTF16_BOXED = UTF16;
   private static final byte UTF8 = 2;
   private static final int DEFAULT_BUFFER_SIZE = 1024;
+  private static final boolean RESTRICTED_STRING = Platform.IS_ANDROID;
 
   // Make offset compatible with graalvm native image.
   private static final long STRING_VALUE_FIELD_OFFSET;
 
   private static class Offset {
     // Make offset compatible with graalvm native image.
-    private static final long STRING_CODER_FIELD_OFFSET;
+    private static final long STRING_CODER_FIELD_OFFSET; // android can't access this field through reflection
 
     static {
-      try {
-        STRING_CODER_FIELD_OFFSET =
+      if (RESTRICTED_STRING) {
+        STRING_CODER_FIELD_OFFSET = -1;
+      }else {
+        try {
+          STRING_CODER_FIELD_OFFSET =
             Platform.objectFieldOffset(String.class.getDeclaredField("coder"));
-      } catch (NoSuchFieldException e) {
-        throw new RuntimeException(e);
+        } catch (NoSuchFieldException e) {
+          throw new RuntimeException(e);
+        }
       }
     }
   }
 
   static {
-    Field valueField = ReflectionUtils.getFieldNullable(String.class, "value");
-    // Java8 string
-    STRING_VALUE_FIELD_IS_CHARS = valueField != null && valueField.getType() == char[].class;
-    // Java11 string
-    STRING_VALUE_FIELD_IS_BYTES = valueField != null && valueField.getType() == byte[].class;
-    try {
-      // Make offset compatible with graalvm native image.
-      STRING_VALUE_FIELD_OFFSET =
+    if (Platform.IS_ANDROID) {
+      STRING_VALUE_FIELD_IS_CHARS = false;
+      STRING_VALUE_FIELD_IS_BYTES = true;
+      STRING_VALUE_FIELD_OFFSET = -1;
+    } else {
+      Field valueField = ReflectionUtils.getFieldNullable(String.class, "value");
+      // Java8 string
+      STRING_VALUE_FIELD_IS_CHARS = valueField != null && valueField.getType() == char[].class;
+      // Java11 string
+      STRING_VALUE_FIELD_IS_BYTES = valueField != null && valueField.getType() == byte[].class;
+      try {
+        // Make offset compatible with graalvm native image.
+        STRING_VALUE_FIELD_OFFSET =
           Platform.objectFieldOffset(String.class.getDeclaredField("value"));
-    } catch (NoSuchFieldException e) {
-      throw new RuntimeException(e);
-    }
-    // String length field for android.
-    Preconditions.checkArgument(
+      } catch (NoSuchFieldException e) {
+        throw new RuntimeException(e);
+      }
+      // String length field for android.
+      Preconditions.checkArgument(
         ReflectionUtils.getFieldNullable(String.class, "count") == null,
         "Current jdk not supported");
-    Preconditions.checkArgument(
+      Preconditions.checkArgument(
         ReflectionUtils.getFieldNullable(String.class, "offset") == null,
         "Current jdk not supported");
+    }
   }
 
   private final boolean compressString;
@@ -224,8 +237,10 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     if (coder == UTF8) {
       byte[] data;
       if (writeNumUtf16BytesForUtf8Encoding) {
+        System.out.println("Read compressed bytes string with UTF8 encoding, optimized for perf");
         data = readBytesUTF8PerfOptimized(buffer, numBytes);
       } else {
+        System.out.println("Read compressed bytes string with UTF8 encoding");
         data = readBytesUTF8(buffer, numBytes);
       }
       return newBytesStringZeroCopy(UTF16, data);
@@ -258,6 +273,26 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   // Invoked by fory JIT
   public void writeJavaString(MemoryBuffer buffer, String value) {
+    // TODO: haven't implemented a fast path in android version yet.
+    if (RESTRICTED_STRING) {
+      byte coder;
+      byte[] bytes;
+      if (StringUtils.isLatin1(value)) {
+        // 如果是 Latin-1 字符串，我们就用 ISO_8859_1 编码来获取单字节数组。
+        // 这与 String 内部的 LATIN1 存储方式兼容。
+        coder = LATIN1; // 0 for LATIN1
+        bytes = value.getBytes(StandardCharsets.ISO_8859_1);
+      } else {
+        // 如果包含更复杂的字符，我们就用 UTF-16LE 编码。
+        // 这与 String 内部的 UTF16 存储方式兼容。
+        // 注意：Java 内部是 UTF-16，通常是 Little Endian。如果您的接收端有特定要求，请调整。
+        coder = UTF16; // 1 for UTF16
+        bytes = value.getBytes(StandardCharsets.UTF_16LE);
+      }
+      // 调用您原来的核心序列化方法，这个方法不需要任何改动。
+      writeBytesString(buffer, coder, bytes);
+      return;
+    }
     if (STRING_VALUE_FIELD_IS_BYTES) {
       if (compressString) {
         writeCompressedBytesString(buffer, value);
@@ -294,14 +329,29 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   @CodegenInvoke
   public void writeCompressedBytesString(MemoryBuffer buffer, String value) {
-    final byte[] bytes = (byte[]) Platform.getObject(value, STRING_VALUE_FIELD_OFFSET);
-    final byte coder = Platform.getByte(value, Offset.STRING_CODER_FIELD_OFFSET);
+    final byte[] bytes;
+    final byte coder;
+    if (RESTRICTED_STRING) {
+      if (StringUtils.isLatin1(value)) {
+        coder = LATIN1; // 0 for LATIN1
+        bytes = value.getBytes(StandardCharsets.ISO_8859_1);
+      } else {
+        coder = UTF16; // 1 for UTF16
+        bytes = value.getBytes(StandardCharsets.UTF_16LE);
+      }
+    }else {
+      bytes = (byte[]) Platform.getObject(value, STRING_VALUE_FIELD_OFFSET);
+      coder = Platform.getByte(value, Offset.STRING_CODER_FIELD_OFFSET);
+    }
     if (coder == LATIN1 || bestCoder(bytes) == UTF16) {
+      System.out.println("Write compressed bytes string with LATIN1 or UTF16 encoding");
       writeBytesString(buffer, coder, bytes);
     } else {
       if (writeNumUtf16BytesForUtf8Encoding) {
+        System.out.println("Write compressed bytes string with UTF8 encoding, optimized for perf");
         writeBytesUTF8PerfOptimized(buffer, bytes);
       } else {
+        System.out.println("Write compressed bytes string with UTF8 encoding");
         writeBytesUTF8(buffer, bytes);
       }
     }
@@ -309,6 +359,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   @CodegenInvoke
   public void writeCompressedCharsString(MemoryBuffer buffer, String value) {
+    assert !RESTRICTED_STRING; // Android version not implemented yet. 我们限制了Android只用byte
     final char[] chars = (char[]) Platform.getObject(value, STRING_VALUE_FIELD_OFFSET);
     final byte coder = bestCoder(chars);
     if (coder == LATIN1) {
@@ -326,8 +377,20 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   @CodegenInvoke
   public static void writeBytesString(MemoryBuffer buffer, String value) {
-    byte[] bytes = (byte[]) Platform.getObject(value, STRING_VALUE_FIELD_OFFSET);
-    byte coder = Platform.getByte(value, Offset.STRING_CODER_FIELD_OFFSET);
+    final byte[] bytes;
+    final byte coder;
+    if (RESTRICTED_STRING) {
+      if (StringUtils.isLatin1(value)) {
+        coder = LATIN1; // 0 for LATIN1
+        bytes = value.getBytes(StandardCharsets.ISO_8859_1);
+      } else {
+        coder = UTF16; // 1 for UTF16
+        bytes = value.getBytes(StandardCharsets.UTF_16LE);
+      }
+    }else {
+      bytes = (byte[]) Platform.getObject(value, STRING_VALUE_FIELD_OFFSET);
+      coder = Platform.getByte(value, Offset.STRING_CODER_FIELD_OFFSET);
+    }
     writeBytesString(buffer, coder, bytes);
   }
 
@@ -345,6 +408,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   @CodegenInvoke
   public void writeCharsString(MemoryBuffer buffer, String value) {
+    assert !RESTRICTED_STRING; // Android version not implemented yet. 我们限制了Android只用byte
     final char[] chars = (char[]) Platform.getObject(value, STRING_VALUE_FIELD_OFFSET);
     if (StringUtils.isLatin(chars)) {
       writeCharsLatin1(buffer, chars, chars.length);
@@ -380,8 +444,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     byte[] srcArray = buffer.getHeapMemory();
     if (srcArray != null) {
       int srcIndex = buffer._unsafeHeapReaderIndex();
-      utf16NumBytes =
-          StringEncodingUtils.convertUTF8ToUTF16(srcArray, srcIndex, numBytes, tmpArray);
+      utf16NumBytes = StringEncodingUtils.convertUTF8ToUTF16(srcArray, srcIndex, numBytes, tmpArray);
       buffer._increaseReaderIndexUnsafe(numBytes);
     } else {
       byte[] byteArray2 = getByteArray2(numBytes);
@@ -501,6 +564,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   }
 
   public void writeCharsLatin1(MemoryBuffer buffer, char[] chars, int numBytes) {
+    assert !RESTRICTED_STRING; // Android version not implemented yet. 我们限制了Android只用byte
     int writerIndex = buffer.writerIndex();
     long header = ((long) numBytes << 2) | LATIN1;
     buffer.ensure(writerIndex + 5 + numBytes);
@@ -526,6 +590,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   }
 
   public void writeCharsUTF16(MemoryBuffer buffer, char[] chars, int numChars) {
+    assert !RESTRICTED_STRING; // Android version not implemented yet. 我们限制了Android只用byte
     int numBytes = MathUtils.doubleExact(numChars);
     int writerIndex = buffer.writerIndex();
     long header = ((long) numBytes << 2) | UTF16;
@@ -552,6 +617,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   }
 
   public void writeCharsUTF8(MemoryBuffer buffer, char[] chars) {
+    assert !RESTRICTED_STRING; // Android version not implemented yet. 我们限制了Android只用byte
     int estimateMaxBytes = chars.length * 3;
     // num bytes of utf8 should be smaller than utf16, otherwise we should
     // utf16 instead.
@@ -594,6 +660,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   }
 
   public void writeCharsUTF8PerfOptimized(MemoryBuffer buffer, char[] chars) {
+    assert !RESTRICTED_STRING; // Android version not implemented yet. 我们限制了Android只用byte
     int estimateMaxBytes = chars.length * 3;
     int numBytes = MathUtils.doubleExact(chars.length);
     // noinspection Duplicates
@@ -716,6 +783,21 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   // coder param first to make inline call args
   // `(buffer.readByte(), buffer.readBytesWithSizeEmbedded())` work.
   public static String newBytesStringZeroCopy(byte coder, byte[] data) {
+    if (RESTRICTED_STRING) {
+      Charset charset;
+      if (coder == LATIN1) { // LATIN1
+        charset = StandardCharsets.ISO_8859_1;
+      } else if(coder == UTF16){ // UTF16
+        charset = StandardCharsets.UTF_16LE; // 注意：Java 内部是 UTF-16，通常是 Little Endian。
+      }else if (coder == UTF8) { // UTF8
+        charset = StandardCharsets.UTF_8;
+      } else {
+        throw new IllegalArgumentException("Unknown coder type: " + coder);
+      }
+      // 使用标准的、会产生拷贝的构造函数。
+      // 这是在 Android 上唯一保证有效的方法。
+      return new String(data, charset);
+    }
     if (coder == LATIN1) {
       // 700% faster than unsafe put field in java11, only 10% slower than `new String(str)` for
       // string length 230.
@@ -739,7 +821,9 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     }
   }
 
+  @NotForAndroid
   private static BiFunction<char[], Boolean, String> getCharsStringZeroCopyCtr() {
+    if (RESTRICTED_STRING) return null; // Android version not implemented yet.
     if (!STRING_VALUE_FIELD_IS_CHARS) {
       return null;
     }
@@ -763,7 +847,9 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     }
   }
 
+  @NotForAndroid
   private static BiFunction<byte[], Byte, String> getBytesStringZeroCopyCtr() {
+    if (RESTRICTED_STRING) return null; // Android version not implemented yet.
     if (!STRING_VALUE_FIELD_IS_BYTES) {
       return null;
     }
@@ -789,7 +875,9 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     }
   }
 
+  @NotForAndroid
   private static Function<byte[], String> getLatinBytesStringZeroCopyCtr() {
+    if (RESTRICTED_STRING) return null; // Android version not implemented yet.
     if (!STRING_VALUE_FIELD_IS_BYTES) {
       return null;
     }
@@ -811,15 +899,18 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   }
 
   private static MethodHandle getJavaStringZeroCopyCtrHandle() {
+    assert !RESTRICTED_STRING;
     Preconditions.checkArgument(Platform.JAVA_VERSION >= 8);
     if (STRING_LOOK_UP == null) {
       return null;
     }
     try {
       if (STRING_VALUE_FIELD_IS_CHARS) {
+        // android can't get this
         return STRING_LOOK_UP.findConstructor(
             String.class, MethodType.methodType(void.class, char[].class, boolean.class));
       } else {
+        // android can't get this
         return STRING_LOOK_UP.findConstructor(
             String.class, MethodType.methodType(void.class, byte[].class, byte.class));
       }
@@ -830,6 +921,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   private static void heapWriteCharsUTF16BE(
       char[] chars, int arrIndex, int numBytes, byte[] targetArray) {
+    assert !RESTRICTED_STRING; // Android version not implemented yet. 我们限制了Android只用byte
     // Write to heap memory then copy is 250% faster than unsafe write to direct memory.
     int charIndex = 0;
     for (int i = arrIndex, end = i + numBytes; i < end; i += 2) {
@@ -841,6 +933,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   private int offHeapWriteCharsUTF16(
       MemoryBuffer buffer, char[] chars, int writerIndex, int numBytes) {
+    assert !RESTRICTED_STRING; // Android version not implemented yet. 我们限制了Android只用byte
     byte[] tmpArray = getByteArray(numBytes);
     int charIndex = 0;
     for (int i = 0; i < numBytes; i += 2) {

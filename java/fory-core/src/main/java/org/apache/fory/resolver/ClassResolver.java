@@ -358,7 +358,7 @@ public class ClassResolver implements TypeResolver {
     UnmodifiableSerializers.registerSerializers(fory);
     ImmutableCollectionSerializers.registerSerializers(fory);
     SubListSerializers.registerSerializers(fory, true);
-    if (fory.getConfig().registerGuavaTypes()) {
+    if (fory.getConfig().registerGuavaTypes() && !Platform.IS_ANDROID) {
       GuavaCollectionSerializers.registerDefaultSerializers(fory);
     }
     if (fory.getConfig().deserializeNonexistentClass()) {

@@ -202,24 +202,31 @@ public class Serializers {
     }
   }
 
-  private static final ToIntFunction GET_CODER;
-  private static final Function GET_VALUE;
-
-  static {
-    GET_VALUE = (Function) makeGetterFunction(StringBuilder.class.getSuperclass(), "getValue");
-    ToIntFunction<CharSequence> getCoder;
-    try {
-      Method getCoderMethod = StringBuilder.class.getSuperclass().getDeclaredMethod("getCoder");
-      getCoder = (ToIntFunction<CharSequence>) makeGetterFunction(getCoderMethod, int.class);
-    } catch (NoSuchMethodException e) {
-      getCoder = null;
-    }
-    GET_CODER = getCoder;
-  }
-
   public abstract static class AbstractStringBuilderSerializer<T extends CharSequence>
       extends Serializer<T> {
     protected final StringSerializer stringSerializer;
+
+    private static final ToIntFunction GET_CODER;
+    private static final Function GET_VALUE;
+
+    private static final boolean RESTRICTED_STRING_BUILDER = Platform.IS_ANDROID;
+
+    static {
+      if (RESTRICTED_STRING_BUILDER) {
+        GET_CODER = null;
+        GET_VALUE = null;
+      }else {
+        GET_VALUE = (Function) makeGetterFunction(StringBuilder.class.getSuperclass(), "getValue");
+        ToIntFunction<CharSequence> getCoder;
+        try {
+          Method getCoderMethod = StringBuilder.class.getSuperclass().getDeclaredMethod("getCoder");
+          getCoder = (ToIntFunction<CharSequence>) makeGetterFunction(getCoderMethod, int.class);
+        } catch (NoSuchMethodException e) {
+          getCoder = null;
+        }
+        GET_CODER = getCoder;
+      }
+    }
 
     public AbstractStringBuilderSerializer(Fory fory, Class<T> type) {
       super(fory, type);
@@ -233,6 +240,12 @@ public class Serializers {
 
     @Override
     public void write(MemoryBuffer buffer, T value) {
+      if (RESTRICTED_STRING_BUILDER) {
+        // Restricted StringBuilder doesn't have getCoder method, so we use
+        // the StringSerializer to write the string.
+        stringSerializer.writeString(buffer, value.toString());
+        return;
+      }
       if (GET_CODER != null) {
         int coder = GET_CODER.applyAsInt(value);
         byte[] v = (byte[]) GET_VALUE.apply(value);

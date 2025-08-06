@@ -101,15 +101,20 @@ public class PlatformTest {
 
   @Test
   public void wrapDirectBuffer() {
-    long address = 0;
+    long address = -1;
     try {
       int size = 16;
-      address = Platform.allocateMemory(size);
-      ByteBuffer buffer = ByteBufferUtil.wrapDirectBuffer(address, size);
+      ByteBuffer buffer;
+      if (Platform.IS_ANDROID) {
+        buffer = ByteBuffer.allocateDirect(size);
+      }else {
+        address = Platform.allocateMemory(size);
+        buffer = ByteBufferUtil.wrapDirectBuffer(address, size);
+      }
       buffer.putLong(0, 1);
       assertEquals(1, buffer.getLong(0));
     } finally {
-      Platform.freeMemory(address);
+      if (address != -1) Platform.freeMemory(address);
     }
   }
 

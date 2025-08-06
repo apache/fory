@@ -179,18 +179,28 @@ public class MemoryBufferTest {
           ByteBufferUtil.getAddress(direct) + 5);
     }
     {
-      long address = 0;
+      long address = -1;
       try {
-        address = Platform.allocateMemory(10);
-        ByteBuffer direct = ByteBufferUtil.wrapDirectBuffer(address, 10);
-        direct.put(data);
-        direct.flip();
-        direct.position(5);
-        MemoryBuffer buffer = MemoryBuffer.wrap(direct);
-        assertEquals(buffer.sliceAsByteBuffer(), direct);
-        assertEquals(ByteBufferUtil.getAddress(buffer.sliceAsByteBuffer()), address + 5);
+        ByteBuffer direct;
+        if (Platform.IS_ANDROID) {
+          direct = ByteBuffer.allocateDirect(10);
+          direct.put(data);
+          direct.flip();
+          direct.position(5);
+          MemoryBuffer buffer = MemoryBuffer.wrap(direct);
+          assertEquals(buffer.sliceAsByteBuffer(), direct);
+        }else {
+          address = Platform.allocateMemory(10);
+          direct = ByteBufferUtil.wrapDirectBuffer(address, 10);
+          direct.put(data);
+          direct.flip();
+          direct.position(5);
+          MemoryBuffer buffer = MemoryBuffer.wrap(direct);
+          assertEquals(buffer.sliceAsByteBuffer(), direct);
+          assertEquals(ByteBufferUtil.getAddress(buffer.sliceAsByteBuffer()), address + 5);
+        }
       } finally {
-        Platform.freeMemory(address);
+        if (address != -1) Platform.freeMemory(address);
       }
     }
   }
