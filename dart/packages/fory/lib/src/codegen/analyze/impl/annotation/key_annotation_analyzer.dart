@@ -51,7 +51,7 @@ class KeyAnnotationAnalyzer {
           );
         }
         getMeta = true;
-        // 目前只处理ForyKey
+        // Currently only handles ForyKey
       }
     }
     // If there is no annotation, both includeFromFory and includeToFory default to true.

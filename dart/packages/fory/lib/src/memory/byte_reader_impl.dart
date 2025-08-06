@@ -422,7 +422,7 @@ final class ByteReaderImpl extends ByteReader{
     if (_length - _offset < 5){
       return _readVarUint36Slow() & 0xffffffff;
     }
-    int forByteVal = _bd.getUint32(_offset, endian); // 保持高32位为0
+    int forByteVal = _bd.getUint32(_offset, endian); // Keep the high 32 bits as 0
     ++_offset;
     int val = forByteVal & 0x7F;
     if ((forByteVal & 0x80) != 0){
