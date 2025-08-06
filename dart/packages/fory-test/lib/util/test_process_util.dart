@@ -21,9 +21,9 @@ import 'dart:io';
 
 /// Execute command-line command
 ///
-/// [command] 要执行的命令列表
-/// [waitTimeoutSeconds] 等待命令执行完成的超时时间（秒）
-/// [env] 环境变量
+/// [command] List of commands to be executed
+/// [waitTimeoutSeconds] Timeout duration (in seconds) for waiting for command execution to complete
+/// [env] Environment variable
 ///
 /// Returns whether command execution succeeded (exit code 0)
 ///
