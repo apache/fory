@@ -345,9 +345,11 @@ public class ClassResolver implements TypeResolver {
     CollectionSerializers.registerDefaultSerializers(fory);
     MapSerializers.registerDefaultSerializers(fory);
     addDefaultSerializer(Locale.class, new LocaleSerializer(fory));
-    addDefaultSerializer(
+    if (!Platform.IS_ANDROID) {
+      addDefaultSerializer(
         LambdaSerializer.ReplaceStub.class,
         new LambdaSerializer(fory, LambdaSerializer.ReplaceStub.class));
+    }
     addDefaultSerializer(
         JdkProxySerializer.ReplaceStub.class,
         new JdkProxySerializer(fory, JdkProxySerializer.ReplaceStub.class));
