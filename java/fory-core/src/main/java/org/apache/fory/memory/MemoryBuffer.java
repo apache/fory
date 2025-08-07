@@ -367,15 +367,18 @@ public final class MemoryBuffer {
     final int targetPos = target.position();
     if (target.isDirect()) {
       final long sourceOffset = address + offset;
-      if (sourceOffset > addressLimit - numBytes) throwOOBException();
+      if (sourceOffset > addressLimit - numBytes) {
+        throwOOBException();
+      }
       final long targetAddr = ByteBufferUtil.getAddress(target) + targetPos;
       if (Platform.IS_ANDROID) {
         if (onHeap) {
           target.put(heapMemory, memoryOffset + offset, numBytes); // 此操作会改变target的position，无需再调整了
           return;
+        } else {
+          // Android只支持这个三个参数的copyMemory
+          Platform.UNSAFE.copyMemory(sourceOffset, targetAddr, numBytes);
         }
-        // Android只支持这个三个参数的copyMemory
-        else Platform.UNSAFE.copyMemory(sourceOffset, targetAddr, numBytes);
       } else {
         Platform.copyMemory(heapMemory, sourceOffset, null, targetAddr, numBytes);
       }
@@ -395,7 +398,9 @@ public final class MemoryBuffer {
     if (source.isDirect()) {
       final long sourceAddr = ByteBufferUtil.getAddress(source) + sourcePos;
       final long targetAddr = address + offset;
-      if (targetAddr > addressLimit - numBytes) throwOOBException();
+      if (targetAddr > addressLimit - numBytes) {
+        throwOOBException();
+      }
       if (Platform.IS_ANDROID) {
         if (onHeap) {
           source.get(heapMemory, memoryOffset + offset, numBytes); // 此操作会改变source的position，无需再调整了
@@ -1287,7 +1292,9 @@ public final class MemoryBuffer {
       Types.JavaArray eleType,
       boolean autoFill) {
     boolean writeMode = bufOffset < 0;
-    if (writeMode) bufOffset = writerIndex;
+    if (writeMode) {
+      bufOffset = writerIndex;
+    }
     int numBytes = length * eleType.bytesPerEle;
     if (autoFill) {
       ensure(bufOffset + numBytes);
@@ -1329,10 +1336,14 @@ public final class MemoryBuffer {
           case DOUBLE:
             buffer.asDoubleBuffer().put((double[]) arr, offset, length);
             break;
+          default:
+            throw new IllegalStateException("Unexpected value: " + eleType);
         }
       }
     }
-    if (writeMode) writerIndex += numBytes;
+    if (writeMode) {
+      writerIndex += numBytes;
+    }
   }
 
   public void writeArray(
@@ -2554,7 +2565,9 @@ public final class MemoryBuffer {
       Types.JavaArray eleType,
       boolean checkSize) {
     boolean readMode = bufOffset < 0;
-    if (readMode) bufOffset = readerIndex;
+    if (readMode) {
+      bufOffset = readerIndex;
+    }
     int numBytes = length * eleType.bytesPerEle;
     if (checkSize) {
       int remaining = size - bufOffset;
@@ -2599,10 +2612,39 @@ public final class MemoryBuffer {
           case DOUBLE:
             buffer.asDoubleBuffer().get((double[]) target, offset, length);
             break;
+          default:
+            throw new IllegalStateException("Unsupported element type: " + eleType);
         }
       }
     }
-    if (readMode) readerIndex += numBytes;
+    if (readMode) {
+      readerIndex += numBytes;
+    }
+  }
+
+  public void copyTo(int offset, MemoryBuffer target, int targetOffset, int numBytes) {
+    final long thisPointer = this.address + offset;
+    final long otherPointer = target.address + targetOffset;
+    if ((numBytes | offset | targetOffset) >= 0
+        && thisPointer <= this.addressLimit - numBytes
+        && otherPointer <= target.addressLimit - numBytes) {
+      if (Platform.IS_ANDROID) {
+        int thisOldLimit = this.buffer.limit();
+        this.buffer.position(offset);
+        this.buffer.limit(offset + numBytes);
+        target.buffer.position(targetOffset);
+        target.buffer.put(this.buffer);
+        this.buffer.limit(thisOldLimit);
+      } else {
+        Platform.copyMemory(
+            this.heapMemory, thisPointer, target.heapMemory, otherPointer, numBytes);
+      }
+    } else {
+      throw new IndexOutOfBoundsException(
+          String.format(
+              "offset=%d, targetOffset=%d, numBytes=%d, address=%d, targetAddress=%d",
+              offset, targetOffset, numBytes, this.address, target.address));
+    }
   }
 
   public void readTo(Object target, int offset, int length, Types.JavaArray eleType) {
@@ -2683,31 +2725,6 @@ public final class MemoryBuffer {
       return;
     }
     Platform.copyMemory(null, sourcePointer, this.heapMemory, thisPointer, numBytes);
-  }
-
-  public void copyTo(int offset, MemoryBuffer target, int targetOffset, int numBytes) {
-    final long thisPointer = this.address + offset;
-    final long otherPointer = target.address + targetOffset;
-    if ((numBytes | offset | targetOffset) >= 0
-        && thisPointer <= this.addressLimit - numBytes
-        && otherPointer <= target.addressLimit - numBytes) {
-      if (Platform.IS_ANDROID) {
-        int thisOldLimit = this.buffer.limit();
-        this.buffer.position(offset);
-        this.buffer.limit(offset + numBytes);
-        target.buffer.position(targetOffset);
-        target.buffer.put(this.buffer);
-        this.buffer.limit(thisOldLimit);
-      } else {
-        Platform.copyMemory(
-            this.heapMemory, thisPointer, target.heapMemory, otherPointer, numBytes);
-      }
-    } else {
-      throw new IndexOutOfBoundsException(
-          String.format(
-              "offset=%d, targetOffset=%d, numBytes=%d, address=%d, targetAddress=%d",
-              offset, targetOffset, numBytes, this.address, target.address));
-    }
   }
 
   public void copyFrom(int offset, MemoryBuffer source, int sourcePointer, int numBytes) {
@@ -2826,9 +2843,10 @@ public final class MemoryBuffer {
   // TODO: support android
   @NotForAndroid(reason = "Android does not support support off-heap memory only by address")
   public static MemoryBuffer fromNativeAddress(long address, int size) {
-    if (Platform.IS_ANDROID)
+    if (Platform.IS_ANDROID) {
       throw new UnsupportedOperationException(
           "Android does not support support off-heap memory only by address");
+    }
     return new MemoryBuffer(address, null, size, null, false);
   }
 
@@ -2837,6 +2855,16 @@ public final class MemoryBuffer {
   /** Creates a new memory buffer that targets to the given heap memory region. */
   public static MemoryBuffer wrap(byte[] buffer) {
     return new MemoryBuffer(buffer, 0, buffer.length);
+  }
+
+  /**
+   * Creates a new memory segment that represents the memory backing the given byte buffer section
+   * of [buffer.position(), buffer,limit()].
+   *
+   * @param byteBuffer a direct buffer or heap buffer
+   */
+  public static MemoryBuffer wrap(ByteBuffer byteBuffer) {
+    return fromByteBuffer(byteBuffer, byteBuffer.remaining());
   }
 
   public static MemoryBuffer buffer(int size) {
@@ -2853,16 +2881,6 @@ public final class MemoryBuffer {
 
   public static MemoryBuffer bufferDirect(int size) {
     return new MemoryBuffer(-1, ByteBuffer.allocateDirect(size), size, null, true);
-  }
-
-  /**
-   * Creates a new memory segment that represents the memory backing the given byte buffer section
-   * of [buffer.position(), buffer,limit()].
-   *
-   * @param byteBuffer a direct buffer or heap buffer
-   */
-  public static MemoryBuffer wrap(ByteBuffer byteBuffer) {
-    return fromByteBuffer(byteBuffer, byteBuffer.remaining());
   }
 
   /**

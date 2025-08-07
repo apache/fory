@@ -107,7 +107,7 @@ public class PlatformTest {
       ByteBuffer buffer;
       if (Platform.IS_ANDROID) {
         buffer = ByteBuffer.allocateDirect(size);
-      }else {
+      } else {
         address = Platform.allocateMemory(size);
         buffer = ByteBufferUtil.wrapDirectBuffer(address, size);
       }

@@ -820,7 +820,9 @@ public class CollectionSerializers {
         CopyOnWriteArrayList.class,
         new CopyOnWriteArrayListSerializer(fory, CopyOnWriteArrayList.class));
     final Class setFromMapClass = Collections.newSetFromMap(new HashMap<>()).getClass();
-    if (!Platform.IS_ANDROID) resolver.registerSerializer(setFromMapClass, new SetFromMapSerializer(fory, setFromMapClass));
+    if (!Platform.IS_ANDROID) {
+      resolver.registerSerializer(setFromMapClass, new SetFromMapSerializer(fory, setFromMapClass));
+    }
     resolver.registerSerializer(
         ConcurrentHashMap.KeySetView.class,
         new ConcurrentHashMapKeySetViewSerializer(fory, ConcurrentHashMap.KeySetView.class));

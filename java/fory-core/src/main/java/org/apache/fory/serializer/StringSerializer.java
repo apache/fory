@@ -76,15 +76,16 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   private static class Offset {
     // Make offset compatible with graalvm native image.
-    private static final long STRING_CODER_FIELD_OFFSET; // android can't access this field through reflection
+    private static final long
+        STRING_CODER_FIELD_OFFSET; // android can't access this field through reflection
 
     static {
       if (RESTRICTED_STRING) {
         STRING_CODER_FIELD_OFFSET = -1;
-      }else {
+      } else {
         try {
           STRING_CODER_FIELD_OFFSET =
-            Platform.objectFieldOffset(String.class.getDeclaredField("coder"));
+              Platform.objectFieldOffset(String.class.getDeclaredField("coder"));
         } catch (NoSuchFieldException e) {
           throw new RuntimeException(e);
         }
@@ -106,17 +107,17 @@ public final class StringSerializer extends ImmutableSerializer<String> {
       try {
         // Make offset compatible with graalvm native image.
         STRING_VALUE_FIELD_OFFSET =
-          Platform.objectFieldOffset(String.class.getDeclaredField("value"));
+            Platform.objectFieldOffset(String.class.getDeclaredField("value"));
       } catch (NoSuchFieldException e) {
         throw new RuntimeException(e);
       }
       // String length field for android.
       Preconditions.checkArgument(
-        ReflectionUtils.getFieldNullable(String.class, "count") == null,
-        "Current jdk not supported");
+          ReflectionUtils.getFieldNullable(String.class, "count") == null,
+          "Current jdk not supported");
       Preconditions.checkArgument(
-        ReflectionUtils.getFieldNullable(String.class, "offset") == null,
-        "Current jdk not supported");
+          ReflectionUtils.getFieldNullable(String.class, "offset") == null,
+          "Current jdk not supported");
     }
   }
 
@@ -339,7 +340,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
         coder = UTF16; // 1 for UTF16
         bytes = value.getBytes(StandardCharsets.UTF_16LE);
       }
-    }else {
+    } else {
       bytes = (byte[]) Platform.getObject(value, STRING_VALUE_FIELD_OFFSET);
       coder = Platform.getByte(value, Offset.STRING_CODER_FIELD_OFFSET);
     }
@@ -387,7 +388,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
         coder = UTF16; // 1 for UTF16
         bytes = value.getBytes(StandardCharsets.UTF_16LE);
       }
-    }else {
+    } else {
       bytes = (byte[]) Platform.getObject(value, STRING_VALUE_FIELD_OFFSET);
       coder = Platform.getByte(value, Offset.STRING_CODER_FIELD_OFFSET);
     }
@@ -444,7 +445,8 @@ public final class StringSerializer extends ImmutableSerializer<String> {
     byte[] srcArray = buffer.getHeapMemory();
     if (srcArray != null) {
       int srcIndex = buffer._unsafeHeapReaderIndex();
-      utf16NumBytes = StringEncodingUtils.convertUTF8ToUTF16(srcArray, srcIndex, numBytes, tmpArray);
+      utf16NumBytes =
+          StringEncodingUtils.convertUTF8ToUTF16(srcArray, srcIndex, numBytes, tmpArray);
       buffer._increaseReaderIndexUnsafe(numBytes);
     } else {
       byte[] byteArray2 = getByteArray2(numBytes);
@@ -787,9 +789,9 @@ public final class StringSerializer extends ImmutableSerializer<String> {
       Charset charset;
       if (coder == LATIN1) { // LATIN1
         charset = StandardCharsets.ISO_8859_1;
-      } else if(coder == UTF16){ // UTF16
+      } else if (coder == UTF16) { // UTF16
         charset = StandardCharsets.UTF_16LE; // 注意：Java 内部是 UTF-16，通常是 Little Endian。
-      }else if (coder == UTF8) { // UTF8
+      } else if (coder == UTF8) { // UTF8
         charset = StandardCharsets.UTF_8;
       } else {
         throw new IllegalArgumentException("Unknown coder type: " + coder);
@@ -823,7 +825,9 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   @NotForAndroid
   private static BiFunction<char[], Boolean, String> getCharsStringZeroCopyCtr() {
-    if (RESTRICTED_STRING) return null; // Android version not implemented yet.
+    if (RESTRICTED_STRING) {
+      return null; // Android version not implemented yet.
+    }
     if (!STRING_VALUE_FIELD_IS_CHARS) {
       return null;
     }
@@ -849,7 +853,9 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   @NotForAndroid
   private static BiFunction<byte[], Byte, String> getBytesStringZeroCopyCtr() {
-    if (RESTRICTED_STRING) return null; // Android version not implemented yet.
+    if (RESTRICTED_STRING) {
+      return null; // Android version not implemented yet.
+    }
     if (!STRING_VALUE_FIELD_IS_BYTES) {
       return null;
     }
@@ -877,7 +883,9 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   @NotForAndroid
   private static Function<byte[], String> getLatinBytesStringZeroCopyCtr() {
-    if (RESTRICTED_STRING) return null; // Android version not implemented yet.
+    if (RESTRICTED_STRING) {
+      return null; // Android version not implemented yet.
+    }
     if (!STRING_VALUE_FIELD_IS_BYTES) {
       return null;
     }

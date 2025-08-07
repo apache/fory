@@ -215,7 +215,7 @@ public class Serializers {
       if (RESTRICTED_STRING_BUILDER) {
         GET_CODER = null;
         GET_VALUE = null;
-      }else {
+      } else {
         GET_VALUE = (Function) makeGetterFunction(StringBuilder.class.getSuperclass(), "getValue");
         ToIntFunction<CharSequence> getCoder;
         try {

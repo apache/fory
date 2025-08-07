@@ -189,7 +189,7 @@ public class MemoryBufferTest {
           direct.position(5);
           MemoryBuffer buffer = MemoryBuffer.wrap(direct);
           assertEquals(buffer.sliceAsByteBuffer(), direct);
-        }else {
+        } else {
           address = Platform.allocateMemory(10);
           direct = ByteBufferUtil.wrapDirectBuffer(address, 10);
           direct.put(data);

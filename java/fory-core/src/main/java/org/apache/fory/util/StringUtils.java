@@ -304,11 +304,11 @@ public class StringUtils {
     return isLatin;
   }
 
-  // 这是一个辅助方法，用于判断字符串是否只包含Latin-1字符
+  // need to be optimized
   public static boolean isLatin1(String s) {
     for (int i = 0; i < s.length(); i++) {
       // char 是16位的，Latin-1 字符的码点都在 255 (0xFF) 以内
-      if (s.charAt(i) > '\u00FF') {
+      if (s.charAt(i) > 0xFF) {
         return false;
       }
     }
