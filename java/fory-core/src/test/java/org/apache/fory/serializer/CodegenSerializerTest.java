@@ -28,7 +28,13 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -341,5 +347,58 @@ public class CodegenSerializerTest extends ForyTestBase {
     // `case class Colors(set: Set[ColorEnum])`
     // ColorEnum.Green.getClass is a static local class.
     // see https://github.com/apache/fory/issues/1033
+  }
+
+  @Test
+  public void testSimpleCollectionSerialization() {
+    class A {
+      Map<String, Object> f1;
+      Map<String, Object> f2;
+      Set<String> f3;
+      Set<String> f4;
+      List<String> f5;
+      List<Object> f6;
+
+      @Override
+      public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        A a = (A) o;
+        return f1.equals(a.f1)
+            && f2.equals(a.f2)
+            && f3.equals(a.f3)
+            && f4.equals(a.f4)
+            && f5.equals(a.f5)
+            && f6.equals(a.f6);
+      }
+    }
+    A a = new A();
+    a.f1 = new HashMap<>();
+    a.f1.put("a", 1);
+    a.f1.put("你好", "str");
+
+    a.f2 = new LinkedHashMap<>();
+    a.f2.put("a", null);
+    a.f2.put("b", null);
+
+    a.f3 = new HashSet<>();
+    a.f3.add("你好");
+    a.f3.add("b");
+
+    a.f4 = new HashSet<>();
+    a.f4.add(null);
+    a.f4.add(null);
+
+    a.f5 = new ArrayList<>();
+    a.f5.add("你好");
+    a.f5.add("b");
+
+    a.f6 = new LinkedList<>();
+    a.f6.add(null);
+    a.f6.add(null);
+
+    Fory fory = builder().requireClassRegistration(false).withCodegen(true).build();
+    A o = serDe(fory, a);
+    assertEquals(a, o);
   }
 }
