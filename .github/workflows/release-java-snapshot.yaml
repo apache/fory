@@ -40,7 +40,7 @@ jobs:
           server-username: NEXUS_USERNAME
           server-password: NEXUS_PASSWORD
       - name: Publish Fory Java Snapshot
-        run: cd java && mvn deploy -Dgpg.skip -DskipTests -Papache-release
+        run: python ./ci/run_ci.py java --version 8 --deploy
         env:
           NEXUS_USERNAME: ${{ secrets.NEXUS_USER }}
           NEXUS_PASSWORD: ${{ secrets.NEXUS_PW }}

@@ -167,7 +167,12 @@ def parse_args():
         default="17",
         help="Java version to use for testing",
     )
-    java_parser.set_defaults(func=lambda version: java.run(version))
+    java_parser.add_argument(
+        "--release",
+        action="store_true",
+        help="Release to Maven Central",
+    )
+    java_parser.set_defaults(func=lambda version, release: java.run(version, release))
 
     # Kotlin subparser
     kotlin_parser = subparsers.add_parser(
@@ -220,16 +225,21 @@ def parse_args():
     # Call the appropriate function with the remaining arguments
     if command == "java":
         if USE_PYTHON_JAVA:
-            func(arg_dict.get("version"))
+            func(arg_dict.get("version"), arg_dict.get("release", False))
         else:
             # Map Python version argument to shell script command
             version = arg_dict.get("version", "17")
+            release = arg_dict.get("release", False)
+            
+            if release:
+                logging.info("Release mode requested - using Python implementation")
+                func(version, release)
             # For windows_java21 on Windows, use the Python implementation directly
-            if version == "windows_java21" and is_windows():
+            elif version == "windows_java21" and is_windows():
                 logging.info(
                     "Using Python implementation for windows_java21 on Windows"
                 )
-                func(version)
+                func(version, release)
             elif version == "integration_tests":
                 run_shell_script("integration_tests")
             elif version == "windows_java21":
