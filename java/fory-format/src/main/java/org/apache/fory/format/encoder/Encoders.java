@@ -27,17 +27,17 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import org.apache.arrow.util.Preconditions;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.Fory;
+import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
-import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.type.CustomTypeEncoderRegistry;
@@ -60,6 +60,11 @@ import org.apache.fory.type.TypeUtils;
 public class Encoders {
   private static final Logger LOG = LoggerFactory.getLogger(Encoders.class);
 
+  /** Build a row codec with configurable options through a builder. */
+  public static <T> BeanCodecBuilder<T> buildBeanCodec(Class<T> beanClass) {
+    return new BeanCodecBuilder<>(beanClass);
+  }
+
   public static <T> RowEncoder<T> bean(Class<T> beanClass) {
     return bean(beanClass, 16);
   }
@@ -73,48 +78,7 @@ public class Encoders {
   }
 
   public static <T> RowEncoder<T> bean(Class<T> beanClass, Fory fory, int initialBufferSize) {
-    Schema schema = TypeInference.inferSchema(beanClass);
-    BinaryRowWriter writer = new BinaryRowWriter(schema);
-    RowEncoder<T> encoder = bean(beanClass, writer, fory);
-    return new RowEncoder<T>() {
-
-      @Override
-      public Schema schema() {
-        return encoder.schema();
-      }
-
-      @Override
-      public T fromRow(BinaryRow row) {
-        return encoder.fromRow(row);
-      }
-
-      @Override
-      public BinaryRow toRow(T obj) {
-        writer.setBuffer(MemoryUtils.buffer(initialBufferSize));
-        writer.reset();
-        return encoder.toRow(obj);
-      }
-
-      @Override
-      public T decode(MemoryBuffer buffer) {
-        return encoder.decode(buffer);
-      }
-
-      @Override
-      public T decode(byte[] bytes) {
-        return encoder.decode(bytes);
-      }
-
-      @Override
-      public byte[] encode(T obj) {
-        return encoder.encode(obj);
-      }
-
-      @Override
-      public void encode(MemoryBuffer buffer, T obj) {
-        encoder.encode(buffer, obj);
-      }
-    };
+    return buildBeanCodec(beanClass).fory(fory).initialBufferSize(initialBufferSize).build().get();
   }
 
   public static <T> RowEncoder<T> bean(Class<T> beanClass, BinaryRowWriter writer) {
@@ -142,92 +106,7 @@ public class Encoders {
    * </ul>
    */
   public static <T> RowEncoder<T> bean(Class<T> beanClass, BinaryRowWriter writer, Fory fory) {
-    Schema schema = writer.getSchema();
-
-    try {
-      Class<?> rowCodecClass = loadOrGenRowCodecClass(beanClass);
-      Object references = new Object[] {schema, writer, fory};
-      GeneratedRowEncoder codec =
-          rowCodecClass
-              .asSubclass(GeneratedRowEncoder.class)
-              .getConstructor(Object[].class)
-              .newInstance(references);
-      long schemaHash = DataTypes.computeSchemaHash(schema);
-
-      return new RowEncoder<T>() {
-        private final MemoryBuffer buffer = MemoryUtils.buffer(16);
-
-        @Override
-        public Schema schema() {
-          return schema;
-        }
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public T fromRow(BinaryRow row) {
-          return (T) codec.fromRow(row);
-        }
-
-        @Override
-        public BinaryRow toRow(T obj) {
-          return codec.toRow(obj);
-        }
-
-        @Override
-        public T decode(MemoryBuffer buffer) {
-          return decode(buffer, buffer.readInt32());
-        }
-
-        public T decode(MemoryBuffer buffer, int size) {
-          long peerSchemaHash = buffer.readInt64();
-          if (peerSchemaHash != schemaHash) {
-            throw new ClassNotCompatibleException(
-                String.format(
-                    "Schema is not consistent, encoder schema is %s. "
-                        + "self/peer schema hash are %s/%s. "
-                        + "Please check writer schema.",
-                    schema, schemaHash, peerSchemaHash));
-          }
-          BinaryRow row = new BinaryRow(schema);
-          row.pointTo(buffer, buffer.readerIndex(), size);
-          buffer.increaseReaderIndex(size - 8);
-          return fromRow(row);
-        }
-
-        @Override
-        public T decode(byte[] bytes) {
-          return decode(MemoryUtils.wrap(bytes), bytes.length);
-        }
-
-        @Override
-        public byte[] encode(T obj) {
-          buffer.writerIndex(0);
-          buffer.writeInt64(schemaHash);
-          writer.setBuffer(buffer);
-          writer.reset();
-          BinaryRow row = toRow(obj);
-          return buffer.getBytes(0, 8 + row.getSizeInBytes());
-        }
-
-        @Override
-        public void encode(MemoryBuffer buffer, T obj) {
-          int writerIndex = buffer.writerIndex();
-          buffer.writeInt32(-1);
-          try {
-            buffer.writeInt64(schemaHash);
-            writer.setBuffer(buffer);
-            writer.reset();
-            toRow(obj);
-            buffer.putInt32(writerIndex, buffer.writerIndex() - writerIndex - 4);
-          } finally {
-            writer.setBuffer(this.buffer);
-          }
-        }
-      };
-    } catch (Exception e) {
-      String msg = String.format("Create encoder failed, \nbeanClass: %s", beanClass);
-      throw new EncoderException(msg, e);
-    }
+    return buildBeanCodec(beanClass).fory(fory).buildForCustomWriter().apply(writer);
   }
 
   /**
@@ -293,44 +172,7 @@ public class Encoders {
       typeRef = set.iterator().next();
       Encoders.loadOrGenRowCodecClass(getRawType(tt));
     }
-    ArrayEncoder<T> encoder = arrayEncoder(token, typeRef, writer, fory);
-    return new ArrayEncoder<T>() {
-
-      @Override
-      public Field field() {
-        return encoder.field();
-      }
-
-      @Override
-      public T fromArray(BinaryArray array) {
-        return encoder.fromArray(array);
-      }
-
-      @Override
-      public BinaryArray toArray(T obj) {
-        return encoder.toArray(obj);
-      }
-
-      @Override
-      public T decode(MemoryBuffer buffer) {
-        return encoder.decode(buffer);
-      }
-
-      @Override
-      public T decode(byte[] bytes) {
-        return encoder.decode(bytes);
-      }
-
-      @Override
-      public byte[] encode(T obj) {
-        return encoder.encode(obj);
-      }
-
-      @Override
-      public void encode(MemoryBuffer buffer, T obj) {
-        encoder.encode(buffer, obj);
-      }
-    };
+    return arrayEncoder(token, typeRef, writer, fory);
   }
 
   /**
@@ -372,64 +214,7 @@ public class Encoders {
               .getConstructor(Object[].class)
               .newInstance(references);
 
-      return new ArrayEncoder<T>() {
-
-        @Override
-        public Field field() {
-          return field;
-        }
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public T fromArray(BinaryArray array) {
-          return (T) codec.fromArray(array);
-        }
-
-        @Override
-        public BinaryArray toArray(T obj) {
-          return codec.toArray(obj);
-        }
-
-        @Override
-        public T decode(MemoryBuffer buffer) {
-          return decode(buffer, buffer.readInt32());
-        }
-
-        public T decode(MemoryBuffer buffer, int size) {
-          BinaryArray array = new BinaryArray(field);
-          int readerIndex = buffer.readerIndex();
-          array.pointTo(buffer, readerIndex, size);
-          buffer.readerIndex(readerIndex + size);
-          return fromArray(array);
-        }
-
-        @Override
-        public T decode(byte[] bytes) {
-          return decode(MemoryUtils.wrap(bytes), bytes.length);
-        }
-
-        @Override
-        public byte[] encode(T obj) {
-          BinaryArray array = toArray(obj);
-          return writer.getBuffer().getBytes(0, 8 + array.getSizeInBytes());
-        }
-
-        @Override
-        public void encode(MemoryBuffer buffer, T obj) {
-          MemoryBuffer prevBuffer = writer.getBuffer();
-          int writerIndex = buffer.writerIndex();
-          buffer.writeInt32(-1);
-          try {
-            writer.setBuffer(buffer);
-            BinaryArray array = toArray(obj);
-            int size = buffer.writerIndex() - writerIndex - 4;
-            assert size == array.getSizeInBytes();
-            buffer.putInt32(writerIndex, size);
-          } finally {
-            writer.setBuffer(prevBuffer);
-          }
-        }
-      };
+      return new BeanArrayEncoder<T>(writer, field, codec);
     } catch (Exception e) {
       String msg = String.format("Create encoder failed, \nelementType: %s", elementType);
       throw new EncoderException(msg, e);
@@ -681,16 +466,21 @@ public class Encoders {
   }
 
   public static Class<?> loadOrGenRowCodecClass(Class<?> beanClass) {
+    return loadOrGenRowCodecClass(beanClass, RowEncoderBuilder::new);
+  }
+
+  static Class<?> loadOrGenRowCodecClass(
+      Class<?> beanClass, Function<Class<?>, CodecBuilder> codecFactory) {
     Set<Class<?>> classes =
         TypeUtils.listBeansRecursiveInclusive(
             beanClass,
             new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
-    LOG.info("Create RowCodec for classes {}", classes);
+    LOG.info("Create codec for classes {}", classes);
     CompileUnit[] compileUnits =
         classes.stream()
             .map(
                 cls -> {
-                  RowEncoderBuilder codecBuilder = new RowEncoderBuilder(cls);
+                  CodecBuilder codecBuilder = codecFactory.apply(cls);
                   // use genCodeFunc to avoid gen code repeatedly
                   return new CompileUnit(
                       CodeGenerator.getPackage(cls),

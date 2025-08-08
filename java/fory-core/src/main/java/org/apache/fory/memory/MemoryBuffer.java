@@ -40,7 +40,7 @@ import sun.misc.Unsafe;
  *   <li>additional binary compare, swap, and copy methods.
  *   <li>little-endian access.
  *   <li>independent read/write index.
- *   <li>variant int/long encoding.
+ *   <li>varint int/long encoding.
  *   <li>aligned int/long encoding.
  * </ul>
  *

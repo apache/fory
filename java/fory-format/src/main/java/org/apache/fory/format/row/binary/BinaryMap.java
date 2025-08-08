@@ -45,8 +45,12 @@ public class BinaryMap implements MapData {
 
   public BinaryMap(Field field) {
     this.field = field;
-    this.keys = new BinaryArray(DataTypes.keyArrayFieldForMap(field));
-    this.values = new BinaryArray(DataTypes.itemArrayFieldForMap(field));
+    this.keys = newArray(DataTypes.keyArrayFieldForMap(field));
+    this.values = newArray(DataTypes.itemArrayFieldForMap(field));
+  }
+
+  protected BinaryArray newArray(Field field) {
+    return new BinaryArray(field);
   }
 
   public BinaryMap(BinaryArray keys, BinaryArray values, Field field) {
