@@ -51,7 +51,6 @@ import org.apache.fory.config.Language;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.longlongpkg.C1;
 import org.apache.fory.resolver.longlongpkg.C2;
@@ -229,7 +228,7 @@ public class ClassResolverTest extends ForyTestBase {
               .requireClassRegistration(false)
               .build();
       ClassResolver classResolver = fory.getClassResolver();
-      MemoryBuffer buffer = MemoryUtils.buffer(32);
+      MemoryBuffer buffer = MemoryBuffer.buffer(32);
       classResolver.writeClassInternal(buffer, getClass());
       int writerIndex = buffer.writerIndex();
       classResolver.writeClassInternal(buffer, getClass());
@@ -244,7 +243,7 @@ public class ClassResolverTest extends ForyTestBase {
               .requireClassRegistration(false)
               .build();
       ClassResolver classResolver = fory.getClassResolver();
-      MemoryBuffer buffer = MemoryUtils.buffer(32);
+      MemoryBuffer buffer = MemoryBuffer.buffer(32);
       classResolver.writeClassAndUpdateCache(buffer, getClass());
       classResolver.writeClassAndUpdateCache(buffer, getClass());
       Assert.assertSame(classResolver.readClassInfo(buffer).getCls(), getClass());

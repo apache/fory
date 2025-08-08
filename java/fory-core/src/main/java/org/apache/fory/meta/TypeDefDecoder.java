@@ -46,7 +46,7 @@ import org.apache.fory.serializer.NonexistentClass;
 class TypeDefDecoder {
   public static ClassDef decodeClassDef(XtypeResolver resolver, MemoryBuffer inputBuffer, long id) {
     Tuple2<byte[], byte[]> decoded = decodeClassDefBuf(inputBuffer, resolver, id);
-    MemoryBuffer buffer = MemoryBuffer.fromByteArray(decoded.f0);
+    MemoryBuffer buffer = MemoryBuffer.wrap(decoded.f0);
     byte header = buffer.readByte();
     int numFields = header & SMALL_NUM_FIELDS_THRESHOLD;
     if (numFields == SMALL_NUM_FIELDS_THRESHOLD) {

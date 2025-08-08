@@ -303,4 +303,15 @@ public class StringUtils {
     }
     return isLatin;
   }
+
+  // need to be optimized
+  public static boolean isLatin1(String s) {
+    for (int i = 0; i < s.length(); i++) {
+      // char 是16位的，Latin-1 字符的码点都在 255 (0xFF) 以内
+      if (s.charAt(i) > 0xFF) {
+        return false;
+      }
+    }
+    return true;
+  }
 }

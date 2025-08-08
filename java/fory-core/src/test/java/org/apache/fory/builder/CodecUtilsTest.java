@@ -24,7 +24,6 @@ import static org.testng.Assert.assertEquals;
 import org.apache.fory.Fory;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.bean.BeanA;
 import org.testng.annotations.Test;
 
@@ -45,11 +44,11 @@ public class CodecUtilsTest {
             .asSubclass(Generated.GeneratedSerializer.class)
             .getConstructor(Fory.class, Class.class)
             .newInstance(fory, BeanA.class);
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     BeanA beanA = BeanA.createBeanA(2);
     serializer.write(buffer, beanA);
     byte[] bytes = buffer.getBytes(0, buffer.writerIndex());
-    Object obj = serializer.read(MemoryUtils.wrap(bytes));
+    Object obj = serializer.read(MemoryBuffer.wrap(bytes));
     assertEquals(obj, beanA);
   }
 }

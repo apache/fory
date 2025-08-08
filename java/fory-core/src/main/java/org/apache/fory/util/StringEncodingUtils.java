@@ -118,7 +118,7 @@ public class StringEncodingUtils {
 
   /**
    * A fast convert algorithm to convert an utf8 encoded byte array into an utf16 encoded byte
-   * array.
+   * array.(aware: utf16le)
    */
   public static int convertUTF8ToUTF16(byte[] src, int offset, int len, byte[] dst) {
     final int end = offset + len;

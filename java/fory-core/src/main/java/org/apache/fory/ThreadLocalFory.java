@@ -28,10 +28,10 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.concurrent.ThreadSafe;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.annotation.NotForAndroid;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.util.LoaderBinding;
 import org.apache.fory.util.LoaderBinding.StagingType;
@@ -44,7 +44,7 @@ import org.apache.fory.util.LoaderBinding.StagingType;
 @ThreadSafe
 public class ThreadLocalFory extends AbstractThreadSafeFory {
   private final ThreadLocal<MemoryBuffer> bufferLocal =
-      ThreadLocal.withInitial(() -> MemoryUtils.buffer(32));
+      ThreadLocal.withInitial(() -> MemoryBuffer.buffer(32));
 
   private final ThreadLocal<LoaderBinding> bindingThreadLocal;
   private Consumer<Fory> factoryCallback;
@@ -107,6 +107,7 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
     return buffer.getBytes(0, buffer.writerIndex());
   }
 
+  @NotForAndroid(reason = "Android does not support support off-heap memory only by address")
   @Override
   public MemoryBuffer serialize(Object obj, long address, int size) {
     return bindingThreadLocal.get().get().serialize(obj, address, size);
@@ -147,6 +148,7 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
     return bindingThreadLocal.get().get().deserialize(bytes, outOfBandBuffers);
   }
 
+  @NotForAndroid(reason = "Android does not support support off-heap memory only by address")
   @Override
   public Object deserialize(long address, int size) {
     return bindingThreadLocal.get().get().deserialize(address, size);
@@ -159,7 +161,7 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
 
   @Override
   public Object deserialize(ByteBuffer byteBuffer) {
-    return bindingThreadLocal.get().get().deserialize(MemoryUtils.wrap(byteBuffer));
+    return bindingThreadLocal.get().get().deserialize(MemoryBuffer.wrap(byteBuffer));
   }
 
   @Override

@@ -27,14 +27,13 @@ import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.testng.annotations.Test;
 
 public class BinaryMapTest {
 
   @Test
   public void pointTo() {
-    MemoryBuffer buffer = MemoryUtils.buffer(1024);
+    MemoryBuffer buffer = MemoryBuffer.buffer(1024);
     int writerIndex = 8; // preserve 8 byte for numBytes
     BinaryArrayWriter keyArrayWriter =
         new BinaryArrayWriter(DataTypes.arrayField(DataTypes.utf8()));

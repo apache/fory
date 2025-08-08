@@ -345,9 +345,11 @@ public class ClassResolver implements TypeResolver {
     CollectionSerializers.registerDefaultSerializers(fory);
     MapSerializers.registerDefaultSerializers(fory);
     addDefaultSerializer(Locale.class, new LocaleSerializer(fory));
-    addDefaultSerializer(
-        LambdaSerializer.ReplaceStub.class,
-        new LambdaSerializer(fory, LambdaSerializer.ReplaceStub.class));
+    if (!Platform.IS_ANDROID) {
+      addDefaultSerializer(
+          LambdaSerializer.ReplaceStub.class,
+          new LambdaSerializer(fory, LambdaSerializer.ReplaceStub.class));
+    }
     addDefaultSerializer(
         JdkProxySerializer.ReplaceStub.class,
         new JdkProxySerializer(fory, JdkProxySerializer.ReplaceStub.class));
@@ -358,7 +360,7 @@ public class ClassResolver implements TypeResolver {
     UnmodifiableSerializers.registerSerializers(fory);
     ImmutableCollectionSerializers.registerSerializers(fory);
     SubListSerializers.registerSerializers(fory, true);
-    if (fory.getConfig().registerGuavaTypes()) {
+    if (fory.getConfig().registerGuavaTypes() && !Platform.IS_ANDROID) {
       GuavaCollectionSerializers.registerDefaultSerializers(fory);
     }
     if (fory.getConfig().deserializeNonexistentClass()) {

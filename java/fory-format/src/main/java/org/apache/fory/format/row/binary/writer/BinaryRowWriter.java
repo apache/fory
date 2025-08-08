@@ -26,7 +26,6 @@ import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 
 /**
  * Writer to write data into buffer using row format, see {@link BinaryRow}.
@@ -44,7 +43,7 @@ public class BinaryRowWriter extends BinaryWriter {
   private final int fixedSize;
 
   public BinaryRowWriter(Schema schema) {
-    super(MemoryUtils.buffer(schema.getFields().size() * 32), 0);
+    super(MemoryBuffer.buffer(schema.getFields().size() * 32), 0);
     super.startIndex = 0;
     this.schema = schema;
     this.headerInBytes = calculateBitmapWidthInBytes(schema.getFields().size());
@@ -138,7 +137,7 @@ public class BinaryRowWriter extends BinaryWriter {
   public BinaryRow copyToRow() {
     BinaryRow row = new BinaryRow(schema);
     int size = size();
-    MemoryBuffer buffer = MemoryUtils.buffer(size);
+    MemoryBuffer buffer = MemoryBuffer.buffer(size);
     this.buffer.copyTo(startIndex, buffer, 0, size);
     row.pointTo(buffer, startIndex, size);
     return row;

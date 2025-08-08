@@ -55,18 +55,25 @@ public class _JDKAccess {
   // CHECKSTYLE.ON:TypeName
   public static final int JAVA_VERSION;
   public static final boolean IS_OPEN_J9;
+  public static final boolean IS_ANDROID;
   public static final Unsafe UNSAFE;
   public static final Class<?> _INNER_UNSAFE_CLASS;
   public static final Object _INNER_UNSAFE;
 
   static {
-    String property = System.getProperty("java.specification.version");
-    if (property.startsWith("1.")) {
-      property = property.substring(2);
+    IS_ANDROID = checkIsAndroid();
+    if (IS_ANDROID) {
+      IS_OPEN_J9 = false;
+      JAVA_VERSION = 8; // TODO: 只是一个尝试，之后一定要改
+    } else {
+      String property = System.getProperty("java.specification.version");
+      if (property.startsWith("1.")) {
+        property = property.substring(2);
+      }
+      String jmvName = System.getProperty("java.vm.name", "");
+      IS_OPEN_J9 = jmvName.contains("OpenJ9");
+      JAVA_VERSION = Integer.parseInt(property);
     }
-    String jmvName = System.getProperty("java.vm.name", "");
-    IS_OPEN_J9 = jmvName.contains("OpenJ9");
-    JAVA_VERSION = Integer.parseInt(property);
     Unsafe unsafe;
     try {
       Field unsafeField = Unsafe.class.getDeclaredField("theUnsafe");
@@ -77,6 +84,8 @@ public class _JDKAccess {
     }
     UNSAFE = unsafe;
     if (JAVA_VERSION >= 11) {
+      // TODO: make sure android can't reach here
+      assert !IS_ANDROID;
       try {
         Field theInternalUnsafeField = Unsafe.class.getDeclaredField("theInternalUnsafe");
         theInternalUnsafeField.setAccessible(true);
@@ -88,6 +97,16 @@ public class _JDKAccess {
     } else {
       _INNER_UNSAFE_CLASS = null;
       _INNER_UNSAFE = null;
+    }
+  }
+
+  private static boolean checkIsAndroid() {
+    try {
+      // try to load a class that only android has
+      Class.forName("android.os.Build");
+      return true;
+    } catch (ClassNotFoundException e) {
+      return false;
     }
   }
 

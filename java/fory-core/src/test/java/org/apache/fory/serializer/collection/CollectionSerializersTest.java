@@ -64,7 +64,6 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.collection.CollectionSerializers.JDKCompatibleCollectionSerializer;
 import org.apache.fory.test.bean.Cyclic;
@@ -786,7 +785,7 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withRefTracking(false)
             .requireClassRegistration(false)
             .build();
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     JDKCompatibleCollectionSerializer javaSerializer =
         new JDKCompatibleCollectionSerializer(fory, setClass);
     javaSerializer.write(buffer, set);

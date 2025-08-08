@@ -33,8 +33,10 @@ public final class Platform {
   @SuppressWarnings("restriction")
   public static final Unsafe UNSAFE = _JDKAccess.UNSAFE;
 
+  public static final boolean IS_ANDROID = _JDKAccess.IS_ANDROID;
   public static final int JAVA_VERSION = _JDKAccess.JAVA_VERSION;
-  public static final boolean IS_LITTLE_ENDIAN = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
+  public static final ByteOrder NATIVE_BYTE_ORDER = ByteOrder.nativeOrder();
+  public static final boolean IS_LITTLE_ENDIAN = NATIVE_BYTE_ORDER == ByteOrder.LITTLE_ENDIAN;
   public static final Class<?> HEAP_BYTE_BUFFER_CLASS = ByteBuffer.allocate(1).getClass();
   public static final Class<?> DIRECT_BYTE_BUFFER_CLASS = ByteBuffer.allocateDirect(1).getClass();
   public static final int BOOLEAN_ARRAY_OFFSET;
@@ -220,6 +222,7 @@ public final class Platform {
     UNSAFE.setMemory(address, size, value);
   }
 
+  @Deprecated
   public static void copyMemory(
       Object src, long srcOffset, Object dst, long dstOffset, long length) {
     if (length < UNSAFE_COPY_THRESHOLD) {
@@ -282,8 +285,15 @@ public final class Platform {
     return true;
   }
 
+  private static <T extends Throwable> void sneakyThrow(Throwable throwable) throws T {
+    throw (T) throwable; // 将受检异常强制转换为一个未知的泛型异常类型并抛出
+  }
+
   /** Raises an exception bypassing compiler checks for checked exceptions. */
   public static void throwException(Throwable t) {
+    if (IS_ANDROID) {
+      sneakyThrow(t);
+    }
     UNSAFE.throwException(t);
   }
 

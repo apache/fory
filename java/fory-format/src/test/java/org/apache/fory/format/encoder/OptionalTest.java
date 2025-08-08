@@ -26,7 +26,6 @@ import java.util.OptionalLong;
 import lombok.Data;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -47,7 +46,7 @@ public class OptionalTest {
     bean.f2 = Optional.empty();
     final RowEncoder<OptionalType> encoder = Encoders.bean(OptionalType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);
@@ -58,7 +57,7 @@ public class OptionalTest {
     final OptionalType bean = new OptionalType();
     final RowEncoder<OptionalType> encoder = Encoders.bean(OptionalType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean.f1, Optional.empty());
@@ -72,7 +71,7 @@ public class OptionalTest {
     bean.f2 = Optional.of("Indubitably");
     final RowEncoder<OptionalType> encoder = Encoders.bean(OptionalType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);
@@ -91,7 +90,7 @@ public class OptionalTest {
     bean.f1 = OptionalInt.empty();
     final RowEncoder<OptionalIntType> encoder = Encoders.bean(OptionalIntType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalIntType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);
@@ -103,7 +102,7 @@ public class OptionalTest {
     bean.f1 = OptionalInt.of(42);
     final RowEncoder<OptionalIntType> encoder = Encoders.bean(OptionalIntType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalIntType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);
@@ -122,7 +121,7 @@ public class OptionalTest {
     bean.f1 = OptionalLong.empty();
     final RowEncoder<OptionalLongType> encoder = Encoders.bean(OptionalLongType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalLongType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);
@@ -134,7 +133,7 @@ public class OptionalTest {
     bean.f1 = OptionalLong.of(42);
     final RowEncoder<OptionalLongType> encoder = Encoders.bean(OptionalLongType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalLongType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);
@@ -153,7 +152,7 @@ public class OptionalTest {
     bean.f1 = OptionalDouble.empty();
     final RowEncoder<OptionalDoubleType> encoder = Encoders.bean(OptionalDoubleType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalDoubleType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);
@@ -165,7 +164,7 @@ public class OptionalTest {
     bean.f1 = OptionalDouble.of(42);
     final RowEncoder<OptionalDoubleType> encoder = Encoders.bean(OptionalDoubleType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalDoubleType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);

@@ -26,7 +26,6 @@ import org.apache.fory.format.encoder.RowEncoder;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.bean.BeanA;
 import org.testng.annotations.Test;
 
@@ -69,7 +68,7 @@ public class ArrowWriterTest {
   public void testSerializeArrowRecordBatch() {
     ArrowRecordBatch recordBatch = createArrowRecordBatch();
     System.out.println("recordBatch serialized body size " + recordBatch.computeBodyLength());
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     ArrowUtils.serializeRecordBatch(recordBatch, buffer);
     System.out.println("IPC recordBatch size " + buffer.writerIndex());
     ArrowRecordBatch newRecordBatch = ArrowUtils.deserializeRecordBatch(buffer);

@@ -30,6 +30,7 @@ import java.util.Iterator;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.concurrent.NotThreadSafe;
+import org.apache.fory.annotation.NotForAndroid;
 import org.apache.fory.builder.JITContext;
 import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.config.CompatibleMode;
@@ -265,9 +266,10 @@ public final class Fory implements BaseFory {
     }
   }
 
+  @NotForAndroid(reason = "Android does not support support off-heap memory only by address")
   @Override
   public MemoryBuffer serialize(Object obj, long address, int size) {
-    MemoryBuffer buffer = MemoryUtils.buffer(address, size);
+    MemoryBuffer buffer = MemoryBuffer.fromNativeAddress(address, size);
     serialize(buffer, obj, null);
     return buffer;
   }
@@ -790,13 +792,13 @@ public final class Fory implements BaseFory {
 
   @Override
   public Object deserialize(byte[] bytes) {
-    return deserialize(MemoryUtils.wrap(bytes), null);
+    return deserialize(MemoryBuffer.wrap(bytes), null);
   }
 
   @SuppressWarnings("unchecked")
   @Override
   public <T> T deserialize(byte[] bytes, Class<T> type) {
-    MemoryBuffer buffer = MemoryUtils.wrap(bytes);
+    MemoryBuffer buffer = MemoryBuffer.wrap(bytes);
     if (!crossLanguage && shareMeta) {
       byte bitmap = buffer.readByte();
       if ((bitmap & isNilFlag) == isNilFlag) {
@@ -816,12 +818,13 @@ public final class Fory implements BaseFory {
 
   @Override
   public Object deserialize(byte[] bytes, Iterable<MemoryBuffer> outOfBandBuffers) {
-    return deserialize(MemoryUtils.wrap(bytes), outOfBandBuffers);
+    return deserialize(MemoryBuffer.wrap(bytes), outOfBandBuffers);
   }
 
+  @NotForAndroid(reason = "Android does not support support off-heap memory only by address")
   @Override
   public Object deserialize(long address, int size) {
-    return deserialize(MemoryUtils.buffer(address, size), null);
+    return deserialize(MemoryBuffer.fromNativeAddress(address, size), null);
   }
 
   @Override
@@ -1207,7 +1210,7 @@ public final class Fory implements BaseFory {
 
   @Override
   public <T> T deserializeJavaObject(byte[] data, Class<T> cls) {
-    return deserializeJavaObject(MemoryBuffer.fromByteArray(data), cls);
+    return deserializeJavaObject(MemoryBuffer.wrap(data), cls);
   }
 
   @Override
@@ -1327,7 +1330,7 @@ public final class Fory implements BaseFory {
    */
   @Override
   public Object deserializeJavaObjectAndClass(byte[] data) {
-    return deserializeJavaObjectAndClass(MemoryBuffer.fromByteArray(data));
+    return deserializeJavaObjectAndClass(MemoryBuffer.wrap(data));
   }
 
   /**

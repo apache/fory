@@ -28,12 +28,12 @@ import javax.annotation.concurrent.ThreadSafe;
 import org.apache.fory.AbstractThreadSafeFory;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.Internal;
+import org.apache.fory.annotation.NotForAndroid;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.resolver.ClassChecker;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.util.LoaderBinding;
@@ -100,6 +100,7 @@ public class ThreadPoolFory extends AbstractThreadSafeFory {
     return execute(fory -> fory.serialize(obj, callback));
   }
 
+  @NotForAndroid(reason = "Android does not support support off-heap memory only by address")
   @Override
   public MemoryBuffer serialize(Object obj, long address, int size) {
     return execute(fory -> fory.serialize(obj, address, size));
@@ -148,6 +149,7 @@ public class ThreadPoolFory extends AbstractThreadSafeFory {
     return execute(fory -> fory.deserialize(bytes, outOfBandBuffers));
   }
 
+  @NotForAndroid(reason = "Android does not support support off-heap memory only by address")
   @Override
   public Object deserialize(long address, int size) {
     return execute(fory -> fory.deserialize(address, size));
@@ -160,7 +162,7 @@ public class ThreadPoolFory extends AbstractThreadSafeFory {
 
   @Override
   public Object deserialize(ByteBuffer byteBuffer) {
-    return execute(fory -> fory.deserialize(MemoryUtils.wrap(byteBuffer)));
+    return execute(fory -> fory.deserialize(MemoryBuffer.wrap(byteBuffer)));
   }
 
   @Override

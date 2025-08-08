@@ -23,7 +23,6 @@ import java.util.Optional;
 import lombok.Data;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -48,7 +47,7 @@ public class EnumTest {
     v.f2 = Optional.of(TestEnum.A);
     RowEncoder<EnumValue> encoder = Encoders.bean(EnumValue.class);
     BinaryRow row = encoder.toRow(v);
-    MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     EnumValue deserializedV = encoder.fromRow(row);
     Assert.assertEquals(v, deserializedV);
@@ -61,7 +60,7 @@ public class EnumTest {
     v.f2 = Optional.empty();
     RowEncoder<EnumValue> encoder = Encoders.bean(EnumValue.class);
     BinaryRow row = encoder.toRow(v);
-    MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     EnumValue deserializedV = encoder.fromRow(row);
     Assert.assertEquals(v, deserializedV);

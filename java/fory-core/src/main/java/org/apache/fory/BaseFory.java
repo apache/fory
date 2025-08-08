@@ -21,6 +21,7 @@ package org.apache.fory;
 
 import java.io.OutputStream;
 import java.util.function.Function;
+import org.apache.fory.annotation.NotForAndroid;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.memory.MemoryBuffer;
@@ -115,6 +116,7 @@ public interface BaseFory {
    * Serialize <code>obj</code> to a off-heap buffer specified by <code>address</code> and <code>
    * size</code>.
    */
+  @NotForAndroid(reason = "Android does not support support off-heap memory only by address")
   MemoryBuffer serialize(Object obj, long address, int size);
 
   /** Serialize data into buffer. */
@@ -138,6 +140,7 @@ public interface BaseFory {
    * Deserialize <code>obj</code> from a off-heap buffer specified by <code>address</code> and
    * <code>size</code>.
    */
+  @NotForAndroid(reason = "Android does not support support off-heap memory only by address")
   Object deserialize(long address, int size);
 
   /** Deserialize <code>obj</code> from a <code>buffer</code>. */

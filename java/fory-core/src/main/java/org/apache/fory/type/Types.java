@@ -22,6 +22,8 @@ package org.apache.fory.type;
 import static org.apache.fory.collection.Collections.ofHashMap;
 
 import java.util.Map;
+import org.apache.fory.Fory;
+import org.apache.fory.memory.Platform;
 import org.apache.fory.util.Preconditions;
 
 public class Types {
@@ -163,6 +165,27 @@ public class Types {
   public static final int ARROW_TABLE = 39;
 
   public static final int UNKNOWN = 63;
+
+  public enum JavaArray {
+    BOOL(Platform.BOOLEAN_ARRAY_OFFSET, 1, Types.BOOL_ARRAY),
+    BYTE(Platform.BYTE_ARRAY_OFFSET, 1, Types.BINARY),
+    CHAR(Platform.CHAR_ARRAY_OFFSET, 2, Fory.NOT_SUPPORT_XLANG),
+    SHORT(Platform.SHORT_ARRAY_OFFSET, 2, Types.INT16_ARRAY),
+    INT(Platform.INT_ARRAY_OFFSET, 4, Types.INT32_ARRAY),
+    LONG(Platform.LONG_ARRAY_OFFSET, 8, Types.INT64_ARRAY),
+    FLOAT(Platform.FLOAT_ARRAY_OFFSET, 4, Types.FLOAT32_ARRAY),
+    DOUBLE(Platform.DOUBLE_ARRAY_OFFSET, 8, Types.FLOAT64_ARRAY);
+
+    public final int arrayMemOffset;
+    public final int bytesPerEle;
+    public final int typeCode;
+
+    JavaArray(int arrayMemOffset, int bytesPerEle, int typeCode) {
+      this.arrayMemOffset = arrayMemOffset;
+      this.bytesPerEle = bytesPerEle;
+      this.typeCode = typeCode;
+    }
+  }
 
   // Helper methods
   public static boolean isStructType(int value) {

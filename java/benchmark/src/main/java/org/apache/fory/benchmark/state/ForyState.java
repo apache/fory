@@ -82,10 +82,10 @@ public class ForyState {
     public void setupBuffer() {
       switch (bufferType) {
         case array:
-          buffer = MemoryUtils.buffer(1024 * 512);
+          buffer = MemoryBuffer.buffer(1024 * 512);
           break;
         case directBuffer:
-          buffer = MemoryUtils.wrap(ByteBuffer.allocateDirect(1024 * 512));
+          buffer = MemoryBuffer.wrap(ByteBuffer.allocateDirect(1024 * 512));
           break;
       }
     }

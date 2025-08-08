@@ -33,7 +33,6 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -106,7 +105,7 @@ public class CustomCodecTest {
     bean.f4 = new CustomByteBuf3("f4 value".getBytes(StandardCharsets.UTF_8));
     final RowEncoder<CustomType> encoder = Encoders.bean(CustomType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final CustomType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);
@@ -117,7 +116,7 @@ public class CustomCodecTest {
     final CustomType bean = new CustomType();
     final RowEncoder<CustomType> encoder = Encoders.bean(CustomType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final CustomType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);
@@ -131,7 +130,7 @@ public class CustomCodecTest {
     bean.f3 = new TreeSet<>(Arrays.asList(new UUID(7, 8), new UUID(9, 10)));
     final RowEncoder<UuidType> encoder = Encoders.bean(UuidType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final UuidType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean, bean);
@@ -163,7 +162,7 @@ public class CustomCodecTest {
   static class CustomByteBufEncoder implements CustomCodec.MemoryBufferCodec<CustomByteBuf> {
     @Override
     public MemoryBuffer encode(final CustomByteBuf value) {
-      return MemoryBuffer.fromByteArray(value.buf);
+      return MemoryBuffer.wrap(value.buf);
     }
 
     @Override
@@ -271,7 +270,7 @@ public class CustomCodecTest {
     final InterceptedType bean = new InterceptedTypeImpl(42);
     final RowEncoder<InterceptedType> encoder = Encoders.bean(InterceptedType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final InterceptedType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean.f1(), bean.f1() + 5);
@@ -300,7 +299,7 @@ public class CustomCodecTest {
     final WrapInterceptedType bean = new WrapInterceptedTypeImpl(new InterceptedTypeImpl(42));
     final RowEncoder<WrapInterceptedType> encoder = Encoders.bean(WrapInterceptedType.class);
     final BinaryRow row = encoder.toRow(bean);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final WrapInterceptedType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean.f1().f1(), bean.f1().f1() + 5);

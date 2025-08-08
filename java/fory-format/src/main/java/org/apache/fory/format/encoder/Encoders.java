@@ -47,7 +47,6 @@ import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.TypeResolutionContext;
 import org.apache.fory.type.TypeUtils;
@@ -90,7 +89,7 @@ public class Encoders {
 
       @Override
       public BinaryRow toRow(T obj) {
-        writer.setBuffer(MemoryUtils.buffer(initialBufferSize));
+        writer.setBuffer(MemoryBuffer.buffer(initialBufferSize));
         writer.reset();
         return encoder.toRow(obj);
       }
@@ -155,7 +154,7 @@ public class Encoders {
       long schemaHash = DataTypes.computeSchemaHash(schema);
 
       return new RowEncoder<T>() {
-        private final MemoryBuffer buffer = MemoryUtils.buffer(16);
+        private final MemoryBuffer buffer = MemoryBuffer.buffer(16);
 
         @Override
         public Schema schema() {
@@ -196,7 +195,7 @@ public class Encoders {
 
         @Override
         public T decode(byte[] bytes) {
-          return decode(MemoryUtils.wrap(bytes), bytes.length);
+          return decode(MemoryBuffer.wrap(bytes), bytes.length);
         }
 
         @Override
@@ -405,7 +404,7 @@ public class Encoders {
 
         @Override
         public T decode(byte[] bytes) {
-          return decode(MemoryUtils.wrap(bytes), bytes.length);
+          return decode(MemoryBuffer.wrap(bytes), bytes.length);
         }
 
         @Override
@@ -547,7 +546,7 @@ public class Encoders {
 
         @Override
         public T decode(byte[] bytes) {
-          return decode(MemoryUtils.wrap(bytes), bytes.length);
+          return decode(MemoryBuffer.wrap(bytes), bytes.length);
         }
 
         @Override

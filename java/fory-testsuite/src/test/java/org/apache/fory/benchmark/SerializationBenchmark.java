@@ -31,7 +31,6 @@ import org.apache.fory.format.encoder.RowEncoder;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.bean.Foo;
 import org.nustaq.serialization.FSTConfiguration;
 import org.testng.annotations.BeforeTest;
@@ -104,7 +103,7 @@ public class SerializationBenchmark {
             .requireClassRegistration(false)
             .build();
     fory.register(obj.getClass());
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     // warm
     for (int i = 0; i < iterNums; i++) {
       buffer.writerIndex(0);

@@ -30,7 +30,6 @@ import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -91,7 +90,7 @@ public class ImplementInterfaceTest {
     final InterfaceType bean1 = new ImplementInterface(42, "42");
     final RowEncoder<InterfaceType> encoder = Encoders.bean(InterfaceType.class);
     final BinaryRow row = encoder.toRow(bean1);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final InterfaceType deserializedBean = encoder.fromRow(row);
     assertEquals(bean1, deserializedBean);
@@ -102,7 +101,7 @@ public class ImplementInterfaceTest {
     final InterfaceType bean1 = new ImplementInterface(42, null);
     final RowEncoder<InterfaceType> encoder = Encoders.bean(InterfaceType.class);
     final BinaryRow row = encoder.toRow(bean1);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final InterfaceType deserializedBean = encoder.fromRow(row);
     assertEquals(deserializedBean, bean1);
@@ -114,7 +113,7 @@ public class ImplementInterfaceTest {
     bean1.nested = new ImplementNestedType("f3");
     final RowEncoder<InterfaceType> encoder = Encoders.bean(InterfaceType.class);
     final BinaryRow row = encoder.toRow(bean1);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final InterfaceType deserializedBean = encoder.fromRow(row);
     assertEquals(bean1, deserializedBean);
@@ -161,7 +160,7 @@ public class ImplementInterfaceTest {
     final OptionalType bean1 = new OptionalTypeImpl(null);
     final RowEncoder<OptionalType> encoder = Encoders.bean(OptionalType.class);
     final BinaryRow row = encoder.toRow(bean1);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean.f1(), Optional.empty());
@@ -172,7 +171,7 @@ public class ImplementInterfaceTest {
     final OptionalType bean1 = new OptionalTypeImpl(Optional.of("42"));
     final RowEncoder<OptionalType> encoder = Encoders.bean(OptionalType.class);
     final BinaryRow row = encoder.toRow(bean1);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean.f1(), Optional.of("42"));
@@ -200,7 +199,7 @@ public class ImplementInterfaceTest {
   static class IdCodec<T> implements CustomCodec.MemoryBufferCodec<Id<T>> {
     @Override
     public MemoryBuffer encode(final Id<T> value) {
-      return MemoryBuffer.fromByteArray(new byte[] {value.id});
+      return MemoryBuffer.wrap(new byte[] {value.id});
     }
 
     @Override
@@ -214,7 +213,7 @@ public class ImplementInterfaceTest {
     final OptionalCustomType bean1 = new OptionalCustomTypeImpl();
     final RowEncoder<OptionalCustomType> encoder = Encoders.bean(OptionalCustomType.class);
     final BinaryRow row = encoder.toRow(bean1);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalCustomType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean.f1().get().id, bean1.f1().get().id);
@@ -259,7 +258,7 @@ public class ImplementInterfaceTest {
     final ListOuter bean1 = new ListOuterImpl(Arrays.asList(new ListInnerImpl(42)));
     final RowEncoder<ListOuter> encoder = Encoders.bean(ListOuter.class);
     final BinaryRow row = encoder.toRow(bean1);
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final ListOuter deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean.f1().get(0).f1(), 42);
@@ -370,7 +369,7 @@ public class ImplementInterfaceTest {
     final RowEncoder<ListLazyElemOuter> encoder = Encoders.bean(ListLazyElemOuter.class);
     final BinaryRow row = encoder.toRow(bean1);
     ListLazyElemInner.check = true;
-    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    final MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final ListLazyElemOuter deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean.f1().get(2).f1(), 42);

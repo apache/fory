@@ -218,8 +218,8 @@ public abstract class BinaryWriter {
       ArrowBuf arrowBuf = ArrowUtils.buffer(DecimalUtils.DECIMAL_BYTE_LENGTH);
       DecimalUtility.writeBigDecimalToArrowBuf(
           value, arrowBuf, 0, DecimalUtils.DECIMAL_BYTE_LENGTH);
-      buffer.copyFromUnsafe(
-          writerIndex(), null, arrowBuf.memoryAddress(), DecimalUtils.DECIMAL_BYTE_LENGTH);
+      buffer.copyFromDirectUnsafe(
+          writerIndex(), arrowBuf.memoryAddress(), DecimalUtils.DECIMAL_BYTE_LENGTH);
       arrowBuf.getReferenceManager().release();
       setOffsetAndSize(ordinal, writerIndex(), DecimalUtils.DECIMAL_BYTE_LENGTH);
       increaseWriterIndex(DecimalUtils.DECIMAL_BYTE_LENGTH);

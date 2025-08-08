@@ -26,7 +26,6 @@ import java.io.IOException;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.testng.annotations.Test;
 
 public class MemoryBufferObjectInputTest extends ForyTestBase {
@@ -34,7 +33,7 @@ public class MemoryBufferObjectInputTest extends ForyTestBase {
   @Test(dataProvider = "compressNumber")
   public void testForyObjectInput(boolean compressNumber) throws IOException {
     Fory fory = Fory.builder().withNumberCompressed(compressNumber).build();
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     buffer.writeByte(1);
     if (compressNumber) {
       buffer.writeVarInt32(2);

@@ -42,7 +42,14 @@ public interface ForyStreamReader {
    * Read data into `target`. This method will block until the enough data are written into the
    * `target`.
    */
-  void readToUnsafe(Object target, long targetPointer, int numBytes);
+
+  //  void readCharsTo(char[] target, int offset, int length);
+  //
+  //  void readLongsTo(long[] target, int offset, int length);
+  //
+  //  void readBoolsTo(boolean[] target, int offset, int length);
+  //
+  //  void readToUnsafe(Object target, long targetPointer, int numBytes);
 
   /**
    * Read data into `dst`. This method will block until the enough data are written into the `dst`.

@@ -30,7 +30,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import lombok.Data;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
 import org.testng.Assert;
@@ -96,7 +95,7 @@ public class RowEncoderTest {
     Foo foo = new Foo();
     RowEncoder<Foo> encoder = Encoders.bean(Foo.class);
     BinaryRow row = encoder.toRow(foo);
-    MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    MemoryBuffer buffer = MemoryBuffer.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     Foo deserializedFoo = encoder.fromRow(row);
     Assert.assertEquals(foo, deserializedFoo);

@@ -39,7 +39,6 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.serializer.Serializer;
@@ -58,7 +57,7 @@ public class SynchronizedSerializersTest extends ForyTestBase {
   @Test
   public void testWrite() throws Exception {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(false).build();
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     Object[] values =
         new Object[] {
           Collections.synchronizedCollection(Collections.singletonList("abc")),

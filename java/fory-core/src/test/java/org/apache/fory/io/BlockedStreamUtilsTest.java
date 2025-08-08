@@ -51,7 +51,7 @@ public class BlockedStreamUtilsTest extends ForyTestBase {
     BlockedStreamUtils.serialize(fory, stream, foo);
     BlockedStreamUtils.serializeJavaObject(fory, stream, foo);
     try (MemoryBufferReadableChannel channel =
-        new MemoryBufferReadableChannel(MemoryBuffer.fromByteArray(stream.toByteArray()))) {
+        new MemoryBufferReadableChannel(MemoryBuffer.wrap(stream.toByteArray()))) {
       assertEquals(BlockedStreamUtils.deserialize(fory, channel), foo);
       assertEquals(BlockedStreamUtils.deserializeJavaObject(fory, channel, Foo.class), foo);
     }

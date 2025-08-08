@@ -17,31 +17,19 @@
  * under the License.
  */
 
-package org.apache.fory.io;
+package org.apache.fory.annotation;
 
-import java.nio.ByteBuffer;
-import org.apache.fory.memory.MemoryBuffer;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-/** An abstract {@link ForyStreamReader} for subclass implementation convenience. */
-public abstract class AbstractStreamReader implements ForyStreamReader {
-  @Override
-  public int fillBuffer(int minFillSize) {
-    return 0;
-  }
-
-  @Override
-  public void readTo(byte[] dst, int dstIndex, int length) {}
-
-  @Override
-  public void readToByteBuffer(ByteBuffer dst, int length) {}
-
-  @Override
-  public int readToByteBuffer(ByteBuffer dst) {
-    return 0;
-  }
-
-  @Override
-  public MemoryBuffer getBuffer() {
-    return null;
-  }
+@Retention(RetentionPolicy.CLASS)
+@Target({
+  ElementType.METHOD,
+  ElementType.CONSTRUCTOR,
+  ElementType.TYPE,
+})
+public @interface NotForAndroid {
+  String reason() default "This API is not supported or is unsafe on the Android platform.";
 }

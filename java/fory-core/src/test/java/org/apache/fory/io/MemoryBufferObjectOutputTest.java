@@ -25,7 +25,6 @@ import static org.testng.Assert.assertTrue;
 import java.io.IOException;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.testng.annotations.Test;
 
 public class MemoryBufferObjectOutputTest {
@@ -33,7 +32,7 @@ public class MemoryBufferObjectOutputTest {
   @Test
   public void testForyObjectOutput() throws IOException {
     Fory fory = Fory.builder().build();
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     try (MemoryBufferObjectOutput output = new MemoryBufferObjectOutput(fory, buffer)) {
       output.writeByte(1);
       output.writeInt(2);

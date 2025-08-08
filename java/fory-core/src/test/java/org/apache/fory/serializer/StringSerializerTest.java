@@ -23,7 +23,6 @@ import static org.apache.fory.serializer.StringSerializer.newBytesStringZeroCopy
 import static org.testng.Assert.assertEquals;
 
 import java.lang.reflect.Field;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.concurrent.ArrayBlockingQueue;
@@ -35,9 +34,9 @@ import org.apache.fory.ForyTestBase;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
+import org.apache.fory.type.Types;
 import org.apache.fory.util.MathUtils;
 import org.apache.fory.util.StringUtils;
 import org.testng.Assert;
@@ -139,13 +138,13 @@ public class StringSerializerTest extends ForyTestBase {
     final char[] chars =
         (char[]) Platform.getObject(value, ReflectionUtils.getFieldOffset(String.class, "value"));
     int numBytes = MathUtils.doubleExact(value.length());
-    buffer.writePrimitiveArrayWithSize(chars, Platform.CHAR_ARRAY_OFFSET, numBytes);
+    buffer.writeArrayWithSize(chars, 0, value.length(), Types.JavaArray.CHAR);
   }
 
   @Test
   public void testJavaStringSimple() {
     Fory fory = Fory.builder().withStringCompressed(true).requireClassRegistration(false).build();
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     StringSerializer serializer = new StringSerializer(fory);
     {
       String str = "str";
@@ -211,7 +210,7 @@ public class StringSerializerTest extends ForyTestBase {
             .withWriteNumUtf16BytesForUtf8Encoding(writeNumUtf16BytesForUtf8Encoding)
             .requireClassRegistration(false)
             .build();
-    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    MemoryBuffer buffer = MemoryBuffer.buffer(32);
     StringSerializer serializer = new StringSerializer(fory);
 
     String longStr = new String(new char[50]).replace("\0", "abc");
@@ -237,7 +236,7 @@ public class StringSerializerTest extends ForyTestBase {
             .withWriteNumUtf16BytesForUtf8Encoding(writeNumUtf16BytesForUtf8Encoding)
             .requireClassRegistration(false)
             .build();
-    MemoryBuffer buffer = MemoryUtils.wrap(ByteBuffer.allocateDirect(1024));
+    MemoryBuffer buffer = MemoryBuffer.bufferDirect(1024);
     Object o1 = "你好, Fory" + StringUtils.random(64);
     Object o2 =
         new String[] {"你好, Fory" + StringUtils.random(64), "你好, Fory" + StringUtils.random(64)};
@@ -340,7 +339,7 @@ public class StringSerializerTest extends ForyTestBase {
     char[] utf16StrChars = utf16Str.toCharArray();
     for (MemoryBuffer buffer :
         new MemoryBuffer[] {
-          MemoryUtils.buffer(512), MemoryUtils.wrap(ByteBuffer.allocateDirect(512)),
+          MemoryBuffer.buffer(512), MemoryBuffer.bufferDirect(512),
         }) {
       stringSerializer.writeJavaString(buffer, utf16Str);
       assertEquals(stringSerializer.readJavaString(buffer), utf16Str);
@@ -363,7 +362,7 @@ public class StringSerializerTest extends ForyTestBase {
             .build();
     for (MemoryBuffer buffer :
         new MemoryBuffer[] {
-          MemoryUtils.buffer(32), MemoryUtils.wrap(ByteBuffer.allocateDirect(2048))
+          MemoryBuffer.buffer(32), MemoryBuffer.bufferDirect(2048),
         }) {
       StringSerializer serializer = new StringSerializer(fory);
       serializer.write(buffer, "abc你好");
