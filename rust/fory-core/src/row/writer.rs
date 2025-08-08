@@ -71,7 +71,7 @@ impl StructWriter<'_> {
     fn get_fixed_size(bit_map_width_in_bytes: usize, num_fields: usize) -> usize {
         bit_map_width_in_bytes + num_fields * 8
     }
-    pub fn new(num_fields: usize, writer: &mut Writer) -> StructWriter {
+    pub fn new(num_fields: usize, writer: &mut Writer) -> StructWriter<'_> {
         let base_offset = writer.len();
         let bit_map_width_in_bytes = calculate_bitmap_width_in_bytes(num_fields);
 
@@ -110,7 +110,7 @@ impl ArrayWriter<'_> {
         8 + bit_map_width_in_bytes + num_fields * 8
     }
 
-    pub fn new(num_fields: usize, writer: &mut Writer) -> ArrayWriter {
+    pub fn new(num_fields: usize, writer: &mut Writer) -> ArrayWriter<'_> {
         let base_offset = writer.len();
         let bit_map_width_in_bytes = calculate_bitmap_width_in_bytes(num_fields);
         let array_writer = ArrayWriter {
@@ -154,7 +154,7 @@ impl MapWriter<'_> {
         8
     }
 
-    pub fn new(writer: &mut Writer) -> MapWriter {
+    pub fn new(writer: &mut Writer) -> MapWriter<'_> {
         let base_offset = writer.len();
         let array_writer = MapWriter {
             writer,

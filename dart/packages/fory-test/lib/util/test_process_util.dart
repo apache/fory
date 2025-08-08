@@ -19,20 +19,20 @@
 
 import 'dart:io';
 
-/// 执行命令行命令
+/// Execute command-line command
 ///
-/// [command] 要执行的命令列表
-/// [waitTimeoutSeconds] 等待命令执行完成的超时时间（秒）
-/// [env] 环境变量
+/// [command] List of commands to be executed
+/// [waitTimeoutSeconds] Timeout duration (in seconds) for waiting for command execution to complete
+/// [env] Environment variable
 ///
-/// 返回命令执行是否成功（退出码为0）
+/// Returns whether command execution succeeded (exit code 0)
 ///
 class TestProcessUtil {
-  /// 同步执行命令行命令
+  /// Execute command-line command synchronously
   static bool executeCommandSync(List<String> command, int timeoutSec, Map<String, String> env) {
     try {
       print('Executing command synchronously: ${command.join(' ')}');
-      // 使用同步API执行命令
+      // Execute using synchronous API
       ProcessResult result = Process.runSync(
         command.first,
         command.skip(1).toList(),
@@ -40,7 +40,7 @@ class TestProcessUtil {
         runInShell: true,
       );
 
-      // 输出结果
+      // Output result
       stdout.write(result.stdout);
       stderr.write(result.stderr);
       print("exitCode: ${result.exitCode}");

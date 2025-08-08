@@ -32,7 +32,10 @@ impl<'a> FieldAccessorHelper<'a> {
         (offset, size)
     }
 
-    pub fn new(row: &[u8], get_field_offset: Box<dyn Fn(usize) -> usize>) -> FieldAccessorHelper {
+    pub fn new(
+        row: &'a [u8],
+        get_field_offset: Box<dyn Fn(usize) -> usize>,
+    ) -> FieldAccessorHelper<'a> {
         FieldAccessorHelper {
             row,
             get_field_offset,

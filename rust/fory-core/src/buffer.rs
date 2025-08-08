@@ -134,7 +134,7 @@ pub struct Reader<'de> {
 }
 
 impl<'bf> Reader<'bf> {
-    pub fn new(bf: &[u8]) -> Reader {
+    pub fn new(bf: &'bf [u8]) -> Reader<'bf> {
         Reader { bf, cursor: 0 }
     }
 
