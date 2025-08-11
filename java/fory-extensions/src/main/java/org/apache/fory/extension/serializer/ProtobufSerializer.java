@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.fory.serializer;
+package org.apache.fory.extension.serializer;
 
 import com.google.protobuf.CodedInputStream;
 import com.google.protobuf.CodedOutputStream;
@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
+import org.apache.fory.serializer.Serializer;
 import org.apache.fory.util.unsafe._JDKAccess;
 
 @SuppressWarnings({"rawtypes", "unchecked"})

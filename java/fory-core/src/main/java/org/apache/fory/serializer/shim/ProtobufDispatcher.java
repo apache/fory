@@ -20,6 +20,7 @@
 package org.apache.fory.serializer.shim;
 
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.fory.Fory;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -47,11 +48,11 @@ public class ProtobufDispatcher {
       pbMessageSerializerClass =
           (Class<? extends Serializer>)
               ReflectionUtils.loadClass(
-                  Serializer.class.getPackage().getName() + "." + "ProtobufSerializer");
+                  Fory.class.getPackage().getName() + ".extension.serializer.ProtobufSerializer");
       pbByteStringSerializerClass =
           (Class<? extends Serializer>)
               ReflectionUtils.loadClass(
-                  Serializer.class.getPackage().getName() + "." + "ByteStringSerializer");
+                  Fory.class.getPackage().getName() + ".extension.serializer.ByteStringSerializer");
     } catch (Exception e) {
       ExceptionUtils.ignore(e);
     }
