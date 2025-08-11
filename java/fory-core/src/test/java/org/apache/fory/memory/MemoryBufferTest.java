@@ -668,4 +668,17 @@ public class MemoryBufferTest {
       assertEquals(buffer.readBytesAsInt64(2), (20 << 8) | 10);
     }
   }
+
+  @Test
+  public void testGrowDirectBuffer() {
+    ByteBuffer bb = ByteBuffer.allocateDirect(1024);
+    MemoryBuffer mb = MemoryBuffer.fromByteBuffer(bb);
+    mb.writeInt32(128);
+    mb.writeInt32(256);
+    mb.grow(1024);
+    assertEquals(mb.readInt32(), 128);
+    assertEquals(mb.readInt32(), 256);
+    mb.writeInt32(1024);
+    assertEquals(mb.readInt32(), 1024);
+  }
 }

@@ -1229,7 +1229,6 @@ public final class MemoryBuffer {
     writerIndex = newIdx;
   }
 
-  /** For off-heap buffer, this will make a heap buffer internally. */
   public void grow(int neededSize) {
     int length = writerIndex + neededSize;
     if (length > size) {
@@ -1237,7 +1236,6 @@ public final class MemoryBuffer {
     }
   }
 
-  /** For off-heap buffer, this will make a heap buffer internally. */
   public void ensure(int length) {
     if (length > size) {
       growBuffer(length);
@@ -1249,6 +1247,13 @@ public final class MemoryBuffer {
         length < BUFFER_GROW_STEP_THRESHOLD
             ? length << 2
             : (int) Math.min(length * 1.5d, Integer.MAX_VALUE - 8);
+    if (heapMemory == null) {
+      ByteBuffer bb = ByteBuffer.allocateDirect(newSize);
+      long address = ByteBufferUtil.getAddress(bb);
+      copyToUnsafe(0, null, address, size);
+      initDirectBuffer(address, newSize, bb);
+      return;
+    }
     byte[] data = new byte[newSize];
     copyToUnsafe(0, data, Platform.BYTE_ARRAY_OFFSET, size());
     initHeapBuffer(data, 0, data.length);
