@@ -64,6 +64,6 @@ public interface Getters {
   MapData getMap(int ordinal);
 
   default Object get(int ordinal, Field field) {
-    return field.getType().accept(new ValueVisitor(this)).apply(ordinal);
+    return field.getType().accept(new ToStringValueVisitor(this)).apply(ordinal);
   }
 }

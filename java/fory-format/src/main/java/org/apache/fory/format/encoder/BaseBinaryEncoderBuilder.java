@@ -64,6 +64,7 @@ import org.apache.fory.format.row.Row;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.BinaryUtils;
+import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryWriter;
@@ -86,7 +87,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   protected static final TypeRef<Field> ARROW_FIELD_TYPE = TypeRef.of(Field.class);
   protected static TypeRef<Schema> schemaTypeToken = TypeRef.of(Schema.class);
   protected static TypeRef<BinaryWriter> writerTypeToken = TypeRef.of(BinaryWriter.class);
-  protected static TypeRef<BinaryRowWriter> rowWriterTypeToken = TypeRef.of(BinaryRowWriter.class);
+
   protected static TypeRef<BinaryArrayWriter> arrayWriterTypeToken =
       TypeRef.of(BinaryArrayWriter.class);
   protected static TypeRef<Row> rowTypeToken = TypeRef.of(Row.class);
@@ -120,6 +121,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     this.typeCtx = typeCtx;
   }
 
+  @Override
   public String codecClassName(Class<?> beanClass) {
     return codecClassName(beanClass, "");
   }
@@ -145,6 +147,10 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     return CodeGenerator.getPackage(beanClass) + "." + codecClassName(beanClass, prefix);
   }
 
+  protected TypeRef<? extends BaseBinaryRowWriter> rowWriterType() {
+    return TypeRef.of(BinaryRowWriter.class);
+  }
+
   /**
    * Return an expression for serializing an object of given type to row format representation. The
    * inputObject will be written to position <code>ordinal</code> of row/array using given <code>
@@ -155,6 +161,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       Expression inputObject,
       Expression writer,
       TypeRef<?> typeRef,
+      Field fieldIfKnown,
       Expression arrowField,
       Set<TypeRef<?>> visitedCustomTypes) {
     Class<?> rawType = getRawType(typeRef);
@@ -166,7 +173,13 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       visitedCustomTypes.add(typeRef);
       Expression doSerialize =
           serializeFor(
-              ordinal, newInputObject, writer, rewrittenType, arrowField, visitedCustomTypes);
+              ordinal,
+              newInputObject,
+              writer,
+              rewrittenType,
+              fieldIfKnown,
+              arrowField,
+              visitedCustomTypes);
       return new If(
           new Expression.IsNull(inputObject),
           new Invoke(writer, "setNullAt", ordinal),
@@ -188,6 +201,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
           new Expression.Cast(unwrapped, elemType),
           writer,
           elemType,
+          fieldIfKnown,
           arrowField,
           visitedCustomTypes);
     } else if (TypeUtils.isPrimitive(rawType)) {
@@ -254,24 +268,27 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       // place outer writer operations here, because map key/value arrays need to call
       // serializeForArray,
       // but don't setOffsetAndSize for array.
-      Invoke offset =
+      Invoke originalWriterIndex =
           new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE);
-      Expression serializeArray = serializeForArray(inputObject, writer, typeRef, arrowField);
+      Expression serializeArray =
+          serializeForArray(inputObject, writer, typeRef, fieldIfKnown, arrowField);
       Arithmetic size =
           ExpressionUtils.subtract(
               new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE),
-              offset);
-      Invoke setOffsetAndSize = new Invoke(writer, "setOffsetAndSize", ordinal, offset, size);
+              originalWriterIndex);
+      Invoke setOffsetAndSize =
+          new Invoke(writer, "setOffsetAndSize", ordinal, originalWriterIndex, size);
+      Expression finishArrayWrite = new ListExpression(size, setOffsetAndSize);
       ListExpression expression =
-          new ListExpression(offset, serializeArray, size, setOffsetAndSize);
+          new ListExpression(originalWriterIndex, serializeArray, finishArrayWrite);
       return new If(
           ExpressionUtils.eqNull(inputObject),
           new Invoke(writer, "setNullAt", ordinal),
           expression);
     } else if (TypeUtils.MAP_TYPE.isSupertypeOf(typeRef)) {
-      return serializeForMap(ordinal, writer, inputObject, typeRef, arrowField);
+      return serializeForMap(ordinal, writer, inputObject, typeRef, fieldIfKnown, arrowField);
     } else if (TypeUtils.isBean(rawType, typeCtx)) {
-      return serializeForBean(ordinal, writer, inputObject, typeRef, arrowField);
+      return serializeForBean(ordinal, writer, inputObject, fieldIfKnown, typeRef, arrowField);
     } else if (rawType == BinaryArray.class) {
       Invoke writeExp =
           new Invoke(
@@ -302,20 +319,28 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   }
 
   protected Expression serializeForArray(
-      Expression inputObject, Expression writer, TypeRef<?> typeRef, Expression arrowField) {
+      Expression inputObject,
+      Expression writer,
+      TypeRef<?> typeRef,
+      Field fieldIfKnown,
+      Expression arrowField) {
     Reference arrayWriter = getOrCreateArrayWriter(typeRef, arrowField, writer);
-    return serializeForArrayByWriter(inputObject, arrayWriter, typeRef, arrowField);
+    return serializeForArrayByWriter(inputObject, arrayWriter, typeRef, fieldIfKnown, arrowField);
   }
 
   protected Expression serializeForArrayByWriter(
-      Expression inputObject, Expression arrayWriter, TypeRef<?> typeRef, Expression arrowField) {
+      Expression inputObject,
+      Expression arrayWriter,
+      TypeRef<?> typeRef,
+      Field fieldIfKnown,
+      Expression arrowField) {
     StaticInvoke arrayElementField =
         new StaticInvoke(
             DataTypes.class, "arrayElementField", "elemField", ARROW_FIELD_TYPE, false, arrowField);
     Class<?> rawType = getRawType(typeRef);
     if (rawType.isArray()) {
       FieldValue length = new FieldValue(inputObject, "length", TypeUtils.PRIMITIVE_INT_TYPE);
-      Invoke reset = new Invoke(arrayWriter, "reset", length);
+      Expression reset = new Invoke(arrayWriter, "reset", length);
       if (rawType.getComponentType().isPrimitive()) {
         return new ListExpression(
             reset, new Invoke(arrayWriter, "fromPrimitiveArray", inputObject), arrayWriter);
@@ -330,6 +355,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
                         value,
                         arrayWriter,
                         Objects.requireNonNull(typeRef.getComponentType()),
+                        null,
                         arrayElementField,
                         new HashSet<>()));
         return new ListExpression(reset, forEach, arrayWriter);
@@ -337,7 +363,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     } else if (getRawType(typeRef) == Iterable.class) {
       ListFromIterable listFromIterable = new ListFromIterable(inputObject);
       Invoke size = new Invoke(listFromIterable, "size", TypeUtils.PRIMITIVE_INT_TYPE);
-      Invoke reset = new Invoke(arrayWriter, "reset", size);
+      Expression reset = new Invoke(arrayWriter, "reset", size);
       ForEach forEach =
           new ForEach(
               listFromIterable,
@@ -348,12 +374,13 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
                       value,
                       arrayWriter,
                       TypeUtils.getElementType(typeRef),
+                      null,
                       arrayElementField,
                       new HashSet<>()));
       return new ListExpression(reset, forEach, arrayWriter);
     } else { // collection
       Invoke size = new Invoke(inputObject, "size", TypeUtils.PRIMITIVE_INT_TYPE);
-      Invoke reset = new Invoke(arrayWriter, "reset", size);
+      Expression reset = new Invoke(arrayWriter, "reset", size);
       ForEach forEach =
           new ForEach(
               inputObject,
@@ -364,6 +391,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
                       value,
                       arrayWriter,
                       TypeUtils.getElementType(typeRef),
+                      null,
                       arrayElementField,
                       new HashSet<>()));
       return new ListExpression(reset, forEach, arrayWriter);
@@ -379,9 +407,13 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
           ctx.addField(
               ctx.type(BinaryArrayWriter.class),
               name,
-              new NewInstance(arrayWriterTypeToken, arrayDataType, writer));
-          return new Reference(name, arrayWriterTypeToken, false);
+              new NewInstance(arrayWriterType(), arrayDataType, writer));
+          return new Reference(name, arrayWriterType(), false);
         });
+  }
+
+  protected TypeRef<? extends BinaryArrayWriter> arrayWriterType() {
+    return arrayWriterTypeToken;
   }
 
   /**
@@ -393,6 +425,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       Expression writer,
       Expression inputObject,
       TypeRef<?> typeRef,
+      Field fieldIfKnown,
       Expression arrowField) {
     StaticInvoke keyArrayField =
         new StaticInvoke(
@@ -424,7 +457,8 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
     expressions.add(offset, preserve);
 
     Invoke keySet = new Invoke(inputObject, "keySet", keySetType);
-    Expression keySerializationExpr = serializeForArray(keySet, writer, keySetType, keyArrayField);
+    Expression keySerializationExpr =
+        serializeForArray(keySet, writer, keySetType, fieldIfKnown, keyArrayField);
     expressions.add(keySet, keySerializationExpr);
 
     expressions.add(
@@ -436,7 +470,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
 
     Invoke values = new Invoke(inputObject, "values", valuesType);
     Expression valueSerializationExpr =
-        serializeForArray(values, writer, valuesType, valueArrayField);
+        serializeForArray(values, writer, valuesType, fieldIfKnown, valueArrayField);
     expressions.add(values, valueSerializationExpr);
 
     Arithmetic size =
@@ -457,6 +491,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       Expression ordinal,
       Expression writer,
       Expression inputObject,
+      Field fieldIfKnown,
       TypeRef<?> typeRef,
       Expression structField) {
     Class<?> rawType = getRawType(typeRef);
@@ -469,8 +504,8 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
               DataTypes.class, "schemaFromStructField", "schema", SCHEMA_TYPE, false, structField);
       String rowWriterName =
           ctx.newName(StringUtils.uncapitalize(rawType.getSimpleName() + "RowWriter"));
-      NewInstance newRowWriter = new NewInstance(rowWriterTypeToken, schema, writer);
-      ctx.addField(ctx.type(rowWriterTypeToken), rowWriterName, newRowWriter);
+      NewInstance newRowWriter = new NewInstance(rowWriterType(), schema, writer);
+      ctx.addField(ctx.type(rowWriterType()), rowWriterName, newRowWriter);
 
       Preconditions.checkArgument(!codecClassName(rawType).contains("."));
       String encoderName = ctx.newName(StringUtils.uncapitalize(codecClassName(rawType)));
@@ -483,13 +518,27 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
               ExpressionUtils.newObjectArray(schema, newRowWriter, foryRef));
       ctx.addField(encoderClass, encoderName, newEncoder);
 
-      rowWriter = new Reference(rowWriterName, rowWriterTypeToken);
+      rowWriter = new Reference(rowWriterName, rowWriterType());
       rowWriterMap.put(typeRef, rowWriter);
       beanEncoder = new Reference(encoderName, codecTypeRef);
       beanEncoderMap.put(typeRef, beanEncoder);
     }
     rowWriter = rowWriterMap.get(typeRef);
 
+    Expression expression =
+        serializeForNotNullBean(ordinal, writer, inputObject, fieldIfKnown, rowWriter, beanEncoder);
+
+    return new If(
+        new Expression.IsNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expression);
+  }
+
+  protected Expression serializeForNotNullBean(
+      Expression ordinal,
+      Expression writer,
+      Expression inputObject,
+      Field fieldIfKnown,
+      Reference rowWriter,
+      Reference beanEncoder) {
     Invoke reset = new Invoke(rowWriter, "reset");
     Invoke offset = new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE);
     Invoke toRow = new Invoke(beanEncoder, "toRow", inputObject);
@@ -497,16 +546,12 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
         ExpressionUtils.subtract(
             new Invoke(writer, "writerIndex", "writerIndex", TypeUtils.PRIMITIVE_INT_TYPE), offset);
     Invoke setOffsetAndSize = new Invoke(writer, "setOffsetAndSize", ordinal, offset, size);
-    ListExpression expression =
-        new ListExpression(
-            offset,
-            reset,
-            toRow, // reset will change writerIndex. must call reset and toRow in pair.
-            size,
-            setOffsetAndSize);
-
-    return new If(
-        new Expression.IsNull(inputObject), new Invoke(writer, "setNullAt", ordinal), expression);
+    return new ListExpression(
+        offset,
+        reset,
+        toRow, // reset will change writerIndex. must call reset and toRow in pair.
+        size,
+        setOffsetAndSize);
   }
 
   /**
