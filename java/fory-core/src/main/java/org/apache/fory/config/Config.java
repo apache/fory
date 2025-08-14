@@ -50,6 +50,8 @@ public class Config implements Serializable {
   private final boolean compressInt;
   private final boolean compressLong;
   private final LongEncoding longEncoding;
+  private final boolean compressIntArray;
+  private final boolean compressLongArray;
   private final boolean requireClassRegistration;
   private final boolean suppressClassRegistrationWarnings;
   private final boolean registerGuavaTypes;
@@ -77,6 +79,8 @@ public class Config implements Serializable {
     compressInt = builder.compressInt;
     longEncoding = builder.longEncoding;
     compressLong = longEncoding != LongEncoding.LE_RAW_BYTES;
+    compressIntArray = builder.compressIntArray;
+    compressLongArray = builder.compressLongArray;
     requireClassRegistration = builder.requireClassRegistration;
     suppressClassRegistrationWarnings = builder.suppressClassRegistrationWarnings;
     registerGuavaTypes = builder.registerGuavaTypes;
@@ -197,6 +201,14 @@ public class Config implements Serializable {
     return longEncoding;
   }
 
+  public boolean compressIntArray() {
+    return compressIntArray;
+  }
+
+  public boolean compressLongArray() {
+    return compressLongArray;
+  }
+
   public int bufferSizeLimitBytes() {
     return bufferSizeLimitBytes;
   }
@@ -298,6 +310,8 @@ public class Config implements Serializable {
         && writeNumUtf16BytesForUtf8Encoding == config.writeNumUtf16BytesForUtf8Encoding
         && compressInt == config.compressInt
         && compressLong == config.compressLong
+        && compressIntArray == config.compressIntArray
+        && compressLongArray == config.compressLongArray
         && bufferSizeLimitBytes == config.bufferSizeLimitBytes
         && requireClassRegistration == config.requireClassRegistration
         && suppressClassRegistrationWarnings == config.suppressClassRegistrationWarnings
@@ -334,6 +348,8 @@ public class Config implements Serializable {
         compressInt,
         compressLong,
         longEncoding,
+        compressIntArray,
+        compressLongArray,
         bufferSizeLimitBytes,
         requireClassRegistration,
         suppressClassRegistrationWarnings,
