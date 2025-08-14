@@ -1132,8 +1132,8 @@ MemoryAllocator customAllocator = new MemoryAllocator() {
       return buffer;
     }
 
-    // Custom growth strategy - add 20% extra capacity
-    int newSize = (int) (newCapacity * 1.2);
+    // Custom growth strategy - add 100% extra capacity
+    int newSize = (int) (newCapacity * 2);
     byte[] data = new byte[newSize];
     buffer.copyToUnsafe(0, data, Platform.BYTE_ARRAY_OFFSET, buffer.size());
     buffer.initHeapBuffer(data, 0, data.length);
