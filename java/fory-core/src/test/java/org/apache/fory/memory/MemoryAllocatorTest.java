@@ -52,9 +52,9 @@ public class MemoryAllocatorTest {
     assertEquals(buffer.size(), 100);
     assertFalse(buffer.isOffHeap());
 
-    // Test growth below BUFFER_GROW_STEP_THRESHOLD (should multiply by 4)
+    // Test growth below BUFFER_GROW_STEP_THRESHOLD (should multiply by 2)
     defaultAllocator.grow(buffer, 200);
-    assertEquals(buffer.size(), 200 << 2);
+    assertEquals(buffer.size(), 200 << 1);
 
     // Test growth above BUFFER_GROW_STEP_THRESHOLD
     buffer = defaultAllocator.allocate(100);

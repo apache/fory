@@ -1153,7 +1153,7 @@ byte[] bytes = fory.serialize(someObject); // Uses custom allocator
 
 The default allocator uses the following growth strategy:
 
-- For buffers smaller than `BUFFER_GROW_STEP_THRESHOLD` (100MB): multiply capacity by 4
+- For buffers smaller than `BUFFER_GROW_STEP_THRESHOLD` (100MB): multiply capacity by 2
 - For larger buffers: multiply capacity by 1.5 (capped at `Integer.MAX_VALUE - 8`)
 
 This provides a balance between avoiding frequent reallocations and preventing excessive memory usage.

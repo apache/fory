@@ -2619,7 +2619,7 @@ public final class MemoryBuffer {
 
       int newSize =
           newCapacity < BUFFER_GROW_STEP_THRESHOLD
-              ? newCapacity << 2
+              ? newCapacity << 1
               : (int) Math.min(newCapacity * 1.5d, Integer.MAX_VALUE - 8);
 
       byte[] data = new byte[newSize];
