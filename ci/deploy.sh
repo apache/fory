@@ -87,7 +87,7 @@ build_pyfory() {
     # and rename the wheel with the manylinux tag.
     PYARROW_LIB_DIR=$(python -c 'import pyarrow; print(":".join(pyarrow.get_library_dirs()))')
     export LD_LIBRARY_PATH="$PYARROW_LIB_DIR:$LD_LIBRARY_PATH"
-    auditwheel repair ../dist/pyfory-*-linux_*.whl --plat "$PLAT" -w ../dist/
+    auditwheel repair ../dist/pyfory-*-linux_*.whl --plat "$PLAT" --exclude '*arrow*' --exclude '*parquet*' --exclude '*numpy*' -w ../dist/
     rm ../dist/pyfory-*-linux_*.whl
   elif [[ "$OSTYPE" == "darwin"* ]]; then
     echo "Skip macos wheel repair"
