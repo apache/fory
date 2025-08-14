@@ -472,15 +472,19 @@ public class ArraySerializers {
         int size = buf.remaining();
         int numElements = size / elemSize;
         int[] values = new int[numElements];
-        buf.copyToUnsafe(0, values, offset, size);
-        return values;
-      } else {
-        int size = buffer.readVarUint32Small7();
-        int numElements = size / elemSize;
-        int[] values = new int[numElements];
-        buffer.readToUnsafe(values, offset, size);
+        if (size > 0) {
+          buf.copyToUnsafe(0, values, offset, size);
+        }
         return values;
       }
+
+      int size = buffer.readVarUint32Small7();
+      int numElements = size / elemSize;
+      int[] values = new int[numElements];
+      if (size > 0) {
+        buffer.readToUnsafe(values, offset, size);
+      }
+      return values;
     }
   }
 
@@ -513,15 +517,19 @@ public class ArraySerializers {
         int size = buf.remaining();
         int numElements = size / elemSize;
         long[] values = new long[numElements];
-        buf.copyToUnsafe(0, values, offset, size);
-        return values;
-      } else {
-        int size = buffer.readVarUint32Small7();
-        int numElements = size / elemSize;
-        long[] values = new long[numElements];
-        buffer.readToUnsafe(values, offset, size);
+        if (size > 0) {
+          buf.copyToUnsafe(0, values, offset, size);
+        }
         return values;
       }
+
+      int size = buffer.readVarUint32Small7();
+      int numElements = size / elemSize;
+      long[] values = new long[numElements];
+      if (size > 0) {
+        buffer.readToUnsafe(values, offset, size);
+      }
+      return values;
     }
   }
 

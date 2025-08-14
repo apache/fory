@@ -349,6 +349,7 @@ public class ClassResolver implements TypeResolver {
     PrimitiveSerializers.registerDefaultSerializers(fory);
     Serializers.registerDefaultSerializers(fory);
     ArraySerializers.registerDefaultSerializers(fory);
+    registerCompressedSerializersIfEnabled();
     TimeSerializers.registerDefaultSerializers(fory);
     OptionalSerializers.registerDefaultSerializers(fory);
     CollectionSerializers.registerDefaultSerializers(fory);
@@ -2310,5 +2311,35 @@ public class ClassResolver implements TypeResolver {
       throw new RuntimeException(String.format("Class %s is not registered", cls));
     }
     return null;
+  }
+
+  /**
+   * Register compressed array serializers if compression flags are enabled and the
+   * fory-array-compression module is available on the classpath.
+   */
+  private void registerCompressedSerializersIfEnabled() {
+    boolean compressInt = fory.getConfig().compressIntArray();
+    boolean compressLong = fory.getConfig().compressLongArray();
+
+    if (compressInt || compressLong) {
+      try {
+        // Try to load the compressed array serializers class and call its register method
+        Class<?> compressedSerializersClass =
+            Class.forName("org.apache.fory.serializer.CompressedArraySerializers");
+
+        // Call the static register method
+        java.lang.reflect.Method registerMethod =
+            compressedSerializersClass.getDeclaredMethod("registerIfEnabled", Fory.class);
+        registerMethod.invoke(null, fory);
+
+      } catch (ClassNotFoundException e) {
+        // fory-array-compression module not on classpath, ignore
+        LOG.info(
+            "Add fory-array-compression module to classpath to enable compressed array serializers");
+      } catch (Exception e) {
+        // Log but don't fail - just use default serializers
+        LOG.warn("Failed to register compressed array serializers", e);
+      }
+    }
   }
 }
