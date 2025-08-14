@@ -90,21 +90,9 @@ build_pyfory() {
     auditwheel repair ../dist/pyfory-*-linux_*.whl --plat "$PLAT" -w ../dist/
     rm ../dist/pyfory-*-linux_*.whl
   elif [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS: use delocate to bundle dependencies and fix wheel tags
-    pip install delocate
-    mkdir -p ../dist_repaired
-    delocate-wheel -w ../dist_repaired/ ../dist/pyfory-*-macosx*.whl
-    rm ../dist/pyfory-*-macosx*.whl
-    mv ../dist_repaired/* ../dist/
-    rmdir ../dist_repaired
+    echo "Skip macos wheel repair"
   elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-    # Windows: use delvewheel to bundle dependencies
-    pip install delvewheel
-    mkdir -p ../dist_repaired
-    delvewheel repair ../dist/pyfory-*-win*.whl -w ../dist_repaired/
-    rm ../dist/pyfory-*-win*.whl
-    mv ../dist_repaired/* ../dist/
-    rmdir ../dist_repaired
+    echo "Skip windows wheel repair"
   fi
   popd
 }
