@@ -1131,7 +1131,7 @@ MemoryAllocator customAllocator = new MemoryAllocator() {
     if (newCapacity <= buffer.size()) {
       return buffer;
     }
-    
+
     // Custom growth strategy - add 20% extra capacity
     int newSize = (int) (newCapacity * 1.2);
     byte[] data = new byte[newSize];
