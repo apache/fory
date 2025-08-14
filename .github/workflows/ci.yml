@@ -275,6 +275,11 @@ jobs:
       - name: Install bazel
         shell: bash
         run: python ./ci/run_ci.py cpp --install-deps-only
+      - name: Build pyfory
+        shell: bash
+        run: |
+          ci/deploy.sh build_pyfory
+          ls -l dist
       - name: Run Python CI
         shell: bash
         run: python ./ci/run_ci.py python

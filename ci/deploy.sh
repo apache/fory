@@ -90,7 +90,14 @@ build_pyfory() {
     auditwheel repair ../dist/pyfory-*-linux_*.whl --plat "$PLAT" --exclude '*arrow*' --exclude '*parquet*' --exclude '*numpy*' -w ../dist/
     rm ../dist/pyfory-*-linux_*.whl
   elif [[ "$OSTYPE" == "darwin"* ]]; then
-    echo "Skip macos wheel repair"
+    # macOS: use delocate to bundle dependencies and fix wheel tags
+    pip install delocate
+    mkdir -p ../dist_repaired
+    # ignore arrow/numpy dependencies
+    delocate-wheel -w ../dist_repaired/ ../dist/pyfory-*-macosx*.whl --ignore-missing-dependencies
+    rm ../dist/pyfory-*-macosx*.whl
+    mv ../dist_repaired/* ../dist/
+    rmdir ../dist_repaired
   elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     echo "Skip windows wheel repair"
   fi
