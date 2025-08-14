@@ -1089,6 +1089,84 @@ Note that when implementing custom map or collection serializers:
 
 Besides registering serializes, one can also implement `java.io.Externalizable` for a class to customize serialization logic, such type will be serialized by fory `ExternalizableSerializer`.
 
+### Memory Allocation Customization
+
+Fory provides a `MemoryAllocator` interface that allows you to customize how memory buffers are allocated and grown during serialization operations. This can be useful for performance optimization, memory pooling, or debugging memory usage.
+
+#### MemoryAllocator Interface
+
+The `MemoryAllocator` interface defines two key methods:
+
+```java
+public interface MemoryAllocator {
+  /**
+   * Allocates a new MemoryBuffer with the specified initial capacity.
+   */
+  MemoryBuffer allocate(int initialCapacity);
+
+  /**
+   * Grows an existing buffer to accommodate the new capacity.
+   * The implementation must grow the buffer in-place by modifying
+   * the existing buffer instance.
+   */
+  MemoryBuffer grow(MemoryBuffer buffer, int newCapacity);
+}
+```
+
+#### Using Custom Memory Allocators
+
+You can set a global memory allocator that will be used by all `MemoryBuffer` instances:
+
+```java
+// Create a custom allocator
+MemoryAllocator customAllocator = new MemoryAllocator() {
+  @Override
+  public MemoryBuffer allocate(int initialCapacity) {
+    // Add extra capacity for debugging or pooling
+    return MemoryBuffer.fromByteArray(new byte[initialCapacity + 100]);
+  }
+
+  @Override
+  public MemoryBuffer grow(MemoryBuffer buffer, int newCapacity) {
+    if (newCapacity <= buffer.size()) {
+      return buffer;
+    }
+    
+    // Custom growth strategy - add 20% extra capacity
+    int newSize = (int) (newCapacity * 1.2);
+    byte[] data = new byte[newSize];
+    buffer.copyToUnsafe(0, data, Platform.BYTE_ARRAY_OFFSET, buffer.size());
+    buffer.initHeapBuffer(data, 0, data.length);
+    return buffer;
+  }
+};
+
+// Set the custom allocator globally
+MemoryBuffer.setGlobalAllocator(customAllocator);
+
+// All subsequent MemoryBuffer allocations will use your custom allocator
+Fory fory = Fory.builder().withLanguage(Language.JAVA).build();
+byte[] bytes = fory.serialize(someObject); // Uses custom allocator
+```
+
+#### Default Memory Allocator Behavior
+
+The default allocator uses the following growth strategy:
+
+- For buffers smaller than `BUFFER_GROW_STEP_THRESHOLD` (100MB): multiply capacity by 4
+- For larger buffers: multiply capacity by 1.5 (capped at `Integer.MAX_VALUE - 8`)
+
+This provides a balance between avoiding frequent reallocations and preventing excessive memory usage.
+
+#### Use Cases
+
+Custom memory allocators are useful for:
+
+- **Memory Pooling**: Reuse allocated buffers to reduce GC pressure
+- **Performance Tuning**: Use different growth strategies based on your workload
+- **Debugging**: Add logging or tracking to monitor memory usage
+- **Off-heap Memory**: Integrate with off-heap memory management systems
+
 ### Security & Class Registration
 
 `ForyBuilder#requireClassRegistration` can be used to disable class registration, this will allow to deserialize objects
