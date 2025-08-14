@@ -69,7 +69,11 @@ jobs:
              DOCKER_IMAGE="${{ env.manylinux_aarch64_image }}"
              PLAT="manylinux_2_28_aarch64"
            fi
-           docker run --rm -e PLAT=$PLAT \
+           PY_VERSION=${{ matrix.python-version }}
+           echo "PY_VERSION: $PY_VERSION"
+           PY_VERSION=${PY_VERSION//./}
+           echo "PY_VERSION without dots: $PY_VERSION"
+           docker run --rm -e PY_VERSION="$PY_VERSION" -e PLAT="$PLAT" \
              -v ${{ github.workspace }}:/work \
              -w /work "$DOCKER_IMAGE" \
              bash -c "
@@ -77,6 +81,18 @@ jobs:
                # Install build dependencies inside the container
                yum install -y git sudo wget
                git config --global --add safe.directory /work
+
+               ls -alh /opt/python
+               
+               echo \"PY_VERSION: \$PY_VERSION\"
+               ls /opt/python/cp\${PY_VERSION}-cp\${PY_VERSION}
+               ls /opt/python/cp\${PY_VERSION}-cp\${PY_VERSION}/bin
+
+               export PATH=/opt/python/cp\${PY_VERSION}-cp\${PY_VERSION}/bin:\$PATH
+               echo \"PATH: \$PATH\"
+
+               echo \"Using Python from: \$(which python)\"
+               echo \"Python version: \$(python -V)\"
 
                # Install Bazel inside the container
                bash ci/run_ci.sh install_bazel
