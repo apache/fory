@@ -276,6 +276,7 @@ jobs:
         shell: bash
         run: python ./ci/run_ci.py cpp --install-deps-only
       - name: Build pyfory
+        if: startsWith(matrix.os, 'macos')
         shell: bash
         run: |
           ci/deploy.sh build_pyfory

@@ -78,26 +78,17 @@ jobs:
              -w /work "$DOCKER_IMAGE" \
              bash -c "
                set -e
-               # Install build dependencies inside the container
                yum install -y git sudo wget
                git config --global --add safe.directory /work
-
                ls -alh /opt/python
-               
                echo \"PY_VERSION: \$PY_VERSION\"
                ls /opt/python/cp\${PY_VERSION}-cp\${PY_VERSION}
                ls /opt/python/cp\${PY_VERSION}-cp\${PY_VERSION}/bin
-
                export PATH=/opt/python/cp\${PY_VERSION}-cp\${PY_VERSION}/bin:\$PATH
                echo \"PATH: \$PATH\"
-
                echo \"Using Python from: \$(which python)\"
                echo \"Python version: \$(python -V)\"
-
-               # Install Bazel inside the container
                bash ci/run_ci.sh install_bazel
-
-               # Build the wheel inside the container
                bash ci/deploy.sh build_pyfory
              "
 

@@ -72,15 +72,8 @@ build_pyfory() {
   # Fix strange installed deps not found
   pip install setuptools -U
 
-  # Detect host architecture and only pass x86_64 config when appropriate
-  ARCH=$(uname -m)
-  if [[ "$ARCH" == "x86_64" || "$ARCH" == "amd64" ]]; then
-    bazel build --config=x86_64 //:cp_fory_so
-  else
-    bazel build //:cp_fory_so
-  fi
-
   python setup.py bdist_wheel --dist-dir=../dist
+  ls -l ../dist
 
   if [ -n "$PLAT" ]; then
     # In manylinux container, repair the wheel to embed shared libraries
@@ -90,17 +83,26 @@ build_pyfory() {
     auditwheel repair ../dist/pyfory-*-linux_*.whl --plat "$PLAT" --exclude '*arrow*' --exclude '*parquet*' --exclude '*numpy*' -w ../dist/
     rm ../dist/pyfory-*-linux_*.whl
   elif [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS: use delocate to bundle dependencies and fix wheel tags
-    pip install delocate
-    mkdir -p ../dist_repaired
-    # ignore arrow/numpy dependencies
-    delocate-wheel -w ../dist_repaired/ ../dist/pyfory-*-macosx*.whl --ignore-missing-dependencies
-    rm ../dist/pyfory-*-macosx*.whl
-    mv ../dist_repaired/* ../dist/
-    rmdir ../dist_repaired
+    # Check macOS version
+    MACOS_VERSION=$(sw_vers -productVersion | cut -d. -f1-2)
+    if [[ "$MACOS_VERSION" == "13"* ]]; then
+      # Check if wheel ends with x86_64.whl
+      for wheel in ../dist/pyfory-*-macosx*.whl; do
+        if [[ "$wheel" == *"x86_64.whl" ]]; then
+          echo "Fixing wheel tags for x86_64 wheel: $wheel"
+          wheel tags --platform-tag macosx_12_0_x86_64 "$wheel"
+        else
+          echo "Skipping wheel tags for non-x86_64 wheel: $wheel"
+        fi
+      done
+    else
+      # Other macOS versions: skip wheel repair
+      echo "Skipping wheel repair for macOS $MACOS_VERSION"
+    fi
   elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     echo "Skip windows wheel repair"
   fi
+  ls -l ../dist
   popd
 }
 
