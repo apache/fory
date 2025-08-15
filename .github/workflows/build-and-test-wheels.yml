@@ -19,6 +19,8 @@ name: Build and Test Wheels
 
 on:
   push:
+    tags:
+      - "v*"
     branches:
       - main
     paths:
@@ -44,9 +46,19 @@ on:
         type: boolean
         default: false
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   build_and_test:
     name: Build and Test on ${{ matrix.os }} with Python ${{ matrix.python-version }}
+    if: |
+      github.event_name == 'workflow_call' ||
+      (matrix.os == 'macos-latest' && matrix.python-version == '3.13') ||
+      (matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13') ||
+      (matrix.os == 'windows-latest' && matrix.python-version == '3.13')
+
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -54,61 +66,64 @@ jobs:
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
 
     steps:
-    - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-    - name: Install bazel
-      if: "runner.os != 'Windows'"
-      run: ./ci/run_ci.sh install_bazel
+      - name: Install bazel
+        if: "runner.os != 'Windows'"
+        run: ./ci/run_ci.sh install_bazel
 
-    - name: Install bazel
-      if: "runner.os == 'Windows'"
-      run: ./ci/run_ci.sh install_bazel_windows
+      - name: Install bazel
+        if: "runner.os == 'Windows'"
+        run: ./ci/run_ci.sh install_bazel_windows
 
-    - name: Update version in setup.py
-      if: "inputs.bump-version"
-      shell: bash
-      run: ci/deploy.sh bump_py_version
+      - name: Update version in setup.py
+        if: "inputs.bump-version"
+        shell: bash
+        run: ./ci/deploy.sh bump_py_version
 
-    - name: Build a binary wheel (Linux, manylinux)
-      if: "runner.os == 'Linux'"
-      env:
-        manylinux_x86_64_image: ${{ env.manylinux_x86_64_image }}
-        manylinux_aarch64_image: ${{ env.manylinux_aarch64_image }}
-        GITHUB_WORKSPACE: ${{ github.workspace }}
-      run: |
-        ./ci/build_manylinux_wheel.sh --os "${{ matrix.os }}" \
-          --arch "${{ runner.arch }}" \
-          --python "${{ matrix.python-version }}" \
-          --workspace "${GITHUB_WORKSPACE}"
+      - name: Build a binary wheel (Linux, manylinux)
+        if: "runner.os == 'Linux'"
+        env:
+          manylinux_x86_64_image: ${{ env.manylinux_x86_64_image }}
+          manylinux_aarch64_image: ${{ env.manylinux_aarch64_image }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: |
+          ./ci/build_manylinux_wheel.sh --os "${{ matrix.os }}" \
+            --arch "${{ runner.arch }}" \
+            --python "${{ matrix.python-version }}" \
+            --workspace "${GITHUB_WORKSPACE}"
 
-    - name: Build a binary wheel (native)
-      if: "runner.os != 'Linux'"
-      shell: bash
-      run: |
-         # The python path is not setup for git bash shell in windows
-         if [ "${{ runner.os }}" == "Windows" ]; then
-             export PATH="$pythonLocation:$pythonLocation/Scripts:$PATH"
-         fi
-         ci/deploy.sh build_pyfory
+      - name: Build a binary wheel (native)
+        if: "runner.os != 'Linux'"
+        shell: bash
+        run: |
+           # The python path is not setup for git bash shell in windows
+           if [ "${{ runner.os }}" == "Windows" ]; then
+               export PATH="$pythonLocation:$pythonLocation/Scripts:$PATH"
+           fi
+           ./ci/deploy.sh build_pyfory
 
-    - name: Install and verify wheel
-      shell: bash
-      run: |
-        # The python path is not setup for git bash shell in windows
-        if [ "${{ runner.os }}" == "Windows" ]; then
-            export PATH="$pythonLocation:$pythonLocation/Scripts:$PATH"
-        fi
-        python -m pip install --upgrade pip
-        pip install dist/*.whl
-        python -c "import pyfory; print(pyfory.__version__)"
+      - name: List all .whl files from repo root
+        run: find . -maxdepth 4 -type f -name '*.whl' -print || true
 
-    - name: Upload Wheel Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: pyfory-wheels-${{ matrix.os }}-${{ matrix.python-version }}
-        path: dist/*.whl
+      - name: Install and verify wheel
+        shell: bash
+        run: |
+          # The python path is not setup for git bash shell in windows
+          if [ "${{ runner.os }}" == "Windows" ]; then
+              export PATH="$pythonLocation:$pythonLocation/Scripts:$PATH"
+          fi
+          python -m pip install --upgrade pip
+          pip install dist/*.whl
+          python -c "import pyfory; print(pyfory.__version__)"
+
+      - name: Upload Wheel Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyfory-wheels-${{ matrix.os }}-${{ matrix.python-version }}
+          path: dist/*.whl
