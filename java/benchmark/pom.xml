@@ -185,6 +185,53 @@
                 </dependency>
             </dependencies>
         </profile>
+        <!-- Profile for Java 16+ with Vector API support -->
+        <profile>
+            <id>java16-plus</id>
+            <activation>
+                <jdk>[16,)</jdk>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <configuration>
+                            <source>16</source>
+                            <target>16</target>
+                            <compilerArgs>
+                                <arg>--add-modules</arg>
+                                <arg>jdk.incubator.vector</arg>
+                            </compilerArgs>
+                            <annotationProcessorPaths>
+                                <path>
+                                    <groupId>org.openjdk.jmh</groupId>
+                                    <artifactId>jmh-generator-annprocess</artifactId>
+                                    <version>${jmh.version}</version>
+                                </path>
+                            </annotationProcessorPaths>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <configuration>
+                            <mainClass>org.openjdk.jmh.Main</mainClass>
+                            <options>
+                                <option>--add-modules</option>
+                                <option>jdk.incubator.vector</option>
+                            </options>
+                            <systemProperties>
+                                <systemProperty>
+                                    <key>java.class.path</key>
+                                    <value>${project.build.outputDirectory}${path.separator}${depClasspath}</value>
+                                </systemProperty>
+                            </systemProperties>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 
     <build>
