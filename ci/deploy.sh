@@ -72,7 +72,13 @@ build_pyfory() {
   # Fix strange installed deps not found
   pip install setuptools -U
 
-  python setup.py bdist_wheel --dist-dir=../dist
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    export MACOSX_DEPLOYMENT_TARGET=12.0
+    python setup.py bdist_wheel --plat-name macosx_12_0_universal2 --dist-dir=../dist
+  else
+    python setup.py bdist_wheel --dist-dir=../dist
+  fi
+
   ls -l ../dist
 
   if [ -n "$PLAT" ]; then
@@ -83,22 +89,7 @@ build_pyfory() {
     auditwheel repair ../dist/pyfory-*-linux_*.whl --plat "$PLAT" --exclude '*arrow*' --exclude '*parquet*' --exclude '*numpy*' -w ../dist/
     rm ../dist/pyfory-*-linux_*.whl
   elif [[ "$OSTYPE" == "darwin"* ]]; then
-    # Check macOS version
-    MACOS_VERSION=$(sw_vers -productVersion | cut -d. -f1-2)
-    if [[ "$MACOS_VERSION" == "13"* ]]; then
-      # Check if wheel ends with x86_64.whl
-      for wheel in ../dist/pyfory-*-macosx*.whl; do
-        if [[ "$wheel" == *"x86_64.whl" ]]; then
-          echo "Fixing wheel tags for x86_64 wheel: $wheel"
-          wheel tags --platform-tag macosx_12_0_x86_64 "$wheel"
-        else
-          echo "Skipping wheel tags for non-x86_64 wheel: $wheel"
-        fi
-      done
-    else
-      # Other macOS versions: skip wheel repair
-      echo "Skipping wheel repair for macOS $MACOS_VERSION"
-    fi
+    echo "Skip macos wheel repair"
   elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     echo "Skip windows wheel repair"
   fi
