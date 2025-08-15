@@ -26,112 +26,48 @@ permissions:
   contents: read
 
 jobs:
-  build-wheels:
-    name: Build Wheels
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        python-version: [3.8, 3.9, "3.10", 3.11, 3.12, 3.13]
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14, windows-2022]  # macos-13: x86, macos-14: arm64
-    env:
-      manylinux_x86_64_image: quay.io/pypa/manylinux_2_28_x86_64
-      manylinux_aarch64_image: quay.io/pypa/manylinux_2_28_aarch64
-
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install bazel (for macOS and Windows)
-        if: "!startsWith(matrix.os, 'ubuntu')"
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" == "Windows" ]; then
-              ./ci/run_ci.sh install_bazel_windows
-          else
-              ./ci/run_ci.sh install_bazel
-          fi
-      - name: Update version in setup.py
-        shell: bash
-        run: ci/deploy.sh bump_py_version
-       # --------- Use manylinux for Linux wheels ---------
-      - name: Build a binary wheel (Linux, manylinux)
-        if: startsWith(matrix.os, 'ubuntu')
-        shell: bash
-        run: |
-           DOCKER_IMAGE=""
-           PLAT=""
-           if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
-             DOCKER_IMAGE="${{ env.manylinux_x86_64_image }}"
-             PLAT="manylinux_2_28_x86_64"
-           elif [[ "${{ matrix.os }}" == "ubuntu-24.04-arm" ]]; then
-             DOCKER_IMAGE="${{ env.manylinux_aarch64_image }}"
-             PLAT="manylinux_2_28_aarch64"
-           fi
-           PY_VERSION=${{ matrix.python-version }}
-           echo "PY_VERSION: $PY_VERSION"
-           PY_VERSION=${PY_VERSION//./}
-           echo "PY_VERSION without dots: $PY_VERSION"
-           docker run --rm -e PY_VERSION="$PY_VERSION" -e PLAT="$PLAT" \
-             -v ${{ github.workspace }}:/work \
-             -w /work "$DOCKER_IMAGE" \
-             bash -c "
-               set -e
-               yum install -y git sudo wget
-               git config --global --add safe.directory /work
-               ls -alh /opt/python
-               echo \"PY_VERSION: \$PY_VERSION\"
-               ls /opt/python/cp\${PY_VERSION}-cp\${PY_VERSION}
-               ls /opt/python/cp\${PY_VERSION}-cp\${PY_VERSION}/bin
-               export PATH=/opt/python/cp\${PY_VERSION}-cp\${PY_VERSION}/bin:\$PATH
-               echo \"PATH: \$PATH\"
-               echo \"Using Python from: \$(which python)\"
-               echo \"Python version: \$(python -V)\"
-               bash ci/run_ci.sh install_bazel
-               bash ci/deploy.sh build_pyfory
-             "
-
-       # --------- Native (not in container) for macOS and Windows ---------
-      - name: Build a binary wheel (native)
-        if: "!startsWith(matrix.os, 'ubuntu')"
-        shell: bash
-        run: |
-           ci/deploy.sh build_pyfory
-      - name: Upload Wheel Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: pyfory-wheels-${{ matrix.os }}-${{ matrix.python-version }}
-          path: dist/*.whl
+  test_and_build:
+    uses: ./.github/workflows/build-and-test-wheels.yml
+    with:
+      bump-version: true
+    # We need to pass the secrets to the reusable workflow.
+    # The reusable workflow doesn't use any secrets, but if it did, we would need this.
+    # secrets: inherit
 
   publish-wheels:
     name: Publish Wheels
     runs-on: ubuntu-latest
-    needs: build-wheels
+    needs: test_and_build
     permissions:
       contents: read
       id-token: write
     steps:
-      - name: Download Wheel Artifacts
+      - name: Download all wheel artifacts
         uses: actions/download-artifact@v4
         with:
-          path: downloaded_wheels/
-          merge-multiple: true
-      - name: Display structure of downloaded files
-        run: ls -R downloaded_wheels
+          path: downloaded_wheels
+
+      - name: Move wheels to a single directory
+        shell: bash
+        run: |
+          mkdir dist
+          find downloaded_wheels -type f -name "*.whl" -exec mv {} dist/ \;
+          ls -R dist
+
       - name: Publish to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        if: ${{ startsWith(github.ref, 'refs/tags/') && contains(github.ref, '-') }}
+        if: startsWith(github.ref, 'refs/tags/') && contains(github.ref, '-')
         with:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true
           verbose: true
           verify-metadata: false
-          packages-dir: downloaded_wheels
+          packages-dir: dist
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-        if: ${{ startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-') }}
+        if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref, '-')
         with:
           skip-existing: true
           verify-metadata: false
-          packages-dir: downloaded_wheels
+          packages-dir: dist

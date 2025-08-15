@@ -1,0 +1,114 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Build and Test Wheels
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'python/**'
+      - 'cpp/**'
+      - 'bazel/**'
+      - 'BUILD'
+      - 'WORKSPACE'
+      - '.github/workflows/build-and-test-wheels.yml'
+  pull_request:
+    paths:
+      - 'python/**'
+      - 'cpp/**'
+      - 'bazel/**'
+      - 'BUILD'
+      - 'WORKSPACE'
+      - '.github/workflows/build-and-test-wheels.yml'
+  workflow_call:
+    inputs:
+      bump-version:
+        description: 'Whether to bump the version in setup.py'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build_and_test:
+    name: Build and Test on ${{ matrix.os }} with Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install bazel
+      if: "runner.os != 'Windows'"
+      run: ./ci/run_ci.sh install_bazel
+
+    - name: Install bazel
+      if: "runner.os == 'Windows'"
+      run: ./ci/run_ci.sh install_bazel_windows
+
+    - name: Update version in setup.py
+      if: "inputs.bump-version"
+      shell: bash
+      run: ci/deploy.sh bump_py_version
+
+    - name: Build a binary wheel (Linux, manylinux)
+      if: "runner.os == 'Linux'"
+      env:
+        manylinux_x86_64_image: ${{ env.manylinux_x86_64_image }}
+        manylinux_aarch64_image: ${{ env.manylinux_aarch64_image }}
+        GITHUB_WORKSPACE: ${{ github.workspace }}
+      run: |
+        ./ci/build_manylinux_wheel.sh --os "${{ matrix.os }}" \
+          --arch "${{ runner.arch }}" \
+          --python "${{ matrix.python-version }}" \
+          --workspace "${GITHUB_WORKSPACE}"
+
+    - name: Build a binary wheel (native)
+      if: "runner.os != 'Linux'"
+      shell: bash
+      run: |
+         # The python path is not setup for git bash shell in windows
+         if [ "${{ runner.os }}" == "Windows" ]; then
+             export PATH="$pythonLocation:$pythonLocation/Scripts:$PATH"
+         fi
+         ci/deploy.sh build_pyfory
+
+    - name: Install and verify wheel
+      shell: bash
+      run: |
+        # The python path is not setup for git bash shell in windows
+        if [ "${{ runner.os }}" == "Windows" ]; then
+            export PATH="$pythonLocation:$pythonLocation/Scripts:$PATH"
+        fi
+        python -m pip install --upgrade pip
+        pip install dist/*.whl
+        python -c "import pyfory; print(pyfory.__version__)"
+
+    - name: Upload Wheel Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: pyfory-wheels-${{ matrix.os }}-${{ matrix.python-version }}
+        path: dist/*.whl
