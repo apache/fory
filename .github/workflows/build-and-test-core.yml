@@ -56,6 +56,7 @@ jobs:
       - name: Install bazel
         if: "runner.os == 'Windows'"
         run: ./ci/run_ci.sh install_bazel_windows
+        shell: bash
 
       - name: Update version in setup.py
         if: "inputs.bump-version"
@@ -76,6 +77,7 @@ jobs:
       - name: Build a binary wheel (native)
         if: "runner.os != 'Linux'"
         run: ./ci/deploy.sh build_pyfory
+        shell: bash
 
       - name: List all .whl files from repo root
         run: find . -maxdepth 4 -type f -name '*.whl' -print
