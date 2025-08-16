@@ -79,8 +79,8 @@ jobs:
         run: ./ci/deploy.sh build_pyfory
         shell: bash
 
-      - name: List all .whl files from repo root
-        run: find . -maxdepth 4 -type f -name '*.whl' -print
+#      - name: List all .whl files from repo root
+#        run: find . -maxdepth 4 -type f -name '*.whl' -print
 
       - name: Install and verify wheel
         shell: bash
