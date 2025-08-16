@@ -85,16 +85,12 @@ jobs:
       - name: Install and verify wheel
         shell: bash
         run: |
-          # The python path is not setup for git bash shell in windows
-          if [ "${{ runner.os }}" == "Windows" ]; then
-              export PATH="$pythonLocation:$pythonLocation/Scripts:$PATH"
-          fi
           python -m pip install --upgrade pip
           pip install dist/*.whl
           python -c "import pyfory; print(pyfory.__version__)"
 
-      - name: Upload Wheel Artifact
+      - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: pyfory-wheels-${{ matrix.os }}-${{ inputs.python-version }}
+          name: pyfory-wheels-${{ inputs.os }}-${{ inputs.python-version }}${{ inputs.bump-version && '-tagged' || github.sha }}
           path: dist/*.whl
