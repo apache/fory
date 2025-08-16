@@ -22,7 +22,7 @@ on:
 
 jobs:
   call-build:
-    uses: .github/workflows/build-and-test-core.yml@main
+    uses: ./.github/workflows/build-and-test-core.yml
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14, macos-latest, windows-latest]
