@@ -37,7 +37,7 @@ on:
       - '.github/workflows/build-and-test-*.yml'
 jobs:
   call-build:
-    uses: .github/workflows/build-and-test-core.yml
+    uses: .github/workflows/build-and-test-core.yml@main
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
