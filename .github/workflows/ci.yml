@@ -48,7 +48,7 @@ jobs:
       matrix:
         java-version: ["8", "11", "17", "21", "24"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up JDK ${{ matrix.java-version }}
         uses: actions/setup-java@v4
         with:
@@ -81,7 +81,7 @@ jobs:
         # String in openj9 1.8 share byte array by offset, fory doesn't allow it.
         java-version: ["21"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up JDK ${{ matrix.java-version }}
         uses: actions/setup-java@v4
         with:
@@ -107,7 +107,7 @@ jobs:
       matrix:
         java-version: ["21"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up JDK ${{ matrix.java-version }}
         uses: actions/setup-java@v4
         with:
@@ -128,7 +128,7 @@ jobs:
       matrix:
         java-version: ["17", "21", "23"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: graalvm/setup-graalvm@v1
         with:
           java-version: ${{ matrix.java-version }}
@@ -152,7 +152,7 @@ jobs:
       matrix:
         java-version: ["8", "11", "17", "21"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up JDK ${{ matrix.java-version }}
         uses: actions/setup-java@v4
         with:
@@ -171,7 +171,7 @@ jobs:
     name: Scala CI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up JDK8
         uses: actions/setup-java@v4
         with:
@@ -189,7 +189,7 @@ jobs:
     name: Integration Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up JDK8
         uses: actions/setup-java@v4
         with:
@@ -210,7 +210,7 @@ jobs:
         os: [ubuntu-latest, macos-13, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Use Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
@@ -237,7 +237,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -252,7 +252,7 @@ jobs:
         os: [ubuntu-latest, macos-13, macos-14, windows-2022]  # macos-13: x86, macos-14: arm64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -267,7 +267,7 @@ jobs:
         python-version: [3.8, 3.12, 3.13.3]
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14, windows-2022]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
@@ -286,7 +286,7 @@ jobs:
       matrix:
         go-version: ["1.13", "1.18"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Setup Go ${{ matrix.go-version }}
         uses: actions/setup-go@v4
         with:
@@ -308,7 +308,7 @@ jobs:
     name: Code Style Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up JDK ${{ matrix.java-version }}
         uses: actions/setup-java@v4
         with:

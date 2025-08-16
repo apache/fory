@@ -15,32 +15,19 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: Publish Fory Java Snapshot
-
+name: Build and Test - Release
 on:
   push:
-    branches:
-      - main
-      - release-java-snapshot
+    tags: ["v*"]
 
 jobs:
-  publish-java:
-    runs-on: ubuntu-latest
-    if: github.repository == 'apache/fory'
-    steps:
-      - uses: actions/checkout@v5
-      - name: Set up Maven Central Repository
-        uses: actions/setup-java@v4
-        with:
-          java-version: "11"
-          distribution: "adopt"
-          architecture: x64
-          cache: maven
-          server-id: apache.snapshots.https
-          server-username: NEXUS_USERNAME
-          server-password: NEXUS_PASSWORD
-      - name: Publish Fory Java Snapshot
-        run: python ./ci/run_ci.py java --version 11 --release
-        env:
-          NEXUS_USERNAME: ${{ secrets.NEXUS_USER }}
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PW }}
+  build-wheels:
+    uses: ./.github/workflows/build-and-test-core.yml
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+    with:
+      os: ${{ matrix.os }}
+      python-version: ${{ matrix.python-version }}
+      bump-version: true
