@@ -118,28 +118,27 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 3
 fi
 
-# Build docker run command
-# Use single-quoted bash -lc so that variables like $PY_VERSION are expanded inside the container.
+SCRIPT='set -e
+yum install -y git sudo wget || true
+git config --global --add safe.directory /work
+ls -alh /opt/python || true
+echo "PY_VERSION: $PY_VERSION"
+ls /opt/python/cp${PY_VERSION}-cp${PY_VERSION} || true
+ls /opt/python/cp${PY_VERSION}-cp${PY_VERSION}/bin || true
+export PATH=/opt/python/cp${PY_VERSION}-cp${PY_VERSION}/bin:$PATH
+echo "PATH: $PATH"
+echo "Using Python from: $(which python || echo not-found)"
+echo "Python version: $(python -V 2>&1 || true)"
+bash ci/run_ci.sh install_bazel
+bash ci/deploy.sh build_pyfory'
+
 DOCKER_CMD=(docker run --rm
   -e "PY_VERSION=$PY_VERSION_NO_DOTS"
   -e "PLAT=$PLAT"
   -v "$WORKSPACE":/work
   -w /work
   "$DOCKER_IMAGE"
-  bash -lc
-  $'set -e\n'
-  $'yum install -y git sudo wget || true\n'   # keep || true in case yum isn't needed; original used yum
-  $'git config --global --add safe.directory /work\n'
-  $'ls -alh /opt/python || true\n'
-  $'echo "PY_VERSION: $PY_VERSION"\n'
-  $'ls /opt/python/cp${PY_VERSION}-cp${PY_VERSION} || true\n'
-  $'ls /opt/python/cp${PY_VERSION}-cp${PY_VERSION}/bin || true\n'
-  $'export PATH=/opt/python/cp${PY_VERSION}-cp${PY_VERSION}/bin:$PATH\n'
-  $'echo "PATH: $PATH"\n'
-  $'echo "Using Python from: $(which python || echo not-found)"\n'
-  $'echo "Python version: $(python -V 2>&1 || true)"\n'
-  $'bash ci/run_ci.sh install_bazel\n'
-  $'bash ci/deploy.sh build_pyfory\n'
+  bash -lc "$SCRIPT"
 )
 
 # Show the final command (joined) for clarity

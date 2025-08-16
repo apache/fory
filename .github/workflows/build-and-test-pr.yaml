@@ -36,7 +36,7 @@ on:
       - 'WORKSPACE'
       - '.github/workflows/build-and-test-*.yml'
 jobs:
-  call-build:
+  build-wheels:
     uses: ./.github/workflows/build-and-test-core.yml
     strategy:
       matrix:

@@ -38,7 +38,7 @@ permissions:
 
 jobs:
   build_and_test:
-    name: Build and Test on ${{ inputs.os }} with Python ${{ inputs.python-version }}
+    name: Build and Test
     runs-on: ${{ inputs.os }}
 
     steps:
@@ -85,7 +85,7 @@ jobs:
            ./ci/deploy.sh build_pyfory
 
       - name: List all .whl files from repo root
-        run: find . -maxdepth 4 -type f -name '*.whl' -print || true
+        run: find . -maxdepth 4 -type f -name '*.whl' -print
 
       - name: Install and verify wheel
         shell: bash
