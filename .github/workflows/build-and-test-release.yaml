@@ -30,4 +30,4 @@ jobs:
     with:
       os: ${{ matrix.os }}
       python-version: ${{ matrix.python-version }}
-      bump-version: 'true'
+      bump-version: true
