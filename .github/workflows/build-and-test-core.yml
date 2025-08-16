@@ -18,28 +18,14 @@
 name: Build and Test Wheels
 
 on:
-  push:
-    tags:
-      - "v*"
-    branches:
-      - main
-    paths:
-      - 'python/**'
-      - 'cpp/**'
-      - 'bazel/**'
-      - 'BUILD'
-      - 'WORKSPACE'
-      - '.github/workflows/build-and-test-wheels.yml'
-  pull_request:
-    paths:
-      - 'python/**'
-      - 'cpp/**'
-      - 'bazel/**'
-      - 'BUILD'
-      - 'WORKSPACE'
-      - '.github/workflows/build-and-test-wheels.yml'
   workflow_call:
     inputs:
+      os:
+        required: true
+        type: string
+      python-version:
+        required: true
+        type: string
       bump-version:
         description: 'Whether to bump the version in setup.py'
         required: false
@@ -52,26 +38,16 @@ permissions:
 
 jobs:
   build_and_test:
-    name: Build and Test on ${{ matrix.os }} with Python ${{ matrix.python-version }}
-    if: |
-      github.event_name == 'workflow_call' ||
-      (matrix.os == 'macos-latest' && matrix.python-version == '3.13') ||
-      (matrix.os == 'ubuntu-latest' && matrix.python-version == '3.13') ||
-      (matrix.os == 'windows-latest' && matrix.python-version == '3.13')
-
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14, macos-latest, windows-latest]
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+    name: Build and Test on ${{ inputs.os }} with Python ${{ inputs.python-version }}
+    runs-on: ${{ inputs.os }}
 
     steps:
       - uses: actions/checkout@v5
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python ${{ inputs.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ inputs.python-version }}
 
       - name: Install bazel
         if: "runner.os != 'Windows'"
@@ -93,9 +69,9 @@ jobs:
           manylinux_aarch64_image: ${{ env.manylinux_aarch64_image }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
-          ./ci/build_manylinux_wheel.sh --os "${{ matrix.os }}" \
+          ./ci/build_manylinux_wheel.sh --os "${{ runner.os }}" \
             --arch "${{ runner.arch }}" \
-            --python "${{ matrix.python-version }}" \
+            --python "${{ inputs.python-version }}" \
             --workspace "${GITHUB_WORKSPACE}"
 
       - name: Build a binary wheel (native)
@@ -125,5 +101,5 @@ jobs:
       - name: Upload Wheel Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pyfory-wheels-${{ matrix.os }}-${{ matrix.python-version }}
+          name: pyfory-wheels-${{ matrix.os }}-${{ inputs.python-version }}
           path: dist/*.whl

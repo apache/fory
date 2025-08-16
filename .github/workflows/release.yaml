@@ -19,10 +19,8 @@ name: Publish Fory
 
 on:
   workflow_run:
-    workflows:
-      - "Build and Test Wheels"
-    types:
-      - completed
+    workflows: ["Build and Test - Release"]
+    types: [completed]
 
 permissions:
   contents: read
