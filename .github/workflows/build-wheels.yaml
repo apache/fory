@@ -65,7 +65,7 @@ jobs:
       - name: Build manylinux/musllinux wheels
         if: "runner.os == 'Linux'"
         shell: python
-        run: ./ci/build_linux_wheels.py --arch "${{ runner.arch }}"
+        run: python ci/build_linux_wheels.py --arch "${{ runner.arch }}"
 
       - name: Build a binary wheel (native)
         if: "runner.os != 'Linux'"
