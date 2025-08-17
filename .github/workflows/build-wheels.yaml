@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: Build and Test Wheels
+name: Build Wheels
 
 on:
   workflow_call:
@@ -79,9 +79,6 @@ jobs:
         run: ./ci/deploy.sh build_pyfory
         shell: bash
 
-#      - name: List all .whl files from repo root
-#        run: find . -maxdepth 4 -type f -name '*.whl' -print
-
       - name: Install and verify wheel
         shell: bash
         run: |
@@ -90,6 +87,7 @@ jobs:
           python -c "import pyfory; print(pyfory.__version__)"
 
       - name: Upload wheel
+#        if: ${{ inputs.bump-version }}
         uses: actions/upload-artifact@v4
         with:
           name: pyfory-wheels-${{ inputs.os }}-${{ inputs.python-version }}${{ inputs.bump-version && '-tagged' || github.sha }}

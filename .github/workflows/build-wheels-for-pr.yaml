@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: Build and Test - Pull Request
+name: build wheels for pull request
 on:
   push:
     branches:
@@ -26,7 +26,7 @@ on:
       - 'bazel/**'
       - 'BUILD'
       - 'WORKSPACE'
-      - '.github/workflows/build-and-test-*.yml'
+      - '.github/workflows/build-wheels*.yml'
   pull_request:
     paths:
       - 'python/**'
@@ -34,10 +34,10 @@ on:
       - 'bazel/**'
       - 'BUILD'
       - 'WORKSPACE'
-      - '.github/workflows/build-and-test-*.yml'
+      - '.github/workflows/build-wheels*.yml'
 jobs:
   build-wheels:
-    uses: ./.github/workflows/build-and-test-core.yml
+    uses: build-wheels.yaml
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]

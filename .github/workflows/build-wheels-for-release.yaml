@@ -15,14 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: Build and Test - Release
+name: build wheels for release
 on:
   push:
     tags: ["v*"]
 
 jobs:
   build-wheels:
-    uses: ./.github/workflows/build-and-test-core.yml
+    uses: build-wheels.yaml
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14, macos-latest, windows-latest]
