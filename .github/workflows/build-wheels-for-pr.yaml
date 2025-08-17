@@ -26,7 +26,7 @@ on:
       - 'bazel/**'
       - 'BUILD'
       - 'WORKSPACE'
-      - '.github/workflows/build-wheels*.yml'
+      - '.github/workflows/build-wheels*.yaml'
   pull_request:
     paths:
       - 'python/**'
@@ -34,7 +34,7 @@ on:
       - 'bazel/**'
       - 'BUILD'
       - 'WORKSPACE'
-      - '.github/workflows/build-wheels*.yml'
+      - '.github/workflows/build-wheels*.yaml'
 jobs:
   build-wheels:
     uses: ./.github/workflows/build-wheels.yaml
