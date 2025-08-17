@@ -22,7 +22,7 @@ on:
 
 jobs:
   build-wheels:
-    uses: build-wheels.yaml
+    uses: ./.github/workflows/build-wheels.yaml
     strategy:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-13, macos-14, macos-latest, windows-latest]
