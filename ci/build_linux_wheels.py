@@ -44,9 +44,10 @@ else
     PYTHON_VERSIONS="cp313-cp313 cp38-cp38"
 fi
 
+# use the python interpreters preinstalled in manylinux
 for PY in $PYTHON_VERSIONS; do
     export PYTHON_PATH="/opt/python/$PY/bin/python"
-    echo "Testing with $PYTHON_PATH"
+    echo "Using $PYTHON_PATH"
     $PYTHON_PATH -m pip install Cython wheel pytest
     ci/run_ci.sh install_bazel
     ci/deploy.sh build_pyfory
