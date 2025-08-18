@@ -47,10 +47,10 @@ for PY in $PYTHON_VERSIONS; do
     PYTHON_PATH="/opt/python/$PY/bin/python"
     echo "Testing with $PYTHON_PATH"
     $PYTHON_PATH -m pip install Cython wheel pytest
-    $PYTHON_PATH ci/run_ci.sh install_bazel
-    $PYTHON_PATH ci/deploy.sh build_pyfory
-    WHEEL=$(ls -t dist/*.whl | head -1)
-    auditwheel repair "$WHEEL"
+    ci/run_ci.sh install_bazel
+    ci/deploy.sh build_pyfory
+    # WHEEL=$(ls -t dist/*.whl | head -1)
+    # auditwheel repair "$WHEEL"
 done
 '''
 
