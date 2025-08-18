@@ -45,7 +45,7 @@ else
 fi
 
 # use the python interpreters preinstalled in manylinux
-OLD_PATH = $PATH
+OLD_PATH=$PATH
 for PY in $PYTHON_VERSIONS; do
     export PYTHON_PATH="/opt/python/$PY/bin/python"
     export PATH="/opt/python/$PY/bin:$OLD_PATH"
