@@ -1,0 +1,80 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Build Native Wheels
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - 'python/**'
+      - 'cpp/**'
+      - 'bazel/**'
+      - 'BUILD'
+      - 'WORKSPACE'
+      - '.github/workflows/build-wheels*.yaml'
+  pull_request:
+    paths:
+      - 'python/**'
+      - 'cpp/**'
+      - 'bazel/**'
+      - 'BUILD'
+      - 'WORKSPACE'
+      - '.github/workflows/build-wheels*.yaml'
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-13, macos-14, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Bazel
+        if: ${{ !contains(matrix.os, 'windows') }}
+        run: ./ci/run_ci.sh install_bazel
+
+      - name: Install Bazel for Windows
+        if: ${{ contains(matrix.os, 'windows') }}
+        run: ./ci/run_ci.sh install_bazel_windows
+        shell: bash
+
+      - name: Build wheels with cibuildwheel
+        uses: pypa/cibuildwheel@v3
+        env:
+          CIBW_BUILD: ${{ github.ref_type == 'tag' && 'cp38-* cp39-* cp310-* cp311-* cp312-* cp313-*' || 'cp38-* cp313-*' }}
+        with:
+          output-dir: dist/
+
+      - name: Install and verify wheel
+        run: |
+          python -m pip install --upgrade pip
+          pip install dist/*.whl
+          python -c "import pyfory; print(pyfory.__version__)"
+
+      - name: Upload wheels
+        if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyfory-wheels-${{ matrix.os }}
+          path: dist/*.whl

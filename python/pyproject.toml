@@ -46,6 +46,7 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 keywords = ["fory", "serialization", "multi-language", "fast", "row-format", "jit", "codegen", "polymorphic", "zero-copy"]
@@ -97,3 +98,16 @@ ignore = [
 [tool.ruff.format]
 # Replicates the `inline-quotes` setting from .flake8
 quote-style = "double"
+
+[tool.cibuildwheel]
+build = "cp38-* cp39-* cp310-* cp311-* cp312-* cp313-*"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64", "aarch64"]
+build-selector = "manylinux_2_17_*"
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
+
+[tool.cibuildwheel.musllinux]
+archs = ["x86_64", "aarch64"]
+build-selector = "musllinux_1_2_*"
+repair-wheel-command = "delvewheel repair --musllinux=1_2 -w {dest_dir} {wheel}"
