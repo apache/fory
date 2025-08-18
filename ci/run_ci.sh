@@ -93,14 +93,11 @@ install_bazel() {
   BAZEL_DIR="$HOME/.local/bin"
   mkdir -p "$BAZEL_DIR"
 
-
   # Construct platform-specific URL
   BINARY_URL="https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-${OS}-${ARCH}"
 
   echo "Downloading bazel from: $BINARY_URL"
   curl -L -sSf -o "$BAZEL_DIR/bazel" "$BINARY_URL" || { echo "Failed to download bazel"; exit 1; }
-
-
   chmod +x "$BAZEL_DIR/bazel"
 
   # Add to current shell's PATH
@@ -108,6 +105,7 @@ install_bazel() {
 
   # Verify installation
   echo "Checking bazel installation..."
+  ls "$BAZEL_DIR"
   bazel version || { echo "Bazel installation verification failed"; exit 1; }
 
   # Configure number of jobs based on memory

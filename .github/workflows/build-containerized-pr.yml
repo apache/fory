@@ -31,8 +31,6 @@ jobs:
         os: [ubuntu-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v5
-      - name: Install bazel
-        run: ./ci/run_ci.sh install_bazel
       - name: Build wheels
         run: ./ci/build_linux_wheels.py --arch ${{ runner.arch }}
       - name: Install and verify wheel

@@ -34,6 +34,7 @@ from typing import List
 
 SCRIPT = r'''set -e
 yum install -y git sudo wget || true
+
 git config --global --add safe.directory /work
 
 # Determine Python versions to test
