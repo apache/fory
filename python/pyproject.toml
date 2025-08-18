@@ -101,8 +101,9 @@ quote-style = "double"
 
 [tool.cibuildwheel]
 build = "cp38-* cp39-* cp310-* cp311-* cp312-* cp313-*"
+skip = "*-win32"
 
-[tool.cibuildwheel.linux]
-archs = ["x86_64", "aarch64"]
-build-selector = "manylinux_2_17_*"
-repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
+#[tool.cibuildwheel.linux]
+#archs = ["x86_64", "aarch64"]
+#build-selector = "manylinux_2_17_*"
+#repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
