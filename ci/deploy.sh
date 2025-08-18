@@ -76,7 +76,7 @@ build_pyfory() {
   $PIP_CMD install setuptools -U
 
   echo "Checking bazel"
-  ls "~/.local/bin"
+  ls "$HOME/.local/bin"
 
   if [[ "$OSTYPE" == "darwin"* ]]; then
     MACOS_VERSION=$(sw_vers -productVersion | cut -d. -f1-2)
