@@ -63,7 +63,7 @@ jobs:
             mkdir -p $HOME/.local/bin
             ./ci/run_ci.sh install_bazel
             echo "Bazel installed"
-            export PATH="$HOME.local/bin:$PATH"
+            export PATH="$HOME/.local/bin:$PATH"
             bazel --version || true
         with:
           package-dir: python/
