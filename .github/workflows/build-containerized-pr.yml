@@ -34,7 +34,7 @@ jobs:
       - name: Install bazel
         run: ./ci/run_ci.sh install_bazel
       - name: Build wheels
-        run: ./ci/build_linux_wheels.py --arch ${{ matrix.runner.arch }}
+        run: ./ci/build_linux_wheels.py --arch ${{ runner.arch }}
       - name: Install and verify wheel
         run: |
           python -m pip install --upgrade pip
