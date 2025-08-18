@@ -41,7 +41,7 @@ git config --global --add safe.directory /work
 if [ "$RELEASE" = "1" ]; then
     PYTHON_VERSIONS="cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313"
 else
-    PYTHON_VERSIONS="cp313-cp313 cp38-cp38"
+    PYTHON_VERSIONS="cp38-cp38 cp313-cp313"
 fi
 
 ci/run_ci.sh install_bazel

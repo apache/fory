@@ -18,6 +18,7 @@
 # under the License.
 
 
+# Print commands and their arguments as they are executed.
 set -x
 
 # Cause the script to exit if a single command fails.
@@ -66,9 +67,9 @@ deploy_jars() {
 }
 
 build_pyfory() {
-  echo "Python version $($PYTHON_CMD -V), path $(which "$PYTHON_CMD")"
+  echo "$($PYTHON_CMD -V), path $(which "$PYTHON_CMD")"
   install_pyarrow
-  $PIP_CMD install Cython wheel pytest auditwheel
+  $PIP_CMD install cython wheel pytest
   pushd "$ROOT/python"
   $PIP_CMD list
   echo "Install pyfory"
@@ -88,8 +89,6 @@ build_pyfory() {
     $PYTHON_CMD setup.py bdist_wheel --dist-dir=../dist
   fi
 
-  ls -l ../dist
-
   if [ -n "$PLAT" ]; then
     # In manylinux container, repair the wheel to embed shared libraries
     # and rename the wheel with the manylinux tag.
@@ -102,6 +101,8 @@ build_pyfory() {
   elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
     echo "Skip windows wheel repair"
   fi
+
+  echo "Wheels for $(PYTHON_CMD):"
   ls -l ../dist
   popd
 }
