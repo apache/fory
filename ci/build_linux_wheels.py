@@ -35,10 +35,23 @@ from typing import List
 SCRIPT = r'''set -e
 yum install -y git sudo wget || true
 git config --global --add safe.directory /work
-echo "Using Python from: $(which python || echo not-found)"
-echo "Python version: $(python -V 2>&1 || true)"
-bash ci/run_ci.sh install_bazel
-bash ci/deploy.sh build_pyfory
+
+# Determine Python versions to test
+if [ "$RELEASE" = "1" ]; then
+    PYTHON_VERSIONS="cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313"
+else
+    PYTHON_VERSIONS="cp313-cp313 cp38-cp38"
+fi
+
+for PY in $PYTHON_VERSIONS; do
+    PYTHON_PATH="/opt/python/$PY/bin/python"
+    echo "Testing with $PYTHON_PATH"
+    $PYTHON_PATH -m pip install Cython wheel pytest
+    $PYTHON_PATH ci/run_ci.sh install_bazel
+    $PYTHON_PATH ci/deploy.sh build_pyfory
+    WHEEL=$(ls -t dist/*.whl | head -1)
+    auditwheel repair "$WHEEL"
+done
 '''
 
 DEFAULT_X86_IMAGES = [
@@ -68,6 +81,7 @@ ARCH_ALIASES = {
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--arch", required=True, help="Architecture (e.g. X86, X64, AARCH64)")
+    p.add_argument("--release", action="store_true", help="Run full test suite for release")
     p.add_argument("--dry-run", action="store_true", help="Print docker commands without running")
     return p.parse_args()
 

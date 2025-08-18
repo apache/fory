@@ -90,15 +90,18 @@ install_bazel() {
   esac
 
   BAZEL_VERSION=$(get_bazel_version)
-  BAZEL_DIR="/usr/local/bin"
+  BAZEL_DIR="$HOME/.local/bin"
+  mkdir -p "$BAZEL_DIR"
+
 
   # Construct platform-specific URL
   BINARY_URL="https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-${OS}-${ARCH}"
 
   echo "Downloading bazel from: $BINARY_URL"
-  sudo wget -q -O "$BAZEL_DIR/bazel" "$BINARY_URL" || { echo "Failed to download bazel"; exit 1; }
+  curl -L -sSf -o "$BAZEL_DIR/bazel" "$BINARY_URL" || { echo "Failed to download bazel"; exit 1; }
 
-  sudo chmod +x "$BAZEL_DIR/bazel"
+
+  chmod +x "$BAZEL_DIR/bazel"
 
   # Add to current shell's PATH
   export PATH="$BAZEL_DIR:$PATH"
@@ -108,7 +111,7 @@ install_bazel() {
   bazel version || { echo "Bazel installation verification failed"; exit 1; }
 
   # Configure number of jobs based on memory
-  if [[ "$MACHINE" == linux ]]; then
+  if [[ "$OS" == linux ]]; then
     MEM=$(grep MemTotal < /proc/meminfo | awk '{print $2}')
     JOBS=$(( MEM / 1024 / 1024 / 3 ))
     echo "build --jobs=$JOBS" >> ~/.bazelrc

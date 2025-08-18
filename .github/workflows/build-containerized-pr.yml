@@ -15,33 +15,28 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: build wheels for pull request
+name: Build Containerized PR Wheels
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'python/**'
-      - 'cpp/**'
-      - 'bazel/**'
-      - 'BUILD'
-      - 'WORKSPACE'
-      - '.github/workflows/build-wheels*.yaml'
   pull_request:
-    paths:
-      - 'python/**'
-      - 'cpp/**'
-      - 'bazel/**'
-      - 'BUILD'
-      - 'WORKSPACE'
-      - '.github/workflows/build-wheels*.yaml'
+    paths: [ci/**, python/**, .github/workflows/**]
+  push:
+    branches: [main]
+    paths: [ci/**, python/**, .github/workflows/**]
+
 jobs:
-  build-wheels:
-    uses: ./.github/workflows/build-wheels.yaml
+  build:
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
-        python-version: ['3.8', '3.13']
-    with:
-      os: ${{ matrix.os }}
-      python-version: ${{ matrix.python-version }}
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install bazel
+        run: ./ci/run_ci.sh install_bazel
+      - name: Build wheels
+        run: ./ci/build_linux_wheels.py --arch ${{ matrix.runner.arch }}
+      - name: Install and verify wheel
+        run: |
+          python -m pip install --upgrade pip
+          pip install dist/*.whl
+          python -c "import pyfory; print(pyfory.__version__)"

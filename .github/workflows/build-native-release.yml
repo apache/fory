@@ -15,72 +15,42 @@
 # specific language governing permissions and limitations
 # under the License.
 
-name: Build Wheels
-
+name: Build Native Release Wheels
 on:
-  workflow_call:
-    inputs:
-      os:
-        required: true
-        type: string
-      python-version:
-        required: true
-        type: string
-      bump-version:
-        description: 'Whether to bump the version in setup.py'
-        required: false
-        type: boolean
-        default: false
-
-permissions:
-  contents: read
-  actions: write
+  push:
+    tags: ['v*']  # NO PATH FILTER - critical for releases
 
 jobs:
-  build_and_test:
-    name: Build and Test
-    runs-on: ${{ inputs.os }}
-
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@v5
-
-      - name: Set up Python ${{ inputs.python-version }}
-        uses: actions/setup-python@v5
+      - name: Bump version
+        run: ./ci/deploy.sh bump_py_version
+      - uses: actions/setup-python@v5
         with:
-          python-version: ${{ inputs.python-version }}
-
+          python-version: ${{ matrix.python-version }}
       - name: Install bazel
-        if: "runner.os != 'Windows'"
+        if: runner.os != 'Windows'
         run: ./ci/run_ci.sh install_bazel
-
-      - name: Install bazel
-        if: "runner.os == 'Windows'"
+      - name: Install bazel (Windows)
+        if: runner.os == 'Windows'
         run: ./ci/run_ci.sh install_bazel_windows
         shell: bash
-
-      - name: Update version in setup.py
-        if: "inputs.bump-version"
-        run: ./ci/deploy.sh bump_py_version
-
-      - name: Build manylinux/musllinux wheels
-        if: "runner.os == 'Linux'"
-        run: ./ci/build_linux_wheels.py --arch "${{ runner.arch }}"
-
-      - name: Build a binary wheel (native)
-        if: "runner.os != 'Linux'"
+      - name: Build wheel
         run: ./ci/deploy.sh build_pyfory
-        shell: bash
-
       - name: Install and verify wheel
         shell: bash
         run: |
           python -m pip install --upgrade pip
           pip install dist/*.whl
           python -c "import pyfory; print(pyfory.__version__)"
-
-      - name: Upload wheels
-        if: ${{ inputs.bump-version }}
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: pyfory-wheels-${{ inputs.os }}-${{ inputs.python-version }}
+          name: pyfory-wheels-${{ matrix.os }}-${{ matrix.python-version }}-${{ github.ref_name }}
           path: dist/*.whl

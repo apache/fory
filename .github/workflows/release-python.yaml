@@ -19,7 +19,7 @@ name: Publish Python
 
 on:
   workflow_run:
-    workflows: ["build wheels for release"]
+    workflows: ["Build Containerized Release Wheels", "Build Native Release Wheels"]
     types: [completed]
 
 permissions:
