@@ -75,6 +75,9 @@ build_pyfory() {
   # Fix strange installed deps not found
   $PIP_CMD install setuptools -U
 
+  echo "Checking bazel"
+  ls "~/.local/bin"
+
   if [[ "$OSTYPE" == "darwin"* ]]; then
     MACOS_VERSION=$(sw_vers -productVersion | cut -d. -f1-2)
     echo "MACOS_VERSION: $MACOS_VERSION"
