@@ -44,6 +44,9 @@ else
     PYTHON_VERSIONS="cp313-cp313 cp38-cp38"
 fi
 
+ci/run_ci.sh install_bazel
+export PATH="$HOME/.local/bin:$PATH"
+
 # use the python interpreters preinstalled in manylinux
 OLD_PATH=$PATH
 for PY in $PYTHON_VERSIONS; do
@@ -51,7 +54,6 @@ for PY in $PYTHON_VERSIONS; do
     export PATH="/opt/python/$PY/bin:$OLD_PATH"
     echo "Using $PYTHON_PATH"
     pip install Cython wheel pytest
-    ci/run_ci.sh install_bazel
     ci/deploy.sh build_pyfory
     # WHEEL=$(ls -t dist/*.whl | head -1)
     # auditwheel repair "$WHEEL"

@@ -32,8 +32,6 @@ if DEBUG:
 
 print(f"DEBUG = {DEBUG}, BAZEL_BUILD_EXT = {BAZEL_BUILD_EXT}, PATH = {os.environ.get('PATH')}")
 
-print(f"bazel in container?", os.path.exists('$HOME/.local/bin/bazel'))
-
 setup_dir = abspath(os.path.dirname(__file__))
 project_dir = abspath(pjoin(setup_dir, os.pardir))
 fory_cpp_src_dir = abspath(pjoin(setup_dir, "../src/"))
