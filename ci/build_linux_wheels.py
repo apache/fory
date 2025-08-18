@@ -58,15 +58,17 @@ done
 DEFAULT_X86_IMAGES = [
     "quay.io/pypa/manylinux2014_x86_64:latest",
     # "quay.io/pypa/manylinux_2_28_x86_64:latest",
-    "quay.io/pypa/musllinux_1_2_x86_64:latest",
-    # add more x86 images here if desired
+
+    # bazel binaries do not work with musl
+    # "quay.io/pypa/musllinux_1_2_x86_64:latest",
 ]
 
 DEFAULT_AARCH64_IMAGES = [
-    "quay.io/pypa/manylinux2014_aarch64:latest", # = manylinux2014
+    "quay.io/pypa/manylinux2014_aarch64:latest",
     # "quay.io/pypa/manylinux_2_28_aarch64:latest",
-    "quay.io/pypa/musllinux_1_2_aarch64:latest", # = manylinux2014
-    # add more aarch64 images here if desired
+
+    # bazel binaries do not work with musl
+    # "quay.io/pypa/musllinux_1_2_aarch64:latest",
 ]
 
 ARCH_ALIASES = {

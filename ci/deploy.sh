@@ -23,11 +23,14 @@ set -x
 # Cause the script to exit if a single command fails.
 set -e
 
-# configure ~/.pypirc before run this script
-#if [ ! -f ~/.pypirc ]; then
-#  echo  "Please configure .pypirc before run this script"
-#  exit 1
-#fi
+# Prefer Python from $PYTHON_PATH if it exists, otherwise use default python
+if [ -n "$PYTHON_PATH" ] && [ -x "$PYTHON_PATH" ]; then
+  PYTHON_CMD="$PYTHON_PATH"
+  PIP_CMD="$PYTHON_PATH -m pip"
+else
+  PYTHON_CMD="python"
+  PIP_CMD="pip"
+fi
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
@@ -63,26 +66,26 @@ deploy_jars() {
 }
 
 build_pyfory() {
-  echo "Python version $(python -V), path $(which python)"
+  echo "Python version $($PYTHON_CMD -V), path $(which "$PYTHON_CMD")"
   install_pyarrow
-  pip install Cython wheel pytest auditwheel
+  $PIP_CMD install Cython wheel pytest auditwheel
   pushd "$ROOT/python"
-  pip list
+  $PIP_CMD list
   echo "Install pyfory"
   # Fix strange installed deps not found
-  pip install setuptools -U
+  $PIP_CMD install setuptools -U
 
   if [[ "$OSTYPE" == "darwin"* ]]; then
     MACOS_VERSION=$(sw_vers -productVersion | cut -d. -f1-2)
     echo "MACOS_VERSION: $MACOS_VERSION"
     if [[ "$MACOS_VERSION" == "13"* ]]; then
       export MACOSX_DEPLOYMENT_TARGET=10.13
-      python setup.py bdist_wheel --plat-name macosx_10_13_x86_64 --dist-dir=../dist
+      $PYTHON_CMD setup.py bdist_wheel --plat-name macosx_10_13_x86_64 --dist-dir=../dist
     else
-      python setup.py bdist_wheel --dist-dir=../dist
+      $PYTHON_CMD setup.py bdist_wheel --dist-dir=../dist
     fi
   else
-    python setup.py bdist_wheel --dist-dir=../dist
+    $PYTHON_CMD setup.py bdist_wheel --dist-dir=../dist
   fi
 
   ls -l ../dist
@@ -90,7 +93,7 @@ build_pyfory() {
   if [ -n "$PLAT" ]; then
     # In manylinux container, repair the wheel to embed shared libraries
     # and rename the wheel with the manylinux tag.
-    PYARROW_LIB_DIR=$(python -c 'import pyarrow; print(":".join(pyarrow.get_library_dirs()))')
+    PYARROW_LIB_DIR=$($PYTHON_CMD -c 'import pyarrow; print(":".join(pyarrow.get_library_dirs()))')
     export LD_LIBRARY_PATH="$PYARROW_LIB_DIR:$LD_LIBRARY_PATH"
     auditwheel repair ../dist/pyfory-*-linux_*.whl --plat "$PLAT" --exclude '*arrow*' --exclude '*parquet*' --exclude '*numpy*' -w ../dist/
     rm ../dist/pyfory-*-linux_*.whl
@@ -104,15 +107,6 @@ build_pyfory() {
 }
 
 install_pyarrow() {
-  # Prefer Python from $PYTHON_PATH if it exists, otherwise use default python
-    if [ -n "$PYTHON_PATH" ] && [ -x "$PYTHON_PATH" ]; then
-      PYTHON_CMD="$PYTHON_PATH"
-      PIP_CMD="$PYTHON_PATH -m pip"
-    else
-      PYTHON_CMD="python"
-      PIP_CMD="pip"
-    fi
-
   pyversion=$($PYTHON_CMD -V | cut -d' ' -f2)
   if [[ $pyversion  ==  3.13* ]]; then
     $PIP_CMD install pyarrow==18.0.0
