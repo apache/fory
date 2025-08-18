@@ -102,7 +102,7 @@ quote-style = "double"
 [tool.cibuildwheel]
 build = "cp38-* cp39-* cp310-* cp311-* cp312-* cp313-*"
 skip = "*-win32"
-manylinux_x86_64-image = "manylinux_2_24"
+manylinux-x86_64-image = "manylinux_2_24"
 manylinux-aarch64-image = "manylinux_2_24"
 
 [tool.cibuildwheel.macos]
