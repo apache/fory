@@ -63,6 +63,7 @@ jobs:
           CIBW_ARCHS: ${{ matrix.arch }}
           CIBW_BUILD: ${{ github.ref_type == 'tag' && 'cp38-* cp39-* cp310-* cp311-* cp312-* cp313-*' || 'cp313-*' }}
         with:
+          package-dir: python/
           output-dir: wheelhouse/
 
       - name: Install and verify wheel
