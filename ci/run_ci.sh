@@ -108,7 +108,7 @@ install_bazel() {
   bazel version || { echo "Bazel installation verification failed"; exit 1; }
 
   # Configure number of jobs based on memory
-  if [[ "$MACHINE" == linux ]]; then
+  if [[ "$OS" == linux ]]; then
     MEM=$(grep MemTotal < /proc/meminfo | awk '{print $2}')
     JOBS=$(( MEM / 1024 / 1024 / 3 ))
     echo "build --jobs=$JOBS" >> ~/.bazelrc
