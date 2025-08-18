@@ -65,7 +65,7 @@ include-package-data = true
 zip-safe = false
 
 [tool.setuptools.package-data]
-"pyfory" = ["**/*.pxd", "**/*.pyx", "**/*.pxd", "*.so", "*.dylib", "*.dll", "*.pyd"]
+"pyfory" = ["**/*.pxd", "**/*.pyx", "**/*.pxd", "*.so", "*.dylib", "*.dll", "*.pyd", ]
 "pyfory.format" = ["**/*.pxd", "**/*.pyx", "**/*.pxd", "*.so", "*.dylib", "*.dll", "*.pyd"]
 "pyfory.lib.mmh3" = ["**/*.pxd", "**/*.pyx", "**/*.pxd", "*.so", "*.dylib", "*.dll", "*.pyd"]
 
@@ -102,6 +102,8 @@ quote-style = "double"
 [tool.cibuildwheel]
 build = "cp38-* cp39-* cp310-* cp311-* cp312-* cp313-*"
 skip = "*-win32"
+manylinux_x86_64-image = "manylinux_2_24"
+manylinux-aarch64-image = "manylinux_2_24"
 
 [tool.cibuildwheel.macos]
 environment = {MACOSX_DEPLOYMENT_TARGET="15"}
