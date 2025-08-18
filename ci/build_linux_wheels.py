@@ -45,15 +45,18 @@ else
 fi
 
 # use the python interpreters preinstalled in manylinux
+OLD_PATH = $PATH
 for PY in $PYTHON_VERSIONS; do
     export PYTHON_PATH="/opt/python/$PY/bin/python"
+    export PATH="/opt/python/$PY/bin:$OLD_PATH"
     echo "Using $PYTHON_PATH"
-    $PYTHON_PATH -m pip install Cython wheel pytest
+    pip install Cython wheel pytest
     ci/run_ci.sh install_bazel
     ci/deploy.sh build_pyfory
     # WHEEL=$(ls -t dist/*.whl | head -1)
     # auditwheel repair "$WHEEL"
 done
+export PATH=$OLD_PATH
 '''
 
 DEFAULT_X86_IMAGES = [
