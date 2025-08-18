@@ -104,12 +104,21 @@ build_pyfory() {
 }
 
 install_pyarrow() {
-  pyversion=$(python -V | cut -d' ' -f2)
+  # Prefer Python from $PYTHON_PATH if it exists, otherwise use default python
+    if [ -n "$PYTHON_PATH" ] && [ -x "$PYTHON_PATH" ]; then
+      PYTHON_CMD="$PYTHON_PATH"
+      PIP_CMD="$PYTHON_PATH -m pip"
+    else
+      PYTHON_CMD="python"
+      PIP_CMD="pip"
+    fi
+
+  pyversion=$($PYTHON_CMD -V | cut -d' ' -f2)
   if [[ $pyversion  ==  3.13* ]]; then
-    pip install pyarrow==18.0.0
-    pip install numpy
+    $PIP_CMD install pyarrow==18.0.0
+    $PIP_CMD install numpy
   else
-    pip install pyarrow==15.0.0
+    $PIP_CMD install pyarrow==15.0.0
     # Automatically install numpy
   fi
 }

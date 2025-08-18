@@ -105,7 +105,29 @@ install_bazel() {
 
   # Verify installation
   echo "Checking bazel installation..."
-  ls "$BAZEL_DIR"
+
+  # basic checks
+  ls -l /root/.local/bin/bazel
+  file /root/.local/bin/bazel
+  head -n 1 /root/.local/bin/bazel
+
+  # If it's ELF, inspect the interpreter
+  readelf -l /root/.local/bin/bazel | grep 'Requesting program interpreter' || true
+
+  # Equivalent that shows the interpreter string (if readelf isn't available)
+  # (This uses strings to find the loader path)
+  strings /root/.local/bin/bazel | grep ld-linux || true
+
+  # If readelf indicates an interpreter, check whether that file exists
+  # Example interpreter (replace with whatever readelf showed):
+#  ls -l /lib64/ld-linux-x86-64.so.2 || ls -l /lib/ld-musl-x86_64.so.1 || true
+
+  # Try ldd (if available) to see library load errors
+  ldd /root/.local/bin/bazel || true
+
+  # If it's a script, check the shebang interpreter path
+  head -n 1 /root/.local/bin/bazel
+
   bazel version || { echo "Bazel installation verification failed"; exit 1; }
 
   # Configure number of jobs based on memory

@@ -45,7 +45,7 @@ else
 fi
 
 for PY in $PYTHON_VERSIONS; do
-    PYTHON_PATH="/opt/python/$PY/bin/python"
+    export PYTHON_PATH="/opt/python/$PY/bin/python"
     echo "Testing with $PYTHON_PATH"
     $PYTHON_PATH -m pip install Cython wheel pytest
     ci/run_ci.sh install_bazel
