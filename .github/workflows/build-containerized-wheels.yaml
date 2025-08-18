@@ -62,7 +62,7 @@ jobs:
           CIBW_BEFORE_ALL: |
             mkdir -p $HOME/.local/bin
             ./ci/run_ci.sh install_bazel
-            which bazel || true
+            export PATH="$HOME.local/bin:$PATH"
             bazel --version || true
         with:
           package-dir: python/
