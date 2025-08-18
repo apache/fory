@@ -44,6 +44,7 @@ jobs:
         shell: bash
       - name: Build wheel
         run: ./ci/deploy.sh build_pyfory
+        shell: bash
       - name: Install and verify wheel
         shell: bash
         run: |
