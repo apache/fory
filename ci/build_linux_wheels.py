@@ -55,8 +55,7 @@ for PY in $PYTHON_VERSIONS; do
     echo "Using $PYTHON_PATH"
     pip install Cython wheel pytest
     ci/deploy.sh build_pyfory
-    # WHEEL=$(ls -t dist/*.whl | head -1)
-    # auditwheel repair "$WHEEL"
+    bazel clean --expunge
 done
 export PATH=$OLD_PATH
 '''
