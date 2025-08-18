@@ -53,8 +53,14 @@ for PY in $PYTHON_VERSIONS; do
     export PYTHON_PATH="/opt/python/$PY/bin/python"
     export PATH="/opt/python/$PY/bin:$OLD_PATH"
     echo "Using $PYTHON_PATH"
-    pip install Cython wheel pytest
+    python -m pip install cython wheel pytest
     ci/deploy.sh build_pyfory
+
+    latest_wheel=$(ls -t dist/*.whl | head -n1)
+    echo "Attempting to install $latest_wheel"
+    python -m pip install "$latest_wheel"
+    python -c "import pyfory; print(pyfory.__version__)"
+
     bazel clean --expunge
 done
 export PATH=$OLD_PATH

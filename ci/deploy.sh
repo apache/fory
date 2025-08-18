@@ -102,7 +102,7 @@ build_pyfory() {
     echo "Skip windows wheel repair"
   fi
 
-  echo "Wheels for $(PYTHON_CMD):"
+  echo "Wheels for $PYTHON_CMD:"
   ls -l ../dist
   popd
 }
