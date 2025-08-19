@@ -20,68 +20,67 @@ use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::meta::murmurhash3_x64_128;
 use crate::meta::{Encoding, MetaStringDecoder};
-use crate::types::FieldType;
 use anyhow::anyhow;
 use std::cmp::min;
 
-trait FieldTypeResolver {
-    fn new() -> Self
-    where
-        Self: Sized;
-    fn new_collection(element_type: Box<dyn FieldTypeResolver>) -> Self
-    where
-        Self: Sized;
-    fn new_map(
-        key_type: Box<dyn FieldTypeResolver>,
-        value_type: Box<dyn FieldTypeResolver>,
-    ) -> Self
-    where
-        Self: Sized;
-    fn to_bytes(&self, writer: &mut Writer, field_type_id: i16, write_flag: bool);
-    fn from_bytes(reader: &mut Reader) -> Self
-    where
-        Self: Sized;
-}
-//
-pub struct PrimitiveFieldType;
-pub struct CollectionFieldType {
-    element_type: Box<dyn FieldTypeResolver>,
-}
-pub struct MapFieldType {
-    key_type: Box<dyn FieldTypeResolver>,
-    value_type: Box<dyn FieldTypeResolver>,
-}
+// trait FieldTypeResolver {
+//     fn new() -> Self
+//     where
+//         Self: Sized;
+//     fn new_collection(element_type: Box<dyn FieldTypeResolver>) -> Self
+//     where
+//         Self: Sized;
+//     fn new_map(
+//         key_type: Box<dyn FieldTypeResolver>,
+//         value_type: Box<dyn FieldTypeResolver>,
+//     ) -> Self
+//     where
+//         Self: Sized;
+//     fn to_bytes(&self, writer: &mut Writer, field_type_id: i16, write_flag: bool);
+//     fn from_bytes(reader: &mut Reader) -> Self
+//     where
+//         Self: Sized;
+// }
+// //
+// pub struct PrimitiveFieldType;
+// pub struct CollectionFieldType {
+//     element_type: Box<dyn FieldTypeResolver>,
+// }
+// pub struct MapFieldType {
+//     key_type: Box<dyn FieldTypeResolver>,
+//     value_type: Box<dyn FieldTypeResolver>,
+// }
 
-impl FieldTypeResolver for PrimitiveFieldType {
-    fn new() -> Self {
-        Self {}
-    }
+// impl FieldTypeResolver for PrimitiveFieldType {
+//     fn new() -> Self {
+//         Self {}
+//     }
 
-    fn new_collection(element_type: Box<dyn FieldTypeResolver>) -> Self {
-        unimplemented!()
-    }
+//     fn new_collection(element_type: Box<dyn FieldTypeResolver>) -> Self {
+//         unimplemented!()
+//     }
 
-    fn new_map(
-        key_type: Box<dyn FieldTypeResolver>,
-        value_type: Box<dyn FieldTypeResolver>,
-    ) -> Self {
-        unimplemented!()
-    }
+//     fn new_map(
+//         key_type: Box<dyn FieldTypeResolver>,
+//         value_type: Box<dyn FieldTypeResolver>,
+//     ) -> Self {
+//         unimplemented!()
+//     }
 
-    fn to_bytes(&self, writer: &mut Writer, field_type_id: i16, write_flag: bool) {
-        let mut header: i32 = field_type_id as i32;
-        // let ref_tracking = false;
-        // let nullability = false;
-        if (write_flag) {
-            header = (header << 2);
-        }
-        writer.var_int32(header);
-    }
+//     fn to_bytes(&self, writer: &mut Writer, field_type_id: i16, write_flag: bool) {
+//         let mut header: i32 = field_type_id as i32;
+//         // let ref_tracking = false;
+//         // let nullability = false;
+//         if write_flag {
+//             header <<= 2;
+//         }
+//         writer.var_int32(header);
+//     }
 
-    fn from_bytes(_reader: &mut Reader) -> Self {
-        unimplemented!()
-    }
-}
+//     fn from_bytes(_reader: &mut Reader) -> Self {
+//         unimplemented!()
+//     }
+// }
 //
 // impl FieldTypeResolver for CollectionFieldType {
 //     fn new() -> Self {
@@ -300,7 +299,8 @@ impl TypeMetaLayer {
     fn from_bytes(reader: &mut Reader) -> TypeMetaLayer {
         let meta_header = reader.u8();
         // println!("read meta_header:{:?}", meta_header);
-        let is_register_by_name = (meta_header & 0b10_0000) == 1;
+        // let is_register_by_name = (meta_header & 0b10_0000) == 1;
+        let is_register_by_name = false;
         let mut num_fields = (meta_header & 0b1111) as i32;
         if num_fields == 15 {
             num_fields += reader.var_int32();
@@ -342,20 +342,20 @@ impl TypeMeta {
             layers: vec![TypeMetaLayer::new(type_id, field_infos)],
         }
     }
-
+    #[allow(unused_assignments)]
     pub fn from_bytes(reader: &mut Reader) -> TypeMeta {
         let header = reader.u64();
-        let mut meta_size = (header & 0x7FF) as u64;
+        let mut meta_size = header & 0x7FF;
         if meta_size == 0x7FF {
             meta_size += reader.var_int32() as u64;
         }
 
-        let write_fields_meta = (header & (1 << 12)) != 0;
-        let is_compressed = (header & (1 << 13)) != 0;
-        let meta_hash = header >> 14;
+        // let write_fields_meta = (header & (1 << 12)) != 0;
+        // let is_compressed: bool = (header & (1 << 13)) != 0;
+        // let meta_hash = header >> 14;
 
         let mut layers = Vec::new();
-        let current_meta_size = 0;
+        // let current_meta_size = 0;
         // while current_meta_size < meta_size {}
         let layer = TypeMetaLayer::from_bytes(reader);
         layers.push(layer);

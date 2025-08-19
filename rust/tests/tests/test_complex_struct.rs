@@ -19,7 +19,6 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use fory_core::fory::Fory;
 use fory_core::types::Mode;
 use fory_derive::Fory;
-use std::any::Any;
 use std::collections::HashMap;
 
 // #[test]

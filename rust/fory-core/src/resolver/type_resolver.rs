@@ -22,7 +22,6 @@ use crate::serializer::{Serializer, StructSerializer};
 use crate::types::FieldType;
 use chrono::{NaiveDate, NaiveDateTime};
 use std::any::TypeId;
-use std::collections::HashSet;
 use std::{any::Any, collections::HashMap};
 
 pub struct Harness {

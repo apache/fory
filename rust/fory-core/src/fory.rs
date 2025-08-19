@@ -15,8 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::io::stdout;
-
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::resolver::context::ReadContext;

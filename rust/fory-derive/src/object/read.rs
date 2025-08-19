@@ -20,7 +20,6 @@ use quote::{format_ident, quote};
 use syn::Field;
 use syn::{GenericArgument, PathArguments, Type};
 
-use fory_core::meta::FieldInfo;
 fn create_private_field_name(field: &Field) -> Ident {
     format_ident!("_{}", field.ident.as_ref().expect(""))
 }
@@ -174,7 +173,7 @@ fn deserialize_compatible(fields: &[&Field]) -> TokenStream {
                     _ => {
                         // skip bytes
                         println!("no need to deserialize {:?}", _field.field_name.as_str());
-                        context
+                        let _ = context
                         .get_fory()
                         .get_type_resolver()
                         .get_harness(_field.field_type_id as u32)

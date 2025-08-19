@@ -65,15 +65,9 @@ impl Default for MetaStringDecoder {
     }
 }
 
+#[derive(Default)]
 pub struct MetaStringEncoder<'a> {
     encoding_options: Option<&'a [Encoding]>,
-}
-impl<'a> Default for MetaStringEncoder<'a> {
-    fn default() -> Self {
-        Self {
-            encoding_options: None,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -89,7 +83,7 @@ impl<'a> MetaStringEncoder<'a> {
         Self::default()
     }
     pub fn set_options(mut self, encoding_options: Option<&'a [Encoding]>) -> Self {
-        self.encoding_options = encoding_options.into();
+        self.encoding_options = encoding_options;
         self
     }
 
