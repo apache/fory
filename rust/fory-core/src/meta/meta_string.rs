@@ -65,10 +65,14 @@ impl Default for MetaStringDecoder {
     }
 }
 
-pub struct MetaStringEncoder {}
-impl Default for MetaStringEncoder {
+pub struct MetaStringEncoder<'a> {
+    encoding_options: Option<&'a [Encoding]>,
+}
+impl<'a> Default for MetaStringEncoder<'a> {
     fn default() -> Self {
-        Self::new()
+        Self {
+            encoding_options: None,
+        }
     }
 }
 
@@ -80,9 +84,13 @@ struct StringStatistics {
     can_lower_special_encoded: bool,
 }
 
-impl MetaStringEncoder {
+impl<'a> MetaStringEncoder<'a> {
     pub fn new() -> Self {
-        MetaStringEncoder {}
+        Self::default()
+    }
+    pub fn set_options(mut self, encoding_options: Option<&'a [Encoding]>) -> Self {
+        self.encoding_options = encoding_options.into();
+        self
     }
 
     fn is_latin(&self, s: &str) -> bool {
@@ -108,22 +116,25 @@ impl MetaStringEncoder {
     }
 
     fn compute_encoding(&self, input: &str) -> Encoding {
+        let allow = |e: Encoding| self.encoding_options.map_or(true, |opts| opts.contains(&e));
         let statistics = self.compute_statistics(input);
-        if statistics.can_lower_special_encoded {
+        if statistics.can_lower_special_encoded && allow(Encoding::LowerSpecial) {
             return Encoding::LowerSpecial;
         }
         if statistics.can_lower_upper_digit_special_encoded {
-            if statistics.digit_count != 0 {
+            if statistics.digit_count != 0 && allow(Encoding::LowerUpperDigitSpecial) {
                 return Encoding::LowerUpperDigitSpecial;
             }
             let upper_count: usize = statistics.upper_count;
-            if upper_count == 1 && input.chars().next().unwrap().is_uppercase() {
+            if upper_count == 1 && input.chars().next().unwrap().is_uppercase() && allow(Encoding::FirstToLowerSpecial) {
                 return Encoding::FirstToLowerSpecial;
             }
-            if ((input.len() + upper_count) * 5) < (input.len() * 6) {
+            if ((input.len() + upper_count) * 5) < (input.len() * 6) && allow(Encoding::AllToLowerSpecial) {
                 return Encoding::AllToLowerSpecial;
             }
-            return Encoding::LowerUpperDigitSpecial;
+            if allow(Encoding::LowerUpperDigitSpecial) {
+                return Encoding::LowerUpperDigitSpecial;
+            }
         }
         Encoding::Utf8
     }

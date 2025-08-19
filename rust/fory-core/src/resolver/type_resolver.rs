@@ -18,9 +18,12 @@
 use super::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::serializer::StructSerializer;
+use crate::serializer::{Serializer, StructSerializer};
 use std::any::TypeId;
 use std::{any::Any, collections::HashMap};
+use std::collections::HashSet;
+use chrono::{NaiveDate, NaiveDateTime};
+use crate::types::FieldType;
 
 pub struct Harness {
     serializer: fn(&dyn Any, &mut WriteContext),
@@ -69,11 +72,62 @@ impl TypeInfo {
     }
 }
 
-#[derive(Default)]
 pub struct TypeResolver {
     serialize_map: HashMap<u32, Harness>,
     type_id_map: HashMap<TypeId, u32>,
     type_info_map: HashMap<TypeId, TypeInfo>,
+}
+macro_rules! register_harness {
+    ($ty:ty, $id:expr, $map:expr) => {
+        {
+            fn serializer(this: &dyn std::any::Any, context: &mut WriteContext) {
+                let this = this.downcast_ref::<$ty>();
+                match this {
+                    Some(v) => <$ty>::serialize(v, context),
+                    None => todo!(""),
+                }
+            }
+
+            fn deserializer(context: &mut ReadContext) -> Result<Box<dyn std::any::Any>, Error> {
+                match <$ty>::deserialize(context) {
+                    Ok(v) => Ok(Box::new(v)),
+                    Err(e) => Err(e),
+                }
+            }
+
+            $map.insert($id as u32, Harness::new(serializer, deserializer));
+        }
+    };
+}
+
+impl Default for TypeResolver {
+    fn default() -> Self {
+        let mut serialize_map = HashMap::new();
+
+        register_harness!(i8, FieldType::INT8, serialize_map);
+        register_harness!(u8, FieldType::UINT8, serialize_map);
+        register_harness!(i16, FieldType::INT16, serialize_map);
+        register_harness!(u16, FieldType::UINT16, serialize_map);
+        register_harness!(i32,  FieldType::INT32, serialize_map);
+        register_harness!(u32, FieldType::UINT32, serialize_map);
+        register_harness!(u64, FieldType::UINT64, serialize_map);
+        register_harness!(i64, FieldType::INT64, serialize_map);
+        register_harness!(f32, FieldType::FLOAT, serialize_map);
+        register_harness!(f64, FieldType::DOUBLE, serialize_map);
+
+        register_harness!(bool, FieldType::BOOL, serialize_map);
+
+        register_harness!(String, FieldType::STRING, serialize_map);
+
+        register_harness!(NaiveDate, FieldType::DATE, serialize_map);
+        register_harness!(NaiveDateTime, FieldType::TIMESTAMP, serialize_map);
+
+        TypeResolver {
+            serialize_map,
+            type_id_map: HashMap::new(),
+            type_info_map: HashMap::new(),
+        }
+    }
 }
 
 impl TypeResolver {

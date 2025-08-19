@@ -18,7 +18,9 @@
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use syn::Field;
+use syn::{Type, PathArguments, GenericArgument};
 
+use fory_core::meta::FieldInfo;
 fn create_private_field_name(field: &Field) -> Ident {
     format_ident!("_{}", field.ident.as_ref().expect(""))
 }
@@ -43,7 +45,7 @@ fn create(fields: &[&Field]) -> Vec<TokenStream> {
             let name = &field.ident;
             let var_name = create_private_field_name(field);
             quote! {
-                #name: #var_name.unwrap()
+                #name: #var_name.unwrap_or_default()
             }
         })
         .collect()
@@ -67,13 +69,92 @@ fn read(fields: &[&Field]) -> TokenStream {
     }
 }
 
+enum TypeTree {
+    Leaf(String),
+    Node(String, Vec<TypeTree>),
+}
+fn parse_type_tree(ty: &Type) -> TypeTree {
+    let type_name = extract_type_name(ty);
+
+    if let Type::Path(type_path) = ty {
+        if let PathArguments::AngleBracketed(args) = &type_path.path.segments.last().unwrap().arguments {
+            let generic_args: Vec<TypeTree> = args.args
+                .iter()
+                .filter_map(|arg| {
+                    if let GenericArgument::Type(ty) = arg {
+                        Some(parse_type_tree(ty))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if !generic_args.is_empty() {
+                return TypeTree::Node(type_name, generic_args);
+            }
+        }
+    }
+
+    TypeTree::Leaf(type_name)
+}
+
+fn extract_type_name(ty: &Type) -> String {
+    if let Type::Path(type_path) = ty {
+        type_path.path.segments.last().unwrap().ident.to_string()
+    } else {
+        quote!(#ty).to_string()
+    }
+}
+fn type_tree_to_tokens(tree: &TypeTree) -> TokenStream {
+    match tree {
+        TypeTree::Leaf(name) => quote! { (#name,) },
+        TypeTree::Node(name, children) => {
+            let children_tokens: Vec<TokenStream> = children
+                .iter()
+                .map(type_tree_to_tokens)
+                .collect();
+            quote! { (#name, #(#children_tokens),*) }
+        }
+    }
+}
+
 fn deserialize_compatible(fields: &[&Field]) -> TokenStream {
-    let pattern_item = fields.iter().enumerate().map(|(index, field)| {
+    let pattern_items = fields.iter().enumerate().map(|(index, field)| {
         let ty = &field.ty;
         let var_name = create_private_field_name(field);
+        let type_tree = parse_type_tree(ty);
+        let type_structure = type_tree_to_tokens(&type_tree);
+
+        let field_name_str = field.ident.as_ref().unwrap().to_string();
+
+        let base_ty = match &ty {
+            Type::Path(type_path) => {
+                &type_path.path.segments.first().unwrap().ident
+            }
+            _ => panic!("Unsupported type"),
+        };
+
+        let type_print = quote! {
+            type T = #ty;
+            println!(
+                "Field {} type: {} type_id: {}",
+                #index,
+                stringify!(#ty),
+                T::get_type_id(context.fory)
+            );
+            println!("Generic structure: {}", stringify!(#type_structure));
+        };
+
         quote! {
-            #index => {
-                #var_name = Some(<#ty as fory_core::serializer::Serializer>::deserialize(context)?);
+            (ident, type_id)
+                if ident == #field_name_str
+                    && type_id == <#ty as fory_core::serializer::Serializer>::get_type_id(context.fory)
+            => {
+                #var_name = Some(<#ty as fory_core::serializer::Serializer>::deserialize(context).unwrap_or_else(|_err| {
+                    println!("skip deserialize {:?}", ident);
+                    #base_ty::default()
+                }));
+                #type_print
             }
         }
     });
@@ -84,13 +165,22 @@ fn deserialize_compatible(fields: &[&Field]) -> TokenStream {
         if ref_flag == (fory_core::types::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::types::RefFlag::RefValue as i8) {
             let meta_index = context.reader.i16() as usize;
             let meta = context.get_meta(meta_index).clone();
-            let fields = meta.get_field_info();
+            let fields = meta.get_field_infos();
             #(#bind)*
-            for (idx, _field_info) in fields.iter().enumerate() {
-                match idx {
-                    #(#pattern_item),*
+            for (_, _field) in fields.iter().enumerate() {
+                match (_field.field_name.as_str(), _field.field_type_id) {
+                    #(#pattern_items),*
                     _ => {
-                        panic!("not implement yet");
+                        // skip bytes
+                        println!("no need to deserialize {:?}", _field.field_name.as_str());
+                        context
+                        .get_fory()
+                        .get_type_resolver()
+                        .get_harness(_field.field_type_id as u32)
+                        .unwrap_or_else(|| {
+                            panic!("missing harness for type_id {}", _field.field_type_id);
+                        })
+                        .get_deserializer()(context);
                     }
                 }
             }

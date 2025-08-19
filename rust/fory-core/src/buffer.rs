@@ -88,31 +88,27 @@ impl Writer {
     }
 
     pub fn var_int32(&mut self, value: i32) {
-        if value >> 7 == 0 {
-            self.u8(value as u8);
-        } else if value >> 14 == 0 {
-            let u1 = (value & 0x7F) | 0x80;
-            let u2 = value >> 7;
-            self.u16(((u1 << 8) | u2) as u16);
-        } else if value >> 21 == 0 {
-            let u1 = (value & 0x7F) | 0x80;
-            let u2 = (value >> 7) | 0x80;
-            self.u16(((u1 << 8) | u2) as u16);
-            self.u8((value >> 14) as u8);
-        } else if value >> 28 == 0 {
-            let u1 = (value & 0x7F) | 0x80;
-            let u2 = (value >> 7) | 0x80;
-            let u3 = (value >> 14) | 0x80;
-            let u4 = (value >> 21) | 0x80;
-            self.u32(((u1 << 24) | (u2 << 16) | (u3 << 8) | u4) as u32);
+        let mut v = value as u32;
+        let len = if v < (1 << 7) {
+            1
+        } else if v < (1 << 14) {
+            2
+        } else if v < (1 << 21) {
+            3
+        } else if v < (1 << 28) {
+            4
         } else {
-            let u1 = (value & 0x7F) | 0x80;
-            let u2 = (value >> 7) | 0x80;
-            let u3 = (value >> 14) | 0x80;
-            let u4 = (value >> 21) | 0x80;
-            self.u32(((u1 << 24) | (u2 << 16) | (u3 << 8) | u4) as u32);
-            self.u8((value >> 28) as u8);
+            5
+        };
+        let mut buf = [0u8; 5];
+        let mut i = 0usize;
+        for _ in 0..(len - 1) {
+            buf[i] = ((v as u8) & 0x7F) | 0x80;
+            v >>= 7;
+            i += 1;
         }
+        buf[i] = (v & 0x7F) as u8;
+        self.bytes(&buf[..len]);
     }
 
     pub fn bytes(&mut self, v: &[u8]) {

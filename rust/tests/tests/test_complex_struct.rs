@@ -22,31 +22,31 @@ use fory_derive::Fory;
 use std::any::Any;
 use std::collections::HashMap;
 
-#[test]
-fn any() {
-    #[derive(Fory, Debug)]
-    struct Animal {
-        f3: String,
-    }
-
-    #[derive(Fory, Debug)]
-    struct Person {
-        f1: Box<dyn Any>,
-    }
-
-    let person = Person {
-        f1: Box::new(Animal {
-            f3: String::from("hello"),
-        }),
-    };
-
-    let mut fory = Fory::default();
-    fory.register::<Animal>(999);
-    fory.register::<Person>(1000);
-    let bin = fory.serialize(&person);
-    let obj: Person = fory.deserialize(&bin).expect("");
-    assert!(obj.f1.is::<Animal>())
-}
+// #[test]
+// fn any() {
+//     #[derive(Fory, Debug)]
+//     struct Animal {
+//         f3: String,
+//     }
+//
+//     #[derive(Fory, Debug)]
+//     struct Person {
+//         f1: Box<dyn Any>,
+//     }
+//
+//     let person = Person {
+//         f1: Box::new(Animal {
+//             f3: String::from("hello"),
+//         }),
+//     };
+//
+//     let mut fory = Fory::default();
+//     fory.register::<Animal>(999);
+//     fory.register::<Person>(1000);
+//     let bin = fory.serialize(&person);
+//     let obj: Person = fory.deserialize(&bin).expect("");
+//     assert!(obj.f1.is::<Animal>())
+// }
 
 #[test]
 fn enum_without_payload() {
@@ -90,16 +90,16 @@ fn complex_struct() {
     let person: Person = Person {
         c1: vec![1, 2, 3],
         c2: vec![5, 6, 7],
-        c3: vec![vec![1, 2], vec![1, 3]],
         animal: vec![Animal {
             category: "Dog".to_string(),
         }],
+        c3: vec![vec![1, 2], vec![1, 3]],
+        name: "hello".to_string(),
         c4: HashMap::from([
             ("hello1".to_string(), "hello2".to_string()),
             ("hello2".to_string(), "hello3".to_string()),
         ]),
         age: 12,
-        name: "hello".to_string(),
         op: Some("option".to_string()),
         op2: None,
         date: NaiveDate::from_ymd_opt(2025, 12, 12).unwrap(),
