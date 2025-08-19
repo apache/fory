@@ -126,10 +126,15 @@ impl<'a> MetaStringEncoder<'a> {
                 return Encoding::LowerUpperDigitSpecial;
             }
             let upper_count: usize = statistics.upper_count;
-            if upper_count == 1 && input.chars().next().unwrap().is_uppercase() && allow(Encoding::FirstToLowerSpecial) {
+            if upper_count == 1
+                && input.chars().next().unwrap().is_uppercase()
+                && allow(Encoding::FirstToLowerSpecial)
+            {
                 return Encoding::FirstToLowerSpecial;
             }
-            if ((input.len() + upper_count) * 5) < (input.len() * 6) && allow(Encoding::AllToLowerSpecial) {
+            if ((input.len() + upper_count) * 5) < (input.len() * 6)
+                && allow(Encoding::AllToLowerSpecial)
+            {
                 return Encoding::AllToLowerSpecial;
             }
             if allow(Encoding::LowerUpperDigitSpecial) {

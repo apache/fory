@@ -18,7 +18,7 @@
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use syn::Field;
-use syn::{Type, PathArguments, GenericArgument};
+use syn::{GenericArgument, PathArguments, Type};
 
 use fory_core::meta::FieldInfo;
 fn create_private_field_name(field: &Field) -> Ident {
@@ -77,8 +77,11 @@ fn parse_type_tree(ty: &Type) -> TypeTree {
     let type_name = extract_type_name(ty);
 
     if let Type::Path(type_path) = ty {
-        if let PathArguments::AngleBracketed(args) = &type_path.path.segments.last().unwrap().arguments {
-            let generic_args: Vec<TypeTree> = args.args
+        if let PathArguments::AngleBracketed(args) =
+            &type_path.path.segments.last().unwrap().arguments
+        {
+            let generic_args: Vec<TypeTree> = args
+                .args
                 .iter()
                 .filter_map(|arg| {
                     if let GenericArgument::Type(ty) = arg {
@@ -109,10 +112,8 @@ fn type_tree_to_tokens(tree: &TypeTree) -> TokenStream {
     match tree {
         TypeTree::Leaf(name) => quote! { (#name,) },
         TypeTree::Node(name, children) => {
-            let children_tokens: Vec<TokenStream> = children
-                .iter()
-                .map(type_tree_to_tokens)
-                .collect();
+            let children_tokens: Vec<TokenStream> =
+                children.iter().map(type_tree_to_tokens).collect();
             quote! { (#name, #(#children_tokens),*) }
         }
     }

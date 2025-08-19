@@ -19,11 +19,11 @@ use super::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::serializer::{Serializer, StructSerializer};
-use std::any::TypeId;
-use std::{any::Any, collections::HashMap};
-use std::collections::HashSet;
-use chrono::{NaiveDate, NaiveDateTime};
 use crate::types::FieldType;
+use chrono::{NaiveDate, NaiveDateTime};
+use std::any::TypeId;
+use std::collections::HashSet;
+use std::{any::Any, collections::HashMap};
 
 pub struct Harness {
     serializer: fn(&dyn Any, &mut WriteContext),
@@ -78,26 +78,24 @@ pub struct TypeResolver {
     type_info_map: HashMap<TypeId, TypeInfo>,
 }
 macro_rules! register_harness {
-    ($ty:ty, $id:expr, $map:expr) => {
-        {
-            fn serializer(this: &dyn std::any::Any, context: &mut WriteContext) {
-                let this = this.downcast_ref::<$ty>();
-                match this {
-                    Some(v) => <$ty>::serialize(v, context),
-                    None => todo!(""),
-                }
+    ($ty:ty, $id:expr, $map:expr) => {{
+        fn serializer(this: &dyn std::any::Any, context: &mut WriteContext) {
+            let this = this.downcast_ref::<$ty>();
+            match this {
+                Some(v) => <$ty>::serialize(v, context),
+                None => todo!(""),
             }
-
-            fn deserializer(context: &mut ReadContext) -> Result<Box<dyn std::any::Any>, Error> {
-                match <$ty>::deserialize(context) {
-                    Ok(v) => Ok(Box::new(v)),
-                    Err(e) => Err(e),
-                }
-            }
-
-            $map.insert($id as u32, Harness::new(serializer, deserializer));
         }
-    };
+
+        fn deserializer(context: &mut ReadContext) -> Result<Box<dyn std::any::Any>, Error> {
+            match <$ty>::deserialize(context) {
+                Ok(v) => Ok(Box::new(v)),
+                Err(e) => Err(e),
+            }
+        }
+
+        $map.insert($id as u32, Harness::new(serializer, deserializer));
+    }};
 }
 
 impl Default for TypeResolver {
@@ -108,7 +106,7 @@ impl Default for TypeResolver {
         register_harness!(u8, FieldType::UINT8, serialize_map);
         register_harness!(i16, FieldType::INT16, serialize_map);
         register_harness!(u16, FieldType::UINT16, serialize_map);
-        register_harness!(i32,  FieldType::INT32, serialize_map);
+        register_harness!(i32, FieldType::INT32, serialize_map);
         register_harness!(u32, FieldType::UINT32, serialize_map);
         register_harness!(u64, FieldType::UINT64, serialize_map);
         register_harness!(i64, FieldType::INT64, serialize_map);

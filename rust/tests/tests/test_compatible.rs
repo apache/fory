@@ -27,9 +27,9 @@ use fory_core::types::Mode::Compatible;
 fn compatible() {
     #[derive(Fory, Debug)]
     struct Animal1 {
-        f1: HashMap::<i8, i8>,
+        f1: HashMap<i8, i8>,
         f2: String,
-        f3: Vec::<i8>,
+        f3: Vec<i8>,
         // f4: String,
     }
 
@@ -48,7 +48,7 @@ fn compatible() {
     let animal: Animal1 = Animal1 {
         f1: HashMap::from([(1, 2)]),
         f2: String::from("hello"),
-        f3: vec![1,2,3],
+        f3: vec![1, 2, 3],
     };
     let bin = fory1.serialize(&animal);
     let obj: Animal2 = fory2.deserialize(&bin).unwrap();

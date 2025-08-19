@@ -19,9 +19,9 @@ use std::io::stdout;
 
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
-use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
+use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{Serializer, StructSerializer};
 use crate::types::{config_flags, Language, Mode, SIZE_OF_REF_AND_TYPE};
 

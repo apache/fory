@@ -190,10 +190,9 @@ mod tests {
     }
 }
 
-
 fn fmix64(mut k: u64) -> u64 {
-    let a:i8 = 1;
-    let b:i8 = a.abs();
+    let a: i8 = 1;
+    let b: i8 = a.abs();
     k ^= k >> 33;
     k = k.wrapping_mul(0xff51afd7ed558ccdu64);
     k ^= k >> 33;
@@ -238,27 +237,55 @@ pub fn murmurhash3_x64_128(bytes: &[u8], seed: u64) -> (u64, u64) {
     }
     let (mut k1, mut k2) = (0u64, 0u64);
 
-    if len & 15 == 15 { k2 ^= (bytes[(block_count * read_size) as usize + 14] as u64) << 48; }
-    if len & 15 >= 14 { k2 ^= (bytes[(block_count * read_size) as usize + 13] as u64) << 40; }
-    if len & 15 >= 13 { k2 ^= (bytes[(block_count * read_size) as usize + 12] as u64) << 32; }
-    if len & 15 >= 12 { k2 ^= (bytes[(block_count * read_size) as usize + 11] as u64) << 24; }
-    if len & 15 >= 11 { k2 ^= (bytes[(block_count * read_size) as usize + 10] as u64) << 16; }
-    if len & 15 >= 10 { k2 ^= (bytes[(block_count * read_size) as usize +  9] as u64) <<  8; }
-    if len & 15 >=  9 { k2 ^=  bytes[(block_count * read_size) as usize +  8] as u64;
+    if len & 15 == 15 {
+        k2 ^= (bytes[(block_count * read_size) as usize + 14] as u64) << 48;
+    }
+    if len & 15 >= 14 {
+        k2 ^= (bytes[(block_count * read_size) as usize + 13] as u64) << 40;
+    }
+    if len & 15 >= 13 {
+        k2 ^= (bytes[(block_count * read_size) as usize + 12] as u64) << 32;
+    }
+    if len & 15 >= 12 {
+        k2 ^= (bytes[(block_count * read_size) as usize + 11] as u64) << 24;
+    }
+    if len & 15 >= 11 {
+        k2 ^= (bytes[(block_count * read_size) as usize + 10] as u64) << 16;
+    }
+    if len & 15 >= 10 {
+        k2 ^= (bytes[(block_count * read_size) as usize + 9] as u64) << 8;
+    }
+    if len & 15 >= 9 {
+        k2 ^= bytes[(block_count * read_size) as usize + 8] as u64;
         k2 = k2.wrapping_mul(c2);
         k2 = k2.rotate_left(33);
         k2 = k2.wrapping_mul(c1);
         h2 ^= k2;
     }
 
-    if len & 15 >= 8 { k1 ^= (bytes[(block_count * read_size) as usize + 7] as u64) << 56; }
-    if len & 15 >= 7 { k1 ^= (bytes[(block_count * read_size) as usize + 6] as u64) << 48; }
-    if len & 15 >= 6 { k1 ^= (bytes[(block_count * read_size) as usize + 5] as u64) << 40; }
-    if len & 15 >= 5 { k1 ^= (bytes[(block_count * read_size) as usize + 4] as u64) << 32; }
-    if len & 15 >= 4 { k1 ^= (bytes[(block_count * read_size) as usize + 3] as u64) << 24; }
-    if len & 15 >= 3 { k1 ^= (bytes[(block_count * read_size) as usize + 2] as u64) << 16; }
-    if len & 15 >= 2 { k1 ^= (bytes[(block_count * read_size) as usize + 1] as u64) <<  8; }
-    if len & 15 >= 1 { k1 ^=  bytes[(block_count * read_size) as usize + 0] as u64;
+    if len & 15 >= 8 {
+        k1 ^= (bytes[(block_count * read_size) as usize + 7] as u64) << 56;
+    }
+    if len & 15 >= 7 {
+        k1 ^= (bytes[(block_count * read_size) as usize + 6] as u64) << 48;
+    }
+    if len & 15 >= 6 {
+        k1 ^= (bytes[(block_count * read_size) as usize + 5] as u64) << 40;
+    }
+    if len & 15 >= 5 {
+        k1 ^= (bytes[(block_count * read_size) as usize + 4] as u64) << 32;
+    }
+    if len & 15 >= 4 {
+        k1 ^= (bytes[(block_count * read_size) as usize + 3] as u64) << 24;
+    }
+    if len & 15 >= 3 {
+        k1 ^= (bytes[(block_count * read_size) as usize + 2] as u64) << 16;
+    }
+    if len & 15 >= 2 {
+        k1 ^= (bytes[(block_count * read_size) as usize + 1] as u64) << 8;
+    }
+    if len & 15 >= 1 {
+        k1 ^= bytes[(block_count * read_size) as usize + 0] as u64;
         k1 = k1.wrapping_mul(c1);
         k1 = k1.rotate_left(31);
         k1 = k1.wrapping_mul(c2);
@@ -291,38 +318,66 @@ mod test_hash {
 
     #[test]
     fn test_tail_lengths() {
-        assert!(murmurhash3_x64_128("1".as_bytes(), 0)
-            == (8213365047359667313, 10676604921780958775));
-        assert!(murmurhash3_x64_128("12".as_bytes(), 0)
-            == (5355690773644049813, 9855895140584599837));
-        assert!(murmurhash3_x64_128("123".as_bytes(), 0)
-            == (10978418110857903978, 4791445053355511657));
-        assert!(murmurhash3_x64_128("1234".as_bytes(), 0)
-            == (619023178690193332, 3755592904005385637));
-        assert!(murmurhash3_x64_128("12345".as_bytes(), 0)
-            == (2375712675693977547, 17382870096830835188));
-        assert!(murmurhash3_x64_128("123456".as_bytes(), 0)
-            == (16435832985690558678, 5882968373513761278));
-        assert!(murmurhash3_x64_128("1234567".as_bytes(), 0)
-            == (3232113351312417698, 4025181827808483669));
-        assert!(murmurhash3_x64_128("12345678".as_bytes(), 0)
-            == (4272337174398058908, 10464973996478965079));
-        assert!(murmurhash3_x64_128("123456789".as_bytes(), 0)
-            == (4360720697772133540, 11094893415607738629));
-        assert!(murmurhash3_x64_128("123456789a".as_bytes(), 0)
-            == (12594836289594257748, 2662019112679848245));
-        assert!(murmurhash3_x64_128("123456789ab".as_bytes(), 0)
-            == (6978636991469537545, 12243090730442643750));
-        assert!(murmurhash3_x64_128("123456789abc".as_bytes(), 0)
-            == (211890993682310078, 16480638721813329343));
-        assert!(murmurhash3_x64_128("123456789abcd".as_bytes(), 0)
-            == (12459781455342427559, 3193214493011213179));
-        assert!(murmurhash3_x64_128("123456789abcde".as_bytes(), 0)
-            == (12538342858731408721, 9820739847336455216));
-        assert!(murmurhash3_x64_128("123456789abcdef".as_bytes(), 0)
-            == (9165946068217512774, 2451472574052603025));
-        assert!(murmurhash3_x64_128("123456789abcdef1".as_bytes(), 0)
-            == (9259082041050667785, 12459473952842597282));
+        assert!(
+            murmurhash3_x64_128("1".as_bytes(), 0) == (8213365047359667313, 10676604921780958775)
+        );
+        assert!(
+            murmurhash3_x64_128("12".as_bytes(), 0) == (5355690773644049813, 9855895140584599837)
+        );
+        assert!(
+            murmurhash3_x64_128("123".as_bytes(), 0) == (10978418110857903978, 4791445053355511657)
+        );
+        assert!(
+            murmurhash3_x64_128("1234".as_bytes(), 0) == (619023178690193332, 3755592904005385637)
+        );
+        assert!(
+            murmurhash3_x64_128("12345".as_bytes(), 0)
+                == (2375712675693977547, 17382870096830835188)
+        );
+        assert!(
+            murmurhash3_x64_128("123456".as_bytes(), 0)
+                == (16435832985690558678, 5882968373513761278)
+        );
+        assert!(
+            murmurhash3_x64_128("1234567".as_bytes(), 0)
+                == (3232113351312417698, 4025181827808483669)
+        );
+        assert!(
+            murmurhash3_x64_128("12345678".as_bytes(), 0)
+                == (4272337174398058908, 10464973996478965079)
+        );
+        assert!(
+            murmurhash3_x64_128("123456789".as_bytes(), 0)
+                == (4360720697772133540, 11094893415607738629)
+        );
+        assert!(
+            murmurhash3_x64_128("123456789a".as_bytes(), 0)
+                == (12594836289594257748, 2662019112679848245)
+        );
+        assert!(
+            murmurhash3_x64_128("123456789ab".as_bytes(), 0)
+                == (6978636991469537545, 12243090730442643750)
+        );
+        assert!(
+            murmurhash3_x64_128("123456789abc".as_bytes(), 0)
+                == (211890993682310078, 16480638721813329343)
+        );
+        assert!(
+            murmurhash3_x64_128("123456789abcd".as_bytes(), 0)
+                == (12459781455342427559, 3193214493011213179)
+        );
+        assert!(
+            murmurhash3_x64_128("123456789abcde".as_bytes(), 0)
+                == (12538342858731408721, 9820739847336455216)
+        );
+        assert!(
+            murmurhash3_x64_128("123456789abcdef".as_bytes(), 0)
+                == (9165946068217512774, 2451472574052603025)
+        );
+        assert!(
+            murmurhash3_x64_128("123456789abcdef1".as_bytes(), 0)
+                == (9259082041050667785, 12459473952842597282)
+        );
     }
 
     #[test]

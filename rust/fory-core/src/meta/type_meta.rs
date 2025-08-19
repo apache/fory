@@ -15,21 +15,32 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::cmp::min;
 use super::meta_string::MetaStringEncoder;
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
-use crate::meta::{Encoding, MetaStringDecoder};
-use anyhow::anyhow;
 use crate::meta::murmurhash3_x64_128;
+use crate::meta::{Encoding, MetaStringDecoder};
 use crate::types::FieldType;
+use anyhow::anyhow;
+use std::cmp::min;
 
 trait FieldTypeResolver {
-    fn new() -> Self where Self: Sized;
-    fn new_collection(element_type:Box<dyn FieldTypeResolver>) -> Self where Self: Sized;
-    fn new_map(key_type: Box<dyn FieldTypeResolver>,value_type: Box<dyn FieldTypeResolver>) -> Self where Self: Sized;
+    fn new() -> Self
+    where
+        Self: Sized;
+    fn new_collection(element_type: Box<dyn FieldTypeResolver>) -> Self
+    where
+        Self: Sized;
+    fn new_map(
+        key_type: Box<dyn FieldTypeResolver>,
+        value_type: Box<dyn FieldTypeResolver>,
+    ) -> Self
+    where
+        Self: Sized;
     fn to_bytes(&self, writer: &mut Writer, field_type_id: i16, write_flag: bool);
-    fn from_bytes(reader: &mut Reader) -> Self where Self: Sized;
+    fn from_bytes(reader: &mut Reader) -> Self
+    where
+        Self: Sized;
 }
 //
 pub struct PrimitiveFieldType;
@@ -43,7 +54,7 @@ pub struct MapFieldType {
 
 impl FieldTypeResolver for PrimitiveFieldType {
     fn new() -> Self {
-        Self{}
+        Self {}
     }
 
     fn new_collection(element_type: Box<dyn FieldTypeResolver>) -> Self {
@@ -58,7 +69,7 @@ impl FieldTypeResolver for PrimitiveFieldType {
     }
 
     fn to_bytes(&self, writer: &mut Writer, field_type_id: i16, write_flag: bool) {
-        let mut header:i32 = field_type_id as i32;
+        let mut header: i32 = field_type_id as i32;
         // let ref_tracking = false;
         // let nullability = false;
         if (write_flag) {
@@ -182,7 +193,9 @@ impl FieldInfo {
 
         let field_name_bytes = reader.bytes(name_size);
         // println!("read field_name_bytes:{:?}", field_name_bytes);
-        let field_name = MetaStringDecoder::new().decode(field_name_bytes, encoding).unwrap();
+        let field_name = MetaStringDecoder::new()
+            .decode(field_name_bytes, encoding)
+            .unwrap();
         // println!("read field_name:{:?}", field_name);
         FieldInfo {
             field_name,
@@ -199,10 +212,12 @@ impl FieldInfo {
             Encoding::AllToLowerSpecial,
             Encoding::LowerUpperDigitSpecial,
         ];
-        let meta_string = MetaStringEncoder::new().set_options(Some(encoding_options)).encode(&self.field_name)?;
+        let meta_string = MetaStringEncoder::new()
+            .set_options(Some(encoding_options))
+            .encode(&self.field_name)?;
         let name_encoded = meta_string.bytes.as_slice();
-        let name_size = name_encoded.len()-1;
-        let mut header:u8 = (min(0b1111, name_size) as u8) << 2;
+        let name_size = name_encoded.len() - 1;
+        let mut header: u8 = (min(0b1111, name_size) as u8) << 2;
         let ref_tracking = false;
         let nullability = false;
         if ref_tracking {
@@ -211,7 +226,10 @@ impl FieldInfo {
         if nullability {
             header |= 0b10;
         }
-        let encoding_idx = encoding_options.iter().position(|x| *x == meta_string.encoding).unwrap() as u8;
+        let encoding_idx = encoding_options
+            .iter()
+            .position(|x| *x == meta_string.encoding)
+            .unwrap() as u8;
         // println!("encoding_idx:{:?} name:{:?}", encoding_idx, self.field_name);
         header |= encoding_idx << 6;
         // println!("write field_header:{:?}", header);
@@ -258,21 +276,21 @@ impl TypeMetaLayer {
         let num_fields = self.field_infos.len() - 1;
         let is_register_by_name = false;
         // meta_header: | unuse:2 bits | is_register_by_id:1 bit | num_fields:4 bits |
-        let mut meta_header:u8 = min(num_fields, 0b1111) as u8;
+        let mut meta_header: u8 = min(num_fields, 0b1111) as u8;
         if is_register_by_name {
             meta_header |= 0b10_0000;
         }
         // println!("write meta_header:{:?}", meta_header);
         writer.u8(meta_header);
-        if num_fields >= 0b1_1111{
+        if num_fields >= 0b1_1111 {
             writer.var_int32(num_fields as i32 - 0b1_1111);
         }
         if is_register_by_name {
             todo!()
-        }else{
+        } else {
             writer.var_int32(self.type_id as i32);
         }
-        for field in self.field_infos.iter(){
+        for field in self.field_infos.iter() {
             // println!("cur field:{:?}", field);
             writer.bytes(field.to_bytes()?.as_slice());
         }
@@ -291,7 +309,7 @@ impl TypeMetaLayer {
         let type_id;
         if is_register_by_name {
             todo!()
-        }else {
+        } else {
             type_id = reader.var_int32() as u32;
         }
         let mut field_infos = Vec::with_capacity(num_fields as usize);
@@ -355,7 +373,7 @@ impl TypeMeta {
         layers_writer.bytes(self.layers.first().unwrap().to_bytes()?.as_slice());
         // global_binary_header:| hash:50bits | is_compressed:1bit | write_fields_meta:1bit | meta_size:12bits |
         let meta_size = layers_writer.len() as u64;
-        let mut header:u64 = min(0x7ff, meta_size);
+        let mut header: u64 = min(0x7ff, meta_size);
         let write_meta_fields_flag = true;
         if write_meta_fields_flag {
             header |= 1 << 12;
