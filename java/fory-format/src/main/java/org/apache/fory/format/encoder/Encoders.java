@@ -474,7 +474,7 @@ public class Encoders {
     TypeRef<?> keyToken = token4BeanLoad(set1, tuple2.f0);
     TypeRef<?> valToken = token4BeanLoad(set2, tuple2.f1);
 
-    MapEncoder<T> encoder = mapEncoder(token, keyToken, valToken, fory);
+    MapEncoder<T> encoder = mapEncoder0(token, keyToken, valToken, fory);
     return createMapEncoder(encoder);
   }
 
@@ -490,6 +490,22 @@ public class Encoders {
    * java bean.
    */
   public static <T extends Map, K, V> MapEncoder<T> mapEncoder(
+      TypeRef<? extends Map> mapToken, TypeRef<K> keyToken, TypeRef<V> valToken, Fory fory) {
+    Preconditions.checkNotNull(mapToken);
+    Preconditions.checkNotNull(keyToken);
+    Preconditions.checkNotNull(valToken);
+
+    Set<TypeRef<?>> set1 = beanSet(keyToken);
+    Set<TypeRef<?>> set2 = beanSet(valToken);
+    LOG.info("Find beans to load: {}, {}", set1, set2);
+
+    token4BeanLoad(set1, keyToken);
+    token4BeanLoad(set2, valToken);
+
+    return mapEncoder0(mapToken, keyToken, valToken, fory);
+  }
+
+  private static <T extends Map, K, V> MapEncoder<T> mapEncoder0(
       TypeRef<? extends Map> mapToken, TypeRef<K> keyToken, TypeRef<V> valToken, Fory fory) {
     Preconditions.checkNotNull(mapToken);
     Preconditions.checkNotNull(keyToken);
@@ -685,6 +701,9 @@ public class Encoders {
         TypeUtils.listBeansRecursiveInclusive(
             beanClass,
             new TypeResolutionContext(CustomTypeEncoderRegistry.customTypeHandler(), true));
+    if (classes.isEmpty()) {
+      return null;
+    }
     LOG.info("Create RowCodec for classes {}", classes);
     CompileUnit[] compileUnits =
         classes.stream()
