@@ -388,9 +388,9 @@ cdef class TypeInfo:
     for python `int`: `Int8/1632/64/128Serializer` for `int8/16/32/64/128` each, and another
     `IntSerializer` for `int` which will dispatch to different `int8/16/32/64/128` type
     according the actual value.
-    We do not get the acutal type here, because it will introduce extra computing.
+    We do not get the actual type here, because it will introduce extra computing.
     For example, we have want to get actual `Int8/16/32/64Serializer`, we must check and
-    extract the actutal here which will introduce cost, and we will do same thing again
+    extract the actual here which will introduce cost, and we will do same thing again
     when serializing the actual data.
     """
     cdef public object cls
@@ -1555,7 +1555,7 @@ cdef inline get_next_element(
     typeinfo = type_resolver.read_typeinfo(buffer)
     cdef int32_t type_id = typeinfo.type_id
     # Note that all read operations in fast paths of list/tuple/set/dict/sub_dict
-    # ust match corresponding writing operations. Otherwise, ref tracking will
+    # must match corresponding writing operations. Otherwise, ref tracking will
     # error.
     if type_id == <int32_t>TypeId.STRING:
         return buffer.read_string()

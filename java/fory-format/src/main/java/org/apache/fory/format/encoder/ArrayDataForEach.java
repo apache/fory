@@ -110,7 +110,7 @@ public class ArrayDataForEach extends AbstractExpression {
     String i = freshNames[0];
     String elemValue = freshNames[1];
     String len = freshNames[2];
-    // elemValue is only used in notNullAction, so set elemValueRef'nullable to false.
+    // elemValue is only used in notNullAction, so set elemValueRef's nullable to false.
     Reference elemValueRef = new Reference(elemValue, elemType);
     Code.ExprCode notNullElemExprCode =
         notNullAction.apply(new Reference(i), elemValueRef).genCode(ctx);
