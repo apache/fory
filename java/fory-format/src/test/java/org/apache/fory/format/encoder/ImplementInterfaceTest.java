@@ -22,7 +22,11 @@ package org.apache.fory.format.encoder;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.TreeSet;
+
 import lombok.Data;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.annotation.ForyField;
@@ -141,41 +145,98 @@ public class ImplementInterfaceTest {
 
   public interface OptionalType {
     Optional<String> f1();
+    OptionalInt f2();
+    OptionalLong f3();
+    OptionalDouble f4();
   }
 
   static class OptionalTypeImpl implements OptionalType {
-    private final Optional<String> f1;
-
-    OptionalTypeImpl(final Optional<String> f1) {
-      this.f1 = f1;
-    }
+    Optional<String> f1;
+    OptionalInt f2;
+    OptionalLong f3;
+    OptionalDouble f4;
 
     @Override
     public Optional<String> f1() {
       return f1;
     }
+
+    @Override
+    public OptionalInt f2() {
+        return f2;
+    }
+
+    @Override
+    public OptionalLong f3() {
+        return f3;
+    }
+
+    @Override
+    public OptionalDouble f4() {
+        return f4;
+    }
   }
 
   @Test
   public void testNullOptional() {
-    final OptionalType bean1 = new OptionalTypeImpl(null);
+    final OptionalType bean1 = new OptionalTypeImpl();
     final RowEncoder<OptionalType> encoder = Encoders.bean(OptionalType.class);
     final BinaryRow row = encoder.toRow(bean1);
     final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean.f1(), Optional.empty());
+    Assert.assertEquals(deserializedBean.f2(), OptionalInt.empty());
+    Assert.assertEquals(deserializedBean.f3(), OptionalLong.empty());
+    Assert.assertEquals(deserializedBean.f4(), OptionalDouble.empty());
   }
 
   @Test
   public void testPresentOptional() {
-    final OptionalType bean1 = new OptionalTypeImpl(Optional.of("42"));
+    final OptionalTypeImpl bean1 = new OptionalTypeImpl();
+    bean1.f1 = Optional.of("42");
     final RowEncoder<OptionalType> encoder = Encoders.bean(OptionalType.class);
     final BinaryRow row = encoder.toRow(bean1);
     final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());
     final OptionalType deserializedBean = encoder.fromRow(row);
     Assert.assertEquals(deserializedBean.f1(), Optional.of("42"));
+  }
+
+  @Test
+  public void testPresentOptionalInteger() {
+    final OptionalTypeImpl bean1 = new OptionalTypeImpl();
+    bean1.f2 = OptionalInt.of(42);
+    final RowEncoder<OptionalType> encoder = Encoders.bean(OptionalType.class);
+    final BinaryRow row = encoder.toRow(bean1);
+    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final OptionalType deserializedBean = encoder.fromRow(row);
+    Assert.assertEquals(deserializedBean.f2(), OptionalInt.of(42));
+  }
+
+  @Test
+  public void testPresentOptionalLong() {
+    final OptionalTypeImpl bean1 = new OptionalTypeImpl();
+    bean1.f3 = OptionalLong.of(42);
+    final RowEncoder<OptionalType> encoder = Encoders.bean(OptionalType.class);
+    final BinaryRow row = encoder.toRow(bean1);
+    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final OptionalType deserializedBean = encoder.fromRow(row);
+    Assert.assertEquals(deserializedBean.f3(), OptionalLong.of(42));
+  }
+
+  @Test
+  public void testPresentOptionalDouble() {
+    final OptionalTypeImpl bean1 = new OptionalTypeImpl();
+    bean1.f4 = OptionalDouble.of(42.42);
+    final RowEncoder<OptionalType> encoder = Encoders.bean(OptionalType.class);
+    final BinaryRow row = encoder.toRow(bean1);
+    final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
+    row.pointTo(buffer, 0, buffer.size());
+    final OptionalType deserializedBean = encoder.fromRow(row);
+    Assert.assertEquals(deserializedBean.f4(), OptionalDouble.of(42.42));
   }
 
   public static class Id<T> {

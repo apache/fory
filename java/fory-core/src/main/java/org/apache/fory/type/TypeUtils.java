@@ -656,6 +656,17 @@ public class TypeUtils {
     }
   }
 
+  /**
+   * Check if a class is one of {@link Optional), {@link OptionalInt},
+   * {@link OptionaLong}, or {@link OptionalDouble}.
+   */
+  public static boolean isOptionalType(Class<?> type) {
+    return type == Optional.class
+        || type == OptionalInt.class
+        || type == OptionalLong.class
+        || type == OptionalDouble.class;
+  }
+
   private static boolean isSynthesizableInterface(Class<?> cls) {
     return cls.isInterface()
         && !Collection.class.isAssignableFrom(cls)
