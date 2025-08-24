@@ -19,6 +19,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Field;
 
+use super::util::{generic_tree_to_tokens, parse_generic_tree};
+
 fn hash(fields: &[&Field]) -> TokenStream {
     let props = fields.iter().map(|field| {
         let ty = &field.ty;
@@ -47,8 +49,10 @@ fn type_def(fields: &[&Field]) -> TokenStream {
     let field_infos = fields.iter().map(|field| {
         let ty = &field.ty;
         let name = format!("{}", field.ident.as_ref().expect("should be field name"));
+        let generic_tree = parse_generic_tree(ty);
+        let generic_token = generic_tree_to_tokens(&generic_tree, false);
         quote! {
-            fory_core::meta::FieldInfo::new(#name, <#ty as fory_core::serializer::Serializer>::get_type_id(fory))
+            fory_core::meta::FieldInfo::new(#name, #generic_token)
         }
     });
     quote! {

@@ -49,12 +49,8 @@ impl ForyGeneralList for u32 {}
 impl ForyGeneralList for u64 {}
 
 impl_num_serializer!(i8, i8, FieldType::INT8);
-impl_num_serializer!(u8, u8, FieldType::UINT8);
 impl_num_serializer!(i16, i16, FieldType::INT16);
-impl_num_serializer!(u16, u16, FieldType::UINT16);
 impl_num_serializer!(i32, i32, FieldType::INT32);
-impl_num_serializer!(u32, u32, FieldType::UINT32);
-impl_num_serializer!(u64, u64, FieldType::UINT64);
 impl_num_serializer!(i64, i64, FieldType::INT64);
-impl_num_serializer!(f32, f32, FieldType::FLOAT);
-impl_num_serializer!(f64, f64, FieldType::DOUBLE);
+impl_num_serializer!(f32, f32, FieldType::FLOAT32);
+impl_num_serializer!(f64, f64, FieldType::FLOAT64);

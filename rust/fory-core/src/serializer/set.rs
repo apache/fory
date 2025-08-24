@@ -52,7 +52,7 @@ impl<T: Serializer + Eq + std::hash::Hash> Serializer for HashSet<T> {
     }
 
     fn get_type_id(_fory: &Fory) -> i16 {
-        FieldType::ForySet.into()
+        FieldType::SET.into()
     }
 }
 

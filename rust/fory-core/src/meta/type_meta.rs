@@ -20,145 +20,100 @@ use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::meta::murmurhash3_x64_128;
 use crate::meta::{Encoding, MetaStringDecoder};
+use crate::types::FieldType;
 use anyhow::anyhow;
 use std::cmp::min;
 
-// trait FieldTypeResolver {
-//     fn new() -> Self
-//     where
-//         Self: Sized;
-//     fn new_collection(element_type: Box<dyn FieldTypeResolver>) -> Self
-//     where
-//         Self: Sized;
-//     fn new_map(
-//         key_type: Box<dyn FieldTypeResolver>,
-//         value_type: Box<dyn FieldTypeResolver>,
-//     ) -> Self
-//     where
-//         Self: Sized;
-//     fn to_bytes(&self, writer: &mut Writer, field_type_id: i16, write_flag: bool);
-//     fn from_bytes(reader: &mut Reader) -> Self
-//     where
-//         Self: Sized;
-// }
-// //
-// pub struct PrimitiveFieldType;
-// pub struct CollectionFieldType {
-//     element_type: Box<dyn FieldTypeResolver>,
-// }
-// pub struct MapFieldType {
-//     key_type: Box<dyn FieldTypeResolver>,
-//     value_type: Box<dyn FieldTypeResolver>,
-// }
+#[derive(Debug, PartialEq, Eq)]
+pub struct FieldTypeResolver {
+    pub type_id: i16,
+    generics: Vec<FieldTypeResolver>,
+}
 
-// impl FieldTypeResolver for PrimitiveFieldType {
-//     fn new() -> Self {
-//         Self {}
-//     }
+impl FieldTypeResolver {
+    pub fn new(type_id: i16, generics: Vec<FieldTypeResolver>) -> Self {
+        FieldTypeResolver { type_id, generics }
+    }
 
-//     fn new_collection(element_type: Box<dyn FieldTypeResolver>) -> Self {
-//         unimplemented!()
-//     }
+    fn to_bytes(&self, writer: &mut Writer, write_flag: bool) -> Result<(), Error> {
+        let mut header: i32 = self.type_id as i32;
+        // let ref_tracking = false;
+        // todo if "Option<T>" is nullability then T nullability=true
+        // let nullability = false;
+        if write_flag {
+            header <<= 2;
+        }
+        writer.var_int32(header);
 
-//     fn new_map(
-//         key_type: Box<dyn FieldTypeResolver>,
-//         value_type: Box<dyn FieldTypeResolver>,
-//     ) -> Self {
-//         unimplemented!()
-//     }
+        match self.type_id {
+            x if x == FieldType::ARRAY as i16 || x == FieldType::SET as i16 => {
+                let generic = self.generics.first().unwrap();
+                generic.to_bytes(writer, true)?;
+            }
+            x if x == FieldType::MAP as i16 => {
+                let key_generic = self.generics.first().unwrap();
+                let val_generic = self.generics.get(1).unwrap();
+                key_generic.to_bytes(writer, true)?;
+                val_generic.to_bytes(writer, true)?;
+            }
+            _ => {
+                // for generic in self.generics.iter() {
+                //     generic.to_bytes(writer, true)?;
+                // }
+            }
+        }
+        Ok(())
+    }
 
-//     fn to_bytes(&self, writer: &mut Writer, field_type_id: i16, write_flag: bool) {
-//         let mut header: i32 = field_type_id as i32;
-//         // let ref_tracking = false;
-//         // let nullability = false;
-//         if write_flag {
-//             header <<= 2;
-//         }
-//         writer.var_int32(header);
-//     }
+    #[allow(clippy::needless_late_init)]
+    fn from_bytes(reader: &mut Reader, read_flag: bool) -> Self {
+        let header = reader.var_int32();
+        let type_id;
+        if read_flag {
+            type_id = (header >> 2) as i16;
+            // let tracking_ref = (header & 1) != 0;
+            // todo if T is nullability then "Option<T>"
+            // let nullable = (header & 2) != 0;
+        } else {
+            type_id = header as i16;
+        }
+        match type_id {
+            x if x == FieldType::ARRAY as i16 || x == FieldType::SET as i16 => {
+                let generic = Self::from_bytes(reader, true);
+                Self {
+                    type_id,
+                    generics: vec![generic],
+                }
+            }
+            x if x == FieldType::MAP as i16 => {
+                let key_generic = Self::from_bytes(reader, true);
+                let val_generic = Self::from_bytes(reader, true);
+                Self {
+                    type_id,
+                    generics: vec![key_generic, val_generic],
+                }
+            }
+            _ => Self {
+                type_id,
+                generics: vec![],
+            },
+        }
+    }
+}
 
-//     fn from_bytes(_reader: &mut Reader) -> Self {
-//         unimplemented!()
-//     }
-// }
-//
-// impl FieldTypeResolver for CollectionFieldType {
-//     fn new() -> Self {
-//         unimplemented!()
-//     }
-//
-//     fn new_collection(element_type: Box<dyn FieldTypeResolver>) -> Self {
-//         Self { element_type }
-//     }
-//
-//     fn new_map(
-//         key_type: Box<dyn FieldTypeResolver>,
-//         value_type: Box<dyn FieldTypeResolver>,
-//     ) -> Self {
-//         unimplemented!()
-//     }
-//
-//     fn to_bytes(&self, writer: &mut Writer, field_type_id: i16, write_flag: bool) {
-//         let mut header:i32 = field_type_id as i32;
-//         // let ref_tracking = false;
-//         // let nullability = false;
-//         if (write_flag) {
-//             header = (header << 2);
-//         }
-//         writer.var_int32(header);
-//         self.element_type.to_bytes(writer, field_type_id, write_flag);
-//     }
-//
-//     fn from_bytes(_reader: &mut Reader) -> Self {
-//         unimplemented!()
-//     }
-// }
-//
-// impl FieldTypeResolver for MapFieldType {
-//     fn new() -> Self {
-//         unimplemented!()
-//     }
-//
-//     fn new_collection(element_type: Box<dyn FieldTypeResolver>) -> Self {
-//         unimplemented!()
-//     }
-//
-//     fn new_map(
-//         key_type: Box<dyn FieldTypeResolver>,
-//         value_type: Box<dyn FieldTypeResolver>,
-//     ) -> Self {
-//         Self { key_type, value_type }
-//     }
-//
-//     fn to_bytes(&self, writer: &mut Writer, field_type_id: i16, write_flag: bool) {
-//         let mut header:i32 = field_type_id as i32;
-//         // let ref_tracking = false;
-//         // let nullability = false;
-//         if (write_flag) {
-//             header = (header << 2);
-//         }
-//         writer.var_int32(header);
-//         self.key_type.to_bytes(writer, field_type_id, write_flag);
-//         self.value_type.to_bytes(writer, field_type_id, write_flag);
-//     }
-//
-//     fn from_bytes(_reader: &mut Reader) -> Self {
-//         unimplemented!()
-//     }
-// }
+static META_SIZE_MASK: u64 = 0xfff;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct FieldInfo {
     pub field_name: String,
-    pub field_type_id: i16,
-    // field_type_resolver: Box<dyn FieldTypeResolver>,
+    pub field_type: FieldTypeResolver,
 }
 
 impl FieldInfo {
-    pub fn new(field_name: &str, field_type_id: i16) -> FieldInfo {
+    pub fn new(field_name: &str, field_type: FieldTypeResolver) -> FieldInfo {
         FieldInfo {
             field_name: field_name.to_string(),
-            field_type_id,
+            field_type,
         }
     }
 
@@ -187,18 +142,16 @@ impl FieldInfo {
         }
         name_size += 1;
 
-        let field_type_id = reader.var_int32() as i16;
-        // println!("read field_type_id:{:?}", field_type_id);
+        let field_type = FieldTypeResolver::from_bytes(reader, false);
 
         let field_name_bytes = reader.bytes(name_size);
-        // println!("read field_name_bytes:{:?}", field_name_bytes);
+
         let field_name = MetaStringDecoder::new()
             .decode(field_name_bytes, encoding)
             .unwrap();
-        // println!("read field_name:{:?}", field_name);
         FieldInfo {
             field_name,
-            field_type_id,
+            field_type,
         }
     }
 
@@ -229,19 +182,14 @@ impl FieldInfo {
             .iter()
             .position(|x| *x == meta_string.encoding)
             .unwrap() as u8;
-        // println!("encoding_idx:{:?} name:{:?}", encoding_idx, self.field_name);
         header |= encoding_idx << 6;
-        // println!("write field_header:{:?}", header);
         writer.u8(header);
         if name_size >= 15 {
             writer.var_int32((name_size - 15) as i32);
         }
         // write type_info
-        // println!("write field_type_id:{:?}", self.field_type_id);
-        writer.var_int32(self.field_type_id as i32);
+        self.field_type.to_bytes(&mut writer, false)?;
         // write field_name
-        // println!("write field_name_bytes:{:?}", name_encoded);
-        // println!("write field_name:{:?}", self.field_name);
         writer.bytes(name_encoded);
         Ok(writer.dump())
     }
@@ -345,8 +293,8 @@ impl TypeMeta {
     #[allow(unused_assignments)]
     pub fn from_bytes(reader: &mut Reader) -> TypeMeta {
         let header = reader.u64();
-        let mut meta_size = header & 0x7FF;
-        if meta_size == 0x7FF {
+        let mut meta_size = header & META_SIZE_MASK;
+        if meta_size == META_SIZE_MASK {
             meta_size += reader.var_int32() as u64;
         }
 
@@ -373,7 +321,7 @@ impl TypeMeta {
         layers_writer.bytes(self.layers.first().unwrap().to_bytes()?.as_slice());
         // global_binary_header:| hash:50bits | is_compressed:1bit | write_fields_meta:1bit | meta_size:12bits |
         let meta_size = layers_writer.len() as u64;
-        let mut header: u64 = min(0x7ff, meta_size);
+        let mut header: u64 = min(META_SIZE_MASK, meta_size);
         let write_meta_fields_flag = true;
         if write_meta_fields_flag {
             header |= 1 << 12;
@@ -386,8 +334,8 @@ impl TypeMeta {
         header |= meta_hash << 14;
         result.u64(header);
         // extra byte
-        if meta_size >= 0x7ff {
-            result.var_int32((meta_size - 0x7ff) as i32);
+        if meta_size >= META_SIZE_MASK {
+            result.var_int32((meta_size - META_SIZE_MASK) as i32);
         }
         // layers_bytes
         result.bytes(layers_writer.dump().as_slice());

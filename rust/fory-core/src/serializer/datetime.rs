@@ -71,7 +71,7 @@ impl Serializer for NaiveDate {
     }
 
     fn get_type_id(_fory: &Fory) -> i16 {
-        FieldType::DATE.into()
+        FieldType::LOCAL_DATE.into()
     }
 }
 

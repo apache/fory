@@ -19,6 +19,7 @@ mod derive_enum;
 mod misc;
 mod read;
 mod serializer;
+mod util;
 mod write;
 
 pub use serializer::derive_serializer;

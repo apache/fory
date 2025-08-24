@@ -18,7 +18,9 @@
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use syn::Field;
-use syn::{GenericArgument, PathArguments, Type};
+use syn::Type;
+
+use super::util::{generic_tree_to_tokens, parse_generic_tree};
 
 fn create_private_field_name(field: &Field) -> Ident {
     format_ident!("_{}", field.ident.as_ref().expect(""))
@@ -68,62 +70,13 @@ fn read(fields: &[&Field]) -> TokenStream {
     }
 }
 
-enum TypeTree {
-    Leaf(String),
-    Node(String, Vec<TypeTree>),
-}
-fn parse_type_tree(ty: &Type) -> TypeTree {
-    let type_name = extract_type_name(ty);
-
-    if let Type::Path(type_path) = ty {
-        if let PathArguments::AngleBracketed(args) =
-            &type_path.path.segments.last().unwrap().arguments
-        {
-            let generic_args: Vec<TypeTree> = args
-                .args
-                .iter()
-                .filter_map(|arg| {
-                    if let GenericArgument::Type(ty) = arg {
-                        Some(parse_type_tree(ty))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-
-            if !generic_args.is_empty() {
-                return TypeTree::Node(type_name, generic_args);
-            }
-        }
-    }
-
-    TypeTree::Leaf(type_name)
-}
-
-fn extract_type_name(ty: &Type) -> String {
-    if let Type::Path(type_path) = ty {
-        type_path.path.segments.last().unwrap().ident.to_string()
-    } else {
-        quote!(#ty).to_string()
-    }
-}
-fn type_tree_to_tokens(tree: &TypeTree) -> TokenStream {
-    match tree {
-        TypeTree::Leaf(name) => quote! { (#name,) },
-        TypeTree::Node(name, children) => {
-            let children_tokens: Vec<TokenStream> =
-                children.iter().map(type_tree_to_tokens).collect();
-            quote! { (#name, #(#children_tokens),*) }
-        }
-    }
-}
-
 fn deserialize_compatible(fields: &[&Field]) -> TokenStream {
-    let pattern_items = fields.iter().enumerate().map(|(index, field)| {
+    let pattern_items = fields.iter().map(|field| {
         let ty = &field.ty;
         let var_name = create_private_field_name(field);
-        let type_tree = parse_type_tree(ty);
-        let type_structure = type_tree_to_tokens(&type_tree);
+
+        let generic_tree = parse_generic_tree(ty);
+        let generic_token = generic_tree_to_tokens(&generic_tree, true);
 
         let field_name_str = field.ident.as_ref().unwrap().to_string();
 
@@ -133,28 +86,15 @@ fn deserialize_compatible(fields: &[&Field]) -> TokenStream {
             }
             _ => panic!("Unsupported type"),
         };
-
-        let type_print = quote! {
-            type T = #ty;
-            println!(
-                "Field {} type: {} type_id: {}",
-                #index,
-                stringify!(#ty),
-                T::get_type_id(context.fory)
-            );
-            println!("Generic structure: {}", stringify!(#type_structure));
-        };
-
         quote! {
-            (ident, type_id)
+            (ident, field_type)
                 if ident == #field_name_str
-                    && type_id == <#ty as fory_core::serializer::Serializer>::get_type_id(context.fory)
+                    && *field_type == #generic_token
             => {
                 #var_name = Some(<#ty as fory_core::serializer::Serializer>::deserialize(context).unwrap_or_else(|_err| {
-                    println!("skip deserialize {:?}", ident);
+                    // println!("skip deserialize {:?}", ident);
                     #base_ty::default()
                 }));
-                #type_print
             }
         }
     });
@@ -167,8 +107,8 @@ fn deserialize_compatible(fields: &[&Field]) -> TokenStream {
             let meta = context.get_meta(meta_index).clone();
             let fields = meta.get_field_infos();
             #(#bind)*
-            for (_, _field) in fields.iter().enumerate() {
-                match (_field.field_name.as_str(), _field.field_type_id) {
+            for _field in fields.iter() {
+                match (_field.field_name.as_str(), &_field.field_type) {
                     #(#pattern_items),*
                     _ => {
                         // skip bytes
@@ -176,9 +116,9 @@ fn deserialize_compatible(fields: &[&Field]) -> TokenStream {
                         let _ = context
                         .get_fory()
                         .get_type_resolver()
-                        .get_harness(_field.field_type_id as u32)
+                        .get_harness((&_field.field_type).type_id as u32)
                         .unwrap_or_else(|| {
-                            panic!("missing harness for type_id {}", _field.field_type_id);
+                            panic!("missing harness for type_id {}", _field.field_type.type_id);
                         })
                         .get_deserializer()(context);
                     }

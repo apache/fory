@@ -21,4 +21,4 @@ mod type_meta;
 
 pub use meta_string::{Encoding, MetaString, MetaStringDecoder, MetaStringEncoder};
 pub use string_util::murmurhash3_x64_128;
-pub use type_meta::{FieldInfo, TypeMeta, TypeMetaLayer};
+pub use type_meta::{FieldInfo, FieldTypeResolver, TypeMeta, TypeMetaLayer};

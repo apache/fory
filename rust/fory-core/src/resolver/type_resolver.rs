@@ -101,22 +101,24 @@ impl Default for TypeResolver {
     fn default() -> Self {
         let mut serialize_map = HashMap::new();
 
-        register_harness!(i8, FieldType::INT8, serialize_map);
-        register_harness!(u8, FieldType::UINT8, serialize_map);
-        register_harness!(i16, FieldType::INT16, serialize_map);
-        register_harness!(u16, FieldType::UINT16, serialize_map);
-        register_harness!(i32, FieldType::INT32, serialize_map);
-        register_harness!(u32, FieldType::UINT32, serialize_map);
-        register_harness!(u64, FieldType::UINT64, serialize_map);
-        register_harness!(i64, FieldType::INT64, serialize_map);
-        register_harness!(f32, FieldType::FLOAT, serialize_map);
-        register_harness!(f64, FieldType::DOUBLE, serialize_map);
-
         register_harness!(bool, FieldType::BOOL, serialize_map);
+        register_harness!(i8, FieldType::INT8, serialize_map);
+        register_harness!(i16, FieldType::INT16, serialize_map);
+        register_harness!(i32, FieldType::INT32, serialize_map);
+        register_harness!(i64, FieldType::INT64, serialize_map);
+        register_harness!(f32, FieldType::FLOAT32, serialize_map);
+        register_harness!(f64, FieldType::FLOAT64, serialize_map);
+
+        // register_harness!(u8, FieldType::BINARY, serialize_map);
+        // register_harness!(Vec<i16>, FieldType::ForyPrimitiveShortArray, serialize_map);
+        // register_harness!(i32, FieldType::ForyPrimitiveIntArray, serialize_map);
+        // register_harness!(i64, FieldType::ForyPrimitiveLongArray, serialize_map);
+        // register_harness!(f32, FieldType::ForyPrimitiveFloatArray, serialize_map);
+        // register_harness!(f64, FieldType::ForyPrimitiveDoubleArray, serialize_map);
 
         register_harness!(String, FieldType::STRING, serialize_map);
 
-        register_harness!(NaiveDate, FieldType::DATE, serialize_map);
+        register_harness!(NaiveDate, FieldType::LOCAL_DATE, serialize_map);
         register_harness!(NaiveDateTime, FieldType::TIMESTAMP, serialize_map);
 
         TypeResolver {
@@ -129,7 +131,12 @@ impl Default for TypeResolver {
 
 impl TypeResolver {
     pub fn get_type_info(&self, type_id: TypeId) -> &TypeInfo {
-        self.type_info_map.get(&type_id).unwrap()
+        self.type_info_map.get(&type_id).unwrap_or_else(|| {
+            panic!(
+                "TypeId {:?} not found in type_info_map, maybe you forgot to register some types",
+                type_id
+            )
+        })
     }
 
     pub fn register<T: StructSerializer>(&mut self, type_info: TypeInfo, id: u32) {
