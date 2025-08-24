@@ -319,8 +319,8 @@ subclass.
 
 `50 bits hash + 1bit compress flag + write fields meta + 12 bits meta size`. Right is the lower bits.
 
-- lower 12 bits are used to encode meta size. If meta size `>= 0b111_1111_1111`, then write
-  `meta_ size - 0b111_1111_1111` next.
+- lower 12 bits are used to encode meta size. If meta size `>= 0b1111_1111_1111`, then write
+  `meta_ size - 0b1111_1111_1111` next.
 - 13rd bit is used to indicate whether to write fields meta. When this class is schema-consistent or use registered
   serializer, fields meta will be skipped. Class Meta will be used for share namespace + type name only.
 - 14rd bit is used to indicate whether meta is compressed.
