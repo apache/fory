@@ -37,7 +37,7 @@ message Bar {
   optional int64 f6 = 6;
   optional float f7 = 7;
   optional double f8 = 8;
-  repeated int32 f9 = 9; // proto不支持int16
+  repeated int32 f9 = 9; // proto does not support int16
   repeated int64 f10 = 10;
 }
 

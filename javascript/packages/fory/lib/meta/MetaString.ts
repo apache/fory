@@ -201,7 +201,7 @@ export class MetaStringDecoder {
 
   capitalize(str: string) {
     if (typeof str !== "string" || str.length === 0) {
-      return str; // 如果不是字符串或为空，直接返回原值
+      return str; // If not a string or empty, return the original value
     }
     return str.charAt(0).toUpperCase() + str.slice(1);
   }
@@ -366,22 +366,22 @@ export class MetaStringEncoder {
   }
 
   isUpperCase(str: string) {
-    // 检查字符串是否为空
+    // Check whether the string is empty
     if (typeof str !== "string" || str.length === 0) {
-      return false; // 如果不是字符串或为空，返回 false
+      return false; // If not a string or empty, return false
     }
 
-    // 使用正则表达式检查是否所有字母字符都是大写的
+    // Use a regular expression to check whether all alphabetic characters are uppercase
     return /^[^a-z]*$/.test(str);
   }
 
   isDigit(str: string) {
-    // 检查字符串是否为空
+    // Check whether the string is empty
     if (typeof str !== "string" || str.length === 0) {
-      return false; // 如果不是字符串或为空，返回 false
+      return false; // If not a string or empty, return false
     }
 
-    // 使用正则表达式检查是否所有字母字符都是大写的
+    // Use a regular expression to check whether all alphabetic characters are uppercase
     return /^[^0-9]*$/.test(str);
   }
 
