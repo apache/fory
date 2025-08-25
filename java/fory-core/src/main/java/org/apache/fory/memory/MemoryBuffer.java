@@ -2568,9 +2568,12 @@ public final class MemoryBuffer {
    * @param offset1 Offset of this buffer to start equaling
    * @param offset2 Offset of buf2 to start equaling
    * @param len Length of the equaled memory region
-   * @return true if equal, false otherwise
+   * @return true if buffers equal or len zero, false otherwise
    */
   public boolean equalTo(MemoryBuffer buf2, int offset1, int offset2, int len) {
+    if (len == 0) {
+      return buf2 != null;
+    }
     final long pos1 = address + offset1;
     final long pos2 = buf2.address + offset2;
     checkArgument(pos1 < addressLimit);
