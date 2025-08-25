@@ -17,15 +17,11 @@
 
 name: Build Native PR Wheels
 on:
-  pull_request_target:
+  pull_request:
     paths: [ci/**, python/**, .github/workflows/**]
   push:
     branches: [main]
     paths: [ci/**, python/**, .github/workflows/**]
-
-permissions:
-  contents: read
-  id-token: write
 
 jobs:
   build:
@@ -55,59 +51,3 @@ jobs:
           python -m pip install --upgrade pip
           pip install dist/*.whl
           python -c "import pyfory; print(pyfory.__version__)"
-      - name: Upload wheels as artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: pyfory-wheels-native-${{ matrix.os }}-${{ matrix.python-version }}
-          path: dist/*.whl
-
-  publish-to-testpypi:
-    name: Publish to TestPyPI
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all wheel artifacts
-        uses: actions/download-artifact@v5
-        with:
-          pattern: "pyfory-wheels-native-*"
-          path: downloaded_wheels
-          merge-multiple: true
-
-      - name: Move wheels to a single directory
-        shell: bash
-        run: |
-          mkdir dist
-          find downloaded_wheels -type f -name "*.whl" -exec mv {} dist/ \;
-          ls -R dist
-
-      - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          skip-existing: true
-          verbose: true
-          verify-metadata: false
-          packages-dir: dist
-
-      - name: Delete uploaded artifacts from TestPyPI
-        if: ${{ github.ref == 'refs/heads/main' }}
-        env:
-          TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${TEST_PYPI_API_TOKEN:-}" ]; then
-            echo "TEST_PYPI_API_TOKEN not set; skipping deletion."
-            exit 0
-          fi
-          python -m pip install --upgrade pip twine
-          if [ ! -d dist ] || [ -z "$(ls -A dist 2>/dev/null || true)" ]; then
-            echo "dist/ is empty — nothing to delete."
-            exit 0
-          fi
-          for f in dist/*; do
-            echo "Deleting $(basename "$f") from TestPyPI..."
-            twine delete --repository-url https://test.pypi.org/legacy/ -u "__token__" -p "$TEST_PYPI_API_TOKEN" "$f" || {
-              echo "twine delete failed for $f; continuing."
-            }
-          done
