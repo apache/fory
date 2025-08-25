@@ -51,3 +51,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install dist/*.whl
           python -c "import pyfory; print(pyfory.__version__)"
+      - name: Upload wheels as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyfory-wheels-native-${{ matrix.os }}-${{ matrix.python-version }}
+          path: dist/*.whl
