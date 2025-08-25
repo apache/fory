@@ -73,19 +73,24 @@ public final class ArrayCompressionUtils {
     // SIMD loop
     for (; i < upperBound && (canCompressToByte || canCompressToShort); i += INT_SPECIES.length()) {
       IntVector vector = IntVector.fromArray(INT_SPECIES, array, i);
-        // Calculate min/max once per vector
-        int max = vector.reduceLanes(VectorOperators.MAX);
-        int min = vector.reduceLanes(VectorOperators.MIN);
-
-        // Combined boundary check for byte compression
-        if (canCompressToByte && (max > Byte.MAX_VALUE || min < Byte.MIN_VALUE)) {
-            canCompressToByte = false;
+      
+      // Check byte compression using mask operations
+      if (canCompressToByte) {
+        var byteMaxMask = vector.compare(VectorOperators.GT, Byte.MAX_VALUE);
+        var byteMinMask = vector.compare(VectorOperators.LT, Byte.MIN_VALUE);
+        if (byteMaxMask.anyTrue() || byteMinMask.anyTrue()) {
+          canCompressToByte = false;
         }
-
-        // Only check short compression if still viable
-        if (max > Short.MAX_VALUE || min < Short.MIN_VALUE) {
-            canCompressToShort = false;
+      }
+      
+      // Check short compression using mask operations
+      if (canCompressToShort) {
+        var shortMaxMask = vector.compare(VectorOperators.GT, Short.MAX_VALUE);
+        var shortMinMask = vector.compare(VectorOperators.LT, Short.MIN_VALUE);
+        if (shortMaxMask.anyTrue() || shortMinMask.anyTrue()) {
+          canCompressToShort = false;
         }
+      }
     }
 
     // Handle remaining elements with scalar code
@@ -128,14 +133,15 @@ public final class ArrayCompressionUtils {
     int upperBound = LONG_SPECIES.loopBound(array.length);
 
     // SIMD loop
-    for (; i < upperBound; i += LONG_SPECIES.length()) {
+    for (; i < upperBound && canCompressToInt; i += LONG_SPECIES.length()) {
       LongVector vector = LongVector.fromArray(LONG_SPECIES, array, i);
-        long max = vector.reduceLanes(VectorOperators.MAX);
-        long min = vector.reduceLanes(VectorOperators.MIN);
-        if (max > Integer.MAX_VALUE || min < Integer.MIN_VALUE) {
-            canCompressToInt = false;
-            break;
-        }
+      
+      // Check int compression using mask operations
+      var maxMask = vector.compare(VectorOperators.GT, Integer.MAX_VALUE);
+      var minMask = vector.compare(VectorOperators.LT, Integer.MIN_VALUE);
+      if (maxMask.anyTrue() || minMask.anyTrue()) {
+        canCompressToInt = false;
+      }
     }
 
       // Handle remaining elements
@@ -252,6 +258,7 @@ public final class ArrayCompressionUtils {
       if (array == null) {
           throw new NullPointerException("Array cannot be null");
       }
+
       long[] decompressed = new long[array.length];
       for (int i = 0; i < array.length; i++) {
           decompressed[i] = array[i];
