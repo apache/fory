@@ -17,7 +17,7 @@
 
 name: Build Native PR Wheels
 on:
-  pull_request:
+  pull_request_target:
     paths: [ci/**, python/**, .github/workflows/**]
   push:
     branches: [main]
