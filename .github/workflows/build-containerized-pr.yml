@@ -23,6 +23,10 @@ on:
     branches: [main]
     paths: [ci/**, python/**, .github/workflows/**]
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
@@ -33,3 +37,36 @@ jobs:
       - uses: actions/checkout@v5
       - name: Build and test wheels
         run: ./ci/build_linux_wheels.py --arch ${{ runner.arch }}
+      - name: Upload wheels as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyfory-wheels-containerized-${{ matrix.os }}
+          path: dist/*.whl
+
+  publish-to-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v5
+        with:
+          pattern: "pyfory-wheels-containerized-*"
+          path: downloaded_wheels
+          merge-multiple: true
+
+      - name: Move wheels to a single directory
+        shell: bash
+        run: |
+          mkdir dist
+          find downloaded_wheels -type f -name "*.whl" -exec mv {} dist/ \;
+          ls -R dist
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+          verbose: true
+          verify-metadata: false
+          packages-dir: dist
