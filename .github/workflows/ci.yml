@@ -215,6 +215,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache-dependency-path: javascript/package-lock.json
           cache: "npm"
       - name: Upgrade npm
         run: npm install -g npm@8
