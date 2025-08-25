@@ -19,17 +19,25 @@
 
 package org.apache.fory.format.encoder;
 
-import org.apache.arrow.vector.types.pojo.Schema;
-import org.apache.fory.format.row.binary.BinaryRow;
+import org.apache.fory.codegen.Expression;
+import org.apache.fory.codegen.Expression.Invoke;
+import org.apache.fory.codegen.Expression.Reference;
+import org.apache.fory.reflect.TypeRef;
 
-/**
- * Encoder to encode/decode object to/from row. A RowEncoder instance is reusable but not
- * thread-safe.
- */
-public interface RowEncoder<T> extends Encoder<T> {
-  Schema schema();
+class CompactMapEncoderBuilder extends MapEncoderBuilder {
 
-  T fromRow(BinaryRow row);
+  public CompactMapEncoderBuilder(final TypeRef<?> clsType, final TypeRef<?> beanType) {
+    super(clsType, beanType);
+  }
 
-  BinaryRow toRow(T obj);
+  @Override
+  protected Invoke beanWriterReset(
+      final Expression writer, final Reference rowWriter, final Expression ordinal) {
+    return new Invoke(writer, "resetFor", rowWriter, ordinal);
+  }
+
+  @Override
+  protected String codecSuffix() {
+    return "CompactCodec";
+  }
 }

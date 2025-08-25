@@ -30,11 +30,27 @@ import org.apache.fory.memory.MemoryBuffer;
  */
 public interface Encoder<T> {
 
+  /**
+   * Decode a buffer with an embedded size. The {@Code MemoryBuffer} and {@code byte[]} variants are
+   * not interchangeable.
+   */
   T decode(MemoryBuffer buffer);
 
+  /**
+   * Decode a buffer without an embedded size. The {@Code MemoryBuffer} and {@code byte[]} variants
+   * are not interchangeable.
+   */
   T decode(byte[] bytes);
 
+  /**
+   * Encode to a buffer without embedded size. The {@Code MemoryBuffer} and {@code byte[]} variants
+   * are not interchangeable.
+   */
   byte[] encode(T obj);
 
+  /**
+   * Encode to a buffer with an embedded size. The {@Code MemoryBuffer} and {@code byte[]} variants
+   * are not interchangeable.
+   */
   void encode(MemoryBuffer buffer, T obj);
 }

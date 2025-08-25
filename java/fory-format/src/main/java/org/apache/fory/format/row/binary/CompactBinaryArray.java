@@ -1,0 +1,125 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.fory.format.row.binary;
+
+import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.arrow.vector.types.pojo.Schema;
+import org.apache.fory.format.row.binary.writer.BinaryWriter;
+import org.apache.fory.format.row.binary.writer.CompactBinaryArrayWriter;
+import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
+import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.memory.MemoryBuffer;
+
+public class CompactBinaryArray extends BinaryArray {
+  private final boolean fixedWidth;
+  private final boolean elementNullable;
+
+  public CompactBinaryArray(final Field field) {
+    super(field, CompactBinaryArrayWriter.elementWidth(field));
+    final Field elementField = field.getChildren().get(0);
+    fixedWidth = CompactBinaryRowWriter.fixedWidthFor(elementField) >= 0;
+    elementNullable = elementField.isNullable();
+  }
+
+  @Override
+  protected int elementOffset() {
+    return getBaseOffset() + calculateHeaderInBytes(numElements(), elementNullable);
+  }
+
+  public static int calculateHeaderInBytes(final int numElements, final boolean elementNullable) {
+    return BinaryWriter.roundNumberOfBytesToNearestWord(
+        4 + (elementNullable ? (numElements + 7) / 8 : 0));
+  }
+
+  @Override
+  protected int bitmapOffset() {
+    return getBaseOffset() + 4;
+  }
+
+  @Override
+  protected int readNumElements() {
+    return getBuffer().getInt32(getBaseOffset());
+  }
+
+  @Override
+  public boolean isNullAt(final int ordinal) {
+    if (!elementNullable) {
+      return false;
+    }
+    return super.isNullAt(ordinal);
+  }
+
+  @Override
+  public MemoryBuffer getBuffer(final int ordinal) {
+    if (!fixedWidth) {
+      return super.getBuffer(ordinal);
+    }
+    if (isNullAt(ordinal)) {
+      return null;
+    }
+    return getBuffer().slice(getOffset(ordinal), elementSize);
+  }
+
+  @Override
+  public byte[] getBinary(final int ordinal) {
+    if (!fixedWidth) {
+      return super.getBinary(ordinal);
+    }
+    if (isNullAt(ordinal)) {
+      return null;
+    }
+    final byte[] bytes = new byte[elementSize];
+    getBuffer().get(getOffset(ordinal), bytes, 0, elementSize);
+    return bytes;
+  }
+
+  @Override
+  protected BinaryRow getStruct(final int ordinal, final Field field, final int extDataSlot) {
+    if (isNullAt(ordinal)) {
+      return null;
+    }
+    final int fixedBytes = CompactBinaryRowWriter.fixedWidthFor(field);
+    if (fixedBytes == -1) {
+      return super.getStruct(ordinal, field, extDataSlot);
+    }
+    if (extData[extDataSlot] == null) {
+      extData[extDataSlot] = DataTypes.createSchema(field);
+    }
+    final BinaryRow row = newRow((Schema) extData[extDataSlot]);
+    row.pointTo(getBuffer(), getOffset(ordinal), fixedBytes);
+    return row;
+  }
+
+  @Override
+  protected BinaryRow newRow(final Schema schema) {
+    // TODO: don't re-compute fixed offsets
+    return new CompactBinaryRow(schema, CompactBinaryRowWriter.fixedOffsets(schema));
+  }
+
+  @Override
+  protected BinaryArray newArray(final Field field) {
+    return new CompactBinaryArray(field);
+  }
+
+  @Override
+  protected BinaryMap newMap(final Field field) {
+    return new CompactBinaryMap(field);
+  }
+}

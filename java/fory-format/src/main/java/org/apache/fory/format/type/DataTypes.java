@@ -75,6 +75,12 @@ public class DataTypes {
             }
 
             @Override
+            public Integer visit(
+                org.apache.arrow.vector.types.pojo.ArrowType.FixedSizeBinary type) {
+              return type.getByteWidth();
+            }
+
+            @Override
             public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.List type) {
               return -1;
             }
@@ -91,7 +97,7 @@ public class DataTypes {
 
             @Override
             public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.Int type) {
-              return type.getBitWidth() / 8;
+              return (type.getBitWidth() + 7) / 8;
             }
 
             @Override
@@ -209,6 +215,12 @@ public class DataTypes {
             @Override
             public ArrowType visit(org.apache.arrow.vector.types.pojo.ArrowType.Struct type) {
               return ArrowType.STRUCT;
+            }
+
+            @Override
+            public ArrowType visit(
+                org.apache.arrow.vector.types.pojo.ArrowType.FixedSizeBinary type) {
+              return ArrowType.FIXED_SIZE_BINARY;
             }
 
             @Override

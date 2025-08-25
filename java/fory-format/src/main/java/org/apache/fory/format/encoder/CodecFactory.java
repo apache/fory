@@ -19,17 +19,26 @@
 
 package org.apache.fory.format.encoder;
 
+import java.util.Collection;
+import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
+import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryRow;
+import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
+import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
+import org.apache.fory.reflect.TypeRef;
 
-/**
- * Encoder to encode/decode object to/from row. A RowEncoder instance is reusable but not
- * thread-safe.
- */
-public interface RowEncoder<T> extends Encoder<T> {
-  Schema schema();
+interface CodecFactory {
+  BaseBinaryRowWriter newWriter(Schema schema);
 
-  T fromRow(BinaryRow row);
+  BinaryArrayWriter newArrayWriter(Field field);
 
-  BinaryRow toRow(T obj);
+  RowEncoderBuilder newRowEncoder(TypeRef<?> beanType);
+
+  ArrayEncoderBuilder newArrayEncoder(
+      TypeRef<? extends Collection<?>> collectionType, TypeRef<?> elementType);
+
+  BinaryRow newRow(Schema schema);
+
+  BinaryArray newArray(Field field);
 }
