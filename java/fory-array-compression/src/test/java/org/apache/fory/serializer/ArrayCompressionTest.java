@@ -78,44 +78,44 @@ public class ArrayCompressionTest {
         "Round trip failed with compression: " + description);
   }
 
-    @Test
-    public void testCompressionRatios() {
-        Fory foryWithCompression =
-                new ForyBuilder().withIntArrayCompressed(true).withLongArrayCompressed(true).build();
+  @Test
+  public void testCompressionRatios() {
+    Fory foryWithCompression =
+        new ForyBuilder().withIntArrayCompressed(true).withLongArrayCompressed(true).build();
 
-        Fory foryWithoutCompression =
-                new ForyBuilder().withIntArrayCompressed(false).withLongArrayCompressed(false).build();
+    Fory foryWithoutCompression =
+        new ForyBuilder().withIntArrayCompressed(false).withLongArrayCompressed(false).build();
 
-        // Test byte-range int array compression (should achieve ~4x compression)
-        int[] byteRangeArray = createByteRangeArray(10_000);
-        byte[] compressedBytes = foryWithCompression.serialize(byteRangeArray);
-        byte[] uncompressedBytes = foryWithoutCompression.serialize(byteRangeArray);
+    // Test byte-range int array compression (should achieve ~4x compression)
+    int[] byteRangeArray = createByteRangeArray(10_000);
+    byte[] compressedBytes = foryWithCompression.serialize(byteRangeArray);
+    byte[] uncompressedBytes = foryWithoutCompression.serialize(byteRangeArray);
 
-        double compressionRatio = (double) compressedBytes.length / uncompressedBytes.length;
-        assertTrue(
-                compressionRatio < 0.30,
-                "Expected significant compression for byte-range array, got ratio: " + compressionRatio);
+    double compressionRatio = (double) compressedBytes.length / uncompressedBytes.length;
+    assertTrue(
+        compressionRatio < 0.30,
+        "Expected significant compression for byte-range array, got ratio: " + compressionRatio);
 
-        // Test short-range int array compression (should achieve ~2x compression)
-        int[] shortRangeArray = createShortRangeArray(10_000);
-        compressedBytes = foryWithCompression.serialize(shortRangeArray);
-        uncompressedBytes = foryWithoutCompression.serialize(shortRangeArray);
+    // Test short-range int array compression (should achieve ~2x compression)
+    int[] shortRangeArray = createShortRangeArray(10_000);
+    compressedBytes = foryWithCompression.serialize(shortRangeArray);
+    uncompressedBytes = foryWithoutCompression.serialize(shortRangeArray);
 
-        compressionRatio = (double) compressedBytes.length / uncompressedBytes.length;
-        assertTrue(
-                compressionRatio < 0.55,
-                "Expected moderate compression for short-range array, got ratio: " + compressionRatio);
+    compressionRatio = (double) compressedBytes.length / uncompressedBytes.length;
+    assertTrue(
+        compressionRatio < 0.55,
+        "Expected moderate compression for short-range array, got ratio: " + compressionRatio);
 
-        // Test int-range long array compression (should achieve ~2x compression)
-        long[] intRangeLongArray = createIntRangeLongArray(10_000);
-        compressedBytes = foryWithCompression.serialize(intRangeLongArray);
-        uncompressedBytes = foryWithoutCompression.serialize(intRangeLongArray);
+    // Test int-range long array compression (should achieve ~2x compression)
+    long[] intRangeLongArray = createIntRangeLongArray(10_000);
+    compressedBytes = foryWithCompression.serialize(intRangeLongArray);
+    uncompressedBytes = foryWithoutCompression.serialize(intRangeLongArray);
 
-        compressionRatio = (double) compressedBytes.length / uncompressedBytes.length;
-        assertTrue(
-                compressionRatio < 0.55,
-                "Expected compression for int-range long array, got ratio: " + compressionRatio);
-    }
+    compressionRatio = (double) compressedBytes.length / uncompressedBytes.length;
+    assertTrue(
+        compressionRatio < 0.55,
+        "Expected compression for int-range long array, got ratio: " + compressionRatio);
+  }
 
   @Test
   public void testLargeArrays() {

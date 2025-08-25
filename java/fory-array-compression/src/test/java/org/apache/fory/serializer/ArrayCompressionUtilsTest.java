@@ -25,35 +25,33 @@ import static org.testng.Assert.assertTrue;
 import java.util.Random;
 import org.apache.fory.util.ArrayCompressionUtils;
 import org.apache.fory.util.PrimitiveArrayCompressionType;
-import org.testng.SkipException;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 public class ArrayCompressionUtilsTest {
 
   @Test
   public void testIntArrayCompressionDetection() {
-    // Test byte range compression - make array size >= 16
-    int[] byteRangeArray = new int[16];
-    for (int i = 0; i < 16; i++) {
+    // Test byte range compression - make array size >= 512
+    int[] byteRangeArray = new int[1024];
+    for (int i = 0; i < 1024; i++) {
       byteRangeArray[i] = (i % 256) - 128; // byte range values
     }
     assertEquals(
         ArrayCompressionUtils.determineIntCompressionType(byteRangeArray),
         PrimitiveArrayCompressionType.INT_TO_BYTE);
 
-    // Test short range compression - make array size >= 16
-    int[] shortRangeArray = new int[16];
-    for (int i = 0; i < 16; i++) {
+    // Test short range compression - make array size >= 512
+    int[] shortRangeArray = new int[1024];
+    for (int i = 0; i < 1024; i++) {
       shortRangeArray[i] = (i % 65536) - 32768; // short range values
     }
     assertEquals(
         ArrayCompressionUtils.determineIntCompressionType(shortRangeArray),
         PrimitiveArrayCompressionType.INT_TO_SHORT);
 
-    // Test no compression for large values - make array size >= 16
-    int[] largeArray = new int[16];
-    for (int i = 0; i < 16; i++) {
+    // Test no compression for large values - make array size >= 512
+    int[] largeArray = new int[1024];
+    for (int i = 0; i < 1024; i++) {
       largeArray[i] = i % 2 == 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
     }
     assertEquals(
@@ -69,18 +67,18 @@ public class ArrayCompressionUtilsTest {
 
   @Test
   public void testLongArrayCompressionDetection() {
-    // Test int range compression - make array size >= 16
-    long[] intRangeArray = new long[16];
-    for (int i = 0; i < 16; i++) {
+    // Test int range compression - make array size >= 512
+    long[] intRangeArray = new long[1024];
+    for (int i = 0; i < 1024; i++) {
       intRangeArray[i] = i % 2 == 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
     }
     assertEquals(
         ArrayCompressionUtils.determineLongCompressionType(intRangeArray),
         PrimitiveArrayCompressionType.LONG_TO_INT);
 
-    // Test no compression for large values - make array size >= 16
-    long[] largeArray = new long[16];
-    for (int i = 0; i < 16; i++) {
+    // Test no compression for large values - make array size >= 512
+    long[] largeArray = new long[1024];
+    for (int i = 0; i < 1024; i++) {
       largeArray[i] = i % 2 == 0 ? Long.MIN_VALUE : Long.MAX_VALUE;
     }
     assertEquals(
@@ -96,9 +94,9 @@ public class ArrayCompressionUtilsTest {
 
   @Test
   public void testCompressionRoundTrip() {
-    // Test int to byte compression - use arrays >= 16 for proper testing
-    int[] originalInts = new int[16];
-    for (int i = 0; i < 16; i++) {
+    // Test int to byte compression - use arrays >= 512 for proper testing
+    int[] originalInts = new int[1024];
+    for (int i = 0; i < 1024; i++) {
       originalInts[i] = (i % 201) - 100; // byte range values
     }
     byte[] compressed = ArrayCompressionUtils.compressToBytes(originalInts);
@@ -106,17 +104,17 @@ public class ArrayCompressionUtilsTest {
     assertEquals(decompressed, originalInts);
 
     // Test int to short compression
-    int[] originalShorts = new int[16];
-    for (int i = 0; i < 16; i++) {
-      originalShorts[i] = (i % 60001) - 30000; // short range values
+    int[] originalShorts = new int[1024];
+    for (int i = 0; i < 1024; i++) {
+      originalShorts[i] = (i % 102401) - 30000; // short range values
     }
     short[] compressedShorts = ArrayCompressionUtils.compressToShorts(originalShorts);
     int[] decompressedShorts = ArrayCompressionUtils.decompressFromShorts(compressedShorts);
     assertEquals(decompressedShorts, originalShorts);
 
     // Test long to int compression
-    long[] originalLongs = new long[16];
-    for (int i = 0; i < 16; i++) {
+    long[] originalLongs = new long[1024];
+    for (int i = 0; i < 1024; i++) {
       originalLongs[i] = i % 2 == 0 ? -2000000000L : 2000000000L; // int range values
     }
     int[] compressedInts = ArrayCompressionUtils.compressToInts(originalLongs);
@@ -192,25 +190,25 @@ public class ArrayCompressionUtilsTest {
         ArrayCompressionUtils.determineLongCompressionType(emptyLongArray),
         PrimitiveArrayCompressionType.NONE);
 
-    // Test boundary values - use arrays >= 16
-    int[] byteBoundary = new int[16];
-    for (int i = 0; i < 16; i++) {
+    // Test boundary values - use arrays >= 512
+    int[] byteBoundary = new int[1024];
+    for (int i = 0; i < 1024; i++) {
       byteBoundary[i] = i % 2 == 0 ? Byte.MIN_VALUE : Byte.MAX_VALUE;
     }
     assertEquals(
         ArrayCompressionUtils.determineIntCompressionType(byteBoundary),
         PrimitiveArrayCompressionType.INT_TO_BYTE);
 
-    int[] shortBoundary = new int[16];
-    for (int i = 0; i < 16; i++) {
+    int[] shortBoundary = new int[1024];
+    for (int i = 0; i < 1024; i++) {
       shortBoundary[i] = i % 2 == 0 ? Short.MIN_VALUE : Short.MAX_VALUE;
     }
     assertEquals(
         ArrayCompressionUtils.determineIntCompressionType(shortBoundary),
         PrimitiveArrayCompressionType.INT_TO_SHORT);
 
-    long[] intBoundary = new long[16];
-    for (int i = 0; i < 16; i++) {
+    long[] intBoundary = new long[1024];
+    for (int i = 0; i < 1024; i++) {
       intBoundary[i] = i % 2 == 0 ? Integer.MIN_VALUE : Integer.MAX_VALUE;
     }
     assertEquals(
@@ -218,24 +216,24 @@ public class ArrayCompressionUtilsTest {
         PrimitiveArrayCompressionType.LONG_TO_INT);
 
     // Test just outside boundaries
-    int[] outsideByte = new int[16];
-    for (int i = 0; i < 16; i++) {
+    int[] outsideByte = new int[1024];
+    for (int i = 0; i < 1024; i++) {
       outsideByte[i] = i % 2 == 0 ? Byte.MIN_VALUE - 1 : Byte.MAX_VALUE + 1;
     }
     assertEquals(
         ArrayCompressionUtils.determineIntCompressionType(outsideByte),
         PrimitiveArrayCompressionType.INT_TO_SHORT);
 
-    int[] outsideShort = new int[16];
-    for (int i = 0; i < 16; i++) {
+    int[] outsideShort = new int[1024];
+    for (int i = 0; i < 1024; i++) {
       outsideShort[i] = i % 2 == 0 ? Short.MIN_VALUE - 1 : Short.MAX_VALUE + 1;
     }
     assertEquals(
         ArrayCompressionUtils.determineIntCompressionType(outsideShort),
         PrimitiveArrayCompressionType.NONE);
 
-    long[] outsideInt = new long[16];
-    for (int i = 0; i < 16; i++) {
+    long[] outsideInt = new long[1024];
+    for (int i = 0; i < 1024; i++) {
       outsideInt[i] = i % 2 == 0 ? Integer.MIN_VALUE - 1L : Integer.MAX_VALUE + 1L;
     }
     assertEquals(

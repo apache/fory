@@ -46,7 +46,7 @@ public final class ArrayCompressionUtils {
   private static final VectorSpecies<Long> LONG_SPECIES = LongVector.SPECIES_PREFERRED;
 
     // Minimum array size to justify compression overhead
-    private static final int MIN_COMPRESSION_SIZE = 16;
+    private static final int MIN_COMPRESSION_SIZE = 1 << 9; // 512 elements
 
   /**
    * Determine the best compression type for int array.
@@ -73,7 +73,7 @@ public final class ArrayCompressionUtils {
     // SIMD loop
     for (; i < upperBound && (canCompressToByte || canCompressToShort); i += INT_SPECIES.length()) {
       IntVector vector = IntVector.fromArray(INT_SPECIES, array, i);
-      
+
       // Check byte compression using mask operations
       if (canCompressToByte) {
         var byteMaxMask = vector.compare(VectorOperators.GT, Byte.MAX_VALUE);
@@ -82,7 +82,7 @@ public final class ArrayCompressionUtils {
           canCompressToByte = false;
         }
       }
-      
+
       // Check short compression using mask operations
       if (canCompressToShort) {
         var shortMaxMask = vector.compare(VectorOperators.GT, Short.MAX_VALUE);
@@ -135,7 +135,7 @@ public final class ArrayCompressionUtils {
     // SIMD loop
     for (; i < upperBound && canCompressToInt; i += LONG_SPECIES.length()) {
       LongVector vector = LongVector.fromArray(LONG_SPECIES, array, i);
-      
+
       // Check int compression using mask operations
       var maxMask = vector.compare(VectorOperators.GT, Integer.MAX_VALUE);
       var minMask = vector.compare(VectorOperators.LT, Integer.MIN_VALUE);
