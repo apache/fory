@@ -22,7 +22,6 @@ use anyhow::anyhow;
 
 use crate::meta::TypeMeta;
 use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
-use std::any::TypeId;
 use std::rc::Rc;
 
 pub struct WriteContext<'se> {
@@ -42,7 +41,7 @@ impl<'se> WriteContext<'se> {
         }
     }
 
-    pub fn push_meta(&mut self, type_id: TypeId) -> usize {
+    pub fn push_meta(&mut self, type_id: std::any::TypeId) -> usize {
         self.meta_resolver.push(type_id, self.fory)
     }
 

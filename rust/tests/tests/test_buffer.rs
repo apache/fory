@@ -15,10 +15,37 @@
 // specific language governing permissions and limitations
 // under the License.
 
-mod meta_string;
-mod string_util;
-mod type_meta;
+use fory_core::buffer::{Reader, Writer};
 
-pub use meta_string::{Encoding, MetaString, MetaStringDecoder, MetaStringEncoder};
-pub use string_util::murmurhash3_x64_128;
-pub use type_meta::{FieldInfo, FieldType, TypeMeta, TypeMetaLayer};
+#[test]
+fn test_var_int32() {
+    let test_data: Vec<i32> = vec![
+        // 1 byte(0..127)
+        0,
+        1,
+        127,
+        // 2 byte(128..16_383)
+        128,
+        300,
+        16_383,
+        // 3 byte(16_384..2_097_151)
+        16_384,
+        20_000,
+        2_097_151,
+        // 4 byte(2_097_152..268_435_455)
+        2_097_152,
+        100_000_000,
+        268_435_455,
+        // 5 byte(268_435_456..i32::MAX)
+        268_435_456,
+        i32::MAX,
+    ];
+    for &data in &test_data {
+        let mut writer = Writer::default();
+        writer.var_int32(data);
+        let binding = writer.dump();
+        let mut reader = Reader::new(binding.as_slice());
+        let res = reader.var_int32();
+        assert_eq!(res, data);
+    }
+}

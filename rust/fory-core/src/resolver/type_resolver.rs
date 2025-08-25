@@ -18,8 +18,9 @@
 use super::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::serializer::StructSerializer;
-use std::any::TypeId;
+use crate::serializer::{Serializer, StructSerializer};
+use crate::types::FieldId;
+use chrono::{NaiveDate, NaiveDateTime};
 use std::{any::Any, collections::HashMap};
 
 pub struct Harness {
@@ -47,14 +48,14 @@ impl Harness {
     }
 }
 
-pub struct ClassInfo {
+pub struct TypeInfo {
     type_def: Vec<u8>,
     type_id: u32,
 }
 
-impl ClassInfo {
-    pub fn new<T: StructSerializer>(fory: &Fory, type_id: u32) -> ClassInfo {
-        ClassInfo {
+impl TypeInfo {
+    pub fn new<T: StructSerializer>(fory: &Fory, type_id: u32) -> TypeInfo {
+        TypeInfo {
             type_def: T::type_def(fory),
             type_id,
         }
@@ -69,19 +70,68 @@ impl ClassInfo {
     }
 }
 
-#[derive(Default)]
-pub struct ClassResolver {
+pub struct TypeResolver {
     serialize_map: HashMap<u32, Harness>,
-    type_id_map: HashMap<TypeId, u32>,
-    class_info_map: HashMap<TypeId, ClassInfo>,
+    type_id_map: HashMap<std::any::TypeId, u32>,
+    type_info_map: HashMap<std::any::TypeId, TypeInfo>,
+}
+macro_rules! register_harness {
+    ($ty:ty, $id:expr, $map:expr) => {{
+        fn serializer(this: &dyn std::any::Any, context: &mut WriteContext) {
+            let this = this.downcast_ref::<$ty>();
+            match this {
+                Some(v) => <$ty>::serialize(v, context),
+                None => todo!(""),
+            }
+        }
+
+        fn deserializer(context: &mut ReadContext) -> Result<Box<dyn std::any::Any>, Error> {
+            match <$ty>::deserialize(context) {
+                Ok(v) => Ok(Box::new(v)),
+                Err(e) => Err(e),
+            }
+        }
+
+        $map.insert($id as u32, Harness::new(serializer, deserializer));
+    }};
 }
 
-impl ClassResolver {
-    pub fn get_class_info(&self, type_id: TypeId) -> &ClassInfo {
-        self.class_info_map.get(&type_id).unwrap()
+impl Default for TypeResolver {
+    fn default() -> Self {
+        let mut serialize_map = HashMap::new();
+
+        register_harness!(bool, FieldId::BOOL, serialize_map);
+        register_harness!(i8, FieldId::INT8, serialize_map);
+        register_harness!(i16, FieldId::INT16, serialize_map);
+        register_harness!(i32, FieldId::INT32, serialize_map);
+        register_harness!(i64, FieldId::INT64, serialize_map);
+        register_harness!(f32, FieldId::FLOAT32, serialize_map);
+        register_harness!(f64, FieldId::FLOAT64, serialize_map);
+
+        register_harness!(String, FieldId::STRING, serialize_map);
+
+        register_harness!(NaiveDate, FieldId::LOCAL_DATE, serialize_map);
+        register_harness!(NaiveDateTime, FieldId::TIMESTAMP, serialize_map);
+
+        TypeResolver {
+            serialize_map,
+            type_id_map: HashMap::new(),
+            type_info_map: HashMap::new(),
+        }
+    }
+}
+
+impl TypeResolver {
+    pub fn get_type_info(&self, type_id: std::any::TypeId) -> &TypeInfo {
+        self.type_info_map.get(&type_id).unwrap_or_else(|| {
+            panic!(
+                "TypeId {:?} not found in type_info_map, maybe you forgot to register some types",
+                type_id
+            )
+        })
     }
 
-    pub fn register<T: StructSerializer>(&mut self, class_info: ClassInfo, id: u32) {
+    pub fn register<T: StructSerializer>(&mut self, type_info: TypeInfo, id: u32) {
         fn serializer<T2: 'static + StructSerializer>(this: &dyn Any, context: &mut WriteContext) {
             let this = this.downcast_ref::<T2>();
             match this {
@@ -100,13 +150,14 @@ impl ClassResolver {
                 Err(e) => Err(e),
             }
         }
-        self.type_id_map.insert(TypeId::of::<T>(), id);
+        self.type_id_map.insert(std::any::TypeId::of::<T>(), id);
         self.serialize_map
             .insert(id, Harness::new(serializer::<T>, deserializer::<T>));
-        self.class_info_map.insert(TypeId::of::<T>(), class_info);
+        self.type_info_map
+            .insert(std::any::TypeId::of::<T>(), type_info);
     }
 
-    pub fn get_harness_by_type(&self, type_id: TypeId) -> Option<&Harness> {
+    pub fn get_harness_by_type(&self, type_id: std::any::TypeId) -> Option<&Harness> {
         self.get_harness(*self.type_id_map.get(&type_id).unwrap())
     }
 

@@ -93,24 +93,24 @@ impl Writer {
         } else if value >> 14 == 0 {
             let u1 = (value & 0x7F) | 0x80;
             let u2 = value >> 7;
-            self.u16(((u1 << 8) | u2) as u16);
+            self.u16(((u2 << 8) | u1) as u16);
         } else if value >> 21 == 0 {
             let u1 = (value & 0x7F) | 0x80;
-            let u2 = (value >> 7) | 0x80;
-            self.u16(((u1 << 8) | u2) as u16);
+            let u2 = ((value >> 7) & 0x7F) | 0x80;
+            self.u16(((u2 << 8) | u1) as u16);
             self.u8((value >> 14) as u8);
         } else if value >> 28 == 0 {
             let u1 = (value & 0x7F) | 0x80;
-            let u2 = (value >> 7) | 0x80;
-            let u3 = (value >> 14) | 0x80;
-            let u4 = (value >> 21) | 0x80;
-            self.u32(((u1 << 24) | (u2 << 16) | (u3 << 8) | u4) as u32);
+            let u2 = ((value >> 7) & 0x7F) | 0x80;
+            let u3 = ((value >> 14) & 0x7F) | 0x80;
+            let u4 = value >> 21;
+            self.u32(((u4 << 24) | (u3 << 16) | (u2 << 8) | u1) as u32);
         } else {
             let u1 = (value & 0x7F) | 0x80;
-            let u2 = (value >> 7) | 0x80;
-            let u3 = (value >> 14) | 0x80;
-            let u4 = (value >> 21) | 0x80;
-            self.u32(((u1 << 24) | (u2 << 16) | (u3 << 8) | u4) as u32);
+            let u2 = ((value >> 7) & 0x7F) | 0x80;
+            let u3 = ((value >> 14) & 0x7F) | 0x80;
+            let u4 = ((value >> 21) & 0x7F) | 0x80;
+            self.u32(((u4 << 24) | (u3 << 16) | (u2 << 8) | u1) as u32);
             self.u8((value >> 28) as u8);
         }
     }
