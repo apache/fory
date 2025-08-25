@@ -37,6 +37,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           pattern: "pyfory-wheels-*"
           path: downloaded_wheels
           merge-multiple: true
