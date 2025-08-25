@@ -25,6 +25,7 @@ on:
 permissions:
   contents: read
   id-token: write
+  actions: read  # for accessing workflow run artifacts
 
 jobs:
   publish-wheels:
@@ -35,7 +36,11 @@ jobs:
       - name: Download all wheel artifacts
         uses: actions/download-artifact@v5
         with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: "pyfory-wheels-*"
           path: downloaded_wheels
+          merge-multiple: true
 
       - name: Move wheels to a single directory
         shell: bash
