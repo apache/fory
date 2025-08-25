@@ -70,3 +70,26 @@ jobs:
           verbose: true
           verify-metadata: false
           packages-dir: dist
+
+      - name: Delete uploaded artifacts from TestPyPI
+        if: ${{ github.ref == 'refs/heads/main' }}
+        env:
+          TEST_PYPI_API_TOKEN: ${{ secrets.TEST_PYPI_API_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${TEST_PYPI_API_TOKEN:-}" ]; then
+            echo "TEST_PYPI_API_TOKEN not set; skipping deletion."
+            exit 0
+          fi
+          python -m pip install --upgrade pip twine
+          if [ ! -d dist ] || [ -z "$(ls -A dist 2>/dev/null || true)" ]; then
+            echo "dist/ is empty — nothing to delete."
+            exit 0
+          fi
+          for f in dist/*; do
+            echo "Deleting $(basename "$f") from TestPyPI..."
+            twine delete --repository-url https://test.pypi.org/legacy/ -u "__token__" -p "$TEST_PYPI_API_TOKEN" "$f" || {
+              echo "twine delete failed for $f; continuing."
+            }
+          done
