@@ -18,6 +18,7 @@
 import datetime
 import enum
 import logging
+import typing
 
 from pyfory.type import (
     TypeVisitor,
@@ -166,7 +167,7 @@ def _sort_fields(type_resolver, field_names, serializers):
     map_types = sorted(map_types, key=sorter)
     other_types = sorted(other_types, key=sorter)
     all_types = boxed_types + final_types + other_types + collection_types + map_types
-    return [t[1] for t in all_types], [t[2] for t in all_types]
+    return [t[2] for t in all_types], [t[1] for t in all_types]
 
 
 class StructHashVisitor(TypeVisitor):
@@ -221,3 +222,49 @@ class StructHashVisitor(TypeVisitor):
 
     def get_hash(self):
         return self._hash
+
+
+class StructTypeIdVisitor(TypeVisitor):
+    def __init__(
+        self,
+        fory,
+    ):
+        self.fory = fory
+
+    def visit_list(self, field_name, elem_type, types_path=None):
+        # Infer type recursively for type such as List[Dict[str, str]]
+        elem_ids = infer_field("item", elem_type, self, types_path=types_path)
+        return TypeId.LIST, elem_ids
+
+    def visit_dict(self, field_name, key_type, value_type, types_path=None):
+        # Infer type recursively for type such as Dict[str, Dict[str, str]]
+        key_ids = infer_field("key", key_type, self, types_path=types_path)
+        value_ids = infer_field("value", value_type, self, types_path=types_path)
+        return TypeId.MAP, key_ids, value_ids
+
+    def visit_customized(self, field_name, type_, types_path=None):
+        return None, None
+
+    def visit_other(self, field_name, type_, types_path=None):
+        from pyfory.serializer import PickleSerializer  # Local import
+
+        if is_subclass(type_, enum.Enum):
+            return self.fory.type_resolver.get_typeinfo(type_).type_id
+        if type_ not in basic_types and not is_py_array_type(type_):
+            return None, None
+        typeinfo = self.fory.type_resolver.get_typeinfo(type_)
+        assert not isinstance(typeinfo.serializer, (PickleSerializer,))
+        return [typeinfo.type_id]
+
+
+def get_field_names(clz, type_hints=None):
+    if hasattr(clz, "__dict__"):
+        # Regular object with __dict__
+        # We can't know the fields without an instance, so we rely on type hints
+        if type_hints is None:
+            type_hints = typing.get_type_hints(clz)
+        return sorted(type_hints.keys())
+    elif hasattr(clz, "__slots__"):
+        # Object with __slots__
+        return sorted(clz.__slots__)
+    return []

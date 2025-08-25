@@ -21,6 +21,9 @@ from pyfory._fory import (  # noqa: F401 # pylint: disable=unused-import
     Language,
 )
 
+PYTHON = Language.PYTHON
+XLANG = Language.XLANG
+
 try:
     from pyfory._serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 except ImportError:

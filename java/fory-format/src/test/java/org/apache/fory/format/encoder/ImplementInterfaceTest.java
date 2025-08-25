@@ -145,8 +145,11 @@ public class ImplementInterfaceTest {
 
   public interface OptionalType {
     Optional<String> f1();
+
     OptionalInt f2();
+
     OptionalLong f3();
+
     OptionalDouble f4();
   }
 
@@ -163,17 +166,17 @@ public class ImplementInterfaceTest {
 
     @Override
     public OptionalInt f2() {
-        return f2;
+      return f2;
     }
 
     @Override
     public OptionalLong f3() {
-        return f3;
+      return f3;
     }
 
     @Override
     public OptionalDouble f4() {
-        return f4;
+      return f4;
     }
   }
 

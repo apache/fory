@@ -94,6 +94,8 @@ cdef class Buffer:
 
     cpdef inline write_bool(self, c_bool value)
 
+    cpdef inline write_uint8(self, uint8_t value)
+
     cpdef inline write_int8(self, int8_t value)
 
     cpdef inline write_int16(self, int16_t value)

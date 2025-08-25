@@ -372,7 +372,7 @@ class MetaStringEncoder:
                 self.special_char2,
             )
 
-    def compute_encoding(self, input_string: str) -> Encoding:
+    def compute_encoding(self, input_string: str, encodings: List[Encoding] = None) -> Encoding:
         """
         Determines the encoding type of the input string.
 
@@ -384,23 +384,28 @@ class MetaStringEncoder:
         """
         if not input_string:
             return Encoding.LOWER_SPECIAL
+        if encodings is None:
+            encodings = list(Encoding.__members__.values())
 
         chars = list(input_string)
         statistics = self._compute_statistics(chars)
-        if statistics.can_lower_special_encoded:
+        if statistics.can_lower_special_encoded and Encoding.LOWER_SPECIAL in encodings:
             return Encoding.LOWER_SPECIAL
-        elif statistics.can_lower_upper_digit_special_encoded:
+        elif statistics.can_lower_upper_digit_special_encoded and Encoding.LOWER_UPPER_DIGIT_SPECIAL in encodings:
             if statistics.digit_count != 0:
                 return Encoding.LOWER_UPPER_DIGIT_SPECIAL
             else:
                 upper_count = statistics.upper_count
                 if upper_count == 1 and chars[0].isupper():
                     return Encoding.FIRST_TO_LOWER_SPECIAL
-                if (len(chars) + upper_count) * 5 < len(chars) * 6:
+                if (len(chars) + upper_count) * 5 < len(chars) * 6 and Encoding.ALL_TO_LOWER_SPECIAL in encodings:
                     return Encoding.ALL_TO_LOWER_SPECIAL
                 else:
-                    return Encoding.LOWER_UPPER_DIGIT_SPECIAL
-        return Encoding.UTF_8
+                    if Encoding.LOWER_UPPER_DIGIT_SPECIAL in encodings:
+                        return Encoding.LOWER_UPPER_DIGIT_SPECIAL
+        if Encoding.UTF_8 in encodings:
+            return Encoding.UTF_8
+        raise ValueError(f"No encoding found for string: {input_string}, encodings: {encodings}")
 
     def _compute_statistics(self, chars: List[str]) -> Statistics:
         """

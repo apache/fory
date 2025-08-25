@@ -167,6 +167,11 @@ cdef class Buffer:
         self.grow(<int32_t>1)
         (<c_bool *>(self._c_address + self.writer_index))[0] = value
         self.writer_index += <int32_t>1
+    
+    cpdef inline write_uint8(self, uint8_t value):
+        self.grow(<int32_t>1)
+        (<uint8_t *>(self._c_address + self.writer_index))[0] = value
+        self.writer_index += <int32_t>1
 
     cpdef inline write_int8(self, int8_t value):
         self.grow(<int32_t>1)
