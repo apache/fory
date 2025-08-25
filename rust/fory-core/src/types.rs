@@ -42,7 +42,7 @@ pub enum RefFlag {
 #[derive(Clone, Copy, Debug, PartialEq, TryFromPrimitive, IntoPrimitive)]
 #[allow(non_camel_case_types)]
 #[repr(i16)]
-pub enum FieldType {
+pub enum FieldId {
     BOOL = 1,
     INT8 = 2,
     INT16 = 3,

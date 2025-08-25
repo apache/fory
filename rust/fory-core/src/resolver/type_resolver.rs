@@ -19,9 +19,8 @@ use super::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::serializer::{Serializer, StructSerializer};
-use crate::types::FieldType;
+use crate::types::FieldId;
 use chrono::{NaiveDate, NaiveDateTime};
-use std::any::TypeId;
 use std::{any::Any, collections::HashMap};
 
 pub struct Harness {
@@ -73,8 +72,8 @@ impl TypeInfo {
 
 pub struct TypeResolver {
     serialize_map: HashMap<u32, Harness>,
-    type_id_map: HashMap<TypeId, u32>,
-    type_info_map: HashMap<TypeId, TypeInfo>,
+    type_id_map: HashMap<std::any::TypeId, u32>,
+    type_info_map: HashMap<std::any::TypeId, TypeInfo>,
 }
 macro_rules! register_harness {
     ($ty:ty, $id:expr, $map:expr) => {{
@@ -101,25 +100,18 @@ impl Default for TypeResolver {
     fn default() -> Self {
         let mut serialize_map = HashMap::new();
 
-        register_harness!(bool, FieldType::BOOL, serialize_map);
-        register_harness!(i8, FieldType::INT8, serialize_map);
-        register_harness!(i16, FieldType::INT16, serialize_map);
-        register_harness!(i32, FieldType::INT32, serialize_map);
-        register_harness!(i64, FieldType::INT64, serialize_map);
-        register_harness!(f32, FieldType::FLOAT32, serialize_map);
-        register_harness!(f64, FieldType::FLOAT64, serialize_map);
+        register_harness!(bool, FieldId::BOOL, serialize_map);
+        register_harness!(i8, FieldId::INT8, serialize_map);
+        register_harness!(i16, FieldId::INT16, serialize_map);
+        register_harness!(i32, FieldId::INT32, serialize_map);
+        register_harness!(i64, FieldId::INT64, serialize_map);
+        register_harness!(f32, FieldId::FLOAT32, serialize_map);
+        register_harness!(f64, FieldId::FLOAT64, serialize_map);
 
-        // register_harness!(u8, FieldType::BINARY, serialize_map);
-        // register_harness!(Vec<i16>, FieldType::ForyPrimitiveShortArray, serialize_map);
-        // register_harness!(i32, FieldType::ForyPrimitiveIntArray, serialize_map);
-        // register_harness!(i64, FieldType::ForyPrimitiveLongArray, serialize_map);
-        // register_harness!(f32, FieldType::ForyPrimitiveFloatArray, serialize_map);
-        // register_harness!(f64, FieldType::ForyPrimitiveDoubleArray, serialize_map);
+        register_harness!(String, FieldId::STRING, serialize_map);
 
-        register_harness!(String, FieldType::STRING, serialize_map);
-
-        register_harness!(NaiveDate, FieldType::LOCAL_DATE, serialize_map);
-        register_harness!(NaiveDateTime, FieldType::TIMESTAMP, serialize_map);
+        register_harness!(NaiveDate, FieldId::LOCAL_DATE, serialize_map);
+        register_harness!(NaiveDateTime, FieldId::TIMESTAMP, serialize_map);
 
         TypeResolver {
             serialize_map,
@@ -130,7 +122,7 @@ impl Default for TypeResolver {
 }
 
 impl TypeResolver {
-    pub fn get_type_info(&self, type_id: TypeId) -> &TypeInfo {
+    pub fn get_type_info(&self, type_id: std::any::TypeId) -> &TypeInfo {
         self.type_info_map.get(&type_id).unwrap_or_else(|| {
             panic!(
                 "TypeId {:?} not found in type_info_map, maybe you forgot to register some types",
@@ -158,13 +150,14 @@ impl TypeResolver {
                 Err(e) => Err(e),
             }
         }
-        self.type_id_map.insert(TypeId::of::<T>(), id);
+        self.type_id_map.insert(std::any::TypeId::of::<T>(), id);
         self.serialize_map
             .insert(id, Harness::new(serializer::<T>, deserializer::<T>));
-        self.type_info_map.insert(TypeId::of::<T>(), type_info);
+        self.type_info_map
+            .insert(std::any::TypeId::of::<T>(), type_info);
     }
 
-    pub fn get_harness_by_type(&self, type_id: TypeId) -> Option<&Harness> {
+    pub fn get_harness_by_type(&self, type_id: std::any::TypeId) -> Option<&Harness> {
         self.get_harness(*self.type_id_map.get(&type_id).unwrap())
     }
 

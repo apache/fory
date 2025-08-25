@@ -84,8 +84,6 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
         .iter()
         .map(|child| generic_tree_to_tokens(child, have_context))
         .collect();
-    // let type_ident = format_ident!("{}", node.to_string());
-    // let type_ident = format_ident!("{}", node.name);
     let ty: syn::Type = syn::parse_str(&node.to_string()).unwrap();
     let param = if have_context {
         quote! {
@@ -97,9 +95,9 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
         }
     };
     quote! {
-        fory_core::meta::FieldTypeResolver::new(
+        fory_core::meta::FieldType::new(
             <#ty as fory_core::serializer::Serializer>::get_type_id(#param),
-            vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldTypeResolver>
+            vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>
         )
     }
 }

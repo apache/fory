@@ -20,7 +20,7 @@ use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{FieldType, ForyGeneralList, SIZE_OF_REF_AND_TYPE};
+use crate::types::{FieldId, ForyGeneralList, SIZE_OF_REF_AND_TYPE};
 use std::mem;
 
 impl<T> Serializer for Vec<T>
@@ -51,7 +51,7 @@ where
     }
 
     fn get_type_id(_fory: &Fory) -> i16 {
-        FieldType::ARRAY.into()
+        FieldId::ARRAY.into()
     }
 }
 

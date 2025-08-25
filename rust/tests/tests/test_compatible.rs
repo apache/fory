@@ -16,10 +16,9 @@
 // under the License.
 
 use fory_core::fory::Fory;
+use fory_core::types::Mode::Compatible;
 use fory_derive::Fory;
 use std::collections::HashMap;
-// use std::process::CommandArgs;
-use fory_core::types::Mode::Compatible;
 
 // RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_compatible
 #[test]
@@ -62,7 +61,6 @@ fn simple() {
     assert_eq!(animal.f3, obj.f3);
     assert_eq!(obj.f4, String::default());
     assert_eq!(obj.f5, i8::default());
-    // assert_eq!(obj.f6, Vec::<Record2>::default());
 }
 
 #[test]
