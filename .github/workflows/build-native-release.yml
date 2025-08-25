@@ -42,6 +42,7 @@ jobs:
         run: ./ci/run_ci.sh install_bazel_windows
         shell: bash
       - name: Build wheel
+        shell: bash
         run: ./ci/deploy.sh build_pyfory
       - name: Install and verify wheel
         shell: bash

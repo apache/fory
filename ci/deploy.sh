@@ -81,12 +81,12 @@ build_pyfory() {
     echo "MACOS_VERSION: $MACOS_VERSION"
     if [[ "$MACOS_VERSION" == "13"* ]]; then
       export MACOSX_DEPLOYMENT_TARGET=10.13
-      $PYTHON_CMD setup.py bdist_wheel --plat-name macosx_10_13_x86_64 --dist-dir=../dist
+      $PYTHON_CMD setup.py bdist_wheel --plat-name macosx_10_13_x86_64 --dist-dir="$ROOT/dist"
     else
-      $PYTHON_CMD setup.py bdist_wheel --dist-dir=../dist
+      $PYTHON_CMD setup.py bdist_wheel --dist-dir="$ROOT/dist"
     fi
   else
-    $PYTHON_CMD setup.py bdist_wheel --dist-dir=../dist
+    $PYTHON_CMD setup.py bdist_wheel --dist-dir="$ROOT/dist"
   fi
 
   if [ -n "$PLAT" ]; then
@@ -94,8 +94,8 @@ build_pyfory() {
     # and rename the wheel with the manylinux tag.
     PYARROW_LIB_DIR=$($PYTHON_CMD -c 'import pyarrow; print(":".join(pyarrow.get_library_dirs()))')
     export LD_LIBRARY_PATH="$PYARROW_LIB_DIR:$LD_LIBRARY_PATH"
-    auditwheel repair ../dist/pyfory-*-linux_*.whl --plat "$PLAT" --exclude '*arrow*' --exclude '*parquet*' --exclude '*numpy*' -w ../dist/
-    rm ../dist/pyfory-*-linux_*.whl
+    auditwheel repair "$ROOT/dist"/pyfory-*-linux_*.whl --plat "$PLAT" --exclude '*arrow*' --exclude '*parquet*' --exclude '*numpy*' -w "$ROOT/dist"
+    rm "$ROOT/dist"/pyfory-*-linux_*.whl
   elif [[ "$OSTYPE" == "darwin"* ]]; then
     echo "Skip macos wheel repair"
   elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
@@ -103,7 +103,7 @@ build_pyfory() {
   fi
 
   echo "Wheels for $PYTHON_CMD:"
-  ls -l ../dist
+  ls -l "$ROOT/dist"
   popd
 }
 
