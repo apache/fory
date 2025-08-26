@@ -53,7 +53,13 @@ for PY in $PYTHON_VERSIONS; do
     export PYTHON_PATH="/opt/python/$PY/bin/python"
     export PATH="/opt/python/$PY/bin:$OLD_PATH"
     echo "Using $PYTHON_PATH"
-    python -m pip install cython wheel pytest
+    ARCH=$(uname -m)
+    if [ "$ARCH" = "aarch64" ]; then
+        export PLAT="manylinux2014_aarch64"
+    else
+        export PLAT="manylinux2014_x86_64"
+    fi
+    python -m pip install cython wheel pytest auditwheel
     ci/deploy.sh build_pyfory
 
     latest_wheel=$(ls -t dist/*.whl | head -n1)

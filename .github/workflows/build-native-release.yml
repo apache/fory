@@ -30,7 +30,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Bump version
-        run: ./ci/deploy.sh bump_py_version
+        # Pass the tag name from the push so the python package version matches the tag.
+        run: ./ci/deploy.sh bump_py_version "${{ github.ref_name }}"
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
