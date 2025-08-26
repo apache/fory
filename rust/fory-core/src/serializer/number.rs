@@ -20,7 +20,7 @@ use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{FieldId, ForyGeneralList};
+use crate::types::{ForyGeneralList, TypeId};
 
 macro_rules! impl_num_serializer {
     ($name: ident, $ty:tt, $field_type: expr) => {
@@ -48,9 +48,9 @@ impl ForyGeneralList for u16 {}
 impl ForyGeneralList for u32 {}
 impl ForyGeneralList for u64 {}
 
-impl_num_serializer!(i8, i8, FieldId::INT8);
-impl_num_serializer!(i16, i16, FieldId::INT16);
-impl_num_serializer!(i32, i32, FieldId::INT32);
-impl_num_serializer!(i64, i64, FieldId::INT64);
-impl_num_serializer!(f32, f32, FieldId::FLOAT32);
-impl_num_serializer!(f64, f64, FieldId::FLOAT64);
+impl_num_serializer!(i8, i8, TypeId::INT8);
+impl_num_serializer!(i16, i16, TypeId::INT16);
+impl_num_serializer!(i32, i32, TypeId::INT32);
+impl_num_serializer!(i64, i64, TypeId::INT64);
+impl_num_serializer!(f32, f32, TypeId::FLOAT32);
+impl_num_serializer!(f64, f64, TypeId::FLOAT64);

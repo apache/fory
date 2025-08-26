@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use fory_core::types::TypeId;
 use proc_macro2::TokenStream;
 use quote::quote;
 use std::fmt;
@@ -94,9 +95,19 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
             fory
         }
     };
+    let get_type_id = if node.name == "Option" {
+        let option_type_id: i16 = TypeId::ForyOption.into();
+        quote! {
+            #option_type_id
+        }
+    } else {
+        quote! {
+            <#ty as fory_core::serializer::Serializer>::get_type_id(#param)
+        }
+    };
     quote! {
         fory_core::meta::FieldType::new(
-            <#ty as fory_core::serializer::Serializer>::get_type_id(#param),
+            #get_type_id,
             vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>
         )
     }

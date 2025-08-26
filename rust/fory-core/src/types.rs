@@ -42,7 +42,7 @@ pub enum RefFlag {
 #[derive(Clone, Copy, Debug, PartialEq, TryFromPrimitive, IntoPrimitive)]
 #[allow(non_camel_case_types)]
 #[repr(i16)]
-pub enum FieldId {
+pub enum TypeId {
     BOOL = 1,
     INT8 = 2,
     INT16 = 3,
@@ -91,6 +91,8 @@ pub enum FieldId {
     ForyPrimitiveFloatArray = 262,
     ForyPrimitiveDoubleArray = 263,
     ForyStringArray = 264,
+    // only used at receiver peer
+    ForyOption = 265,
 }
 
 pub trait ForyGeneralList {}

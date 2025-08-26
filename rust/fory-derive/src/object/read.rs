@@ -112,7 +112,7 @@ fn deserialize_compatible(fields: &[&Field]) -> TokenStream {
                     #(#pattern_items),*
                     _ => {
                         // skip bytes
-                        println!("no need to deserialize {:?}", _field.field_name.as_str());
+                        println!("no need to deserialize {:?}:{:?}", _field.field_name.as_str(), _field.field_type);
                         let _ = context
                         .get_fory()
                         .get_type_resolver()

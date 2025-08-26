@@ -65,20 +65,27 @@ fn simple() {
 
 #[test]
 fn option() {
-    #[derive(Fory, Debug)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Animal {
         f1: Option<String>,
         f2: Option<String>,
+        f3: Vec<Option<String>>,
+        // adjacent Options are not supported
+        // f4: Option<Option<String>>,
+        f5: Vec<Option<Vec<Option<String>>>>,
     }
-    let mut fory1 = Fory::default().mode(Compatible);
-    fory1.register::<Animal>(999);
+    let mut fory = Fory::default().mode(Compatible);
+    fory.register::<Animal>(999);
     let animal: Animal = Animal {
-        f1: Some(String::from("foo")),
+        f1: Some(String::from("f1")),
         f2: None,
+        f3: vec![Option::<String>::None, Some(String::from("f3"))],
+        // f4: Some(Some(String::from("f4"))),
+        f5: vec![Some(vec![Some(String::from("f1"))])],
     };
-    let _bin = fory1.serialize(&animal);
-    // todo
-    // let obj: crate::Animal2 = fory2.deserialize(&bin).unwrap();
+    let bin = fory.serialize(&animal);
+    let obj: Animal = fory.deserialize(&bin).unwrap();
+    assert_eq!(animal, obj);
 }
 
 // #[test]

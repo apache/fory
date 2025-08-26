@@ -20,7 +20,7 @@ use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::meta::murmurhash3_x64_128;
 use crate::meta::{Encoding, MetaStringDecoder};
-use crate::types::FieldId;
+use crate::types::TypeId;
 use anyhow::anyhow;
 use std::cmp::min;
 
@@ -50,26 +50,33 @@ impl FieldType {
         FieldType { type_id, generics }
     }
 
-    fn to_bytes(&self, writer: &mut Writer, write_flag: bool) -> Result<(), Error> {
+    fn to_bytes(&self, writer: &mut Writer, write_flag: bool, nullable: bool) -> Result<(), Error> {
+        if self.type_id == TypeId::ForyOption.into() {
+            self.generics
+                .first()
+                .unwrap()
+                .to_bytes(writer, write_flag, true)?;
+            return Ok(());
+        }
         let mut header: i32 = self.type_id as i32;
-        // let ref_tracking = false;
-        // todo if "Option<T>" is nullability then T nullability=true
-        // let nullability = false;
         if write_flag {
             header <<= 2;
+            // let ref_tracking = false;
+            if nullable {
+                header |= 2;
+            }
         }
         writer.var_int32(header);
-
         match self.type_id {
-            x if x == FieldId::ARRAY as i16 || x == FieldId::SET as i16 => {
+            x if x == TypeId::ARRAY as i16 || x == TypeId::SET as i16 => {
                 let generic = self.generics.first().unwrap();
-                generic.to_bytes(writer, true)?;
+                generic.to_bytes(writer, true, false)?;
             }
-            x if x == FieldId::MAP as i16 => {
+            x if x == TypeId::MAP as i16 => {
                 let key_generic = self.generics.first().unwrap();
                 let val_generic = self.generics.get(1).unwrap();
-                key_generic.to_bytes(writer, true)?;
-                val_generic.to_bytes(writer, true)?;
+                key_generic.to_bytes(writer, true, false)?;
+                val_generic.to_bytes(writer, true, false)?;
             }
             _ => {}
         }
@@ -77,28 +84,29 @@ impl FieldType {
     }
 
     #[allow(clippy::needless_late_init)]
-    fn from_bytes(reader: &mut Reader, read_flag: bool) -> Self {
+    fn from_bytes(reader: &mut Reader, read_flag: bool, nullable: Option<bool>) -> Self {
         let header = reader.var_int32();
         let type_id;
+        let _nullable;
         if read_flag {
             type_id = (header >> 2) as i16;
             // let tracking_ref = (header & 1) != 0;
-            // todo if T is nullability then "Option<T>"
-            // let nullable = (header & 2) != 0;
+            _nullable = (header & 2) != 0;
         } else {
             type_id = header as i16;
+            _nullable = nullable.unwrap();
         }
-        match type_id {
-            x if x == FieldId::ARRAY as i16 || x == FieldId::SET as i16 => {
-                let generic = Self::from_bytes(reader, true);
+        let field_type = match type_id {
+            x if x == TypeId::ARRAY.into() || x == TypeId::SET.into() => {
+                let generic = Self::from_bytes(reader, true, None);
                 Self {
                     type_id,
                     generics: vec![generic],
                 }
             }
-            x if x == FieldId::MAP as i16 => {
-                let key_generic = Self::from_bytes(reader, true);
-                let val_generic = Self::from_bytes(reader, true);
+            x if x == TypeId::MAP.into() => {
+                let key_generic = Self::from_bytes(reader, true, None);
+                let val_generic = Self::from_bytes(reader, true, None);
                 Self {
                     type_id,
                     generics: vec![key_generic, val_generic],
@@ -108,6 +116,14 @@ impl FieldType {
                 type_id,
                 generics: vec![],
             },
+        };
+        if _nullable {
+            Self {
+                type_id: TypeId::ForyOption.into(),
+                generics: vec![field_type],
+            }
+        } else {
+            field_type
         }
     }
 }
@@ -139,7 +155,7 @@ impl FieldInfo {
 
     pub fn from_bytes(reader: &mut Reader) -> FieldInfo {
         let header = reader.u8();
-        // let nullability = (header & 2) != 0;
+        let nullable = (header & 2) != 0;
         // let ref_tracking = (header & 1) != 0;
         let encoding = Self::u8_to_encoding((header >> 6) & 0b11).unwrap();
         let mut name_size = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD as u8) as usize;
@@ -148,7 +164,7 @@ impl FieldInfo {
         }
         name_size += 1;
 
-        let field_type = FieldType::from_bytes(reader, false);
+        let field_type = FieldType::from_bytes(reader, false, Option::from(nullable));
 
         let field_name_bytes = reader.bytes(name_size);
 
@@ -171,12 +187,12 @@ impl FieldInfo {
         let name_encoded = meta_string.bytes.as_slice();
         let name_size = name_encoded.len() - 1;
         let mut header: u8 = (min(FIELD_NAME_SIZE_THRESHOLD, name_size) as u8) << 2;
-        let ref_tracking = false;
-        let nullability = false;
-        if ref_tracking {
-            header |= 1;
-        }
-        if nullability {
+        // let ref_tracking = false;
+        let nullable = self.field_type.type_id == TypeId::ForyOption.into();
+        // if ref_tracking {
+        //     header |= 1;
+        // }
+        if nullable {
             header |= 2;
         }
         let encoding_idx = ENCODING_OPTIONS
@@ -188,7 +204,7 @@ impl FieldInfo {
         if name_size >= FIELD_NAME_SIZE_THRESHOLD {
             writer.var_int32((name_size - FIELD_NAME_SIZE_THRESHOLD) as i32);
         }
-        self.field_type.to_bytes(&mut writer, false)?;
+        self.field_type.to_bytes(&mut writer, false, nullable)?;
         // write field_name
         writer.bytes(name_encoded);
         Ok(writer.dump())

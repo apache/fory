@@ -19,7 +19,7 @@ use super::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::serializer::{Serializer, StructSerializer};
-use crate::types::FieldId;
+use crate::types::TypeId;
 use chrono::{NaiveDate, NaiveDateTime};
 use std::{any::Any, collections::HashMap};
 
@@ -100,18 +100,18 @@ impl Default for TypeResolver {
     fn default() -> Self {
         let mut serialize_map = HashMap::new();
 
-        register_harness!(bool, FieldId::BOOL, serialize_map);
-        register_harness!(i8, FieldId::INT8, serialize_map);
-        register_harness!(i16, FieldId::INT16, serialize_map);
-        register_harness!(i32, FieldId::INT32, serialize_map);
-        register_harness!(i64, FieldId::INT64, serialize_map);
-        register_harness!(f32, FieldId::FLOAT32, serialize_map);
-        register_harness!(f64, FieldId::FLOAT64, serialize_map);
+        register_harness!(bool, TypeId::BOOL, serialize_map);
+        register_harness!(i8, TypeId::INT8, serialize_map);
+        register_harness!(i16, TypeId::INT16, serialize_map);
+        register_harness!(i32, TypeId::INT32, serialize_map);
+        register_harness!(i64, TypeId::INT64, serialize_map);
+        register_harness!(f32, TypeId::FLOAT32, serialize_map);
+        register_harness!(f64, TypeId::FLOAT64, serialize_map);
 
-        register_harness!(String, FieldId::STRING, serialize_map);
+        register_harness!(String, TypeId::STRING, serialize_map);
 
-        register_harness!(NaiveDate, FieldId::LOCAL_DATE, serialize_map);
-        register_harness!(NaiveDateTime, FieldId::TIMESTAMP, serialize_map);
+        register_harness!(NaiveDate, TypeId::LOCAL_DATE, serialize_map);
+        register_harness!(NaiveDateTime, TypeId::TIMESTAMP, serialize_map);
 
         TypeResolver {
             serialize_map,
