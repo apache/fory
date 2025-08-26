@@ -83,6 +83,8 @@ class ModulePlaceholder:
 
 
 is_little_endian = sys.byteorder == "little"
+# 新增的大端序标记，便于调用方直接判断当前平台是否为大端序
+is_big_endian = sys.byteorder == "big"
 
 
 __all__ = [
@@ -92,4 +94,5 @@ __all__ = [
     "set_bit_to",
     "lazy_import",
     "is_little_endian",
+    "is_big_endian",
 ]
