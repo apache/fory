@@ -16,5 +16,6 @@
 // under the License.
 
 pub mod context;
+mod create_de_dll;
 pub mod meta_resolver;
 pub mod type_resolver;

@@ -16,11 +16,13 @@
 // under the License.
 
 use super::context::{ReadContext, WriteContext};
+use super::create_de_dll::{create_fn, DeFn};
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::serializer::{Serializer, StructSerializer};
+use crate::meta::FieldType;
+use crate::serializer::StructSerializer;
 use crate::types::TypeId;
-use chrono::{NaiveDate, NaiveDateTime};
+use std::any::type_name;
 use std::{any::Any, collections::HashMap};
 
 pub struct Harness {
@@ -74,49 +76,22 @@ pub struct TypeResolver {
     serialize_map: HashMap<u32, Harness>,
     type_id_map: HashMap<std::any::TypeId, u32>,
     type_info_map: HashMap<std::any::TypeId, TypeInfo>,
-}
-macro_rules! register_harness {
-    ($ty:ty, $id:expr, $map:expr) => {{
-        fn serializer(this: &dyn std::any::Any, context: &mut WriteContext) {
-            let this = this.downcast_ref::<$ty>();
-            match this {
-                Some(v) => <$ty>::serialize(v, context),
-                None => todo!(""),
-            }
-        }
-
-        fn deserializer(context: &mut ReadContext) -> Result<Box<dyn std::any::Any>, Error> {
-            match <$ty>::deserialize(context) {
-                Ok(v) => Ok(Box::new(v)),
-                Err(e) => Err(e),
-            }
-        }
-
-        $map.insert($id as u32, Harness::new(serializer, deserializer));
-    }};
+    de_fn_map: HashMap<FieldType, DeFn>,
+    id_typename_map: HashMap<i16, String>,
 }
 
 impl Default for TypeResolver {
     fn default() -> Self {
-        let mut serialize_map = HashMap::new();
-
-        register_harness!(bool, TypeId::BOOL, serialize_map);
-        register_harness!(i8, TypeId::INT8, serialize_map);
-        register_harness!(i16, TypeId::INT16, serialize_map);
-        register_harness!(i32, TypeId::INT32, serialize_map);
-        register_harness!(i64, TypeId::INT64, serialize_map);
-        register_harness!(f32, TypeId::FLOAT32, serialize_map);
-        register_harness!(f64, TypeId::FLOAT64, serialize_map);
-
-        register_harness!(String, TypeId::STRING, serialize_map);
-
-        register_harness!(NaiveDate, TypeId::LOCAL_DATE, serialize_map);
-        register_harness!(NaiveDateTime, TypeId::TIMESTAMP, serialize_map);
-
+        let mut id_typename_map = HashMap::new();
+        id_typename_map.insert(TypeId::STRING.into(), "String".into());
+        id_typename_map.insert(TypeId::INT8.into(), "i8".into());
+        id_typename_map.insert(TypeId::ARRAY.into(), "Vec".into());
         TypeResolver {
-            serialize_map,
+            serialize_map: HashMap::new(),
             type_id_map: HashMap::new(),
             type_info_map: HashMap::new(),
+            de_fn_map: HashMap::new(),
+            id_typename_map,
         }
     }
 }
@@ -155,6 +130,8 @@ impl TypeResolver {
             .insert(id, Harness::new(serializer::<T>, deserializer::<T>));
         self.type_info_map
             .insert(std::any::TypeId::of::<T>(), type_info);
+        self.id_typename_map
+            .insert(id as i16, type_name::<T>().parse().unwrap());
     }
 
     pub fn get_harness_by_type(&self, type_id: std::any::TypeId) -> Option<&Harness> {
@@ -163,5 +140,11 @@ impl TypeResolver {
 
     pub fn get_harness(&self, id: u32) -> Option<&Harness> {
         self.serialize_map.get(&id)
+    }
+
+    pub fn get_de_fn(&mut self, field_type: FieldType) -> &DeFn {
+        self.de_fn_map
+            .entry(field_type.clone())
+            .or_insert_with(|| create_fn(field_type, &self.id_typename_map))
     }
 }

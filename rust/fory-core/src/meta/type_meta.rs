@@ -23,6 +23,7 @@ use crate::meta::{Encoding, MetaStringDecoder};
 use crate::types::TypeId;
 use anyhow::anyhow;
 use std::cmp::min;
+use std::collections::HashMap;
 
 static SMALL_NUM_FIELDS_THRESHOLD: usize = 0b11111;
 static REGISTER_BY_NAME_FLAG: u8 = 0b100000;
@@ -39,7 +40,7 @@ static ENCODING_OPTIONS: &[Encoding] = &[
     Encoding::LowerUpperDigitSpecial,
 ];
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct FieldType {
     pub type_id: i16,
     generics: Vec<FieldType>,
@@ -48,6 +49,21 @@ pub struct FieldType {
 impl FieldType {
     pub fn new(type_id: i16, generics: Vec<FieldType>) -> Self {
         FieldType { type_id, generics }
+    }
+
+    pub fn to_string(&self, id_typename_map: &HashMap<i16, String>) -> String {
+        let name = id_typename_map.get(&(self.type_id)).unwrap().clone();
+
+        if self.generics.is_empty() {
+            name
+        } else {
+            let generics_str: Vec<String> = self
+                .generics
+                .iter()
+                .map(|g| g.to_string(id_typename_map))
+                .collect();
+            format!("{}<{}>", name, generics_str.join(","))
+        }
     }
 
     fn to_bytes(&self, writer: &mut Writer, write_flag: bool, nullable: bool) -> Result<(), Error> {

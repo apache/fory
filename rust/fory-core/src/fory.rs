@@ -65,7 +65,7 @@ impl Fory {
         Ok(reader.u32())
     }
 
-    pub fn deserialize<T: Serializer>(&self, bf: &[u8]) -> Result<T, Error> {
+    pub fn deserialize<T: Serializer>(&mut self, bf: &[u8]) -> Result<T, Error> {
         let mut reader = Reader::new(bf);
         let meta_offset = self.read_head(&mut reader)?;
         let mut context = ReadContext::new(self, reader);
@@ -88,6 +88,10 @@ impl Fory {
 
     pub fn get_type_resolver(&self) -> &TypeResolver {
         &self.type_resolver
+    }
+
+    pub fn get_type_resolver_mut(&mut self) -> &mut TypeResolver {
+        &mut self.type_resolver
     }
 
     pub fn register<T: 'static + StructSerializer>(&mut self, id: u32) {

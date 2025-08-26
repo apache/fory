@@ -113,14 +113,13 @@ fn deserialize_compatible(fields: &[&Field]) -> TokenStream {
                     _ => {
                         // skip bytes
                         println!("no need to deserialize {:?}:{:?}", _field.field_name.as_str(), _field.field_type);
-                        let _ = context
-                        .get_fory()
-                        .get_type_resolver()
-                        .get_harness((&_field.field_type).type_id as u32)
-                        .unwrap_or_else(|| {
-                            panic!("missing harness for type_id {}", _field.field_type.type_id);
-                        })
-                        .get_deserializer()(context);
+                        let de_fn = context
+                        .get_fory_mut()
+                        .get_type_resolver_mut()
+                        .get_de_fn(_field.field_type.clone());
+                        unsafe {
+                            (de_fn.func)(context);
+                        };
                     }
                 }
             }

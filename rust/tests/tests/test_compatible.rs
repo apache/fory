@@ -29,8 +29,8 @@ fn simple() {
         f2: String,
         f3: Vec<i8>,
         // f4: String,
-        f5: String,
-        // f6: Vec<i8>,
+        f5: Vec<i8>,
+        f6: String,
     }
 
     #[derive(Fory, Debug)]
@@ -39,8 +39,8 @@ fn simple() {
         // f2: String,
         f3: Vec<i8>,
         f4: String,
-        f5: i8,
-        // f6: Vec<i16>,
+        f5: Vec<i16>,
+        f6: i8,
     }
 
     let mut fory1 = Fory::default().mode(Compatible);
@@ -51,8 +51,8 @@ fn simple() {
         f1: HashMap::from([(1, vec![2])]),
         f2: String::from("hello"),
         f3: vec![1, 2, 3],
-        f5: String::from("f5"),
-        // f6: vec![42]
+        f5: vec![42],
+        f6: String::from("f5"),
     };
     let bin = fory1.serialize(&animal);
     let obj: Animal2 = fory2.deserialize(&bin).unwrap();
@@ -60,7 +60,43 @@ fn simple() {
     assert_eq!(animal.f1, obj.f1);
     assert_eq!(animal.f3, obj.f3);
     assert_eq!(obj.f4, String::default());
-    assert_eq!(obj.f5, i8::default());
+    assert_eq!(obj.f5, Vec::default());
+    assert_eq!(obj.f6, i8::default());
+}
+
+#[test]
+fn dynamic_gen_de() {
+    #[derive(Fory, Debug, Default)]
+    pub struct Item {
+        f1: i8,
+    }
+    #[derive(Fory, Debug)]
+    struct Person1 {
+        // f2: Item,
+        f3: i8,
+    }
+    #[derive(Fory, Debug)]
+    struct Person2 {
+        f2: i8,
+        f3: i64,
+    }
+    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().mode(Compatible);
+    fory1.register::<Item>(899);
+    fory1.register::<Person1>(999);
+    fory2.register::<Item>(899);
+    fory2.register::<Person2>(999);
+    let person = Person1 {
+        // f2: Item {
+        //     f1: 42
+        // },
+        f3: 24,
+    };
+    let bin = fory1.serialize(&person);
+    let obj: Person2 = fory2.deserialize(&bin).unwrap();
+    assert_eq!(obj.f2, i8::default());
+    // assert_eq!(obj.f3, person.f3);
+    assert_eq!(obj.f3, i64::default());
 }
 
 #[test]

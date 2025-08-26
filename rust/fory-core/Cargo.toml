@@ -30,7 +30,8 @@ chrono = "0.4"
 thiserror = { default-features = false, version = "1.0" }
 anyhow = "1"
 num_enum = "0.5.1"
-
+tempfile = "3.21.0"
+libloading = "0.8.8"
 
 [[bench]]
 name = "simd_bench"

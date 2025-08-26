@@ -78,12 +78,12 @@ impl<'se> WriteContext<'se> {
 pub struct ReadContext<'de, 'bf: 'de> {
     pub reader: Reader<'bf>,
     pub tags: Vec<&'de str>,
-    pub fory: &'de Fory,
+    pub fory: &'de mut Fory,
     pub meta_resolver: MetaReaderResolver,
 }
 
 impl<'de, 'bf: 'de> ReadContext<'de, 'bf> {
-    pub fn new(fory: &'de Fory, reader: Reader<'bf>) -> ReadContext<'de, 'bf> {
+    pub fn new(fory: &'de mut Fory, reader: Reader<'bf>) -> ReadContext<'de, 'bf> {
         ReadContext {
             reader,
             tags: Vec::new(),
@@ -93,6 +93,10 @@ impl<'de, 'bf: 'de> ReadContext<'de, 'bf> {
     }
 
     pub fn get_fory(&self) -> &Fory {
+        self.fory
+    }
+
+    pub fn get_fory_mut(&mut self) -> &mut Fory {
         self.fory
     }
 
