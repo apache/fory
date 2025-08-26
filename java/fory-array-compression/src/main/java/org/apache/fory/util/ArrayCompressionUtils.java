@@ -45,8 +45,8 @@ public final class ArrayCompressionUtils {
   private static final VectorSpecies<Integer> INT_SPECIES = IntVector.SPECIES_PREFERRED;
   private static final VectorSpecies<Long> LONG_SPECIES = LongVector.SPECIES_PREFERRED;
 
-    // Minimum array size to justify compression overhead
-    private static final int MIN_COMPRESSION_SIZE = 1 << 9; // 512 elements
+  // Minimum array size to justify compression overhead
+  private static final int MIN_COMPRESSION_SIZE = 1 << 9; // 512 elements
 
   /**
    * Determine the best compression type for int array.
@@ -56,11 +56,11 @@ public final class ArrayCompressionUtils {
    * @throws NullPointerException if array is null
    */
   public static PrimitiveArrayCompressionType determineIntCompressionType(int[] array) {
-      if (array == null) {
-          throw new NullPointerException("Input array cannot be null");
-      }
-      if (array.length < MIN_COMPRESSION_SIZE) {
-        // No compression for empty or too small arrays
+    if (array == null) {
+      throw new NullPointerException("Input array cannot be null");
+    }
+    if (array.length < MIN_COMPRESSION_SIZE) {
+      // No compression for empty or too small arrays
       return PrimitiveArrayCompressionType.NONE;
     }
 
@@ -121,10 +121,10 @@ public final class ArrayCompressionUtils {
    * @throws NullPointerException if array is null
    */
   public static PrimitiveArrayCompressionType determineLongCompressionType(long[] array) {
-      if (array == null) {
-          throw new NullPointerException("Input array cannot be null");
-      }
-   if (array.length < MIN_COMPRESSION_SIZE) {
+    if (array == null) {
+      throw new NullPointerException("Input array cannot be null");
+    }
+    if (array.length < MIN_COMPRESSION_SIZE) {
       return PrimitiveArrayCompressionType.NONE;
     }
     boolean canCompressToInt = true;
@@ -144,13 +144,13 @@ public final class ArrayCompressionUtils {
       }
     }
 
-      // Handle remaining elements
-      for (; i < array.length && canCompressToInt; i++) {
-          long value = array[i];
-          if (value >  Integer.MAX_VALUE || value < Integer.MIN_VALUE) {
-              canCompressToInt = false;
-          }
+    // Handle remaining elements
+    for (; i < array.length && canCompressToInt; i++) {
+      long value = array[i];
+      if (value > Integer.MAX_VALUE || value < Integer.MIN_VALUE) {
+        canCompressToInt = false;
       }
+    }
 
     return canCompressToInt
         ? PrimitiveArrayCompressionType.LONG_TO_INT
@@ -165,14 +165,14 @@ public final class ArrayCompressionUtils {
    * @throws NullPointerException if array is null
    */
   public static byte[] compressToBytes(int[] array) {
-      if (array == null) {
-          throw new NullPointerException("Array cannot be null");
-      }
-      byte[] compressed = new byte[array.length];
-      for (int i = 0; i < array.length; i++) {
-          compressed[i] = (byte) array[i];
-      }
-      return compressed;
+    if (array == null) {
+      throw new NullPointerException("Array cannot be null");
+    }
+    byte[] compressed = new byte[array.length];
+    for (int i = 0; i < array.length; i++) {
+      compressed[i] = (byte) array[i];
+    }
+    return compressed;
   }
 
   /**
@@ -183,14 +183,14 @@ public final class ArrayCompressionUtils {
    * @throws NullPointerException if array is null
    */
   public static short[] compressToShorts(int[] array) {
-      if (array == null) {
-          throw new NullPointerException("Array cannot be null");
-      }
-      short[] compressed = new short[array.length];
-      for (int i = 0; i < array.length; i++) {
-          compressed[i] = (short) array[i];
-      }
-      return compressed;
+    if (array == null) {
+      throw new NullPointerException("Array cannot be null");
+    }
+    short[] compressed = new short[array.length];
+    for (int i = 0; i < array.length; i++) {
+      compressed[i] = (short) array[i];
+    }
+    return compressed;
   }
 
   /**
@@ -201,14 +201,14 @@ public final class ArrayCompressionUtils {
    * @throws NullPointerException if array is null
    */
   public static int[] compressToInts(long[] array) {
-      if (array == null) {
-          throw new NullPointerException("Array cannot be null");
-      }
-      int[] compressed = new int[array.length];
-      for (int i = 0; i < array.length; i++) {
-          compressed[i] = (int) array[i];
-      }
-      return compressed;
+    if (array == null) {
+      throw new NullPointerException("Array cannot be null");
+    }
+    int[] compressed = new int[array.length];
+    for (int i = 0; i < array.length; i++) {
+      compressed[i] = (int) array[i];
+    }
+    return compressed;
   }
 
   /**
@@ -219,14 +219,14 @@ public final class ArrayCompressionUtils {
    * @throws NullPointerException if array is null
    */
   public static int[] decompressFromBytes(byte[] array) {
-      if (array == null) {
-          throw new NullPointerException("Array cannot be null");
-      }
-      int[] decompressed = new int[array.length];
-      for (int i = 0; i < array.length; i++) {
-          decompressed[i] = array[i];
-      }
-      return decompressed;
+    if (array == null) {
+      throw new NullPointerException("Array cannot be null");
+    }
+    int[] decompressed = new int[array.length];
+    for (int i = 0; i < array.length; i++) {
+      decompressed[i] = array[i];
+    }
+    return decompressed;
   }
 
   /**
@@ -237,14 +237,14 @@ public final class ArrayCompressionUtils {
    * @throws NullPointerException if array is null
    */
   public static int[] decompressFromShorts(short[] array) {
-      if (array == null) {
-          throw new NullPointerException("Array cannot be null");
-      }
-      int[] decompressed = new int[array.length];
-      for (int i = 0; i < array.length; i++) {
-          decompressed[i] = array[i];
-      }
-      return decompressed;
+    if (array == null) {
+      throw new NullPointerException("Array cannot be null");
+    }
+    int[] decompressed = new int[array.length];
+    for (int i = 0; i < array.length; i++) {
+      decompressed[i] = array[i];
+    }
+    return decompressed;
   }
 
   /**
@@ -255,14 +255,14 @@ public final class ArrayCompressionUtils {
    * @throws NullPointerException if array is null
    */
   public static long[] decompressFromInts(int[] array) {
-      if (array == null) {
-          throw new NullPointerException("Array cannot be null");
-      }
+    if (array == null) {
+      throw new NullPointerException("Array cannot be null");
+    }
 
-      long[] decompressed = new long[array.length];
-      for (int i = 0; i < array.length; i++) {
-          decompressed[i] = array[i];
-      }
-      return decompressed;
+    long[] decompressed = new long[array.length];
+    for (int i = 0; i < array.length; i++) {
+      decompressed[i] = array[i];
+    }
+    return decompressed;
   }
 }
