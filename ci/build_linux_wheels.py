@@ -97,6 +97,7 @@ def build_docker_cmd(workspace: str, image: str, release: bool = False) -> List[
         "-v", f"{workspace}:/work", # (v)olume
         "-w", "/work",  # (w)orking directory
         "-e", f"PYTHON_VERSIONS={python_versions}", # (e)nvironment variables
+        "-e", f"RELEASE_BUILD={'1' if release else '0'}"
     ]
 
     # Pass GitHub reference name if available

@@ -45,12 +45,24 @@ jobs:
       - name: Build wheel
         shell: bash
         run: ./ci/deploy.sh build_pyfory
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
       - name: Install and verify wheel
         shell: bash
         run: |
           python -m pip install --upgrade pip
           pip install dist/*.whl
-          python -c "import pyfory; print(pyfory.__version__)"
+          INSTALLED_VERSION=$(python -c "import pyfory; print(pyfory.__version__)")
+          echo "Installed version: $INSTALLED_VERSION"
+          # Verify version matches the tag (strip leading 'v' if present)
+          EXPECTED_VERSION="${{ github.ref_name }}"
+          EXPECTED_VERSION=${EXPECTED_VERSION#v}
+          echo "Expected version: $EXPECTED_VERSION"
+          if [ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "Version mismatch: Expected $EXPECTED_VERSION but got $INSTALLED_VERSION"
+            exit 1
+          fi
+          echo "Version verification successful"
       - name: Upload wheels as artifacts
         uses: actions/upload-artifact@v4
         with:

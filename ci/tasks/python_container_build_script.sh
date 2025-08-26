@@ -61,13 +61,25 @@ for PY in $PYTHON_VERSIONS; do
     python -m pip install cython wheel pytest auditwheel
     ci/deploy.sh build_pyfory
 
-    latest_wheel=$(ls -t dist/*.whl | head -n1)
+    latest_wheel=$(find dist -maxdepth 1 -type f -name '*.whl' -print0 | xargs -0 ls -t | head -n1)
+    if [ -z "$latest_wheel" ]; then
+      echo "No wheel found" >&2
+      exit 1
+    fi
+
     echo "Attempting to install $latest_wheel"
     python -m pip install "$latest_wheel"
 
     # Verify the installed version matches the expected version
     INSTALLED_VERSION=$(python -c "import pyfory; print(pyfory.__version__)")
-    verify_version "$INSTALLED_VERSION"
+
+    # Only run version verification for release builds
+    if [ "${RELEASE_BUILD:-0}" = "1" ]; then
+        echo "Running version verification for release build"
+        verify_version "$INSTALLED_VERSION"
+    else
+        echo "Skipping version verification for test build"
+    fi
 
     bazel clean --expunge
 done
