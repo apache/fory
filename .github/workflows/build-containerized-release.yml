@@ -29,7 +29,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Bump version
-        run: ./ci/deploy.sh bump_py_version
+        # Pass the tag name from the push (e.g. "v0.12.1b1"); deploy.sh will strip leading "v".
+        run: ./ci/deploy.sh bump_py_version "${{ github.ref_name }}"
       - name: Install bazel
         run: ./ci/run_ci.sh install_bazel
       - name: Build and test wheels
