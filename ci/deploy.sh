@@ -85,6 +85,19 @@ build_pyfory() {
     else
       $PYTHON_CMD setup.py bdist_wheel --dist-dir="$ROOT/dist"
     fi
+  elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+    # On Windows, create a temporary setup.py that forces the version
+    echo "Building Windows wheel with forced version"
+    version=$($PYTHON_CMD -c 'import sys; sys.path.insert(0, "."); from pyfory import __version__; print(__version__)')
+    echo "Detected version: $version"
+
+    # Windows tends to drop alpha/beta markers - force it through setup.cfg
+    echo "[metadata]" > setup.cfg
+    echo "version = $version" >> setup.cfg
+
+    $PYTHON_CMD setup.py bdist_wheel --dist-dir="$ROOT/dist"
+    # Clean up
+    rm setup.cfg
   else
     $PYTHON_CMD setup.py bdist_wheel --dist-dir="$ROOT/dist"
   fi

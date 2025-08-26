@@ -32,45 +32,12 @@ import subprocess
 import sys
 from typing import List
 
-SCRIPT = r'''set -e
-yum install -y git sudo wget || true
+# Define Python version sets directly in the Python script
+RELEASE_PYTHON_VERSIONS = "cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313"
+DEFAULT_PYTHON_VERSIONS = "cp38-cp38 cp313-cp313"
 
-git config --global --add safe.directory /work
-
-# Determine Python versions to test
-if [ "$RELEASE" = "1" ]; then
-    PYTHON_VERSIONS="cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313"
-else
-    PYTHON_VERSIONS="cp38-cp38 cp313-cp313"
-fi
-
-ci/run_ci.sh install_bazel
-export PATH="$HOME/.local/bin:$PATH"
-
-# use the python interpreters preinstalled in manylinux
-OLD_PATH=$PATH
-for PY in $PYTHON_VERSIONS; do
-    export PYTHON_PATH="/opt/python/$PY/bin/python"
-    export PATH="/opt/python/$PY/bin:$OLD_PATH"
-    echo "Using $PYTHON_PATH"
-    ARCH=$(uname -m)
-    if [ "$ARCH" = "aarch64" ]; then
-        export PLAT="manylinux2014_aarch64"
-    else
-        export PLAT="manylinux2014_x86_64"
-    fi
-    python -m pip install cython wheel pytest auditwheel
-    ci/deploy.sh build_pyfory
-
-    latest_wheel=$(ls -t dist/*.whl | head -n1)
-    echo "Attempting to install $latest_wheel"
-    python -m pip install "$latest_wheel"
-    python -c "import pyfory; print(pyfory.__version__)"
-
-    bazel clean --expunge
-done
-export PATH=$OLD_PATH
-'''
+# Path to the container build script
+CONTAINER_SCRIPT_PATH = "ci/tasks/python_container_build_script.sh"
 
 DEFAULT_X86_IMAGES = [
     "quay.io/pypa/manylinux2014_x86_64:latest",
@@ -118,26 +85,37 @@ def collect_images_for_arch(arch_normalized: str) -> List[str]:
         raise SystemExit(f"Unsupported arch: {arch_normalized!r}")
     return imgs
 
-def build_docker_cmd(workspace: str, image: str) -> List[str]:
+def build_docker_cmd(workspace: str, image: str, release: bool = False) -> List[str]:
     workspace = os.path.abspath(workspace)
-    return [
+    python_versions = RELEASE_PYTHON_VERSIONS if release else DEFAULT_PYTHON_VERSIONS
+
+    # Get GitHub reference name from environment
+    github_ref_name = os.environ.get("GITHUB_REF_NAME", "")
+
+    cmd = [
         "docker", "run", "-i", "--rm",
-        "-v", f"{workspace}:/work",
-        "-w", "/work",
-        image,
-        "bash", "-s", "--"
+        "-v", f"{workspace}:/work", # (v)olume
+        "-w", "/work",  # (w)orking directory
+        "-e", f"PYTHON_VERSIONS={python_versions}", # (e)nvironment variables
     ]
 
-def run_for_images(images: List[str], workspace: str, dry_run: bool) -> int:
+    # Pass GitHub reference name if available
+    if github_ref_name:
+        cmd.extend(["-e", f"GITHUB_REF_NAME={github_ref_name}"])
+
+    cmd.extend([image, "bash", CONTAINER_SCRIPT_PATH])
+    return cmd
+
+def run_for_images(images: List[str], workspace: str, dry_run: bool, release: bool = False) -> int:
     rc_overall = 0
     for image in images:
-        docker_cmd = build_docker_cmd(workspace, image)
+        docker_cmd = build_docker_cmd(workspace, image, release=release)
         printable = " ".join(shlex.quote(c) for c in docker_cmd)
         print(f"+ {printable}")
         if dry_run:
             continue
         try:
-            completed = subprocess.run(docker_cmd, input=SCRIPT.encode("utf-8"))
+            completed = subprocess.run(docker_cmd)
             if completed.returncode != 0:
                 print(f"Container {image} exited with {completed.returncode}", file=sys.stderr)
                 rc_overall = completed.returncode if rc_overall == 0 else rc_overall
@@ -159,8 +137,15 @@ def main() -> int:
         print(f"No images configured for arch {arch}", file=sys.stderr)
         return 2
     workspace = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
+
+    # Check if the container script exists
+    script_path = os.path.join(workspace, CONTAINER_SCRIPT_PATH)
+    if not os.path.exists(script_path):
+        print(f"Container script not found at {script_path}", file=sys.stderr)
+        return 2
+
     print(f"Selected images for arch {args.arch}: {images}")
-    return run_for_images(images, workspace, args.dry_run)
+    return run_for_images(images, workspace, args.dry_run, release=args.release)
 
 if __name__ == "__main__":
     sys.exit(main())

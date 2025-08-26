@@ -16,6 +16,7 @@
 # under the License.
 
 name: Publish Python
+run-name: "Python Release: ${{ contains(github.event.workflow_run.name, 'Containerized') && 'Containerized' || 'Native' }} (Run ID: ${{ github.event.workflow_run.id }})"
 
 on:
   workflow_run:
