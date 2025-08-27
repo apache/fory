@@ -88,8 +88,10 @@ build_pyfory() {
   elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
 
     if [ -n "$GITHUB_REF_NAME" ]; then
-      # Strip leading 'v' if present
       version="${GITHUB_REF_NAME#v}"
+      version="${version//-alpha/a}"
+      version="${version//-beta/b}"
+      version="${version//-rc/rc}"
       echo "Using version from GITHUB_REF_NAME: $version"
 
       # Windows tends to drop alpha/beta markers - force it through setup.cfg
