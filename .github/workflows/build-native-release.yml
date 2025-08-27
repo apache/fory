@@ -57,10 +57,7 @@ jobs:
           echo "Installed version: $INSTALLED_VERSION"
           # Verify version matches the tag
           EXPECTED_VERSION="${{ github.ref_name }}"
-          EXPECTED_VERSION=${EXPECTED_VERSION#v}
-          EXPECTED_VERSION="${EXPECTED_VERSION//-alpha/a}"
-          EXPECTED_VERSION="${EXPECTED_VERSION//-beta/b}"
-          EXPECTED_VERSION="${EXPECTED_VERSION//-rc/rc}"
+          EXPECTED_VERSION=$(DEPLOY_QUIET=1 hci/deploy.s parse_py_version $EXPECTED_VERSION | tail -n1)
           echo "Expected version: $EXPECTED_VERSION"
           if [ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]; then
             echo "Version mismatch: Expected $EXPECTED_VERSION but got $INSTALLED_VERSION"

@@ -34,7 +34,7 @@ verify_version() {
     if [ -n "$GITHUB_REF_NAME" ]; then
         # Strip leading 'v' if present and capture only the actual output, not debug messages
         local expected_version
-        expected_version="$(DEPLOY_QUIET=1 ci/deploy.sh parse_py_version $GITHUB_REF_NAME)"
+        expected_version="$(DEPLOY_QUIET=1 ci/deploy.sh parse_py_version $GITHUB_REF_NAME | tail -n1)"
         echo "Expected version: $expected_version"
 
         if [ "$installed_version" != "$expected_version" ]; then
