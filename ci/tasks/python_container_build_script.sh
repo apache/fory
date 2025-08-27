@@ -33,7 +33,8 @@ verify_version() {
     # Check if GITHUB_REF_NAME is available and use it for verification
     if [ -n "$GITHUB_REF_NAME" ]; then
         # Strip leading 'v' if present
-        local expected_version="${GITHUB_REF_NAME#v}"
+        local expected_version
+        expected_version="$(ci/deploy.sh parse_py_version $GITHUB_REF_NAME)"
         echo "Expected version: $expected_version"
 
         if [ "$installed_version" != "$expected_version" ]; then
