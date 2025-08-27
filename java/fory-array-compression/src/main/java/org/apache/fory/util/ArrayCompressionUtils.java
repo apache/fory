@@ -26,7 +26,7 @@ import jdk.incubator.vector.VectorSpecies;
 
 /**
  * Utility class for primitive array compression operations. It uses SIMD-accelerated array
- * compression using Java 17+ Vector API.
+ * compression using Java 16+ Vector API.
  *
  * <p>This utility provides compression for primitive arrays by detecting when values can fit in
  * smaller data types:
