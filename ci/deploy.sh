@@ -19,7 +19,9 @@
 
 
 # Print commands and their arguments as they are executed.
-set -x
+if [ "${DEPLOY_QUIET:-0}" != "1" ]; then
+    set -x
+fi
 
 # Cause the script to exit if a single command fails.
 set -e
