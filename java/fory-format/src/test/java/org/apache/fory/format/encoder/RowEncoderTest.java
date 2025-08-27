@@ -118,4 +118,21 @@ public class RowEncoderTest {
     Assert.assertEquals(s1.f1, s.f1);
     Assert.assertEquals(s1.f2, s.f2);
   }
+
+  @Test
+  public void testNullClearOffset() {
+    RowEncoder<Bar> encoder = Encoders.bean(Bar.class);
+    Bar bar = new Bar();
+    bar.f1 = 42;
+    bar.f2 = null;
+    byte[] nullBefore = encoder.encode(bar);
+
+    bar.f2 = "not null";
+    // write offset and size
+    encoder.encode(bar);
+
+    bar.f2 = null;
+    byte[] nullAfter = encoder.encode(bar);
+    Assert.assertEquals(nullAfter, nullBefore);
+  }
 }
