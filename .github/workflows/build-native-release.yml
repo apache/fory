@@ -54,9 +54,12 @@ jobs:
           pip install dist/*.whl
           INSTALLED_VERSION=$(python -c "import pyfory; print(pyfory.__version__)")
           echo "Installed version: $INSTALLED_VERSION"
-          # Verify version matches the tag (strip leading 'v' if present)
+          # Verify version matches the tag
           EXPECTED_VERSION="${{ github.ref_name }}"
           EXPECTED_VERSION=${EXPECTED_VERSION#v}
+          EXPECTED_VERSION="${EXPECTED_VERSION//-alpha/a}"
+          EXPECTED_VERSION="${EXPECTED_VERSION//-beta/b}"
+          EXPECTED_VERSION="${EXPECTED_VERSION//-rc/rc}"
           echo "Expected version: $EXPECTED_VERSION"
           if [ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]; then
             echo "Version mismatch: Expected $EXPECTED_VERSION but got $INSTALLED_VERSION"
