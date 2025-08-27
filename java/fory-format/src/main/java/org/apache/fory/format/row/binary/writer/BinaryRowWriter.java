@@ -128,6 +128,12 @@ public class BinaryRowWriter extends BinaryWriter {
     writeDecimal(ordinal, value, (ArrowType.Decimal) schema.getFields().get(ordinal).getType());
   }
 
+  @Override
+  public void setNullAt(int ordinal) {
+    super.setNullAt(ordinal);
+    write(ordinal, 0L);
+  }
+
   public BinaryRow getRow() {
     BinaryRow row = new BinaryRow(schema);
     int size = size();
