@@ -71,7 +71,7 @@ impl Serializer for Box<dyn Any> {
                 context
                     .get_fory()
                     .get_type_resolver()
-                    .get_harness(type_id as u32)
+                    .get_harness(type_id)
                     .unwrap()
                     .get_deserializer()(context)
             }

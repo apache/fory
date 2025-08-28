@@ -18,9 +18,7 @@
 use super::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::serializer::{Serializer, StructSerializer};
-use crate::types::TypeId;
-use chrono::{NaiveDate, NaiveDateTime};
+use crate::serializer::StructSerializer;
 use std::{any::Any, collections::HashMap};
 
 pub struct Harness {
@@ -50,18 +48,18 @@ impl Harness {
 
 pub struct TypeInfo {
     type_def: Vec<u8>,
-    type_id: u32,
+    type_id: i16,
 }
 
 impl TypeInfo {
-    pub fn new<T: StructSerializer>(fory: &Fory, type_id: u32) -> TypeInfo {
+    pub fn new<T: StructSerializer>(fory: &Fory, type_id: i16) -> TypeInfo {
         TypeInfo {
-            type_def: T::type_def(fory),
+            type_def: T::type_def(fory, type_id),
             type_id,
         }
     }
 
-    pub fn get_type_id(&self) -> u32 {
+    pub fn get_type_id(&self) -> i16 {
         self.type_id
     }
 
@@ -70,55 +68,11 @@ impl TypeInfo {
     }
 }
 
+#[derive(Default)]
 pub struct TypeResolver {
-    serialize_map: HashMap<u32, Harness>,
-    type_id_map: HashMap<std::any::TypeId, u32>,
+    serialize_map: HashMap<i16, Harness>,
+    type_id_map: HashMap<std::any::TypeId, i16>,
     type_info_map: HashMap<std::any::TypeId, TypeInfo>,
-}
-macro_rules! register_harness {
-    ($ty:ty, $id:expr, $map:expr) => {{
-        fn serializer(this: &dyn std::any::Any, context: &mut WriteContext) {
-            let this = this.downcast_ref::<$ty>();
-            match this {
-                Some(v) => <$ty>::serialize(v, context),
-                None => todo!(""),
-            }
-        }
-
-        fn deserializer(context: &mut ReadContext) -> Result<Box<dyn std::any::Any>, Error> {
-            match <$ty>::deserialize(context) {
-                Ok(v) => Ok(Box::new(v)),
-                Err(e) => Err(e),
-            }
-        }
-
-        $map.insert($id as u32, Harness::new(serializer, deserializer));
-    }};
-}
-
-impl Default for TypeResolver {
-    fn default() -> Self {
-        let mut serialize_map = HashMap::new();
-
-        register_harness!(bool, TypeId::BOOL, serialize_map);
-        register_harness!(i8, TypeId::INT8, serialize_map);
-        register_harness!(i16, TypeId::INT16, serialize_map);
-        register_harness!(i32, TypeId::INT32, serialize_map);
-        register_harness!(i64, TypeId::INT64, serialize_map);
-        register_harness!(f32, TypeId::FLOAT32, serialize_map);
-        register_harness!(f64, TypeId::FLOAT64, serialize_map);
-
-        register_harness!(String, TypeId::STRING, serialize_map);
-
-        register_harness!(NaiveDate, TypeId::LOCAL_DATE, serialize_map);
-        register_harness!(NaiveDateTime, TypeId::TIMESTAMP, serialize_map);
-
-        TypeResolver {
-            serialize_map,
-            type_id_map: HashMap::new(),
-            type_info_map: HashMap::new(),
-        }
-    }
 }
 
 impl TypeResolver {
@@ -131,7 +85,7 @@ impl TypeResolver {
         })
     }
 
-    pub fn register<T: StructSerializer>(&mut self, type_info: TypeInfo, id: u32) {
+    pub fn register<T: StructSerializer>(&mut self, type_info: TypeInfo, id: i16) {
         fn serializer<T2: 'static + StructSerializer>(this: &dyn Any, context: &mut WriteContext) {
             let this = this.downcast_ref::<T2>();
             match this {
@@ -161,7 +115,7 @@ impl TypeResolver {
         self.get_harness(*self.type_id_map.get(&type_id).unwrap())
     }
 
-    pub fn get_harness(&self, id: u32) -> Option<&Harness> {
+    pub fn get_harness(&self, id: i16) -> Option<&Harness> {
         self.serialize_map.get(&id)
     }
 }

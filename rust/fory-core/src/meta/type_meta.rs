@@ -39,10 +39,10 @@ static ENCODING_OPTIONS: &[Encoding] = &[
     Encoding::LowerUpperDigitSpecial,
 ];
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FieldType {
     pub type_id: i16,
-    generics: Vec<FieldType>,
+    pub generics: Vec<FieldType>,
 }
 
 impl FieldType {
@@ -128,7 +128,7 @@ impl FieldType {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FieldInfo {
     pub field_name: String,
     pub field_type: FieldType,
@@ -213,19 +213,19 @@ impl FieldInfo {
 
 #[derive(Debug)]
 pub struct TypeMetaLayer {
-    type_id: u32,
+    type_id: i16,
     field_infos: Vec<FieldInfo>,
 }
 
 impl TypeMetaLayer {
-    pub fn new(type_id: u32, field_infos: Vec<FieldInfo>) -> TypeMetaLayer {
+    pub fn new(type_id: i16, field_infos: Vec<FieldInfo>) -> TypeMetaLayer {
         TypeMetaLayer {
             type_id,
             field_infos,
         }
     }
 
-    pub fn get_type_id(&self) -> u32 {
+    pub fn get_type_id(&self) -> i16 {
         self.type_id
     }
 
@@ -271,7 +271,7 @@ impl TypeMetaLayer {
         if is_register_by_name {
             todo!()
         } else {
-            type_id = reader.var_int32() as u32;
+            type_id = reader.var_int32() as i16;
         }
         let mut field_infos = Vec::with_capacity(num_fields);
         for _ in 0..num_fields {
@@ -293,11 +293,11 @@ impl TypeMeta {
         self.layers.first().unwrap().get_field_infos()
     }
 
-    pub fn get_type_id(&self) -> u32 {
+    pub fn get_type_id(&self) -> i16 {
         self.layers.first().unwrap().get_type_id()
     }
 
-    pub fn from_fields(type_id: u32, field_infos: Vec<FieldInfo>) -> TypeMeta {
+    pub fn from_fields(type_id: i16, field_infos: Vec<FieldInfo>) -> TypeMeta {
         TypeMeta {
             // hash: 0,
             layers: vec![TypeMetaLayer::new(type_id, field_infos)],

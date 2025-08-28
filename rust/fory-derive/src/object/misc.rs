@@ -56,9 +56,9 @@ fn type_def(fields: &[&Field]) -> TokenStream {
         }
     });
     quote! {
-        fn type_def(fory: &fory_core::fory::Fory) -> Vec<u8> {
+        fn type_def(fory: &fory_core::fory::Fory, layer_id: i16) -> Vec<u8> {
             fory_core::meta::TypeMeta::from_fields(
-                0,
+                layer_id,
                 vec![#(#field_infos),*]
             ).to_bytes().unwrap()
         }

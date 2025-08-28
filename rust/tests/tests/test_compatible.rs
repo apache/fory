@@ -30,7 +30,9 @@ fn simple() {
         f3: Vec<i8>,
         // f4: String,
         f5: String,
-        // f6: Vec<i8>,
+        f6: Vec<i8>,
+        f7: i8,
+        f8: i8,
     }
 
     #[derive(Fory, Debug)]
@@ -40,7 +42,9 @@ fn simple() {
         f3: Vec<i8>,
         f4: String,
         f5: i8,
-        // f6: Vec<i16>,
+        f6: Vec<i16>,
+        f7: i16,
+        f8: i8,
     }
 
     let mut fory1 = Fory::default().mode(Compatible);
@@ -52,7 +56,9 @@ fn simple() {
         f2: String::from("hello"),
         f3: vec![1, 2, 3],
         f5: String::from("f5"),
-        // f6: vec![42]
+        f6: vec![42],
+        f7: 43,
+        f8: 44,
     };
     let bin = fory1.serialize(&animal);
     let obj: Animal2 = fory2.deserialize(&bin).unwrap();
@@ -61,6 +67,49 @@ fn simple() {
     assert_eq!(animal.f3, obj.f3);
     assert_eq!(obj.f4, String::default());
     assert_eq!(obj.f5, i8::default());
+    assert_eq!(obj.f6, Vec::<i16>::default());
+    assert_eq!(obj.f7, i16::default());
+    assert_eq!(animal.f8, obj.f8);
+}
+
+#[test]
+fn nonexistent_struct() {
+    #[derive(Fory, Debug, Default)]
+    pub struct Item1 {
+        f1: i8,
+    }
+    #[derive(Fory, Debug, Default, PartialEq)]
+    pub struct Item2 {
+        f1: i64,
+    }
+    #[derive(Fory, Debug)]
+    struct Person1 {
+        f2: Item1,
+        f3: i8,
+        f4: String,
+    }
+    #[derive(Fory, Debug)]
+    struct Person2 {
+        f2: Item2,
+        f3: i64,
+        f4: String,
+    }
+    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().mode(Compatible);
+    fory1.register::<Item1>(899);
+    fory1.register::<Person1>(999);
+    fory2.register::<Item2>(799);
+    fory2.register::<Person2>(999);
+    let person = Person1 {
+        f2: Item1 { f1: 42 },
+        f3: 24,
+        f4: String::from("foo"),
+    };
+    let bin = fory1.serialize(&person);
+    let obj: Person2 = fory2.deserialize(&bin).unwrap();
+    assert_eq!(obj.f2, Item2::default());
+    assert_eq!(obj.f3, i64::default());
+    assert_eq!(obj.f4, person.f4);
 }
 
 #[test]

@@ -112,19 +112,20 @@ pub fn compute_string_hash(s: &str) -> u32 {
     hash as u32
 }
 
-// const BASIC_TYPES: [FieldType; 11] = [
-//     FieldType::BOOL,
-//     FieldType::INT8,
-//     FieldType::INT16,
-//     FieldType::INT32,
-//     FieldType::INT64,
-//     FieldType::FLOAT,
-//     FieldType::DOUBLE,
-//     FieldType::STRING,
-//     FieldType::BINARY,
-//     FieldType::DATE,
-//     FieldType::TIMESTAMP,
-// ];
+pub const BASIC_TYPES: [TypeId; 10] = [
+    TypeId::BOOL,
+    TypeId::INT8,
+    TypeId::INT16,
+    TypeId::INT32,
+    TypeId::INT64,
+    TypeId::FLOAT32,
+    TypeId::FLOAT64,
+    TypeId::STRING,
+    TypeId::LOCAL_DATE,
+    TypeId::TIMESTAMP,
+];
+
+pub const COLLECTION_TYPES: [TypeId; 3] = [TypeId::ARRAY, TypeId::SET, TypeId::MAP];
 
 pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
     let mut new_hash: u64 = (hash as u64) * 31 + (id as u64);

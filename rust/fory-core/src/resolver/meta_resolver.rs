@@ -24,7 +24,7 @@ use std::rc::Rc;
 
 #[derive(Default)]
 pub struct MetaReaderResolver {
-    reading_type_defs: Vec<Rc<TypeMeta>>,
+    pub reading_type_defs: Vec<Rc<TypeMeta>>,
 }
 
 impl MetaReaderResolver {
