@@ -6,10 +6,7 @@ The Cross-Language part of the protocol is not stable, so the output of this lib
 
 ## Install
 
-```shell
-npm install @foryjs/fory
-npm install @foryjs/hps
-```
+Apache Fory is NOT yet available on npm, please install from source code now.
 
 ## Usage
 
