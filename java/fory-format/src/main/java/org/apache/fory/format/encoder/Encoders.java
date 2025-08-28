@@ -411,7 +411,7 @@ public class Encoders {
         @Override
         public byte[] encode(T obj) {
           BinaryArray array = toArray(obj);
-          return writer.getBuffer().getBytes(0, 8 + array.getSizeInBytes());
+          return writer.getBuffer().getBytes(0, array.getSizeInBytes());
         }
 
         @Override
