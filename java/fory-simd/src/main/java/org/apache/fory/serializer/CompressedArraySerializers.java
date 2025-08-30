@@ -23,6 +23,7 @@ import java.util.Arrays;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.SerializerRegistration;
 import org.apache.fory.serializer.ArraySerializers.PrimitiveArrayBufferObject;
 import org.apache.fory.serializer.ArraySerializers.PrimitiveArraySerializer;
 import org.apache.fory.util.ArrayCompressionUtils;
@@ -302,6 +303,23 @@ public final class CompressedArraySerializers {
         buffer.readToUnsafe(values, offset, size);
       }
       return values;
+    }
+  }
+
+  /**
+   * Implementation of SerializerRegistration for compressed array serializers.
+   */
+  public static final class Registration implements SerializerRegistration {
+
+    @Override
+    public void registerIfEnabled(Fory fory) {
+      CompressedArraySerializers.registerIfEnabled(fory);
+    }
+
+    @Override
+    public boolean isApplicable(Fory fory) {
+      // Only applicable if compression is enabled
+      return fory.getConfig().compressIntArray() || fory.getConfig().compressLongArray();
     }
   }
 }

@@ -82,6 +82,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.ServiceLoader;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyCopyable;
 import org.apache.fory.annotation.CodegenInvoke;
@@ -349,7 +350,7 @@ public class ClassResolver implements TypeResolver {
     PrimitiveSerializers.registerDefaultSerializers(fory);
     Serializers.registerDefaultSerializers(fory);
     ArraySerializers.registerDefaultSerializers(fory);
-    registerCompressedSerializersIfEnabled();
+    registerModuleSerializers();
     TimeSerializers.registerDefaultSerializers(fory);
     OptionalSerializers.registerDefaultSerializers(fory);
     CollectionSerializers.registerDefaultSerializers(fory);
@@ -2313,33 +2314,23 @@ public class ClassResolver implements TypeResolver {
     return null;
   }
 
-  /**
-   * Register compressed array serializers if compression flags are enabled and the
-   * fory-simd module is available on the classpath.
-   */
-  private void registerCompressedSerializersIfEnabled() {
-    boolean compressInt = fory.getConfig().compressIntArray();
-    boolean compressLong = fory.getConfig().compressLongArray();
+  private void registerModuleSerializers() {
+    try {
+      ServiceLoader<SerializerRegistration> loader =
+          ServiceLoader.load(SerializerRegistration.class, fory.getClassLoader());
 
-    if (compressInt || compressLong) {
-      try {
-        // Try to load the compressed array serializers class and call its register method
-        Class<?> compressedSerializersClass =
-            Class.forName(ReflectionUtils.getPackage(Serializer.class) + ".CompressedArraySerializers");
-
-        // Call the static register method
-        java.lang.reflect.Method registerMethod =
-            compressedSerializersClass.getDeclaredMethod("registerIfEnabled", Fory.class);
-        registerMethod.invoke(null, fory);
-
-      } catch (ClassNotFoundException e) {
-        // fory-simd module not on classpath, ignore
-        LOG.info(
-            "Add fory-simd module to classpath to enable compressed array serializers");
-      } catch (Exception e) {
-        // Log but don't fail - just use default serializers
-        LOG.warn("Failed to register compressed array serializers", e);
+      for (SerializerRegistration registration : loader) {
+        if (registration.isApplicable(fory)) {
+          try {
+            registration.registerIfEnabled(fory);
+          } catch (Exception e) {
+            LOG.warn("Failed to register serializers from module: {}",
+                     registration.getClass().getName(), e);
+          }
+        }
       }
+    } catch (Exception e) {
+      LOG.warn("Failed to load module serializers", e);
     }
   }
 }
