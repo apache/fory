@@ -151,3 +151,15 @@ func readUTF8(buf *ByteBuffer, size int) string {
 	data := buf.ReadBinary(size)
 	return string(data) // Direct UTF-8 conversion
 }
+
+// WriteString provides public API for zero-reflection string serialization
+// This method is specifically designed for code generation to avoid reflection overhead
+func WriteString(buf *ByteBuffer, value string) error {
+	return writeString(buf, value)
+}
+
+// ReadString provides public API for zero-reflection string deserialization
+// This method is specifically designed for code generation to avoid reflection overhead
+func ReadString(buf *ByteBuffer) string {
+	return readString(buf)
+}
