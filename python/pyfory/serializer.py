@@ -311,7 +311,7 @@ class DataClassSerializer(Serializer):
             for index, key in enumerate(self._field_names):
                 serializer = infer_field(key, self._type_hints[key], visitor, types_path=[])
                 self._serializers[index] = serializer
-            self._serializers, self._field_names = _sort_fields(fory.type_resolver, self._field_names, self._serializers)
+            self._field_names, self._serializers = _sort_fields(fory.type_resolver, self._field_names, self._serializers)
             self._hash = 0  # Will be computed on first xwrite/xread
             self._generated_xwrite_method = self._gen_xwrite_method()
             self._generated_xread_method = self._gen_xread_method()

@@ -259,4 +259,24 @@ public class ChildContainerSerializersTest extends ForyTestBase {
             .build();
     serDeMetaShared(fory, outerDO);
   }
+
+  public static class ChildLinkedListElemList extends LinkedList<ChildLinkedListElemList> {}
+
+  public static class ChildLinkedListElemListStruct {
+    public ChildLinkedListElemList list;
+  }
+
+  @Test
+  public void testElemTypeSameWithCollection() {
+    Fory fory = builder().withRefTracking(true).build();
+    ChildLinkedListElemList list = new ChildLinkedListElemList();
+    list.add(list);
+    ChildLinkedListElemList list1 = serDe(fory, list);
+    Assert.assertSame(list1.get(0), list1);
+
+    ChildLinkedListElemListStruct struct = new ChildLinkedListElemListStruct();
+    struct.list = list;
+    ChildLinkedListElemListStruct struct1 = serDe(fory, struct);
+    Assert.assertSame(struct1.list.get(0), struct1.list);
+  }
 }

@@ -388,9 +388,9 @@ cdef class TypeInfo:
     for python `int`: `Int8/1632/64/128Serializer` for `int8/16/32/64/128` each, and another
     `IntSerializer` for `int` which will dispatch to different `int8/16/32/64/128` type
     according the actual value.
-    We do not get the acutal type here, because it will introduce extra computing.
+    We do not get the actual type here, because it will introduce extra computing.
     For example, we have want to get actual `Int8/16/32/64Serializer`, we must check and
-    extract the actutal here which will introduce cost, and we will do same thing again
+    extract the actual here which will introduce cost, and we will do same thing again
     when serializing the actual data.
     """
     cdef public object cls
@@ -570,6 +570,15 @@ cdef class TypeResolver:
             raise ValueError(f"Unexpected type_id {type_id}")
         typeinfo = <TypeInfo> typeinfo_ptr
         return typeinfo
+    
+    def get_typeinfo_by_id(self, type_id):
+        return self._resolver.get_typeinfo_by_id(type_id=type_id)
+
+    def get_typeinfo_by_name(self, namespace, typename):
+        return self._resolver.get_typeinfo_by_name(namespace=namespace, typename=typename)
+
+    def get_meta_compressor(self):
+        return self._resolver.get_meta_compressor()
 
     cpdef inline reset(self):
         pass
@@ -602,7 +611,7 @@ cdef class Fory:
 
     def __init__(
             self,
-            language=Language.XLANG,
+            language=Language.PYTHON,
             ref_tracking: bool = False,
             require_type_registration: bool = True,
     ):
@@ -650,14 +659,26 @@ cdef class Fory:
     def register_serializer(self, cls: Union[type, TypeVar], Serializer serializer):
         self.type_resolver.register_serializer(cls, serializer)
 
+    def register(
+        self,
+        cls: Union[type, TypeVar],
+        *,
+        type_id: int = None,
+        namespace: str = None,
+        typename: str = None,
+        serializer=None,
+    ):
+        self.type_resolver.register_type(
+            cls, type_id=type_id, namespace=namespace, typename=typename, serializer=serializer)
+
     def register_type(
-            self,
-            cls: Union[type, TypeVar],
-            *,
-            type_id: int = None,
-            namespace: str = None,
-            typename: str = None,
-            serializer=None,
+        self,
+        cls: Union[type, TypeVar],
+        *,
+        type_id: int = None,
+        namespace: str = None,
+        typename: str = None,
+        serializer=None,
     ):
         self.type_resolver.register_type(
             cls, type_id=type_id, namespace=namespace, typename=typename, serializer=serializer)
@@ -1543,7 +1564,7 @@ cdef inline get_next_element(
     typeinfo = type_resolver.read_typeinfo(buffer)
     cdef int32_t type_id = typeinfo.type_id
     # Note that all read operations in fast paths of list/tuple/set/dict/sub_dict
-    # ust match corresponding writing operations. Otherwise, ref tracking will
+    # must match corresponding writing operations. Otherwise, ref tracking will
     # error.
     if type_id == <int32_t>TypeId.STRING:
         return buffer.read_string()

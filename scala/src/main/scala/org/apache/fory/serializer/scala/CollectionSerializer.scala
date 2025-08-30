@@ -21,7 +21,7 @@ package org.apache.fory.serializer.scala
 
 import org.apache.fory.Fory
 import org.apache.fory.memory.MemoryBuffer
-import org.apache.fory.serializer.collection.AbstractCollectionSerializer
+import org.apache.fory.serializer.collection.CollectionLikeSerializer
 
 import java.util
 import scala.collection.{Factory, Iterable, mutable}
@@ -44,7 +44,7 @@ import scala.collection.{Factory, Iterable, mutable}
  * <li>`onCollectionRead`: create scala collection from builder.</li>
  */
 abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](fory: Fory, cls: Class[T])
-  extends AbstractCollectionSerializer[T](fory, cls) {
+  extends CollectionLikeSerializer[T](fory, cls) {
   override def onCollectionWrite(buffer: MemoryBuffer, value: T): util.Collection[_]
 
   override def read(buffer: MemoryBuffer): T = {

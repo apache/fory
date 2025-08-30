@@ -24,7 +24,7 @@ import java.util.Collection;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.serializer.collection.AbstractCollectionSerializer;
+import org.apache.fory.serializer.collection.CollectionLikeSerializer;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 
@@ -34,7 +34,7 @@ import org.apache.fory.util.Preconditions;
  * an object.
  */
 @SuppressWarnings("rawtypes")
-public class SingletonCollectionSerializer extends AbstractCollectionSerializer {
+public class SingletonCollectionSerializer extends CollectionLikeSerializer {
   private final Field field;
   private Object base = null;
   private long offset = -1;

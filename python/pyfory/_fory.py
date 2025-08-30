@@ -117,7 +117,7 @@ class Fory:
 
     def __init__(
         self,
-        language=Language.XLANG,
+        language=Language.PYTHON,
         ref_tracking: bool = False,
         require_type_registration: bool = True,
     ):

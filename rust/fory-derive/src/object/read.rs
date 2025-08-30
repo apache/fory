@@ -18,6 +18,9 @@
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use syn::Field;
+use syn::Type;
+
+use super::util::{generic_tree_to_tokens, parse_generic_tree};
 
 fn create_private_field_name(field: &Field) -> Ident {
     format_ident!("_{}", field.ident.as_ref().expect(""))
@@ -43,7 +46,7 @@ fn create(fields: &[&Field]) -> Vec<TokenStream> {
             let name = &field.ident;
             let var_name = create_private_field_name(field);
             quote! {
-                #name: #var_name.unwrap()
+                #name: #var_name.unwrap_or_default()
             }
         })
         .collect()
@@ -68,12 +71,30 @@ fn read(fields: &[&Field]) -> TokenStream {
 }
 
 fn deserialize_compatible(fields: &[&Field]) -> TokenStream {
-    let pattern_item = fields.iter().enumerate().map(|(index, field)| {
+    let pattern_items = fields.iter().map(|field| {
         let ty = &field.ty;
         let var_name = create_private_field_name(field);
+
+        let generic_tree = parse_generic_tree(ty);
+        let generic_token = generic_tree_to_tokens(&generic_tree, true);
+
+        let field_name_str = field.ident.as_ref().unwrap().to_string();
+
+        let base_ty = match &ty {
+            Type::Path(type_path) => {
+                &type_path.path.segments.first().unwrap().ident
+            }
+            _ => panic!("Unsupported type"),
+        };
         quote! {
-            #index => {
-                #var_name = Some(<#ty as fory_core::serializer::Serializer>::deserialize(context)?);
+            (ident, field_type)
+                if ident == #field_name_str
+                    && *field_type == #generic_token
+            => {
+                #var_name = Some(<#ty as fory_core::serializer::Serializer>::deserialize(context).unwrap_or_else(|_err| {
+                    // println!("skip deserialize {:?}", ident);
+                    #base_ty::default()
+                }));
             }
         }
     });
@@ -84,13 +105,15 @@ fn deserialize_compatible(fields: &[&Field]) -> TokenStream {
         if ref_flag == (fory_core::types::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::types::RefFlag::RefValue as i8) {
             let meta_index = context.reader.i16() as usize;
             let meta = context.get_meta(meta_index).clone();
-            let fields = meta.get_field_info();
+            let fields = meta.get_field_infos();
             #(#bind)*
-            for (idx, _field_info) in fields.iter().enumerate() {
-                match idx {
-                    #(#pattern_item),*
+            for _field in fields.iter() {
+                match (_field.field_name.as_str(), &_field.field_type) {
+                    #(#pattern_items),*
                     _ => {
-                        panic!("not implement yet");
+                        // skip bytes
+                        println!("no need to deserialize {:?}:{:?}", _field.field_name.as_str(), _field.field_type);
+                        fory_core::serializer::nonexistent::skip_field_value(context, &_field.field_type).unwrap();
                     }
                 }
             }

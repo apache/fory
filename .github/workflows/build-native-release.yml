@@ -1,0 +1,71 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Build Native Release Wheels
+on:
+  push:
+    tags: ['v*']  # NO PATH FILTER - critical for releases
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-13, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v5
+      - name: Bump version
+        # Pass the tag name from the push so the python package version matches the tag.
+        run: ./ci/deploy.sh bump_py_version "${{ github.ref_name }}"
+        shell: bash
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install bazel
+        if: runner.os != 'Windows'
+        run: ./ci/run_ci.sh install_bazel
+      - name: Install bazel (Windows)
+        if: runner.os == 'Windows'
+        run: ./ci/run_ci.sh install_bazel_windows
+        shell: bash
+      - name: Build wheel
+        shell: bash
+        run: ./ci/deploy.sh build_pyfory
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+      - name: Install and verify wheel
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install dist/*.whl
+          INSTALLED_VERSION=$(python -c "import pyfory; print(pyfory.__version__)")
+          echo "Installed version: $INSTALLED_VERSION"
+          # Verify version matches the tag
+          EXPECTED_VERSION="${{ github.ref_name }}"
+          EXPECTED_VERSION=$(DEPLOY_QUIET=1 ci/deploy.sh parse_py_version $EXPECTED_VERSION | tail -n1)
+          echo "Expected version: $EXPECTED_VERSION"
+          if [ "$INSTALLED_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "Version mismatch: Expected $EXPECTED_VERSION but got $INSTALLED_VERSION"
+            exit 1
+          fi
+          echo "Version verification successful"
+      - name: Upload wheels as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyfory-wheels-${{ matrix.os }}-${{ matrix.python-version }}-${{ github.ref_name }}
+          path: dist/*.whl

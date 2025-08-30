@@ -619,46 +619,52 @@ public class TypeUtils {
         || ctx.getCustomTypeRegistry().isExtraSupportedType(typeRef)) {
       return false;
     }
-    // since we need to access class in generated code in our package, the class must be public
     // if ReflectionUtils.hasNoArgConstructor(cls) return false, we use Unsafe to create object.
-    if (Modifier.isPublic(cls.getModifiers())) {
-      // bean class can be static nested class, but can't be not a non-static inner class
-      if (cls.getEnclosingClass() != null && !Modifier.isStatic(cls.getModifiers())) {
-        return false;
-      }
-      TypeResolutionContext newTypePath = ctx.appendTypePath(typeRef);
-      if (cls == Object.class) {
-        // return false for typeToken that point to un-specialized generic type.
-        return false;
-      }
-      boolean maybe =
-          !SUPPORTED_TYPES.contains(typeRef)
-              && !typeRef.isArray()
-              && !cls.isEnum()
-              && !ITERABLE_TYPE.isSupertypeOf(typeRef)
-              && !MAP_TYPE.isSupertypeOf(typeRef);
-      if (maybe) {
-        for (Descriptor d : Descriptor.getDescriptors(cls)) {
-          TypeRef<?> t = d.getTypeRef();
-          // do field modifiers and getter/setter validation here, not in getDescriptors.
-          // If Modifier.isFinal(d.getModifiers()), use reflection
-          // private field that doesn't have getter/setter will be handled by reflection.
-          TypeRef<?> replacementType =
-              ctx.getCustomTypeRegistry().replacementTypeFor(cls, t.getRawType());
-          if (replacementType != null) {
-            t = replacementType;
-          }
-          if (!isSupported(t, newTypePath)) {
-            return false;
-          }
+    // bean class can be static nested class, but can't be not a non-static inner class
+    if (cls.getEnclosingClass() != null && !Modifier.isStatic(cls.getModifiers())) {
+      return false;
+    }
+    TypeResolutionContext newTypePath = ctx.appendTypePath(typeRef);
+    if (cls == Object.class) {
+      // return false for typeToken that point to un-specialized generic type.
+      return false;
+    }
+    boolean maybe =
+        !SUPPORTED_TYPES.contains(typeRef)
+            && !typeRef.isArray()
+            && !cls.isEnum()
+            && !ITERABLE_TYPE.isSupertypeOf(typeRef)
+            && !MAP_TYPE.isSupertypeOf(typeRef);
+    if (maybe) {
+      for (Descriptor d : Descriptor.getDescriptors(cls)) {
+        TypeRef<?> t = d.getTypeRef();
+        // do field modifiers and getter/setter validation here, not in getDescriptors.
+        // If Modifier.isFinal(d.getModifiers()), use reflection
+        // private field that doesn't have getter/setter will be handled by reflection.
+        TypeRef<?> replacementType =
+            ctx.getCustomTypeRegistry().replacementTypeFor(cls, t.getRawType());
+        if (replacementType != null) {
+          t = replacementType;
         }
-        return true;
-      } else {
-        return false;
+        if (!isSupported(t, newTypePath)) {
+          return false;
+        }
       }
+      return true;
     } else {
       return false;
     }
+  }
+
+  /**
+   * Check if a class is one of {@link Optional), {@link OptionalInt},
+   * {@link OptionaLong}, or {@link OptionalDouble}.
+   */
+  public static boolean isOptionalType(Class<?> type) {
+    return type == Optional.class
+        || type == OptionalInt.class
+        || type == OptionalLong.class
+        || type == OptionalDouble.class;
   }
 
   private static boolean isSynthesizableInterface(Class<?> cls) {

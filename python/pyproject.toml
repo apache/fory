@@ -59,7 +59,7 @@ all = ["pyarrow"]
 dev = ["ruff"]
 
 [tool.setuptools]
-packages = ["pyfory", "pyfory.format", "pyfory.lib", "pyfory.meta"]
+packages = ["pyfory", "pyfory.format", "pyfory.lib", "pyfory.lib.mmh3", "pyfory.meta"]
 include-package-data = true
 zip-safe = false
 

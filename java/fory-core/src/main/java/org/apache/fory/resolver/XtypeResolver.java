@@ -74,11 +74,11 @@ import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.SerializationUtils;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
-import org.apache.fory.serializer.collection.AbstractCollectionSerializer;
-import org.apache.fory.serializer.collection.AbstractMapSerializer;
+import org.apache.fory.serializer.collection.CollectionLikeSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers.ArrayListSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers.HashSetSerializer;
+import org.apache.fory.serializer.collection.MapLikeSerializer;
 import org.apache.fory.serializer.collection.MapSerializer;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.Generics;
@@ -441,8 +441,8 @@ public class XtypeResolver implements TypeResolver {
       } else {
         ClassInfo classInfo = classResolver.getClassInfo(cls, false);
         if (classInfo != null && classInfo.serializer != null) {
-          if (classInfo.serializer instanceof AbstractMapSerializer
-              && ((AbstractMapSerializer) classInfo.serializer).supportCodegenHook()) {
+          if (classInfo.serializer instanceof MapLikeSerializer
+              && ((MapLikeSerializer) classInfo.serializer).supportCodegenHook()) {
             serializer = classInfo.serializer;
           } else {
             serializer = new MapSerializer(fory, cls);
@@ -469,8 +469,8 @@ public class XtypeResolver implements TypeResolver {
   private Serializer<?> getCollectionSerializer(Class<?> cls) {
     ClassInfo classInfo = classResolver.getClassInfo(cls, false);
     if (classInfo != null && classInfo.serializer != null) {
-      if (classInfo.serializer instanceof AbstractCollectionSerializer
-          && ((AbstractCollectionSerializer) (classInfo.serializer)).supportCodegenHook()) {
+      if (classInfo.serializer instanceof CollectionLikeSerializer
+          && ((CollectionLikeSerializer) (classInfo.serializer)).supportCodegenHook()) {
         return classInfo.serializer;
       }
     }

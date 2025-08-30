@@ -22,7 +22,7 @@ package org.apache.fory.serializer.scala
 import org.apache.fory.Fory
 import org.apache.fory.collection.MapEntry
 import org.apache.fory.memory.MemoryBuffer
-import org.apache.fory.serializer.collection.AbstractMapSerializer
+import org.apache.fory.serializer.collection.MapLikeSerializer
 
 import java.util
 import scala.collection.{Factory, mutable}
@@ -45,7 +45,7 @@ import scala.collection.{Factory, mutable}
  * <li>`onMapRead`: create scala map from builder.</li>
  */
 abstract class AbstractScalaMapSerializer[K, V, T](fory: Fory, cls: Class[T])
-  extends AbstractMapSerializer[T](fory, cls) {
+  extends MapLikeSerializer[T](fory, cls) {
   def onMapWrite(buffer: MemoryBuffer, value: T): util.Map[_, _]
 
   override def read(buffer: MemoryBuffer): T = {

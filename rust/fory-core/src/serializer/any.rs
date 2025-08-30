@@ -19,7 +19,7 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::Serializer;
-use crate::types::{FieldType, Mode, RefFlag};
+use crate::types::{Mode, RefFlag, TypeId};
 use anyhow::anyhow;
 use std::any::Any;
 
@@ -37,13 +37,13 @@ impl Serializer for Box<dyn Any> {
     }
 
     fn get_type_id(_fory: &Fory) -> i16 {
-        FieldType::ForyTypeTag.into()
+        TypeId::ForyTypeTag.into()
     }
 
     fn serialize(&self, context: &mut WriteContext) {
         context
             .get_fory()
-            .get_class_resolver()
+            .get_type_resolver()
             .get_harness_by_type(self.as_ref().type_id())
             .unwrap()
             .get_serializer()(self.as_ref(), context);
@@ -61,7 +61,7 @@ impl Serializer for Box<dyn Any> {
                 reset_cursor(&mut context.reader);
                 context
                     .get_fory()
-                    .get_class_resolver()
+                    .get_type_resolver()
                     .get_harness(type_id)
                     .unwrap()
                     .get_deserializer()(context)
@@ -70,8 +70,8 @@ impl Serializer for Box<dyn Any> {
                 reset_cursor(&mut context.reader);
                 context
                     .get_fory()
-                    .get_class_resolver()
-                    .get_harness(type_id as u32)
+                    .get_type_resolver()
+                    .get_harness(type_id)
                     .unwrap()
                     .get_deserializer()(context)
             }

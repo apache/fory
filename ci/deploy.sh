@@ -18,16 +18,22 @@
 # under the License.
 
 
-set -x
+# Print commands and their arguments as they are executed.
+if [ "${DEPLOY_QUIET:-0}" != "1" ]; then
+    set -x
+fi
 
 # Cause the script to exit if a single command fails.
 set -e
 
-# configure ~/.pypirc before run this script
-#if [ ! -f ~/.pypirc ]; then
-#  echo  "Please configure .pypirc before run this script"
-#  exit 1
-#fi
+# Prefer Python from $PYTHON_PATH if it exists, otherwise use default python
+if [ -n "$PYTHON_PATH" ] && [ -x "$PYTHON_PATH" ]; then
+  PYTHON_CMD="$PYTHON_PATH"
+  PIP_CMD="$PYTHON_PATH -m pip"
+else
+  PYTHON_CMD="python"
+  PIP_CMD="pip"
+fi
 
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
@@ -40,16 +46,27 @@ bump_java_version() {
   python "$ROOT/ci/release.py" bump_version -l java -version "$1"
 }
 
-bump_py_version() {
+# Replicates the behavior of _update_python_version in ci/release.py
+parse_py_version() {
   local version="$1"
   if [ -z "$version" ]; then
     # Get the latest tag from the current Git repository
     version=$(git describe --tags --abbrev=0)
-    # Check if the tag starts with 'v' and strip it
-    if [[ $version == v* ]]; then
-      version="${version:1}"
-    fi
   fi
+  # Check if the tag starts with 'v' and strip it
+  if [[ $version == v* ]]; then
+    version="${version:1}"
+  fi
+  version="${version//-alpha/a}"
+  version="${version//-beta/b}"
+  version="${version//-rc/rc}"
+  version="${version//-/}"
+  echo "$version"
+}
+
+bump_py_version() {
+  local version
+  version=$(parse_py_version "$1")
   python "$ROOT/ci/release.py" bump_version -l python -version "$version"
 }
 
@@ -63,59 +80,66 @@ deploy_jars() {
 }
 
 build_pyfory() {
-  echo "Python version $(python -V), path $(which python)"
+  echo "$($PYTHON_CMD -V), path $(which "$PYTHON_CMD")"
   install_pyarrow
-  pip install Cython wheel pytest auditwheel
+  $PIP_CMD install cython wheel pytest
   pushd "$ROOT/python"
-  pip list
+  $PIP_CMD list
   echo "Install pyfory"
   # Fix strange installed deps not found
-  pip install setuptools -U
+  $PIP_CMD install setuptools -U
 
-  # Detect host architecture and only pass x86_64 config when appropriate
-  ARCH=$(uname -m)
-  if [[ "$ARCH" == "x86_64" || "$ARCH" == "amd64" ]]; then
-    bazel build --config=x86_64 //:cp_fory_so
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    MACOS_VERSION=$(sw_vers -productVersion | cut -d. -f1-2)
+    echo "MACOS_VERSION: $MACOS_VERSION"
+    if [[ "$MACOS_VERSION" == "13"* ]]; then
+      export MACOSX_DEPLOYMENT_TARGET=10.13
+      $PYTHON_CMD setup.py bdist_wheel --plat-name macosx_10_13_x86_64 --dist-dir="$ROOT/dist"
+    else
+      $PYTHON_CMD setup.py bdist_wheel --dist-dir="$ROOT/dist"
+    fi
+  elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+
+    # Windows tends to drop alpha/beta markers - force it through setup.cfg
+    if [ -n "$GITHUB_REF_NAME" ]; then
+      version=$(parse_py_version "$GITHUB_REF_NAME")
+      echo "Using version from GITHUB_REF_NAME: $version"
+      echo "[metadata]" > setup.cfg
+      echo "version = $version" >> setup.cfg
+    fi
+
+    $PYTHON_CMD setup.py bdist_wheel --dist-dir="$ROOT/dist"
+    # Clean up
+    rm setup.cfg
   else
-    bazel build //:cp_fory_so
+    $PYTHON_CMD setup.py bdist_wheel --dist-dir="$ROOT/dist"
   fi
-
-  python setup.py bdist_wheel --dist-dir=../dist
 
   if [ -n "$PLAT" ]; then
     # In manylinux container, repair the wheel to embed shared libraries
     # and rename the wheel with the manylinux tag.
-    PYARROW_LIB_DIR=$(python -c 'import pyarrow; print(":".join(pyarrow.get_library_dirs()))')
+    PYARROW_LIB_DIR=$($PYTHON_CMD -c 'import pyarrow; print(":".join(pyarrow.get_library_dirs()))')
     export LD_LIBRARY_PATH="$PYARROW_LIB_DIR:$LD_LIBRARY_PATH"
-    auditwheel repair ../dist/pyfory-*-linux_*.whl --plat "$PLAT" -w ../dist/
-    rm ../dist/pyfory-*-linux_*.whl
+    auditwheel repair "$ROOT/dist"/pyfory-*-linux_*.whl --plat "$PLAT" --exclude '*arrow*' --exclude '*parquet*' --exclude '*numpy*' -w "$ROOT/dist"
+    rm "$ROOT/dist"/pyfory-*-linux_*.whl
   elif [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS: use delocate to bundle dependencies and fix wheel tags
-    pip install delocate
-    mkdir -p ../dist_repaired
-    delocate-wheel -w ../dist_repaired/ ../dist/pyfory-*-macosx*.whl
-    rm ../dist/pyfory-*-macosx*.whl
-    mv ../dist_repaired/* ../dist/
-    rmdir ../dist_repaired
+    echo "Skip macos wheel repair"
   elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-    # Windows: use delvewheel to bundle dependencies
-    pip install delvewheel
-    mkdir -p ../dist_repaired
-    delvewheel repair ../dist/pyfory-*-win*.whl -w ../dist_repaired/
-    rm ../dist/pyfory-*-win*.whl
-    mv ../dist_repaired/* ../dist/
-    rmdir ../dist_repaired
+    echo "Skip windows wheel repair"
   fi
+
+  echo "Wheels for $PYTHON_CMD:"
+  ls -l "$ROOT/dist"
   popd
 }
 
 install_pyarrow() {
-  pyversion=$(python -V | cut -d' ' -f2)
+  pyversion=$($PYTHON_CMD -V | cut -d' ' -f2)
   if [[ $pyversion  ==  3.13* ]]; then
-    pip install pyarrow==18.0.0
-    pip install numpy
+    $PIP_CMD install pyarrow==18.0.0
+    $PIP_CMD install numpy
   else
-    pip install pyarrow==15.0.0
+    $PIP_CMD install pyarrow==15.0.0
     # Automatically install numpy
   fi
 }

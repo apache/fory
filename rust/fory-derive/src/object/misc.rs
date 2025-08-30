@@ -19,6 +19,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Field;
 
+use super::util::{generic_tree_to_tokens, parse_generic_tree};
+
 fn hash(fields: &[&Field]) -> TokenStream {
     let props = fields.iter().map(|field| {
         let ty = &field.ty;
@@ -47,14 +49,16 @@ fn type_def(fields: &[&Field]) -> TokenStream {
     let field_infos = fields.iter().map(|field| {
         let ty = &field.ty;
         let name = format!("{}", field.ident.as_ref().expect("should be field name"));
+        let generic_tree = parse_generic_tree(ty);
+        let generic_token = generic_tree_to_tokens(&generic_tree, false);
         quote! {
-            fory_core::meta::FieldInfo::new(#name, <#ty as fory_core::serializer::Serializer>::get_type_id(fory))
+            fory_core::meta::FieldInfo::new(#name, #generic_token)
         }
     });
     quote! {
-        fn type_def(fory: &fory_core::fory::Fory) -> Vec<u8> {
+        fn type_def(fory: &fory_core::fory::Fory, layer_id: i16) -> Vec<u8> {
             fory_core::meta::TypeMeta::from_fields(
-                0,
+                layer_id,
                 vec![#(#field_infos),*]
             ).to_bytes().unwrap()
         }
@@ -73,7 +77,7 @@ pub fn gen_in_struct_impl(fields: &[&Field]) -> TokenStream {
 pub fn gen() -> TokenStream {
     quote! {
             fn get_type_id(fory: &fory_core::fory::Fory) -> i16 {
-                fory.get_class_resolver().get_class_info(std::any::TypeId::of::<Self>()).get_type_id() as i16
+                fory.get_type_resolver().get_type_info(std::any::TypeId::of::<Self>()).get_type_id() as i16
             }
     }
 }

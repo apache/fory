@@ -28,8 +28,8 @@ import 'package:fory/src/util/char_util.dart';
 abstract base class MetaStringEncoder extends MetaStringCodecs {
   const MetaStringEncoder(super.specialChar1, super.specialChar2);
 
-  // MetaString encode(String input, MetaStrEncoding encoding);
-  MetaString encodeByAllowedEncodings(String input, List<MetaStrEncoding> encodings);
+  // MetaString encode(String input, MetaStringEncoding encoding);
+  MetaString encodeByAllowedEncodings(String input, List<MetaStringEncoding> encodings);
 
   StrStat _computeStrStat(String input){
     bool canLUDS = true;
@@ -46,36 +46,36 @@ abstract base class MetaStringEncoder extends MetaStringCodecs {
   }
 
   @protected
-  MetaStrEncoding decideEncoding(String input, List<MetaStrEncoding> encodings) {
-    List<bool> flags = List.filled(MetaStrEncoding.values.length, false);
+  MetaStringEncoding decideEncoding(String input, List<MetaStringEncoding> encodings) {
+    List<bool> flags = List.filled(MetaStringEncoding.values.length, false);
     for (var e in encodings) {
       flags[e.index] = true;
     }
     // The encoding array is very small, so the List's contains method is used. If more encodings need to be supported in the future, consider using a Set.
-    if(input.isEmpty && flags[MetaStrEncoding.ls.index]){
-      return MetaStrEncoding.ls;
+    if(input.isEmpty && flags[MetaStringEncoding.ls.index]){
+      return MetaStringEncoding.ls;
     }
     StrStat stat = _computeStrStat(input);
-    if (stat.canLS && flags[MetaStrEncoding.ls.index]){
-      return MetaStrEncoding.ls;
+    if (stat.canLS && flags[MetaStringEncoding.ls.index]){
+      return MetaStringEncoding.ls;
     }
     if (stat.canLUDS){
-      if (stat.digitCount != 0 && flags[MetaStrEncoding.luds.index]){
-        return MetaStrEncoding.luds;
+      if (stat.digitCount != 0 && flags[MetaStringEncoding.luds.index]){
+        return MetaStringEncoding.luds;
       }
-      if (stat.upperCount == 1 && CharUtil.upper(input.codeUnitAt(0)) && flags[MetaStrEncoding.ftls.index]){
-        return MetaStrEncoding.ftls;
+      if (stat.upperCount == 1 && CharUtil.upper(input.codeUnitAt(0)) && flags[MetaStringEncoding.ftls.index]){
+        return MetaStringEncoding.ftls;
       }
       if (
         ((input.length + stat.upperCount) * 5 < input.length * 6) &&
-        flags[MetaStrEncoding.atls.index]
+        flags[MetaStringEncoding.atls.index]
         ) {
-        return MetaStrEncoding.atls;
+        return MetaStringEncoding.atls;
       }
-      if (flags[MetaStrEncoding.luds.index]){
-        return MetaStrEncoding.luds;
+      if (flags[MetaStringEncoding.luds.index]){
+        return MetaStringEncoding.luds;
       }
     }
-    return MetaStrEncoding.utf8;
+    return MetaStringEncoding.utf8;
   }
 }

@@ -27,6 +27,7 @@ mod bool;
 mod datetime;
 mod list;
 mod map;
+pub mod nonexistent;
 mod number;
 mod option;
 mod primitive_list;
@@ -92,5 +93,5 @@ where
 }
 
 pub trait StructSerializer: Serializer + 'static {
-    fn type_def(fory: &Fory) -> Vec<u8>;
+    fn type_def(fory: &Fory, type_id: i16) -> Vec<u8>;
 }

@@ -24,7 +24,7 @@ import java.util.Map;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
-import org.apache.fory.serializer.collection.AbstractMapSerializer;
+import org.apache.fory.serializer.collection.MapLikeSerializer;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 
@@ -34,7 +34,7 @@ import org.apache.fory.util.Preconditions;
  * object.
  */
 @SuppressWarnings("rawtypes")
-public class SingletonMapSerializer extends AbstractMapSerializer {
+public class SingletonMapSerializer extends MapLikeSerializer {
   private final Field field;
   private Object base = null;
   private long offset = -1;

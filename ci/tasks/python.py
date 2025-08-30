@@ -25,7 +25,7 @@ def install_pyfory():
     logging.info("Installing pyfory package")
     python_version = common.exec_cmd("python -V")
     python_path = common.exec_cmd("which python")
-    logging.info(f"Python version {python_version}, path {python_path}")
+    logging.info(f"{python_version}, path {python_path}")
 
     # Install PyArrow
     common.exec_cmd(f"{common.PROJECT_ROOT_DIR}/ci/deploy.sh install_pyarrow")

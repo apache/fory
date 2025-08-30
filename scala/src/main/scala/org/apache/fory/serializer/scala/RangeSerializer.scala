@@ -23,7 +23,7 @@ import org.apache.fory.Fory
 import org.apache.fory.memory.MemoryBuffer
 import org.apache.fory.reflect.FieldAccessor
 import org.apache.fory.serializer.Serializer
-import org.apache.fory.serializer.collection.AbstractCollectionSerializer
+import org.apache.fory.serializer.collection.CollectionLikeSerializer
 import org.apache.fory.util.unsafe._JDKAccess
 
 import java.lang.invoke.{MethodHandle, MethodHandles}
@@ -31,7 +31,7 @@ import java.util
 import scala.collection.immutable.NumericRange
 
 class RangeSerializer[T <: Range](fory: Fory, cls: Class[T])
-  extends AbstractCollectionSerializer[T](fory, cls, false) {
+  extends CollectionLikeSerializer[T](fory, cls, false) {
 
   override def write(buffer: MemoryBuffer, value: T): Unit = {
     buffer.writeVarInt32(value.start)
@@ -66,7 +66,7 @@ private object RangeUtils {
 
 
 class NumericRangeSerializer[A, T <: NumericRange[A]](fory: Fory, cls: Class[T])
-  extends AbstractCollectionSerializer[T](fory, cls, false) {
+  extends CollectionLikeSerializer[T](fory, cls, false) {
   private val ctr = RangeUtils.lookupCache.get(cls)
   private val getter = FieldAccessor.createAccessor(cls.getDeclaredFields.find(f => f.getType == classOf[Integral[?]]).get)
 

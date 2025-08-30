@@ -106,13 +106,13 @@ Nightly snapshot:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>0.12.0-SNAPSHOT</version>
+  <version>0.13.0-SNAPSHOT</version>
 </dependency>
 <!-- row/arrow format support -->
 <!-- <dependency>
   <groupId>org.apache.fory</groupId>x
   <artifactId>fory-format</artifactId>
-  <version>0.12.0-SNAPSHOT</version>
+  <version>0.13.0-SNAPSHOT</version>
 </dependency> -->
 ```
 
@@ -122,13 +122,13 @@ Release version:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>0.11.2</version>
+  <version>0.12.0</version>
 </dependency>
 <!-- row/arrow format support -->
 <!-- <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
-  <version>0.11.2</version>
+  <version>0.12.0</version>
 </dependency> -->
 ```
 
@@ -137,13 +137,13 @@ Release version:
 Scala2:
 
 ```sbt
-libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.11.2"
+libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.12.0"
 ```
 
 Scala3:
 
 ```sbt
-libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.11.2"
+libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.12.0"
 ```
 
 ### Kotlin
@@ -152,7 +152,7 @@ libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.11.2"
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>0.11.2</version>
+  <version>0.12.0</version>
 </dependency>
 ```
 
@@ -160,12 +160,6 @@ libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.11.2"
 
 ```bash
 pip install pyfory
-```
-
-### JavaScript
-
-```bash
-npm install @foryjs/fory
 ```
 
 ### Golang

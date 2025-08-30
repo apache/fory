@@ -20,7 +20,7 @@ use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{FieldType, ForyGeneralList};
+use crate::types::{ForyGeneralList, TypeId};
 
 macro_rules! impl_num_serializer {
     ($name: ident, $ty:tt, $field_type: expr) => {
@@ -48,13 +48,9 @@ impl ForyGeneralList for u16 {}
 impl ForyGeneralList for u32 {}
 impl ForyGeneralList for u64 {}
 
-impl_num_serializer!(i8, i8, FieldType::INT8);
-impl_num_serializer!(u8, u8, FieldType::UINT8);
-impl_num_serializer!(i16, i16, FieldType::INT16);
-impl_num_serializer!(u16, u16, FieldType::UINT16);
-impl_num_serializer!(i32, i32, FieldType::INT32);
-impl_num_serializer!(u32, u32, FieldType::UINT32);
-impl_num_serializer!(u64, u64, FieldType::UINT64);
-impl_num_serializer!(i64, i64, FieldType::INT64);
-impl_num_serializer!(f32, f32, FieldType::FLOAT);
-impl_num_serializer!(f64, f64, FieldType::DOUBLE);
+impl_num_serializer!(i8, i8, TypeId::INT8);
+impl_num_serializer!(i16, i16, TypeId::INT16);
+impl_num_serializer!(i32, i32, TypeId::INT32);
+impl_num_serializer!(i64, i64, TypeId::INT64);
+impl_num_serializer!(f32, f32, TypeId::FLOAT32);
+impl_num_serializer!(f64, f64, TypeId::FLOAT64);

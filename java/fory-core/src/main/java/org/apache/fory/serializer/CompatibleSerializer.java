@@ -31,8 +31,8 @@ import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.FieldResolver;
-import org.apache.fory.serializer.collection.AbstractCollectionSerializer;
-import org.apache.fory.serializer.collection.AbstractMapSerializer;
+import org.apache.fory.serializer.collection.CollectionLikeSerializer;
+import org.apache.fory.serializer.collection.MapLikeSerializer;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.record.RecordInfo;
 import org.apache.fory.util.record.RecordUtils;
@@ -232,8 +232,8 @@ public final class CompatibleSerializer<T> extends CompatibleSerializerBase<T> {
     // following write is consistent with `BaseSeqCodecBuilder.serializeForCollection`
     ClassInfo classInfo = fieldInfo.getClassInfo(fieldValue.getClass());
     classResolver.writeClassInfo(buffer, classInfo);
-    AbstractCollectionSerializer collectionSerializer =
-        (AbstractCollectionSerializer) classInfo.getSerializer();
+    CollectionLikeSerializer collectionSerializer =
+        (CollectionLikeSerializer) classInfo.getSerializer();
     try {
       collectionSerializer.setElementSerializer(elementClassInfo.getSerializer());
       collectionSerializer.write(buffer, fieldValue);
@@ -253,7 +253,7 @@ public final class CompatibleSerializer<T> extends CompatibleSerializerBase<T> {
     // following write is consistent with `BaseSeqCodecBuilder.serializeForMap`
     ClassInfo classInfo = fieldInfo.getClassInfo(fieldValue.getClass());
     classResolver.writeClassInfo(buffer, classInfo);
-    AbstractMapSerializer mapSerializer = (AbstractMapSerializer) classInfo.getSerializer();
+    MapLikeSerializer mapSerializer = (MapLikeSerializer) classInfo.getSerializer();
     try {
       mapSerializer.setKeySerializer(keyClassInfo.getSerializer());
       mapSerializer.setValueSerializer(valueClassInfo.getSerializer());
@@ -273,7 +273,7 @@ public final class CompatibleSerializer<T> extends CompatibleSerializerBase<T> {
     // following write is consistent with `BaseSeqCodecBuilder.serializeForMap`
     ClassInfo classInfo = fieldInfo.getClassInfo(fieldValue.getClass());
     classResolver.writeClassInfo(buffer, classInfo);
-    AbstractMapSerializer mapSerializer = (AbstractMapSerializer) classInfo.getSerializer();
+    MapLikeSerializer mapSerializer = (MapLikeSerializer) classInfo.getSerializer();
     try {
       mapSerializer.setKeySerializer(keyClassInfo.getSerializer());
       mapSerializer.write(buffer, fieldValue);
@@ -291,7 +291,7 @@ public final class CompatibleSerializer<T> extends CompatibleSerializerBase<T> {
     // following write is consistent with `BaseSeqCodecBuilder.serializeForMap`
     ClassInfo classInfo = fieldInfo.getClassInfo(fieldValue.getClass());
     classResolver.writeClassInfo(buffer, classInfo);
-    AbstractMapSerializer mapSerializer = (AbstractMapSerializer) classInfo.getSerializer();
+    MapLikeSerializer mapSerializer = (MapLikeSerializer) classInfo.getSerializer();
     try {
       mapSerializer.setValueSerializer(valueClassInfo.getSerializer());
       mapSerializer.write(buffer, fieldValue);

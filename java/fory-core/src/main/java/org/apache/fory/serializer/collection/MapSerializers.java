@@ -377,7 +377,7 @@ public class MapSerializers {
    * won't use element generics and doesn't support JIT, performance won't be the best, but the
    * correctness can be ensured.
    */
-  public static final class DefaultJavaMapSerializer<T> extends AbstractMapSerializer<T> {
+  public static final class DefaultJavaMapSerializer<T> extends MapLikeSerializer<T> {
     private Serializer<T> dataSerializer;
 
     public DefaultJavaMapSerializer(Fory fory, Class<T> cls) {
@@ -427,7 +427,7 @@ public class MapSerializers {
   }
 
   /** Map serializer for class with JDK custom serialization methods defined. */
-  public static class JDKCompatibleMapSerializer<T> extends AbstractMapSerializer<T> {
+  public static class JDKCompatibleMapSerializer<T> extends MapLikeSerializer<T> {
     private final Serializer serializer;
 
     public JDKCompatibleMapSerializer(Fory fory, Class<T> cls) {

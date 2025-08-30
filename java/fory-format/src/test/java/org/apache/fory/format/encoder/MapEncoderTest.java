@@ -134,9 +134,9 @@ public class MapEncoderTest {
   @Test
   public void testKVStructMap() {
     Map<SimpleFoo, SimpleFoo> map = ImmutableMap.of(SimpleFoo.create(), SimpleFoo.create());
-    MapEncoder encoder = Encoders.mapEncoder(new TypeRef<Map<SimpleFoo, SimpleFoo>>() {});
+    var encoder = Encoders.mapEncoder(new TypeRef<Map<SimpleFoo, SimpleFoo>>() {});
     testStreamingEncode(encoder, map);
-    MapEncoder encoder1 = Encoders.mapEncoder(new TypeRef<Map<Foo, Foo>>() {});
+    var encoder1 = Encoders.mapEncoder(new TypeRef<Map<Foo, Foo>>() {});
     testStreamingEncode(encoder1, ImmutableMap.of(Foo.create(), Foo.create()));
   }
 
@@ -191,5 +191,19 @@ public class MapEncoderTest {
     Assert.assertEquals(decodeMap.size(), 10);
 
     testStreamingEncode(encoder, lmap);
+  }
+
+  @Test
+  public <K, V> void testDynamicTypeDeclaration() {
+    Encoders.mapEncoder(
+            new TypeRef<HashMap<Integer, Bean>>() {},
+            TypeRef.of(Integer.class),
+            TypeRef.of(Bean.class),
+            null)
+        .encode(new HashMap<>());
+  }
+
+  public static class Bean {
+    int f1;
   }
 }

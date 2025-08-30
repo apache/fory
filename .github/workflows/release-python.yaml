@@ -1,0 +1,70 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: Publish Python
+run-name: "Python Release: ${{ contains(github.event.workflow_run.name, 'Containerized') && 'Containerized' || 'Native' }} (Run ID: ${{ github.event.workflow_run.id }})"
+
+on:
+  workflow_run:
+    workflows: ["Build Containerized Release Wheels", "Build Native Release Wheels"]
+    types: [completed]
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read  # for accessing workflow run artifacts
+
+jobs:
+  publish-wheels:
+    name: Publish Wheels
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v5
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: "pyfory-wheels-*"
+          path: downloaded_wheels
+          merge-multiple: true
+
+      - name: Move wheels to a single directory
+        shell: bash
+        run: |
+          mkdir dist
+          find downloaded_wheels -type f -name "*.whl" -exec mv {} dist/ \;
+          ls -R dist
+          echo "head_branch: ${{ github.event.workflow_run.head_branch }}"
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        if: startsWith(github.event.workflow_run.head_branch, 'v') && contains(github.event.workflow_run.head_branch, '-')
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+          verbose: true
+          verify-metadata: false
+          packages-dir: dist
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        if: startsWith(github.event.workflow_run.head_branch, 'v') && !contains(github.event.workflow_run.head_branch, '-')
+        with:
+          skip-existing: true
+          verify-metadata: false
+          packages-dir: dist

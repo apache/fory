@@ -53,7 +53,7 @@ public class ArrayEncoderTest {
     byte[] bs = encoder.encode(bars);
     List<RowEncoderTest.Bar> bbars = encoder.decode(bs);
 
-    Assert.assertEquals(bs.length, 224);
+    Assert.assertEquals(bs.length, 216);
     Assert.assertEquals(bars, bbars);
 
     testStreamingEncode(encoder, bars);
@@ -87,7 +87,7 @@ public class ArrayEncoderTest {
     byte[] bs = encoder.encode(bars);
     List<List<List<RowEncoderTest.Bar>>> bbars = encoder.decode(bs);
 
-    Assert.assertEquals(bs.length, 1576);
+    Assert.assertEquals(bs.length, 1568);
     Assert.assertEquals(bars, bbars);
 
     testStreamingEncode(encoder, bars);
@@ -121,7 +121,7 @@ public class ArrayEncoderTest {
     byte[] bs = encoder.encode(lmap);
     List<List<Map<RowEncoderTest.Foo, List<RowEncoderTest.Bar>>>> blmap = encoder.decode(bs);
 
-    Assert.assertEquals(bs.length, 10824);
+    Assert.assertEquals(bs.length, 10816);
     Assert.assertEquals(lmap, blmap);
 
     testStreamingEncode(encoder, lmap);

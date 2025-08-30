@@ -39,7 +39,7 @@ import org.apache.fory.util.Preconditions;
  * Serializer for all collection like object. All collection serializer should extend this class.
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
-public abstract class AbstractCollectionSerializer<T> extends Serializer<T> {
+public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   private MethodHandle constructor;
   private int numElements;
   protected final boolean supportCodegenHook;
@@ -58,11 +58,11 @@ public abstract class AbstractCollectionSerializer<T> extends Serializer<T> {
   // interpreter and jit mode although it seems unnecessary.
   // With elements header, we can write this element class only once, the cost won't be too much.
 
-  public AbstractCollectionSerializer(Fory fory, Class<T> cls) {
+  public CollectionLikeSerializer(Fory fory, Class<T> cls) {
     this(fory, cls, !ReflectionUtils.isDynamicGeneratedCLass(cls));
   }
 
-  public AbstractCollectionSerializer(Fory fory, Class<T> cls, boolean supportCodegenHook) {
+  public CollectionLikeSerializer(Fory fory, Class<T> cls, boolean supportCodegenHook) {
     super(fory, cls);
     this.supportCodegenHook = supportCodegenHook;
     elementClassInfoHolder = fory.getClassResolver().nilClassInfoHolder();
@@ -70,7 +70,7 @@ public abstract class AbstractCollectionSerializer<T> extends Serializer<T> {
     binding = SerializationBinding.createBinding(fory);
   }
 
-  public AbstractCollectionSerializer(
+  public CollectionLikeSerializer(
       Fory fory, Class<T> cls, boolean supportCodegenHook, boolean immutable) {
     super(fory, cls, immutable);
     this.supportCodegenHook = supportCodegenHook;

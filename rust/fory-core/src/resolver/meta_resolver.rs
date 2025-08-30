@@ -19,13 +19,12 @@ use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::TypeMeta;
-use std::any::TypeId;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Default)]
 pub struct MetaReaderResolver {
-    reading_type_defs: Vec<Rc<TypeMeta>>,
+    pub reading_type_defs: Vec<Rc<TypeMeta>>,
 }
 
 impl MetaReaderResolver {
@@ -46,18 +45,18 @@ impl MetaReaderResolver {
 #[derive(Default)]
 pub struct MetaWriterResolver<'a> {
     type_defs: Vec<&'a Vec<u8>>,
-    type_id_index_map: HashMap<TypeId, usize>,
+    type_id_index_map: HashMap<std::any::TypeId, usize>,
 }
 
 #[allow(dead_code)]
 impl<'a> MetaWriterResolver<'a> {
-    pub fn push<'b: 'a>(&mut self, type_id: TypeId, fory: &'a Fory) -> usize {
+    pub fn push<'b: 'a>(&mut self, type_id: std::any::TypeId, fory: &'a Fory) -> usize {
         match self.type_id_index_map.get(&type_id) {
             None => {
                 let index = self.type_defs.len();
                 self.type_defs.push(
-                    fory.get_class_resolver()
-                        .get_class_info(type_id)
+                    fory.get_type_resolver()
+                        .get_type_info(type_id)
                         .get_type_def(),
                 );
                 self.type_id_index_map.insert(type_id, index);

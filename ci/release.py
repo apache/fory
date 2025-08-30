@@ -245,6 +245,7 @@ def _update_python_version(lines, v: str):
             v = v.replace("-alpha", "a")
             v = v.replace("-beta", "b")
             v = v.replace("-rc", "rc")
+            v = v.replace("-", "")
             lines[index] = f'__version__ = "{v}"\n'
             break
 

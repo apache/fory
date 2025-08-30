@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { BinaryReader } from '@foryjs/fory';
+import { BinaryReader } from '@apache-fory/fory';
 import hps from '../packages/hps/index';
 import { describe, expect, test } from '@jest/globals';
 

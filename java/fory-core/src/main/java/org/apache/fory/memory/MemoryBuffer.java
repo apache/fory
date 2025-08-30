@@ -64,6 +64,9 @@ public final class MemoryBuffer {
   private static final Unsafe UNSAFE = Platform.UNSAFE;
   private static final boolean LITTLE_ENDIAN = (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN);
 
+  // Global allocator instance that can be customized
+  private static volatile MemoryAllocator globalAllocator = new DefaultMemoryAllocator();
+
   // If the data in on the heap, `heapMemory` will be non-null, and its' the object relative to
   // which we access the memory.
   // If we have this buffer, we must never void this reference, or the memory buffer will point
@@ -1233,25 +1236,15 @@ public final class MemoryBuffer {
   public void grow(int neededSize) {
     int length = writerIndex + neededSize;
     if (length > size) {
-      growBuffer(length);
+      globalAllocator.grow(this, length);
     }
   }
 
   /** For off-heap buffer, this will make a heap buffer internally. */
   public void ensure(int length) {
     if (length > size) {
-      growBuffer(length);
+      globalAllocator.grow(this, length);
     }
-  }
-
-  private void growBuffer(int length) {
-    int newSize =
-        length < BUFFER_GROW_STEP_THRESHOLD
-            ? length << 2
-            : (int) Math.min(length * 1.5d, Integer.MAX_VALUE - 8);
-    byte[] data = new byte[newSize];
-    copyToUnsafe(0, data, Platform.BYTE_ARRAY_OFFSET, size());
-    initHeapBuffer(data, 0, data.length);
   }
 
   // -------------------------------------------------------------------------
@@ -2575,9 +2568,12 @@ public final class MemoryBuffer {
    * @param offset1 Offset of this buffer to start equaling
    * @param offset2 Offset of buf2 to start equaling
    * @param len Length of the equaled memory region
-   * @return true if equal, false otherwise
+   * @return true if buffers equal or len zero, false otherwise
    */
   public boolean equalTo(MemoryBuffer buf2, int offset1, int offset2, int len) {
+    if (len == 0) {
+      return buf2 != null;
+    }
     final long pos1 = address + offset1;
     final long pos2 = buf2.address + offset2;
     checkArgument(pos1 < addressLimit);
@@ -2605,6 +2601,59 @@ public final class MemoryBuffer {
         + ", addressLimit="
         + addressLimit
         + '}';
+  }
+
+  // ------------------------------------------------------------------------
+  // Memory Allocator Support
+  // ------------------------------------------------------------------------
+
+  /** Default memory allocator that uses the original heap-based allocation strategy. */
+  private static final class DefaultMemoryAllocator implements MemoryAllocator {
+    @Override
+    public MemoryBuffer allocate(int initialSize) {
+      return fromByteArray(new byte[initialSize]);
+    }
+
+    @Override
+    public MemoryBuffer grow(MemoryBuffer buffer, int newCapacity) {
+      if (newCapacity <= buffer.size()) {
+        return buffer;
+      }
+
+      int newSize =
+          newCapacity < BUFFER_GROW_STEP_THRESHOLD
+              ? newCapacity << 1
+              : (int) Math.min(newCapacity * 1.5d, Integer.MAX_VALUE - 8);
+
+      byte[] data = new byte[newSize];
+      buffer.copyToUnsafe(0, data, Platform.BYTE_ARRAY_OFFSET, buffer.size());
+      buffer.initHeapBuffer(data, 0, data.length);
+
+      return buffer;
+    }
+  }
+
+  /**
+   * Sets the global memory allocator. This affects all new MemoryBuffer allocations and growth
+   * operations.
+   *
+   * @param allocator the new global allocator to use
+   * @throws NullPointerException if allocator is null
+   */
+  public static void setGlobalAllocator(MemoryAllocator allocator) {
+    if (allocator == null) {
+      throw new NullPointerException("Memory allocator cannot be null");
+    }
+    globalAllocator = allocator;
+  }
+
+  /**
+   * Gets the current global memory allocator.
+   *
+   * @return the current global allocator
+   */
+  public static MemoryAllocator getGlobalAllocator() {
+    return globalAllocator;
   }
 
   /** Point this buffer to a new byte array. */
@@ -2663,6 +2712,6 @@ public final class MemoryBuffer {
    * enough.
    */
   public static MemoryBuffer newHeapBuffer(int initialSize) {
-    return fromByteArray(new byte[initialSize]);
+    return globalAllocator.allocate(initialSize);
   }
 }

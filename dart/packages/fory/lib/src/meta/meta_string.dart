@@ -24,7 +24,7 @@ import 'package:fory/src/codec/meta_string_encoding.dart';
 
 class MetaString {
   final String value;
-  final MetaStrEncoding encoding;
+  final MetaStringEncoding encoding;
   final int specialChar1;
   final int specialChar2;
   final Uint8List bytes;
@@ -33,7 +33,7 @@ class MetaString {
   int? _hash;
   
   MetaString(this.value, this.encoding, this.specialChar1, this.specialChar2, this.bytes){
-    if (encoding != MetaStrEncoding.utf8){
+    if (encoding != MetaStringEncoding.utf8){
       // if not utf8, then the bytes should not be empty
       assert(bytes.isNotEmpty);
       stripLastChar = (bytes[0] & 0x80) != 0;

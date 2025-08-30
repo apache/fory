@@ -25,7 +25,7 @@ import org.apache.fory.memory.MemoryBuffer;
 
 /** Base serializer for all java maps. */
 @SuppressWarnings({"unchecked", "rawtypes"})
-public class MapSerializer<T extends Map> extends AbstractMapSerializer<T> {
+public class MapSerializer<T extends Map> extends MapLikeSerializer<T> {
   public MapSerializer(Fory fory, Class<T> cls) {
     super(fory, cls);
   }

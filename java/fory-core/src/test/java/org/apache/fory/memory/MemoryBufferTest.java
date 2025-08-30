@@ -219,6 +219,13 @@ public class MemoryBufferTest {
   }
 
   @Test
+  public void testEqualToZeroSize() {
+    MemoryBuffer buf1 = MemoryUtils.buffer(0);
+    MemoryBuffer buf2 = MemoryUtils.buffer(0);
+    Assert.assertTrue(buf1.equalTo(buf2, 0, 0, buf1.size()));
+  }
+
+  @Test
   public void testWritePrimitiveArrayWithSizeEmbedded() {
     MemoryBuffer buf = MemoryUtils.buffer(16);
     Random random = new Random(0);

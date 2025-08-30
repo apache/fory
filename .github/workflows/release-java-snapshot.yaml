@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.repository == 'apache/fory'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Set up Maven Central Repository
         uses: actions/setup-java@v4
         with:

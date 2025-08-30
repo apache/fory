@@ -50,17 +50,17 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
 
   // Write the missing method
   Uint8List _encodeLowerSpecial(String input){
-    return _encodeGeneric(input.codeUnits, MetaStrEncoding.ls.bits);
+    return _encodeGeneric(input.codeUnits, MetaStringEncoding.ls.bits);
   }
 
   Uint8List _encodeLowerUpperDigitSpecial(String input){
-    return _encodeGeneric(input.codeUnits, MetaStrEncoding.luds.bits);
+    return _encodeGeneric(input.codeUnits, MetaStringEncoding.luds.bits);
   }
 
   Uint8List _encodeFirstToLowerSpecial(String input){
     Uint16List chars = Uint16List.fromList(input.codeUnits);
     chars[0] += 32; // 'A' to 'a'
-    return _encodeGeneric(chars, MetaStrEncoding.ftls.bits);
+    return _encodeGeneric(chars, MetaStringEncoding.ftls.bits);
   }
 
   Uint8List _encodeRepAllToLowerSpecial(String input, int upperCount){
@@ -74,7 +74,7 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
         newChars[index++] = c;
       }
     }
-    return _encodeGeneric(newChars, MetaStrEncoding.atls.bits);
+    return _encodeGeneric(newChars, MetaStringEncoding.atls.bits);
   }
 
   int _charToValueLowerUpperDigitSpecial(int codeUnit) {
@@ -145,30 +145,30 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
     return bytes;
   }
 
-  MetaString _encode(String input, MetaStrEncoding encoding) {
+  MetaString _encode(String input, MetaStringEncoding encoding) {
     // TODO: Do not check input length here, this check should be done earlier (remove this comment after writing)
     assert(input.length < MetaStringConst.metaStrMaxLen);
-    assert(encoding == MetaStrEncoding.utf8 || input.isNotEmpty); // Only utf8 encoding can be empty
+    assert(encoding == MetaStringEncoding.utf8 || input.isNotEmpty); // Only utf8 encoding can be empty
     if (input.isEmpty) return MetaString(input, encoding, specialChar1, specialChar2, Uint8List(0));
-    if (encoding != MetaStrEncoding.utf8 && StringUtil.hasNonLatin(input)){
+    if (encoding != MetaStringEncoding.utf8 && StringUtil.hasNonLatin(input)){
       throw ArgumentError('non-latin characters are not allowed in non-utf8 encoding');
     }
     late final Uint8List bytes;
     switch (encoding) {
-      case MetaStrEncoding.ls:
+      case MetaStringEncoding.ls:
         bytes = _encodeLowerSpecial(input);
         break;
-      case MetaStrEncoding.luds:
+      case MetaStringEncoding.luds:
         bytes = _encodeLowerUpperDigitSpecial(input);
         break;
-      case MetaStrEncoding.ftls:
+      case MetaStringEncoding.ftls:
         bytes = _encodeFirstToLowerSpecial(input);
         break;
-      case MetaStrEncoding.atls:
+      case MetaStringEncoding.atls:
         final int upperCount = StringUtil.upperCount(input);
         bytes = _encodeRepAllToLowerSpecial(input, upperCount);
         break;
-      case MetaStrEncoding.utf8:
+      case MetaStringEncoding.utf8:
         bytes = Uint8List.fromList(utf8.encode(input));
         break;
       // default:
@@ -178,18 +178,18 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
   }
 
   @override
-  MetaString encodeByAllowedEncodings(String input, List<MetaStrEncoding> encodings) {
-    if (input.isEmpty) return MetaString(input, MetaStrEncoding.utf8, specialChar1, specialChar2, Uint8List(0));
+  MetaString encodeByAllowedEncodings(String input, List<MetaStringEncoding> encodings) {
+    if (input.isEmpty) return MetaString(input, MetaStringEncoding.utf8, specialChar1, specialChar2, Uint8List(0));
     if (StringUtil.hasNonLatin(input)){
       return MetaString(
         input,
-        MetaStrEncoding.utf8,
+        MetaStringEncoding.utf8,
         specialChar1,
         specialChar2,
         utf8.encode(input),
       );
     }
-    MetaStrEncoding encoding = decideEncoding(input, encodings);
+    MetaStringEncoding encoding = decideEncoding(input, encodings);
     return _encode(input, encoding);
   }
 }

@@ -55,7 +55,7 @@ import org.apache.fory.type.TypeUtils;
 
 /** Serializer for all map-like objects. */
 @SuppressWarnings({"unchecked", "rawtypes"})
-public abstract class AbstractMapSerializer<T> extends Serializer<T> {
+public abstract class MapLikeSerializer<T> extends Serializer<T> {
   public static final int MAX_CHUNK_SIZE = 255;
 
   protected MethodHandle constructor;
@@ -83,16 +83,15 @@ public abstract class AbstractMapSerializer<T> extends Serializer<T> {
   private final TypeResolver typeResolver;
   protected final SerializationBinding binding;
 
-  public AbstractMapSerializer(Fory fory, Class<T> cls) {
+  public MapLikeSerializer(Fory fory, Class<T> cls) {
     this(fory, cls, !ReflectionUtils.isDynamicGeneratedCLass(cls));
   }
 
-  public AbstractMapSerializer(Fory fory, Class<T> cls, boolean supportCodegenHook) {
+  public MapLikeSerializer(Fory fory, Class<T> cls, boolean supportCodegenHook) {
     this(fory, cls, supportCodegenHook, false);
   }
 
-  public AbstractMapSerializer(
-      Fory fory, Class<T> cls, boolean supportCodegenHook, boolean immutable) {
+  public MapLikeSerializer(Fory fory, Class<T> cls, boolean supportCodegenHook, boolean immutable) {
     super(fory, cls, immutable);
     this.typeResolver = fory.isCrossLanguage() ? fory.getXtypeResolver() : fory.getClassResolver();
     this.supportCodegenHook = supportCodegenHook;

@@ -40,27 +40,50 @@ pub enum RefFlag {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, TryFromPrimitive, IntoPrimitive)]
+#[allow(non_camel_case_types)]
 #[repr(i16)]
-pub enum FieldType {
+pub enum TypeId {
     BOOL = 1,
-    UINT8 = 2,
-    INT8 = 3,
-    UINT16 = 4,
-    INT16 = 5,
-    UINT32 = 6,
-    INT32 = 7,
-    UINT64 = 8,
-    INT64 = 9,
-    FLOAT = 11,
-    DOUBLE = 12,
-    STRING = 13,
-    BINARY = 14,
-    DATE = 16,
-    TIMESTAMP = 18,
-    ARRAY = 25,
-    MAP = 30,
+    INT8 = 2,
+    INT16 = 3,
+    INT32 = 4,
+    VAR_INT32 = 5,
+    INT64 = 6,
+    VAR_INT64 = 7,
+    SLI_INT64 = 8,
+    FLOAT16 = 9,
+    FLOAT32 = 10,
+    FLOAT64 = 11,
+    STRING = 12,
+    ENUM = 13,
+    NAMED_ENUM = 14,
+    STRUCT = 15,
+    COMPATIBLE_STRUCT = 16,
+    NamedStruct = 17,
+    NAMED_COMPATIBLE_STRUCT = 18,
+    EXT = 19,
+    NAMED_EXT = 20,
+    LIST = 21,
+    SET = 22,
+    MAP = 23,
+    DURATION = 24,
+    TIMESTAMP = 25,
+    LOCAL_DATE = 26,
+    DECIMAL = 27,
+    BINARY = 28,
+    ARRAY = 29,
+    BOOL_ARRAY = 30,
+    INT8_ARRAY = 31,
+    INT16_ARRAY = 32,
+    INT32_ARRAY = 33,
+    INT64_ARRAY = 34,
+    FLOAT16_ARRAY = 35,
+    FLOAT32_ARRAY = 36,
+    FLOAT64_ARRAY = 37,
+    ARROW_RECORD_BATCH = 38,
+    ARROW_TABLE = 39,
+    UNKNOWN = 63,
     ForyTypeTag = 256,
-    ForySet = 257,
     ForyPrimitiveBoolArray = 258,
     ForyPrimitiveShortArray = 259,
     ForyPrimitiveIntArray = 260,
@@ -68,6 +91,8 @@ pub enum FieldType {
     ForyPrimitiveFloatArray = 262,
     ForyPrimitiveDoubleArray = 263,
     ForyStringArray = 264,
+    // only used at receiver peer
+    ForyOption = 265,
 }
 
 pub trait ForyGeneralList {}
@@ -87,19 +112,20 @@ pub fn compute_string_hash(s: &str) -> u32 {
     hash as u32
 }
 
-const BASIC_TYPES: [FieldType; 11] = [
-    FieldType::BOOL,
-    FieldType::INT8,
-    FieldType::INT16,
-    FieldType::INT32,
-    FieldType::INT64,
-    FieldType::FLOAT,
-    FieldType::DOUBLE,
-    FieldType::STRING,
-    FieldType::BINARY,
-    FieldType::DATE,
-    FieldType::TIMESTAMP,
+pub const BASIC_TYPES: [TypeId; 10] = [
+    TypeId::BOOL,
+    TypeId::INT8,
+    TypeId::INT16,
+    TypeId::INT32,
+    TypeId::INT64,
+    TypeId::FLOAT32,
+    TypeId::FLOAT64,
+    TypeId::STRING,
+    TypeId::LOCAL_DATE,
+    TypeId::TIMESTAMP,
 ];
+
+pub const COLLECTION_TYPES: [TypeId; 3] = [TypeId::ARRAY, TypeId::SET, TypeId::MAP];
 
 pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
     let mut new_hash: u64 = (hash as u64) * 31 + (id as u64);
@@ -109,21 +135,21 @@ pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
     new_hash as u32
 }
 
-pub fn compute_struct_hash(props: Vec<(&str, FieldType)>) -> u32 {
-    let mut hash = 17;
-    props.iter().for_each(|prop| {
-        let (_name, ty) = prop;
-        hash = match ty {
-            FieldType::ARRAY | FieldType::MAP => compute_field_hash(hash, *ty as i16),
-            _ => hash,
-        };
-        let is_basic_type = BASIC_TYPES.contains(ty);
-        if is_basic_type {
-            hash = compute_field_hash(hash, *ty as i16);
-        }
-    });
-    hash
-}
+// pub fn compute_struct_hash(props: Vec<(&str, FieldType)>) -> u32 {
+//     let mut hash = 17;
+//     props.iter().for_each(|prop| {
+//         let (_name, ty) = prop;
+//         hash = match ty {
+//             FieldType::ARRAY | FieldType::MAP => compute_field_hash(hash, *ty as i16),
+//             _ => hash,
+//         };
+//         let is_basic_type = BASIC_TYPES.contains(ty);
+//         if is_basic_type {
+//             hash = compute_field_hash(hash, *ty as i16);
+//         }
+//     });
+//     hash
+// }
 
 pub mod config_flags {
     pub const IS_NULL_FLAG: u8 = 1 << 0;

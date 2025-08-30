@@ -152,18 +152,18 @@ class ForyMetaStringDecoder extends MetaStringDecoder {
 
 
   @override
-  String decode(Uint8List data, MetaStrEncoding encoding) {
+  String decode(Uint8List data, MetaStringEncoding encoding) {
     if (data.isEmpty) return '';
     switch (encoding) {
-      case MetaStrEncoding.ls:
+      case MetaStringEncoding.ls:
         return _decodeLowerSpecial(data);
-      case MetaStrEncoding.luds:
+      case MetaStringEncoding.luds:
         return _decodeLowerUpperDigitSpecial(data);
-      case MetaStrEncoding.ftls:
+      case MetaStringEncoding.ftls:
         return _decodeRepFirstLowerSpecial(data);
-      case MetaStrEncoding.atls:
+      case MetaStringEncoding.atls:
         return _decodeRepAllToLowerSpecial(data);
-      case MetaStrEncoding.utf8:
+      case MetaStringEncoding.utf8:
         return utf8.decode(data);
       // default:
       //   throw ArgumentError('Unsupported encoding: $encoding');

@@ -19,6 +19,7 @@
 
 package org.apache.fory.format.encoder;
 
+import static org.apache.fory.collection.Collections.ofHashMap;
 import static org.apache.fory.format.encoder.CodecBuilderTest.testStreamingEncode;
 
 import com.google.common.collect.ImmutableMap;
@@ -100,5 +101,21 @@ public class RowEncoderTest {
     row.pointTo(buffer, 0, buffer.size());
     Foo deserializedFoo = encoder.fromRow(row);
     Assert.assertEquals(foo, deserializedFoo);
+  }
+
+  private static class PrivateStruct {
+    java.util.Map<Long, Long> f1;
+    java.util.Map<String, String> f2;
+  }
+
+  @Test
+  public void testPrivateBean() {
+    RowEncoder<PrivateStruct> encoder = Encoders.bean(PrivateStruct.class);
+    PrivateStruct s = new PrivateStruct();
+    s.f1 = ofHashMap(10L, 100L);
+    s.f2 = ofHashMap("k", "v");
+    PrivateStruct s1 = encoder.decode(encoder.encode(s));
+    Assert.assertEquals(s1.f1, s.f1);
+    Assert.assertEquals(s1.f2, s.f2);
   }
 }

@@ -21,6 +21,9 @@ from pyfory._fory import (  # noqa: F401 # pylint: disable=unused-import
     Language,
 )
 
+PYTHON = Language.PYTHON
+XLANG = Language.XLANG
+
 try:
     from pyfory._serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 except ImportError:
@@ -52,9 +55,13 @@ from pyfory.type import (  # noqa: F401 # pylint: disable=unused-import
 )
 from pyfory._util import Buffer  # noqa: F401 # pylint: disable=unused-import
 
+import warnings
+
 try:
-    from pyfory.format import *  # noqa: F401,F403 # pylint: disable=unused-import
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        from pyfory.format import *  # noqa: F401,F403 # pylint: disable=unused-import
 except (AttributeError, ImportError):
     pass
 
-__version__ = "0.12.0.dev"
+__version__ = "0.13.0.dev"

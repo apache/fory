@@ -21,14 +21,14 @@ package org.apache.fory.serializer.kotlin
 
 import org.apache.fory.Fory
 import org.apache.fory.memory.MemoryBuffer
-import org.apache.fory.serializer.collection.AbstractCollectionSerializer
+import org.apache.fory.serializer.collection.CollectionLikeSerializer
 
 /** Serializer for kotlin collections. */
 @Suppress("UNCHECKED_CAST")
 public abstract class AbstractKotlinCollectionSerializer<E, T : Iterable<E>>(
   fory: Fory,
   cls: Class<T>
-) : AbstractCollectionSerializer<T>(fory, cls) {
+) : CollectionLikeSerializer<T>(fory, cls) {
   abstract override fun onCollectionWrite(buffer: MemoryBuffer, value: T): Collection<E>
 
   override fun read(buffer: MemoryBuffer): T {

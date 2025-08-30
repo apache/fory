@@ -17,7 +17,7 @@
  * under the License.
  */
 
-const { BrowserBuffer } = require('@foryjs/fory/dist/lib/platformBuffer')
+const { BrowserBuffer } = require('@apache-fory/fory/dist/lib/platformBuffer')
 const Benchmark = require("benchmark");
 const { spawn } = require("child_process");
 
@@ -55,8 +55,8 @@ async function start() {
         });
       })
       .run({ async: false });
-      console.log("Write operation per second")
-      console.table(result.writeComparison);
+    console.log("Write operation per second")
+    console.table(result.writeComparison);
   }
 
   {
@@ -79,8 +79,8 @@ async function start() {
         });
       })
       .run({ async: false });
-      console.log("toString operation per second")
-      console.table(result.toStringComparison);
+    console.log("toString operation per second")
+    console.table(result.toStringComparison);
   }
 
   const args = ['platform-buffer-draw.py', result.writeComparison['browser utf8Write'], result.writeComparison['browser write'], result.writeComparison['native write'], result.toStringComparison['browser toString'], result.toStringComparison['native toString']];

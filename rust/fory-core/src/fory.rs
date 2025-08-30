@@ -17,22 +17,22 @@
 
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
-use crate::resolver::class_resolver::{ClassInfo, ClassResolver};
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
+use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{Serializer, StructSerializer};
 use crate::types::{config_flags, Language, Mode, SIZE_OF_REF_AND_TYPE};
 
 pub struct Fory {
     mode: Mode,
-    class_resolver: ClassResolver,
+    type_resolver: TypeResolver,
 }
 
 impl Default for Fory {
     fn default() -> Self {
         Fory {
             mode: Mode::SchemaConsistent,
-            class_resolver: ClassResolver::default(),
+            type_resolver: TypeResolver::default(),
         }
     }
 }
@@ -78,7 +78,7 @@ impl Fory {
     pub fn serialize<T: Serializer>(&self, record: &T) -> Vec<u8> {
         let mut writer = Writer::default();
         let meta_offset = self.write_head::<T>(&mut writer);
-        let mut context = WriteContext::new(self, &mut writer);
+        let mut context: WriteContext<'_> = WriteContext::new(self, &mut writer);
         <T as Serializer>::serialize(record, &mut context);
         if Mode::Compatible == self.mode {
             context.write_meta(meta_offset);
@@ -86,12 +86,12 @@ impl Fory {
         writer.dump()
     }
 
-    pub fn get_class_resolver(&self) -> &ClassResolver {
-        &self.class_resolver
+    pub fn get_type_resolver(&self) -> &TypeResolver {
+        &self.type_resolver
     }
 
-    pub fn register<T: 'static + StructSerializer>(&mut self, id: u32) {
-        let class_info = ClassInfo::new::<T>(self, id);
-        self.class_resolver.register::<T>(class_info, id);
+    pub fn register<T: 'static + StructSerializer>(&mut self, id: i16) {
+        let type_info = TypeInfo::new::<T>(self, id);
+        self.type_resolver.register::<T>(type_info, id);
     }
 }

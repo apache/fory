@@ -184,7 +184,7 @@ public class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
   @Override
   public Expression buildEncodeExpression() {
     Reference inputObject = new Reference(ROOT_OBJECT_NAME, TypeUtils.OBJECT_TYPE, false);
-    Expression bean = new Expression.Cast(inputObject, beanType, ctx.newName(beanClass));
+    Expression bean = tryCastIfPublic(inputObject, beanType);
     Reference writer = new Reference(ROOT_ROW_WRITER_NAME, rowWriterTypeToken, false);
     Reference schemaExpr = new Reference(SCHEMA_NAME, schemaTypeToken, false);
 
@@ -285,10 +285,7 @@ public class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   private static Expression nullValue(TypeRef<?> fieldType) {
     Class<?> rawType = fieldType.getRawType();
-    if (rawType == Optional.class
-        || rawType == OptionalInt.class
-        || rawType == OptionalLong.class
-        || rawType == OptionalDouble.class) {
+    if (TypeUtils.isOptionalType(rawType)) {
       return new Expression.StaticInvoke(rawType, "empty", "", fieldType, false, true);
     }
     return new Expression.Reference(TypeUtils.defaultValue(rawType), fieldType);
@@ -361,7 +358,7 @@ public class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
         Expression storeValue =
             new Expression.SetField(new Expression.Reference("this"), fieldName, decodeValue);
         Expression shouldLoad;
-        if (rawFieldType == Optional.class) {
+        if (TypeUtils.isOptionalType(rawFieldType)) {
           shouldLoad =
               new Expression.Not(
                   Expression.Invoke.inlineInvoke(fieldRef, "isPresent", TypeUtils.BOOLEAN_TYPE));

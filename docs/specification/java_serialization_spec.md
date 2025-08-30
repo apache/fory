@@ -136,8 +136,8 @@ Class meta are encoded from parent class to leaf class, only class with serializ
 
 Meta header is a 64 bits number value encoded in little endian order.
 
-- lower 12 bits are used to encode meta size. If meta size `>= 0b111_1111_1111`, then write
-  `meta_ size - 0b111_1111_1111` next.
+- lower 12 bits are used to encode meta size. If meta size `>= 0b1111_1111_1111`, then write
+  `meta_ size - 0b1111_1111_1111` next.
 - 13rd bit is used to indicate whether to write fields meta. When this class is schema-consistent or use registered
   serializer, fields meta will be skipped. Class Meta will be used for share namespace + type name only.
 - 14rd bit is used to indicate whether meta is compressed.
@@ -369,7 +369,7 @@ Which encoding to choose:
 
 ### Collection
 
-> All collection serializers must extend `AbstractCollectionSerializer`.
+> All collection serializers must extend `CollectionLikeSerializer`.
 
 Format:
 
@@ -425,7 +425,7 @@ type.
 
 ### Map
 
-> All Map serializers must extend `AbstractMapSerializer`.
+> All Map serializers must extend `MapLikeSerializer`.
 
 Format:
 

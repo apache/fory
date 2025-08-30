@@ -26,7 +26,7 @@ import org.apache.fory.util.Preconditions;
 
 /** Base serializer for all java collections. */
 @SuppressWarnings({"unchecked", "rawtypes"})
-public class CollectionSerializer<T extends Collection> extends AbstractCollectionSerializer<T> {
+public class CollectionSerializer<T extends Collection> extends CollectionLikeSerializer<T> {
   public CollectionSerializer(Fory fory, Class<T> type) {
     super(fory, type);
   }

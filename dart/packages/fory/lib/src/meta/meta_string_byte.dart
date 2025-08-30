@@ -30,7 +30,7 @@ final class MetaStringBytes{
   // bytes maybe a view of a larger buffer, do not modify it
   final Uint8List _bytes;
   final int _hashCode;
-  late final MetaStrEncoding _encoding;
+  late final MetaStringEncoding _encoding;
   late final int _first8Bytes;
   late final int _second8Bytes;
   // int dynamicWriteStrId = defDynamicWriteStrId;
@@ -39,7 +39,7 @@ final class MetaStringBytes{
   MetaStringBytes(this._bytes, this._hashCode){
     assert(hashCode != 0);
     int header = hashCode & _headerMask;
-    _encoding = MetaStrEncoding.fromId(header);
+    _encoding = MetaStringEncoding.fromId(header);
     // in case length is less than 16
     Uint8List data = _bytes;
     if (_bytes.length < 16){
@@ -59,7 +59,7 @@ final class MetaStringBytes{
       hashCode = 256;
     }
     hashCode &= 0xffffffffffffff00;
-    MetaStrEncoding encoding = ms.encoding;
+    MetaStringEncoding encoding = ms.encoding;
     int header = encoding.id & _headerMask;
     hashCode = hashCode | header;
     return MetaStringBytes(bytes, hashCode);
@@ -68,7 +68,7 @@ final class MetaStringBytes{
   // getter
   Uint8List get bytes => _bytes;
   int get length => _bytes.length;
-  MetaStrEncoding get encoding => _encoding;
+  MetaStringEncoding get encoding => _encoding;
   // bool get isDefWriteId => dynamicWriteStrId == defDynamicWriteStrId;
 
   @override

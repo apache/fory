@@ -457,8 +457,7 @@ public class CollectionSerializers {
     @Override
     public Collection newCollection(MemoryBuffer buffer) {
       final ClassInfo mapClassInfo = fory.getClassResolver().readClassInfo(buffer);
-      final AbstractMapSerializer mapSerializer =
-          (AbstractMapSerializer) mapClassInfo.getSerializer();
+      final MapLikeSerializer mapSerializer = (MapLikeSerializer) mapClassInfo.getSerializer();
       RefResolver refResolver = fory.getRefResolver();
       // It's possible that elements or nested fields has circular ref to set.
       int refId = refResolver.lastPreservedRefId();
@@ -487,8 +486,8 @@ public class CollectionSerializers {
       assert !fory.isCrossLanguage();
       Map<?, Boolean> map =
           (Map<?, Boolean>) Platform.getObject(originCollection, MAP_FIELD_OFFSET);
-      AbstractMapSerializer mapSerializer =
-          (AbstractMapSerializer) fory.getClassResolver().getSerializer(map.getClass());
+      MapLikeSerializer mapSerializer =
+          (MapLikeSerializer) fory.getClassResolver().getSerializer(map.getClass());
       Map newMap = mapSerializer.newMap(map);
       return Collections.newSetFromMap(newMap);
     }
@@ -497,7 +496,7 @@ public class CollectionSerializers {
     public Collection onCollectionWrite(MemoryBuffer buffer, Set<?> value) {
       final Map<?, Boolean> map = (Map<?, Boolean>) Platform.getObject(value, MAP_FIELD_OFFSET);
       final ClassInfo classInfo = fory.getClassResolver().getClassInfo(map.getClass());
-      AbstractMapSerializer mapSerializer = (AbstractMapSerializer) classInfo.getSerializer();
+      MapLikeSerializer mapSerializer = (MapLikeSerializer) classInfo.getSerializer();
       fory.getClassResolver().writeClassInfo(buffer, classInfo);
       if (mapSerializer.supportCodegenHook) {
         buffer.writeBoolean(true);
@@ -686,8 +685,7 @@ public class CollectionSerializers {
    * serializer won't use element generics and doesn't support JIT, performance won't be the best,
    * but the correctness can be ensured.
    */
-  public static final class DefaultJavaCollectionSerializer<T>
-      extends AbstractCollectionSerializer<T> {
+  public static final class DefaultJavaCollectionSerializer<T> extends CollectionLikeSerializer<T> {
     private Serializer<T> dataSerializer;
 
     public DefaultJavaCollectionSerializer(Fory fory, Class<T> cls) {
@@ -734,7 +732,7 @@ public class CollectionSerializers {
 
   /** Collection serializer for class with JDK custom serialization methods defined. */
   public static final class JDKCompatibleCollectionSerializer<T>
-      extends AbstractCollectionSerializer<T> {
+      extends CollectionLikeSerializer<T> {
     private final Serializer serializer;
 
     public JDKCompatibleCollectionSerializer(Fory fory, Class<T> cls) {
