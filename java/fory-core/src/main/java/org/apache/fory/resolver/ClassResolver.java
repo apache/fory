@@ -2325,7 +2325,7 @@ public class ClassResolver implements TypeResolver {
       try {
         // Try to load the compressed array serializers class and call its register method
         Class<?> compressedSerializersClass =
-            Class.forName("org.apache.fory.serializer.CompressedArraySerializers");
+            Class.forName(ReflectionUtils.getPackage(Serializer.class) + ".CompressedArraySerializers");
 
         // Call the static register method
         java.lang.reflect.Method registerMethod =
