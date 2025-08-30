@@ -711,7 +711,7 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		case types.Float64:
 			fmt.Fprintf(buf, "\tbuf.WriteFloat64(%s)\n", fieldAccess)
 		case types.String:
-			fmt.Fprintf(buf, "\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
+			fmt.Fprintf(buf, "\tfory.WriteString(buf, %s)\n", fieldAccess)
 		default:
 			fmt.Fprintf(buf, "\t// TODO: unsupported basic type %s\n", basic.String())
 		}
@@ -788,7 +788,7 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		case types.Float64:
 			fmt.Fprintf(buf, "\t%s = buf.ReadFloat64()\n", fieldAccess)
 		case types.String:
-			fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", fieldAccess)
+			fmt.Fprintf(buf, "\t%s = fory.ReadString(buf)\n", fieldAccess)
 		default:
 			fmt.Fprintf(buf, "\t// TODO: unsupported basic type %s\n", basic.String())
 		}
