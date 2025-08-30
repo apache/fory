@@ -61,7 +61,7 @@
   <modules>
     <module>fory-format</module>
     <module>fory-core</module>
-    <module>fory-array-compression</module>
+    <module>fory-simd</module>
     <module>fory-extensions</module>
     <module>fory-test-core</module>
     <module>fory-testsuite</module>

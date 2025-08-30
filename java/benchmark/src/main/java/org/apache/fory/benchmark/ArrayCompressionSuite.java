@@ -38,11 +38,11 @@ import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.infra.Blackhole;
 
 /**
- * Array compression benchmark suite using SIMD-accelerated compression from fory-array-compression.
+ * Array compression benchmark suite using SIMD-accelerated compression from fory-simd.
  *
  * <p><strong>SETUP REQUIRED TO RUN THIS BENCHMARK:</strong>
  *
- * <p>1. This benchmark requires Java 16+ and the fory-array-compression module. To enable SIMD
+ * <p>1. This benchmark requires Java 16+ and the fory-simd module. To enable SIMD
  * operations, you must temporarily modify benchmark/pom.xml:
  *
  * <pre>{@code
@@ -70,7 +70,7 @@ import org.openjdk.jmh.infra.Blackhole;
  * </dependency>
  *         <dependency>
  *             <groupId>org.apache.fory</groupId>
- *             <artifactId>fory-array-compression</artifactId>
+ *             <artifactId>fory-simd</artifactId>
  *             <version>${project.version}</version>
  *         </dependency>
  * }</pre>

@@ -2315,7 +2315,7 @@ public class ClassResolver implements TypeResolver {
 
   /**
    * Register compressed array serializers if compression flags are enabled and the
-   * fory-array-compression module is available on the classpath.
+   * fory-simd module is available on the classpath.
    */
   private void registerCompressedSerializersIfEnabled() {
     boolean compressInt = fory.getConfig().compressIntArray();
@@ -2333,9 +2333,9 @@ public class ClassResolver implements TypeResolver {
         registerMethod.invoke(null, fory);
 
       } catch (ClassNotFoundException e) {
-        // fory-array-compression module not on classpath, ignore
+        // fory-simd module not on classpath, ignore
         LOG.info(
-            "Add fory-array-compression module to classpath to enable compressed array serializers");
+            "Add fory-simd module to classpath to enable compressed array serializers");
       } catch (Exception e) {
         // Log but don't fail - just use default serializers
         LOG.warn("Failed to register compressed array serializers", e);
