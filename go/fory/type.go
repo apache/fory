@@ -19,13 +19,14 @@ package fory
 
 import (
 	"fmt"
-	"github.com/apache/fory/go/fory/meta"
 	"hash/fnv"
 	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/apache/fory/go/fory/meta"
 )
 
 type TypeId = int16
@@ -241,7 +242,7 @@ func initGlobalTypeResolver() {
 		typeInfoToType:       map[string]reflect.Type{},
 		dynamicStringToId:    map[string]int16{},
 		dynamicIdToString:    map[int16]string{},
-		
+
 		language:            XLANG,
 		metaStringResolver:  NewMetaStringResolver(),
 		requireRegistration: false,
@@ -265,7 +266,7 @@ func initGlobalTypeResolver() {
 		typeNameEncoder:  meta.NewEncoder('$', '_'),
 		typeNameDecoder:  meta.NewDecoder('$', '_'),
 	}
-	
+
 	// Initialize base type mappings - copy from newTypeResolver
 	for _, t := range []reflect.Type{
 		boolType,
@@ -467,22 +468,36 @@ func (r *typeResolver) RegisterSerializer(type_ reflect.Type, s Serializer) erro
 }
 
 // RegisterGeneratedSerializer registers a generated serializer for a specific type.
-// Generated serializers have priority over reflection-based serializers.
+// Generated serializers have priority over reflection-based serializers and can override existing ones.
 func RegisterGeneratedSerializer(typ interface{}, s Serializer) error {
 	if typ == nil {
 		return fmt.Errorf("typ cannot be nil")
 	}
-	
+
 	reflectType := reflect.TypeOf(typ)
 	if reflectType.Kind() == reflect.Ptr {
 		reflectType = reflectType.Elem()
 	}
-	
+
 	// Use the global type resolver
 	if globalTypeResolver == nil {
 		return fmt.Errorf("global type resolver not initialized")
 	}
-	return globalTypeResolver.RegisterSerializer(reflectType, s)
+
+	// Allow overriding existing serializers by directly setting the map
+	// This gives generated serializers priority over reflection-based ones
+	globalTypeResolver.typeToSerializers[reflectType] = s
+
+	// Handle typeId registration
+	typeId := s.TypeId()
+	if typeId != FORY_TYPE_TAG {
+		if typeId > NotSupportCrossLanguage {
+			// Allow overriding existing typeId mappings as well
+			globalTypeResolver.typeIdToType[typeId] = reflectType
+		}
+	}
+
+	return nil
 }
 
 func (r *typeResolver) RegisterTypeTag(value reflect.Value, tag string) error {
