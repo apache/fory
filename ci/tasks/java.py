@@ -149,7 +149,7 @@ def run_java8():
     logging.info("Executing fory java tests with Java 8")
     install_jdks()
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test -pl '!fory-format'")
+    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test -pl '!fory-format,!fory-simd'")
     logging.info("Executing fory java tests succeeds")
 
 
@@ -157,7 +157,7 @@ def run_java11():
     """Run Java 11 tests."""
     logging.info("Executing fory java tests with Java 11")
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test")
+    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test -pl '!fory-simd'")
     logging.info("Executing fory java tests succeeds")
 
 
