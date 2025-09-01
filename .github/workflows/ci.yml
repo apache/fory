@@ -302,7 +302,9 @@ jobs:
       - name: Install bazel
         run: python ./ci/run_ci.py cpp --install-deps-only
       - name: Install python dependencies
-        run: pip install pyarrow==15.0.0 Cython wheel pytest setuptools -U
+        run: pip install pyarrow==15.0.0 cython wheel pytest setuptools -U
+      - name: Install pyfory
+        run: pip install -e python/
       - name: Run Golang CI
         run: python ./ci/run_ci.py go
 
