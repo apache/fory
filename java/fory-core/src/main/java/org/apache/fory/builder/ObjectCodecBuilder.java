@@ -79,7 +79,6 @@ import org.apache.fory.util.record.RecordUtils;
  * @see ObjectCodecOptimizer for code stats and split heuristics.
  */
 public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
-  public static final String BUFFER_NAME = "buffer";
   private final Literal classVersionHash;
   protected ObjectCodecOptimizer objectCodecOptimizer;
   protected Map<String, Integer> recordReversedMapping;

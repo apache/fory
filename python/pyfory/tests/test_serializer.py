@@ -469,6 +469,8 @@ def test_pickle_fallback():
 def test_unsupported_callback():
     fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
 
+    # Test with functions that now have proper serialization support
+    # Functions should no longer be treated as unsupported
     def f1(x):
         return x
 
@@ -478,10 +480,18 @@ def test_unsupported_callback():
     obj1 = [1, True, f1, f2, {1: 2}]
     unsupported_objects = []
     binary1 = fory.serialize(obj1, unsupported_callback=unsupported_objects.append)
-    assert len(unsupported_objects) == 2
-    assert unsupported_objects == [f1, f2]
+    # Functions are now properly supported, so unsupported_objects should be empty
+    assert len(unsupported_objects) == 0
     new_obj1 = fory.deserialize(binary1, unsupported_objects=unsupported_objects)
-    assert new_obj1 == obj1
+    # Functions should roundtrip correctly
+    assert len(new_obj1) == len(obj1)
+    assert new_obj1[0] == obj1[0]  # 1
+    assert new_obj1[1] == obj1[1]  # True
+    assert new_obj1[2](5) == f1(5)  # Test f1 functionality
+    assert new_obj1[3](5) == f2(5)  # Test f2 functionality
+    assert new_obj1[4] == obj1[4]  # {1: 2}
+    # Don't check full equality since functions are new objects after deserialization
+    # The functionality test above already confirmed they work correctly
 
 
 def test_slice():

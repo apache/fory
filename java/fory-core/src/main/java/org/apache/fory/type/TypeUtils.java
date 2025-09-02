@@ -657,8 +657,8 @@ public class TypeUtils {
   }
 
   /**
-   * Check if a class is one of {@link Optional), {@link OptionalInt},
-   * {@link OptionaLong}, or {@link OptionalDouble}.
+   * Check if a class is one of {@link Optional}, {@link OptionalInt}, {@link OptionalLong}, or
+   * {@link OptionalDouble}.
    */
   public static boolean isOptionalType(Class<?> type) {
     return type == Optional.class

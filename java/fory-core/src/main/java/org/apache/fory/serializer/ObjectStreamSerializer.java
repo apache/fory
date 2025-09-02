@@ -61,6 +61,7 @@ import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.FieldResolver;
 import org.apache.fory.resolver.FieldResolver.ClassField;
 import org.apache.fory.util.ExceptionUtils;
+import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.unsafe._JDKAccess;
 
@@ -354,7 +355,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
                         this.slotsSerializer =
                             (CompatibleSerializerBase) Serializers.newSerializer(fory, type, c));
       }
-      if (sc == CompatibleSerializer.class) {
+      if (sc == CompatibleSerializer.class || GraalvmSupport.isGraalBuildtime()) {
+        // skip init generated serializer at graalvm build time
         this.slotsSerializer = new CompatibleSerializer(fory, type, fieldResolver);
       } else {
         this.slotsSerializer = (CompatibleSerializerBase) Serializers.newSerializer(fory, type, sc);

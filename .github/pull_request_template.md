@@ -9,6 +9,7 @@ Contribution Checklist
 
     - Fory has a strong focus on performance. If the PR you submit will have an impact on performance, please benchmark it first and provide the benchmark result here.
 -->
+
 ## Why?
 
 <!-- Describe the purpose of this PR. -->

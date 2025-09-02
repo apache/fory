@@ -239,7 +239,7 @@ public class AllowListChecker implements ClassChecker {
       lock.writeLock().lock();
       listeners.put(classResolver, true);
     } finally {
-        lock.writeLock().unlock();
+      lock.writeLock().unlock();
     }
   }
 

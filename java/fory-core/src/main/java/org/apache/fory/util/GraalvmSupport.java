@@ -19,6 +19,10 @@
 
 package org.apache.fory.util;
 
+import java.util.Objects;
+import org.apache.fory.Fory;
+import org.apache.fory.serializer.Serializer;
+
 /** A helper for Graalvm native image support. */
 public class GraalvmSupport {
   // https://github.com/oracle/graal/blob/master/sdk/src/org.graalvm.nativeimage/src/org/graalvm/nativeimage/ImageInfo.java
@@ -45,5 +49,18 @@ public class GraalvmSupport {
   public static boolean isGraalRuntime() {
     return IN_GRAALVM_NATIVE_IMAGE
         && GRAAL_IMAGE_RUNTIME.equals(System.getProperty(GRAAL_IMAGE_CODE_KEY));
+  }
+
+  public static class GraalvmSerializerHolder extends Serializer {
+    private final Class serializerClass;
+
+    public GraalvmSerializerHolder(Fory fory, Class<?> type, Class<?> serializerClass) {
+      super(fory, type);
+      this.serializerClass = Objects.requireNonNull(serializerClass);
+    }
+
+    public Class<? extends Serializer> getSerializerClass() {
+      return serializerClass;
+    }
   }
 }

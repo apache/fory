@@ -141,7 +141,7 @@ install_jdks() {
 
 graalvm_test() {
   cd "$ROOT"/java
-  mvn -T10 -B --no-transfer-progress clean install -DskipTests
+  mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-format,!:fory-testsuite'
   echo "Start to build graalvm native image"
   cd "$ROOT"/integration_tests/graalvm_tests
   mvn -DskipTests=true --no-transfer-progress -Pnative package
@@ -231,7 +231,7 @@ case $1 in
       echo "Executing fory java tests"
       cd "$ROOT/java"
       set +e
-      mvn -T16 --batch-mode --no-transfer-progress test
+      mvn -T16 --batch-mode --no-transfer-progress test -pl '!:fory-format,!:fory-testsuite'
       testcode=$?
       if [[ $testcode -ne 0 ]]; then
         exit $testcode

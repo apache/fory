@@ -166,7 +166,7 @@ public class MetaSharedCodecBuilder extends ObjectCodecBuilder {
     decodeCode = ctx.optimizeMethodCode(decodeCode);
     ctx.overrideMethod("read", decodeCode, Object.class, MemoryBuffer.class, BUFFER_NAME);
     registerJITNotifyCallback();
-    ctx.addConstructor(constructorCode, Fory.class, "fory", Class.class, POJO_CLASS_TYPE_NAME);
+    ctx.addConstructor(constructorCode, Fory.class, FORY_NAME, Class.class, POJO_CLASS_TYPE_NAME);
     return ctx.genCode();
   }
 

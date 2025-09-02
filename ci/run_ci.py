@@ -84,7 +84,7 @@ def run_shell_script(command, *args):
             cmd = [bash_path, script_path, command]
             cmd.extend(args)
             logging.info(f"Falling back to shell script with bash: {' '.join(cmd)}")
-            return subprocess.call(cmd)
+            sys.exit(subprocess.call(cmd))
         else:
             logging.error(
                 "Bash is not available on this Windows system. Cannot run shell script."
@@ -101,7 +101,7 @@ def run_shell_script(command, *args):
         cmd = [script_path, command]
         cmd.extend(args)
         logging.info(f"Falling back to shell script: {' '.join(cmd)}")
-        return subprocess.call(cmd)
+        sys.exit(subprocess.call(cmd))
 
 
 def parse_args():
@@ -237,14 +237,13 @@ def parse_args():
         if USE_PYTHON_JAVA:
             func(**arg_dict)
         else:
-            
             if not arg_dict.get("version"):
                 func(**arg_dict)
                 return
             # Map Python version argument to shell script command
             version = arg_dict.get("version", "17")
             release = arg_dict.get("release", False)
-            
+
             if release:
                 logging.info("Release mode requested - using Python implementation")
                 func(**arg_dict)

@@ -17,42 +17,42 @@
  * under the License.
  */
 
- package org.apache.fory.graalvm;
-
-import org.apache.fory.Fory;
+package org.apache.fory.graalvm;
 
 import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import org.apache.fory.Fory;
 
 public class ObjectStreamExample extends AbstractMap<Integer, Integer> {
-  private static final Fory FORY = Fory.builder()
-      .withName(ObjectStreamExample.class.getName())
-      .registerGuavaTypes(false)
-      .build();
+  private static final Fory FORY =
+      Fory.builder()
+          .withName(ObjectStreamExample.class.getName())
+          .registerGuavaTypes(false)
+          .build();
 
   static {
-      FORY.register(ObjectStreamExample.class, true);
-      FORY.ensureSerializersCompiled();
+    FORY.register(ObjectStreamExample.class, true);
+    FORY.ensureSerializersCompiled();
   }
 
   final int[] ints = new int[10];
 
   public static void main(String[] args) {
-      FORY.reset();
-      byte[] bytes = FORY.serialize(new ObjectStreamExample());
-      FORY.reset();
-      ObjectStreamExample o = (ObjectStreamExample) FORY.deserialize(bytes);
-      System.out.println(Arrays.toString(o.ints));
+    FORY.reset();
+    byte[] bytes = FORY.serialize(new ObjectStreamExample());
+    FORY.reset();
+    ObjectStreamExample o = (ObjectStreamExample) FORY.deserialize(bytes);
+    System.out.println(Arrays.toString(o.ints));
   }
 
   @Override
   public Set<Entry<Integer, Integer>> entrySet() {
-      HashSet<Entry<Integer, Integer>> set = new HashSet<>();
-      for (int i = 0; i < ints.length; i++) {
-          set.add(new AbstractMap.SimpleEntry<>(i, ints[i]));
-      }
-      return set;
+    HashSet<Entry<Integer, Integer>> set = new HashSet<>();
+    for (int i = 0; i < ints.length; i++) {
+      set.add(new AbstractMap.SimpleEntry<>(i, ints[i]));
+    }
+    return set;
   }
 }

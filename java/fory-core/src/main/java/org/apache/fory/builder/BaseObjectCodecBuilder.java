@@ -131,11 +131,11 @@ import org.apache.fory.util.StringUtils;
  */
 @SuppressWarnings("unchecked")
 public abstract class BaseObjectCodecBuilder extends CodecBuilder {
-  public static final String BUFFER_NAME = "buffer";
-  public static final String REF_RESOLVER_NAME = "refResolver";
-  public static final String CLASS_RESOLVER_NAME = "classResolver";
-  public static final String POJO_CLASS_TYPE_NAME = "classType";
-  public static final String STRING_SERIALIZER_NAME = "strSerializer";
+  public static final String BUFFER_NAME = "_f_buffer";
+  public static final String REF_RESOLVER_NAME = "_f_refResolver";
+  public static final String CLASS_RESOLVER_NAME = "_f_classResolver";
+  public static final String POJO_CLASS_TYPE_NAME = "_f_classType";
+  public static final String STRING_SERIALIZER_NAME = "_f_strSerializer";
   private static final TypeRef<?> CLASS_RESOLVER_TYPE_TOKEN = TypeRef.of(ClassResolver.class);
   private static final TypeRef<?> STRING_SERIALIZER_TYPE_TOKEN = TypeRef.of(StringSerializer.class);
   private static final TypeRef<?> SERIALIZER_TYPE = TypeRef.of(Serializer.class);
@@ -266,7 +266,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         ROOT_OBJECT_NAME);
     ctx.overrideMethod("read", decodeCode, Object.class, MemoryBuffer.class, BUFFER_NAME);
     registerJITNotifyCallback();
-    ctx.addConstructor(constructorCode, Fory.class, "fory", Class.class, POJO_CLASS_TYPE_NAME);
+    ctx.addConstructor(constructorCode, Fory.class, FORY_NAME, Class.class, POJO_CLASS_TYPE_NAME);
     return ctx.genCode();
   }
 
