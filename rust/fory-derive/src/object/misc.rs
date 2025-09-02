@@ -56,7 +56,7 @@ fn type_def(fields: &[&Field]) -> TokenStream {
         }
     });
     quote! {
-        fn type_def(fory: &fory_core::fory::Fory, layer_id: i16) -> Vec<u8> {
+        fn type_def(fory: &fory_core::fory::Fory, layer_id: u32) -> Vec<u8> {
             fory_core::meta::TypeMeta::from_fields(
                 layer_id,
                 vec![#(#field_infos),*]
@@ -76,8 +76,8 @@ pub fn gen_in_struct_impl(fields: &[&Field]) -> TokenStream {
 
 pub fn gen() -> TokenStream {
     quote! {
-            fn get_type_id(fory: &fory_core::fory::Fory) -> i16 {
-                fory.get_type_resolver().get_type_info(std::any::TypeId::of::<Self>()).get_type_id() as i16
-            }
+        fn get_type_id(fory: &fory_core::fory::Fory) -> u32 {
+            fory.get_type_resolver().get_type_info(std::any::TypeId::of::<Self>()).get_type_id()
+        }
     }
 }

@@ -41,17 +41,56 @@ static ENCODING_OPTIONS: &[Encoding] = &[
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FieldType {
-    pub type_id: i16,
+    pub type_id: u32,
     pub generics: Vec<FieldType>,
 }
 
+#[derive(Debug, Clone)]
+pub struct NullableFieldType {
+    pub type_id: u32,
+    pub generics: Vec<NullableFieldType>,
+    pub nullable: bool,
+}
+
+impl NullableFieldType {
+    pub fn from(node: FieldType) -> Self {
+        if node.type_id == TypeId::ForyOption as u32 {
+            let inner = NullableFieldType::from(node.generics.into_iter().next().unwrap());
+            NullableFieldType {
+                type_id: inner.type_id,
+                generics: inner.generics,
+                nullable: true,
+            }
+        } else {
+            let generics = node
+                .generics
+                .into_iter()
+                .map(NullableFieldType::from)
+                .collect();
+            NullableFieldType {
+                type_id: node.type_id,
+                generics,
+                nullable: false,
+            }
+        }
+    }
+}
+
+impl PartialEq for NullableFieldType {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_id == other.type_id && self.generics == other.generics
+    }
+}
+
+impl Eq for NullableFieldType {}
+
 impl FieldType {
-    pub fn new(type_id: i16, generics: Vec<FieldType>) -> Self {
+    pub fn new(type_id: u32, generics: Vec<FieldType>) -> Self {
         FieldType { type_id, generics }
     }
 
     fn to_bytes(&self, writer: &mut Writer, write_flag: bool, nullable: bool) -> Result<(), Error> {
-        if self.type_id == TypeId::ForyOption.into() {
+        if self.type_id == TypeId::ForyOption as u32 {
             self.generics
                 .first()
                 .unwrap()
@@ -68,11 +107,11 @@ impl FieldType {
         }
         writer.var_int32(header);
         match self.type_id {
-            x if x == TypeId::ARRAY as i16 || x == TypeId::SET as i16 => {
+            x if x == TypeId::ARRAY as u32 || x == TypeId::SET as u32 => {
                 let generic = self.generics.first().unwrap();
                 generic.to_bytes(writer, true, false)?;
             }
-            x if x == TypeId::MAP as i16 => {
+            x if x == TypeId::MAP as u32 => {
                 let key_generic = self.generics.first().unwrap();
                 let val_generic = self.generics.get(1).unwrap();
                 key_generic.to_bytes(writer, true, false)?;
@@ -83,28 +122,27 @@ impl FieldType {
         Ok(())
     }
 
-    #[allow(clippy::needless_late_init)]
     fn from_bytes(reader: &mut Reader, read_flag: bool, nullable: Option<bool>) -> Self {
         let header = reader.var_int32();
         let type_id;
         let _nullable;
         if read_flag {
-            type_id = (header >> 2) as i16;
+            type_id = (header >> 2) as u32;
             // let tracking_ref = (header & 1) != 0;
             _nullable = (header & 2) != 0;
         } else {
-            type_id = header as i16;
+            type_id = header as u32;
             _nullable = nullable.unwrap();
         }
         let field_type = match type_id {
-            x if x == TypeId::ARRAY.into() || x == TypeId::SET.into() => {
+            x if x == TypeId::ARRAY as u32 || x == TypeId::SET as u32 => {
                 let generic = Self::from_bytes(reader, true, None);
                 Self {
                     type_id,
                     generics: vec![generic],
                 }
             }
-            x if x == TypeId::MAP.into() => {
+            x if x == TypeId::MAP as u32 => {
                 let key_generic = Self::from_bytes(reader, true, None);
                 let val_generic = Self::from_bytes(reader, true, None);
                 Self {
@@ -119,7 +157,7 @@ impl FieldType {
         };
         if _nullable {
             Self {
-                type_id: TypeId::ForyOption.into(),
+                type_id: TypeId::ForyOption as u32,
                 generics: vec![field_type],
             }
         } else {
@@ -188,7 +226,7 @@ impl FieldInfo {
         let name_size = name_encoded.len() - 1;
         let mut header: u8 = (min(FIELD_NAME_SIZE_THRESHOLD, name_size) as u8) << 2;
         // let ref_tracking = false;
-        let nullable = self.field_type.type_id == TypeId::ForyOption.into();
+        let nullable = self.field_type.type_id == TypeId::ForyOption as u32;
         // if ref_tracking {
         //     header |= 1;
         // }
@@ -213,19 +251,19 @@ impl FieldInfo {
 
 #[derive(Debug)]
 pub struct TypeMetaLayer {
-    type_id: i16,
+    type_id: u32,
     field_infos: Vec<FieldInfo>,
 }
 
 impl TypeMetaLayer {
-    pub fn new(type_id: i16, field_infos: Vec<FieldInfo>) -> TypeMetaLayer {
+    pub fn new(type_id: u32, field_infos: Vec<FieldInfo>) -> TypeMetaLayer {
         TypeMetaLayer {
             type_id,
             field_infos,
         }
     }
 
-    pub fn get_type_id(&self) -> i16 {
+    pub fn get_type_id(&self) -> u32 {
         self.type_id
     }
 
@@ -250,7 +288,7 @@ impl TypeMetaLayer {
         if is_register_by_name {
             todo!()
         } else {
-            writer.var_int32(self.type_id as i32);
+            writer.var_uint32(self.type_id);
         }
         for field in self.field_infos.iter() {
             writer.bytes(field.to_bytes()?.as_slice());
@@ -271,7 +309,7 @@ impl TypeMetaLayer {
         if is_register_by_name {
             todo!()
         } else {
-            type_id = reader.var_int32() as i16;
+            type_id = reader.var_uint32();
         }
         let mut field_infos = Vec::with_capacity(num_fields);
         for _ in 0..num_fields {
@@ -293,11 +331,11 @@ impl TypeMeta {
         self.layers.first().unwrap().get_field_infos()
     }
 
-    pub fn get_type_id(&self) -> i16 {
+    pub fn get_type_id(&self) -> u32 {
         self.layers.first().unwrap().get_type_id()
     }
 
-    pub fn from_fields(type_id: i16, field_infos: Vec<FieldInfo>) -> TypeMeta {
+    pub fn from_fields(type_id: u32, field_infos: Vec<FieldInfo>) -> TypeMeta {
         TypeMeta {
             // hash: 0,
             layers: vec![TypeMetaLayer::new(type_id, field_infos)],

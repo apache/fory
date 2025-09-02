@@ -38,8 +38,8 @@ impl Serializer for String {
         Ok(context.reader.string(len as usize))
     }
 
-    fn get_type_id(_fory: &Fory) -> i16 {
-        TypeId::STRING.into()
+    fn get_type_id(_fory: &Fory) -> u32 {
+        TypeId::STRING as u32
     }
 }
 

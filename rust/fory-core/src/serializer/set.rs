@@ -27,7 +27,7 @@ use std::mem;
 impl<T: Serializer + Eq + std::hash::Hash> Serializer for HashSet<T> {
     fn write(&self, context: &mut WriteContext) {
         // length
-        context.writer.i32(self.len() as i32);
+        context.writer.var_int32(self.len() as i32);
 
         let reserved_space =
             (<T as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE) * self.len();
@@ -51,8 +51,8 @@ impl<T: Serializer + Eq + std::hash::Hash> Serializer for HashSet<T> {
         mem::size_of::<i32>()
     }
 
-    fn get_type_id(_fory: &Fory) -> i16 {
-        TypeId::SET.into()
+    fn get_type_id(_fory: &Fory) -> u32 {
+        TypeId::SET as u32
     }
 }
 

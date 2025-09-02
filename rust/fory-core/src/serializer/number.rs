@@ -37,8 +37,8 @@ macro_rules! impl_num_serializer {
                 std::mem::size_of::<$ty>()
             }
 
-            fn get_type_id(_fory: &Fory) -> i16 {
-                ($field_type).into()
+            fn get_type_id(_fory: &Fory) -> u32 {
+                ($field_type) as u32
             }
         }
     };
