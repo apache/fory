@@ -167,11 +167,30 @@ func processPackage(pkg *packages.Package) error {
 	}
 
 	if len(structs) == 0 {
-		return nil // No structs to generate
+		if len(targetTypes) > 0 {
+			log.Printf("Warning: No matching structs found for target types: %v", targetTypes)
+			log.Printf("Available types in package: %v", allNames)
+			return fmt.Errorf("no matching structs found for target types: %v", targetTypes)
+		}
+		log.Printf("No structs to generate (no target types specified)")
+		return nil
 	}
 
 	// Generate code
-	return generateCode(pkg, structs)
+	log.Printf("Generating code for %d struct(s): %v", len(structs), getStructNames(structs))
+	if err := generateCode(pkg, structs); err != nil {
+		return err
+	}
+	log.Printf("Successfully generated code for package %s", pkg.Name)
+	return nil
+}
+
+func getStructNames(structs []*StructInfo) []string {
+	names := make([]string, len(structs))
+	for i, s := range structs {
+		names[i] = s.Name
+	}
+	return names
 }
 
 func extractStructInfo(name string, structType *types.Struct) (*StructInfo, error) {

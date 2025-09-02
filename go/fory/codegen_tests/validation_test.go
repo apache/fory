@@ -18,66 +18,46 @@
 package codegen_tests
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/apache/fory/go/fory"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-//go:generate go run ../codegen/main.go -pkg . -type "ValidationDemo"
+//go:generate go run ../codegen/forygen.go -pkg . -type "ValidationDemo"
 
 func TestValidationDemo(t *testing.T) {
-	fmt.Println("=== 代码生成验证演示 ===")
-
-	// 1. 创建实例
+	// 1. Create test instance
 	original := &ValidationDemo{
 		A: 12345,         // int32
 		B: "Hello Fory!", // string
 		C: 98765,         // int64
 	}
 
-	fmt.Printf("1. 原始数据:\n")
-	fmt.Printf("   A (int32):  %d\n", original.A)
-	fmt.Printf("   B (string): %s\n", original.B)
-	fmt.Printf("   C (int64):  %d\n", original.C)
+	// Validate original data structure
+	assert.Equal(t, int32(12345), original.A, "Original A should be 12345")
+	assert.Equal(t, "Hello Fory!", original.B, "Original B should be 'Hello Fory!'")
+	assert.Equal(t, int64(98765), original.C, "Original C should be 98765")
 
-	// 2. 序列化 (生成的代码)
+	// 2. Serialize using generated code
 	f := fory.NewFory(true)
 	data, err := f.Marshal(original)
-	if err != nil {
-		t.Fatalf("序列化失败: %v", err)
-	}
+	require.NoError(t, err, "Serialization should not fail")
+	require.NotEmpty(t, data, "Serialized data should not be empty")
+	assert.Greater(t, len(data), 0, "Serialized data should have positive length")
 
-	fmt.Printf("\n2. 序列化结果:\n")
-	fmt.Printf("   数据长度: %d 字节\n", len(data))
-	fmt.Printf("   二进制数据: %x\n", data)
-
-	// 3. 反序列化 (生成的代码)
+	// 3. Deserialize using generated code
 	var result *ValidationDemo
 	err = f.Unmarshal(data, &result)
-	if err != nil {
-		t.Fatalf("反序列化失败: %v", err)
-	}
+	require.NoError(t, err, "Deserialization should not fail")
+	require.NotNil(t, result, "Deserialized result should not be nil")
 
-	fmt.Printf("\n3. 反序列化结果:\n")
-	fmt.Printf("   A (int32):  %d\n", result.A)
-	fmt.Printf("   B (string): %s\n", result.B)
-	fmt.Printf("   C (int64):  %d\n", result.C)
+	// 4. Validate round-trip serialization
+	assert.Equal(t, original.A, result.A, "Field A should match after round-trip")
+	assert.Equal(t, original.B, result.B, "Field B should match after round-trip")
+	assert.Equal(t, original.C, result.C, "Field C should match after round-trip")
 
-	// 4. 验证
-	fmt.Printf("\n4. 验证结果:\n")
-	aMatch := result.A == original.A
-	bMatch := result.B == original.B
-	cMatch := result.C == original.C
-
-	fmt.Printf("   A 匹配: %t (%d == %d)\n", aMatch, result.A, original.A)
-	fmt.Printf("   B 匹配: %t (%s == %s)\n", bMatch, result.B, original.B)
-	fmt.Printf("   C 匹配: %t (%d == %d)\n", cMatch, result.C, original.C)
-
-	if aMatch && bMatch && cMatch {
-		fmt.Printf("\n✅ 成功: 所有数据完全一致! 代码生成工作正常!\n")
-	} else {
-		fmt.Printf("\n❌ 失败: 数据不匹配!\n")
-		t.Fail()
-	}
+	// 5. Validate data integrity
+	assert.EqualValues(t, original, result, "Complete struct should match after round-trip")
 }
