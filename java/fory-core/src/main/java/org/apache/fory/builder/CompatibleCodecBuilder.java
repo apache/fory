@@ -337,6 +337,11 @@ public class CompatibleCodecBuilder extends BaseObjectCodecBuilder {
     return expressions;
   }
 
+  @Override
+  public Expression buildXlangEncodeExpression() {
+    throw new IllegalStateException("unreachable");
+  }
+
   private Expression writeEmbedTypeFieldValue(
       Expression bean, Expression buffer, FieldInfo fieldInfo) {
     Descriptor descriptor = createDescriptor(fieldInfo);
@@ -379,6 +384,11 @@ public class CompatibleCodecBuilder extends BaseObjectCodecBuilder {
     }
     expressionBuilder.add(new Return(bean));
     return expressionBuilder;
+  }
+
+  @Override
+  public Expression buildXlangDecodeExpression() {
+    throw new IllegalStateException("unreachable");
   }
 
   public Expression buildRecordDecodeExpression() {

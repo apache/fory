@@ -175,6 +175,11 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     return expressions;
   }
 
+  @Override
+  public Expression buildXlangEncodeExpression() {
+    return buildEncodeExpression();
+  }
+
   private void addGroupExpressions(
       List<List<Descriptor>> writeGroup,
       int numGroups,
@@ -483,6 +488,11 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     }
     expressions.add(new Expression.Return(bean));
     return expressions;
+  }
+
+  @Override
+  public Expression buildXlangDecodeExpression() {
+    return buildDecodeExpression();
   }
 
   private void deserializeReadGroup(
