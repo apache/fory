@@ -113,6 +113,8 @@ public class Example {
 | `timeRefIgnored`                    | Whether to ignore reference tracking of all time types registered in `TimeSerializers` and subclasses of those types when ref tracking is enabled. If ignored, ref tracking of every time type can be enabled by invoking `Fory#registerSerializer(Class, Serializer)`. For example, `fory.registerSerializer(Date.class, new DateSerializer(fory, true))`. Note that enabling ref tracking should happen before serializer codegen of any types which contain time fields. Otherwise, those fields will still skip ref tracking. | `true`                                                         |
 | `compressInt`                       | Enables or disables int compression for smaller size.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | `true`                                                         |
 | `compressLong`                      | Enables or disables long compression for smaller size.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `true`                                                         |
+| `compressIntArray`                  | Enables or disables SIMD-accelerated compression for int arrays when values can fit in smaller data types. Requires Java 16+.                                                                                                                                                                                                                                                                                                                                                                                                    | `true`                                                         |
+| `compressLongArray`                 | Enables or disables SIMD-accelerated compression for long arrays when values can fit in smaller data types. Requires Java 16+.                                                                                                                                                                                                                                                                                                                                                                                                   | `true`                                                         |
 | `compressString`                    | Enables or disables string compression for smaller size.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `false`                                                        |
 | `classLoader`                       | The classloader should not be updated; Fory caches class metadata. Use `LoaderBinding` or `ThreadSafeFory` for classloader updates.                                                                                                                                                                                                                                                                                                                                                                                               | `Thread.currentThread().getContextClassLoader()`               |
 | `compatibleMode`                    | Type forward/backward compatibility config. Also Related to `checkClassVersion` config. `SCHEMA_CONSISTENT`: Class schema must be consistent between serialization peer and deserialization peer. `COMPATIBLE`: Class schema can be different between serialization peer and deserialization peer. They can add/delete fields independently. [See more](#class-inconsistency-and-class-version-check).                                                                                                                            | `CompatibleMode.SCHEMA_CONSISTENT`                             |
@@ -244,6 +246,32 @@ result,
 not worthy compared to performance cost. Maybe you should try to disable long compression if you find it didn't bring
 much
 space savings.
+
+### Array Compression
+
+Fory supports SIMD-accelerated compression for primitive arrays (`int[]` and `long[]`) when array values can fit in smaller data types. This feature is available on Java 16+ and uses the Vector API for optimal performance.
+
+#### How Array Compression Works
+
+Array compression analyzes arrays to determine if values can be stored using fewer bytes:
+
+- **`int[]` → `byte[]`**: When all values are in range [-128, 127] (75% size reduction)  
+- **`int[]` → `short[]`**: When all values are in range [-32768, 32767] (50% size reduction)
+- **`long[]` → `int[]`**: When all values fit in integer range (50% size reduction)
+
+#### Configuration
+
+Array compression can be configured independently for int and long arrays:
+
+```java
+Fory fory = Fory.builder()
+  .withLanguage(Language.JAVA)
+  // Enable int array compression
+  .withIntArrayCompressed(true)
+  // Enable long array compression
+  .withLongArrayCompressed(true)
+  .build();
+```
 
 ### Object deep copy
 

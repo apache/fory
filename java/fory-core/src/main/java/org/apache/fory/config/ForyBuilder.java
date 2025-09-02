@@ -68,6 +68,8 @@ public final class ForyBuilder {
   ClassLoader classLoader;
   boolean compressInt = true;
   public LongEncoding longEncoding = LongEncoding.SLI;
+  boolean compressIntArray = false;
+  boolean compressLongArray = false;
   boolean compressString = false;
   Boolean writeNumUtf16BytesForUtf8Encoding;
   CompatibleMode compatibleMode = CompatibleMode.SCHEMA_CONSISTENT;
@@ -180,6 +182,18 @@ public final class ForyBuilder {
   /** Use variable length encoding for long. */
   public ForyBuilder withLongCompressed(LongEncoding longEncoding) {
     this.longEncoding = Objects.requireNonNull(longEncoding);
+    return this;
+  }
+
+  /** Whether compress int arrays when values are small. */
+  public ForyBuilder withIntArrayCompressed(boolean intArrayCompressed) {
+    this.compressIntArray = intArrayCompressed;
+    return this;
+  }
+
+  /** Whether compress long arrays when values are small. */
+  public ForyBuilder withLongArrayCompressed(boolean longArrayCompressed) {
+    this.compressLongArray = longArrayCompressed;
     return this;
   }
 
