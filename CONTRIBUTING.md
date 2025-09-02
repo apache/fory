@@ -119,7 +119,9 @@ gofmt -s -w .
 
 ```bash
 cd rust
-cargo fmt
+cargo fmt --all
+# lint
+cargo clippy --workspace --all-features --all-targets -- -D warnings
 ```
 
 ### JavaScript
