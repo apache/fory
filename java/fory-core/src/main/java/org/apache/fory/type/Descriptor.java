@@ -462,7 +462,8 @@ public class Descriptor {
       for (Method method : clazz.getMethods()) {
         if (method.getParameterCount() == 0
             && method.getReturnType() != void.class
-            && !Modifier.isStatic(method.getModifiers())) {
+            && !Modifier.isStatic(method.getModifiers())
+            && !method.isAnnotationPresent(Ignore.class)) {
           descriptorMap.put(method, new Descriptor(method));
         }
       }

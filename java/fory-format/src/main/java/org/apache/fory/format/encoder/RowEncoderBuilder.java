@@ -22,10 +22,14 @@ package org.apache.fory.format.encoder;
 import static org.apache.fory.type.TypeUtils.CLASS_TYPE;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
+import java.lang.invoke.MethodType;
+import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.SortedMap;
 import org.apache.arrow.vector.types.pojo.Field;
@@ -335,11 +339,19 @@ public class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     implClass.implementsInterfaces(implClass.type(beanClass));
     implClass.addField(true, implClass.type(BinaryRow.class), "row", null);
 
+    Map<String, Map<MethodType, Method>> methodsNeedingImpl = new HashMap<>();
+    for (Method m : beanClass.getMethods()) {
+      methodsNeedingImpl
+          .computeIfAbsent(m.getName(), x -> new HashMap<>())
+          .put(MethodType.methodType(m.getReturnType(), m.getParameterTypes()), m);
+    }
+
     int numFields = schema.getFields().size();
     for (int i = 0; i < numFields; i++) {
       Literal ordinal = Literal.ofInt(i);
       Descriptor d = getDescriptorByFieldName(schema.getFields().get(i).getName());
       TypeRef<?> fieldType = d.getTypeRef();
+      Class<?> rawFieldType = fieldType.getRawType();
 
       Expression.Reference decodeValue =
           new Expression.Reference(decodeMethodName(i) + "(row)", fieldType);
@@ -348,7 +360,6 @@ public class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
         getterImpl = new Expression.Return(decodeValue);
       } else {
         String fieldName = "f" + i + "_" + d.getName();
-        Class<?> rawFieldType = fieldType.getRawType();
         implClass.addField(false, ctx.type(rawFieldType), fieldName, nullValue(fieldType));
 
         Expression fieldRef = new Expression.Reference(fieldName, fieldType, true);
@@ -381,11 +392,33 @@ public class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
         }
         getterImpl = new Expression.ListExpression(assigner, new Expression.Return(fieldRef));
       }
+      methodsNeedingImpl
+          .getOrDefault(d.getName(), new HashMap<>())
+          .remove(MethodType.methodType(rawFieldType));
       implClass.addMethod(
           d.getName(), getterImpl.genCode(implClass).code(), fieldType.getRawType());
     }
     // Note: adding constructor captures init code, so must happen after all fields are collected
     implClass.addConstructor("this.row = row;", BinaryRow.class, "row");
+
+    methodsNeedingImpl.forEach(
+        (methodName, signatures) ->
+            signatures.forEach(
+                (methodType, method) -> {
+                  if (method.isDefault()) {
+                    return;
+                  }
+                  Object[] params = new Object[methodType.parameterCount() * 2];
+                  for (int i = 0; i < methodType.parameterCount(); i++) {
+                    params[i * 2] = methodType.parameterType(i);
+                    params[i * 2 + 1] = "unused" + i;
+                  }
+                  implClass.addMethod(
+                      methodName,
+                      "throw new UnsupportedOperationException();",
+                      methodType.returnType(),
+                      params);
+                }));
 
     return implClass;
   }
