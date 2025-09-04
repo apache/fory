@@ -37,6 +37,10 @@ import org.apache.fory.config.Config;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.config.LongEncoding;
+import org.apache.fory.exception.CopyException;
+import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.ForyException;
+import org.apache.fory.exception.SerializationException;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.logging.Logger;
@@ -327,8 +331,8 @@ public final class Fory implements BaseFory {
         xwrite(buffer, obj);
       }
       return buffer;
-    } catch (StackOverflowError t) {
-      throw processStackOverflowError(t);
+    } catch (Throwable t) {
+      throw processSerializationError(t);
     } finally {
       resetWrite();
       jitContext.unlock();
@@ -345,7 +349,7 @@ public final class Fory implements BaseFory {
     serializeToStream(outputStream, buf -> serialize(buf, obj, callback));
   }
 
-  private StackOverflowError processStackOverflowError(StackOverflowError e) {
+  private ForyException processSerializationError(Throwable e) {
     if (!refTracking) {
       String msg =
           "Object may contain circular references, please enable ref tracking "
@@ -354,25 +358,27 @@ public final class Fory implements BaseFory {
       if (StringUtils.isNotBlank(rawMessage)) {
         msg += ": " + rawMessage;
       }
-      StackOverflowError t1 = ExceptionUtils.trySetStackOverflowErrorMessage(e, msg);
-      if (t1 != null) {
-        return t1;
+      if (e instanceof StackOverflowError) {
+        e = ExceptionUtils.trySetStackOverflowErrorMessage((StackOverflowError) e, msg);
       }
     }
-    throw e;
+    if (!(e instanceof ForyException)) {
+      e = new SerializationException(e);
+    }
+    throw (ForyException) e;
   }
 
-  private StackOverflowError processCopyStackOverflowError(StackOverflowError e) {
+  private ForyException processCopyError(Throwable e) {
     if (!copyRefTracking) {
       String msg =
           "Object may contain circular references, please enable ref tracking "
               + "by `ForyBuilder#withRefCopy(true)`";
-      StackOverflowError t1 = ExceptionUtils.trySetStackOverflowErrorMessage(e, msg);
-      if (t1 != null) {
-        return t1;
-      }
+      e = ExceptionUtils.trySetStackOverflowErrorMessage((StackOverflowError) e, msg);
     }
-    throw e;
+    if (!(e instanceof ForyException)) {
+      throw new CopyException(e);
+    }
+    throw (ForyException) e;
   }
 
   public MemoryBuffer getBuffer() {
@@ -1188,8 +1194,8 @@ public final class Fory implements BaseFory {
           writeData(buffer, classInfo, obj);
         }
       }
-    } catch (StackOverflowError t) {
-      throw processStackOverflowError(t);
+    } catch (Throwable t) {
+      throw processSerializationError(t);
     } finally {
       resetWrite();
       jitContext.unlock();
@@ -1304,8 +1310,8 @@ public final class Fory implements BaseFory {
         throwDepthSerializationException();
       }
       write(buffer, obj);
-    } catch (StackOverflowError t) {
-      throw processStackOverflowError(t);
+    } catch (Throwable t) {
+      throw processSerializationError(t);
     } finally {
       resetWrite();
       jitContext.unlock();
@@ -1384,8 +1390,8 @@ public final class Fory implements BaseFory {
   public <T> T copy(T obj) {
     try {
       return copyObject(obj);
-    } catch (StackOverflowError e) {
-      throw processCopyStackOverflowError(e);
+    } catch (Throwable e) {
+      throw processCopyError(e);
     } finally {
       if (copyRefTracking) {
         resetCopy();
@@ -1550,7 +1556,7 @@ public final class Fory implements BaseFory {
         }
         outputStream.flush();
       } catch (IOException e) {
-        throw new RuntimeException(e);
+        throw new SerializationException(e);
       } finally {
         resetBuffer();
       }
@@ -1606,7 +1612,7 @@ public final class Fory implements BaseFory {
 
   private void throwDepthSerializationException() {
     String method = "Fory#" + (crossLanguage ? "x" : "") + "writeXXX";
-    throw new IllegalStateException(
+    throw new SerializationException(
         String.format(
             "Nested call Fory.serializeXXX is not allowed when serializing, Please use %s instead",
             method));
@@ -1614,7 +1620,7 @@ public final class Fory implements BaseFory {
 
   private void throwDepthDeserializationException() {
     String method = "Fory#" + (crossLanguage ? "x" : "") + "readXXX";
-    throw new IllegalStateException(
+    throw new DeserializationException(
         String.format(
             "Nested call Fory.deserializeXXX is not allowed when deserializing, Please use %s instead",
             method));

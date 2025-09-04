@@ -61,6 +61,7 @@ import org.apache.fory.config.Language;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.InsecureException;
+import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
@@ -415,7 +416,8 @@ public class ForyTest extends ForyTestBase {
     serDe(fory, ByteBuffer.allocate(32));
     serDe(fory, ByteBuffer.allocateDirect(32));
     assertThrows(InsecureException.class, () -> fory.serialize(new Thread()));
-    assertThrows(UnsupportedOperationException.class, () -> fory.serialize(MethodHandles.lookup()));
+    assertThrowsCause(
+        UnsupportedOperationException.class, () -> fory.serialize(MethodHandles.lookup()));
   }
 
   @Test
@@ -478,7 +480,7 @@ public class ForyTest extends ForyTestBase {
   @Test
   public void testExposeFields2() {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
-    assertThrows(RuntimeException.class, () -> serDe(fory, new ExposeFields2(1, 2, 3)));
+    assertThrowsCause(RuntimeException.class, () -> serDe(fory, new ExposeFields2(1, 2, 3)));
   }
 
   @Test(timeOut = 60_000)
@@ -565,9 +567,10 @@ public class ForyTest extends ForyTestBase {
     Fory fory = Fory.builder().withRefTracking(false).requireClassRegistration(false).build();
     try {
       fory.serialize(a);
-      throw new IllegalStateException("StackOverflowError not raised.");
-    } catch (StackOverflowError e) {
-      Assert.assertTrue(e.getMessage().contains("reference"));
+      throw new IllegalStateException("SerializationException not raised.");
+    } catch (SerializationException e) {
+      Throwable ex = e.getCause();
+      Assert.assertTrue(ex.getMessage().contains("reference"));
     }
   }
 

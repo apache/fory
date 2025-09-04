@@ -32,6 +32,7 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.meta.ClassDef;
 import org.apache.fory.reflect.FieldAccessor;
+import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.ClassResolver;
@@ -363,13 +364,19 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
       try {
         TypeResolver resolver =
             fory.isCrossLanguage() ? fory.getXtypeResolver() : fory.getClassResolver();
-        ClassInfo classInfo = resolver.getClassInfo(typeRef.getRawType());
-        int xtypeId = classInfo.getXtypeId();
-        if (Types.isStructType((byte) xtypeId)) {
-          id =
-              TypeUtils.computeStringHash(classInfo.decodeNamespace() + classInfo.decodeTypeName());
+        Class<?> cls = typeRef.getRawType();
+        if (ReflectionUtils.isAbstract(cls) || cls.isInterface()) {
+          id = 0;
         } else {
-          id = Math.abs(xtypeId);
+          ClassInfo classInfo = resolver.getClassInfo(typeRef.getRawType());
+          int xtypeId = classInfo.getXtypeId();
+          if (Types.isStructType((byte) xtypeId)) {
+            id =
+                TypeUtils.computeStringHash(
+                    classInfo.decodeNamespace() + classInfo.decodeTypeName());
+          } else {
+            id = Math.abs(xtypeId);
+          }
         }
       } catch (Exception e) {
         id = 0;

@@ -21,6 +21,7 @@ package org.apache.fory.exception;
 
 import java.util.List;
 
+/** Exception thrown when a deserialization operation fails. */
 public class DeserializationException extends ForyException {
 
   private List<Object> readObjects;

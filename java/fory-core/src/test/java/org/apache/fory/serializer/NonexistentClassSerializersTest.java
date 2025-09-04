@@ -376,6 +376,6 @@ public class NonexistentClassSerializersTest extends ForyTestBase {
             .withClassLoader(classLoader)
             .build();
     byte[] bytes = fory.serialize(pojo);
-    Assert.assertThrows(RuntimeException.class, () -> fory2.deserialize(bytes));
+    assertThrowsCause(RuntimeException.class, () -> fory2.deserialize(bytes));
   }
 }

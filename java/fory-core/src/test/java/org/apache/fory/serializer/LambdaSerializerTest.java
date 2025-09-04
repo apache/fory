@@ -21,7 +21,6 @@ package org.apache.fory.serializer;
 
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertSame;
-import static org.testng.Assert.assertThrows;
 import static org.testng.Assert.assertTrue;
 
 import java.io.Serializable;
@@ -81,7 +80,7 @@ public class LambdaSerializerTest extends ForyTestBase {
   public void testLambdaUnserializableMsg() {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
     Function<Object, String> function = String::valueOf;
-    assertThrows(UnsupportedOperationException.class, () -> fory.serialize(function));
+    assertThrowsCause(UnsupportedOperationException.class, () -> fory.serialize(function));
     try {
       fory.serialize(function);
     } catch (Exception e) {

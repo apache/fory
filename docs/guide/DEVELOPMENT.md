@@ -135,3 +135,7 @@ prettier --write "**/*.md"
 
 - node 14+
 - npm 8+
+
+## Contributing
+
+For more information, please refer to [How to contribute to Fory](https://github.com/apache/fory/blob/main/CONTRIBUTING.md).

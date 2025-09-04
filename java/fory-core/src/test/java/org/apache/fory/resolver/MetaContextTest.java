@@ -79,7 +79,7 @@ public class MetaContextTest extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(bytes1), o);
     fory.getSerializationContext().setMetaContext(new MetaContext());
     Assert.assertEquals(fory.serialize(o), bytes);
-    Assert.assertThrows(AssertionError.class, () -> fory.serialize(o));
+    assertThrowsCause(AssertionError.class, () -> fory.serialize(o));
   }
 
   // final InnerPojo will be taken as non-final for writing class def.

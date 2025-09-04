@@ -56,8 +56,8 @@ impl<T1: Serializer + Eq + std::hash::Hash, T2: Serializer> Serializer for HashM
         mem::size_of::<i32>()
     }
 
-    fn get_type_id(_fory: &Fory) -> i16 {
-        TypeId::MAP.into()
+    fn get_type_id(_fory: &Fory) -> u32 {
+        TypeId::MAP as u32
     }
 }
 

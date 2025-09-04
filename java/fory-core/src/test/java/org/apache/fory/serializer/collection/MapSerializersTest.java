@@ -97,7 +97,7 @@ public class MapSerializersTest extends ForyTestBase {
     byte[] bytes2 = fory.serialize(data);
     Assert.assertTrue(bytes1.length > bytes2.length);
     fory.getGenerics().popGenericType();
-    Assert.assertThrows(RuntimeException.class, () -> fory.deserialize(bytes2));
+    assertThrowsCause(RuntimeException.class, () -> fory.deserialize(bytes2));
 
     // testSortedMap
     Map<String, Integer> treeMap = new TreeMap<>(ImmutableMap.of("a", 1, "b", 2));
@@ -107,7 +107,7 @@ public class MapSerializersTest extends ForyTestBase {
     byte[] sortMapBytes2 = fory.serialize(treeMap);
     Assert.assertTrue(sortMapBytes1.length > sortMapBytes2.length);
     fory.getGenerics().popGenericType();
-    Assert.assertThrows(RuntimeException.class, () -> fory.deserialize(sortMapBytes2));
+    assertThrowsCause(RuntimeException.class, () -> fory.deserialize(sortMapBytes2));
 
     // testTreeMap
     TreeMap<String, String> map =
@@ -260,7 +260,7 @@ public class MapSerializersTest extends ForyTestBase {
     byte[] bytes2 = fory.serialize(data);
     Assert.assertTrue(bytes1.length > bytes2.length);
     fory.getGenerics().popGenericType();
-    Assert.assertThrows(RuntimeException.class, () -> fory.deserialize(bytes2));
+    assertThrowsCause(RuntimeException.class, () -> fory.deserialize(bytes2));
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
@@ -278,7 +278,7 @@ public class MapSerializersTest extends ForyTestBase {
     byte[] bytes2 = fory.serialize(data);
     Assert.assertTrue(bytes1.length > bytes2.length);
     fory.getGenerics().popGenericType();
-    Assert.assertThrows(RuntimeException.class, () -> fory.deserialize(bytes2));
+    assertThrowsCause(RuntimeException.class, () -> fory.deserialize(bytes2));
   }
 
   @Test(dataProvider = "foryCopyConfig")

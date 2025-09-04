@@ -31,7 +31,7 @@ where
         context.writer.var_int32(self.len() as i32);
         context
             .writer
-            .reserve((<Self as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE) * self.len());
+            .reserve((<T as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE) * self.len());
         for item in self.iter() {
             item.serialize(context);
         }
@@ -50,8 +50,8 @@ where
         mem::size_of::<u32>()
     }
 
-    fn get_type_id(_fory: &Fory) -> i16 {
-        TypeId::ARRAY.into()
+    fn get_type_id(_fory: &Fory) -> u32 {
+        TypeId::ARRAY as u32
     }
 }
 

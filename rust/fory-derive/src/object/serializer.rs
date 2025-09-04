@@ -22,19 +22,29 @@ use quote::quote;
 
 pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
-    let (type_def_token_stream, write_token_stream, read_token_stream) = match &ast.data {
+    let (
+        type_def_token_stream,
+        write_token_stream,
+        read_token_stream,
+        read_compatible_token_stream,
+        read_nullable_token_stream,
+    ) = match &ast.data {
         syn::Data::Struct(s) => {
             let fields = sorted_fields(&s.fields);
             (
                 misc::gen_in_struct_impl(&fields),
                 write::gen(&fields),
-                read::gen(&fields),
+                read::gen(&fields, name),
+                read::gen_read_compatible(&fields, name),
+                read::gen_nullable(&fields),
             )
         }
         syn::Data::Enum(s) => (
             derive_enum::gen_type_def(s),
             derive_enum::gen_write(s),
             derive_enum::gen_read(s),
+            quote! {},
+            quote! {},
         ),
         syn::Data::Union(_) => {
             panic!("Union is not supported")
@@ -52,6 +62,10 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
             #misc_token_stream
             #write_token_stream
             #read_token_stream
+        }
+        impl #name {
+            #read_compatible_token_stream
+            #read_nullable_token_stream
         }
     };
     gen.into()

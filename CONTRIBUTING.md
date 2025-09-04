@@ -119,7 +119,9 @@ gofmt -s -w .
 
 ```bash
 cd rust
-cargo fmt
+cargo fmt --all
+# lint
+cargo clippy --workspace --all-features --all-targets -- -D warnings
 ```
 
 ### JavaScript
@@ -194,6 +196,20 @@ sudo flamegraph.pl out.folded > out.svg
 bazel run :refresh_compile_commands
 ```
 
+## How to use Jetbrains IDEA IDE for Java Development
+
+Apache Fory Java development is based on Java 11+, and different modules are built with different Java versions.
+
+For example, the `fory-core` module is built with Java 8, and the `fory-format` module is built with Java 11.
+
+To use Jetbrains IDEA IDE for Java Development, you need to configure the project SDK and module SDK to using JDK 11+.
+
+And due to the usage of `sun.misc.Unsafe` API, which is not visible in Java 11+, you need to configure java compiler with `--releaese` option disabled.
+
+<div align="center">
+  <img width="65%" alt="" src="docs/images/idea_jdk11.png"><br>
+</div>
+
 ## Website
 
 Fory's website consists of static pages hosted at https://github.com/apache/fory-site.
@@ -201,3 +217,7 @@ Fory's website consists of static pages hosted at https://github.com/apache/fory
 All updates about docs under [guide](docs/guide) and [benchmarks](docs/benchmarks) will be synced to the site repo automatically.
 
 If you want write a blog, or update other contents about the website, please submit PR to the site repo.
+
+## Development
+
+For more information, please refer to [Development Guide](https://fory.apache.org/docs/docs/guide/development).

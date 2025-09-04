@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use fory_core::fory::Fory;
 use fory_derive::Fory;
 // use std::any::Any;
+use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use std::collections::HashMap;
 
 // RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_complex_struct

@@ -1431,6 +1431,7 @@ public class ClassResolver implements TypeResolver {
         Tuple2<ClassDef, ClassInfo> classDefTuple = extRegistry.classIdToDef.get(classDef.getId());
         // empty serializer for graalvm build time
         classDefTuple.f1.serializer = null;
+        classInfoCache = NIL_CLASS_INFO;
         extRegistry.classIdToDef.put(classDef.getId(), Tuple2.of(classDefTuple.f0, null));
       }
     }
@@ -1440,6 +1441,7 @@ public class ClassResolver implements TypeResolver {
           .serializerClassMap
           .put(cls, getGraalvmSerializerClass(classInfo.serializer));
       classInfo.serializer = null;
+      classInfoCache = NIL_CLASS_INFO;
     }
   }
 
@@ -2245,6 +2247,7 @@ public class ClassResolver implements TypeResolver {
               }
             });
       }
+      classInfoCache = NIL_CLASS_INFO;
     } finally {
       fory.getJITContext().unlock();
     }

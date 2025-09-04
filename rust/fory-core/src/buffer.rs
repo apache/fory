@@ -115,6 +115,40 @@ impl Writer {
         }
     }
 
+    pub fn var_uint32(&mut self, value: u32) {
+        if value >> 7 == 0 {
+            self.u8(value as u8);
+        } else if value >> 14 == 0 {
+            let u1 = (value & 0x7F) | 0x80;
+            let u2 = value >> 7;
+            self.u16(((u2 << 8) | u1) as u16);
+        } else if value >> 21 == 0 {
+            let u1 = (value & 0x7F) | 0x80;
+            let u2 = ((value >> 7) & 0x7F) | 0x80;
+            let u3 = value >> 14;
+            self.u8(u1 as u8);
+            self.u8(u2 as u8);
+            self.u8(u3 as u8);
+        } else if value >> 28 == 0 {
+            let u1 = (value & 0x7F) | 0x80;
+            let u2 = ((value >> 7) & 0x7F) | 0x80;
+            let u3 = ((value >> 14) & 0x7F) | 0x80;
+            let u4 = value >> 21;
+            self.u32((u4 << 24) | (u3 << 16) | (u2 << 8) | u1);
+        } else {
+            let u1 = (value & 0x7F) | 0x80;
+            let u2 = ((value >> 7) & 0x7F) | 0x80;
+            let u3 = ((value >> 14) & 0x7F) | 0x80;
+            let u4 = ((value >> 21) & 0x7F) | 0x80;
+            let u5 = value >> 28;
+            self.u8(u1 as u8);
+            self.u8(u2 as u8);
+            self.u8(u3 as u8);
+            self.u8(u4 as u8);
+            self.u8(u5 as u8);
+        }
+    }
+
     pub fn bytes(&mut self, v: &[u8]) {
         self.reserve(v.len());
         self.bf.extend_from_slice(v);
@@ -220,6 +254,28 @@ impl<'bf> Reader<'bf> {
                     result |= (byte_ & 0x7F) << 21;
                     if (byte_ & 0x80) != 0 {
                         byte_ = self.i8() as i32;
+                        result |= (byte_ & 0x7F) << 28;
+                    }
+                }
+            }
+        }
+        result
+    }
+
+    pub fn var_uint32(&mut self) -> u32 {
+        let mut byte_ = self.i8() as u32;
+        let mut result = byte_ & 0x7F;
+        if (byte_ & 0x80) != 0 {
+            byte_ = self.i8() as u32;
+            result |= (byte_ & 0x7F) << 7;
+            if (byte_ & 0x80) != 0 {
+                byte_ = self.i8() as u32;
+                result |= (byte_ & 0x7F) << 14;
+                if (byte_ & 0x80) != 0 {
+                    byte_ = self.i8() as u32;
+                    result |= (byte_ & 0x7F) << 21;
+                    if (byte_ & 0x80) != 0 {
+                        byte_ = self.i8() as u32;
                         result |= (byte_ & 0x7F) << 28;
                     }
                 }

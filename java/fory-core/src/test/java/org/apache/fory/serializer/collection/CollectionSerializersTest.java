@@ -158,7 +158,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     Assert.assertTrue(bytes1.length > bytes2.length);
     assertEquals(fory.deserialize(bytes2), data);
     fory.getGenerics().popGenericType();
-    Assert.assertThrows(RuntimeException.class, () -> fory.deserialize(bytes2));
+    assertThrowsCause(RuntimeException.class, () -> fory.deserialize(bytes2));
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
@@ -191,7 +191,7 @@ public class CollectionSerializersTest extends ForyTestBase {
     byte[] bytes2 = fory.serialize(data);
     Assert.assertTrue(bytes1.length > bytes2.length);
     fory.getGenerics().popGenericType();
-    Assert.assertThrows(RuntimeException.class, () -> fory.deserialize(bytes2));
+    assertThrowsCause(RuntimeException.class, () -> fory.deserialize(bytes2));
   }
 
   @Test(dataProvider = "foryCopyConfig")

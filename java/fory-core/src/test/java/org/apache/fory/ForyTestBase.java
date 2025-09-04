@@ -44,6 +44,7 @@ import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.serializer.BufferObject;
 import org.testng.Assert;
+import org.testng.Assert.ThrowingRunnable;
 import org.testng.annotations.DataProvider;
 
 /** Fory unit test base class. */
@@ -426,5 +427,27 @@ public abstract class ForyTestBase {
     long offset = ReflectionUtils.getFieldOffset(Fory.class, "depth");
     int depth = Platform.getInt(fory, offset);
     Platform.putInt(fory, offset, depth + diff);
+  }
+
+  public static <T extends Throwable> void assertThrowsCause(
+      Class<T> throwableClass, ThrowingRunnable runnable) {
+    try {
+      runnable.run();
+    } catch (Throwable t) {
+      Throwable cause = t.getCause();
+      Assert.assertNotNull(cause);
+      if (throwableClass.isInstance(cause)) {
+        return;
+      } else {
+        throw new AssertionError(
+            String.format(
+                "Expected %s to be thrown, but %s was thrown",
+                throwableClass.getSimpleName(), cause.getClass().getSimpleName()),
+            cause);
+      }
+    }
+    throw new AssertionError(
+        String.format(
+            "Expected %s to be thrown, but nothing was thrown", throwableClass.getSimpleName()));
   }
 }

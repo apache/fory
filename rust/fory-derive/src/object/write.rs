@@ -44,10 +44,8 @@ pub fn gen(fields: &[&Field]) -> TokenStream {
                 },
                 fory_core::types::Mode::Compatible => {
                     context.writer.i8(fory_core::types::RefFlag::NotNullValue as i8);
-                    let meta_index = context.push_meta(
-                            std::any::TypeId::of::<Self>()
-                        ) as i16;
-                    context.writer.i16(meta_index);
+                    let type_id = Self::get_type_id(context.get_fory());
+                    context.writer.var_uint32(type_id);
                     self.write(context);
                 }
             }
@@ -55,6 +53,9 @@ pub fn gen(fields: &[&Field]) -> TokenStream {
 
 
         fn write(&self, context: &mut fory_core::resolver::context::WriteContext) {
+            let _meta_index = context.push_meta(
+                std::any::TypeId::of::<Self>()
+            ) as i16;
             // write fields
             #(#accessor_expr)*
         }

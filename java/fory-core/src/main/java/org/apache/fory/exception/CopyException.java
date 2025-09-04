@@ -17,14 +17,20 @@
  * under the License.
  */
 
-package org.apache.fory.annotation;
+package org.apache.fory.exception;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
+/** Exception thrown when a copy operation fails. */
+public class CopyException extends ForyException {
 
-/** Ignore properties just like transient. */
-@Retention(RetentionPolicy.RUNTIME)
-@Target({ElementType.FIELD, ElementType.METHOD})
-public @interface Ignore {}
+  public CopyException(String message) {
+    super(message);
+  }
+
+  public CopyException(Throwable cause) {
+    super(cause);
+  }
+
+  public CopyException(String message, Throwable cause) {
+    super(message, cause);
+  }
+}
