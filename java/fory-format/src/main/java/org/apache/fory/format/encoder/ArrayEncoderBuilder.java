@@ -31,7 +31,6 @@ import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.ExpressionUtils;
 import org.apache.fory.format.row.binary.BinaryArray;
-import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -104,13 +103,13 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
             "arrayWriter",
             ROOT_ARRAY_WRITER_NAME,
             "arrayWriterType",
-            ctx.type(BinaryArrayWriter.class),
+            arrayWriterType(),
             "fory",
             FORY_NAME,
             "foryType",
             ctx.type(Fory.class));
     ctx.addField(ctx.type(Field.class), FIELD_NAME);
-    ctx.addField(ctx.type(BinaryArrayWriter.class), ROOT_ARRAY_WRITER_NAME);
+    ctx.addField(ctx.type(arrayWriterType()), ROOT_ARRAY_WRITER_NAME);
     ctx.addField(ctx.type(Fory.class), FORY_NAME);
 
     Expression encodeExpr = buildEncodeExpression();
@@ -136,7 +135,7 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
   @Override
   public Expression buildEncodeExpression() {
     Expression.Reference arrayWriter =
-        new Expression.Reference(ROOT_ARRAY_WRITER_NAME, arrayWriterTypeToken, false);
+        new Expression.Reference(ROOT_ARRAY_WRITER_NAME, arrayWriterType(), false);
     Expression.ListExpression expressions = new Expression.ListExpression();
 
     Expression.Reference inputObject =
@@ -148,7 +147,7 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
 
     Expression.Reference fieldExpr = new Expression.Reference(FIELD_NAME, ARROW_FIELD_TYPE, false);
     Expression listExpression =
-        serializeForArrayByWriter(array, arrayWriter, arrayToken, fieldExpr);
+        serializeForArrayByWriter(array, arrayWriter, arrayToken, null, fieldExpr);
 
     expressions.add(listExpression);
 
