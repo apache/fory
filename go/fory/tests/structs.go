@@ -15,8 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package codegen_tests
+package fory
 
+//fory:gen
 // ValidationDemo is a simple struct for testing code generation
 // Contains only basic types since PR1 only supports basic types
 type ValidationDemo struct {

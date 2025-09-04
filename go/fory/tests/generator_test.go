@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package codegen_tests
+package fory
 
 import (
 	"testing"
@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//go:generate go run ../codegen/forygen.go -pkg . -type "ValidationDemo"
+//go:generate fory -file structs.go
 
 func TestValidationDemo(t *testing.T) {
 	// 1. Create test instance
