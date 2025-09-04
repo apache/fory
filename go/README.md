@@ -43,7 +43,7 @@ Ensure $GOBIN or $GOPATH/bin is on your PATH so that `fory` is discoverable by `
 
 ### Usage: annotate and generate
 
-1) Mark structs for generation with `//fory:gen`, and add a `go:generate` directive. File-based generation is recommended.
+1. Mark structs for generation with `//fory:gen`, and add a `go:generate` directive. File-based generation is recommended.
 
 ```go
 package yourpkg
@@ -65,7 +65,7 @@ go generate
 
 The generator will create `structs_fory_gen.go` next to your source file and register serializers in init().
 
-2) Explicit types (legacy mode) are also supported:
+2. Explicit types (legacy mode) are also supported:
 
 ```bash
 fory -pkg ./models -type "User,Order"
