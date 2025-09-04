@@ -27,7 +27,7 @@ The generator binary is `fory`.
 go install github.com/apache/fory/go/fory/cmd/fory@latest
 ```
 
-- Go 1.13–1.15:
+- Go 1.13+
 
 ```bash
 # Inside a module-enabled environment
