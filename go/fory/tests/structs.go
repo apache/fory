@@ -17,9 +17,10 @@
 
 package fory
 
-//fory:gen
 // ValidationDemo is a simple struct for testing code generation
 // Contains only basic types since PR1 only supports basic types
+
+// fory:gen
 type ValidationDemo struct {
 	A int32  `json:"a"` // int32 field
 	B string `json:"b"` // string field

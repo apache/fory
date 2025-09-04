@@ -4,7 +4,6 @@ Fory is a blazingly fast multi-language serialization framework powered by just-
 
 Currently, Fory Go is implemented using reflection. We have also implemented a static code generator to generate serializer code ahead of time to speed up serialization.
 
-
 ## Fory Go Codegen (optional)
 
 This repository includes an optional ahead-of-time (AOT) code generator for Fory. The runtime reflection-based path continues to work; codegen exists to provide additional performance, type safety and zero-reflection overhead for hot paths. You can adopt it incrementally, per package or per file.
@@ -75,6 +74,7 @@ fory -pkg ./models -type "User,Order"
 ### When to re-run `go generate`
 
 Re-run generation whenever any of the following change for generated structs:
+
 - Field additions/removals/renames
 - Field type changes or tag changes
 - New structs annotated with `//fory:gen`
