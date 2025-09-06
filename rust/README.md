@@ -210,6 +210,12 @@ Fory is designed to work across multiple programming languages, making it ideal 
 - **Data pipelines** spanning multiple language ecosystems
 - **API communication** between different technology stacks
 
+## Benchmark
+
+```bash
+cargo bench --package fory-benchmarks
+```
+
 ## 🛠️ Development Status
 
 Fory Rust implementation roadmap:
