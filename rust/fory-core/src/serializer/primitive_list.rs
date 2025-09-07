@@ -21,76 +21,60 @@ use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
 use crate::types::TypeId;
-use std::mem;
-
-pub fn to_u8_slice<T>(slice: &[T]) -> &[u8] {
-    let byte_len = std::mem::size_of_val(slice);
-    unsafe { std::slice::from_raw_parts(slice.as_ptr().cast::<u8>(), byte_len) }
-}
 
 macro_rules! impl_primitive_vec {
-    ($name: ident, $ty:tt, $field_type: expr) => {
+    ($name:ident, $ty:ty, $field_type:expr) => {
         impl Serializer for Vec<$ty> {
             fn write(&self, context: &mut WriteContext) {
-                context.writer.var_int32(self.len() as i32);
-                context.writer.reserve(self.len() * mem::size_of::<$ty>());
-                context.writer.bytes(to_u8_slice(self));
-            }
+                let len_bytes = self.len() * std::mem::size_of::<$ty>();
+                context.writer.var_uint32(len_bytes as u32);
+                context.writer.reserve(len_bytes);
 
-            fn read(context: &mut ReadContext) -> Result<Self, Error> {
-                // length
-                let len = (context.reader.var_int32() as usize);
-                let is_aligned = context.reader.aligned::<$ty>();
-                if is_aligned {
-                    let slice = context.reader.bytes(len * mem::size_of::<$ty>());
-                    Ok(
-                        unsafe { std::slice::from_raw_parts(slice.as_ptr().cast::<$ty>(), len) }
-                            .to_vec(),
-                    )
-                } else {
-                    let mut result = Vec::with_capacity(len);
-                    for _i in 0..len {
-                        result.push(context.reader.$name());
+                if !self.is_empty() {
+                    unsafe {
+                        let ptr = self.as_ptr() as *const u8;
+                        let slice = std::slice::from_raw_parts(ptr, len_bytes);
+                        context.writer.bytes(slice);
                     }
-                    Ok(result)
                 }
             }
 
+            fn read(context: &mut ReadContext) -> Result<Self, Error> {
+                let size_bytes = context.reader.var_uint32() as usize;
+
+                if size_bytes % std::mem::size_of::<$ty>() != 0 {
+                    panic!("Invalid data length");
+                }
+
+                let len = size_bytes / std::mem::size_of::<$ty>();
+
+                let mut vec: Vec<$ty> = Vec::with_capacity(len);
+
+                unsafe {
+                    let dst_ptr = vec.as_mut_ptr() as *mut u8;
+                    let src = context.reader.bytes(size_bytes);
+                    std::ptr::copy_nonoverlapping(src.as_ptr(), dst_ptr, size_bytes);
+                    vec.set_len(len);
+                }
+
+                Ok(vec)
+            }
+
             fn reserved_space() -> usize {
-                mem::size_of::<i32>()
+                std::mem::size_of::<$ty>()
             }
 
             fn get_type_id(_fory: &Fory) -> u32 {
-                ($field_type) as u32
+                $field_type as u32
             }
         }
     };
 }
 
-impl Serializer for Vec<bool> {
-    fn write(&self, context: &mut WriteContext) {
-        context.writer.var_int32(self.len() as i32);
-        context.writer.bytes(to_u8_slice(self));
-    }
-
-    fn reserved_space() -> usize {
-        mem::size_of::<u8>()
-    }
-
-    fn get_type_id(_fory: &Fory) -> u32 {
-        TypeId::ForyPrimitiveBoolArray as u32
-    }
-
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
-        let size = context.reader.var_int32();
-        let bytes = context.reader.bytes(size as usize).to_vec();
-        Ok(unsafe { mem::transmute::<Vec<u8>, Vec<bool>>(bytes) })
-    }
-}
-
+impl_primitive_vec!(bool, bool, TypeId::BOOL_ARRAY);
 impl_primitive_vec!(u8, u8, TypeId::BINARY);
-impl_primitive_vec!(i16, i16, TypeId::ForyPrimitiveShortArray);
-impl_primitive_vec!(i32, i32, TypeId::ForyPrimitiveIntArray);
-impl_primitive_vec!(i64, i64, TypeId::ForyPrimitiveLongArray);
-impl_primitive_vec!(f32, f32, TypeId::ForyPrimitiveFloatArray);
-impl_primitive_vec!(f64, f64, TypeId::ForyPrimitiveDoubleArray);
+impl_primitive_vec!(i16, i16, TypeId::INT16_ARRAY);
+impl_primitive_vec!(i32, i32, TypeId::INT32_ARRAY);
+impl_primitive_vec!(i64, i64, TypeId::INT64_ARRAY);
+impl_primitive_vec!(f32, f32, TypeId::FLOAT32_ARRAY);
+impl_primitive_vec!(f64, f64, TypeId::FLOAT64_ARRAY);

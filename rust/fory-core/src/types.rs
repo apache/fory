@@ -83,14 +83,7 @@ pub enum TypeId {
     ARROW_RECORD_BATCH = 38,
     ARROW_TABLE = 39,
     UNKNOWN = 63,
-    ForyTypeTag = 256,
-    ForyPrimitiveBoolArray = 258,
-    ForyPrimitiveShortArray = 259,
-    ForyPrimitiveIntArray = 260,
-    ForyPrimitiveLongArray = 261,
-    ForyPrimitiveFloatArray = 262,
-    ForyPrimitiveDoubleArray = 263,
-    ForyStringArray = 264,
+    ForyAny = 256,
     // only used at receiver peer
     ForyOption = 265,
 }
@@ -112,7 +105,7 @@ pub fn compute_string_hash(s: &str) -> u32 {
     hash as u32
 }
 
-pub const BASIC_TYPES: [TypeId; 10] = [
+pub const BASIC_TYPES: [TypeId; 17] = [
     TypeId::BOOL,
     TypeId::INT8,
     TypeId::INT16,
@@ -123,6 +116,13 @@ pub const BASIC_TYPES: [TypeId; 10] = [
     TypeId::STRING,
     TypeId::LOCAL_DATE,
     TypeId::TIMESTAMP,
+    TypeId::BOOL_ARRAY,
+    TypeId::BINARY,
+    TypeId::INT16_ARRAY,
+    TypeId::INT32_ARRAY,
+    TypeId::INT64_ARRAY,
+    TypeId::FLOAT32_ARRAY,
+    TypeId::FLOAT64_ARRAY,
 ];
 
 pub const BASIC_TYPE_NAMES: [&str; 10] = [
@@ -213,3 +213,5 @@ impl TryFrom<u8> for Language {
 
 // every object start with i8 i16 reference flag and type flag
 pub const SIZE_OF_REF_AND_TYPE: usize = mem::size_of::<i8>() + mem::size_of::<i16>();
+
+pub const MAGIC_NUMBER: u16 = 0x62d4;

@@ -74,6 +74,10 @@ impl<'a> MetaWriterResolver<'a> {
         Ok(())
     }
 
+    pub fn empty(&mut self) -> bool {
+        self.type_defs.is_empty()
+    }
+
     pub fn reset(&mut self) {
         self.type_defs.clear();
     }

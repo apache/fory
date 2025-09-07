@@ -39,7 +39,7 @@ static ENCODING_OPTIONS: &[Encoding] = &[
     Encoding::LowerUpperDigitSpecial,
 ];
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, Eq, Clone)]
 pub struct FieldType {
     pub type_id: u32,
     pub generics: Vec<FieldType>,
@@ -246,6 +246,27 @@ impl FieldInfo {
         // write field_name
         writer.bytes(name_encoded);
         Ok(writer.dump())
+    }
+}
+
+impl PartialEq for FieldType {
+    fn eq(&self, other: &Self) -> bool {
+        const PRIMITIVE_ARRAY_TYPES: [u32; 6] = [
+            TypeId::BINARY as u32,
+            TypeId::INT16_ARRAY as u32,
+            TypeId::INT32_ARRAY as u32,
+            TypeId::INT64_ARRAY as u32,
+            TypeId::FLOAT32_ARRAY as u32,
+            TypeId::FLOAT64_ARRAY as u32,
+        ];
+        // when field is PRIMITIVE_ARRAY, field_type obtained at compile time like: { id:32, generics: [{ id:3, generics:[] }] }
+        // but field_type obtained at runtime is { id:32, generics: [] }
+        if PRIMITIVE_ARRAY_TYPES.contains(&self.type_id)
+            || PRIMITIVE_ARRAY_TYPES.contains(&other.type_id)
+        {
+            return self.type_id == other.type_id;
+        }
+        self.type_id == other.type_id && self.generics == other.generics
     }
 }
 

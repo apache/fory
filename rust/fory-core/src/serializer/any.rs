@@ -36,7 +36,7 @@ impl Serializer for Box<dyn Any> {
     }
 
     fn get_type_id(_fory: &Fory) -> u32 {
-        TypeId::ForyTypeTag as u32
+        TypeId::ForyAny as u32
     }
 
     fn serialize(&self, context: &mut WriteContext) {

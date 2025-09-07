@@ -50,7 +50,7 @@ impl ForyGeneralList for u64 {}
 
 impl_num_serializer!(i8, i8, TypeId::INT8);
 impl_num_serializer!(i16, i16, TypeId::INT16);
-impl_num_serializer!(i32, i32, TypeId::INT32);
-impl_num_serializer!(i64, i64, TypeId::INT64);
+impl_num_serializer!(var_int32, i32, TypeId::INT32);
+impl_num_serializer!(var_int64, i64, TypeId::INT64);
 impl_num_serializer!(f32, f32, TypeId::FLOAT32);
 impl_num_serializer!(f64, f64, TypeId::FLOAT64);

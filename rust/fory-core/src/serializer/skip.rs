@@ -68,6 +68,13 @@ pub fn skip_field_value(
                     (String, STRING),
                     (NaiveDate, LOCAL_DATE),
                     (NaiveDateTime, TIMESTAMP),
+                    (Vec<u8> , BINARY),
+                    (Vec<bool> , BINARY),
+                    (Vec<i16> , INT16_ARRAY),
+                    (Vec<i32> , INT32_ARRAY),
+                    (Vec<i64> , INT64_ARRAY),
+                    (Vec<f32>, FLOAT32_ARRAY),
+                    (Vec<f64> , FLOAT64_ARRAY),
                 );
             } else if COLLECTION_TYPES.contains(&type_id) {
                 if type_id == TypeId::ARRAY || type_id == TypeId::SET {

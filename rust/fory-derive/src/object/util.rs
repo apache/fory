@@ -21,11 +21,13 @@ use quote::quote;
 use std::fmt;
 use syn::{parse_str, GenericArgument, PathArguments, Type};
 
+#[derive(Debug)]
 pub(super) struct TypeNode {
     name: String,
     generics: Vec<TypeNode>,
 }
 
+#[derive(Debug)]
 pub(super) struct NullableTypeNode {
     name: String,
     generics: Vec<NullableTypeNode>,

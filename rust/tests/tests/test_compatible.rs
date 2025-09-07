@@ -374,6 +374,68 @@ fn nullable_struct() {
 }
 
 // #[test]
+// fn enum_without_payload() {
+//     #[derive(Fory, Debug, PartialEq, Default)]
+//     enum Color1 {
+//         #[default]
+//         Green,
+//         Red,
+//         Blue,
+//     }
+//     #[derive(Fory, Debug, PartialEq, Default)]
+//     enum Color2 {
+//         #[default]
+//         Green,
+//         Red,
+//         Blue,
+//     }
+//     #[derive(Fory, Debug, PartialEq)]
+//     struct Person1 {
+//         f1: Color1,
+//         f2: Color1,
+//         // skip
+//         f3: Color2,
+//         f5: Vec<Color1>,
+//         f6: Option<Color1>,
+//         f7: Option<Color1>,
+//         f8: Color1,
+//     }
+//     #[derive(Fory, Debug, PartialEq)]
+//     struct Person2 {
+//         // same
+//         f1: Color1,
+//         // type different
+//         f2: Color2,
+//         // should be default
+//         f4: Color2,
+//         f5: Vec<Color2>,
+//         f6: Color1,
+//         f7: Color1,
+//         f8: Option<Color1>,
+//     }
+//
+//     let mut fory1 = Fory::default().mode(Compatible).xlang(true);
+//     fory1.register::<Color1>(666);
+//     fory1.register::<Color2>(667);
+//     let mut fory2 = Fory::default().mode(Compatible).xlang(true);
+//     fory2.register::<Color1>(666);
+//     fory1.register::<Color2>(667);
+//
+//     let person1 = Person1 {
+//         f1: Color1::Blue,
+//         f2: Color1::Green,
+//         f3: Color2::Green,
+//         f5: vec![Color1::Green, Color1::Blue],
+//         f6: Some(Color1::Blue),
+//         f7: None,
+//         f8: Color1::Red,
+//     };
+//     let bin = fory1.serialize(&person1);
+//     let person2: Person2 = fory2.deserialize(&bin).expect("");
+//     assert_eq!(person2.f1, person1.f1);
+// }
+
+// #[test]
 // fn not_impl_default() {
 //     #[derive(Fory, Debug)]
 //     struct Person1 {
