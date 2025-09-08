@@ -38,8 +38,8 @@ import jdk.incubator.vector.VectorSpecies;
  * </ul>
  *
  * <p>Uses the best available compression provider via ServiceLoader pattern. SIMD optimizations are
- * used when fory-simd module is available. When no compression provider is available,
- * compression is disabled entirely.
+ * used when fory-simd module is available. When no compression provider is available, compression
+ * is disabled entirely.
  */
 public final class ArrayCompressionUtils {
   private static final VectorSpecies<Integer> INT_SPECIES = IntVector.SPECIES_PREFERRED;

@@ -255,13 +255,13 @@ Fory supports SIMD-accelerated compression for primitive arrays (`int[]` and `lo
 
 Array compression analyzes arrays to determine if values can be stored using fewer bytes:
 
-- **`int[]` → `byte[]`**: When all values are in range [-128, 127] (75% size reduction)  
+- **`int[]` → `byte[]`**: When all values are in range [-128, 127] (75% size reduction)
 - **`int[]` → `short[]`**: When all values are in range [-32768, 32767] (50% size reduction)
 - **`long[]` → `int[]`**: When all values fit in integer range (50% size reduction)
 
-#### Configuration
+#### Configuration and Registration
 
-Array compression can be configured independently for int and long arrays:
+To enable array compression you must explicitly register the serializers:
 
 ```java
 Fory fory = Fory.builder()
@@ -271,6 +271,20 @@ Fory fory = Fory.builder()
   // Enable long array compression
   .withLongArrayCompressed(true)
   .build();
+
+// You must explicitly register compressed array serializers
+CompressedArraySerializers.registerSerializers(fory);
+```
+
+**Note**: The `fory-simd` module must be included in your dependencies for compressed array serializers to be available.
+
+For Maven:
+```xml
+<dependency>
+  <groupId>org.apache.fory</groupId>
+  <artifactId>fory-simd</artifactId>
+  <version>0.13.0-SNAPSHOT</version>
+</dependency>
 ```
 
 ### Object deep copy

@@ -82,7 +82,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import java.util.ServiceLoader;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyCopyable;
 import org.apache.fory.annotation.CodegenInvoke;
@@ -350,7 +349,6 @@ public class ClassResolver implements TypeResolver {
     PrimitiveSerializers.registerDefaultSerializers(fory);
     Serializers.registerDefaultSerializers(fory);
     ArraySerializers.registerDefaultSerializers(fory);
-    registerModuleSerializers();
     TimeSerializers.registerDefaultSerializers(fory);
     OptionalSerializers.registerDefaultSerializers(fory);
     CollectionSerializers.registerDefaultSerializers(fory);
@@ -2312,25 +2310,5 @@ public class ClassResolver implements TypeResolver {
       throw new RuntimeException(String.format("Class %s is not registered", cls));
     }
     return null;
-  }
-
-  private void registerModuleSerializers() {
-    try {
-      ServiceLoader<SerializerRegistration> loader =
-          ServiceLoader.load(SerializerRegistration.class, fory.getClassLoader());
-
-      for (SerializerRegistration registration : loader) {
-        if (registration.isApplicable(fory)) {
-          try {
-            registration.registerIfEnabled(fory);
-          } catch (Exception e) {
-            LOG.warn("Failed to register serializers from module: {}",
-                     registration.getClass().getName(), e);
-          }
-        }
-      }
-    } catch (Exception e) {
-      LOG.warn("Failed to load module serializers", e);
-    }
   }
 }

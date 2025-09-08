@@ -57,6 +57,7 @@ public class ArrayCompressionTest {
   @Test(dataProvider = "intArrayData")
   public void testIntArrayCompressionRoundTrip(String description, int[] originalArray) {
     Fory foryWithCompression = new ForyBuilder().withIntArrayCompressed(true).build();
+    CompressedArraySerializers.registerSerializers(foryWithCompression);
     byte[] serializedWithCompression = foryWithCompression.serialize(originalArray);
     int[] deserializedWithCompression =
         (int[]) foryWithCompression.deserialize(serializedWithCompression);
@@ -69,6 +70,7 @@ public class ArrayCompressionTest {
   @Test(dataProvider = "longArrayData")
   public void testLongArrayCompressionRoundTrip(String description, long[] originalArray) {
     Fory foryWithCompression = new ForyBuilder().withLongArrayCompressed(true).build();
+    CompressedArraySerializers.registerSerializers(foryWithCompression);
     byte[] serializedWithCompression = foryWithCompression.serialize(originalArray);
     long[] deserializedWithCompression =
         (long[]) foryWithCompression.deserialize(serializedWithCompression);
@@ -82,6 +84,7 @@ public class ArrayCompressionTest {
   public void testCompressionRatios() {
     Fory foryWithCompression =
         new ForyBuilder().withIntArrayCompressed(true).withLongArrayCompressed(true).build();
+    CompressedArraySerializers.registerSerializers(foryWithCompression);
 
     Fory foryWithoutCompression =
         new ForyBuilder().withIntArrayCompressed(false).withLongArrayCompressed(false).build();
@@ -121,6 +124,7 @@ public class ArrayCompressionTest {
   public void testLargeArrays() {
     Fory fory =
         new ForyBuilder().withIntArrayCompressed(true).withLongArrayCompressed(true).build();
+    CompressedArraySerializers.registerSerializers(fory);
 
     // Test very large compressible arrays
     int[] largeIntArray = createByteRangeArray(100_000);

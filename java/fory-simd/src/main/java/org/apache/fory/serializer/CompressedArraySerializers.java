@@ -23,7 +23,6 @@ import java.util.Arrays;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassResolver;
-import org.apache.fory.resolver.SerializerRegistration;
 import org.apache.fory.serializer.ArraySerializers.PrimitiveArrayBufferObject;
 import org.apache.fory.serializer.ArraySerializers.PrimitiveArraySerializer;
 import org.apache.fory.util.ArrayCompressionUtils;
@@ -44,12 +43,30 @@ public final class CompressedArraySerializers {
   }
 
   /**
-   * Register compressed array serializers based on Fory configuration flags. This method is called
-   * automatically by the ClassResolver when compression is enabled.
+   * Register compressed array serializers with the given Fory instance.
+   *
+   * <p>Example usage:
+   *
+   * <pre>{@code
+   * Fory fory = Fory.builder()
+   *     .withConfig(Config.compressIntArray(true).compressLongArray(true))
+   *     .build();
+   * CompressedArraySerializers.registerSerializers(fory);
+   * }</pre>
+   *
+   * @param fory the Fory instance to register serializers with
+   */
+  public static void registerSerializers(Fory fory) {
+    registerIfEnabled(fory);
+  }
+
+  /**
+   * Register compressed array serializers based on Fory configuration flags. This is called
+   * internally by registerSerializers().
    *
    * @param fory the Fory instance to configure
    */
-  public static void registerIfEnabled(Fory fory) {
+  static void registerIfEnabled(Fory fory) {
     ClassResolver resolver = fory.getClassResolver();
     boolean compressInt = fory.getConfig().compressIntArray();
     boolean compressLong = fory.getConfig().compressLongArray();
@@ -239,8 +256,8 @@ public final class CompressedArraySerializers {
     }
 
     private void writeUncompressed(MemoryBuffer buffer, long[] value) {
-        int size = Math.multiplyExact(value.length, elemSize);
-        buffer.writePrimitiveArrayWithSize(value, offset, size);
+      int size = Math.multiplyExact(value.length, elemSize);
+      buffer.writePrimitiveArrayWithSize(value, offset, size);
     }
 
     @Override
@@ -303,23 +320,6 @@ public final class CompressedArraySerializers {
         buffer.readToUnsafe(values, offset, size);
       }
       return values;
-    }
-  }
-
-  /**
-   * Implementation of SerializerRegistration for compressed array serializers.
-   */
-  public static final class Registration implements SerializerRegistration {
-
-    @Override
-    public void registerIfEnabled(Fory fory) {
-      CompressedArraySerializers.registerIfEnabled(fory);
-    }
-
-    @Override
-    public boolean isApplicable(Fory fory) {
-      // Only applicable if compression is enabled
-      return fory.getConfig().compressIntArray() || fory.getConfig().compressLongArray();
     }
   }
 }
