@@ -85,6 +85,15 @@ Fory adds a compile-time guard in generated files to detect stale code. If you f
 fory --force -file structs.go
 ```
 
+### COMPILE ERROR? 
+
+This means you've modified the struct but forget to regenerated the code. 
+To fix this:
+
+- 1. First try: go generate
+- 2. If that fails: fory --force -file structs.go
+- 3. Alternative: rm *_fory_gen.go && go generate
+
 ### What gets generated (simplified example)
 
 Below is a minimal illustration. Actual output includes strongly-typed serializers, interface-compatible methods, registration, and a compile-time snapshot of your struct.

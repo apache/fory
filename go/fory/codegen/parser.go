@@ -102,12 +102,17 @@ func extractStructInfo(name string, structType *types.Struct) (*StructInfo, erro
 		fields = append(fields, fieldInfo)
 	}
 
-	// Sort fields according to Fory protocol
+	// Keep a copy of original field order for guard generation
+	originalFields := make([]*FieldInfo, len(fields))
+	copy(originalFields, fields)
+
+	// Sort fields according to Fory protocol for serialization
 	sortFields(fields)
 
 	return &StructInfo{
-		Name:   name,
-		Fields: fields,
+		Name:           name,
+		Fields:         fields,         // Sorted for serialization
+		OriginalFields: originalFields, // Original order for guard
 	}, nil
 }
 
