@@ -1,17 +1,17 @@
-# Fory Dart
+# Apache Fory™ Dart
 
 ## Overview
 
-This PR adds Dart language support to Apache Fory, implementing a comprehensive serialization solution for Dart and Flutter applications. Fory Dart consists of approximately 15,000 lines of code and provides an efficient serialization mechanism that works within Flutter's reflection limitations.
+This PR adds Dart language support to Apache Fory™, implementing a comprehensive serialization solution for Dart and Flutter applications. Apache Fory™ Dart consists of approximately 15,000 lines of code and provides an efficient serialization mechanism that works within Flutter's reflection limitations.
 
 ## Implementation Approach
 
-Dart supports reflection, but Flutter explicitly prohibits it. To address this constraint, Fory Dart uses a combination of:
+Dart supports reflection, but Flutter explicitly prohibits it. To address this constraint, Apache Fory™ Dart uses a combination of:
 
 1. Core serialization/deserialization logic
 2. Static code generation for type handling
 
-This approach ensures compatibility with Flutter while maintaining the performance and flexibility expected from Fory.
+This approach ensures compatibility with Flutter while maintaining the performance and flexibility expected from Apache Fory™.
 
 ## Features
 
@@ -134,16 +134,16 @@ The implementation is organized into three main components:
    Contains the core serialization and deserialization logic.
 
 3. **ForyTest**: Located at `dart/fory_test`  
-   Comprehensive test suite for Fory Dart functionality.
+   Comprehensive test suite for Apache Fory™ Dart functionality.
 
 ## Testing Approach
 
-The test suite is inspired by Fory Java's testing approach and includes:
+The test suite is inspired by Apache Fory™ Java's testing approach and includes:
 
 - **Datatype Tests**: Validates custom data types implemented for Dart
 - **Code Generation Tests**: Ensures correctness of the generated static code
 - **Buffer Tests**: Validates correct memory handling for primitive types
-- **Cross-Language Tests**: Tests functionality against other Fory implementations
+- **Cross-Language Tests**: Tests functionality against other Apache Fory™ implementations
 - **Performance Tests**: Simple benchmarks for serialization/deserialization performance
 
 ### Running Tests
@@ -166,7 +166,7 @@ dart test
 
 ## Code Quality
 
-Fory Dart maintains high code quality standards. You can verify this using:
+Apache Fory™ Dart maintains high code quality standards. You can verify this using:
 
 ```bash
 dart analyze

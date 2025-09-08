@@ -37,6 +37,7 @@ import org.apache.fory.io.MockWritableChannel;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
+import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.BufferObject;
 import org.apache.fory.serializer.Serializers.CrossLanguageCompatibleSerializer;
 import org.apache.fory.type.Types;
@@ -167,10 +168,14 @@ public class ArrowSerializers {
 
   public static void registerSerializers(Fory fory) {
     if (fory.isCrossLanguage()) {
-      fory.register(ArrowTable.class, Types.ARROW_TABLE);
-      fory.register(VectorSchemaRoot.class, Types.ARROW_RECORD_BATCH);
+      XtypeResolver resolver = fory.getXtypeResolver();
+      resolver.registerForyType(
+          ArrowTable.class, new ArrowTableSerializer(fory), Types.ARROW_TABLE);
+      resolver.registerForyType(
+          VectorSchemaRoot.class, new VectorSchemaRootSerializer(fory), Types.ARROW_RECORD_BATCH);
+    } else {
+      fory.registerSerializer(ArrowTable.class, new ArrowTableSerializer(fory));
+      fory.registerSerializer(VectorSchemaRoot.class, new VectorSchemaRootSerializer(fory));
     }
-    fory.registerSerializer(ArrowTable.class, new ArrowTableSerializer(fory));
-    fory.registerSerializer(VectorSchemaRoot.class, new VectorSchemaRootSerializer(fory));
   }
 }

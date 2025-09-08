@@ -21,9 +21,9 @@ use fory_derive::Fory;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// Fury models
+// Fory models
 #[derive(Fory, Debug, Clone, PartialEq, Default)]
-pub struct FuryAddress {
+pub struct ForyAddress {
     pub street: String,
     pub city: String,
     pub country: String,
@@ -34,7 +34,7 @@ pub struct FuryAddress {
 pub struct Person {
     pub name: String,
     pub age: i32,
-    pub address: FuryAddress,
+    pub address: ForyAddress,
     pub hobbies: Vec<String>,
     pub metadata: HashMap<String, String>,
     pub created_at: NaiveDateTime,
@@ -44,7 +44,7 @@ pub struct Person {
 pub struct Company {
     pub name: String,
     pub employees: Vec<Person>,
-    pub offices: HashMap<String, FuryAddress>,
+    pub offices: HashMap<String, ForyAddress>,
     pub is_public: bool,
 }
 
@@ -82,7 +82,7 @@ impl TestDataGenerator for Person {
         Person {
             name: "John Doe".to_string(),
             age: 30,
-            address: FuryAddress {
+            address: ForyAddress {
                 street: "123 Main St".to_string(),
                 city: "New York".to_string(),
                 country: "USA".to_string(),
@@ -101,7 +101,7 @@ impl TestDataGenerator for Person {
         Person {
             name: generate_random_string(30),
             age: 35,
-            address: FuryAddress {
+            address: ForyAddress {
                 street: generate_random_string(50),
                 city: generate_random_string(20),
                 country: generate_random_string(15),
@@ -123,7 +123,7 @@ impl TestDataGenerator for Person {
         Person {
             name: generate_random_string(100),
             age: 40,
-            address: FuryAddress {
+            address: ForyAddress {
                 street: generate_random_string(100),
                 city: generate_random_string(50),
                 country: generate_random_string(30),
@@ -151,7 +151,7 @@ impl TestDataGenerator for Company {
             employees: vec![Person::generate_small()],
             offices: HashMap::from([(
                 "HQ".to_string(),
-                FuryAddress {
+                ForyAddress {
                     street: "456 Tech Ave".to_string(),
                     city: "San Francisco".to_string(),
                     country: "USA".to_string(),
@@ -174,7 +174,7 @@ impl TestDataGenerator for Company {
         for i in 1..=5 {
             offices.insert(
                 format!("Office_{}", i),
-                FuryAddress {
+                ForyAddress {
                     street: generate_random_string(50),
                     city: generate_random_string(20),
                     country: generate_random_string(15),
@@ -203,7 +203,7 @@ impl TestDataGenerator for Company {
         for i in 1..=20 {
             offices.insert(
                 format!("Office_{}", i),
-                FuryAddress {
+                ForyAddress {
                     street: generate_random_string(100),
                     city: generate_random_string(50),
                     country: generate_random_string(30),
@@ -222,8 +222,8 @@ impl TestDataGenerator for Company {
 }
 
 // Conversion functions for Serde
-impl From<FuryAddress> for SerdeAddress {
-    fn from(f: FuryAddress) -> Self {
+impl From<ForyAddress> for SerdeAddress {
+    fn from(f: ForyAddress) -> Self {
         SerdeAddress {
             street: f.street,
             city: f.city,
@@ -257,10 +257,10 @@ impl From<Company> for SerdeCompany {
     }
 }
 
-// Reverse conversions from Serde to Fury
-impl From<SerdeAddress> for FuryAddress {
+// Reverse conversions from Serde to Fory
+impl From<SerdeAddress> for ForyAddress {
     fn from(s: SerdeAddress) -> Self {
-        FuryAddress {
+        ForyAddress {
             street: s.street,
             city: s.city,
             country: s.country,

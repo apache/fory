@@ -497,6 +497,21 @@ public class CrossLanguageTest extends ForyTestBase {
     structRoundBack(fory, obj2, "test_serialize_simple_struct");
   }
 
+  @Test
+  public void testRegisterById() throws Exception {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withRefTracking(true)
+            .requireClassRegistration(false)
+            .build();
+    fory.register(ComplexObject2.class, 100);
+    ComplexObject2 obj2 = new ComplexObject2();
+    obj2.f1 = true;
+    obj2.f2 = new HashMap<>(ImmutableMap.of((byte) -1, 2));
+    structRoundBack(fory, obj2, "test_register_by_id");
+  }
+
   public void testSerializeComplexStruct() throws Exception {
     Fory fory =
         Fory.builder()

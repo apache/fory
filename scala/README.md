@@ -1,6 +1,6 @@
 # Apache Fory™ Scala
 
-Fory supports all scala object serialization:
+Apache Fory™ supports all scala object serialization:
 
 - `case` class serialization supported
 - `pojo/bean` class serialization supported

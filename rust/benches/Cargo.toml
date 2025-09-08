@@ -20,6 +20,10 @@ name = "fory-benchmarks"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "fory_profiler"
+path = "src/main.rs"
+
 [[bench]]
 name = "serialization_bench"
 path = "benches/serialization_bench.rs"
@@ -36,6 +40,7 @@ prost = "0.12"
 prost-types = "0.12"
 rand = "0.8"
 criterion = "0.5"
+clap = { version = "4.0", features = ["derive"] }
 
 [build-dependencies]
 prost-build = "0.12"

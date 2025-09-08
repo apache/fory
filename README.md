@@ -7,12 +7,12 @@
 [![X](https://img.shields.io/badge/@ApacheFory-follow-blue?logo=x&style=for-the-badge)](https://x.com/ApacheFory)
 [![Maven Version](https://img.shields.io/maven-central/v/org.apache.fory/fory-core?style=for-the-badge)](https://search.maven.org/#search|gav|1|g:"org.apache.fory"%20AND%20a:"fory-core")
 
-**Apache Fory** is a blazingly-fast multi-language serialization framework powered by **JIT** (just-in-time compilation) and **zero-copy**, providing up to 170x performance and ultimate ease of use.
+**Apache Fory™** is a blazingly-fast multi-language serialization framework powered by **JIT** (just-in-time compilation) and **zero-copy**, providing up to 170x performance and ultimate ease of use.
 
 <https://fory.apache.org>
 
 > [!IMPORTANT]
-> **Apache Fory was previously named as Apache Fury. For versions before 0.11, please use "fury" instead of "fory" in package names, imports, and dependencies, see [Fury Docs](https://fory.apache.org/docs/0.10/docs/introduction/) for how to use Fury in older versions**.
+> **Apache Fory™ was previously named as Apache Fury. For versions before 0.11, please use "fury" instead of "fory" in package names, imports, and dependencies, see [Fury Docs](https://fory.apache.org/docs/0.10/docs/introduction/) for how to use Fury in older versions**.
 
 ## Features
 
@@ -26,7 +26,7 @@
   - reduce hash lookup.
 - **Multiple binary protocols**: Object graph, row format, and so on.
 
-In addition to cross-language serialization, Fory also features at:
+In addition to cross-language serialization, Apache Fory™ also features at:
 
 - Drop-in replace Java serialization frameworks such as JDK/Kryo/Hessian, but 100x faster at most, which can greatly improve
   the efficiency of high-performance RPC calls, data transfer, and object persistence.
@@ -40,7 +40,7 @@ In addition to cross-language serialization, Fory also features at:
 
 ## Protocols
 
-Fory designed and implemented multiple binary protocols for different scenarios:
+Apache Fory™ designed and implemented multiple binary protocols for different scenarios:
 
 - **[xlang serialization format](docs/specification/xlang_serialization_spec.md)**:
   - Cross-language serialize any object automatically, no need for IDL definition, schema compilation and object to/from
@@ -51,7 +51,7 @@ Fory designed and implemented multiple binary protocols for different scenarios:
 - **[Row format format](docs/specification/row_format_spec.md)**: A cache-friendly binary random access format, supports skipping serialization and
   partial serialization, and can convert to column-format automatically.
 
-New protocols can be easily added based on Fory existing buffer, encoding, meta, codegen and other capabilities. All of those share the same codebase, and the optimization for one protocol can be reused by another protocol.
+New protocols can be easily added based on Apache Fory™ existing buffer, encoding, meta, codegen and other capabilities. All of those share the same codebase, and the optimization for one protocol can be reused by another protocol.
 
 ## Benchmarks
 
@@ -122,13 +122,13 @@ Release version:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>0.12.1</version>
+  <version>0.12.2</version>
 </dependency>
 <!-- row/arrow format support -->
 <!-- <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
-  <version>0.12.1</version>
+  <version>0.12.2</version>
 </dependency> -->
 ```
 
@@ -137,13 +137,13 @@ Release version:
 Scala2:
 
 ```sbt
-libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.12.1"
+libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.12.2"
 ```
 
 Scala3:
 
 ```sbt
-libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.12.1"
+libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.12.2"
 ```
 
 ### Kotlin
@@ -152,7 +152,7 @@ libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.12.1"
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>0.12.1</version>
+  <version>0.12.2</version>
 </dependency>
 ```
 
@@ -170,7 +170,7 @@ go get github.com/apache/fory/go/fory
 
 ## Quickstart
 
-Here we give a quick start about how to use Fory, see [user guide](docs/README.md) for more details about [java](docs/guide/java_serialization_guide.md), [cross language](docs/guide/xlang_serialization_guide.md), and [row format](docs/guide/row_format_guide.md).
+Here we give a quick start about how to use Apache Fory™, see [user guide](docs/README.md) for more details about [java](docs/guide/java_serialization_guide.md), [cross language](docs/guide/xlang_serialization_guide.md), and [row format](docs/guide/row_format_guide.md).
 
 ### Fory java object graph serialization
 
@@ -387,7 +387,7 @@ print(foo_row.f2[100000], foo_row.f4[100000].f1, foo_row.f4[200000].f2[5])
 
 ### Schema Compatibility
 
-Fory java object graph serialization supports class schema forward/backward compatibility. The serialization peer and deserialization peer can add/delete fields independently.
+Apache Fory™ java object graph serialization supports class schema forward/backward compatibility. The serialization peer and deserialization peer can add/delete fields independently.
 
 We plan to add the schema compatibility support of cross-language serialization after [meta compression](https://github.com/apache/fory/issues/203) is finished.
 

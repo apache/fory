@@ -19,11 +19,11 @@ license: |
   limitations under the License.
 ---
 
-## How to build Fory
+## How to build Apache Fory™
 
 Please checkout the source tree from https://github.com/apache/fory.
 
-### Build Fory Java
+### Build Apache Fory™ Java
 
 ```bash
 cd java
@@ -35,7 +35,7 @@ mvn clean compile -DskipTests
 - java 1.8+
 - maven 3.6.3+
 
-### Build Fory Python
+### Build Apache Fory™ Python
 
 ```bash
 cd python
@@ -53,7 +53,7 @@ pip install -v -e .
 
 - python 3.6+
 
-### Build Fory C++
+### Build Apache Fory™ C++
 
 Build fory row format：
 
@@ -74,7 +74,7 @@ bazel build //cpp/fory/encoder:fory_encoder
 - compilers with C++17 support
 - bazel 6.3.2
 
-### Build Fory GoLang
+### Build Apache Fory™ GoLang
 
 ```bash
 cd go/fory
@@ -88,7 +88,7 @@ go test -v fory_xlang_test.go
 
 - go 1.13+
 
-### Build Fory Rust
+### Build Apache Fory™ Rust
 
 ```bash
 cd rust
@@ -104,7 +104,7 @@ cargo test
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-### Build Fory JavaScript
+### Build Apache Fory™ JavaScript
 
 ```bash
 cd javascript
@@ -138,4 +138,4 @@ prettier --write "**/*.md"
 
 ## Contributing
 
-For more information, please refer to [How to contribute to Fory](https://github.com/apache/fory/blob/main/CONTRIBUTING.md).
+For more information, please refer to [How to contribute to Apache Fory™](https://github.com/apache/fory/blob/main/CONTRIBUTING.md).

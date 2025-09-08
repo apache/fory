@@ -4,7 +4,7 @@
 - For Java Object Graph Guide, see [java serialization guide](guide/java_serialization_guide.md) doc.
 - For Row Format Guide, see [row format guide](guide/row_format_guide.md) doc.
 - For Scala Guide, see [scala guide](guide/scala_guide.md) doc.
-- For using Fory with GraalVM native image, see [graalvm native image guide](guide/graalvm_guide.md) doc.
+- For using Apache Fory™ with GraalVM native image, see [graalvm native image guide](guide/graalvm_guide.md) doc.
 
 ## Serialization Format
 

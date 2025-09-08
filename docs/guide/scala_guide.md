@@ -19,7 +19,7 @@ license: |
   limitations under the License.
 ---
 
-Fory supports all scala object serialization:
+Apache Fory™ supports all scala object serialization:
 
 - `case` class serialization supported
 - `pojo/bean` class serialization supported
@@ -31,10 +31,10 @@ Scala 2 and 3 are both supported.
 
 ## Install
 
-To add a dependency on Fory scala for with sbt, use the following:
+To add a dependency on Apache Fory™ scala for with sbt, use the following:
 
 ```sbt
-libraryDependencies += "org.apache.fory" %% "fory-scala" % "0.12.1"
+libraryDependencies += "org.apache.fory" %% "fory-scala" % "0.12.2"
 ```
 
 ## Quick Start

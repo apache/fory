@@ -99,7 +99,7 @@ print(f"pickle end: {datetime.datetime.now()}")
 
 ### Apache Arrow Support
 
-Fory Format also supports automatic conversion from/to Arrow Table/RecordBatch.
+Apache Fory™ Row Format also supports automatic conversion from/to Arrow Table/RecordBatch.
 
 Java:
 

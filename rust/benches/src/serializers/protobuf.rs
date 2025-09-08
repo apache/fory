@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::models::complex::{ECommerceData, FuryCustomer, FuryOrder, FuryOrderItem, FuryProduct};
-use crate::models::medium::{Company, FuryAddress, Person};
-use crate::models::realworld::{FuryAPIMetrics, FuryLogEntry, FuryUserProfile, SystemData};
+use crate::models::complex::{ECommerceData, ForyCustomer, ForyOrder, ForyOrderItem, ForyProduct};
+use crate::models::medium::{Company, ForyAddress, Person};
+use crate::models::realworld::{ForyAPIMetrics, ForyLogEntry, ForyUserProfile, SystemData};
 use crate::models::simple::{SimpleList, SimpleMap, SimpleStruct};
 use crate::serializers::{naive_datetime_to_timestamp, timestamp_to_naive_datetime, Serializer};
 use prost::Message;
@@ -38,7 +38,7 @@ impl ProtobufSerializer {
     }
 }
 
-// Conversion functions from Fury models to Protobuf models
+// Conversion functions from Fory models to Protobuf models
 impl From<&SimpleStruct> for ProtoSimpleStruct {
     fn from(f: &SimpleStruct) -> Self {
         ProtoSimpleStruct {
@@ -68,8 +68,8 @@ impl From<&SimpleMap> for ProtoSimpleMap {
     }
 }
 
-impl From<&FuryAddress> for Address {
-    fn from(f: &FuryAddress) -> Self {
+impl From<&ForyAddress> for Address {
+    fn from(f: &ForyAddress) -> Self {
         Address {
             street: f.street.clone(),
             city: f.city.clone(),
@@ -107,8 +107,8 @@ impl From<&Company> for ProtoCompany {
     }
 }
 
-impl From<&FuryProduct> for Product {
-    fn from(f: &FuryProduct) -> Self {
+impl From<&ForyProduct> for Product {
+    fn from(f: &ForyProduct) -> Self {
         Product {
             id: f.id.clone(),
             name: f.name.clone(),
@@ -119,8 +119,8 @@ impl From<&FuryProduct> for Product {
     }
 }
 
-impl From<&FuryOrderItem> for OrderItem {
-    fn from(f: &FuryOrderItem) -> Self {
+impl From<&ForyOrderItem> for OrderItem {
+    fn from(f: &ForyOrderItem) -> Self {
         OrderItem {
             product: Some((&f.product).into()),
             quantity: f.quantity,
@@ -130,8 +130,8 @@ impl From<&FuryOrderItem> for OrderItem {
     }
 }
 
-impl From<&FuryCustomer> for Customer {
-    fn from(f: &FuryCustomer) -> Self {
+impl From<&ForyCustomer> for Customer {
+    fn from(f: &ForyCustomer) -> Self {
         Customer {
             id: f.id.clone(),
             name: f.name.clone(),
@@ -143,8 +143,8 @@ impl From<&FuryCustomer> for Customer {
     }
 }
 
-impl From<&FuryOrder> for Order {
-    fn from(f: &FuryOrder) -> Self {
+impl From<&ForyOrder> for Order {
+    fn from(f: &ForyOrder) -> Self {
         Order {
             id: f.id.clone(),
             customer: Some((&f.customer).into()),
@@ -172,8 +172,8 @@ impl From<&ECommerceData> for ProtoECommerceData {
     }
 }
 
-impl From<&FuryLogEntry> for LogEntry {
-    fn from(f: &FuryLogEntry) -> Self {
+impl From<&ForyLogEntry> for LogEntry {
+    fn from(f: &ForyLogEntry) -> Self {
         LogEntry {
             id: f.id.clone(),
             level: f.level,
@@ -187,8 +187,8 @@ impl From<&FuryLogEntry> for LogEntry {
     }
 }
 
-impl From<&FuryUserProfile> for UserProfile {
-    fn from(f: &FuryUserProfile) -> Self {
+impl From<&ForyUserProfile> for UserProfile {
+    fn from(f: &ForyUserProfile) -> Self {
         UserProfile {
             user_id: f.user_id.clone(),
             username: f.username.clone(),
@@ -201,8 +201,8 @@ impl From<&FuryUserProfile> for UserProfile {
     }
 }
 
-impl From<&FuryAPIMetrics> for ApiMetrics {
-    fn from(f: &FuryAPIMetrics) -> Self {
+impl From<&ForyAPIMetrics> for ApiMetrics {
+    fn from(f: &ForyAPIMetrics) -> Self {
         ApiMetrics {
             endpoint: f.endpoint.clone(),
             request_count: f.request_count,
@@ -225,7 +225,7 @@ impl From<&SystemData> for ProtoSystemData {
     }
 }
 
-// Conversion functions from Protobuf models to Fury models
+// Conversion functions from Protobuf models to Fory models
 impl From<ProtoSimpleStruct> for SimpleStruct {
     fn from(p: ProtoSimpleStruct) -> Self {
         SimpleStruct {
@@ -255,9 +255,9 @@ impl From<ProtoSimpleMap> for SimpleMap {
     }
 }
 
-impl From<Address> for FuryAddress {
+impl From<Address> for ForyAddress {
     fn from(p: Address) -> Self {
-        FuryAddress {
+        ForyAddress {
             street: p.street,
             city: p.city,
             country: p.country,
@@ -293,9 +293,9 @@ impl From<ProtoCompany> for Company {
     }
 }
 
-impl From<Product> for FuryProduct {
+impl From<Product> for ForyProduct {
     fn from(p: Product) -> Self {
-        FuryProduct {
+        ForyProduct {
             id: p.id,
             name: p.name,
             price: p.price,
@@ -305,9 +305,9 @@ impl From<Product> for FuryProduct {
     }
 }
 
-impl From<OrderItem> for FuryOrderItem {
+impl From<OrderItem> for ForyOrderItem {
     fn from(p: OrderItem) -> Self {
-        FuryOrderItem {
+        ForyOrderItem {
             product: p.product.map(|prod| prod.into()).unwrap_or_default(),
             quantity: p.quantity,
             unit_price: p.unit_price,
@@ -316,9 +316,9 @@ impl From<OrderItem> for FuryOrderItem {
     }
 }
 
-impl From<Customer> for FuryCustomer {
+impl From<Customer> for ForyCustomer {
     fn from(p: Customer) -> Self {
-        FuryCustomer {
+        ForyCustomer {
             id: p.id,
             name: p.name,
             email: p.email,
@@ -332,9 +332,9 @@ impl From<Customer> for FuryCustomer {
     }
 }
 
-impl From<Order> for FuryOrder {
+impl From<Order> for ForyOrder {
     fn from(p: Order) -> Self {
-        FuryOrder {
+        ForyOrder {
             id: p.id,
             customer: p.customer.map(|c| c.into()).unwrap_or_default(),
             items: p.items.into_iter().map(|i| i.into()).collect(),
@@ -364,9 +364,9 @@ impl From<ProtoECommerceData> for ECommerceData {
     }
 }
 
-impl From<LogEntry> for FuryLogEntry {
+impl From<LogEntry> for ForyLogEntry {
     fn from(p: LogEntry) -> Self {
-        FuryLogEntry {
+        ForyLogEntry {
             id: p.id,
             level: p.level,
             message: p.message,
@@ -382,9 +382,9 @@ impl From<LogEntry> for FuryLogEntry {
     }
 }
 
-impl From<UserProfile> for FuryUserProfile {
+impl From<UserProfile> for ForyUserProfile {
     fn from(p: UserProfile) -> Self {
-        FuryUserProfile {
+        ForyUserProfile {
             user_id: p.user_id,
             username: p.username,
             email: p.email,
@@ -399,9 +399,9 @@ impl From<UserProfile> for FuryUserProfile {
     }
 }
 
-impl From<ApiMetrics> for FuryAPIMetrics {
+impl From<ApiMetrics> for ForyAPIMetrics {
     fn from(p: ApiMetrics) -> Self {
-        FuryAPIMetrics {
+        ForyAPIMetrics {
             endpoint: p.endpoint,
             request_count: p.request_count,
             avg_response_time: p.avg_response_time,

@@ -21,9 +21,9 @@ use fory_derive::Fory;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// Fury models
+// Fory models
 #[derive(Fory, Debug, Clone, PartialEq, Default)]
-pub struct FuryLogEntry {
+pub struct ForyLogEntry {
     pub id: String,
     pub level: i32, // 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR, 4=FATAL
     pub message: String,
@@ -35,7 +35,7 @@ pub struct FuryLogEntry {
 }
 
 #[derive(Fory, Debug, Clone, PartialEq, Default)]
-pub struct FuryUserProfile {
+pub struct ForyUserProfile {
     pub user_id: String,
     pub username: String,
     pub email: String,
@@ -46,7 +46,7 @@ pub struct FuryUserProfile {
 }
 
 #[derive(Fory, Debug, Clone, PartialEq, Default)]
-pub struct FuryAPIMetrics {
+pub struct ForyAPIMetrics {
     pub endpoint: String,
     pub request_count: i64,
     pub avg_response_time: f64,
@@ -57,9 +57,9 @@ pub struct FuryAPIMetrics {
 
 #[derive(Fory, Debug, Clone, PartialEq, Default)]
 pub struct SystemData {
-    pub logs: Vec<FuryLogEntry>,
-    pub users: Vec<FuryUserProfile>,
-    pub metrics: Vec<FuryAPIMetrics>,
+    pub logs: Vec<ForyLogEntry>,
+    pub users: Vec<ForyUserProfile>,
+    pub metrics: Vec<ForyAPIMetrics>,
     pub system_info: HashMap<String, String>,
 }
 
@@ -109,7 +109,7 @@ impl TestDataGenerator for SystemData {
     type Data = SystemData;
 
     fn generate_small() -> Self::Data {
-        let log = FuryLogEntry {
+        let log = ForyLogEntry {
             id: "log_1".to_string(),
             level: 1, // INFO
             message: "User login successful".to_string(),
@@ -123,7 +123,7 @@ impl TestDataGenerator for SystemData {
             duration_ms: 45.2,
         };
 
-        let user = FuryUserProfile {
+        let user = ForyUserProfile {
             user_id: "user_123".to_string(),
             username: "johndoe".to_string(),
             email: "john@example.com".to_string(),
@@ -136,7 +136,7 @@ impl TestDataGenerator for SystemData {
             is_active: true,
         };
 
-        let metric = FuryAPIMetrics {
+        let metric = ForyAPIMetrics {
             endpoint: "/api/users".to_string(),
             request_count: 1000,
             avg_response_time: 150.5,
@@ -167,7 +167,7 @@ impl TestDataGenerator for SystemData {
 
         // Generate 50 log entries
         for i in 1..=50 {
-            let log = FuryLogEntry {
+            let log = ForyLogEntry {
                 id: format!("log_{}", i),
                 level: i % 5,
                 message: generate_random_string(100),
@@ -190,7 +190,7 @@ impl TestDataGenerator for SystemData {
 
         // Generate 20 users
         for i in 1..=20 {
-            let user = FuryUserProfile {
+            let user = ForyUserProfile {
                 user_id: format!("user_{}", i),
                 username: generate_random_string(20),
                 email: format!("user{}@example.com", i),
@@ -212,7 +212,7 @@ impl TestDataGenerator for SystemData {
 
         // Generate 10 metrics
         for i in 1..=10 {
-            let metric = FuryAPIMetrics {
+            let metric = ForyAPIMetrics {
                 endpoint: format!("/api/endpoint_{}", i),
                 request_count: (i * 1000) as i64,
                 avg_response_time: (i as f64) * 50.0,
@@ -252,7 +252,7 @@ impl TestDataGenerator for SystemData {
 
         // Generate 500 log entries
         for i in 1..=500 {
-            let log = FuryLogEntry {
+            let log = ForyLogEntry {
                 id: format!("log_{}", i),
                 level: i % 5,
                 message: generate_random_string(200),
@@ -275,7 +275,7 @@ impl TestDataGenerator for SystemData {
 
         // Generate 100 users
         for i in 1..=100 {
-            let user = FuryUserProfile {
+            let user = ForyUserProfile {
                 user_id: format!("user_{}", i),
                 username: generate_random_string(30),
                 email: format!("user{}@example.com", i),
@@ -297,7 +297,7 @@ impl TestDataGenerator for SystemData {
 
         // Generate 50 metrics
         for i in 1..=50 {
-            let metric = FuryAPIMetrics {
+            let metric = ForyAPIMetrics {
                 endpoint: format!("/api/endpoint_{}", i),
                 request_count: (i * 2000) as i64,
                 avg_response_time: (i as f64) * 25.0,
@@ -332,8 +332,8 @@ impl TestDataGenerator for SystemData {
 }
 
 // Conversion functions for Serde
-impl From<FuryLogEntry> for SerdeLogEntry {
-    fn from(f: FuryLogEntry) -> Self {
+impl From<ForyLogEntry> for SerdeLogEntry {
+    fn from(f: ForyLogEntry) -> Self {
         SerdeLogEntry {
             id: f.id,
             level: f.level,
@@ -347,8 +347,8 @@ impl From<FuryLogEntry> for SerdeLogEntry {
     }
 }
 
-impl From<FuryUserProfile> for SerdeUserProfile {
-    fn from(f: FuryUserProfile) -> Self {
+impl From<ForyUserProfile> for SerdeUserProfile {
+    fn from(f: ForyUserProfile) -> Self {
         SerdeUserProfile {
             user_id: f.user_id,
             username: f.username,
@@ -361,8 +361,8 @@ impl From<FuryUserProfile> for SerdeUserProfile {
     }
 }
 
-impl From<FuryAPIMetrics> for SerdeAPIMetrics {
-    fn from(f: FuryAPIMetrics) -> Self {
+impl From<ForyAPIMetrics> for SerdeAPIMetrics {
+    fn from(f: ForyAPIMetrics) -> Self {
         SerdeAPIMetrics {
             endpoint: f.endpoint,
             request_count: f.request_count,
@@ -385,10 +385,10 @@ impl From<SystemData> for SerdeSystemData {
     }
 }
 
-// Reverse conversions from Serde to Fury
-impl From<SerdeLogEntry> for FuryLogEntry {
+// Reverse conversions from Serde to Fory
+impl From<SerdeLogEntry> for ForyLogEntry {
     fn from(s: SerdeLogEntry) -> Self {
-        FuryLogEntry {
+        ForyLogEntry {
             id: s.id,
             level: s.level,
             message: s.message,
@@ -401,9 +401,9 @@ impl From<SerdeLogEntry> for FuryLogEntry {
     }
 }
 
-impl From<SerdeUserProfile> for FuryUserProfile {
+impl From<SerdeUserProfile> for ForyUserProfile {
     fn from(s: SerdeUserProfile) -> Self {
-        FuryUserProfile {
+        ForyUserProfile {
             user_id: s.user_id,
             username: s.username,
             email: s.email,
@@ -415,9 +415,9 @@ impl From<SerdeUserProfile> for FuryUserProfile {
     }
 }
 
-impl From<SerdeAPIMetrics> for FuryAPIMetrics {
+impl From<SerdeAPIMetrics> for ForyAPIMetrics {
     fn from(s: SerdeAPIMetrics) -> Self {
-        FuryAPIMetrics {
+        ForyAPIMetrics {
             endpoint: s.endpoint,
             request_count: s.request_count,
             avg_response_time: s.avg_response_time,

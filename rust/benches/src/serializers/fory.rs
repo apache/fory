@@ -15,19 +15,19 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::models::complex::{ECommerceData, FuryCustomer, FuryOrder, FuryOrderItem, FuryProduct};
-use crate::models::medium::{Company, FuryAddress, Person};
-use crate::models::realworld::{FuryAPIMetrics, FuryLogEntry, FuryUserProfile, SystemData};
+use crate::models::complex::{ECommerceData, ForyCustomer, ForyOrder, ForyOrderItem, ForyProduct};
+use crate::models::medium::{Company, ForyAddress, Person};
+use crate::models::realworld::{ForyAPIMetrics, ForyLogEntry, ForyUserProfile, SystemData};
 use crate::models::simple::{SimpleList, SimpleMap, SimpleStruct};
 use crate::serializers::Serializer;
 use fory_core::fory::Fory;
 
 #[derive(Default)]
-pub struct FurySerializer {
+pub struct ForySerializer {
     fory: Fory,
 }
 
-impl FurySerializer {
+impl ForySerializer {
     pub fn new() -> Self {
         let mut fory = Fory::default();
 
@@ -37,28 +37,28 @@ impl FurySerializer {
         fory.register::<SimpleMap>(102);
 
         // Register medium types
-        fory.register::<FuryAddress>(200);
+        fory.register::<ForyAddress>(200);
         fory.register::<Person>(201);
         fory.register::<Company>(202);
 
         // Register complex types
-        fory.register::<FuryProduct>(300);
-        fory.register::<FuryOrderItem>(301);
-        fory.register::<FuryCustomer>(302);
-        fory.register::<FuryOrder>(303);
+        fory.register::<ForyProduct>(300);
+        fory.register::<ForyOrderItem>(301);
+        fory.register::<ForyCustomer>(302);
+        fory.register::<ForyOrder>(303);
         fory.register::<ECommerceData>(304);
 
         // Register realworld types
-        fory.register::<FuryLogEntry>(400);
-        fory.register::<FuryUserProfile>(401);
-        fory.register::<FuryAPIMetrics>(402);
+        fory.register::<ForyLogEntry>(400);
+        fory.register::<ForyUserProfile>(401);
+        fory.register::<ForyAPIMetrics>(402);
         fory.register::<SystemData>(403);
 
         Self { fory }
     }
 }
 
-impl Serializer<SimpleStruct> for FurySerializer {
+impl Serializer<SimpleStruct> for ForySerializer {
     fn serialize(&self, data: &SimpleStruct) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         Ok(self.fory.serialize(data))
     }
@@ -68,7 +68,7 @@ impl Serializer<SimpleStruct> for FurySerializer {
     }
 }
 
-impl Serializer<SimpleList> for FurySerializer {
+impl Serializer<SimpleList> for ForySerializer {
     fn serialize(&self, data: &SimpleList) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         Ok(self.fory.serialize(data))
     }
@@ -78,7 +78,7 @@ impl Serializer<SimpleList> for FurySerializer {
     }
 }
 
-impl Serializer<SimpleMap> for FurySerializer {
+impl Serializer<SimpleMap> for ForySerializer {
     fn serialize(&self, data: &SimpleMap) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         Ok(self.fory.serialize(data))
     }
@@ -88,7 +88,7 @@ impl Serializer<SimpleMap> for FurySerializer {
     }
 }
 
-impl Serializer<Person> for FurySerializer {
+impl Serializer<Person> for ForySerializer {
     fn serialize(&self, data: &Person) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         Ok(self.fory.serialize(data))
     }
@@ -98,7 +98,7 @@ impl Serializer<Person> for FurySerializer {
     }
 }
 
-impl Serializer<Company> for FurySerializer {
+impl Serializer<Company> for ForySerializer {
     fn serialize(&self, data: &Company) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         Ok(self.fory.serialize(data))
     }
@@ -108,7 +108,7 @@ impl Serializer<Company> for FurySerializer {
     }
 }
 
-impl Serializer<ECommerceData> for FurySerializer {
+impl Serializer<ECommerceData> for ForySerializer {
     fn serialize(&self, data: &ECommerceData) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         Ok(self.fory.serialize(data))
     }
@@ -118,7 +118,7 @@ impl Serializer<ECommerceData> for FurySerializer {
     }
 }
 
-impl Serializer<SystemData> for FurySerializer {
+impl Serializer<SystemData> for ForySerializer {
     fn serialize(&self, data: &SystemData) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         Ok(self.fory.serialize(data))
     }

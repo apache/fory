@@ -101,4 +101,6 @@ pub trait StructSerializer: Serializer + 'static {
     fn actual_type_id(type_id: u32) -> u32 {
         (type_id << 8) + TypeId::STRUCT as u32
     }
+
+    fn type_index() -> u32;
 }

@@ -34,11 +34,11 @@ use models::{
     TestDataGenerator,
 };
 use serializers::{
-    fury::FurySerializer, json::JsonSerializer, protobuf::ProtobufSerializer, Serializer,
+    fory::ForySerializer, json::JsonSerializer, protobuf::ProtobufSerializer, Serializer,
 };
 
 pub fn run_serialization_benchmarks(c: &mut Criterion) {
-    let fury_serializer = FurySerializer::new();
+    let fory_serializer = ForySerializer::new();
     let protobuf_serializer = ProtobufSerializer::new();
     let json_serializer = JsonSerializer::new();
 
@@ -46,7 +46,7 @@ pub fn run_serialization_benchmarks(c: &mut Criterion) {
     run_benchmark_group::<SimpleStruct>(
         c,
         "simple_struct",
-        &fury_serializer,
+        &fory_serializer,
         &protobuf_serializer,
         &json_serializer,
     );
@@ -55,7 +55,7 @@ pub fn run_serialization_benchmarks(c: &mut Criterion) {
     run_benchmark_group::<SimpleList>(
         c,
         "simple_list",
-        &fury_serializer,
+        &fory_serializer,
         &protobuf_serializer,
         &json_serializer,
     );
@@ -64,7 +64,7 @@ pub fn run_serialization_benchmarks(c: &mut Criterion) {
     run_benchmark_group::<SimpleMap>(
         c,
         "simple_map",
-        &fury_serializer,
+        &fory_serializer,
         &protobuf_serializer,
         &json_serializer,
     );
@@ -73,7 +73,7 @@ pub fn run_serialization_benchmarks(c: &mut Criterion) {
     run_benchmark_group::<Person>(
         c,
         "person",
-        &fury_serializer,
+        &fory_serializer,
         &protobuf_serializer,
         &json_serializer,
     );
@@ -82,7 +82,7 @@ pub fn run_serialization_benchmarks(c: &mut Criterion) {
     run_benchmark_group::<Company>(
         c,
         "company",
-        &fury_serializer,
+        &fory_serializer,
         &protobuf_serializer,
         &json_serializer,
     );
@@ -91,7 +91,7 @@ pub fn run_serialization_benchmarks(c: &mut Criterion) {
     run_benchmark_group::<ECommerceData>(
         c,
         "ecommerce_data",
-        &fury_serializer,
+        &fory_serializer,
         &protobuf_serializer,
         &json_serializer,
     );
@@ -100,7 +100,7 @@ pub fn run_serialization_benchmarks(c: &mut Criterion) {
     run_benchmark_group::<SystemData>(
         c,
         "system_data",
-        &fury_serializer,
+        &fory_serializer,
         &protobuf_serializer,
         &json_serializer,
     );
@@ -109,12 +109,12 @@ pub fn run_serialization_benchmarks(c: &mut Criterion) {
 fn run_benchmark_group<T>(
     c: &mut Criterion,
     group_name: &str,
-    fury_serializer: &FurySerializer,
+    fory_serializer: &ForySerializer,
     protobuf_serializer: &ProtobufSerializer,
     json_serializer: &JsonSerializer,
 ) where
     T: TestDataGenerator<Data = T> + Clone + PartialEq,
-    FurySerializer: Serializer<T>,
+    ForySerializer: Serializer<T>,
     ProtobufSerializer: Serializer<T>,
     JsonSerializer: Serializer<T>,
 {
@@ -125,68 +125,68 @@ fn run_benchmark_group<T>(
     let medium_data = T::generate_medium();
     let large_data = T::generate_large();
 
-    // Fury serialization benchmarks
+    // Fory serialization benchmarks
     group.bench_with_input(
-        BenchmarkId::new("fury_serialize", "small"),
+        BenchmarkId::new("fory_serialize", "small"),
         &small_data,
         |b, data| {
             b.iter(|| {
-                let _ = black_box(fury_serializer.serialize(black_box(data)).unwrap());
+                let _ = black_box(fory_serializer.serialize(black_box(data)).unwrap());
             })
         },
     );
 
     group.bench_with_input(
-        BenchmarkId::new("fury_serialize", "medium"),
+        BenchmarkId::new("fory_serialize", "medium"),
         &medium_data,
         |b, data| {
             b.iter(|| {
-                let _ = black_box(fury_serializer.serialize(black_box(data)).unwrap());
+                let _ = black_box(fory_serializer.serialize(black_box(data)).unwrap());
             })
         },
     );
 
     group.bench_with_input(
-        BenchmarkId::new("fury_serialize", "large"),
+        BenchmarkId::new("fory_serialize", "large"),
         &large_data,
         |b, data| {
             b.iter(|| {
-                let _ = black_box(fury_serializer.serialize(black_box(data)).unwrap());
+                let _ = black_box(fory_serializer.serialize(black_box(data)).unwrap());
             })
         },
     );
 
-    // Fury deserialization benchmarks
-    let small_serialized = fury_serializer.serialize(&small_data).unwrap();
-    let medium_serialized = fury_serializer.serialize(&medium_data).unwrap();
-    let large_serialized = fury_serializer.serialize(&large_data).unwrap();
+    // Fory deserialization benchmarks
+    let small_serialized = fory_serializer.serialize(&small_data).unwrap();
+    let medium_serialized = fory_serializer.serialize(&medium_data).unwrap();
+    let large_serialized = fory_serializer.serialize(&large_data).unwrap();
 
     group.bench_with_input(
-        BenchmarkId::new("fury_deserialize", "small"),
+        BenchmarkId::new("fory_deserialize", "small"),
         &small_serialized,
         |b, data| {
             b.iter(|| {
-                let _ = black_box(fury_serializer.deserialize(black_box(data)).unwrap());
+                let _ = black_box(fory_serializer.deserialize(black_box(data)).unwrap());
             })
         },
     );
 
     group.bench_with_input(
-        BenchmarkId::new("fury_deserialize", "medium"),
+        BenchmarkId::new("fory_deserialize", "medium"),
         &medium_serialized,
         |b, data| {
             b.iter(|| {
-                let _ = black_box(fury_serializer.deserialize(black_box(data)).unwrap());
+                let _ = black_box(fory_serializer.deserialize(black_box(data)).unwrap());
             })
         },
     );
 
     group.bench_with_input(
-        BenchmarkId::new("fury_deserialize", "large"),
+        BenchmarkId::new("fory_deserialize", "large"),
         &large_serialized,
         |b, data| {
             b.iter(|| {
-                let _ = black_box(fury_serializer.deserialize(black_box(data)).unwrap());
+                let _ = black_box(fory_serializer.deserialize(black_box(data)).unwrap());
             })
         },
     );
