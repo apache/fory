@@ -17,6 +17,29 @@ This repository includes an optional ahead-of-time (AOT) code generator for Fory
 
 Note: Code generation is not mandatory. If you prefer simple workflows, you can keep using the reflection-based API.
 
+### Supported types
+
+The code generator supports the following Go types:
+
+**Primitive types:**
+
+- `bool`, `int8`, `int16`, `int32`, `int64`, `int`, `uint8`, `uint16`, `uint32`, `uint64`, `uint`, `float32`, `float64`, `string`
+
+**Time types:**
+
+- `time.Time` (serialized as microsecond timestamp, timezone info is not preserved)
+- `github.com/apache/fory/go/fory.Date` (Fory's date type)
+
+**Composite types:**
+
+- `[]T` slices of any supported type T
+- `map[K]V` maps with comparable key types K and supported value types V
+- Nested structs with `//fory:gen` annotation
+- Pointer types `*T` for any supported type T
+
+**Map key restrictions:**
+Map keys must be comparable basic types: `bool`, `int*`, `uint*`, `float*`, `string`
+
 ### Install the generator
 
 The generator binary is `fory`.
@@ -27,7 +50,7 @@ The generator binary is `fory`.
 go install github.com/apache/fory/go/fory/cmd/fory@latest
 ```
 
-- Go 1.13+
+- Go 1.13+:
 
 ```bash
 # Inside a module-enabled environment
@@ -84,6 +107,15 @@ Fory adds a compile-time guard in generated files to detect stale code. If you f
 ```bash
 fory --force -file structs.go
 ```
+
+### COMPILE ERROR? 
+
+This means you've modified the struct but forget to regenerated the code. 
+To fix this:
+ 
+- 1. First try: go generate
+- 2. If that fails: fory --force -file structs.go
+- 3. Alternative: rm *_fory_gen.go && go generate
 
 ### What gets generated (simplified example)
 
@@ -142,9 +174,11 @@ fory --force -file <your file>
 
 ### FAQ
 
-- Is codegen required? No. Fory works without it via reflection.
-- Does generated code work across Go versions? Yes, it’s plain Go code; keep your toolchain consistent in CI.
-- Can I mix generated and non-generated structs? Yes, adoption is incremental and per file.
+- **Is codegen required?** No. Fory works without it via reflection.
+- **Does generated code work across Go versions?** Yes, it's plain Go code; keep your toolchain consistent in CI.
+- **Can I mix generated and non-generated structs?** Yes, adoption is incremental and per file.
+- **What about complex nested types?** Slices and maps can be arbitrarily nested (e.g., `[]map[string][]int32`), as long as all element types are supported.
+- **Are there any performance considerations for maps?** Map keys are sorted during serialization to ensure deterministic output, which adds a small overhead but guarantees consistent binary representation.
 
 ## How to test
 

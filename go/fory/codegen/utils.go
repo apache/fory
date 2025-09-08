@@ -39,8 +39,9 @@ type FieldInfo struct {
 
 // StructInfo contains metadata about a struct to generate code for
 type StructInfo struct {
-	Name   string
-	Fields []*FieldInfo
+	Name           string
+	Fields         []*FieldInfo // Sorted fields for serialization
+	OriginalFields []*FieldInfo // Original field order for guard generation
 }
 
 // toSnakeCase converts CamelCase to snake_case
@@ -60,6 +61,22 @@ func isSupportedFieldType(t types.Type) bool {
 	// Handle pointer types
 	if ptr, ok := t.(*types.Pointer); ok {
 		t = ptr.Elem()
+	}
+
+	// Check slice types
+	if slice, ok := t.(*types.Slice); ok {
+		// Recursively check if the element type is supported
+		return isSupportedFieldType(slice.Elem())
+	}
+
+	// Check map types
+	if mapType, ok := t.(*types.Map); ok {
+		// Both key and value types must be supported
+		// For now, restrict keys to basic comparable types
+		if !isValidMapKeyType(mapType.Key()) {
+			return false
+		}
+		return isSupportedFieldType(mapType.Elem())
 	}
 
 	// Check named types
@@ -120,6 +137,19 @@ func getTypeID(t types.Type) string {
 		t = ptr.Elem()
 	}
 
+	// Check slice types
+	if slice, ok := t.(*types.Slice); ok {
+		elemTypeID := getTypeID(slice.Elem())
+		return "LIST_" + elemTypeID
+	}
+
+	// Check map types
+	if mapType, ok := t.(*types.Map); ok {
+		keyTypeID := getTypeID(mapType.Key())
+		valueTypeID := getTypeID(mapType.Elem())
+		return "MAP_" + keyTypeID + "_" + valueTypeID
+	}
+
 	// Check named types first
 	if named, ok := t.(*types.Named); ok {
 		typeStr := named.String()
@@ -146,7 +176,9 @@ func getTypeID(t types.Type) string {
 			return "INT16"
 		case types.Int32:
 			return "INT32"
-		case types.Int, types.Int64:
+		case types.Int:
+			return "INT64" // int is treated as int64 for serialization format
+		case types.Int64:
 			return "INT64"
 		case types.Uint8:
 			return "UINT8"
@@ -184,7 +216,7 @@ func getPrimitiveSize(t types.Type) int {
 		case types.Int32, types.Uint32, types.Float32:
 			return 4
 		case types.Int, types.Int64, types.Uint, types.Uint64, types.Float64:
-			return 8
+			return 8 // int is also 8 bytes for consistent serialization
 		case types.String:
 			return 999 // Variable size, sort last among primitives
 		}
@@ -212,6 +244,16 @@ func getTypeIDValue(typeID string) int {
 		"TIMESTAMP":    20,
 		"LOCAL_DATE":   21,
 		"NAMED_STRUCT": 30,
+	}
+
+	// Handle LIST types
+	if len(typeID) > 5 && typeID[:5] == "LIST_" {
+		return 40 // List types sort after structs but before unknown
+	}
+
+	// Handle MAP types
+	if len(typeID) > 4 && typeID[:4] == "MAP_" {
+		return 50 // Map types sort after lists but before unknown
 	}
 
 	if val, ok := typeIDMap[typeID]; ok {
@@ -321,4 +363,85 @@ func analyzeField(field *types.Var, index int) (*FieldInfo, error) {
 		TypeID:        typeID,
 		PrimitiveSize: primitiveSize,
 	}, nil
+}
+
+// isValidMapKeyType checks if a type can be used as a map key
+func isValidMapKeyType(t types.Type) bool {
+	// Handle pointer types
+	if ptr, ok := t.(*types.Pointer); ok {
+		t = ptr.Elem()
+	}
+
+	// Check basic types that are comparable
+	if basic, ok := t.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Bool, types.Int8, types.Int16, types.Int32, types.Int, types.Int64,
+			types.Uint8, types.Uint16, types.Uint32, types.Uint, types.Uint64,
+			types.Float32, types.Float64, types.String:
+			return true
+		}
+	}
+
+	// For now, only allow basic types as map keys for simplicity
+	return false
+}
+
+// getGoTypeString returns the Go type string for a given types.Type
+func getGoTypeString(t types.Type) string {
+	// Handle pointer types
+	if ptr, ok := t.(*types.Pointer); ok {
+		return "*" + getGoTypeString(ptr.Elem())
+	}
+
+	// Handle slice types
+	if slice, ok := t.(*types.Slice); ok {
+		return "[]" + getGoTypeString(slice.Elem())
+	}
+
+	// Handle map types
+	if mapType, ok := t.(*types.Map); ok {
+		return "map[" + getGoTypeString(mapType.Key()) + "]" + getGoTypeString(mapType.Elem())
+	}
+
+	// Handle named types
+	if named, ok := t.(*types.Named); ok {
+		return named.String()
+	}
+
+	// Handle basic types
+	if basic, ok := t.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Bool:
+			return "bool"
+		case types.Int:
+			return "int"
+		case types.Int8:
+			return "int8"
+		case types.Int16:
+			return "int16"
+		case types.Int32:
+			return "int32"
+		case types.Int64:
+			return "int64"
+		case types.Uint:
+			return "uint"
+		case types.Uint8:
+			return "uint8"
+		case types.Uint16:
+			return "uint16"
+		case types.Uint32:
+			return "uint32"
+		case types.Uint64:
+			return "uint64"
+		case types.Float32:
+			return "float32"
+		case types.Float64:
+			return "float64"
+		case types.String:
+			return "string"
+		}
+	}
+
+	// Fallback to string representation
+	return t.String()
 }
