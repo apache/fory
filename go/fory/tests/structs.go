@@ -17,12 +17,40 @@
 
 package fory
 
+import "time"
+
 // ValidationDemo is a simple struct for testing code generation
 // Contains only basic types since PR1 only supports basic types
 
 // fory:gen
 type ValidationDemo struct {
-	A int32  `json:"a"` // int32 field
-	B string `json:"b"` // string field
-	C int64  `json:"c"` // int64 field (instead of array, as arrays are not supported yet)
+	A int32            `json:"a"` // int32 field
+	B string           `json:"b"` // string field
+	C int64            `json:"c"` // int64 field
+	D []int32          `json:"d"` // slice of int32
+	E []string         `json:"e"` // slice of string
+	F []bool           `json:"f"` // slice of bool
+	G map[string]int32 `json:"g"` // map with string key and int32 value
+	H map[int32]string `json:"h"` // map with int32 key and string value
+	I map[string]bool  `json:"i"` // map with string key and bool value
+	J time.Time        `json:"j"` // time.Time field
+}
+
+// SimpleStruct is a basic struct for testing simple serialization
+// Contains only int and string fields for basic functionality testing
+
+// fory:gen
+type SimpleStruct struct {
+	ID   int    `json:"id"`   // integer field
+	Name string `json:"name"` // string field
+}
+
+// CompoundStruct is a complex struct for testing nested struct serialization
+// Contains embedded ValidationDemo and SimpleStruct types plus additional fields
+
+// fory:gen
+type CompoundStruct struct {
+	ValidationData ValidationDemo `json:"validation_data"` // nested ValidationDemo struct
+	SimpleData     SimpleStruct   `json:"simple_data"`     // nested SimpleStruct struct
+	Count          int            `json:"count"`           // additional int field
 }
