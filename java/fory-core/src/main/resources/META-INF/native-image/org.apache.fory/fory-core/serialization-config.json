@@ -1,0 +1,11 @@
+[
+  {
+    "name": "java.lang.reflect.Proxy",
+    "fields": [],
+    "methods": [
+      { "name": "<init>" },
+      { "name": "writeReplace" }
+    ],
+    "customTargetConstructorClass": "java.lang.Object"
+  }
+]

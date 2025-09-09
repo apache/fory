@@ -60,8 +60,8 @@ macro_rules! impl_primitive_vec {
                 mem::size_of::<i32>()
             }
 
-            fn get_type_id(_fory: &Fory) -> i16 {
-                ($field_type).into()
+            fn get_type_id(_fory: &Fory) -> u32 {
+                ($field_type) as u32
             }
         }
     };
@@ -77,8 +77,8 @@ impl Serializer for Vec<bool> {
         mem::size_of::<u8>()
     }
 
-    fn get_type_id(_fory: &Fory) -> i16 {
-        TypeId::ForyPrimitiveBoolArray.into()
+    fn get_type_id(_fory: &Fory) -> u32 {
+        TypeId::ForyPrimitiveBoolArray as u32
     }
 
     fn read(context: &mut ReadContext) -> Result<Self, Error> {

@@ -79,7 +79,6 @@ import org.apache.fory.util.record.RecordUtils;
  * @see ObjectCodecOptimizer for code stats and split heuristics.
  */
 public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
-  public static final String BUFFER_NAME = "buffer";
   private final Literal classVersionHash;
   protected ObjectCodecOptimizer objectCodecOptimizer;
   protected Map<String, Integer> recordReversedMapping;
@@ -104,7 +103,9 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     DescriptorGrouper grouper = fory(f -> f.getClassResolver().createDescriptorGrouper(p, false));
     descriptors = grouper.getSortedDescriptors();
     classVersionHash =
-        new Literal(ObjectSerializer.computeStructHash(fory, descriptors), PRIMITIVE_INT_TYPE);
+        fory.checkClassVersion()
+            ? new Literal(ObjectSerializer.computeStructHash(fory, descriptors), PRIMITIVE_INT_TYPE)
+            : null;
     objectCodecOptimizer =
         new ObjectCodecOptimizer(beanClass, grouper, !fory.isBasicTypesRefIgnored(), ctx);
     if (isRecord) {

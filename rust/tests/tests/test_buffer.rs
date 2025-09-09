@@ -48,4 +48,12 @@ fn test_var_int32() {
         let res = reader.var_int32();
         assert_eq!(res, data);
     }
+    for &data in &test_data {
+        let mut writer = Writer::default();
+        writer.var_uint32(data as u32);
+        let binding = writer.dump();
+        let mut reader = Reader::new(binding.as_slice());
+        let res = reader.var_uint32();
+        assert_eq!(res, data as u32);
+    }
 }

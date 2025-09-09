@@ -2432,7 +2432,8 @@ public interface Expression {
           action.apply(
               new Reference(i),
               new Reference(leftElemValue, leftElemType, true),
-              // elemValue nullability check uses isNullAt inside action, so elemValueRef's nullable is false.
+              // elemValue nullability check uses isNullAt inside action, so elemValueRef's nullable
+              // is false.
               new Reference(rightElemValue, rightElemType, false));
       ExprCode elementExprCode = elemExpr.genCode(ctx);
 

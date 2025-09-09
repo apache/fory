@@ -662,7 +662,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       int flags,
       T collection,
       int numElements) {
-    fory.incDepth(1);
+    fory.incReadDepth();
     if ((flags & CollectionFlags.TRACKING_REF) == CollectionFlags.TRACKING_REF) {
       for (int i = 0; i < numElements; i++) {
         collection.add(binding.readRef(buffer, serializer));
@@ -682,7 +682,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
         }
       }
     }
-    fory.incDepth(-1);
+    fory.decDepth();
   }
 
   /** Read elements whose type are different. */

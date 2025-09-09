@@ -100,6 +100,16 @@ impl<'de, 'bf: 'de> ReadContext<'de, 'bf> {
         self.meta_resolver.get(type_index)
     }
 
+    pub fn get_meta_by_type_id(&self, type_id: u32) -> Rc<TypeMeta> {
+        let type_defs: Vec<_> = self.meta_resolver.reading_type_defs.to_vec();
+        for type_def in type_defs.iter() {
+            if type_def.get_type_id() == type_id {
+                return type_def.clone();
+            }
+        }
+        unreachable!()
+    }
+
     pub fn load_meta(&mut self, offset: usize) {
         self.meta_resolver
             .load(&mut Reader::new(&self.reader.slice()[offset..]))

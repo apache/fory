@@ -20,6 +20,7 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::RefFlag;
+use crate::types::TypeId;
 use anyhow::anyhow;
 
 mod any;
@@ -27,18 +28,20 @@ mod bool;
 mod datetime;
 mod list;
 mod map;
-pub mod nonexistent;
 mod number;
 mod option;
 mod primitive_list;
 mod set;
+pub mod skip;
 mod string;
 
 pub fn serialize<T: Serializer>(this: &T, context: &mut WriteContext) {
     // ref flag
     context.writer.i8(RefFlag::NotNullValue as i8);
     // type
-    context.writer.i16(T::get_type_id(context.get_fory()));
+    context
+        .writer
+        .var_uint32(T::get_type_id(context.get_fory()));
     this.write(context);
 }
 
@@ -47,7 +50,7 @@ pub fn deserialize<T: Serializer>(context: &mut ReadContext) -> Result<T, Error>
     let ref_flag = context.reader.i8();
 
     if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
-        let actual_type_id = context.reader.i16();
+        let actual_type_id = context.reader.var_uint32();
         let expected_type_id = T::get_type_id(context.get_fory());
         ensure!(
             actual_type_id == expected_type_id,
@@ -89,9 +92,15 @@ where
         deserialize(context)
     }
 
-    fn get_type_id(_fory: &Fory) -> i16;
+    fn get_type_id(_fory: &Fory) -> u32;
 }
 
 pub trait StructSerializer: Serializer + 'static {
-    fn type_def(fory: &Fory, type_id: i16) -> Vec<u8>;
+    fn type_def(fory: &Fory, type_id: u32) -> Vec<u8>;
+
+    fn actual_type_id(type_id: u32) -> u32 {
+        (type_id << 8) + TypeId::STRUCT as u32
+    }
+
+    fn type_index() -> u32;
 }

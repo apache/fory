@@ -31,6 +31,31 @@ func NewFory(referenceTracking bool) *Fory {
 		language:          XLANG,
 		buffer:            NewByteBuffer(nil),
 	}
+	// Create a new type resolver for this instance but copy generated serializers from global resolver
+	fory.typeResolver = newTypeResolver(fory)
+
+	// Copy generated serializers from global resolver to this instance
+	if globalTypeResolver != nil {
+		for typ, serializer := range globalTypeResolver.typeToSerializers {
+			fory.typeResolver.typeToSerializers[typ] = serializer
+		}
+		for typeId, typ := range globalTypeResolver.typeIdToType {
+			fory.typeResolver.typeIdToType[typeId] = typ
+		}
+	}
+
+	return fory
+}
+
+// NewForyWithIsolatedTypes creates a Fory instance with isolated type resolver
+// for use cases that need independent type registration
+func NewForyWithIsolatedTypes(referenceTracking bool) *Fory {
+	fory := &Fory{
+		refResolver:       newRefResolver(referenceTracking),
+		referenceTracking: referenceTracking,
+		language:          XLANG,
+		buffer:            NewByteBuffer(nil),
+	}
 	fory.typeResolver = newTypeResolver(fory)
 	return fory
 }

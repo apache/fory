@@ -42,6 +42,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.apache.fory.Fory;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
@@ -80,9 +81,9 @@ import org.apache.fory.util.record.RecordUtils;
  */
 @SuppressWarnings("UnstableApiUsage")
 public abstract class CodecBuilder {
-  protected static final String ROOT_OBJECT_NAME = "obj";
+  protected static final String ROOT_OBJECT_NAME = "_f_obj";
   // avoid user class has field with name fory.
-  protected static final String FORY_NAME = "fory";
+  protected static final String FORY_NAME = "_f_fory";
   static TypeRef<Object[]> objectArrayTypeRef = TypeRef.of(Object[].class);
   static TypeRef<MemoryBuffer> bufferTypeRef = TypeRef.of(MemoryBuffer.class);
   static TypeRef<ClassInfo> classInfoTypeRef = TypeRef.of(ClassInfo.class);
@@ -94,7 +95,7 @@ public abstract class CodecBuilder {
   protected final boolean isRecord;
   protected final boolean isInterface;
   private final Set<String> duplicatedFields;
-  protected Reference foryRef = new Reference(FORY_NAME, TypeRef.of(Fory.class));
+  protected Reference foryRef = Reference.fieldRef(FORY_NAME, TypeRef.of(Fory.class));
   public static final Reference recordComponentDefaultValues =
       new Reference("recordComponentDefaultValues", OBJECT_ARRAY_TYPE);
   protected final Map<String, Reference> fieldMap = new HashMap<>();
@@ -115,6 +116,10 @@ public abstract class CodecBuilder {
     ctx.reserveName(ROOT_OBJECT_NAME);
     // Don't import other packages to avoid class conflicts.
     // For example user class named as `Date`/`List`/`MemoryBuffer`
+    ReflectionUtils.getFields(beanType.getRawType(), true).stream()
+        .map(Field::getName)
+        .collect(Collectors.toSet())
+        .forEach(ctx::reserveName);
   }
 
   /** Generate codec class code. */
@@ -257,6 +262,10 @@ public abstract class CodecBuilder {
       if (ref == null) {
         Class<?> funcInterface = methodInfo.f0;
         TypeRef<?> getterType = TypeRef.of(funcInterface);
+        if (GraalvmSupport.isGraalBuildtime()) {
+          // generate getter ahead at native image build time.
+          Functions.makeGetterFunction(beanClass, fieldName);
+        }
         Expression getter =
             new StaticInvoke(
                 Functions.class,

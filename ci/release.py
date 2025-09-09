@@ -178,14 +178,21 @@ def bump_java_version(new_version):
         "integration_tests/latest_jdk_tests",
         "integration_tests/latest_jdk_tests",
         "java/benchmark",
+        "java/fory-core",
+        "java/fory-format",
+        "java/fory-extensions",
+        "java/fory-test-core",
+        "java/fory-testsuite",
     ]:
         _bump_version(p, "pom.xml", new_version, _update_pom_parent_version)
-    os.chdir(os.path.join(PROJECT_ROOT_DIR, "java"))
-    subprocess.check_output(
-        f"mvn versions:set -DnewVersion={new_version}",
-        shell=True,
-        universal_newlines=True,
-    )
+    # mvn versions:set too slow
+    # os.chdir(os.path.join(PROJECT_ROOT_DIR, "java"))
+    # subprocess.check_output(
+    #     f"mvn versions:set -DnewVersion={new_version}",
+    #     shell=True,
+    #     universal_newlines=True,
+    # )
+    _bump_version("java", "pom.xml", new_version, _update_parent_pom_version)
 
 
 def _update_pom_parent_version(lines, new_version):
@@ -216,9 +223,17 @@ def _update_scala_version(lines, v):
 
 
 def _update_kotlin_version(lines, v):
+    return _update_pom_version(lines, v, "<artifactId>fory-kotlin</artifactId>")
+
+
+def _update_parent_pom_version(lines, v):
+    return _update_pom_version(lines, v, "<packaging>pom</packaging>")
+
+
+def _update_pom_version(lines, v, prev):
     target_index = -1
     for index, line in enumerate(lines):
-        if "<artifactId>fory-kotlin</artifactId>" in line:
+        if prev in line:
             target_index = index + 1
             break
     current_version_line = lines[target_index]

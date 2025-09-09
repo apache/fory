@@ -34,63 +34,88 @@ import org.apache.fory.resolver.XtypeResolver;
 // If it's used in other packages in fory, duplicate it in those packages.
 @SuppressWarnings({"rawtypes", "unchecked"})
 // noinspection Duplicates
-interface SerializationBinding {
-  <T> void writeRef(MemoryBuffer buffer, T obj);
+abstract class SerializationBinding {
+  protected final Fory fory;
+  protected final RefResolver refResolver;
 
-  <T> void writeRef(MemoryBuffer buffer, T obj, Serializer<T> serializer);
+  SerializationBinding(Fory fory) {
+    this.fory = fory;
+    this.refResolver = fory.getRefResolver();
+  }
 
-  void writeRef(MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder);
+  abstract <T> void writeRef(MemoryBuffer buffer, T obj);
 
-  void writeRef(MemoryBuffer buffer, Object obj, ClassInfo classInfo);
+  abstract <T> void writeRef(MemoryBuffer buffer, T obj, Serializer<T> serializer);
 
-  void writeNonRef(MemoryBuffer buffer, Object obj);
+  abstract void writeRef(MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder);
 
-  void writeNonRef(MemoryBuffer buffer, Object obj, ClassInfo classInfo);
+  abstract void writeRef(MemoryBuffer buffer, Object obj, ClassInfo classInfo);
 
-  void writeNonRef(MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder);
+  abstract void writeNonRef(MemoryBuffer buffer, Object obj);
 
-  void writeNullable(MemoryBuffer buffer, Object obj);
+  abstract void writeNonRef(MemoryBuffer buffer, Object obj, ClassInfo classInfo);
 
-  void writeNullable(MemoryBuffer buffer, Object obj, Serializer serializer);
+  abstract void writeNonRef(MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder);
 
-  void writeNullable(MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder);
+  abstract void writeNullable(MemoryBuffer buffer, Object obj);
 
-  void writeNullable(MemoryBuffer buffer, Object obj, ClassInfo classInfo);
+  abstract void writeNullable(MemoryBuffer buffer, Object obj, Serializer serializer);
 
-  void writeNullable(
+  abstract void writeNullable(MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder);
+
+  abstract void writeNullable(MemoryBuffer buffer, Object obj, ClassInfo classInfo);
+
+  abstract void writeNullable(
       MemoryBuffer buffer, Object obj, ClassInfoHolder classInfoHolder, boolean nullable);
 
-  void writeNullable(MemoryBuffer buffer, Object obj, Serializer serializer, boolean nullable);
+  abstract void writeNullable(
+      MemoryBuffer buffer, Object obj, Serializer serializer, boolean nullable);
 
-  void writeContainerFieldValue(MemoryBuffer buffer, Object fieldValue, ClassInfo classInfo);
+  abstract void writeContainerFieldValue(
+      MemoryBuffer buffer, Object fieldValue, ClassInfo classInfo);
 
-  void write(MemoryBuffer buffer, Serializer serializer, Object value);
+  abstract void write(MemoryBuffer buffer, Serializer serializer, Object value);
 
-  Object read(MemoryBuffer buffer, Serializer serializer);
+  abstract Object read(MemoryBuffer buffer, Serializer serializer);
 
-  <T> T readRef(MemoryBuffer buffer, Serializer<T> serializer);
+  abstract <T> T readRef(MemoryBuffer buffer, Serializer<T> serializer);
 
-  Object readRef(MemoryBuffer buffer, GenericTypeField field);
+  abstract Object readRef(MemoryBuffer buffer, GenericTypeField field);
 
-  Object readRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder);
+  abstract Object readRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder);
 
-  Object readRef(MemoryBuffer buffer);
+  abstract Object readRef(MemoryBuffer buffer);
 
-  Object readNonRef(MemoryBuffer buffer);
+  abstract Object readNonRef(MemoryBuffer buffer);
 
-  Object readNonRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder);
+  abstract Object readNonRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder);
 
-  Object readNonRef(MemoryBuffer buffer, GenericTypeField field);
+  abstract Object readNonRef(MemoryBuffer buffer, GenericTypeField field);
 
-  Object readNullable(MemoryBuffer buffer, Serializer<Object> serializer);
+  abstract Object readNullable(MemoryBuffer buffer, Serializer<Object> serializer);
 
-  Object readNullable(MemoryBuffer buffer, Serializer<Object> serializer, boolean nullable);
+  abstract Object readNullable(
+      MemoryBuffer buffer, Serializer<Object> serializer, boolean nullable);
 
-  Object readContainerFieldValue(MemoryBuffer buffer, GenericTypeField field);
+  abstract Object readContainerFieldValue(MemoryBuffer buffer, GenericTypeField field);
 
-  Object readContainerFieldValueRef(MemoryBuffer buffer, GenericTypeField fieldInfo);
+  abstract Object readContainerFieldValueRef(MemoryBuffer buffer, GenericTypeField fieldInfo);
 
-  int preserveRefId(int refId);
+  public int preserveRefId(int refId) {
+    return refResolver.preserveRefId(refId);
+  }
+
+  void incReadDepth() {
+    fory.incReadDepth();
+  }
+
+  void incDepth() {
+    fory.incDepth();
+  }
+
+  void decDepth() {
+    fory.decDepth();
+  }
 
   static SerializationBinding createBinding(Fory fory) {
     if (fory.isCrossLanguage()) {
@@ -100,15 +125,12 @@ interface SerializationBinding {
     }
   }
 
-  final class JavaSerializationBinding implements SerializationBinding {
-    private final Fory fory;
+  static final class JavaSerializationBinding extends SerializationBinding {
     private final ClassResolver classResolver;
-    private final RefResolver refResolver;
 
     JavaSerializationBinding(Fory fory) {
-      this.fory = fory;
+      super(fory);
       classResolver = fory.getClassResolver();
-      refResolver = fory.getRefResolver();
     }
 
     @Override
@@ -290,23 +312,14 @@ interface SerializationBinding {
         MemoryBuffer buffer, Object fieldValue, ClassInfo classInfo) {
       fory.writeNonRef(buffer, fieldValue, classInfo);
     }
-
-    @Override
-    public int preserveRefId(int refId) {
-      return refResolver.preserveRefId(refId);
-    }
   }
 
-  final class XlangSerializationBinding implements SerializationBinding {
-
-    private final Fory fory;
+  static final class XlangSerializationBinding extends SerializationBinding {
     private final XtypeResolver xtypeResolver;
-    private final RefResolver refResolver;
 
     XlangSerializationBinding(Fory fory) {
-      this.fory = fory;
+      super(fory);
       xtypeResolver = fory.getXtypeResolver();
-      refResolver = fory.getRefResolver();
     }
 
     @Override
@@ -499,11 +512,6 @@ interface SerializationBinding {
     public void writeContainerFieldValue(
         MemoryBuffer buffer, Object fieldValue, ClassInfo classInfo) {
       fory.xwriteData(buffer, classInfo, fieldValue);
-    }
-
-    @Override
-    public int preserveRefId(int refId) {
-      return refResolver.preserveRefId(refId);
     }
   }
 }

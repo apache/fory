@@ -19,8 +19,7 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::Serializer;
-use crate::types::{Mode, RefFlag, TypeId};
-use anyhow::anyhow;
+use crate::types::TypeId;
 use std::any::Any;
 
 impl Serializer for Box<dyn Any> {
@@ -36,8 +35,8 @@ impl Serializer for Box<dyn Any> {
         panic!("unreachable")
     }
 
-    fn get_type_id(_fory: &Fory) -> i16 {
-        TypeId::ForyTypeTag.into()
+    fn get_type_id(_fory: &Fory) -> u32 {
+        TypeId::ForyTypeTag as u32
     }
 
     fn serialize(&self, context: &mut WriteContext) {
@@ -49,40 +48,40 @@ impl Serializer for Box<dyn Any> {
             .get_serializer()(self.as_ref(), context);
     }
 
-    fn deserialize(context: &mut ReadContext) -> Result<Self, Error> {
-        let reset_cursor = context.reader.reset_cursor_to_here();
-        // ref flag
-        let ref_flag = context.reader.i8();
-
-        if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
-            if context.get_fory().get_mode().eq(&Mode::Compatible) {
-                let meta_index = context.reader.i16();
-                let type_id = context.meta_resolver.get(meta_index as usize).get_type_id();
-                reset_cursor(&mut context.reader);
-                context
-                    .get_fory()
-                    .get_type_resolver()
-                    .get_harness(type_id)
-                    .unwrap()
-                    .get_deserializer()(context)
-            } else {
-                let type_id = context.reader.i16();
-                reset_cursor(&mut context.reader);
-                context
-                    .get_fory()
-                    .get_type_resolver()
-                    .get_harness(type_id)
-                    .unwrap()
-                    .get_deserializer()(context)
-            }
-        } else if ref_flag == (RefFlag::Null as i8) {
-            Err(anyhow!("Try to deserialize `any` to null"))?
-        } else if ref_flag == (RefFlag::Ref as i8) {
-            reset_cursor(&mut context.reader);
-            Err(Error::Ref)
-        } else {
-            reset_cursor(&mut context.reader);
-            Err(anyhow!("Unknown ref flag, value:{ref_flag}"))?
-        }
+    fn deserialize(_context: &mut ReadContext) -> Result<Self, Error> {
+        todo!()
+        // let reset_cursor = context.reader.reset_cursor_to_here();
+        // // ref flag
+        // let ref_flag = context.reader.i8();
+        //
+        // if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
+        //     if context.get_fory().get_mode().eq(&Mode::Compatible) {
+        //         let type_id = context.meta_resolver.get(meta_index as usize).get_type_id();
+        //         reset_cursor(&mut context.reader);
+        //         context
+        //             .get_fory()
+        //             .get_type_resolver()
+        //             .get_harness(type_id)
+        //             .unwrap()
+        //             .get_deserializer()(context)
+        //     } else {
+        //         let type_id = context.reader.i16();
+        //         reset_cursor(&mut context.reader);
+        //         context
+        //             .get_fory()
+        //             .get_type_resolver()
+        //             .get_harness(type_id)
+        //             .unwrap()
+        //             .get_deserializer()(context)
+        //     }
+        // } else if ref_flag == (RefFlag::Null as i8) {
+        //     Err(anyhow!("Try to deserialize `any` to null"))?
+        // } else if ref_flag == (RefFlag::Ref as i8) {
+        //     reset_cursor(&mut context.reader);
+        //     Err(Error::Ref)
+        // } else {
+        //     reset_cursor(&mut context.reader);
+        //     Err(anyhow!("Unknown ref flag, value:{ref_flag}"))?
+        // }
     }
 }

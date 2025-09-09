@@ -1,14 +1,15 @@
 <!--
-**Thanks for contributing to Fory.**
+**Thanks for contributing to Apache Fory™.**
 
 **If this is your first time opening a PR on fory, you can refer to [CONTRIBUTING.md](https://github.com/apache/fory/blob/main/CONTRIBUTING.md).**
 
 Contribution Checklist
 
-    - The **Apache Fory** community has requirements on the naming of pr titles. You can also find instructions in [CONTRIBUTING.md](https://github.com/apache/fory/blob/main/CONTRIBUTING.md).
+    - The **Apache Fory™** community has requirements on the naming of pr titles. You can also find instructions in [CONTRIBUTING.md](https://github.com/apache/fory/blob/main/CONTRIBUTING.md).
 
-    - Fory has a strong focus on performance. If the PR you submit will have an impact on performance, please benchmark it first and provide the benchmark result here.
+    - Apache Fory™ has a strong focus on performance. If the PR you submit will have an impact on performance, please benchmark it first and provide the benchmark result here.
 -->
+
 ## Why?
 
 <!-- Describe the purpose of this PR. -->

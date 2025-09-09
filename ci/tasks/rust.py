@@ -24,6 +24,38 @@ def run():
     logging.info("Executing fory rust tests")
     common.cd_project_subdir("rust")
 
+    # Install protoc for protobuf compilation
+    try:
+        if common.is_windows():
+            raise Exception("Not supported on Windows")
+        else:
+            # On Linux/macOS, install via package manager
+            logging.info("Installing protoc")
+            import shutil
+
+            if shutil.which("apt-get"):
+                # Ubuntu/Debian
+                common.exec_cmd("sudo apt-get update")
+                common.exec_cmd("sudo apt-get install -y protobuf-compiler")
+            elif shutil.which("brew"):
+                # macOS
+                common.exec_cmd("brew install protobuf")
+            elif shutil.which("yum"):
+                # CentOS/RHEL
+                common.exec_cmd("sudo yum install -y protobuf-compiler")
+            else:
+                # Fallback: download binary
+                logging.info("Package manager not found, downloading protoc binary")
+                common.exec_cmd(
+                    "curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip"
+                )
+                common.exec_cmd("unzip protoc-21.12-linux-x86_64.zip -d protoc")
+                common.exec_cmd("sudo mv protoc/bin/* /usr/local/bin/")
+                common.exec_cmd("sudo mv protoc/include/* /usr/local/include/")
+    except Exception as e:
+        logging.warning(f"Failed to install protoc: {e}")
+        logging.warning("Continuing without protoc - benchmarks may fail")
+
     # From run_ci.sh, we should also add rustup components
     try:
         common.exec_cmd("rustup component add clippy-preview")
@@ -33,7 +65,7 @@ def run():
         logging.warning("Continuing with existing components")
 
     cmds = (
-        "cargo doc --no-deps --document-private-items --all-features --open",
+        "cargo doc --no-deps --document-private-items --all-features",
         "cargo fmt --all -- --check",
         "cargo fmt --all",
         "cargo clippy --workspace --all-features --all-targets -- -D warnings",

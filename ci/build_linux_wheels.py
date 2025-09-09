@@ -24,6 +24,7 @@ Images are defined as regular Python lists (no env vars).
 Environment:
   - GITHUB_WORKSPACE (optional; defaults to cwd)
 """
+
 from __future__ import annotations
 import argparse
 import os
@@ -33,7 +34,9 @@ import sys
 from typing import List
 
 # Define Python version sets directly in the Python script
-RELEASE_PYTHON_VERSIONS = "cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313"
+RELEASE_PYTHON_VERSIONS = (
+    "cp38-cp38 cp39-cp39 cp310-cp310 cp311-cp311 cp312-cp312 cp313-cp313"
+)
 DEFAULT_PYTHON_VERSIONS = "cp38-cp38 cp313-cp313"
 
 # Path to the container build script
@@ -42,7 +45,6 @@ CONTAINER_SCRIPT_PATH = "ci/tasks/python_container_build_script.sh"
 DEFAULT_X86_IMAGES = [
     "quay.io/pypa/manylinux2014_x86_64:latest",
     # "quay.io/pypa/manylinux_2_28_x86_64:latest",
-
     # bazel binaries do not work with musl
     # "quay.io/pypa/musllinux_1_2_x86_64:latest",
 ]
@@ -50,7 +52,6 @@ DEFAULT_X86_IMAGES = [
 DEFAULT_AARCH64_IMAGES = [
     "quay.io/pypa/manylinux2014_aarch64:latest",
     # "quay.io/pypa/manylinux_2_28_aarch64:latest",
-
     # bazel binaries do not work with musl
     # "quay.io/pypa/musllinux_1_2_aarch64:latest",
 ]
@@ -65,16 +66,25 @@ ARCH_ALIASES = {
     "AARCH64": "arm64",
 }
 
+
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--arch", required=True, help="Architecture (e.g. X86, X64, AARCH64)")
-    p.add_argument("--release", action="store_true", help="Run full test suite for release")
-    p.add_argument("--dry-run", action="store_true", help="Print docker commands without running")
+    p.add_argument(
+        "--arch", required=True, help="Architecture (e.g. X86, X64, AARCH64)"
+    )
+    p.add_argument(
+        "--release", action="store_true", help="Run full test suite for release"
+    )
+    p.add_argument(
+        "--dry-run", action="store_true", help="Print docker commands without running"
+    )
     return p.parse_args()
+
 
 def normalize_arch(raw: str) -> str:
     key = raw.strip().upper()
     return ARCH_ALIASES.get(key, raw.strip().lower())
+
 
 def collect_images_for_arch(arch_normalized: str) -> List[str]:
     if arch_normalized == "x86":
@@ -85,6 +95,7 @@ def collect_images_for_arch(arch_normalized: str) -> List[str]:
         raise SystemExit(f"Unsupported arch: {arch_normalized!r}")
     return imgs
 
+
 def build_docker_cmd(workspace: str, image: str, release: bool = False) -> List[str]:
     workspace = os.path.abspath(workspace)
     python_versions = RELEASE_PYTHON_VERSIONS if release else DEFAULT_PYTHON_VERSIONS
@@ -93,11 +104,18 @@ def build_docker_cmd(workspace: str, image: str, release: bool = False) -> List[
     github_ref_name = os.environ.get("GITHUB_REF_NAME", "")
 
     cmd = [
-        "docker", "run", "-i", "--rm",
-        "-v", f"{workspace}:/work", # (v)olume
-        "-w", "/work",  # (w)orking directory
-        "-e", f"PYTHON_VERSIONS={python_versions}", # (e)nvironment variables
-        "-e", f"RELEASE_BUILD={'1' if release else '0'}"
+        "docker",
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        f"{workspace}:/work",  # (v)olume
+        "-w",
+        "/work",  # (w)orking directory
+        "-e",
+        f"PYTHON_VERSIONS={python_versions}",  # (e)nvironment variables
+        "-e",
+        f"RELEASE_BUILD={'1' if release else '0'}",
     ]
 
     # Pass GitHub reference name if available
@@ -107,7 +125,10 @@ def build_docker_cmd(workspace: str, image: str, release: bool = False) -> List[
     cmd.extend([image, "bash", CONTAINER_SCRIPT_PATH])
     return cmd
 
-def run_for_images(images: List[str], workspace: str, dry_run: bool, release: bool = False) -> int:
+
+def run_for_images(
+    images: List[str], workspace: str, dry_run: bool, release: bool = False
+) -> int:
     rc_overall = 0
     for image in images:
         docker_cmd = build_docker_cmd(workspace, image, release=release)
@@ -118,7 +139,10 @@ def run_for_images(images: List[str], workspace: str, dry_run: bool, release: bo
         try:
             completed = subprocess.run(docker_cmd)
             if completed.returncode != 0:
-                print(f"Container {image} exited with {completed.returncode}", file=sys.stderr)
+                print(
+                    f"Container {image} exited with {completed.returncode}",
+                    file=sys.stderr,
+                )
                 rc_overall = completed.returncode if rc_overall == 0 else rc_overall
             else:
                 print(f"Container {image} completed successfully.")
@@ -129,6 +153,7 @@ def run_for_images(images: List[str], workspace: str, dry_run: bool, release: bo
             print(f"Error running docker: {e}", file=sys.stderr)
             return 2
     return rc_overall
+
 
 def main() -> int:
     args = parse_args()
@@ -147,6 +172,7 @@ def main() -> int:
 
     print(f"Selected images for arch {args.arch}: {images}")
     return run_for_images(images, workspace, args.dry_run, release=args.release)
+
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -125,7 +125,22 @@ pub const BASIC_TYPES: [TypeId; 10] = [
     TypeId::TIMESTAMP,
 ];
 
+pub const BASIC_TYPE_NAMES: [&str; 10] = [
+    "bool",
+    "i8",
+    "i16",
+    "i32",
+    "i64",
+    "f32",
+    "f64",
+    "String",
+    "NaiveDate",
+    "NaiveDateTime",
+];
+
 pub const COLLECTION_TYPES: [TypeId; 3] = [TypeId::ARRAY, TypeId::SET, TypeId::MAP];
+
+pub const COLLECTION_TYPE_NAMES: [&str; 3] = ["Vec", "HashSet", "HashMap"];
 
 pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
     let mut new_hash: u64 = (hash as u64) * 31 + (id as u64);

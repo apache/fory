@@ -17,7 +17,6 @@
 
 import logging
 import os
-import sys
 import subprocess
 import re
 from . import common
@@ -26,7 +25,7 @@ from . import common
 def get_jdk_major_version():
     try:
         # Run the 'java -version' command
-        result = subprocess.run(['java', '-version'], capture_output=True, text=True)
+        result = subprocess.run(["java", "-version"], capture_output=True, text=True)
         output = result.stderr  # java -version outputs to stderr
 
         # Use regex to find the version string
@@ -37,8 +36,8 @@ def get_jdk_major_version():
         version_string = match.group(1)
 
         # Parse the version string
-        version_parts = version_string.split('.')
-        if version_parts[0] == '1':
+        version_parts = version_string.split(".")
+        if version_parts[0] == "1":
             # Java 8 or earlier
             return int(version_parts[1])
         else:
@@ -81,54 +80,56 @@ def create_toolchains_xml(jdk_mappings):
     import os
     import xml.etree.ElementTree as ET
     from xml.dom import minidom
-    
+
     # Create ~/.m2 directory if it doesn't exist
     m2_dir = os.path.expanduser("~/.m2")
     os.makedirs(m2_dir, exist_ok=True)
-    
+
     # Create the root element
     toolchains = ET.Element("toolchains")
-    
+
     for version, jdk_name in jdk_mappings.items():
         toolchain = ET.SubElement(toolchains, "toolchain")
-        
+
         # Set type
         type_elem = ET.SubElement(toolchain, "type")
         type_elem.text = "jdk"
-        
+
         # Set provides
         provides = ET.SubElement(toolchain, "provides")
         version_elem = ET.SubElement(provides, "version")
         version_elem.text = version
         vendor_elem = ET.SubElement(provides, "vendor")
         vendor_elem.text = "azul"
-        
+
         # Set configuration
         configuration = ET.SubElement(toolchain, "configuration")
         jdk_home = ET.SubElement(configuration, "jdkHome")
         jdk_home.text = os.path.abspath(os.path.join(common.PROJECT_ROOT_DIR, jdk_name))
-    
+
     # Create pretty XML string
-    rough_string = ET.tostring(toolchains, 'unicode')
+    rough_string = ET.tostring(toolchains, "unicode")
     reparsed = minidom.parseString(rough_string)
     pretty_xml = reparsed.toprettyxml(indent="  ")
-    
+
     # Add proper XML header with encoding
     xml_header = '<?xml version="1.0" encoding="UTF8"?>\n'
-    pretty_xml = xml_header + pretty_xml.split('\n', 1)[1]  # Remove the default header and add our custom one
-    
+    pretty_xml = (
+        xml_header + pretty_xml.split("\n", 1)[1]
+    )  # Remove the default header and add our custom one
+
     # Write to ~/.m2/toolchains.xml
     toolchains_path = os.path.join(m2_dir, "toolchains.xml")
-    with open(toolchains_path, 'w', encoding='utf-8') as f:
+    with open(toolchains_path, "w", encoding="utf-8") as f:
         f.write(pretty_xml)
-    
+
     logging.info(f"Created toolchains.xml at {toolchains_path}")
     logging.info("Toolchains configuration:")
     for version, jdk_name in jdk_mappings.items():
         jdk_path = os.path.join(common.PROJECT_ROOT_DIR, jdk_name)
         logging.info(f"  JDK {version}: {jdk_path}")
     # print toolchains.xml
-    with open(toolchains_path, 'r', encoding='utf-8') as f:
+    with open(toolchains_path, "r", encoding="utf-8") as f:
         logging.info(f.read())
 
 
@@ -156,7 +157,9 @@ def run_java8():
     logging.info("Executing fory java tests with Java 8")
     install_jdks()
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test -pl '!fory-format,!fory-simd'")
+    common.exec_cmd(
+        "mvn -T16 --batch-mode --no-transfer-progress test -pl '!:fory-format,!:fory-testsuite,!:fory-simd'"
+    )
     logging.info("Executing fory java tests succeeds")
 
 
@@ -215,7 +218,9 @@ def run_integration_tests():
     logging.info("Executing fory integration tests")
 
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T10 -B --no-transfer-progress clean install -DskipTests")
+    common.exec_cmd(
+        "mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-format,!:fory-testsuite'"
+    )
 
     logging.info("benchmark tests")
     common.cd_project_subdir("java/benchmark")
@@ -277,7 +282,9 @@ def run_graalvm_test():
     logging.info("Start GraalVM tests")
 
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T10 -B --no-transfer-progress clean install -DskipTests")
+    common.exec_cmd(
+        "mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-format,!:fory-testsuite'"
+    )
 
     logging.info("Start to build graalvm native image")
     common.cd_project_subdir("integration_tests/graalvm_tests")
@@ -292,17 +299,19 @@ def run_graalvm_test():
 
 def run_release():
     """Release to Maven Central."""
-    logging.info(f"Starting release to Maven Central with Java")
+    logging.info("Starting release to Maven Central with Java")
     common.cd_project_subdir("java")
-    
+
     # Clean and install without tests first
     logging.info("Cleaning and installing dependencies")
     common.exec_cmd("mvn -T10 -B --no-transfer-progress clean install -DskipTests")
-    
+
     # Deploy to Maven Central
     logging.info("Deploying to Maven Central")
-    common.exec_cmd("mvn -T10 -B --no-transfer-progress clean deploy -Dgpg.skip -DskipTests -Papache-release")
-    
+    common.exec_cmd(
+        "mvn -T10 -B --no-transfer-progress clean deploy -Dgpg.skip -DskipTests -Papache-release"
+    )
+
     logging.info("Release to Maven Central completed successfully")
 
 

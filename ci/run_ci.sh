@@ -141,7 +141,7 @@ install_jdks() {
 
 graalvm_test() {
   cd "$ROOT"/java
-  mvn -T10 -B --no-transfer-progress clean install -DskipTests
+  mvn -T10 -B --no-transfer-progress clean install -DskipTests -pl '!:fory-format,!:fory-testsuite'
   echo "Start to build graalvm native image"
   cd "$ROOT"/integration_tests/graalvm_tests
   mvn -DskipTests=true --no-transfer-progress -Pnative package
@@ -231,7 +231,7 @@ case $1 in
       echo "Executing fory java tests"
       cd "$ROOT/java"
       set +e
-      mvn -T16 --batch-mode --no-transfer-progress test
+      mvn -T16 --batch-mode --no-transfer-progress test -pl '!:fory-format,!:fory-testsuite'
       testcode=$?
       if [[ $testcode -ne 0 ]]; then
         exit $testcode
@@ -289,9 +289,24 @@ case $1 in
       set -e
       rustup component add clippy-preview
       rustup component add rustfmt
+      echo "Installing protoc for protobuf compilation"
+      if command -v apt-get >/dev/null; then
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler
+      elif command -v brew >/dev/null; then
+        brew install protobuf
+      elif command -v yum >/dev/null; then
+        sudo yum install -y protobuf-compiler
+      else
+        echo "Package manager not found, downloading protoc binary"
+        curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v21.12/protoc-21.12-linux-x86_64.zip
+        unzip protoc-21.12-linux-x86_64.zip -d protoc
+        sudo mv protoc/bin/* /usr/local/bin/
+        sudo mv protoc/include/* /usr/local/include/
+      fi
       echo "Executing fory rust tests"
       cd "$ROOT/rust"
-      cargo doc --no-deps --document-private-items --all-features --open
+      cargo doc --no-deps --document-private-items --all-features
       cargo fmt --all -- --check
       cargo fmt --all
       cargo clippy --workspace --all-features --all-targets
@@ -341,6 +356,10 @@ case $1 in
     ;;
     go)
       echo "Executing fory go tests for go"
+      cd "$ROOT/go/fory"
+      go install ./cmd/fory
+      cd "$ROOT/go/fory/tests"
+      go generate
       cd "$ROOT/go/fory"
       go test -v
       echo "Executing fory go tests succeeds"

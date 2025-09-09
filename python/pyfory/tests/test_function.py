@@ -26,7 +26,7 @@ def test_lambda_functions_serialization():
     # Register the necessary types
     fory.register_type(tuple)
     fory.register_type(list)
-    fory.register_type(dict)
+    # dict is already registered by default with MapSerializer
 
     # Simple lambda
     simple_lambda = lambda x: x * 2  # noqa: E731
@@ -64,7 +64,7 @@ def test_regular_functions_serialization():
     # Register the necessary types for complex functions
     fory.register_type(tuple)
     fory.register_type(list)
-    fory.register_type(dict)
+    # dict is already registered by default with MapSerializer
 
     # Test complex function
     serialized = fory.serialize(complex_function)
@@ -79,7 +79,7 @@ def test_nested_functions_serialization():
     # Register the necessary types
     fory.register_type(tuple)
     fory.register_type(list)
-    fory.register_type(dict)
+    # dict is already registered by default with MapSerializer
 
     def outer_function(x):
         def inner_function(y):
@@ -104,7 +104,7 @@ def test_local_class_serialization():
     # Register the necessary types
     fory.register_type(tuple)
     fory.register_type(list)
-    fory.register_type(dict)
+    # dict is already registered by default with MapSerializer
 
     def create_local_class():
         from dataclasses import dataclass

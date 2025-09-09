@@ -35,7 +35,7 @@ impl<T: Serializer> Serializer for Option<T> {
 
         if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
             // type_id
-            let actual_type_id = context.reader.i16();
+            let actual_type_id = context.reader.var_uint32();
             let expected_type_id = T::get_type_id(context.get_fory());
             ensure!(
                 actual_type_id == expected_type_id,
@@ -66,8 +66,9 @@ impl<T: Serializer> Serializer for Option<T> {
                 // ref flag
                 context.writer.i8(RefFlag::NotNullValue as i8);
                 // type
-                context.writer.i16(T::get_type_id(context.get_fory()));
-
+                context
+                    .writer
+                    .var_uint32(T::get_type_id(context.get_fory()));
                 v.write(context);
             }
             None => {
@@ -80,7 +81,7 @@ impl<T: Serializer> Serializer for Option<T> {
         std::mem::size_of::<T>()
     }
 
-    fn get_type_id(fory: &Fory) -> i16 {
+    fn get_type_id(fory: &Fory) -> u32 {
         T::get_type_id(fory)
     }
 }

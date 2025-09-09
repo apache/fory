@@ -20,9 +20,14 @@
 package org.apache.fory.type;
 
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.primitives.Primitives;
 import java.lang.reflect.Type;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,6 +44,7 @@ import org.apache.fory.collection.Tuple2;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
+import org.apache.fory.test.bean.Foo;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -288,5 +294,30 @@ public class TypeUtilsTest {
     List<TypeRef<?>> allTypeArguments = TypeUtils.getAllTypeArguments(typeRef);
     assertEquals(allTypeArguments.size(), 3);
     assertEquals(allTypeArguments.get(2).getRawType(), BeanA.class);
+  }
+
+  static class SingleBasicFieldStruct {
+    int f1;
+  }
+
+  static class SingleExpandableFieldStruct {
+    Object f1;
+  }
+
+  @Test
+  public void testHasExpandableLeafs() {
+    for (Class<?> type : Primitives.allPrimitiveTypes()) {
+      assertFalse(TypeUtils.hasExpandableLeafs(type));
+    }
+    for (Class<?> type : Primitives.allWrapperTypes()) {
+      assertFalse(TypeUtils.hasExpandableLeafs(type));
+    }
+    assertFalse(TypeUtils.hasExpandableLeafs(Instant.class));
+    assertFalse(TypeUtils.hasExpandableLeafs(Duration.class));
+    assertFalse(TypeUtils.hasExpandableLeafs(Foo.class));
+    assertTrue(TypeUtils.hasExpandableLeafs(BeanB.class));
+    assertTrue(TypeUtils.hasExpandableLeafs(BeanA.class));
+    assertFalse(TypeUtils.hasExpandableLeafs(SingleBasicFieldStruct.class));
+    assertTrue(TypeUtils.hasExpandableLeafs(SingleExpandableFieldStruct.class));
   }
 }

@@ -22,36 +22,54 @@ use quote::quote;
 
 pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
-    let (type_def_token_stream, write_token_stream, read_token_stream) = match &ast.data {
+    let (
+        type_def_token_stream,
+        write_token_stream,
+        read_token_stream,
+        read_compatible_token_stream,
+        read_nullable_token_stream,
+    ) = match &ast.data {
         syn::Data::Struct(s) => {
             let fields = sorted_fields(&s.fields);
             (
                 misc::gen_in_struct_impl(&fields),
                 write::gen(&fields),
-                read::gen(&fields),
+                read::gen(&fields, name),
+                read::gen_read_compatible(&fields, name),
+                read::gen_nullable(&fields),
             )
         }
         syn::Data::Enum(s) => (
             derive_enum::gen_type_def(s),
             derive_enum::gen_write(s),
             derive_enum::gen_read(s),
+            quote! {},
+            quote! {},
         ),
         syn::Data::Union(_) => {
             panic!("Union is not supported")
         }
     };
 
-    let misc_token_stream = misc::gen();
+    // Allocate a unique type ID once and share it between both functions
+    let type_id = misc::allocate_type_id();
+    let misc_token_stream = misc::gen(type_id);
+    let type_index_token_stream = misc::gen_type_index(type_id);
 
     let gen = quote! {
         impl fory_core::serializer::StructSerializer for #name {
             #type_def_token_stream
+            #type_index_token_stream
         }
         impl fory_core::types::ForyGeneralList for #name {}
         impl fory_core::serializer::Serializer for #name {
             #misc_token_stream
             #write_token_stream
             #read_token_stream
+        }
+        impl #name {
+            #read_compatible_token_stream
+            #read_nullable_token_stream
         }
     };
     gen.into()

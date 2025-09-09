@@ -35,6 +35,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.ToString;
@@ -45,6 +46,7 @@ import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.test.bean.Cyclic;
+import org.apache.fory.test.bean.Foo;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -400,5 +402,25 @@ public class CodegenSerializerTest extends ForyTestBase {
     Fory fory = builder().requireClassRegistration(false).withCodegen(true).build();
     A o = serDe(fory, a);
     assertEquals(a, o);
+  }
+
+  @Data
+  @AllArgsConstructor
+  public static class ConflictName {
+    public Foo buffer;
+    public int fory;
+    public int classType;
+  }
+
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testNameConflict(boolean trackRef) {
+    Fory fory =
+        builder()
+            .requireClassRegistration(false)
+            .withCodegen(true)
+            .withRefTracking(trackRef)
+            .build();
+    ConflictName c = new ConflictName(Foo.create(), -100, 200);
+    serDeCheck(fory, c);
   }
 }

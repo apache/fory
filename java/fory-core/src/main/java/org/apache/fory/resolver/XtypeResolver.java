@@ -49,6 +49,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.fory.Fory;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.collection.IdentityObjectIntMap;
 import org.apache.fory.collection.LongMap;
@@ -139,11 +140,10 @@ public class XtypeResolver implements TypeResolver {
     register(type, xtypeIdGenerator++);
   }
 
-  public void register(Class<?> type, int typeId) {
+  public void register(Class<?> type, int userTypeId) {
     // ClassInfo[] has length of max type id. If the type id is too big, Fory will waste many
-    // memory.
-    // We can relax this limit in the future.
-    Preconditions.checkArgument(typeId < MAX_TYPE_ID, "Too big type id %s", typeId);
+    // memory. We can relax this limit in the future.
+    Preconditions.checkArgument(userTypeId < MAX_TYPE_ID, "Too big type id %s", userTypeId);
     ClassInfo classInfo = classInfoMap.get(type);
     if (type.isArray()) {
       buildClassInfo(type);
@@ -165,7 +165,7 @@ public class XtypeResolver implements TypeResolver {
                 type, prevNamespace, prevTypeName));
       }
     }
-    int xtypeId = typeId;
+    int xtypeId = userTypeId;
     if (type.isEnum()) {
       xtypeId = (xtypeId << 8) + Types.ENUM;
     } else {
@@ -175,6 +175,8 @@ public class XtypeResolver implements TypeResolver {
         } else {
           xtypeId = (xtypeId << 8) + Types.EXT;
         }
+      } else {
+        xtypeId = (xtypeId << 8) + Types.STRUCT;
       }
     }
     register(
@@ -240,6 +242,28 @@ public class XtypeResolver implements TypeResolver {
     classInfoMap.put(type, classInfo);
     registeredTypeIds.add(xtypeId);
     xtypeIdToClassMap.put(xtypeId, classInfo);
+  }
+
+  /**
+   * Register type with given type id and serializer for type in fory type system.
+   *
+   * <p>Do not use this method to register custom type in java type system. Use {@link
+   * #register(Class, String, String)} or {@link #register(Class, int)} instead.
+   *
+   * @param type type to register.
+   * @param serializer serializer to register.
+   * @param typeId type id to register.
+   * @throws IllegalArgumentException if type id is too big.
+   */
+  @Internal
+  public void registerForyType(Class<?> type, Serializer serializer, int typeId) {
+    Preconditions.checkArgument(typeId < MAX_TYPE_ID, "Too big type id %s", typeId);
+    register(
+        type,
+        serializer,
+        ReflectionUtils.getPackage(type),
+        ReflectionUtils.getClassNameWithoutPackage(type),
+        typeId);
   }
 
   private boolean isStructType(Serializer serializer) {
@@ -647,9 +671,9 @@ public class XtypeResolver implements TypeResolver {
   }
 
   private ClassInfo getListClassInfo() {
-    fory.incDepth(1);
+    fory.incReadDepth();
     GenericType genericType = generics.nextGenericType();
-    fory.incDepth(-1);
+    fory.decDepth();
     if (genericType != null) {
       return getOrBuildClassInfo(genericType.getCls());
     }
@@ -657,9 +681,9 @@ public class XtypeResolver implements TypeResolver {
   }
 
   private ClassInfo getGenericClassInfo() {
-    fory.incDepth(1);
+    fory.incReadDepth();
     GenericType genericType = generics.nextGenericType();
-    fory.incDepth(-1);
+    fory.decDepth();
     if (genericType != null) {
       return getOrBuildClassInfo(genericType.getCls());
     }

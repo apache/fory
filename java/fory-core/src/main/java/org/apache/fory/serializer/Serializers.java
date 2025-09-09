@@ -43,6 +43,7 @@ import java.util.function.Function;
 import java.util.function.ToIntFunction;
 import java.util.regex.Pattern;
 import org.apache.fory.Fory;
+import org.apache.fory.builder.Generated;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
@@ -50,6 +51,7 @@ import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.GraalvmSupport;
+import org.apache.fory.util.GraalvmSupport.GraalvmSerializerHolder;
 import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.unsafe._JDKAccess;
 
@@ -88,6 +90,11 @@ public class Serializers {
       }
       Tuple2<MethodType, MethodHandle> ctrInfo = CTR_MAP.getIfPresent(serializerClass);
       if (ctrInfo != null) {
+        if (GraalvmSupport.isGraalBuildtime()) {
+          if (Generated.class.isAssignableFrom(serializerClass)) {
+            return new GraalvmSerializerHolder(fory, type, serializerClass);
+          }
+        }
         MethodType sig = ctrInfo.f0;
         MethodHandle handle = ctrInfo.f1;
         if (sig.equals(SIG1)) {
@@ -125,6 +132,11 @@ public class Serializers {
     try {
       MethodHandle ctr = lookup.findConstructor(serializerClass, SIG1);
       CTR_MAP.put(serializerClass, Tuple2.of(SIG1, ctr));
+      if (GraalvmSupport.isGraalBuildtime()) {
+        if (Generated.class.isAssignableFrom(serializerClass)) {
+          return new GraalvmSerializerHolder(fory, type, serializerClass);
+        }
+      }
       return (Serializer<T>) ctr.invoke(fory, type);
     } catch (NoSuchMethodException e) {
       ExceptionUtils.ignore(e);
@@ -132,6 +144,11 @@ public class Serializers {
     try {
       MethodHandle ctr = lookup.findConstructor(serializerClass, SIG2);
       CTR_MAP.put(serializerClass, Tuple2.of(SIG2, ctr));
+      if (GraalvmSupport.isGraalBuildtime()) {
+        if (Generated.class.isAssignableFrom(serializerClass)) {
+          return new GraalvmSerializerHolder(fory, type, serializerClass);
+        }
+      }
       return (Serializer<T>) ctr.invoke(fory);
     } catch (NoSuchMethodException e) {
       ExceptionUtils.ignore(e);
@@ -139,10 +156,20 @@ public class Serializers {
     try {
       MethodHandle ctr = lookup.findConstructor(serializerClass, SIG3);
       CTR_MAP.put(serializerClass, Tuple2.of(SIG3, ctr));
+      if (GraalvmSupport.isGraalBuildtime()) {
+        if (Generated.class.isAssignableFrom(serializerClass)) {
+          return new GraalvmSerializerHolder(fory, type, serializerClass);
+        }
+      }
       return (Serializer<T>) ctr.invoke(type);
     } catch (NoSuchMethodException e) {
       MethodHandle ctr = ReflectionUtils.getCtrHandle(serializerClass);
       CTR_MAP.put(serializerClass, Tuple2.of(SIG4, ctr));
+      if (GraalvmSupport.isGraalBuildtime()) {
+        if (Generated.class.isAssignableFrom(serializerClass)) {
+          return new GraalvmSerializerHolder(fory, type, serializerClass);
+        }
+      }
       return (Serializer<T>) ctr.invoke();
     }
   }

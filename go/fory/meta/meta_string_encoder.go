@@ -157,28 +157,39 @@ func (e *Encoder) EncodeGeneric(chars []byte, bitsPerChar int) (result []byte, e
 }
 
 func (e *Encoder) ComputeEncoding(input string) Encoding {
+	allEncodings := []Encoding{LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL, ALL_TO_LOWER_SPECIAL, UTF_8}
+	return e.ComputeEncodingWith(input, allEncodings)
+}
+
+func (e *Encoder) ComputeEncodingWith(input string, encodings []Encoding) Encoding {
+	encodingFlags := make(map[Encoding]bool)
+	for _, enc := range encodings {
+		encodingFlags[enc] = true
+	}
 	// Special case for empty string: default to UTF_8 encoding
 	if len(input) == 0 {
 		return UTF_8
 	}
 	statistics := e.computeStringStatistics(input)
-	if statistics.canLowerSpecialEncoded {
+	if statistics.canLowerSpecialEncoded && encodingFlags[LOWER_SPECIAL] {
 		return LOWER_SPECIAL
 	}
 	if statistics.canLowerUpperDigitSpecialEncoded {
 		// Here, the string contains only letters, numbers, and two special symbols
-		if statistics.digitCount != 0 {
+		if statistics.digitCount != 0 && encodingFlags[LOWER_UPPER_DIGIT_SPECIAL] {
 			return LOWER_UPPER_DIGIT_SPECIAL
 		}
 		upperCount := statistics.upperCount
 		chars := []byte(input)
-		if upperCount == 1 && chars[0] >= 'A' && chars[0] <= 'Z' {
+		if upperCount == 1 && chars[0] >= 'A' && chars[0] <= 'Z' && encodingFlags[FIRST_TO_LOWER_SPECIAL] {
 			return FIRST_TO_LOWER_SPECIAL
 		}
-		if (len(chars)+upperCount)*5 < len(chars)*6 {
+		if (len(chars)+upperCount)*5 < len(chars)*6 && encodingFlags[ALL_TO_LOWER_SPECIAL] {
 			return ALL_TO_LOWER_SPECIAL
 		}
-		return LOWER_UPPER_DIGIT_SPECIAL
+		if encodingFlags[LOWER_UPPER_DIGIT_SPECIAL] {
+			return LOWER_UPPER_DIGIT_SPECIAL
+		}
 	}
 	return UTF_8
 }

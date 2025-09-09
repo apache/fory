@@ -166,6 +166,7 @@ public class Types {
 
   // Helper methods
   public static boolean isStructType(int value) {
+    assert value < 0xff;
     return value == STRUCT
         || value == COMPATIBLE_STRUCT
         || value == NAMED_STRUCT
@@ -173,10 +174,12 @@ public class Types {
   }
 
   public static boolean isExtType(int value) {
+    assert value < 0xff;
     return value == EXT || value == NAMED_EXT;
   }
 
   public static boolean isEnumType(int value) {
+    assert value < 0xff;
     return value == ENUM || value == NAMED_ENUM;
   }
 

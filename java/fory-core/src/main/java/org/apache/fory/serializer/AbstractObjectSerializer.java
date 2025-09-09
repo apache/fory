@@ -89,15 +89,17 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       boolean isFinal,
       MemoryBuffer buffer) {
     Serializer<Object> serializer = fieldInfo.classInfo.getSerializer();
+    binding.incReadDepth();
     Object fieldValue;
     boolean nullable = fieldInfo.nullable;
     if (isFinal) {
       if (!fieldInfo.trackingRef) {
-        return binding.readNullable(buffer, serializer, nullable);
+        fieldValue = binding.readNullable(buffer, serializer, nullable);
+      } else {
+        // whether tracking ref is recorded in `fieldInfo.serializer`, so it's still
+        // consistent with jit serializer.
+        fieldValue = binding.readRef(buffer, serializer);
       }
-      // whether tracking ref is recorded in `fieldInfo.serializer`, so it's still
-      // consistent with jit serializer.
-      fieldValue = binding.readRef(buffer, serializer);
     } else {
       if (serializer.needToWriteRef()) {
         int nextReadRefId = refResolver.tryPreserveRefId(buffer);
@@ -112,6 +114,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         if (nullable) {
           byte headFlag = buffer.readByte();
           if (headFlag == Fory.NULL_FLAG) {
+            binding.decDepth();
             return null;
           }
         }
@@ -119,6 +122,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         fieldValue = serializer.read(buffer);
       }
     }
+    binding.decDepth();
     return fieldValue;
   }
 

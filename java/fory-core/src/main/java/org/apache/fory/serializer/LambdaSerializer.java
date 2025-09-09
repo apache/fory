@@ -21,13 +21,18 @@ package org.apache.fory.serializer;
 
 import java.io.ObjectStreamClass;
 import java.io.Serializable;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.invoke.SerializedLambda;
-import java.lang.reflect.Method;
 import java.util.Objects;
 import org.apache.fory.Fory;
+import org.apache.fory.collection.ClassValueCache;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.util.Preconditions;
+import org.apache.fory.util.function.SerializableFunction;
+import org.apache.fory.util.unsafe._JDKAccess;
 
 /**
  * Serializer for java serializable lambda. Use fory to serialize java lambda instead of JDK
@@ -36,20 +41,34 @@ import org.apache.fory.util.Preconditions;
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class LambdaSerializer extends Serializer {
+  public static Class<?> STUB_LAMBDA_CLASS =
+      ((SerializableFunction<Integer, Integer>) (x -> x * 2)).getClass();
   private static final Class<SerializedLambda> SERIALIZED_LAMBDA = SerializedLambda.class;
-  private static final Method READ_RESOLVE_METHOD =
-      (Method)
-          Objects.requireNonNull(
-              ReflectionUtils.getObjectFieldValue(
-                  ObjectStreamClass.lookup(SERIALIZED_LAMBDA), "readResolveMethod"));
+  private static final MethodHandle READ_RESOLVE_HANDLE;
   private static final boolean SERIALIZED_LAMBDA_HAS_JDK_WRITE =
       JavaSerializer.getWriteObjectMethod(SERIALIZED_LAMBDA) != null;
   private static final boolean SERIALIZED_LAMBDA_HAS_JDK_READ =
       JavaSerializer.getReadObjectMethod(SERIALIZED_LAMBDA) != null;
-  private final Method writeReplaceMethod;
+  private static final ClassValueCache<MethodHandle> writeReplaceMethodCache =
+      ClassValueCache.newClassKeySoftCache(32);
+
+  private final MethodHandle writeReplaceHandle;
   private Serializer dataSerializer;
 
-  public LambdaSerializer(Fory fory, Class cls) {
+  static {
+    try {
+      // Initialize READ_RESOLVE_HANDLE
+      MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(SERIALIZED_LAMBDA);
+      Object readResolveMethod =
+          ReflectionUtils.getObjectFieldValue(
+              ObjectStreamClass.lookup(SERIALIZED_LAMBDA), "readResolveMethod");
+      READ_RESOLVE_HANDLE = lookup.unreflect((java.lang.reflect.Method) readResolveMethod);
+    } catch (IllegalAccessException e) {
+      throw new ForyException(e);
+    }
+  }
+
+  public LambdaSerializer(Fory fory, Class<?> cls) {
     super(fory, cls);
     if (cls != ReplaceStub.class) {
       if (!Serializable.class.isAssignableFrom(cls)) {
@@ -59,12 +78,28 @@ public class LambdaSerializer extends Serializer {
                 cls, Serializable.class.getName());
         throw new UnsupportedOperationException(msg);
       }
-      writeReplaceMethod =
-          (Method)
+      MethodHandle methodHandle = writeReplaceMethodCache.getIfPresent(cls);
+      if (methodHandle == null) {
+        try {
+          MethodHandles.Lookup lookup = _JDKAccess._trustedLookup(cls);
+          Object writeReplaceMethod =
               ReflectionUtils.getObjectFieldValue(
                   ObjectStreamClass.lookup(cls), "writeReplaceMethod");
+          methodHandle =
+              lookup.unreflect(
+                  (java.lang.reflect.Method) Objects.requireNonNull(writeReplaceMethod));
+          writeReplaceMethodCache.put(cls, methodHandle);
+        } catch (Throwable e) {
+          throw new RuntimeException(
+              String.format("Failed to create writeReplace MethodHandle for %s", cls), e);
+        }
+      }
+      writeReplaceHandle = methodHandle;
     } else {
-      writeReplaceMethod = null;
+      writeReplaceHandle = null;
+    }
+    if (cls == STUB_LAMBDA_CLASS) {
+      getDataSerializer();
     }
   }
 
@@ -72,10 +107,10 @@ public class LambdaSerializer extends Serializer {
   public void write(MemoryBuffer buffer, Object value) {
     assert value.getClass() != ReplaceStub.class;
     try {
-      Object replacement = writeReplaceMethod.invoke(value);
+      Object replacement = writeReplaceHandle.invoke(value);
       Preconditions.checkArgument(SERIALIZED_LAMBDA.isInstance(replacement));
       getDataSerializer().write(buffer, replacement);
-    } catch (Exception e) {
+    } catch (Throwable e) {
       throw new RuntimeException("Can't serialize lambda " + value, e);
     }
   }
@@ -83,10 +118,10 @@ public class LambdaSerializer extends Serializer {
   @Override
   public Object copy(Object value) {
     try {
-      Object replacement = writeReplaceMethod.invoke(value);
+      Object replacement = writeReplaceHandle.invoke(value);
       Object newReplacement = getDataSerializer().copy(replacement);
-      return READ_RESOLVE_METHOD.invoke(newReplacement);
-    } catch (Exception e) {
+      return READ_RESOLVE_HANDLE.invoke(newReplacement);
+    } catch (Throwable e) {
       throw new RuntimeException("Can't copy lambda " + value, e);
     }
   }
@@ -95,8 +130,8 @@ public class LambdaSerializer extends Serializer {
   public Object read(MemoryBuffer buffer) {
     try {
       Object replacement = getDataSerializer().read(buffer);
-      return READ_RESOLVE_METHOD.invoke(replacement);
-    } catch (Exception e) {
+      return READ_RESOLVE_HANDLE.invoke(replacement);
+    } catch (Throwable e) {
       throw new RuntimeException("Can't deserialize lambda", e);
     }
   }

@@ -50,6 +50,7 @@ public class ProxyExample {
             .build();
     // register and generate serializer code.
     fory.register(TestInvocationHandler.class, true);
+    fory.ensureSerializersCompiled();
     return fory;
   }
 

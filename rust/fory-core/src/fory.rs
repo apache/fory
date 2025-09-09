@@ -90,8 +90,9 @@ impl Fory {
         &self.type_resolver
     }
 
-    pub fn register<T: 'static + StructSerializer>(&mut self, id: i16) {
-        let type_info = TypeInfo::new::<T>(self, id);
-        self.type_resolver.register::<T>(type_info, id);
+    pub fn register<T: 'static + StructSerializer>(&mut self, id: u32) {
+        let actual_type_id = T::actual_type_id(id);
+        let type_info = TypeInfo::new::<T>(self, actual_type_id);
+        self.type_resolver.register::<T>(type_info, actual_type_id);
     }
 }

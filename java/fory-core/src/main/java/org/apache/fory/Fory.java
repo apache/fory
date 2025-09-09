@@ -37,6 +37,11 @@ import org.apache.fory.config.Config;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.config.LongEncoding;
+import org.apache.fory.exception.CopyException;
+import org.apache.fory.exception.DeserializationException;
+import org.apache.fory.exception.ForyException;
+import org.apache.fory.exception.InsecureException;
+import org.apache.fory.exception.SerializationException;
 import org.apache.fory.io.ForyInputStream;
 import org.apache.fory.io.ForyReadableChannel;
 import org.apache.fory.logging.Logger;
@@ -122,6 +127,7 @@ public final class Fory implements BaseFory {
   private Iterator<MemoryBuffer> outOfBandBuffers;
   private boolean peerOutOfBandEnabled;
   private int depth;
+  private final int maxDepth;
   private int copyDepth;
   private final boolean copyRefTracking;
   private final IdentityMap<Object, Object> originToCopyMap;
@@ -137,6 +143,7 @@ public final class Fory implements BaseFory {
     this.shareMeta = config.isMetaShareEnabled();
     compressInt = config.compressInt();
     longEncoding = config.longEncoding();
+    maxDepth = config.maxDepth();
     if (refTracking) {
       this.refResolver = new MapRefResolver();
     } else {
@@ -327,8 +334,8 @@ public final class Fory implements BaseFory {
         xwrite(buffer, obj);
       }
       return buffer;
-    } catch (StackOverflowError t) {
-      throw processStackOverflowError(t);
+    } catch (Throwable t) {
+      throw processSerializationError(t);
     } finally {
       resetWrite();
       jitContext.unlock();
@@ -345,7 +352,7 @@ public final class Fory implements BaseFory {
     serializeToStream(outputStream, buf -> serialize(buf, obj, callback));
   }
 
-  private StackOverflowError processStackOverflowError(StackOverflowError e) {
+  private ForyException processSerializationError(Throwable e) {
     if (!refTracking) {
       String msg =
           "Object may contain circular references, please enable ref tracking "
@@ -354,25 +361,27 @@ public final class Fory implements BaseFory {
       if (StringUtils.isNotBlank(rawMessage)) {
         msg += ": " + rawMessage;
       }
-      StackOverflowError t1 = ExceptionUtils.trySetStackOverflowErrorMessage(e, msg);
-      if (t1 != null) {
-        return t1;
+      if (e instanceof StackOverflowError) {
+        e = ExceptionUtils.trySetStackOverflowErrorMessage((StackOverflowError) e, msg);
       }
     }
-    throw e;
+    if (!(e instanceof ForyException)) {
+      e = new SerializationException(e);
+    }
+    throw (ForyException) e;
   }
 
-  private StackOverflowError processCopyStackOverflowError(StackOverflowError e) {
+  private ForyException processCopyError(Throwable e) {
     if (!copyRefTracking) {
       String msg =
           "Object may contain circular references, please enable ref tracking "
               + "by `ForyBuilder#withRefCopy(true)`";
-      StackOverflowError t1 = ExceptionUtils.trySetStackOverflowErrorMessage(e, msg);
-      if (t1 != null) {
-        return t1;
-      }
+      e = ExceptionUtils.trySetStackOverflowErrorMessage((StackOverflowError) e, msg);
     }
-    throw e;
+    if (!(e instanceof ForyException)) {
+      throw new CopyException(e);
+    }
+    throw (ForyException) e;
   }
 
   public MemoryBuffer getBuffer() {
@@ -647,17 +656,6 @@ public final class Fory implements BaseFory {
       case ClassResolver.STRING_CLASS_ID:
         stringSerializer.writeJavaString(buffer, (String) obj);
         break;
-      case ClassResolver.ARRAYLIST_CLASS_ID:
-        depth++;
-        arrayListSerializer.write(buffer, (ArrayList) obj);
-        depth--;
-        break;
-      case ClassResolver.HASHMAP_CLASS_ID:
-        depth++;
-        hashMapSerializer.write(buffer, (HashMap) obj);
-        depth--;
-        break;
-        // TODO(add fastpath for other types)
       default:
         depth++;
         classInfo.getSerializer().write(buffer, obj);
@@ -1018,7 +1016,7 @@ public final class Fory implements BaseFory {
 
   /** Class should be read already. */
   public Object readData(MemoryBuffer buffer, ClassInfo classInfo) {
-    depth++;
+    incReadDepth();
     Serializer<?> serializer = classInfo.getSerializer();
     Object read = serializer.read(buffer);
     depth--;
@@ -1049,19 +1047,8 @@ public final class Fory implements BaseFory {
         return buffer.readFloat64();
       case ClassResolver.STRING_CLASS_ID:
         return stringSerializer.readJavaString(buffer);
-      case ClassResolver.ARRAYLIST_CLASS_ID:
-        depth++;
-        Object list = arrayListSerializer.read(buffer);
-        depth--;
-        return list;
-      case ClassResolver.HASHMAP_CLASS_ID:
-        depth++;
-        Object map = hashMapSerializer.read(buffer);
-        depth--;
-        return map;
-        // TODO(add fastpath for other types)
       default:
-        depth++;
+        incReadDepth();
         Object read = classInfo.getSerializer().read(buffer);
         depth--;
         return read;
@@ -1106,7 +1093,7 @@ public final class Fory implements BaseFory {
   }
 
   public Object xreadNonRef(MemoryBuffer buffer, Serializer<?> serializer) {
-    depth++;
+    incReadDepth();
     Object o = serializer.xread(buffer);
     depth--;
     return o;
@@ -1136,7 +1123,7 @@ public final class Fory implements BaseFory {
         return buffer.readFloat64();
         // TODO(add fastpath for other types)
       default:
-        depth++;
+        incReadDepth();
         Object o = classInfo.getSerializer().xread(buffer);
         depth--;
         return o;
@@ -1188,8 +1175,8 @@ public final class Fory implements BaseFory {
           writeData(buffer, classInfo, obj);
         }
       }
-    } catch (StackOverflowError t) {
-      throw processStackOverflowError(t);
+    } catch (Throwable t) {
+      throw processSerializationError(t);
     } finally {
       resetWrite();
       jitContext.unlock();
@@ -1304,8 +1291,8 @@ public final class Fory implements BaseFory {
         throwDepthSerializationException();
       }
       write(buffer, obj);
-    } catch (StackOverflowError t) {
-      throw processStackOverflowError(t);
+    } catch (Throwable t) {
+      throw processSerializationError(t);
     } finally {
       resetWrite();
       jitContext.unlock();
@@ -1384,8 +1371,8 @@ public final class Fory implements BaseFory {
   public <T> T copy(T obj) {
     try {
       return copyObject(obj);
-    } catch (StackOverflowError e) {
-      throw processCopyStackOverflowError(e);
+    } catch (Throwable e) {
+      throw processCopyError(e);
     } finally {
       if (copyRefTracking) {
         resetCopy();
@@ -1550,7 +1537,7 @@ public final class Fory implements BaseFory {
         }
         outputStream.flush();
       } catch (IOException e) {
-        throw new RuntimeException(e);
+        throw new SerializationException(e);
       } finally {
         resetBuffer();
       }
@@ -1606,7 +1593,7 @@ public final class Fory implements BaseFory {
 
   private void throwDepthSerializationException() {
     String method = "Fory#" + (crossLanguage ? "x" : "") + "writeXXX";
-    throw new IllegalStateException(
+    throw new SerializationException(
         String.format(
             "Nested call Fory.serializeXXX is not allowed when serializing, Please use %s instead",
             method));
@@ -1614,7 +1601,7 @@ public final class Fory implements BaseFory {
 
   private void throwDepthDeserializationException() {
     String method = "Fory#" + (crossLanguage ? "x" : "") + "readXXX";
-    throw new IllegalStateException(
+    throw new DeserializationException(
         String.format(
             "Nested call Fory.deserializeXXX is not allowed when deserializing, Please use %s instead",
             method));
@@ -1674,6 +1661,29 @@ public final class Fory implements BaseFory {
 
   public void incDepth(int diff) {
     this.depth += diff;
+  }
+
+  public void incDepth() {
+    this.depth += 1;
+  }
+
+  public void decDepth() {
+    this.depth -= 1;
+  }
+
+  public void incReadDepth() {
+    if ((this.depth += 1) > maxDepth) {
+      throwReadDepthExceedException();
+    }
+  }
+
+  private void throwReadDepthExceedException() {
+    throw new InsecureException(
+        String.format(
+            "Read depth exceed max depth %s, "
+                + "the deserialization data may be malicious. If it's not malicious, "
+                + "please increase max read depth by ForyBuilder#withMaxDepth(largerDepth)",
+            maxDepth));
   }
 
   public void incCopyDepth(int diff) {

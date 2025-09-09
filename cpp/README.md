@@ -1,8 +1,8 @@
 # Apache Fory™ C++
 
-Fory is a blazingly-fast multi-language serialization framework powered by just-in-time compilation and zero-copy.
+Apache Fory™ is a blazingly-fast multi-language serialization framework powered by just-in-time compilation and zero-copy.
 
-## Build Fory C++
+## Build Apache Fory™ C++
 
 ```bash
 # Build all projects

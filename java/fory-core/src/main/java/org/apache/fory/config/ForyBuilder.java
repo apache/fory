@@ -38,6 +38,7 @@ import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.TimeSerializers;
 import org.apache.fory.serializer.collection.GuavaCollectionSerializers;
 import org.apache.fory.util.GraalvmSupport;
+import org.apache.fory.util.Preconditions;
 
 /** Builder class to config and create {@link Fory}. */
 // Method naming style for this builder:
@@ -88,6 +89,7 @@ public final class ForyBuilder {
   boolean serializeEnumByName = false;
   int bufferSizeLimitBytes = 128 * 1024;
   MetaCompressor metaCompressor = new DeflaterMetaCompressor();
+  int maxDepth = 50;
 
   public ForyBuilder() {}
 
@@ -359,6 +361,16 @@ public final class ForyBuilder {
    */
   public ForyBuilder withAsyncCompilation(boolean asyncCompilation) {
     this.asyncCompilationEnabled = asyncCompilation;
+    return this;
+  }
+
+  /**
+   * Set max depth for deserialization, when depth exceeds, an exception will be thrown. Default max
+   * depth is 50.
+   */
+  public ForyBuilder withMaxDepth(int maxDepth) {
+    Preconditions.checkArgument(maxDepth >= 2, "maxDepth must >= 2 but got %s", maxDepth);
+    this.maxDepth = maxDepth;
     return this;
   }
 

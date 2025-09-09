@@ -40,8 +40,23 @@
   <dependencies>
     <dependency>
       <groupId>org.apache.fory</groupId>
+      <artifactId>fory-core</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.fory</groupId>
+      <artifactId>fory-format</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.fory</groupId>
       <artifactId>benchmark</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.testng</groupId>
+      <artifactId>testng</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 

@@ -37,6 +37,7 @@ import com.google.common.collect.HashBiMap;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.Serializable;
+import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Type;
@@ -87,7 +88,8 @@ import org.apache.fory.ForyCopyable;
 import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.CodecUtils;
-import org.apache.fory.builder.Generated;
+import org.apache.fory.builder.Generated.GeneratedMetaSharedSerializer;
+import org.apache.fory.builder.Generated.GeneratedObjectSerializer;
 import org.apache.fory.builder.JITContext;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.Expression;
@@ -163,6 +165,7 @@ import org.apache.fory.type.ScalaTypes;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
 import org.apache.fory.util.GraalvmSupport;
+import org.apache.fory.util.GraalvmSupport.GraalvmSerializerHolder;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.function.Functions;
@@ -420,6 +423,7 @@ public class ClassResolver implements TypeResolver {
     register(AtomicReference.class);
     register(EnumSet.allOf(Language.class).getClass());
     register(EnumSet.of(Language.JAVA).getClass());
+    register(SerializedLambda.class);
     register(Throwable.class, StackTraceElement.class, Exception.class, RuntimeException.class);
     register(NullPointerException.class);
     register(IOException.class);
@@ -968,14 +972,14 @@ public class ClassResolver implements TypeResolver {
         return CollectionSerializers.EnumSetSerializer.class;
       } else if (Charset.class.isAssignableFrom(cls)) {
         return Serializers.CharsetSerializer.class;
-      } else if (Functions.isLambda(cls)) {
-        return LambdaSerializer.class;
       } else if (ReflectionUtils.isJdkProxy(cls)) {
         if (JavaSerializer.getWriteReplaceMethod(cls) != null) {
           return ReplaceResolveSerializer.class;
         } else {
           return JdkProxySerializer.class;
         }
+      } else if (Functions.isLambda(cls)) {
+        return LambdaSerializer.class;
       } else if (Calendar.class.isAssignableFrom(cls)) {
         return TimeSerializers.CalendarSerializer.class;
       } else if (ZoneId.class.isAssignableFrom(cls)) {
@@ -1423,17 +1427,21 @@ public class ClassResolver implements TypeResolver {
       if (deserializationClassInfo != null && GraalvmSupport.isGraalBuildtime()) {
         getGraalvmClassRegistry()
             .deserializerClassMap
-            .put(classDef.getId(), deserializationClassInfo.serializer.getClass());
+            .put(classDef.getId(), getGraalvmSerializerClass(deserializationClassInfo.serializer));
         Tuple2<ClassDef, ClassInfo> classDefTuple = extRegistry.classIdToDef.get(classDef.getId());
         // empty serializer for graalvm build time
         classDefTuple.f1.serializer = null;
+        classInfoCache = NIL_CLASS_INFO;
         extRegistry.classIdToDef.put(classDef.getId(), Tuple2.of(classDefTuple.f0, null));
       }
     }
     if (GraalvmSupport.isGraalBuildtime()) {
       // Instance for generated class should be hold at graalvm runtime only.
-      getGraalvmClassRegistry().serializerClassMap.put(cls, classInfo.serializer.getClass());
+      getGraalvmClassRegistry()
+          .serializerClassMap
+          .put(cls, getGraalvmSerializerClass(classInfo.serializer));
       classInfo.serializer = null;
+      classInfoCache = NIL_CLASS_INFO;
     }
   }
 
@@ -1560,13 +1568,21 @@ public class ClassResolver implements TypeResolver {
   }
 
   boolean needToWriteClassDef(Serializer serializer) {
-    return fory.getConfig().getCompatibleMode() == CompatibleMode.COMPATIBLE
-        && (serializer instanceof Generated.GeneratedObjectSerializer
-            // May already switched to MetaSharedSerializer when update class info cache.
-            || serializer instanceof Generated.GeneratedMetaSharedSerializer
-            || serializer instanceof LazyInitBeanSerializer
-            || serializer instanceof ObjectSerializer
-            || serializer instanceof MetaSharedSerializer);
+    if (fory.getConfig().getCompatibleMode() != CompatibleMode.COMPATIBLE) {
+      return false;
+    }
+    if (GraalvmSupport.isGraalBuildtime() && serializer instanceof GraalvmSerializerHolder) {
+      Class<? extends Serializer> serializerClass =
+          ((GraalvmSerializerHolder) serializer).getSerializerClass();
+      return GeneratedObjectSerializer.class.isAssignableFrom(serializerClass)
+          || GeneratedMetaSharedSerializer.class.isAssignableFrom(serializerClass);
+    }
+    return (serializer instanceof GeneratedObjectSerializer
+        // May already switched to MetaSharedSerializer when update class info cache.
+        || serializer instanceof GeneratedMetaSharedSerializer
+        || serializer instanceof LazyInitBeanSerializer
+        || serializer instanceof ObjectSerializer
+        || serializer instanceof MetaSharedSerializer);
   }
 
   private ClassInfo readClassInfoWithMetaShare(MemoryBuffer buffer, MetaContext metaContext) {
@@ -2212,6 +2228,10 @@ public class ClassResolver implements TypeResolver {
    */
   public void ensureSerializersCompiled() {
     try {
+      fory.getJITContext().lock();
+      Serializers.newSerializer(fory, LambdaSerializer.STUB_LAMBDA_CLASS, LambdaSerializer.class);
+      Serializers.newSerializer(
+          fory, JdkProxySerializer.SUBT_PROXY.getClass(), JdkProxySerializer.class);
       classInfoMap.forEach(
           (cls, classInfo) -> {
             if (classInfo.serializer == null) {
@@ -2227,6 +2247,7 @@ public class ClassResolver implements TypeResolver {
               }
             });
       }
+      classInfoCache = NIL_CLASS_INFO;
     } finally {
       fory.getJITContext().unlock();
     }
@@ -2260,6 +2281,13 @@ public class ClassResolver implements TypeResolver {
   private GraalvmClassRegistry getGraalvmClassRegistry() {
     return GRAALVM_REGISTRY.computeIfAbsent(
         fory.getConfig().getConfigHash(), k -> new GraalvmClassRegistry());
+  }
+
+  private Class<? extends Serializer> getGraalvmSerializerClass(Serializer serializer) {
+    if (serializer instanceof GraalvmSerializerHolder) {
+      return ((GraalvmSerializerHolder) serializer).getSerializerClass();
+    }
+    return serializer.getClass();
   }
 
   private Class<? extends Serializer> getSerializerClassFromGraalvmRegistry(Class<?> cls) {
@@ -2307,7 +2335,10 @@ public class ClassResolver implements TypeResolver {
       if (Functions.isLambda(cls) || ReflectionUtils.isJdkProxy(cls)) {
         return null;
       }
-      throw new RuntimeException(String.format("Class %s is not registered", cls));
+      throw new RuntimeException(
+          String.format(
+              "Class %s is not registered, registered classes: %s",
+              cls, registry.deserializerClassMap));
     }
     return null;
   }

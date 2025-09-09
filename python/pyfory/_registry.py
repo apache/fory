@@ -379,6 +379,9 @@ class TypeResolver:
         serializer: Serializer = None,
         internal: bool = False,
     ):
+        # Set default type_id when None, similar to _register_xtype
+        if type_id is None and typename is not None:
+            type_id = self._next_type_id()
         return self.__register_type(
             cls,
             type_id=type_id,
@@ -398,7 +401,7 @@ class TypeResolver:
         serializer: Serializer = None,
         internal: bool = False,
     ):
-        dynamic_type = type_id < 0
+        dynamic_type = type_id is not None and type_id < 0
         if not internal and serializer is None:
             serializer = self._create_serializer(cls)
         if typename is None:
@@ -471,6 +474,8 @@ class TypeResolver:
                 type_id = TypeId.NAMED_ENUM
             elif type(serializer) is PickleSerializer:
                 type_id = PickleSerializer.PICKLE_TYPE_ID
+            elif isinstance(serializer, FunctionSerializer):
+                type_id = TypeId.NAMED_EXT
             elif isinstance(serializer, (ObjectSerializer, StatefulSerializer, ReduceSerializer)):
                 type_id = TypeId.NAMED_EXT
             if not self.require_registration:
@@ -494,8 +499,8 @@ class TypeResolver:
                 break
         else:
             if cls is types.FunctionType:
-                # Use PickleSerializer for function types (including lambdas)
-                serializer = PickleSerializer(self.fory, cls)
+                # Use FunctionSerializer for function types (including lambdas)
+                serializer = FunctionSerializer(self.fory, cls)
             elif dataclasses.is_dataclass(cls):
                 serializer = DataClassSerializer(self.fory, cls)
             elif issubclass(cls, enum.Enum):

@@ -133,9 +133,7 @@ class Fory:
         """
         self.language = language
         self.is_py = language == Language.PYTHON
-        self.require_type_registration = (
-            _ENABLE_TYPE_REGISTRATION_FORCIBLY or require_type_registration
-        )
+        self.require_type_registration = _ENABLE_TYPE_REGISTRATION_FORCIBLY or require_type_registration
         self.ref_tracking = ref_tracking
         if self.ref_tracking:
             self.ref_resolver = MapRefResolver()
@@ -151,8 +149,7 @@ class Fory:
         self.buffer = Buffer.allocate(32)
         if not require_type_registration:
             warnings.warn(
-                "Type registration is disabled, unknown types can be deserialized "
-                "which may be insecure.",
+                "Type registration is disabled, unknown types can be deserialized which may be insecure.",
                 RuntimeWarning,
                 stacklevel=2,
             )
@@ -166,7 +163,7 @@ class Fory:
         self._unsupported_callback = None
         self._unsupported_objects = None
         self._peer_language = None
-    
+
     def register(
         self,
         cls: Union[type, TypeVar],
@@ -345,7 +342,7 @@ class Fory:
         buffers: Iterable = None,
         unsupported_objects: Iterable = None,
     ):
-        if type(buffer) == bytes:
+        if isinstance(buffer, bytes):
             buffer = Buffer(buffer)
         if unsupported_objects is not None:
             self._unsupported_objects = iter(unsupported_objects)
@@ -360,10 +357,7 @@ class Fory:
         if get_bit(buffer, reader_index, 0):
             return None
         is_little_endian_ = get_bit(buffer, reader_index, 1)
-        assert is_little_endian_, (
-            "Big endian is not supported for now, "
-            "please ensure peer machine is little endian."
-        )
+        assert is_little_endian_, "Big endian is not supported for now, please ensure peer machine is little endian."
         is_target_x_lang = get_bit(buffer, reader_index, 2)
         if is_target_x_lang:
             self._peer_language = Language(buffer.read_int8())
@@ -371,16 +365,10 @@ class Fory:
             self._peer_language = Language.PYTHON
         is_out_of_band_serialization_enabled = get_bit(buffer, reader_index, 3)
         if is_out_of_band_serialization_enabled:
-            assert buffers is not None, (
-                "buffers shouldn't be null when the serialized stream is "
-                "produced with buffer_callback not null."
-            )
+            assert buffers is not None, "buffers shouldn't be null when the serialized stream is produced with buffer_callback not null."
             self._buffers = iter(buffers)
         else:
-            assert buffers is None, (
-                "buffers should be null when the serialized stream is "
-                "produced with buffer_callback null."
-            )
+            assert buffers is None, "buffers should be null when the serialized stream is produced with buffer_callback null."
         if is_target_x_lang:
             obj = self.xdeserialize_ref(buffer)
         else:
@@ -532,9 +520,7 @@ class SerializationContext:
             self.objects.clear()
 
 
-_ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv(
-    "ENABLE_TYPE_REGISTRATION_FORCIBLY", "0"
-) in {
+_ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv("ENABLE_TYPE_REGISTRATION_FORCIBLY", "0") in {
     "1",
     "true",
 }
@@ -544,8 +530,8 @@ class _PicklerStub:
     def dump(self, o):
         raise ValueError(
             f"Type {type(o)} is not registered, "
-            f"pickle is not allowed when type registration enabled, Please register"
-            f"the type or pass unsupported_callback"
+            f"pickle is not allowed when type registration enabled, "
+            f"Please register the type or pass unsupported_callback"
         )
 
     def clear_memo(self):
@@ -554,7 +540,4 @@ class _PicklerStub:
 
 class _UnpicklerStub:
     def load(self):
-        raise ValueError(
-            "pickle is not allowed when type registration enabled, Please register"
-            "the type or pass unsupported_callback"
-        )
+        raise ValueError("pickle is not allowed when type registration enabled, Please register the type or pass unsupported_callback")

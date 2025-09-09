@@ -44,8 +44,8 @@ impl Serializer for NaiveDateTime {
         mem::size_of::<u64>()
     }
 
-    fn get_type_id(_fory: &Fory) -> i16 {
-        TypeId::TIMESTAMP.into()
+    fn get_type_id(_fory: &Fory) -> u32 {
+        TypeId::TIMESTAMP as u32
     }
 }
 
@@ -70,8 +70,8 @@ impl Serializer for NaiveDate {
             )))
     }
 
-    fn get_type_id(_fory: &Fory) -> i16 {
-        TypeId::LOCAL_DATE.into()
+    fn get_type_id(_fory: &Fory) -> u32 {
+        TypeId::LOCAL_DATE as u32
     }
 }
 

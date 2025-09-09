@@ -35,6 +35,7 @@ import java.nio.ByteBuffer;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
@@ -61,6 +62,7 @@ import org.apache.fory.config.Language;
 import org.apache.fory.exception.DeserializationException;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.exception.InsecureException;
+import org.apache.fory.exception.SerializationException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
@@ -72,6 +74,7 @@ import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.Struct;
 import org.apache.fory.type.Descriptor;
+import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.DateTimeUtils;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -415,7 +418,8 @@ public class ForyTest extends ForyTestBase {
     serDe(fory, ByteBuffer.allocate(32));
     serDe(fory, ByteBuffer.allocateDirect(32));
     assertThrows(InsecureException.class, () -> fory.serialize(new Thread()));
-    assertThrows(UnsupportedOperationException.class, () -> fory.serialize(MethodHandles.lookup()));
+    assertThrowsCause(
+        UnsupportedOperationException.class, () -> fory.serialize(MethodHandles.lookup()));
   }
 
   @Test
@@ -478,7 +482,7 @@ public class ForyTest extends ForyTestBase {
   @Test
   public void testExposeFields2() {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
-    assertThrows(RuntimeException.class, () -> serDe(fory, new ExposeFields2(1, 2, 3)));
+    assertThrowsCause(RuntimeException.class, () -> serDe(fory, new ExposeFields2(1, 2, 3)));
   }
 
   @Test(timeOut = 60_000)
@@ -565,9 +569,10 @@ public class ForyTest extends ForyTestBase {
     Fory fory = Fory.builder().withRefTracking(false).requireClassRegistration(false).build();
     try {
       fory.serialize(a);
-      throw new IllegalStateException("StackOverflowError not raised.");
-    } catch (StackOverflowError e) {
-      Assert.assertTrue(e.getMessage().contains("reference"));
+      throw new IllegalStateException("SerializationException not raised.");
+    } catch (SerializationException e) {
+      Throwable ex = e.getCause();
+      Assert.assertTrue(ex.getMessage().contains("reference"));
     }
   }
 
@@ -686,5 +691,42 @@ public class ForyTest extends ForyTestBase {
     // then deserialize as Struct2 (wrong type)
     Assert.assertThrows(
         DeserializationException.class, () -> fory.deserializeJavaObject(bytes, Struct2.class));
+  }
+
+  private Object maxDepthData() {
+    List<Object> list = new ArrayList<>();
+    for (int i = 0; i < 6; i++) {
+      List<Object> list1 = new ArrayList<>();
+      list1.add("abc");
+      list1.add(list);
+      list = list1;
+    }
+    return list;
+  }
+
+  @Test
+  public void testMaxDepth() {
+    byte[] bytes = Fory.builder().requireClassRegistration(false).build().serialize(maxDepthData());
+    Fory fory =
+        Fory.builder().requireClassRegistration(false).withName("fory1").withMaxDepth(3).build();
+    assertThrows(InsecureException.class, () -> fory.deserialize(bytes));
+  }
+
+  @AllArgsConstructor
+  static class MaxDepth {
+    int f1;
+    Object f2;
+  }
+
+  @Test
+  public void testMaxDepthCodegen() {
+    assertTrue(TypeUtils.hasExpandableLeafs(MaxDepth.class));
+    MaxDepth maxDepth =
+        new MaxDepth(
+            1, new MaxDepth(2, new MaxDepth(3, new MaxDepth(4, new MaxDepth(5, maxDepthData())))));
+    byte[] bytes = Fory.builder().requireClassRegistration(false).build().serialize(maxDepth);
+    Fory fory =
+        Fory.builder().requireClassRegistration(false).withName("fory2").withMaxDepth(3).build();
+    assertThrows(InsecureException.class, () -> fory.deserialize(bytes));
   }
 }

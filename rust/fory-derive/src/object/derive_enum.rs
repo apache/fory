@@ -21,7 +21,7 @@ use syn::DataEnum;
 
 pub fn gen_type_def(_data_enum: &DataEnum) -> TokenStream {
     quote! {
-        fn type_def(fory: &fory_core::fory::Fory, type_id: i16) -> Vec<u8> {
+        fn type_def(fory: &fory_core::fory::Fory, type_id: u32) -> Vec<u8> {
             Vec::new()
         }
     }

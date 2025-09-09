@@ -1,8 +1,8 @@
-# Fory Java Benchmark
+# Apache Fory™ Java Benchmark
 
-Fory Java Benchmark contains benchmarks for:
+Apache Fory™ Java Benchmark contains benchmarks for:
 
-- Fory
+- Apache Fory™
 - JDK
 - Hession
 - Kryo
@@ -21,7 +21,7 @@ Fory Java Benchmark contains benchmarks for:
 
 This benchmark use [jmh](https://github.com/openjdk/jmh) as benchmark tool. [jmh](https://github.com/openjdk/jmh) is
 licensed under GPL V2 with CLASSPATH exception, the usage can't be included in apache source/binary release unless
-as an optional feature. So Fory make it as an optional dependency and you must enable `jmh` profile to activate it.
+as an optional feature. So Apache Fory™ make it as an optional dependency and you must enable `jmh` profile to activate it.
 
 ```bash
 # Install fory
@@ -68,7 +68,7 @@ Save benchmark data to specified dir, then run `tool.py` to plot graphs.
 
 ## Plotting
 
-Fory uses pandas to process the jmh data, and uses matplotlib for plotting.
+Apache Fory™ uses pandas to process the jmh data, and uses matplotlib for plotting.
 
 ```bash
 pip install pandas matplotlib
