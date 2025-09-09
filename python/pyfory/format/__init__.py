@@ -41,8 +41,7 @@ try:
     )
 except (ImportError, AttributeError) as e:
     warnings.warn(
-        f"Fory format initialization failed, please ensure pyarrow is installed "
-        f"with version which fory is compiled with: {e}",
+        f"Fory format initialization failed, please ensure pyarrow is installed with version which fory is compiled with: {e}",
         RuntimeWarning,
         stacklevel=2,
     )

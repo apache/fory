@@ -45,18 +45,19 @@ type TypeDef struct {
 	typeName       *MetaStringBytes
 	compressed     bool
 	registerByName bool
-	fieldInfos     []FieldInfo
+	fieldDefs      []FieldDef
 	encoded        []byte
+	typ            reflect.Type
 }
 
-func NewTypeDef(typeId TypeId, nsName, typeName *MetaStringBytes, registerByName, compressed bool, fieldInfos []FieldInfo) *TypeDef {
+func NewTypeDef(typeId TypeId, nsName, typeName *MetaStringBytes, registerByName, compressed bool, fieldDefs []FieldDef) *TypeDef {
 	return &TypeDef{
 		typeId:         typeId,
 		nsName:         nsName,
 		typeName:       typeName,
 		compressed:     compressed,
 		registerByName: registerByName,
-		fieldInfos:     fieldInfos,
+		fieldDefs:      fieldDefs,
 		encoded:        nil,
 	}
 }
@@ -79,7 +80,7 @@ func skipTypeDef(buffer *ByteBuffer, header int64) {
 
 // buildTypeDef constructs a TypeDef from a value
 func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
-	fieldInfos, err := buildFieldInfos(fory, value)
+	fieldDefs, err := buildFieldDefs(fory, value)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract field infos: %w", err)
 	}
@@ -90,7 +91,7 @@ func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
 	}
 	typeId := TypeId(info.TypeID)
 	registerByName := IsNamespacedType(typeId)
-	typeDef := NewTypeDef(typeId, info.PkgPathBytes, info.NameBytes, registerByName, false, fieldInfos)
+	typeDef := NewTypeDef(typeId, info.PkgPathBytes, info.NameBytes, registerByName, false, fieldDefs)
 
 	// encoding the typeDef, and save the encoded bytes
 	encoded, err := encodingTypeDef(fory.typeResolver, typeDef)
@@ -103,13 +104,13 @@ func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
 }
 
 /*
-FieldInfo contains information about a single field in a struct
-field info layout as following:
+FieldDef contains definition of a single field in a struct
+field def layout as following:
   - first 1 byte: header (2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag)
   - next variable bytes: FieldType info
   - next variable bytes: field name or tag id
 */
-type FieldInfo struct {
+type FieldDef struct {
 	name         string
 	nameEncoding meta.Encoding
 	nullable     bool
@@ -117,16 +118,16 @@ type FieldInfo struct {
 	fieldType    FieldType
 }
 
-// buildFieldInfos extracts field information from a struct value
-func buildFieldInfos(fory *Fory, value reflect.Value) ([]FieldInfo, error) {
-	var fieldInfos []FieldInfo
+// buildFieldDefs extracts field definitions from a struct value
+func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
+	var fieldInfos []FieldDef
 
 	typ := value.Type()
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
 		fieldValue := value.Field(i)
 
-		var fieldInfo FieldInfo
+		var fieldInfo FieldDef
 		fieldName := field.Name
 
 		nameEncoding := fory.typeResolver.typeNameEncoder.ComputeEncodingWith(fieldName, fieldNameEncodings)
@@ -135,7 +136,7 @@ func buildFieldInfos(fory *Fory, value reflect.Value) ([]FieldInfo, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to build field type for field %s: %w", fieldName, err)
 		}
-		fieldInfo = FieldInfo{
+		fieldInfo = FieldDef{
 			name:         fieldName,
 			nameEncoding: nameEncoding,
 			nullable:     nullable(field.Type),

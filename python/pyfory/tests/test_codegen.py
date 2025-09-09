@@ -43,8 +43,6 @@ def test_debug_compiled():
 
 
 def test_compile_function():
-    code, func = codegen.compile_function(
-        "test_compile_function", ["x"], ["print(1)", "print(2)", "return x"], {}
-    )
+    code, func = codegen.compile_function("test_compile_function", ["x"], ["print(1)", "print(2)", "return x"], {})
     print(code)
     assert func(100) == 100

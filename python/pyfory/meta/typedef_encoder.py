@@ -33,7 +33,6 @@ from pyfory.meta.typedef import (
 from pyfory.meta.metastring import MetaStringEncoder
 
 from pyfory._util import Buffer
-from pyfory.type import TypeId
 from pyfory.lib.mmh3 import hash_buffer
 
 
@@ -75,18 +74,17 @@ def encode_typedef(type_resolver, cls):
         buffer.write_varuint32(len(field_infos) - SMALL_NUM_FIELDS_THRESHOLD)
 
     # Write type info
-    type_info = type_resolver.get_typeinfo(cls)
-    assert type_info.type_id > 0
-
-    if not TypeId.is_namespaced_type(type_info.type_id):
-        buffer.write_varuint32(type_info.type_id)
-    else:
+    if type_resolver.is_registered_by_name(cls):
         header |= REGISTER_BY_NAME_FLAG
-        namespace = type_info.decode_namespace()
-        typename = type_info.decode_typename()
+        namespace, typename = type_resolver.get_registered_name(cls)
         write_namespace(buffer, namespace)
         write_typename(buffer, typename)
-
+        # Use the actual type_id from the resolver, not a generic one
+        type_id = type_resolver.get_registered_id(cls)
+    else:
+        assert type_resolver.is_registered_by_id(cls), "Class must be registered by name or id"
+        type_id = type_resolver.get_registered_id(cls)
+        buffer.write_varuint32(type_id)
     # Update header byte
     buffer.put_uint8(0, header)
 
@@ -103,7 +101,15 @@ def encode_typedef(type_resolver, cls):
         binary = compressed_binary
     # Prepend header
     binary = prepend_header(binary, is_compressed, len(field_infos) > 0)
-    return TypeDef(cls.__name__, type_info.type_id, field_infos, binary, is_compressed)
+    # Extract namespace and typename
+    if type_resolver.is_registered_by_name(cls):
+        namespace, typename = type_resolver.get_registered_name(cls)
+    else:
+        splits = cls.__name__.rsplit(".", 1)
+        if len(splits) == 1:
+            splits.insert(0, "")
+        namespace, typename = splits
+    return TypeDef(namespace, typename, cls, type_id, field_infos, binary, is_compressed)
 
 
 def prepend_header(buffer: bytes, is_compressed: bool, has_fields_meta: bool):
@@ -125,7 +131,7 @@ def prepend_header(buffer: bytes, is_compressed: bool, has_fields_meta: bool):
         result.write_varuint32(meta_size - META_SIZE_MASKS)
 
     result.write_bytes(buffer)
-    return result
+    return result.to_bytes()
 
 
 def write_namespace(buffer: Buffer, namespace: str):

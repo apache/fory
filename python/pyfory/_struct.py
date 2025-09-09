@@ -243,7 +243,8 @@ class StructTypeIdVisitor(TypeVisitor):
         return TypeId.MAP, key_ids, value_ids
 
     def visit_customized(self, field_name, type_, types_path=None):
-        return None, None
+        typeinfo = self.fory.type_resolver.get_typeinfo(type_)
+        return [typeinfo.type_id]
 
     def visit_other(self, field_name, type_, types_path=None):
         from pyfory.serializer import PickleSerializer  # Local import

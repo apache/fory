@@ -53,7 +53,7 @@ typeDef are layout as following:
 - first 8 bytes: global header (50 bits hash + 1 bit compress flag + write fields meta + 12 bits meta size)
 - next 1 byte: meta header (2 bits reserved + 1 bit register by name flag + 5 bits num fields)
 - next variable bytes: type id (varint) or ns name + type name
-- next variable bytes: field infos (see below)
+- next variable bytes: field defs (see below)
 */
 func encodingTypeDef(typeResolver *typeResolver, typeDef *TypeDef) ([]byte, error) {
 	buffer := NewByteBuffer(nil)
@@ -73,11 +73,11 @@ func encodingTypeDef(typeResolver *typeResolver, typeDef *TypeDef) ([]byte, erro
 		buffer.WriteVarInt32(int32(typeDef.typeId))
 	}
 
-	if err := writeFieldsInfo(typeResolver, buffer, typeDef.fieldInfos); err != nil {
-		return nil, fmt.Errorf("failed to write fields info: %w", err)
+	if err := writeFieldDefs(typeResolver, buffer, typeDef.fieldDefs); err != nil {
+		return nil, fmt.Errorf("failed to write fields def: %w", err)
 	}
 
-	result, err := prependGlobalHeader(buffer, false, len(typeDef.fieldInfos) > 0)
+	result, err := prependGlobalHeader(buffer, false, len(typeDef.fieldDefs) > 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to write global binary header: %w", err)
 	}
@@ -125,7 +125,7 @@ func writeMetaHeader(buffer *ByteBuffer, typeDef *TypeDef) error {
 	if err := buffer.WriteByte(0xFF); err != nil {
 		return err
 	}
-	fieldInfos := typeDef.fieldInfos
+	fieldInfos := typeDef.fieldDefs
 	header := len(fieldInfos)
 	if header > SmallNumFieldsThreshold {
 		header = SmallNumFieldsThreshold
@@ -139,22 +139,22 @@ func writeMetaHeader(buffer *ByteBuffer, typeDef *TypeDef) error {
 	return nil
 }
 
-// writeFieldsInfo writes field information according to the specification
-// field info layout as following:
+// writeFieldDefs writes field definitions according to the specification
+// field def layout as following:
 //   - first 1 byte: header (2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag)
 //   - next variable bytes: FieldType info
 //   - next variable bytes: field name or tag id
-func writeFieldsInfo(typeResolver *typeResolver, buffer *ByteBuffer, fieldInfos []FieldInfo) error {
+func writeFieldDefs(typeResolver *typeResolver, buffer *ByteBuffer, fieldInfos []FieldDef) error {
 	for _, field := range fieldInfos {
-		if err := writeFieldInfo(typeResolver, buffer, field); err != nil {
-			return fmt.Errorf("failed to write field info for field %s: %w", field.name, err)
+		if err := writeFieldDef(typeResolver, buffer, field); err != nil {
+			return fmt.Errorf("failed to write field def for field %s: %w", field.name, err)
 		}
 	}
 	return nil
 }
 
-// writeFieldInfo writes a single field's information
-func writeFieldInfo(typeResolver *typeResolver, buffer *ByteBuffer, field FieldInfo) error {
+// writeFieldDef writes a single field's definition
+func writeFieldDef(typeResolver *typeResolver, buffer *ByteBuffer, field FieldDef) error {
 	// Write field header
 	// 2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag
 	offset := buffer.writerIndex

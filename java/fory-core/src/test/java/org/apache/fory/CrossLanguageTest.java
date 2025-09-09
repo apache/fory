@@ -55,6 +55,7 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.Data;
+import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
 import org.apache.fory.logging.Logger;
@@ -510,6 +511,23 @@ public class CrossLanguageTest extends ForyTestBase {
     obj2.f1 = true;
     obj2.f2 = new HashMap<>(ImmutableMap.of((byte) -1, 2));
     structRoundBack(fory, obj2, "test_register_by_id");
+  }
+
+  @Test
+  public void testRegisterByIdMetaShare() throws Exception {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withRefTracking(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
+    fory.register(ComplexObject2.class, 100);
+    ComplexObject2 obj = new ComplexObject2();
+    obj.f1 = true;
+    obj.f2 = new HashMap<>(ImmutableMap.of((byte) -1, 2));
+    byte[] serialized = fory.serialize(obj);
+    Assert.assertEquals(fory.deserialize(serialized), obj);
   }
 
   public void testSerializeComplexStruct() throws Exception {

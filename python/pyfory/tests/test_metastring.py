@@ -196,7 +196,5 @@ def test_non_ascii_encoding_and_non_utf8():
 
     non_ascii_string = "こんにちは"  # Non-ASCII string
 
-    with pytest.raises(
-        ValueError, match="Unsupported character for LOWER_SPECIAL encoding: こ"
-    ):
+    with pytest.raises(ValueError, match="Unsupported character for LOWER_SPECIAL encoding: こ"):
         encoder.encode_with_encoding(non_ascii_string, Encoding.LOWER_SPECIAL)

@@ -370,7 +370,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
         } else {
           ClassInfo classInfo = resolver.getClassInfo(typeRef.getRawType());
           int xtypeId = classInfo.getXtypeId();
-          if (Types.isStructType((byte) xtypeId)) {
+          if (Types.isStructType(xtypeId & 0xff)) {
             id =
                 TypeUtils.computeStringHash(
                     classInfo.decodeNamespace() + classInfo.decodeTypeName());
