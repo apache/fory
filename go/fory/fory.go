@@ -328,6 +328,11 @@ func (f *Fory) writeValue(buffer *ByteBuffer, value reflect.Value, serializer Se
 	return serializer.Write(f, buffer, value)
 }
 
+// GetSerializer returns the serializer for the given type
+func (f *Fory) GetSerializer(typ reflect.Type) (Serializer, error) {
+	return f.typeResolver.getSerializerByType(typ, false)
+}
+
 func (f *Fory) WriteBufferObject(buffer *ByteBuffer, bufferObject BufferObject) error {
 	if f.bufferCallback == nil || f.bufferCallback(bufferObject) {
 		buffer.WriteBool(true)

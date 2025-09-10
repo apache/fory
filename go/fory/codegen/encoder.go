@@ -255,17 +255,8 @@ func generateMapWrite(buf *bytes.Buffer, fieldAccess string, mapType *types.Map)
 
 	fmt.Fprintf(buf, "\t// Write map length\n")
 	fmt.Fprintf(buf, "\tbuf.WriteInt32(int32(len(%s)))\n", fieldAccess)
-	fmt.Fprintf(buf, "\t// Write map entries in key-sorted order for deterministic serialization\n")
-	fmt.Fprintf(buf, "\tif len(%s) > 0 {\n", fieldAccess)
-
-	// Generate key sorting code based on key type
-	if err := generateMapKeySort(buf, fieldAccess, keyType); err != nil {
-		return err
-	}
-
-	fmt.Fprintf(buf, "\t\t// Write key-value pairs in sorted order\n")
-	fmt.Fprintf(buf, "\t\tfor _, key := range sortedKeys {\n")
-	fmt.Fprintf(buf, "\t\t\tvalue := %s[key]\n", fieldAccess)
+	fmt.Fprintf(buf, "\t// Write map entries (order not guaranteed for performance)\n")
+	fmt.Fprintf(buf, "\tfor key, value := range %s {\n", fieldAccess)
 
 	// Generate key writing code
 	if err := generateElementWrite(buf, "key", keyType); err != nil {
@@ -277,41 +268,6 @@ func generateMapWrite(buf *bytes.Buffer, fieldAccess string, mapType *types.Map)
 		return err
 	}
 
-	fmt.Fprintf(buf, "\t\t}\n")
 	fmt.Fprintf(buf, "\t}\n")
-	return nil
-}
-
-// generateMapKeySort generates code to sort map keys for deterministic serialization
-func generateMapKeySort(buf *bytes.Buffer, fieldAccess string, keyType types.Type) error {
-	// Get key type string for slice declaration
-	keyTypeStr := getGoTypeString(keyType)
-
-	fmt.Fprintf(buf, "\t\t// Extract and sort keys for deterministic output\n")
-	fmt.Fprintf(buf, "\t\tsortedKeys := make([]%s, 0, len(%s))\n", keyTypeStr, fieldAccess)
-	fmt.Fprintf(buf, "\t\tfor key := range %s {\n", fieldAccess)
-	fmt.Fprintf(buf, "\t\t\tsortedKeys = append(sortedKeys, key)\n")
-	fmt.Fprintf(buf, "\t\t}\n")
-
-	// Generate sorting code based on key type
-	if basic, ok := keyType.Underlying().(*types.Basic); ok {
-		switch basic.Kind() {
-		case types.String:
-			fmt.Fprintf(buf, "\t\tsort.Strings(sortedKeys)\n")
-		case types.Int, types.Int8, types.Int16, types.Int32, types.Int64:
-			fmt.Fprintf(buf, "\t\tsort.Slice(sortedKeys, func(i, j int) bool { return sortedKeys[i] < sortedKeys[j] })\n")
-		case types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uint64:
-			fmt.Fprintf(buf, "\t\tsort.Slice(sortedKeys, func(i, j int) bool { return sortedKeys[i] < sortedKeys[j] })\n")
-		case types.Float32, types.Float64:
-			fmt.Fprintf(buf, "\t\tsort.Slice(sortedKeys, func(i, j int) bool { return sortedKeys[i] < sortedKeys[j] })\n")
-		case types.Bool:
-			fmt.Fprintf(buf, "\t\tsort.Slice(sortedKeys, func(i, j int) bool { return !sortedKeys[i] && sortedKeys[j] })\n") // false < true
-		default:
-			fmt.Fprintf(buf, "\t\t// TODO: sorting for key type %s\n", basic.String())
-		}
-	} else {
-		fmt.Fprintf(buf, "\t\t// TODO: sorting for key type %s\n", keyType.String())
-	}
-
 	return nil
 }
