@@ -29,6 +29,8 @@ from pyfory.meta.typedef import (
     META_SIZE_MASKS,
     NUM_HASH_BITS,
     FIELD_NAME_ENCODINGS,
+    NAMESPACE_ENCODINGS,
+    TYPE_NAME_ENCODINGS,
 )
 from pyfory.meta.metastring import MetaStringEncoder
 
@@ -141,8 +143,8 @@ def write_namespace(buffer: Buffer, namespace: str):
     #    - Header: `6 bits size | 2 bits encoding flags`.
     #      The `6 bits size: 0~63`  will be used to indicate size `0~62`,
     #      the value `63` the size need more byte to read, the encoding will encode `size - 62` as a varint next.
-    meta_string = NAMESPACE_ENCODER.encode(namespace)
-    write_meta_string(buffer, meta_string)
+    meta_string = NAMESPACE_ENCODER.encode(namespace, NAMESPACE_ENCODINGS)
+    write_meta_string(buffer, meta_string, NAMESPACE_ENCODINGS.index(meta_string.encoding))
 
 
 def write_typename(buffer: Buffer, typename: str):
@@ -153,15 +155,14 @@ def write_typename(buffer: Buffer, typename: str):
     #     - header: `6 bits size | 2 bits encoding flags`.
     #       The `6 bits size: 0~63`  will be used to indicate size `1~64`,
     #       the value `63` the size need more byte to read, the encoding will encode `size - 63` as a varint next.
-    meta_string = TYPENAME_ENCODER.encode(typename)
-    write_meta_string(buffer, meta_string)
+    meta_string = TYPENAME_ENCODER.encode(typename, TYPE_NAME_ENCODINGS)
+    write_meta_string(buffer, meta_string, TYPE_NAME_ENCODINGS.index(meta_string.encoding))
 
 
-def write_meta_string(buffer: Buffer, meta_string):
+def write_meta_string(buffer: Buffer, meta_string, encoding_value: int):
     """Write a meta string to the buffer."""
     # Write encoding and length combined in first byte
     length = len(meta_string.encoded_data)
-    encoding_value = meta_string.encoding.value
 
     if length >= FIELD_NAME_SIZE_THRESHOLD:
         # Use threshold value and write additional length

@@ -130,7 +130,6 @@ class TypeId:
     See `org.apache.fory.types.Type`
     """
 
-    UNKNOWN = -1
     # null value
     NA = 0
     # a boolean value (true or false).
@@ -216,6 +215,7 @@ class TypeId:
     ARROW_RECORD_BATCH = 38
     # an arrow [table](https://arrow.apache.org/docs/cpp/tables.html#tables) object.
     ARROW_TABLE = 39
+    UNKNOWN = 63
 
     # BOUND id remains at 64
     BOUND = 64

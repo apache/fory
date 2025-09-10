@@ -132,6 +132,11 @@ public abstract class ForyTestBase {
   }
 
   @DataProvider
+  public static Object[][] compatible() {
+    return new Object[][] {{false}, {true}};
+  }
+
+  @DataProvider
   public static Object[][] compressNumber() {
     return new Object[][] {{false}, {true}};
   }

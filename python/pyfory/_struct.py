@@ -228,8 +228,10 @@ class StructTypeIdVisitor(TypeVisitor):
     def __init__(
         self,
         fory,
+        cls,
     ):
         self.fory = fory
+        self.cls = cls
 
     def visit_list(self, field_name, elem_type, types_path=None):
         # Infer type recursively for type such as List[Dict[str, str]]
@@ -243,7 +245,9 @@ class StructTypeIdVisitor(TypeVisitor):
         return TypeId.MAP, key_ids, value_ids
 
     def visit_customized(self, field_name, type_, types_path=None):
-        typeinfo = self.fory.type_resolver.get_typeinfo(type_)
+        typeinfo = self.fory.type_resolver.get_typeinfo(type_, create=False)
+        if typeinfo is None:
+            return [TypeId.UNKNOWN]
         return [typeinfo.type_id]
 
     def visit_other(self, field_name, type_, types_path=None):

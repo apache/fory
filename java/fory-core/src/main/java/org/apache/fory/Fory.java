@@ -1703,6 +1703,10 @@ public final class Fory implements BaseFory {
     return crossLanguage;
   }
 
+  public boolean isCompatible() {
+    return config.getCompatibleMode() == CompatibleMode.COMPATIBLE;
+  }
+
   public boolean trackingRef() {
     return refTracking;
   }

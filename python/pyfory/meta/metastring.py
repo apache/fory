@@ -268,7 +268,7 @@ class MetaStringEncoder:
         self.special_char1 = special_char1
         self.special_char2 = special_char2
 
-    def encode(self, input_string: str) -> MetaString:
+    def encode(self, input_string: str, encodings: List[Encoding] = None) -> MetaString:
         """
         Encodes the input string into a MetaString object.
 
@@ -291,7 +291,7 @@ class MetaStringEncoder:
                 self.special_char2,
             )
 
-        encoding = self.compute_encoding(input_string)
+        encoding = self.compute_encoding(input_string, encodings)
         return self.encode_with_encoding(input_string, encoding)
 
     def encode_with_encoding(self, input_string: str, encoding: Encoding) -> MetaString:

@@ -483,11 +483,13 @@ public class CrossLanguageTest extends ForyTestBase {
     roundBytes("test_struct_hash", buffer.getBytes(0, 4));
   }
 
-  @Test
-  public void testSerializeSimpleStruct() throws Exception {
+  @Test(dataProvider = "compatible")
+  public void testSerializeSimpleStruct(boolean compatible) throws Exception {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
+            .withCompatibleMode(
+                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -495,7 +497,7 @@ public class CrossLanguageTest extends ForyTestBase {
     ComplexObject2 obj2 = new ComplexObject2();
     obj2.f1 = true;
     obj2.f2 = new HashMap<>(ImmutableMap.of((byte) -1, 2));
-    structRoundBack(fory, obj2, "test_serialize_simple_struct");
+    structRoundBack(fory, obj2, "test_serialize_simple_struct" + (compatible ? "_compatible" : ""));
   }
 
   @Test
@@ -530,10 +532,13 @@ public class CrossLanguageTest extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(serialized), obj);
   }
 
-  public void testSerializeComplexStruct() throws Exception {
+  @Test(dataProvider = "compatible")
+  public void testSerializeComplexStruct(boolean compatible) throws Exception {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
+            .withCompatibleMode(
+                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
@@ -556,7 +561,7 @@ public class CrossLanguageTest extends ForyTestBase {
     obj.f11 = new short[] {(short) 1, (short) 2};
     obj.f12 = ImmutableList.of((short) -1, (short) 4);
 
-    structRoundBack(fory, obj, "test_serialize_complex_struct");
+    structRoundBack(fory, obj, "test_serialize_complex_struct" + (compatible ? "_compatible" : ""));
   }
 
   private void structRoundBack(Fory fory, Object obj, String testName) throws IOException {

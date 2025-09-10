@@ -19,7 +19,7 @@ from typing import List
 import typing
 from pyfory.type import TypeId
 from pyfory._util import Buffer
-from pyfory.type import infer_field, is_primitive_type, is_polymorphic_type, is_struct_type
+from pyfory.type import infer_field, is_polymorphic_type
 from pyfory.meta.metastring import Encoding
 
 
@@ -31,6 +31,9 @@ COMPRESS_META_FLAG = 0b1 << 13
 HAS_FIELDS_META_FLAG = 0b1 << 12
 META_SIZE_MASKS = 0xFFF
 NUM_HASH_BITS = 50
+
+NAMESPACE_ENCODINGS = [Encoding.UTF_8, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL]
+TYPE_NAME_ENCODINGS = [Encoding.UTF_8, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL, Encoding.ALL_TO_LOWER_SPECIAL]
 
 # Field name encoding constants
 FIELD_NAME_ENCODING_UTF8 = 0b00
@@ -219,7 +222,7 @@ def build_field_infos(type_resolver, cls):
     type_hints = typing.get_type_hints(cls)
 
     field_infos = []
-    visitor = StructTypeIdVisitor(type_resolver.fory)
+    visitor = StructTypeIdVisitor(type_resolver.fory, cls)
 
     for field_name in field_names:
         field_type_hint = type_hints.get(field_name, typing.Any)
@@ -241,15 +244,19 @@ def build_field_infos(type_resolver, cls):
 def build_field_type(type_resolver, field_name: str, type_hint, visitor):
     """Build field type from type hint."""
     type_ids = infer_field(field_name, type_hint, visitor)
-    print(f"=??????????=> {field_name, type_hint, visitor, type_ids}")
-    return build_field_type_from_type_ids(type_resolver, field_name, type_ids, visitor)
+    try:
+        return build_field_type_from_type_ids(type_resolver, field_name, type_ids, visitor)
+    except Exception as e:
+        raise TypeError(f"Error building field type for field: {field_name} with type hint: {type_hint} in class: {visitor.cls}") from e
 
 
 def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, visitor):
     tracking_ref = type_resolver.fory.ref_tracking
     type_id = type_ids[0]
-    if type_id is not None and type_id >= 0:
-        type_id = type_id & 0xFF
+    if type_id is None:
+        type_id = TypeId.UNKNOWN
+    assert type_id >= 0, f"Unknown type: {type_id} for field: {field_name}"
+    type_id = type_id & 0xFF
     morphic = not is_polymorphic_type(type_id)
     if type_id in [TypeId.SET, TypeId.LIST]:
         elem_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor)
@@ -261,7 +268,6 @@ def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, vis
     elif type_id in [TypeId.UNKNOWN, TypeId.EXT, TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT]:
         return DynamicFieldType(type_id, False, True, tracking_ref)
     else:
-        assert is_primitive_type(type_id) or type_id in [TypeId.STRING, TypeId.ENUM, TypeId.NAMED_ENUM] or is_struct_type(type_id), (
-            f"Unknown type: {type_id} for field: {field_name}"
-        )
+        if type_id <= 0 or type_id >= TypeId.BOUND:
+            raise TypeError(f"Unknown type: {type_id} for field: {field_name}")
         return FieldType(type_id, morphic, True, tracking_ref)

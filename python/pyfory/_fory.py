@@ -144,15 +144,14 @@ class Fory:
             self.ref_resolver = MapRefResolver()
         else:
             self.ref_resolver = NoRefResolver()
-        from pyfory._serialization import MetaStringResolver
+        from pyfory._serialization import MetaStringResolver, SerializationContext
         from pyfory._registry import TypeResolver
 
         self.metastring_resolver = MetaStringResolver()
         self.type_resolver = TypeResolver(self, meta_share=compatible)
+        self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
         self.type_resolver.initialize()
-        from pyfory._serialization import SerializationContext
 
-        self.serialization_context = SerializationContext(scoped_meta_share_enabled=compatible)
         self.buffer = Buffer.allocate(32)
         if not require_type_registration:
             warnings.warn(

@@ -32,6 +32,8 @@ from pyfory.meta.typedef import (
     HAS_FIELDS_META_FLAG,
     META_SIZE_MASKS,
     FIELD_NAME_ENCODINGS,
+    NAMESPACE_ENCODINGS,
+    TYPE_NAME_ENCODINGS,
 )
 from pyfory.type import TypeId, record_class_factory
 from pyfory.meta.metastring import MetaStringDecoder, Encoding
@@ -110,6 +112,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
         type_info = resolver.get_typeinfo_by_name(namespace, typename)
         if type_info:
             type_id = type_info.type_id
+            type_cls = type_info.cls
         else:
             # Fallback to COMPATIBLE_STRUCT if not found
             type_id = TypeId.COMPATIBLE_STRUCT
@@ -137,15 +140,15 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
 
 def read_namespace(buffer: Buffer) -> str:
     """Read namespace from the buffer."""
-    return read_meta_string(buffer, NAMESPACE_DECODER)
+    return read_meta_string(buffer, NAMESPACE_DECODER, NAMESPACE_ENCODINGS)
 
 
 def read_typename(buffer: Buffer) -> str:
     """Read typename from the buffer."""
-    return read_meta_string(buffer, TYPENAME_DECODER)
+    return read_meta_string(buffer, TYPENAME_DECODER, TYPE_NAME_ENCODINGS)
 
 
-def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder) -> str:
+def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder, encodings: List[Encoding]) -> str:
     """Read a meta string from the buffer."""
     # Read encoding and length combined in first byte
     header = buffer.read_uint8()
@@ -154,7 +157,7 @@ def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder) -> str:
     encoding_value = header & 0b11
     size_value = (header >> 2) & 0b111111
 
-    encoding = Encoding(encoding_value)
+    encoding = encodings[encoding_value]
 
     # Read length - same logic as encoder
     length = 0
