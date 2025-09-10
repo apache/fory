@@ -570,7 +570,6 @@ public class XtypeResolver implements TypeResolver {
       case Types.NAMED_ENUM:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
-      case Types.STRUCT:
         if (shareMeta) {
           writeSharedClassMeta(buffer, classInfo);
           return;

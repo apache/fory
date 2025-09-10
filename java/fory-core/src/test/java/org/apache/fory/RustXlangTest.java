@@ -49,8 +49,8 @@ import org.testng.annotations.Test;
 
 /** Tests in this class need fory python/rust installed. */
 @Test
-public class WIPCrossLanguageTest extends ForyTestBase {
-  private static final Logger LOG = LoggerFactory.getLogger(WIPCrossLanguageTest.class);
+public class RustXlangTest extends ForyTestBase {
+  private static final Logger LOG = LoggerFactory.getLogger(RustXlangTest.class);
   private static final String PYTHON_EXECUTABLE = "python";
   private static final String PYTHON_MODULE = "pyfory.tests.test_cross_language";
 
@@ -81,7 +81,7 @@ public class WIPCrossLanguageTest extends ForyTestBase {
     // TestUtils.verifyPyforyInstalled();
   }
 
-  @Test
+  @Test(enabled = false)
   public void testRust() throws Exception {
     List<String> command = rustBaseCommand;
     command.set(RUST_TESTCASE_INDEX, "test_buffer");
