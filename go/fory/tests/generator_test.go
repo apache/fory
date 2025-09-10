@@ -18,6 +18,7 @@
 package fory
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -26,7 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//go:generate fory --force -file structs.go
+//go:generate go run ../cmd/fory/main.go --force -file structs.go
 
 func TestValidationDemo(t *testing.T) {
 	// 1. Create test instance
@@ -69,25 +70,16 @@ func TestValidationDemo(t *testing.T) {
 	require.NotNil(t, result, "Deserialized result should not be nil")
 
 	// 4. Validate round-trip serialization
-	assert.Equal(t, original.A, result.A, "Field A should match after round-trip")
-	assert.Equal(t, original.B, result.B, "Field B should match after round-trip")
-	assert.Equal(t, original.C, result.C, "Field C should match after round-trip")
-	assert.Equal(t, original.D, result.D, "Field D should match after round-trip")
-	assert.Equal(t, original.E, result.E, "Field E should match after round-trip")
-	assert.Equal(t, original.F, result.F, "Field F should match after round-trip")
-	assert.Equal(t, original.G, result.G, "Field G should match after round-trip")
-	assert.Equal(t, original.H, result.H, "Field H should match after round-trip")
-	assert.Equal(t, original.I, result.I, "Field I should match after round-trip")
 	// For time.Time, compare Unix timestamps since timezone info is lost during serialization
 	assert.Equal(t, original.J.Unix(), result.J.Unix(), "Field J timestamps should match after round-trip")
 
-	// 5. Validate data integrity (excluding time field due to timezone differences)
+	// 5. Validate complete data integrity (excluding time field due to timezone differences)
 	// Create copies without time field for comparison
 	originalCopy := *original
 	resultCopy := *result
 	originalCopy.J = time.Time{}
 	resultCopy.J = time.Time{}
-	assert.EqualValues(t, &originalCopy, &resultCopy, "Complete struct (except time) should match after round-trip")
+	assert.EqualValues(t, &originalCopy, &resultCopy, "Complete struct should match after round-trip (except time)")
 }
 
 func TestSimpleStruct(t *testing.T) {
@@ -114,12 +106,9 @@ func TestSimpleStruct(t *testing.T) {
 	require.NoError(t, err, "Deserialization should not fail")
 	require.NotNil(t, result, "Deserialized result should not be nil")
 
-	// 4. Validate round-trip serialization
-	assert.Equal(t, original.ID, result.ID, "Field ID should match after round-trip")
-	assert.Equal(t, original.Name, result.Name, "Field Name should match after round-trip")
-
-	// 5. Validate complete data integrity
-	assert.EqualValues(t, original, result, "Complete struct should match after round-trip")
+	// 4. Validate complete round-trip serialization
+	// SimpleStruct contains only comparable types, so we can compare directly
+	assert.Equal(t, original, result, "Complete struct should match after round-trip")
 }
 
 func TestCompoundStruct(t *testing.T) {
@@ -165,32 +154,59 @@ func TestCompoundStruct(t *testing.T) {
 	require.NotNil(t, result, "Deserialized result should not be nil")
 
 	// 4. Validate round-trip serialization for nested structs
-	assert.Equal(t, original.ValidationData.A, result.ValidationData.A, "Nested ValidationDemo.A should match after round-trip")
-	assert.Equal(t, original.ValidationData.B, result.ValidationData.B, "Nested ValidationDemo.B should match after round-trip")
-	assert.Equal(t, original.ValidationData.C, result.ValidationData.C, "Nested ValidationDemo.C should match after round-trip")
-	assert.Equal(t, original.ValidationData.D, result.ValidationData.D, "Nested ValidationDemo.D should match after round-trip")
-	assert.Equal(t, original.ValidationData.E, result.ValidationData.E, "Nested ValidationDemo.E should match after round-trip")
-	assert.Equal(t, original.ValidationData.F, result.ValidationData.F, "Nested ValidationDemo.F should match after round-trip")
-	assert.Equal(t, original.ValidationData.G, result.ValidationData.G, "Nested ValidationDemo.G should match after round-trip")
-	assert.Equal(t, original.ValidationData.H, result.ValidationData.H, "Nested ValidationDemo.H should match after round-trip")
-	assert.Equal(t, original.ValidationData.I, result.ValidationData.I, "Nested ValidationDemo.I should match after round-trip")
+	// Check time.Time field separately (timezone info may be lost during serialization)
 	assert.Equal(t, original.ValidationData.J.Unix(), result.ValidationData.J.Unix(), "Nested ValidationDemo.J timestamps should match after round-trip")
 
-	assert.Equal(t, original.SimpleData.ID, result.SimpleData.ID, "Nested SimpleStruct.ID should match after round-trip")
-	assert.Equal(t, original.SimpleData.Name, result.SimpleData.Name, "Nested SimpleStruct.Name should match after round-trip")
-	assert.Equal(t, original.Count, result.Count, "Count should match after round-trip")
-
 	// 5. Validate complete nested data integrity
-	// Compare ValidationData excluding time field
-	originalValidation := original.ValidationData
-	resultValidation := result.ValidationData
-	originalValidation.J = time.Time{}
-	resultValidation.J = time.Time{}
-	assert.EqualValues(t, originalValidation, resultValidation, "Nested ValidationDemo (except time) should match after round-trip")
+	// Create copies without time field for deep comparison
+	originalCopy := *original
+	resultCopy := *result
+	originalCopy.ValidationData.J = time.Time{}
+	resultCopy.ValidationData.J = time.Time{}
+	assert.EqualValues(t, &originalCopy, &resultCopy, "Complete nested struct should match after round-trip (except time)")
+}
 
-	// Compare SimpleData completely
-	assert.EqualValues(t, original.SimpleData, result.SimpleData, "Nested SimpleStruct should match after round-trip")
+func TestGeneratedSerializers(t *testing.T) {
+	// Test that the type resolver returns generated serializers for our custom types
+	f := fory.NewFory(true)
 
-	// Compare top-level field
-	assert.Equal(t, original.Count, result.Count, "Top-level Count field should match after round-trip")
+	// Test ValidationDemo serializer
+	validationDemoType := reflect.TypeOf(ValidationDemo{})
+	validationSerializer, err := f.GetSerializer(validationDemoType)
+	require.NoError(t, err, "Should get ValidationDemo serializer without error")
+	require.NotNil(t, validationSerializer, "ValidationDemo serializer should not be nil")
+
+	// Verify it's the generated serializer by checking the type name
+	serializerType := reflect.TypeOf(validationSerializer).String()
+	assert.Contains(t, serializerType, "ValidationDemo_ForyGenSerializer", "Should be generated ValidationDemo serializer")
+
+	// Test SimpleStruct serializer
+	simpleStructType := reflect.TypeOf(SimpleStruct{})
+	simpleSerializer, err := f.GetSerializer(simpleStructType)
+	require.NoError(t, err, "Should get SimpleStruct serializer without error")
+	require.NotNil(t, simpleSerializer, "SimpleStruct serializer should not be nil")
+
+	// Verify it's the generated serializer
+	serializerType = reflect.TypeOf(simpleSerializer).String()
+	assert.Contains(t, serializerType, "SimpleStruct_ForyGenSerializer", "Should be generated SimpleStruct serializer")
+
+	// Test CompoundStruct serializer
+	compoundStructType := reflect.TypeOf(CompoundStruct{})
+	compoundSerializer, err := f.GetSerializer(compoundStructType)
+	require.NoError(t, err, "Should get CompoundStruct serializer without error")
+	require.NotNil(t, compoundSerializer, "CompoundStruct serializer should not be nil")
+
+	// Verify it's the generated serializer
+	serializerType = reflect.TypeOf(compoundSerializer).String()
+	assert.Contains(t, serializerType, "CompoundStruct_ForyGenSerializer", "Should be generated CompoundStruct serializer")
+
+	// Test that all serializers have the correct TypeId (NAMED_STRUCT for generated struct serializers)
+	assert.Equal(t, fory.TypeId(fory.NAMED_STRUCT), validationSerializer.TypeId(), "ValidationDemo serializer should have NAMED_STRUCT TypeId")
+	assert.Equal(t, fory.TypeId(fory.NAMED_STRUCT), simpleSerializer.TypeId(), "SimpleStruct serializer should have NAMED_STRUCT TypeId")
+	assert.Equal(t, fory.TypeId(fory.NAMED_STRUCT), compoundSerializer.TypeId(), "CompoundStruct serializer should have NAMED_STRUCT TypeId")
+
+	// Test that all serializers need reference tracking (generated struct serializers should)
+	assert.True(t, validationSerializer.NeedWriteRef(), "ValidationDemo serializer should need reference tracking")
+	assert.True(t, simpleSerializer.NeedWriteRef(), "SimpleStruct serializer should need reference tracking")
+	assert.True(t, compoundSerializer.NeedWriteRef(), "CompoundStruct serializer should need reference tracking")
 }
