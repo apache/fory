@@ -78,22 +78,22 @@ public class WIPCrossLanguageTest extends ForyTestBase {
 
   @BeforeClass
   public void isPyforyInstalled() {
-    //        TestUtils.verifyPyforyInstalled();
+    // TestUtils.verifyPyforyInstalled();
   }
 
   @Test
   public void testRust() throws Exception {
     List<String> command = rustBaseCommand;
-       command.set(RUST_TESTCASE_INDEX, "test_buffer");
-       testBuffer(Language.RUST, command);
-       command.set(RUST_TESTCASE_INDEX, "test_buffer_var");
-       testBufferVar(Language.RUST, command);
-       command.set(RUST_TESTCASE_INDEX, "test_murmurhash3");
-       testMurmurHash3(Language.RUST, command);
-         command.set(RUST_TESTCASE_INDEX, "test_string_serializer");
-         testStringSerializer(Language.RUST, command);
-       command.set(RUST_TESTCASE_INDEX, "test_cross_language_serializer");
-       testCrossLanguageSerializer(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_buffer");
+    testBuffer(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_buffer_var");
+    testBufferVar(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_murmurhash3");
+    testMurmurHash3(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_string_serializer");
+    testStringSerializer(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_cross_language_serializer");
+    testCrossLanguageSerializer(Language.RUST, command);
     command.set(RUST_TESTCASE_INDEX, "test_simple_struct");
     testSimpleStruct(Language.RUST, command);
   }
