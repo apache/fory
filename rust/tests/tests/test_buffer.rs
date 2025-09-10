@@ -57,3 +57,39 @@ fn test_var_int32() {
         assert_eq!(res, data as u32);
     }
 }
+
+#[test]
+fn test_var_uint36_small() {
+    let test_data: Vec<u64> = vec![
+        // 1 byte
+        0,
+        1,
+        127,
+        // 2 bytes
+        128,
+        300,
+        16_383,
+        // 3 bytes
+        16_384,
+        20_000,
+        2_097_151,
+        // 4 bytes
+        2_097_152,
+        100_000_000,
+        268_435_455,
+        // 5 bytes (36-bit max)
+        268_435_456,
+        1_000_000_000,
+        68_719_476_735, // max 36-bit
+    ];
+
+    for &data in &test_data {
+        let mut writer = Writer::default();
+        writer.var_uint36_small(data);
+        let buf = writer.dump();
+
+        let mut reader = Reader::new(buf.as_slice());
+        let value = reader.var_uint36_small();
+        assert_eq!(value, data, "failed for data {}", data);
+    }
+}

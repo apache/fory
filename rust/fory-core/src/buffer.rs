@@ -87,25 +87,23 @@ impl Writer {
         self.bf.write_u64::<LittleEndian>(value).unwrap();
     }
 
-    pub fn var_int32(&mut self, value: i32) -> usize {
+    pub fn var_int32(&mut self, value: i32) {
         let zigzag = ((value as i64) << 1) ^ ((value as i64) >> 31);
         self.internal_var_uint32(zigzag as u32)
     }
 
-    pub fn var_uint32(&mut self, value: u32) -> usize {
+    pub fn var_uint32(&mut self, value: u32) {
         self.internal_var_uint32(value)
     }
 
-    fn internal_var_uint32(&mut self, value: u32) -> usize {
+    fn internal_var_uint32(&mut self, value: u32) {
         if value < 0x80 {
             self.u8(value as u8);
-            1
         } else if value < 0x4000 {
             // 2 bytes
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (value >> 7) as u8;
             self.u16(((u2 as u16) << 8) | u1 as u16);
-            2
         } else if value < 0x200000 {
             // 3 bytes
             let u1 = ((value as u8) & 0x7F) | 0x80;
@@ -113,7 +111,6 @@ impl Writer {
             let u3 = (value >> 14) as u8;
             self.u16(((u2 as u16) << 8) | u1 as u16);
             self.u8(u3);
-            3
         } else if value < 0x10000000 {
             // 4 bytes
             let u1 = ((value as u8) & 0x7F) | 0x80;
@@ -121,7 +118,6 @@ impl Writer {
             let u3 = (((value >> 14) as u8) & 0x7F) | 0x80;
             let u4 = (value >> 21) as u8;
             self.u32(((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32);
-            4
         } else {
             // 5 bytes
             let u1 = ((value as u8) & 0x7F) | 0x80;
@@ -131,42 +127,37 @@ impl Writer {
             let u5 = (value >> 28) as u8;
             self.u32(((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32);
             self.u8(u5);
-            5
         }
     }
 
-    pub fn var_int64(&mut self, value: i64) -> usize {
+    pub fn var_int64(&mut self, value: i64) {
         let zigzag = ((value << 1) ^ (value >> 63)) as u64;
         self.internal_var_uint64(zigzag)
     }
 
-    pub fn var_uint64(&mut self, value: u64) -> usize {
+    pub fn var_uint64(&mut self, value: u64) {
         self.internal_var_uint64(value)
     }
 
-    fn internal_var_uint64(&mut self, value: u64) -> usize {
+    fn internal_var_uint64(&mut self, value: u64) {
         if value < 0x80 {
             self.u8(value as u8);
-            1
         } else if value < 0x4000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (value >> 7) as u8;
             self.u16(((u2 as u16) << 8) | u1 as u16);
-            2
         } else if value < 0x200000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
             let u3 = (value >> 14) as u8;
             self.u16(((u2 as u16) << 8) | u1 as u16);
             self.u8(u3);
-            3
         } else if value < 0x10000000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
             let u3 = (((value >> 14) as u8) & 0x7F) | 0x80;
             let u4 = (value >> 21) as u8;
             self.u32(((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32);
-            4
         } else if value < 0x800000000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
@@ -175,7 +166,6 @@ impl Writer {
             let u5 = (value >> 28) as u8;
             self.u32(((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32);
             self.u8(u5);
-            5
         } else if value < 0x40000000000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
@@ -185,7 +175,6 @@ impl Writer {
             let u6 = (value >> 35) as u8;
             self.u32(((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32);
             self.u16(((u6 as u16) << 8) | u5 as u16);
-            6
         } else if value < 0x2000000000000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
@@ -197,7 +186,6 @@ impl Writer {
             self.u32(((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32);
             self.u16(((u6 as u16) << 8) | u5 as u16);
             self.u8(u7);
-            7
         } else if value < 0x100000000000000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
@@ -207,9 +195,16 @@ impl Writer {
             let u6 = (((value >> 35) as u8) & 0x7F) | 0x80;
             let u7 = (((value >> 42) as u8) & 0x7F) | 0x80;
             let u8 = (value >> 49) as u8;
-            self.u32(((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32);
-            self.u32(((u8 as u32) << 24) | ((u7 as u32) << 16) | ((u6 as u32) << 8) | u5 as u32);
-            8
+            self.u64(
+                (u8 as u64) << 56
+                    | (u7 as u64) << 48
+                    | (u6 as u64) << 40
+                    | (u5 as u64) << 32
+                    | (u4 as u64) << 24
+                    | (u3 as u64) << 16
+                    | (u2 as u64) << 8
+                    | (u1 as u64),
+            );
         } else {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
@@ -220,16 +215,82 @@ impl Writer {
             let u7 = (((value >> 42) as u8) & 0x7F) | 0x80;
             let u8 = (((value >> 49) as u8) & 0x7F) | 0x80;
             let u9 = (value >> 56) as u8;
-            self.u32(((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32);
-            self.u32(((u8 as u32) << 24) | ((u7 as u32) << 16) | ((u6 as u32) << 8) | u5 as u32);
+            self.u64(
+                (u8 as u64) << 56
+                    | (u7 as u64) << 48
+                    | (u6 as u64) << 40
+                    | (u5 as u64) << 32
+                    | (u4 as u64) << 24
+                    | (u3 as u64) << 16
+                    | (u2 as u64) << 8
+                    | (u1 as u64),
+            );
             self.u8(u9);
-            9
         }
     }
 
-    pub fn bytes(&mut self, v: &[u8]) {
+    pub fn var_uint36_small(&mut self, value: u64) {
+        assert!(value < (1u64 << 36), "value too large for 36-bit varint");
+        if value < 0x80 {
+            self.u8(value as u8);
+        } else if value < 0x4000 {
+            let b0 = ((value & 0x7F) as u8) | 0x80;
+            let b1 = (value >> 7) as u8;
+            let combined = ((b1 as u16) << 8) | (b0 as u16);
+            self.u16(combined);
+        } else if value < 0x200000 {
+            let b0 = (value & 0x7F) | 0x80;
+            let b1 = ((value >> 7) & 0x7F) | 0x80;
+            let b2 = value >> 14;
+            let combined = b0 | (b1 << 8) | (b2 << 16);
+            self.u32(combined as u32);
+        } else if value < 0x10000000 {
+            let b0 = (value & 0x7F) | 0x80;
+            let b1 = ((value >> 7) & 0x7F) | 0x80;
+            let b2 = ((value >> 14) & 0x7F) | 0x80;
+            let b3 = value >> 21;
+            let combined = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+            self.u32(combined as u32);
+        } else {
+            let b0 = (value & 0x7F) | 0x80;
+            let b1 = ((value >> 7) & 0x7F) | 0x80;
+            let b2 = ((value >> 14) & 0x7F) | 0x80;
+            let b3 = ((value >> 21) & 0x7F) | 0x80;
+            let b4 = value >> 28;
+            let combined = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24) | (b4 << 32);
+            self.u64(combined);
+        }
+    }
+
+    pub fn latin1_string(&mut self, s: &str) -> usize {
+        for c in s.chars() {
+            let b = c as u32;
+            assert!(b <= 0xFF, "Non-Latin1 character found");
+            self.u8(b as u8);
+        }
+        s.chars().count()
+    }
+
+    pub fn utf8_string(&mut self, s: &str) -> usize {
+        let bytes = s.as_bytes();
+        for &b in bytes {
+            self.u8(b);
+        }
+        bytes.len()
+    }
+
+    pub fn utf16_string(&mut self, s: &str) -> usize {
+        let units: Vec<u16> = s.encode_utf16().collect();
+        for &u in &units {
+            self.u16(u);
+        }
+        units.len() * 2
+    }
+
+    pub fn bytes(&mut self, v: &[u8]) -> usize {
         self.reserve(v.len());
         self.bf.extend_from_slice(v);
+        v.len()
     }
 
     pub fn set_bytes(&mut self, offset: usize, data: &[u8]) {
@@ -428,9 +489,72 @@ impl<'bf> Reader<'bf> {
         ((encoded >> 1) as i64) ^ -((encoded & 1) as i64)
     }
 
-    pub fn string(&mut self, len: usize) -> String {
+    pub fn latin1_string(&mut self, len: usize) -> String {
+        let slice = &self.bf[self.cursor..self.cursor + len];
+        let result: String = slice.iter().map(|&b| b as char).collect();
+        self.move_next(len);
+        result
+    }
+
+    pub fn utf8_string(&mut self, len: usize) -> String {
         let result = String::from_utf8_lossy(&self.bf[self.cursor..self.cursor + len]).to_string();
         self.move_next(len);
+        result
+    }
+
+    pub fn utf16_string(&mut self, len: usize) -> String {
+        assert!(len % 2 == 0, "UTF-16 length must be even");
+        let slice = &self.bf[self.cursor..self.cursor + len];
+        let units: Vec<u16> = slice
+            .chunks(2)
+            // little endian
+            .map(|c| (c[0] as u16) | ((c[1] as u16) << 8))
+            .collect();
+        let result = String::from_utf16(&units)
+            // lossy
+            .unwrap_or_else(|_| String::from("�"));
+        self.move_next(len);
+        result
+    }
+
+    pub fn var_uint36_small(&mut self) -> u64 {
+        let start = self.cursor;
+        // fast path
+        if self.slice_after_cursor().len() >= 8 {
+            let bulk = self.u64();
+            let mut result = bulk & 0x7F;
+            let mut read_idx = start;
+
+            if (bulk & 0x80) != 0 {
+                read_idx += 1;
+                result |= (bulk >> 1) & 0x3F80;
+                if (bulk & 0x8000) != 0 {
+                    read_idx += 1;
+                    result |= (bulk >> 2) & 0x1FC000;
+                    if (bulk & 0x800000) != 0 {
+                        read_idx += 1;
+                        result |= (bulk >> 3) & 0xFE00000;
+                        if (bulk & 0x80000000) != 0 {
+                            read_idx += 1;
+                            result |= (bulk >> 4) & 0xFF0000000;
+                        }
+                    }
+                }
+            }
+            self.cursor = read_idx + 1;
+            return result;
+        }
+        // slow path
+        let mut result = 0u64;
+        let mut shift = 0;
+        while self.cursor < self.bf.len() {
+            let b = self.u8();
+            result |= ((b & 0x7F) as u64) << shift;
+            if (b & 0x80) == 0 {
+                break;
+            }
+            shift += 7;
+        }
         result
     }
 

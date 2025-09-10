@@ -40,16 +40,6 @@ static ENCODING_OPTIONS: &[Encoding] = &[
     Encoding::LowerUpperDigitSpecial,
 ];
 
-static PRIMITIVE_ARRAY_TYPES: [u32; 6] = [
-    TypeId::BINARY as u32,
-    TypeId::INT16_ARRAY as u32,
-    TypeId::INT32_ARRAY as u32,
-    TypeId::INT64_ARRAY as u32,
-    TypeId::FLOAT32_ARRAY as u32,
-    TypeId::FLOAT64_ARRAY as u32,
-];
-
-
 #[derive(Debug, Eq, Clone)]
 pub struct FieldType {
     pub type_id: u32,
@@ -118,7 +108,7 @@ impl FieldType {
         }
         writer.var_int32(header);
         match self.type_id {
-            x if x == TypeId::ARRAY as u32 || x == TypeId::SET as u32 => {
+            x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 let generic = self.generics.first().unwrap();
                 generic.to_bytes(writer, true, false)?;
             }
@@ -146,7 +136,7 @@ impl FieldType {
             _nullable = nullable.unwrap();
         }
         let field_type = match type_id {
-            x if x == TypeId::ARRAY as u32 || x == TypeId::SET as u32 => {
+            x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 let generic = Self::from_bytes(reader, true, None);
                 Self {
                     type_id,
@@ -204,7 +194,6 @@ impl FieldInfo {
 
     pub fn from_bytes(reader: &mut Reader) -> FieldInfo {
         let header = reader.u8();
-        println!("header:{:?}", header);
         let nullable = (header & 2) != 0;
         // let ref_tracking = (header & 1) != 0;
         let encoding = Self::u8_to_encoding((header >> 6) & 0b11).unwrap();
@@ -263,13 +252,6 @@ impl FieldInfo {
 
 impl PartialEq for FieldType {
     fn eq(&self, other: &Self) -> bool {
-        // when field is PRIMITIVE_ARRAY, field_type obtained at compile time like: { id:32, generics: [{ id:3, generics:[] }] }
-        // but field_type obtained at runtime is { id:32, generics: [] }
-        if PRIMITIVE_ARRAY_TYPES.contains(&self.type_id)
-            || PRIMITIVE_ARRAY_TYPES.contains(&other.type_id)
-        {
-            return self.type_id == other.type_id;
-        }
         self.type_id == other.type_id && self.generics == other.generics
     }
 }

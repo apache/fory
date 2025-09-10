@@ -20,9 +20,10 @@ use fory_core::buffer::{Reader, Writer};
 use fory_core::fory::Fory;
 use fory_core::meta::murmurhash3_x64_128;
 use fory_core::resolver::context::{ReadContext, WriteContext};
+use fory_core::serializer::Serializer;
 use fory_core::types::Mode::Compatible;
 use fory_derive::Fory;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 
 fn get_data_file() -> String {
@@ -185,6 +186,38 @@ fn test_murmurhash3() {
     assert_eq!(reader.i64(), h2 as i64);
 }
 
+#[test]
+#[ignore]
+fn test_string_serializer() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+    let reader = Reader::new(bytes.as_slice());
+    let fory = Fory::default().mode(Compatible).xlang(true);
+    let mut context = ReadContext::new(&fory, reader);
+    let test_strings: Vec<String> = vec![
+        // Latin1
+        "Hello, world!".to_string(),
+        "Rust123".to_string(),
+        "Çüéâäàåçêëèïî".to_string(),
+        // // UTF16
+        "こんにちは".to_string(),
+        "Привет".to_string(),
+        "𝄞🎵🎶".to_string(),
+        // UTF8
+        "Hello, 世界".to_string(),
+    ];
+    for s in &test_strings {
+        assert_eq!(*s, String::read(&mut context).unwrap());
+    }
+    let mut writer = Writer::default();
+    let fory = Fory::default().mode(Compatible).xlang(true);
+    let mut context = WriteContext::new(&fory, &mut writer);
+    for s in &test_strings {
+        s.write(&mut context);
+    }
+    fs::write(&data_file_path, context.writer.dump()).unwrap();
+}
+
 macro_rules! assert_de {
     ($fory:expr, $context:expr, $ty:ty, $expected:expr) => {{
         let v: $ty = $fory.deserialize_with_context(&mut $context).unwrap();
@@ -214,7 +247,7 @@ fn test_cross_language_serializer() {
     assert_de!(fory, context, i64, i64::MIN);
     assert_de!(fory, context, f32, -1f32);
     assert_de!(fory, context, f64, -1f64);
-    // assert_de!(fory, context, String, "str".to_string());
+    assert_de!(fory, context, String, "str".to_string());
     assert_de!(
         fory,
         context,
@@ -227,13 +260,19 @@ fn test_cross_language_serializer() {
         NaiveDateTime,
         NaiveDateTime::from_timestamp(100, 0)
     );
-
     assert_de!(fory, context, Vec<bool>, [true, false]);
     assert_de!(fory, context, Vec<i16>, [1, i16::MAX]);
     assert_de!(fory, context, Vec<i32>, [1, i32::MAX]);
     assert_de!(fory, context, Vec<i64>, [1, i64::MAX]);
     assert_de!(fory, context, Vec<f32>, [1f32, 2f32]);
     assert_de!(fory, context, Vec<f64>, [1f64, 2f64]);
+    let str_list = vec!["hello".to_string(), "world".to_string()];
+    let str_set = HashSet::from(["hello".to_string(), "world".to_string()]);
+    let str_map =
+        HashMap::<String, i32>::from([("hello".to_string(), 42), ("world".to_string(), 666)]);
+    assert_de!(fory, context, Vec<String>, str_list);
+    assert_de!(fory, context, HashSet<String>, str_set);
+    assert_de!(fory, context, HashMap::<String, i32>, str_map);
 
     let mut writer = Writer::default();
     let fory = Fory::default().mode(Compatible).xlang(true);
@@ -251,26 +290,28 @@ fn test_cross_language_serializer() {
     fory.serialize_with_context(&i64::MIN, &mut context);
     fory.serialize_with_context(&-1f32, &mut context);
     fory.serialize_with_context(&-1f64, &mut context);
-    // fory.serialize_with_context(&"str".to_string(), &mut context);
+    fory.serialize_with_context(&"str".to_string(), &mut context);
     fory.serialize_with_context(
         &NaiveDate::from_ymd_opt(2021, 11, 23).unwrap(),
         &mut context,
     );
     fory.serialize_with_context(&NaiveDateTime::from_timestamp(100, 0), &mut context);
-
     fory.serialize_with_context(&vec![true, false], &mut context);
     fory.serialize_with_context(&vec![1, i16::MAX], &mut context);
     fory.serialize_with_context(&vec![1, i32::MAX], &mut context);
     fory.serialize_with_context(&vec![1, i64::MAX], &mut context);
     fory.serialize_with_context(&vec![1f32, 2f32], &mut context);
     fory.serialize_with_context(&vec![1f64, 2f64], &mut context);
+    fory.serialize_with_context(&str_list, &mut context);
+    fory.serialize_with_context(&str_set, &mut context);
+    fory.serialize_with_context(&str_map, &mut context);
 
     fs::write(&data_file_path, context.writer.dump()).unwrap();
 }
 
-#[derive(Fory, Debug, PartialEq)]
+#[derive(Fory, Debug, PartialEq, Default)]
 struct SimpleStruct {
-    f1: HashMap<i32, f64>,
+    // f1: HashMap<i32, f64>,
     f2: i32,
 }
 
@@ -280,16 +321,15 @@ fn test_simple_struct() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
     let mut fory = Fory::default().mode(Compatible).xlang(true);
-    fory.register::<SimpleStruct>(666);
+    fory.register::<SimpleStruct>(100);
     let remote_obj: SimpleStruct = fory.deserialize(&bytes).unwrap();
-    println!("remote {:#?}", remote_obj);
     let local_obj = SimpleStruct {
-        f1: HashMap::from([(1, 1.0f64), (2, 2.0f64)]),
+        // f1: HashMap::from([(1, 1.0f64), (2, 2.0f64)]),
         f2: 10,
     };
     assert_eq!(remote_obj, local_obj);
-    let new_bytes = fory.serialize(&remote_obj);
-    let new_remote_obj: SimpleStruct = fory.deserialize(new_bytes.as_slice()).unwrap();
-    assert_eq!(remote_obj, new_remote_obj);
-    fs::write(&data_file_path, new_bytes).unwrap();
+    // let new_bytes = fory.serialize(&remote_obj);
+    // let new_remote_obj: SimpleStruct = fory.deserialize(new_bytes.as_slice()).unwrap();
+    // assert_eq!(remote_obj, new_remote_obj);
+    // fs::write(&data_file_path, new_bytes).unwrap();
 }

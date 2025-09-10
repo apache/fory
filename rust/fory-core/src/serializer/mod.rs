@@ -24,6 +24,7 @@ use anyhow::anyhow;
 
 mod any;
 mod bool;
+pub mod collection;
 mod datetime;
 mod list;
 mod map;
@@ -44,7 +45,7 @@ pub fn serialize<T: Serializer>(this: &T, context: &mut WriteContext) {
     this.write(context);
 }
 
-pub fn deserialize<T: Serializer>(context: &mut ReadContext) -> Result<T, Error> {
+pub fn deserialize<T: Serializer + Default>(context: &mut ReadContext) -> Result<T, Error> {
     // ref flag
     let ref_flag = context.reader.i8();
 
@@ -52,13 +53,13 @@ pub fn deserialize<T: Serializer>(context: &mut ReadContext) -> Result<T, Error>
         let actual_type_id = context.reader.var_uint32();
         let expected_type_id = T::get_type_id(context.get_fory());
         ensure!(
-            actual_type_id == expected_type_id,
+            expected_type_id == actual_type_id,
             anyhow!("Invalid field type, expected:{expected_type_id}, actual:{actual_type_id}")
         );
-
         T::read(context)
     } else if ref_flag == (RefFlag::Null as i8) {
-        Err(anyhow!("Try to deserialize non-option type to null"))?
+        Ok(T::default())
+        // Err(anyhow!("Try to deserialize non-option type to null"))?
     } else if ref_flag == (RefFlag::Ref as i8) {
         Err(Error::Ref)
     } else {
@@ -68,7 +69,7 @@ pub fn deserialize<T: Serializer>(context: &mut ReadContext) -> Result<T, Error>
 
 pub trait Serializer
 where
-    Self: Sized,
+    Self: Sized + Default,
 {
     /// The possible max memory size of the type.
     /// Used to reserve the buffer space to avoid reallocation, which may hurt performance.
@@ -92,6 +93,10 @@ where
     }
 
     fn get_type_id(_fory: &Fory) -> u32;
+
+    fn is_option() -> bool {
+        false
+    }
 }
 
 pub trait StructSerializer: Serializer + 'static {

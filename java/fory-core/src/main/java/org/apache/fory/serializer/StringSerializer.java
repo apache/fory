@@ -310,6 +310,13 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   public void writeCompressedCharsString(MemoryBuffer buffer, String value) {
     final char[] chars = (char[]) Platform.getObject(value, STRING_VALUE_FIELD_OFFSET);
     final byte coder = bestCoder(chars);
+    //      System.out.println(value + ":" + chars.length + ":" + coder );
+    //      System.out.print("[");
+    //      for (int i = 0; i < chars.length; i++) {
+    //          System.out.printf("%04X", (int) chars[i]); // 16 进制，宽度 4 位
+    //          if (i != chars.length - 1) System.out.print(", ");
+    //      }
+    //      System.out.println("]");
     if (coder == LATIN1) {
       writeCharsLatin1(buffer, chars, chars.length);
     } else if (coder == UTF8) {

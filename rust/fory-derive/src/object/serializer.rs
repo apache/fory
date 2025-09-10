@@ -60,25 +60,25 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
     let type_index_token_stream = misc::gen_type_index(type_id);
 
     let gen = quote! {
-            impl fory_core::serializer::StructSerializer for #name {
-                fn type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: Vec<u8>, type_name: Vec<u8>, register_by_name: bool) -> Vec<u8> {
-                    #type_def_token_stream
-                }
-                fn actual_type_id(type_id: u32) -> u32 {
-                    #actual_type_id_token_stream
-                }
-                #type_index_token_stream
+        impl fory_core::serializer::StructSerializer for #name {
+            fn type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: Vec<u8>, type_name: Vec<u8>, register_by_name: bool) -> Vec<u8> {
+                #type_def_token_stream
             }
-            impl fory_core::types::ForyGeneralList for #name {}
-            impl fory_core::serializer::Serializer for #name {
-                #misc_token_stream
-                #write_token_stream
-                #read_token_stream
+            fn actual_type_id(type_id: u32) -> u32 {
+                #actual_type_id_token_stream
             }
-            impl #name {
-                #read_compatible_token_stream
-                #read_nullable_token_stream
-            }
-        };
+            #type_index_token_stream
+        }
+        impl fory_core::types::ForyGeneralList for #name {}
+        impl fory_core::serializer::Serializer for #name {
+            #misc_token_stream
+            #write_token_stream
+            #read_token_stream
+        }
+        impl #name {
+            #read_compatible_token_stream
+            #read_nullable_token_stream
+        }
+    };
     gen.into()
 }

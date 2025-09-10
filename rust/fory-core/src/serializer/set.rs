@@ -19,32 +19,19 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
+use crate::serializer::collection::{read_collection, write_collection};
 use crate::serializer::Serializer;
-use crate::types::{ForyGeneralList, TypeId, SIZE_OF_REF_AND_TYPE};
+use crate::types::{ForyGeneralList, TypeId};
 use std::collections::HashSet;
 use std::mem;
 
 impl<T: Serializer + Eq + std::hash::Hash> Serializer for HashSet<T> {
     fn write(&self, context: &mut WriteContext) {
-        // length
-        context.writer.var_int32(self.len() as i32);
-
-        let reserved_space =
-            (<T as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE) * self.len();
-        context.writer.reserve(reserved_space);
-
-        // key-value
-        for i in self.iter() {
-            i.serialize(context);
-        }
+        write_collection(self.iter(), context);
     }
 
     fn read(context: &mut ReadContext) -> Result<Self, Error> {
-        // length
-        let len = context.reader.var_int32();
-        (0..len)
-            .map(|_| T::deserialize(context))
-            .collect::<Result<HashSet<_>, Error>>()
+        read_collection(context)
     }
 
     fn reserved_space() -> usize {

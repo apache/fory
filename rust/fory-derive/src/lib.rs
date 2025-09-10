@@ -54,8 +54,9 @@
 //!     city: String,
 //! }
 //!
-//! #[derive(Fory, Debug, PartialEq)]
+//! #[derive(Fory, Debug, PartialEq, Default)]
 //! enum Status {
+//!     #[default]
 //!     Active,
 //!     Inactive,
 //!     Suspended,

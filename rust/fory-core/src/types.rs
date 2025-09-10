@@ -105,7 +105,7 @@ pub fn compute_string_hash(s: &str) -> u32 {
     hash as u32
 }
 
-pub const BASIC_TYPES: [TypeId; 17] = [
+pub static BASIC_TYPES: [TypeId; 18] = [
     TypeId::BOOL,
     TypeId::INT8,
     TypeId::INT16,
@@ -118,6 +118,7 @@ pub const BASIC_TYPES: [TypeId; 17] = [
     TypeId::TIMESTAMP,
     TypeId::BOOL_ARRAY,
     TypeId::BINARY,
+    TypeId::INT8_ARRAY,
     TypeId::INT16_ARRAY,
     TypeId::INT32_ARRAY,
     TypeId::INT64_ARRAY,
@@ -125,7 +126,7 @@ pub const BASIC_TYPES: [TypeId; 17] = [
     TypeId::FLOAT64_ARRAY,
 ];
 
-pub const BASIC_TYPE_NAMES: [&str; 10] = [
+pub static BASIC_TYPE_NAMES: [&str; 10] = [
     "bool",
     "i8",
     "i16",
@@ -138,9 +139,20 @@ pub const BASIC_TYPE_NAMES: [&str; 10] = [
     "NaiveDateTime",
 ];
 
-pub const COLLECTION_TYPES: [TypeId; 3] = [TypeId::ARRAY, TypeId::SET, TypeId::MAP];
+pub static CONTAINER_TYPES: [TypeId; 3] = [TypeId::LIST, TypeId::SET, TypeId::MAP];
 
-pub const COLLECTION_TYPE_NAMES: [&str; 3] = ["Vec", "HashSet", "HashMap"];
+pub static CONTAINER_TYPE_NAMES: [&str; 3] = ["Vec", "HashSet", "HashMap"];
+
+pub static PRIMITIVE_ARRAY_TYPE_MAP: &[(&str, u32, &str)] = &[
+    // ("_binary", TypeId::BINARY as u32),
+    ("bool", TypeId::BOOL_ARRAY as u32, "Vec<bool>"),
+    ("i8", TypeId::INT8_ARRAY as u32, "Vec<i8>"),
+    ("i16", TypeId::INT16_ARRAY as u32, "Vec<i16>"),
+    ("i32", TypeId::INT32_ARRAY as u32, "Vec<i32>"),
+    ("i64", TypeId::INT64_ARRAY as u32, "Vec<i64>"),
+    ("f32", TypeId::FLOAT32_ARRAY as u32, "Vec<f32>"),
+    ("f64", TypeId::FLOAT64_ARRAY as u32, "Vec<f64>"),
+];
 
 pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
     let mut new_hash: u64 = (hash as u64) * 31 + (id as u64);

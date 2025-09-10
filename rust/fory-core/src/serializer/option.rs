@@ -84,6 +84,10 @@ impl<T: Serializer> Serializer for Option<T> {
     fn get_type_id(fory: &Fory) -> u32 {
         T::get_type_id(fory)
     }
+
+    fn is_option() -> bool {
+        true
+    }
 }
 
 impl<T: Serializer> ForyGeneralList for Option<T> {}

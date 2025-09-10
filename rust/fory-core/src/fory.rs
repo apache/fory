@@ -38,7 +38,7 @@ pub struct Fory {
 impl Default for Fory {
     fn default() -> Self {
         Fory {
-            mode: Mode::Compatible,
+            mode: Mode::SchemaConsistent,
             xlang: true,
             type_resolver: TypeResolver::default(),
         }
@@ -120,8 +120,6 @@ impl Fory {
         self.read_head(&mut context.reader)?;
         if self.mode == Mode::Compatible {
             let meta_offset = context.reader.i32();
-            println!("read meta_offset: {:X}", meta_offset);
-            println!("read bytes: {:?}", context.reader.slice_after_cursor());
             if meta_offset != -1 {
                 context.load_meta(meta_offset as usize);
             }
@@ -146,13 +144,11 @@ impl Fory {
             context.writer.i32(-1);
             meta_offset = context.writer.len() - 4;
         }
-        println!("write bytes: {:?}", context.writer.dump());
         <T as Serializer>::serialize(record, context);
         if self.mode == Mode::Compatible && !context.empty() {
             assert!(meta_offset > 0);
             context.write_meta(meta_offset);
         }
-        println!("write bytes: {:?}", context.writer.dump());
         context.writer.dump()
     }
 

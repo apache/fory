@@ -105,6 +105,7 @@ fn deserialize_nullable(fields: &[&Field]) -> TokenStream {
                     remote_nullable_type: &fory_core::meta::NullableFieldType
                 ) -> Result<#ty, fory_core::error::Error> {
                     // println!("remote:{:#?}", remote_nullable_type);
+                    // println!("local:{:#?}", local_nullable_type);
                     #deserialize_tokens
                 }
             }

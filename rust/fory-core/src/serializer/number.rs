@@ -43,7 +43,6 @@ macro_rules! impl_num_serializer {
         }
     };
 }
-impl ForyGeneralList for i8 {}
 impl ForyGeneralList for u16 {}
 impl ForyGeneralList for u32 {}
 impl ForyGeneralList for u64 {}

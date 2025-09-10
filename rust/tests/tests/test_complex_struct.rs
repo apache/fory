@@ -50,8 +50,9 @@ use std::collections::HashMap;
 
 #[test]
 fn enum_without_payload() {
-    #[derive(Fory, Debug, PartialEq)]
+    #[derive(Fory, Debug, PartialEq, Default)]
     enum Color {
+        #[default]
         Green,
         Red,
         Blue,

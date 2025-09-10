@@ -34,11 +34,13 @@ import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import lombok.Data;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
+import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.test.TestUtils;
 import org.apache.fory.util.MurmurHash3;
 import org.testng.Assert;
@@ -82,14 +84,16 @@ public class WIPCrossLanguageTest extends ForyTestBase {
   @Test
   public void testRust() throws Exception {
     List<String> command = rustBaseCommand;
-    command.set(RUST_TESTCASE_INDEX, "test_buffer");
-    testBuffer(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_buffer_var");
-    testBufferVar(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_murmurhash3");
-    testMurmurHash3(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_cross_language_serializer");
-    testCrossLanguageSerializer(Language.RUST, command);
+       command.set(RUST_TESTCASE_INDEX, "test_buffer");
+       testBuffer(Language.RUST, command);
+       command.set(RUST_TESTCASE_INDEX, "test_buffer_var");
+       testBufferVar(Language.RUST, command);
+       command.set(RUST_TESTCASE_INDEX, "test_murmurhash3");
+       testMurmurHash3(Language.RUST, command);
+         command.set(RUST_TESTCASE_INDEX, "test_string_serializer");
+         testStringSerializer(Language.RUST, command);
+       command.set(RUST_TESTCASE_INDEX, "test_cross_language_serializer");
+       testCrossLanguageSerializer(Language.RUST, command);
     command.set(RUST_TESTCASE_INDEX, "test_simple_struct");
     testSimpleStruct(Language.RUST, command);
   }
@@ -268,14 +272,53 @@ public class WIPCrossLanguageTest extends ForyTestBase {
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
   }
 
+  private void testStringSerializer(Language language, List<String> command) throws Exception {
+    Path dataFile = Files.createTempFile("test_string_serializer", "data");
+    MemoryBuffer buffer = MemoryUtils.buffer(100);
+    Fory fory =
+        Fory.builder()
+            .withStringCompressed(true)
+            .withWriteNumUtf16BytesForUtf8Encoding(false)
+            .requireClassRegistration(false)
+            .build();
+    StringSerializer serializer = new StringSerializer(fory);
+    String[] testStrings =
+        new String[] {
+          // Latin1
+          "Hello, world!",
+          "Rust123",
+          "Çüéâäàåçêëèïî",
+          // UTF16
+          "こんにちは",
+          "Привет",
+          "𝄞🎵🎶",
+          // UTF8
+          "Hello, 世界",
+        };
+    for (String s : testStrings) {
+      serializer.writeJavaString(buffer, s);
+    }
+    Pair<Map<String, String>, File> env_workdir =
+        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+    Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
+
+    buffer = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+
+    for (String expected : testStrings) {
+      String actual = serializer.readJavaString(buffer);
+      Assert.assertEquals(actual, expected);
+    }
+  }
+
   private void testCrossLanguageSerializer(Language language, List<String> command)
       throws Exception {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
-            .withRefTracking(true)
             .requireClassRegistration(false)
-            .withMetaShare(true)
+            .withStringCompressed(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withWriteNumUtf16BytesForUtf8Encoding(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     fory.serialize(buffer, true);
@@ -291,24 +334,11 @@ public class WIPCrossLanguageTest extends ForyTestBase {
     fory.serialize(buffer, Long.MIN_VALUE);
     fory.serialize(buffer, -1.f);
     fory.serialize(buffer, -1.d);
-    //        fory.serialize(buffer, "str");
-    //        System.out.println("bytes: " + Arrays.toString(buffer.getBytes(0,
-    // buffer.writerIndex())));
+    fory.serialize(buffer, "str");
     LocalDate day = LocalDate.of(2021, 11, 23);
     fory.serialize(buffer, day);
     Instant instant = Instant.ofEpochSecond(100);
     fory.serialize(buffer, instant);
-    //        List<Object> list = Arrays.asList("a", 1, -1.0, instant, day);
-    //        fory.serialize(buffer, list);
-    //        Map<Object, Object> map = new HashMap<>();
-    //        for (int i = 0; i < list.size(); i++) {
-    //            map.put("k" + i, list.get(i));
-    //            map.put(list.get(i), list.get(i));
-    //        }
-    //        fory.serialize(buffer, map);
-    //        Set<Object> set = new HashSet<>(list);
-    //        fory.serialize(buffer, set);
-    //
     // test primitive arrays
     fory.serialize(buffer, new boolean[] {true, false});
     fory.serialize(buffer, new short[] {1, Short.MAX_VALUE});
@@ -316,6 +346,25 @@ public class WIPCrossLanguageTest extends ForyTestBase {
     fory.serialize(buffer, new long[] {1, Long.MAX_VALUE});
     fory.serialize(buffer, new float[] {1.f, 2.f});
     fory.serialize(buffer, new double[] {1.0, 2.0});
+
+    List<String> strList = Arrays.asList("hello", "world");
+    fory.serialize(buffer, strList);
+    Set<String> strSet = new HashSet<>(strList);
+    fory.serialize(buffer, strSet);
+    HashMap<String, Integer> strMap = new HashMap();
+    strMap.put("hello", 42);
+    strMap.put("world", 666);
+    fory.serialize(buffer, strMap);
+    //    Map<Object, Object> map = new HashMap<>();
+    //    for (int i = 0; i < list.size(); i++) {
+    //        map.put("k" + i, list.get(i));
+    //        map.put(list.get(i), list.get(i));
+    //    }
+    //    fory.serialize(buffer, map);
+    //      System.out.println("bytes: " + Arrays.toString(buffer.getBytes(0,
+    //              buffer.writerIndex())));
+    //    Set<Object> set = new HashSet<>(list);
+    //    fory.serialize(buffer, set);
 
     BiConsumer<MemoryBuffer, Boolean> function =
         (MemoryBuffer buf, Boolean useToString) -> {
@@ -332,18 +381,21 @@ public class WIPCrossLanguageTest extends ForyTestBase {
           assertStringEquals(fory.deserialize(buf), Long.MIN_VALUE, useToString);
           assertStringEquals(fory.deserialize(buf), -1.f, useToString);
           assertStringEquals(fory.deserialize(buf), -1.d, useToString);
-          //                    assertStringEquals(fory.deserialize(buf), "str", useToString);
+          assertStringEquals(fory.deserialize(buf), "str", useToString);
           assertStringEquals(fory.deserialize(buf), day, useToString);
           assertStringEquals(fory.deserialize(buf), instant, useToString);
-          //                    assertStringEquals(fory.deserialize(buf), list, useToString);
-          //                    assertStringEquals(fory.deserialize(buf), map, useToString);
-          //                    assertStringEquals(fory.deserialize(buf), set, useToString);
           assertStringEquals(fory.deserialize(buf), new boolean[] {true, false}, false);
           assertStringEquals(fory.deserialize(buf), new short[] {1, Short.MAX_VALUE}, false);
           assertStringEquals(fory.deserialize(buf), new int[] {1, Integer.MAX_VALUE}, false);
           assertStringEquals(fory.deserialize(buf), new long[] {1, Long.MAX_VALUE}, false);
           assertStringEquals(fory.deserialize(buf), new float[] {1.f, 2.f}, false);
           assertStringEquals(fory.deserialize(buf), new double[] {1.0, 2.0}, false);
+          assertStringEquals(fory.deserialize(buf), strList, useToString);
+          assertStringEquals(fory.deserialize(buf), strSet, useToString);
+          assertStringEquals(fory.deserialize(buf), strMap, useToString);
+          //            assertStringEquals(fory.deserialize(buf), list, useToString);
+          //            assertStringEquals(fory.deserialize(buf), map, useToString);
+          //            assertStringEquals(fory.deserialize(buf), set, useToString);
         };
     function.accept(buffer, false);
     Path dataFile = Files.createTempFile("test_cross_language_serializer", "data");
@@ -356,7 +408,6 @@ public class WIPCrossLanguageTest extends ForyTestBase {
 
   @Data
   static class SimpleStruct {
-    HashMap<Integer, Double> f1;
     int f2;
   }
 
@@ -365,25 +416,22 @@ public class WIPCrossLanguageTest extends ForyTestBase {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
-            .requireClassRegistration(true)
-            .withMetaShare(true)
+            .withRefTracking(false)
+            .requireClassRegistration(false)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
             .build();
-    fory.register(SimpleStruct.class, 300);
-    HashMap<Integer, Double> f1 = new HashMap<>();
-    f1.put(1, 1.0);
-    f1.put(2, 2.0);
-    SimpleStruct a = new SimpleStruct();
-    a.f1 = f1;
-    a.f2 = 20;
-    //        byte[] serialized = fory.serialize(a);
-    //        Assert.assertEquals(fory.deserialize(serialized), a);
+    fory.register(SimpleStruct.class, 100);
+    SimpleStruct obj = new SimpleStruct();
+    obj.f2 = 20;
+    byte[] serialized = fory.serialize(obj);
+    //      Assert.assertEquals(fory.deserialize(serialized), obj);
     //        System.out.println(Arrays.toString(serialized));
     //        Path dataFile = Files.createTempFile("test_simple_struct", "data");
     //        Pair<Map<String,String>, File> env_workdir = setFilePath(language, command, dataFile,
-    // serialized);
+    //    serialized);
     //        Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(),
-    // env_workdir.getRight()));
-    //        Assert.assertEquals(fory.deserialize(Files.readAllBytes(dataFile)), a);
+    //    env_workdir.getRight()));
+    //            Assert.assertEquals(fory.deserialize(Files.readAllBytes(dataFile)), obj);
   }
 
   /**

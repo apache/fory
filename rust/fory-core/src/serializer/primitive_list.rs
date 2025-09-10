@@ -73,6 +73,7 @@ macro_rules! impl_primitive_vec {
 
 impl_primitive_vec!(bool, bool, TypeId::BOOL_ARRAY);
 impl_primitive_vec!(u8, u8, TypeId::BINARY);
+impl_primitive_vec!(i8, i8, TypeId::INT8_ARRAY);
 impl_primitive_vec!(i16, i16, TypeId::INT16_ARRAY);
 impl_primitive_vec!(i32, i32, TypeId::INT32_ARRAY);
 impl_primitive_vec!(i64, i64, TypeId::INT64_ARRAY);
