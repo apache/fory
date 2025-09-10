@@ -65,12 +65,13 @@ fn type_def(fields: &[&Field]) -> TokenStream {
         }
     });
     quote! {
-        fn type_def(fory: &fory_core::fory::Fory, layer_id: u32) -> Vec<u8> {
-            fory_core::meta::TypeMeta::from_fields(
-                layer_id,
-                vec![#(#field_infos),*]
-            ).to_bytes().unwrap()
-        }
+        fory_core::meta::TypeMeta::from_fields(
+            type_id,
+            namespace,
+            type_name,
+            register_by_name,
+            vec![#(#field_infos),*]
+        ).to_bytes().unwrap()
     }
 }
 
@@ -80,6 +81,12 @@ pub fn gen_in_struct_impl(fields: &[&Field]) -> TokenStream {
 
     quote! {
         #type_def_token_stream
+    }
+}
+
+pub fn gen_actual_type_id() -> TokenStream {
+    quote! {
+        (type_id << 8) + fory_core::types::TypeId::STRUCT as u32
     }
 }
 

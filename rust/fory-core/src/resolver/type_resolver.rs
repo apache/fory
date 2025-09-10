@@ -46,16 +46,33 @@ impl Harness {
     }
 }
 
+#[allow(dead_code)]
 pub struct TypeInfo {
     type_def: Vec<u8>,
     type_id: u32,
+    namespace: Vec<u8>,
+    type_name: Vec<u8>,
 }
 
 impl TypeInfo {
-    pub fn new<T: StructSerializer>(fory: &Fory, type_id: u32) -> TypeInfo {
+    pub fn new<T: StructSerializer>(
+        fory: &Fory,
+        type_id: u32,
+        namespace: Vec<u8>,
+        type_name: Vec<u8>,
+        register_by_name: bool,
+    ) -> TypeInfo {
         TypeInfo {
-            type_def: T::type_def(fory, type_id),
+            type_def: T::type_def(
+                fory,
+                type_id,
+                namespace.clone(),
+                type_name.clone(),
+                register_by_name,
+            ),
             type_id,
+            namespace,
+            type_name,
         }
     }
 
@@ -75,6 +92,7 @@ pub struct TypeResolver {
     type_info_map: HashMap<std::any::TypeId, TypeInfo>,
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
+    type_id_counter: u32,
 }
 
 const NO_TYPE_ID: u32 = 1000000000;
@@ -104,7 +122,7 @@ impl TypeResolver {
         )
     }
 
-    pub fn register<T: StructSerializer>(&mut self, type_info: TypeInfo, id: u32) {
+    pub fn register<T: StructSerializer>(&mut self, type_info: TypeInfo) {
         fn serializer<T2: 'static + StructSerializer>(this: &dyn Any, context: &mut WriteContext) {
             let this = this.downcast_ref::<T2>();
             match this {
@@ -127,12 +145,29 @@ impl TypeResolver {
         if index >= self.type_id_index.len() {
             self.type_id_index.resize(index + 1, NO_TYPE_ID);
         }
-        self.type_id_index[index] = id;
-        self.type_id_map.insert(std::any::TypeId::of::<T>(), id);
-        self.serialize_map
-            .insert(id, Harness::new(serializer::<T>, deserializer::<T>));
+        self.type_id_index[index] = type_info.type_id;
+        if self.serialize_map.contains_key(&type_info.type_id) {
+            panic!("TypeId {:?} already registered", type_info.type_id);
+        }
+        self.type_id_map
+            .insert(std::any::TypeId::of::<T>(), type_info.type_id);
+        self.serialize_map.insert(
+            type_info.type_id,
+            Harness::new(serializer::<T>, deserializer::<T>),
+        );
         self.type_info_map
             .insert(std::any::TypeId::of::<T>(), type_info);
+    }
+
+    pub fn next_type_id(&mut self) -> u32 {
+        let old_type_id = self.type_id_counter;
+        loop {
+            self.type_id_counter += 1;
+            if !self.serialize_map.contains_key(&self.type_id_counter) {
+                break;
+            }
+        }
+        old_type_id
     }
 
     pub fn get_harness_by_type(&self, type_id: std::any::TypeId) -> Option<&Harness> {

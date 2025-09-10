@@ -59,6 +59,8 @@ fn simple() {
         f8: 44,
     };
     let bin = fory1.serialize(&animal);
+    println!("{:?}", bin);
+
     let obj: Animal2 = fory2.deserialize(&bin).unwrap();
 
     assert_eq!(animal.f1, obj.f1);

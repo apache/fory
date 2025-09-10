@@ -20,7 +20,6 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::RefFlag;
-use crate::types::TypeId;
 use anyhow::anyhow;
 
 mod any;
@@ -96,11 +95,14 @@ where
 }
 
 pub trait StructSerializer: Serializer + 'static {
-    fn type_def(fory: &Fory, type_id: u32) -> Vec<u8>;
-
-    fn actual_type_id(type_id: u32) -> u32 {
-        (type_id << 8) + TypeId::STRUCT as u32
-    }
+    fn type_def(
+        fory: &Fory,
+        type_id: u32,
+        namespace: Vec<u8>,
+        type_name: Vec<u8>,
+        register_by_name: bool,
+    ) -> Vec<u8>;
 
     fn type_index() -> u32;
+    fn actual_type_id(type_id: u32) -> u32;
 }

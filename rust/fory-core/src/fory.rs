@@ -18,6 +18,7 @@
 use crate::buffer::{Reader, Writer};
 use crate::ensure;
 use crate::error::Error;
+use crate::meta::MetaStringEncoder;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
@@ -119,6 +120,8 @@ impl Fory {
         self.read_head(&mut context.reader)?;
         if self.mode == Mode::Compatible {
             let meta_offset = context.reader.i32();
+            println!("read meta_offset: {:X}", meta_offset);
+            println!("read bytes: {:?}", context.reader.slice_after_cursor());
             if meta_offset != -1 {
                 context.load_meta(meta_offset as usize);
             }
@@ -143,11 +146,13 @@ impl Fory {
             context.writer.i32(-1);
             meta_offset = context.writer.len() - 4;
         }
+        println!("write bytes: {:?}", context.writer.dump());
         <T as Serializer>::serialize(record, context);
         if self.mode == Mode::Compatible && !context.empty() {
             assert!(meta_offset > 0);
             context.write_meta(meta_offset);
         }
+        println!("write bytes: {:?}", context.writer.dump());
         context.writer.dump()
     }
 
@@ -157,7 +162,33 @@ impl Fory {
 
     pub fn register<T: 'static + StructSerializer>(&mut self, id: u32) {
         let actual_type_id = T::actual_type_id(id);
-        let type_info = TypeInfo::new::<T>(self, actual_type_id);
-        self.type_resolver.register::<T>(type_info, actual_type_id);
+        let empty_bytes = "".as_bytes().to_vec();
+        let type_info = TypeInfo::new::<T>(
+            self,
+            actual_type_id,
+            empty_bytes.clone(),
+            empty_bytes,
+            false,
+        );
+        self.type_resolver.register::<T>(type_info);
+    }
+
+    pub fn register_by_name<T: 'static + StructSerializer>(
+        &mut self,
+        namespace: &str,
+        type_name: &str,
+    ) {
+        let type_id = T::actual_type_id(0);
+        let encoder = MetaStringEncoder::new();
+        let namespace_metastring = encoder.encode(namespace).unwrap();
+        let type_name_metastring = encoder.encode(type_name).unwrap();
+        let type_info = TypeInfo::new::<T>(
+            self,
+            type_id,
+            namespace_metastring.bytes,
+            type_name_metastring.bytes,
+            true,
+        );
+        self.type_resolver.register::<T>(type_info);
     }
 }

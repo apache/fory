@@ -23,8 +23,10 @@ use crate::meta::string_util;
 
 // equal to "std::i16::MAX"
 const SHORT_MAX_VALUE: usize = 32767;
+// const HEADER_MASK:i64 = 0xff;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Hash, Eq, Clone)]
+#[repr(i16)]
 pub enum Encoding {
     Utf8 = 0x00,
     LowerSpecial = 0x01,
@@ -33,7 +35,31 @@ pub enum Encoding {
     AllToLowerSpecial = 0x04,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
+pub struct MetaStringBytes {
+    pub data: Vec<u8>,
+    pub hash: i64,
+}
+
+impl MetaStringBytes {
+    pub fn from(_str: &MetaString) -> Self {
+        unimplemented!()
+        // let bytes = str.bytes.clone();
+        // let value = (murmurhash3_x64_128(&bytes, 47).0 as i64).abs();
+        // let hash = if value == 0 { value+256 } else { value } & 0xffffffffffffff00;
+        // let hash = hash | (str.encoding.clone() as i64 & HEADER_MASK);
+        // Self {
+        //     data: bytes,
+        //     hash,
+        // }
+    }
+
+    pub fn to(&self) -> MetaString {
+        unimplemented!()
+    }
+}
+
+#[derive(Debug, PartialEq, Hash, Eq, Clone)]
 pub struct MetaString {
     pub original: String,
     pub encoding: Encoding,

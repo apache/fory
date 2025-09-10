@@ -313,7 +313,6 @@ public class WIPCrossLanguageTest extends ForyTestBase {
     fory.serialize(buffer, new boolean[] {true, false});
     fory.serialize(buffer, new short[] {1, Short.MAX_VALUE});
     fory.serialize(buffer, new int[] {1, Integer.MAX_VALUE});
-    System.out.println("bytes: " + Arrays.toString(buffer.getBytes(0, buffer.writerIndex())));
     fory.serialize(buffer, new long[] {1, Long.MAX_VALUE});
     fory.serialize(buffer, new float[] {1.f, 2.f});
     fory.serialize(buffer, new double[] {1.0, 2.0});
