@@ -263,12 +263,14 @@ impl Writer {
     }
 
     pub fn latin1_string(&mut self, s: &str) -> usize {
+        let mut count = 0;
         for c in s.chars() {
             let b = c as u32;
             assert!(b <= 0xFF, "Non-Latin1 character found");
             self.u8(b as u8);
+            count += 1;
         }
-        s.chars().count()
+        count
     }
 
     pub fn utf8_string(&mut self, s: &str) -> usize {
@@ -280,11 +282,12 @@ impl Writer {
     }
 
     pub fn utf16_string(&mut self, s: &str) -> usize {
-        let units: Vec<u16> = s.encode_utf16().collect();
-        for &u in &units {
+        let mut count = 0;
+        for u in s.encode_utf16() {
             self.u16(u);
+            count += 1;
         }
-        units.len() * 2
+        count * 2
     }
 
     pub fn bytes(&mut self, v: &[u8]) -> usize {
