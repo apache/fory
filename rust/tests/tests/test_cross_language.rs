@@ -199,7 +199,7 @@ fn test_string_serializer() {
         "ab".to_string(),
         "Rust123".to_string(),
         "Çüéâäàåçêëèïî".to_string(),
-        // // UTF16
+        // UTF16
         "こんにちは".to_string(),
         "Привет".to_string(),
         "𝄞🎵🎶".to_string(),

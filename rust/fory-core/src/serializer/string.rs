@@ -18,6 +18,7 @@
 use crate::buffer::Writer;
 use crate::error::Error;
 use crate::fory::Fory;
+use crate::meta::is_latin;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
@@ -37,8 +38,15 @@ impl Serializer for String {
 
     fn write(&self, context: &mut WriteContext) {
         let mut buf = Writer::default();
-        let len = buf.utf8_string(self);
-        let bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
+        let len;
+        let bitor;
+        if is_latin(self.as_str()) {
+            len = buf.latin1_string(self);
+            bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
+        } else {
+            len = buf.utf8_string(self);
+            bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
+        }
         context.writer.var_uint36_small(bitor);
         context.writer.bytes(buf.dump().as_slice());
     }

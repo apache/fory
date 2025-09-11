@@ -40,20 +40,22 @@ pub const MIN_DIM_SIZE_SIMD: usize = 16;
 unsafe fn is_latin_avx(s: &str) -> bool {
     let bytes = s.as_bytes();
     let len = bytes.len();
-    let ascii_mask = _mm256_set1_epi8(0x80u8 as i8);
-    let remaining = len % MIN_DIM_SIZE_AVX;
-    let range_end = len - remaining;
-
-    for i in (0..range_end).step_by(MIN_DIM_SIZE_AVX) {
+    let mut i = 0;
+    // SIMD skip ASCII
+    while i + MIN_DIM_SIZE_AVX <= len {
         let chunk = _mm256_loadu_si256(bytes.as_ptr().add(i) as *const __m256i);
-        let masked = _mm256_and_si256(chunk, ascii_mask);
+        let hi_mask = _mm256_set1_epi8(0x80u8 as i8);
+        let masked = _mm256_and_si256(chunk, hi_mask);
         let cmp = _mm256_cmpeq_epi8(masked, _mm256_setzero_si256());
         if _mm256_movemask_epi8(cmp) != -1 {
-            return false;
+            break;
         }
+        i += MIN_DIM_SIZE_AVX;
     }
-    for item in bytes.iter().take(len).skip(range_end) {
-        if !item.is_ascii() {
+    // check latin in remaining chars
+    let s_tail = &s[i..];
+    for c in s_tail.chars() {
+        if c as u32 > 0xFF {
             return false;
         }
     }
@@ -64,19 +66,22 @@ unsafe fn is_latin_avx(s: &str) -> bool {
 unsafe fn is_latin_sse(s: &str) -> bool {
     let bytes = s.as_bytes();
     let len = bytes.len();
-    let ascii_mask = _mm_set1_epi8(0x80u8 as i8);
-    let remaining = len % MIN_DIM_SIZE_SIMD;
-    let range_end = len - remaining;
-    for i in (0..range_end).step_by(MIN_DIM_SIZE_SIMD) {
+    let mut i = 0;
+    // SIMD skip ASCII
+    while i + MIN_DIM_SIZE_SIMD <= len {
         let chunk = _mm_loadu_si128(bytes.as_ptr().add(i) as *const __m128i);
-        let masked = _mm_and_si128(chunk, ascii_mask);
+        let hi_mask = _mm_set1_epi8(0x80u8 as i8);
+        let masked = _mm_and_si128(chunk, hi_mask);
         let cmp = _mm_cmpeq_epi8(masked, _mm_setzero_si128());
         if _mm_movemask_epi8(cmp) != 0xFFFF {
-            return false;
+            break;
         }
+        i += MIN_DIM_SIZE_SIMD;
     }
-    for item in bytes.iter().take(len).skip(range_end) {
-        if !item.is_ascii() {
+    // check latin in remaining chars
+    let s_tail = &s[i..];
+    for c in s_tail.chars() {
+        if c as u32 > 0xFF {
             return false;
         }
     }
@@ -87,19 +92,21 @@ unsafe fn is_latin_sse(s: &str) -> bool {
 unsafe fn is_latin_neon(s: &str) -> bool {
     let bytes = s.as_bytes();
     let len = bytes.len();
-    let ascii_mask = vdupq_n_u8(0x80);
-    let remaining = len % MIN_DIM_SIZE_SIMD;
-    let range_end = len - remaining;
-    for i in (0..range_end).step_by(MIN_DIM_SIZE_SIMD) {
+    let mut i = 0;
+    // SIMD skip ASCII
+    while i + MIN_DIM_SIZE_SIMD <= len {
         let chunk = vld1q_u8(bytes.as_ptr().add(i));
-        let masked = vandq_u8(chunk, ascii_mask);
-        let cmp = vceqq_u8(masked, vdupq_n_u8(0));
-        if vminvq_u8(cmp) == 0 {
-            return false;
+        let hi_mask = vdupq_n_u8(0x80);
+        let masked = vandq_u8(chunk, hi_mask);
+        if vmaxvq_u8(masked) != 0 {
+            break;
         }
+        i += MIN_DIM_SIZE_SIMD;
     }
-    for item in bytes.iter().take(len).skip(range_end) {
-        if !item.is_ascii() {
+    // check latin in remaining chars
+    let s_tail = &s[i..];
+    for c in s_tail.chars() {
+        if c as u32 > 0xFF {
             return false;
         }
     }
