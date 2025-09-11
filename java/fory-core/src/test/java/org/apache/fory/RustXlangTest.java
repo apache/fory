@@ -44,10 +44,12 @@ import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.test.TestUtils;
 import org.apache.fory.util.MurmurHash3;
 import org.testng.Assert;
+import org.testng.SkipException;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-/** Tests in this class need fory python/rust installed. */
+/** Tests in this class need fory rust installed. */
+// cd java/fory-core && mvn test -Dtest=org.apache.fory.RustXlangTest
 @Test
 public class RustXlangTest extends ForyTestBase {
   private static final Logger LOG = LoggerFactory.getLogger(RustXlangTest.class);
@@ -77,11 +79,27 @@ public class RustXlangTest extends ForyTestBase {
   private static final int RUST_TESTCASE_INDEX = 4;
 
   @BeforeClass
-  public void isPyforyInstalled() {
-    // TestUtils.verifyPyforyInstalled();
+  public void isRustJavaCIEnabled() {
+    String enabled = System.getenv("FORY_RUST_JAVA_CI");
+    if (enabled == null || !enabled.equals("1")) {
+      throw new SkipException("Skipping RustXlangTest: FORY_RUST_JAVA_CI not set to 1");
+    }
+    boolean rustInstalled = true;
+    try {
+      Process process = new ProcessBuilder("rustc", "--version").start();
+      int exitCode = process.waitFor();
+      if (exitCode != 0) {
+        rustInstalled = false;
+      }
+    } catch (IOException | InterruptedException e) {
+      rustInstalled = false;
+    }
+    if (!rustInstalled) {
+      throw new SkipException("Skipping RustXlangTest: rust not installed");
+    }
   }
 
-  @Test(enabled = false)
+  @Test
   public void testRust() throws Exception {
     List<String> command = rustBaseCommand;
     command.set(RUST_TESTCASE_INDEX, "test_buffer");
