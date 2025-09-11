@@ -303,7 +303,7 @@ public class RustXlangTest extends ForyTestBase {
     String[] testStrings =
         new String[] {
           // Latin1
-          "Hello, world!",
+          "ab",
           "Rust123",
           "Çüéâäàåçêëèïî",
           // UTF16
@@ -324,7 +324,76 @@ public class RustXlangTest extends ForyTestBase {
 
     for (String expected : testStrings) {
       String actual = serializer.readJavaString(buffer);
-      Assert.assertEquals(actual, expected);
+        System.out.println(actual);
+        System.out.println(expected);
+        System.out.println("expected.equals(actual): " + expected.equals(actual));
+        System.out.println("actual.equals(expected): " + actual.equals(expected));
+        System.out.println("Objects.equals(expected, actual): " + java.util.Objects.equals(expected, actual));
+        System.out.println("expected.hashCode(): " + expected.hashCode());
+        System.out.println("actual.hashCode():   " + actual.hashCode());
+
+        System.out.println("Bytes UTF-8 equals: " +
+                Arrays.equals(expected.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        actual.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+
+        System.out.println("Codepoints equal: " +
+                Arrays.equals(expected.codePoints().toArray(), actual.codePoints().toArray()));
+
+// 反射查看 String 内部存储（针对 Java8/Java9+ 两种实现）
+        try {
+            Class<?> sc = String.class;
+            java.lang.reflect.Field valueField = null;
+            try { valueField = sc.getDeclaredField("value"); } catch (NoSuchFieldException e) {}
+            if (valueField != null) {
+                valueField.setAccessible(true);
+                Object internal = valueField.get(actual);
+//                System.out.println("actual internal class: " + (internal == null ? "null" : internal.getClass().getName()));
+                if (internal instanceof char[]) {
+//                    System.out.println("actual internal chars: " + Arrays.toString((char[]) internal));
+//                    System.out.println("expected internal chars: " + Arrays.toString((char[]) sc.getDeclaredField("value").get(expected)));
+                } else if (internal instanceof byte[]) {
+                    System.out.println("actual internal bytes: " + Arrays.toString((byte[]) internal));
+                    // Java9+ 还可打印 coder 字段
+                    try {
+                        java.lang.reflect.Field coder = sc.getDeclaredField("coder");
+                        coder.setAccessible(true);
+                        System.out.println("actual coder: " + coder.get(actual));
+                    } catch (NoSuchFieldException ignore) {}
+                } else {
+                    System.out.println("actual internal object: " + internal);
+                }
+            }
+        } catch (Throwable t) {
+            t.printStackTrace();
+        }
+
+        // 需要在测试里继续（不要修改 String 内容，只读取）
+        Class<?> sc = String.class;
+        java.lang.reflect.Field valueField = sc.getDeclaredField("value");
+        valueField.setAccessible(true);
+        Object actualInternal = valueField.get(actual);
+        Object expectedInternal = valueField.get(expected);
+
+        System.out.println("actual internal class: " + (actualInternal==null? "null": actualInternal.getClass().getName()));
+        System.out.println("expected internal class: " + (expectedInternal==null? "null": expectedInternal.getClass().getName()));
+        if (actualInternal instanceof byte[]) {
+            System.out.println("actual internal bytes: " + Arrays.toString((byte[]) actualInternal));
+        }
+        if (expectedInternal instanceof byte[]) {
+            System.out.println("expected internal bytes: " + Arrays.toString((byte[]) expectedInternal));
+        }
+
+// coder 字段（Java9+）
+        try {
+            java.lang.reflect.Field coderField = sc.getDeclaredField("coder");
+            coderField.setAccessible(true);
+            System.out.println("actual coder: " + coderField.get(actual));
+            System.out.println("expected coder: " + coderField.get(expected));
+        } catch (NoSuchFieldException ignore) {
+            System.out.println("no coder field on this JVM");
+        }
+
+        Assert.assertEquals(actual, expected);
     }
   }
 

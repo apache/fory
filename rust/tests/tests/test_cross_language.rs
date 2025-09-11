@@ -196,7 +196,7 @@ fn test_string_serializer() {
     let mut context = ReadContext::new(&fory, reader);
     let test_strings: Vec<String> = vec![
         // Latin1
-        "Hello, world!".to_string(),
+        "ab".to_string(),
         "Rust123".to_string(),
         "Çüéâäàåçêëèïî".to_string(),
         // // UTF16
