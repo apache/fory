@@ -20,7 +20,7 @@
 github:
   description: >-
     A blazingly fast multi-language serialization framework powered by JIT and zero-copy.
-  homepage: https://fory.apache.org/
+  homepage: https://fory.apache.org
   labels:
     - javascript
     - python
