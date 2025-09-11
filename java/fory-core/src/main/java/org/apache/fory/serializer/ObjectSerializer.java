@@ -43,6 +43,7 @@ import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.Generics;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
+import org.apache.fory.util.ExceptionUtils;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.record.RecordInfo;
 import org.apache.fory.util.record.RecordUtils;
@@ -353,7 +354,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
   }
 
   private static int computeFieldHash(int hash, Fory fory, TypeRef<?> typeRef) {
-    int id;
+    int id = 0;
     if (typeRef.isSubtypeOf(List.class)) {
       // TODO(chaokunyang) add list element type into schema hash
       id = Types.LIST;
@@ -365,21 +366,17 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
         TypeResolver resolver =
             fory.isCrossLanguage() ? fory.getXtypeResolver() : fory.getClassResolver();
         Class<?> cls = typeRef.getRawType();
-        if (ReflectionUtils.isAbstract(cls) || cls.isInterface()) {
-          id = 0;
-        } else {
-          ClassInfo classInfo = resolver.getClassInfo(typeRef.getRawType());
-          int xtypeId = classInfo.getXtypeId();
-          if (Types.isStructType(xtypeId & 0xff)) {
+        if (!ReflectionUtils.isAbstract(cls) && !cls.isInterface()) {
+          ClassInfo classInfo = resolver.getClassInfo(cls);
+          int xtypeId = id = classInfo.getXtypeId();
+          if (Types.isNamedType(xtypeId & 0xff)) {
             id =
                 TypeUtils.computeStringHash(
                     classInfo.decodeNamespace() + classInfo.decodeTypeName());
-          } else {
-            id = Math.abs(xtypeId);
           }
         }
       } catch (Exception e) {
-        id = 0;
+        ExceptionUtils.ignore(e);
       }
     }
     long newHash = ((long) hash) * 31 + id;

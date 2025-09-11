@@ -571,7 +571,7 @@ public class CrossLanguageTest extends ForyTestBase {
     System.out.println(dataFile.toAbsolutePath());
     Files.deleteIfExists(dataFile);
     Files.write(dataFile, serialized);
-    dataFile.toFile().deleteOnExit();
+    // dataFile.toFile().deleteOnExit();
     ImmutableList<String> command =
         ImmutableList.of(
             PYTHON_EXECUTABLE, "-m", PYTHON_MODULE, testName, dataFile.toAbsolutePath().toString());
@@ -823,9 +823,15 @@ public class CrossLanguageTest extends ForyTestBase {
     String f3;
   }
 
-  @Test
-  public void testEnumField() throws java.io.IOException {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(true).build();
+  @Test(dataProvider = "compatible")
+  public void testEnumField(boolean compatible) throws java.io.IOException {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(
+                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+            .requireClassRegistration(true)
+            .build();
     fory.register(EnumTestClass.class, "test.EnumTestClass");
     fory.register(EnumFieldStruct.class, "test.EnumFieldStruct");
 
@@ -834,6 +840,6 @@ public class CrossLanguageTest extends ForyTestBase {
     a.f2 = EnumTestClass.BAR;
     a.f3 = "abc";
     Assert.assertEquals(xserDe(fory, a), a);
-    structRoundBack(fory, a, "test_enum_field");
+    structRoundBack(fory, a, "test_enum_field" + (compatible ? "_compatible" : ""));
   }
 }

@@ -410,6 +410,14 @@ class TypeVisitor(ABC):
         pass
 
 
+def infer_field_types(type_):
+    type_hints = typing.get_type_hints(type_)
+    from pyfory._struct import StructTypeVisitor
+
+    visitor = StructTypeVisitor(type_)
+    return {name: infer_field(name, type_, visitor) for name, type_ in sorted(type_hints.items())}
+
+
 def infer_field(field_name, type_, visitor: TypeVisitor, types_path=None):
     types_path = list(types_path or [])
     types_path.append(type_)

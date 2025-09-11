@@ -17,6 +17,7 @@
 
 import array
 import builtins
+import dataclasses
 import itertools
 import marshal
 import logging
@@ -293,8 +294,8 @@ _ENABLE_FORY_PYTHON_JIT = os.environ.get("ENABLE_FORY_PYTHON_JIT", "True").lower
 
 # Moved from L32 to here, after all Serializer base classes and specific serializers
 # like ListSerializer, MapSerializer, PickleSerializer are defined or imported
-# and before DataClassSerializer which uses ComplexTypeVisitor from _struct.
-from pyfory._struct import _get_hash, _sort_fields, ComplexTypeVisitor
+# and before DataClassSerializer which uses StructFieldSerializerVisitor from _struct.
+from pyfory._struct import _get_hash, _sort_fields, StructFieldSerializerVisitor
 
 
 class DataClassSerializer(Serializer):
@@ -309,7 +310,7 @@ class DataClassSerializer(Serializer):
         if self._xlang:
             self._serializers = serializers or [None] * len(self._field_names)
             if serializers is None:
-                visitor = ComplexTypeVisitor(fory)
+                visitor = StructFieldSerializerVisitor(fory)
                 for index, key in enumerate(self._field_names):
                     serializer = infer_field(key, self._type_hints[key], visitor, types_path=[])
                     self._serializers[index] = serializer
@@ -592,6 +593,29 @@ class DataClassSerializer(Serializer):
                 field_value,
             )
         return obj
+
+
+class DataClassStubSerializer(DataClassSerializer):
+    def __init__(self, fory, clz: type, xlang: bool = False):
+        Serializer.__init__(self, fory, clz)
+        self.xlang = xlang
+
+    def write(self, buffer, value):
+        self._replace().write(buffer, value)
+
+    def read(self, buffer):
+        return self._replace().read(buffer)
+
+    def xwrite(self, buffer, value):
+        self._replace().xwrite(buffer, value)
+
+    def xread(self, buffer):
+        return self._replace().xread(buffer)
+
+    def _replace(self):
+        typeinfo = self.fory.type_resolver.get_typeinfo(self.type_)
+        typeinfo.serializer = DataClassSerializer(self.fory, self.type_, self.xlang)
+        return typeinfo.serializer
 
 
 # Use numpy array or python array module.
@@ -1262,3 +1286,33 @@ class ComplexObjectSerializer(DataClassSerializer):
             stacklevel=2,
         )
         return DataClassSerializer(fory, clz, xlang=True)
+
+
+@dataclasses.dataclass
+class NonExistEnum:
+    value: int = -1
+    name: str = ""
+
+
+class NonExistEnumSerializer(Serializer):
+    def __init__(self, fory):
+        super().__init__(fory, NonExistEnum)
+        self.need_to_write_ref = False
+
+    @classmethod
+    def support_subclass(cls) -> bool:
+        return True
+
+    def write(self, buffer, value):
+        buffer.write_string(value.name)
+
+    def read(self, buffer):
+        name = buffer.read_string()
+        return NonExistEnum(name=name)
+
+    def xwrite(self, buffer, value):
+        buffer.write_varuint32(value.value)
+
+    def xread(self, buffer):
+        value = buffer.read_varuint32()
+        return NonExistEnum(value=value)

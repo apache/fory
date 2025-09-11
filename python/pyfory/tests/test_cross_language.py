@@ -514,7 +514,8 @@ class EnumFieldStruct:
 
 @cross_language_test
 def test_enum_field(data_file_path):
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=False)
+    compatible = "compatible" in data_file_path
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=False, compatible=compatible)
     fory.register_type(EnumTestClass, namespace="test", typename="EnumTestClass")
     fory.register_type(EnumFieldStruct, namespace="test", typename="EnumFieldStruct")
     obj = EnumFieldStruct(f1=EnumTestClass.FOO, f2=EnumTestClass.BAR, f3="abc")
@@ -529,7 +530,7 @@ def test_struct_hash(data_file_path):
     read_hash = pyfory.Buffer(data_bytes).read_int32()
     fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
     fory.register_type(ComplexObject1, typename="ComplexObject1")
-    serializer = fory.type_resolver.get_serializer(ComplexObject1)
+    serializer = fory.type_resolver.get_serializer(ComplexObject1)._replace()
     from pyfory._struct import _get_hash
 
     v = _get_hash(fory, serializer._field_names, serializer._type_hints)

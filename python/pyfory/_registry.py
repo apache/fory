@@ -60,6 +60,7 @@ from pyfory.serializer import (
     PickleStrongCacheSerializer,
     PickleSerializer,
     DataClassSerializer,
+    DataClassStubSerializer,
     StatefulSerializer,
     ReduceSerializer,
     FunctionSerializer,
@@ -127,7 +128,7 @@ else:
             self.namespace_bytes = namespace_bytes
             self.typename_bytes = typename_bytes
             self.dynamic_type = dynamic_type
-            self.type_def = None
+            self.type_def = type_def
 
         def __repr__(self):
             return f"TypeInfo(cls={self.cls}, type_id={self.type_id}, serializer={self.serializer})"
@@ -533,11 +534,8 @@ class TypeResolver:
                 # Use FunctionSerializer for function types (including lambdas)
                 serializer = FunctionSerializer(self.fory, cls)
             elif dataclasses.is_dataclass(cls):
-                if not self.meta_share:
-                    serializer = DataClassSerializer(self.fory, cls, xlang=not self.fory.is_py)
-                else:
-                    # lazy create serializer to handle nested struct fields.
-                    serializer = None
+                # lazy create serializer to handle nested struct fields.
+                serializer = DataClassStubSerializer(self.fory, cls, xlang=not self.fory.is_py)
             elif issubclass(cls, enum.Enum):
                 serializer = EnumSerializer(self.fory, cls)
             elif (hasattr(cls, "__reduce__") and cls.__reduce__ is not object.__reduce__) or (

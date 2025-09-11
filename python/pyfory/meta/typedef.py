@@ -15,12 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from typing import List
+import enum
 import typing
+from typing import List
 from pyfory.type import TypeId
 from pyfory._util import Buffer
 from pyfory.type import infer_field, is_polymorphic_type
 from pyfory.meta.metastring import Encoding
+from pyfory.type import infer_field_types
 
 
 # Constants from the specification
@@ -56,7 +58,8 @@ class TypeDef:
         self.is_compressed = is_compressed
 
     def create_fields_serializer(self, resolver):
-        serializers = [field_info.field_type.create_serializer(resolver) for field_info in self.fields]
+        field_types = infer_field_types(self.cls)
+        serializers = [field_info.field_type.create_serializer(resolver, field_types.get(field_info.name, None)) for field_info in self.fields]
         return serializers
 
     def get_field_names(self):
@@ -143,9 +146,19 @@ class FieldType:
             is_monomorphic = not is_polymorphic_type(xtype_id)
             return FieldType(xtype_id, is_monomorphic, is_nullable, is_tracking_ref)
 
-    def create_serializer(self, resolver):
+    def create_serializer(self, resolver, type_):
         if self.type_id in [TypeId.EXT, TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT, TypeId.UNKNOWN]:
             return None
+        if isinstance(type_, list):
+            type_ = type_[0]
+        if isinstance(type_, type) and issubclass(type_, enum.Enum):
+            typeinfo = resolver.get_typeinfo(type_, create=False)
+            if typeinfo is not None and typeinfo.serializer is not None:
+                return typeinfo.serializer
+            else:
+                from pyfory.serializer import NonExistEnumSerializer
+
+                return NonExistEnumSerializer(resolver.fory)
         return resolver.get_typeinfo_by_id(self.type_id).serializer
 
     def __repr__(self):
@@ -164,13 +177,15 @@ class CollectionFieldType(FieldType):
         super().__init__(type_id, is_monomorphic, is_nullable, is_tracking_ref)
         self.element_type = element_type
 
-    def create_serializer(self, resolver):
+    def create_serializer(self, resolver, type_):
         from pyfory.serializer import ListSerializer, SetSerializer
 
+        elem_type = type_[1] if len(type_) >= 2 else None
+        elem_serializer = self.element_type.create_serializer(resolver, elem_type)
         if self.type_id == TypeId.LIST:
-            return ListSerializer(resolver.fory, list, self.element_type.create_serializer(resolver))
+            return ListSerializer(resolver.fory, list, elem_serializer)
         elif self.type_id == TypeId.SET:
-            return SetSerializer(resolver.fory, set, self.element_type.create_serializer(resolver))
+            return SetSerializer(resolver.fory, set, elem_serializer)
         else:
             raise ValueError(f"Unknown collection type: {self.type_id}")
 
@@ -189,9 +204,14 @@ class MapFieldType(FieldType):
         self.key_type = key_type
         self.value_type = value_type
 
-    def create_serializer(self, resolver):
-        key_serializer = self.key_type.create_serializer(resolver)
-        value_serializer = self.value_type.create_serializer(resolver)
+    def create_serializer(self, resolver, type_):
+        key_type, value_type = None, None
+        if len(type_) >= 2:
+            key_type = type_[1]
+        if len(type_) >= 3:
+            value_type = type_[2]
+        key_serializer = self.key_type.create_serializer(resolver, key_type)
+        value_serializer = self.value_type.create_serializer(resolver, value_type)
         from pyfory.serializer import MapSerializer
 
         return MapSerializer(resolver.fory, dict, key_serializer, value_serializer)
@@ -207,7 +227,7 @@ class DynamicFieldType(FieldType):
     def __init__(self, type_id: int, is_monomorphic: bool, is_nullable: bool, is_tracking_ref: bool):
         super().__init__(type_id, is_monomorphic, is_nullable, is_tracking_ref)
 
-    def create_serializer(self, resolver):
+    def create_serializer(self, resolver, type_):
         return None
 
     def __repr__(self):
@@ -229,8 +249,8 @@ def build_field_infos(type_resolver, cls):
         field_type = build_field_type(type_resolver, field_name, field_type_hint, visitor)
         field_info = FieldInfo(field_name, field_type, cls.__name__)
         field_infos.append(field_info)
-
-    serializers = [field_info.field_type.create_serializer(type_resolver) for field_info in field_infos]
+    field_types = infer_field_types(cls)
+    serializers = [field_info.field_type.create_serializer(type_resolver, field_types.get(field_info.name, None)) for field_info in field_infos]
 
     field_names, serializers = _sort_fields(type_resolver, field_names, serializers)
     field_infos_map = {field_info.name: field_info for field_info in field_infos}

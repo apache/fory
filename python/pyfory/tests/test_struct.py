@@ -123,6 +123,19 @@ class DataClassObject:
     f_any: Any
     f_complex: ComplexObject = None
 
+    @classmethod
+    def create(cls):
+        return cls(
+            f_int=42,
+            f_float=3.14159,
+            f_str="test_codegen",
+            f_bool=True,
+            f_list=[1, 2, 3],
+            f_dict={"key": 1.5},
+            f_any="any_data",
+            f_complex=None,
+        )
+
 
 def test_data_class_serializer_xlang():
     fory = Fory(language=Language.XLANG, ref_tracking=True)
@@ -190,6 +203,8 @@ def test_data_class_serializer_xlang_codegen():
     fory.register_type(ComplexObject, typename="example.ComplexObject")
     fory.register_type(DataClassObject, typename="example.TestDataClassObject")
 
+    # trigger lazy serializer replace
+    fory.serialize(DataClassObject.create())
     # Get the serializer that was created during registration
     serializer = fory.type_resolver.get_serializer(DataClassObject)
 
@@ -305,6 +320,8 @@ def test_data_class_serializer_xlang_codegen_generated_code():
     fory.register_type(ComplexObject, typename="example.ComplexObject")
     fory.register_type(DataClassObject, typename="example.TestDataClassObject")
 
+    # trigger lazy serializer replace
+    fory.serialize(DataClassObject.create())
     # Get the serializer that was created during registration
     serializer = fory.type_resolver.get_serializer(DataClassObject)
 
@@ -341,6 +358,8 @@ def test_data_class_serializer_xlang_vs_non_xlang():
     fory_xlang.register_type(ComplexObject, typename="example.ComplexObject")
     fory_xlang.register_type(DataClassObject, typename="example.TestDataClassObject")
 
+    # trigger lazy serializer replace
+    fory_xlang.serialize(DataClassObject.create())
     # For Python mode, we can create the serializer directly since it doesn't require registration
     serializer_xlang = fory_xlang.type_resolver.get_serializer(DataClassObject)
     serializer_python = DataClassSerializer(fory_python, DataClassObject, xlang=False)
