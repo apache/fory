@@ -262,32 +262,21 @@ impl Writer {
         }
     }
 
-    pub fn latin1_string(&mut self, s: &str) -> usize {
-        let mut count = 0;
+    // TODO: simd
+    pub fn latin1_string(&mut self, s: &str) {
         for c in s.chars() {
             let b = c as u32;
             assert!(b <= 0xFF, "Non-Latin1 character found");
             self.u8(b as u8);
-            count += 1;
         }
-        count
     }
 
-    pub fn utf8_string(&mut self, s: &str) -> usize {
+    // TODO: simd
+    pub fn utf8_string(&mut self, s: &str) {
         let bytes = s.as_bytes();
         for &b in bytes {
             self.u8(b);
         }
-        bytes.len()
-    }
-
-    pub fn utf16_string(&mut self, s: &str) -> usize {
-        let mut count = 0;
-        for u in s.encode_utf16() {
-            self.u16(u);
-            count += 1;
-        }
-        count * 2
     }
 
     pub fn bytes(&mut self, v: &[u8]) -> usize {

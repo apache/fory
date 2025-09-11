@@ -22,5 +22,5 @@ mod type_meta;
 pub use meta_string::{
     Encoding, MetaString, MetaStringBytes, MetaStringDecoder, MetaStringEncoder,
 };
-pub use string_util::{is_latin, murmurhash3_x64_128};
+pub use string_util::{get_latin1_length, is_latin, murmurhash3_x64_128};
 pub use type_meta::{FieldInfo, FieldType, NullableFieldType, TypeMeta, TypeMetaLayer};

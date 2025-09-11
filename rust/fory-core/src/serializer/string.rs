@@ -15,10 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::buffer::Writer;
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::meta::is_latin;
+use crate::meta::get_latin1_length;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
@@ -37,18 +36,17 @@ impl Serializer for String {
     }
 
     fn write(&self, context: &mut WriteContext) {
-        let mut buf = Writer::default();
-        let len;
-        let bitor;
-        if is_latin(self.as_str()) {
-            len = buf.latin1_string(self);
-            bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
+        let mut len = get_latin1_length(self);
+        if len >= 0 {
+            let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
+            context.writer.var_uint36_small(bitor);
+            context.writer.latin1_string(self);
         } else {
-            len = buf.utf8_string(self);
-            bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
+            len = self.len() as i32;
+            let bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
+            context.writer.var_uint36_small(bitor);
+            context.writer.utf8_string(self);
         }
-        context.writer.var_uint36_small(bitor);
-        context.writer.bytes(buf.dump().as_slice());
     }
 
     fn read(context: &mut ReadContext) -> Result<Self, Error> {

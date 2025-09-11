@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use fory_core::meta::is_latin;
+use fory_core::meta::{get_latin1_length, is_latin};
 use fory_core::util::to_utf8;
 
 #[test]
@@ -115,5 +115,14 @@ fn test_to_utf8_missing_surrogate_pair() {
 
 #[test]
 fn test_is_latin() {
-    assert!(is_latin("Çüéâäàåçêëèïî"));
+    let s = "Çüéâäàåçêëèïî";
+    assert!(is_latin(s));
+    assert_eq!(get_latin1_length(s), 13);
+}
+
+#[test]
+fn test_get_latin1_length() {
+    let s = "Hello, 世界";
+    assert!(!is_latin(s));
+    assert_eq!(get_latin1_length(s), -1);
 }
