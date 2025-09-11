@@ -248,6 +248,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: 3.11
+      - name: Set up Java 11
+        uses: actions/setup-java@v4
+        with:
+          java-version: 11
+          distribution: temurin
       - name: Run Rust CI
         run: python ./ci/run_ci.py rust
 

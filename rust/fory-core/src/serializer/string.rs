@@ -30,77 +30,16 @@ enum StrEncoding {
     Utf8 = 2,
 }
 
-fn best_coder(s: &str) -> StrEncoding {
-    let chars: Vec<char> = s.chars().collect();
-    let num_chars = chars.len();
-    if num_chars == 0 {
-        return StrEncoding::Latin1;
-    }
-
-    let sample_num = num_chars.min(64);
-    let vectorized_len = sample_num / 4;
-    let vectorized_chars = vectorized_len * 4;
-
-    let mut ascii_count = 0;
-    let mut latin1_count = 0;
-
-    for i in 0..vectorized_len {
-        let base = i * 4;
-        for j in 0..4 {
-            let c = chars[base + j] as u32;
-            if c <= 0x7F {
-                ascii_count += 1;
-                latin1_count += 1;
-            } else if c <= 0xFF {
-                latin1_count += 1;
-            }
-        }
-    }
-
-    for &c in chars.iter().take(sample_num).skip(vectorized_chars) {
-        let c = c as u32;
-        if c <= 0x7F {
-            ascii_count += 1;
-            latin1_count += 1;
-        } else if c <= 0xFF {
-            latin1_count += 1;
-        }
-    }
-
-    if latin1_count == num_chars || latin1_count == sample_num {
-        StrEncoding::Latin1
-    } else if (ascii_count as f64) >= sample_num as f64 * 0.5 {
-        StrEncoding::Utf8
-    } else {
-        StrEncoding::Utf16
-    }
-}
-
 impl Serializer for String {
     fn reserved_space() -> usize {
         mem::size_of::<i32>()
     }
 
     fn write(&self, context: &mut WriteContext) {
-        let encoding = best_coder(self);
         let mut buf = Writer::default();
-        match encoding {
-            StrEncoding::Latin1 => {
-                let len = buf.latin1_string(self);
-                let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
-                context.writer.var_uint36_small(bitor);
-            }
-            StrEncoding::Utf16 => {
-                let len = buf.utf16_string(self);
-                let bitor = (len as u64) << 2 | StrEncoding::Utf16 as u64;
-                context.writer.var_uint36_small(bitor);
-            }
-            StrEncoding::Utf8 => {
-                let len = buf.utf8_string(self);
-                let bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
-                context.writer.var_uint36_small(bitor);
-            }
-        }
+        let len = buf.utf8_string(self);
+        let bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
+        context.writer.var_uint36_small(bitor);
         context.writer.bytes(buf.dump().as_slice());
     }
 
