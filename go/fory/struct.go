@@ -30,6 +30,7 @@ type structSerializer struct {
 	type_      reflect.Type
 	fieldsInfo structFieldsInfo
 	structHash int32
+	fieldDefs  []FieldDef // defs obtained during reading
 }
 
 var UNKNOWN_TYPE_ID = int16(-1)
@@ -86,10 +87,20 @@ func (s *structSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, va
 		value = value.Elem()
 	}
 	if s.fieldsInfo == nil {
-		if infos, err := createStructFieldInfos(f, s.type_); err != nil {
-			return err
+		if len(s.fieldDefs) == 0 {
+			// Normal case: create from reflection
+			if infos, err := createStructFieldInfos(f, s.type_); err != nil {
+				return err
+			} else {
+				s.fieldsInfo = infos
+			}
 		} else {
-			s.fieldsInfo = infos
+			// Create from fieldDefs for forward/backward compatibility
+			if infos, err := createStructFieldInfosFromFieldDefs(f, s.fieldDefs, type_); err != nil {
+				return err
+			} else {
+				s.fieldsInfo = infos
+			}
 		}
 	}
 	if s.structHash == 0 {
@@ -100,12 +111,21 @@ func (s *structSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, va
 		}
 	}
 	structHash := buf.ReadInt32()
-	if structHash != s.structHash {
+	if !f.compatible && structHash != s.structHash {
 		return fmt.Errorf("hash %d is not consistent with %d for type %s",
 			structHash, s.structHash, s.type_)
 	}
 	for _, fieldInfo_ := range s.fieldsInfo {
-		fieldValue := value.Field(fieldInfo_.fieldIndex)
+		var fieldValue reflect.Value
+
+		if fieldInfo_.fieldIndex >= 0 {
+			// Field exists in current struct version
+			fieldValue = value.Field(fieldInfo_.fieldIndex)
+		} else {
+			// Field doesn't exist in current struct version, create temporary value to discard
+			fieldValue = reflect.New(fieldInfo_.type_).Elem()
+		}
+
 		fieldSerializer := fieldInfo_.serializer
 		if fieldSerializer != nil {
 			if err := readBySerializer(f, buf, fieldValue, fieldSerializer, fieldInfo_.referencable); err != nil {
@@ -201,6 +221,57 @@ func createStructFieldInfos(f *Fory, type_ reflect.Type) (structFieldsInfo, erro
 			return false
 		}
 	})
+	return fields, nil
+}
+
+// createStructFieldInfosFromFieldDefs creates structFieldsInfo from fieldDefs and builds field name mapping
+func createStructFieldInfosFromFieldDefs(f *Fory, fieldDefs []FieldDef, type_ reflect.Type) (structFieldsInfo, error) {
+	fieldNameToIndex := make(map[string]int)
+
+	// Build map from field names to struct field indices for quick lookup
+	for i := 0; i < type_.NumField(); i++ {
+		field := type_.Field(i)
+		fieldName := SnakeCase(field.Name)
+		fieldNameToIndex[fieldName] = i
+	}
+
+	var fields structFieldsInfo
+	current_field_names := make(map[string]int)
+
+	for i, def := range fieldDefs {
+		current_field_names[def.name] = i
+
+		fieldIndex := -1 // Default to -1 if field doesn't exist in current struct
+		var fieldType reflect.Type
+
+		if structFieldIndex, exists := fieldNameToIndex[def.name]; exists {
+			fieldIndex = structFieldIndex
+			fieldType = type_.Field(structFieldIndex).Type
+		} else {
+			// Field doesn't exist in current struct version, we need the type from FieldDef
+			if info, exists := f.typeResolver.typeIDToTypeInfo[int32(def.fieldType.TypeId())]; exists {
+				fieldType = info.Type
+			} else {
+				return nil, fmt.Errorf("unknown type for field %s with typeId %d", def.name, def.fieldType.TypeId())
+			}
+		}
+
+		fieldSerializer, err := def.fieldType.getSerializer(f)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get serializer for field %s: %w", def.name, err)
+		}
+
+		fieldInfo := &fieldInfo{
+			name:         def.name,
+			fieldIndex:   fieldIndex,
+			type_:        fieldType,
+			referencable: def.nullable,
+			serializer:   fieldSerializer,
+		}
+
+		fields = append(fields, fieldInfo)
+	}
+
 	return fields, nil
 }
 

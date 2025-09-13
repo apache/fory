@@ -351,6 +351,10 @@ type typeResolver struct {
 	namespaceDecoder *meta.Decoder
 	typeNameEncoder  *meta.Encoder
 	typeNameDecoder  *meta.Decoder
+
+	// meta share related
+	typeToTypeDef  map[reflect.Type]*TypeDef
+	defIdToTypeDef map[int64]*TypeDef
 }
 
 func newTypeResolver(fory *Fory) *typeResolver {
@@ -386,6 +390,9 @@ func newTypeResolver(fory *Fory) *typeResolver {
 		namespaceDecoder: meta.NewDecoder('.', '_'),
 		typeNameEncoder:  meta.NewEncoder('$', '_'),
 		typeNameDecoder:  meta.NewDecoder('$', '_'),
+
+		typeToTypeDef:  make(map[reflect.Type]*TypeDef),
+		defIdToTypeDef: make(map[int64]*TypeDef),
 	}
 	// base type info for encode/decode types.
 	// composite types info will be constructed dynamically.
@@ -597,15 +604,10 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 	}
 	clean := strings.TrimPrefix(rawInfo, "*@")
 	clean = strings.TrimPrefix(clean, "@")
+	typeName = clean
 	if idx := strings.LastIndex(clean, "."); idx != -1 {
 		pkgPath = clean[:idx]
-	} else {
-		pkgPath = clean
-	}
-	if typ.Kind() == reflect.Ptr {
-		typeName = typ.Elem().Name()
-	} else {
-		typeName = typ.Name()
+		typeName = clean[idx+1:]
 	}
 
 	// Handle special types that require explicit registration
@@ -781,6 +783,10 @@ func calcTypeHash(typ reflect.Type) uint64 {
 	return h.Sum64()
 }
 
+func (r *typeResolver) metaShareEnabled() bool {
+	return r.fory != nil && r.fory.metaContext != nil && r.fory.compatible
+}
+
 func (r *typeResolver) writeTypeInfo(buffer *ByteBuffer, typeInfo TypeInfo) error {
 	// Extract the internal type ID (lower 8 bits)
 	typeID := typeInfo.TypeID
@@ -794,6 +800,12 @@ func (r *typeResolver) writeTypeInfo(buffer *ByteBuffer, typeInfo TypeInfo) erro
 
 	// For namespaced types, write additional metadata:
 	if IsNamespacedType(TypeId(internalTypeID)) {
+		if r.metaShareEnabled() {
+			if err := r.writeSharedTypeMeta(buffer, typeInfo); err != nil {
+				return err
+			}
+			return nil
+		}
 		// Write package path (namespace) metadata
 		if err := r.metaStringResolver.WriteMetaStringBytes(buffer, typeInfo.PkgPathBytes); err != nil {
 			return err
@@ -804,6 +816,87 @@ func (r *typeResolver) writeTypeInfo(buffer *ByteBuffer, typeInfo TypeInfo) erro
 		}
 	}
 
+	return nil
+}
+
+func (r *typeResolver) writeSharedTypeMeta(buffer *ByteBuffer, typeInfo TypeInfo) error {
+	context := r.fory.metaContext
+	typ := typeInfo.Type
+
+	if index, exists := context.typeMap[typ]; exists {
+		buffer.WriteVarUint32(index)
+		return nil
+	}
+
+	newIndex := uint32(len(context.typeMap))
+	buffer.WriteVarUint32(newIndex)
+	context.typeMap[typ] = newIndex
+
+	typeDef, err := r.getOrCreateTypeDef(typeInfo.Type)
+	if err != nil {
+		return err
+	}
+	context.writingTypeDefs = append(context.writingTypeDefs, typeDef)
+	return nil
+}
+
+func (r *typeResolver) getOrCreateTypeDef(typ reflect.Type) (*TypeDef, error) {
+	if existingTypeDef, exists := r.typeToTypeDef[typ]; exists {
+		return existingTypeDef, nil
+	}
+
+	zero := reflect.Zero(typ)
+	typeDef, err := buildTypeDef(r.fory, zero)
+	if err != nil {
+		return nil, err
+	}
+	r.typeToTypeDef[typ] = typeDef
+	return typeDef, nil
+}
+
+func (r *typeResolver) readSharedTypeMeta(buffer *ByteBuffer) (TypeInfo, error) {
+	context := r.fory.metaContext
+	index := buffer.ReadVarInt32() // shared meta index id
+	if index < 0 || index >= int32(len(context.readTypeInfos)) {
+		return TypeInfo{}, fmt.Errorf("TypeInfo not found for index %d", index)
+	}
+	info := context.readTypeInfos[index]
+	return info, nil
+}
+
+func (r *typeResolver) writeTypeDefs(buffer *ByteBuffer) {
+	context := r.fory.metaContext
+	sz := len(context.writingTypeDefs)
+	buffer.WriteVarUint32Small7(uint32(sz))
+	for _, typeDef := range context.writingTypeDefs {
+		typeDef.writeTypeDef(buffer)
+	}
+	context.writingTypeDefs = nil
+}
+
+func (r *typeResolver) readTypeDefs(buffer *ByteBuffer) error {
+	numTypeDefs := buffer.ReadVarUint32Small7()
+	context := r.fory.metaContext
+	for i := 0; i < numTypeDefs; i++ {
+		id := buffer.ReadInt64()
+		var td *TypeDef
+		if existingTd, exists := r.defIdToTypeDef[id]; exists {
+			skipTypeDef(buffer, id)
+			td = existingTd
+		} else {
+			newTd, err := readTypeDef(r.fory, buffer, id)
+			if err != nil {
+				return err
+			}
+			r.defIdToTypeDef[id] = newTd
+			td = newTd
+		}
+		typeInfo, err := td.buildTypeInfo()
+		if err != nil {
+			return err
+		}
+		context.readTypeInfos = append(context.readTypeInfos, typeInfo)
+	}
 	return nil
 }
 
@@ -1041,6 +1134,9 @@ func (r *typeResolver) readTypeInfo(buffer *ByteBuffer) (TypeInfo, error) {
 		internalTypeID = -internalTypeID
 	}
 	if IsNamespacedType(TypeId(internalTypeID)) {
+		if r.metaShareEnabled() {
+			return r.readSharedTypeMeta(buffer)
+		}
 		// Read namespace and type name metadata bytes
 		nsBytes, err := r.metaStringResolver.ReadMetaStringBytes(buffer)
 		if err != nil {

@@ -57,7 +57,7 @@ func TestTypeDefEncodingDecoding(t *testing.T) {
 	originalTypeDef.writeTypeDef(buffer)
 
 	// Decode the TypeDef
-	decodedTypeDef, err := readTypeDef(fory, buffer)
+	decodedTypeDef, err := readTypeDef(fory, buffer, int64(buffer.ReadInt64()))
 	if err != nil {
 		t.Fatalf("Failed to decode TypeDef: %v", err)
 	}

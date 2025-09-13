@@ -19,6 +19,7 @@ package fory
 
 import (
 	"fmt"
+	"reflect"
 )
 
 /*
@@ -29,9 +30,9 @@ typeDef are layout as following:
   - next variable bytes: type id (varint) or ns name + type name
   - next variable bytes: field definitions (see below)
 */
-func decodeTypeDef(fory *Fory, buffer *ByteBuffer) (*TypeDef, error) {
+func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, error) {
 	// Read 8-byte global header
-	globalHeader := uint64(buffer.ReadInt64())
+	globalHeader := header
 	hasFieldsMeta := (globalHeader & HAS_FIELDS_META_FLAG) != 0
 	isCompressed := (globalHeader & COMPRESS_META_FLAG) != 0
 	metaSize := int(globalHeader & META_SIZE_MASK)
@@ -61,6 +62,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer) (*TypeDef, error) {
 	// Read name or type ID according to the registerByName flag
 	var typeId TypeId
 	var nsBytes, nameBytes *MetaStringBytes
+	var typ reflect.Type
 	if registeredByName {
 		// Read namespace and type name for namespaced types
 		readingNsBytes, err := fory.typeResolver.metaStringResolver.ReadMetaStringBytes(metaBuffer)
@@ -78,8 +80,14 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer) (*TypeDef, error) {
 			return nil, fmt.Errorf("type not registered")
 		}
 		typeId = TypeId(info.TypeID)
+		typ = info.Type
 	} else {
 		typeId = TypeId(metaBuffer.ReadVarInt32())
+		if info, err := fory.typeResolver.getTypeInfoById(typeId); err != nil {
+			return nil, fmt.Errorf("failed to get type info by id %d: %w", typeId, err)
+		} else {
+			typ = info.Type
+		}
 	}
 
 	// Read fields information
@@ -97,6 +105,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer) (*TypeDef, error) {
 	// Create TypeDef
 	typeDef := NewTypeDef(typeId, nsBytes, nameBytes, registeredByName, isCompressed, fieldInfos)
 	typeDef.encoded = encoded
+	typeDef.typ = typ
 
 	return typeDef, nil
 }

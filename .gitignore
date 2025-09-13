@@ -40,3 +40,4 @@ MODULE.bazel
 MODULE.bazel.lock
 .DS_Store
 **/.DS_Store
+.vscode/
