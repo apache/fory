@@ -142,7 +142,14 @@ def install_fory():
         os.environ["JAVA_HOME"] = java_home
         os.environ["PATH"] = f"{java_home}/bin:{os.environ.get('PATH', '')}"
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress install -DskipTests")
+    
+    # Get the current JDK version to determine exclusions
+    jdk_version = get_jdk_major_version()
+    if jdk_version and jdk_version < 16:
+        # Exclude fory-simd for Java versions below 16 (it requires Java 16+ Vector API)
+        common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress install -DskipTests -pl '!fory-simd'")
+    else:
+        common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress install -DskipTests")
 
 
 def run_java8():
@@ -151,7 +158,7 @@ def run_java8():
     install_jdks()
     common.cd_project_subdir("java")
     common.exec_cmd(
-        "mvn -T16 --batch-mode --no-transfer-progress test -pl '!:fory-format,!:fory-testsuite'"
+        "mvn -T16 --batch-mode --no-transfer-progress test -pl '!:fory-format,!:fory-testsuite,!:fory-simd'"
     )
     logging.info("Executing fory java tests succeeds")
 
@@ -160,7 +167,7 @@ def run_java11():
     """Run Java 11 tests."""
     logging.info("Executing fory java tests with Java 11")
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test")
+    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test -pl '!fory-simd'")
     logging.info("Executing fory java tests succeeds")
 
 
