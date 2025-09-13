@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
+	"go/types"
 	"io/ioutil"
 	"log"
 	"os"
@@ -283,12 +284,17 @@ func generateCodeForFile(pkg *packages.Package, structs []*StructInfo, sourceFil
 	// Determine which imports are needed
 	needsTime := false
 	needsReflect := false
+	needsSort := false
 
 	for _, s := range structs {
 		for _, field := range s.Fields {
 			typeStr := field.Type.String()
 			if typeStr == "time.Time" || typeStr == "github.com/apache/fory/go/fory.Date" {
 				needsTime = true
+			}
+			// Check for map types that need sorting
+			if _, ok := field.Type.(*types.Map); ok {
+				needsSort = true
 			}
 			// We need reflect for the interface compatibility methods
 			needsReflect = true
@@ -300,6 +306,9 @@ func generateCodeForFile(pkg *packages.Package, structs []*StructInfo, sourceFil
 	fmt.Fprintf(&buf, "\t\"fmt\"\n")
 	if needsReflect {
 		fmt.Fprintf(&buf, "\t\"reflect\"\n")
+	}
+	if needsSort {
+		fmt.Fprintf(&buf, "\t\"sort\"\n")
 	}
 	if needsTime {
 		fmt.Fprintf(&buf, "\t\"time\"\n")
@@ -323,7 +332,7 @@ func generateCodeForFile(pkg *packages.Package, structs []*StructInfo, sourceFil
 
 	// Generate compile-time guards to ensure struct definitions haven't changed
 	structInfos := convertStructInfos(structs)
-	guardCode := generateCompileGuard(structInfos)
+	guardCode := generateCompileGuard(structInfos, pkg.Name)
 	if guardCode != "" {
 		buf.WriteString(guardCode)
 	}
@@ -438,12 +447,17 @@ func generateCode(pkg *packages.Package, structs []*StructInfo) error {
 	// Determine which imports are needed
 	needsTime := false
 	needsReflect := false
+	needsSort := false
 
 	for _, s := range structs {
 		for _, field := range s.Fields {
 			typeStr := field.Type.String()
 			if typeStr == "time.Time" || typeStr == "github.com/apache/fory/go/fory.Date" {
 				needsTime = true
+			}
+			// Check for map types that need sorting
+			if _, ok := field.Type.(*types.Map); ok {
+				needsSort = true
 			}
 			// We need reflect for the interface compatibility methods
 			needsReflect = true
@@ -455,6 +469,9 @@ func generateCode(pkg *packages.Package, structs []*StructInfo) error {
 	fmt.Fprintf(&buf, "\t\"fmt\"\n")
 	if needsReflect {
 		fmt.Fprintf(&buf, "\t\"reflect\"\n")
+	}
+	if needsSort {
+		fmt.Fprintf(&buf, "\t\"sort\"\n")
 	}
 	if needsTime {
 		fmt.Fprintf(&buf, "\t\"time\"\n")
@@ -478,7 +495,7 @@ func generateCode(pkg *packages.Package, structs []*StructInfo) error {
 
 	// Generate compile-time guards to ensure struct definitions haven't changed
 	structInfos := convertStructInfos(structs)
-	guardCode := generateCompileGuard(structInfos)
+	guardCode := generateCompileGuard(structInfos, pkg.Name)
 	if guardCode != "" {
 		buf.WriteString(guardCode)
 	}

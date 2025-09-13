@@ -117,7 +117,9 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\t%s = buf.ReadInt16()\n", fieldAccess)
 		case types.Int32:
 			fmt.Fprintf(buf, "\t%s = buf.ReadInt32()\n", fieldAccess)
-		case types.Int, types.Int64:
+		case types.Int:
+			fmt.Fprintf(buf, "\t%s = int(buf.ReadInt64())\n", fieldAccess)
+		case types.Int64:
 			fmt.Fprintf(buf, "\t%s = buf.ReadInt64()\n", fieldAccess)
 		case types.Uint8:
 			fmt.Fprintf(buf, "\t%s = buf.ReadByte_()\n", fieldAccess)
@@ -139,6 +141,16 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		return nil
 	}
 
+	// Handle slice types
+	if slice, ok := field.Type.(*types.Slice); ok {
+		return generateSliceRead(buf, fieldAccess, slice)
+	}
+
+	// Handle map types
+	if mapType, ok := field.Type.(*types.Map); ok {
+		return generateMapRead(buf, fieldAccess, mapType)
+	}
+
 	// Handle struct types
 	if _, ok := field.Type.Underlying().(*types.Struct); ok {
 		fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", fieldAccess)
@@ -146,5 +158,155 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	}
 
 	fmt.Fprintf(buf, "\t// TODO: unsupported type %s\n", field.Type.String())
+	return nil
+}
+
+// generateSliceRead generates code to deserialize a slice field
+func generateSliceRead(buf *bytes.Buffer, fieldAccess string, slice *types.Slice) error {
+	elemType := slice.Elem()
+
+	fmt.Fprintf(buf, "\t// Read slice length\n")
+	fmt.Fprintf(buf, "\tif sliceLength := buf.ReadInt32(); sliceLength < 0 {\n")
+	fmt.Fprintf(buf, "\t\t%s = nil\n", fieldAccess)
+	fmt.Fprintf(buf, "\t} else {\n")
+
+	// Get the element type string for slice allocation
+	elemTypeStr := getGoTypeString(elemType)
+	fmt.Fprintf(buf, "\t\t// Allocate slice with correct capacity\n")
+	fmt.Fprintf(buf, "\t\t%s = make([]%s, sliceLength)\n", fieldAccess, elemTypeStr)
+	fmt.Fprintf(buf, "\t\t// Read slice elements\n")
+	fmt.Fprintf(buf, "\t\tfor i := int32(0); i < sliceLength; i++ {\n")
+
+	// Generate element reading code
+	elemAccess := fmt.Sprintf("%s[i]", fieldAccess)
+	if err := generateElementRead(buf, elemAccess, elemType); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(buf, "\t\t}\n")
+	fmt.Fprintf(buf, "\t}\n")
+	return nil
+}
+
+// generateElementRead generates code to read a single element of any supported type
+func generateElementRead(buf *bytes.Buffer, elemAccess string, elemType types.Type) error {
+	// Handle pointer types
+	if _, ok := elemType.(*types.Pointer); ok {
+		fmt.Fprintf(buf, "\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", elemAccess)
+		return nil
+	}
+
+	// Handle nested slice types
+	if slice, ok := elemType.(*types.Slice); ok {
+		return generateSliceRead(buf, elemAccess, slice)
+	}
+
+	// Handle special named types
+	if named, ok := elemType.(*types.Named); ok {
+		typeStr := named.String()
+		switch typeStr {
+		case "time.Time":
+			fmt.Fprintf(buf, "\t\t\tusec := buf.ReadInt64()\n")
+			fmt.Fprintf(buf, "\t\t\t%s = fory.CreateTimeFromUnixMicro(usec)\n", elemAccess)
+			return nil
+		case "github.com/apache/fory/go/fory.Date":
+			fmt.Fprintf(buf, "\t\t\tdays := buf.ReadInt32()\n")
+			fmt.Fprintf(buf, "\t\t\t// Handle zero date marker\n")
+			fmt.Fprintf(buf, "\t\t\tif days == int32(-2147483648) {\n")
+			fmt.Fprintf(buf, "\t\t\t\t%s = fory.Date{Year: 0, Month: 0, Day: 0}\n", elemAccess)
+			fmt.Fprintf(buf, "\t\t\t} else {\n")
+			fmt.Fprintf(buf, "\t\t\t\tdiff := time.Duration(days) * 24 * time.Hour\n")
+			fmt.Fprintf(buf, "\t\t\t\tt := time.Date(1970, 1, 1, 0, 0, 0, 0, time.Local).Add(diff)\n")
+			fmt.Fprintf(buf, "\t\t\t\t%s = fory.Date{Year: t.Year(), Month: t.Month(), Day: t.Day()}\n", elemAccess)
+			fmt.Fprintf(buf, "\t\t\t}\n")
+			return nil
+		}
+	}
+
+	// Handle struct types
+	if _, ok := elemType.Underlying().(*types.Struct); ok {
+		fmt.Fprintf(buf, "\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", elemAccess)
+		return nil
+	}
+
+	// Handle basic types
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\t\t%s = buf.ReadBool()\n", elemAccess)
+		case types.Int8:
+			fmt.Fprintf(buf, "\t\t\t%s = buf.ReadInt8()\n", elemAccess)
+		case types.Int16:
+			fmt.Fprintf(buf, "\t\t\t%s = buf.ReadInt16()\n", elemAccess)
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\t\t%s = buf.ReadInt32()\n", elemAccess)
+		case types.Int:
+			fmt.Fprintf(buf, "\t\t\t%s = int(buf.ReadInt64())\n", elemAccess)
+		case types.Int64:
+			fmt.Fprintf(buf, "\t\t\t%s = buf.ReadInt64()\n", elemAccess)
+		case types.Uint8:
+			fmt.Fprintf(buf, "\t\t\t%s = buf.ReadByte_()\n", elemAccess)
+		case types.Uint16:
+			fmt.Fprintf(buf, "\t\t\t%s = uint16(buf.ReadInt16())\n", elemAccess)
+		case types.Uint32:
+			fmt.Fprintf(buf, "\t\t\t%s = uint32(buf.ReadInt32())\n", elemAccess)
+		case types.Uint, types.Uint64:
+			fmt.Fprintf(buf, "\t\t\t%s = uint64(buf.ReadInt64())\n", elemAccess)
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\t\t%s = buf.ReadFloat32()\n", elemAccess)
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\t\t%s = buf.ReadFloat64()\n", elemAccess)
+		case types.String:
+			fmt.Fprintf(buf, "\t\t\t%s = fory.ReadString(buf)\n", elemAccess)
+		default:
+			fmt.Fprintf(buf, "\t\t\t// TODO: unsupported basic type %s\n", basic.String())
+		}
+		return nil
+	}
+
+	fmt.Fprintf(buf, "\t\t\t// TODO: unsupported element type %s\n", elemType.String())
+	return nil
+}
+
+// generateMapRead generates code to deserialize a map field
+func generateMapRead(buf *bytes.Buffer, fieldAccess string, mapType *types.Map) error {
+	keyType := mapType.Key()
+	valueType := mapType.Elem()
+
+	fmt.Fprintf(buf, "\t// Read map length\n")
+	fmt.Fprintf(buf, "\tif mapLength := buf.ReadInt32(); mapLength < 0 {\n")
+	fmt.Fprintf(buf, "\t\t%s = nil\n", fieldAccess)
+	fmt.Fprintf(buf, "\t} else if mapLength == 0 {\n")
+	fmt.Fprintf(buf, "\t\t// Create empty map\n")
+
+	// Get the map type string for map allocation
+	mapTypeStr := getGoTypeString(mapType)
+	fmt.Fprintf(buf, "\t\t%s = make(%s)\n", fieldAccess, mapTypeStr)
+	fmt.Fprintf(buf, "\t} else {\n")
+	fmt.Fprintf(buf, "\t\t// Create map with capacity\n")
+	fmt.Fprintf(buf, "\t\t%s = make(%s, mapLength)\n", fieldAccess, mapTypeStr)
+	fmt.Fprintf(buf, "\t\t// Read key-value pairs\n")
+	fmt.Fprintf(buf, "\t\tfor i := int32(0); i < mapLength; i++ {\n")
+
+	// Generate key and value variable declarations
+	keyTypeStr := getGoTypeString(keyType)
+	valueTypeStr := getGoTypeString(valueType)
+	fmt.Fprintf(buf, "\t\t\tvar key %s\n", keyTypeStr)
+	fmt.Fprintf(buf, "\t\t\tvar value %s\n", valueTypeStr)
+
+	// Generate key reading code
+	if err := generateElementRead(buf, "key", keyType); err != nil {
+		return err
+	}
+
+	// Generate value reading code
+	if err := generateElementRead(buf, "value", valueType); err != nil {
+		return err
+	}
+
+	// Assign to map
+	fmt.Fprintf(buf, "\t\t\t%s[key] = value\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\t}\n")
+	fmt.Fprintf(buf, "\t}\n")
 	return nil
 }

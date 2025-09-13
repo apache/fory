@@ -120,13 +120,19 @@ For more information, visit: https://github.com/apache/fory
 `)
 }
 
-// isCompileGuardError checks if the error is due to compile-time guard conflicts
+// isCompileGuardError checks if the error is due to compile-time guard conflicts or related issues
 func isCompileGuardError(errMsg string) bool {
 	// Look for patterns indicating compile-time guard failures
 	patterns := []string{
 		"cannot convert x (variable of type",
 		"to type _", "_expected",
 		"_expected struct",
+		// Also detect panics that often occur due to stale generated code
+		"panic: runtime error: invalid memory address",
+		"nil pointer dereference",
+		"go/types.(*Checker).handleBailout",
+		"go/types.(*StdSizes).Sizeof",
+		"exit status 2", // Common exit code for type checker panics
 	}
 
 	errMsgLower := strings.ToLower(errMsg)

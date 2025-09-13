@@ -109,7 +109,9 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\tbuf.WriteInt16(%s)\n", fieldAccess)
 		case types.Int32:
 			fmt.Fprintf(buf, "\tbuf.WriteInt32(%s)\n", fieldAccess)
-		case types.Int, types.Int64:
+		case types.Int:
+			fmt.Fprintf(buf, "\tbuf.WriteInt64(int64(%s))\n", fieldAccess)
+		case types.Int64:
 			fmt.Fprintf(buf, "\tbuf.WriteInt64(%s)\n", fieldAccess)
 		case types.Uint8:
 			fmt.Fprintf(buf, "\tbuf.WriteByte_(%s)\n", fieldAccess)
@@ -131,6 +133,16 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		return nil
 	}
 
+	// Handle slice types
+	if slice, ok := field.Type.(*types.Slice); ok {
+		return generateSliceWrite(buf, fieldAccess, slice)
+	}
+
+	// Handle map types
+	if mapType, ok := field.Type.(*types.Map); ok {
+		return generateMapWrite(buf, fieldAccess, mapType)
+	}
+
 	// Handle struct types
 	if _, ok := field.Type.Underlying().(*types.Struct); ok {
 		fmt.Fprintf(buf, "\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
@@ -138,5 +150,168 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	}
 
 	fmt.Fprintf(buf, "\t// TODO: unsupported type %s\n", field.Type.String())
+	return nil
+}
+
+// generateSliceWrite generates code to serialize a slice field
+func generateSliceWrite(buf *bytes.Buffer, fieldAccess string, slice *types.Slice) error {
+	elemType := slice.Elem()
+
+	fmt.Fprintf(buf, "\t// Write slice length\n")
+	fmt.Fprintf(buf, "\tbuf.WriteInt32(int32(len(%s)))\n", fieldAccess)
+	fmt.Fprintf(buf, "\t// Write slice elements\n")
+	fmt.Fprintf(buf, "\tfor _, elem := range %s {\n", fieldAccess)
+
+	// Generate element writing code based on element type
+	if err := generateElementWrite(buf, "elem", elemType); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(buf, "\t}\n")
+	return nil
+}
+
+// generateElementWrite generates code to write a single element of any supported type
+func generateElementWrite(buf *bytes.Buffer, elemAccess string, elemType types.Type) error {
+	// Handle pointer types
+	if _, ok := elemType.(*types.Pointer); ok {
+		fmt.Fprintf(buf, "\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", elemAccess)
+		return nil
+	}
+
+	// Handle nested slice types
+	if slice, ok := elemType.(*types.Slice); ok {
+		return generateSliceWrite(buf, elemAccess, slice)
+	}
+
+	// Handle special named types
+	if named, ok := elemType.(*types.Named); ok {
+		typeStr := named.String()
+		switch typeStr {
+		case "time.Time":
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt64(fory.GetUnixMicro(%s))\n", elemAccess)
+			return nil
+		case "github.com/apache/fory/go/fory.Date":
+			fmt.Fprintf(buf, "\t\t// Handle zero date specially\n")
+			fmt.Fprintf(buf, "\t\tif %s.Year == 0 && %s.Month == 0 && %s.Day == 0 {\n", elemAccess, elemAccess, elemAccess)
+			fmt.Fprintf(buf, "\t\t\tbuf.WriteInt32(int32(-2147483648)) // Special marker for zero date\n")
+			fmt.Fprintf(buf, "\t\t} else {\n")
+			fmt.Fprintf(buf, "\t\t\tdiff := time.Date(%s.Year, %s.Month, %s.Day, 0, 0, 0, 0, time.Local).Sub(time.Date(1970, 1, 1, 0, 0, 0, 0, time.Local))\n", elemAccess, elemAccess, elemAccess)
+			fmt.Fprintf(buf, "\t\t\tbuf.WriteInt32(int32(diff.Hours() / 24))\n")
+			fmt.Fprintf(buf, "\t\t}\n")
+			return nil
+		}
+	}
+
+	// Handle struct types
+	if _, ok := elemType.Underlying().(*types.Struct); ok {
+		fmt.Fprintf(buf, "\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", elemAccess)
+		return nil
+	}
+
+	// Handle basic types
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\tbuf.WriteBool(%s)\n", elemAccess)
+		case types.Int8:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(%s)\n", elemAccess)
+		case types.Int16:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt16(%s)\n", elemAccess)
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt32(%s)\n", elemAccess)
+		case types.Int:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt64(int64(%s))\n", elemAccess)
+		case types.Int64:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt64(%s)\n", elemAccess)
+		case types.Uint8:
+			fmt.Fprintf(buf, "\t\tbuf.WriteByte_(%s)\n", elemAccess)
+		case types.Uint16:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt16(int16(%s))\n", elemAccess)
+		case types.Uint32:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt32(int32(%s))\n", elemAccess)
+		case types.Uint, types.Uint64:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt64(int64(%s))\n", elemAccess)
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\tbuf.WriteFloat32(%s)\n", elemAccess)
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\tbuf.WriteFloat64(%s)\n", elemAccess)
+		case types.String:
+			fmt.Fprintf(buf, "\t\tfory.WriteString(buf, %s)\n", elemAccess)
+		default:
+			fmt.Fprintf(buf, "\t\t// TODO: unsupported basic type %s\n", basic.String())
+		}
+		return nil
+	}
+
+	fmt.Fprintf(buf, "\t\t// TODO: unsupported element type %s\n", elemType.String())
+	return nil
+}
+
+// generateMapWrite generates code to serialize a map field
+func generateMapWrite(buf *bytes.Buffer, fieldAccess string, mapType *types.Map) error {
+	keyType := mapType.Key()
+	valueType := mapType.Elem()
+
+	fmt.Fprintf(buf, "\t// Write map length\n")
+	fmt.Fprintf(buf, "\tbuf.WriteInt32(int32(len(%s)))\n", fieldAccess)
+	fmt.Fprintf(buf, "\t// Write map entries in key-sorted order for deterministic serialization\n")
+	fmt.Fprintf(buf, "\tif len(%s) > 0 {\n", fieldAccess)
+
+	// Generate key sorting code based on key type
+	if err := generateMapKeySort(buf, fieldAccess, keyType); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(buf, "\t\t// Write key-value pairs in sorted order\n")
+	fmt.Fprintf(buf, "\t\tfor _, key := range sortedKeys {\n")
+	fmt.Fprintf(buf, "\t\t\tvalue := %s[key]\n", fieldAccess)
+
+	// Generate key writing code
+	if err := generateElementWrite(buf, "key", keyType); err != nil {
+		return err
+	}
+
+	// Generate value writing code
+	if err := generateElementWrite(buf, "value", valueType); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(buf, "\t\t}\n")
+	fmt.Fprintf(buf, "\t}\n")
+	return nil
+}
+
+// generateMapKeySort generates code to sort map keys for deterministic serialization
+func generateMapKeySort(buf *bytes.Buffer, fieldAccess string, keyType types.Type) error {
+	// Get key type string for slice declaration
+	keyTypeStr := getGoTypeString(keyType)
+
+	fmt.Fprintf(buf, "\t\t// Extract and sort keys for deterministic output\n")
+	fmt.Fprintf(buf, "\t\tsortedKeys := make([]%s, 0, len(%s))\n", keyTypeStr, fieldAccess)
+	fmt.Fprintf(buf, "\t\tfor key := range %s {\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\t\tsortedKeys = append(sortedKeys, key)\n")
+	fmt.Fprintf(buf, "\t\t}\n")
+
+	// Generate sorting code based on key type
+	if basic, ok := keyType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.String:
+			fmt.Fprintf(buf, "\t\tsort.Strings(sortedKeys)\n")
+		case types.Int, types.Int8, types.Int16, types.Int32, types.Int64:
+			fmt.Fprintf(buf, "\t\tsort.Slice(sortedKeys, func(i, j int) bool { return sortedKeys[i] < sortedKeys[j] })\n")
+		case types.Uint, types.Uint8, types.Uint16, types.Uint32, types.Uint64:
+			fmt.Fprintf(buf, "\t\tsort.Slice(sortedKeys, func(i, j int) bool { return sortedKeys[i] < sortedKeys[j] })\n")
+		case types.Float32, types.Float64:
+			fmt.Fprintf(buf, "\t\tsort.Slice(sortedKeys, func(i, j int) bool { return sortedKeys[i] < sortedKeys[j] })\n")
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\tsort.Slice(sortedKeys, func(i, j int) bool { return !sortedKeys[i] && sortedKeys[j] })\n") // false < true
+		default:
+			fmt.Fprintf(buf, "\t\t// TODO: sorting for key type %s\n", basic.String())
+		}
+	} else {
+		fmt.Fprintf(buf, "\t\t// TODO: sorting for key type %s\n", keyType.String())
+	}
+
 	return nil
 }

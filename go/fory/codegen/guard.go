@@ -21,14 +21,13 @@ import (
 	"bytes"
 	"fmt"
 	"go/types"
-	"sort"
 	"strings"
 )
 
 // generateCompileGuard generates compile-time checks to ensure struct definitions
 // haven't changed since code generation. If a struct is modified, users must
 // re-run go generate or compilation will fail.
-func generateCompileGuard(structs []StructInfo) string {
+func generateCompileGuard(structs []StructInfo, currentPkgName string) string {
 	if len(structs) == 0 {
 		return ""
 	}
@@ -39,13 +38,13 @@ func generateCompileGuard(structs []StructInfo) string {
 	buf.WriteString("// since code generation. If you modify structs, re-run go generate.\n\n")
 
 	for _, structInfo := range structs {
-		generateStructGuard(&buf, structInfo)
+		generateStructGuard(&buf, structInfo, currentPkgName)
 	}
 
 	return buf.String()
 }
 
-func generateStructGuard(buf *bytes.Buffer, structInfo StructInfo) {
+func generateStructGuard(buf *bytes.Buffer, structInfo StructInfo, currentPkgName string) {
 	typeName := structInfo.Name
 	expectedTypeName := fmt.Sprintf("_%s_expected", typeName)
 
@@ -53,15 +52,12 @@ func generateStructGuard(buf *bytes.Buffer, structInfo StructInfo) {
 	buf.WriteString(fmt.Sprintf("// Snapshot of %s's underlying type at generation time.\n", typeName))
 	buf.WriteString(fmt.Sprintf("type %s struct {\n", expectedTypeName))
 
-	// Sort fields to ensure consistent ordering (using pointers)
-	fields := make([]*FieldInfo, len(structInfo.Fields))
-	copy(fields, structInfo.Fields)
-	sort.Slice(fields, func(i, j int) bool {
-		return fields[i].GoName < fields[j].GoName
-	})
+	// Use original field order to match the source struct definition
+	// This ensures the guard struct has identical layout to the source
+	fields := structInfo.OriginalFields
 
 	for _, field := range fields {
-		buf.WriteString(fmt.Sprintf("\t%s %s", field.GoName, formatFieldType(*field)))
+		buf.WriteString(fmt.Sprintf("\t%s %s", field.GoName, formatFieldType(*field, currentPkgName)))
 
 		// Add struct tag if present (we'll extract it from the original struct)
 		// For now, skip tags - they would require access to the original AST
@@ -75,34 +71,37 @@ func generateStructGuard(buf *bytes.Buffer, structInfo StructInfo) {
 	buf.WriteString(fmt.Sprintf("// Compile-time check: this conversion is legal only if %s's underlying type\n", typeName))
 	buf.WriteString(fmt.Sprintf("// is identical to %s (names, order, types, tags).\n", expectedTypeName))
 	buf.WriteString(fmt.Sprintf("//\n"))
-	buf.WriteString(fmt.Sprintf("// If compilation fails here, it means you've modified the %s struct but haven't\n", typeName))
-	buf.WriteString(fmt.Sprintf("// regenerated the code. Please run: go generate\n"))
+	buf.WriteString(fmt.Sprintf("// COMPILE ERROR? This means you've modified the %s struct but haven't\n", typeName))
+	buf.WriteString(fmt.Sprintf("// regenerated the code. To fix this:\n"))
 	buf.WriteString(fmt.Sprintf("//\n"))
-	buf.WriteString(fmt.Sprintf("// If go generate also fails, delete this file first: rm %s_fory_gen.go\n", strings.ToLower(typeName)))
-	buf.WriteString(fmt.Sprintf("// Then run: go generate\n"))
+	buf.WriteString(fmt.Sprintf("// 1. First try:  go generate\n"))
+	buf.WriteString(fmt.Sprintf("// 2. If that fails: fory --force -file structs.go\n"))
+	buf.WriteString(fmt.Sprintf("// 3. Alternative: rm %s_fory_gen.go && go generate\n", strings.ToLower(typeName)))
+	buf.WriteString(fmt.Sprintf("//\n"))
+
 	buf.WriteString(fmt.Sprintf("var _ = func(x %s) {\n", typeName))
-	buf.WriteString(fmt.Sprintf("\t// ERROR: %s struct has changed! Run 'go generate' to fix this.\n", typeName))
+	buf.WriteString(fmt.Sprintf("\t// ERROR: %s struct has changed! See comments above for fix.\n", typeName))
 	buf.WriteString(fmt.Sprintf("\t_ = %s(x)\n", expectedTypeName))
 	buf.WriteString("}\n\n")
 }
 
-func formatFieldType(field FieldInfo) string {
-	return formatGoType(field.Type)
+func formatFieldType(field FieldInfo, currentPkgName string) string {
+	return formatGoType(field.Type, currentPkgName)
 }
 
 // formatGoType converts a Go type to its string representation
-func formatGoType(t types.Type) string {
+func formatGoType(t types.Type, currentPkgName string) string {
 	switch typ := t.(type) {
 	case *types.Basic:
 		return typ.Name()
 	case *types.Pointer:
-		return "*" + formatGoType(typ.Elem())
+		return "*" + formatGoType(typ.Elem(), currentPkgName)
 	case *types.Array:
-		return fmt.Sprintf("[%d]%s", typ.Len(), formatGoType(typ.Elem()))
+		return fmt.Sprintf("[%d]%s", typ.Len(), formatGoType(typ.Elem(), currentPkgName))
 	case *types.Slice:
-		return "[]" + formatGoType(typ.Elem())
+		return "[]" + formatGoType(typ.Elem(), currentPkgName)
 	case *types.Map:
-		return fmt.Sprintf("map[%s]%s", formatGoType(typ.Key()), formatGoType(typ.Elem()))
+		return fmt.Sprintf("map[%s]%s", formatGoType(typ.Key(), currentPkgName), formatGoType(typ.Elem(), currentPkgName))
 	case *types.Chan:
 		dir := ""
 		switch typ.Dir() {
@@ -113,12 +112,15 @@ func formatGoType(t types.Type) string {
 		default:
 			dir = "chan "
 		}
-		return dir + formatGoType(typ.Elem())
+		return dir + formatGoType(typ.Elem(), currentPkgName)
 	case *types.Named:
 		// Handle named types like custom structs, interfaces, etc.
 		obj := typ.Obj()
 		if obj.Pkg() != nil && obj.Pkg().Name() != "" {
-			return obj.Pkg().Name() + "." + obj.Name()
+			// Only add package prefix if it's from a different package
+			if obj.Pkg().Name() != currentPkgName {
+				return obj.Pkg().Name() + "." + obj.Name()
+			}
 		}
 		return obj.Name()
 	case *types.Interface:
@@ -130,7 +132,7 @@ func formatGoType(t types.Type) string {
 		for i := 0; i < typ.NumMethods(); i++ {
 			method := typ.Method(i)
 			sig := method.Type().(*types.Signature)
-			methods = append(methods, formatMethodSignature(method.Name(), sig))
+			methods = append(methods, formatMethodSignature(method.Name(), sig, currentPkgName))
 		}
 		return fmt.Sprintf("interface { %s }", strings.Join(methods, "; "))
 	case *types.Struct:
@@ -142,14 +144,14 @@ func formatGoType(t types.Type) string {
 	}
 }
 
-func formatMethodSignature(name string, sig *types.Signature) string {
+func formatMethodSignature(name string, sig *types.Signature, currentPkgName string) string {
 	var params, results []string
 
 	// Format parameters
 	if sig.Params() != nil {
 		for i := 0; i < sig.Params().Len(); i++ {
 			param := sig.Params().At(i)
-			paramStr := formatGoType(param.Type())
+			paramStr := formatGoType(param.Type(), currentPkgName)
 			if param.Name() != "" {
 				paramStr = param.Name() + " " + paramStr
 			}
@@ -161,7 +163,7 @@ func formatMethodSignature(name string, sig *types.Signature) string {
 	if sig.Results() != nil {
 		for i := 0; i < sig.Results().Len(); i++ {
 			result := sig.Results().At(i)
-			resultStr := formatGoType(result.Type())
+			resultStr := formatGoType(result.Type(), currentPkgName)
 			if result.Name() != "" {
 				resultStr = result.Name() + " " + resultStr
 			}
