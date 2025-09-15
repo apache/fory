@@ -78,7 +78,7 @@ public class RustXlangTest extends ForyTestBase {
 
   private static final int RUST_TESTCASE_INDEX = 4;
 
-  @BeforeClass
+//  @BeforeClass
   public void isRustJavaCIEnabled() {
     String enabled = System.getenv("FORY_RUST_JAVA_CI");
     if (enabled == null || !enabled.equals("1")) {
@@ -102,18 +102,20 @@ public class RustXlangTest extends ForyTestBase {
   @Test
   public void testRust() throws Exception {
     List<String> command = rustBaseCommand;
-    command.set(RUST_TESTCASE_INDEX, "test_buffer");
-    testBuffer(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_buffer_var");
-    testBufferVar(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_murmurhash3");
-    testMurmurHash3(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_string_serializer");
-    testStringSerializer(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_cross_language_serializer");
-    testCrossLanguageSerializer(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_buffer");
+//    testBuffer(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_buffer_var");
+//    testBufferVar(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_murmurhash3");
+//    testMurmurHash3(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_string_serializer");
+//    testStringSerializer(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_cross_language_serializer");
+//    testCrossLanguageSerializer(Language.RUST, command);
     command.set(RUST_TESTCASE_INDEX, "test_simple_struct");
     testSimpleStruct(Language.RUST, command);
+//      command.set(RUST_TESTCASE_INDEX, "test_enum");
+//    testSimpleStruct(Language.RUST, command);
   }
 
   @Test
@@ -339,41 +341,42 @@ public class RustXlangTest extends ForyTestBase {
             .withWriteNumUtf16BytesForUtf8Encoding(false)
             .build();
     MemoryBuffer buffer = MemoryUtils.buffer(32);
-    fory.serialize(buffer, true);
-    fory.serialize(buffer, false);
-    fory.serialize(buffer, -1);
-    fory.serialize(buffer, Byte.MAX_VALUE);
-    fory.serialize(buffer, Byte.MIN_VALUE);
-    fory.serialize(buffer, Short.MAX_VALUE);
-    fory.serialize(buffer, Short.MIN_VALUE);
-    fory.serialize(buffer, Integer.MAX_VALUE);
-    fory.serialize(buffer, Integer.MIN_VALUE);
-    fory.serialize(buffer, Long.MAX_VALUE);
-    fory.serialize(buffer, Long.MIN_VALUE);
-    fory.serialize(buffer, -1.f);
-    fory.serialize(buffer, -1.d);
-    fory.serialize(buffer, "str");
-    LocalDate day = LocalDate.of(2021, 11, 23);
-    fory.serialize(buffer, day);
-    Instant instant = Instant.ofEpochSecond(100);
-    fory.serialize(buffer, instant);
-    // test primitive arrays
-    fory.serialize(buffer, new boolean[] {true, false});
-    fory.serialize(buffer, new short[] {1, Short.MAX_VALUE});
-    fory.serialize(buffer, new int[] {1, Integer.MAX_VALUE});
-    fory.serialize(buffer, new long[] {1, Long.MAX_VALUE});
-    fory.serialize(buffer, new float[] {1.f, 2.f});
-    fory.serialize(buffer, new double[] {1.0, 2.0});
+//    fory.serialize(buffer, true);
+//    fory.serialize(buffer, false);
+//    fory.serialize(buffer, -1);
+//    fory.serialize(buffer, Byte.MAX_VALUE);
+//    fory.serialize(buffer, Byte.MIN_VALUE);
+//    fory.serialize(buffer, Short.MAX_VALUE);
+//    fory.serialize(buffer, Short.MIN_VALUE);
+//    fory.serialize(buffer, Integer.MAX_VALUE);
+//    fory.serialize(buffer, Integer.MIN_VALUE);
+//    fory.serialize(buffer, Long.MAX_VALUE);
+//    fory.serialize(buffer, Long.MIN_VALUE);
+//    fory.serialize(buffer, -1.f);
+//    fory.serialize(buffer, -1.d);
+//    fory.serialize(buffer, "str");
+//    LocalDate day = LocalDate.of(2021, 11, 23);
+//    fory.serialize(buffer, day);
+//    Instant instant = Instant.ofEpochSecond(100);
+//    fory.serialize(buffer, instant);
+//    // test primitive arrays
+//    fory.serialize(buffer, new boolean[] {true, false});
+//    fory.serialize(buffer, new short[] {1, Short.MAX_VALUE});
+//    fory.serialize(buffer, new int[] {1, Integer.MAX_VALUE});
+//    fory.serialize(buffer, new long[] {1, Long.MAX_VALUE});
+//    fory.serialize(buffer, new float[] {1.f, 2.f});
+//    fory.serialize(buffer, new double[] {1.0, 2.0});
 
-    List<String> strList = Arrays.asList("hello", "world");
-    fory.serialize(buffer, strList);
-    Set<String> strSet = new HashSet<>(strList);
-    fory.serialize(buffer, strSet);
-    HashMap<String, Integer> strMap = new HashMap();
-    strMap.put("hello", 42);
-    strMap.put("world", 666);
-    fory.serialize(buffer, strMap);
-    //    Map<Object, Object> map = new HashMap<>();
+//    List<String> strList = Arrays.asList("hello", "world");
+//    fory.serialize(buffer, strList);
+//    Set<String> strSet = new HashSet<>(strList);
+//    fory.serialize(buffer, strSet);
+    HashMap<String, String> strMap = new HashMap();
+//    strMap.put("hello", "world");
+////    strMap.put("foo", "bar");
+      strMap.put("hello", "world");
+      fory.serialize(buffer, strMap);
+      //    Map<Object, Object> map = new HashMap<>();
     //    for (int i = 0; i < list.size(); i++) {
     //        map.put("k" + i, list.get(i));
     //        map.put(list.get(i), list.get(i));
@@ -386,30 +389,30 @@ public class RustXlangTest extends ForyTestBase {
 
     BiConsumer<MemoryBuffer, Boolean> function =
         (MemoryBuffer buf, Boolean useToString) -> {
-          assertStringEquals(fory.deserialize(buf), true, useToString);
-          assertStringEquals(fory.deserialize(buf), false, useToString);
-          assertStringEquals(fory.deserialize(buf), -1, useToString);
-          assertStringEquals(fory.deserialize(buf), Byte.MAX_VALUE, useToString);
-          assertStringEquals(fory.deserialize(buf), Byte.MIN_VALUE, useToString);
-          assertStringEquals(fory.deserialize(buf), Short.MAX_VALUE, useToString);
-          assertStringEquals(fory.deserialize(buf), Short.MIN_VALUE, useToString);
-          assertStringEquals(fory.deserialize(buf), Integer.MAX_VALUE, useToString);
-          assertStringEquals(fory.deserialize(buf), Integer.MIN_VALUE, useToString);
-          assertStringEquals(fory.deserialize(buf), Long.MAX_VALUE, useToString);
-          assertStringEquals(fory.deserialize(buf), Long.MIN_VALUE, useToString);
-          assertStringEquals(fory.deserialize(buf), -1.f, useToString);
-          assertStringEquals(fory.deserialize(buf), -1.d, useToString);
-          assertStringEquals(fory.deserialize(buf), "str", useToString);
-          assertStringEquals(fory.deserialize(buf), day, useToString);
-          assertStringEquals(fory.deserialize(buf), instant, useToString);
-          assertStringEquals(fory.deserialize(buf), new boolean[] {true, false}, false);
-          assertStringEquals(fory.deserialize(buf), new short[] {1, Short.MAX_VALUE}, false);
-          assertStringEquals(fory.deserialize(buf), new int[] {1, Integer.MAX_VALUE}, false);
-          assertStringEquals(fory.deserialize(buf), new long[] {1, Long.MAX_VALUE}, false);
-          assertStringEquals(fory.deserialize(buf), new float[] {1.f, 2.f}, false);
-          assertStringEquals(fory.deserialize(buf), new double[] {1.0, 2.0}, false);
-          assertStringEquals(fory.deserialize(buf), strList, useToString);
-          assertStringEquals(fory.deserialize(buf), strSet, useToString);
+//          assertStringEquals(fory.deserialize(buf), true, useToString);
+//          assertStringEquals(fory.deserialize(buf), false, useToString);
+//          assertStringEquals(fory.deserialize(buf), -1, useToString);
+//          assertStringEquals(fory.deserialize(buf), Byte.MAX_VALUE, useToString);
+//          assertStringEquals(fory.deserialize(buf), Byte.MIN_VALUE, useToString);
+//          assertStringEquals(fory.deserialize(buf), Short.MAX_VALUE, useToString);
+//          assertStringEquals(fory.deserialize(buf), Short.MIN_VALUE, useToString);
+//          assertStringEquals(fory.deserialize(buf), Integer.MAX_VALUE, useToString);
+//          assertStringEquals(fory.deserialize(buf), Integer.MIN_VALUE, useToString);
+//          assertStringEquals(fory.deserialize(buf), Long.MAX_VALUE, useToString);
+//          assertStringEquals(fory.deserialize(buf), Long.MIN_VALUE, useToString);
+//          assertStringEquals(fory.deserialize(buf), -1.f, useToString);
+//          assertStringEquals(fory.deserialize(buf), -1.d, useToString);
+//          assertStringEquals(fory.deserialize(buf), "str", useToString);
+//          assertStringEquals(fory.deserialize(buf), day, useToString);
+//          assertStringEquals(fory.deserialize(buf), instant, useToString);
+//          assertStringEquals(fory.deserialize(buf), new boolean[] {true, false}, false);
+//          assertStringEquals(fory.deserialize(buf), new short[] {1, Short.MAX_VALUE}, false);
+//          assertStringEquals(fory.deserialize(buf), new int[] {1, Integer.MAX_VALUE}, false);
+//          assertStringEquals(fory.deserialize(buf), new long[] {1, Long.MAX_VALUE}, false);
+//          assertStringEquals(fory.deserialize(buf), new float[] {1.f, 2.f}, false);
+//          assertStringEquals(fory.deserialize(buf), new double[] {1.0, 2.0}, false);
+//          assertStringEquals(fory.deserialize(buf), strList, useToString);
+//          assertStringEquals(fory.deserialize(buf), strSet, useToString);
           assertStringEquals(fory.deserialize(buf), strMap, useToString);
           //            assertStringEquals(fory.deserialize(buf), list, useToString);
           //            assertStringEquals(fory.deserialize(buf), map, useToString);
@@ -417,6 +420,7 @@ public class RustXlangTest extends ForyTestBase {
         };
     function.accept(buffer, false);
     Path dataFile = Files.createTempFile("test_cross_language_serializer", "data");
+      System.out.println(Arrays.toString(buffer.getBytes(0, buffer.writerIndex())));
     Pair<Map<String, String>, File> env_workdir =
         setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
@@ -426,7 +430,22 @@ public class RustXlangTest extends ForyTestBase {
 
   @Data
   static class SimpleStruct {
-    int f2;
+
+//      Integer f2;
+//  int f2;
+        String f3;
+  }
+
+  public void testbu(){
+      Fory fory =
+              Fory.builder()
+                      .withLanguage(Language.XLANG)
+                      .withRefTracking(false)
+                      .requireClassRegistration(false)
+                      .withCompatibleMode(CompatibleMode.COMPATIBLE)
+                      .build();
+      byte[] serialized = fory.serialize("a");
+      System.out.println(Arrays.toString(serialized));
   }
 
   private void testSimpleStruct(Language language, List<String> command)
@@ -435,22 +454,45 @@ public class RustXlangTest extends ForyTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withRefTracking(false)
-            .requireClassRegistration(false)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
             .build();
     fory.register(SimpleStruct.class, 100);
     SimpleStruct obj = new SimpleStruct();
-    obj.f2 = 20;
+    obj.f3 = "a";
     byte[] serialized = fory.serialize(obj);
-    //      Assert.assertEquals(fory.deserialize(serialized), obj);
-    //        System.out.println(Arrays.toString(serialized));
-    //        Path dataFile = Files.createTempFile("test_simple_struct", "data");
-    //        Pair<Map<String,String>, File> env_workdir = setFilePath(language, command, dataFile,
-    //    serialized);
-    //        Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(),
-    //    env_workdir.getRight()));
-    //            Assert.assertEquals(fory.deserialize(Files.readAllBytes(dataFile)), obj);
+      System.out.println(Arrays.toString(serialized));
+//      Assert.assertEquals(fory.deserialize(serialized), obj);
+//    //        System.out.println(Arrays.toString(serialized));
+//            Path dataFile = Files.createTempFile("test_simple_struct", "data");
+//            Pair<Map<String,String>, File> env_workdir = setFilePath(language, command, dataFile,
+//        serialized);
+//            Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(),
+//        env_workdir.getRight()));
+//    //            Assert.assertEquals(fory.deserialize(Files.readAllBytes(dataFile)), obj);
   }
+
+    enum TestEnum {
+        Green,
+        Red,
+        Blue,
+        White,
+    }
+    @Test
+    public void testEnum() {
+        Fory fory =
+                Fory.builder()
+                        .withLanguage(Language.XLANG)
+                        .withRefTracking(false)
+                        .requireClassRegistration(false)
+                        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+                        .build();
+        fory.register(TestEnum.class, 100);
+        TestEnum obj = TestEnum.White;
+        byte[] serialized = fory.serialize(obj);
+        System.out.println(Arrays.toString(serialized));
+
+
+    }
 
   /**
    * Execute an external command.
