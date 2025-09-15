@@ -27,14 +27,15 @@ pub fn gen_type_def(_data_enum: &DataEnum) -> TokenStream {
 
 pub fn gen_write(data_enum: &DataEnum) -> TokenStream {
     let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
-    let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as i32).collect();
+    let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as u32).collect();
 
     quote! {
         fn write(&self, context: &mut fory_core::resolver::context::WriteContext) {
+            println!("writer:{:?}",context.writer.dump());
             match self {
                 #(
                     Self::#variant_idents => {
-                        context.writer.var_int32(#variant_values);
+                        context.writer.var_uint32(#variant_values);
                     }
                 )*
             }
@@ -48,14 +49,14 @@ pub fn gen_write(data_enum: &DataEnum) -> TokenStream {
 
 pub fn gen_read(data_enum: &DataEnum) -> TokenStream {
     let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
-    let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as i32).collect();
+    let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as u32).collect();
 
     quote! {
        fn read(
            context: &mut fory_core::resolver::context::ReadContext,
        ) -> Result<Self, fory_core::error::Error> {
-           let v = context.reader.var_int32();
-           match v {
+           let ordinal = context.reader.var_uint32();
+           match ordinal {
                #(
                    #variant_values => Ok(Self::#variant_idents),
                )*
@@ -67,6 +68,17 @@ pub fn gen_read(data_enum: &DataEnum) -> TokenStream {
 
 pub fn gen_actual_type_id() -> TokenStream {
     quote! {
+        println!("type_id:{}, actual:{}", type_id, (type_id << 8) + fory_core::types::TypeId::ENUM as u32);
         (type_id << 8) + fory_core::types::TypeId::ENUM as u32
+    }
+}
+
+pub fn gen_read_compatible(data_enum: &DataEnum) -> TokenStream {
+    let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
+    let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as i32).collect();
+    quote! {
+        fn read_compatible(context: &mut fory_core::resolver::context::ReadContext, type_id: u32) -> Result<Self, fory_core::error::Error> {
+            unreachable!()
+        }
     }
 }

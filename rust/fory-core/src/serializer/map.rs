@@ -42,6 +42,14 @@ impl<T1: Serializer + Eq + std::hash::Hash, T2: Serializer> Serializer for HashM
         for entry in self.iter() {
             if !header_gen {
                 header_offset = context.writer.len();
+                let mut is_key_null = false;
+                let mut is_val_null = false;
+                if T1::is_option() {
+
+                }
+                if T2::is_option(){
+
+                }
                 context.writer.i16(-1);
                 context
                     .writer

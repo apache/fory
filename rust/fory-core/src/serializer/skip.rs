@@ -48,7 +48,7 @@ pub fn skip_field_value(
     {
         return Ok(());
     }
-    let type_id_num = context.reader.var_uint32();
+    let type_id_num = field_type.type_id;
     match TypeId::try_from(type_id_num as i16) {
         Ok(type_id) => {
             let expected_type_id = field_type.type_id;
@@ -80,6 +80,7 @@ pub fn skip_field_value(
             } else if CONTAINER_TYPES.contains(&type_id) {
                 if type_id == TypeId::LIST || type_id == TypeId::SET {
                     let length = context.reader.var_int32() as usize;
+                    println!("length: {length}");
                     for _ in 0..length {
                         skip_field_value(context, field_type.generics.first().unwrap())?;
                     }
@@ -97,6 +98,7 @@ pub fn skip_field_value(
         }
         Err(_) => {
             let tag = type_id_num & 0xff;
+            println!("type_id_num: {}, tag: {}", type_id_num,tag);
             if tag == TypeId::STRUCT as u32 {
                 let type_def = context.get_meta_by_type_id(type_id_num);
                 let field_infos: Vec<_> = type_def.get_field_infos().to_vec();
@@ -105,6 +107,8 @@ pub fn skip_field_value(
                         NullableFieldType::from(field_info.field_type.clone());
                     skip_field_value(context, &nullable_field_type)?;
                 }
+            } else if tag == TypeId::ENUM as u32 {
+                let harness = context.fory.get_type_resolver().get_harness(type_id_num).unwrap();
             } else {
                 unimplemented!()
             }

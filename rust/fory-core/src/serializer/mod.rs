@@ -36,19 +36,20 @@ pub mod skip;
 mod string;
 
 pub fn serialize<T: Serializer>(this: &T, context: &mut WriteContext) {
-    // ref flag
-    context.writer.i8(RefFlag::NotNullValue as i8);
-    // type
-    context
-        .writer
-        .var_uint32(T::get_type_id(context.get_fory()));
-    this.write(context);
+    if this.is_none() {
+        context.writer.i8(RefFlag::Null as i8);
+    } else {
+        context.writer.i8(RefFlag::NotNullValue as i8);
+        context
+            .writer
+            .var_uint32(T::get_type_id(context.get_fory()));
+        this.write(context);
+    }
 }
 
 pub fn deserialize<T: Serializer + Default>(context: &mut ReadContext) -> Result<T, Error> {
     // ref flag
     let ref_flag = context.reader.i8();
-
     if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
         let actual_type_id = context.reader.var_uint32();
         let expected_type_id = T::get_type_id(context.get_fory());
@@ -66,6 +67,7 @@ pub fn deserialize<T: Serializer + Default>(context: &mut ReadContext) -> Result
         Err(anyhow!("Unknown ref flag, value:{ref_flag}"))?
     }
 }
+
 
 pub trait Serializer
 where
@@ -86,15 +88,43 @@ where
         serialize(self, context);
     }
 
+    fn serialize_field(&self, context: &mut WriteContext) {
+        if self.is_none() {
+            context.writer.i8(RefFlag::Null as i8);
+        } else {
+            context.writer.i8(RefFlag::NotNullValue as i8);
+            self.write(context);
+        }
+    }
+
     fn read(context: &mut ReadContext) -> Result<Self, Error>;
 
     fn deserialize(context: &mut ReadContext) -> Result<Self, Error> {
         deserialize(context)
     }
 
+    fn deserialize_field(context: &mut ReadContext) -> Result<Self, Error> {
+        let ref_flag = context.reader.i8();
+        println!("self: 到这了");
+        if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
+            Self::read(context)
+        } else if ref_flag == (RefFlag::Null as i8) {
+            unreachable!()
+            // Err(anyhow!("Try to deserialize non-option type to null"))?
+        } else if ref_flag == (RefFlag::Ref as i8) {
+            Err(Error::Ref)
+        } else {
+            Err(anyhow!("Unknown ref flag, value:{ref_flag}"))?
+        }
+    }
+
     fn get_type_id(_fory: &Fory) -> u32;
 
     fn is_option() -> bool {
+        false
+    }
+
+    fn is_none(&self) -> bool {
         false
     }
 }

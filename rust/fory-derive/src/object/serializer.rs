@@ -46,7 +46,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
             derive_enum::gen_actual_type_id(),
             derive_enum::gen_write(s),
             derive_enum::gen_read(s),
-            quote! {},
+            derive_enum::gen_read_compatible(s),
             quote! {},
         ),
         syn::Data::Union(_) => {

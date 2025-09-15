@@ -40,6 +40,9 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
     let iter = iter.into_iter();
     let len = iter.size_hint().0;
     context.writer.var_uint32(len as u32);
+    if len == 0 {
+        return
+    }
     let has_null = T::is_option();
     let mut header = 0;
     if has_null {
@@ -62,8 +65,10 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
             .writer
             .reserve((<T as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
         for item in iter {
-            item.serialize(context);
+            // println!("collection write: {:?}", context.writer.dump());
+            item.serialize_field(context);
         }
+        // println!("collection write: {:?}", context.writer.dump());
     }
 }
 
@@ -73,6 +78,10 @@ where
     C: FromIterator<T>,
 {
     let len = context.reader.var_uint32();
+    if len == 0 {
+        return Ok(C::from_iter(std::iter::empty()));
+    }
+    // println!("len: {}", len);
     let header = context.reader.u8();
     let actual_elem_type_id = context.reader.var_uint32();
     let expected_elem_id = T::get_type_id(context.fory);
@@ -85,8 +94,9 @@ where
             .map(|_| T::read(context))
             .collect::<Result<C, Error>>()
     } else {
+        // println!("collection read: {:?}", context.reader.slice_after_cursor());
         (0..len)
-            .map(|_| T::deserialize(context))
+            .map(|_| T::deserialize_field(context))
             .collect::<Result<C, Error>>()
     }
 }

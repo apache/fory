@@ -41,8 +41,20 @@ impl<T: Serializer> Serializer for Option<T> {
                 actual_type_id == expected_type_id,
                 anyhow!("Invalid field type, expected:{expected_type_id}, actual:{actual_type_id}")
             );
+            Ok(Self::read(context)?)
+        } else if ref_flag == (RefFlag::Null as i8) {
+            Ok(None)
+        } else if ref_flag == (RefFlag::Ref as i8) {
+            Err(Error::Ref)
+        } else {
+            Err(anyhow!("Unknown ref flag, value:{ref_flag}"))?
+        }
+    }
 
-            Ok(Some(T::read(context)?))
+    fn deserialize_field(context: &mut ReadContext) -> Result<Self, Error> {
+        let ref_flag = context.reader.i8();
+        if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
+            Self::read(context)
         } else if ref_flag == (RefFlag::Null as i8) {
             Ok(None)
         } else if ref_flag == (RefFlag::Ref as i8) {
@@ -60,23 +72,6 @@ impl<T: Serializer> Serializer for Option<T> {
         }
     }
 
-    fn serialize(&self, context: &mut WriteContext) {
-        match self {
-            Some(v) => {
-                // ref flag
-                context.writer.i8(RefFlag::NotNullValue as i8);
-                // type
-                context
-                    .writer
-                    .var_uint32(T::get_type_id(context.get_fory()));
-                v.write(context);
-            }
-            None => {
-                context.writer.i8(RefFlag::Null as i8);
-            }
-        }
-    }
-
     fn reserved_space() -> usize {
         std::mem::size_of::<T>()
     }
@@ -87,6 +82,10 @@ impl<T: Serializer> Serializer for Option<T> {
 
     fn is_option() -> bool {
         true
+    }
+
+    fn is_none(&self) -> bool {
+        self.is_none()
     }
 }
 

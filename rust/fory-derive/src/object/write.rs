@@ -24,17 +24,29 @@ pub fn gen(fields: &[&Field]) -> TokenStream {
         let ty = &field.ty;
         let ident = &field.ident;
         quote! {
-            <#ty as fory_core::serializer::Serializer>::serialize(&self.#ident, context);
+            // println!("before writer is:{:?}",context.writer.dump());
+            <#ty as fory_core::serializer::Serializer>::serialize_field(&self.#ident, context);
+            // println!("after writer is:{:?}",context.writer.dump());
         }
     });
 
-    let reserved_size_expr = fields.iter().map(|field| {
+    let reserved_size_expr: Vec<_> = fields.iter().map(|field| {
         let ty = &field.ty;
-        // each field have one byte ref tag and two byte type id
+        // each field has one byte ref tag and two byte type id
         quote! {
             <#ty as fory_core::serializer::Serializer>::reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
         }
-    });
+    }).collect();
+
+    let reserved_fn_body = if reserved_size_expr.is_empty() {
+        quote! {
+            0
+        }
+    } else {
+        quote! {
+            #(#reserved_size_expr)+*
+        }
+    };
 
     quote! {
         fn serialize(&self, context: &mut fory_core::resolver::context::WriteContext) {
@@ -46,6 +58,7 @@ pub fn gen(fields: &[&Field]) -> TokenStream {
                     context.writer.i8(fory_core::types::RefFlag::NotNullValue as i8);
                     let type_id = Self::get_type_id(context.get_fory());
                     context.writer.var_uint32(type_id);
+                    // println!("writer is:{:?}",context.writer.dump());
                     self.write(context);
                 }
             }
@@ -61,7 +74,7 @@ pub fn gen(fields: &[&Field]) -> TokenStream {
         }
 
         fn reserved_space() -> usize {
-            #(#reserved_size_expr)+*
+            #reserved_fn_body
         }
     }
 }

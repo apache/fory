@@ -44,7 +44,6 @@ macro_rules! basic_type_deserialize {
                             let res1 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 None
                             } else {
-                                let _type_id = context.reader.var_uint32();
                                 Some(<$ty as fory_core::serializer::Serializer>::read(context)
                                     .map_err(fory_core::error::Error::from)?)
                             };
@@ -55,7 +54,6 @@ macro_rules! basic_type_deserialize {
                             let res2 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 $ty::default()
                             } else {
-                                let _type_id = context.reader.var_uint32();
                                 <$ty as fory_core::serializer::Serializer>::read(context)
                                     .map_err(fory_core::error::Error::from)?
                             };
@@ -125,7 +123,6 @@ impl NullableTypeNode {
                     let res1 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         None
                     } else {
-                        let _type_id = context.reader.var_uint32();
                         Some(<#ty_type as fory_core::serializer::Serializer>::read(context)
                             .map_err(fory_core::error::Error::from)?)
                     };
@@ -136,7 +133,6 @@ impl NullableTypeNode {
                     let res2 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         Vec::default()
                     } else {
-                        let _type_id = context.reader.var_uint32();
                         <#ty_type as fory_core::serializer::Serializer>::read(context)
                             .map_err(fory_core::error::Error::from)?
                     };
@@ -167,7 +163,6 @@ impl NullableTypeNode {
                             let v = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 None
                             } else {
-                                let _arr_type_id = context.reader.var_uint32();
                                 Some(fory_core::serializer::collection::read_collection(context)?)
                             };
                             Ok::<#ty, fory_core::error::Error>(v)
@@ -177,7 +172,6 @@ impl NullableTypeNode {
                             let v = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 Vec::default()
                             } else {
-                                let _arr_type_id = context.reader.var_uint32();
                                 fory_core::serializer::collection::read_collection(context)?
                             };
                             Ok::<#ty, fory_core::error::Error>(v)
@@ -191,7 +185,6 @@ impl NullableTypeNode {
                             let s = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 None
                             } else {
-                                let _set_type_id = context.reader.var_uint32();
                                 Some(fory_core::serializer::collection::read_collection(context)?)
                             };
                             Ok::<#ty, fory_core::error::Error>(s)
@@ -201,7 +194,6 @@ impl NullableTypeNode {
                             let s = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 HashSet::default()
                             } else {
-                                let _set_type_id = context.reader.var_uint32();
                                 fory_core::serializer::collection::read_collection(context)?
                             };
                             Ok::<#ty, fory_core::error::Error>(s)
@@ -221,7 +213,6 @@ impl NullableTypeNode {
                             let m = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 None
                             } else {
-                                let _map_type_id = context.reader.var_uint32();
                                 Some(<HashMap<#key_ty, #val_ty> as fory_core::serializer::Serializer>::read(context)?)
                             };
                             Ok::<#ty, fory_core::error::Error>(m)
@@ -231,7 +222,6 @@ impl NullableTypeNode {
                             let m = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 HashMap::default()
                             } else {
-                                let _map_type_id = context.reader.var_uint32();
                                 <HashMap<#key_ty, #val_ty> as fory_core::serializer::Serializer>::read(context)?
                             };
                             Ok::<#ty, fory_core::error::Error>(m)
@@ -241,32 +231,53 @@ impl NullableTypeNode {
                 _ => quote! { compile_error!("Unsupported type for container"); },
             }
         } else {
-            // struct
+            // struct or enum
             let nullable_ty = parse_str::<Type>(&self.nullable_ty_string()).unwrap();
             let ty = parse_str::<Type>(&self.to_string()).unwrap();
             if self.nullable {
                 quote! {
+                    const STRUCT_ID: u32 = fory_core::types::TypeId::STRUCT as u32;
+                    const ENUM_ID: u32 = fory_core::types::TypeId::ENUM as u32;
                     let res1 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         None
                     } else {
-                        let type_id = context.reader.var_uint32();
+                        let type_id = cur_remote_nullable_type.type_id;
                         let internal_id = type_id & 0xff;
-                        assert_eq!(internal_id as i16, fory_core::types::TypeId::STRUCT as i16);
-                        Some(#nullable_ty::read_compatible(context, type_id)
-                                    .map_err(fory_core::error::Error::from)?)
+                        Some(match internal_id {
+                            STRUCT_ID => {
+                                #nullable_ty::read_compatible(context, type_id)
+                                    .map_err(fory_core::error::Error::from)?
+                            }
+                            ENUM_ID => {
+                                <#nullable_ty as fory_core::serializer::Serializer>::read(context)
+                                .map_err(fory_core::error::Error::from)?
+                            }
+                            _ => unreachable!(),
+                        })
                     };
                     Ok::<#ty, fory_core::error::Error>(res1)
                 }
             } else {
                 quote! {
+                    const STRUCT_ID: u32 = fory_core::types::TypeId::STRUCT as u32;
+                    const ENUM_ID: u32 = fory_core::types::TypeId::ENUM as u32;
                     let res2 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         #ty::default()
                     } else {
-                        let type_id = context.reader.var_uint32();
+                        let type_id = cur_remote_nullable_type.type_id;
                         let internal_id = type_id & 0xff;
-                        assert_eq!(internal_id as i16, fory_core::types::TypeId::STRUCT as i16);
-                        <#nullable_ty>::read_compatible(context, type_id)
+                        // assert_eq!(internal_id as i16, fory_core::types::TypeId::STRUCT as i16);
+                        match internal_id {
+                            STRUCT_ID => {
+                                #nullable_ty::read_compatible(context, type_id)
+                                    .map_err(fory_core::error::Error::from)?
+                            }
+                            ENUM_ID => {
+                                <#nullable_ty as fory_core::serializer::Serializer>::read(context)
                                 .map_err(fory_core::error::Error::from)?
+                            }
+                            _ => unreachable!(),
+                        }
                     };
                     Ok::<#ty, fory_core::error::Error>(res2)
                 }

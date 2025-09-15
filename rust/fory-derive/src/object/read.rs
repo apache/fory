@@ -78,6 +78,7 @@ fn deserialize_compatible(_fields: &[&Field], struct_ident: &Ident) -> TokenStre
         let ref_flag = context.reader.i8();
         if ref_flag == (fory_core::types::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::types::RefFlag::RefValue as i8) {
             let type_id = context.reader.var_uint32();
+            // 4 97
             #struct_ident::read_compatible(context, type_id)
         } else if ref_flag == (fory_core::types::RefFlag::Null as i8) {
             Err(fory_core::error::AnyhowError::msg("Try to deserialize non-option type to null"))?
@@ -141,7 +142,7 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
             if _field.field_name.as_str() == #field_name_str {
                 let local_field_type = #generic_token;
                 if &_field.field_type == &local_field_type {
-                    #var_name = Some(<#ty as fory_core::serializer::Serializer>::deserialize(context).unwrap_or_else(|_err| {
+                    #var_name = Some(<#ty as fory_core::serializer::Serializer>::deserialize_field(context).unwrap_or_else(|_err| {
                         // same type, err means something wrong
                         panic!("Err at deserializing {:?}: {:?}", #field_name_str, _err);
                     }));

@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::ffi::c_int;
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::get_latin1_length;
@@ -36,9 +37,11 @@ impl Serializer for String {
     }
 
     fn write(&self, context: &mut WriteContext) {
+        println!("write string before: {:?}", context.writer.dump());
         let mut len = get_latin1_length(self);
         if len >= 0 {
             let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
+            println!("write bitor:{:?}", bitor);
             context.writer.var_uint36_small(bitor);
             context.writer.latin1_string(self);
         } else {
@@ -47,10 +50,13 @@ impl Serializer for String {
             context.writer.var_uint36_small(bitor);
             context.writer.utf8_string(self);
         }
+        // println!("write after: {:?}", context.writer.dump());
     }
 
     fn read(context: &mut ReadContext) -> Result<Self, Error> {
+        // println!("read before: {:?}", context.reader.slice_after_cursor());
         let bitor = context.reader.var_uint36_small();
+        // println!("read bitor:{:?}", bitor);
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
         let encoding = match encoding {

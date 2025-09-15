@@ -28,6 +28,7 @@ use crate::types::{
     Language, Mode, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
 };
 use anyhow::anyhow;
+use crate::types::config_flags::IS_NULL_FLAG;
 
 pub struct Fory {
     mode: Mode,
@@ -60,7 +61,7 @@ impl Fory {
         &self.mode
     }
 
-    pub fn write_head<T: Serializer>(&self, writer: &mut Writer) {
+    pub fn write_head<T: Serializer>(&self, is_none: bool, writer: &mut Writer) {
         const HEAD_SIZE: usize = 10;
         writer.reserve(<T as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
         if self.xlang {
@@ -73,13 +74,19 @@ impl Fory {
         if self.xlang {
             bitmap |= IS_CROSS_LANGUAGE_FLAG;
         }
+        if is_none {
+            bitmap |= IS_NULL_FLAG;
+        }
         writer.u8(bitmap);
+        if is_none {
+            return
+        }
         if self.xlang {
             writer.u8(Language::Rust as u8);
         }
     }
 
-    fn read_head(&self, reader: &mut Reader) -> Result<(), Error> {
+    fn read_head(&self, reader: &mut Reader) -> Result<bool, Error> {
         if self.xlang {
             let magic_numer = reader.u16();
             ensure!(
@@ -93,6 +100,13 @@ impl Fory {
             )
         }
         let bitmap = reader.u8();
+        let peer_is_xlang = (bitmap & IS_CROSS_LANGUAGE_FLAG) != 0;
+        ensure!(
+            self.xlang == peer_is_xlang,
+            anyhow!(
+                "header bitmap mismatch at xlang bit"
+            )
+        );
         let is_little_endian = (bitmap & IS_LITTLE_ENDIAN_FLAG) != 0;
         ensure!(
             is_little_endian,
@@ -100,11 +114,14 @@ impl Fory {
                 "Big endian is not supported for now, please ensure peer machine is little endian."
             )
         );
-        let peer_is_xlang = (bitmap & IS_CROSS_LANGUAGE_FLAG) != 0;
+        let is_none = (bitmap & IS_NULL_FLAG) != 0;
+        if is_none {
+            return Ok(true);
+        }
         if peer_is_xlang {
             let _peer_lang = reader.u8();
         }
-        Ok(())
+        Ok(false)
     }
 
     pub fn deserialize<T: Serializer>(&self, bf: &[u8]) -> Result<T, Error> {
@@ -117,7 +134,10 @@ impl Fory {
         &self,
         context: &mut ReadContext,
     ) -> Result<T, Error> {
-        self.read_head(&mut context.reader)?;
+        let is_none = self.read_head(&mut context.reader)?;
+        if is_none {
+            return Ok(T::default());
+        }
         if self.mode == Mode::Compatible {
             let meta_offset = context.reader.i32();
             if meta_offset != -1 {
@@ -139,15 +159,20 @@ impl Fory {
         context: &mut WriteContext,
     ) -> Vec<u8> {
         let mut meta_offset = 0;
-        self.write_head::<T>(context.writer);
-        if self.mode == Mode::Compatible {
-            context.writer.i32(-1);
-            meta_offset = context.writer.len() - 4;
-        }
-        <T as Serializer>::serialize(record, context);
-        if self.mode == Mode::Compatible && !context.empty() {
-            assert!(meta_offset > 0);
-            context.write_meta(meta_offset);
+        let is_none = record.is_none();
+        self.write_head::<T>(is_none, context.writer);
+        if !is_none {
+            if self.mode == Mode::Compatible {
+                context.writer.i32(-1);
+                meta_offset = context.writer.len() - 4;
+            };
+            println!("before write value{:?}", context.writer.dump());
+            <T as Serializer>::serialize(record, context);
+            println!("before write meta{:?}", context.writer.dump());
+            if self.mode == Mode::Compatible && !context.empty() {
+                assert!(meta_offset > 0);
+                context.write_meta(meta_offset);
+            }
         }
         context.writer.dump()
     }
