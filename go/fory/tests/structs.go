@@ -17,40 +17,30 @@
 
 package fory
 
-import "time"
+//go:generate go run ../cmd/fory/main.go --force -file structs.go
 
-// ValidationDemo is a simple struct for testing code generation
-// Contains only basic types since PR1 only supports basic types
-
+// BasicTypesStruct demonstrates basic data types serialization
 // fory:gen
-type ValidationDemo struct {
-	A int32            // int32 field
-	B string           // string field
-	C int64            // int64 field
-	D []int32          // slice of int32
-	E []string         // slice of string
-	F []bool           // slice of bool
-	G map[string]int32 // map with string key and int32 value
-	H map[int32]string // map with int32 key and string value
-	I map[string]bool  // map with string key and bool value
-	J time.Time        // time.Time field
+type BasicTypesStruct struct {
+	BoolField    bool    `fory:"bool_field"`
+	Int8Field    int8    `fory:"int8_field"`
+	Int16Field   int16   `fory:"int16_field"`
+	Int32Field   int32   `fory:"int32_field"`
+	Int64Field   int64   `fory:"int64_field"`
+	IntField     int     `fory:"int_field"`
+	Uint8Field   uint8   `fory:"uint8_field"`
+	Float32Field float32 `fory:"float32_field"`
+	Float64Field float64 `fory:"float64_field"`
+	StringField  string  `fory:"string_field"`
 }
 
-// SimpleStruct is a basic struct for testing simple serialization
-// Contains only int and string fields for basic functionality testing
-
+// CollectionTypesStruct demonstrates slice and map types serialization
 // fory:gen
-type SimpleStruct struct {
-	ID   int    // integer field
-	Name string // string field
-}
-
-// CompoundStruct is a complex struct for testing nested struct serialization
-// Contains embedded ValidationDemo and SimpleStruct types plus additional fields
-
-// fory:gen
-type CompoundStruct struct {
-	ValidationData ValidationDemo // nested ValidationDemo struct
-	SimpleData     SimpleStruct   // nested SimpleStruct struct
-	Count          int            // additional int field
+type CollectionTypesStruct struct {
+	IntSlice      []int32          `fory:"int_slice"`
+	StringSlice   []string         `fory:"string_slice"`
+	BoolSlice     []bool           `fory:"bool_slice"`
+	StringIntMap  map[string]int32 `fory:"string_int_map"`
+	IntStringMap  map[int32]string `fory:"int_string_map"`
+	StringBoolMap map[string]bool  `fory:"string_bool_map"`
 }
