@@ -31,17 +31,14 @@ func NewFory(referenceTracking bool) *Fory {
 		language:          XLANG,
 		buffer:            NewByteBuffer(nil),
 	}
-	// Create a new type resolver for this instance but copy generated serializers from global resolver
-	fory.typeResolver = newTypeResolver(fory)
 
-	// Copy generated serializers from global resolver to this instance
+	// Use the global type resolver if available to access generated serializers
+	// This allows code generation path to work while preserving reflection independence
 	if globalTypeResolver != nil {
-		for typ, serializer := range globalTypeResolver.typeToSerializers {
-			fory.typeResolver.typeToSerializers[typ] = serializer
-		}
-		for typeId, typ := range globalTypeResolver.typeIdToType {
-			fory.typeResolver.typeIdToType[typeId] = typ
-		}
+		fory.typeResolver = globalTypeResolver
+	} else {
+		// Fallback to independent resolver if global doesn't exist
+		fory.typeResolver = newTypeResolver(fory)
 	}
 
 	return fory
@@ -311,18 +308,22 @@ func (f *Fory) writeValue(buffer *ByteBuffer, value reflect.Value, serializer Se
 	}
 
 	if serializer != nil {
+		// If serializer is provided, use it directly without writing type information
 		return serializer.Write(f, buffer, value)
 	}
 
-	// Get type information for the value
+	// If no serializer provided, get type information and write it
 	typeInfo, err := f.typeResolver.getTypeInfo(value, true)
 	if err != nil {
 		return fmt.Errorf("cannot get typeinfo for value %v: %v", value, err)
 	}
+
+	// Write type information (typeID, namespace, typename)
 	err = f.typeResolver.writeTypeInfo(buffer, typeInfo)
 	if err != nil {
 		return fmt.Errorf("cannot write typeinfo for value %v: %v", value, err)
 	}
+
 	serializer = typeInfo.Serializer
 	// Serialize the actual value using the serializer
 	return serializer.Write(f, buffer, value)

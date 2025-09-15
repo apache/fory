@@ -30,16 +30,21 @@ func generateReadTyped(buf *bytes.Buffer, s *StructInfo) error {
 	fmt.Fprintf(buf, "// ReadTyped provides strongly-typed deserialization with no reflection overhead\n")
 	fmt.Fprintf(buf, "func (g %s_ForyGenSerializer) ReadTyped(f *fory.Fory, buf *fory.ByteBuffer, v *%s) error {\n", s.Name, s.Name)
 
-	// Read and verify struct hash
-	fmt.Fprintf(buf, "\t// Read and verify struct hash\n")
-	fmt.Fprintf(buf, "\tif got := buf.ReadInt32(); got != %d {\n", hash)
-	fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"struct hash mismatch for %s: expected %d, got %%d\", got)\n", s.Name, hash)
+	// Read and verify struct hash - even in schema evolution mode, structSerializer.Read reads hash
+	fmt.Fprintf(buf, "\t// Read and verify struct hash for schema compatibility\n")
+	fmt.Fprintf(buf, "\texpectedHash := int32(%d)\n", hash)
+	fmt.Fprintf(buf, "\tactualHash := buf.ReadInt32()\n")
+	fmt.Fprintf(buf, "\tif actualHash != expectedHash {\n")
+	fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"struct hash mismatch: expected %%d, got %%d\", expectedHash, actualHash)\n")
 	fmt.Fprintf(buf, "\t}\n\n")
 
 	// Read fields in sorted order
 	fmt.Fprintf(buf, "\t// Read fields in same order as write\n")
+
+	// Track if refFlag has been declared to avoid duplicate declarations
+	refFlagDeclared := false
 	for _, field := range s.Fields {
-		if err := generateFieldReadTyped(buf, field); err != nil {
+		if err := generateFieldReadTypedWithFlag(buf, field, &refFlagDeclared); err != nil {
 			return err
 		}
 	}
@@ -72,7 +77,7 @@ func generateReadInterface(buf *bytes.Buffer, s *StructInfo) error {
 }
 
 // generateFieldReadTyped generates field reading code for the typed method
-func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
+func generateFieldReadTypedWithFlag(buf *bytes.Buffer, field *FieldInfo, refFlagDeclared *bool) error {
 	fmt.Fprintf(buf, "\t// Field: %s (%s)\n", field.GoName, field.Type.String())
 
 	fieldAccess := fmt.Sprintf("v.%s", field.GoName)
@@ -82,6 +87,8 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		typeStr := named.String()
 		switch typeStr {
 		case "time.Time":
+			fmt.Fprintf(buf, "\t// Read non-referencable time.Time field\n")
+			fmt.Fprintf(buf, "\tbuf.ReadInt8() // Read and discard NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tusec := buf.ReadInt64()\n")
 			fmt.Fprintf(buf, "\t%s = fory.CreateTimeFromUnixMicro(usec)\n", fieldAccess)
 			return nil
@@ -106,54 +113,71 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		return nil
 	}
 
-	// Handle basic types
+	// Handle basic types with correct decoding per xlang spec
 	if basic, ok := field.Type.Underlying().(*types.Basic); ok {
 		switch basic.Kind() {
-		case types.Bool:
-			fmt.Fprintf(buf, "\t%s = buf.ReadBool()\n", fieldAccess)
-		case types.Int8:
-			fmt.Fprintf(buf, "\t%s = buf.ReadInt8()\n", fieldAccess)
-		case types.Int16:
-			fmt.Fprintf(buf, "\t%s = buf.ReadInt16()\n", fieldAccess)
-		case types.Int32:
-			fmt.Fprintf(buf, "\t%s = buf.ReadInt32()\n", fieldAccess)
-		case types.Int:
-			fmt.Fprintf(buf, "\t%s = int(buf.ReadInt64())\n", fieldAccess)
-		case types.Int64:
-			fmt.Fprintf(buf, "\t%s = buf.ReadInt64()\n", fieldAccess)
-		case types.Uint8:
-			fmt.Fprintf(buf, "\t%s = buf.ReadByte_()\n", fieldAccess)
-		case types.Uint16:
-			fmt.Fprintf(buf, "\t%s = uint16(buf.ReadInt16())\n", fieldAccess)
-		case types.Uint32:
-			fmt.Fprintf(buf, "\t%s = uint32(buf.ReadInt32())\n", fieldAccess)
-		case types.Uint, types.Uint64:
-			fmt.Fprintf(buf, "\t%s = uint64(buf.ReadInt64())\n", fieldAccess)
-		case types.Float32:
-			fmt.Fprintf(buf, "\t%s = buf.ReadFloat32()\n", fieldAccess)
-		case types.Float64:
-			fmt.Fprintf(buf, "\t%s = buf.ReadFloat64()\n", fieldAccess)
 		case types.String:
-			fmt.Fprintf(buf, "\t%s = fory.ReadString(buf)\n", fieldAccess)
+			// String is final type with ref tracking per xlang spec
+			fmt.Fprintf(buf, "\t// Read string field: final type with ref tracking per xlang spec\n")
+			fmt.Fprintf(buf, "\tbuf.ReadInt8() // Read and discard RefValueFlag\n")
+			fmt.Fprintf(buf, "\t%s = fory.ReadString(buf) // stringSerializer.Read\n", fieldAccess)
 		default:
-			fmt.Fprintf(buf, "\t// TODO: unsupported basic type %s\n", basic.String())
+			// All other basic types are non-referencable -> readBySerializer -> read NotNullValueFlag + serializer.Read
+			fmt.Fprintf(buf, "\t// Read %s field: referencable=false -> readBySerializer\n", basic.String())
+			fmt.Fprintf(buf, "\tbuf.ReadInt8() // Read and discard NotNullValueFlag from writeNonReferencableBySerializer\n")
+
+			switch basic.Kind() {
+			case types.Bool:
+				fmt.Fprintf(buf, "\t%s = buf.ReadBool() // boolSerializer.Read\n", fieldAccess)
+			case types.Int8:
+				fmt.Fprintf(buf, "\t%s = int8(buf.ReadByte_()) // int8Serializer.Read\n", fieldAccess)
+			case types.Int16:
+				fmt.Fprintf(buf, "\t%s = buf.ReadInt16() // int16Serializer.Read\n", fieldAccess)
+			case types.Int32:
+				fmt.Fprintf(buf, "\t%s = buf.ReadVarint32() // int32Serializer.Read\n", fieldAccess)
+			case types.Int:
+				fmt.Fprintf(buf, "\t%s = int(buf.ReadInt64()) // intSerializer.Read\n", fieldAccess)
+			case types.Int64:
+				fmt.Fprintf(buf, "\t%s = buf.ReadVarint64() // int64Serializer.Read\n", fieldAccess)
+			case types.Uint8:
+				fmt.Fprintf(buf, "\t%s = buf.ReadByte_() // byteSerializer.Read\n", fieldAccess)
+			case types.Uint16:
+				fmt.Fprintf(buf, "\t%s = uint16(buf.ReadInt16()) // uint16Serializer.Read\n", fieldAccess)
+			case types.Uint32:
+				fmt.Fprintf(buf, "\t%s = uint32(buf.ReadInt32()) // uint32Serializer.Read\n", fieldAccess)
+			case types.Uint, types.Uint64:
+				fmt.Fprintf(buf, "\t%s = uint64(buf.ReadInt64()) // uint64Serializer.Read\n", fieldAccess)
+			case types.Float32:
+				fmt.Fprintf(buf, "\t%s = buf.ReadFloat32() // float32Serializer.Read\n", fieldAccess)
+			case types.Float64:
+				fmt.Fprintf(buf, "\t%s = buf.ReadFloat64() // float64Serializer.Read\n", fieldAccess)
+			default:
+				fmt.Fprintf(buf, "\t// TODO: unsupported basic type %s\n", basic.String())
+			}
 		}
 		return nil
 	}
 
-	// Handle slice types
-	if slice, ok := field.Type.(*types.Slice); ok {
-		return generateSliceRead(buf, fieldAccess, slice)
+	// Handle slice types (referencable) - use ReadReferencable to match reflection behavior
+	if _, ok := field.Type.(*types.Slice); ok {
+		// Reflection uses f.ReadReferencable for slices without fieldInfo_.serializer
+		fmt.Fprintf(buf, "\t// Read slice field: use ReadReferencable to match reflection behavior\n")
+		fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(v).Elem().FieldByName(\"%s\"))\n", field.GoName)
+		return nil
 	}
 
-	// Handle map types
-	if mapType, ok := field.Type.(*types.Map); ok {
-		return generateMapRead(buf, fieldAccess, mapType)
+	// Handle map types (referencable - use ReadReferencable to match reflection behavior)
+	if _, ok := field.Type.(*types.Map); ok {
+		// Use reflect to get an addressable field value
+		fmt.Fprintf(buf, "\t// Read map field: use ReadReferencable to match reflection behavior\n")
+		fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(v).Elem().FieldByName(\"%s\"))\n", field.GoName)
+		return nil
 	}
 
-	// Handle struct types
+	// Handle struct types (referencable)
 	if _, ok := field.Type.Underlying().(*types.Struct); ok {
-		fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", fieldAccess)
+		// Use reflect to get an addressable field value
+		fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(v).Elem().FieldByName(\"%s\"))\n", field.GoName)
 		return nil
 	}
 
@@ -192,7 +216,10 @@ func generateSliceRead(buf *bytes.Buffer, fieldAccess string, slice *types.Slice
 func generateElementRead(buf *bytes.Buffer, elemAccess string, elemType types.Type) error {
 	// Handle pointer types
 	if _, ok := elemType.(*types.Pointer); ok {
-		fmt.Fprintf(buf, "\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", elemAccess)
+		fmt.Fprintf(buf, "\t\t\t// Create addressable value for pointer type\n")
+		fmt.Fprintf(buf, "\t\t\tptrValue := reflect.New(%s.Type().Elem())\n", elemAccess)
+		fmt.Fprintf(buf, "\t\t\tf.ReadReferencable(buf, ptrValue.Elem())\n")
+		fmt.Fprintf(buf, "\t\t\t%s = ptrValue.Interface().()\n", elemAccess)
 		return nil
 	}
 
@@ -225,7 +252,9 @@ func generateElementRead(buf *bytes.Buffer, elemAccess string, elemType types.Ty
 
 	// Handle struct types
 	if _, ok := elemType.Underlying().(*types.Struct); ok {
-		fmt.Fprintf(buf, "\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", elemAccess)
+		fmt.Fprintf(buf, "\t\t\t// Create addressable value for struct type\n")
+		fmt.Fprintf(buf, "\t\t\tstructValue := reflect.ValueOf(&%s).Elem()\n", elemAccess)
+		fmt.Fprintf(buf, "\t\t\tf.ReadReferencable(buf, structValue)\n")
 		return nil
 	}
 
@@ -239,7 +268,7 @@ func generateElementRead(buf *bytes.Buffer, elemAccess string, elemType types.Ty
 		case types.Int16:
 			fmt.Fprintf(buf, "\t\t\t%s = buf.ReadInt16()\n", elemAccess)
 		case types.Int32:
-			fmt.Fprintf(buf, "\t\t\t%s = buf.ReadInt32()\n", elemAccess)
+			fmt.Fprintf(buf, "\t\t\t%s = buf.ReadVarint32()\n", elemAccess)
 		case types.Int:
 			fmt.Fprintf(buf, "\t\t\t%s = int(buf.ReadInt64())\n", elemAccess)
 		case types.Int64:
@@ -308,5 +337,74 @@ func generateMapRead(buf *bytes.Buffer, fieldAccess string, mapType *types.Map) 
 	fmt.Fprintf(buf, "\t\t\t%s[key] = value\n", fieldAccess)
 	fmt.Fprintf(buf, "\t\t}\n")
 	fmt.Fprintf(buf, "\t}\n")
+	return nil
+}
+
+// generateSliceFieldRead generates code to deserialize a slice field in LIST format (for struct fields)
+func generateSliceFieldRead(buf *bytes.Buffer, fieldAccess string, slice *types.Slice, refFlagDeclared *bool) error {
+	elemType := slice.Elem()
+
+	fmt.Fprintf(buf, "\t// Read slice field in LIST format per xlang spec\n")
+
+	// Handle refFlag declaration (only declare once per function)
+	if *refFlagDeclared {
+		fmt.Fprintf(buf, "\trefFlag = buf.ReadInt8()\n")
+	} else {
+		fmt.Fprintf(buf, "\trefFlag := buf.ReadInt8()\n")
+		*refFlagDeclared = true
+	}
+
+	fmt.Fprintf(buf, "\tif refFlag == -3 { // NullFlag\n")
+	fmt.Fprintf(buf, "\t\t%s = nil\n", fieldAccess)
+	fmt.Fprintf(buf, "\t} else {\n")
+	fmt.Fprintf(buf, "\t\t// LIST format: length | elements_header | elements_data\n")
+	fmt.Fprintf(buf, "\t\tlength := int(buf.ReadVarUint32()) // list length as varint per spec\n")
+
+	// Allocate slice
+	fmt.Fprintf(buf, "\t\t// Allocate slice\n")
+	fmt.Fprintf(buf, "\t\t%s = make(%s, length)\n", fieldAccess, slice.String())
+
+	// Only read header and elements if slice is not empty
+	fmt.Fprintf(buf, "\t\t// Only read header and elements if slice is not empty\n")
+	fmt.Fprintf(buf, "\t\tif length > 0 {\n")
+	fmt.Fprintf(buf, "\t\t\t_ = buf.ReadInt8() // Read and discard elements header (0x0D)\n")
+
+	// Read elements based on element type
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\t\tfor i := 0; i < length; i++ {\n")
+			fmt.Fprintf(buf, "\t\t\t\tbuf.ReadInt8() // Read and discard NotNullValueFlag\n")
+			fmt.Fprintf(buf, "\t\t\t\tbuf.ReadInt8() // Read and discard INT32 TypeId\n")
+			fmt.Fprintf(buf, "\t\t\t\t%s[i] = buf.ReadVarint32() // varint32 for int32 elements\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\t\tfor i := 0; i < length; i++ {\n")
+			fmt.Fprintf(buf, "\t\t\t\tbuf.ReadInt8() // Read and discard NotNullValueFlag\n")
+			fmt.Fprintf(buf, "\t\t\t\tbuf.ReadInt8() // Read and discard BOOL TypeId\n")
+			fmt.Fprintf(buf, "\t\t\t\t%s[i] = buf.ReadBool() // bool elements\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		case types.String:
+			fmt.Fprintf(buf, "\t\t\tfor i := 0; i < length; i++ {\n")
+			fmt.Fprintf(buf, "\t\t\t\tbuf.ReadInt8() // Read and discard NotNullValueFlag\n")
+			fmt.Fprintf(buf, "\t\t\t\tbuf.ReadInt8() // Read and discard STRING TypeId\n")
+			fmt.Fprintf(buf, "\t\t\t\t%s[i] = fory.ReadString(buf) // string elements\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		default:
+			// For other primitive types, use generic approach
+			fmt.Fprintf(buf, "\t\t\tfor i := 0; i < length; i++ {\n")
+			fmt.Fprintf(buf, "\t\t\t\t// TODO: Read other primitive type element\n")
+			fmt.Fprintf(buf, "\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s[i]))\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		}
+	} else {
+		// For non-primitive types, use generic approach
+		fmt.Fprintf(buf, "\t\t\tfor i := 0; i < length; i++ {\n")
+		fmt.Fprintf(buf, "\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s[i]))\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\t\t}\n")
+	}
+
+	fmt.Fprintf(buf, "\t\t}\n") // End of if length > 0
+	fmt.Fprintf(buf, "\t}\n")   // End of else (not nil)
 	return nil
 }

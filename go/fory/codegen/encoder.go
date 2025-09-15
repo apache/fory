@@ -30,8 +30,8 @@ func generateWriteTyped(buf *bytes.Buffer, s *StructInfo) error {
 	fmt.Fprintf(buf, "// WriteTyped provides strongly-typed serialization with no reflection overhead\n")
 	fmt.Fprintf(buf, "func (g %s_ForyGenSerializer) WriteTyped(f *fory.Fory, buf *fory.ByteBuffer, v *%s) error {\n", s.Name, s.Name)
 
-	// Write struct hash
-	fmt.Fprintf(buf, "\t// Write precomputed struct hash for compatibility checking\n")
+	// Write struct hash - even in schema evolution mode, structSerializer.Write writes hash
+	fmt.Fprintf(buf, "\t// Write struct hash for schema compatibility\n")
 	fmt.Fprintf(buf, "\tbuf.WriteInt32(%d) // hash of %s structure\n\n", hash, s.Name)
 
 	// Write fields in sorted order
@@ -77,6 +77,8 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		typeStr := named.String()
 		switch typeStr {
 		case "time.Time":
+			fmt.Fprintf(buf, "\t// Write non-referencable time.Time field\n")
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteInt64(fory.GetUnixMicro(%s))\n", fieldAccess)
 			return nil
 		case "github.com/apache/fory/go/fory.Date":
@@ -98,49 +100,65 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		return nil
 	}
 
-	// Handle basic types
+	// Handle basic types using reflection's actual writeBySerializer logic
 	if basic, ok := field.Type.Underlying().(*types.Basic); ok {
 		switch basic.Kind() {
-		case types.Bool:
-			fmt.Fprintf(buf, "\tbuf.WriteBool(%s)\n", fieldAccess)
-		case types.Int8:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(%s)\n", fieldAccess)
-		case types.Int16:
-			fmt.Fprintf(buf, "\tbuf.WriteInt16(%s)\n", fieldAccess)
-		case types.Int32:
-			fmt.Fprintf(buf, "\tbuf.WriteInt32(%s)\n", fieldAccess)
-		case types.Int:
-			fmt.Fprintf(buf, "\tbuf.WriteInt64(int64(%s))\n", fieldAccess)
-		case types.Int64:
-			fmt.Fprintf(buf, "\tbuf.WriteInt64(%s)\n", fieldAccess)
-		case types.Uint8:
-			fmt.Fprintf(buf, "\tbuf.WriteByte_(%s)\n", fieldAccess)
-		case types.Uint16:
-			fmt.Fprintf(buf, "\tbuf.WriteInt16(int16(%s))\n", fieldAccess)
-		case types.Uint32:
-			fmt.Fprintf(buf, "\tbuf.WriteInt32(int32(%s))\n", fieldAccess)
-		case types.Uint, types.Uint64:
-			fmt.Fprintf(buf, "\tbuf.WriteInt64(int64(%s))\n", fieldAccess)
-		case types.Float32:
-			fmt.Fprintf(buf, "\tbuf.WriteFloat32(%s)\n", fieldAccess)
-		case types.Float64:
-			fmt.Fprintf(buf, "\tbuf.WriteFloat64(%s)\n", fieldAccess)
 		case types.String:
-			fmt.Fprintf(buf, "\tfory.WriteString(buf, %s)\n", fieldAccess)
+			// String is referencable -> writeReferencableBySerializer -> RefValueFlag + stringSerializer.Write
+			fmt.Fprintf(buf, "\t// Write string field: referencable=true -> writeReferencableBySerializer\n")
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(0) // RefValueFlag from writeReferencableBySerializer\n")
+			fmt.Fprintf(buf, "\tfory.WriteString(buf, %s) // stringSerializer.Write\n", fieldAccess)
 		default:
-			fmt.Fprintf(buf, "\t// TODO: unsupported basic type %s\n", basic.String())
+			// All other basic types are non-referencable -> writeNonReferencableBySerializer -> NotNullValueFlag + serializer.Write
+			fmt.Fprintf(buf, "\t// Write %s field: referencable=false -> writeNonReferencableBySerializer\n", basic.String())
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag from writeNonReferencableBySerializer\n")
+
+			switch basic.Kind() {
+			case types.Bool:
+				fmt.Fprintf(buf, "\tbuf.WriteBool(%s) // boolSerializer.Write\n", fieldAccess)
+			case types.Int8:
+				fmt.Fprintf(buf, "\tbuf.WriteByte_(byte(%s)) // int8Serializer.Write\n", fieldAccess)
+			case types.Int16:
+				fmt.Fprintf(buf, "\tbuf.WriteInt16(int16(%s)) // int16Serializer.Write\n", fieldAccess)
+			case types.Int32:
+				fmt.Fprintf(buf, "\tbuf.WriteVarint32(%s) // int32Serializer.Write\n", fieldAccess)
+			case types.Int:
+				fmt.Fprintf(buf, "\tbuf.WriteInt64(int64(%s)) // intSerializer.Write\n", fieldAccess)
+			case types.Int64:
+				fmt.Fprintf(buf, "\tbuf.WriteVarint64(%s) // int64Serializer.Write\n", fieldAccess)
+			case types.Uint8:
+				fmt.Fprintf(buf, "\tbuf.WriteByte_(byte(%s)) // byteSerializer.Write\n", fieldAccess)
+			case types.Uint16:
+				fmt.Fprintf(buf, "\tbuf.WriteInt16(int16(%s)) // uint16Serializer.Write\n", fieldAccess)
+			case types.Uint32:
+				fmt.Fprintf(buf, "\tbuf.WriteInt32(int32(%s)) // uint32Serializer.Write\n", fieldAccess)
+			case types.Uint, types.Uint64:
+				fmt.Fprintf(buf, "\tbuf.WriteInt64(int64(%s)) // uint64Serializer.Write\n", fieldAccess)
+			case types.Float32:
+				fmt.Fprintf(buf, "\tbuf.WriteFloat32(%s) // float32Serializer.Write\n", fieldAccess)
+			case types.Float64:
+				fmt.Fprintf(buf, "\tbuf.WriteFloat64(%s) // float64Serializer.Write\n", fieldAccess)
+			default:
+				fmt.Fprintf(buf, "\t// TODO: unsupported basic type %s\n", basic.String())
+			}
 		}
 		return nil
 	}
 
-	// Handle slice types
-	if slice, ok := field.Type.(*types.Slice); ok {
-		return generateSliceWrite(buf, fieldAccess, slice)
+	// Handle slice types (referencable) - use WriteReferencable to match reflection behavior
+	if _, ok := field.Type.(*types.Slice); ok {
+		// For struct fields, use WriteReferencable to ensure compatibility with ReadReferencable
+		fmt.Fprintf(buf, "\t// Write slice field: use WriteReferencable to match reflection behavior\n")
+		fmt.Fprintf(buf, "\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
+		return nil
 	}
 
-	// Handle map types
-	if mapType, ok := field.Type.(*types.Map); ok {
-		return generateMapWrite(buf, fieldAccess, mapType)
+	// Handle map types (referencable - use WriteReferencable to match reflection behavior)
+	if _, ok := field.Type.(*types.Map); ok {
+		// For struct fields, use WriteReferencable to ensure compatibility with ReadReferencable
+		fmt.Fprintf(buf, "\t// Write map field: use WriteReferencable to match reflection behavior\n")
+		fmt.Fprintf(buf, "\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
+		return nil
 	}
 
 	// Handle struct types
@@ -153,7 +171,243 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	return nil
 }
 
-// generateSliceWrite generates code to serialize a slice field
+// generateSliceFieldWriteWithListProtocol generates code to serialize a slice field using LIST protocol
+// This matches reflection's behavior for struct fields
+func generateSliceFieldWriteWithListProtocol(buf *bytes.Buffer, fieldAccess string, sliceType *types.Slice) error {
+	elemType := sliceType.Elem()
+
+	fmt.Fprintf(buf, "\t// Write slice field using LIST protocol (matching reflection for struct fields)\n")
+	fmt.Fprintf(buf, "\tif %s == nil {\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\tbuf.WriteInt8(-3) // NullFlag\n")
+	fmt.Fprintf(buf, "\t} else {\n")
+	fmt.Fprintf(buf, "\t\tbuf.WriteInt8(0) // RefValueFlag for referencable slice\n")
+	fmt.Fprintf(buf, "\t\tbuf.WriteInt8(21) // LIST TypeId\n")
+
+	// Write length and elements header
+	fmt.Fprintf(buf, "\t\t// LIST format: length | elements_header | elements_data\n")
+	fmt.Fprintf(buf, "\t\tbuf.WriteVarUint32(uint32(len(%s))) // list length\n", fieldAccess)
+
+	fmt.Fprintf(buf, "\t\tif len(%s) > 0 {\n", fieldAccess)
+
+	// Determine elements header based on element type
+	if basic, ok := elemType.(*types.Basic); ok && basic.Kind() != types.String {
+		// For non-string basic types: elements are not nullable, same type, known type
+		fmt.Fprintf(buf, "\t\t\t// Elements header: 0x04 = not nullable, same type, not declared type\n")
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(0x04) // CollectionNotDeclElementType\n")
+
+		// Write element type ID
+		switch basic.Kind() {
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(1) // BOOL TypeId\n")
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(4) // INT32 TypeId\n")
+		case types.Int64:
+			fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(6) // INT64 TypeId\n")
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(10) // FLOAT32 TypeId\n")
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(11) // FLOAT64 TypeId\n")
+		default:
+			fmt.Fprintf(buf, "\t\t\t// TODO: handle other basic types\n")
+		}
+
+		// Write elements without null flags
+		fmt.Fprintf(buf, "\t\t\t// Write elements (no null flags needed)\n")
+		fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+		switch basic.Kind() {
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteBool(elem)\n")
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarint32(elem)\n")
+		case types.Int64:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarint64(elem)\n")
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteFloat32(elem)\n")
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteFloat64(elem)\n")
+		default:
+			fmt.Fprintf(buf, "\t\t\t\t// TODO: write element\n")
+		}
+		fmt.Fprintf(buf, "\t\t\t}\n")
+	} else if basic, ok := elemType.(*types.Basic); ok && basic.Kind() == types.String {
+		// For string: elements are referencable
+		fmt.Fprintf(buf, "\t\t\t// Elements header: 0x05 = tracking refs, same type, not declared type\n")
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(0x05) // CollectionTrackingRef | CollectionNotDeclElementType\n")
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(12) // STRING TypeId\n")
+
+		// Write string elements with ref tracking
+		fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(0) // RefValueFlag for string\n")
+		fmt.Fprintf(buf, "\t\t\t\tfory.WriteString(buf, elem)\n")
+		fmt.Fprintf(buf, "\t\t\t}\n")
+	} else {
+		// For other types, use generic approach
+		fmt.Fprintf(buf, "\t\t\t// Generic LIST handling for complex types\n")
+		fmt.Fprintf(buf, "\t\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\t}\n") // Close if len > 0
+		fmt.Fprintf(buf, "\t}\n")   // Close else
+		return nil
+	}
+
+	fmt.Fprintf(buf, "\t\t}\n") // Close if len > 0
+	fmt.Fprintf(buf, "\t}\n")   // Close else
+	return nil
+}
+
+// generateArrayFieldWrite generates code to serialize a basic type slice using array protocol
+func generateArrayFieldWrite(buf *bytes.Buffer, fieldAccess string, elemType *types.Basic) error {
+	fmt.Fprintf(buf, "\t// Write basic type slice using array protocol\n")
+	fmt.Fprintf(buf, "\tif %s == nil {\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\tbuf.WriteInt8(-3) // NullFlag\n")
+	fmt.Fprintf(buf, "\t} else {\n")
+	fmt.Fprintf(buf, "\t\tbuf.WriteInt8(0) // RefValueFlag for referencable array\n")
+
+	// Write type ID for the array type
+	switch elemType.Kind() {
+	case types.Bool:
+		fmt.Fprintf(buf, "\t\tbuf.WriteInt8(31) // BOOL_ARRAY TypeId\n")
+		fmt.Fprintf(buf, "\t\t// Array protocol: length (element count) + elements\n")
+		fmt.Fprintf(buf, "\t\tbuf.WriteLength(len(%s)) // element count for bool array\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\tfor _, elem := range %s {\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteBool(elem)\n")
+		fmt.Fprintf(buf, "\t\t}\n")
+	case types.Int32:
+		fmt.Fprintf(buf, "\t\tbuf.WriteInt8(33) // INT32_ARRAY TypeId\n")
+		fmt.Fprintf(buf, "\t\t// Array protocol: length (byte size) + elements\n")
+		fmt.Fprintf(buf, "\t\tbuf.WriteLength(len(%s) * 4) // byte size for int32 array\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\tfor _, elem := range %s {\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteInt32(elem)\n")
+		fmt.Fprintf(buf, "\t\t}\n")
+	case types.Int64:
+		fmt.Fprintf(buf, "\t\tbuf.WriteInt8(34) // INT64_ARRAY TypeId\n")
+		fmt.Fprintf(buf, "\t\t// Array protocol: length (byte size) + elements\n")
+		fmt.Fprintf(buf, "\t\tbuf.WriteLength(len(%s) * 8) // byte size for int64 array\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\tfor _, elem := range %s {\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteInt64(elem)\n")
+		fmt.Fprintf(buf, "\t\t}\n")
+	case types.Int16:
+		fmt.Fprintf(buf, "\t\tbuf.WriteInt8(32) // INT16_ARRAY TypeId\n")
+		fmt.Fprintf(buf, "\t\t// Array protocol: length (byte size) + elements\n")
+		fmt.Fprintf(buf, "\t\tbuf.WriteLength(len(%s) * 2) // byte size for int16 array\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\tfor _, elem := range %s {\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteInt16(elem)\n")
+		fmt.Fprintf(buf, "\t\t}\n")
+	case types.Float32:
+		fmt.Fprintf(buf, "\t\tbuf.WriteInt8(35) // FLOAT32_ARRAY TypeId\n")
+		fmt.Fprintf(buf, "\t\t// Array protocol: length (byte size) + elements\n")
+		fmt.Fprintf(buf, "\t\tbuf.WriteLength(len(%s) * 4) // byte size for float32 array\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\tfor _, elem := range %s {\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteFloat32(elem)\n")
+		fmt.Fprintf(buf, "\t\t}\n")
+	case types.Float64:
+		fmt.Fprintf(buf, "\t\tbuf.WriteInt8(36) // FLOAT64_ARRAY TypeId\n")
+		fmt.Fprintf(buf, "\t\t// Array protocol: length (byte size) + elements\n")
+		fmt.Fprintf(buf, "\t\tbuf.WriteLength(len(%s) * 8) // byte size for float64 array\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\tfor _, elem := range %s {\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteFloat64(elem)\n")
+		fmt.Fprintf(buf, "\t\t}\n")
+	default:
+		// For other basic types (like string), fall back to LIST protocol
+		fmt.Fprintf(buf, "\t\t// String and other non-numeric types use LIST protocol\n")
+		fmt.Fprintf(buf, "\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
+		fmt.Fprintf(buf, "\t}\n") // Close the else block
+		return nil
+	}
+
+	fmt.Fprintf(buf, "\t}\n") // Close the else block
+	return nil
+}
+
+// generateSliceFieldWrite generates code to serialize a slice field in LIST format (for struct fields)
+func generateSliceFieldWrite(buf *bytes.Buffer, fieldAccess string, slice *types.Slice) error {
+	elemType := slice.Elem()
+
+	fmt.Fprintf(buf, "\t// Write slice field in LIST format per xlang spec\n")
+	fmt.Fprintf(buf, "\tif %s == nil {\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\tbuf.WriteInt8(-3) // NullFlag\n")
+	fmt.Fprintf(buf, "\t} else {\n")
+	fmt.Fprintf(buf, "\t\tbuf.WriteInt8(0) // REF_VALUE_FLAG for referencable slice\n")
+
+	// LIST format per spec: length | elements_header | elements_data
+	fmt.Fprintf(buf, "\t\t// LIST format: length | elements_header | elements_data\n")
+	fmt.Fprintf(buf, "\t\tbuf.WriteVarUint32(uint32(len(%s))) // list length as varint per spec\n", fieldAccess)
+
+	// Only write elements header and data if slice is not empty
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		fmt.Fprintf(buf, "\t\t// Only write header and elements if slice is not empty\n")
+		fmt.Fprintf(buf, "\t\tif len(%s) > 0 {\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(0x0D) // elements header: observed from reflection\n")
+
+		// Write elements directly for primitive types
+		switch basic.Kind() {
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(4) // INT32 TypeId\n")
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarint32(elem) // varint32 for int32 elements\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(1) // BOOL TypeId\n")
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteBool(elem) // bool elements\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		case types.String:
+			fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(12) // STRING TypeId\n")
+			fmt.Fprintf(buf, "\t\t\t\tfory.WriteString(buf, elem) // string elements\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		case types.Int8:
+			fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(elem) // int8 elements\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		case types.Int16:
+			fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt16(elem) // int16 elements\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		case types.Int64:
+			fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt64(elem) // int64 elements\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteFloat32(elem) // float32 elements\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteFloat64(elem) // float64 elements\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		case types.Uint8:
+			fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteByte_(elem) // uint8 elements\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		default:
+			// For other primitive types, use generic approach
+			fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+			if err := generateElementWrite(buf, "elem", elemType); err != nil {
+				return err
+			}
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		}
+		fmt.Fprintf(buf, "\t\t}\n") // End of if len() > 0
+	} else {
+		// For non-primitive types, may need different header flags
+		fmt.Fprintf(buf, "\t\tif len(%s) > 0 {\n", fieldAccess)
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(0) // elements header: assuming same type for now\n")
+		fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+		if err := generateElementWrite(buf, "elem", elemType); err != nil {
+			return err
+		}
+		fmt.Fprintf(buf, "\t\t\t}\n")
+		fmt.Fprintf(buf, "\t\t}\n") // End of if len() > 0
+	}
+
+	fmt.Fprintf(buf, "\t}\n") // End of else (not nil)
+	return nil
+}
+
+// generateSliceWrite generates code to serialize a slice field (legacy/direct slice serialization)
 func generateSliceWrite(buf *bytes.Buffer, fieldAccess string, slice *types.Slice) error {
 	elemType := slice.Elem()
 
@@ -219,7 +473,7 @@ func generateElementWrite(buf *bytes.Buffer, elemAccess string, elemType types.T
 		case types.Int16:
 			fmt.Fprintf(buf, "\t\tbuf.WriteInt16(%s)\n", elemAccess)
 		case types.Int32:
-			fmt.Fprintf(buf, "\t\tbuf.WriteInt32(%s)\n", elemAccess)
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarint32(%s)\n", elemAccess)
 		case types.Int:
 			fmt.Fprintf(buf, "\t\tbuf.WriteInt64(int64(%s))\n", elemAccess)
 		case types.Int64:
