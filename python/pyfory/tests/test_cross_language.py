@@ -456,8 +456,17 @@ def test_serialize_simple_struct_local():
 
 @cross_language_test
 def test_serialize_simple_struct(data_file_path):
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+    compatible = "compatible" in data_file_path
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True, compatible=compatible)
     fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
+    obj = ComplexObject2(f1=True, f2={-1: 2})
+    struct_round_back(data_file_path, fory, obj)
+
+
+@cross_language_test
+def test_register_by_id(data_file_path):
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+    fory.register_type(ComplexObject2, type_id=100)
     obj = ComplexObject2(f1=True, f2={-1: 2})
     struct_round_back(data_file_path, fory, obj)
 
@@ -505,7 +514,8 @@ class EnumFieldStruct:
 
 @cross_language_test
 def test_enum_field(data_file_path):
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=False)
+    compatible = "compatible" in data_file_path
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=False, compatible=compatible)
     fory.register_type(EnumTestClass, namespace="test", typename="EnumTestClass")
     fory.register_type(EnumFieldStruct, namespace="test", typename="EnumFieldStruct")
     obj = EnumFieldStruct(f1=EnumTestClass.FOO, f2=EnumTestClass.BAR, f3="abc")
@@ -520,7 +530,7 @@ def test_struct_hash(data_file_path):
     read_hash = pyfory.Buffer(data_bytes).read_int32()
     fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
     fory.register_type(ComplexObject1, typename="ComplexObject1")
-    serializer = fory.type_resolver.get_serializer(ComplexObject1)
+    serializer = fory.type_resolver.get_serializer(ComplexObject1)._replace()
     from pyfory._struct import _get_hash
 
     v = _get_hash(fory, serializer._field_names, serializer._type_hints)
@@ -529,7 +539,8 @@ def test_struct_hash(data_file_path):
 
 @cross_language_test
 def test_serialize_complex_struct(data_file_path):
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+    compatible = "compatible" in data_file_path
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True, compatible=compatible)
     fory.register_type(ComplexObject1, namespace="test", typename="ComplexObject1")
     fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
 
@@ -666,6 +677,266 @@ def test_oob_buffer(in_band_file_path, out_of_band_file_path):
         f.write(out_of_band_buffer.to_bytes(0, out_of_band_buffer.writer_index))
 
 
+@cross_language_test
+def test_cross_language_meta_share(data_file_path):
+    """Test cross-language meta sharing with ComplexObject2."""
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, compatible=True, ref_tracking=True)
+
+    @dataclass
+    class ComplexObject2:
+        f1: Any
+        f2: Dict[pyfory.Int8Type, pyfory.Int32Type]
+
+    fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
+
+    with open(data_file_path, "rb") as f:
+        data_bytes = f.read()
+
+    debug_print(f"Reading data of length {len(data_bytes)} from {data_file_path}")
+
+    # Deserialize Java-generated data with meta share
+    obj = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized object: {obj}")
+
+    # Verify the object structure
+    assert obj.f1 is True  # Boolean value
+    assert isinstance(obj.f2, dict)
+    assert obj.f2[-1] == 2  # Dict[Int8, Int32] with key=-1, value=2
+
+    # Serialize back with meta share
+    new_serialized = fory.serialize(obj)
+    debug_print(f"Re-serialized data length: {len(new_serialized)}")
+
+    # Verify round-trip
+    round_trip_obj = fory.deserialize(new_serialized)
+    assert round_trip_obj == obj
+
+    # Write back for Java to verify
+    with open(data_file_path, "wb") as f:
+        f.write(new_serialized)
+
+
+@cross_language_test
+def test_cross_language_meta_share_complex(data_file_path):
+    """Test cross-language meta sharing with complex nested objects."""
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, compatible=True, ref_tracking=True)
+
+    @dataclass
+    class ComplexObject2:
+        f1: Any
+        f2: Dict[pyfory.Int8Type, pyfory.Int32Type]
+
+    @dataclass
+    class ComplexObject1:
+        f1: Any
+        f2: str
+        f3: List[str]
+        f4: Dict[pyfory.Int8Type, pyfory.Int32Type]
+        f5: pyfory.Int8Type
+        f6: pyfory.Int16Type
+        f7: pyfory.Int32Type
+        f8: pyfory.Int64Type
+        f9: pyfory.Float32Type
+        f10: pyfory.Float64Type
+        f11: pyfory.Int16ArrayType
+        f12: List[pyfory.Int16Type]
+
+    fory.register_type(ComplexObject1, namespace="test", typename="ComplexObject1")
+    fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
+
+    with open(data_file_path, "rb") as f:
+        data_bytes = f.read()
+
+    debug_print(f"Reading complex data of length {len(data_bytes)} from {data_file_path}")
+
+    # Deserialize Java-generated complex object with meta share
+    obj = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized complex object: {obj}")
+
+    # Verify the nested object structure
+    assert hasattr(obj, "f1") and hasattr(obj.f1, "f1") and hasattr(obj.f1, "f2")
+    assert obj.f1.f1 is True
+    assert isinstance(obj.f1.f2, dict)
+    assert obj.f2 == "meta_share_test"
+    assert obj.f3 == ["compatible", "mode"]
+
+    # Serialize back with meta share
+    new_serialized = fory.serialize(obj)
+    debug_print(f"Re-serialized complex data length: {len(new_serialized)}")
+
+    # Verify round-trip
+    round_trip_obj = fory.deserialize(new_serialized)
+    assert round_trip_obj == obj
+
+    # Write back for Java to verify
+    with open(data_file_path, "wb") as f:
+        f.write(new_serialized)
+
+
+@cross_language_test
+def test_schema_evolution(data_file_path):
+    """Test schema evolution compatibility."""
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, compatible=True, ref_tracking=True)
+
+    # Same V1 class reading V1 data - should work perfectly
+    @dataclass
+    class CompatTestV1:
+        name: str
+        age: pyfory.Int32Type  # Use specific fory type to match Java Integer
+
+    fory.register_type(CompatTestV1, namespace="test", typename="CompatTest")
+
+    with open(data_file_path, "rb") as f:
+        data_bytes = f.read()
+
+    debug_print(f"Reading schema evolution data of length {len(data_bytes)} from {data_file_path}")
+
+    # Deserialize V1 data into V1 object
+    obj = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized V1 object: {obj}")
+
+    # Verify the object structure
+    assert obj.name == "Schema Evolution Test"
+    assert obj.age == 42
+
+    # Test round trip
+    round_trip_obj = fory.deserialize(fory.serialize(obj))
+    assert round_trip_obj == obj
+
+    # Serialize back
+    new_serialized = fory.serialize(obj)
+    debug_print(f"Re-serialized data length: {len(new_serialized)}")
+
+    # Write back for Java to verify
+    with open(data_file_path, "wb") as f:
+        f.write(new_serialized)
+
+
+@cross_language_test
+def test_backward_compatibility(data_file_path):
+    """Test backward compatibility - old version reading new data."""
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, compatible=True, ref_tracking=True)
+
+    # Version 1 class (original) reading Version 2 data (should ignore unknown fields)
+    @dataclass
+    class CompatTestV1:
+        name: str
+        age: pyfory.Int32Type
+
+    fory.register_type(CompatTestV1, namespace="test", typename="CompatTest")
+
+    with open(data_file_path, "rb") as f:
+        data_bytes = f.read()
+
+    debug_print(f"Reading V2 data of length {len(data_bytes)} from {data_file_path}")
+
+    # Deserialize V2 data into V1 object (ignoring email field)
+    obj = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized V1 object from V2 data: {obj}")
+
+    # Verify the object structure - only V1 fields should be present
+    assert obj.name == "Bob"
+    assert obj.age == 30
+    # email field should be ignored/not present
+
+    # Serialize back with V1 schema
+    new_serialized = fory.serialize(obj)
+    debug_print(f"Re-serialized V1 data length: {len(new_serialized)}")
+
+    # Write back for Java to verify
+    with open(data_file_path, "wb") as f:
+        f.write(new_serialized)
+
+
+@cross_language_test
+def test_field_reordering_compatibility(data_file_path):
+    """Test field reordering compatibility in metashare mode."""
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True, compatible=True)
+
+    # Version 3 class with reordered fields matching Java CompatTestV3
+    @dataclass
+    class CompatTestV3:
+        age: pyfory.Int32Type  # Reordered (was second in V1)
+        name: str  # Reordered (was first in V1)
+        email: str
+        active: bool  # New field
+
+    fory.register_type(CompatTestV3, namespace="test", typename="CompatTest")
+
+    with open(data_file_path, "rb") as f:
+        data_bytes = f.read()
+
+    debug_print(f"Reading V3 reordered data of length {len(data_bytes)} from {data_file_path}")
+
+    # Deserialize V3 data into V3 object
+    obj = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized V3 object from V3 reordered data: {obj}")
+
+    # Verify the object structure
+    assert obj.age == 35
+    assert obj.name == "Charlie"
+    assert obj.email == "charlie@example.com"
+    assert obj.active
+
+    # Serialize back with V3 schema
+    new_serialized = fory.serialize(obj)
+    debug_print(f"Re-serialized V3 data length: {len(new_serialized)}")
+
+    # Write back for Java to verify
+    with open(data_file_path, "wb") as f:
+        f.write(new_serialized)
+
+
+@cross_language_test
+def test_cross_version_compatibility(data_file_path):
+    """Test mixed version compatibility."""
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, compatible=True, ref_tracking=True)
+
+    @dataclass
+    class CompatTestV1:
+        name: str
+        age: pyfory.Int32Type
+
+    @dataclass
+    class CompatTestV2:
+        name: str
+        age: pyfory.Int32Type
+        email: str = "default@example.com"
+
+    @dataclass
+    class CompatContainer:
+        oldObject: CompatTestV1
+        newObject: CompatTestV2
+
+    fory.register_type(CompatContainer, namespace="test", typename="CompatContainer")
+    fory.register_type(CompatTestV1, namespace="test", typename="CompatTestV1")
+    fory.register_type(CompatTestV2, namespace="test", typename="CompatTestV2")
+
+    with open(data_file_path, "rb") as f:
+        data_bytes = f.read()
+
+    debug_print(f"Reading mixed version data of length {len(data_bytes)} from {data_file_path}")
+
+    # Deserialize mixed version container
+    obj = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized mixed version container: {obj}")
+
+    # Verify the nested objects
+    assert obj.oldObject.name == "Old Format"
+    assert obj.oldObject.age == 20
+    assert obj.newObject.name == "New Format"
+    assert obj.newObject.age == 25
+    assert obj.newObject.email == "new@example.com"
+
+    # Serialize back
+    new_serialized = fory.serialize(obj)
+    debug_print(f"Re-serialized mixed version data length: {len(new_serialized)}")
+
+    # Write back for Java to verify
+    with open(data_file_path, "wb") as f:
+        f.write(new_serialized)
+
+
 if __name__ == "__main__":
     """This file will be executed by CrossLanguageTest.java in fory-core/fory-format module and
     fory_xlang_test.go in go/fory module
@@ -679,7 +950,7 @@ if __name__ == "__main__":
     try:
         args = sys.argv[1:]
         assert len(args) > 0
-        func = getattr(sys.modules[__name__], args[0])
+        func = getattr(sys.modules[__name__], args[0].replace("_compatible", ""))
         if not func:
             raise Exception("Unknown args {}".format(args))
         func(*args[1:])

@@ -1,11 +1,11 @@
 ## Testing Approach
 
-The test suite is inspired by Fory Java's testing approach and includes:
+The test suite is inspired by Apache Fory™ Java's testing approach and includes:
 
 - **Datatype Tests**: Validates custom data types implemented for Dart
 - **Code Generation Tests**: Ensures correctness of the generated static code
 - **Buffer Tests**: Validates correct memory handling for primitive types
-- **Cross-Language Tests**: Tests functionality against other Fory implementations
+- **Cross-Language Tests**: Tests functionality against other Apache Fory™ implementations
 - **Performance Tests**: Simple benchmarks for serialization/deserialization performance
 
 ### Running Tests

@@ -69,9 +69,13 @@ impl<'a> MetaWriterResolver<'a> {
     pub fn to_bytes(&self, writer: &mut Writer) -> Result<(), Error> {
         writer.var_int32(self.type_defs.len() as i32);
         for item in &self.type_defs {
-            writer.bytes(item)
+            writer.bytes(item);
         }
         Ok(())
+    }
+
+    pub fn empty(&mut self) -> bool {
+        self.type_defs.is_empty()
     }
 
     pub fn reset(&mut self) {

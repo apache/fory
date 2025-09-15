@@ -117,9 +117,7 @@ def foo_schema():
             ("f4", pa.map_(pa.string(), pa.int32())),
             ("f5", pa.list_(pa.int32())),
             ("f6", pa.int32()),
-            pa.field(
-                "f7", bar_struct, metadata={"cls": fory.get_qualified_classname(Bar)}
-            ),
+            pa.field("f7", bar_struct, metadata={"cls": fory.get_qualified_classname(Bar)}),
         ],
         metadata={"cls": fory.get_qualified_classname(Foo)},
     )

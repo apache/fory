@@ -1,12 +1,12 @@
 # Apache Fory™ Kotlin
 
-This provides additional Fory support for Kotlin Serialization on JVM:
+This provides additional Apache Fory™ support for Kotlin Serialization on JVM:
 
-Most standard kotlin types are already supported out of the box with the default Fory java implementation.
+Most standard kotlin types are already supported out of the box with the default Apache Fory™ java implementation.
 
-Fory Kotlin provides additional tests and implementation support for Kotlin types.
+Apache Fory™ Kotlin provides additional tests and implementation support for Kotlin types.
 
-Fory Kotlin is tested and works with the following types:
+Apache Fory™ Kotlin is tested and works with the following types:
 
 - primitives: `Byte`, `Boolean`, `Int`, `Short`, `Long`, `Char`, `Float`, `Double`, `UByte`, `UShort`, `UInt`, `ULong`.
 - `Byte`, `Boolean`, `Int`, `Short`, `Long`, `Char`, `Float`, `Double` works out of the box with the default fory java implementation.
@@ -62,11 +62,11 @@ fun main(args: Array<String>) {
 
 ## Default Value Support
 
-Fory Kotlin provides support for Kotlin data class default values during serialization and deserialization. This feature allows for backward and forward compatibility when data class schemas evolve.
+Apache Fory™ Kotlin provides support for Kotlin data class default values during serialization and deserialization. This feature allows for backward and forward compatibility when data class schemas evolve.
 
 ### How It Works
 
-When a Kotlin data class has parameters with default values, Fory can:
+When a Kotlin data class has parameters with default values, Apache Fory™ can:
 
 1. **Detect default values** using Kotlin reflection
 2. **Apply default values** during deserialization when fields are missing from serialized data
@@ -130,7 +130,7 @@ To enable default value support:
    KotlinSerializers.registerSerializers(fory)
    ```
 
-## Building Fory Kotlin
+## Building Apache Fory™ Kotlin
 
 ```bash
 mvn clean

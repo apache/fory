@@ -1,10 +1,10 @@
-# Fory CPython Benchmark
+# Apache Fory™ CPython Benchmark
 
-Microbenchmark for Fory serialization in cpython
+Microbenchmark for Apache Fory™ serialization in cpython
 
 ## Benchmark
 
-Step 1: Install Fory into Python
+Step 1: Install Apache Fory™ into Python
 
 Step 2: Install the dependencies required for the benchmark script
 

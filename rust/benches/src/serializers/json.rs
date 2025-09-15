@@ -117,4 +117,4 @@ impl Serializer<SystemData> for JsonSerializer {
     }
 }
 
-// Conversion functions from Serde to Fury models are defined in the model files
+// Conversion functions from Serde to Fory models are defined in the model files

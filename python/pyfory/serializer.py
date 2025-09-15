@@ -17,6 +17,7 @@
 
 import array
 import builtins
+import dataclasses
 import itertools
 import marshal
 import logging
@@ -24,6 +25,7 @@ import os
 import pickle
 import types
 import typing
+from typing import List
 import warnings
 from weakref import WeakValueDictionary
 
@@ -292,26 +294,27 @@ _ENABLE_FORY_PYTHON_JIT = os.environ.get("ENABLE_FORY_PYTHON_JIT", "True").lower
 
 # Moved from L32 to here, after all Serializer base classes and specific serializers
 # like ListSerializer, MapSerializer, PickleSerializer are defined or imported
-# and before DataClassSerializer which uses ComplexTypeVisitor from _struct.
-from pyfory._struct import _get_hash, _sort_fields, ComplexTypeVisitor
+# and before DataClassSerializer which uses StructFieldSerializerVisitor from _struct.
+from pyfory._struct import _get_hash, _sort_fields, StructFieldSerializerVisitor
 
 
 class DataClassSerializer(Serializer):
-    def __init__(self, fory, clz: type, xlang: bool = False):
+    def __init__(self, fory, clz: type, xlang: bool = False, field_names: List[str] = None, serializers: List[Serializer] = None):
         super().__init__(fory, clz)
         self._xlang = xlang
         # This will get superclass type hints too.
         self._type_hints = typing.get_type_hints(clz)
-        self._field_names = self._get_field_names(clz)
+        self._field_names = field_names or self._get_field_names(clz)
         self._has_slots = hasattr(clz, "__slots__")
 
         if self._xlang:
-            self._serializers = [None] * len(self._field_names)
-            visitor = ComplexTypeVisitor(fory)
-            for index, key in enumerate(self._field_names):
-                serializer = infer_field(key, self._type_hints[key], visitor, types_path=[])
-                self._serializers[index] = serializer
-            self._field_names, self._serializers = _sort_fields(fory.type_resolver, self._field_names, self._serializers)
+            self._serializers = serializers or [None] * len(self._field_names)
+            if serializers is None:
+                visitor = StructFieldSerializerVisitor(fory)
+                for index, key in enumerate(self._field_names):
+                    serializer = infer_field(key, self._type_hints[key], visitor, types_path=[])
+                    self._serializers[index] = serializer
+                self._field_names, self._serializers = _sort_fields(fory.type_resolver, self._field_names, self._serializers)
             self._hash = 0  # Will be computed on first xwrite/xread
             self._generated_xwrite_method = self._gen_xwrite_method()
             self._generated_xread_method = self._gen_xread_method()
@@ -443,13 +446,14 @@ class DataClassSerializer(Serializer):
         context["_field_names"] = self._field_names
         context["_type_hints"] = self._type_hints
         context["_serializers"] = self._serializers
-        # Compute hash at generation time since we're in xlang mode
-        if self._hash == 0:
-            self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
         stmts = [
             f'"""xwrite method for {self.type_}"""',
-            f"{buffer}.write_int32({self._hash})",
         ]
+        if not self.fory.compatible:
+            # Compute hash at generation time since we're in xlang mode
+            if self._hash == 0:
+                self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
+            stmts.append(f"{buffer}.write_int32({self._hash})")
         if not self._has_slots:
             stmts.append(f"{value_dict} = {value}.__dict__")
         for index, field_name in enumerate(self._field_names):
@@ -487,18 +491,29 @@ class DataClassSerializer(Serializer):
         context["_field_names"] = self._field_names
         context["_type_hints"] = self._type_hints
         context["_serializers"] = self._serializers
-        # Compute hash at generation time since we're in xlang mode
-        if self._hash == 0:
-            self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
+        current_class_field_names = set(self._get_field_names(self.type_))
         stmts = [
             f'"""xread method for {self.type_}"""',
-            f"read_hash = {buffer}.read_int32()",
-            f"if read_hash != {self._hash}:",
-            f"""   raise TypeNotCompatibleError(
-            f"Hash {{read_hash}} is not consistent with {self._hash} for type {self.type_}")""",
-            f"{obj} = {obj_class}.__new__({obj_class})",
-            f"{ref_resolver}.reference({obj})",
         ]
+        if not self.fory.compatible:
+            # Compute hash at generation time since we're in xlang mode
+            if self._hash == 0:
+                self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
+            stmts.extend(
+                [
+                    f"read_hash = {buffer}.read_int32()",
+                    f"if read_hash != {self._hash}:",
+                    f"""   raise TypeNotCompatibleError(
+                f"Hash {{read_hash}} is not consistent with {self._hash} for type {self.type_}")""",
+                ]
+            )
+        stmts.extend(
+            [
+                f"{obj} = {obj_class}.__new__({obj_class})",
+                f"{ref_resolver}.reference({obj})",
+            ]
+        )
+
         if not self._has_slots:
             stmts.append(f"{obj_dict} = {obj}.__dict__")
 
@@ -507,6 +522,9 @@ class DataClassSerializer(Serializer):
             context[serializer_var] = self._serializers[index]
             field_value = f"field_value{index}"
             stmts.append(f"{field_value} = {fory}.xdeserialize_ref({buffer}, serializer={serializer_var})")
+            if field_name not in current_class_field_names:
+                stmts.append(f"# {field_name} is not in {self.type_}")
+                continue
             if not self._has_slots:
                 stmts.append(f"{obj_dict}['{field_name}'] = {field_value}")
             else:
@@ -575,6 +593,29 @@ class DataClassSerializer(Serializer):
                 field_value,
             )
         return obj
+
+
+class DataClassStubSerializer(DataClassSerializer):
+    def __init__(self, fory, clz: type, xlang: bool = False):
+        Serializer.__init__(self, fory, clz)
+        self.xlang = xlang
+
+    def write(self, buffer, value):
+        self._replace().write(buffer, value)
+
+    def read(self, buffer):
+        return self._replace().read(buffer)
+
+    def xwrite(self, buffer, value):
+        self._replace().xwrite(buffer, value)
+
+    def xread(self, buffer):
+        return self._replace().xread(buffer)
+
+    def _replace(self):
+        typeinfo = self.fory.type_resolver.get_typeinfo(self.type_)
+        typeinfo.serializer = DataClassSerializer(self.fory, self.type_, self.xlang)
+        return typeinfo.serializer
 
 
 # Use numpy array or python array module.
@@ -1245,3 +1286,33 @@ class ComplexObjectSerializer(DataClassSerializer):
             stacklevel=2,
         )
         return DataClassSerializer(fory, clz, xlang=True)
+
+
+@dataclasses.dataclass
+class NonExistEnum:
+    value: int = -1
+    name: str = ""
+
+
+class NonExistEnumSerializer(Serializer):
+    def __init__(self, fory):
+        super().__init__(fory, NonExistEnum)
+        self.need_to_write_ref = False
+
+    @classmethod
+    def support_subclass(cls) -> bool:
+        return True
+
+    def write(self, buffer, value):
+        buffer.write_string(value.name)
+
+    def read(self, buffer):
+        name = buffer.read_string()
+        return NonExistEnum(name=name)
+
+    def xwrite(self, buffer, value):
+        buffer.write_varuint32(value.value)
+
+    def xread(self, buffer):
+        value = buffer.read_varuint32()
+        return NonExistEnum(value=value)

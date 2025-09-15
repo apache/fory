@@ -1725,16 +1725,11 @@ public class ClassResolver implements TypeResolver {
 
   private void writeClassDefs(
       MemoryBuffer buffer, ObjectArray<ClassDef> writingClassDefs, int size) {
-    int writerIndex = buffer.writerIndex();
     for (int i = 0; i < size; i++) {
-      byte[] encoded = writingClassDefs.get(i).getEncoded();
-      int bytesLen = encoded.length;
-      buffer.ensure(writerIndex + bytesLen);
-      final byte[] targetArray = buffer.getHeapMemory();
-      System.arraycopy(encoded, 0, targetArray, writerIndex, bytesLen);
-      writerIndex += bytesLen;
+      buffer.writeBytes(writingClassDefs.get(i).getEncoded());
+      MemoryBuffer memoryBuffer = MemoryBuffer.fromByteArray(writingClassDefs.get(i).getEncoded());
+      ClassDef.readClassDef(fory, memoryBuffer, memoryBuffer.readInt64());
     }
-    buffer.writerIndex(writerIndex);
   }
 
   /**

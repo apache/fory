@@ -20,7 +20,7 @@ use crate::error::Error;
 use crate::meta::NullableFieldType;
 use crate::resolver::context::ReadContext;
 use crate::serializer::Serializer;
-use crate::types::{RefFlag, TypeId, BASIC_TYPES, COLLECTION_TYPES};
+use crate::types::{RefFlag, TypeId, BASIC_TYPES, CONTAINER_TYPES};
 use anyhow::anyhow;
 use chrono::{NaiveDate, NaiveDateTime};
 
@@ -68,9 +68,17 @@ pub fn skip_field_value(
                     (String, STRING),
                     (NaiveDate, LOCAL_DATE),
                     (NaiveDateTime, TIMESTAMP),
+                    (Vec<u8> , BINARY),
+                    (Vec<bool> , BOOL_ARRAY),
+                    (Vec<i8> , INT8_ARRAY),
+                    (Vec<i16> , INT16_ARRAY),
+                    (Vec<i32> , INT32_ARRAY),
+                    (Vec<i64> , INT64_ARRAY),
+                    (Vec<f32>, FLOAT32_ARRAY),
+                    (Vec<f64> , FLOAT64_ARRAY),
                 );
-            } else if COLLECTION_TYPES.contains(&type_id) {
-                if type_id == TypeId::ARRAY || type_id == TypeId::SET {
+            } else if CONTAINER_TYPES.contains(&type_id) {
+                if type_id == TypeId::LIST || type_id == TypeId::SET {
                     let length = context.reader.var_int32() as usize;
                     for _ in 0..length {
                         skip_field_value(context, field_type.generics.first().unwrap())?;

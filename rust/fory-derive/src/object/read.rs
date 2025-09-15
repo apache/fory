@@ -105,6 +105,7 @@ fn deserialize_nullable(fields: &[&Field]) -> TokenStream {
                     remote_nullable_type: &fory_core::meta::NullableFieldType
                 ) -> Result<#ty, fory_core::error::Error> {
                     // println!("remote:{:#?}", remote_nullable_type);
+                    // println!("local:{:#?}", local_nullable_type);
                     #deserialize_tokens
                 }
             }
@@ -126,6 +127,7 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
         let deserialize_nullable_fn_name = create_deserialize_nullable_fn_name(field);
 
         let generic_tree = parse_generic_tree(ty);
+        // dbg!(&generic_tree);
         let generic_token = generic_tree_to_tokens(&generic_tree, true);
 
         let field_name_str = field.ident.as_ref().unwrap().to_string();

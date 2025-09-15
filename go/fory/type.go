@@ -203,6 +203,7 @@ var (
 	stringSliceType    = reflect.TypeOf((*[]string)(nil)).Elem()
 	byteSliceType      = reflect.TypeOf((*[]byte)(nil)).Elem()
 	boolSliceType      = reflect.TypeOf((*[]bool)(nil)).Elem()
+	int8SliceType      = reflect.TypeOf((*[]int8)(nil)).Elem()
 	int16SliceType     = reflect.TypeOf((*[]int16)(nil)).Elem()
 	int32SliceType     = reflect.TypeOf((*[]int32)(nil)).Elem()
 	int64SliceType     = reflect.TypeOf((*[]int64)(nil)).Elem()
@@ -421,12 +422,13 @@ func (r *typeResolver) initialize() {
 		{stringPtrType, ptrToStringSerializer{}},
 		{stringSliceType, stringSliceSerializer{}},
 		{byteSliceType, byteSliceSerializer{}},
-		{boolSliceType, boolSliceSerializer{}},
-		{int16SliceType, int16SliceSerializer{}},
-		{int32SliceType, int32SliceSerializer{}},
-		{int64SliceType, int64SliceSerializer{}},
-		{float32SliceType, float32SliceSerializer{}},
-		{float64SliceType, float64SliceSerializer{}},
+		// Map basic type slices to proper array types for xlang compatibility
+		{boolSliceType, boolArraySerializer{}},
+		{int16SliceType, int16ArraySerializer{}},
+		{int32SliceType, int32ArraySerializer{}},
+		{int64SliceType, int64ArraySerializer{}},
+		{float32SliceType, float32ArraySerializer{}},
+		{float64SliceType, float64ArraySerializer{}},
 		{interfaceSliceType, sliceSerializer{}},
 		{interfaceMapType, mapSerializer{}},
 		{boolType, boolSerializer{}},
@@ -885,6 +887,45 @@ func (r *typeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 		return &ptrToValueSerializer{valueSerializer}, nil
 	case reflect.Slice:
 		elem := type_.Elem()
+		// Handle special slice types for xlang compatibility
+		if r.language == XLANG {
+			// Basic type slices should use array types for efficiency
+			switch elem.Kind() {
+			case reflect.Bool:
+				if type_ == boolSliceType {
+					return boolArraySerializer{}, nil
+				}
+			case reflect.Int8:
+				if type_ == int8SliceType {
+					return int8ArraySerializer{}, nil
+				}
+			case reflect.Int16:
+				if type_ == int16SliceType {
+					return int16ArraySerializer{}, nil
+				}
+			case reflect.Int32:
+				if type_ == int32SliceType {
+					return int32ArraySerializer{}, nil
+				}
+			case reflect.Int64:
+				if type_ == int64SliceType {
+					return int64ArraySerializer{}, nil
+				}
+			case reflect.Float32:
+				if type_ == float32SliceType {
+					return float32ArraySerializer{}, nil
+				}
+			case reflect.Float64:
+				if type_ == float64SliceType {
+					return float64ArraySerializer{}, nil
+				}
+			case reflect.Int, reflect.Uint:
+				// Platform-dependent types should use LIST for cross-platform compatibility
+				// We treat them as dynamic types to force LIST serialization
+				return sliceSerializer{}, nil
+			}
+		}
+		// For dynamic types or non-xlang mode, use generic slice serializer
 		if isDynamicType(elem) {
 			return sliceSerializer{}, nil
 		} else {

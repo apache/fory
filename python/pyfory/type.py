@@ -129,7 +129,7 @@ class TypeId:
     Fory type for cross-language serialization.
     See `org.apache.fory.types.Type`
     """
-    UNKNOWN = -1
+
     # null value
     NA = 0
     # a boolean value (true or false).
@@ -215,6 +215,7 @@ class TypeId:
     ARROW_RECORD_BATCH = 38
     # an arrow [table](https://arrow.apache.org/docs/cpp/tables.html#tables) object.
     ARROW_TABLE = 39
+    UNKNOWN = 63
 
     # BOUND id remains at 64
     BOUND = 64
@@ -356,7 +357,7 @@ def is_map_type(type_):
         return issubclass(type_, typing.Dict)
     except TypeError:
         return False
-    
+
 
 _polymorphic_type_ids = {
     TypeId.STRUCT,
@@ -368,9 +369,20 @@ _polymorphic_type_ids = {
     TypeId.UNKNOWN,
 }
 
+_struct_type_ids = {
+    TypeId.STRUCT,
+    TypeId.COMPATIBLE_STRUCT,
+    TypeId.NAMED_STRUCT,
+    TypeId.NAMED_COMPATIBLE_STRUCT,
+}
+
 
 def is_polymorphic_type(type_id: int) -> bool:
     return type_id in _polymorphic_type_ids
+
+
+def is_struct_type(type_id: int) -> bool:
+    return type_id in _struct_type_ids
 
 
 def is_subclass(from_type, to_type):
@@ -398,33 +410,29 @@ class TypeVisitor(ABC):
         pass
 
 
+def infer_field_types(type_):
+    type_hints = typing.get_type_hints(type_)
+    from pyfory._struct import StructTypeVisitor
+
+    visitor = StructTypeVisitor(type_)
+    return {name: infer_field(name, type_, visitor) for name, type_ in sorted(type_hints.items())}
+
+
 def infer_field(field_name, type_, visitor: TypeVisitor, types_path=None):
     types_path = list(types_path or [])
     types_path.append(type_)
-    origin = (
-        typing.get_origin(type_)
-        if hasattr(typing, "get_origin")
-        else getattr(type_, "__origin__", type_)
-    )
+    origin = typing.get_origin(type_) if hasattr(typing, "get_origin") else getattr(type_, "__origin__", type_)
     origin = origin or type_
-    args = (
-        typing.get_args(type_)
-        if hasattr(typing, "get_args")
-        else getattr(type_, "__args__", ())
-    )
+    args = typing.get_args(type_) if hasattr(typing, "get_args") else getattr(type_, "__args__", ())
     if args:
         if origin is list or origin == typing.List:
             elem_type = args[0]
             return visitor.visit_list(field_name, elem_type, types_path=types_path)
         elif origin is dict or origin == typing.Dict:
             key_type, value_type = args
-            return visitor.visit_dict(
-                field_name, key_type, value_type, types_path=types_path
-            )
+            return visitor.visit_dict(field_name, key_type, value_type, types_path=types_path)
         else:
-            raise TypeError(
-                f"Collection types should be {list, dict} instead of {type_}"
-            )
+            raise TypeError(f"Collection types should be {list, dict} instead of {type_}")
     else:
         if is_function(origin) or not hasattr(origin, "__annotations__"):
             return visitor.visit_other(field_name, type_, types_path=types_path)

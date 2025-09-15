@@ -41,6 +41,10 @@ impl<'se> WriteContext<'se> {
         }
     }
 
+    pub fn empty(&mut self) -> bool {
+        self.meta_resolver.empty()
+    }
+
     pub fn push_meta(&mut self, type_id: std::any::TypeId) -> usize {
         self.meta_resolver.push(type_id, self.fory)
     }

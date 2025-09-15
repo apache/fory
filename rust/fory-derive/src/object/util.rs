@@ -15,17 +15,19 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use fory_core::types::{TypeId, BASIC_TYPE_NAMES, COLLECTION_TYPE_NAMES};
+use fory_core::types::{TypeId, BASIC_TYPE_NAMES, CONTAINER_TYPE_NAMES, PRIMITIVE_ARRAY_TYPE_MAP};
 use proc_macro2::TokenStream;
 use quote::quote;
 use std::fmt;
 use syn::{parse_str, GenericArgument, PathArguments, Type};
 
+#[derive(Debug)]
 pub(super) struct TypeNode {
     name: String,
     generics: Vec<TypeNode>,
 }
 
+#[derive(Debug)]
 pub(super) struct NullableTypeNode {
     name: String,
     generics: Vec<NullableTypeNode>,
@@ -67,9 +69,81 @@ macro_rules! basic_type_deserialize {
     };
 }
 
+pub fn try_primitive_vec_type(node: &TypeNode) -> Option<TokenStream> {
+    if node.name != "Vec" {
+        return None;
+    }
+    let child = node.generics.first()?;
+    for (ty_name, type_id, _) in PRIMITIVE_ARRAY_TYPE_MAP {
+        if child.name == *ty_name {
+            return Some(quote! { #type_id });
+        }
+    }
+    None
+}
+
+pub fn try_vec_of_option_primitive(node: &TypeNode) -> Option<TokenStream> {
+    if node.name != "Vec" {
+        return None;
+    }
+    let child = node.generics.first()?;
+    if child.name != "Option" {
+        return None;
+    }
+    let grandchild = child.generics.first()?;
+    for (ty_name, _, _) in PRIMITIVE_ARRAY_TYPE_MAP {
+        if grandchild.name == *ty_name {
+            return Some(quote! {
+                compile_error!("Vec<Option<primitive>> is not allowed!");
+            });
+        }
+    }
+
+    None
+}
+
+pub fn try_primitive_vec_type_name(node: &NullableTypeNode) -> Option<String> {
+    if node.name != "Vec" {
+        return None;
+    }
+    let child = node.generics.first()?;
+    for (generic_name, _, ty_name) in PRIMITIVE_ARRAY_TYPE_MAP {
+        if child.name == *generic_name {
+            return Some(ty_name.to_string());
+        }
+    }
+    None
+}
+
 impl NullableTypeNode {
     pub(super) fn to_deserialize_tokens(&self, generic_path: &Vec<i8>) -> TokenStream {
-        let tokens = if BASIC_TYPE_NAMES.contains(&self.name.as_str()) {
+        let tokens = if let Some(primitive_ty_name) = try_primitive_vec_type_name(self) {
+            let ty_type: Type = parse_str(&primitive_ty_name).expect("Invalid primitive type name");
+            let nullable = self.nullable;
+            if nullable {
+                quote! {
+                    let res1 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
+                        None
+                    } else {
+                        let _type_id = context.reader.var_uint32();
+                        Some(<#ty_type as fory_core::serializer::Serializer>::read(context)
+                            .map_err(fory_core::error::Error::from)?)
+                    };
+                    Ok::<Option<#ty_type>, fory_core::error::Error>(res1)
+                }
+            } else {
+                quote! {
+                    let res2 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
+                        Vec::default()
+                    } else {
+                        let _type_id = context.reader.var_uint32();
+                        <#ty_type as fory_core::serializer::Serializer>::read(context)
+                            .map_err(fory_core::error::Error::from)?
+                    };
+                    Ok::<#ty_type, fory_core::error::Error>(res2)
+                }
+            }
+        } else if BASIC_TYPE_NAMES.contains(&self.name.as_str()) {
             basic_type_deserialize!(self.name.as_str(), self.nullable;
                 ("bool", bool),
                 ("i8", i8),
@@ -82,28 +156,19 @@ impl NullableTypeNode {
                 ("NaiveDate", chrono::NaiveDate),
                 ("NaiveDateTime", chrono::NaiveDateTime),
             )
-        } else if COLLECTION_TYPE_NAMES.contains(&self.name.as_str()) {
+        } else if CONTAINER_TYPE_NAMES.contains(&self.name.as_str()) {
             let ty = parse_str::<Type>(&self.to_string()).unwrap();
             let mut new_path = generic_path.clone();
             match self.name.as_str() {
                 "Vec" => {
-                    let generic_node = self.generics.first().unwrap();
                     new_path.push(0);
-                    let element_tokens = generic_node.to_deserialize_tokens(&new_path);
-                    let element_ty: Type = parse_str(&generic_node.to_string()).unwrap();
                     if self.nullable {
                         quote! {
                             let v = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 None
                             } else {
                                 let _arr_type_id = context.reader.var_uint32();
-                                let length = context.reader.var_int32() as usize;
-                                let mut v = Vec::with_capacity(length);
-                                for _ in 0..length {
-                                    let element: #element_ty = {#element_tokens}?;
-                                    v.push(element);
-                                }
-                                Some(v)
+                                Some(fory_core::serializer::collection::read_collection(context)?)
                             };
                             Ok::<#ty, fory_core::error::Error>(v)
                         }
@@ -113,36 +178,21 @@ impl NullableTypeNode {
                                 Vec::default()
                             } else {
                                 let _arr_type_id = context.reader.var_uint32();
-                                let length = context.reader.var_int32() as usize;
-                                let mut v = Vec::with_capacity(length);
-                                for _ in 0..length {
-                                    let element: #element_ty = {#element_tokens}?;
-                                    v.push(element);
-                                }
-                                v
+                                fory_core::serializer::collection::read_collection(context)?
                             };
                             Ok::<#ty, fory_core::error::Error>(v)
                         }
                     }
                 }
                 "HashSet" => {
-                    let generic_node = self.generics.first().unwrap();
                     new_path.push(0);
-                    let element_tokens = generic_node.to_deserialize_tokens(&new_path);
-                    let element_ty: Type = parse_str(&generic_node.to_string()).unwrap();
                     if self.nullable {
                         quote! {
                             let s = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 None
                             } else {
                                 let _set_type_id = context.reader.var_uint32();
-                                let length = context.reader.var_int32() as usize;
-                                let mut s = HashSet::with_capacity(length);
-                                for _ in 0..length {
-                                    let element: #element_ty = {#element_tokens}?;
-                                    s.insert(element);
-                                }
-                                Some(s)
+                                Some(fory_core::serializer::collection::read_collection(context)?)
                             };
                             Ok::<#ty, fory_core::error::Error>(s)
                         }
@@ -152,13 +202,7 @@ impl NullableTypeNode {
                                 HashSet::default()
                             } else {
                                 let _set_type_id = context.reader.var_uint32();
-                                let length = context.reader.var_int32() as usize;
-                                let mut s = HashSet::with_capacity(length);
-                                for _ in 0..length {
-                                    let element: #element_ty = {#element_tokens}?;
-                                    s.insert(element);
-                                }
-                                s
+                                fory_core::serializer::collection::read_collection(context)?
                             };
                             Ok::<#ty, fory_core::error::Error>(s)
                         }
@@ -168,10 +212,8 @@ impl NullableTypeNode {
                     let key_generic_node = self.generics.first().unwrap();
                     let val_generic_node = self.generics.get(1).unwrap();
                     new_path.push(0);
-                    let key_tokens = key_generic_node.to_deserialize_tokens(&new_path);
                     new_path.pop();
                     new_path.push(1);
-                    let val_tokens = val_generic_node.to_deserialize_tokens(&new_path);
                     let key_ty: Type = parse_str(&key_generic_node.to_string()).unwrap();
                     let val_ty: Type = parse_str(&val_generic_node.to_string()).unwrap();
                     if self.nullable {
@@ -180,14 +222,7 @@ impl NullableTypeNode {
                                 None
                             } else {
                                 let _map_type_id = context.reader.var_uint32();
-                                let length = context.reader.var_int32() as usize;
-                                let mut m = HashMap::with_capacity(length);
-                                for _ in 0..length {
-                                    let key: #key_ty = {#key_tokens}?;
-                                    let value: #val_ty = {#val_tokens}?;
-                                    m.insert(key, value);
-                                }
-                                Some(m)
+                                Some(<HashMap<#key_ty, #val_ty> as fory_core::serializer::Serializer>::read(context)?)
                             };
                             Ok::<#ty, fory_core::error::Error>(m)
                         }
@@ -197,20 +232,13 @@ impl NullableTypeNode {
                                 HashMap::default()
                             } else {
                                 let _map_type_id = context.reader.var_uint32();
-                                let length = context.reader.var_int32() as usize;
-                                let mut m = HashMap::with_capacity(length);
-                                for _ in 0..length {
-                                    let key: #key_ty = {#key_tokens}?;
-                                    let value: #val_ty = {#val_tokens}?;
-                                    m.insert(key, value);
-                                }
-                                m
+                                <HashMap<#key_ty, #val_ty> as fory_core::serializer::Serializer>::read(context)?
                             };
                             Ok::<#ty, fory_core::error::Error>(m)
                         }
                     }
                 }
-                _ => quote! { compile_error!("Unsupported type for collection"); },
+                _ => quote! { compile_error!("Unsupported type for container"); },
             }
         } else {
             // struct
@@ -380,11 +408,19 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
             compile_error!("adjacent Options are not supported");
         };
     }
-    let children_tokens: Vec<TokenStream> = node
-        .generics
-        .iter()
-        .map(|child| generic_tree_to_tokens(child, have_context))
-        .collect();
+    if let Some(ts) = try_vec_of_option_primitive(node) {
+        return ts;
+    }
+    let primitive_vec = try_primitive_vec_type(node);
+
+    let children_tokens: Vec<TokenStream> = if primitive_vec.is_none() {
+        node.generics
+            .iter()
+            .map(|child| generic_tree_to_tokens(child, have_context))
+            .collect()
+    } else {
+        vec![]
+    };
     let ty: syn::Type = syn::parse_str(&node.to_string()).unwrap();
     let param = if have_context {
         quote! {
@@ -397,9 +433,9 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
     };
     let get_type_id = if node.name == "Option" {
         let option_type_id = TypeId::ForyOption as u32;
-        quote! {
-            #option_type_id
-        }
+        quote! { #option_type_id }
+    } else if let Some(ts) = primitive_vec {
+        ts
     } else {
         quote! {
             <#ty as fory_core::serializer::Serializer>::get_type_id(#param)

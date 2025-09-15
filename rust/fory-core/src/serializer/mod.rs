@@ -20,11 +20,11 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::RefFlag;
-use crate::types::TypeId;
 use anyhow::anyhow;
 
 mod any;
 mod bool;
+pub mod collection;
 mod datetime;
 mod list;
 mod map;
@@ -45,7 +45,7 @@ pub fn serialize<T: Serializer>(this: &T, context: &mut WriteContext) {
     this.write(context);
 }
 
-pub fn deserialize<T: Serializer>(context: &mut ReadContext) -> Result<T, Error> {
+pub fn deserialize<T: Serializer + Default>(context: &mut ReadContext) -> Result<T, Error> {
     // ref flag
     let ref_flag = context.reader.i8();
 
@@ -53,13 +53,13 @@ pub fn deserialize<T: Serializer>(context: &mut ReadContext) -> Result<T, Error>
         let actual_type_id = context.reader.var_uint32();
         let expected_type_id = T::get_type_id(context.get_fory());
         ensure!(
-            actual_type_id == expected_type_id,
+            expected_type_id == actual_type_id,
             anyhow!("Invalid field type, expected:{expected_type_id}, actual:{actual_type_id}")
         );
-
         T::read(context)
     } else if ref_flag == (RefFlag::Null as i8) {
-        Err(anyhow!("Try to deserialize non-option type to null"))?
+        Ok(T::default())
+        // Err(anyhow!("Try to deserialize non-option type to null"))?
     } else if ref_flag == (RefFlag::Ref as i8) {
         Err(Error::Ref)
     } else {
@@ -69,7 +69,7 @@ pub fn deserialize<T: Serializer>(context: &mut ReadContext) -> Result<T, Error>
 
 pub trait Serializer
 where
-    Self: Sized,
+    Self: Sized + Default,
 {
     /// The possible max memory size of the type.
     /// Used to reserve the buffer space to avoid reallocation, which may hurt performance.
@@ -93,12 +93,21 @@ where
     }
 
     fn get_type_id(_fory: &Fory) -> u32;
+
+    fn is_option() -> bool {
+        false
+    }
 }
 
 pub trait StructSerializer: Serializer + 'static {
-    fn type_def(fory: &Fory, type_id: u32) -> Vec<u8>;
+    fn type_def(
+        fory: &Fory,
+        type_id: u32,
+        namespace: Vec<u8>,
+        type_name: Vec<u8>,
+        register_by_name: bool,
+    ) -> Vec<u8>;
 
-    fn actual_type_id(type_id: u32) -> u32 {
-        (type_id << 8) + TypeId::STRUCT as u32
-    }
+    fn type_index() -> u32;
+    fn actual_type_id(type_id: u32) -> u32;
 }

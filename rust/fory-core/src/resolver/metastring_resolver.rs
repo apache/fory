@@ -15,7 +15,28 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod context;
-pub mod meta_resolver;
-pub mod metastring_resolver;
-pub mod type_resolver;
+use crate::meta::{MetaString, MetaStringBytes};
+use std::collections::HashMap;
+
+#[derive(Default)]
+pub struct MetaStringResolver {
+    metastring_to_bytes_map: HashMap<MetaString, MetaStringBytes>,
+}
+
+impl MetaStringResolver {
+    pub fn new() -> Self {
+        Self {
+            metastring_to_bytes_map: HashMap::new(),
+        }
+    }
+
+    pub fn encode_metastring(&mut self, str: &MetaString) -> MetaStringBytes {
+        if let Some(existing) = self.metastring_to_bytes_map.get(str) {
+            return existing.clone();
+        }
+        let metastring_bytes = MetaStringBytes::from(str);
+        self.metastring_to_bytes_map
+            .insert((*str).clone(), metastring_bytes.clone());
+        metastring_bytes
+    }
+}

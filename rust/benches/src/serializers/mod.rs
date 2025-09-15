@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod fury;
+pub mod fory;
 pub mod json;
 pub mod protobuf;
 

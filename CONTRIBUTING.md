@@ -1,4 +1,4 @@
-# How to contribute to Fory
+# How to contribute to Apache Fory™
 
 ## Finding good first issues
 
@@ -19,9 +19,9 @@ For example, here are good PR titles:
 - fix(c++): blablabla
 - chore(python): remove useless yyy file
 
-If the submitted PR affects the performance of Fory, we strongly recommend using the perf type,
+If the submitted PR affects the performance of Apache Fory™, we strongly recommend using the perf type,
 and need to provide benchmark data in the PR description. For how to run the benchmark,
-please check [Fory Java Benchmark](https://github.com/apache/fory/blob/main/java/benchmark/README.md).
+please check [Apache Fory™ Java Benchmark](https://github.com/apache/fory/blob/main/java/benchmark/README.md).
 
 For more details, please check [pr-lint.yml](./.github/workflows/pr-lint.yml).
 
@@ -135,7 +135,7 @@ npm run lint
 
 ### Java
 
-Fory supports dump jit generated code into local file for better debug by configuring environment variables:
+Apache Fory™ supports dump jit generated code into local file for better debug by configuring environment variables:
 
 - `FORY_CODE_DIR`：The directory for fory to dump generated code. Set to empty by default to skip dump code.
 - `ENABLE_FORY_GENERATED_CLASS_UNIQUE_ID`: Append an unique id for dynamically generated files by default to avoid serializer collision for different classes with same name. Set this to `false` to keep serializer name same for multiple execution or `AOT` codegen.
@@ -198,7 +198,7 @@ bazel run :refresh_compile_commands
 
 ## How to use Jetbrains IDEA IDE for Java Development
 
-Apache Fory Java development is based on Java 11+, and different modules are built with different Java versions.
+Apache Fory™ Java development is based on Java 11+, and different modules are built with different Java versions.
 
 For example, the `fory-core` module is built with Java 8, and the `fory-format` module is built with Java 11.
 
@@ -212,7 +212,7 @@ And due to the usage of `sun.misc.Unsafe` API, which is not visible in Java 11+,
 
 ## Website
 
-Fory's website consists of static pages hosted at https://github.com/apache/fory-site.
+Apache Fory™'s website consists of static pages hosted at https://github.com/apache/fory-site.
 
 All updates about docs under [guide](docs/guide) and [benchmarks](docs/benchmarks) will be synced to the site repo automatically.
 

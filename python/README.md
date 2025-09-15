@@ -5,9 +5,9 @@
 [![Slack Channel](https://img.shields.io/badge/slack-join-3f0e40?logo=slack&style=for-the-badge)](https://join.slack.com/t/fory-project/shared_invite/zt-36g0qouzm-kcQSvV_dtfbtBKHRwT5gsw)
 [![X](https://img.shields.io/badge/@ApacheFory-follow-blue?logo=x&style=for-the-badge)](https://x.com/ApacheFory)
 
-**Apache Fory** (formerly _Fury_) is a blazing fast multi-language serialization framework powered by **JIT** (just-in-time compilation) and **zero-copy**, providing up to 170x performance and ease of use.
+**Apache Fory™** (formerly _Fury_) is a blazing fast multi-language serialization framework powered by **JIT** (just-in-time compilation) and **zero-copy**, providing up to 170x performance and ease of use.
 
-This package provides the Python bindings for Apache Fory.
+This package provides the Python bindings for Apache Fory™.
 
 ## Installation
 
@@ -46,7 +46,7 @@ print(fory.deserialize(data))
 
 ### Cross-language Serialization
 
-Apache Fory excels at cross-language serialization. You can serialize data in Python and deserialize it in another language like Java or Go, and vice-versa.
+Apache Fory™ excels at cross-language serialization. You can serialize data in Python and deserialize it in another language like Java or Go, and vice-versa.
 
 Here's an example of how to serialize an object in Python and deserialize it in Java:
 
@@ -97,7 +97,7 @@ public class ReferenceExample {
 
 ### Row Format Zero-Copy Partial Serialzation
 
-Apache Fory provide a random-access row format, which supports map a typed nested struct into a binary and read its nested element without deserializing the whole binary. This can be used to minimize teh deserialization overhead for huge objects in the case where you only needs to access part of the data. You can even encode huge objects into binary and write to file, then mmap that file into memory to reduce memory overhead too.
+Apache Fory™ provide a random-access row format, which supports map a typed nested struct into a binary and read its nested element without deserializing the whole binary. This can be used to minimize teh deserialization overhead for huge objects in the case where you only needs to access part of the data. You can even encode huge objects into binary and write to file, then mmap that file into memory to reduce memory overhead too.
 
 **Python**
 

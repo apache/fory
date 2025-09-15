@@ -17,11 +17,18 @@
 
 use crate::error::Error;
 use crate::fory::Fory;
+use crate::meta::get_latin1_length;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
 use crate::types::{ForyGeneralList, TypeId};
 use std::mem;
+
+enum StrEncoding {
+    Latin1 = 0,
+    Utf16 = 1,
+    Utf8 = 2,
+}
 
 impl Serializer for String {
     fn reserved_space() -> usize {
@@ -29,13 +36,37 @@ impl Serializer for String {
     }
 
     fn write(&self, context: &mut WriteContext) {
-        context.writer.var_int32(self.len() as i32);
-        context.writer.bytes(self.as_bytes());
+        let mut len = get_latin1_length(self);
+        if len >= 0 {
+            let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
+            context.writer.var_uint36_small(bitor);
+            context.writer.latin1_string(self);
+        } else {
+            len = self.len() as i32;
+            let bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
+            context.writer.var_uint36_small(bitor);
+            context.writer.utf8_string(self);
+        }
     }
 
     fn read(context: &mut ReadContext) -> Result<Self, Error> {
-        let len = context.reader.var_int32();
-        Ok(context.reader.string(len as usize))
+        let bitor = context.reader.var_uint36_small();
+        let len = bitor >> 2;
+        let encoding = bitor & 0b11;
+        let encoding = match encoding {
+            0 => StrEncoding::Latin1,
+            1 => StrEncoding::Utf16,
+            2 => StrEncoding::Utf8,
+            _ => {
+                panic!("wrong encoding value: {}", encoding);
+            }
+        };
+        let s = match encoding {
+            StrEncoding::Latin1 => context.reader.latin1_string(len as usize),
+            StrEncoding::Utf16 => context.reader.utf16_string(len as usize),
+            StrEncoding::Utf8 => context.reader.utf8_string(len as usize),
+        };
+        Ok(s)
     }
 
     fn get_type_id(_fory: &Fory) -> u32 {

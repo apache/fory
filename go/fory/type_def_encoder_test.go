@@ -68,11 +68,11 @@ func TestTypeDefEncodingDecoding(t *testing.T) {
 	assert.Equal(t, originalTypeDef.compressed, decodedTypeDef.compressed, "Compressed flag mismatch")
 
 	// Verify field count matches
-	assert.Equal(t, len(originalTypeDef.fieldInfos), len(decodedTypeDef.fieldInfos), "Field count mismatch")
+	assert.Equal(t, len(originalTypeDef.fieldDefs), len(decodedTypeDef.fieldDefs), "Field count mismatch")
 
 	// Verify field names match
-	for i, originalField := range originalTypeDef.fieldInfos {
-		decodedField := decodedTypeDef.fieldInfos[i]
+	for i, originalField := range originalTypeDef.fieldDefs {
+		decodedField := decodedTypeDef.fieldDefs[i]
 
 		assert.Equal(t, originalField.name, decodedField.name, "Field name mismatch at index %d", i)
 		assert.Equal(t, originalField.nameEncoding, decodedField.nameEncoding, "Field name encoding mismatch at index %d", i)

@@ -28,16 +28,21 @@ use std::mem;
 
 impl Serializer for NaiveDateTime {
     fn read(context: &mut ReadContext) -> Result<Self, Error> {
-        let timestamp = context.reader.u64();
-        DateTime::from_timestamp_millis(timestamp as i64)
+        let micros = context.reader.i64();
+        let seconds = micros / 1_000_000;
+        let subsec_micros = (micros % 1_000_000) as u32;
+        let nanos = subsec_micros * 1_000;
+        DateTime::from_timestamp(seconds, nanos)
             .map(|dt| dt.naive_utc())
             .ok_or(Error::from(anyhow!(
-                "Date out of range, timestamp:{timestamp}"
+                "Date out of range, timestamp micros: {micros}"
             )))
     }
 
     fn write(&self, context: &mut WriteContext) {
-        context.writer.u64(self.and_utc().timestamp_millis() as u64);
+        let dt = self.and_utc();
+        let micros = dt.timestamp() * 1_000_000 + dt.timestamp_subsec_micros() as i64;
+        context.writer.i64(micros);
     }
 
     fn reserved_space() -> usize {
@@ -54,17 +59,17 @@ impl ForyGeneralList for NaiveDateTime {}
 impl Serializer for NaiveDate {
     fn write(&self, context: &mut WriteContext) {
         let days_since_epoch = self.signed_duration_since(EPOCH).num_days();
-        context.writer.u64(days_since_epoch as u64);
+        context.writer.i32(days_since_epoch as i32);
     }
 
     fn reserved_space() -> usize {
-        mem::size_of::<u64>()
+        mem::size_of::<i32>()
     }
 
     fn read(context: &mut ReadContext) -> Result<Self, Error> {
-        let days = context.reader.u64();
+        let days = context.reader.i32();
         EPOCH
-            .checked_add_days(Days::new(days))
+            .checked_add_days(Days::new(days as u64))
             .ok_or(Error::from(anyhow!(
                 "Date out of range, {days} days since epoch"
             )))

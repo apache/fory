@@ -21,9 +21,9 @@ use fory_derive::Fory;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// Fury models
+// Fory models
 #[derive(Fory, Debug, Clone, PartialEq, Default)]
-pub struct FuryProduct {
+pub struct ForyProduct {
     pub id: String,
     pub name: String,
     pub price: f64,
@@ -32,15 +32,15 @@ pub struct FuryProduct {
 }
 
 #[derive(Fory, Debug, Clone, PartialEq, Default)]
-pub struct FuryOrderItem {
-    pub product: FuryProduct,
+pub struct ForyOrderItem {
+    pub product: ForyProduct,
     pub quantity: i32,
     pub unit_price: f64,
     pub customizations: HashMap<String, String>,
 }
 
 #[derive(Fory, Debug, Clone, PartialEq, Default)]
-pub struct FuryCustomer {
+pub struct ForyCustomer {
     pub id: String,
     pub name: String,
     pub email: String,
@@ -50,10 +50,10 @@ pub struct FuryCustomer {
 }
 
 #[derive(Fory, Debug, Clone, PartialEq, Default)]
-pub struct FuryOrder {
+pub struct ForyOrder {
     pub id: String,
-    pub customer: FuryCustomer,
-    pub items: Vec<FuryOrderItem>,
+    pub customer: ForyCustomer,
+    pub items: Vec<ForyOrderItem>,
     pub total_amount: f64,
     pub status: String,
     pub order_date: NaiveDateTime,
@@ -62,10 +62,10 @@ pub struct FuryOrder {
 
 #[derive(Fory, Debug, Clone, PartialEq, Default)]
 pub struct ECommerceData {
-    pub orders: Vec<FuryOrder>,
-    pub customers: Vec<FuryCustomer>,
-    pub products: Vec<FuryProduct>,
-    pub order_lookup: HashMap<String, FuryOrder>,
+    pub orders: Vec<ForyOrder>,
+    pub customers: Vec<ForyCustomer>,
+    pub products: Vec<ForyProduct>,
+    pub order_lookup: HashMap<String, ForyOrder>,
 }
 
 // Serde models
@@ -119,7 +119,7 @@ impl TestDataGenerator for ECommerceData {
     type Data = ECommerceData;
 
     fn generate_small() -> Self::Data {
-        let product = FuryProduct {
+        let product = ForyProduct {
             id: "prod_1".to_string(),
             name: "Laptop".to_string(),
             price: 999.99,
@@ -130,7 +130,7 @@ impl TestDataGenerator for ECommerceData {
             ]),
         };
 
-        let customer = FuryCustomer {
+        let customer = ForyCustomer {
             id: "cust_1".to_string(),
             name: "John Doe".to_string(),
             email: "john@example.com".to_string(),
@@ -142,14 +142,14 @@ impl TestDataGenerator for ECommerceData {
             member_since: DateTime::from_timestamp(1640995200, 0).unwrap().naive_utc(),
         };
 
-        let order_item = FuryOrderItem {
+        let order_item = ForyOrderItem {
             product: product.clone(),
             quantity: 1,
             unit_price: 999.99,
             customizations: HashMap::from([("color".to_string(), "black".to_string())]),
         };
 
-        let order = FuryOrder {
+        let order = ForyOrder {
             id: "order_1".to_string(),
             customer: customer.clone(),
             items: vec![order_item],
@@ -178,7 +178,7 @@ impl TestDataGenerator for ECommerceData {
 
         // Generate 20 products
         for i in 1..=20 {
-            let product = FuryProduct {
+            let product = ForyProduct {
                 id: format!("prod_{}", i),
                 name: generate_random_string(30),
                 price: (i as f64) * 50.0,
@@ -196,7 +196,7 @@ impl TestDataGenerator for ECommerceData {
 
         // Generate 10 customers
         for i in 1..=10 {
-            let customer = FuryCustomer {
+            let customer = ForyCustomer {
                 id: format!("cust_{}", i),
                 name: generate_random_string(40),
                 email: format!("user{}@example.com", i),
@@ -225,7 +225,7 @@ impl TestDataGenerator for ECommerceData {
                 let unit_price = product.price;
                 total += unit_price * quantity as f64;
 
-                let item = FuryOrderItem {
+                let item = ForyOrderItem {
                     product,
                     quantity,
                     unit_price,
@@ -240,7 +240,7 @@ impl TestDataGenerator for ECommerceData {
                 items.push(item);
             }
 
-            let order = FuryOrder {
+            let order = ForyOrder {
                 id: format!("order_{}", i),
                 customer,
                 items,
@@ -280,7 +280,7 @@ impl TestDataGenerator for ECommerceData {
 
         // Generate 100 products
         for i in 1..=100 {
-            let product = FuryProduct {
+            let product = ForyProduct {
                 id: format!("prod_{}", i),
                 name: generate_random_string(50),
                 price: (i as f64) * 25.0,
@@ -298,7 +298,7 @@ impl TestDataGenerator for ECommerceData {
 
         // Generate 50 customers
         for i in 1..=50 {
-            let customer = FuryCustomer {
+            let customer = ForyCustomer {
                 id: format!("cust_{}", i),
                 name: generate_random_string(60),
                 email: format!("user{}@example.com", i),
@@ -327,7 +327,7 @@ impl TestDataGenerator for ECommerceData {
                 let unit_price = product.price;
                 total += unit_price * quantity as f64;
 
-                let item = FuryOrderItem {
+                let item = ForyOrderItem {
                     product,
                     quantity,
                     unit_price,
@@ -342,7 +342,7 @@ impl TestDataGenerator for ECommerceData {
                 items.push(item);
             }
 
-            let order = FuryOrder {
+            let order = ForyOrder {
                 id: format!("order_{}", i),
                 customer,
                 items,
@@ -376,8 +376,8 @@ impl TestDataGenerator for ECommerceData {
 }
 
 // Conversion functions for Serde
-impl From<FuryProduct> for SerdeProduct {
-    fn from(f: FuryProduct) -> Self {
+impl From<ForyProduct> for SerdeProduct {
+    fn from(f: ForyProduct) -> Self {
         SerdeProduct {
             id: f.id,
             name: f.name,
@@ -388,8 +388,8 @@ impl From<FuryProduct> for SerdeProduct {
     }
 }
 
-impl From<FuryOrderItem> for SerdeOrderItem {
-    fn from(f: FuryOrderItem) -> Self {
+impl From<ForyOrderItem> for SerdeOrderItem {
+    fn from(f: ForyOrderItem) -> Self {
         SerdeOrderItem {
             product: f.product.into(),
             quantity: f.quantity,
@@ -399,8 +399,8 @@ impl From<FuryOrderItem> for SerdeOrderItem {
     }
 }
 
-impl From<FuryCustomer> for SerdeCustomer {
-    fn from(f: FuryCustomer) -> Self {
+impl From<ForyCustomer> for SerdeCustomer {
+    fn from(f: ForyCustomer) -> Self {
         SerdeCustomer {
             id: f.id,
             name: f.name,
@@ -412,8 +412,8 @@ impl From<FuryCustomer> for SerdeCustomer {
     }
 }
 
-impl From<FuryOrder> for SerdeOrder {
-    fn from(f: FuryOrder) -> Self {
+impl From<ForyOrder> for SerdeOrder {
+    fn from(f: ForyOrder) -> Self {
         SerdeOrder {
             id: f.id,
             customer: f.customer.into(),
@@ -441,10 +441,10 @@ impl From<ECommerceData> for SerdeECommerceData {
     }
 }
 
-// Reverse conversions from Serde to Fury
-impl From<SerdeProduct> for FuryProduct {
+// Reverse conversions from Serde to Fory
+impl From<SerdeProduct> for ForyProduct {
     fn from(s: SerdeProduct) -> Self {
-        FuryProduct {
+        ForyProduct {
             id: s.id,
             name: s.name,
             price: s.price,
@@ -454,9 +454,9 @@ impl From<SerdeProduct> for FuryProduct {
     }
 }
 
-impl From<SerdeOrderItem> for FuryOrderItem {
+impl From<SerdeOrderItem> for ForyOrderItem {
     fn from(s: SerdeOrderItem) -> Self {
-        FuryOrderItem {
+        ForyOrderItem {
             product: s.product.into(),
             quantity: s.quantity,
             unit_price: s.unit_price,
@@ -465,9 +465,9 @@ impl From<SerdeOrderItem> for FuryOrderItem {
     }
 }
 
-impl From<SerdeCustomer> for FuryCustomer {
+impl From<SerdeCustomer> for ForyCustomer {
     fn from(s: SerdeCustomer) -> Self {
-        FuryCustomer {
+        ForyCustomer {
             id: s.id,
             name: s.name,
             email: s.email,
@@ -478,9 +478,9 @@ impl From<SerdeCustomer> for FuryCustomer {
     }
 }
 
-impl From<SerdeOrder> for FuryOrder {
+impl From<SerdeOrder> for ForyOrder {
     fn from(s: SerdeOrder) -> Self {
-        FuryOrder {
+        ForyOrder {
             id: s.id,
             customer: s.customer.into(),
             items: s.items.into_iter().map(|i| i.into()).collect(),

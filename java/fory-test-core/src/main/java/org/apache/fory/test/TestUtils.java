@@ -20,6 +20,7 @@
 package org.apache.fory.test;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.Arrays;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.testng.SkipException;
 
 public class TestUtils {
@@ -46,15 +48,22 @@ public class TestUtils {
     return new String(chars);
   }
 
-  public static boolean executeCommand(
-      List<String> command, int waitTimeoutSeconds, Map<String, String> env) {
+  private static ProcessBuilder buildProcess(
+      List<String> command, Map<String, String> env, File workDir) {
+    // redirectOutput doesn't work for forked jvm such as in maven sure.
+    ProcessBuilder processBuilder = new ProcessBuilder(command);
+    if (workDir != null) {
+      processBuilder.directory(workDir);
+    }
+    for (Map.Entry<String, String> entry : env.entrySet()) {
+      processBuilder.environment().put(entry.getKey(), entry.getValue());
+    }
+    return processBuilder;
+  }
+
+  private static boolean executeCommand(
+      ProcessBuilder processBuilder, List<String> command, int waitTimeoutSeconds) {
     try {
-      System.out.println("Executing command: " + String.join(" ", command));
-      // redirectOutput doesn't work for forked jvm such as in maven sure.
-      ProcessBuilder processBuilder = new ProcessBuilder(command);
-      for (Map.Entry<String, String> entry : env.entrySet()) {
-        processBuilder.environment().put(entry.getKey(), entry.getValue());
-      }
       Process process = processBuilder.start();
       // Capture output to log
       BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
@@ -78,6 +87,23 @@ public class TestUtils {
       throw new RuntimeException(
           "Error executing command " + String.join(" ", command) + ": " + e.getMessage(), e);
     }
+  }
+
+  public static boolean executeCommand(
+      List<String> command, int waitTimeoutSeconds, Map<String, String> env, File workDir) {
+    String envStr =
+        env.entrySet().stream()
+            .filter(e -> !"DATA_FILE".equals(e.getKey()))
+            .map(e -> e.getKey() + "=" + e.getValue())
+            .collect(Collectors.joining(" "));
+    System.out.println("Executing command: " + envStr + " " + String.join(" ", command));
+    ProcessBuilder processBuilder = buildProcess(command, env, workDir);
+    return executeCommand(processBuilder, command, waitTimeoutSeconds);
+  }
+
+  public static boolean executeCommand(
+      List<String> command, int waitTimeoutSeconds, Map<String, String> env) {
+    return executeCommand(command, waitTimeoutSeconds, env, null);
   }
 
   public static void verifyPyforyInstalled() {

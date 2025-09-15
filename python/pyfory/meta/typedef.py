@@ -15,14 +15,14 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from typing import List
+import enum
 import typing
+from typing import List
 from pyfory.type import TypeId
 from pyfory._util import Buffer
-from pyfory.serializer import MapSerializer, ListSerializer, SetSerializer
-from pyfory._struct import _sort_fields, StructTypeIdVisitor, get_field_names
-from pyfory.type import TypeId, infer_field, is_primitive_type, is_polymorphic_type
+from pyfory.type import infer_field, is_polymorphic_type
 from pyfory.meta.metastring import Encoding
+from pyfory.type import infer_field_types
 
 
 # Constants from the specification
@@ -34,6 +34,9 @@ HAS_FIELDS_META_FLAG = 0b1 << 12
 META_SIZE_MASKS = 0xFFF
 NUM_HASH_BITS = 50
 
+NAMESPACE_ENCODINGS = [Encoding.UTF_8, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL]
+TYPE_NAME_ENCODINGS = [Encoding.UTF_8, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL, Encoding.ALL_TO_LOWER_SPECIAL]
+
 # Field name encoding constants
 FIELD_NAME_ENCODING_UTF8 = 0b00
 FIELD_NAME_ENCODING_ALL_TO_LOWER_SPECIAL = 0b01
@@ -43,19 +46,35 @@ FIELD_NAME_ENCODINGS = [Encoding.UTF_8, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Enco
 
 
 class TypeDef:
-    def __init__(self, name: str, type_id: int, fields: List["FieldInfo"], encoded: bytes = None, is_compressed: bool = False):
-        self.name = name
+    def __init__(
+        self, namespace: str, typename: str, cls: type, type_id: int, fields: List["FieldInfo"], encoded: bytes = None, is_compressed: bool = False
+    ):
+        self.namespace = namespace
+        self.typename = typename
+        self.cls = cls
         self.type_id = type_id
         self.fields = fields
         self.encoded = encoded
         self.is_compressed = is_compressed
 
     def create_fields_serializer(self, resolver):
-        serializers = [field_info.field_type.create_serializer(resolver) for field_info in self.fields]
+        field_types = infer_field_types(self.cls)
+        serializers = [field_info.field_type.create_serializer(resolver, field_types.get(field_info.name, None)) for field_info in self.fields]
         return serializers
 
+    def get_field_names(self):
+        return [field_info.name for field_info in self.fields]
+
+    def create_serializer(self, resolver):
+        from pyfory.serializer import DataClassSerializer
+
+        fory = resolver.fory
+        return DataClassSerializer(
+            fory, self.cls, xlang=not fory.is_py, field_names=self.get_field_names(), serializers=self.create_fields_serializer(resolver)
+        )
+
     def __repr__(self):
-        return f"TypeDef(name={self.name}, type_id={self.type_id}, fields={self.fields}, is_compressed={self.is_compressed})"
+        return f"TypeDef(namespace={self.namespace}, typename={self.typename}, cls={self.cls}, type_id={self.type_id}, fields={self.fields}, is_compressed={self.is_compressed})"
 
 
 class FieldInfo:
@@ -121,11 +140,25 @@ class FieldType:
         elif xtype_id == TypeId.UNKNOWN:
             return DynamicFieldType(xtype_id, False, is_nullable, is_tracking_ref)
         else:
-            return FieldType(xtype_id, False, is_nullable, is_tracking_ref)
+            # For primitive types, determine if they are monomorphic based on the type
+            from pyfory.type import is_polymorphic_type
 
-    def create_serializer(self, resolver):
+            is_monomorphic = not is_polymorphic_type(xtype_id)
+            return FieldType(xtype_id, is_monomorphic, is_nullable, is_tracking_ref)
+
+    def create_serializer(self, resolver, type_):
         if self.type_id in [TypeId.EXT, TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT, TypeId.UNKNOWN]:
             return None
+        if isinstance(type_, list):
+            type_ = type_[0]
+        if isinstance(type_, type) and issubclass(type_, enum.Enum):
+            typeinfo = resolver.get_typeinfo(type_, create=False)
+            if typeinfo is not None and typeinfo.serializer is not None:
+                return typeinfo.serializer
+            else:
+                from pyfory.serializer import NonExistEnumSerializer
+
+                return NonExistEnumSerializer(resolver.fory)
         return resolver.get_typeinfo_by_id(self.type_id).serializer
 
     def __repr__(self):
@@ -144,11 +177,15 @@ class CollectionFieldType(FieldType):
         super().__init__(type_id, is_monomorphic, is_nullable, is_tracking_ref)
         self.element_type = element_type
 
-    def create_serializer(self, resolver):
+    def create_serializer(self, resolver, type_):
+        from pyfory.serializer import ListSerializer, SetSerializer
+
+        elem_type = type_[1] if len(type_) >= 2 else None
+        elem_serializer = self.element_type.create_serializer(resolver, elem_type)
         if self.type_id == TypeId.LIST:
-            return ListSerializer(resolver.fory, list, self.element_type.create_serializer(resolver))
+            return ListSerializer(resolver.fory, list, elem_serializer)
         elif self.type_id == TypeId.SET:
-            return SetSerializer(resolver.fory, set, self.element_type.create_serializer(resolver))
+            return SetSerializer(resolver.fory, set, elem_serializer)
         else:
             raise ValueError(f"Unknown collection type: {self.type_id}")
 
@@ -167,9 +204,16 @@ class MapFieldType(FieldType):
         self.key_type = key_type
         self.value_type = value_type
 
-    def create_serializer(self, resolver):
-        key_serializer = self.key_type.create_serializer(resolver)
-        value_serializer = self.value_type.create_serializer(resolver)
+    def create_serializer(self, resolver, type_):
+        key_type, value_type = None, None
+        if len(type_) >= 2:
+            key_type = type_[1]
+        if len(type_) >= 3:
+            value_type = type_[2]
+        key_serializer = self.key_type.create_serializer(resolver, key_type)
+        value_serializer = self.value_type.create_serializer(resolver, value_type)
+        from pyfory.serializer import MapSerializer
+
         return MapSerializer(resolver.fory, dict, key_serializer, value_serializer)
 
     def __repr__(self):
@@ -183,7 +227,7 @@ class DynamicFieldType(FieldType):
     def __init__(self, type_id: int, is_monomorphic: bool, is_nullable: bool, is_tracking_ref: bool):
         super().__init__(type_id, is_monomorphic, is_nullable, is_tracking_ref)
 
-    def create_serializer(self, resolver):
+    def create_serializer(self, resolver, type_):
         return None
 
     def __repr__(self):
@@ -192,19 +236,22 @@ class DynamicFieldType(FieldType):
 
 def build_field_infos(type_resolver, cls):
     """Build field information for the class."""
+    from pyfory._struct import _sort_fields, StructTypeIdVisitor, get_field_names
+
     field_names = get_field_names(cls)
     type_hints = typing.get_type_hints(cls)
 
     field_infos = []
-    visitor = StructTypeIdVisitor(type_resolver.fory)
+    visitor = StructTypeIdVisitor(type_resolver.fory, cls)
 
     for field_name in field_names:
         field_type_hint = type_hints.get(field_name, typing.Any)
         field_type = build_field_type(type_resolver, field_name, field_type_hint, visitor)
         field_info = FieldInfo(field_name, field_type, cls.__name__)
         field_infos.append(field_info)
+    field_types = infer_field_types(cls)
+    serializers = [field_info.field_type.create_serializer(type_resolver, field_types.get(field_info.name, None)) for field_info in field_infos]
 
-    serializers = [field_info.field_type.create_serializer(type_resolver) for field_info in field_infos]
     field_names, serializers = _sort_fields(type_resolver, field_names, serializers)
     field_infos_map = {field_info.name: field_info for field_info in field_infos}
     new_field_infos = []
@@ -217,12 +264,19 @@ def build_field_infos(type_resolver, cls):
 def build_field_type(type_resolver, field_name: str, type_hint, visitor):
     """Build field type from type hint."""
     type_ids = infer_field(field_name, type_hint, visitor)
-    return build_field_type_from_type_ids(type_resolver, field_name, type_ids, visitor)
+    try:
+        return build_field_type_from_type_ids(type_resolver, field_name, type_ids, visitor)
+    except Exception as e:
+        raise TypeError(f"Error building field type for field: {field_name} with type hint: {type_hint} in class: {visitor.cls}") from e
 
 
 def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, visitor):
     tracking_ref = type_resolver.fory.ref_tracking
     type_id = type_ids[0]
+    if type_id is None:
+        type_id = TypeId.UNKNOWN
+    assert type_id >= 0, f"Unknown type: {type_id} for field: {field_name}"
+    type_id = type_id & 0xFF
     morphic = not is_polymorphic_type(type_id)
     if type_id in [TypeId.SET, TypeId.LIST]:
         elem_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor)
@@ -234,7 +288,6 @@ def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, vis
     elif type_id in [TypeId.UNKNOWN, TypeId.EXT, TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT]:
         return DynamicFieldType(type_id, False, True, tracking_ref)
     else:
-        assert is_primitive_type(type_id) or type_id in [TypeId.STRING, TypeId.ENUM, TypeId.NAMED_ENUM], (
-            f"Unknown type: {type_id} for field: {field_name}"
-        )
+        if type_id <= 0 or type_id >= TypeId.BOUND:
+            raise TypeError(f"Unknown type: {type_id} for field: {field_name}")
         return FieldType(type_id, morphic, True, tracking_ref)

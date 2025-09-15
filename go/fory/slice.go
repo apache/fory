@@ -439,11 +439,327 @@ func (o *ByteSliceBufferObject) ToBuffer() *ByteBuffer {
 	return NewByteBuffer(o.data)
 }
 
+type boolArraySerializer struct {
+}
+
+func (s boolArraySerializer) TypeId() TypeId {
+	return BOOL_ARRAY
+}
+
+func (s boolArraySerializer) NeedWriteRef() bool {
+	return true
+}
+
+func (s boolArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+	v := value.Interface().([]bool)
+	size := len(v)
+	if size >= MaxInt32 {
+		return fmt.Errorf("too long slice: %d", len(v))
+	}
+	buf.WriteLength(size)
+	for _, elem := range v {
+		buf.WriteBool(elem)
+	}
+	return nil
+}
+
+func (s boolArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+	length := buf.ReadLength()
+	var r reflect.Value
+	switch type_.Kind() {
+	case reflect.Slice:
+		r = reflect.MakeSlice(type_, length, length)
+	case reflect.Array:
+		if length != type_.Len() {
+			return fmt.Errorf("length %d does not match array type %v", length, type_)
+		}
+		r = reflect.New(type_).Elem()
+	default:
+		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
+	}
+	for i := 0; i < length; i++ {
+		r.Index(i).SetBool(buf.ReadBool())
+	}
+	value.Set(r)
+	return nil
+}
+
+type int8ArraySerializer struct {
+}
+
+func (s int8ArraySerializer) TypeId() TypeId {
+	return INT8_ARRAY
+}
+
+func (s int8ArraySerializer) NeedWriteRef() bool {
+	return true
+}
+
+func (s int8ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+	v := value.Interface().([]int8)
+	size := len(v)
+	if size >= MaxInt32 {
+		return fmt.Errorf("too long slice: %d", len(v))
+	}
+	buf.WriteLength(size)
+	for _, elem := range v {
+		buf.WriteByte_(byte(elem))
+	}
+	return nil
+}
+
+func (s int8ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+	length := buf.ReadLength()
+	var r reflect.Value
+	switch type_.Kind() {
+	case reflect.Slice:
+		r = reflect.MakeSlice(type_, length, length)
+	case reflect.Array:
+		if length != type_.Len() {
+			return fmt.Errorf("length %d does not match array type %v", length, type_)
+		}
+		r = reflect.New(type_).Elem()
+	default:
+		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
+	}
+	for i := 0; i < length; i++ {
+		r.Index(i).SetInt(int64(int8(buf.ReadByte_())))
+	}
+	value.Set(r)
+	return nil
+}
+
+type int16ArraySerializer struct {
+}
+
+func (s int16ArraySerializer) TypeId() TypeId {
+	return INT16_ARRAY
+}
+
+func (s int16ArraySerializer) NeedWriteRef() bool {
+	return true
+}
+
+func (s int16ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+	v := value.Interface().([]int16)
+	size := len(v) * 2
+	if size >= MaxInt32 {
+		return fmt.Errorf("too long slice: %d", len(v))
+	}
+	buf.WriteLength(size)
+	for _, elem := range v {
+		buf.WriteInt16(elem)
+	}
+	return nil
+}
+
+func (s int16ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+	length := buf.ReadLength() / 2
+	var r reflect.Value
+	switch type_.Kind() {
+	case reflect.Slice:
+		r = reflect.MakeSlice(type_, length, length)
+	case reflect.Array:
+		if length != type_.Len() {
+			return fmt.Errorf("length %d does not match array type %v", length, type_)
+		}
+		r = reflect.New(type_).Elem()
+	default:
+		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
+	}
+	for i := 0; i < length; i++ {
+		r.Index(i).SetInt(int64(buf.ReadInt16()))
+	}
+	value.Set(r)
+	return nil
+}
+
+type int32ArraySerializer struct {
+}
+
+func (s int32ArraySerializer) TypeId() TypeId {
+	return INT32_ARRAY
+}
+
+func (s int32ArraySerializer) NeedWriteRef() bool {
+	return true
+}
+
+func (s int32ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+	v := value.Interface().([]int32)
+	size := len(v) * 4
+	if size >= MaxInt32 {
+		return fmt.Errorf("too long slice: %d", len(v))
+	}
+	buf.WriteLength(size)
+	for _, elem := range v {
+		buf.WriteInt32(elem)
+	}
+	return nil
+}
+
+func (s int32ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+	length := buf.ReadLength() / 4
+	var r reflect.Value
+	switch type_.Kind() {
+	case reflect.Slice:
+		r = reflect.MakeSlice(type_, length, length)
+	case reflect.Array:
+		if length != type_.Len() {
+			return fmt.Errorf("length %d does not match array type %v", length, type_)
+		}
+		r = reflect.New(type_).Elem()
+	default:
+		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
+	}
+	for i := 0; i < length; i++ {
+		r.Index(i).SetInt(int64(buf.ReadInt32()))
+	}
+	value.Set(r)
+	return nil
+}
+
+type int64ArraySerializer struct {
+}
+
+func (s int64ArraySerializer) TypeId() TypeId {
+	return INT64_ARRAY
+}
+
+func (s int64ArraySerializer) NeedWriteRef() bool {
+	return true
+}
+
+func (s int64ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+	v := value.Interface().([]int64)
+	size := len(v) * 8
+	if size >= MaxInt32 {
+		return fmt.Errorf("too long slice: %d", len(v))
+	}
+	buf.WriteLength(size)
+	for _, elem := range v {
+		buf.WriteInt64(elem)
+	}
+	return nil
+}
+
+func (s int64ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+	length := buf.ReadLength() / 8
+	var r reflect.Value
+	switch type_.Kind() {
+	case reflect.Slice:
+		r = reflect.MakeSlice(type_, length, length)
+	case reflect.Array:
+		if length != type_.Len() {
+			return fmt.Errorf("length %d does not match array type %v", length, type_)
+		}
+		r = reflect.New(type_).Elem()
+	default:
+		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
+	}
+	for i := 0; i < length; i++ {
+		r.Index(i).SetInt(buf.ReadInt64())
+	}
+	value.Set(r)
+	return nil
+}
+
+type float32ArraySerializer struct {
+}
+
+func (s float32ArraySerializer) TypeId() TypeId {
+	return FLOAT32_ARRAY
+}
+
+func (s float32ArraySerializer) NeedWriteRef() bool {
+	return true
+}
+
+func (s float32ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+	v := value.Interface().([]float32)
+	size := len(v) * 4
+	if size >= MaxInt32 {
+		return fmt.Errorf("too long slice: %d", len(v))
+	}
+	buf.WriteLength(size)
+	for _, elem := range v {
+		buf.WriteFloat32(elem)
+	}
+	return nil
+}
+
+func (s float32ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+	length := buf.ReadLength() / 4
+	var r reflect.Value
+	switch type_.Kind() {
+	case reflect.Slice:
+		r = reflect.MakeSlice(type_, length, length)
+	case reflect.Array:
+		if length != type_.Len() {
+			return fmt.Errorf("length %d does not match array type %v", length, type_)
+		}
+		r = reflect.New(type_).Elem()
+	default:
+		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
+	}
+	for i := 0; i < length; i++ {
+		r.Index(i).SetFloat(float64(buf.ReadFloat32()))
+	}
+	value.Set(r)
+	return nil
+}
+
+type float64ArraySerializer struct {
+}
+
+func (s float64ArraySerializer) TypeId() TypeId {
+	return FLOAT64_ARRAY
+}
+
+func (s float64ArraySerializer) NeedWriteRef() bool {
+	return true
+}
+
+func (s float64ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+	v := value.Interface().([]float64)
+	size := len(v) * 8
+	if size >= MaxInt32 {
+		return fmt.Errorf("too long slice: %d", len(v))
+	}
+	buf.WriteLength(size)
+	for _, elem := range v {
+		buf.WriteFloat64(elem)
+	}
+	return nil
+}
+
+func (s float64ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+	length := buf.ReadLength() / 8
+	var r reflect.Value
+	switch type_.Kind() {
+	case reflect.Slice:
+		r = reflect.MakeSlice(type_, length, length)
+	case reflect.Array:
+		if length != type_.Len() {
+			return fmt.Errorf("length %d does not match array type %v", length, type_)
+		}
+		r = reflect.New(type_).Elem()
+	default:
+		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
+	}
+	for i := 0; i < length; i++ {
+		r.Index(i).SetFloat(buf.ReadFloat64())
+	}
+	value.Set(r)
+	return nil
+}
+
+// Legacy slice serializers - kept for backward compatibility but not used for xlang
 type boolSliceSerializer struct {
 }
 
 func (s boolSliceSerializer) TypeId() TypeId {
-	return BOOL_ARRAY
+	return BOOL_ARRAY // Use legacy type ID to avoid conflicts
 }
 
 func (s boolSliceSerializer) NeedWriteRef() bool {

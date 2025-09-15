@@ -1,5 +1,5 @@
 ---
-title: Fory Java Serialization Format
+title: Java Serialization Format
 sidebar_position: 1
 id: fory_java_serialization_spec
 license: |
@@ -21,14 +21,14 @@ license: |
 
 ## Spec overview
 
-Fory Java Serialization is an automatic object serialization framework that supports reference and polymorphism. Fory
+Apache Fory™ Java Serialization is an automatic object serialization framework that supports reference and polymorphism. Apache Fory™
 will
-convert an object from/to fory java serialization binary format. Fory has two core concepts for java serialization:
+convert an object from/to fory java serialization binary format. Apache Fory™ has two core concepts for java serialization:
 
-- **Fory Java Binary format**
-- **Framework to convert object to/from Fory Java Binary format**
+- **Apache Fory™ Java Binary format**
+- **Framework to convert object to/from Apache Fory™ Java Binary format**
 
-The serialization format is a dynamic binary format. The dynamics and reference/polymorphism support make Fory flexible,
+The serialization format is a dynamic binary format. The dynamics and reference/polymorphism support make Apache Fory™ flexible,
 much more easy to use, but
 also introduce more complexities compared to static serialization frameworks. So the format will be more complex.
 

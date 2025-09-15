@@ -21,9 +21,7 @@ use syn::DataEnum;
 
 pub fn gen_type_def(_data_enum: &DataEnum) -> TokenStream {
     quote! {
-        fn type_def(fory: &fory_core::fory::Fory, type_id: u32) -> Vec<u8> {
-            Vec::new()
-        }
+        Vec::new()
     }
 }
 
@@ -64,5 +62,11 @@ pub fn gen_read(data_enum: &DataEnum) -> TokenStream {
                _ => panic!("unknown value"),
            }
        }
+    }
+}
+
+pub fn gen_actual_type_id() -> TokenStream {
+    quote! {
+        (type_id << 8) + fory_core::types::TypeId::ENUM as u32
     }
 }

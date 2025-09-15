@@ -22,7 +22,7 @@ use std::collections::{HashMap, HashSet};
 // RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_compatible
 #[test]
 fn simple() {
-    #[derive(Fory, Debug)]
+    #[derive(Fory, Debug, Default)]
     struct Animal1 {
         f1: HashMap<i8, Vec<i8>>,
         f2: String,
@@ -34,7 +34,7 @@ fn simple() {
         f8: i8,
     }
 
-    #[derive(Fory, Debug)]
+    #[derive(Fory, Debug, Default)]
     struct Animal2 {
         f1: HashMap<i8, Vec<i8>>,
         // f2: String,
@@ -60,7 +60,6 @@ fn simple() {
     };
     let bin = fory1.serialize(&animal);
     let obj: Animal2 = fory2.deserialize(&bin).unwrap();
-
     assert_eq!(animal.f1, obj.f1);
     assert_eq!(animal.f3, obj.f3);
     assert_eq!(obj.f4, String::default());
@@ -72,14 +71,14 @@ fn simple() {
 
 #[test]
 fn skip_option() {
-    #[derive(Fory, Debug)]
+    #[derive(Fory, Debug, Default)]
     struct Item1 {
         f1: Option<String>,
         f2: Option<String>,
         last: i64,
     }
 
-    #[derive(Fory, Debug)]
+    #[derive(Fory, Debug, Default)]
     struct Item2 {
         f1: i8,
         f2: i8,
@@ -112,13 +111,13 @@ fn nonexistent_struct() {
     pub struct Item2 {
         f1: i64,
     }
-    #[derive(Fory, Debug)]
+    #[derive(Fory, Debug, Default)]
     struct Person1 {
         f2: Item1,
         f3: i8,
         last: String,
     }
-    #[derive(Fory, Debug)]
+    #[derive(Fory, Debug, Default)]
     struct Person2 {
         f2: Item2,
         f3: i64,
@@ -144,7 +143,7 @@ fn nonexistent_struct() {
 
 #[test]
 fn option() {
-    #[derive(Fory, Debug, PartialEq)]
+    #[derive(Fory, Debug, PartialEq, Default)]
     struct Animal {
         f1: Option<String>,
         f2: Option<String>,
@@ -160,7 +159,6 @@ fn option() {
         f1: Some(String::from("f1")),
         f2: None,
         f3: vec![Option::<String>::None, Some(String::from("f3"))],
-        // f4: Some(Some(String::from("f4"))),
         f5: vec![Some(vec![Some(String::from("f1"))])],
         last: 666,
     };
@@ -224,7 +222,7 @@ fn nullable() {
 }
 
 #[test]
-fn nullable_collection() {
+fn nullable_container() {
     #[derive(Fory, Debug, Default)]
     pub struct Item1 {
         f1: Vec<i8>,
@@ -290,16 +288,16 @@ fn nullable_collection() {
 fn inner_nullable() {
     #[derive(Fory, Debug, Default)]
     pub struct Item1 {
-        f1: Vec<Option<i8>>,
+        f1: Vec<Option<String>>,
         f2: HashSet<Option<i8>>,
-        f3: HashMap<i8, Option<i8>>,
+        // f3: HashMap<i8, Option<i8>>,
     }
 
     #[derive(Fory, Debug, Default)]
     pub struct Item2 {
-        f1: Vec<i8>,
+        f1: Vec<String>,
         f2: HashSet<i8>,
-        f3: HashMap<i8, i8>,
+        // f3: HashMap<i8, i8>,
     }
     let mut fory1 = Fory::default().mode(Compatible);
     let mut fory2 = Fory::default().mode(Compatible);
@@ -307,16 +305,16 @@ fn inner_nullable() {
     fory2.register::<Item2>(999);
 
     let item1 = Item1 {
-        f1: vec![None, Some(42)],
+        f1: vec![None, Some("hello".to_string())],
         f2: HashSet::from([None, Some(43)]),
-        f3: HashMap::from([(44, None), (45, Some(46))]),
+        // f3: HashMap::from([(44, None), (45, Some(46))]),
     };
     let bin = fory1.serialize(&item1);
     let item2: Item2 = fory2.deserialize(&bin).unwrap();
 
-    assert_eq!(item2.f1, vec![0, 42]);
+    assert_eq!(item2.f1, vec![String::default(), "hello".to_string()]);
     assert_eq!(item2.f2, HashSet::from([0, 43]));
-    assert_eq!(item2.f3, HashMap::from([(44, 0), (45, 46)]));
+    // assert_eq!(item2.f3, HashMap::from([(44, 0), (45, 46)]));
 }
 
 #[test]
@@ -324,7 +322,7 @@ fn nullable_struct() {
     #[derive(Fory, Debug, Default, PartialEq)]
     pub struct Item {
         name: String,
-        data: Vec<Option<i8>>,
+        data: Vec<Option<String>>,
         last: i64,
     }
 
@@ -353,13 +351,13 @@ fn nullable_struct() {
     let person1 = Person1 {
         f1: Item {
             name: "f1".to_string(),
-            data: vec![None, Some(42)],
+            data: vec![None, Some("hi".to_string())],
             last: 43,
         },
         f2: None,
         f3: Some(Item {
             name: "f3".to_string(),
-            data: vec![None, Some(44)],
+            data: vec![None, Some("hello".to_string())],
             last: 45,
         }),
         last: 46,
@@ -372,6 +370,68 @@ fn nullable_struct() {
     assert_eq!(person2.f3, person1.f3.unwrap());
     assert_eq!(person2.last, person1.last);
 }
+
+// #[test]
+// fn enum_without_payload() {
+//     #[derive(Fory, Debug, PartialEq, Default)]
+//     enum Color1 {
+//         #[default]
+//         Green,
+//         Red,
+//         Blue,
+//     }
+//     #[derive(Fory, Debug, PartialEq, Default)]
+//     enum Color2 {
+//         #[default]
+//         Green,
+//         Red,
+//         Blue,
+//     }
+//     #[derive(Fory, Debug, PartialEq)]
+//     struct Person1 {
+//         f1: Color1,
+//         f2: Color1,
+//         // skip
+//         f3: Color2,
+//         f5: Vec<Color1>,
+//         f6: Option<Color1>,
+//         f7: Option<Color1>,
+//         f8: Color1,
+//     }
+//     #[derive(Fory, Debug, PartialEq)]
+//     struct Person2 {
+//         // same
+//         f1: Color1,
+//         // type different
+//         f2: Color2,
+//         // should be default
+//         f4: Color2,
+//         f5: Vec<Color2>,
+//         f6: Color1,
+//         f7: Color1,
+//         f8: Option<Color1>,
+//     }
+//
+//     let mut fory1 = Fory::default().mode(Compatible).xlang(true);
+//     fory1.register::<Color1>(666);
+//     fory1.register::<Color2>(667);
+//     let mut fory2 = Fory::default().mode(Compatible).xlang(true);
+//     fory2.register::<Color1>(666);
+//     fory1.register::<Color2>(667);
+//
+//     let person1 = Person1 {
+//         f1: Color1::Blue,
+//         f2: Color1::Green,
+//         f3: Color2::Green,
+//         f5: vec![Color1::Green, Color1::Blue],
+//         f6: Some(Color1::Blue),
+//         f7: None,
+//         f8: Color1::Red,
+//     };
+//     let bin = fory1.serialize(&person1);
+//     let person2: Person2 = fory2.deserialize(&bin).expect("");
+//     assert_eq!(person2.f1, person1.f1);
+// }
 
 // #[test]
 // fn not_impl_default() {

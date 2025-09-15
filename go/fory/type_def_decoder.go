@@ -83,12 +83,12 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer) (*TypeDef, error) {
 	}
 
 	// Read fields information
-	fieldInfos := make([]FieldInfo, fieldCount)
+	fieldInfos := make([]FieldDef, fieldCount)
 	if hasFieldsMeta {
 		for i := 0; i < fieldCount; i++ {
-			fieldInfo, err := readFieldInfo(fory.typeResolver, metaBuffer)
+			fieldInfo, err := readFieldDef(fory.typeResolver, metaBuffer)
 			if err != nil {
-				return nil, fmt.Errorf("failed to read field info %d: %w", i, err)
+				return nil, fmt.Errorf("failed to read field def %d: %w", i, err)
 			}
 			fieldInfos[i] = fieldInfo
 		}
@@ -102,17 +102,17 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer) (*TypeDef, error) {
 }
 
 /*
-readFieldInfo reads a single field's information from the buffer
-field info layout as following:
+readFieldDef reads a single field's definition from the buffer
+field def layout as following:
   - first 1 byte: header (2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag)
   - next variable bytes: FieldType info
   - next variable bytes: field name or tag id
 */
-func readFieldInfo(typeResolver *typeResolver, buffer *ByteBuffer) (FieldInfo, error) {
+func readFieldDef(typeResolver *typeResolver, buffer *ByteBuffer) (FieldDef, error) {
 	// Read field header
 	headerByte, err := buffer.ReadByte()
 	if err != nil {
-		return FieldInfo{}, fmt.Errorf("failed to read field header: %w", err)
+		return FieldDef{}, fmt.Errorf("failed to read field header: %w", err)
 	}
 
 	// Resolve the header
@@ -130,17 +130,17 @@ func readFieldInfo(typeResolver *typeResolver, buffer *ByteBuffer) (FieldInfo, e
 	// reading field type
 	ft, err := readFieldType(buffer)
 	if err != nil {
-		return FieldInfo{}, err
+		return FieldDef{}, err
 	}
 
 	// Reading field name based on encoding
 	nameBytes := buffer.ReadBinary(nameLen)
 	fieldName, err := typeResolver.typeNameDecoder.Decode(nameBytes, nameEncoding)
 	if err != nil {
-		return FieldInfo{}, fmt.Errorf("failed to decode field name: %w", err)
+		return FieldDef{}, fmt.Errorf("failed to decode field name: %w", err)
 	}
 
-	return FieldInfo{
+	return FieldDef{
 		name:         fieldName,
 		nameEncoding: nameEncoding,
 		fieldType:    ft,

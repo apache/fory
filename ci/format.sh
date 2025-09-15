@@ -125,11 +125,11 @@ format_files() {
 
 format_all_scripts() {
     echo "$(date)" "Ruff format...."
-    git ls-files -- '*.py' '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
+    git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 \
       ruff format
 
     echo "$(date)" "Ruff check...."
-    git ls-files -- '*.py' '*.pyx' '*.pxd' '*.pxi' "${GIT_LS_EXCLUDES[@]}" | xargs \
+    git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs \
       ruff check --fix
 }
 
@@ -193,10 +193,10 @@ format_changed() {
     # exist on both branches.
     MERGEBASE="$(git merge-base origin/main HEAD)"
 
-    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' '*.pyx' '*.pxd' '*.pxi' &>/dev/null; then
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
+    if ! git diff --diff-filter=ACRM --quiet --exit-code "$MERGEBASE" -- '*.py' &>/dev/null; then
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
             ruff format
-        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' '*.pyx' '*.pxd' '*.pxi' | xargs -P 5 \
+        git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.py' | xargs -P 5 \
             ruff check --fix
     fi
 

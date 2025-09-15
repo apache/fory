@@ -25,18 +25,17 @@ from typing import List
 from pyfory._util import Buffer
 from pyfory.meta.typedef import TypeDef, FieldInfo, FieldType
 from pyfory.meta.typedef import (
-    FieldInfo,
-    TypeDef,
     SMALL_NUM_FIELDS_THRESHOLD,
     REGISTER_BY_NAME_FLAG,
     FIELD_NAME_SIZE_THRESHOLD,
     COMPRESS_META_FLAG,
     HAS_FIELDS_META_FLAG,
     META_SIZE_MASKS,
-    NUM_HASH_BITS,
     FIELD_NAME_ENCODINGS,
+    NAMESPACE_ENCODINGS,
+    TYPE_NAME_ENCODINGS,
 )
-from pyfory.type import TypeId
+from pyfory.type import TypeId, record_class_factory
 from pyfory.meta.metastring import MetaStringDecoder, Encoding
 
 
@@ -46,7 +45,20 @@ TYPENAME_DECODER = MetaStringDecoder("$", "_")
 FIELD_NAME_DECODER = MetaStringDecoder("$", "_")
 
 
-def decode_typedef(buffer: Buffer, resolver) -> TypeDef:
+def skip_typedef(buffer: Buffer, header) -> None:
+    """
+    Skip a TypeDef from the buffer.
+    """
+    # Extract components from header
+    meta_size = header & META_SIZE_MASKS
+    # If meta size is at maximum, read additional size
+    if meta_size == META_SIZE_MASKS:
+        meta_size += buffer.read_varuint32()
+    # Read meta data
+    buffer.read_bytes(meta_size)
+
+
+def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
     """
     Decode a TypeDef from the buffer.
 
@@ -58,7 +70,8 @@ def decode_typedef(buffer: Buffer, resolver) -> TypeDef:
         The decoded TypeDef.
     """
     # Read global binary header
-    header = buffer.read_int64()
+    if header is None:
+        header = buffer.read_int64()
 
     # Extract components from header
     meta_size = header & META_SIZE_MASKS
@@ -90,43 +103,52 @@ def decode_typedef(buffer: Buffer, resolver) -> TypeDef:
     # Check if registered by name
     is_registered_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0
 
+    type_cls = None
     # Read type info
     if is_registered_by_name:
         namespace = read_namespace(meta_buffer)
         typename = read_typename(meta_buffer)
-        name = namespace + "." + typename if namespace else typename
         # Look up the type_id from namespace and typename
         type_info = resolver.get_typeinfo_by_name(namespace, typename)
         if type_info:
             type_id = type_info.type_id
+            type_cls = type_info.cls
         else:
             # Fallback to COMPATIBLE_STRUCT if not found
             type_id = TypeId.COMPATIBLE_STRUCT
     else:
         type_id = meta_buffer.read_varuint32()
         type_info = resolver.get_typeinfo_by_id(type_id)
-        name = type_info.cls.__name__
-
+        if type_info is not None:
+            type_cls = type_info.cls
+            namespace = type_info.decode_namespace()
+            typename = type_info.decode_typename()
+        else:
+            namespace = "fory"
+            typename = f"Nonexistent{type_id}"
+    name = namespace + "." + typename if namespace else typename
     # Read fields info if present
     field_infos = []
     if has_fields_meta:
         field_infos = read_fields_info(meta_buffer, resolver, name, num_fields)
+    if type_cls is None:
+        type_cls = record_class_factory(name, [field_info.name for field_info in field_infos])
 
     # Create TypeDef object
-    return TypeDef(name, type_id, field_infos, meta_data, is_compressed)
+    return TypeDef(namespace, typename, type_cls, type_id, field_infos, meta_data, is_compressed)
 
 
 def read_namespace(buffer: Buffer) -> str:
     """Read namespace from the buffer."""
-    return read_meta_string(buffer, NAMESPACE_DECODER)
+    return read_meta_string(buffer, NAMESPACE_DECODER, NAMESPACE_ENCODINGS)
 
 
 def read_typename(buffer: Buffer) -> str:
     """Read typename from the buffer."""
-    return read_meta_string(buffer, TYPENAME_DECODER)
+    return read_meta_string(buffer, TYPENAME_DECODER, TYPE_NAME_ENCODINGS)
 
 
-def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder) -> str:
+def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder, encodings: List[Encoding]) -> str:
     """Read a meta string from the buffer."""
     # Read encoding and length combined in first byte
     header = buffer.read_uint8()
@@ -135,7 +157,7 @@ def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder) -> str:
     encoding_value = header & 0b11
     size_value = (header >> 2) & 0b111111
 
-    encoding = Encoding(encoding_value)
+    encoding = encodings[encoding_value]
 
     # Read length - same logic as encoder
     length = 0
@@ -174,7 +196,7 @@ def read_field_info(buffer: Buffer, resolver, defined_class: str) -> FieldInfo:
     field_name_size += 1
     encoding = FIELD_NAME_ENCODINGS[field_name_encoding]
     is_nullable = (header & 0b10) != 0
-    is_tracking_ref = header & 0b1
+    is_tracking_ref = (header & 0b1) != 0
 
     # Read field type info (without flags since they're in the header)
     xtype_id = buffer.read_varuint32()

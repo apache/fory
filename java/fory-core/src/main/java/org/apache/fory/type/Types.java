@@ -165,7 +165,21 @@ public class Types {
   public static final int UNKNOWN = 63;
 
   // Helper methods
+  public static boolean isNamedType(int value) {
+    assert value < 0xff;
+    switch (value) {
+      case NAMED_STRUCT:
+      case NAMED_COMPATIBLE_STRUCT:
+      case NAMED_ENUM:
+      case NAMED_EXT:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   public static boolean isStructType(int value) {
+    assert value < 0xff;
     return value == STRUCT
         || value == COMPATIBLE_STRUCT
         || value == NAMED_STRUCT
@@ -173,10 +187,12 @@ public class Types {
   }
 
   public static boolean isExtType(int value) {
+    assert value < 0xff;
     return value == EXT || value == NAMED_EXT;
   }
 
   public static boolean isEnumType(int value) {
+    assert value < 0xff;
     return value == ENUM || value == NAMED_ENUM;
   }
 

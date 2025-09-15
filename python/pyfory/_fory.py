@@ -98,6 +98,7 @@ class Fory:
     __slots__ = (
         "language",
         "is_py",
+        "compatible",
         "ref_tracking",
         "ref_resolver",
         "type_resolver",
@@ -113,13 +114,13 @@ class Fory:
         "_unsupported_objects",
         "_peer_language",
     )
-    serialization_context: "SerializationContext"
 
     def __init__(
         self,
         language=Language.PYTHON,
         ref_tracking: bool = False,
         require_type_registration: bool = True,
+        compatible: bool = False,
     ):
         """
         :param require_type_registration:
@@ -130,22 +131,27 @@ class Fory:
           Do not disable type registration if you can't ensure your environment are
           *indeed secure*. We are not responsible for security risks if
           you disable this option.
+        :param compatible:
+         Whether to enable compatible mode for cross-language serialization.
+         When enabled, type forward/backward compatibility for struct fields will be enabled.
         """
         self.language = language
         self.is_py = language == Language.PYTHON
         self.require_type_registration = _ENABLE_TYPE_REGISTRATION_FORCIBLY or require_type_registration
+        self.compatible = compatible
         self.ref_tracking = ref_tracking
         if self.ref_tracking:
             self.ref_resolver = MapRefResolver()
         else:
             self.ref_resolver = NoRefResolver()
-        from pyfory._serialization import MetaStringResolver
+        from pyfory._serialization import MetaStringResolver, SerializationContext
         from pyfory._registry import TypeResolver
 
         self.metastring_resolver = MetaStringResolver()
-        self.type_resolver = TypeResolver(self)
+        self.type_resolver = TypeResolver(self, meta_share=compatible)
+        self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
         self.type_resolver.initialize()
-        self.serialization_context = SerializationContext()
+
         self.buffer = Buffer.allocate(32)
         if not require_type_registration:
             warnings.warn(
@@ -255,10 +261,26 @@ class Fory:
             set_bit(buffer, mask_index, 3)
         else:
             clear_bit(buffer, mask_index, 3)
+        # Reserve space for type definitions offset, similar to Java implementation
+        type_defs_offset_pos = None
+        if self.serialization_context.scoped_meta_share_enabled:
+            type_defs_offset_pos = buffer.writer_index
+            buffer.write_int32(-1)  # Reserve 4 bytes for type definitions offset
+
         if self.language == Language.PYTHON:
             self.serialize_ref(buffer, obj)
         else:
             self.xserialize_ref(buffer, obj)
+
+        # Write type definitions at the end, similar to Java implementation
+        if self.serialization_context.scoped_meta_share_enabled:
+            meta_context = self.serialization_context.meta_context
+            if meta_context is not None and len(meta_context.get_writing_type_defs()) > 0:
+                # Update the offset to point to current position
+                current_pos = buffer.writer_index
+                buffer.put_int32(type_defs_offset_pos, current_pos - type_defs_offset_pos - 4)
+                self.type_resolver.write_type_defs(buffer)
+
         self.reset_write()
         if buffer is not self.buffer:
             return buffer
@@ -369,6 +391,20 @@ class Fory:
             self._buffers = iter(buffers)
         else:
             assert buffers is None, "buffers should be null when the serialized stream is produced with buffer_callback null."
+
+        # Read type definitions at the start, similar to Java implementation
+        if self.serialization_context.scoped_meta_share_enabled:
+            relative_type_defs_offset = buffer.read_int32()
+            if relative_type_defs_offset != -1:
+                # Save current reader position
+                current_reader_index = buffer.reader_index
+                # Jump to type definitions
+                buffer.reader_index = current_reader_index + relative_type_defs_offset
+                # Read type definitions
+                self.type_resolver.read_type_defs(buffer)
+                # Jump back to continue with object deserialization
+                buffer.reader_index = current_reader_index
+
         if is_target_x_lang:
             obj = self.xdeserialize_ref(buffer)
         else:
@@ -470,7 +506,7 @@ class Fory:
     def reset_write(self):
         self.ref_resolver.reset_write()
         self.type_resolver.reset_write()
-        self.serialization_context.reset()
+        self.serialization_context.reset_write()
         self.metastring_resolver.reset_write()
         self.pickler.clear_memo()
         self._buffer_callback = None
@@ -479,7 +515,7 @@ class Fory:
     def reset_read(self):
         self.ref_resolver.reset_read()
         self.type_resolver.reset_read()
-        self.serialization_context.reset()
+        self.serialization_context.reset_read()
         self.metastring_resolver.reset_write()
         self.unpickler = None
         self._buffers = None
@@ -488,36 +524,6 @@ class Fory:
     def reset(self):
         self.reset_write()
         self.reset_read()
-
-
-class SerializationContext:
-    """
-    A context is used to add some context-related information, so that the
-    serializers can setup relation between serializing different objects.
-    The context will be reset after finished serializing/deserializing the
-    object tree.
-    """
-
-    __slots__ = ("objects",)
-
-    def __init__(self):
-        self.objects = dict()
-
-    def add(self, key, obj):
-        self.objects[id(key)] = obj
-
-    def __contains__(self, key):
-        return id(key) in self.objects
-
-    def __getitem__(self, key):
-        return self.objects[id(key)]
-
-    def get(self, key):
-        return self.objects.get(id(key))
-
-    def reset(self):
-        if len(self.objects) > 0:
-            self.objects.clear()
 
 
 _ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv("ENABLE_TYPE_REGISTRATION_FORCIBLY", "0") in {

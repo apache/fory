@@ -1,5 +1,5 @@
 ---
-title: Fory Row Format
+title: Row Format
 sidebar_position: 2
 id: fory_row_format_spec
 license: |

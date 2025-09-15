@@ -93,8 +93,8 @@ class TypeDefEncoder {
   static MemoryBuffer encodeClassDef(
       XtypeResolver resolver, Class<?> type, List<FieldInfo> fields) {
     ClassInfo classInfo = resolver.getClassInfo(type);
-    Preconditions.checkArgument(
-        Types.isStructType(classInfo.getXtypeId()), "%s is not a struct", type);
+    int xtypeId = (classInfo.getXtypeId()) & 0xff;
+    Preconditions.checkArgument(Types.isStructType(xtypeId), "%s is not a struct", type);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(128);
     buffer.writeByte(-1); // placeholder for header, update later
     int currentClassHeader = fields.size();
@@ -103,7 +103,7 @@ class TypeDefEncoder {
       buffer.writeVarUint32(fields.size() - SMALL_NUM_FIELDS_THRESHOLD);
     }
     if (resolver.isRegisteredById(type)) {
-      buffer.writeVarUint32(classInfo.getXtypeId());
+      buffer.writeVarUint32(xtypeId);
     } else {
       Preconditions.checkArgument(resolver.isRegisteredByName(type));
       currentClassHeader |= REGISTER_BY_NAME_FLAG;

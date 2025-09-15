@@ -1,4 +1,4 @@
-# Contributing to Apache Fory Python
+# Contributing to Apache Fory™ Python
 
 This document provides instructions for building and testing the `pyfory` package.
 

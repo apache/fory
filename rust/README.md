@@ -4,7 +4,7 @@
 [![Documentation](https://docs.rs/fory/badge.svg)](https://docs.rs/fory)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-Fory is a blazingly fast multi-language serialization framework powered by
+Apache Fory™ is a blazingly fast multi-language serialization framework powered by
 codegen and zero-copy techniques. It provides high-performance
 serialization and deserialization for Rust applications with cross-language
 compatibility.
@@ -28,7 +28,7 @@ This repository contains three main crates:
 
 ## 🏃‍♂️ Quick Start
 
-Add Fory to your `Cargo.toml`:
+Add Apache Fory™ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -193,7 +193,7 @@ assert_eq!(prefs.values().get(0), "en");
 
 ## ⚡ Performance
 
-Fory is designed for maximum performance:
+Apache Fory™ is designed for maximum performance:
 
 - **Zero-copy deserialization** in row mode
 - **Buffer pre-allocation** to minimize allocations
@@ -203,7 +203,7 @@ Fory is designed for maximum performance:
 
 ## 🌍 Cross-Language Compatibility
 
-Fory is designed to work across multiple programming languages, making it ideal for:
+Apache Fory™ is designed to work across multiple programming languages, making it ideal for:
 
 - **Microservices architectures** with polyglot services
 - **Distributed systems** with heterogeneous components
@@ -218,7 +218,7 @@ cargo bench --package fory-benchmarks
 
 ## 🛠️ Development Status
 
-Fory Rust implementation roadmap:
+Apache Fory™ Rust implementation roadmap:
 
 - [x] Static codegen based on rust macro
 - [x] Row format serialization
@@ -238,8 +238,8 @@ We welcome contributions! Please see our [Contributing Guide](../CONTRIBUTING.md
 ## 📞 Support
 
 - **Documentation**: [docs.rs/fory](https://docs.rs/fory)
-- **Issues**: [GitHub Issues](https://github.com/apache/fury/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/apache/fury/discussions)
+- **Issues**: [GitHub Issues](https://github.com/apache/fory/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/apache/fory/discussions)
 
 ---
 

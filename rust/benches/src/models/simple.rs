@@ -20,7 +20,7 @@ use fory_derive::Fory;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// Fury models
+// Fory models
 #[derive(Fory, Debug, Clone, PartialEq, Default)]
 pub struct SimpleStruct {
     pub id: i32,
@@ -199,7 +199,7 @@ impl From<SimpleMap> for SerdeSimpleMap {
     }
 }
 
-// Reverse conversions from Serde to Fury
+// Reverse conversions from Serde to Fory
 impl From<SerdeSimpleStruct> for SimpleStruct {
     fn from(s: SerdeSimpleStruct) -> Self {
         SimpleStruct {
