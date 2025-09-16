@@ -307,10 +307,10 @@ func generateCodeForFile(pkg *packages.Package, structs []*StructInfo, sourceFil
 	fmt.Fprintf(&buf, "\t\"github.com/apache/fory/go/fory\"\n")
 	fmt.Fprintf(&buf, ")\n\n")
 
-	// Generate init function to register serializers
+	// Generate init function to register serializer factories
 	fmt.Fprintf(&buf, "func init() {\n")
 	for _, s := range structs {
-		fmt.Fprintf(&buf, "\tfory.RegisterGeneratedSerializer((*%s)(nil), %s_ForyGenSerializer{})\n", s.Name, s.Name)
+		fmt.Fprintf(&buf, "\tfory.RegisterSerializerFactory((*%s)(nil), NewSerializerFor_%s)\n", s.Name, s.Name)
 	}
 	fmt.Fprintf(&buf, "}\n\n")
 
@@ -393,6 +393,11 @@ func generateStructSerializer(buf *bytes.Buffer, s *StructInfo) error {
 	// Generate struct serializer type
 	fmt.Fprintf(buf, "type %s_ForyGenSerializer struct {}\n\n", s.Name)
 
+	// Generate factory function
+	fmt.Fprintf(buf, "func NewSerializerFor_%s() fory.Serializer {\n", s.Name)
+	fmt.Fprintf(buf, "\treturn %s_ForyGenSerializer{}\n", s.Name)
+	fmt.Fprintf(buf, "}\n\n")
+
 	// Generate TypeId method
 	fmt.Fprintf(buf, "func (%s_ForyGenSerializer) TypeId() fory.TypeId {\n", s.Name)
 	fmt.Fprintf(buf, "\treturn fory.NAMED_STRUCT\n")
@@ -462,10 +467,10 @@ func generateCode(pkg *packages.Package, structs []*StructInfo) error {
 	fmt.Fprintf(&buf, "\t\"github.com/apache/fory/go/fory\"\n")
 	fmt.Fprintf(&buf, ")\n\n")
 
-	// Generate init function to register serializers
+	// Generate init function to register serializer factories
 	fmt.Fprintf(&buf, "func init() {\n")
 	for _, s := range structs {
-		fmt.Fprintf(&buf, "\tfory.RegisterGeneratedSerializer((*%s)(nil), %s_ForyGenSerializer{})\n", s.Name, s.Name)
+		fmt.Fprintf(&buf, "\tfory.RegisterSerializerFactory((*%s)(nil), NewSerializerFor_%s)\n", s.Name, s.Name)
 	}
 	fmt.Fprintf(&buf, "}\n\n")
 

@@ -24,6 +24,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/apache/fory/go/fory/meta"
@@ -225,71 +226,24 @@ var (
 	genericSetType     = reflect.TypeOf((*GenericSet)(nil)).Elem()
 )
 
-// Global type resolver shared by all Fory instances for generated serializers
-var globalTypeResolver *typeResolver
-
-func init() {
-	// Initialize global type resolver after other init functions
-	initGlobalTypeResolver()
+// Global registry for generated serializer factories
+var generatedSerializerFactories = struct {
+	mu        sync.RWMutex
+	factories map[reflect.Type]func() Serializer
+}{
+	factories: make(map[reflect.Type]func() Serializer),
 }
 
-func initGlobalTypeResolver() {
-	// Create a dummy fory instance just for initializing the global type resolver
-	r := &typeResolver{
-		typeTagToSerializers: map[string]Serializer{},
-		typeToSerializers:    map[reflect.Type]Serializer{},
-		typeIdToType:         map[int16]reflect.Type{},
-		typeToTypeInfo:       map[reflect.Type]string{},
-		typeInfoToType:       map[string]reflect.Type{},
-		dynamicStringToId:    map[string]int16{},
-		dynamicIdToString:    map[int16]string{},
-
-		language:            XLANG,
-		metaStringResolver:  NewMetaStringResolver(),
-		requireRegistration: false,
-
-		metaStrToStr:     make(map[string]string),
-		metaStrToClass:   make(map[string]reflect.Type),
-		hashToMetaString: make(map[uint64]string),
-		hashToClassInfo:  make(map[uint64]TypeInfo),
-
-		dynamicWrittenMetaStr: make([]string, 0),
-		typeIDToTypeInfo:      make(map[int32]TypeInfo),
-		typeIDCounter:         300,
-		dynamicWriteStringID:  0,
-
-		typesInfo:           make(map[reflect.Type]TypeInfo),
-		nsTypeToTypeInfo:    make(map[nsTypeKey]TypeInfo),
-		namedTypeToTypeInfo: make(map[namedTypeKey]TypeInfo),
-
-		namespaceEncoder: meta.NewEncoder('.', '_'),
-		namespaceDecoder: meta.NewDecoder('.', '_'),
-		typeNameEncoder:  meta.NewEncoder('$', '_'),
-		typeNameDecoder:  meta.NewDecoder('$', '_'),
+// RegisterSerializerFactory registers a factory function for a generated serializer
+func RegisterSerializerFactory(type_ interface{}, factory func() Serializer) {
+	reflectType := reflect.TypeOf(type_)
+	if reflectType.Kind() == reflect.Ptr {
+		reflectType = reflectType.Elem()
 	}
 
-	// Initialize base type mappings - copy from newTypeResolver
-	for _, t := range []reflect.Type{
-		boolType,
-		byteType,
-		int8Type,
-		int16Type,
-		int32Type,
-		intType,
-		int64Type,
-		float32Type,
-		float64Type,
-		stringType,
-		dateType,
-		timestampType,
-		interfaceType,
-		genericSetType,
-	} {
-		r.typeInfoToType[t.String()] = t
-		r.typeToTypeInfo[t] = t.String()
-	}
-	r.initialize()
-	globalTypeResolver = r
+	generatedSerializerFactories.mu.Lock()
+	defer generatedSerializerFactories.mu.Unlock()
+	generatedSerializerFactories.factories[reflectType] = factory
 }
 
 type TypeInfo struct {
@@ -410,6 +364,18 @@ func newTypeResolver(fory *Fory) *typeResolver {
 		r.typeToTypeInfo[t] = t.String()
 	}
 	r.initialize()
+
+	// Register generated serializers from factories
+	generatedSerializerFactories.mu.RLock()
+	for type_, factory := range generatedSerializerFactories.factories {
+		serializer := factory()
+		r.typeToSerializers[type_] = serializer
+		if typeId := serializer.TypeId(); typeId > NotSupportCrossLanguage {
+			r.typeIdToType[typeId] = type_
+		}
+	}
+	generatedSerializerFactories.mu.RUnlock()
+
 	return r
 }
 
@@ -466,39 +432,6 @@ func (r *typeResolver) RegisterSerializer(type_ reflect.Type, s Serializer) erro
 			r.typeIdToType[typeId] = type_
 		}
 	}
-	return nil
-}
-
-// RegisterGeneratedSerializer registers a generated serializer for a specific type.
-// Generated serializers have priority over reflection-based serializers and can override existing ones.
-func RegisterGeneratedSerializer(type_ interface{}, s Serializer) error {
-	if type_ == nil {
-		return fmt.Errorf("type_ cannot be nil")
-	}
-
-	reflectType := reflect.TypeOf(type_)
-	if reflectType.Kind() == reflect.Ptr {
-		reflectType = reflectType.Elem()
-	}
-
-	// Use the global type resolver
-	if globalTypeResolver == nil {
-		return fmt.Errorf("global type resolver not initialized")
-	}
-
-	// Allow overriding existing serializers by directly setting the map
-	// This gives generated serializers priority over reflection-based ones
-	globalTypeResolver.typeToSerializers[reflectType] = s
-
-	// Handle typeId registration
-	typeId := s.TypeId()
-	if typeId != FORY_TYPE_TAG {
-		if typeId > NotSupportCrossLanguage {
-			// Allow overriding existing typeId mappings as well
-			globalTypeResolver.typeIdToType[typeId] = reflectType
-		}
-	}
-
 	return nil
 }
 

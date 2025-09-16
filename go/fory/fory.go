@@ -31,19 +31,8 @@ func NewFory(referenceTracking bool) *Fory {
 		language:          XLANG,
 		buffer:            NewByteBuffer(nil),
 	}
-	// Create a new type resolver for this instance but copy generated serializers from global resolver
+	// Create a new type resolver for this instance
 	fory.typeResolver = newTypeResolver(fory)
-
-	// Copy generated serializers from global resolver to this instance
-	if globalTypeResolver != nil {
-		for type_, serializer := range globalTypeResolver.typeToSerializers {
-			fory.typeResolver.typeToSerializers[type_] = serializer
-		}
-		for typeId, type_ := range globalTypeResolver.typeIdToType {
-			fory.typeResolver.typeIdToType[typeId] = type_
-		}
-	}
-
 	return fory
 }
 
