@@ -50,8 +50,8 @@ import org.openjdk.jmh.infra.Blackhole;
  * <source>1.8</source>
  * <target>1.8</target>
  * <!-- to: -->
- * <source>16</source>
- * <target>16</target>
+ * <source>17</source>
+ * <target>17</target>
  * <compilerArgs>
  *   <arg>--add-modules=jdk.incubator.vector</arg>
  * </compilerArgs>
