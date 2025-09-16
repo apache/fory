@@ -160,7 +160,7 @@ def run_java11():
     """Run Java 11 tests."""
     logging.info("Executing fory java tests with Java 11")
     common.cd_project_subdir("java")
-    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test -pl '!fory-simd'")
+    common.exec_cmd("mvn -T16 --batch-mode --no-transfer-progress test")
     logging.info("Executing fory java tests succeeds")
 
 
