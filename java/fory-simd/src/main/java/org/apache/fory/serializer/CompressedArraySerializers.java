@@ -57,7 +57,7 @@ public final class CompressedArraySerializers {
    * @param fory the Fory instance to register serializers with
    */
   public static void registerSerializers(Fory fory) {
-    registerIfEnabled(fory);
+    register(fory);
   }
 
   /**
@@ -66,7 +66,7 @@ public final class CompressedArraySerializers {
    *
    * @param fory the Fory instance to configure
    */
-  static void registerIfEnabled(Fory fory) {
+  static void register(Fory fory) {
     ClassResolver resolver = fory.getClassResolver();
     boolean compressInt = fory.getConfig().compressIntArray();
     boolean compressLong = fory.getConfig().compressLongArray();

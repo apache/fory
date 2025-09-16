@@ -23,25 +23,22 @@ import org.apache.fory.Fory;
 
 /**
  * Interface for modules to register their serializers with Fory.
- * 
- * Modules can implement this interface and be discovered automatically
- * through service loading.
+ *
+ * <p>Modules can implement this interface and be discovered automatically through service loading.
  */
 public interface SerializerRegistration {
 
   /**
-   * Register serializers with the given Fory instance if enabled.
-   * Implementations should check configuration flags and only register
-   * serializers when appropriate features are enabled.
+   * Register serializers with the given Fory instance. Implementations can check
+   * configuration flags and only register serializers when appropriate features are enabled.
    *
    * @param fory the Fory instance to register serializers with
    */
-  void registerIfEnabled(Fory fory);
+  void register(Fory fory);
 
   /**
-   * Check if this registration is applicable for the given Fory configuration.
-   * This allows registrations to opt-out based on configuration without
-   * being loaded at all.
+   * Check if this registration is applicable for the given Fory configuration. This allows
+   * registrations to opt-out based on configuration without being loaded at all.
    *
    * @param fory the Fory instance to check
    * @return true if this registration should be applied
