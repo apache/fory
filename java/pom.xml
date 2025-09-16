@@ -59,12 +59,9 @@
   </developers>
 
   <modules>
-    <module>fory-format</module>
     <module>fory-core</module>
-    <module>fory-simd</module>
     <module>fory-extensions</module>
     <module>fory-test-core</module>
-    <module>fory-testsuite</module>
   </modules>
 
   <properties>
@@ -77,6 +74,28 @@
     <maven-spotless-plugin.version>2.41.1</maven-spotless-plugin.version>
     <lombok.version>1.18.38</lombok.version>
   </properties>
+
+  <profiles>
+    <profile>
+      <id>jdk11-and-higher</id>
+      <activation>
+        <jdk>[11,]</jdk>
+      </activation>
+      <modules>
+        <module>fory-format</module>
+        <module>fory-testsuite</module>
+      </modules>
+    </profile>
+    <profile>
+      <id>jdk17-and-higher</id>
+      <activation>
+        <jdk>[17,]</jdk>
+      </activation>
+      <modules>
+        <module>fory-simd</module>
+      </modules>
+    </profile>
+  </profiles>
 
   <dependencyManagement>
     <dependencies>
