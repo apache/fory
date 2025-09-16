@@ -68,11 +68,11 @@ import org.openjdk.jmh.infra.Blackhole;
  *   <version>${jmh.version}</version>
  *   <scope>provided</scope>
  * </dependency>
- *         <dependency>
- *             <groupId>org.apache.fory</groupId>
- *             <artifactId>fory-simd</artifactId>
- *             <version>${project.version}</version>
- *         </dependency>
+ * <dependency>
+ *   <groupId>org.apache.fory</groupId>
+ *   <artifactId>fory-simd</artifactId>
+ *   <version>${project.version}</version>
+ * </dependency>
  * }</pre>
  *
  * <p>2. Build and run the benchmark:
