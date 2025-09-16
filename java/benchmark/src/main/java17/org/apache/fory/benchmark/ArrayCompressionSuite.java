@@ -42,8 +42,8 @@ import org.openjdk.jmh.infra.Blackhole;
  *
  * <p><strong>SETUP REQUIRED TO RUN THIS BENCHMARK:</strong>
  *
- * <p>1. This benchmark requires Java 16+ and the fory-simd module. To enable SIMD
- * operations, you must temporarily modify benchmark/pom.xml:
+ * <p>1. This benchmark requires Java 16+ and the fory-simd module. To enable SIMD operations, you
+ * must temporarily modify benchmark/pom.xml:
  *
  * <pre>{@code
  * <!-- In the maven-compiler-plugin configuration, change: -->
