@@ -36,19 +36,6 @@ func NewFory(referenceTracking bool) *Fory {
 	return fory
 }
 
-// NewForyWithIsolatedTypes creates a Fory instance with isolated type resolver
-// for use cases that need independent type registration
-func NewForyWithIsolatedTypes(referenceTracking bool) *Fory {
-	fory := &Fory{
-		refResolver:       newRefResolver(referenceTracking),
-		referenceTracking: referenceTracking,
-		language:          XLANG,
-		buffer:            NewByteBuffer(nil),
-	}
-	fory.typeResolver = newTypeResolver(fory)
-	return fory
-}
-
 var foryPool = sync.Pool{
 	New: func() interface{} {
 		return NewFory(true)
