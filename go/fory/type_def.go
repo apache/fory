@@ -47,7 +47,7 @@ type TypeDef struct {
 	registerByName bool
 	fieldDefs      []FieldDef
 	encoded        []byte
-	typ            reflect.Type
+	type_          reflect.Type
 }
 
 func NewTypeDef(typeId TypeId, nsName, typeName *MetaStringBytes, registerByName, compressed bool, fieldDefs []FieldDef) *TypeDef {
@@ -122,9 +122,9 @@ type FieldDef struct {
 func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 	var fieldInfos []FieldDef
 
-	typ := value.Type()
-	for i := 0; i < typ.NumField(); i++ {
-		field := typ.Field(i)
+	type_ := value.Type()
+	for i := 0; i < type_.NumField(); i++ {
+		field := type_.Field(i)
 		fieldValue := value.Field(i)
 
 		var fieldInfo FieldDef

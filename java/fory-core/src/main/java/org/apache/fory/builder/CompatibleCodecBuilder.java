@@ -81,6 +81,7 @@ import org.apache.fory.util.function.SerializableSupplier;
 import org.apache.fory.util.record.RecordUtils;
 
 /** A jit-version of {@link CompatibleSerializer}. */
+@Deprecated
 public class CompatibleCodecBuilder extends BaseObjectCodecBuilder {
   public static final String FIELD_RESOLVER_NAME = "fieldResolver";
   private final FieldResolver fieldResolver;
@@ -104,7 +105,7 @@ public class CompatibleCodecBuilder extends BaseObjectCodecBuilder {
     fieldResolverRef = fieldRef(FIELD_RESOLVER_NAME, fieldResolverTypeRef);
     Expression fieldResolverExpr =
         inlineInvoke(
-            classResolverRef,
+            typeResolverRef,
             "getFieldResolver",
             fieldResolverTypeRef,
             getClassExpr(getRawType(beanType)));
@@ -878,12 +879,13 @@ public class CompatibleCodecBuilder extends BaseObjectCodecBuilder {
 
   protected Expression writeFinalClassInfo(Expression buffer, Class<?> cls) {
     Preconditions.checkArgument(ReflectionUtils.isMonomorphic(cls));
+    Preconditions.checkArgument(!fory.isCrossLanguage());
     ClassInfo classInfo = fory(f -> f.getClassResolver().getClassInfo(cls, false));
     if (classInfo != null && classInfo.getClassId() != ClassResolver.NO_CLASS_ID) {
       return fory(f -> f.getClassResolver().writeClassExpr(buffer, classInfo.getClassId()));
     }
     Expression classInfoExpr = getFinalClassInfo(cls);
-    return new Invoke(classResolverRef, "writeClassInfo", buffer, classInfoExpr);
+    return new Invoke(typeResolverRef, "writeClassInfo", buffer, classInfoExpr);
   }
 
   protected Expression skipFinalClassInfo(Class<?> cls, Expression buffer) {

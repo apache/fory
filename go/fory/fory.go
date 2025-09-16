@@ -31,28 +31,7 @@ func NewFory(referenceTracking bool) *Fory {
 		language:          XLANG,
 		buffer:            NewByteBuffer(nil),
 	}
-
-	// Use the global type resolver if available to access generated serializers
-	// This allows code generation path to work while preserving reflection independence
-	if globalTypeResolver != nil {
-		fory.typeResolver = globalTypeResolver
-	} else {
-		// Fallback to independent resolver if global doesn't exist
-		fory.typeResolver = newTypeResolver(fory)
-	}
-
-	return fory
-}
-
-// NewForyWithIsolatedTypes creates a Fory instance with isolated type resolver
-// for use cases that need independent type registration
-func NewForyWithIsolatedTypes(referenceTracking bool) *Fory {
-	fory := &Fory{
-		refResolver:       newRefResolver(referenceTracking),
-		referenceTracking: referenceTracking,
-		language:          XLANG,
-		buffer:            NewByteBuffer(nil),
-	}
+	// Create a new type resolver for this instance
 	fory.typeResolver = newTypeResolver(fory)
 	return fory
 }
@@ -453,7 +432,7 @@ func (f *Fory) readData(buffer *ByteBuffer, value reflect.Value, serializer Seri
 		}
 		serializer = typeInfo.Serializer
 		var concrete reflect.Value
-		var typ reflect.Type
+		var type_ reflect.Type
 		/*
 		   Added logic to distinguish between:
 		   1. Deserialization into a specified interface type,
@@ -464,12 +443,12 @@ func (f *Fory) readData(buffer *ByteBuffer, value reflect.Value, serializer Seri
 		case value.Kind() == reflect.Interface,
 			!value.CanSet():
 			concrete = reflect.New(typeInfo.Type).Elem()
-			typ = typeInfo.Type
+			type_ = typeInfo.Type
 		default:
 			concrete = value
-			typ = concrete.Type()
+			type_ = concrete.Type()
 		}
-		if err := serializer.Read(f, buffer, typ, concrete); err != nil {
+		if err := serializer.Read(f, buffer, type_, concrete); err != nil {
 			return err
 		}
 		value.Set(concrete)

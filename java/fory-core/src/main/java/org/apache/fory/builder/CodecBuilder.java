@@ -168,6 +168,9 @@ public abstract class CodecBuilder {
         && !expression.type().wrap().isSubtypeOf(targetType.wrap())) {
       return new Cast(expression, targetType, valuePrefix);
     }
+    if (rawType.isArray()) {
+      return new Cast(expression, OBJECT_ARRAY_TYPE, valuePrefix);
+    }
     return expression;
   }
 

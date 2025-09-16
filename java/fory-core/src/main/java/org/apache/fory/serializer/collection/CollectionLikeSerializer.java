@@ -462,7 +462,14 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   }
 
   @Override
-  public abstract T read(MemoryBuffer buffer);
+  public T read(MemoryBuffer buffer) {
+    Collection collection = newCollection(buffer);
+    int numElements = getAndClearNumElements();
+    if (numElements != 0) {
+      readElements(fory, buffer, collection, numElements);
+    }
+    return onCollectionRead(collection);
+  }
 
   /**
    * Read data except size and elements, return empty collection to be filled.

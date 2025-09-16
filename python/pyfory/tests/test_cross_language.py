@@ -465,7 +465,8 @@ def test_serialize_simple_struct(data_file_path):
 
 @cross_language_test
 def test_register_by_id(data_file_path):
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+    compatible = "compatible" in data_file_path
+    fory = pyfory.Fory(language=pyfory.XLANG, ref_tracking=True, compatible=compatible)
     fory.register_type(ComplexObject2, type_id=100)
     obj = ComplexObject2(f1=True, f2={-1: 2})
     struct_round_back(data_file_path, fory, obj)
@@ -518,6 +519,16 @@ def test_enum_field(data_file_path):
     fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=False, compatible=compatible)
     fory.register_type(EnumTestClass, namespace="test", typename="EnumTestClass")
     fory.register_type(EnumFieldStruct, namespace="test", typename="EnumFieldStruct")
+    obj = EnumFieldStruct(f1=EnumTestClass.FOO, f2=EnumTestClass.BAR, f3="abc")
+    struct_round_back(data_file_path, fory, obj)
+
+
+@cross_language_test
+def test_enum_field_register_by_id(data_file_path):
+    compatible = "compatible" in data_file_path
+    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=False, compatible=compatible)
+    fory.register_type(EnumTestClass, type_id=1)
+    fory.register_type(EnumFieldStruct, type_id=2)
     obj = EnumFieldStruct(f1=EnumTestClass.FOO, f2=EnumTestClass.BAR, f3="abc")
     struct_round_back(data_file_path, fory, obj)
 
@@ -922,11 +933,11 @@ def test_cross_version_compatibility(data_file_path):
     debug_print(f"Deserialized mixed version container: {obj}")
 
     # Verify the nested objects
-    assert obj.oldObject.name == "Old Format"
-    assert obj.oldObject.age == 20
-    assert obj.newObject.name == "New Format"
-    assert obj.newObject.age == 25
-    assert obj.newObject.email == "new@example.com"
+    assert obj.oldObject.name == "Old Format", obj.oldObject.name
+    assert obj.oldObject.age == 20, obj.oldObject.age
+    assert obj.newObject.name == "New Format", obj.newObject.name
+    assert obj.newObject.age == 25, obj.newObject.age
+    assert obj.newObject.email == "new@example.com", obj.newObject.email
 
     # Serialize back
     new_serialized = fory.serialize(obj)

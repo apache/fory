@@ -275,9 +275,9 @@ func (s mapSerializer) writeObj(f *Fory, serializer Serializer, buf *ByteBuffer,
 	return serializer.Write(f, buf, obj)
 }
 
-func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, typ reflect.Type, value reflect.Value) error {
+func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
 	if s.type_ == nil {
-		s.type_ = typ
+		s.type_ = type_
 	}
 
 	if value.IsNil() {
@@ -291,9 +291,9 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, typ reflect.Type, value re
 		// Otherwise, a generic map type will be used
 		switch {
 		case s.mapInStruct:
-			value.Set(reflect.MakeMap(typ))
-		case !isIfaceMap(typ):
-			value.Set(reflect.MakeMap(typ))
+			value.Set(reflect.MakeMap(type_))
+		case !isIfaceMap(type_):
+			value.Set(reflect.MakeMap(type_))
 		default:
 			iface := reflect.TypeOf((*interface{})(nil)).Elem()
 			newMapType := reflect.MapOf(iface, iface)
@@ -308,8 +308,8 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, typ reflect.Type, value re
 		chunkHeader = buf.ReadUint8()
 	}
 
-	keyType := typ.Key()
-	valueType := typ.Elem()
+	keyType := type_.Key()
+	valueType := type_.Elem()
 	keySer := s.keySerializer
 	valSer := s.valueSerializer
 	resolver := f.typeResolver

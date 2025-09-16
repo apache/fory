@@ -45,9 +45,9 @@ public class XlangCollectionSerializerTest extends ForyTestBase {
     LinkedHashMap<String, String> map1 = new LinkedHashMap<>();
   }
 
-  @Test
-  public void testContainerType() {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+  @Test(dataProvider = "enableCodegen")
+  public void testContainerType(boolean enableCodegen) {
+    Fory fory = Fory.builder().withLanguage(Language.XLANG).withCodegen(enableCodegen).build();
     fory.register(SomeClass.class, "SomeClass");
 
     SomeClass someClass = new SomeClass();

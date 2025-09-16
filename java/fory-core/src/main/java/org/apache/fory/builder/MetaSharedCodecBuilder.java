@@ -88,7 +88,7 @@ public class MetaSharedCodecBuilder extends ObjectCodecBuilder {
                     f.isCrossLanguage() ? f.getXtypeResolver() : f.getClassResolver(),
                     beanClass,
                     classDef));
-    DescriptorGrouper grouper = fory.getClassResolver().createDescriptorGrouper(descriptors, false);
+    DescriptorGrouper grouper = typeResolver(r -> r.createDescriptorGrouper(descriptors, false));
     objectCodecOptimizer =
         new ObjectCodecOptimizer(beanClass, grouper, !fory.isBasicTypesRefIgnored(), ctx);
 
@@ -164,7 +164,7 @@ public class MetaSharedCodecBuilder extends ObjectCodecBuilder {
     Expression decodeExpr = buildDecodeExpression();
     String decodeCode = decodeExpr.genCode(ctx).code();
     decodeCode = ctx.optimizeMethodCode(decodeCode);
-    ctx.overrideMethod("read", decodeCode, Object.class, MemoryBuffer.class, BUFFER_NAME);
+    ctx.overrideMethod(readMethodName, decodeCode, Object.class, MemoryBuffer.class, BUFFER_NAME);
     registerJITNotifyCallback();
     ctx.addConstructor(constructorCode, Fory.class, FORY_NAME, Class.class, POJO_CLASS_TYPE_NAME);
     return ctx.genCode();
@@ -181,8 +181,7 @@ public class MetaSharedCodecBuilder extends ObjectCodecBuilder {
   public static Serializer setCodegenSerializer(
       Fory fory, Class<?> cls, GeneratedMetaSharedSerializer s) {
     if (GraalvmSupport.isGraalRuntime()) {
-      return fory.getJITContext()
-          .asyncVisitFory(f -> f.getClassResolver().getSerializer(s.getType()));
+      return typeResolver(fory, r -> r.getSerializer(s.getType()));
     }
     // This method hold jit lock, so create jit serializer async to avoid block serialization.
     Class serializerClass =

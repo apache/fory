@@ -231,7 +231,7 @@ case $1 in
       echo "Executing fory java tests"
       cd "$ROOT/java"
       set +e
-      mvn -T16 --batch-mode --no-transfer-progress test -pl '!:fory-format,!:fory-testsuite'
+      mvn -T16 --batch-mode --no-transfer-progress test
       testcode=$?
       if [[ $testcode -ne 0 ]]; then
         exit $testcode

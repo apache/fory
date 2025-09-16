@@ -161,9 +161,7 @@ import org.apache.fory.serializer.shim.ShimDispatcher;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.GenericType;
-import org.apache.fory.type.ScalaTypes;
 import org.apache.fory.type.TypeUtils;
-import org.apache.fory.type.Types;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.GraalvmSupport.GraalvmSerializerHolder;
 import org.apache.fory.util.Preconditions;
@@ -175,7 +173,7 @@ import org.apache.fory.util.function.Functions;
  * up relations between serializer and types.
  */
 @SuppressWarnings({"rawtypes", "unchecked"})
-public class ClassResolver implements TypeResolver {
+public class ClassResolver extends TypeResolver {
   private static final Logger LOG = LoggerFactory.getLogger(ClassResolver.class);
 
   // bit 0 unset indicates class is written as an id.
@@ -281,6 +279,7 @@ public class ClassResolver implements TypeResolver {
   }
 
   public ClassResolver(Fory fory) {
+    super(fory);
     this.fory = fory;
     metaStringResolver = fory.getMetaStringResolver();
     classInfoCache = NIL_CLASS_INFO;
@@ -638,24 +637,6 @@ public class ClassResolver implements TypeResolver {
    */
   @Override
   public boolean isMonomorphic(Class<?> clz) {
-    if (fory.isCrossLanguage()) {
-      if (TypeUtils.unwrap(clz).isPrimitive() || clz.isEnum() || clz == String.class) {
-        return true;
-      }
-      if (clz.isArray() && TypeUtils.getArrayComponent(clz).isPrimitive()) {
-        return true;
-      }
-      ClassInfo classInfo = xtypeResolver.getClassInfo(clz, false);
-      if (classInfo != null) {
-        if (classInfo.serializer instanceof TimeSerializers.TimeSerializer) {
-          return true;
-        }
-        if (classInfo.serializer instanceof TimeSerializers.ImmutableTimeSerializer) {
-          return true;
-        }
-      }
-      return false;
-    }
     if (fory.getConfig().isMetaShareEnabled()) {
       // can't create final map/collection type using TypeUtils.mapOf(TypeToken<K>,
       // TypeToken<V>)
@@ -663,7 +644,7 @@ public class ClassResolver implements TypeResolver {
         return false;
       }
       if (Map.class.isAssignableFrom(clz) || Collection.class.isAssignableFrom(clz)) {
-        return false;
+        return true;
       }
       if (clz.isArray()) {
         Class<?> component = TypeUtils.getArrayComponent(clz);
@@ -783,6 +764,7 @@ public class ClassResolver implements TypeResolver {
    * callback to update serializer won't take effect in some cases since it can't change that
    * classinfo.
    */
+  @Override
   public <T> void setSerializer(Class<T> cls, Serializer<T> serializer) {
     addSerializer(cls, serializer);
   }
@@ -842,6 +824,7 @@ public class ClassResolver implements TypeResolver {
    * serializer. This method is used to avoid overwriting existing serializer for class when
    * creating a data serializer for serialization of parts fields of a class.
    */
+  @Override
   public <T> void setSerializerIfAbsent(Class<T> cls, Serializer<T> serializer) {
     Serializer<T> s = getSerializer(cls, false);
     if (s == null) {
@@ -913,23 +896,13 @@ public class ClassResolver implements TypeResolver {
    */
   @Internal
   @CodegenInvoke
+  @Override
   public Serializer<?> getRawSerializer(Class<?> cls) {
     Preconditions.checkNotNull(cls);
     return getOrUpdateClassInfo(cls).serializer;
   }
 
-  public boolean isSerializable(Class<?> cls) {
-    if (ReflectionUtils.isAbstract(cls) || cls.isInterface()) {
-      return false;
-    }
-    try {
-      getSerializerClass(cls, false);
-      return true;
-    } catch (Throwable t) {
-      return false;
-    }
-  }
-
+  @Override
   public Class<? extends Serializer> getSerializerClass(Class<?> cls) {
     boolean codegen =
         supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
@@ -1077,45 +1050,6 @@ public class ClassResolver implements TypeResolver {
     }
   }
 
-  public boolean isCollection(Class<?> cls) {
-    if (Collection.class.isAssignableFrom(cls)) {
-      return true;
-    }
-    if (fory.getConfig().isScalaOptimizationEnabled()) {
-      // Scala map is scala iterable too.
-      if (ScalaTypes.getScalaMapType().isAssignableFrom(cls)) {
-        return false;
-      }
-      return ScalaTypes.getScalaIterableType().isAssignableFrom(cls);
-    } else {
-      return false;
-    }
-  }
-
-  public boolean isSet(Class<?> cls) {
-    if (Set.class.isAssignableFrom(cls)) {
-      return true;
-    }
-    if (fory.getConfig().isScalaOptimizationEnabled()) {
-      // Scala map is scala iterable too.
-      if (ScalaTypes.getScalaMapType().isAssignableFrom(cls)) {
-        return false;
-      }
-      return ScalaTypes.getScalaSetType().isAssignableFrom(cls);
-    } else {
-      return false;
-    }
-  }
-
-  public boolean isMap(Class<?> cls) {
-    if (cls == NonexistentMetaShared.class) {
-      return false;
-    }
-    return Map.class.isAssignableFrom(cls)
-        || (fory.getConfig().isScalaOptimizationEnabled()
-            && ScalaTypes.getScalaMapType().isAssignableFrom(cls));
-  }
-
   public Class<? extends Serializer> getObjectSerializerClass(
       Class<?> cls, JITContext.SerializerJITCallback<Class<? extends Serializer>> callback) {
     boolean codegen =
@@ -1123,7 +1057,7 @@ public class ClassResolver implements TypeResolver {
     return getObjectSerializerClass(cls, false, codegen, callback);
   }
 
-  private Class<? extends Serializer> getObjectSerializerClass(
+  public Class<? extends Serializer> getObjectSerializerClass(
       Class<?> cls,
       boolean shareMeta,
       boolean codegen,
@@ -1215,6 +1149,7 @@ public class ClassResolver implements TypeResolver {
     return fieldResolver;
   }
 
+  @Override
   public List<Descriptor> getFieldDescriptors(Class<?> clz, boolean searchParent) {
     SortedMap<Member, Descriptor> allDescriptors = getAllDescriptorsMap(clz, searchParent);
     List<Descriptor> result = new ArrayList<>(allDescriptors.size());
@@ -1769,7 +1704,8 @@ public class ClassResolver implements TypeResolver {
     return tuple2;
   }
 
-  public ClassDef getClassDef(Class<?> cls, boolean resolveParent) {
+  @Override
+  public ClassDef getTypeDef(Class<?> cls, boolean resolveParent) {
     if (resolveParent) {
       return classDefMap.computeIfAbsent(cls, k -> ClassDef.buildClassDef(fory, cls));
     }
@@ -1781,18 +1717,6 @@ public class ClassResolver implements TypeResolver {
     return classDef;
   }
 
-  /**
-   * Native code for ClassResolver.writeClassInfo is too big to inline, so inline it manually.
-   *
-   * <p>See `already compiled into a big method` in <a
-   * href="https://wiki.openjdk.org/display/HotSpot/Server+Compiler+Inlining+Messages">Server+Compiler+Inlining+Messages</a>
-   */
-  // Note: Thread safe for jit thread to call.
-  public Expression writeClassExpr(
-      Expression classResolverRef, Expression buffer, Expression classInfo) {
-    return new Invoke(classResolverRef, "writeClassInfo", buffer, classInfo);
-  }
-
   // Note: Thread safe for jit thread to call.
   public Expression writeClassExpr(Expression buffer, short classId) {
     Preconditions.checkArgument(classId != NO_CLASS_ID);
@@ -1800,7 +1724,7 @@ public class ClassResolver implements TypeResolver {
   }
 
   // Note: Thread safe for jit thread to call.
-  public Expression writeClassExpr(Expression buffer, Expression classId) {
+  private Expression writeClassExpr(Expression buffer, Expression classId) {
     return new Invoke(buffer, "writeVarUint32", new Expression.BitShift("<<", classId, 1));
   }
 
@@ -2153,33 +2077,11 @@ public class ClassResolver implements TypeResolver {
     extRegistry.codeGeneratorMap.put(Arrays.asList(loaders), codeGenerator);
   }
 
-  public DescriptorGrouper createDescriptorGrouper(
-      Collection<Descriptor> descriptors, boolean descriptorsGroupedOrdered) {
-    return createDescriptorGrouper(descriptors, descriptorsGroupedOrdered, null);
-  }
-
+  @Override
   public DescriptorGrouper createDescriptorGrouper(
       Collection<Descriptor> descriptors,
       boolean descriptorsGroupedOrdered,
       Function<Descriptor, Descriptor> descriptorUpdator) {
-    if (fory.isCrossLanguage()) {
-      return DescriptorGrouper.createDescriptorGrouper(
-          this::isMonomorphic,
-          descriptors,
-          descriptorsGroupedOrdered,
-          descriptorUpdator,
-          fory.compressInt(),
-          fory.compressLong(),
-          (o1, o2) -> {
-            int xtypeId = getXtypeId(o1.getRawType());
-            int xtypeId2 = getXtypeId(o2.getRawType());
-            if (xtypeId == xtypeId2) {
-              return o1.getSnakeCaseName().compareTo(o2.getSnakeCaseName());
-            } else {
-              return xtypeId - xtypeId2;
-            }
-          });
-    }
     return DescriptorGrouper.createDescriptorGrouper(
         fory.getClassResolver()::isMonomorphic,
         descriptors,
@@ -2188,33 +2090,6 @@ public class ClassResolver implements TypeResolver {
         fory.compressInt(),
         fory.compressLong(),
         DescriptorGrouper.COMPARATOR_BY_TYPE_AND_NAME);
-  }
-
-  private static final int UNKNOWN_TYPE_ID = -1;
-
-  private int getXtypeId(Class<?> cls) {
-    if (isCollection(cls)) {
-      return Types.LIST;
-    }
-    if (cls.isArray() && !cls.getComponentType().isPrimitive()) {
-      return Types.LIST;
-    }
-    if (isMap(cls)) {
-      return Types.MAP;
-    }
-    if (fory.getXtypeResolver().isRegistered(cls)) {
-      return fory.getXtypeResolver().getClassInfo(cls).getXtypeId();
-    } else {
-      if (ReflectionUtils.isMonomorphic(cls)) {
-        throw new UnsupportedOperationException(cls + " is not supported for xlang serialization");
-      }
-      return UNKNOWN_TYPE_ID;
-    }
-  }
-
-  @Override
-  public Fory getFory() {
-    return fory;
   }
 
   /**

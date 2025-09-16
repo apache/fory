@@ -30,6 +30,7 @@ import java.util.Iterator;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.concurrent.NotThreadSafe;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.JITContext;
 import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.config.CompatibleMode;
@@ -58,6 +59,7 @@ import org.apache.fory.resolver.MetaStringResolver;
 import org.apache.fory.resolver.NoRefResolver;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.SerializationContext;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.ArraySerializers;
 import org.apache.fory.serializer.BufferCallback;
@@ -1636,8 +1638,16 @@ public final class Fory implements BaseFory {
     return xtypeResolver;
   }
 
-  // don't provide getTypeResolver directly to avoid users use this
-  // API too much since it has polymorphic invoke cost.
+  /**
+   * Don't use this API for type resolving and dispatch, methods on returned resolver has
+   * polymorphic invoke cost.
+   */
+  @Internal
+  // CHECKSTYLE.OFF:MethodName
+  public TypeResolver _getTypeResolver() {
+    // CHECKSTYLE.ON:MethodName
+    return crossLanguage ? xtypeResolver : classResolver;
+  }
 
   public MetaStringResolver getMetaStringResolver() {
     return metaStringResolver;

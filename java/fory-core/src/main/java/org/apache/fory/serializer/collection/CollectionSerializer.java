@@ -64,14 +64,4 @@ public class CollectionSerializer<T extends Collection> extends CollectionLikeSe
     copyElements(originCollection, newCollection);
     return (T) newCollection;
   }
-
-  @Override
-  public T read(MemoryBuffer buffer) {
-    Collection collection = newCollection(buffer);
-    int numElements = getAndClearNumElements();
-    if (numElements != 0) {
-      readElements(fory, buffer, collection, numElements);
-    }
-    return onCollectionRead(collection);
-  }
 }

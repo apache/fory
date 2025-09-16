@@ -473,6 +473,38 @@ public class MapSerializers {
     }
   }
 
+  public static class XlangMapSerializer extends MapLikeSerializer {
+
+    public XlangMapSerializer(Fory fory, Class cls) {
+      super(fory, cls, true);
+    }
+
+    @Override
+    public Map onMapWrite(MemoryBuffer buffer, Object value) {
+      Map v = (Map) value;
+      buffer.writeVarUint32Small7(v.size());
+      return v;
+    }
+
+    @Override
+    public Object onMapCopy(Map map) {
+      throw new IllegalStateException("should not be called");
+    }
+
+    public Map newMap(MemoryBuffer buffer) {
+      int numElements = buffer.readVarUint32Small7();
+      setNumElements(numElements);
+      HashMap<Object, Object> map = new HashMap<>(numElements);
+      fory.getRefResolver().reference(map);
+      return map;
+    }
+
+    @Override
+    public Object onMapRead(Map map) {
+      return map;
+    }
+  }
+
   // TODO(chaokunyang) support ConcurrentSkipListMap.SubMap mo efficiently.
   public static void registerDefaultSerializers(Fory fory) {
     ClassResolver resolver = fory.getClassResolver();

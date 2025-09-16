@@ -97,12 +97,12 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     Collection<Descriptor> descriptors;
     boolean shareMeta = fory.getConfig().isMetaShareEnabled();
     if (shareMeta) {
-      ClassDef classDef = classResolver.getClassDef(cls, resolveParent);
+      ClassDef classDef = typeResolver.getTypeDef(cls, resolveParent);
       descriptors = classDef.getDescriptors(typeResolver, cls);
     } else {
-      descriptors = fory.getClassResolver().getFieldDescriptors(cls, resolveParent);
+      descriptors = typeResolver.getFieldDescriptors(cls, resolveParent);
     }
-    DescriptorGrouper descriptorGrouper = classResolver.createDescriptorGrouper(descriptors, false);
+    DescriptorGrouper descriptorGrouper = typeResolver.createDescriptorGrouper(descriptors, false);
     descriptors = descriptorGrouper.getSortedDescriptors();
     if (isRecord) {
       List<String> fieldNames =
@@ -363,8 +363,7 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
       id = Types.MAP;
     } else {
       try {
-        TypeResolver resolver =
-            fory.isCrossLanguage() ? fory.getXtypeResolver() : fory.getClassResolver();
+        TypeResolver resolver = fory._getTypeResolver();
         Class<?> cls = typeRef.getRawType();
         if (!ReflectionUtils.isAbstract(cls) && !cls.isInterface()) {
           ClassInfo classInfo = resolver.getClassInfo(cls);

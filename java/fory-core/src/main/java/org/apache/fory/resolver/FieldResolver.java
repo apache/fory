@@ -107,6 +107,7 @@ import org.apache.fory.util.Preconditions;
  * @see org.apache.fory.serializer.CompatibleSerializerBase
  */
 @SuppressWarnings({"rawtypes", "UnstableApiUsage"})
+@Deprecated
 public class FieldResolver {
   /** Max registered class id for embed in field info. */
   public static final short MAX_EMBED_CLASS_ID = 127;
