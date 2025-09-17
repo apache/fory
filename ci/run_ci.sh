@@ -360,6 +360,7 @@ case $1 in
       go install ./cmd/fory
       cd "$ROOT/go/fory/tests"
       go generate
+      go test -v
       cd "$ROOT/go/fory"
       go test -v
       echo "Executing fory go tests succeeds"

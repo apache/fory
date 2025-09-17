@@ -376,9 +376,33 @@ func newTypeResolver(fory *Fory) *typeResolver {
 	generatedSerializerFactories.mu.RLock()
 	for type_, factory := range generatedSerializerFactories.factories {
 		serializer := factory()
-		r.typeToSerializers[type_] = serializer
-		if typeId := serializer.TypeId(); typeId > NotSupportCrossLanguage {
-			r.typeIdToType[typeId] = type_
+
+		// Use full registration process for generated types
+		pkgPath := type_.PkgPath()
+		typeName := type_.Name()
+
+		// Register value type
+		_, err := r.registerType(type_, int32(serializer.TypeId()), pkgPath, typeName, serializer, true)
+		if err != nil {
+			fmt.Errorf("failed to register generated type %v: %v", type_, err)
+		}
+
+		// Also register pointer type in serializers map (without full registration to avoid typeId conflict)
+		ptrType := reflect.PtrTo(type_)
+		r.typeToSerializers[ptrType] = serializer
+
+		// Create TypeInfo for pointer type and add to cache
+		if typeInfo, exists := r.typesInfo[type_]; exists {
+			ptrTypeInfo := TypeInfo{
+				Type:         ptrType,
+				TypeID:       -typeInfo.TypeID, // Use negative ID for pointer type
+				Serializer:   serializer,
+				PkgPathBytes: typeInfo.PkgPathBytes,
+				NameBytes:    typeInfo.NameBytes,
+				IsDynamic:    true,
+				hashValue:    calcTypeHash(ptrType),
+			}
+			r.typesInfo[ptrType] = ptrTypeInfo
 		}
 	}
 	generatedSerializerFactories.mu.RUnlock()
@@ -508,7 +532,7 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 		if info.Serializer == nil {
 			/*
 			   Lazy initialize serializer if not created yet
-			   mapInStruct equals false because this path isn’t taken when extracting field info from structs;
+			   mapInStruct equals false because this path isn't taken when extracting field info from structs;
 			   for all other map cases, it remains false
 			*/
 			serializer, err := r.createSerializer(value.Type(), false)
@@ -530,6 +554,7 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 		value = value.Elem()
 	}
 	type_ := value.Type()
+
 	// Get package path and type name for registration
 	var typeName string
 	var pkgPath string
