@@ -19,6 +19,7 @@
 
 package org.apache.fory.resolver;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Type;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.Internal;

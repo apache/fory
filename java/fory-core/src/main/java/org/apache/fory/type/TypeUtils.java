@@ -414,6 +414,14 @@ public class TypeUtils {
     return type;
   }
 
+  public static TypeRef<?> getArrayComponent(TypeRef<?> type) {
+    if (type.getType() instanceof GenericArrayType) {
+      Type componentType = ((GenericArrayType) (type.getType())).getGenericComponentType();
+      return TypeRef.of(componentType);
+    }
+    return TypeRef.of(getArrayComponentInfo(type.getRawType()).f0);
+  }
+
   public static Class<?> getArrayComponent(Class<?> type) {
     return getArrayComponentInfo(type).f0;
   }
@@ -908,31 +916,5 @@ public class TypeUtils {
           }
           return false;
         });
-  }
-
-  /**
-   * Build a map of nested generic type name to generic type for all fields in the class.
-   *
-   * @param cls the class to build the map of nested generic type name to generic type for all
-   *     fields in the class
-   * @return a map of nested generic type name to generic type for all fields in the class
-   */
-  public static Map<String, GenericType> buildGenericMap(Class<?> cls) {
-    Map<String, GenericType> map = new HashMap<>();
-    for (Field field : ReflectionUtils.getFields(cls, true)) {
-      Type type = field.getGenericType();
-      GenericType genericType = GenericType.build(type);
-      if (map.containsKey(type.getTypeName())) {
-        continue;
-      }
-      map.put(type.getTypeName(), genericType);
-      for (GenericType t : genericType.getTypeParameters()) {
-        if (map.containsKey(t.getType().getTypeName())) {
-          continue;
-        }
-        map.put(t.getType().getTypeName(), GenericType.build(t.getType()));
-      }
-    }
-    return map;
   }
 }

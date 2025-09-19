@@ -2064,12 +2064,64 @@ public class ClassResolver implements TypeResolver {
 
   public void resetWrite() {}
 
+  private static final GenericType OBJECT_GENERIC_TYPE = GenericType.build(Object.class);
+
   @CodegenInvoke
   public GenericType getGenericTypeInStruct(Class<?> cls, String genericTypeStr) {
     Map<String, GenericType> map =
-        extRegistry.classGenericTypes.computeIfAbsent(cls, TypeUtils::buildGenericMap);
-    return map.get(genericTypeStr);
+        extRegistry.classGenericTypes.computeIfAbsent(cls, this::buildGenericMap);
+    return map.getOrDefault(genericTypeStr, OBJECT_GENERIC_TYPE);
   }
+
+  /**
+   * Build a map of nested generic type name to generic type for all fields in the class.
+   *
+   * @param cls the class to build the map of nested generic type name to generic type for all
+   *     fields in the class
+   * @return a map of nested generic type name to generic type for all fields in the class
+   */
+  protected Map<String, GenericType> buildGenericMap(Class<?> cls) {
+    Map<String, GenericType> map = new HashMap<>();
+    Map<String, GenericType> map2 = new HashMap<>();
+    for (Field field : ReflectionUtils.getFields(cls, true)) {
+      Type type = field.getGenericType();
+      GenericType genericType = buildGenericType(type);
+      buildGenericMap(map, genericType);
+      TypeRef<?> typeRef = TypeRef.of(type);
+      buildGenericMap(map2, typeRef);
+    }
+    map.putAll(map2);
+    return map;
+  }  
+
+  private void buildGenericMap(Map<String, GenericType> map, TypeRef<?> typeRef) {
+    if (map.containsKey(typeRef.getType().getTypeName())) {
+      return;
+    }
+    map.put(typeRef.getType().getTypeName(), buildGenericType(typeRef));
+    Class<?> rawType = typeRef.getRawType();
+    if (TypeUtils.isMap(rawType)) {
+      Tuple2<TypeRef<?>, TypeRef<?>> kvTypes = TypeUtils.getMapKeyValueType(typeRef);
+      buildGenericMap(map, kvTypes.f0);
+      buildGenericMap(map, kvTypes.f1);
+    } else if (TypeUtils.isCollection(rawType)) {
+      TypeRef<?> elementType = TypeUtils.getElementType(typeRef);
+      buildGenericMap(map, elementType);
+    } else if (rawType.isArray()) {
+      TypeRef<?> arrayComponent = TypeUtils.getArrayComponent(typeRef);
+      buildGenericMap(map, arrayComponent);
+    }
+  }
+
+  private void buildGenericMap(Map<String, GenericType> map, GenericType genericType) {
+    if (map.containsKey(genericType.getType().getTypeName())) {
+      return;
+    }
+    map.put(genericType.getType().getTypeName(), genericType);
+    for (GenericType t : genericType.getTypeParameters()) {
+      buildGenericMap(map, t);
+    }
+  }  
 
   @Override
   public GenericType buildGenericType(TypeRef<?> typeRef) {
