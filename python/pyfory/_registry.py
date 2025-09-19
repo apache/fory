@@ -198,14 +198,16 @@ class TypeResolver:
         register(slice, serializer=SliceSerializer)
         register(np.ndarray, serializer=NDArraySerializer)
         register(array.array, serializer=DynamicPyArraySerializer)
-        self._internal_py_serializer_map = {
-            ReduceSerializer: (self._stub_cls("__Reduce__"), self._next_type_id()),
-            TypeSerializer: (self._stub_cls("__Type__"), self._next_type_id()),
-            MethodSerializer: (self._stub_cls("__Method__"), self._next_type_id()),
-            NativeFuncMethodSerializer: (self._stub_cls("__NativeFunction__"), self._next_type_id()),
-        }
-        for serializer, (stub_cls, type_id) in self._internal_py_serializer_map.items():
-            register(stub_cls, serializer=serializer, type_id=type_id)
+        if not self.require_registration:
+            self._internal_py_serializer_map = {
+                ReduceSerializer: (self._stub_cls("__Reduce__"), self._next_type_id()),
+                TypeSerializer: (self._stub_cls("__Type__"), self._next_type_id()),
+                MethodSerializer: (self._stub_cls("__Method__"), self._next_type_id()),
+                FunctionSerializer: (self._stub_cls("__Function__"), self._next_type_id()),
+                NativeFuncMethodSerializer: (self._stub_cls("__NativeFunction__"), self._next_type_id()),
+            }
+            for serializer, (stub_cls, type_id) in self._internal_py_serializer_map.items():
+                register(stub_cls, serializer=serializer, type_id=type_id)
 
     @staticmethod
     def _stub_cls(name: str):
@@ -353,10 +355,6 @@ class TypeResolver:
             if issubclass(cls, enum.Enum):
                 serializer = EnumSerializer(self.fory, cls)
                 type_id = TypeId.NAMED_ENUM if type_id is None else ((type_id << 8) + TypeId.ENUM)
-            elif cls is types.FunctionType:
-                # Use FunctionSerializer for function types (including lambdas)
-                serializer = FunctionSerializer(self.fory, cls)
-                type_id = TypeId.NAMED_EXT if type_id is None else ((type_id << 8) + TypeId.EXT)
             else:
                 serializer = DataClassSerializer(self.fory, cls, xlang=True)
                 type_id = TypeId.NAMED_STRUCT if type_id is None else ((type_id << 8) + TypeId.STRUCT)
@@ -466,7 +464,7 @@ class TypeResolver:
             return type_info
         elif not create:
             return None
-        if self.language != Language.PYTHON or (self.require_registration and not issubclass(cls, Enum)):
+        if self.require_registration and not issubclass(cls, Enum):
             raise TypeUnregisteredError(f"{cls} not registered")
         logger.info("Type %s not registered", cls)
         serializer = self._create_serializer(cls)
@@ -474,8 +472,6 @@ class TypeResolver:
         if self.language == Language.PYTHON:
             if isinstance(serializer, EnumSerializer):
                 type_id = TypeId.NAMED_ENUM
-            elif isinstance(serializer, FunctionSerializer):
-                type_id = TypeId.NAMED_EXT
             elif isinstance(serializer, (ObjectSerializer, StatefulSerializer)):
                 type_id = TypeId.NAMED_EXT
             elif self._internal_py_serializer_map.get(type(serializer)) is not None:
