@@ -30,7 +30,6 @@ from typing import TypeVar, Union, Iterable
 from pyfory._util import get_bit, set_bit, clear_bit
 from pyfory import _fory as fmod
 from pyfory._fory import Language
-from pyfory._fory import _PicklerStub, _UnpicklerStub, Pickler, Unpickler
 from pyfory._fory import _ENABLE_TYPE_REGISTRATION_FORCIBLY
 from pyfory.lib import mmh3
 from pyfory.meta.metastring import Encoding
@@ -590,10 +589,7 @@ cdef class Fory:
     cdef readonly MapRefResolver ref_resolver
     cdef readonly TypeResolver type_resolver
     cdef readonly MetaStringResolver metastring_resolver
-    cdef readonly SerializationContext serialization_context
     cdef Buffer buffer
-    cdef public object pickler  # pickle.Pickler
-    cdef public object unpickler  # Optional[pickle.Unpickler]
     cdef object _buffer_callback
     cdef object _buffers  # iterator
     cdef object _unsupported_callback
@@ -634,20 +630,7 @@ cdef class Fory:
         self.metastring_resolver = MetaStringResolver()
         self.type_resolver = TypeResolver(self)
         self.type_resolver.initialize()
-        self.serialization_context = SerializationContext()
         self.buffer = Buffer.allocate(32)
-        if not require_type_registration:
-            warnings.warn(
-                "Type registration is disabled, unknown types can be deserialized "
-                "which may be insecure.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            self.pickler = Pickler(self.buffer)
-        else:
-            self.pickler = _PicklerStub()
-            self.unpickler = _UnpicklerStub()
-        self.unpickler = None
         self._buffer_callback = None
         self._buffers = None
         self._unsupported_callback = None
@@ -702,9 +685,7 @@ cdef class Fory:
             self, obj, Buffer buffer, buffer_callback=None, unsupported_callback=None):
         self._buffer_callback = buffer_callback
         self._unsupported_callback = unsupported_callback
-        if buffer is not None:
-            self.pickler = Pickler(self.buffer)
-        else:
+        if buffer is None:
             self.buffer.writer_index = 0
             buffer = self.buffer
         if self.language == Language.XLANG:
@@ -832,8 +813,6 @@ cdef class Fory:
 
     cpdef inline _deserialize(
             self, Buffer buffer, buffers=None, unsupported_objects=None):
-        if not self.require_type_registration:
-            self.unpickler = Unpickler(buffer)
         if unsupported_objects is not None:
             self._unsupported_objects = iter(unsupported_objects)
         if self.language == Language.XLANG:
@@ -939,7 +918,6 @@ cdef class Fory:
             self, Buffer buffer, Serializer serializer=None):
         if serializer is None:
             serializer = self.type_resolver.read_typeinfo(buffer).serializer
-        self.depth += 1
         self.inc_depth()
         o = serializer.xread(buffer)
         self.depth -= 1
@@ -983,22 +961,13 @@ cdef class Fory:
         buffer.reader_index += size
         return buf
 
-    cpdef inline handle_unsupported_write(self, Buffer buffer, obj):
+    cpdef handle_unsupported_write(self, buffer, obj):
         if self._unsupported_callback is None or self._unsupported_callback(obj):
-            buffer.write_bool(True)
-            self.pickler.dump(obj)
-        else:
-            buffer.write_bool(False)
+            raise NotImplementedError(f"{type(obj)} is not supported for write")
 
-    cpdef inline handle_unsupported_read(self, Buffer buffer):
-        cdef c_bool in_band = buffer.read_bool()
-        if in_band:
-            if self.unpickler is None:
-                self.unpickler.buffer = Unpickler(buffer)
-            return self.unpickler.load()
-        else:
-            assert self._unsupported_objects is not None
-            return next(self._unsupported_objects)
+    cpdef handle_unsupported_read(self, buffer):
+        assert self._unsupported_objects is not None
+        return next(self._unsupported_objects)
 
     cpdef inline write_ref_pyobject(
             self, Buffer buffer, value, TypeInfo typeinfo=None):
@@ -1016,7 +985,9 @@ cdef class Fory:
             return ref_resolver.get_read_object()
         # indicates that the object is first read.
         cdef TypeInfo typeinfo = self.type_resolver.read_typeinfo(buffer)
+        self.inc_depth()
         o = typeinfo.serializer.read(buffer)
+        self.depth -= 1
         ref_resolver.set_read_object(ref_id, o)
         return o
 
@@ -1024,8 +995,6 @@ cdef class Fory:
         self.ref_resolver.reset_write()
         self.type_resolver.reset_write()
         self.metastring_resolver.reset_write()
-        self.serialization_context.reset()
-        self.pickler.clear_memo()
         self._unsupported_callback = None
 
     cpdef inline reset_read(self):
@@ -1033,9 +1002,7 @@ cdef class Fory:
         self.ref_resolver.reset_read()
         self.type_resolver.reset_read()
         self.metastring_resolver.reset_read()
-        self.serialization_context.reset()
         self._buffers = None
-        self.unpickler = None
         self._unsupported_objects = None
 
     cpdef inline reset(self):
@@ -1094,29 +1061,6 @@ cpdef inline read_nullable_pystr(Buffer buffer):
     else:
         return None
 
-
-@cython.final
-cdef class SerializationContext:
-    cdef dict objects
-
-    def __init__(self):
-        self.objects = dict()
-
-    def add(self, key, obj):
-        self.objects[id(key)] = obj
-
-    def __contains__(self, key):
-        return id(key) in self.objects
-
-    def __getitem__(self, key):
-        return self.objects[id(key)]
-
-    def get(self, key):
-        return self.objects.get(id(key))
-
-    def reset(self):
-        if len(self.objects) > 0:
-            self.objects.clear()
 
 cdef class Serializer:
     cdef readonly Fory fory
@@ -1650,10 +1594,12 @@ cdef class TupleSerializer(CollectionSerializer):
             else:
                 self._read_same_type_ref(buffer, len_, tuple_, typeinfo)
         else:
+            self.fory.inc_depth()
             for i in range(len_):
                 elem = get_next_element(buffer, ref_resolver, type_resolver, is_py)
                 Py_INCREF(elem)
                 PyTuple_SET_ITEM(tuple_, i, elem)
+            self.fory.dec_depth()
         return tuple_
 
     cpdef inline _add_element(self, object collection_, int64_t index, object element):

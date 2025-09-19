@@ -19,7 +19,7 @@ import datetime
 import logging
 import platform
 import time
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Dict
 
 from pyfory._fory import NOT_NULL_INT64_FLAG
@@ -74,13 +74,11 @@ class Serializer(ABC):
     def read(self, buffer):
         raise NotImplementedError
 
-    @abstractmethod
     def xwrite(self, buffer, value):
-        pass
+        raise NotImplementedError
 
-    @abstractmethod
     def xread(self, buffer):
-        pass
+        raise NotImplementedError
 
     @classmethod
     def support_subclass(cls) -> bool:

@@ -25,7 +25,7 @@ import types
 from typing import TypeVar, Union
 from enum import Enum
 
-from pyfory._serialization import ENABLE_FORY_CYTHON_SERIALIZATION
+from pyfory import ENABLE_FORY_CYTHON_SERIALIZATION
 from pyfory import Language
 from pyfory.error import TypeUnregisteredError
 
@@ -35,9 +35,6 @@ from pyfory.serializer import (
     NDArraySerializer,
     PyArraySerializer,
     DynamicPyArraySerializer,
-    _PickleStub,
-    PickleStrongCacheStub,
-    PickleCacheStub,
     NoneSerializer,
     BooleanSerializer,
     ByteSerializer,
@@ -56,14 +53,15 @@ from pyfory.serializer import (
     SetSerializer,
     EnumSerializer,
     SliceSerializer,
-    PickleCacheSerializer,
-    PickleStrongCacheSerializer,
-    PickleSerializer,
     DataClassSerializer,
     StatefulSerializer,
     ReduceSerializer,
     FunctionSerializer,
     ObjectSerializer,
+    TypeSerializer,
+    MethodSerializer,
+    UnsupportedSerializer,
+    NativeFuncMethodSerializer,
 )
 from pyfory.meta.metastring import MetaStringEncoder, MetaStringDecoder
 from pyfory.type import (
@@ -75,6 +73,7 @@ from pyfory.type import (
     Float32Type,
     Float64Type,
     load_class,
+    record_class_factory,
 )
 from pyfory._fory import (
     DYNAMIC_TYPE_ID,
@@ -158,9 +157,10 @@ class TypeResolver:
         "metastring_resolver",
         "language",
         "_type_id_to_typeinfo",
+        "_internal_py_serializer_map",
     )
 
-    def __init__(self, fory):
+    def __init__(self, fory, meta_share=False):
         self.fory = fory
         self.metastring_resolver = fory.metastring_resolver
         self.language = fory.language
@@ -182,34 +182,41 @@ class TypeResolver:
         self.namespace_decoder = MetaStringDecoder(".", "_")
         self.typename_encoder = MetaStringEncoder("$", "_")
         self.typename_decoder = MetaStringDecoder("$", "_")
+        self._internal_py_serializer_map = {}
 
     def initialize(self):
-        self._initialize_xlang()
+        self._initialize_common()
         if self.fory.language == Language.PYTHON:
             self._initialize_py()
+        else:
+            self._initialize_xlang()
 
     def _initialize_py(self):
         register = functools.partial(self._register_type, internal=True)
-        register(
-            _PickleStub,
-            type_id=PickleSerializer.PICKLE_TYPE_ID,
-            serializer=PickleSerializer,
-        )
-        register(
-            PickleStrongCacheStub,
-            type_id=97,
-            serializer=PickleStrongCacheSerializer(self.fory),
-        )
-        register(
-            PickleCacheStub,
-            type_id=98,
-            serializer=PickleCacheSerializer(self.fory),
-        )
         register(type(None), serializer=NoneSerializer)
         register(tuple, serializer=TupleSerializer)
         register(slice, serializer=SliceSerializer)
+        register(np.ndarray, serializer=NDArraySerializer)
+        register(array.array, serializer=DynamicPyArraySerializer)
+        self._internal_py_serializer_map = {
+            ReduceSerializer: (self._stub_cls("__Reduce__"), self._next_type_id()),
+            TypeSerializer: (self._stub_cls("__Type__"), self._next_type_id()),
+            MethodSerializer: (self._stub_cls("__Method__"), self._next_type_id()),
+            NativeFuncMethodSerializer: (self._stub_cls("__NativeFunction__"), self._next_type_id()),
+        }
+        for serializer, (stub_cls, type_id) in self._internal_py_serializer_map.items():
+            register(stub_cls, serializer=serializer, type_id=type_id)
+
+    @staticmethod
+    def _stub_cls(name: str):
+        return record_class_factory(name, [])
 
     def _initialize_xlang(self):
+        register = functools.partial(self._register_type, internal=True)
+        register(array.array, type_id=DYNAMIC_TYPE_ID, serializer=DynamicPyArraySerializer)
+        register(np.ndarray, type_id=DYNAMIC_TYPE_ID, serializer=NDArraySerializer)
+
+    def _initialize_common(self):
         register = functools.partial(self._register_type, internal=True)
         register(None, type_id=TypeId.NA, serializer=NoneSerializer)
         register(bool, type_id=TypeId.BOOL, serializer=BooleanSerializer)
@@ -240,7 +247,6 @@ class TypeResolver:
                 type_id=typeid,
                 serializer=PyArraySerializer(self.fory, ftype, typeid),
             )
-        register(array.array, type_id=DYNAMIC_TYPE_ID, serializer=DynamicPyArraySerializer)
         if np:
             # overwrite pyarray  with same type id.
             # if pyarray are needed, one must annotate that value with XXXArrayType
@@ -256,7 +262,6 @@ class TypeResolver:
                     type_id=typeid,
                     serializer=Numpy1DArraySerializer(self.fory, ftype, dtype),
                 )
-            register(np.ndarray, type_id=DYNAMIC_TYPE_ID, serializer=NDArraySerializer)
         register(list, type_id=TypeId.LIST, serializer=ListSerializer)
         register(set, type_id=TypeId.SET, serializer=SetSerializer)
         register(dict, type_id=TypeId.MAP, serializer=MapSerializer)
@@ -416,7 +421,7 @@ class TypeResolver:
             self._named_type_to_typeinfo[(namespace, typename)] = typeinfo
             self._ns_type_to_typeinfo[(ns_meta_bytes, type_meta_bytes)] = typeinfo
         self._types_info[cls] = typeinfo
-        if type_id > 0 and (self.language == Language.PYTHON or not TypeId.is_namespaced_type(type_id)):
+        if type_id is not None and type_id != 0 and (self.language == Language.PYTHON or not TypeId.is_namespaced_type(type_id)):
             if type_id not in self._type_id_to_typeinfo or not internal:
                 self._type_id_to_typeinfo[type_id] = typeinfo
         self._types_info[cls] = typeinfo
@@ -469,12 +474,12 @@ class TypeResolver:
         if self.language == Language.PYTHON:
             if isinstance(serializer, EnumSerializer):
                 type_id = TypeId.NAMED_ENUM
-            elif type(serializer) is PickleSerializer:
-                type_id = PickleSerializer.PICKLE_TYPE_ID
             elif isinstance(serializer, FunctionSerializer):
                 type_id = TypeId.NAMED_EXT
-            elif isinstance(serializer, (ObjectSerializer, StatefulSerializer, ReduceSerializer)):
+            elif isinstance(serializer, (ObjectSerializer, StatefulSerializer)):
                 type_id = TypeId.NAMED_EXT
+            elif self._internal_py_serializer_map.get(type(serializer)) is not None:
+                type_id = self._internal_py_serializer_map.get(type(serializer))[1]
             if not self.require_registration:
                 if isinstance(serializer, DataClassSerializer):
                     type_id = TypeId.NAMED_STRUCT
@@ -502,35 +507,33 @@ class TypeResolver:
                 serializer = DataClassSerializer(self.fory, cls)
             elif issubclass(cls, enum.Enum):
                 serializer = EnumSerializer(self.fory, cls)
+            elif ("builtin_function_or_method" in str(cls) or "cython_function_or_method" in str(cls)) and "<locals>" not in str(cls):
+                serializer = NativeFuncMethodSerializer(self.fory, cls)
+            elif cls is type(self.initialize):
+                # Handle bound method objects
+                serializer = MethodSerializer(self.fory, cls)
+            elif issubclass(cls, type):
+                # Handle Python type objects and metaclass such as numpy._DTypeMeta(i.e. np.dtype)
+                serializer = TypeSerializer(self.fory, cls)
+            elif cls is array.array:
+                # Handle array.array objects with DynamicPyArraySerializer
+                # Note: This will use DynamicPyArraySerializer for all array.array objects
+                serializer = DynamicPyArraySerializer(self.fory, cls)
             elif (hasattr(cls, "__reduce__") and cls.__reduce__ is not object.__reduce__) or (
                 hasattr(cls, "__reduce_ex__") and cls.__reduce_ex__ is not object.__reduce_ex__
             ):
                 # Use ReduceSerializer for objects that have custom __reduce__ or __reduce_ex__ methods
                 # This has higher precedence than StatefulSerializer and ObjectSerializer
                 # Only use it for objects with custom reduce methods, not default ones from the object
-                module_name = getattr(cls, "__module__", "")
-                if module_name.startswith("pandas.") or module_name == "builtins" or cls.__name__ in ("type", "function", "method"):
-                    # Exclude pandas, built-ins, and certain system types
-                    serializer = PickleSerializer(self.fory, cls)
-                else:
-                    serializer = ReduceSerializer(self.fory, cls)
+                serializer = ReduceSerializer(self.fory, cls)
             elif hasattr(cls, "__getstate__") and hasattr(cls, "__setstate__"):
                 # Use StatefulSerializer for objects that support __getstate__ and __setstate__
-                # But exclude certain types that have incompatible state methods
-                module_name = getattr(cls, "__module__", "")
-                if module_name.startswith("pandas."):
-                    # Pandas objects have __getstate__/__setstate__ but use incompatible pickle formats
-                    serializer = PickleSerializer(self.fory, cls)
-                else:
-                    serializer = StatefulSerializer(self.fory, cls)
-            elif (
-                cls is not type
-                and (hasattr(cls, "__dict__") or hasattr(cls, "__slots__"))
-                and not (np and (issubclass(cls, np.dtype) or cls is type(np.dtype)))
-            ):
+                serializer = StatefulSerializer(self.fory, cls)
+            elif hasattr(cls, "__dict__") or hasattr(cls, "__slots__"):
                 serializer = ObjectSerializer(self.fory, cls)
             else:
-                serializer = PickleSerializer(self.fory, cls)
+                # c-extension types will go to here
+                serializer = UnsupportedSerializer(self.fory, cls)
         return serializer
 
     def _load_metabytes_to_typeinfo(self, ns_metabytes, type_metabytes):

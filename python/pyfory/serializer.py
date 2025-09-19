@@ -17,17 +17,17 @@
 
 import array
 import builtins
+import dataclasses
+import importlib
+import inspect
 import itertools
 import marshal
 import logging
 import os
-import pickle
 import types
 import typing
 import warnings
-from weakref import WeakValueDictionary
 
-import pyfory.lib.mmh3
 from pyfory.buffer import Buffer
 from pyfory.codegen import (
     gen_write_nullable_basic_stmts,
@@ -35,9 +35,9 @@ from pyfory.codegen import (
     compile_function,
 )
 from pyfory.error import TypeNotCompatibleError
-from pyfory.lib.collection import WeakIdentityKeyDictionary
 from pyfory.resolver import NULL_FLAG, NOT_NULL_VALUE_FLAG
 from pyfory import Language
+from typing import List
 
 try:
     import numpy as np
@@ -137,82 +137,31 @@ class NoneSerializer(Serializer):
         return None
 
 
-class _PickleStub:
-    pass
+class TypeSerializer(Serializer):
+    """Serializer for Python type objects (classes)."""
 
-
-class PickleStrongCacheStub:
-    pass
-
-
-class PickleCacheStub:
-    pass
-
-
-class PickleStrongCacheSerializer(Serializer):
-    """If we can't create weak ref to object, use this cache serializer instead.
-    clear cache by threshold to avoid memory leak."""
-
-    __slots__ = "_cached", "_clear_threshold", "_counter"
-
-    def __init__(self, fory, clear_threshold: int = 1000):
-        super().__init__(fory, PickleStrongCacheStub)
-        self._cached = {}
-        self._clear_threshold = clear_threshold
+    def __init__(self, fory, cls):
+        super().__init__(fory, cls)
+        self.cls = cls
 
     def write(self, buffer, value):
-        serialized = self._cached.get(value)
-        if serialized is None:
-            serialized = pickle.dumps(value)
-            self._cached[value] = serialized
-        buffer.write_bytes_and_size(serialized)
-        if len(self._cached) == self._clear_threshold:
-            self._cached.clear()
+        # Serialize the type by its module and name
+        module_name = getattr(value, "__module__", "")
+        type_name = getattr(value, "__name__", "")
+        buffer.write_string(module_name)
+        buffer.write_string(type_name)
 
     def read(self, buffer):
-        return pickle.loads(buffer.read_bytes_and_size())
+        module_name = buffer.read_string()
+        type_name = buffer.read_string()
 
-    def xwrite(self, buffer, value):
-        raise NotImplementedError
-
-    def xread(self, buffer):
-        raise NotImplementedError
-
-
-class PickleCacheSerializer(Serializer):
-    __slots__ = "_cached", "_reverse_cached"
-
-    def __init__(self, fory):
-        super().__init__(fory, PickleCacheStub)
-        self._cached = WeakIdentityKeyDictionary()
-        self._reverse_cached = WeakValueDictionary()
-
-    def write(self, buffer, value):
-        cache = self._cached.get(value)
-        if cache is None:
-            serialized = pickle.dumps(value)
-            value_hash = pyfory.lib.mmh3.hash_buffer(serialized)[0]
-            cache = value_hash, serialized
-            self._cached[value] = cache
-        buffer.write_int64(cache[0])
-        buffer.write_bytes_and_size(cache[1])
-
-    def read(self, buffer):
-        value_hash = buffer.read_int64()
-        value = self._reverse_cached.get(value_hash)
-        if value is None:
-            value = pickle.loads(buffer.read_bytes_and_size())
-            self._reverse_cached[value_hash] = value
+        # Import the module and get the type
+        if module_name and module_name != "builtins":
+            module = __import__(module_name, fromlist=[type_name])
+            return getattr(module, type_name)
         else:
-            size = buffer.read_int32()
-            buffer.skip(size)
-        return value
-
-    def xwrite(self, buffer, value):
-        raise NotImplementedError
-
-    def xread(self, buffer):
-        raise NotImplementedError
+            # Handle built-in types
+            return getattr(builtins, type_name, type)
 
 
 class PandasRangeIndexSerializer(Serializer):
@@ -290,27 +239,26 @@ _ENABLE_FORY_PYTHON_JIT = os.environ.get("ENABLE_FORY_PYTHON_JIT", "True").lower
     "1",
 )
 
-# Moved from L32 to here, after all Serializer base classes and specific serializers
-# like ListSerializer, MapSerializer, PickleSerializer are defined or imported
-# and before DataClassSerializer which uses ComplexTypeVisitor from _struct.
+
 from pyfory._struct import _get_hash, _sort_fields, ComplexTypeVisitor
 
 
 class DataClassSerializer(Serializer):
-    def __init__(self, fory, clz: type, xlang: bool = False):
+    def __init__(self, fory, clz: type, xlang: bool = False, field_names: List[str] = None, serializers: List[Serializer] = None):
         super().__init__(fory, clz)
         self._xlang = xlang
         # This will get superclass type hints too.
         self._type_hints = typing.get_type_hints(clz)
-        self._field_names = self._get_field_names(clz)
+        self._field_names = field_names or self._get_field_names(clz)
         self._has_slots = hasattr(clz, "__slots__")
 
         if self._xlang:
-            self._serializers = [None] * len(self._field_names)
-            visitor = ComplexTypeVisitor(fory)
-            for index, key in enumerate(self._field_names):
-                serializer = infer_field(key, self._type_hints[key], visitor, types_path=[])
-                self._serializers[index] = serializer
+            self._serializers = serializers or [None] * len(self._field_names)
+            if serializers is None:
+                visitor = ComplexTypeVisitor(fory)
+                for index, key in enumerate(self._field_names):
+                    serializer = infer_field(key, self._type_hints[key], visitor, types_path=[])
+                    self._serializers[index] = serializer
             self._serializers, self._field_names = _sort_fields(fory.type_resolver, self._field_names, self._serializers)
             self._hash = 0  # Will be computed on first xwrite/xread
             self._generated_xwrite_method = self._gen_xwrite_method()
@@ -443,13 +391,13 @@ class DataClassSerializer(Serializer):
         context["_field_names"] = self._field_names
         context["_type_hints"] = self._type_hints
         context["_serializers"] = self._serializers
+        stmts = [
+            f'"""xwrite method for {self.type_}"""',
+        ]
         # Compute hash at generation time since we're in xlang mode
         if self._hash == 0:
             self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
-        stmts = [
-            f'"""xwrite method for {self.type_}"""',
-            f"{buffer}.write_int32({self._hash})",
-        ]
+        stmts.append(f"{buffer}.write_int32({self._hash})")
         if not self._has_slots:
             stmts.append(f"{value_dict} = {value}.__dict__")
         for index, field_name in enumerate(self._field_names):
@@ -487,18 +435,28 @@ class DataClassSerializer(Serializer):
         context["_field_names"] = self._field_names
         context["_type_hints"] = self._type_hints
         context["_serializers"] = self._serializers
+        current_class_field_names = set(self._get_field_names(self.type_))
+        stmts = [
+            f'"""xread method for {self.type_}"""',
+        ]
         # Compute hash at generation time since we're in xlang mode
         if self._hash == 0:
             self._hash = _get_hash(self.fory, self._field_names, self._type_hints)
-        stmts = [
-            f'"""xread method for {self.type_}"""',
-            f"read_hash = {buffer}.read_int32()",
-            f"if read_hash != {self._hash}:",
-            f"""   raise TypeNotCompatibleError(
+        stmts.extend(
+            [
+                f"read_hash = {buffer}.read_int32()",
+                f"if read_hash != {self._hash}:",
+                f"""   raise TypeNotCompatibleError(
             f"Hash {{read_hash}} is not consistent with {self._hash} for type {self.type_}")""",
-            f"{obj} = {obj_class}.__new__({obj_class})",
-            f"{ref_resolver}.reference({obj})",
-        ]
+            ]
+        )
+        stmts.extend(
+            [
+                f"{obj} = {obj_class}.__new__({obj_class})",
+                f"{ref_resolver}.reference({obj})",
+            ]
+        )
+
         if not self._has_slots:
             stmts.append(f"{obj_dict} = {obj}.__dict__")
 
@@ -666,12 +624,18 @@ class PyArraySerializer(CrossLanguageCompatibleSerializer):
     def read(self, buffer):
         typecode = buffer.read_string()
         data = buffer.read_bytes_and_size()
-        arr = array.array(typecode, [])
+        arr = array.array(typecode[0], [])  # Take first character
         arr.frombytes(data)
         return arr
 
 
 class DynamicPyArraySerializer(Serializer):
+    """Serializer for dynamic Python arrays that handles any typecode."""
+
+    def __init__(self, fory, cls):
+        super().__init__(fory, cls)
+        self._serializer = ReduceSerializer(fory, cls)
+
     def xwrite(self, buffer, value):
         itemsize, ftype, type_id = typecode_dict[value.typecode]
         view = memoryview(value)
@@ -692,11 +656,10 @@ class DynamicPyArraySerializer(Serializer):
         return arr
 
     def write(self, buffer, value):
-        buffer.write_varuint32(PickleSerializer.PICKLE_TYPE_ID)
-        self.fory.handle_unsupported_write(buffer, value)
+        self._serializer.write(buffer, value)
 
     def read(self, buffer):
-        return self.fory.handle_unsupported_read(buffer)
+        return self._serializer.read(buffer)
 
 
 if np:
@@ -731,6 +694,7 @@ class Numpy1DArraySerializer(Serializer):
         super().__init__(fory, ftype)
         self.dtype = dtype
         self.itemsize, self.format, self.typecode, self.type_id = _np_dtypes_dict[self.dtype]
+        self._serializer = ReduceSerializer(fory, np.ndarray)
 
     def xwrite(self, buffer, value):
         assert value.itemsize == self.itemsize
@@ -752,11 +716,10 @@ class Numpy1DArraySerializer(Serializer):
         return np.frombuffer(data, dtype=self.dtype)
 
     def write(self, buffer, value):
-        buffer.write_int8(PickleSerializer.PICKLE_TYPE_ID)
-        self.fory.handle_unsupported_write(buffer, value)
+        self._serializer.write(buffer, value)
 
     def read(self, buffer):
-        return self.fory.handle_unsupported_read(buffer)
+        return self._serializer.read(buffer)
 
 
 class NDArraySerializer(Serializer):
@@ -775,11 +738,32 @@ class NDArraySerializer(Serializer):
         raise NotImplementedError("Multi-dimensional array not supported currently")
 
     def write(self, buffer, value):
-        buffer.write_int8(PickleSerializer.PICKLE_TYPE_ID)
-        self.fory.handle_unsupported_write(buffer, value)
+        # Serialize numpy ND array using native format
+        dtype = value.dtype
+        fory = self.fory
+        fory.serialize_ref(buffer, dtype)
+        buffer.write_varuint32(len(value.shape))
+        for dim in value.shape:
+            buffer.write_varuint32(dim)
+        if dtype.kind == "O":
+            buffer.write_varint32(len(value))
+            for item in value:
+                fory.serialize_ref(buffer, item)
+        else:
+            data = value.tobytes()
+            buffer.write_bytes_and_size(data)
 
     def read(self, buffer):
-        return self.fory.handle_unsupported_read(buffer)
+        fory = self.fory
+        dtype = fory.deserialize_ref(buffer)
+        ndim = buffer.read_varuint32()
+        shape = tuple(buffer.read_varuint32() for _ in range(ndim))
+        if dtype.kind == "O":
+            length = buffer.read_varint32()
+            items = [fory.deserialize_ref(buffer) for _ in range(length)]
+            return np.array(items, dtype=object)
+        data = buffer.read_bytes_and_size()
+        return np.frombuffer(data, dtype=dtype).reshape(shape)
 
 
 class BytesSerializer(CrossLanguageCompatibleSerializer):
@@ -886,39 +870,58 @@ class ReduceSerializer(CrossLanguageCompatibleSerializer):
         # Handle different __reduce__ return formats
         if isinstance(reduce_result, str):
             # Case 1: Just a global name (simple case)
-            self.fory.serialize_ref(buffer, ("global", reduce_result, None, None, None))
+            reduce_data = ("global", reduce_result)
         elif isinstance(reduce_result, tuple):
             if len(reduce_result) == 2:
                 # Case 2: (callable, args)
                 callable_obj, args = reduce_result
-                self.fory.serialize_ref(buffer, ("callable", callable_obj, args, None, None))
+                reduce_data = ("callable", callable_obj, args)
             elif len(reduce_result) == 3:
                 # Case 3: (callable, args, state)
                 callable_obj, args, state = reduce_result
-                self.fory.serialize_ref(buffer, ("callable", callable_obj, args, state, None))
+                reduce_data = ("callable", callable_obj, args, state)
             elif len(reduce_result) == 4:
                 # Case 4: (callable, args, state, listitems)
                 callable_obj, args, state, listitems = reduce_result
-                self.fory.serialize_ref(buffer, ("callable", callable_obj, args, state, listitems))
+                reduce_data = ("callable", callable_obj, args, state, listitems)
             elif len(reduce_result) == 5:
                 # Case 5: (callable, args, state, listitems, dictitems)
                 callable_obj, args, state, listitems, dictitems = reduce_result
-                self.fory.serialize_ref(buffer, ("callable", callable_obj, args, state, listitems, dictitems))
+                reduce_data = ("callable", callable_obj, args, state, listitems, dictitems)
             else:
                 raise ValueError(f"Invalid __reduce__ result length: {len(reduce_result)}")
         else:
             raise ValueError(f"Invalid __reduce__ result type: {type(reduce_result)}")
+        buffer.write_varuint32(len(reduce_data))
+        fory = self.fory
+        for item in reduce_data:
+            fory.serialize_ref(buffer, item)
 
     def read(self, buffer):
-        reduce_data = self.fory.deserialize_ref(buffer)
+        reduce_data_num_items = buffer.read_varuint32()
+        assert reduce_data_num_items <= 6, buffer
+        reduce_data = [None] * 6
+        fory = self.fory
+        for i in range(reduce_data_num_items):
+            reduce_data[i] = fory.deserialize_ref(buffer)
 
         if reduce_data[0] == "global":
             # Case 1: Global name
             global_name = reduce_data[1]
             # Import and return the global object
-            module_name, obj_name = global_name.rsplit(".", 1)
-            module = __import__(module_name, fromlist=[obj_name])
-            return getattr(module, obj_name)
+            if "." in global_name:
+                module_name, obj_name = global_name.rsplit(".", 1)
+                module = __import__(module_name, fromlist=[obj_name])
+                return getattr(module, obj_name)
+            else:
+                # Handle case where global_name doesn't contain a dot
+                # This might be a built-in type or a simple name
+                try:
+                    import builtins
+
+                    return getattr(builtins, global_name)
+                except AttributeError:
+                    raise ValueError(f"Cannot resolve global name: {global_name}")
         elif reduce_data[0] == "callable":
             # Case 2-5: Callable with args and optional state/items
             callable_obj = reduce_data[1]
@@ -977,32 +980,40 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
     def _serialize_function(self, buffer, func):
         """Serialize a function by capturing all its components."""
         # Get function metadata
-        is_method = hasattr(func, "__self__")
-        if is_method:
+        instance = getattr(func, "__self__", None)
+        if instance is not None and not inspect.ismodule(instance):
             # Handle bound methods
-            self_obj = func.__self__
+            self_obj = instance
             func_name = func.__name__
             # Serialize as a tuple (is_method, self_obj, method_name)
-            buffer.write_bool(True)  # is a method
+            buffer.write_int8(0)  # is a method
             # For the 'self' object, we need to use fory's serialization
             self.fory.serialize_ref(buffer, self_obj)
             buffer.write_string(func_name)
             return
+        import types
 
         # Regular function or lambda
         code = func.__code__
         name = func.__name__
-        defaults = func.__defaults__
-        closure = func.__closure__
-        globals_dict = func.__globals__
         module = func.__module__
         qualname = func.__qualname__
 
+        if "<locals>" not in qualname and module != "__main__":
+            buffer.write_int8(1)  # Not a method
+            buffer.write_string(name)
+            buffer.write_string(module)
+            return
+
         # Serialize function metadata
-        buffer.write_bool(False)  # Not a method
+        buffer.write_int8(2)  # Not a method
         buffer.write_string(name)
         buffer.write_string(module)
         buffer.write_string(qualname)
+
+        defaults = func.__defaults__
+        closure = func.__closure__
+        globals_dict = func.__globals__
 
         # Instead of trying to serialize the code object in parts, use marshal
         # which is specifically designed for code objects
@@ -1071,15 +1082,20 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
 
     def _deserialize_function(self, buffer):
         """Deserialize a function from its components."""
-        import sys
 
         # Check if it's a method
-        is_method = buffer.read_bool()
-        if is_method:
+        func_type_id = buffer.read_int8()
+        if func_type_id == 0:
             # Handle bound methods
             self_obj = self.fory.deserialize_ref(buffer)
             method_name = buffer.read_string()
             return getattr(self_obj, method_name)
+
+        if func_type_id == 1:
+            name = buffer.read_string()
+            module = buffer.read_string()
+            mod = importlib.import_module(module)
+            return getattr(mod, name)
 
         # Regular function or lambda
         name = buffer.read_string()
@@ -1128,7 +1144,7 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
         # Create a globals dictionary with module's globals as the base
         func_globals = {}
         try:
-            mod = sys.modules.get(module)
+            mod = importlib.import_module(module)
             if mod:
                 func_globals.update(mod.__dict__)
         except (KeyError, AttributeError):
@@ -1156,12 +1172,10 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
         return func
 
     def xwrite(self, buffer, value):
-        """Serialize a function for cross-language compatibility."""
-        self._serialize_function(buffer, value)
+        raise NotImplementedError()
 
     def xread(self, buffer):
-        """Deserialize a function for cross-language compatibility."""
-        return self._deserialize_function(buffer)
+        raise NotImplementedError()
 
     def write(self, buffer, value):
         """Serialize a function for Python-only mode."""
@@ -1172,20 +1186,56 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
         return self._deserialize_function(buffer)
 
 
-class PickleSerializer(Serializer):
-    PICKLE_TYPE_ID = 96
-
-    def xwrite(self, buffer, value):
-        raise NotImplementedError
-
-    def xread(self, buffer):
-        raise NotImplementedError
-
-    def write(self, buffer, value):
-        self.fory.handle_unsupported_write(buffer, value)
+class NativeFuncMethodSerializer(Serializer):
+    def write(self, buffer, func):
+        name = func.__name__
+        buffer.write_string(name)
+        obj = getattr(func, "__self__", None)
+        if obj is None or inspect.ismodule(obj):
+            buffer.write_bool(True)
+            module = func.__module__
+            buffer.write_string(module)
+        else:
+            buffer.write_bool(False)
+            self.fory.serialize_ref(buffer, obj)
 
     def read(self, buffer):
-        return self.fory.handle_unsupported_read(buffer)
+        name = buffer.read_string()
+        if buffer.read_bool():
+            module = buffer.read_string()
+            mod = importlib.import_module(module)
+            return getattr(mod, name)
+        else:
+            obj = self.fory.deserialize_ref(buffer)
+            return getattr(obj, name)
+
+
+class MethodSerializer(Serializer):
+    """Serializer for bound method objects."""
+
+    def __init__(self, fory, cls):
+        super().__init__(fory, cls)
+        self.cls = cls
+
+    def write(self, buffer, value):
+        # Serialize bound method as (instance, method_name)
+        instance = value.__self__
+        method_name = value.__func__.__name__
+
+        self.fory.serialize_ref(buffer, instance)
+        buffer.write_string(method_name)
+
+    def read(self, buffer):
+        instance = self.fory.deserialize_ref(buffer)
+        method_name = buffer.read_string()
+
+        return getattr(instance, method_name)
+
+    def xwrite(self, buffer, value):
+        return self.write(buffer, value)
+
+    def xread(self, buffer):
+        return self.read(buffer)
 
 
 class ObjectSerializer(Serializer):
@@ -1245,3 +1295,17 @@ class ComplexObjectSerializer(DataClassSerializer):
             stacklevel=2,
         )
         return DataClassSerializer(fory, clz, xlang=True)
+
+
+class UnsupportedSerializer(Serializer):
+    def write(self, buffer, value):
+        self.fory.handle_unsupported_write(value)
+
+    def read(self, buffer):
+        return self.fory.handle_unsupported_read(buffer)
+
+    def xwrite(self, buffer, value):
+        raise NotImplementedError(f"{self.type_} is not supported for xwrite")
+
+    def xread(self, buffer):
+        raise NotImplementedError(f"{self.type_} is not supported for xread")

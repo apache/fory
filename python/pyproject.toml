@@ -50,7 +50,6 @@ classifiers = [
 ]
 keywords = ["fory", "serialization", "multi-language", "fast", "row-format", "jit", "codegen", "polymorphic", "zero-copy"]
 dependencies = [
-    "cloudpickle",
 ]
 
 [project.optional-dependencies]

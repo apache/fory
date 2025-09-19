@@ -308,37 +308,6 @@ def ser_de(fory, obj):
     return fory.deserialize(binary)
 
 
-def test_pickle():
-    buf = Buffer.allocate(32)
-    pickler = pickle.Pickler(buf)
-    pickler.dump(b"abc")
-    buf.write_int32(-1)
-    pickler.dump("abcd")
-    assert buf.writer_index - 4 == len(pickle.dumps(b"abc")) + len(pickle.dumps("abcd"))
-    print(f"writer_index {buf.writer_index}")
-
-    bytes_io_ = io.BytesIO(buf)
-    unpickler = pickle.Unpickler(bytes_io_)
-    assert unpickler.load() == b"abc"
-    bytes_io_.seek(bytes_io_.tell() + 4)
-    assert unpickler.load() == "abcd"
-    print(f"reader_index {buf.reader_index} {bytes_io_.tell()}")
-
-    if pa:
-        pa_buf = pa.BufferReader(buf)
-        unpickler = pickle.Unpickler(pa_buf)
-        assert unpickler.load() == b"abc"
-        pa_buf.seek(pa_buf.tell() + 4)
-        assert unpickler.load() == "abcd"
-        print(f"reader_index {buf.reader_index} {pa_buf.tell()} {buf.reader_index}")
-
-    unpickler = pickle.Unpickler(buf)
-    assert unpickler.load() == b"abc"
-    buf.reader_index = buf.reader_index + 4
-    assert unpickler.load() == "abcd"
-    print(f"reader_index {buf.reader_index}")
-
-
 @require_pyarrow
 def test_serialize_arrow():
     record_batch = create_record_batch(10000)
@@ -454,13 +423,16 @@ def test_register_type():
     assert isinstance(fory.deserialize(fory.serialize(A.B.C())), A.B.C)
 
 
-def test_pickle_fallback():
+def test_np_types():
     fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
     o1 = [1, True, np.dtype(np.int32)]
     data1 = fory.serialize(o1)
     new_o1 = fory.deserialize(data1)
     assert o1 == new_o1
 
+
+def test_pandas_dataframe():
+    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
     df = pd.DataFrame({"a": list(range(10))})
     df2 = fory.deserialize(fory.serialize(df))
     assert df2.equals(df)
@@ -543,19 +515,6 @@ def test_duplicate_serialize():
     assert ser_de(fory, EnumClass.E2) == EnumClass.E2
     assert ser_de(fory, EnumClass.E1) == EnumClass.E1
     assert ser_de(fory, EnumClass.E4) == EnumClass.E4
-
-
-@dataclass(unsafe_hash=True)
-class CacheClass1:
-    f1: int
-
-
-def test_cache_serializer():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True)
-    fory.register_type(CacheClass1, serializer=pyfory.PickleStrongCacheSerializer(fory))
-    assert ser_de(fory, CacheClass1(1)) == CacheClass1(1)
-    fory.register_type(CacheClass1, serializer=pyfory.PickleCacheSerializer(fory))
-    assert ser_de(fory, CacheClass1(1)) == CacheClass1(1)
 
 
 def test_pandas_range_index():
