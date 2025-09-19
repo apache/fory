@@ -15,14 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::ffi::c_int;
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::get_latin1_length;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{ForyGeneralList, TypeId};
+use crate::types::{ForyGeneralList, Mode, TypeId};
 use std::mem;
 
 enum StrEncoding {
@@ -36,12 +35,13 @@ impl Serializer for String {
         mem::size_of::<i32>()
     }
 
-    fn write(&self, context: &mut WriteContext) {
-        println!("write string before: {:?}", context.writer.dump());
+    fn write(&self, context: &mut WriteContext, is_field: bool) {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            context.writer.var_uint32(TypeId::STRING as u32);
+        }
         let mut len = get_latin1_length(self);
         if len >= 0 {
             let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
-            println!("write bitor:{:?}", bitor);
             context.writer.var_uint36_small(bitor);
             context.writer.latin1_string(self);
         } else {
@@ -53,7 +53,11 @@ impl Serializer for String {
         // println!("write after: {:?}", context.writer.dump());
     }
 
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            let remote_type_id = context.reader.var_uint32();
+            assert_eq!(remote_type_id, TypeId::STRING as u32);
+        }
         // println!("read before: {:?}", context.reader.slice_after_cursor());
         let bitor = context.reader.var_uint36_small();
         // println!("read bitor:{:?}", bitor);

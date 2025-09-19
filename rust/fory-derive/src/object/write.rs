@@ -20,57 +20,77 @@ use quote::quote;
 use syn::Field;
 
 pub fn gen(fields: &[&Field]) -> TokenStream {
-    let accessor_expr = fields.iter().map(|field| {
-        let ty = &field.ty;
-        let ident = &field.ident;
+    let sorted_serialize = {
+        let match_ts = fields.iter().map(|field| {
+            let ty = &field.ty;
+            let ident = &field.ident;
+            let name_str = ident.as_ref().unwrap().to_string();
+            quote! {
+                #name_str => {
+                    <#ty as fory_core::serializer::Serializer>::serialize(&self.#ident, context, true);
+                }
+            }
+        });
         quote! {
-            // println!("before writer is:{:?}",context.writer.dump());
-            <#ty as fory_core::serializer::Serializer>::serialize_field(&self.#ident, context);
-            // println!("after writer is:{:?}",context.writer.dump());
+            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::get_sorted_field_names(context.get_fory());
+            for field_name in sorted_field_names {
+                match field_name.as_str() {
+                    #(#match_ts),*
+                    , _ => {unreachable!()}
+                }
+            }
         }
-    });
+    };
+
+    // let accessor_expr = fields.iter().map(|field| {
+    //     let ty = &field.ty;
+    //     let ident = &field.ident;
+    //     quote! {
+    //         // println!("before writer is:{:?}",context.writer.dump());
+    //         <#ty as fory_core::serializer::Serializer>::serialize(&self.#ident, context, true);
+    //         // println!("after writer is:{:?}",context.writer.dump());
+    //     }
+    // });
 
     let reserved_size_expr: Vec<_> = fields.iter().map(|field| {
         let ty = &field.ty;
-        // each field has one byte ref tag and two byte type id
         quote! {
             <#ty as fory_core::serializer::Serializer>::reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
         }
     }).collect();
 
     let reserved_fn_body = if reserved_size_expr.is_empty() {
-        quote! {
-            0
-        }
+        quote! { 0 }
     } else {
-        quote! {
-            #(#reserved_size_expr)+*
-        }
+        quote! { #(#reserved_size_expr)+* }
     };
 
     quote! {
-        fn serialize(&self, context: &mut fory_core::resolver::context::WriteContext) {
+        fn serialize(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
             match context.get_fory().get_mode() {
                 fory_core::types::Mode::SchemaConsistent => {
-                    fory_core::serializer::serialize(self, context);
+                    fory_core::serializer::serialize(self, context, is_field);
                 },
                 fory_core::types::Mode::Compatible => {
-                    context.writer.i8(fory_core::types::RefFlag::NotNullValue as i8);
-                    let type_id = Self::get_type_id(context.get_fory());
-                    context.writer.var_uint32(type_id);
-                    // println!("writer is:{:?}",context.writer.dump());
-                    self.write(context);
+                    fory_core::serializer::serialize(self, context, is_field);
                 }
             }
         }
 
-
-        fn write(&self, context: &mut fory_core::resolver::context::WriteContext) {
-            let _meta_index = context.push_meta(
-                std::any::TypeId::of::<Self>()
-            ) as i16;
+        fn write(&self, context: &mut fory_core::resolver::context::WriteContext, _is_field: bool) {
+            let type_id = Self::get_type_id(context.get_fory());
+            context.writer.var_uint32(type_id);
+            if *context.get_fory().get_mode() == fory_core::types::Mode::Compatible {
+                let meta_index = context.push_meta(
+                    std::any::TypeId::of::<Self>()
+                ) as u32;
+                context.writer.var_uint32(meta_index);
+            }
             // write fields
-            #(#accessor_expr)*
+            // write way before
+            // #(#accessor_expr)*
+            // sort and write
+            #sorted_serialize
         }
 
         fn reserved_space() -> usize {

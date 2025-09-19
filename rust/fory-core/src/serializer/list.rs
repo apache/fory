@@ -29,12 +29,12 @@ impl<T> Serializer for Vec<T>
 where
     T: Serializer + ForyGeneralList,
 {
-    fn write(&self, context: &mut WriteContext) {
-        write_collection(self.iter(), context);
+    fn write(&self, context: &mut WriteContext, is_field: bool) {
+        write_collection(self.iter(), context, is_field, TypeId::LIST as u32);
     }
 
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
-        read_collection(context)
+    fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        read_collection(context, is_field, TypeId::LIST as u32)
     }
 
     fn reserved_space() -> usize {

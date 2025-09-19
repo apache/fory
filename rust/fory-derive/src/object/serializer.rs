@@ -29,6 +29,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
         read_token_stream,
         read_compatible_token_stream,
         read_nullable_token_stream,
+        sort_fields_token_stream,
     ) = match &ast.data {
         syn::Data::Struct(s) => {
             let fields = sorted_fields(&s.fields);
@@ -38,7 +39,8 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 write::gen(&fields),
                 read::gen(&fields, name),
                 read::gen_read_compatible(&fields, name),
-                read::gen_nullable(&fields),
+                read::gen_deserialize_nullable(&fields),
+                misc::gen_sort_fields(&fields),
             )
         }
         syn::Data::Enum(s) => (
@@ -48,6 +50,9 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
             derive_enum::gen_read(s),
             derive_enum::gen_read_compatible(s),
             quote! {},
+            quote! {
+                unreachable!();
+            },
         ),
         syn::Data::Union(_) => {
             panic!("Union is not supported")
@@ -68,6 +73,10 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #actual_type_id_token_stream
             }
             #type_index_token_stream
+            #read_compatible_token_stream
+            fn get_sorted_field_names(fory: &fory_core::fory::Fory) -> Vec<String> {
+                #sort_fields_token_stream
+            }
         }
         impl fory_core::types::ForyGeneralList for #name {}
         impl fory_core::serializer::Serializer for #name {
@@ -76,7 +85,6 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
             #read_token_stream
         }
         impl #name {
-            #read_compatible_token_stream
             #read_nullable_token_stream
         }
     };

@@ -15,20 +15,19 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::ensure;
 use crate::error::Error;
 use crate::meta::NullableFieldType;
 use crate::resolver::context::ReadContext;
+use crate::serializer::collection::HAS_NULL;
 use crate::serializer::Serializer;
 use crate::types::{RefFlag, TypeId, BASIC_TYPES, CONTAINER_TYPES};
-use anyhow::anyhow;
 use chrono::{NaiveDate, NaiveDateTime};
 
 macro_rules! basic_type_deserialize {
     ($tid:expr, $context:expr; $(($ty:ty, $id:ident)),+ $(,)?) => {
         $(
             if $tid == TypeId::$id {
-                <$ty>::read($context)?;
+                <$ty>::read($context, true)?;
                 return Ok(());
             }
         )+else {
@@ -37,25 +36,26 @@ macro_rules! basic_type_deserialize {
     };
 }
 
+// call when is_field && is_compatible_mode
+#[allow(unreachable_code)]
 pub fn skip_field_value(
     context: &mut ReadContext,
     field_type: &NullableFieldType,
+    read_ref_flag: bool,
 ) -> Result<(), Error> {
-    let ref_flag = context.reader.i8();
-    if field_type.nullable
-        && ref_flag != (RefFlag::NotNullValue as i8)
-        && ref_flag != (RefFlag::RefValue as i8)
-    {
-        return Ok(());
+    println!("skip field value: {:?}", field_type);
+    if read_ref_flag {
+        let ref_flag = context.reader.i8();
+        if field_type.nullable
+            && ref_flag != (RefFlag::NotNullValue as i8)
+            && ref_flag != (RefFlag::RefValue as i8)
+        {
+            return Ok(());
+        }
     }
     let type_id_num = field_type.type_id;
     match TypeId::try_from(type_id_num as i16) {
         Ok(type_id) => {
-            let expected_type_id = field_type.type_id;
-            ensure!(
-                type_id_num == expected_type_id,
-                anyhow!("Invalid field type, expected:{expected_type_id}, actual:{type_id_num}")
-            );
             if BASIC_TYPES.contains(&type_id) {
                 basic_type_deserialize!(type_id, context;
                     (bool, BOOL),
@@ -79,16 +79,28 @@ pub fn skip_field_value(
                 );
             } else if CONTAINER_TYPES.contains(&type_id) {
                 if type_id == TypeId::LIST || type_id == TypeId::SET {
-                    let length = context.reader.var_int32() as usize;
+                    println!("skip list bytes: {:?}", context.reader.slice_after_cursor());
+                    let length = context.reader.var_uint32() as usize;
                     println!("length: {length}");
+                    // todo
+                    let header = context.reader.u8();
+                    let read_ref_flag = (header & HAS_NULL) != 0;
+                    let _elem_type = context.reader.var_uint32();
+                    let aa = _elem_type >> 8;
+                    println!("elem_type: {aa}");
                     for _ in 0..length {
-                        skip_field_value(context, field_type.generics.first().unwrap())?;
+                        skip_field_value(
+                            context,
+                            field_type.generics.first().unwrap(),
+                            read_ref_flag,
+                        )?;
                     }
                 } else if type_id == TypeId::MAP {
-                    let length = context.reader.var_int32() as usize;
+                    todo!();
+                    let length = context.reader.var_uint32() as usize;
                     for _ in 0..length {
-                        skip_field_value(context, field_type.generics.first().unwrap())?;
-                        skip_field_value(context, field_type.generics.get(1).unwrap())?;
+                        skip_field_value(context, field_type.generics.first().unwrap(), true)?;
+                        skip_field_value(context, field_type.generics.get(1).unwrap(), true)?;
                     }
                 }
                 Ok(())
@@ -98,17 +110,26 @@ pub fn skip_field_value(
         }
         Err(_) => {
             let tag = type_id_num & 0xff;
-            println!("type_id_num: {}, tag: {}", type_id_num,tag);
-            if tag == TypeId::STRUCT as u32 {
-                let type_def = context.get_meta_by_type_id(type_id_num);
+            if tag == TypeId::COMPATIBLE_STRUCT as u32 {
+                let remote_type_id = context.reader.var_uint32();
+                let meta_index = context.reader.var_uint32();
+                let type_def = context.get_meta(meta_index as usize);
+                assert_eq!(remote_type_id, type_def.get_type_id());
                 let field_infos: Vec<_> = type_def.get_field_infos().to_vec();
                 for field_info in field_infos.iter() {
                     let nullable_field_type =
                         NullableFieldType::from(field_info.field_type.clone());
-                    skip_field_value(context, &nullable_field_type)?;
+                    skip_field_value(context, &nullable_field_type, true)?;
                 }
             } else if tag == TypeId::ENUM as u32 {
-                let harness = context.fory.get_type_resolver().get_harness(type_id_num).unwrap();
+                let internal_id = type_id_num >> 8;
+                println!("skip enum {internal_id}");
+                context
+                    .fory
+                    .get_type_resolver()
+                    .get_harness(type_id_num)
+                    .unwrap()
+                    .get_deserializer()(context)?;
             } else {
                 unimplemented!()
             }

@@ -17,9 +17,9 @@
 
 use fory_core::types::{TypeId, BASIC_TYPE_NAMES, CONTAINER_TYPE_NAMES, PRIMITIVE_ARRAY_TYPE_MAP};
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, ToTokens};
 use std::fmt;
-use syn::{parse_str, GenericArgument, PathArguments, Type};
+use syn::{parse_str, Field, GenericArgument, PathArguments, Type};
 
 #[derive(Debug)]
 pub(super) struct TypeNode {
@@ -44,7 +44,7 @@ macro_rules! basic_type_deserialize {
                             let res1 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 None
                             } else {
-                                Some(<$ty as fory_core::serializer::Serializer>::read(context)
+                                Some(<$ty as fory_core::serializer::Serializer>::read(context, true)
                                     .map_err(fory_core::error::Error::from)?)
                             };
                             Ok::<Option<$ty>, fory_core::error::Error>(res1)
@@ -54,7 +54,7 @@ macro_rules! basic_type_deserialize {
                             let res2 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 $ty::default()
                             } else {
-                                <$ty as fory_core::serializer::Serializer>::read(context)
+                                <$ty as fory_core::serializer::Serializer>::read(context, true)
                                     .map_err(fory_core::error::Error::from)?
                             };
                             Ok::<$ty, fory_core::error::Error>(res2)
@@ -123,7 +123,7 @@ impl NullableTypeNode {
                     let res1 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         None
                     } else {
-                        Some(<#ty_type as fory_core::serializer::Serializer>::read(context)
+                        Some(<#ty_type as fory_core::serializer::Serializer>::read(context, true)
                             .map_err(fory_core::error::Error::from)?)
                     };
                     Ok::<Option<#ty_type>, fory_core::error::Error>(res1)
@@ -133,7 +133,7 @@ impl NullableTypeNode {
                     let res2 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         Vec::default()
                     } else {
-                        <#ty_type as fory_core::serializer::Serializer>::read(context)
+                        <#ty_type as fory_core::serializer::Serializer>::read(context, true)
                             .map_err(fory_core::error::Error::from)?
                     };
                     Ok::<#ty_type, fory_core::error::Error>(res2)
@@ -163,7 +163,7 @@ impl NullableTypeNode {
                             let v = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 None
                             } else {
-                                Some(fory_core::serializer::collection::read_collection(context)?)
+                                Some(fory_core::serializer::collection::read_collection(context, true, fory_core::types::TypeId::LIST as u32)?)
                             };
                             Ok::<#ty, fory_core::error::Error>(v)
                         }
@@ -172,7 +172,7 @@ impl NullableTypeNode {
                             let v = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 Vec::default()
                             } else {
-                                fory_core::serializer::collection::read_collection(context)?
+                                fory_core::serializer::collection::read_collection(context, true, fory_core::types::TypeId::LIST as u32)?
                             };
                             Ok::<#ty, fory_core::error::Error>(v)
                         }
@@ -185,7 +185,7 @@ impl NullableTypeNode {
                             let s = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 None
                             } else {
-                                Some(fory_core::serializer::collection::read_collection(context)?)
+                                Some(fory_core::serializer::collection::read_collection(context, true, fory_core::types::TypeId::SET as u32)?)
                             };
                             Ok::<#ty, fory_core::error::Error>(s)
                         }
@@ -194,7 +194,7 @@ impl NullableTypeNode {
                             let s = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 HashSet::default()
                             } else {
-                                fory_core::serializer::collection::read_collection(context)?
+                                fory_core::serializer::collection::read_collection(context, true, fory_core::types::TypeId::SET as u32)?
                             };
                             Ok::<#ty, fory_core::error::Error>(s)
                         }
@@ -213,7 +213,7 @@ impl NullableTypeNode {
                             let m = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 None
                             } else {
-                                Some(<HashMap<#key_ty, #val_ty> as fory_core::serializer::Serializer>::read(context)?)
+                                Some(<HashMap<#key_ty, #val_ty> as fory_core::serializer::Serializer>::read(context, true)?)
                             };
                             Ok::<#ty, fory_core::error::Error>(m)
                         }
@@ -222,7 +222,7 @@ impl NullableTypeNode {
                             let m = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 HashMap::default()
                             } else {
-                                <HashMap<#key_ty, #val_ty> as fory_core::serializer::Serializer>::read(context)?
+                                <HashMap<#key_ty, #val_ty> as fory_core::serializer::Serializer>::read(context, true)?
                             };
                             Ok::<#ty, fory_core::error::Error>(m)
                         }
@@ -236,44 +236,32 @@ impl NullableTypeNode {
             let ty = parse_str::<Type>(&self.to_string()).unwrap();
             if self.nullable {
                 quote! {
-                    const STRUCT_ID: u32 = fory_core::types::TypeId::STRUCT as u32;
+                    const COMPATIBLE_STRUCT_ID: u32 = fory_core::types::TypeId::COMPATIBLE_STRUCT as u32;
                     const ENUM_ID: u32 = fory_core::types::TypeId::ENUM as u32;
                     let res1 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         None
                     } else {
-                        let type_id = cur_remote_nullable_type.type_id;
-                        let internal_id = type_id & 0xff;
-                        Some(match internal_id {
-                            STRUCT_ID => {
-                                #nullable_ty::read_compatible(context, type_id)
-                                    .map_err(fory_core::error::Error::from)?
-                            }
-                            ENUM_ID => {
-                                <#nullable_ty as fory_core::serializer::Serializer>::read(context)
-                                .map_err(fory_core::error::Error::from)?
-                            }
-                            _ => unreachable!(),
-                        })
+                        Some(<#nullable_ty as fory_core::serializer::StructSerializer>::read_compatible(context).map_err(fory_core::error::Error::from)?)
                     };
                     Ok::<#ty, fory_core::error::Error>(res1)
                 }
             } else {
                 quote! {
-                    const STRUCT_ID: u32 = fory_core::types::TypeId::STRUCT as u32;
+                    const COMPATIBLE_STRUCT_ID: u32 = fory_core::types::TypeId::COMPATIBLE_STRUCT as u32;
                     const ENUM_ID: u32 = fory_core::types::TypeId::ENUM as u32;
                     let res2 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         #ty::default()
                     } else {
                         let type_id = cur_remote_nullable_type.type_id;
                         let internal_id = type_id & 0xff;
-                        // assert_eq!(internal_id as i16, fory_core::types::TypeId::STRUCT as i16);
+                        // assert_eq!(internal_id as i16, fory_core::types::TypeId::COMPATIBLE_STRUCT as i16);
                         match internal_id {
-                            STRUCT_ID => {
-                                #nullable_ty::read_compatible(context, type_id)
+                            COMPATIBLE_STRUCT_ID => {
+                                <#nullable_ty as fory_core::serializer::StructSerializer>::read_compatible(context)
                                     .map_err(fory_core::error::Error::from)?
                             }
                             ENUM_ID => {
-                                <#nullable_ty as fory_core::serializer::Serializer>::read(context)
+                                <#nullable_ty as fory_core::serializer::Serializer>::read(context, true)
                                 .map_err(fory_core::error::Error::from)?
                             }
                             _ => unreachable!(),
@@ -443,7 +431,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
         }
     };
     let get_type_id = if node.name == "Option" {
-        let option_type_id = TypeId::ForyOption as u32;
+        let option_type_id = TypeId::ForyNullable as u32;
         quote! { #option_type_id }
     } else if let Some(ts) = primitive_vec {
         ts
@@ -457,5 +445,316 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
             #get_type_id,
             vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>
         )
+    }
+}
+
+type FieldGroup = Vec<(String, String, u32)>;
+type FieldGroups = (FieldGroup, FieldGroup, FieldGroup, FieldGroup);
+pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
+    fn group_fields(fields: &[&Field]) -> FieldGroups {
+        const PRIMITIVE_TYPE_NAMES: [&str; 7] = ["bool", "i8", "i16", "i32", "i64", "f32", "f64"];
+        const FINAL_TYPE_NAMES: [&str; 3] = ["String", "NaiveDate", "NaiveDateTime"];
+        const PRIMITIVE_ARRAY_NAMES: [&str; 7] = [
+            "Vec<bool>",
+            "Vec<i8>",
+            "Vec<i16>",
+            "Vec<i32>",
+            "Vec<i64>",
+            "Vec<f32>",
+            "Vec<f64>",
+        ];
+
+        fn extract_option_inner(s: &str) -> Option<&str> {
+            s.strip_prefix("Option<")?.strip_suffix(">")
+        }
+
+        macro_rules! match_ty {
+        ($ty:expr, $(($name:expr, $ret:expr)),+ $(,)?) => {
+            $(
+                if $ty == $name {
+                    $ret as u32
+                } else
+            )+
+            {
+                unreachable!("Unknown type: {}", $ty);
+            }
+        };
+    }
+
+        fn get_primitive_type_id(ty: &str) -> u32 {
+            match_ty!(
+                ty,
+                ("bool", TypeId::BOOL),
+                ("i8", TypeId::INT8),
+                ("i16", TypeId::INT16),
+                ("i32", TypeId::INT32),
+                ("i64", TypeId::INT64),
+                ("f32", TypeId::FLOAT32),
+                ("f64", TypeId::FLOAT64),
+            )
+        }
+
+        let mut primitive_fields = Vec::new();
+        let mut nullable_primitive_fields = Vec::new();
+        let mut final_fields = Vec::new();
+        let mut collection_fields = Vec::new();
+        let mut map_fields = Vec::new();
+        let mut struct_or_enum_fields = Vec::new();
+
+        let mut group_field = |ident: String, ty: &str| {
+            if PRIMITIVE_TYPE_NAMES.contains(&ty) {
+                let type_id = get_primitive_type_id(ty);
+                primitive_fields.push((ident, ty.to_string(), type_id));
+            } else if FINAL_TYPE_NAMES.contains(&ty) || PRIMITIVE_ARRAY_NAMES.contains(&ty) {
+                let type_id = match_ty!(
+                    ty,
+                    ("String", TypeId::STRING),
+                    ("NaiveDate", TypeId::LOCAL_DATE),
+                    ("NaiveDateTime", TypeId::TIMESTAMP),
+                    ("Vec<u8>", TypeId::BINARY),
+                    ("Vec<bool>", TypeId::BOOL_ARRAY),
+                    ("Vec<i8>", TypeId::INT8_ARRAY),
+                    ("Vec<i16>", TypeId::INT16_ARRAY),
+                    ("Vec<i32>", TypeId::INT32_ARRAY),
+                    ("Vec<i64>", TypeId::INT64_ARRAY),
+                    ("Vec<f32>", TypeId::FLOAT32_ARRAY),
+                    ("Vec<f64>", TypeId::FLOAT64_ARRAY),
+                );
+                final_fields.push((ident, ty.to_string(), type_id));
+            } else if ty.starts_with("Vec<") {
+                collection_fields.push((ident, ty.to_string(), TypeId::LIST as u32));
+            } else if ty.starts_with("HashSet<") {
+                collection_fields.push((ident, ty.to_string(), TypeId::SET as u32));
+            } else if ty.starts_with("HashMap<") {
+                map_fields.push((ident, ty.to_string(), TypeId::MAP as u32));
+            } else {
+                struct_or_enum_fields.push((ident, ty.to_string(), 0));
+            }
+        };
+
+        for field in fields {
+            let ty: String = field
+                .ty
+                .to_token_stream()
+                .to_string()
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect::<String>();
+            let ident = field.ident.as_ref().unwrap().to_string();
+            // handle Option<Primitive> specially
+            if let Some(inner) = extract_option_inner(&ty) {
+                if PRIMITIVE_TYPE_NAMES.contains(&inner) {
+                    let type_id = get_primitive_type_id(inner);
+                    nullable_primitive_fields.push((ident, ty.to_string(), type_id));
+                } else {
+                    // continue handle Option<not Primitive>
+                    group_field(ident, inner);
+                }
+            } else {
+                group_field(ident, &ty);
+            }
+        }
+
+        fn sorter(a: &(String, String, u32), b: &(String, String, u32)) -> std::cmp::Ordering {
+            a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0))
+        }
+        fn get_primitive_type_size(type_id_num: u32) -> i32 {
+            let type_id = TypeId::try_from(type_id_num as i16).unwrap();
+            match type_id {
+                TypeId::BOOL => 1,
+                TypeId::INT8 => 1,
+                TypeId::INT16 => 2,
+                TypeId::INT32 => 4,
+                TypeId::VAR_INT32 => 4,
+                TypeId::INT64 => 8,
+                TypeId::VAR_INT64 => 8,
+                TypeId::FLOAT16 => 2,
+                TypeId::FLOAT32 => 4,
+                TypeId::FLOAT64 => 8,
+                _ => unreachable!(),
+            }
+        }
+
+        fn is_compress(type_id: u32) -> bool {
+            [
+                TypeId::INT32 as u32,
+                TypeId::INT64 as u32,
+                TypeId::VAR_INT32 as u32,
+                TypeId::VAR_INT64 as u32,
+            ]
+            .contains(&type_id)
+        }
+
+        fn numeric_sorter(
+            a: &(String, String, u32),
+            b: &(String, String, u32),
+        ) -> std::cmp::Ordering {
+            let compress_a = is_compress(a.2);
+            let compress_b = is_compress(b.2);
+            let size_a = get_primitive_type_size(a.2);
+            let size_b = get_primitive_type_size(b.2);
+            compress_a
+                .cmp(&compress_b)
+                .then_with(|| size_b.cmp(&size_a))
+                .then_with(|| a.0.cmp(&b.0))
+        }
+
+        primitive_fields.sort_by(numeric_sorter);
+        nullable_primitive_fields.sort_by(numeric_sorter);
+        primitive_fields.extend(nullable_primitive_fields);
+        collection_fields.sort_by(sorter);
+        map_fields.sort_by(sorter);
+        let container_fields = {
+            let mut container_fields = collection_fields;
+            container_fields.extend(map_fields);
+            container_fields
+        };
+        (
+            primitive_fields,
+            final_fields,
+            container_fields,
+            struct_or_enum_fields,
+        )
+    }
+
+    fn gen_vec_token_stream(fields: &[(String, String, u32)]) -> TokenStream {
+        let names = fields.iter().map(|(name, _, _)| {
+            quote! { #name.to_string() }
+        });
+        quote! {
+            vec![#(#names),*]
+        }
+    }
+
+    fn gen_vec_tuple_token_stream(fields: &[(String, String, u32)]) -> TokenStream {
+        let names = fields.iter().map(|(name, _, type_id)| {
+            quote! { (#type_id, #name.to_string()) }
+        });
+        quote! {
+            vec![#(#names),*]
+        }
+    }
+
+    let (all_primitive_fields, final_fields, container_fields, struct_or_enum_fields) =
+        group_fields(fields);
+
+    let all_primitive_field_names_declare_extend_ts = {
+        if all_primitive_fields.is_empty() {
+            (quote! {}, quote! {})
+        } else {
+            let all_primitive_field_names_ts = gen_vec_token_stream(&all_primitive_fields);
+            (
+                quote! {
+                    let all_primitive_field_names: Vec<String> = #all_primitive_field_names_ts;
+                },
+                quote! {
+                    sorted_field_names.extend(all_primitive_field_names);
+                },
+            )
+        }
+    };
+    let container_field_names_declare_extend_ts = {
+        if container_fields.is_empty() {
+            (quote! {}, quote! {})
+        } else {
+            let container_field_names_ts = gen_vec_token_stream(&container_fields);
+            (
+                quote! {
+                    let container_field_names: Vec<String> = #container_field_names_ts;
+                },
+                quote! {
+                    sorted_field_names.extend(container_field_names);
+                },
+            )
+        }
+    };
+    let sorter_ts = quote! {
+        |a: &(u32, String), b: &(u32, String)| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1))
+    };
+    let final_fields_declare_extend_ts = {
+        if final_fields.is_empty() && struct_or_enum_fields.is_empty() {
+            (quote! {}, quote! {})
+        } else {
+            let final_fields_ts = gen_vec_tuple_token_stream(&final_fields);
+            (
+                quote! {
+                    let mut final_fields: Vec<(u32, String)> = #final_fields_ts;
+                },
+                quote! {
+                    final_fields.sort_by(#sorter_ts);
+                    let final_field_names: Vec<String> = final_fields.iter().map(|(_, name)| name.clone()).collect();
+                    sorted_field_names.extend(final_field_names);
+                },
+            )
+        }
+    };
+    let other_fields_declare_extend_ts = {
+        if struct_or_enum_fields.is_empty() {
+            (quote! {}, quote! {})
+        } else {
+            (
+                quote! {
+                    let mut other_fields: Vec<(u32, String)> = vec![];
+                },
+                quote! {
+                    other_fields.sort_by(#sorter_ts);
+                    let other_field_names: Vec<String> = other_fields.iter().map(|(_, name)| name.clone()).collect();
+                    sorted_field_names.extend(other_field_names);
+                },
+            )
+        }
+    };
+    let group_sort_enum_other_fields = {
+        if struct_or_enum_fields.is_empty() {
+            quote! {}
+        } else {
+            let ts = struct_or_enum_fields
+                .iter()
+                .map(|(name, ty, _)| {
+                    let ty_type: Type = syn::parse_str(ty).unwrap();
+                    quote! {
+                        let field_type_id = <#ty_type as fory_core::serializer::Serializer>::get_type_id(fory);
+                        let internal_id = field_type_id & 0xff;
+                        if internal_id == fory_core::types::TypeId::COMPATIBLE_STRUCT as u32 {
+                            other_fields.push((field_type_id, #name.to_string()));
+                        } else if internal_id == fory_core::types::TypeId::ENUM as u32 {
+                            final_fields.push((field_type_id, #name.to_string()));
+                        } else {
+                            println!("到这了");
+                            unimplemented!();
+                        }
+                    }
+                })
+                .collect::<Vec<_>>();
+            quote! {
+                {
+                    #(#ts)*
+                }
+            }
+        }
+    };
+
+    let (all_primitive_declare, all_primitive_extend) = all_primitive_field_names_declare_extend_ts;
+    let (container_declare, container_extend) = container_field_names_declare_extend_ts;
+    let (final_declare, final_extend) = final_fields_declare_extend_ts;
+    let (other_declare, other_extend) = other_fields_declare_extend_ts;
+
+    quote! {
+        let sorted_field_names = {
+            #all_primitive_declare
+            #final_declare
+            #other_declare
+            #container_declare
+
+            #group_sort_enum_other_fields
+
+            let mut sorted_field_names: Vec<String> = Vec::new();
+            #all_primitive_extend
+            #final_extend
+            #other_extend
+            #container_extend
+
+            sorted_field_names
+        };
     }
 }

@@ -25,11 +25,18 @@ use crate::types::{ForyGeneralList, TypeId};
 macro_rules! impl_num_serializer {
     ($name: ident, $ty:tt, $field_type: expr) => {
         impl Serializer for $ty {
-            fn write(&self, context: &mut WriteContext) {
+            fn write(&self, context: &mut WriteContext, is_field: bool) {
+                if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
+                    context.writer.var_uint32($field_type as u32);
+                }
                 context.writer.$name(*self);
             }
 
-            fn read(context: &mut ReadContext) -> Result<Self, Error> {
+            fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+                if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
+                    let remote_type_id = context.reader.var_uint32();
+                    assert_eq!(remote_type_id, $field_type as u32);
+                }
                 Ok(context.reader.$name())
             }
 

@@ -20,7 +20,7 @@ use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::TypeId;
+use crate::types::{Mode, TypeId};
 use std::mem;
 
 impl Serializer for bool {
@@ -28,11 +28,18 @@ impl Serializer for bool {
         mem::size_of::<i32>()
     }
 
-    fn write(&self, context: &mut WriteContext) {
+    fn write(&self, context: &mut WriteContext, is_field: bool) {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            context.writer.var_uint32(TypeId::BOOL as u32);
+        }
         context.writer.u8(if *self { 1 } else { 0 });
     }
 
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            let remote_type_id = context.reader.var_uint32();
+            assert_eq!(remote_type_id, TypeId::BOOL as u32);
+        }
         Ok(context.reader.u8() == 1)
     }
 

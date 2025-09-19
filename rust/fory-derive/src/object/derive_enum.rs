@@ -30,8 +30,12 @@ pub fn gen_write(data_enum: &DataEnum) -> TokenStream {
     let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as u32).collect();
 
     quote! {
-        fn write(&self, context: &mut fory_core::resolver::context::WriteContext) {
-            println!("writer:{:?}",context.writer.dump());
+        fn write(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
+            if !is_field {
+                let type_id = Self::get_type_id(context.get_fory());
+                context.writer.var_uint32(type_id);
+            }
+            println!("writer here: {:?}", context.writer.dump());
             match self {
                 #(
                     Self::#variant_idents => {
@@ -54,7 +58,13 @@ pub fn gen_read(data_enum: &DataEnum) -> TokenStream {
     quote! {
        fn read(
            context: &mut fory_core::resolver::context::ReadContext,
+            is_field: bool
        ) -> Result<Self, fory_core::error::Error> {
+            if !is_field {
+                let remote_type_id = context.reader.var_uint32();
+                let local_type_id = Self::get_type_id(context.get_fory());
+                assert_eq!(remote_type_id, local_type_id);
+            }
            let ordinal = context.reader.var_uint32();
            match ordinal {
                #(
@@ -68,17 +78,14 @@ pub fn gen_read(data_enum: &DataEnum) -> TokenStream {
 
 pub fn gen_actual_type_id() -> TokenStream {
     quote! {
-        println!("type_id:{}, actual:{}", type_id, (type_id << 8) + fory_core::types::TypeId::ENUM as u32);
         (type_id << 8) + fory_core::types::TypeId::ENUM as u32
     }
 }
 
-pub fn gen_read_compatible(data_enum: &DataEnum) -> TokenStream {
-    let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
-    let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as i32).collect();
+pub fn gen_read_compatible(_data_enum: &DataEnum) -> TokenStream {
     quote! {
-        fn read_compatible(context: &mut fory_core::resolver::context::ReadContext, type_id: u32) -> Result<Self, fory_core::error::Error> {
-            unreachable!()
+        fn read_compatible(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
+            <Self as fory_core::serializer::Serializer>::read(context, true)
         }
     }
 }

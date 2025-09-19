@@ -20,14 +20,18 @@ use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{ForyGeneralList, TypeId};
+use crate::types::{ForyGeneralList, Mode, TypeId};
 use crate::util::EPOCH;
 use anyhow::anyhow;
 use chrono::{DateTime, Days, NaiveDate, NaiveDateTime};
 use std::mem;
 
 impl Serializer for NaiveDateTime {
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            let remote_type_id = context.reader.var_uint32();
+            assert_eq!(remote_type_id, TypeId::TIMESTAMP as u32);
+        }
         let micros = context.reader.i64();
         let seconds = micros / 1_000_000;
         let subsec_micros = (micros % 1_000_000) as u32;
@@ -39,7 +43,10 @@ impl Serializer for NaiveDateTime {
             )))
     }
 
-    fn write(&self, context: &mut WriteContext) {
+    fn write(&self, context: &mut WriteContext, is_field: bool) {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            context.writer.var_uint32(TypeId::TIMESTAMP as u32);
+        }
         let dt = self.and_utc();
         let micros = dt.timestamp() * 1_000_000 + dt.timestamp_subsec_micros() as i64;
         context.writer.i64(micros);
@@ -57,7 +64,10 @@ impl Serializer for NaiveDateTime {
 impl ForyGeneralList for NaiveDateTime {}
 
 impl Serializer for NaiveDate {
-    fn write(&self, context: &mut WriteContext) {
+    fn write(&self, context: &mut WriteContext, is_field: bool) {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            context.writer.var_uint32(TypeId::LOCAL_DATE as u32);
+        }
         let days_since_epoch = self.signed_duration_since(EPOCH).num_days();
         context.writer.i32(days_since_epoch as i32);
     }
@@ -66,7 +76,11 @@ impl Serializer for NaiveDate {
         mem::size_of::<i32>()
     }
 
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            let remote_type_id = context.reader.var_uint32();
+            assert_eq!(remote_type_id, TypeId::LOCAL_DATE as u32);
+        }
         let days = context.reader.i32();
         EPOCH
             .checked_add_days(Days::new(days as u64))

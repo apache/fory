@@ -19,6 +19,7 @@ use super::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::serializer::StructSerializer;
+use std::cell::RefCell;
 use std::{any::Any, collections::HashMap};
 
 pub struct Harness {
@@ -93,6 +94,7 @@ pub struct TypeResolver {
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
     type_id_counter: u32,
+    sorted_field_names_map: RefCell<HashMap<std::any::TypeId, Vec<String>>>,
 }
 
 const NO_TYPE_ID: u32 = 1000000000;
@@ -127,7 +129,7 @@ impl TypeResolver {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => {
-                    T2::serialize(v, context);
+                    T2::write(v, context, true);
                 }
                 None => todo!(),
             }
@@ -136,7 +138,7 @@ impl TypeResolver {
         fn deserializer<T2: 'static + StructSerializer>(
             context: &mut ReadContext,
         ) -> Result<Box<dyn Any>, Error> {
-            match T2::deserialize(context) {
+            match T2::read_compatible(context) {
                 Ok(v) => Ok(Box::new(v)),
                 Err(e) => Err(e),
             }
@@ -176,5 +178,18 @@ impl TypeResolver {
 
     pub fn get_harness(&self, id: u32) -> Option<&Harness> {
         self.serialize_map.get(&id)
+    }
+
+    pub fn get_sorted_field_names<T: StructSerializer>(
+        &self,
+        type_id: std::any::TypeId,
+    ) -> Option<Vec<String>> {
+        let map = self.sorted_field_names_map.borrow();
+        map.get(&type_id).cloned()
+    }
+
+    pub fn set_sorted_field_names<T: StructSerializer>(&self, field_names: &[String]) {
+        let mut map = self.sorted_field_names_map.borrow_mut();
+        map.insert(std::any::TypeId::of::<T>(), field_names.to_owned());
     }
 }

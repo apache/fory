@@ -85,7 +85,7 @@ pub enum TypeId {
     UNKNOWN = 63,
     ForyAny = 256,
     // only used at receiver peer
-    ForyOption = 265,
+    ForyNullable = 265,
 }
 
 pub trait ForyGeneralList {}
@@ -116,6 +116,19 @@ pub static BASIC_TYPES: [TypeId; 18] = [
     TypeId::STRING,
     TypeId::LOCAL_DATE,
     TypeId::TIMESTAMP,
+    TypeId::BOOL_ARRAY,
+    TypeId::BINARY,
+    TypeId::INT8_ARRAY,
+    TypeId::INT16_ARRAY,
+    TypeId::INT32_ARRAY,
+    TypeId::INT64_ARRAY,
+    TypeId::FLOAT32_ARRAY,
+    TypeId::FLOAT64_ARRAY,
+];
+
+pub static FINAL_TYPES: [TypeId; 3] = [TypeId::STRING, TypeId::LOCAL_DATE, TypeId::TIMESTAMP];
+
+pub static PRIMITIVE_ARRAY_TYPES: [TypeId; 8] = [
     TypeId::BOOL_ARRAY,
     TypeId::BINARY,
     TypeId::INT8_ARRAY,

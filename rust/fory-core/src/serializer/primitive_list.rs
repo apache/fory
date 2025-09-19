@@ -25,7 +25,10 @@ use crate::types::TypeId;
 macro_rules! impl_primitive_vec {
     ($name:ident, $ty:ty, $field_type:expr) => {
         impl Serializer for Vec<$ty> {
-            fn write(&self, context: &mut WriteContext) {
+            fn write(&self, context: &mut WriteContext, is_field: bool) {
+                if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
+                    context.writer.var_uint32($field_type as u32);
+                }
                 let len_bytes = self.len() * std::mem::size_of::<$ty>();
                 context.writer.var_uint32(len_bytes as u32);
                 context.writer.reserve(len_bytes);
@@ -39,7 +42,11 @@ macro_rules! impl_primitive_vec {
                 }
             }
 
-            fn read(context: &mut ReadContext) -> Result<Self, Error> {
+            fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+                if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
+                    let remote_type_id = context.reader.var_uint32();
+                    assert_eq!(remote_type_id, $field_type as u32);
+                }
                 let size_bytes = context.reader.var_uint32() as usize;
 
                 if size_bytes % std::mem::size_of::<$ty>() != 0 {

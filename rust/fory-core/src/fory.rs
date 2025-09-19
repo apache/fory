@@ -23,12 +23,12 @@ use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{Serializer, StructSerializer};
+use crate::types::config_flags::IS_NULL_FLAG;
 use crate::types::{
     config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_LITTLE_ENDIAN_FLAG},
     Language, Mode, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
 };
 use anyhow::anyhow;
-use crate::types::config_flags::IS_NULL_FLAG;
 
 pub struct Fory {
     mode: Mode,
@@ -79,7 +79,7 @@ impl Fory {
         }
         writer.u8(bitmap);
         if is_none {
-            return
+            return;
         }
         if self.xlang {
             writer.u8(Language::Rust as u8);
@@ -103,9 +103,7 @@ impl Fory {
         let peer_is_xlang = (bitmap & IS_CROSS_LANGUAGE_FLAG) != 0;
         ensure!(
             self.xlang == peer_is_xlang,
-            anyhow!(
-                "header bitmap mismatch at xlang bit"
-            )
+            anyhow!("header bitmap mismatch at xlang bit")
         );
         let is_little_endian = (bitmap & IS_LITTLE_ENDIAN_FLAG) != 0;
         ensure!(
@@ -144,7 +142,7 @@ impl Fory {
                 context.load_meta(meta_offset as usize);
             }
         }
-        <T as Serializer>::deserialize(context)
+        <T as Serializer>::deserialize(context, false)
     }
 
     pub fn serialize<T: Serializer>(&self, record: &T) -> Vec<u8> {
@@ -158,20 +156,18 @@ impl Fory {
         record: &T,
         context: &mut WriteContext,
     ) -> Vec<u8> {
-        let mut meta_offset = 0;
         let is_none = record.is_none();
         self.write_head::<T>(is_none, context.writer);
+        let meta_start_offset = context.writer.len();
         if !is_none {
             if self.mode == Mode::Compatible {
                 context.writer.i32(-1);
-                meta_offset = context.writer.len() - 4;
             };
-            println!("before write value{:?}", context.writer.dump());
-            <T as Serializer>::serialize(record, context);
-            println!("before write meta{:?}", context.writer.dump());
+            println!("write bytes before:  {:?}", context.writer.dump());
+            <T as Serializer>::serialize(record, context, false);
+            println!("write bytes after: {:?}", context.writer.dump());
             if self.mode == Mode::Compatible && !context.empty() {
-                assert!(meta_offset > 0);
-                context.write_meta(meta_offset);
+                context.write_meta(meta_start_offset);
             }
         }
         context.writer.dump()
@@ -192,6 +188,10 @@ impl Fory {
             false,
         );
         self.type_resolver.register::<T>(type_info);
+    }
+
+    pub fn set_sorted_field_names<T: 'static + StructSerializer>(&self, field_names: &[String]) {
+        self.type_resolver.set_sorted_field_names::<T>(field_names);
     }
 
     pub fn register_by_name<T: 'static + StructSerializer>(

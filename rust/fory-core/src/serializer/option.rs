@@ -15,58 +15,28 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::ensure;
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{ForyGeneralList, RefFlag};
-use anyhow::anyhow;
+use crate::types::{ForyGeneralList, Mode, TypeId};
 
 impl<T: Serializer> Serializer for Option<T> {
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
-        Ok(Some(T::read(context)?))
-    }
-
-    fn deserialize(context: &mut ReadContext) -> Result<Self, Error> {
-        // ref flag
-        let ref_flag = context.reader.i8();
-
-        if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
-            // type_id
-            let actual_type_id = context.reader.var_uint32();
-            let expected_type_id = T::get_type_id(context.get_fory());
-            ensure!(
-                actual_type_id == expected_type_id,
-                anyhow!("Invalid field type, expected:{expected_type_id}, actual:{actual_type_id}")
-            );
-            Ok(Self::read(context)?)
-        } else if ref_flag == (RefFlag::Null as i8) {
-            Ok(None)
-        } else if ref_flag == (RefFlag::Ref as i8) {
-            Err(Error::Ref)
-        } else {
-            Err(anyhow!("Unknown ref flag, value:{ref_flag}"))?
+    fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            let remote_type_id = context.reader.var_uint32();
+            assert_eq!(remote_type_id, T::get_type_id(context.fory));
         }
+        Ok(Some(T::read(context, is_field)?))
     }
 
-    fn deserialize_field(context: &mut ReadContext) -> Result<Self, Error> {
-        let ref_flag = context.reader.i8();
-        if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
-            Self::read(context)
-        } else if ref_flag == (RefFlag::Null as i8) {
-            Ok(None)
-        } else if ref_flag == (RefFlag::Ref as i8) {
-            Err(Error::Ref)
-        } else {
-            Err(anyhow!("Unknown ref flag, value:{ref_flag}"))?
+    fn write(&self, context: &mut WriteContext, is_field: bool) {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            context.writer.var_uint32(TypeId::BOOL as u32);
         }
-    }
-
-    fn write(&self, context: &mut WriteContext) {
         if let Some(v) = self {
-            T::write(v, context)
+            T::write(v, context, is_field)
         } else {
             unreachable!("write should be call by serialize")
         }

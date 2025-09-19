@@ -21,7 +21,7 @@ use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{ForyGeneralList, TypeId, SIZE_OF_REF_AND_TYPE};
+use crate::types::{ForyGeneralList, Mode, TypeId, SIZE_OF_REF_AND_TYPE};
 use anyhow::anyhow;
 use std::collections::HashMap;
 use std::mem;
@@ -29,7 +29,10 @@ use std::mem;
 const MAX_CHUNK_SIZE: u8 = 255;
 
 impl<T1: Serializer + Eq + std::hash::Hash, T2: Serializer> Serializer for HashMap<T1, T2> {
-    fn write(&self, context: &mut WriteContext) {
+    fn write(&self, context: &mut WriteContext, is_field: bool) {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            context.writer.var_uint32(TypeId::MAP as u32);
+        }
         context.writer.var_uint32(self.len() as u32);
         let reserved_space = (<T1 as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE)
             * self.len()
@@ -42,14 +45,10 @@ impl<T1: Serializer + Eq + std::hash::Hash, T2: Serializer> Serializer for HashM
         for entry in self.iter() {
             if !header_gen {
                 header_offset = context.writer.len();
-                let mut is_key_null = false;
-                let mut is_val_null = false;
-                if T1::is_option() {
-
-                }
-                if T2::is_option(){
-
-                }
+                let _is_key_null = false;
+                let _is_val_null = false;
+                // if T1::is_option() {}
+                // if T2::is_option() {}
                 context.writer.i16(-1);
                 context
                     .writer
@@ -61,8 +60,8 @@ impl<T1: Serializer + Eq + std::hash::Hash, T2: Serializer> Serializer for HashM
                 context.writer.set_bytes(header_offset, &[header]);
                 header_gen = true;
             }
-            entry.0.write(context);
-            entry.1.write(context);
+            entry.0.write(context, true);
+            entry.1.write(context, true);
             pair_counter += 1;
             if pair_counter == MAX_CHUNK_SIZE {
                 context.writer.set_bytes(header_offset + 1, &[pair_counter]);
@@ -76,7 +75,11 @@ impl<T1: Serializer + Eq + std::hash::Hash, T2: Serializer> Serializer for HashM
         }
     }
 
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            let remote_collection_type_id = context.reader.var_uint32();
+            assert_eq!(remote_collection_type_id, TypeId::MAP as u32);
+        }
         let mut map = HashMap::<T1, T2>::new();
         let len = context.reader.var_uint32();
         let mut len_counter = 0;
@@ -100,7 +103,7 @@ impl<T1: Serializer + Eq + std::hash::Hash, T2: Serializer> Serializer for HashM
             );
             assert!(len_counter + chunk_size as u32 <= len);
             for _ in (0..chunk_size).enumerate() {
-                map.insert(T1::read(context)?, T2::read(context)?);
+                map.insert(T1::read(context, true)?, T2::read(context, true)?);
             }
             len_counter += chunk_size as u32;
         }
