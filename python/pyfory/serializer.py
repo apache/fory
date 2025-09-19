@@ -17,7 +17,6 @@
 
 import array
 import builtins
-import dataclasses
 import importlib
 import inspect
 import itertools
@@ -435,7 +434,6 @@ class DataClassSerializer(Serializer):
         context["_field_names"] = self._field_names
         context["_type_hints"] = self._type_hints
         context["_serializers"] = self._serializers
-        current_class_field_names = set(self._get_field_names(self.type_))
         stmts = [
             f'"""xread method for {self.type_}"""',
         ]

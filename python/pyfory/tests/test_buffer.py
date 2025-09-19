@@ -217,10 +217,7 @@ def check_varuint64(buf: Buffer, value: int, bytes_written: int):
     assert buf.writer_index == buf.reader_index
     assert value == varint
     # test slow read branch in `read_varint64`
-    assert (
-        buf.slice(reader_index, buf.reader_index - reader_index).read_varuint64()
-        == value
-    )
+    assert buf.slice(reader_index, buf.reader_index - reader_index).read_varuint64() == value
 
 
 def test_write_buffer():

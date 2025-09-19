@@ -90,7 +90,6 @@ class ComplexTypeVisitor(TypeVisitor):
         return None
 
     def visit_other(self, field_name, type_, types_path=None):
-
         if is_subclass(type_, enum.Enum):
             return self.fory.type_resolver.get_serializer(type_)
         if type_ not in basic_types and not is_py_array_type(type_):

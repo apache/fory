@@ -63,9 +63,7 @@ def test_encoder_with_schema():
 @require_pyarrow
 def test_dict():
     dict_ = {"f1": 1, "f2": "str"}
-    encoder = pyfory.create_row_encoder(
-        pa.schema([("f1", pa.int32()), ("f2", pa.utf8())])
-    )
+    encoder = pyfory.create_row_encoder(pa.schema([("f1", pa.int32()), ("f2", pa.utf8())]))
     row = encoder.to_row(dict_)
     new_obj = encoder.from_row(row)
     assert new_obj.f1 == dict_["f1"]
@@ -74,9 +72,7 @@ def test_dict():
 
 @require_pyarrow
 def test_ints():
-    cls = pyfory.record_class_factory(
-        "TestNumeric", ["f" + str(i) for i in range(1, 9)]
-    )
+    cls = pyfory.record_class_factory("TestNumeric", ["f" + str(i) for i in range(1, 9)])
     schema = pa.schema(
         [
             ("f1", pa.int64()),

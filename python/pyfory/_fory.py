@@ -456,7 +456,7 @@ class Fory:
         typeinfo.serializer.write(buffer, value)
 
     def read_ref_pyobject(self, buffer):
-        return self.deserialize_ref(buffer)    
+        return self.deserialize_ref(buffer)
 
     def inc_depth(self):
         self.depth += 1
