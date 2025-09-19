@@ -23,6 +23,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.resolver.ClassChecker;
+import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
 
@@ -89,6 +90,11 @@ public abstract class AbstractThreadSafeFory implements ThreadSafeFory {
           fory.ensureSerializersCompiled();
           return null;
         });
+  }
+
+  @Override
+  public ClassResolver getClassResolver() {
+    return execute(fory -> fory.getClassResolver());
   }
 
   @Internal
