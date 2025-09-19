@@ -1048,4 +1048,30 @@ public class MapSerializersTest extends ForyTestBase {
     State state2 = (State) fory2.deserialize(bytes);
     Assert.assertEquals(state2.map.get("bar"), new String[] {"bar"});
   }
+
+  @Data
+  public static class OuterClass {
+    private Map<String, InnerClass> f1 = new HashMap<>();
+    private TestEnum f2;
+  }
+
+  @Data
+  public static class InnerClass {
+    int f1;
+  }
+
+  @Test(dataProvider = "compatible")
+  public void testNestedMapGenericCodegen(boolean compatible) {
+    Fory fory =
+        builder()
+            .withCodegen(true)
+            .withCompatibleMode(
+                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+            .requireClassRegistration(false)
+            .build();
+
+    OuterClass value = new OuterClass();
+    value.f1.put("aaa", null);
+    serDeCheck(fory, value);
+  }
 }

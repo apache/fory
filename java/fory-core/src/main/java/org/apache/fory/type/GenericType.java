@@ -166,6 +166,10 @@ public class GenericType {
     return typeRef;
   }
 
+  public Type getType() {
+    return typeRef.getType();
+  }
+
   public Class<?> getCls() {
     return cls;
   }

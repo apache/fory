@@ -2067,17 +2067,8 @@ public class ClassResolver implements TypeResolver {
   @CodegenInvoke
   public GenericType getGenericTypeInStruct(Class<?> cls, String genericTypeStr) {
     Map<String, GenericType> map =
-        extRegistry.classGenericTypes.computeIfAbsent(cls, k -> new HashMap<>());
-    GenericType genericType = map.get(genericTypeStr);
-    if (genericType == null) {
-      for (Field field : ReflectionUtils.getFields(cls, true)) {
-        Type type = field.getGenericType();
-        TypeRef<Object> typeRef = TypeRef.of(type);
-        genericType = buildGenericType(typeRef);
-        map.put(type.getTypeName(), genericType);
-      }
-    }
-    return genericType;
+        extRegistry.classGenericTypes.computeIfAbsent(cls, TypeUtils::buildGenericMap);
+    return map.get(genericTypeStr);
   }
 
   @Override
