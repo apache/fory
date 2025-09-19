@@ -40,7 +40,6 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
-import org.apache.fory.meta.ClassDef;
 import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.test.TestUtils;
 import org.apache.fory.util.MurmurHash3;
@@ -316,7 +315,6 @@ public class RustXlangTest extends ForyTestBase {
         };
     for (String s : testStrings) {
       serializer.writeJavaString(buffer, s);
-      System.out.println(Arrays.toString(buffer.getBytes(0, buffer.writerIndex())));
     }
     Pair<Map<String, String>, File> env_workdir =
         setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
@@ -430,7 +428,6 @@ public class RustXlangTest extends ForyTestBase {
         };
     function.accept(buffer, false);
     Path dataFile = Files.createTempFile("test_cross_language_serializer", "data");
-    System.out.println(Arrays.toString(buffer.getBytes(0, buffer.writerIndex())));
     Pair<Map<String, String>, File> env_workdir =
         setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
@@ -482,29 +479,6 @@ public class RustXlangTest extends ForyTestBase {
         setFilePath(language, command, dataFile, serialized);
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     Assert.assertEquals(fory.deserialize(Files.readAllBytes(dataFile)), obj);
-  }
-
-  @Test
-  public void testClassDefSerialization() {
-    Fory fory =
-        builder()
-            .withLanguage(Language.XLANG)
-            .withMetaShare(true)
-            .withStringCompressed(false)
-            .build();
-    fory.register(Item.class, 102);
-    fory.register(SimpleStruct.class, 103);
-    ClassDef classDef = ClassDef.buildClassDef(fory, SimpleStruct.class, false);
-    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
-    classDef.writeClassDef(buffer);
-    System.out.println(Arrays.toString(buffer.getBytes(0, buffer.writerIndex())));
-    //        ClassDef classDef2 = ClassDef.buildClassDef(fory, Item.class, false);
-    //        MemoryBuffer buffer2 = MemoryBuffer.newHeapBuffer(32);
-    //        classDef2.writeClassDef(buffer2);
-    //        System.out.println(Arrays.toString(buffer2.getBytes(0, buffer2.writerIndex())));
-    //        ClassDef classDef1 = ClassDef.readClassDef(fory, buffer);
-    //        assertEquals(classDef1.getClassName(), classDef.getClassName());
-    //        assertEquals(classDef1, classDef);
   }
 
   /**

@@ -83,7 +83,7 @@ public class CrossLanguageTest extends ForyTestBase {
   private static final String PYTHON_MODULE = "pyfory.tests.test_cross_language";
   private static final String PYTHON_EXECUTABLE = "python";
 
-//  @BeforeClass
+  @BeforeClass
   public void isPyforyInstalled() {
     TestUtils.verifyPyforyInstalled();
   }
@@ -767,21 +767,6 @@ public class CrossLanguageTest extends ForyTestBase {
     struct.f1 = new ArrayField[] {a};
     Assert.assertEquals(xserDe(fory, struct), struct);
   }
-
-    @Test(dataProvider = "referenceTrackingConfig")
-    public void basicTest1(boolean referenceTracking) {
-        ForyBuilder builder =
-                Fory.builder()
-                        .withLanguage(Language.XLANG)
-                        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-                        .withRefTracking(referenceTracking)
-                        .requireClassRegistration(false);
-        Fory fory1 = builder.build();
-        Fory fory2 = builder.build();
-        fory1.register(EnumSerializerTest.EnumFoo.class);
-        fory2.register(EnumSerializerTest.EnumFoo.class);
-        assertEquals(EnumSerializerTest.EnumFoo.A, serDe(fory1, fory2, EnumSerializerTest.EnumFoo.A));
-    }
 
   @Test(dataProvider = "referenceTrackingConfig")
   public void basicTest(boolean referenceTracking) {
