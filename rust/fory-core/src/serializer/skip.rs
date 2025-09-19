@@ -43,7 +43,6 @@ pub fn skip_field_value(
     field_type: &NullableFieldType,
     read_ref_flag: bool,
 ) -> Result<(), Error> {
-    println!("skip field value: {:?}", field_type);
     if read_ref_flag {
         let ref_flag = context.reader.i8();
         if field_type.nullable
@@ -79,15 +78,11 @@ pub fn skip_field_value(
                 );
             } else if CONTAINER_TYPES.contains(&type_id) {
                 if type_id == TypeId::LIST || type_id == TypeId::SET {
-                    println!("skip list bytes: {:?}", context.reader.slice_after_cursor());
                     let length = context.reader.var_uint32() as usize;
-                    println!("length: {length}");
                     // todo
                     let header = context.reader.u8();
                     let read_ref_flag = (header & HAS_NULL) != 0;
                     let _elem_type = context.reader.var_uint32();
-                    let aa = _elem_type >> 8;
-                    println!("elem_type: {aa}");
                     for _ in 0..length {
                         skip_field_value(
                             context,
@@ -122,8 +117,6 @@ pub fn skip_field_value(
                     skip_field_value(context, &nullable_field_type, true)?;
                 }
             } else if tag == TypeId::ENUM as u32 {
-                let internal_id = type_id_num >> 8;
-                println!("skip enum {internal_id}");
                 context
                     .fory
                     .get_type_resolver()

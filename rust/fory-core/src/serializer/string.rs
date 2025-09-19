@@ -50,7 +50,6 @@ impl Serializer for String {
             context.writer.var_uint36_small(bitor);
             context.writer.utf8_string(self);
         }
-        // println!("write after: {:?}", context.writer.dump());
     }
 
     fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
@@ -58,9 +57,7 @@ impl Serializer for String {
             let remote_type_id = context.reader.var_uint32();
             assert_eq!(remote_type_id, TypeId::STRING as u32);
         }
-        // println!("read before: {:?}", context.reader.slice_after_cursor());
         let bitor = context.reader.var_uint36_small();
-        // println!("read bitor:{:?}", bitor);
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
         let encoding = match encoding {

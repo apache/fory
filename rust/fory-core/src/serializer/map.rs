@@ -47,6 +47,7 @@ impl<T1: Serializer + Eq + std::hash::Hash, T2: Serializer> Serializer for HashM
                 header_offset = context.writer.len();
                 let _is_key_null = false;
                 let _is_val_null = false;
+                // todo
                 // if T1::is_option() {}
                 // if T2::is_option() {}
                 context.writer.i16(-1);

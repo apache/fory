@@ -254,7 +254,6 @@ impl NullableTypeNode {
                     } else {
                         let type_id = cur_remote_nullable_type.type_id;
                         let internal_id = type_id & 0xff;
-                        // assert_eq!(internal_id as i16, fory_core::types::TypeId::COMPATIBLE_STRUCT as i16);
                         match internal_id {
                             COMPATIBLE_STRUCT_ID => {
                                 <#nullable_ty as fory_core::serializer::StructSerializer>::read_compatible(context)
@@ -264,7 +263,7 @@ impl NullableTypeNode {
                                 <#nullable_ty as fory_core::serializer::Serializer>::read(context, true)
                                 .map_err(fory_core::error::Error::from)?
                             }
-                            _ => unreachable!(),
+                            _ => unimplemented!(),
                         }
                     };
                     Ok::<#ty, fory_core::error::Error>(res2)
@@ -469,17 +468,17 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
         }
 
         macro_rules! match_ty {
-        ($ty:expr, $(($name:expr, $ret:expr)),+ $(,)?) => {
-            $(
-                if $ty == $name {
-                    $ret as u32
-                } else
-            )+
-            {
-                unreachable!("Unknown type: {}", $ty);
-            }
-        };
-    }
+            ($ty:expr, $(($name:expr, $ret:expr)),+ $(,)?) => {
+                $(
+                    if $ty == $name {
+                        $ret as u32
+                    } else
+                )+
+                {
+                    unreachable!("Unknown type: {}", $ty);
+                }
+            };
+        }
 
         fn get_primitive_type_id(ty: &str) -> u32 {
             match_ty!(
@@ -547,7 +546,8 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
                     let type_id = get_primitive_type_id(inner);
                     nullable_primitive_fields.push((ident, ty.to_string(), type_id));
                 } else {
-                    // continue handle Option<not Primitive>
+                    // continue to handle Option<not Primitive>
+                    // already avoid Option<Option<T>> at compile-time
                     group_field(ident, inner);
                 }
             } else {
@@ -720,7 +720,6 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
                         } else if internal_id == fory_core::types::TypeId::ENUM as u32 {
                             final_fields.push((field_type_id, #name.to_string()));
                         } else {
-                            println!("到这了");
                             unimplemented!();
                         }
                     }

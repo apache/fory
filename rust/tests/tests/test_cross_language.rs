@@ -367,6 +367,5 @@ fn test_simple_struct() {
     let new_bytes = fory.serialize(&remote_obj);
     let new_local_obj: SimpleStruct = fory.deserialize(new_bytes.as_slice()).unwrap();
     assert_eq!(new_local_obj, local_obj);
-    println!("rust write: {:?}", new_bytes);
     fs::write(&data_file_path, new_bytes).unwrap();
 }

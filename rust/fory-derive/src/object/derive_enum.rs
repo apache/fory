@@ -35,7 +35,6 @@ pub fn gen_write(data_enum: &DataEnum) -> TokenStream {
                 let type_id = Self::get_type_id(context.get_fory());
                 context.writer.var_uint32(type_id);
             }
-            println!("writer here: {:?}", context.writer.dump());
             match self {
                 #(
                     Self::#variant_idents => {

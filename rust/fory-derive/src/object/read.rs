@@ -68,7 +68,6 @@ fn read(fields: &[&Field]) -> TokenStream {
         .map(|f| create_private_field_name(f))
         .collect();
     let sorted_deserialize = {
-        // 声明私有变量
         let let_decls = fields
             .iter()
             .zip(private_idents.iter())
@@ -90,7 +89,6 @@ fn read(fields: &[&Field]) -> TokenStream {
         });
 
         quote! {
-            // 先声明变量
              #(#let_decls)*
 
             let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::get_sorted_field_names(context.get_fory());
@@ -133,7 +131,6 @@ fn deserialize_compatible(struct_ident: &Ident) -> TokenStream {
     quote! {
         let ref_flag = context.reader.i8();
         if ref_flag == (fory_core::types::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::types::RefFlag::RefValue as i8) {
-            println!("deserializing here, {:?}", context.reader.slice_after_cursor());
             <#struct_ident as fory_core::serializer::StructSerializer>::read_compatible(context)
         } else if ref_flag == (fory_core::types::RefFlag::Null as i8) {
             Ok(Self::default())

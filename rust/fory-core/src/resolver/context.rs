@@ -107,7 +107,6 @@ impl<'de, 'bf: 'de> ReadContext<'de, 'bf> {
     }
 
     pub fn load_meta(&mut self, offset: usize) {
-        // println!("meta_bytes: {:?}", &self.reader.slice_after_cursor()[offset..]);
         self.meta_resolver.load(&mut Reader::new(
             &self.reader.slice_after_cursor()[offset..],
         ))

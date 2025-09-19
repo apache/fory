@@ -163,9 +163,7 @@ impl Fory {
             if self.mode == Mode::Compatible {
                 context.writer.i32(-1);
             };
-            println!("write bytes before:  {:?}", context.writer.dump());
             <T as Serializer>::serialize(record, context, false);
-            println!("write bytes after: {:?}", context.writer.dump());
             if self.mode == Mode::Compatible && !context.empty() {
                 context.write_meta(meta_start_offset);
             }
@@ -188,10 +186,6 @@ impl Fory {
             false,
         );
         self.type_resolver.register::<T>(type_info);
-    }
-
-    pub fn set_sorted_field_names<T: 'static + StructSerializer>(&self, field_names: &[String]) {
-        self.type_resolver.set_sorted_field_names::<T>(field_names);
     }
 
     pub fn register_by_name<T: 'static + StructSerializer>(
