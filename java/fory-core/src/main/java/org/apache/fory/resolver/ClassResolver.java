@@ -2092,7 +2092,7 @@ public class ClassResolver implements TypeResolver {
     }
     map.putAll(map2);
     return map;
-  }  
+  }
 
   private void buildGenericMap(Map<String, GenericType> map, TypeRef<?> typeRef) {
     if (map.containsKey(typeRef.getType().getTypeName())) {
@@ -2121,7 +2121,7 @@ public class ClassResolver implements TypeResolver {
     for (GenericType t : genericType.getTypeParameters()) {
       buildGenericMap(map, t);
     }
-  }  
+  }
 
   @Override
   public GenericType buildGenericType(TypeRef<?> typeRef) {
