@@ -98,6 +98,11 @@ public abstract class ForyTestBase {
   }
 
   @DataProvider
+  public static Object[][] compatible() {
+    return new Object[][] {{false}, {true}};
+  }
+
+  @DataProvider
   public static Object[][] trackingRefFory() {
     return new Object[][] {
       {
