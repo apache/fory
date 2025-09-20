@@ -53,14 +53,15 @@ func generateStructGuard(buf *bytes.Buffer, structInfo StructInfo) {
 	buf.WriteString(fmt.Sprintf("// Snapshot of %s's underlying type at generation time.\n", typeName))
 	buf.WriteString(fmt.Sprintf("type %s struct {\n", expectedTypeName))
 
-	// Sort fields to ensure consistent ordering (using pointers)
-	fields := make([]*FieldInfo, len(structInfo.Fields))
-	copy(fields, structInfo.Fields)
-	sort.Slice(fields, func(i, j int) bool {
-		return fields[i].GoName < fields[j].GoName
+	// Sort fields by their original index to match the struct definition
+	// This is important for the compile-time guard to work correctly
+	originalFields := make([]*FieldInfo, len(structInfo.Fields))
+	copy(originalFields, structInfo.Fields)
+	sort.Slice(originalFields, func(i, j int) bool {
+		return originalFields[i].Index < originalFields[j].Index
 	})
 
-	for _, field := range fields {
+	for _, field := range originalFields {
 		buf.WriteString(fmt.Sprintf("\t%s %s", field.GoName, formatFieldType(*field)))
 
 		// Add struct tag if present (we'll extract it from the original struct)

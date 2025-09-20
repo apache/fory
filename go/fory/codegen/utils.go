@@ -61,6 +61,12 @@ func isSupportedFieldType(t types.Type) bool {
 		t = ptr.Elem()
 	}
 
+	// Check slice types
+	if slice, ok := t.(*types.Slice); ok {
+		// Check if element type is supported
+		return isSupportedFieldType(slice.Elem())
+	}
+
 	// Check named types
 	if named, ok := t.(*types.Named); ok {
 		typeStr := named.String()
@@ -115,6 +121,11 @@ func getTypeID(t types.Type) string {
 	// Handle pointer types
 	if ptr, ok := t.(*types.Pointer); ok {
 		t = ptr.Elem()
+	}
+
+	// Check slice types
+	if _, ok := t.(*types.Slice); ok {
+		return "LIST"
 	}
 
 	// Check named types first
@@ -210,6 +221,7 @@ func getTypeIDValue(typeID string) int {
 		"TIMESTAMP":    20,  // TIMESTAMP = 20
 		"LOCAL_DATE":   21,  // LOCAL_DATE = 21
 		"NAMED_STRUCT": 17,  // NAMED_STRUCT = 17 (Note: not 30!)
+		"LIST":         21,  // LIST = 21
 	}
 
 	if val, ok := typeIDMap[typeID]; ok {
@@ -327,6 +339,8 @@ func getFieldHashID(field *FieldInfo) int32 {
 		tid = 21 // LOCAL_DATE
 	case "NAMED_STRUCT":
 		tid = 17 // NAMED_STRUCT
+	case "LIST":
+		tid = 21 // LIST
 	default:
 		tid = 0 // Unknown type
 	}

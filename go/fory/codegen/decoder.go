@@ -148,6 +148,14 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		return nil
 	}
 
+	// Handle slice types
+	if slice, ok := field.Type.(*types.Slice); ok {
+		if err := generateSliceReadInline(buf, slice, fieldAccess); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	// Handle struct types
 	if _, ok := field.Type.Underlying().(*types.Struct); ok {
 		fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", fieldAccess)
@@ -156,4 +164,260 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 
 	fmt.Fprintf(buf, "\t// TODO: unsupported type %s\n", field.Type.String())
 	return nil
+}
+
+// Note: generateSliceRead is no longer used since we use WriteReferencable/ReadReferencable for slice fields
+// generateSliceRead generates code to deserialize a slice according to the list format
+func generateSliceRead(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess string) error {
+	elemType := sliceType.Elem()
+
+	// Use block scope to avoid variable redeclaration across multiple slice fields
+	fmt.Fprintf(buf, "\t// Read slice %s\n", fieldAccess)
+	fmt.Fprintf(buf, "\t{\n")
+	fmt.Fprintf(buf, "\t\tsliceLen := int(buf.ReadVarUint32())\n")
+	fmt.Fprintf(buf, "\t\tif sliceLen == 0 {\n")
+	fmt.Fprintf(buf, "\t\t\t// Empty slice - matching reflection behavior where nil and empty are treated the same\n")
+	fmt.Fprintf(buf, "\t\t\t%s = nil\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\t} else {\n")
+
+	// Read collection flags for non-empty slice
+	fmt.Fprintf(buf, "\t\t\t// Read collection flags\n")
+	fmt.Fprintf(buf, "\t\t\tcollectFlag := buf.ReadInt8()\n")
+	fmt.Fprintf(buf, "\t\t\t// Check if CollectionNotDeclElementType flag is set\n")
+	fmt.Fprintf(buf, "\t\t\tif (collectFlag & 4) != 0 {\n")
+	fmt.Fprintf(buf, "\t\t\t\t// Read element type ID (we expect it but don't need to validate it for codegen)\n")
+	fmt.Fprintf(buf, "\t\t\t\t_ = buf.ReadVarInt32()\n")
+	fmt.Fprintf(buf, "\t\t\t}\n")
+
+	// Create slice
+	fmt.Fprintf(buf, "\t\t\t%s = make(%s, sliceLen)\n", fieldAccess, sliceType.String())
+
+	// Read elements
+	fmt.Fprintf(buf, "\t\t\tfor i := 0; i < sliceLen; i++ {\n")
+
+	// Generate element read code based on type
+	elemAccess := fmt.Sprintf("%s[i]", fieldAccess)
+	if err := generateSliceElementRead(buf, elemType, elemAccess); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(buf, "\t\t\t}\n")
+	fmt.Fprintf(buf, "\t\t}\n")
+	fmt.Fprintf(buf, "\t}\n")
+
+	return nil
+}
+
+// generateSliceElementRead generates code to read a single slice element
+func generateSliceElementRead(buf *bytes.Buffer, elemType types.Type, elemAccess string) error {
+	// Handle basic types
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadBool()\n", elemAccess)
+		case types.Int8:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadInt8()\n", elemAccess)
+		case types.Int16:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadInt16()\n", elemAccess)
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\t\t\tif flag := buf.ReadInt8(); flag != -1 {\n")
+			fmt.Fprintf(buf, "\t\t\t\t\treturn fmt.Errorf(\"expected NotNullValueFlag for slice element, got %%d\", flag)\n")
+			fmt.Fprintf(buf, "\t\t\t\t}\n")
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadVarint32()\n", elemAccess)
+		case types.Int, types.Int64:
+			fmt.Fprintf(buf, "\t\t\t\tif flag := buf.ReadInt8(); flag != -1 {\n")
+			fmt.Fprintf(buf, "\t\t\t\t\treturn fmt.Errorf(\"expected NotNullValueFlag for slice element, got %%d\", flag)\n")
+			fmt.Fprintf(buf, "\t\t\t\t}\n")
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadVarint64()\n", elemAccess)
+		case types.Uint8:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadByte_()\n", elemAccess)
+		case types.Uint16:
+			fmt.Fprintf(buf, "\t\t\t\t%s = uint16(buf.ReadInt16())\n", elemAccess)
+		case types.Uint32:
+			fmt.Fprintf(buf, "\t\t\t\t%s = uint32(buf.ReadInt32())\n", elemAccess)
+		case types.Uint, types.Uint64:
+			fmt.Fprintf(buf, "\t\t\t\t%s = uint64(buf.ReadInt64())\n", elemAccess)
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadFloat32()\n", elemAccess)
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadFloat64()\n", elemAccess)
+		case types.String:
+			fmt.Fprintf(buf, "\t\t\t\tif flag := buf.ReadInt8(); flag != 0 {\n")
+			fmt.Fprintf(buf, "\t\t\t\t\treturn fmt.Errorf(\"expected RefValueFlag for string element, got %%d\", flag)\n")
+			fmt.Fprintf(buf, "\t\t\t\t}\n")
+			fmt.Fprintf(buf, "\t\t\t\t%s = fory.ReadString(buf)\n", elemAccess)
+		default:
+			fmt.Fprintf(buf, "\t\t\t\t// TODO: unsupported basic type %s\n", basic.String())
+		}
+		return nil
+	}
+
+	// Handle named types
+	if named, ok := elemType.(*types.Named); ok {
+		typeStr := named.String()
+		switch typeStr {
+		case "time.Time":
+			fmt.Fprintf(buf, "\t\t\t\tusec := buf.ReadInt64()\n")
+			fmt.Fprintf(buf, "\t\t\t\t%s = fory.CreateTimeFromUnixMicro(usec)\n", elemAccess)
+			return nil
+		case "github.com/apache/fory/go/fory.Date":
+			fmt.Fprintf(buf, "\t\t\t\tdays := buf.ReadInt32()\n")
+			fmt.Fprintf(buf, "\t\t\t\t// Handle zero date marker\n")
+			fmt.Fprintf(buf, "\t\t\t\tif days == int32(-2147483648) {\n")
+			fmt.Fprintf(buf, "\t\t\t\t\t%s = fory.Date{Year: 0, Month: 0, Day: 0}\n", elemAccess)
+			fmt.Fprintf(buf, "\t\t\t\t} else {\n")
+			fmt.Fprintf(buf, "\t\t\t\t\tdiff := time.Duration(days) * 24 * time.Hour\n")
+			fmt.Fprintf(buf, "\t\t\t\t\tt := time.Date(1970, 1, 1, 0, 0, 0, 0, time.Local).Add(diff)\n")
+			fmt.Fprintf(buf, "\t\t\t\t\t%s = fory.Date{Year: t.Year(), Month: t.Month(), Day: t.Day()}\n", elemAccess)
+			fmt.Fprintf(buf, "\t\t\t\t}\n")
+			return nil
+		}
+		// Check if it's a struct
+		if _, ok := named.Underlying().(*types.Struct); ok {
+			fmt.Fprintf(buf, "\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", elemAccess)
+			return nil
+		}
+	}
+
+	// Handle struct types
+	if _, ok := elemType.Underlying().(*types.Struct); ok {
+		fmt.Fprintf(buf, "\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", elemAccess)
+		return nil
+	}
+
+	fmt.Fprintf(buf, "\t\t\t\t// TODO: unsupported element type %s\n", elemType.String())
+	return nil
+}
+
+// generateSliceReadInline generates inline slice deserialization code to match encoder behavior exactly
+func generateSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess string) error {
+	elemType := sliceType.Elem()
+
+	// Read NotNullValueFlag first (matching encoder behavior)
+	fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
+	fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for slice field, got %%d\", flag)\n")
+	fmt.Fprintf(buf, "\t}\n")
+
+	// Read slice length - use block scope to avoid variable name conflicts
+	fmt.Fprintf(buf, "\t{\n")
+	fmt.Fprintf(buf, "\t\tsliceLen := int(buf.ReadVarUint32())\n")
+	fmt.Fprintf(buf, "\t\tif sliceLen == 0 {\n")
+	fmt.Fprintf(buf, "\t\t\t%s = nil\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\t} else {\n")
+
+	// Read collection header
+	fmt.Fprintf(buf, "\t\t\tcollectFlag := buf.ReadInt8()\n")
+	fmt.Fprintf(buf, "\t\t\t// We expect CollectionNotDeclElementType + CollectionNotSameType = 12\n")
+	fmt.Fprintf(buf, "\t\t\tif collectFlag != 12 {\n")
+	fmt.Fprintf(buf, "\t\t\t\treturn fmt.Errorf(\"unexpected collection flag: %%d\", collectFlag)\n")
+	fmt.Fprintf(buf, "\t\t\t}\n")
+
+	// Create slice
+	fmt.Fprintf(buf, "\t\t\t%s = make(%s, sliceLen)\n", fieldAccess, sliceType.String())
+
+	// Read elements
+	fmt.Fprintf(buf, "\t\t\tfor i := 0; i < sliceLen; i++ {\n")
+
+	// For each element, read NotNullValueFlag + TypeID + Value
+	fmt.Fprintf(buf, "\t\t\t\t// Read element NotNullValueFlag\n")
+	fmt.Fprintf(buf, "\t\t\t\tif flag := buf.ReadInt8(); flag != -1 {\n")
+	fmt.Fprintf(buf, "\t\t\t\t\treturn fmt.Errorf(\"expected NotNullValueFlag for element, got %%d\", flag)\n")
+	fmt.Fprintf(buf, "\t\t\t\t}\n")
+
+	// Read and verify element type ID
+	if err := generateElementTypeIDReadInline(buf, elemType); err != nil {
+		return err
+	}
+
+	// Read element value
+	if err := generateSliceElementReadInline(buf, elemType, fmt.Sprintf("%s[i]", fieldAccess)); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(buf, "\t\t\t}\n")
+	fmt.Fprintf(buf, "\t\t}\n")
+	fmt.Fprintf(buf, "\t}\n")
+
+	return nil
+}
+
+// generateElementTypeIDReadInline generates element type ID verification
+func generateElementTypeIDReadInline(buf *bytes.Buffer, elemType types.Type) error {
+	// Handle basic types - verify the expected type ID
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		var expectedTypeID int
+		switch basic.Kind() {
+		case types.Bool:
+			expectedTypeID = 1
+		case types.Int8:
+			expectedTypeID = 2
+		case types.Int16:
+			expectedTypeID = 3
+		case types.Int32:
+			expectedTypeID = 4
+		case types.Int, types.Int64:
+			expectedTypeID = 6
+		case types.Uint8:
+			expectedTypeID = 100
+		case types.Uint16:
+			expectedTypeID = 101
+		case types.Uint32:
+			expectedTypeID = 102
+		case types.Uint, types.Uint64:
+			expectedTypeID = 103
+		case types.Float32:
+			expectedTypeID = 10
+		case types.Float64:
+			expectedTypeID = 11
+		case types.String:
+			expectedTypeID = 12
+		default:
+			return fmt.Errorf("unsupported basic type for element type ID read: %s", basic.String())
+		}
+
+		fmt.Fprintf(buf, "\t\t\t\t// Read and verify element type ID\n")
+		fmt.Fprintf(buf, "\t\t\t\tif typeID := buf.ReadVarInt32(); typeID != %d {\n", expectedTypeID)
+		fmt.Fprintf(buf, "\t\t\t\t\treturn fmt.Errorf(\"expected element type ID %d, got %%d\", typeID)\n", expectedTypeID)
+		fmt.Fprintf(buf, "\t\t\t\t}\n")
+
+		return nil
+	}
+	return fmt.Errorf("unsupported element type for type ID read: %s", elemType.String())
+}
+
+// generateSliceElementReadInline generates code to read a single slice element value
+func generateSliceElementReadInline(buf *bytes.Buffer, elemType types.Type, elemAccess string) error {
+	// Handle basic types - read the actual value (type ID already verified above)
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadBool()\n", elemAccess)
+		case types.Int8:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadInt8()\n", elemAccess)
+		case types.Int16:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadInt16()\n", elemAccess)
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadVarint32()\n", elemAccess)
+		case types.Int, types.Int64:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadVarint64()\n", elemAccess)
+		case types.Uint8:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadByte_()\n", elemAccess)
+		case types.Uint16:
+			fmt.Fprintf(buf, "\t\t\t\t%s = uint16(buf.ReadInt16())\n", elemAccess)
+		case types.Uint32:
+			fmt.Fprintf(buf, "\t\t\t\t%s = uint32(buf.ReadInt32())\n", elemAccess)
+		case types.Uint, types.Uint64:
+			fmt.Fprintf(buf, "\t\t\t\t%s = uint64(buf.ReadInt64())\n", elemAccess)
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadFloat32()\n", elemAccess)
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadFloat64()\n", elemAccess)
+		case types.String:
+			fmt.Fprintf(buf, "\t\t\t\t%s = fory.ReadString(buf)\n", elemAccess)
+		default:
+			return fmt.Errorf("unsupported basic type for element read: %s", basic.String())
+		}
+		return nil
+	}
+	return fmt.Errorf("unsupported element type for read: %s", elemType.String())
 }

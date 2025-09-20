@@ -2,7 +2,28 @@
 
 Fory is a blazingly fast multi-language serialization framework powered by just-in-time compilation and zero-copy.
 
-Currently, Fory Go is implemented using reflection. We have also implemented a static code generator to generate serializer code ahead of time to speed up serialization.
+Fory Go provides two serialization paths: a high-performance code generation path and a reflection-based path. The code generation path is recommended for production use as it offers better performance and broader type support.
+
+## Supported Types
+
+Fory Go supports the following types for both reflection-based serialization and code generation:
+
+### Basic Data Types
+
+- `bool`
+- `int8`, `int16`, `int32`, `int64`, `int`
+- `uint8` (byte)
+- `float32`, `float64`
+- `string`
+
+### Collection Types
+
+- `[]bool`, `[]int16`, `[]int32`, `[]int64`
+- `[]float32`, `[]float64`
+- `[]string`
+- `[]byte` (optimized binary serialization)
+- `[]interface{}` (dynamic slice)
+- `map[interface{}]interface{}` (dynamic map)
 
 ## Fory Go Codegen (optional)
 
@@ -27,7 +48,7 @@ The generator binary is `fory`.
 go install github.com/apache/fory/go/fory/cmd/fory@latest
 ```
 
-- Go 1.13+
+- Go 1.13+:
 
 ```bash
 # Inside a module-enabled environment

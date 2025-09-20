@@ -26,3 +26,20 @@ type ValidationDemo struct {
 	B string `json:"b"` // string field
 	C int64  `json:"c"` // int64 field (instead of array, as arrays are not supported yet)
 }
+
+// SliceDemo is a struct for testing slice serialization
+// Contains various slice types
+
+// fory:gen
+type SliceDemo struct {
+	IntSlice    []int32   `json:"int_slice"`    // slice of int32
+	StringSlice []string  `json:"string_slice"` // slice of string
+	FloatSlice  []float64 `json:"float_slice"`  // slice of float64
+	BoolSlice   []bool    `json:"bool_slice"`   // slice of bool
+}
+
+// SimpleSliceDemo is a struct for testing slice serialization with single field
+// fory:gen
+type SimpleSliceDemo struct {
+	IntSlice []int32 `json:"int_slice"` // slice of int32
+}

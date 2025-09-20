@@ -134,6 +134,14 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		return nil
 	}
 
+	// Handle slice types
+	if slice, ok := field.Type.(*types.Slice); ok {
+		if err := generateSliceWriteInline(buf, slice, fieldAccess); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	// Handle struct types
 	if _, ok := field.Type.Underlying().(*types.Struct); ok {
 		fmt.Fprintf(buf, "\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
@@ -142,4 +150,184 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 
 	fmt.Fprintf(buf, "\t// TODO: unsupported type %s\n", field.Type.String())
 	return nil
+}
+
+// generateElementTypeIDWrite generates code to write the element type ID for slice serialization
+func generateElementTypeIDWrite(buf *bytes.Buffer, elemType types.Type) error {
+	// Handle basic types
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(1) // BOOL\n")
+		case types.Int8:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(2) // INT8\n")
+		case types.Int16:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(3) // INT16\n")
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(4) // INT32\n")
+		case types.Int, types.Int64:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(6) // INT64\n")
+		case types.Uint8:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(100) // UINT8\n")
+		case types.Uint16:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(101) // UINT16\n")
+		case types.Uint32:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(102) // UINT32\n")
+		case types.Uint, types.Uint64:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(103) // UINT64\n")
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(10) // FLOAT\n")
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(11) // DOUBLE\n")
+		case types.String:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(12) // STRING\n")
+		default:
+			return fmt.Errorf("unsupported basic type for element type ID: %s", basic.String())
+		}
+		return nil
+	}
+
+	// Handle named types
+	if named, ok := elemType.(*types.Named); ok {
+		typeStr := named.String()
+		switch typeStr {
+		case "time.Time":
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(25) // TIMESTAMP\n")
+			return nil
+		case "github.com/apache/fory/go/fory.Date":
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(26) // LOCAL_DATE\n")
+			return nil
+		}
+		// Check if it's a struct
+		if _, ok := named.Underlying().(*types.Struct); ok {
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(17) // NAMED_STRUCT\n")
+			return nil
+		}
+	}
+
+	// Handle struct types
+	if _, ok := elemType.Underlying().(*types.Struct); ok {
+		fmt.Fprintf(buf, "\t\tbuf.WriteVarInt32(17) // NAMED_STRUCT\n")
+		return nil
+	}
+
+	return fmt.Errorf("unsupported element type for type ID: %s", elemType.String())
+}
+
+// generateSliceWriteInline generates inline slice serialization code to match reflection behavior exactly
+func generateSliceWriteInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess string) error {
+	elemType := sliceType.Elem()
+
+	// Write NotNullValueFlag first (matching reflection behavior)
+	fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag for slice\n")
+
+	// Write slice length - use block scope to avoid variable name conflicts
+	fmt.Fprintf(buf, "\t{\n")
+	fmt.Fprintf(buf, "\t\tsliceLen := 0\n")
+	fmt.Fprintf(buf, "\t\tif %s != nil {\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\t\tsliceLen = len(%s)\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\t}\n")
+	fmt.Fprintf(buf, "\t\tbuf.WriteVarUint32(uint32(sliceLen))\n")
+
+	// Write collection header and elements for non-empty slice
+	fmt.Fprintf(buf, "\t\tif sliceLen > 0 {\n")
+
+	// For codegen, follow reflection's behavior exactly:
+	// Set CollectionNotDeclElementType (0b0100 = 4) and CollectionNotSameType (0b1000 = 8)
+	// Total: 4 + 8 = 12 = 0x0c
+	fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(12) // CollectionNotDeclElementType + CollectionNotSameType\n")
+
+	// For each element, write type info + value (because CollectionNotSameType is set)
+	fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
+
+	// Write element type ID
+	if err := generateElementTypeIDWriteInline(buf, elemType); err != nil {
+		return err
+	}
+
+	// Write element value
+	if err := generateSliceElementWriteInline(buf, elemType, "elem"); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(buf, "\t\t\t}\n")
+	fmt.Fprintf(buf, "\t\t}\n")
+	fmt.Fprintf(buf, "\t}\n")
+
+	return nil
+}
+
+// generateElementTypeIDWriteInline generates element type ID write with specific indentation
+func generateElementTypeIDWriteInline(buf *bytes.Buffer, elemType types.Type) error {
+	// Handle basic types
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(1) // BOOL\n")
+		case types.Int8:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(2) // INT8\n")
+		case types.Int16:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(3) // INT16\n")
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(4) // INT32\n")
+		case types.Int, types.Int64:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(6) // INT64\n")
+		case types.Uint8:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(100) // UINT8\n")
+		case types.Uint16:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(101) // UINT16\n")
+		case types.Uint32:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(102) // UINT32\n")
+		case types.Uint, types.Uint64:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(103) // UINT64\n")
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(10) // FLOAT\n")
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(11) // DOUBLE\n")
+		case types.String:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarInt32(12) // STRING\n")
+		default:
+			return fmt.Errorf("unsupported basic type for element type ID: %s", basic.String())
+		}
+		return nil
+	}
+	return fmt.Errorf("unsupported element type for type ID: %s", elemType.String())
+}
+
+// generateSliceElementWriteInline generates code to write a single slice element value
+func generateSliceElementWriteInline(buf *bytes.Buffer, elemType types.Type, elemAccess string) error {
+	// Handle basic types - write the actual value without type info (type already written above)
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteBool(%s)\n", elemAccess)
+		case types.Int8:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(%s)\n", elemAccess)
+		case types.Int16:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt16(%s)\n", elemAccess)
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarint32(%s)\n", elemAccess)
+		case types.Int, types.Int64:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteVarint64(%s)\n", elemAccess)
+		case types.Uint8:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteByte_(%s)\n", elemAccess)
+		case types.Uint16:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt16(int16(%s))\n", elemAccess)
+		case types.Uint32:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt32(int32(%s))\n", elemAccess)
+		case types.Uint, types.Uint64:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt64(int64(%s))\n", elemAccess)
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteFloat32(%s)\n", elemAccess)
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteFloat64(%s)\n", elemAccess)
+		case types.String:
+			fmt.Fprintf(buf, "\t\t\t\tfory.WriteString(buf, %s)\n", elemAccess)
+		default:
+			return fmt.Errorf("unsupported basic type for element write: %s", basic.String())
+		}
+		return nil
+	}
+	return fmt.Errorf("unsupported element type for write: %s", elemType.String())
 }
