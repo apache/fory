@@ -372,38 +372,51 @@ func newTypeResolver(fory *Fory) *typeResolver {
 	}
 	r.initialize()
 
-	// Register generated serializers from factories
+	// Register generated serializers from factories with complete type information
 	generatedSerializerFactories.mu.RLock()
 	for type_, factory := range generatedSerializerFactories.factories {
-		serializer := factory()
-
-		// Use full registration process for generated types
+		codegenSerializer := factory()
 		pkgPath := type_.PkgPath()
 		typeName := type_.Name()
+		typeTag := pkgPath + "." + typeName
 
-		// Register value type
-		_, err := r.registerType(type_, int32(serializer.TypeId()), pkgPath, typeName, serializer, true)
-		if err != nil {
-			fmt.Errorf("failed to register generated type %v: %v", type_, err)
+		// Create structSerializer with codegen delegate (Python-style)
+		structSer := &structSerializer{
+			typeTag:         typeTag,
+			type_:           type_,
+			codegenDelegate: codegenSerializer, // Delegate to codegen for performance
 		}
-
-		// Also register pointer type in serializers map (without full registration to avoid typeId conflict)
+		// Create ptrToStructSerializer with codegen delegate (Python-style)
 		ptrType := reflect.PtrTo(type_)
-		r.typeToSerializers[ptrType] = serializer
-
-		// Create TypeInfo for pointer type and add to cache
-		if typeInfo, exists := r.typesInfo[type_]; exists {
-			ptrTypeInfo := TypeInfo{
-				Type:         ptrType,
-				TypeID:       -typeInfo.TypeID, // Use negative ID for pointer type
-				Serializer:   serializer,
-				PkgPathBytes: typeInfo.PkgPathBytes,
-				NameBytes:    typeInfo.NameBytes,
-				IsDynamic:    true,
-				hashValue:    calcTypeHash(ptrType),
-			}
-			r.typesInfo[ptrType] = ptrTypeInfo
+		ptrStructSer := &ptrToStructSerializer{
+			type_:            ptrType,
+			structSerializer: *structSer,
+			codegenDelegate:  codegenSerializer, // Delegate to codegen for performance
 		}
+
+		// 1. Basic type mappings (same as reflection)
+		r.typeToSerializers[type_] = structSer      // Value type -> structSerializer with codegen
+		r.typeToSerializers[ptrType] = ptrStructSer // Pointer type -> ptrToStructSerializer with codegen
+
+		// 2. Cross-language critical mapping (same as reflection)
+		r.typeTagToSerializers[typeTag] = ptrStructSer // "pkg.Type" -> ptrToStructSerializer
+
+		// 3. Register complete type information (critical for proper serialization)
+		_, err := r.registerType(type_, int32(codegenSerializer.TypeId()), pkgPath, typeName, structSer, false)
+		if err != nil {
+			panic(fmt.Errorf("failed to register codegen type %s: %v", typeTag, err))
+		}
+		// 4. Register pointer type information
+		_, err = r.registerType(ptrType, -int32(codegenSerializer.TypeId()), pkgPath, typeName, ptrStructSer, false)
+		if err != nil {
+			panic(fmt.Errorf("failed to register codegen pointer type %s: %v", typeTag, err))
+		}
+
+		// 5. Type info mappings (same as reflection) - these are redundant if registerType is called
+		r.typeToTypeInfo[type_] = "@" + typeTag    // Type -> "@pkg.Type"
+		r.typeToTypeInfo[ptrType] = "*@" + typeTag // *Type -> "*@pkg.Type"
+		r.typeInfoToType["@"+typeTag] = type_      // "@pkg.Type" -> Type
+		r.typeInfoToType["*@"+typeTag] = ptrType   // "*@pkg.Type" -> *Type
 	}
 	generatedSerializerFactories.mu.RUnlock()
 
@@ -532,7 +545,7 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 		if info.Serializer == nil {
 			/*
 			   Lazy initialize serializer if not created yet
-			   mapInStruct equals false because this path isn't taken when extracting field info from structs;
+			   mapInStruct equals false because this path isn’t taken when extracting field info from structs;
 			   for all other map cases, it remains false
 			*/
 			serializer, err := r.createSerializer(value.Type(), false)
@@ -554,7 +567,6 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 		value = value.Elem()
 	}
 	type_ := value.Type()
-
 	// Get package path and type name for registration
 	var typeName string
 	var pkgPath string
