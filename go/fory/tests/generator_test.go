@@ -60,6 +60,11 @@ func TestValidationDemo(t *testing.T) {
 
 	// 5. Validate data integrity
 	assert.EqualValues(t, original, result, "Complete struct should match after round-trip")
+
+	// 6. Assert that serializer is the generated serializer
+	validationSerializer := NewSerializerFor_ValidationDemo()
+	_, ok := validationSerializer.(ValidationDemo_ForyGenSerializer)
+	assert.True(t, ok, "Serializer should be the generated ValidationDemo_ForyGenSerializer")
 }
 
 func TestSliceDemo(t *testing.T) {
@@ -71,15 +76,11 @@ func TestSliceDemo(t *testing.T) {
 		BoolSlice:   []bool{true, false, true, false},
 	}
 
-	// Validate original data structure
-	assert.Equal(t, 5, len(original.IntSlice), "IntSlice should have 5 elements")
-	assert.Equal(t, []int32{10, 20, 30, 40, 50}, original.IntSlice, "IntSlice values should match")
-	assert.Equal(t, 4, len(original.StringSlice), "StringSlice should have 4 elements")
-	assert.Equal(t, []string{"hello", "world", "fory", "slice"}, original.StringSlice, "StringSlice values should match")
-	assert.Equal(t, 5, len(original.FloatSlice), "FloatSlice should have 5 elements")
-	assert.Equal(t, []float64{1.1, 2.2, 3.3, 4.4, 5.5}, original.FloatSlice, "FloatSlice values should match")
-	assert.Equal(t, 4, len(original.BoolSlice), "BoolSlice should have 4 elements")
-	assert.Equal(t, []bool{true, false, true, false}, original.BoolSlice, "BoolSlice values should match")
+	// Validate original data structure (quick sanity check)
+	assert.NotEmpty(t, original.IntSlice, "IntSlice should not be empty")
+	assert.NotEmpty(t, original.StringSlice, "StringSlice should not be empty")
+	assert.NotEmpty(t, original.FloatSlice, "FloatSlice should not be empty")
+	assert.NotEmpty(t, original.BoolSlice, "BoolSlice should not be empty")
 
 	// 2. Serialize using generated code
 	f := fory.NewFory(true)
@@ -94,19 +95,11 @@ func TestSliceDemo(t *testing.T) {
 	require.NoError(t, err, "Deserialization should not fail")
 	require.NotNil(t, result, "Deserialized result should not be nil")
 
-	// 4. Validate round-trip serialization - detailed field checks
-	assert.Equal(t, len(original.IntSlice), len(result.IntSlice), "IntSlice length should match after round-trip")
-	assert.Equal(t, original.IntSlice, result.IntSlice, "IntSlice should match after round-trip")
-
-	assert.Equal(t, len(original.StringSlice), len(result.StringSlice), "StringSlice length should match after round-trip")
-	assert.Equal(t, original.StringSlice, result.StringSlice, "StringSlice should match after round-trip")
-
-	assert.Equal(t, len(original.FloatSlice), len(result.FloatSlice), "FloatSlice length should match after round-trip")
-	assert.Equal(t, original.FloatSlice, result.FloatSlice, "FloatSlice should match after round-trip")
-
-	assert.Equal(t, len(original.BoolSlice), len(result.BoolSlice), "BoolSlice length should match after round-trip")
-	assert.Equal(t, original.BoolSlice, result.BoolSlice, "BoolSlice should match after round-trip")
-
-	// 5. Validate data integrity
+	// 4. Validate round-trip serialization
 	assert.EqualValues(t, original, result, "Complete struct should match after round-trip")
+
+	// 5. Assert that serializer is the generated serializer
+	sliceSerializer := NewSerializerFor_SliceDemo()
+	_, ok := sliceSerializer.(SliceDemo_ForyGenSerializer)
+	assert.True(t, ok, "Serializer should be the generated SliceDemo_ForyGenSerializer")
 }

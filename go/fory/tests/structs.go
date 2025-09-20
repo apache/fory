@@ -22,9 +22,9 @@ package fory
 
 // fory:gen
 type ValidationDemo struct {
-	A int32  `json:"a"` // int32 field
-	B string `json:"b"` // string field
-	C int64  `json:"c"` // int64 field (instead of array, as arrays are not supported yet)
+	A int32  // int32 field
+	B string // string field
+	C int64  // int64 field
 }
 
 // SliceDemo is a struct for testing slice serialization
@@ -32,8 +32,8 @@ type ValidationDemo struct {
 
 // fory:gen
 type SliceDemo struct {
-	IntSlice    []int32   `json:"int_slice"`    // slice of int32
-	StringSlice []string  `json:"string_slice"` // slice of string
-	FloatSlice  []float64 `json:"float_slice"`  // slice of float64
-	BoolSlice   []bool    `json:"bool_slice"`   // slice of bool
+	IntSlice    []int32   // slice of int32
+	StringSlice []string  // slice of string
+	FloatSlice  []float64 // slice of float64
+	BoolSlice   []bool    // slice of bool
 }
