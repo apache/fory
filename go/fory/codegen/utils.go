@@ -18,8 +18,7 @@
 package codegen
 
 import (
-	"crypto/md5"
-	"encoding/binary"
+	"fmt"
 	"go/types"
 	"sort"
 	"unicode"
@@ -105,10 +104,8 @@ func isPrimitiveType(t types.Type) bool {
 		}
 	}
 
-	// String is also considered primitive in Fory context but nullable
-	if basic, ok := t.Underlying().(*types.Basic); ok && basic.Kind() == types.String {
-		return true
-	}
+	// String is NOT considered primitive for sorting purposes (it goes to final group)
+	// This matches reflection's behavior where STRING goes to final group, not boxed group
 
 	return false
 }
@@ -194,24 +191,25 @@ func getPrimitiveSize(t types.Type) int {
 }
 
 // getTypeIDValue returns numeric value for type ID for sorting
+// This should match the actual Fory TypeId values used by reflection
 func getTypeIDValue(typeID string) int {
-	// Map Fory TypeIDs to numeric values for sorting
+	// Map Fory TypeIDs to their actual numeric values (matching reflection)
 	typeIDMap := map[string]int{
-		"BOOL":         1,
-		"INT8":         2,
-		"INT16":        3,
-		"INT32":        4,
-		"INT64":        5,
-		"UINT8":        6,
-		"UINT16":       7,
-		"UINT32":       8,
-		"UINT64":       9,
-		"FLOAT32":      10,
-		"FLOAT64":      11,
-		"STRING":       12,
-		"TIMESTAMP":    20,
-		"LOCAL_DATE":   21,
-		"NAMED_STRUCT": 30,
+		"BOOL":         1,   // BOOL = 1
+		"INT8":         2,   // INT8 = 2
+		"INT16":        3,   // INT16 = 3
+		"INT32":        4,   // INT32 = 4
+		"INT64":        6,   // INT64 = 6 (Note: not 5!)
+		"UINT8":        100, // UINT8 = 100
+		"UINT16":       101, // UINT16 = 101
+		"UINT32":       102, // UINT32 = 102
+		"UINT64":       103, // UINT64 = 103
+		"FLOAT32":      10,  // FLOAT32 = FLOAT = 10
+		"FLOAT64":      11,  // FLOAT64 = DOUBLE = 11
+		"STRING":       12,  // STRING = 12
+		"TIMESTAMP":    20,  // TIMESTAMP = 20
+		"LOCAL_DATE":   21,  // LOCAL_DATE = 21
+		"NAMED_STRUCT": 17,  // NAMED_STRUCT = 17 (Note: not 30!)
 	}
 
 	if val, ok := typeIDMap[typeID]; ok {
@@ -220,12 +218,13 @@ func getTypeIDValue(typeID string) int {
 	return 999
 }
 
-// sortFields sorts fields according to Fory protocol
+// sortFields sorts fields according to Fory protocol specification
+// This matches the reflection-based sorting exactly for cross-language compatibility
 func sortFields(fields []*FieldInfo) {
 	sort.Slice(fields, func(i, j int) bool {
 		f1, f2 := fields[i], fields[j]
 
-		// Group primitives first
+		// Group primitives first (matching reflection's boxed group)
 		if f1.IsPrimitive && !f2.IsPrimitive {
 			return true
 		}
@@ -234,17 +233,28 @@ func sortFields(fields []*FieldInfo) {
 		}
 
 		if f1.IsPrimitive && f2.IsPrimitive {
-			// Sort primitives by size (descending), then by type ID, then by name
+			// Match reflection's boxed sorting logic exactly
+			// First: handle compression types (INT32/INT64/VAR_INT32/VAR_INT64)
+			compressI := f1.TypeID == "INT32" || f1.TypeID == "INT64" ||
+				f1.TypeID == "VAR_INT32" || f1.TypeID == "VAR_INT64"
+			compressJ := f2.TypeID == "INT32" || f2.TypeID == "INT64" ||
+				f2.TypeID == "VAR_INT32" || f2.TypeID == "VAR_INT64"
+
+			if compressI != compressJ {
+				return !compressI && compressJ // non-compress comes first
+			}
+
+			// Then: by size (descending)
 			if f1.PrimitiveSize != f2.PrimitiveSize {
 				return f1.PrimitiveSize > f2.PrimitiveSize
 			}
-			if f1.TypeID != f2.TypeID {
-				return getTypeIDValue(f1.TypeID) < getTypeIDValue(f2.TypeID)
-			}
+
+			// Finally: by name (ascending)
 			return f1.SnakeName < f2.SnakeName
 		}
 
-		// Sort non-primitives by type ID, then by name
+		// For non-primitives: STRING comes in final group, others in others group
+		// All sorted by type ID, then by name (matching reflection)
 		if f1.TypeID != f2.TypeID {
 			return getTypeIDValue(f1.TypeID) < getTypeIDValue(f2.TypeID)
 		}
@@ -253,27 +263,79 @@ func sortFields(fields []*FieldInfo) {
 }
 
 // computeStructHash computes a hash for struct schema compatibility
+// This implementation aligns with the reflection-based hash calculation
 func computeStructHash(s *StructInfo) int32 {
-	h := md5.New()
+	// Use the same iterative algorithm as reflection
+	var hash int32 = 17
 
-	// Write struct name
-	h.Write([]byte(s.Name))
-
-	// Write sorted field information
+	// Process fields in the same order as reflection
 	for _, field := range s.Fields {
-		h.Write([]byte(field.SnakeName))
-		h.Write([]byte(field.TypeID))
-		// Add primitive size for better differentiation
-		if field.IsPrimitive {
-			sizeBytes := make([]byte, 4)
-			binary.LittleEndian.PutUint32(sizeBytes, uint32(field.PrimitiveSize))
-			h.Write(sizeBytes)
+		id := getFieldHashID(field)
+
+		// Same algorithm as reflection: hash = hash * 31 + id
+		newHash := int64(hash)*31 + int64(id)
+
+		// Same overflow handling as reflection
+		const MaxInt32 = 2147483647
+		for newHash >= MaxInt32 {
+			newHash /= 7
 		}
+		hash = int32(newHash)
 	}
 
-	hashBytes := h.Sum(nil)
-	// Take first 4 bytes as int32
-	return int32(binary.LittleEndian.Uint32(hashBytes[:4]))
+	if hash == 0 {
+		// Same panic condition as reflection
+		panic(fmt.Errorf("hash for type %v is 0", s.Name))
+	}
+
+	return hash
+}
+
+// getFieldHashID computes the field ID for hash calculation, matching reflection logic exactly
+func getFieldHashID(field *FieldInfo) int32 {
+	// Map Go types to Fory TypeIds (exactly matching reflection)
+	var tid int16
+
+	switch field.TypeID {
+	case "BOOL":
+		tid = 1 // BOOL
+	case "INT8":
+		tid = 2 // INT8
+	case "INT16":
+		tid = 3 // INT16
+	case "INT32":
+		tid = 4 // INT32
+	case "INT64":
+		tid = 6 // INT64 = 6
+	case "UINT8":
+		tid = 100 // UINT8 = 100
+	case "UINT16":
+		tid = 101 // UINT16 = 101
+	case "UINT32":
+		tid = 102 // UINT32 = 102
+	case "UINT64":
+		tid = 103 // UINT64 = 103
+	case "FLOAT32":
+		tid = 10 // FLOAT32 = FLOAT = 10
+	case "FLOAT64":
+		tid = 11 // FLOAT64 = DOUBLE = 11
+	case "STRING":
+		tid = 12 // STRING = 12
+	case "TIMESTAMP":
+		tid = 20 // TIMESTAMP
+	case "LOCAL_DATE":
+		tid = 21 // LOCAL_DATE
+	case "NAMED_STRUCT":
+		tid = 17 // NAMED_STRUCT
+	default:
+		tid = 0 // Unknown type
+	}
+
+	// Same logic as reflection: handle negative TypeIds
+	if tid < 0 {
+		return -int32(tid)
+	}
+	return int32(tid)
 }
 
 // getStructNames extracts struct names from StructInfo slice

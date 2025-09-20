@@ -26,11 +26,12 @@ import (
 )
 
 type structSerializer struct {
-	typeTag    string
-	type_      reflect.Type
-	fieldsInfo structFieldsInfo
-	structHash int32
-	fieldDefs  []FieldDef // defs obtained during reading
+	typeTag         string
+	type_           reflect.Type
+	fieldsInfo      structFieldsInfo
+	structHash      int32
+	fieldDefs       []FieldDef // defs obtained during reading
+	codegenDelegate Serializer // Optional codegen serializer for performance (like Python's approach)
 }
 
 var UNKNOWN_TYPE_ID = int16(-1)
@@ -44,6 +45,12 @@ func (s *structSerializer) NeedWriteRef() bool {
 }
 
 func (s *structSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+	// If we have a codegen delegate, use it for optimal performance
+	if s.codegenDelegate != nil {
+		return s.codegenDelegate.Write(f, buf, value)
+	}
+
+	// Fall back to reflection-based serialization
 	// TODO support fields back and forward compatible. need to serialize fields name too.
 	if s.fieldsInfo == nil {
 		if fieldsInfo, err := createStructFieldInfos(f, s.type_); err != nil {
@@ -78,6 +85,12 @@ func (s *structSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) 
 }
 
 func (s *structSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+	// If we have a codegen delegate, use it for optimal performance
+	if s.codegenDelegate != nil {
+		return s.codegenDelegate.Read(f, buf, type_, value)
+	}
+
+	// Fall back to reflection-based deserialization
 	// struct value may be a value type if it's not a pointer, so we don't invoke `refResolver.Reference` here,
 	// but invoke it in `ptrToStructSerializer` instead.
 	if value.Kind() == reflect.Ptr {
@@ -381,6 +394,7 @@ func (x structFieldsInfo) Swap(i, j int) { x[i], x[j] = x[j], x[i] }
 type ptrToStructSerializer struct {
 	type_ reflect.Type
 	structSerializer
+	codegenDelegate Serializer // Optional codegen serializer for performance (like Python's approach)
 }
 
 func (s *ptrToStructSerializer) TypeId() TypeId {
@@ -392,10 +406,22 @@ func (s *ptrToStructSerializer) NeedWriteRef() bool {
 }
 
 func (s *ptrToStructSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+	// If we have a codegen delegate, use it for optimal performance (Python-style approach)
+	if s.codegenDelegate != nil {
+		return s.codegenDelegate.Write(f, buf, value)
+	}
+
+	// Fall back to reflection-based serialization
 	return s.structSerializer.Write(f, buf, value.Elem())
 }
 
 func (s *ptrToStructSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+	// If we have a codegen delegate, use it for optimal performance
+	if s.codegenDelegate != nil {
+		return s.codegenDelegate.Read(f, buf, type_, value)
+	}
+
+	// Fall back to reflection-based deserialization
 	newValue := reflect.New(type_.Elem())
 	value.Set(newValue)
 	elem := newValue.Elem()
