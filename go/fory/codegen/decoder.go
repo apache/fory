@@ -293,9 +293,9 @@ func generateSliceElementRead(buf *bytes.Buffer, elemType types.Type, elemAccess
 func generateSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess string) error {
 	elemType := sliceType.Elem()
 
-	// Read NotNullValueFlag first (matching encoder behavior)
-	fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
-	fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for slice field, got %%d\", flag)\n")
+	// Read RefValueFlag first (slice is referencable)
+	fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != 0 {\n")
+	fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected RefValueFlag for slice field, got %%d\", flag)\n")
 	fmt.Fprintf(buf, "\t}\n")
 
 	// Read slice length - use block scope to avoid variable name conflicts
@@ -307,8 +307,8 @@ func generateSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAcc
 
 	// Read collection header
 	fmt.Fprintf(buf, "\t\t\tcollectFlag := buf.ReadInt8()\n")
-	fmt.Fprintf(buf, "\t\t\t// We expect CollectionNotDeclElementType + CollectionNotSameType = 12\n")
-	fmt.Fprintf(buf, "\t\t\tif collectFlag != 12 {\n")
+	fmt.Fprintf(buf, "\t\t\t// We expect 12 (no ref tracking) or 13 (with ref tracking)\n")
+	fmt.Fprintf(buf, "\t\t\tif collectFlag != 12 && collectFlag != 13 {\n")
 	fmt.Fprintf(buf, "\t\t\t\treturn fmt.Errorf(\"unexpected collection flag: %%d\", collectFlag)\n")
 	fmt.Fprintf(buf, "\t\t\t}\n")
 

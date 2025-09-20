@@ -37,9 +37,3 @@ type SliceDemo struct {
 	FloatSlice  []float64 `json:"float_slice"`  // slice of float64
 	BoolSlice   []bool    `json:"bool_slice"`   // slice of bool
 }
-
-// SimpleSliceDemo is a struct for testing slice serialization with single field
-// fory:gen
-type SimpleSliceDemo struct {
-	IntSlice []int32 `json:"int_slice"` // slice of int32
-}
