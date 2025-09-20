@@ -116,9 +116,15 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		case types.Int16:
 			fmt.Fprintf(buf, "\t%s = buf.ReadInt16()\n", fieldAccess)
 		case types.Int32:
-			fmt.Fprintf(buf, "\t%s = buf.ReadInt32()\n", fieldAccess)
+			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
+			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for field %s, got %%d\", flag)\n", field.GoName)
+			fmt.Fprintf(buf, "\t}\n")
+			fmt.Fprintf(buf, "\t%s = buf.ReadVarint32()\n", fieldAccess)
 		case types.Int, types.Int64:
-			fmt.Fprintf(buf, "\t%s = buf.ReadInt64()\n", fieldAccess)
+			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
+			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for field %s, got %%d\", flag)\n", field.GoName)
+			fmt.Fprintf(buf, "\t}\n")
+			fmt.Fprintf(buf, "\t%s = buf.ReadVarint64()\n", fieldAccess)
 		case types.Uint8:
 			fmt.Fprintf(buf, "\t%s = buf.ReadByte_()\n", fieldAccess)
 		case types.Uint16:
@@ -132,6 +138,9 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		case types.Float64:
 			fmt.Fprintf(buf, "\t%s = buf.ReadFloat64()\n", fieldAccess)
 		case types.String:
+			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != 0 {\n")
+			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected RefValueFlag for field %s, got %%d\", flag)\n", field.GoName)
+			fmt.Fprintf(buf, "\t}\n")
 			fmt.Fprintf(buf, "\t%s = fory.ReadString(buf)\n", fieldAccess)
 		default:
 			fmt.Fprintf(buf, "\t// TODO: unsupported basic type %s\n", basic.String())

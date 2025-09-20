@@ -108,9 +108,11 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		case types.Int16:
 			fmt.Fprintf(buf, "\tbuf.WriteInt16(%s)\n", fieldAccess)
 		case types.Int32:
-			fmt.Fprintf(buf, "\tbuf.WriteInt32(%s)\n", fieldAccess)
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
+			fmt.Fprintf(buf, "\tbuf.WriteVarint32(%s)\n", fieldAccess)
 		case types.Int, types.Int64:
-			fmt.Fprintf(buf, "\tbuf.WriteInt64(%s)\n", fieldAccess)
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
+			fmt.Fprintf(buf, "\tbuf.WriteVarint64(%s)\n", fieldAccess)
 		case types.Uint8:
 			fmt.Fprintf(buf, "\tbuf.WriteByte_(%s)\n", fieldAccess)
 		case types.Uint16:
@@ -124,6 +126,7 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		case types.Float64:
 			fmt.Fprintf(buf, "\tbuf.WriteFloat64(%s)\n", fieldAccess)
 		case types.String:
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(0) // RefValueFlag\n")
 			fmt.Fprintf(buf, "\tfory.WriteString(buf, %s)\n", fieldAccess)
 		default:
 			fmt.Fprintf(buf, "\t// TODO: unsupported basic type %s\n", basic.String())
