@@ -30,11 +30,36 @@ import org.apache.fory.memory.MemoryBuffer;
  */
 public interface Encoder<T> {
 
+  /** Decode a buffer with an embedded size. Variants without embedded size are not compatible. */
   T decode(MemoryBuffer buffer);
 
+  /** Decode a buffer without an embedded size. Variants with embedded size are not compatible. */
   T decode(byte[] bytes);
 
+  /** Decode a buffer without an embedded size. Variants with embedded size are not compatible. */
+  T decodeRemaining(MemoryBuffer buffer);
+
+  /** Encode to a buffer without embedded size. Variants with embedded size are not compatible. */
   byte[] encode(T obj);
 
+  /**
+   * Encode to a buffer with an embedded size. Variants without embedded size are not compatible.
+   */
   void encode(MemoryBuffer buffer, T obj);
+
+  /**
+   * Encode to a buffer without an embedded size. Variants with embedded size are not compatible.
+   * Returns number of bytes written to the buffer.
+   */
+  int bareEncode(MemoryBuffer buffer, T obj);
+
+  /**
+   * Encode to a buffer without an embedded size. Variants with embedded size are not compatible.
+   * Returns a sliced buffer view of bytes written.
+   */
+  default MemoryBuffer bareEncodeSlice(final MemoryBuffer buffer, final T obj) {
+    final int initialIndex = buffer.writerIndex();
+    final int size = bareEncode(buffer, obj);
+    return buffer.slice(initialIndex, size);
+  }
 }
