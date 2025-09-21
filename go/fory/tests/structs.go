@@ -45,3 +45,11 @@ type SliceDemo struct {
 type DynamicSliceDemo struct {
 	DynamicSlice []interface{} // slice of interface{}
 }
+
+// MapDemo demonstrates map field support
+// fory:gen
+type MapDemo struct {
+	StringMap map[string]string // map[string]string
+	IntMap    map[int]int       // map[int]int
+	MixedMap  map[string]int    // map[string]int
+}

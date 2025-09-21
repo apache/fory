@@ -67,6 +67,12 @@ func isSupportedFieldType(t types.Type) bool {
 		return isSupportedFieldType(slice.Elem())
 	}
 
+	// Check map types
+	if mapType, ok := t.(*types.Map); ok {
+		// Check if both key and value types are supported
+		return isSupportedFieldType(mapType.Key()) && isSupportedFieldType(mapType.Elem())
+	}
+
 	// Check named types
 	if named, ok := t.(*types.Named); ok {
 		typeStr := named.String()
@@ -134,6 +140,11 @@ func getTypeID(t types.Type) string {
 	// Check slice types
 	if _, ok := t.(*types.Slice); ok {
 		return "LIST"
+	}
+
+	// Check map types
+	if _, ok := t.(*types.Map); ok {
+		return "MAP"
 	}
 
 	// Check interface types
@@ -237,6 +248,7 @@ func getTypeIDValue(typeID string) int {
 		"LOCAL_DATE":   21,  // LOCAL_DATE = 21
 		"NAMED_STRUCT": 17,  // NAMED_STRUCT = 17 (Note: not 30!)
 		"LIST":         21,  // LIST = 21
+		"MAP":          22,  // MAP = 22
 	}
 
 	if val, ok := typeIDMap[typeID]; ok {

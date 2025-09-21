@@ -23,6 +23,11 @@ Fory Go supports the following types for both reflection-based serialization and
 - `[]string`
 - `[]interface{}` (dynamic slice)
 
+- `map[string]string`
+- `map[int]int` 
+- `map[string]int`
+- Other combinations of basic types as keys and values
+
 ## Fory Go Codegen (optional)
 
 This repository includes an optional ahead-of-time (AOT) code generator for Fory. The runtime reflection-based path continues to work; codegen exists to provide additional performance, type safety and zero-reflection overhead for hot paths. You can adopt it incrementally, per package or per file.

@@ -187,6 +187,15 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		return nil
 	}
 
+	// Handle map types
+	if mapType, ok := field.Type.(*types.Map); ok {
+		// For map types, we'll use manual deserialization following the chunk-based format
+		if err := generateMapReadInline(buf, mapType, fieldAccess); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	// Handle interface types
 	if iface, ok := field.Type.(*types.Interface); ok {
 		if iface.Empty() {
@@ -470,4 +479,151 @@ func generateSliceElementReadInline(buf *bytes.Buffer, elemType types.Type, elem
 	}
 
 	return fmt.Errorf("unsupported element type for read: %s", elemType.String())
+}
+
+// generateMapReadInline generates inline map deserialization code following the chunk-based format
+func generateMapReadInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess string) error {
+	keyType := mapType.Key()
+	valueType := mapType.Elem()
+
+	// Check if key or value types are interface{}
+	keyIsInterface := false
+	valueIsInterface := false
+	if iface, ok := keyType.(*types.Interface); ok && iface.Empty() {
+		keyIsInterface = true
+	}
+	if iface, ok := valueType.(*types.Interface); ok && iface.Empty() {
+		valueIsInterface = true
+	}
+
+	// Read RefValueFlag first (map is referencable)
+	fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != 0 {\n")
+	fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected RefValueFlag for map field, got %%d\", flag)\n")
+	fmt.Fprintf(buf, "\t}\n")
+
+	// Read map length
+	fmt.Fprintf(buf, "\t{\n")
+	fmt.Fprintf(buf, "\t\tmapLen := int(buf.ReadVarUint32())\n")
+	fmt.Fprintf(buf, "\t\tif mapLen == 0 {\n")
+	fmt.Fprintf(buf, "\t\t\t%s = make(%s)\n", fieldAccess, mapType.String())
+	fmt.Fprintf(buf, "\t\t} else {\n")
+	fmt.Fprintf(buf, "\t\t\t%s = make(%s, mapLen)\n", fieldAccess, mapType.String())
+	fmt.Fprintf(buf, "\t\t\tmapSize := mapLen\n")
+
+	// Read chunks
+	fmt.Fprintf(buf, "\t\t\tfor mapSize > 0 {\n")
+	fmt.Fprintf(buf, "\t\t\t\t// Read KV header\n")
+	fmt.Fprintf(buf, "\t\t\t\tkvHeader := buf.ReadUint8()\n")
+	fmt.Fprintf(buf, "\t\t\t\tchunkSize := int(buf.ReadUint8())\n")
+
+	// Parse header flags
+	fmt.Fprintf(buf, "\t\t\t\ttrackKeyRef := (kvHeader & 0x1) != 0\n")
+	fmt.Fprintf(buf, "\t\t\t\tkeyNotDeclared := (kvHeader & 0x4) != 0\n")
+	fmt.Fprintf(buf, "\t\t\t\ttrackValueRef := (kvHeader & 0x8) != 0\n")
+	fmt.Fprintf(buf, "\t\t\t\tvalueNotDeclared := (kvHeader & 0x20) != 0\n")
+	fmt.Fprintf(buf, "\t\t\t\t_ = trackKeyRef\n")
+	fmt.Fprintf(buf, "\t\t\t\t_ = keyNotDeclared\n")
+	fmt.Fprintf(buf, "\t\t\t\t_ = trackValueRef\n")
+	fmt.Fprintf(buf, "\t\t\t\t_ = valueNotDeclared\n")
+
+	// Read key-value pairs in this chunk
+	fmt.Fprintf(buf, "\t\t\t\tfor i := 0; i < chunkSize; i++ {\n")
+
+	// Read key
+	if keyIsInterface {
+		fmt.Fprintf(buf, "\t\t\t\t\tvar mapKey interface{}\n")
+		fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&mapKey).Elem())\n")
+	} else {
+		// Declare key variable with appropriate type
+		keyVarType := getGoTypeString(keyType)
+		fmt.Fprintf(buf, "\t\t\t\t\tvar mapKey %s\n", keyVarType)
+		if err := generateMapKeyRead(buf, keyType, "mapKey"); err != nil {
+			return err
+		}
+	}
+
+	// Read value
+	if valueIsInterface {
+		fmt.Fprintf(buf, "\t\t\t\t\tvar mapValue interface{}\n")
+		fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&mapValue).Elem())\n")
+	} else {
+		// Declare value variable with appropriate type
+		valueVarType := getGoTypeString(valueType)
+		fmt.Fprintf(buf, "\t\t\t\t\tvar mapValue %s\n", valueVarType)
+		if err := generateMapValueRead(buf, valueType, "mapValue"); err != nil {
+			return err
+		}
+	}
+
+	// Set key-value pair in map
+	fmt.Fprintf(buf, "\t\t\t\t\t%s[mapKey] = mapValue\n", fieldAccess)
+
+	fmt.Fprintf(buf, "\t\t\t\t}\n") // end chunk loop
+	fmt.Fprintf(buf, "\t\t\t\tmapSize -= chunkSize\n")
+	fmt.Fprintf(buf, "\t\t\t}\n") // end mapSize > 0 loop
+
+	fmt.Fprintf(buf, "\t\t}\n") // end else (mapLen > 0)
+	fmt.Fprintf(buf, "\t}\n")   // end block scope
+
+	return nil
+}
+
+// getGoTypeString returns the Go type string for a types.Type
+func getGoTypeString(t types.Type) string {
+	// Handle basic types
+	if basic, ok := t.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Int:
+			return "int"
+		case types.String:
+			return "string"
+		default:
+			return t.String()
+		}
+	}
+	return t.String()
+}
+
+// generateMapKeyRead generates code to read a map key
+func generateMapKeyRead(buf *bytes.Buffer, keyType types.Type, varName string) error {
+	// For basic types, match reflection's serializer behavior
+	if basic, ok := keyType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Int:
+			// intSerializer uses ReadInt64, not ReadVarint64
+			fmt.Fprintf(buf, "\t\t\t\t\t%s = int(buf.ReadInt64())\n", varName)
+		case types.String:
+			// stringSerializer is referencable, need to use ReadReferencable
+			fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", varName)
+		default:
+			return fmt.Errorf("unsupported map key type: %v", keyType)
+		}
+		return nil
+	}
+
+	// For other types, use ReadReferencable
+	fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", varName)
+	return nil
+}
+
+// generateMapValueRead generates code to read a map value
+func generateMapValueRead(buf *bytes.Buffer, valueType types.Type, varName string) error {
+	// For basic types, match reflection's serializer behavior
+	if basic, ok := valueType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Int:
+			// intSerializer uses ReadInt64, not ReadVarint64
+			fmt.Fprintf(buf, "\t\t\t\t\t%s = int(buf.ReadInt64())\n", varName)
+		case types.String:
+			// stringSerializer is referencable, need to use ReadReferencable
+			fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", varName)
+		default:
+			return fmt.Errorf("unsupported map value type: %v", valueType)
+		}
+		return nil
+	}
+
+	// For other types, use ReadReferencable
+	fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", varName)
+	return nil
 }

@@ -173,3 +173,42 @@ func TestDynamicSliceDemoWithNilAndEmpty(t *testing.T) {
 	// Empty slice should remain empty (or become nil, depending on reflection behavior)
 	assert.Equal(t, 0, len(resultEmpty.DynamicSlice), "DynamicSlice should be empty after round-trip")
 }
+
+// TestMapDemo tests basic map serialization and deserialization (including nil maps)
+func TestMapDemo(t *testing.T) {
+	// Create test instance with various map types (including nil)
+	instance := &MapDemo{
+		StringMap: map[string]string{
+			"key1": "value1",
+			"key2": "value2",
+		},
+		IntMap: map[int]int{
+			1: 100,
+			2: 200,
+			3: 300,
+		},
+		MixedMap: nil, // Test nil map handling
+	}
+
+	// Serialize with codegen
+	f := fory.NewFory(true)
+	data, err := f.Marshal(instance)
+	require.NoError(t, err, "Serialization failed")
+
+	// Deserialize back
+	var result MapDemo
+	err = f.Unmarshal(data, &result)
+	require.NoError(t, err, "Deserialization failed")
+
+	// Verify using generated serializer
+	serializer := NewSerializerFor_MapDemo()
+	assert.NotNil(t, serializer, "Generated serializer should exist")
+
+	// Verify map contents
+	assert.EqualValues(t, instance.StringMap, result.StringMap, "StringMap mismatch")
+	assert.EqualValues(t, instance.IntMap, result.IntMap, "IntMap mismatch")
+	// MixedMap was nil, should become empty after deserialization
+	assert.NotNil(t, result.MixedMap, "Expected non-nil MixedMap after deserialization")
+	assert.Empty(t, result.MixedMap, "Expected empty MixedMap since original was nil")
+}
+

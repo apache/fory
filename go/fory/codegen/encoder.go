@@ -176,6 +176,15 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		return nil
 	}
 
+	// Handle map types
+	if mapType, ok := field.Type.(*types.Map); ok {
+		// For map types, we'll use manual serialization following the chunk-based format
+		if err := generateMapWriteInline(buf, mapType, fieldAccess); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	// Handle interface types
 	if iface, ok := field.Type.(*types.Interface); ok {
 		if iface.Empty() {
@@ -305,6 +314,193 @@ func generateSliceWriteInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAc
 	fmt.Fprintf(buf, "\t\t}\n")
 	fmt.Fprintf(buf, "\t}\n")
 
+	return nil
+}
+
+// generateMapWriteInline generates inline map serialization code following the chunk-based format
+func generateMapWriteInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess string) error {
+	keyType := mapType.Key()
+	valueType := mapType.Elem()
+
+	// Check if key or value types are interface{}
+	keyIsInterface := false
+	valueIsInterface := false
+	if iface, ok := keyType.(*types.Interface); ok && iface.Empty() {
+		keyIsInterface = true
+	}
+	if iface, ok := valueType.(*types.Interface); ok && iface.Empty() {
+		valueIsInterface = true
+	}
+
+	// Write RefValueFlag first (map is referencable)
+	fmt.Fprintf(buf, "\tbuf.WriteInt8(0) // RefValueFlag for map\n")
+
+	// Write map length
+	fmt.Fprintf(buf, "\t{\n")
+	fmt.Fprintf(buf, "\t\tmapLen := 0\n")
+	fmt.Fprintf(buf, "\t\tif %s != nil {\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\t\tmapLen = len(%s)\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\t}\n")
+	fmt.Fprintf(buf, "\t\tbuf.WriteVarUint32(uint32(mapLen))\n")
+
+	// Write chunks for non-empty map
+	fmt.Fprintf(buf, "\t\tif mapLen > 0 {\n")
+
+	// Calculate KV header based on types
+	fmt.Fprintf(buf, "\t\t\t// Calculate KV header flags\n")
+	fmt.Fprintf(buf, "\t\t\tkvHeader := uint8(0)\n")
+
+	// Check if ref tracking is enabled
+	fmt.Fprintf(buf, "\t\t\tforyValue := reflect.ValueOf(f).Elem()\n")
+	fmt.Fprintf(buf, "\t\t\trefTrackingField := foryValue.FieldByName(\"refTracking\")\n")
+	fmt.Fprintf(buf, "\t\t\tisRefTracking := refTrackingField.IsValid() && refTrackingField.Bool()\n")
+	fmt.Fprintf(buf, "\t\t\t_ = isRefTracking // Mark as used to avoid warning\n")
+
+	// Set header flags based on type properties
+	if !keyIsInterface {
+		// For concrete key types, check if they're referencable
+		if isReferencableType(keyType) {
+			fmt.Fprintf(buf, "\t\t\tif isRefTracking {\n")
+			fmt.Fprintf(buf, "\t\t\t\tkvHeader |= 0x1 // track key ref\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		}
+	} else {
+		// For interface{} keys, always set not declared type flag
+		fmt.Fprintf(buf, "\t\t\tkvHeader |= 0x4 // key type not declared\n")
+	}
+
+	if !valueIsInterface {
+		// For concrete value types, check if they're referencable
+		if isReferencableType(valueType) {
+			fmt.Fprintf(buf, "\t\t\tif isRefTracking {\n")
+			fmt.Fprintf(buf, "\t\t\t\tkvHeader |= 0x8 // track value ref\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
+		}
+	} else {
+		// For interface{} values, always set not declared type flag
+		fmt.Fprintf(buf, "\t\t\tkvHeader |= 0x20 // value type not declared\n")
+	}
+
+	// Write map elements in chunks
+	fmt.Fprintf(buf, "\t\t\tchunkSize := 0\n")
+	fmt.Fprintf(buf, "\t\t\t_ = buf.WriterIndex() // chunkHeaderOffset\n")
+	fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(int8(kvHeader)) // KV header\n")
+	fmt.Fprintf(buf, "\t\t\tchunkSizeOffset := buf.WriterIndex()\n")
+	fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(0) // placeholder for chunk size\n")
+
+	fmt.Fprintf(buf, "\t\t\tfor mapKey, mapValue := range %s {\n", fieldAccess)
+
+	// Write key
+	if keyIsInterface {
+		fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(mapKey))\n")
+	} else {
+		if err := generateMapKeyWrite(buf, keyType, "mapKey"); err != nil {
+			return err
+		}
+	}
+
+	// Write value
+	if valueIsInterface {
+		fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(mapValue))\n")
+	} else {
+		if err := generateMapValueWrite(buf, valueType, "mapValue"); err != nil {
+			return err
+		}
+	}
+
+	fmt.Fprintf(buf, "\t\t\t\tchunkSize++\n")
+	fmt.Fprintf(buf, "\t\t\t\tif chunkSize >= 255 {\n")
+	fmt.Fprintf(buf, "\t\t\t\t\t// Write chunk size and start new chunk\n")
+	fmt.Fprintf(buf, "\t\t\t\t\tbuf.PutUint8(chunkSizeOffset, uint8(chunkSize))\n")
+	fmt.Fprintf(buf, "\t\t\t\t\tif len(%s) > chunkSize {\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\t\t\t\t\tchunkSize = 0\n")
+	fmt.Fprintf(buf, "\t\t\t\t\t\t_ = buf.WriterIndex() // chunkHeaderOffset\n")
+	fmt.Fprintf(buf, "\t\t\t\t\t\tbuf.WriteInt8(int8(kvHeader)) // KV header\n")
+	fmt.Fprintf(buf, "\t\t\t\t\t\tchunkSizeOffset = buf.WriterIndex()\n")
+	fmt.Fprintf(buf, "\t\t\t\t\t\tbuf.WriteInt8(0) // placeholder for chunk size\n")
+	fmt.Fprintf(buf, "\t\t\t\t\t}\n")
+	fmt.Fprintf(buf, "\t\t\t\t}\n")
+
+	fmt.Fprintf(buf, "\t\t\t}\n") // end for loop
+
+	// Write final chunk size
+	fmt.Fprintf(buf, "\t\t\tif chunkSize > 0 {\n")
+	fmt.Fprintf(buf, "\t\t\t\tbuf.PutUint8(chunkSizeOffset, uint8(chunkSize))\n")
+	fmt.Fprintf(buf, "\t\t\t}\n")
+
+	fmt.Fprintf(buf, "\t\t}\n") // end if mapLen > 0
+	fmt.Fprintf(buf, "\t}\n")   // end block scope
+
+	return nil
+}
+
+// isReferencableType checks if a type is referencable (needs reference tracking)
+func isReferencableType(t types.Type) bool {
+	// Handle pointer types
+	if _, ok := t.(*types.Pointer); ok {
+		return true
+	}
+
+	// Basic types and their underlying types
+	if basic, ok := t.Underlying().(*types.Basic); ok {
+		return basic.Kind() == types.String
+	}
+
+	// Slices, maps, and interfaces are referencable
+	switch t.Underlying().(type) {
+	case *types.Slice, *types.Map, *types.Interface:
+		return true
+	}
+
+	// Structs are referencable
+	if _, ok := t.Underlying().(*types.Struct); ok {
+		return true
+	}
+
+	return false
+}
+
+// generateMapKeyWrite generates code to write a map key
+func generateMapKeyWrite(buf *bytes.Buffer, keyType types.Type, varName string) error {
+	// For basic types, match reflection's serializer behavior
+	if basic, ok := keyType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Int:
+			// intSerializer uses WriteInt64, not WriteVarint64
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt64(int64(%s))\n", varName)
+		case types.String:
+			// stringSerializer is referencable, need to use WriteReferencable
+			fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", varName)
+		default:
+			return fmt.Errorf("unsupported map key type: %v", keyType)
+		}
+		return nil
+	}
+
+	// For other types, use WriteReferencable
+	fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", varName)
+	return nil
+}
+
+// generateMapValueWrite generates code to write a map value
+func generateMapValueWrite(buf *bytes.Buffer, valueType types.Type, varName string) error {
+	// For basic types, match reflection's serializer behavior
+	if basic, ok := valueType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Int:
+			// intSerializer uses WriteInt64, not WriteVarint64
+			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt64(int64(%s))\n", varName)
+		case types.String:
+			// stringSerializer is referencable, need to use WriteReferencable
+			fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", varName)
+		default:
+			return fmt.Errorf("unsupported map value type: %v", valueType)
+		}
+		return nil
+	}
+
+	// For other types, use WriteReferencable
+	fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", varName)
 	return nil
 }
 
