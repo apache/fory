@@ -18,13 +18,15 @@
 package fory
 
 // ValidationDemo is a simple struct for testing code generation
-// Contains only basic types since PR1 only supports basic types
+// Contains various basic types to validate comprehensive type support
 
 // fory:gen
 type ValidationDemo struct {
-	A int32  // int32 field
-	B string // string field
-	C int64  // int64 field
+	A int32   // int32 field
+	B string  // string field
+	C int64   // int64 field
+	D float64 // float64 field
+	E bool    // bool field
 }
 
 // SliceDemo is a struct for testing slice serialization

@@ -33,12 +33,16 @@ func TestValidationDemo(t *testing.T) {
 		A: 12345,         // int32
 		B: "Hello Fory!", // string
 		C: 98765,         // int64
+		D: 3.14159,       // float64
+		E: true,          // bool
 	}
 
 	// Validate original data structure
 	assert.Equal(t, int32(12345), original.A, "Original A should be 12345")
 	assert.Equal(t, "Hello Fory!", original.B, "Original B should be 'Hello Fory!'")
 	assert.Equal(t, int64(98765), original.C, "Original C should be 98765")
+	assert.Equal(t, 3.14159, original.D, "Original D should be 3.14159")
+	assert.Equal(t, true, original.E, "Original E should be true")
 
 	// 2. Serialize using generated code
 	f := fory.NewFory(true)
@@ -54,9 +58,6 @@ func TestValidationDemo(t *testing.T) {
 	require.NotNil(t, result, "Deserialized result should not be nil")
 
 	// 4. Validate round-trip serialization
-	assert.Equal(t, original.A, result.A, "Field A should match after round-trip")
-	assert.Equal(t, original.B, result.B, "Field B should match after round-trip")
-	assert.Equal(t, original.C, result.C, "Field C should match after round-trip")
 
 	// 5. Validate data integrity
 	assert.EqualValues(t, original, result, "Complete struct should match after round-trip")

@@ -102,6 +102,7 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	if basic, ok := field.Type.Underlying().(*types.Basic); ok {
 		switch basic.Kind() {
 		case types.Bool:
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteBool(%s)\n", fieldAccess)
 		case types.Int8:
 			fmt.Fprintf(buf, "\tbuf.WriteInt8(%s)\n", fieldAccess)
@@ -124,6 +125,7 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		case types.Float32:
 			fmt.Fprintf(buf, "\tbuf.WriteFloat32(%s)\n", fieldAccess)
 		case types.Float64:
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteFloat64(%s)\n", fieldAccess)
 		case types.String:
 			fmt.Fprintf(buf, "\tbuf.WriteInt8(0) // RefValueFlag\n")

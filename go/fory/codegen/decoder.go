@@ -110,6 +110,9 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	if basic, ok := field.Type.Underlying().(*types.Basic); ok {
 		switch basic.Kind() {
 		case types.Bool:
+			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
+			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for field %s, got %%d\", flag)\n", field.GoName)
+			fmt.Fprintf(buf, "\t}\n")
 			fmt.Fprintf(buf, "\t%s = buf.ReadBool()\n", fieldAccess)
 		case types.Int8:
 			fmt.Fprintf(buf, "\t%s = buf.ReadInt8()\n", fieldAccess)
@@ -136,6 +139,9 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		case types.Float32:
 			fmt.Fprintf(buf, "\t%s = buf.ReadFloat32()\n", fieldAccess)
 		case types.Float64:
+			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
+			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for field %s, got %%d\", flag)\n", field.GoName)
+			fmt.Fprintf(buf, "\t}\n")
 			fmt.Fprintf(buf, "\t%s = buf.ReadFloat64()\n", fieldAccess)
 		case types.String:
 			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != 0 {\n")

@@ -52,18 +52,24 @@ func TestActualCodegenName(t *testing.T) {
 		A: 100,
 		B: "test_data",
 		C: 200,
+		D: 3.14159,
+		E: true,
 	}
 
 	type ReflectStruct struct {
-		A int32  `json:"a"`
-		B string `json:"b"`
-		C int64  `json:"c"`
+		A int32
+		B string
+		C int64
+		D float64
+		E bool
 	}
 
 	reflectInstance := &ReflectStruct{
 		A: 100,
 		B: "test_data",
 		C: 200,
+		D: 3.14159,
+		E: true,
 	}
 
 	// Codegen mode (automatically uses full name)
@@ -143,10 +149,10 @@ func TestSliceDemoXlang(t *testing.T) {
 
 	// Define equivalent struct using reflection
 	type ReflectSliceStruct struct {
-		IntSlice    []int32   `json:"int_slice"`
-		StringSlice []string  `json:"string_slice"`
-		FloatSlice  []float64 `json:"float_slice"`
-		BoolSlice   []bool    `json:"bool_slice"`
+		IntSlice    []int32
+		StringSlice []string
+		FloatSlice  []float64
+		BoolSlice   []bool
 	}
 
 	reflectInstance := &ReflectSliceStruct{
