@@ -32,8 +32,7 @@ func TestActualCodegenName(t *testing.T) {
 	fmt.Println("=== Analyzing Actual Codegen Type Names ===")
 
 	// From source code analysis:
-	// RegisterSerializerFactory calculates:
-	// typeTag := pkgPath + "." + typeName
+	// RegisterSerializerFactory calculates: typeTag := pkgPath + "." + typeName
 
 	validationDemoType := reflect.TypeOf(ValidationDemo{})
 	pkgPath := validationDemoType.PkgPath()
