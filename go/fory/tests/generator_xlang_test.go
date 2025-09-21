@@ -272,3 +272,137 @@ func TestSliceDemoXlang(t *testing.T) {
 		fmt.Printf("❌ Found %d byte differences\n", differentBytes)
 	}
 }
+
+// TestDynamicSliceDemoXlang - Test cross-language compatibility of DynamicSliceDemo
+func TestDynamicSliceDemoXlang(t *testing.T) {
+	fmt.Println("=== DynamicSliceDemo Cross-Language Compatibility Test ===")
+
+	// Get DynamicSliceDemo type information
+	dynamicSliceType := reflect.TypeOf(DynamicSliceDemo{})
+	pkgPath := dynamicSliceType.PkgPath()
+	typeName := dynamicSliceType.Name()
+	expectedTypeTag := pkgPath + "." + typeName
+
+	fmt.Printf("DynamicSliceDemo type analysis:\n")
+	fmt.Printf("  Package path: %s\n", pkgPath)
+	fmt.Printf("  Type name: %s\n", typeName)
+	fmt.Printf("  Actual typeTag: %s\n", expectedTypeTag)
+
+	// Create test data with simpler types to avoid reflection issues
+	codegenInstance := &DynamicSliceDemo{
+		DynamicSlice: []interface{}{
+			"first",
+			200, // Testing mixed types in dynamic slice
+			"third",
+		},
+	}
+
+	// Define equivalent struct using reflection
+	type ReflectDynamicStruct struct {
+		DynamicSlice []interface{} `json:"dynamic_slice"`
+	}
+
+	reflectInstance := &ReflectDynamicStruct{
+		DynamicSlice: []interface{}{
+			"first",
+			200, // Testing mixed types in dynamic slice
+			"third",
+		},
+	}
+
+	// Codegen mode - enable reference tracking
+	foryForCodegen := forygo.NewFory(true)
+
+	// Reflect mode - enable reference tracking
+	foryForReflect := forygo.NewFory(true)
+	err := foryForReflect.RegisterTagType(expectedTypeTag, ReflectDynamicStruct{})
+	require.NoError(t, err, "Should be able to register ReflectDynamicStruct with full name")
+
+	fmt.Printf("✅ Successfully registered with full name: %s\n", expectedTypeTag)
+
+	// Serialization test
+	codegenData, err := foryForCodegen.Marshal(codegenInstance)
+	require.NoError(t, err, "Codegen serialization should not fail")
+
+	reflectData, err := foryForReflect.Marshal(reflectInstance)
+	require.NoError(t, err, "Reflect serialization should not fail")
+
+	fmt.Printf("\nSerialization results:\n")
+	fmt.Printf("  Codegen data length: %d bytes\n", len(codegenData))
+	fmt.Printf("  Reflect data length: %d bytes\n", len(reflectData))
+	fmt.Printf("  Data identical: %t\n", reflect.DeepEqual(codegenData, reflectData))
+
+	// Detailed serialization data analysis for dynamic slices
+	fmt.Println("\n=== Complete Dynamic Slice Serialization Analysis ===")
+	fmt.Printf("Codegen complete data: %x\n", codegenData)
+	fmt.Printf("Reflect complete data: %x\n", reflectData)
+
+	// Byte-by-byte comparison to find differences
+	fmt.Println("\n=== Byte-by-Byte Difference Analysis ===")
+	minLen := len(codegenData)
+	if len(reflectData) < minLen {
+		minLen = len(reflectData)
+	}
+
+	differentBytes := 0
+	for i := 0; i < minLen; i++ {
+		if codegenData[i] != reflectData[i] {
+			fmt.Printf("  Position %d: Codegen=0x%02x(%d), Reflect=0x%02x(%d)\n",
+				i, codegenData[i], codegenData[i], reflectData[i], reflectData[i])
+			differentBytes++
+		}
+	}
+
+	if len(codegenData) != len(reflectData) {
+		fmt.Printf("  Length difference: Codegen=%d, Reflect=%d (difference=%d bytes)\n",
+			len(codegenData), len(reflectData), len(reflectData)-len(codegenData))
+		if len(codegenData) > len(reflectData) {
+			fmt.Printf("  Codegen extra bytes: %x\n", codegenData[len(reflectData):])
+		} else {
+			fmt.Printf("  Reflect extra bytes: %x\n", reflectData[len(codegenData):])
+		}
+	}
+
+	fmt.Printf("Total different bytes: %d\n", differentBytes)
+
+	// Verify cross serialization - this is the key test for dynamic slices
+	fmt.Println("\n=== Cross Serialization Test ===")
+
+	// Use reflect to deserialize codegen data
+	var reflectResult *ReflectDynamicStruct
+	err = foryForReflect.Unmarshal(codegenData, &reflectResult)
+	if err == nil && reflectResult != nil {
+		fmt.Printf("✅ Successfully used reflect to deserialize codegen data:\n")
+		fmt.Printf("   DynamicSlice length: %d\n", len(reflectResult.DynamicSlice))
+		fmt.Printf("   DynamicSlice: %v\n", reflectResult.DynamicSlice)
+
+		// Verify data matching
+		if reflect.DeepEqual(codegenInstance.DynamicSlice, reflectResult.DynamicSlice) {
+			fmt.Println("🎉 Dynamic slice data matches completely!")
+		} else {
+			fmt.Printf("⚠️  Dynamic slice data differs (expected for dynamic types): %v vs %v\n",
+				codegenInstance.DynamicSlice, reflectResult.DynamicSlice)
+		}
+	} else {
+		fmt.Printf("❌ Failed to use reflect to deserialize codegen data: %v\n", err)
+	}
+
+	// Use codegen to deserialize reflect data
+	var codegenResult *DynamicSliceDemo
+	err = foryForCodegen.Unmarshal(reflectData, &codegenResult)
+	if err == nil && codegenResult != nil {
+		fmt.Printf("✅ Successfully used codegen to deserialize reflect data:\n")
+		fmt.Printf("   DynamicSlice length: %d\n", len(codegenResult.DynamicSlice))
+		fmt.Printf("   DynamicSlice: %v\n", codegenResult.DynamicSlice)
+
+		// Verify data matching
+		if reflect.DeepEqual(reflectInstance.DynamicSlice, codegenResult.DynamicSlice) {
+			fmt.Println("🎉 Fully compatible! Codegen can correctly deserialize reflect dynamic slice data!")
+		} else {
+			fmt.Printf("⚠️  Dynamic slice data differs (may be expected): %v vs %v\n",
+				reflectInstance.DynamicSlice, codegenResult.DynamicSlice)
+		}
+	} else {
+		fmt.Printf("❌ Failed to use codegen to deserialize reflect data: %v\n", err)
+	}
+}

@@ -156,10 +156,44 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 
 	// Handle slice types
 	if slice, ok := field.Type.(*types.Slice); ok {
+		elemType := slice.Elem()
+		// Check if element type is interface{} (dynamic type)
+		if iface, ok := elemType.(*types.Interface); ok && iface.Empty() {
+			// For []interface{}, we need to manually implement the deserialization
+			// to match our custom encoding
+			fmt.Fprintf(buf, "\t// Dynamic slice []interface{} handling - manual deserialization\n")
+			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag == -3 {\n")
+			fmt.Fprintf(buf, "\t\t%s = nil // null slice\n", fieldAccess)
+			fmt.Fprintf(buf, "\t} else if flag == 0 {\n")
+			fmt.Fprintf(buf, "\t\t// Read slice length\n")
+			fmt.Fprintf(buf, "\t\tsliceLen := buf.ReadVarUint32()\n")
+			fmt.Fprintf(buf, "\t\t// Read collection flags (ignore for now)\n")
+			fmt.Fprintf(buf, "\t\t_ = buf.ReadInt8()\n")
+			fmt.Fprintf(buf, "\t\t// Create slice with proper capacity\n")
+			fmt.Fprintf(buf, "\t\t%s = make([]interface{}, sliceLen)\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t// Read each element using ReadReferencable\n")
+			fmt.Fprintf(buf, "\t\tfor i := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s[i]).Elem())\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t}\n")
+			fmt.Fprintf(buf, "\t} else {\n")
+			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected RefValueFlag or NullFlag for dynamic slice field %s, got %%d\", flag)\n", field.GoName)
+			fmt.Fprintf(buf, "\t}\n")
+			return nil
+		}
+		// For static element types, use optimized inline generation
 		if err := generateSliceReadInline(buf, slice, fieldAccess); err != nil {
 			return err
 		}
 		return nil
+	}
+
+	// Handle interface types
+	if iface, ok := field.Type.(*types.Interface); ok {
+		if iface.Empty() {
+			// For interface{}, use ReadReferencable for dynamic type handling
+			fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", fieldAccess)
+			return nil
+		}
 	}
 
 	// Handle struct types
@@ -425,5 +459,15 @@ func generateSliceElementReadInline(buf *bytes.Buffer, elemType types.Type, elem
 		}
 		return nil
 	}
+
+	// Handle interface types
+	if iface, ok := elemType.(*types.Interface); ok {
+		if iface.Empty() {
+			// For interface{} elements, use ReadReferencable for dynamic type handling
+			fmt.Fprintf(buf, "\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", elemAccess)
+			return nil
+		}
+	}
+
 	return fmt.Errorf("unsupported element type for read: %s", elemType.String())
 }

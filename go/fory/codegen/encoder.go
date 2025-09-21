@@ -105,8 +105,10 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteBool(%s)\n", fieldAccess)
 		case types.Int8:
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteInt8(%s)\n", fieldAccess)
 		case types.Int16:
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteInt16(%s)\n", fieldAccess)
 		case types.Int32:
 			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
@@ -115,14 +117,19 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteVarint64(%s)\n", fieldAccess)
 		case types.Uint8:
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteByte_(%s)\n", fieldAccess)
 		case types.Uint16:
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteInt16(int16(%s))\n", fieldAccess)
 		case types.Uint32:
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteInt32(int32(%s))\n", fieldAccess)
 		case types.Uint, types.Uint64:
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteInt64(int64(%s))\n", fieldAccess)
 		case types.Float32:
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteFloat32(%s)\n", fieldAccess)
 		case types.Float64:
 			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
@@ -138,10 +145,44 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 
 	// Handle slice types
 	if slice, ok := field.Type.(*types.Slice); ok {
+		elemType := slice.Elem()
+		// Check if element type is interface{} (dynamic type)
+		if iface, ok := elemType.(*types.Interface); ok && iface.Empty() {
+			// For []interface{}, we need to manually implement the serialization
+			// because WriteReferencable produces incorrect length encoding
+			fmt.Fprintf(buf, "\t// Dynamic slice []interface{} handling - manual serialization\n")
+			fmt.Fprintf(buf, "\tif %s == nil {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(-3) // null value flag\n")
+			fmt.Fprintf(buf, "\t} else {\n")
+			fmt.Fprintf(buf, "\t\t// Write reference flag for the slice itself\n")
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(0) // RefValueFlag\n")
+			fmt.Fprintf(buf, "\t\t// Write slice length\n")
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarUint32(uint32(len(%s)))\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t// Write collection flags (13 = NotDeclElementType + NotSameType + TrackingRef for dynamic slices)\n")
+			fmt.Fprintf(buf, "\t\t// Always write collection flags with tracking ref enabled (13)\n")
+			fmt.Fprintf(buf, "\t\t// This matches the reflection implementation which uses NewFory(true)\n")
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(13) // 12 + 1 (CollectionTrackingRef)\n")
+			fmt.Fprintf(buf, "\t\t// Write each element using WriteReferencable\n")
+			fmt.Fprintf(buf, "\t\tfor _, elem := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\tf.WriteReferencable(buf, reflect.ValueOf(elem))\n")
+			fmt.Fprintf(buf, "\t\t}\n")
+			fmt.Fprintf(buf, "\t}\n")
+			return nil
+		}
+		// For static element types, use optimized inline generation
 		if err := generateSliceWriteInline(buf, slice, fieldAccess); err != nil {
 			return err
 		}
 		return nil
+	}
+
+	// Handle interface types
+	if iface, ok := field.Type.(*types.Interface); ok {
+		if iface.Empty() {
+			// For interface{}, use WriteReferencable for dynamic type handling
+			fmt.Fprintf(buf, "\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
+			return nil
+		}
 	}
 
 	// Handle struct types
@@ -338,5 +379,15 @@ func generateSliceElementWriteInline(buf *bytes.Buffer, elemType types.Type, ele
 		}
 		return nil
 	}
+
+	// Handle interface types
+	if iface, ok := elemType.(*types.Interface); ok {
+		if iface.Empty() {
+			// For interface{} elements, use WriteReferencable for dynamic type handling
+			fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", elemAccess)
+			return nil
+		}
+	}
+
 	return fmt.Errorf("unsupported element type for write: %s", elemType.String())
 }

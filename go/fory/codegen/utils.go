@@ -80,6 +80,14 @@ func isSupportedFieldType(t types.Type) bool {
 		}
 	}
 
+	// Check interface types
+	if iface, ok := t.(*types.Interface); ok {
+		// Support empty interface{} for dynamic types
+		if iface.Empty() {
+			return true
+		}
+	}
+
 	// Check basic types
 	if basic, ok := t.Underlying().(*types.Basic); ok {
 		switch basic.Kind() {
@@ -126,6 +134,13 @@ func getTypeID(t types.Type) string {
 	// Check slice types
 	if _, ok := t.(*types.Slice); ok {
 		return "LIST"
+	}
+
+	// Check interface types
+	if iface, ok := t.(*types.Interface); ok {
+		if iface.Empty() {
+			return "INTERFACE" // Use a placeholder for empty interface{}
+		}
 	}
 
 	// Check named types first

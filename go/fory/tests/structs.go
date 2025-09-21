@@ -39,3 +39,9 @@ type SliceDemo struct {
 	FloatSlice  []float64 // slice of float64
 	BoolSlice   []bool    // slice of bool
 }
+
+// DynamicSliceDemo is a struct for testing dynamic slice serialization
+// fory:gen
+type DynamicSliceDemo struct {
+	DynamicSlice []interface{} // slice of interface{}
+}
