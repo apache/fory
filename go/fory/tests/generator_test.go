@@ -211,4 +211,3 @@ func TestMapDemo(t *testing.T) {
 	assert.NotNil(t, result.MixedMap, "Expected non-nil MixedMap after deserialization")
 	assert.Empty(t, result.MixedMap, "Expected empty MixedMap since original was nil")
 }
-

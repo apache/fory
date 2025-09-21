@@ -18,7 +18,6 @@
 package fory
 
 import (
-	"bytes"
 	"fmt"
 	"reflect"
 	"testing"
@@ -82,8 +81,6 @@ func TestActualCodegenName(t *testing.T) {
 	err := foryForReflect.RegisterTagType(expectedTypeTag, ReflectStruct{})
 	require.NoError(t, err, "Should be able to register ReflectStruct with full name")
 
-	fmt.Printf("✅ Successfully registered with full name: %s\n", expectedTypeTag)
-
 	// Serialization test
 	codegenData, err := foryForCodegen.Marshal(codegenInstance)
 	require.NoError(t, err, "Codegen serialization should not fail")
@@ -128,18 +125,11 @@ func TestActualCodegenName(t *testing.T) {
 
 // TestSliceDemoXlang - Test cross-language compatibility of SliceDemo
 func TestSliceDemoXlang(t *testing.T) {
-	fmt.Println("=== SliceDemo Cross-Language Compatibility Test ===")
-
 	// Get SliceDemo type information
 	sliceDemoType := reflect.TypeOf(SliceDemo{})
 	pkgPath := sliceDemoType.PkgPath()
 	typeName := sliceDemoType.Name()
 	expectedTypeTag := pkgPath + "." + typeName
-
-	fmt.Printf("SliceDemo type analysis:\n")
-	fmt.Printf("  Package path: %s\n", pkgPath)
-	fmt.Printf("  Type name: %s\n", typeName)
-	fmt.Printf("  Actual typeTag: %s\n", expectedTypeTag)
 
 	// Create test data
 	codegenInstance := &SliceDemo{
@@ -172,8 +162,6 @@ func TestSliceDemoXlang(t *testing.T) {
 	err := foryForReflect.RegisterTagType(expectedTypeTag, ReflectSliceStruct{})
 	require.NoError(t, err, "Should be able to register ReflectSliceStruct with full name")
 
-	fmt.Printf("✅ Successfully registered with full name: %s\n", expectedTypeTag)
-
 	// Serialization test
 	codegenData, err := foryForCodegen.Marshal(codegenInstance)
 	require.NoError(t, err, "Codegen serialization should not fail")
@@ -181,15 +169,11 @@ func TestSliceDemoXlang(t *testing.T) {
 	reflectData, err := foryForReflect.Marshal(reflectInstance)
 	require.NoError(t, err, "Reflect serialization should not fail")
 
-	fmt.Printf("\nSerialization results:\n")
-	fmt.Printf("  Codegen data length: %d bytes\n", len(codegenData))
-	fmt.Printf("  Reflect data length: %d bytes\n", len(reflectData))
-	fmt.Printf("  Data identical: %t\n", reflect.DeepEqual(codegenData, reflectData))
+	// Verify serialization compatibility
+	fmt.Printf("\nSerialization compatibility: %d bytes (codegen) vs %d bytes (reflect)\n",
+		len(codegenData), len(reflectData))
 
-	// Detailed serialization data analysis
-	fmt.Println("\n=== Detailed Serialization Data Analysis ===")
-	fmt.Printf("Codegen complete data: %x\n", codegenData)
-	fmt.Printf("Reflect complete data: %x\n", reflectData)
+	// Test cross deserialization
 
 	// Byte-by-byte comparison
 	fmt.Println("\n=== Byte-by-Byte Difference Analysis ===")
@@ -285,11 +269,6 @@ func TestDynamicSliceDemoXlang(t *testing.T) {
 	typeName := dynamicSliceType.Name()
 	expectedTypeTag := pkgPath + "." + typeName
 
-	fmt.Printf("DynamicSliceDemo type analysis:\n")
-	fmt.Printf("  Package path: %s\n", pkgPath)
-	fmt.Printf("  Type name: %s\n", typeName)
-	fmt.Printf("  Actual typeTag: %s\n", expectedTypeTag)
-
 	// Create test data with simpler types to avoid reflection issues
 	codegenInstance := &DynamicSliceDemo{
 		DynamicSlice: []interface{}{
@@ -319,8 +298,6 @@ func TestDynamicSliceDemoXlang(t *testing.T) {
 	foryForReflect := forygo.NewFory(true)
 	err := foryForReflect.RegisterTagType(expectedTypeTag, ReflectDynamicStruct{})
 	require.NoError(t, err, "Should be able to register ReflectDynamicStruct with full name")
-
-	fmt.Printf("✅ Successfully registered with full name: %s\n", expectedTypeTag)
 
 	// Serialization test
 	codegenData, err := foryForCodegen.Marshal(codegenInstance)
@@ -447,77 +424,29 @@ func TestMapDemoXlang(t *testing.T) {
 	reflectData, err := foryForReflect.Marshal(reflectInstance)
 	require.NoError(t, err, "Reflect serialization should not fail")
 
-	fmt.Printf("\nSerialization results:\n")
-	fmt.Printf("  Codegen data length: %d bytes\n", len(codegenData))
-	fmt.Printf("  Reflect data length: %d bytes\n", len(reflectData))
-	fmt.Printf("  Data identical: %v\n", bytes.Equal(codegenData, reflectData))
-
-	// Print hex data for debugging
-	if !bytes.Equal(codegenData, reflectData) {
-		fmt.Printf("\n=== Complete Map Serialization Analysis ===\n")
-		fmt.Printf("Codegen complete data: %x\n", codegenData)
-		fmt.Printf("Reflect complete data: %x\n", reflectData)
-
-		// Find and print differences
-		fmt.Printf("\n=== Byte-by-Byte Difference Analysis ===\n")
-		minLen := len(codegenData)
-		if len(reflectData) < minLen {
-			minLen = len(reflectData)
-		}
-
-		diffCount := 0
-		for i := 0; i < minLen; i++ {
-			if codegenData[i] != reflectData[i] {
-				fmt.Printf("  Position %d: Codegen=0x%02x(%d), Reflect=0x%02x(%d)\n",
-					i, codegenData[i], codegenData[i], reflectData[i], reflectData[i])
-				diffCount++
-			}
-		}
-
-		if len(codegenData) != len(reflectData) {
-			fmt.Printf("  Length difference: Codegen=%d, Reflect=%d (difference=%d bytes)\n",
-				len(codegenData), len(reflectData), len(codegenData)-len(reflectData))
-		}
-
-		fmt.Printf("Total different bytes: %d\n", diffCount)
-	}
+	// Verify serialization compatibility (length and cross-deserialization)
+	fmt.Printf("\nSerialization compatibility: %d bytes (codegen) vs %d bytes (reflect)\n",
+		len(codegenData), len(reflectData))
 
 	// Test cross deserialization - reflect deserializes codegen data
-	fmt.Printf("\n=== Cross Serialization Test ===\n")
 	var reflectResult MapDemo
 	err = foryForReflect.Unmarshal(codegenData, &reflectResult)
 	require.NoError(t, err, "Reflect should be able to deserialize codegen data")
 
-	fmt.Printf("✅ Successfully used reflect to deserialize codegen data:\n")
-	fmt.Printf("   StringMap length: %d, content: %v\n", len(reflectResult.StringMap), reflectResult.StringMap)
-	fmt.Printf("   IntMap length: %d, content: %v\n", len(reflectResult.IntMap), reflectResult.IntMap)
-	fmt.Printf("   MixedMap length: %d, content: %v\n", len(reflectResult.MixedMap), reflectResult.MixedMap)
-
-	// Verify content
+	// Verify content matches original
 	assert.EqualValues(t, codegenInstance.StringMap, reflectResult.StringMap, "StringMap mismatch")
 	assert.EqualValues(t, codegenInstance.IntMap, reflectResult.IntMap, "IntMap mismatch")
 	assert.EqualValues(t, codegenInstance.MixedMap, reflectResult.MixedMap, "MixedMap mismatch")
-	fmt.Printf("🎉 Map data matches completely!\n")
 
 	// Test opposite direction - codegen deserializes reflect data
 	var codegenResult MapDemo
 	err = foryForCodegen.Unmarshal(reflectData, &codegenResult)
 	require.NoError(t, err, "Codegen should be able to deserialize reflect data")
 
-	fmt.Printf("✅ Successfully used codegen to deserialize reflect data:\n")
-	fmt.Printf("   StringMap length: %d, content: %v\n", len(codegenResult.StringMap), codegenResult.StringMap)
-	fmt.Printf("   IntMap length: %d, content: %v\n", len(codegenResult.IntMap), codegenResult.IntMap)
-	fmt.Printf("   MixedMap length: %d, content: %v\n", len(codegenResult.MixedMap), codegenResult.MixedMap)
-
-	// Also show original data for comparison
-	fmt.Printf("\n📋 Original data for comparison:\n")
-	fmt.Printf("   StringMap content: %v\n", codegenInstance.StringMap)
-	fmt.Printf("   IntMap content: %v\n", codegenInstance.IntMap)
-	fmt.Printf("   MixedMap content: %v\n", codegenInstance.MixedMap)
-
-	// Verify content
+	// Verify content matches original
 	assert.EqualValues(t, reflectInstance.StringMap, codegenResult.StringMap, "StringMap mismatch")
 	assert.EqualValues(t, reflectInstance.IntMap, codegenResult.IntMap, "IntMap mismatch")
 	assert.EqualValues(t, reflectInstance.MixedMap, codegenResult.MixedMap, "MixedMap mismatch")
-	fmt.Printf("🎉 Fully compatible! Codegen can correctly deserialize reflect map data!\n")
+
+	fmt.Printf("✅ Map cross-compatibility test passed\n")
 }
