@@ -21,6 +21,8 @@ import (
 	"bytes"
 	"fmt"
 	"go/types"
+
+	"github.com/apache/fory/go/fory"
 )
 
 // generateReadTyped generates the strongly-typed Read method
@@ -397,29 +399,29 @@ func generateElementTypeIDReadInline(buf *bytes.Buffer, elemType types.Type) err
 		var expectedTypeID int
 		switch basic.Kind() {
 		case types.Bool:
-			expectedTypeID = 1
+			expectedTypeID = int(fory.BOOL)
 		case types.Int8:
-			expectedTypeID = 2
+			expectedTypeID = int(fory.INT8)
 		case types.Int16:
-			expectedTypeID = 3
+			expectedTypeID = int(fory.INT16)
 		case types.Int32:
-			expectedTypeID = 4
+			expectedTypeID = int(fory.INT32)
 		case types.Int, types.Int64:
-			expectedTypeID = 6
+			expectedTypeID = int(fory.INT64)
 		case types.Uint8:
-			expectedTypeID = 100
+			expectedTypeID = int(fory.UINT8)
 		case types.Uint16:
-			expectedTypeID = 101
+			expectedTypeID = int(fory.UINT16)
 		case types.Uint32:
-			expectedTypeID = 102
+			expectedTypeID = int(fory.UINT32)
 		case types.Uint, types.Uint64:
-			expectedTypeID = 103
+			expectedTypeID = int(fory.UINT64)
 		case types.Float32:
-			expectedTypeID = 10
+			expectedTypeID = int(fory.FLOAT)
 		case types.Float64:
-			expectedTypeID = 11
+			expectedTypeID = int(fory.DOUBLE)
 		case types.String:
-			expectedTypeID = 12
+			expectedTypeID = int(fory.STRING)
 		default:
 			return fmt.Errorf("unsupported basic type for element type ID read: %s", basic.String())
 		}

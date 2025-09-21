@@ -107,20 +107,20 @@ func TestActualCodegenName(t *testing.T) {
 	// Use reflect to deserialize codegen data
 	var reflectResult *ReflectStruct
 	err = foryForReflect.Unmarshal(codegenData, &reflectResult)
-	if err == nil && reflectResult != nil {
-		fmt.Printf("✅ Successfully used reflect to deserialize codegen data: %+v\n", reflectResult)
-	} else {
-		fmt.Printf("❌ Failed to use reflect to deserialize codegen data: %v\n", err)
-	}
+	require.NoError(t, err, "Reflect should be able to deserialize codegen data")
+	require.NotNil(t, reflectResult, "Reflect result should not be nil")
+
+	// Verify content matches original
+	assert.EqualValues(t, codegenInstance, reflectResult, "Reflect deserialized data should match original")
 
 	// Use codegen to deserialize reflect data
 	var codegenResult *ValidationDemo
 	err = foryForCodegen.Unmarshal(reflectData, &codegenResult)
-	if err == nil && codegenResult != nil {
-		fmt.Printf("✅ Successfully used codegen to deserialize reflect data: %+v\n", codegenResult)
-	} else {
-		fmt.Printf("❌ Failed to use codegen to deserialize reflect data: %v\n", err)
-	}
+	require.NoError(t, err, "Codegen should be able to deserialize reflect data")
+	require.NotNil(t, codegenResult, "Codegen result should not be nil")
+
+	// Verify content matches original
+	assert.EqualValues(t, reflectInstance, codegenResult, "Codegen deserialized data should match original")
 }
 
 // TestSliceDemoXlang - Test cross-language compatibility of SliceDemo
@@ -206,54 +206,26 @@ func TestSliceDemoXlang(t *testing.T) {
 		// Use reflect to deserialize codegen data
 		var reflectResult *ReflectSliceStruct
 		err = foryForReflect.Unmarshal(codegenData, &reflectResult)
-		if err == nil && reflectResult != nil {
-			fmt.Printf("✅ Successfully used reflect to deserialize codegen data:\n")
-			fmt.Printf("   IntSlice: %v\n", reflectResult.IntSlice)
-			fmt.Printf("   StringSlice: %v\n", reflectResult.StringSlice)
-			fmt.Printf("   FloatSlice: %v\n", reflectResult.FloatSlice)
-			fmt.Printf("   BoolSlice: %v\n", reflectResult.BoolSlice)
+		require.NoError(t, err, "Reflect should be able to deserialize codegen data")
+		require.NotNil(t, reflectResult, "Reflect result should not be nil")
 
-			// Verify data matching
-			intMatch := reflect.DeepEqual(codegenInstance.IntSlice, reflectResult.IntSlice)
-			stringMatch := reflect.DeepEqual(codegenInstance.StringSlice, reflectResult.StringSlice)
-			floatMatch := reflect.DeepEqual(codegenInstance.FloatSlice, reflectResult.FloatSlice)
-			boolMatch := reflect.DeepEqual(codegenInstance.BoolSlice, reflectResult.BoolSlice)
-
-			fmt.Printf("   Data match check: IntSlice=%v, StringSlice=%v, FloatSlice=%v, BoolSlice=%v\n",
-				intMatch, stringMatch, floatMatch, boolMatch)
-
-			if intMatch && stringMatch && floatMatch && boolMatch {
-				fmt.Println("🎉 All slice field data matches completely!")
-			}
-		} else {
-			fmt.Printf("❌ Failed to use reflect to deserialize codegen data: %v\n", err)
-		}
+		// Verify content matches original
+		assert.EqualValues(t, codegenInstance.IntSlice, reflectResult.IntSlice, "IntSlice mismatch")
+		assert.EqualValues(t, codegenInstance.StringSlice, reflectResult.StringSlice, "StringSlice mismatch")
+		assert.EqualValues(t, codegenInstance.FloatSlice, reflectResult.FloatSlice, "FloatSlice mismatch")
+		assert.EqualValues(t, codegenInstance.BoolSlice, reflectResult.BoolSlice, "BoolSlice mismatch")
 
 		// Use codegen to deserialize reflect data
 		var codegenResult *SliceDemo
 		err = foryForCodegen.Unmarshal(reflectData, &codegenResult)
-		if err == nil && codegenResult != nil {
-			fmt.Printf("✅ Successfully used codegen to deserialize reflect data:\n")
-			fmt.Printf("   IntSlice: %v\n", codegenResult.IntSlice)
-			fmt.Printf("   StringSlice: %v\n", codegenResult.StringSlice)
-			fmt.Printf("   FloatSlice: %v\n", codegenResult.FloatSlice)
-			fmt.Printf("   BoolSlice: %v\n", codegenResult.BoolSlice)
+		require.NoError(t, err, "Codegen should be able to deserialize reflect data")
+		require.NotNil(t, codegenResult, "Codegen result should not be nil")
 
-			// Verify data matching
-			intMatch := reflect.DeepEqual(reflectInstance.IntSlice, codegenResult.IntSlice)
-			stringMatch := reflect.DeepEqual(reflectInstance.StringSlice, codegenResult.StringSlice)
-			floatMatch := reflect.DeepEqual(reflectInstance.FloatSlice, codegenResult.FloatSlice)
-			boolMatch := reflect.DeepEqual(reflectInstance.BoolSlice, codegenResult.BoolSlice)
-
-			fmt.Printf("   Data match check: IntSlice=%v, StringSlice=%v, FloatSlice=%v, BoolSlice=%v\n",
-				intMatch, stringMatch, floatMatch, boolMatch)
-
-			if intMatch && stringMatch && floatMatch && boolMatch {
-				fmt.Println("🎉 Fully compatible! Codegen can correctly deserialize reflect data!")
-			}
-		} else {
-			fmt.Printf("❌ Failed to use codegen to deserialize reflect data: %v\n", err)
-		}
+		// Verify content matches original
+		assert.EqualValues(t, reflectInstance.IntSlice, codegenResult.IntSlice, "IntSlice mismatch")
+		assert.EqualValues(t, reflectInstance.StringSlice, codegenResult.StringSlice, "StringSlice mismatch")
+		assert.EqualValues(t, reflectInstance.FloatSlice, codegenResult.FloatSlice, "FloatSlice mismatch")
+		assert.EqualValues(t, reflectInstance.BoolSlice, codegenResult.BoolSlice, "BoolSlice mismatch")
 	} else {
 		fmt.Printf("❌ Found %d byte differences\n", differentBytes)
 	}
@@ -306,84 +278,29 @@ func TestDynamicSliceDemoXlang(t *testing.T) {
 	reflectData, err := foryForReflect.Marshal(reflectInstance)
 	require.NoError(t, err, "Reflect serialization should not fail")
 
-	fmt.Printf("\nSerialization results:\n")
-	fmt.Printf("  Codegen data length: %d bytes\n", len(codegenData))
-	fmt.Printf("  Reflect data length: %d bytes\n", len(reflectData))
-	fmt.Printf("  Data identical: %t\n", reflect.DeepEqual(codegenData, reflectData))
+	// Verify serialization compatibility
+	fmt.Printf("\nSerialization compatibility: %d bytes (codegen) vs %d bytes (reflect)\n",
+		len(codegenData), len(reflectData))
 
-	// Detailed serialization data analysis for dynamic slices
-	fmt.Println("\n=== Complete Dynamic Slice Serialization Analysis ===")
-	fmt.Printf("Codegen complete data: %x\n", codegenData)
-	fmt.Printf("Reflect complete data: %x\n", reflectData)
-
-	// Byte-by-byte comparison to find differences
-	fmt.Println("\n=== Byte-by-Byte Difference Analysis ===")
-	minLen := len(codegenData)
-	if len(reflectData) < minLen {
-		minLen = len(reflectData)
-	}
-
-	differentBytes := 0
-	for i := 0; i < minLen; i++ {
-		if codegenData[i] != reflectData[i] {
-			fmt.Printf("  Position %d: Codegen=0x%02x(%d), Reflect=0x%02x(%d)\n",
-				i, codegenData[i], codegenData[i], reflectData[i], reflectData[i])
-			differentBytes++
-		}
-	}
-
-	if len(codegenData) != len(reflectData) {
-		fmt.Printf("  Length difference: Codegen=%d, Reflect=%d (difference=%d bytes)\n",
-			len(codegenData), len(reflectData), len(reflectData)-len(codegenData))
-		if len(codegenData) > len(reflectData) {
-			fmt.Printf("  Codegen extra bytes: %x\n", codegenData[len(reflectData):])
-		} else {
-			fmt.Printf("  Reflect extra bytes: %x\n", reflectData[len(codegenData):])
-		}
-	}
-
-	fmt.Printf("Total different bytes: %d\n", differentBytes)
-
-	// Verify cross serialization - this is the key test for dynamic slices
-	fmt.Println("\n=== Cross Serialization Test ===")
-
-	// Use reflect to deserialize codegen data
+	// Test cross deserialization - reflect deserializes codegen data
 	var reflectResult *ReflectDynamicStruct
 	err = foryForReflect.Unmarshal(codegenData, &reflectResult)
-	if err == nil && reflectResult != nil {
-		fmt.Printf("✅ Successfully used reflect to deserialize codegen data:\n")
-		fmt.Printf("   DynamicSlice length: %d\n", len(reflectResult.DynamicSlice))
-		fmt.Printf("   DynamicSlice: %v\n", reflectResult.DynamicSlice)
+	require.NoError(t, err, "Reflect should be able to deserialize codegen data")
+	require.NotNil(t, reflectResult, "Reflect result should not be nil")
 
-		// Verify data matching
-		if reflect.DeepEqual(codegenInstance.DynamicSlice, reflectResult.DynamicSlice) {
-			fmt.Println("🎉 Dynamic slice data matches completely!")
-		} else {
-			fmt.Printf("⚠️  Dynamic slice data differs (expected for dynamic types): %v vs %v\n",
-				codegenInstance.DynamicSlice, reflectResult.DynamicSlice)
-		}
-	} else {
-		fmt.Printf("❌ Failed to use reflect to deserialize codegen data: %v\n", err)
-	}
+	// Verify content matches original
+	assert.EqualValues(t, codegenInstance.DynamicSlice, reflectResult.DynamicSlice, "DynamicSlice mismatch")
 
-	// Use codegen to deserialize reflect data
+	// Test opposite direction - codegen deserializes reflect data
 	var codegenResult *DynamicSliceDemo
 	err = foryForCodegen.Unmarshal(reflectData, &codegenResult)
-	if err == nil && codegenResult != nil {
-		fmt.Printf("✅ Successfully used codegen to deserialize reflect data:\n")
-		fmt.Printf("   DynamicSlice length: %d\n", len(codegenResult.DynamicSlice))
-		fmt.Printf("   DynamicSlice: %v\n", codegenResult.DynamicSlice)
+	require.NoError(t, err, "Codegen should be able to deserialize reflect data")
+	require.NotNil(t, codegenResult, "Codegen result should not be nil")
 
-		// Verify data matching
-		if reflect.DeepEqual(reflectInstance.DynamicSlice, codegenResult.DynamicSlice) {
-			fmt.Println("🎉 Fully compatible! Codegen can correctly deserialize reflect dynamic slice data!")
-		} else {
-			fmt.Printf("⚠️  Dynamic slice data differs (may be expected): %v vs %v\n",
-				reflectInstance.DynamicSlice, codegenResult.DynamicSlice)
-		}
-	} else {
-		fmt.Printf("❌ Failed to use codegen to deserialize reflect data: %v\n", err)
-	}
+	// Verify content matches original
+	assert.EqualValues(t, reflectInstance.DynamicSlice, codegenResult.DynamicSlice, "DynamicSlice mismatch")
+
+	fmt.Printf("✅ Dynamic slice cross-compatibility test passed\n")
 }
 
 // TestMapDemoXlang tests cross-language compatibility for map types

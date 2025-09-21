@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//go:generate go run ../cmd/fory/main.go --force -file structs.go
+//go:generate fory -file structs.go
 
 func TestValidationDemo(t *testing.T) {
 	// 1. Create test instance

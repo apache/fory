@@ -22,6 +22,8 @@ import (
 	"go/types"
 	"sort"
 	"unicode"
+
+	"github.com/apache/fory/go/fory"
 )
 
 // FieldInfo contains metadata about a struct field
@@ -228,33 +230,46 @@ func getPrimitiveSize(t types.Type) int {
 }
 
 // getTypeIDValue returns numeric value for type ID for sorting
-// This should match the actual Fory TypeId values used by reflection
+// This uses the actual Fory TypeId constants for accuracy
 func getTypeIDValue(typeID string) int {
-	// Map Fory TypeIDs to their actual numeric values (matching reflection)
-	typeIDMap := map[string]int{
-		"BOOL":         1,   // BOOL = 1
-		"INT8":         2,   // INT8 = 2
-		"INT16":        3,   // INT16 = 3
-		"INT32":        4,   // INT32 = 4
-		"INT64":        6,   // INT64 = 6 (Note: not 5!)
-		"UINT8":        100, // UINT8 = 100
-		"UINT16":       101, // UINT16 = 101
-		"UINT32":       102, // UINT32 = 102
-		"UINT64":       103, // UINT64 = 103
-		"FLOAT32":      10,  // FLOAT32 = FLOAT = 10
-		"FLOAT64":      11,  // FLOAT64 = DOUBLE = 11
-		"STRING":       12,  // STRING = 12
-		"TIMESTAMP":    20,  // TIMESTAMP = 20
-		"LOCAL_DATE":   21,  // LOCAL_DATE = 21
-		"NAMED_STRUCT": 17,  // NAMED_STRUCT = 17 (Note: not 30!)
-		"LIST":         21,  // LIST = 21
-		"MAP":          22,  // MAP = 22
+	switch typeID {
+	case "BOOL":
+		return int(fory.BOOL) // 1
+	case "INT8":
+		return int(fory.INT8) // 2
+	case "INT16":
+		return int(fory.INT16) // 3
+	case "INT32":
+		return int(fory.INT32) // 4
+	case "INT64":
+		return int(fory.INT64) // 6
+	case "UINT8":
+		return int(fory.UINT8) // 100
+	case "UINT16":
+		return int(fory.UINT16) // 101
+	case "UINT32":
+		return int(fory.UINT32) // 102
+	case "UINT64":
+		return int(fory.UINT64) // 103
+	case "FLOAT32":
+		return int(fory.FLOAT) // 10
+	case "FLOAT64":
+		return int(fory.DOUBLE) // 11
+	case "STRING":
+		return int(fory.STRING) // 12
+	case "TIMESTAMP":
+		return int(fory.TIMESTAMP) // 25
+	case "LOCAL_DATE":
+		return int(fory.LOCAL_DATE) // 26
+	case "NAMED_STRUCT":
+		return int(fory.NAMED_STRUCT) // 17
+	case "LIST":
+		return int(fory.LIST) // 21
+	case "MAP":
+		return int(fory.MAP) // 23
+	default:
+		return 999 // Unknown types sort last
 	}
-
-	if val, ok := typeIDMap[typeID]; ok {
-		return val
-	}
-	return 999
 }
 
 // sortFields sorts fields according to Fory protocol specification
@@ -337,37 +352,39 @@ func getFieldHashID(field *FieldInfo) int32 {
 
 	switch field.TypeID {
 	case "BOOL":
-		tid = 1 // BOOL
+		tid = fory.BOOL
 	case "INT8":
-		tid = 2 // INT8
+		tid = fory.INT8
 	case "INT16":
-		tid = 3 // INT16
+		tid = fory.INT16
 	case "INT32":
-		tid = 4 // INT32
+		tid = fory.INT32
 	case "INT64":
-		tid = 6 // INT64 = 6
+		tid = fory.INT64
 	case "UINT8":
-		tid = 100 // UINT8 = 100
+		tid = fory.UINT8
 	case "UINT16":
-		tid = 101 // UINT16 = 101
+		tid = fory.UINT16
 	case "UINT32":
-		tid = 102 // UINT32 = 102
+		tid = fory.UINT32
 	case "UINT64":
-		tid = 103 // UINT64 = 103
+		tid = fory.UINT64
 	case "FLOAT32":
-		tid = 10 // FLOAT32 = FLOAT = 10
+		tid = fory.FLOAT
 	case "FLOAT64":
-		tid = 11 // FLOAT64 = DOUBLE = 11
+		tid = fory.DOUBLE
 	case "STRING":
-		tid = 12 // STRING = 12
+		tid = fory.STRING
 	case "TIMESTAMP":
-		tid = 20 // TIMESTAMP
+		tid = fory.TIMESTAMP
 	case "LOCAL_DATE":
-		tid = 21 // LOCAL_DATE
+		tid = fory.LOCAL_DATE
 	case "NAMED_STRUCT":
-		tid = 17 // NAMED_STRUCT
+		tid = fory.NAMED_STRUCT
 	case "LIST":
-		tid = 21 // LIST
+		tid = fory.LIST
+	case "MAP":
+		tid = fory.MAP
 	default:
 		tid = 0 // Unknown type
 	}
