@@ -22,11 +22,7 @@ Fory Go supports the following types for both reflection-based serialization and
 - `[]float32`, `[]float64`
 - `[]string`
 - `[]interface{}` (dynamic slice)
-
-- `map[string]string`
-- `map[int]int` 
-- `map[string]int`
-- Other combinations of basic types as keys and values
+- `map[string]string`, `map[int]int`, `map[string]int`
 
 ## Fory Go Codegen (optional)
 
