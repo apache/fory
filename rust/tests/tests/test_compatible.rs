@@ -18,17 +18,16 @@
 use fory_core::fory::Fory;
 use fory_core::types::Mode::Compatible;
 use fory_derive::Fory;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 // RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_compatible
 #[test]
 fn simple() {
     #[derive(Fory, Debug, Default)]
     struct Animal1 {
-        // f1: HashMap<i8, Vec<i8>>,
+        f1: HashMap<i8, Vec<i8>>,
         f2: String,
         f3: Vec<i8>,
-        // f4: String,
         f5: String,
         f6: Vec<i8>,
         f7: i8,
@@ -37,8 +36,7 @@ fn simple() {
 
     #[derive(Fory, Debug, Default)]
     struct Animal2 {
-        // f1: HashMap<i8, Vec<i8>>,
-        // f2: String,
+        f1: HashMap<i8, Vec<i8>>,
         f3: Vec<i8>,
         f4: String,
         f5: i8,
@@ -51,7 +49,7 @@ fn simple() {
     fory1.register::<Animal1>(999);
     fory2.register::<Animal2>(999);
     let animal: Animal1 = Animal1 {
-        // f1: HashMap::from([(1, vec![2])]),
+        f1: HashMap::from([(1, vec![2])]),
         f2: String::from("hello"),
         f3: vec![1, 2, 3],
         f5: String::from("f5"),
@@ -61,7 +59,7 @@ fn simple() {
     };
     let bin = fory1.serialize(&animal);
     let obj: Animal2 = fory2.deserialize(&bin).unwrap();
-    // assert_eq!(animal.f1, obj.f1);
+    assert_eq!(animal.f1, obj.f1);
     assert_eq!(animal.f3, obj.f3);
     assert_eq!(obj.f4, String::default());
     assert_eq!(obj.f5, i8::default());
@@ -230,11 +228,11 @@ fn nullable_container() {
         f2: Option<Vec<i8>>,
         f3: HashSet<i8>,
         f4: Option<HashSet<i8>>,
-        // f5: HashMap<i8, Vec<i8>>,
-        // f6: Option<HashMap<i8, Vec<i8>>>,
+        f5: HashMap<i8, Vec<i8>>,
+        f6: Option<HashMap<i8, Vec<i8>>>,
         f7: Option<Vec<i8>>,
         f8: Option<HashSet<i8>>,
-        // f9: Option<HashMap<i8, i8>>,
+        f9: Option<HashMap<i8, i8>>,
         last: i64,
     }
 
@@ -244,11 +242,11 @@ fn nullable_container() {
         f2: Vec<i8>,
         f3: Option<HashSet<i8>>,
         f4: HashSet<i8>,
-        // f5: Option<HashMap<i8, Vec<i8>>>,
-        // f6: HashMap<i8, Vec<i8>>,
+        f5: Option<HashMap<i8, Vec<i8>>>,
+        f6: HashMap<i8, Vec<i8>>,
         f7: Vec<i8>,
         f8: HashSet<i8>,
-        // f9: HashMap<i8, i8>,
+        f9: HashMap<i8, i8>,
         last: i64,
     }
 
@@ -262,11 +260,11 @@ fn nullable_container() {
         f2: Some(vec![43]),
         f3: HashSet::from([44, 45]),
         f4: Some(HashSet::from([46, 47])),
-        // f5: HashMap::from([(48, vec![49])]),
-        // f6: Some(HashMap::from([(48, vec![49])])),
+        f5: HashMap::from([(48, vec![49])]),
+        f6: Some(HashMap::from([(48, vec![49])])),
         f7: None,
         f8: None,
-        // f9: None,
+        f9: None,
         last: 666,
     };
 
@@ -277,11 +275,11 @@ fn nullable_container() {
     assert_eq!(item2.f2, item1.f2.unwrap());
     assert_eq!(item2.f3.unwrap(), item1.f3);
     assert_eq!(item2.f4, item1.f4.unwrap());
-    // assert_eq!(item2.f5.unwrap(), item1.f5);
-    // assert_eq!(item2.f6, item1.f6.unwrap());
+    assert_eq!(item2.f5.unwrap(), item1.f5);
+    assert_eq!(item2.f6, item1.f6.unwrap());
     assert_eq!(item2.f7, Vec::default());
     assert_eq!(item2.f8, HashSet::default());
-    // assert_eq!(item2.f9, HashMap::default());
+    assert_eq!(item2.f9, HashMap::default());
     assert_eq!(item2.last, item1.last);
 }
 
@@ -291,14 +289,16 @@ fn inner_nullable() {
     pub struct Item1 {
         f1: Vec<Option<String>>,
         f2: HashSet<Option<i8>>,
-        // f3: HashMap<i8, Option<i8>>,
+        f3: HashMap<i8, Option<i8>>,
+        last: i64,
     }
 
     #[derive(Fory, Debug, Default)]
     pub struct Item2 {
         f1: Vec<String>,
         f2: HashSet<i8>,
-        // f3: HashMap<i8, i8>,
+        f3: HashMap<i8, i8>,
+        last: i64,
     }
     let mut fory1 = Fory::default().mode(Compatible);
     let mut fory2 = Fory::default().mode(Compatible);
@@ -308,14 +308,16 @@ fn inner_nullable() {
     let item1 = Item1 {
         f1: vec![None, Some("hello".to_string())],
         f2: HashSet::from([None, Some(43)]),
-        // f3: HashMap::from([(44, None), (45, Some(46))]),
+        f3: HashMap::from([(44, None), (45, Some(46))]),
+        last: 666,
     };
     let bin = fory1.serialize(&item1);
     let item2: Item2 = fory2.deserialize(&bin).unwrap();
 
     assert_eq!(item2.f1, vec![String::default(), "hello".to_string()]);
     assert_eq!(item2.f2, HashSet::from([0, 43]));
-    // assert_eq!(item2.f3, HashMap::from([(44, 0), (45, 46)]));
+    assert_eq!(item2.f3, HashMap::from([(44, 0), (45, 46)]));
+    assert_eq!(item2.last, item1.last);
 }
 
 #[test]
@@ -357,8 +359,8 @@ fn nullable_struct() {
         },
         f2: None,
         f3: Some(Item {
-            name: "f3".to_string(),
-            data: vec![None, Some("hello".to_string())],
+            name: "b".to_string(),
+            data: vec![None, Some("a".to_string())],
             last: 45,
         }),
         last: 46,

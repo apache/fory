@@ -66,10 +66,10 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
 
     let gen = quote! {
         impl fory_core::serializer::StructSerializer for #name {
-            fn type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: Vec<u8>, type_name: Vec<u8>, register_by_name: bool) -> Vec<u8> {
+            fn type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: &String, type_name: &String, register_by_name: bool) -> Vec<u8> {
                 #type_def_token_stream
             }
-            fn actual_type_id(type_id: u32) -> u32 {
+            fn actual_type_id(type_id: u32, register_by_name: bool, mode: &fory_core::types::Mode) -> u32 {
                 #actual_type_id_token_stream
             }
             #type_index_token_stream

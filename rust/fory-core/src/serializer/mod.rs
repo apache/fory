@@ -18,7 +18,7 @@
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
-use crate::types::RefFlag;
+use crate::types::{Mode, RefFlag, PRIMITIVE_TYPES};
 use anyhow::anyhow;
 
 mod any;
@@ -26,7 +26,7 @@ mod bool;
 pub mod collection;
 mod datetime;
 mod list;
-mod map;
+pub mod map;
 mod number;
 mod option;
 mod primitive_list;
@@ -34,30 +34,57 @@ mod set;
 pub mod skip;
 mod string;
 
-pub fn serialize<T: Serializer + 'static>(record: &T, context: &mut WriteContext, is_field: bool) {
+pub fn write_data<T: Serializer + 'static>(
+    record: &T,
+    context: &mut WriteContext,
+    is_field: bool,
+    skip_ref_flag: bool,
+    skip_type_info: bool,
+) {
     if record.is_none() {
         context.writer.i8(RefFlag::Null as i8);
     } else {
-        context.writer.i8(RefFlag::NotNullValue as i8);
+        if !(is_field && skip_ref_flag) {
+            context.writer.i8(RefFlag::NotNullValue as i8);
+        }
+        let type_id = T::get_type_id(context.get_fory()) >> 8;
+        println!("type: {:#?}", type_id);
+        if !skip_type_info {
+            T::write_type_info(context, is_field);
+        }
         record.write(context, is_field);
     }
 }
 
-pub fn deserialize<T: Serializer + Default>(
+pub fn read_data<T: Serializer + Default>(
     context: &mut ReadContext,
     is_field: bool,
+    skip_ref_flag: bool,
+    skip_type_info: bool,
 ) -> Result<T, Error> {
-    let ref_flag = context.reader.i8();
-    if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
-        T::read(context, is_field)
-    } else if ref_flag == (RefFlag::Null as i8) {
-        Ok(T::default())
-        // Err(anyhow!("Try to deserialize non-option type to null"))?
-    } else if ref_flag == (RefFlag::Ref as i8) {
-        Err(Error::Ref)
+    if !skip_ref_flag {
+        let ref_flag = context.reader.i8();
+        if ref_flag == RefFlag::Null as i8 {
+            Ok(T::default())
+        } else if ref_flag == (RefFlag::NotNullValue as i8) {
+            if !skip_type_info {
+                T::read_type_info(context, is_field);
+            }
+            T::read(context)
+        } else {
+            unimplemented!()
+        }
     } else {
-        Err(anyhow!("Unknown ref flag, value:{ref_flag}"))?
+        if !skip_type_info {
+            T::read_type_info(context, is_field);
+        }
+        T::read(context)
     }
+}
+
+pub fn get_skip_ref_flag<T: Serializer>(fory: &Fory) -> bool {
+    let elem_type_id = T::get_type_id(fory);
+    !T::is_option() && PRIMITIVE_TYPES.contains(&elem_type_id)
 }
 
 pub trait Serializer
@@ -71,18 +98,22 @@ where
     /// Write the data into the buffer.
     fn write(&self, context: &mut WriteContext, is_field: bool);
 
+    fn write_type_info(context: &mut WriteContext, is_field: bool);
+
     /// Entry point of the serialization.
     ///
     /// Step 1: write the type flag and type flag into the buffer.
     /// Step 2: invoke the write function to write the Rust object.
     fn serialize(&self, context: &mut WriteContext, is_field: bool) {
-        serialize(self, context, is_field);
+        write_data(self, context, is_field, false, false);
     }
 
-    fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error>;
+    fn read(context: &mut ReadContext) -> Result<Self, Error>;
+
+    fn read_type_info(context: &mut ReadContext, is_field: bool);
 
     fn deserialize(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        deserialize(context, is_field)
+        read_data(context, is_field, false, false)
     }
 
     fn get_type_id(_fory: &Fory) -> u32;
@@ -100,13 +131,13 @@ pub trait StructSerializer: Serializer + 'static {
     fn type_def(
         fory: &Fory,
         type_id: u32,
-        namespace: Vec<u8>,
-        type_name: Vec<u8>,
+        namespace: &String,
+        type_name: &String,
         register_by_name: bool,
     ) -> Vec<u8>;
 
     fn type_index() -> u32;
-    fn actual_type_id(type_id: u32) -> u32;
+    fn actual_type_id(type_id: u32, register_by_name: bool, mode: &Mode) -> u32;
 
     fn read_compatible(context: &mut ReadContext) -> Result<Self, Error>;
 

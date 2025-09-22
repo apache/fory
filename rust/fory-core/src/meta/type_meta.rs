@@ -17,11 +17,15 @@
 
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
-use crate::meta::murmurhash3_x64_128;
-use crate::meta::{Encoding, MetaStringDecoder, MetaStringEncoder};
+use crate::meta::{
+    murmurhash3_x64_128, Encoding, MetaString, MetaStringDecoder, FIELD_NAME_DECODER,
+    FIELD_NAME_ENCODER, NAMESPACE_DECODER,
+};
 use crate::types::TypeId;
 use anyhow::anyhow;
+use std::clone::Clone;
 use std::cmp::min;
+use syn::Meta;
 
 const SMALL_NUM_FIELDS_THRESHOLD: usize = 0b11111;
 const REGISTER_BY_NAME_FLAG: u8 = 0b100000;
@@ -34,7 +38,20 @@ const COMPRESS_META_FLAG: i64 = 0b1 << 13;
 const HAS_FIELDS_META_FLAG: i64 = 0b1 << 12;
 const NUM_HASH_BITS: i8 = 50;
 
-static ENCODING_OPTIONS: &[Encoding] = &[
+pub static NAMESPACE_ENCODINGS: &[Encoding] = &[
+    Encoding::Utf8,
+    Encoding::AllToLowerSpecial,
+    Encoding::LowerUpperDigitSpecial,
+];
+
+pub static TYPE_NAME_ENCODINGS: &[Encoding] = &[
+    Encoding::Utf8,
+    Encoding::AllToLowerSpecial,
+    Encoding::LowerUpperDigitSpecial,
+    Encoding::FirstToLowerSpecial,
+];
+
+static FIELD_NAME_ENCODINGS: &[Encoding] = &[
     Encoding::Utf8,
     Encoding::AllToLowerSpecial,
     Encoding::LowerUpperDigitSpecial,
@@ -207,7 +224,7 @@ impl FieldInfo {
 
         let field_name_bytes = reader.bytes(name_size);
 
-        let field_name = MetaStringDecoder::new()
+        let field_name = FIELD_NAME_DECODER
             .decode(field_name_bytes, encoding)
             .unwrap();
         FieldInfo {
@@ -220,9 +237,8 @@ impl FieldInfo {
         // field_bytes: | header | type_info | field_name |
         let mut writer = Writer::default();
         // header: | field_name_encoding:2bits | size:4bits | nullability:1bit | ref_tracking:1bit |
-        let meta_string = MetaStringEncoder::new()
-            .set_options(Some(ENCODING_OPTIONS))
-            .encode(&self.field_name)?;
+        let meta_string =
+            FIELD_NAME_ENCODER.encode_with_encodings(&self.field_name, FIELD_NAME_ENCODINGS)?;
         let name_encoded = meta_string.bytes.as_slice();
         let name_size = name_encoded.len() - 1;
         let mut header: u8 = (min(FIELD_NAME_SIZE_THRESHOLD, name_size) as u8) << 2;
@@ -234,7 +250,7 @@ impl FieldInfo {
         if nullable {
             header |= 2;
         }
-        let encoding_idx = ENCODING_OPTIONS
+        let encoding_idx = FIELD_NAME_ENCODINGS
             .iter()
             .position(|x| *x == meta_string.encoding)
             .unwrap() as u8;
@@ -259,8 +275,8 @@ impl PartialEq for FieldType {
 #[derive(Debug)]
 pub struct TypeMetaLayer {
     type_id: u32,
-    namespace: Vec<u8>,
-    type_name: Vec<u8>,
+    namespace: MetaString,
+    type_name: MetaString,
     register_by_name: bool,
     field_infos: Vec<FieldInfo>,
 }
@@ -268,8 +284,8 @@ pub struct TypeMetaLayer {
 impl TypeMetaLayer {
     pub fn new(
         type_id: u32,
-        namespace: Vec<u8>,
-        type_name: Vec<u8>,
+        namespace: MetaString,
+        type_name: MetaString,
         register_by_name: bool,
         field_infos: Vec<FieldInfo>,
     ) -> TypeMetaLayer {
@@ -286,47 +302,70 @@ impl TypeMetaLayer {
         self.type_id
     }
 
+    pub fn get_type_name(&self) -> MetaString {
+        self.type_name.clone()
+    }
+
+    pub fn get_namespace(&self) -> MetaString {
+        self.namespace.clone()
+    }
+
     pub fn get_field_infos(&self) -> &Vec<FieldInfo> {
         &self.field_infos
     }
 
-    fn write_name(writer: &mut Writer, bytes: &[u8], encoding: Encoding) {
+    fn write_name(writer: &mut Writer, name: &MetaString, encodings: &[Encoding]) {
+        let encoding_idx = encodings.iter().position(|x| *x == name.encoding).unwrap() as u8;
+        let bytes = name.bytes.as_slice();
         if bytes.len() >= BIG_NAME_THRESHOLD {
-            writer.u8((BIG_NAME_THRESHOLD << 2) as u8 | encoding as u8);
+            writer.u8((BIG_NAME_THRESHOLD << 2) as u8 | encoding_idx);
             writer.var_uint32((bytes.len() - BIG_NAME_THRESHOLD) as u32);
         } else {
-            writer.u8((bytes.len() << 2) as u8 | encoding as u8);
+            writer.u8((bytes.len() << 2) as u8 | encoding_idx);
         }
         writer.bytes(bytes);
     }
 
     pub fn write_namespace(&self, writer: &mut Writer) {
-        Self::write_name(writer, &self.namespace, Encoding::Utf8);
+        Self::write_name(writer, &self.namespace, NAMESPACE_ENCODINGS);
     }
 
     pub fn write_type_name(&self, writer: &mut Writer) {
-        Self::write_name(writer, &self.type_name, Encoding::Utf8);
+        Self::write_name(writer, &self.type_name, TYPE_NAME_ENCODINGS);
     }
 
-    fn read_name(reader: &mut Reader) -> Vec<u8> {
+    fn read_name(
+        reader: &mut Reader,
+        decoder: &MetaStringDecoder,
+        encodings: &[Encoding],
+    ) -> MetaString {
         let header = reader.u8();
-        let _encoding = header & 0b11;
+        let encoding_idx = header & 0b11;
         let length = header >> 2;
-
         let length = if length >= BIG_NAME_THRESHOLD as u8 {
             BIG_NAME_THRESHOLD + reader.var_uint32() as usize
         } else {
             length as usize
         };
-        reader.bytes(length).to_vec()
+        let bytes = reader.bytes(length);
+        let encoding = encodings[encoding_idx as usize];
+        let name_str = decoder.decode(bytes, encoding).unwrap();
+        MetaString::new(
+            name_str,
+            encoding,
+            bytes.to_vec(),
+            decoder.special_char1,
+            decoder.special_char2,
+        )
+        .unwrap()
     }
 
-    pub fn read_namespace(reader: &mut Reader) -> Vec<u8> {
-        Self::read_name(reader)
+    pub fn read_namespace(reader: &mut Reader) -> MetaString {
+        Self::read_name(reader, &NAMESPACE_DECODER, NAMESPACE_ENCODINGS)
     }
 
-    pub fn read_type_name(reader: &mut Reader) -> Vec<u8> {
-        Self::read_name(reader)
+    pub fn read_type_name(reader: &mut Reader) -> MetaString {
+        Self::read_name(reader, &NAMESPACE_DECODER, TYPE_NAME_ENCODINGS)
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
@@ -371,7 +410,7 @@ impl TypeMetaLayer {
             type_id = TypeId::UNKNOWN as u32;
         } else {
             type_id = reader.var_uint32();
-            let empty_name = "".as_bytes().to_vec();
+            let empty_name = MetaString::default();
             namespace = empty_name.clone();
             type_name = empty_name;
         }
@@ -399,10 +438,18 @@ impl TypeMeta {
         self.layers.first().unwrap().get_type_id()
     }
 
+    pub fn get_type_name(&self) -> MetaString {
+        self.layers.first().unwrap().get_type_name()
+    }
+
+    pub fn get_namespace(&self) -> MetaString {
+        self.layers.first().unwrap().get_namespace()
+    }
+
     pub fn from_fields(
         type_id: u32,
-        namespace: Vec<u8>,
-        type_name: Vec<u8>,
+        namespace: MetaString,
+        type_name: MetaString,
         register_by_name: bool,
         field_infos: Vec<FieldInfo>,
     ) -> TypeMeta {

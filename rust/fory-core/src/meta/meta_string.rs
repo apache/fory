@@ -25,9 +25,18 @@ use crate::meta::string_util;
 const SHORT_MAX_VALUE: usize = 32767;
 // const HEADER_MASK:i64 = 0xff;
 
-#[derive(Debug, PartialEq, Hash, Eq, Clone)]
+pub static NAMESPACE_ENCODER: MetaStringEncoder = MetaStringEncoder::new('.', '_');
+pub static TYPE_NAME_ENCODER: MetaStringEncoder = MetaStringEncoder::new('$', '_');
+pub static FIELD_NAME_ENCODER: MetaStringEncoder = MetaStringEncoder::new('$', '_');
+
+pub static NAMESPACE_DECODER: MetaStringDecoder = MetaStringDecoder::new('.', '_');
+pub static FIELD_NAME_DECODER: MetaStringDecoder = MetaStringDecoder::new('$', '_');
+pub static TYPE_NAME_DECODER: MetaStringDecoder = MetaStringDecoder::new('$', '_');
+
+#[derive(Debug, PartialEq, Hash, Eq, Clone, Copy, Default)]
 #[repr(i16)]
 pub enum Encoding {
+    #[default]
     Utf8 = 0x00,
     LowerSpecial = 0x01,
     LowerUpperDigitSpecial = 0x02,
@@ -59,16 +68,24 @@ impl MetaStringBytes {
     }
 }
 
-#[derive(Debug, PartialEq, Hash, Eq, Clone)]
+#[derive(Debug, PartialEq, Hash, Eq, Clone, Default)]
 pub struct MetaString {
     pub original: String,
     pub encoding: Encoding,
     pub bytes: Vec<u8>,
     pub strip_last_char: bool,
+    pub special_char1: char,
+    pub special_char2: char,
 }
 
 impl MetaString {
-    pub fn new(original: String, encoding: Encoding, bytes: Vec<u8>) -> Result<Self, Error> {
+    pub fn new(
+        original: String,
+        encoding: Encoding,
+        bytes: Vec<u8>,
+        special_char1: char,
+        special_char2: char,
+    ) -> Result<Self, Error> {
         let mut strip_last_char = false;
         if encoding != Encoding::Utf8 {
             ensure!(!bytes.is_empty(), anyhow!("Encoded data cannot be empty"));
@@ -80,20 +97,22 @@ impl MetaString {
             encoding,
             bytes,
             strip_last_char,
+            special_char1,
+            special_char2,
         })
     }
 }
 
-pub struct MetaStringDecoder {}
-impl Default for MetaStringDecoder {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Clone)]
+pub struct MetaStringDecoder {
+    pub special_char1: char,
+    pub special_char2: char,
 }
 
-#[derive(Default)]
-pub struct MetaStringEncoder<'a> {
-    encoding_options: Option<&'a [Encoding]>,
+#[derive(Clone)]
+pub struct MetaStringEncoder {
+    pub special_char1: char,
+    pub special_char2: char,
 }
 
 #[derive(Debug)]
@@ -104,23 +123,29 @@ struct StringStatistics {
     can_lower_special_encoded: bool,
 }
 
-impl<'a> MetaStringEncoder<'a> {
-    pub fn new() -> Self {
-        Self::default()
-    }
-    pub fn set_options(mut self, encoding_options: Option<&'a [Encoding]>) -> Self {
-        self.encoding_options = encoding_options;
-        self
+impl MetaStringEncoder {
+    pub const fn new(special_char1: char, special_char2: char) -> Self {
+        Self {
+            special_char1,
+            special_char2,
+        }
     }
 
     fn is_latin(&self, s: &str) -> bool {
         string_util::is_latin(s)
     }
 
-    pub fn encode(&self, input: &str) -> Result<MetaString, Error> {
+    fn _encode(&self, input: &str) -> Result<Option<MetaString>, Error> {
         if input.is_empty() {
-            return MetaString::new(input.to_string(), Encoding::Utf8, vec![]);
+            return Ok(Some(MetaString::new(
+                input.to_string(),
+                Encoding::Utf8,
+                vec![],
+                self.special_char1,
+                self.special_char2,
+            )?));
         }
+
         ensure!(
             input.len() < SHORT_MAX_VALUE,
             anyhow!(
@@ -128,15 +153,42 @@ impl<'a> MetaStringEncoder<'a> {
                 input.len()
             )
         );
+
         if !self.is_latin(input) {
-            return MetaString::new(input.to_string(), Encoding::Utf8, input.as_bytes().to_vec());
+            return Ok(Some(MetaString::new(
+                input.to_string(),
+                Encoding::Utf8,
+                input.as_bytes().to_vec(),
+                self.special_char1,
+                self.special_char2,
+            )?));
         }
-        let encoding = self.compute_encoding(input);
+
+        Ok(None)
+    }
+
+    pub fn encode(&self, input: &str) -> Result<MetaString, Error> {
+        if let Some(ms) = self._encode(input)? {
+            return Ok(ms);
+        }
+        let encoding = self.compute_encoding(input, None);
         self.encode_with_encoding(input, encoding)
     }
 
-    fn compute_encoding(&self, input: &str) -> Encoding {
-        let allow = |e: Encoding| self.encoding_options.map_or(true, |opts| opts.contains(&e));
+    pub fn encode_with_encodings(
+        &self,
+        input: &str,
+        encodings: &[Encoding],
+    ) -> Result<MetaString, Error> {
+        if let Some(ms) = self._encode(input)? {
+            return Ok(ms);
+        }
+        let encoding = self.compute_encoding(input, Some(encodings));
+        self.encode_with_encoding(input, encoding)
+    }
+
+    fn compute_encoding(&self, input: &str, encodings: Option<&[Encoding]>) -> Encoding {
+        let allow = |e: Encoding| encodings.map_or(true, |opts| opts.contains(&e));
         let statistics = self.compute_statistics(input);
         if statistics.can_lower_special_encoded && allow(Encoding::LowerSpecial) {
             return Encoding::LowerSpecial;
@@ -174,8 +226,7 @@ impl<'a> MetaStringEncoder<'a> {
                 && !(c.is_lowercase()
                     || c.is_uppercase()
                     || c.is_ascii_digit()
-                    || c == '.'
-                    || c == '_')
+                    || (c == self.special_char1 || c == self.special_char2))
             {
                 can_lower_upper_digit_special_encoded = false;
             }
@@ -205,7 +256,13 @@ impl<'a> MetaStringEncoder<'a> {
         encoding: Encoding,
     ) -> Result<MetaString, Error> {
         if input.is_empty() {
-            return MetaString::new(input.to_string(), Encoding::Utf8, vec![]);
+            return MetaString::new(
+                input.to_string(),
+                Encoding::Utf8,
+                vec![],
+                self.special_char1,
+                self.special_char2,
+            );
         }
         ensure!(
             input.len() < SHORT_MAX_VALUE,
@@ -220,30 +277,66 @@ impl<'a> MetaStringEncoder<'a> {
         );
 
         if input.is_empty() {
-            return MetaString::new(input.to_string(), Encoding::Utf8, vec![]);
+            return MetaString::new(
+                input.to_string(),
+                Encoding::Utf8,
+                vec![],
+                self.special_char1,
+                self.special_char2,
+            );
         };
 
         match encoding {
             Encoding::LowerSpecial => {
                 let encoded_data = self.encode_lower_special(input)?;
-                MetaString::new(input.to_string(), encoding, encoded_data)
+                MetaString::new(
+                    input.to_string(),
+                    encoding,
+                    encoded_data,
+                    self.special_char1,
+                    self.special_char2,
+                )
             }
             Encoding::LowerUpperDigitSpecial => {
                 let encoded_data = self.encode_lower_upper_digit_special(input)?;
-                MetaString::new(input.to_string(), encoding, encoded_data)
+                MetaString::new(
+                    input.to_string(),
+                    encoding,
+                    encoded_data,
+                    self.special_char1,
+                    self.special_char2,
+                )
             }
             Encoding::FirstToLowerSpecial => {
                 let encoded_data = self.encode_first_to_lower_special(input)?;
-                MetaString::new(input.to_string(), encoding, encoded_data)
+                MetaString::new(
+                    input.to_string(),
+                    encoding,
+                    encoded_data,
+                    self.special_char1,
+                    self.special_char2,
+                )
             }
             Encoding::AllToLowerSpecial => {
                 let upper_count = input.chars().filter(|c| c.is_uppercase()).count();
                 let encoded_data = self.encode_all_to_lower_special(input, upper_count)?;
-                MetaString::new(input.to_string(), encoding, encoded_data)
+                MetaString::new(
+                    input.to_string(),
+                    encoding,
+                    encoded_data,
+                    self.special_char1,
+                    self.special_char2,
+                )
             }
             Encoding::Utf8 => {
                 let encoded_data = input.as_bytes().to_vec();
-                MetaString::new(input.to_string(), Encoding::Utf8, encoded_data)
+                MetaString::new(
+                    input.to_string(),
+                    Encoding::Utf8,
+                    encoded_data,
+                    self.special_char1,
+                    self.special_char2,
+                )
             }
         }
     }
@@ -317,9 +410,9 @@ impl<'a> MetaStringEncoder<'a> {
                 'A'..='Z' => Ok(c as u8 - b'A' + 26),
                 '0'..='9' => Ok(c as u8 - b'0' + 52),
                 _ => {
-                    if c == '.' {
+                    if c == self.special_char1 {
                         Ok(62)
-                    } else if c == '_' {
+                    } else if c == self.special_char2 {
                         Ok(63)
                     } else {
                         Err(anyhow!(
@@ -334,8 +427,11 @@ impl<'a> MetaStringEncoder<'a> {
 }
 
 impl MetaStringDecoder {
-    pub fn new() -> Self {
-        MetaStringDecoder {}
+    pub const fn new(special_char1: char, special_char2: char) -> Self {
+        MetaStringDecoder {
+            special_char1,
+            special_char2,
+        }
     }
 
     pub fn decode(&self, encoded_data: &[u8], encoding: Encoding) -> Result<String, Error> {
@@ -424,8 +520,8 @@ impl MetaStringDecoder {
             0..=25 => Ok((b'a' + char_value) as char),
             26..=51 => Ok((b'A' + char_value - 26) as char),
             52..=61 => Ok((b'0' + char_value - 52) as char),
-            62 => Ok('.'),
-            63 => Ok('_'),
+            62 => Ok(self.special_char1),
+            63 => Ok(self.special_char2),
             _ => Err(anyhow!(
                 "Invalid character value for LOWER_UPPER_DIGIT_SPECIAL decoding: {char_value}"
             ))?,

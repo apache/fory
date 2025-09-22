@@ -66,7 +66,7 @@ fn type_def(fields: &[&Field]) -> TokenStream {
     });
     quote! {
          let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::get_sorted_field_names(fory);
-        let field_infos = vec![#(#field_infos),*];
+        let field_infos: Vec<fory_core::meta::FieldInfo> = vec![#(#field_infos),*];
         let mut sorted_field_infos = Vec::with_capacity(field_infos.len());
         for name in &sorted_field_names {
             if let Some(info) = field_infos.iter().find(|f| &f.field_name == name) {
@@ -75,10 +75,12 @@ fn type_def(fields: &[&Field]) -> TokenStream {
                 panic!("Field {} not found in field_infos", name);
             }
         }
+        let namespace_metastring = fory_core::meta::NAMESPACE_ENCODER.encode_with_encodings(namespace, fory_core::meta::NAMESPACE_ENCODINGS).unwrap();
+        let type_name_metastring = fory_core::meta::TYPE_NAME_ENCODER.encode_with_encodings(type_name, fory_core::meta::TYPE_NAME_ENCODINGS).unwrap();
         let meta = fory_core::meta::TypeMeta::from_fields(
             type_id,
-            namespace,
-            type_name,
+            namespace_metastring,
+            type_name_metastring,
             register_by_name,
             sorted_field_infos,
         );
@@ -97,7 +99,16 @@ pub fn gen_in_struct_impl(fields: &[&Field]) -> TokenStream {
 
 pub fn gen_actual_type_id() -> TokenStream {
     quote! {
-        (type_id << 8) + fory_core::types::TypeId::COMPATIBLE_STRUCT as u32
+        if mode == &fory_core::types::Mode::Compatible {
+            if register_by_name {
+                fory_core::types::TypeId::NAMED_COMPATIBLE_STRUCT as u32
+            } else {
+                (type_id << 8) + fory_core::types::TypeId::COMPATIBLE_STRUCT as u32
+            }
+        } else {
+            unimplemented!()
+        }
+
     }
 }
 

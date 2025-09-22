@@ -15,26 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
-use crate::serializer::{deserialize, serialize, Serializer};
-use crate::types::{Mode, SIZE_OF_REF_AND_TYPE};
-use anyhow::anyhow;
+use crate::serializer::Serializer;
+use crate::types::{Mode, RefFlag, PRIMITIVE_TYPES, SIZE_OF_REF_AND_TYPE};
 
 // const TRACKING_REF: u8 = 0b1;
 
 pub const HAS_NULL: u8 = 0b10;
 
-// Whether collection elements type is not declare type.
-const NOT_DECL_ELEMENT_TYPE: u8 = 0b100;
+// Whether collection elements type is declare type.
+const DECL_ELEMENT_TYPE: u8 = 0b100;
 
 //  Whether collection elements type different.
 // const NOT_SAME_TYPE: u8 = 0b1000;
 
-pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
-    iter: I,
+pub fn write_collection_type_info(
     context: &mut WriteContext,
     is_field: bool,
     collection_type_id: u32,
@@ -42,71 +39,85 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
     if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
         context.writer.var_uint32(collection_type_id);
     }
-    let iter = iter.into_iter();
-    let len = iter.size_hint().0;
+}
+
+pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
+    iter: I,
+    context: &mut WriteContext,
+    is_field: bool,
+) {
+    let items: Vec<&T> = iter.into_iter().collect();
+    let len = items.len();
     context.writer.var_uint32(len as u32);
     if len == 0 {
         return;
     }
-    let has_null = T::is_option();
     let mut header = 0;
+    let mut has_null = false;
+    if T::is_option() {
+        for item in &items {
+            if item.is_none() {
+                has_null = true;
+                break;
+            }
+        }
+    }
     if has_null {
         header |= HAS_NULL;
     }
-    header |= NOT_DECL_ELEMENT_TYPE;
+    if is_field {
+        header |= DECL_ELEMENT_TYPE;
+    }
     context.writer.u8(header);
-    context
-        .writer
-        .var_uint32(T::get_type_id(context.get_fory()));
+    T::write_type_info(context, true);
     if !has_null {
-        context
-            .writer
-            .reserve((<T as Serializer>::reserved_space()) * len);
-        for item in iter {
+        context.writer.reserve(T::reserved_space() * len);
+        for item in &items {
             item.write(context, true);
         }
     } else {
         context
             .writer
-            .reserve((<T as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
-        for item in iter {
-            serialize(item, context, true);
+            .reserve((T::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
+        let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
+        for item in &items {
+            crate::serializer::write_data(item.clone(), context, true, skip_ref_flag, true);
         }
     }
-    println!("bytes after write collection {:?}", context.writer.dump());
 }
 
-pub fn read_collection<C, T>(
+pub fn read_collection_type_info(
     context: &mut ReadContext,
     is_field: bool,
-    expected_collection_type_id: u32,
-) -> Result<C, Error>
+    collection_type_id: u32,
+) {
+    if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+        let remote_collection_type_id = context.reader.var_uint32();
+        assert_eq!(remote_collection_type_id, collection_type_id);
+    }
+}
+
+pub fn read_collection<C, T>(context: &mut ReadContext) -> Result<C, Error>
 where
     T: Serializer,
     C: FromIterator<T>,
 {
-    if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-        let remote_collection_type_id = context.reader.var_uint32();
-        assert_eq!(remote_collection_type_id, expected_collection_type_id);
-    }
     let len = context.reader.var_uint32();
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
     let header = context.reader.u8();
-    let actual_elem_type_id = context.reader.var_uint32();
-    let expected_elem_id = T::get_type_id(context.fory);
-    ensure!(
-        expected_elem_id == actual_elem_type_id,
-        anyhow!("Invalid field type, expected:{expected_elem_id}, actual:{actual_elem_type_id}")
-    );
+    let declared = (header & DECL_ELEMENT_TYPE) != 0;
+    T::read_type_info(context, declared);
     if header & HAS_NULL == 0 {
         (0..len)
-            .map(|_| T::read(context, true))
+            .map(|_| T::read(context))
             .collect::<Result<C, Error>>()
     } else {
+        // enter this function means local and remote has same element type
+        let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
         (0..len)
-            .map(|_| deserialize(context, true))
+            .map(|_| crate::serializer::read_data(context, true, skip_ref_flag, true))
             .collect::<Result<C, Error>>()
     }
 }

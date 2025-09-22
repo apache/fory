@@ -15,100 +15,178 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::ensure;
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
 use crate::types::{ForyGeneralList, Mode, TypeId, SIZE_OF_REF_AND_TYPE};
-use anyhow::anyhow;
 use std::collections::HashMap;
 use std::mem;
 
 const MAX_CHUNK_SIZE: u8 = 255;
+pub const KEY_NULL: u8 = 0b10;
+pub const VALUE_NULL: u8 = 0b10000;
+const DECL_KEY_TYPE: u8 = 0b100;
+const DECL_VALUE_TYPE: u8 = 0b100000;
 
-impl<T1: Serializer + Eq + std::hash::Hash, T2: Serializer> Serializer for HashMap<T1, T2> {
-    fn write(&self, context: &mut WriteContext, is_field: bool) {
-        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            context.writer.var_uint32(TypeId::MAP as u32);
+fn check_and_write_null<K: Serializer + Eq + std::hash::Hash, V: Serializer>(
+    context: &mut WriteContext,
+    is_field: bool,
+    key: &K,
+    value: &V,
+) -> bool {
+    if key.is_none() && value.is_none() {
+        context.writer.u8(KEY_NULL | VALUE_NULL);
+        return true;
+    }
+    if key.is_none() {
+        let mut chunk_header = KEY_NULL;
+        if is_field {
+            chunk_header |= DECL_VALUE_TYPE;
         }
-        context.writer.var_uint32(self.len() as u32);
-        let reserved_space = (<T1 as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE)
+        context.writer.u8(chunk_header);
+        let skip_ref_flag = crate::serializer::get_skip_ref_flag::<V>(context.get_fory());
+        crate::serializer::write_data(value, context, is_field, skip_ref_flag, false);
+        return true;
+    }
+    if value.is_none() {
+        let mut chunk_header = VALUE_NULL;
+        if is_field {
+            chunk_header |= DECL_KEY_TYPE;
+        }
+        context.writer.u8(chunk_header);
+        let skip_ref_flag = crate::serializer::get_skip_ref_flag::<K>(context.get_fory());
+        crate::serializer::write_data(key, context, is_field, skip_ref_flag, false);
+        return true;
+    }
+    false
+}
+
+fn write_chunk_size(context: &mut WriteContext, header_offset: usize, size: u8) {
+    context.writer.set_bytes(header_offset + 1, &[size]);
+}
+
+impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap<K, V> {
+    fn write(&self, context: &mut WriteContext, is_field: bool) {
+        let length = self.len();
+        context.writer.var_uint32(length as u32);
+        if length == 0 {
+            return;
+        }
+        let reserved_space = (<K as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE)
             * self.len()
-            + (<T2 as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE) * self.len();
+            + (<V as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE) * self.len();
         context.writer.reserve(reserved_space);
 
         let mut header_offset = 0;
-        let mut pair_counter = 0;
-        let mut header_gen = false;
+        let mut pair_counter: u8 = 0;
+        let mut need_write_header = true;
         for entry in self.iter() {
-            if !header_gen {
+            let key = entry.0;
+            let value = entry.1;
+            if need_write_header {
+                if check_and_write_null(context, is_field, key, value) {
+                    continue;
+                }
                 header_offset = context.writer.len();
-                let _is_key_null = false;
-                let _is_val_null = false;
-                // todo
-                // if T1::is_option() {}
-                // if T2::is_option() {}
                 context.writer.i16(-1);
-                context
-                    .writer
-                    .var_uint32(T1::get_type_id(context.get_fory()));
-                context
-                    .writer
-                    .var_uint32(T2::get_type_id(context.get_fory()));
-                let header = 0;
-                context.writer.set_bytes(header_offset, &[header]);
-                header_gen = true;
+                let mut chunk_header = 0;
+                if is_field {
+                    chunk_header |= DECL_KEY_TYPE;
+                    chunk_header |= DECL_VALUE_TYPE;
+                }
+                K::write_type_info(context, is_field);
+                V::write_type_info(context, is_field);
+                context.writer.set_bytes(header_offset, &[chunk_header]);
+                need_write_header = false;
             }
-            entry.0.write(context, true);
-            entry.1.write(context, true);
+            if key.is_none() || value.is_none() {
+                write_chunk_size(context, header_offset, pair_counter);
+                pair_counter = 0;
+                need_write_header = true;
+                check_and_write_null(context, is_field, key, value);
+                continue;
+            }
+            let skip_ref_flag = crate::serializer::get_skip_ref_flag::<K>(context.get_fory());
+            crate::serializer::write_data(key, context, is_field, skip_ref_flag, true);
+            let skip_ref_flag = crate::serializer::get_skip_ref_flag::<V>(context.get_fory());
+            crate::serializer::write_data(value, context, is_field, skip_ref_flag, true);
             pair_counter += 1;
             if pair_counter == MAX_CHUNK_SIZE {
-                context.writer.set_bytes(header_offset + 1, &[pair_counter]);
+                write_chunk_size(context, header_offset, pair_counter);
                 pair_counter = 0;
-                header_gen = false;
+                need_write_header = true;
             }
         }
         if pair_counter > 0 {
-            assert!(header_offset > 0);
-            context.writer.set_bytes(header_offset + 1, &[pair_counter]);
+            write_chunk_size(context, header_offset, pair_counter);
         }
     }
 
-    fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            let remote_collection_type_id = context.reader.var_uint32();
-            assert_eq!(remote_collection_type_id, TypeId::MAP as u32);
-        }
-        let mut map = HashMap::<T1, T2>::new();
+    fn read(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.var_uint32();
+        let mut map = HashMap::<K, V>::with_capacity(len as usize);
+        if len == 0 {
+            return Ok(map);
+        }
         let mut len_counter = 0;
         loop {
             if len_counter == len {
                 break;
             }
-            let _header = context.reader.u8();
+            let header = context.reader.u8();
+            if header & KEY_NULL != 0 && header & VALUE_NULL != 0 {
+                map.insert(K::default(), V::default());
+                len_counter += 1;
+                continue;
+            }
+            let key_declared = (header & DECL_KEY_TYPE) != 0;
+            let value_declared = (header & DECL_VALUE_TYPE) != 0;
+            if header & KEY_NULL != 0 {
+                let skip_ref_flag = crate::serializer::get_skip_ref_flag::<V>(context.get_fory());
+                let value =
+                    crate::serializer::read_data(context, value_declared, skip_ref_flag, false)?;
+                map.insert(K::default(), value);
+                len_counter += 1;
+                continue;
+            }
+            if header & VALUE_NULL != 0 {
+                let skip_ref_flag = crate::serializer::get_skip_ref_flag::<K>(context.get_fory());
+                let key =
+                    crate::serializer::read_data(context, key_declared, skip_ref_flag, false)?;
+                map.insert(key, V::default());
+                len_counter += 1;
+                continue;
+            }
             let chunk_size = context.reader.u8();
-            let actual_key_id = context.reader.var_uint32();
-            let expected_key_id = T1::get_type_id(context.fory);
-            ensure!(
-                expected_key_id == actual_key_id,
-                anyhow!("Invalid field type, expected:{expected_key_id}, actual:{actual_key_id}")
-            );
-            let actual_val_id = context.reader.var_uint32();
-            let expected_val_id = T2::get_type_id(context.fory);
-            ensure!(
-                expected_val_id == actual_val_id,
-                anyhow!("Invalid field type, expected:{expected_val_id}, actual:{actual_val_id}")
-            );
+            K::read_type_info(context, key_declared);
+            V::read_type_info(context, value_declared);
             assert!(len_counter + chunk_size as u32 <= len);
             for _ in (0..chunk_size).enumerate() {
-                map.insert(T1::read(context, true)?, T2::read(context, true)?);
+                let skip_ref_flag = crate::serializer::get_skip_ref_flag::<K>(context.get_fory());
+                let key = crate::serializer::read_data(context, key_declared, skip_ref_flag, true)?;
+                let skip_ref_flag = crate::serializer::get_skip_ref_flag::<V>(context.get_fory());
+                let value =
+                    crate::serializer::read_data(context, value_declared, skip_ref_flag, true)?;
+                map.insert(key, value);
             }
             len_counter += chunk_size as u32;
         }
         Ok(map)
+    }
+
+    fn write_type_info(context: &mut WriteContext, is_field: bool) {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            context.writer.var_uint32(TypeId::MAP as u32);
+        }
+    }
+
+    fn read_type_info(context: &mut ReadContext, is_field: bool) {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            let remote_collection_type_id = context.reader.var_uint32();
+            assert_eq!(remote_collection_type_id, TypeId::MAP as u32);
+        }
     }
 
     fn reserved_space() -> usize {

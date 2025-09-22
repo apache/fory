@@ -19,7 +19,9 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
-use crate::serializer::collection::{read_collection, write_collection};
+use crate::serializer::collection::{
+    read_collection, read_collection_type_info, write_collection, write_collection_type_info,
+};
 use crate::serializer::Serializer;
 use crate::types::{ForyGeneralList, TypeId};
 use std::collections::HashSet;
@@ -27,11 +29,19 @@ use std::mem;
 
 impl<T: Serializer + Eq + std::hash::Hash> Serializer for HashSet<T> {
     fn write(&self, context: &mut WriteContext, is_field: bool) {
-        write_collection(self.iter(), context, is_field, TypeId::SET as u32);
+        write_collection(self, context, is_field);
     }
 
-    fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        read_collection(context, is_field, TypeId::SET as u32)
+    fn write_type_info(context: &mut WriteContext, is_field: bool) {
+        write_collection_type_info(context, is_field, TypeId::SET as u32);
+    }
+
+    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+        read_collection(context)
+    }
+
+    fn read_type_info(context: &mut ReadContext, is_field: bool) {
+        read_collection_type_info(context, is_field, TypeId::SET as u32)
     }
 
     fn reserved_space() -> usize {

@@ -84,7 +84,7 @@ impl<'se> WriteContext<'se> {
 pub struct ReadContext<'de, 'bf: 'de> {
     pub reader: Reader<'bf>,
     pub tags: Vec<&'de str>,
-    pub fory: &'de Fory,
+    fory: &'de Fory,
     pub meta_resolver: MetaReaderResolver,
 }
 

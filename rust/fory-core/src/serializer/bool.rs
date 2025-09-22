@@ -28,19 +28,25 @@ impl Serializer for bool {
         mem::size_of::<i32>()
     }
 
-    fn write(&self, context: &mut WriteContext, is_field: bool) {
-        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            context.writer.var_uint32(TypeId::BOOL as u32);
-        }
+    fn write(&self, context: &mut WriteContext, _is_field: bool) {
         context.writer.u8(if *self { 1 } else { 0 });
     }
 
-    fn read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+    fn write_type_info(context: &mut WriteContext, is_field: bool) {
+        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
+            context.writer.var_uint32(TypeId::BOOL as u32);
+        }
+    }
+
+    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+        Ok(context.reader.u8() == 1)
+    }
+
+    fn read_type_info(context: &mut ReadContext, is_field: bool) {
         if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
             let remote_type_id = context.reader.var_uint32();
             assert_eq!(remote_type_id, TypeId::BOOL as u32);
         }
-        Ok(context.reader.u8() == 1)
     }
 
     fn get_type_id(_fory: &Fory) -> u32 {

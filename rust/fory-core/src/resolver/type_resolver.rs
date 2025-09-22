@@ -18,6 +18,7 @@
 use super::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::fory::Fory;
+use crate::meta::MetaStringEncoder;
 use crate::serializer::StructSerializer;
 use std::cell::RefCell;
 use std::{any::Any, collections::HashMap};
@@ -47,33 +48,29 @@ impl Harness {
     }
 }
 
-#[allow(dead_code)]
+#[derive(Clone, Debug)]
 pub struct TypeInfo {
     type_def: Vec<u8>,
     type_id: u32,
-    namespace: Vec<u8>,
-    type_name: Vec<u8>,
+    namespace: String,
+    type_name: String,
+    register_by_name: bool,
 }
 
 impl TypeInfo {
     pub fn new<T: StructSerializer>(
         fory: &Fory,
         type_id: u32,
-        namespace: Vec<u8>,
-        type_name: Vec<u8>,
+        namespace: &String,
+        type_name: &String,
         register_by_name: bool,
     ) -> TypeInfo {
         TypeInfo {
-            type_def: T::type_def(
-                fory,
-                type_id,
-                namespace.clone(),
-                type_name.clone(),
-                register_by_name,
-            ),
+            type_def: T::type_def(fory, type_id, namespace, type_name, register_by_name),
             type_id,
-            namespace,
-            type_name,
+            namespace: namespace.clone(),
+            type_name: type_name.clone(),
+            register_by_name,
         }
     }
 
@@ -89,11 +86,12 @@ impl TypeInfo {
 #[derive(Default)]
 pub struct TypeResolver {
     serialize_map: HashMap<u32, Harness>,
+    name_serialize_map: HashMap<(String, String), Harness>,
     type_id_map: HashMap<std::any::TypeId, u32>,
+    type_name_map: HashMap<std::any::TypeId, (String, String)>,
     type_info_map: HashMap<std::any::TypeId, TypeInfo>,
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
-    type_id_counter: u32,
     sorted_field_names_map: RefCell<HashMap<std::any::TypeId, Vec<String>>>,
 }
 
@@ -124,7 +122,7 @@ impl TypeResolver {
         )
     }
 
-    pub fn register<T: StructSerializer>(&mut self, type_info: TypeInfo) {
+    pub fn register<T: StructSerializer>(&mut self, type_info: &TypeInfo) {
         fn serializer<T2: 'static + StructSerializer>(this: &dyn Any, context: &mut WriteContext) {
             let this = this.downcast_ref::<T2>();
             match this {
@@ -143,33 +141,45 @@ impl TypeResolver {
                 Err(e) => Err(e),
             }
         }
+        let rs_type_id = std::any::TypeId::of::<T>();
+        if self.type_info_map.contains_key(&rs_type_id) {
+            panic!("rs_struct:{:?} already registered", type_info.type_id);
+        }
+        self.type_info_map.insert(rs_type_id, (*type_info).clone());
+
         let index = T::type_index() as usize;
         if index >= self.type_id_index.len() {
             self.type_id_index.resize(index + 1, NO_TYPE_ID);
         }
         self.type_id_index[index] = type_info.type_id;
-        if self.serialize_map.contains_key(&type_info.type_id) {
-            panic!("TypeId {:?} already registered", type_info.type_id);
-        }
-        self.type_id_map
-            .insert(std::any::TypeId::of::<T>(), type_info.type_id);
-        self.serialize_map.insert(
-            type_info.type_id,
-            Harness::new(serializer::<T>, deserializer::<T>),
-        );
-        self.type_info_map
-            .insert(std::any::TypeId::of::<T>(), type_info);
-    }
 
-    pub fn next_type_id(&mut self) -> u32 {
-        let old_type_id = self.type_id_counter;
-        loop {
-            self.type_id_counter += 1;
-            if !self.serialize_map.contains_key(&self.type_id_counter) {
-                break;
+        if type_info.register_by_name {
+            if self
+                .name_serialize_map
+                .contains_key(&(type_info.namespace.clone(), type_info.type_name.clone()))
+            {
+                panic!("TypeId {:?} already registered_by_name", type_info.type_id);
             }
+            let namespace_bytes = type_info.namespace.clone();
+            let type_name_bytes = type_info.type_name.clone();
+            self.type_name_map.insert(
+                rs_type_id,
+                (namespace_bytes.clone(), type_name_bytes.clone()),
+            );
+            self.name_serialize_map.insert(
+                (namespace_bytes, type_name_bytes),
+                Harness::new(serializer::<T>, deserializer::<T>),
+            );
+        } else {
+            if self.serialize_map.contains_key(&type_info.type_id) {
+                panic!("TypeId {:?} already registered_by_id", type_info.type_id);
+            }
+            self.type_id_map.insert(rs_type_id, type_info.type_id);
+            self.serialize_map.insert(
+                type_info.type_id,
+                Harness::new(serializer::<T>, deserializer::<T>),
+            );
         }
-        old_type_id
     }
 
     pub fn get_harness_by_type(&self, type_id: std::any::TypeId) -> Option<&Harness> {
@@ -178,6 +188,11 @@ impl TypeResolver {
 
     pub fn get_harness(&self, id: u32) -> Option<&Harness> {
         self.serialize_map.get(&id)
+    }
+
+    pub fn get_name_harness(&self, namespace: &String, type_name: &String) -> Option<&Harness> {
+        self.name_serialize_map
+            .get(&(namespace.clone(), type_name.clone()))
     }
 
     pub fn get_sorted_field_names<T: StructSerializer>(
