@@ -20,7 +20,7 @@ use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{ForyGeneralList, Mode};
+use crate::types::ForyGeneralList;
 
 impl<T: Serializer> Serializer for Option<T> {
     fn read(context: &mut ReadContext) -> Result<Self, Error> {
@@ -28,9 +28,7 @@ impl<T: Serializer> Serializer for Option<T> {
     }
 
     fn read_type_info(context: &mut ReadContext, is_field: bool) {
-        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            T::read_type_info(context, is_field);
-        }
+        T::read_type_info(context, is_field);
     }
 
     fn write(&self, context: &mut WriteContext, is_field: bool) {
@@ -42,9 +40,7 @@ impl<T: Serializer> Serializer for Option<T> {
     }
 
     fn write_type_info(context: &mut WriteContext, is_field: bool) {
-        if *context.get_fory().get_mode() == Mode::Compatible {
-            T::write_type_info(context, is_field);
-        }
+        T::write_type_info(context, is_field);
     }
 
     fn reserved_space() -> usize {

@@ -16,7 +16,7 @@
 // under the License.
 
 use crate::error::Error;
-use crate::meta::{NullableFieldType, TypeMetaLayer};
+use crate::meta::NullableFieldType;
 use crate::resolver::context::ReadContext;
 use crate::serializer::collection::{HAS_NULL, IS_SAME_TYPE};
 use crate::serializer::Serializer;
@@ -135,8 +135,22 @@ pub fn skip_field_value(
                     }
                 }
                 Ok(())
+            } else if type_id == TypeId::NAMED_ENUM {
+                let remote_type_id = context.reader.var_uint32();
+                assert_eq!(type_id_num, remote_type_id);
+                let meta_index = context.reader.var_uint32();
+                let type_def = context.get_meta(meta_index as usize);
+                let type_resolver = context.get_fory().get_type_resolver();
+                type_resolver
+                    .get_name_harness(
+                        &type_def.get_namespace().original,
+                        &type_def.get_type_name().original,
+                    )
+                    .unwrap()
+                    .get_deserializer()(context, true, true)?;
+                Ok(())
             } else {
-                unreachable!()
+                unreachable!();
             }
         }
         Err(_) => {
@@ -144,44 +158,26 @@ pub fn skip_field_value(
             const COMPATIBLE_STRUCT_ID: u32 = TypeId::COMPATIBLE_STRUCT as u32;
             const NAMED_COMPATIBLE_STRUCT_ID: u32 = TypeId::NAMED_COMPATIBLE_STRUCT as u32;
             const ENUM_ID: u32 = TypeId::ENUM as u32;
-            const NAMED_ENUM_ID: u32 = TypeId::NAMED_ENUM as u32;
             if internal_id == COMPATIBLE_STRUCT_ID || internal_id == NAMED_COMPATIBLE_STRUCT_ID {
-                let field_infos = {
-                    let type_def;
-                    if internal_id == COMPATIBLE_STRUCT_ID {
-                        let remote_type_id = context.reader.var_uint32();
-                        let meta_index = context.reader.var_uint32();
-                        type_def = context.get_meta(meta_index as usize);
-                        assert_eq!(remote_type_id, type_def.get_type_id());
-                    } else {
-                        let namespace = TypeMetaLayer::read_namespace(&mut context.reader);
-                        let type_name = TypeMetaLayer::read_namespace(&mut context.reader);
-                        let meta_index = context.reader.var_uint32();
-                        type_def = context.get_meta(meta_index as usize);
-                        assert_eq!(namespace, type_def.get_namespace());
-                        assert_eq!(type_name, type_def.get_type_name());
-                    }
-                    type_def.get_field_infos().to_vec()
-                };
+                let remote_type_id = context.reader.var_uint32();
+                let meta_index = context.reader.var_uint32();
+                let type_def = context.get_meta(meta_index as usize);
+                assert_eq!(remote_type_id, type_def.get_type_id());
+                let field_infos = type_def.get_field_infos().to_vec();
                 for field_info in field_infos.iter() {
                     let nullable_field_type =
                         NullableFieldType::from(field_info.field_type.clone());
                     let read_ref_flag = get_read_ref_flag(&nullable_field_type);
                     skip_field_value(context, &nullable_field_type, read_ref_flag)?;
                 }
-            } else if internal_id == ENUM_ID || internal_id == NAMED_ENUM_ID {
+            } else if internal_id == ENUM_ID {
+                let remote_type_id = context.reader.var_uint32();
+                assert_eq!(type_id_num, remote_type_id);
                 let type_resolver = context.get_fory().get_type_resolver();
-                if internal_id == ENUM_ID {
-                    type_resolver
-                        .get_harness(type_id_num)
-                        .unwrap()
-                        .get_deserializer()(context)?;
-                } else {
-                    todo!()
-                    // type_resolver.get_name_harness(())
-                    //     .unwrap()
-                    //     .get_deserializer()(context)?;
-                }
+                type_resolver
+                    .get_harness(type_id_num)
+                    .unwrap()
+                    .get_deserializer()(context, true, true)?;
             } else {
                 unimplemented!()
             }

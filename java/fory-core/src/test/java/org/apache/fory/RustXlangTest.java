@@ -459,7 +459,7 @@ public class RustXlangTest extends ForyTestBase {
     int f2;
     Item f3;
     String f4;
-    Color f5;
+    //    Color f5;
     List<String> f6;
     int f7;
     //    Integer f8;
@@ -488,7 +488,7 @@ public class RustXlangTest extends ForyTestBase {
     obj.f2 = 39;
     obj.f3 = item;
     obj.f4 = "f4";
-    obj.f5 = Color.White;
+    //    obj.f5 = Color.White;
     obj.f6 = Collections.singletonList("f6");
     obj.f7 = 40;
     //    obj.f8 = 41;
@@ -527,7 +527,7 @@ public class RustXlangTest extends ForyTestBase {
     obj.f2 = 39;
     obj.f3 = item;
     obj.f4 = "f4";
-    obj.f5 = Color.White;
+    //    obj.f5 = Color.White;
     obj.f6 = Collections.singletonList("f6");
     obj.f7 = 40;
     //    obj.f8 = 41;

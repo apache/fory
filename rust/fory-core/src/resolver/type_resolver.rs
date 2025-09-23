@@ -22,27 +22,28 @@ use crate::serializer::StructSerializer;
 use std::cell::RefCell;
 use std::{any::Any, collections::HashMap};
 
+type SerializerFn = fn(&dyn Any, &mut WriteContext, is_field: bool);
+type DeserializerFn =
+    fn(&mut ReadContext, is_field: bool, skip_ref_flag: bool) -> Result<Box<dyn Any>, Error>;
+
 pub struct Harness {
-    serializer: fn(&dyn Any, &mut WriteContext),
-    deserializer: fn(&mut ReadContext) -> Result<Box<dyn Any>, Error>,
+    serializer: SerializerFn,
+    deserializer: DeserializerFn,
 }
 
 impl Harness {
-    pub fn new(
-        serializer: fn(&dyn Any, &mut WriteContext),
-        deserializer: fn(&mut ReadContext) -> Result<Box<dyn Any>, Error>,
-    ) -> Harness {
+    pub fn new(serializer: SerializerFn, deserializer: DeserializerFn) -> Harness {
         Harness {
             serializer,
             deserializer,
         }
     }
 
-    pub fn get_serializer(&self) -> fn(&dyn Any, &mut WriteContext) {
+    pub fn get_serializer(&self) -> fn(&dyn Any, &mut WriteContext, is_field: bool) {
         self.serializer
     }
 
-    pub fn get_deserializer(&self) -> fn(&mut ReadContext) -> Result<Box<dyn Any>, Error> {
+    pub fn get_deserializer(&self) -> DeserializerFn {
         self.deserializer
     }
 }
@@ -122,11 +123,17 @@ impl TypeResolver {
     }
 
     pub fn register<T: StructSerializer>(&mut self, type_info: &TypeInfo) {
-        fn serializer<T2: 'static + StructSerializer>(this: &dyn Any, context: &mut WriteContext) {
+        fn serializer<T2: 'static + StructSerializer>(
+            this: &dyn Any,
+            context: &mut WriteContext,
+            is_field: bool,
+        ) {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => {
-                    T2::write(v, context, true);
+                    let skip_ref_flag =
+                        crate::serializer::get_skip_ref_flag::<T2>(context.get_fory());
+                    crate::serializer::write_data(v, context, is_field, skip_ref_flag, true);
                 }
                 None => todo!(),
             }
@@ -134,8 +141,10 @@ impl TypeResolver {
 
         fn deserializer<T2: 'static + StructSerializer>(
             context: &mut ReadContext,
+            is_field: bool,
+            skip_ref_flag: bool,
         ) -> Result<Box<dyn Any>, Error> {
-            match T2::read_compatible(context) {
+            match crate::serializer::read_data::<T2>(context, is_field, skip_ref_flag, true) {
                 Ok(v) => Ok(Box::new(v)),
                 Err(e) => Err(e),
             }

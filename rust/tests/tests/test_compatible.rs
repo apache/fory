@@ -438,7 +438,6 @@ fn enum_without_payload() {
         last: 10,
     };
     let bin = fory1.serialize(&person1);
-    println!("bin: {:?}", bin);
     let person2: Person2 = fory2.deserialize(&bin).expect("");
     assert_eq!(person2.f1, person1.f1);
     assert_eq!(person2.f2, Color2::default());
@@ -447,6 +446,72 @@ fn enum_without_payload() {
     assert_eq!(person2.f7, Color1::default());
     assert_eq!(person2.f8.unwrap(), person1.f8);
     assert_eq!(person2.last, person1.last);
+}
+
+#[test]
+fn named_enum() {
+    #[derive(Fory, Debug, PartialEq, Default)]
+    enum Color {
+        #[default]
+        Green,
+        Red,
+        Blue,
+        White,
+    }
+    #[derive(Fory, Debug, PartialEq, Default)]
+    struct Item1 {
+        f1: Color,
+        f2: Color,
+        f3: Option<Color>,
+        f4: Option<Color>,
+        f5: Option<Color>,
+        f6: Option<Color>,
+        // skip
+        f7: Color,
+        f8: Option<Color>,
+        f9: Option<Color>,
+        last: i8,
+    }
+    #[derive(Fory, Debug, PartialEq, Default)]
+    struct Item2 {
+        f1: Color,
+        f2: Option<Color>,
+        f3: Color,
+        f4: Option<Color>,
+        f5: Color,
+        f6: Option<Color>,
+        last: i8,
+    }
+    let mut fory1 = Fory::default().mode(Compatible).xlang(true);
+    fory1.register_by_name::<Color>("a");
+    fory1.register::<Item1>(101);
+    let mut fory2 = Fory::default().mode(Compatible).xlang(true);
+    fory2.register_by_name::<Color>("a");
+    fory2.register::<Item2>(101);
+    let item1 = Item1 {
+        f1: Color::Red,
+        f2: Color::Blue,
+        f3: Some(Color::White),
+        f4: Some(Color::White),
+        f5: None,
+        f6: None,
+        f7: Color::White,
+        f8: Some(Color::White),
+        f9: Some(Color::White),
+        last: 42,
+    };
+    let expected_item2 = Item2 {
+        f1: Color::Red,
+        f2: Some(Color::Blue),
+        f3: Color::White,
+        f4: Some(Color::White),
+        f5: Color::default(),
+        f6: None,
+        last: 42,
+    };
+    let bin = fory1.serialize(&item1);
+    let actual_item2: Item2 = fory2.deserialize(&bin).unwrap();
+    assert_eq!(expected_item2, actual_item2);
 }
 
 #[test]

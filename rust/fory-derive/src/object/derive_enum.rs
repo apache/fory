@@ -56,11 +56,10 @@ pub fn gen_write(data_enum: &DataEnum) -> TokenStream {
         }
 
         fn write_type_info(context: &mut fory_core::resolver::context::WriteContext, is_field: bool){
-            if *context.get_fory().get_mode() == fory_core::types::Mode::Compatible && !is_field {
+            if *context.get_fory().get_mode() == fory_core::types::Mode::Compatible {
                 let type_id = Self::get_type_id(context.get_fory());
-                let internal_type_id = type_id & 0xff;
                 context.writer.var_uint32(type_id);
-                if internal_type_id == fory_core::types::TypeId::NAMED_ENUM as u32 {
+                if type_id & 0xff == fory_core::types::TypeId::NAMED_ENUM as u32 {
                     let meta_index = context.push_meta(
                         std::any::TypeId::of::<Self>()
                     ) as u32;
@@ -105,12 +104,11 @@ pub fn gen_read(data_enum: &DataEnum) -> TokenStream {
        }
 
        fn read_type_info(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) {
-            if *context.get_fory().get_mode() == fory_core::types::Mode::Compatible && !is_field {
-                let remote_type_id = context.reader.var_uint32();
+            if *context.get_fory().get_mode() == fory_core::types::Mode::Compatible {
                 let local_type_id = Self::get_type_id(context.get_fory());
+                let remote_type_id = context.reader.var_uint32();
                 assert_eq!(local_type_id, remote_type_id);
-                let internal_type_id = local_type_id & 0xff;
-                if internal_type_id == fory_core::types::TypeId::NAMED_ENUM as u32 {
+                if local_type_id & 0xff == fory_core::types::TypeId::NAMED_ENUM as u32 {
                     let _meta_index = context.reader.var_uint32();
                 }
             }
@@ -131,6 +129,7 @@ pub fn gen_actual_type_id() -> TokenStream {
 pub fn gen_read_compatible(_data_enum: &DataEnum) -> TokenStream {
     quote! {
         fn read_compatible(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
+            <Self as fory_core::serializer::Serializer>::read_type_info(context, true);
             <Self as fory_core::serializer::Serializer>::read(context)
         }
     }
