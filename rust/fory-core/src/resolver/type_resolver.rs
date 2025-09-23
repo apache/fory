@@ -18,7 +18,6 @@
 use super::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::meta::MetaStringEncoder;
 use crate::serializer::StructSerializer;
 use std::cell::RefCell;
 use std::{any::Any, collections::HashMap};
@@ -61,15 +60,15 @@ impl TypeInfo {
     pub fn new<T: StructSerializer>(
         fory: &Fory,
         type_id: u32,
-        namespace: &String,
-        type_name: &String,
+        namespace: &str,
+        type_name: &str,
         register_by_name: bool,
     ) -> TypeInfo {
         TypeInfo {
             type_def: T::type_def(fory, type_id, namespace, type_name, register_by_name),
             type_id,
-            namespace: namespace.clone(),
-            type_name: type_name.clone(),
+            namespace: namespace.to_owned(),
+            type_name: type_name.to_owned(),
             register_by_name,
         }
     }
@@ -190,9 +189,9 @@ impl TypeResolver {
         self.serialize_map.get(&id)
     }
 
-    pub fn get_name_harness(&self, namespace: &String, type_name: &String) -> Option<&Harness> {
+    pub fn get_name_harness(&self, namespace: &str, type_name: &str) -> Option<&Harness> {
         self.name_serialize_map
-            .get(&(namespace.clone(), type_name.clone()))
+            .get(&(namespace.to_owned(), type_name.to_owned()))
     }
 
     pub fn get_sorted_field_names<T: StructSerializer>(

@@ -18,18 +18,14 @@
 use crate::error::Error;
 use crate::meta::{NullableFieldType, TypeMetaLayer};
 use crate::resolver::context::ReadContext;
-use crate::serializer::collection::HAS_NULL;
+use crate::serializer::collection::{HAS_NULL, IS_SAME_TYPE};
 use crate::serializer::Serializer;
 use crate::types::{RefFlag, TypeId, BASIC_TYPES, CONTAINER_TYPES, PRIMITIVE_TYPES};
 use chrono::{NaiveDate, NaiveDateTime};
 
 pub fn get_read_ref_flag(field_type: &NullableFieldType) -> bool {
     let nullable = field_type.nullable;
-    if !nullable && PRIMITIVE_TYPES.contains(&field_type.type_id) {
-        false
-    } else {
-        true
-    }
+    nullable || !PRIMITIVE_TYPES.contains(&field_type.type_id)
 }
 
 macro_rules! basic_type_deserialize {
@@ -92,10 +88,12 @@ pub fn skip_field_value(
                         return Ok(());
                     }
                     let header = context.reader.u8();
-                    let read_ref_flag = (header & HAS_NULL) != 0 || get_read_ref_flag(field_type);
+                    let has_null = (header & HAS_NULL) != 0;
+                    let is_same_type = (header & IS_SAME_TYPE) != 0;
+                    let skip_ref_flag = is_same_type && !has_null;
                     let elem_type = field_type.generics.first().unwrap();
                     for _ in 0..length {
-                        skip_field_value(context, elem_type, read_ref_flag)?;
+                        skip_field_value(context, elem_type, !skip_ref_flag)?;
                     }
                 } else if type_id == TypeId::MAP {
                     let length = context.reader.var_uint32();
@@ -117,23 +115,23 @@ pub fn skip_field_value(
                             continue;
                         }
                         if header & crate::serializer::map::KEY_NULL != 0 {
-                            let read_ref_flag = get_read_ref_flag(value_type);
-                            skip_field_value(context, value_type, read_ref_flag);
+                            // let read_ref_flag = get_read_ref_flag(value_type);
+                            skip_field_value(context, value_type, false).unwrap();
                             len_counter += 1;
                             continue;
                         }
                         if header & crate::serializer::map::VALUE_NULL != 0 {
-                            let read_ref_flag = get_read_ref_flag(key_type);
-                            skip_field_value(context, key_type, read_ref_flag);
+                            // let read_ref_flag = get_read_ref_flag(key_type);
+                            skip_field_value(context, key_type, false).unwrap();
                             len_counter += 1;
                             continue;
                         }
                         let chunk_size = context.reader.u8();
                         for _ in (0..chunk_size).enumerate() {
-                            let read_ref_flag = get_read_ref_flag(key_type);
-                            skip_field_value(context, key_type, read_ref_flag);
-                            let read_ref_flag = get_read_ref_flag(value_type);
-                            skip_field_value(context, value_type, read_ref_flag);
+                            // let read_ref_flag = get_read_ref_flag(key_type);
+                            skip_field_value(context, key_type, false).unwrap();
+                            // let read_ref_flag = get_read_ref_flag(value_type);
+                            skip_field_value(context, value_type, false).unwrap();
                         }
                         len_counter += chunk_size as u32;
                     }

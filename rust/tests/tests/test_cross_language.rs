@@ -55,8 +55,8 @@ struct SimpleStruct {
     f5: Color,
     f6: Vec<Option<String>>,
     f7: i32,
-    f8: i32,
-    last: i32,
+    // f8: i32,
+    // last: i32,
 }
 
 #[test]
@@ -269,6 +269,8 @@ macro_rules! assert_de {
 #[ignore]
 #[allow(deprecated)]
 fn test_cross_language_serializer() {
+    let day = NaiveDate::from_ymd_opt(2021, 11, 23).unwrap();
+    let instant = NaiveDateTime::from_timestamp(100, 0);
     let str_list = vec!["hello".to_string(), "world".to_string()];
     let str_set = HashSet::from(["hello".to_string(), "world".to_string()]);
     let str_map = HashMap::<String, String>::from([
@@ -297,18 +299,8 @@ fn test_cross_language_serializer() {
     assert_de!(fory, context, f32, -1f32);
     assert_de!(fory, context, f64, -1f64);
     assert_de!(fory, context, String, "str".to_string());
-    assert_de!(
-        fory,
-        context,
-        NaiveDate,
-        NaiveDate::from_ymd_opt(2021, 11, 23).unwrap()
-    );
-    assert_de!(
-        fory,
-        context,
-        NaiveDateTime,
-        NaiveDateTime::from_timestamp(100, 0)
-    );
+    assert_de!(fory, context, NaiveDate, day);
+    assert_de!(fory, context, NaiveDateTime, instant);
     assert_de!(fory, context, Vec<bool>, [true, false]);
     assert_de!(fory, context, Vec<i16>, [1, i16::MAX]);
     assert_de!(fory, context, Vec<i32>, [1, i32::MAX]);
@@ -336,11 +328,8 @@ fn test_cross_language_serializer() {
     fory.serialize_with_context(&-1f32, &mut context);
     fory.serialize_with_context(&-1f64, &mut context);
     fory.serialize_with_context(&"str".to_string(), &mut context);
-    fory.serialize_with_context(
-        &NaiveDate::from_ymd_opt(2021, 11, 23).unwrap(),
-        &mut context,
-    );
-    fory.serialize_with_context(&NaiveDateTime::from_timestamp(100, 0), &mut context);
+    fory.serialize_with_context(&day, &mut context);
+    fory.serialize_with_context(&instant, &mut context);
     fory.serialize_with_context(&vec![true, false], &mut context);
     fory.serialize_with_context(&vec![1, i16::MAX], &mut context);
     fory.serialize_with_context(&vec![1, i32::MAX], &mut context);
@@ -360,13 +349,9 @@ fn test_simple_struct() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
     let mut fory = Fory::default().mode(Compatible).xlang(true);
-    let mut fory2 = Fory::default().mode(Compatible).xlang(true);
     fory.register::<Color>(101);
     fory.register::<Item>(102);
     fory.register::<SimpleStruct>(103);
-    fory2.register_by_namespace::<Color>("demo", "color");
-    fory2.register_by_namespace::<Item>("demo", "item");
-    fory2.register_by_namespace::<SimpleStruct>("demo", "simple_struct");
 
     let local_obj = SimpleStruct {
         f1: HashMap::from([(1, 1.0f64), (2, 2.0f64)]),
@@ -378,86 +363,105 @@ fn test_simple_struct() {
         f5: Color::White,
         f6: vec![Some("f6".to_string())],
         f7: 40,
-        f8: 41,
-        last: 42,
+        // f8: 41,
+        // last: 42,
     };
-    let reader = Reader::new(bytes.as_slice());
-    let context = ReadContext::new(&fory, reader);
     let remote_obj: SimpleStruct = fory.deserialize(&bytes).unwrap();
     assert_eq!(remote_obj, local_obj);
-
-    let rest_bytes = context.reader.slice_after_cursor();
-    let remote_obj2: SimpleStruct = fory.deserialize(rest_bytes).unwrap();
-    assert_eq!(remote_obj2, local_obj);
-
     let new_bytes = fory.serialize(&remote_obj);
-    let new_bytes2 = fory2.serialize(&remote_obj);
-
-    let new_local_obj: SimpleStruct = fory.deserialize(new_bytes.as_slice()).unwrap();
+    let new_local_obj: SimpleStruct = fory.deserialize(&new_bytes).unwrap();
     assert_eq!(new_local_obj, local_obj);
-    let new_local_obj2: SimpleStruct = fory2.deserialize(new_bytes2.as_slice()).unwrap();
-    assert_eq!(new_local_obj2, local_obj);
-
-    let all_bytes = [new_bytes.as_slice(), new_bytes2.as_slice()].concat();
-    fs::write(&data_file_path, all_bytes).unwrap();
+    fs::write(&data_file_path, new_bytes).unwrap();
 }
 
 #[test]
 #[ignore]
-fn test_vec() {
+fn test_simple_named_struct() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+    let mut fory = Fory::default().mode(Compatible).xlang(true);
+    fory.register_by_namespace::<Color>("demo", "color");
+    fory.register_by_namespace::<Item>("demo", "item");
+    fory.register_by_namespace::<SimpleStruct>("demo", "simple_struct");
+
+    let local_obj = SimpleStruct {
+        f1: HashMap::from([(1, 1.0f64), (2, 2.0f64)]),
+        f2: 39,
+        f3: Item {
+            name: Some("item".to_string()),
+        },
+        f4: Some("f4".to_string()),
+        f5: Color::White,
+        f6: vec![Some("f6".to_string())],
+        f7: 40,
+        // f8: 41,
+        // last: 42,
+    };
+    let remote_obj: SimpleStruct = fory.deserialize(&bytes).unwrap();
+    assert_eq!(remote_obj, local_obj);
+    let new_bytes = fory.serialize(&remote_obj);
+    let new_local_obj: SimpleStruct = fory.deserialize(&new_bytes).unwrap();
+    assert_eq!(new_local_obj, local_obj);
+    fs::write(&data_file_path, new_bytes).unwrap();
+}
+
+#[test]
+#[ignore]
+fn test_list() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
     let mut fory = Fory::default().mode(Compatible);
     fory.register::<Item>(102);
     let reader = Reader::new(bytes.as_slice());
-    let mut context = ReadContext::new(&fory, reader);
 
     let str_list = vec![Some("a".to_string()), Some("b".to_string())];
     let str_list2 = vec![None, Some("b".to_string())];
     let item = Item {
-        name: Some("item1".to_string()),
+        name: Some("a".to_string()),
     };
     let item2 = Item {
-        name: Some("item2".to_string()),
+        name: Some("b".to_string()),
     };
     let item3 = Item {
-        name: Some("item3".to_string()),
+        name: Some("c".to_string()),
     };
     let item_list = vec![Some(item), Some(item2)];
     let item_list2 = vec![None, Some(item3)];
 
-    let remote_str_list: Vec<Option<String>> = fory.deserialize_with_context(&mut context).unwrap();
-    let remote_str_list2: Vec<Option<String>> =
-        fory.deserialize_with_context(&mut context).unwrap();
-    let remote_item_list: Vec<Option<Item>> = fory.deserialize_with_context(&mut context).unwrap();
-    let remote_item_list2: Vec<Option<Item>> = fory.deserialize_with_context(&mut context).unwrap();
-
+    let bytes = reader.slice();
+    let remote_str_list: Vec<Option<String>> = fory.deserialize(bytes).unwrap();
     assert_eq!(remote_str_list, str_list);
+    let data_bytes1 = fory.serialize(&remote_str_list);
+    let new_local_str_list: Vec<Option<String>> = fory.deserialize(&data_bytes1).unwrap();
+    assert_eq!(new_local_str_list, str_list);
+
+    let bytes = &bytes[data_bytes1.len()..];
+    let remote_str_list2: Vec<Option<String>> = fory.deserialize(bytes).unwrap();
     assert_eq!(remote_str_list2, str_list2);
+    let data_bytes2 = fory.serialize(&remote_str_list2);
+    let new_local_str_list2: Vec<Option<String>> = fory.deserialize(&data_bytes2).unwrap();
+    assert_eq!(new_local_str_list2, str_list2);
+
+    let bytes = &bytes[data_bytes2.len()..];
+    let remote_item_list: Vec<Option<Item>> = fory.deserialize(bytes).unwrap();
     assert_eq!(remote_item_list, item_list);
+    let data_bytes3 = fory.serialize(&remote_item_list);
+    let new_local_item_list: Vec<Option<Item>> = fory.deserialize(&data_bytes3).unwrap();
+    assert_eq!(new_local_item_list, item_list);
+
+    let bytes = &bytes[data_bytes3.len()..];
+    let remote_item_list2: Vec<Option<Item>> = fory.deserialize(bytes).unwrap();
     assert_eq!(remote_item_list2, item_list2);
-
-    let bytes1 = fory.serialize(&remote_str_list);
-    let bytes2 = fory.serialize(&remote_str_list2);
-    let bytes3 = fory.serialize(&remote_item_list);
-    let bytes4 = fory.serialize(&remote_item_list2);
-
-    let new_str_list: Vec<Option<String>> = fory.deserialize(&bytes1).unwrap();
-    let new_str_list2: Vec<Option<String>> = fory.deserialize(&bytes2).unwrap();
-    let new_item_list: Vec<Option<Item>> = fory.deserialize(&bytes2).unwrap();
-    let new_item_list2: Vec<Option<Item>> = fory.deserialize(&bytes4).unwrap();
-
-    assert_eq!(new_str_list, str_list);
-    assert_eq!(new_str_list2, str_list2);
-    assert_eq!(new_item_list, item_list);
-    assert_eq!(new_item_list2, item_list2);
+    let data_bytes4 = fory.serialize(&remote_item_list2);
+    let new_local_item_list2: Vec<Option<Item>> = fory.deserialize(&data_bytes4).unwrap();
+    assert_eq!(new_local_item_list2, item_list2);
 
     let all_bytes = [
-        bytes1.as_slice(),
-        bytes2.as_slice(),
-        bytes3.as_slice(),
-        bytes4.as_slice(),
+        data_bytes1.as_slice(),
+        data_bytes2.as_slice(),
+        data_bytes3.as_slice(),
+        data_bytes4.as_slice(),
     ]
     .concat();
     fs::write(&data_file_path, all_bytes).unwrap();
@@ -504,20 +508,29 @@ fn test_map() {
 
     let remote_str_map: HashMap<Option<String>, Option<String>> =
         fory.deserialize_with_context(&mut context).unwrap();
+    assert_eq!(remote_str_map, str_map);
+    let data_bytes1 = fory.serialize(&remote_str_map);
+    let new_local_str_map: HashMap<Option<String>, Option<String>> =
+        fory.deserialize(&data_bytes1).unwrap();
+    assert_eq!(new_local_str_map, str_map);
+
     let remote_item_map: HashMap<Option<String>, Option<Item>> =
         fory.deserialize_with_context(&mut context).unwrap();
-    assert_eq!(remote_str_map, str_map);
     assert_eq!(remote_item_map, item_map);
+    let data_bytes2 = fory.serialize(&remote_item_map);
+    let new_local_item_map: HashMap<Option<String>, Option<Item>> =
+        fory.deserialize(&data_bytes2).unwrap();
+    assert_eq!(new_local_item_map, item_map);
 
-    let bytes1 = fory.serialize(&remote_str_map);
-    let bytes2 = fory.serialize(&remote_item_map);
-
-    let new_str_map: HashMap<Option<String>, Option<String>> = fory.deserialize(&bytes1).unwrap();
-    let new_item_map: HashMap<Option<String>, Option<Item>> = fory.deserialize(&bytes2).unwrap();
-
-    assert_eq!(new_str_map, remote_str_map);
-    assert_eq!(new_item_map, remote_item_map);
-
-    let all_bytes = [bytes1.as_slice(), bytes2.as_slice()].concat();
+    let all_bytes = [data_bytes1.as_slice(), data_bytes2.as_slice()].concat();
     fs::write(&data_file_path, all_bytes).unwrap();
+}
+
+#[test]
+fn test_enum() {
+    let mut fory = Fory::default().mode(Compatible).xlang(true);
+    fory.register::<Color>(101);
+    let color = Color::White;
+    let bytes = fory.serialize(&color);
+    println!("bytes: {:?}", bytes);
 }

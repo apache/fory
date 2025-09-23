@@ -59,7 +59,7 @@ pub enum TypeId {
     NAMED_ENUM = 14,
     STRUCT = 15,
     COMPATIBLE_STRUCT = 16,
-    NamedStruct = 17,
+    NAMED_STRUCT = 17,
     NAMED_COMPATIBLE_STRUCT = 18,
     EXT = 19,
     NAMED_EXT = 20,

@@ -31,7 +31,6 @@ pub fn gen(fields: &[&Field]) -> TokenStream {
                 #name_str => {
                     let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
                     fory_core::serializer::write_data::<#ty>(&self.#ident, context, true, skip_ref_flag, false);
-                    println!("after struct write field: {:?}", context.writer.dump());
                 }
             }
         });
@@ -80,9 +79,7 @@ pub fn gen(fields: &[&Field]) -> TokenStream {
                 fory_core::types::Mode::Compatible => {
                     context.writer.i8(fory_core::types::RefFlag::NotNullValue as i8);
                     Self::write_type_info(context, false);
-                    println!("before struct write: {:?}", context.writer.dump());
                     self.write(context, true);
-                    println!("after struct write: {:?}", context.writer.dump());
                 }
             }
         }
@@ -96,7 +93,6 @@ pub fn gen(fields: &[&Field]) -> TokenStream {
 
          fn write_type_info(context: &mut fory_core::resolver::context::WriteContext, _is_field: bool){
             let type_id = Self::get_type_id(context.get_fory());
-            println!("self: {type_id}");
             context.writer.var_uint32(type_id);
             if *context.get_fory().get_mode() == fory_core::types::Mode::Compatible {
                 let meta_index = context.push_meta(

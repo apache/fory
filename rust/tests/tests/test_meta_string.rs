@@ -18,8 +18,8 @@
 use std::iter;
 
 use fory_core::meta::{
-    Encoding, MetaStringDecoder, MetaStringEncoder, FIELD_NAME_DECODER, FIELD_NAME_ENCODER,
-    NAMESPACE_DECODER, NAMESPACE_ENCODER, TYPE_NAME_DECODER, TYPE_NAME_ENCODER,
+    Encoding, MetaStringDecoder, MetaStringEncoder, NAMESPACE_DECODER, NAMESPACE_ENCODER,
+    TYPE_NAME_DECODER, TYPE_NAME_ENCODER,
 };
 
 #[test]

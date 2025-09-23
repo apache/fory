@@ -41,26 +41,24 @@ impl Serializer for String {
             let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
             context.writer.var_uint36_small(bitor);
             context.writer.latin1_string(self);
+        } else if context.get_fory().is_compress_string() {
+            // todo: support `writeNumUtf16BytesForUtf8Encoding` like in java
+            len = self.len() as i32;
+            let bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
+            context.writer.var_uint36_small(bitor);
+            context.writer.utf8_string(self);
         } else {
-            if context.get_fory().is_compress_string() {
-                // todo: support `writeNumUtf16BytesForUtf8Encoding` like in java
-                len = self.len() as i32;
-                let bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
-                context.writer.var_uint36_small(bitor);
-                context.writer.utf8_string(self);
-            } else {
-                let utf16: Vec<u16> = self.encode_utf16().collect();
-                let bitor = (utf16.len() as u64 * 2) << 2 | StrEncoding::Utf16 as u64;
-                context.writer.var_uint36_small(bitor);
-                for unit in utf16 {
-                    #[cfg(target_endian = "little")]
-                    {
-                        context.writer.u16(unit);
-                    }
-                    #[cfg(target_endian = "big")]
-                    {
-                        unimplemented!()
-                    }
+            let utf16: Vec<u16> = self.encode_utf16().collect();
+            let bitor = (utf16.len() as u64 * 2) << 2 | StrEncoding::Utf16 as u64;
+            context.writer.var_uint36_small(bitor);
+            for unit in utf16 {
+                #[cfg(target_endian = "little")]
+                {
+                    context.writer.u16(unit);
+                }
+                #[cfg(target_endian = "big")]
+                {
+                    unimplemented!()
                 }
             }
         }

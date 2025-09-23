@@ -41,24 +41,16 @@ macro_rules! basic_type_deserialize {
                 $ty_str => {
                     if $nullable {
                         quote! {
-                            let res1 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
-                                None
-                            } else {
-                                <$ty as fory_core::serializer::Serializer>::read_type_info(context, true);
-                                Some(<$ty as fory_core::serializer::Serializer>::read(context)
-                                    .map_err(fory_core::error::Error::from)?)
-                            };
+                            <$ty as fory_core::serializer::Serializer>::read_type_info(context, true);
+                            let res1 = Some(<$ty as fory_core::serializer::Serializer>::read(context)
+                                .map_err(fory_core::error::Error::from)?);
                             Ok::<Option<$ty>, fory_core::error::Error>(res1)
                         }
                     } else {
                         quote! {
-                            let res2 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
-                                $ty::default()
-                            } else {
-                                <$ty as fory_core::serializer::Serializer>::read_type_info(context, true);
-                                <$ty as fory_core::serializer::Serializer>::read(context)
-                                    .map_err(fory_core::error::Error::from)?
-                            };
+                            <$ty as fory_core::serializer::Serializer>::read_type_info(context, true);
+                            let res2 = <$ty as fory_core::serializer::Serializer>::read(context)
+                                .map_err(fory_core::error::Error::from)?;
                             Ok::<$ty, fory_core::error::Error>(res2)
                         }
                     }
@@ -116,7 +108,11 @@ pub fn try_primitive_vec_type_name(node: &NullableTypeNode) -> Option<String> {
 }
 
 impl NullableTypeNode {
-    pub(super) fn to_deserialize_tokens(&self, generic_path: &Vec<i8>) -> TokenStream {
+    pub(super) fn to_deserialize_tokens(
+        &self,
+        generic_path: &Vec<i8>,
+        read_ref_flag: bool,
+    ) -> TokenStream {
         let tokens = if let Some(primitive_ty_name) = try_primitive_vec_type_name(self) {
             let ty_type: Type = parse_str(&primitive_ty_name).expect("Invalid primitive type name");
             let nullable = self.nullable;
@@ -163,7 +159,7 @@ impl NullableTypeNode {
                 "Vec" => {
                     new_path.push(0);
                     let generic_node = self.generics.first().unwrap();
-                    let element_tokens = generic_node.to_deserialize_tokens(&new_path);
+                    let element_tokens = generic_node.to_deserialize_tokens(&new_path, false);
                     let element_ty: Type = parse_str(&generic_node.to_string()).unwrap();
                     let vec_ts = quote! {
                         let length = context.reader.var_uint32() as usize;
@@ -172,8 +168,20 @@ impl NullableTypeNode {
                         } else {
                             let mut v = Vec::with_capacity(length);
                             let header = context.reader.u8();
+                            let has_null = (header & fory_core::serializer::collection::HAS_NULL) != 0;
+                            let is_same_type = (header & fory_core::serializer::collection::IS_SAME_TYPE) != 0;
+                            let read_ref_flag = !(is_same_type && !has_null);
                             for _ in 0..length {
-                                let element: #element_ty = {#element_tokens}?;
+                                let ref_flag = if read_ref_flag {
+                                    context.reader.i8()
+                                } else {
+                                    fory_core::types::RefFlag::NotNullValue as i8
+                                };
+                                let element = if ref_flag == fory_core::types::RefFlag::Null as i8 {
+                                    <#element_ty>::default()
+                                } else {
+                                    #element_tokens?
+                                };
                                 v.push(element);
                             }
                             v
@@ -202,7 +210,7 @@ impl NullableTypeNode {
                 "HashSet" => {
                     new_path.push(0);
                     let generic_node = self.generics.first().unwrap();
-                    let element_tokens = generic_node.to_deserialize_tokens(&new_path);
+                    let element_tokens = generic_node.to_deserialize_tokens(&new_path, false);
                     let element_ty: Type = parse_str(&generic_node.to_string()).unwrap();
                     let set_ts = quote! {
                         let length = context.reader.var_uint32() as usize;
@@ -212,9 +220,20 @@ impl NullableTypeNode {
                         } else {
                             let mut s = HashSet::with_capacity(length);
                             let header = context.reader.u8();
-                            println!("header: {header}");
+                            let has_null = (header & fory_core::serializer::collection::HAS_NULL) != 0;
+                            let is_same_type = (header & fory_core::serializer::collection::IS_SAME_TYPE) != 0;
+                            let read_ref_flag = !(is_same_type && !has_null);
                             for _ in 0..length {
-                                let element: #element_ty = {#element_tokens}?;
+                                let ref_flag = if read_ref_flag {
+                                    context.reader.i8()
+                                } else {
+                                    fory_core::types::RefFlag::NotNullValue as i8
+                                };
+                                let element = if ref_flag == fory_core::types::RefFlag::Null as i8 {
+                                    <#element_ty>::default()
+                                } else {
+                                    #element_tokens?
+                                };
                                 s.insert(element);
                             }
                             s
@@ -245,10 +264,10 @@ impl NullableTypeNode {
                     let val_generic_node = self.generics.get(1).unwrap();
 
                     new_path.push(0);
-                    let key_tokens = key_generic_node.to_deserialize_tokens(&new_path);
+                    let key_tokens = key_generic_node.to_deserialize_tokens(&new_path, false);
                     new_path.pop();
                     new_path.push(1);
-                    let val_tokens = val_generic_node.to_deserialize_tokens(&new_path);
+                    let val_tokens = val_generic_node.to_deserialize_tokens(&new_path, false);
 
                     let key_ty: Type = parse_str(&key_generic_node.to_string()).unwrap();
                     let val_ty: Type = parse_str(&val_generic_node.to_string()).unwrap();
@@ -354,15 +373,13 @@ impl NullableTypeNode {
                         let type_id = cur_remote_nullable_type.type_id;
                         let internal_id = type_id & 0xff;
                         if internal_id == COMPATIBLE_STRUCT_ID || internal_id == NAMED_COMPATIBLE_STRUCT_ID {
-                            println!("到这了");
-                            println!("struct here{:?}", context.reader.slice_after_cursor());
                             <#nullable_ty as fory_core::serializer::StructSerializer>::read_compatible(context)
                                     .map_err(fory_core::error::Error::from)?
                         } else if internal_id == ENUM_ID || internal_id == NAMED_ENUM_ID {
                             <#nullable_ty as fory_core::serializer::StructSerializer>::read_compatible(context)
                                 .map_err(fory_core::error::Error::from)?
                         } else {
-                            unimplemented!()
+                            unimplemented!("")
                         }
                     };
                     Ok::<#ty, fory_core::error::Error>(res2)
@@ -382,21 +399,26 @@ impl NullableTypeNode {
                 #cur_remote_nullable_type.generics.get(#idx as usize).unwrap()
             };
         }
+        let read_ref_flag_ts = if read_ref_flag {
+            quote! {
+                let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(cur_remote_nullable_type);
+                let ref_flag = if read_ref_flag {
+                    context.reader.i8()
+                } else {
+                    fory_core::types::RefFlag::NotNullValue as i8
+                };
+                if ref_flag == fory_core::types::RefFlag::Null as i8 {
+                    Ok(Default::default())
+                } else {
+                    #tokens
+                }
+            }
+        } else {
+            quote! { #tokens }
+        };
         quote! {
             let cur_remote_nullable_type = &#cur_remote_nullable_type;
-            println!("remote type: {:#?}", cur_remote_nullable_type);
-            let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(cur_remote_nullable_type);
-            println!("read_ref_flag: {read_ref_flag}");
-            let ref_flag = if read_ref_flag {
-                context.reader.i8()
-            } else {
-                fory_core::types::RefFlag::NotNullValue as i8
-            };
-            if ref_flag == fory_core::types::RefFlag::Null as i8 {
-                Ok(Default::default())
-            } else {
-                #tokens
-            }
+            #read_ref_flag_ts
         }
     }
 
@@ -832,7 +854,7 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
                     quote! {
                         let field_type_id = <#ty_type as fory_core::serializer::Serializer>::get_type_id(fory);
                         let internal_id = field_type_id & 0xff;
-                        if internal_id == fory_core::types::TypeId::COMPATIBLE_STRUCT as u32 || internal_id == fory_core::types::TypeId::NAMED_COMPATIBLE_STRUCT as u32 {
+                        if internal_id == fory_core::types::TypeId::COMPATIBLE_STRUCT as u32 || internal_id == fory_core::types::TypeId::NAMED_COMPATIBLE_STRUCT as u32 || internal_id == fory_core::types::TypeId::STRUCT as u32 || internal_id == fory_core::types::TypeId::NAMED_STRUCT as u32 {
                             other_fields.push((field_type_id, #name.to_string()));
                         } else if internal_id == fory_core::types::TypeId::ENUM as u32 || internal_id == fory_core::types::TypeId::NAMED_ENUM as u32 {
                             final_fields.push((field_type_id, #name.to_string()));

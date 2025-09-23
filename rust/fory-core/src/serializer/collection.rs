@@ -19,7 +19,7 @@ use crate::error::Error;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{Mode, RefFlag, PRIMITIVE_TYPES, SIZE_OF_REF_AND_TYPE};
+use crate::types::Mode;
 
 // const TRACKING_REF: u8 = 0b1;
 
@@ -28,8 +28,8 @@ pub const HAS_NULL: u8 = 0b10;
 // Whether collection elements type is declare type.
 const DECL_ELEMENT_TYPE: u8 = 0b100;
 
-//  Whether collection elements type different.
-// const NOT_SAME_TYPE: u8 = 0b1000;
+//  Whether collection elements type same.
+pub const IS_SAME_TYPE: u8 = 0b1000;
 
 pub fn write_collection_type_info(
     context: &mut WriteContext,
@@ -62,27 +62,23 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
             }
         }
     }
+    let is_same_type = true;
     if has_null {
         header |= HAS_NULL;
     }
     if is_field {
         header |= DECL_ELEMENT_TYPE;
     }
+    if is_same_type {
+        header |= IS_SAME_TYPE;
+    }
     context.writer.u8(header);
-    T::write_type_info(context, true);
-    if !has_null {
-        context.writer.reserve(T::reserved_space() * len);
-        for item in &items {
-            item.write(context, true);
-        }
-    } else {
-        context
-            .writer
-            .reserve((T::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
-        let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
-        for item in &items {
-            crate::serializer::write_data(item.clone(), context, true, skip_ref_flag, true);
-        }
+    T::write_type_info(context, is_field);
+    // context.writer.reserve((T::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
+    for item in &items {
+        // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
+        let skip_ref_flag = is_same_type && !has_null;
+        crate::serializer::write_data(*item, context, is_field, skip_ref_flag, true);
     }
 }
 
@@ -108,16 +104,13 @@ where
     }
     let header = context.reader.u8();
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
+    println!("rest: {:?}", context.reader.slice_after_cursor());
     T::read_type_info(context, declared);
-    if header & HAS_NULL == 0 {
-        (0..len)
-            .map(|_| T::read(context))
-            .collect::<Result<C, Error>>()
-    } else {
-        // enter this function means local and remote has same element type
-        let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
-        (0..len)
-            .map(|_| crate::serializer::read_data(context, true, skip_ref_flag, true))
-            .collect::<Result<C, Error>>()
-    }
+    let has_null = (header & HAS_NULL) != 0;
+    let is_same_type = (header & IS_SAME_TYPE) != 0;
+    let skip_ref_flag = is_same_type && !has_null;
+    // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
+    (0..len)
+        .map(|_| crate::serializer::read_data(context, declared, skip_ref_flag, true))
+        .collect::<Result<C, Error>>()
 }

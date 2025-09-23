@@ -18,7 +18,6 @@
 use crate::buffer::{Reader, Writer};
 use crate::ensure;
 use crate::error::Error;
-use crate::meta::MetaStringEncoder;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
@@ -200,13 +199,7 @@ impl Fory {
         type_name: &str,
     ) {
         let actual_type_id = T::actual_type_id(0, true, &self.mode);
-        let type_info = TypeInfo::new::<T>(
-            self,
-            actual_type_id,
-            &namespace.to_string(),
-            &type_name.to_string(),
-            true,
-        );
+        let type_info = TypeInfo::new::<T>(self, actual_type_id, namespace, type_name, true);
         self.type_resolver.register::<T>(&type_info);
     }
 

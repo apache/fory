@@ -19,7 +19,6 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::{Mode, RefFlag, PRIMITIVE_TYPES};
-use anyhow::anyhow;
 
 mod any;
 mod bool;
@@ -44,11 +43,9 @@ pub fn write_data<T: Serializer + 'static>(
     if record.is_none() {
         context.writer.i8(RefFlag::Null as i8);
     } else {
-        if !(is_field && skip_ref_flag) {
+        if !skip_ref_flag {
             context.writer.i8(RefFlag::NotNullValue as i8);
         }
-        let type_id = T::get_type_id(context.get_fory()) >> 8;
-        println!("type: {:#?}", type_id);
         if !skip_type_info {
             T::write_type_info(context, is_field);
         }
@@ -131,8 +128,8 @@ pub trait StructSerializer: Serializer + 'static {
     fn type_def(
         fory: &Fory,
         type_id: u32,
-        namespace: &String,
-        type_name: &String,
+        namespace: &str,
+        type_name: &str,
         register_by_name: bool,
     ) -> Vec<u8>;
 

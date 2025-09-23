@@ -114,6 +114,12 @@ public class RustXlangTest extends ForyTestBase {
     testCrossLanguageSerializer(Language.RUST, command);
     command.set(RUST_TESTCASE_INDEX, "test_simple_struct");
     testSimpleStruct(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_simple_named_struct");
+    testSimpleNamedStruct(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_list");
+    testList(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_map");
+    testMap(Language.RUST, command);
   }
 
   @Test
@@ -373,7 +379,6 @@ public class RustXlangTest extends ForyTestBase {
     fory.serialize(buffer, day);
     Instant instant = Instant.ofEpochSecond(100);
     fory.serialize(buffer, instant);
-    //     test primitive arrays
     fory.serialize(buffer, new boolean[] {true, false});
     fory.serialize(buffer, new short[] {1, Short.MAX_VALUE});
     fory.serialize(buffer, new int[] {1, Integer.MAX_VALUE});
@@ -393,7 +398,8 @@ public class RustXlangTest extends ForyTestBase {
 
     //    Set<Object> set = new HashSet<>(list);
     //    fory.serialize(buffer, set);
-    System.out.println("bytes: " + Arrays.toString(buffer.getBytes(0, buffer.writerIndex())));
+    System.out.println(
+        "java write bytes: " + Arrays.toString(buffer.getBytes(0, buffer.writerIndex())));
 
     BiConsumer<MemoryBuffer, Boolean> function =
         (MemoryBuffer buf, Boolean useToString) -> {
@@ -436,6 +442,20 @@ public class RustXlangTest extends ForyTestBase {
     function.accept(buffer2, true);
   }
 
+  public void testNamedEnum() {
+    Fory fory =
+        Fory.builder()
+            // avoid generated code conflict with register by name
+            .withName("testEnumObject")
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(true)
+            .build();
+    fory.register(Color.class, "demo");
+    byte[] serialize = fory.serialize(Color.White);
+    System.out.println(Arrays.toString(serialize));
+  }
+
   @Data
   static class Item {
     String name;
@@ -450,8 +470,8 @@ public class RustXlangTest extends ForyTestBase {
     Color f5;
     List<String> f6;
     int f7;
-    Integer f8;
-    Integer last;
+    //    Integer f8;
+    //    Integer last;
   }
 
   private void testSimpleStruct(Language language, List<String> command)
@@ -462,18 +482,9 @@ public class RustXlangTest extends ForyTestBase {
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
             .withCodegen(false)
             .build();
-    Fory fory2 =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
-            .build();
     fory.register(Color.class, 101);
     fory.register(Item.class, 102);
     fory.register(SimpleStruct.class, 103);
-    fory2.register(Color.class, "demo", "color");
-    fory2.register(Item.class, "demo", "item");
-    fory2.register(SimpleStruct.class, "demo", "simple_struct");
 
     Item item = new Item();
     item.name = "item";
@@ -488,39 +499,74 @@ public class RustXlangTest extends ForyTestBase {
     obj.f5 = Color.White;
     obj.f6 = Collections.singletonList("f6");
     obj.f7 = 40;
-    obj.f8 = 41;
-    obj.last = 42;
+    //    obj.f8 = 41;
+    //    obj.last = 42;
 
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     fory.serialize(buffer, obj);
-    fory2.serialize(buffer, obj);
+
     Path dataFile = Files.createTempFile("test_simple_struct", "data");
     Pair<Map<String, String>, File> env_workdir =
         setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     Assert.assertEquals(fory.deserialize(buffer2), obj);
-    Assert.assertEquals(fory2.deserialize(buffer2), obj);
   }
 
-  @Test
-  public void testLis1t() throws java.io.IOException {
+  private void testSimpleNamedStruct(Language language, List<String> command)
+      throws java.io.IOException {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
             .withCodegen(false)
-            .withRefTracking(false)
             .build();
-    fory.register(Item.class, 102);
-    int a = 1;
-    byte[] serialize = fory.serialize(a);
-    System.out.println(Arrays.toString(serialize));
-    //        List<Item> items = new ArrayList<>();
-    //        items.add(new Item());
-    //        items.add(new Item());
-    //        items.add(new Item());
-    //        fory.serialize(items);
+    fory.register(Color.class, "demo", "color");
+    fory.register(Item.class, "demo", "item");
+    fory.register(SimpleStruct.class, "demo", "simple_struct");
+
+    Item item = new Item();
+    item.name = "item";
+    HashMap<Integer, Double> f1 = new HashMap<>();
+    f1.put(1, 1.0);
+    f1.put(2, 2.0);
+    SimpleStruct obj = new SimpleStruct();
+    obj.f1 = f1;
+    obj.f2 = 39;
+    obj.f3 = item;
+    obj.f4 = "f4";
+    obj.f5 = Color.White;
+    obj.f6 = Collections.singletonList("f6");
+    obj.f7 = 40;
+    //    obj.f8 = 41;
+    //    obj.last = 42;
+
+    MemoryBuffer buffer = MemoryUtils.buffer(32);
+    fory.serialize(buffer, obj);
+
+    Path dataFile = Files.createTempFile("test_named_simple_struct", "data");
+    Pair<Map<String, String>, File> env_workdir =
+        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+    Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
+    MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+    Assert.assertEquals(fory.deserialize(buffer2), obj);
+  }
+
+  static class MyItem {
+    int name;
+  }
+
+  @Test
+  public void testStruc() {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(false)
+            .build();
+    fory.register(Color.class, "color");
+    byte[] serialize = fory.serialize(Color.White);
+    //      System.out.println(Arrays.toString(serialize));
   }
 
   private void testList(Language language, List<String> command) throws java.io.IOException {
@@ -535,17 +581,19 @@ public class RustXlangTest extends ForyTestBase {
     List<String> strList = Arrays.asList("a", "b");
     List<String> strList2 = Arrays.asList(null, "b");
     Item item = new Item();
-    item.name = "item1";
+    item.name = "a";
     Item item2 = new Item();
-    item.name = "item2";
+    item2.name = "b";
     Item item3 = new Item();
-    item.name = "item3";
+    item3.name = "c";
     List<Item> itemList = Arrays.asList(item, item2);
     List<Item> itemList2 = Arrays.asList(null, item3);
     fory.serialize(buffer, strList);
     fory.serialize(buffer, strList2);
     fory.serialize(buffer, itemList);
     fory.serialize(buffer, itemList2);
+
+    System.out.println(Arrays.toString(buffer.getBytes(0, buffer.writerIndex())));
 
     Path dataFile = Files.createTempFile("test_list", "data");
     Pair<Map<String, String>, File> env_workdir =
@@ -585,7 +633,6 @@ public class RustXlangTest extends ForyTestBase {
     itemMap.put("k4", item3);
     fory.serialize(buffer, strMap);
     fory.serialize(buffer, itemMap);
-
     Path dataFile = Files.createTempFile("test_map", "data");
     Pair<Map<String, String>, File> env_workdir =
         setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));

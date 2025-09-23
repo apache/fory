@@ -19,8 +19,8 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
-use crate::serializer::{read_data, write_data, Serializer};
-use crate::types::{ForyGeneralList, Mode, TypeId};
+use crate::serializer::Serializer;
+use crate::types::{ForyGeneralList, Mode};
 
 impl<T: Serializer> Serializer for Option<T> {
     fn read(context: &mut ReadContext) -> Result<Self, Error> {

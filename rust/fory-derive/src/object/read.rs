@@ -124,7 +124,6 @@ fn read(fields: &[&Field]) -> TokenStream {
             let remote_type_id = context.reader.var_uint32();
             assert_eq!(remote_type_id, Self::get_type_id(context.get_fory()));
             if *context.get_fory().get_mode() == fory_core::types::Mode::Compatible {
-                unreachable!();
                 let _meta_index = context.reader.var_uint32();
             }
         }
@@ -155,7 +154,7 @@ pub fn gen_deserialize_nullable(fields: &[&Field]) -> TokenStream {
             let ty = &field.ty;
             let generic_tree = parse_generic_tree(ty);
             let nullable_generic_tree = NullableTypeNode::from(generic_tree);
-            let deserialize_tokens = nullable_generic_tree.to_deserialize_tokens(&vec![]);
+            let deserialize_tokens = nullable_generic_tree.to_deserialize_tokens(&vec![], true);
             quote! {
                 fn #fn_name(
                     context: &mut fory_core::resolver::context::ReadContext,
@@ -211,7 +210,6 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
                         #var_name = Some(#base_ty::default());
                     } else {
                         println!("Try to deserialize: {}", #field_name_str);
-                        println!("here: {:?}", context.reader.slice_after_cursor());
                         #var_name = Some(
                             #struct_ident::#deserialize_nullable_fn_name(
                                 context,
@@ -222,7 +220,6 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
                                 panic!("Err at deserializing {:?}: {:?}", #field_name_str, _err);
                             })
                         );
-                        println!("here: {:?}", #var_name);
                     }
                 }
             }
@@ -233,15 +230,12 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
     quote! {
         fn read_compatible(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
             let remote_type_id = context.reader.var_uint32();
-            println!("Remote type_id: {}", remote_type_id);
             let meta_index = context.reader.var_uint32();
-            println!("meta_index: {meta_index}");
             let meta = context.get_meta(meta_index as usize);
             let fields = {
                 let meta = context.get_meta(meta_index as usize);
                 meta.get_field_infos().clone()
             };
-            println!("inner struct here{:?}", context.reader.slice_after_cursor());
             #(#bind)*
             for _field in fields.iter() {
                 #(#pattern_items else)* {

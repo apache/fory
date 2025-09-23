@@ -106,7 +106,11 @@ pub fn gen_actual_type_id() -> TokenStream {
                 (type_id << 8) + fory_core::types::TypeId::COMPATIBLE_STRUCT as u32
             }
         } else {
-            unimplemented!()
+            if register_by_name {
+                fory_core::types::TypeId::NAMED_STRUCT as u32
+            } else {
+                (type_id << 8) + fory_core::types::TypeId::STRUCT as u32
+            }
         }
 
     }
