@@ -146,13 +146,18 @@ impl Fory {
         if is_none {
             return Ok(T::default());
         }
+        let mut bytes_to_skip = 0;
         if self.mode == Mode::Compatible {
             let meta_offset = context.reader.i32();
             if meta_offset != -1 {
-                context.load_meta(meta_offset as usize);
+                bytes_to_skip = context.load_meta(meta_offset as usize);
             }
         }
-        <T as Serializer>::deserialize(context, false)
+        let result = <T as Serializer>::deserialize(context, false);
+        if bytes_to_skip > 0 {
+            context.reader.skip(bytes_to_skip as u32);
+        }
+        result
     }
 
     pub fn serialize<T: Serializer>(&self, record: &T) -> Vec<u8> {

@@ -460,3 +460,79 @@ fn enum_without_payload() {
     assert_eq!(person2.f8.unwrap(), person1.f8);
     assert_eq!(person2.last, person1.last);
 }
+
+#[test]
+#[allow(clippy::unnecessary_literal_unwrap)]
+fn boxed() {
+    #[derive(Fory, Debug, PartialEq, Default)]
+    struct Item1 {
+        f1: i32,
+        f2: i32,
+        f3: Option<i32>,
+        f4: Option<i32>,
+        f5: Option<i32>,
+        f6: Option<i32>,
+    }
+
+    #[derive(Fory, Debug, PartialEq, Default)]
+    struct Item2 {
+        f1: i32,
+        f2: Option<i32>,
+        f3: Option<i32>,
+        f4: i32,
+        f5: i32,
+        f6: Option<i32>,
+    }
+
+    let mut fory1 = Fory::default().mode(Compatible).xlang(true);
+    fory1.register::<Item1>(101);
+    let mut fory2 = Fory::default().mode(Compatible).xlang(true);
+    fory2.register::<Item2>(101);
+
+    let f1 = 1;
+    let f2 = 2;
+    let f3 = Some(3);
+    let f4 = Some(4);
+    let f5: Option<i32> = None;
+    let f6: Option<i32> = None;
+    let item1 = Item1 {
+        f1,
+        f2,
+        f3,
+        f4,
+        f5,
+        f6,
+    };
+    let bytes = fory1.serialize(&item1);
+    let item2: Item2 = fory2.deserialize(&bytes).unwrap();
+    assert_eq!(item2.f1, f1);
+    assert_eq!(item2.f2.unwrap(), f2);
+    assert_eq!(item2.f3, f3);
+    assert_eq!(item2.f4, f4.unwrap());
+    assert_eq!(item2.f5, i32::default());
+    assert_eq!(item2.f6, f6);
+
+    let bytes = fory1.serialize(&f1);
+    let item2_f1: i32 = fory2.deserialize(&bytes).unwrap();
+    assert_eq!(item2.f1, item2_f1);
+
+    let bytes = fory1.serialize(&f2);
+    let item2_f2: Option<i32> = fory2.deserialize(&bytes).unwrap();
+    assert_eq!(item2.f2, item2_f2);
+
+    let bytes = fory1.serialize(&f3);
+    let item2_f3: Option<i32> = fory2.deserialize(&bytes).unwrap();
+    assert_eq!(item2.f3, item2_f3);
+
+    let bytes = fory1.serialize(&f4);
+    let item2_f4: i32 = fory2.deserialize(&bytes).unwrap();
+    assert_eq!(item2.f4, item2_f4);
+
+    let bytes = fory1.serialize(&f5);
+    let item2_f5: i32 = fory2.deserialize(&bytes).unwrap();
+    assert_eq!(item2.f5, item2_f5);
+
+    let bytes = fory1.serialize(&f6);
+    let item2_f6: Option<i32> = fory2.deserialize(&bytes).unwrap();
+    assert_eq!(item2.f6, item2_f6);
+}

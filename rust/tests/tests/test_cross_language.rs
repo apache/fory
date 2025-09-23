@@ -527,10 +527,64 @@ fn test_map() {
 }
 
 #[test]
-fn test_enum() {
-    let mut fory = Fory::default().mode(Compatible).xlang(true);
-    fory.register::<Color>(101);
-    let color = Color::White;
-    let bytes = fory.serialize(&color);
-    println!("bytes: {:?}", bytes);
+#[ignore]
+fn test_integer() {
+    #[derive(Fory, Debug, PartialEq, Default)]
+    struct Item2 {
+        f1: i32,
+        f2: Option<i32>,
+        f3: Option<i32>,
+        f4: i32,
+        f5: i32,
+        f6: Option<i32>,
+    }
+
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default().mode(Compatible);
+    fory.register::<Item2>(101);
+    let reader = Reader::new(bytes.as_slice());
+
+    let mut context = ReadContext::new(&fory, reader);
+    let f1 = 1;
+    let f2 = Some(2);
+    let f3 = Some(3);
+    let f4 = 4;
+    let f5 = i32::default();
+    let f6 = None;
+
+    let local_item2 = Item2 {
+        f1,
+        f2,
+        f3,
+        f4,
+        f5,
+        f6,
+    };
+    let remote_item2: Item2 = fory.deserialize_with_context(&mut context).unwrap();
+    assert_eq!(remote_item2, local_item2);
+    let remote_f1: i32 = fory.deserialize_with_context(&mut context).unwrap();
+    assert_eq!(remote_f1, f1);
+    let remote_f2: Option<i32> = fory.deserialize_with_context(&mut context).unwrap();
+    assert_eq!(remote_f2, f2);
+    let remote_f3: Option<i32> = fory.deserialize_with_context(&mut context).unwrap();
+    assert_eq!(remote_f3, f3);
+    let remote_f4: i32 = fory.deserialize_with_context(&mut context).unwrap();
+    assert_eq!(remote_f4, f4);
+    let remote_f5: i32 = fory.deserialize_with_context(&mut context).unwrap();
+    assert_eq!(remote_f5, f5);
+    let remote_f6: Option<i32> = fory.deserialize_with_context(&mut context).unwrap();
+    assert_eq!(remote_f6, f6);
+
+    let mut writer = Writer::default();
+    let mut context = WriteContext::new(&fory, &mut writer);
+    // fory.serialize_with_context(&remote_item2, &mut context);
+    fory.serialize_with_context(&remote_f1, &mut context);
+    fory.serialize_with_context(&remote_f2, &mut context);
+    fory.serialize_with_context(&remote_f3, &mut context);
+    fory.serialize_with_context(&remote_f4, &mut context);
+    fory.serialize_with_context(&remote_f5, &mut context);
+    fory.serialize_with_context(&remote_f6, &mut context);
+    fs::write(&data_file_path, context.writer.dump()).unwrap();
 }

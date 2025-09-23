@@ -311,6 +311,10 @@ impl<'bf> Reader<'bf> {
         &self.bf[self.cursor..self.bf.len()]
     }
 
+    pub fn get_cursor(&self) -> usize {
+        self.cursor
+    }
+
     pub fn u8(&mut self) -> u8 {
         let result = self.bf[self.cursor];
         self.move_next(1);

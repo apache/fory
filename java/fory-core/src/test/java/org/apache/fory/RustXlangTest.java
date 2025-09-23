@@ -45,6 +45,7 @@ import org.apache.fory.test.TestUtils;
 import org.apache.fory.util.MurmurHash3;
 import org.testng.Assert;
 import org.testng.SkipException;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 /** Tests in this class need fory rust installed. */
@@ -77,10 +78,9 @@ public class RustXlangTest extends ForyTestBase {
 
   private static final int RUST_TESTCASE_INDEX = 4;
 
-  //  @BeforeClass
+  @BeforeClass
   public void isRustJavaCIEnabled() {
     String enabled = System.getenv("FORY_RUST_JAVA_CI");
-    enabled = "0"; // skip rust ci
     if (enabled == null || !enabled.equals("1")) {
       throw new SkipException("Skipping RustXlangTest: FORY_RUST_JAVA_CI not set to 1");
     }
@@ -120,6 +120,8 @@ public class RustXlangTest extends ForyTestBase {
     testList(Language.RUST, command);
     command.set(RUST_TESTCASE_INDEX, "test_map");
     testMap(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_integer");
+    testInteger(Language.RUST, command);
   }
 
   @Test
@@ -328,10 +330,16 @@ public class RustXlangTest extends ForyTestBase {
 
   private void testStringSerializer(Language language, List<String> command) throws Exception {
     Path dataFile = Files.createTempFile("test_string_serializer", "data");
-    Fory fory = Fory.builder().build();
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .build();
     _testStringSerializer(fory, dataFile, language, command);
     Fory foryCompress =
         Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
             .withStringCompressed(true)
             .withWriteNumUtf16BytesForUtf8Encoding(false)
             .build();
@@ -552,23 +560,6 @@ public class RustXlangTest extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), obj);
   }
 
-  static class MyItem {
-    int name;
-  }
-
-  @Test
-  public void testStruc() {
-    Fory fory =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
-            .build();
-    fory.register(Color.class, "color");
-    byte[] serialize = fory.serialize(Color.White);
-    //      System.out.println(Arrays.toString(serialize));
-  }
-
   private void testList(Language language, List<String> command) throws java.io.IOException {
     Fory fory =
         Fory.builder()
@@ -640,6 +631,65 @@ public class RustXlangTest extends ForyTestBase {
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     Assert.assertEquals(fory.deserialize(buffer2), strMap);
     Assert.assertEquals(fory.deserialize(buffer2), itemMap);
+  }
+
+  static class Item1 {
+    int f1;
+    int f2;
+    Integer f3;
+    Integer f4;
+    Integer f5;
+    Integer f6;
+  }
+
+  private void testInteger(Language language, List<String> command) throws java.io.IOException {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .build();
+    fory.register(Item1.class, 101);
+    Item1 item1 = new Item1();
+    int f1 = 1;
+    int f2 = 2;
+    Integer f3 = 3;
+    Integer f4 = 4;
+    Integer f5 = null;
+    Integer f6 = null;
+    item1.f1 = f1;
+    item1.f2 = f2;
+    item1.f3 = f3;
+    item1.f4 = f4;
+    item1.f5 = f5;
+    item1.f6 = f6;
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+    fory.serialize(buffer, item1);
+    fory.serialize(buffer, f1);
+    fory.serialize(buffer, f2);
+    fory.serialize(buffer, f3);
+    fory.serialize(buffer, f4);
+    fory.serialize(buffer, f5);
+    fory.serialize(buffer, f6);
+
+    Path dataFile = Files.createTempFile("test_integer", "data");
+    Pair<Map<String, String>, File> env_workdir =
+        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+    Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
+
+    MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+    //        Item1 newItem1 = (Item1) fory.deserialize(buffer2);
+    //        Assert.assertEquals(newItem1.f1, 1);
+    //        Assert.assertEquals(newItem1.f2, 2);
+    //        Assert.assertEquals(newItem1.f3, 3);
+    //        Assert.assertEquals(newItem1.f4, 4);
+    //        Assert.assertEquals(newItem1.f5, 0);
+    //        Assert.assertNull(newItem1.f6);
+    Assert.assertEquals(fory.deserialize(buffer2), 1);
+    Assert.assertEquals(fory.deserialize(buffer2), 2);
+    Assert.assertEquals(fory.deserialize(buffer2), 3);
+    Assert.assertEquals(fory.deserialize(buffer2), 4);
+    Assert.assertEquals(fory.deserialize(buffer2), 0);
+    Assert.assertNull(fory.deserialize(buffer2));
   }
 
   /**

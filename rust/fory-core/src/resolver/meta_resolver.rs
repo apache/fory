@@ -32,13 +32,14 @@ impl MetaReaderResolver {
         unsafe { self.reading_type_defs.get_unchecked(index) }
     }
 
-    pub fn load(&mut self, reader: &mut Reader) {
+    pub fn load(&mut self, reader: &mut Reader) -> usize {
         let meta_size = reader.var_uint32();
         // self.reading_type_defs.reserve(meta_size as usize);
         for _ in 0..meta_size {
             self.reading_type_defs
                 .push(Rc::new(TypeMeta::from_bytes(reader)));
         }
+        reader.get_cursor()
     }
 }
 
