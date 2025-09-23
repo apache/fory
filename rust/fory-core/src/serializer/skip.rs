@@ -49,14 +49,12 @@ pub fn skip_field_value(
     field_type: &NullableFieldType,
     read_ref_flag: bool,
 ) -> Result<(), Error> {
-    println!("{:?}", context.reader.slice_after_cursor());
     if read_ref_flag {
         let ref_flag = context.reader.i8();
         if field_type.nullable && ref_flag == (RefFlag::Null as i8) {
             return Ok(());
         }
     }
-    println!("{:?}", context.reader.slice_after_cursor());
     let type_id_num = field_type.type_id;
     match TypeId::try_from(type_id_num as i16) {
         Ok(type_id) => {

@@ -20,18 +20,6 @@ use fory_core::types::Mode::Compatible;
 use fory_derive::Fory;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Fory, Debug, PartialEq, Default)]
-struct SimpleStruct {
-    // field_order != sorted_order
-    f1: HashMap<i32, f64>,
-    f2: i32,
-    f4: Option<String>,
-    f6: Vec<Option<String>>,
-    f7: i32,
-    f8: i32,
-    last: i32,
-}
-
 // RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_compatible
 #[test]
 fn simple() {

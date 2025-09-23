@@ -104,7 +104,6 @@ where
     }
     let header = context.reader.u8();
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
-    println!("rest: {:?}", context.reader.slice_after_cursor());
     T::read_type_info(context, declared);
     let has_null = (header & HAS_NULL) != 0;
     let is_same_type = (header & IS_SAME_TYPE) != 0;

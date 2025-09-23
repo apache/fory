@@ -214,7 +214,6 @@ impl NullableTypeNode {
                     let element_ty: Type = parse_str(&generic_node.to_string()).unwrap();
                     let set_ts = quote! {
                         let length = context.reader.var_uint32() as usize;
-                        println!("length: {length}");
                         if length == 0 {
                             HashSet::default()
                         } else {
@@ -304,14 +303,9 @@ impl NullableTypeNode {
                                 let chunk_size = context.reader.u8();
                                 <#key_ty as fory_core::serializer::Serializer>::read_type_info(context, true);
                                 <#val_ty as fory_core::serializer::Serializer>::read_type_info(context, true);
-                                println!("chunk_size: {chunk_size}");
                                 for _ in (0..chunk_size).enumerate() {
-                                    println!("before key{:?}", context.reader.slice_after_cursor());
                                     let key: #key_ty = {#key_tokens}?;
-                                    println!("key: {:?}", key);
-                                    println!("before value{:?}", context.reader.slice_after_cursor());
                                     let value: #val_ty = {#val_tokens}?;
-                                    println!("value: {:?}", value);
                                     map.insert(key, value);
                                 }
                                 len_counter += chunk_size as u32;
@@ -321,7 +315,6 @@ impl NullableTypeNode {
                     };
                     if self.nullable {
                         quote! {
-                            println!("map here{:?}", context.reader.slice_after_cursor());
                             let m = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                                 None
                             } else {
