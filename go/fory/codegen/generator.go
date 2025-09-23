@@ -182,7 +182,7 @@ func processPackageFile(pkg *packages.Package, sourceFile string, typeList strin
 	if typeList != "" {
 		targetTypes = strings.Split(typeList, ",")
 	} else {
-		// Auto-discover types with //fory:gen comments
+		// Auto-discover types with //fory:generate comments
 		discoveredTypes, err := discoverTypesFromFile(pkg, absSourceFile)
 		if err != nil {
 			return fmt.Errorf("discovering types from file: %w", err)

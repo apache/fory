@@ -28,7 +28,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-// discoverTypesFromFile scans the source file for //fory:gen comments
+// discoverTypesFromFile scans the source file for //fory:generate comments
 func discoverTypesFromFile(pkg *packages.Package, sourceFile string) ([]string, error) {
 	var discoveredTypes []string
 
@@ -45,14 +45,14 @@ func discoverTypesFromFile(pkg *packages.Package, sourceFile string) ([]string, 
 			continue
 		}
 
-		// Scan for type declarations with //fory:gen comments
+		// Scan for type declarations with //fory:generate comments
 		for _, decl := range file.Decls {
 			if genDecl, ok := decl.(*ast.GenDecl); ok && genDecl.Tok == token.TYPE {
 				for _, spec := range genDecl.Specs {
 					if typeSpec, ok := spec.(*ast.TypeSpec); ok {
 						// Check if it's a struct type
 						if _, ok := typeSpec.Type.(*ast.StructType); ok {
-							// Look for //fory:gen comment
+							// Look for //fory:generate comment
 							if hasGenerateComment(genDecl.Doc) || hasGenerateComment(typeSpec.Doc) {
 								discoveredTypes = append(discoveredTypes, typeSpec.Name.Name)
 							}
@@ -66,14 +66,14 @@ func discoverTypesFromFile(pkg *packages.Package, sourceFile string) ([]string, 
 	return discoveredTypes, nil
 }
 
-// hasGenerateComment checks if comment group contains //fory:gen
+// hasGenerateComment checks if comment group contains //fory:generate
 func hasGenerateComment(commentGroup *ast.CommentGroup) bool {
 	if commentGroup == nil {
 		return false
 	}
 
 	for _, comment := range commentGroup.List {
-		if strings.Contains(comment.Text, "fory:gen") {
+		if strings.Contains(comment.Text, "fory:generate") {
 			return true
 		}
 	}

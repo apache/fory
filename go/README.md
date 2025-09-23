@@ -63,12 +63,12 @@ Ensure $GOBIN or $GOPATH/bin is on your PATH so that `fory` is discoverable by `
 
 ### Usage: annotate and generate
 
-1. Mark structs for generation with `//fory:gen`, and add a `go:generate` directive. File-based generation is recommended.
+1. Mark structs for generation with `//fory:generate`, and add a `go:generate` directive. File-based generation is recommended.
 
 ```go
 package yourpkg
 
-//fory:gen
+//fory:generate
 type User struct {
     ID   int64  `json:"id"`
     Name string `json:"name"`
@@ -97,7 +97,7 @@ Re-run generation whenever any of the following change for generated structs:
 
 - Field additions/removals/renames
 - Field type changes or tag changes
-- New structs annotated with `//fory:gen`
+- New structs annotated with `//fory:generate`
 
 Fory adds a compile-time guard in generated files to detect stale code. If you forget to re-generate, your build will fail with a clear message. The generator also includes a smart auto-retry: when invoked via `go generate`, it detects this situation, removes the stale generated file, and retries automatically. You can force this behavior manually with:
 

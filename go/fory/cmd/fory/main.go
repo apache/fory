@@ -28,7 +28,7 @@ import (
 )
 
 var (
-	typeFlag    = flag.String("type", "", "comma-separated list of types to generate code for (optional if using //fory:gen comments)")
+	typeFlag    = flag.String("type", "", "comma-separated list of types to generate code for (optional if using //fory:generate comments)")
 	pkgFlag     = flag.String("pkg", ".", "package directory to search for types (legacy mode)")
 	fileFlag    = flag.String("file", "", "source file to generate code for (new mode)")
 	forceFlag   = flag.Bool("force", false, "force regeneration by removing existing generated files first")
@@ -95,7 +95,7 @@ Options:
   -pkg string
         package directory to search for types (legacy mode) (default ".")
   -type string
-        comma-separated list of types to generate code for (optional if using //fory:gen comments)
+        comma-separated list of types to generate code for (optional if using //fory:generate comments)
   -force
         force regeneration by removing existing generated files first
   -help
@@ -104,7 +104,7 @@ Options:
         show version information
 
 Examples:
-  # Generate for specific file using //fory:gen comments
+  # Generate for specific file using //fory:generate comments
   fory -file structs.go
 
   # Generate for specific types in current package

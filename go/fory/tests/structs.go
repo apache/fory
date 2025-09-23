@@ -20,7 +20,7 @@ package fory
 // ValidationDemo is a simple struct for testing code generation
 // Contains various basic types to validate comprehensive type support
 
-// fory:gen
+// fory:generate
 type ValidationDemo struct {
 	A int32   // int32 field
 	B string  // string field
@@ -32,7 +32,7 @@ type ValidationDemo struct {
 // SliceDemo is a struct for testing slice serialization
 // Contains various slice types
 
-// fory:gen
+// fory:generate
 type SliceDemo struct {
 	IntSlice    []int32   // slice of int32
 	StringSlice []string  // slice of string
@@ -41,13 +41,13 @@ type SliceDemo struct {
 }
 
 // DynamicSliceDemo is a struct for testing dynamic slice serialization
-// fory:gen
+// fory:generate
 type DynamicSliceDemo struct {
 	DynamicSlice []interface{} // slice of interface{}
 }
 
 // MapDemo demonstrates map field support
-// fory:gen
+// fory:generate
 type MapDemo struct {
 	StringMap map[string]string // map[string]string
 	IntMap    map[int]int       // map[int]int
