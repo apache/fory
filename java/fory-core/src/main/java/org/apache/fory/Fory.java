@@ -1215,7 +1215,7 @@ public final class Fory implements BaseFory {
       if (nextReadRefId >= NOT_NULL_VALUE_FLAG) {
         ClassInfo classInfo;
         if (shareMeta) {
-          classInfo = classResolver.readClassInfoWithMetaShare(buffer, cls);
+          classInfo = classResolver.readSharedClassMeta(buffer, cls);
         } else {
           classInfo = classResolver.getClassInfo(cls);
         }

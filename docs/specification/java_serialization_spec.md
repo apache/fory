@@ -392,8 +392,8 @@ which will be encoded by elements header, each use one bit:
 - If track elements ref, use the first bit `0b1` of the header to flag it.
 - If the collection has null, use the second bit `0b10` of the header to flag it. If ref tracking is enabled for this
   element type, this flag is invalid.
-- If the collection element types are not declared type, use the 3rd bit `0b100` of the header to flag it.
-- If the collection element types are different, use the 4th bit `0b1000` header to flag it.
+- If the collection element types are the declared type, use the 3rd bit `0b100` of the header to flag it.
+- If the collection element types are same, use the 4th bit `0b1000` header to flag it.
 
 By default, all bits are unset, which means all elements won't track ref, all elements are same type, not null and
 the actual element is the declared type in the custom class field.
@@ -459,11 +459,11 @@ KV header:
 - If track key ref, use the first bit `0b1` of the header to flag it.
 - If the key has null, use the second bit `0b10` of the header to flag it. If ref tracking is enabled for this
   key type, this flag is invalid.
-- If the actual key type of map is not the declared key type, use the 3rd bit `0b100` of the header to flag it.
+- If the actual key type of map is the declared key type, use the 3rd bit `0b100` of the header to flag it.
 - If track value ref, use the 4th bit `0b1000` of the header to flag it.
 - If the value has null, use the 5th bit `0b10000` of the header to flag it. If ref tracking is enabled for this
   value type, this flag is invalid.
-- If the value type of map is not the declared value type, use the 6rd bit `0b100000` of the header to flag it.
+- If the value type of map is the declared value type, use the 6rd bit `0b100000` of the header to flag it.
 - If key or value is null, that key and value will be written as a separate chunk, and chunk size writing will be
   skipped too.
 

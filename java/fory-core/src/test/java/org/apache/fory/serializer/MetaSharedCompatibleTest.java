@@ -41,6 +41,8 @@ import org.apache.fory.meta.ClassDefEncoderTest;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.serializer.collection.UnmodifiableSerializersTest;
+import org.apache.fory.serializer.converter.FieldConverter;
+import org.apache.fory.serializer.converter.FieldConverters;
 import org.apache.fory.test.bean.BeanA;
 import org.apache.fory.test.bean.BeanB;
 import org.apache.fory.test.bean.CollectionFields;
@@ -938,5 +940,148 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
     Assert.assertNull(getObjectFieldValue(o1, "f1"));
     Assert.assertEquals(ReflectionUtils.getObjectFieldValue(o1, "f2"), 20);
     Assert.assertEquals(ReflectionUtils.getObjectFieldValue(o1, "f3"), 30);
+  }
+
+  @Test
+  public void testCompatibleFieldConvert() throws Exception {
+    byte[] bytes;
+    Object o1;
+    ImmutableSet<String> floatFields = ImmutableSet.of("f11", "f12", "f13", "f14");
+    {
+      CompileUnit compileUnit =
+          new CompileUnit(
+              "",
+              "CompatibleFieldConvert",
+              ("public final class CompatibleFieldConvert {\n"
+                  + "  public boolean ftrue;\n"
+                  + "  public Boolean ffalse;\n"
+                  + "  public byte f3;\n"
+                  + "  public Byte f4;\n"
+                  + "  public short f5;\n"
+                  + "  public Short f6;\n"
+                  + "  public int f7;\n"
+                  + "  public Integer f8;\n"
+                  + "  public long f9;\n"
+                  + "  public Long f10;\n"
+                  + "  public float f11;\n"
+                  + "  public Float f12;\n"
+                  + "  public double f13;\n"
+                  + "  public Double f14;\n"
+                  + "  public String toString() {return \"\" + ftrue + ffalse + "
+                  + "f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13 + f14;}\n"
+                  + "}"));
+
+      ClassLoader classLoader =
+          JaninoUtils.compile(Thread.currentThread().getContextClassLoader(), compileUnit);
+      Class<?> cls = classLoader.loadClass(compileUnit.getQualifiedClassName());
+      o1 = cls.newInstance();
+      for (Field field : ReflectionUtils.getSortedFields(cls, false)) {
+        String name = field.getName();
+        field.setAccessible(true);
+        FieldConverter<?> converter = FieldConverters.getConverter(String.class, field);
+        Assert.assertNotNull(converter);
+        Object converted = converter.convert(name.substring(1));
+        field.set(o1, converted);
+      }
+      Fory fory =
+          builder()
+              .withCompatibleMode(CompatibleMode.COMPATIBLE)
+              .withClassLoader(classLoader)
+              .build();
+      bytes = fory.serialize(o1);
+    }
+    {
+      CompileUnit compileUnit =
+          new CompileUnit(
+              "",
+              "CompatibleFieldConvert",
+              ("public final class CompatibleFieldConvert {\n"
+                  + "  public Boolean ftrue;\n"
+                  + "  public boolean ffalse;\n"
+                  + "  public Byte f3;\n"
+                  + "  public byte f4;\n"
+                  + "  public Short f5;\n"
+                  + "  public short f6;\n"
+                  + "  public Integer f7;\n"
+                  + "  public int f8;\n"
+                  + "  public Long f9;\n"
+                  + "  public long f10;\n"
+                  + "  public Float f11;\n"
+                  + "  public float f12;\n"
+                  + "  public Double f13;\n"
+                  + "  public double f14;\n"
+                  + "  public String toString() {return \"\" + ftrue + ffalse + "
+                  + "f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13 + f14;}\n"
+                  + "}"));
+      ClassLoader classLoader =
+          JaninoUtils.compile(Thread.currentThread().getContextClassLoader(), compileUnit);
+      Class<?> cls = classLoader.loadClass(compileUnit.getQualifiedClassName());
+      Assert.assertNotEquals(cls, o1.getClass());
+      Fory fory =
+          builder()
+              .withCompatibleMode(CompatibleMode.COMPATIBLE)
+              .withClassLoader(classLoader)
+              .build();
+      Object o = fory.deserialize(bytes);
+      Assert.assertEquals(o.getClass(), cls);
+      List<Field> fields = ReflectionUtils.getSortedFields(cls, false);
+      for (Field field : fields) {
+        field.setAccessible(true);
+        Object fieldValue = field.get(o);
+        if (fieldValue instanceof Float || fieldValue instanceof Double) {
+          Assert.assertEquals(fieldValue.toString(), field.getName().substring(1) + ".0");
+        } else {
+          Assert.assertEquals(fieldValue.toString(), field.getName().substring(1));
+        }
+      }
+      Assert.assertEquals(o.toString(), o1.toString());
+    }
+    {
+      CompileUnit compileUnit =
+          new CompileUnit(
+              "",
+              "CompatibleFieldConvert",
+              ("public final class CompatibleFieldConvert {\n"
+                  + "  public String ftrue;\n"
+                  + "  public String ffalse;\n"
+                  + "  public String f3;\n"
+                  + "  public String f4;\n"
+                  + "  public String f5;\n"
+                  + "  public String f6;\n"
+                  + "  public String f7;\n"
+                  + "  public String f8;\n"
+                  + "  public String f9;\n"
+                  + "  public String f10;\n"
+                  + "  public String f11;\n"
+                  + "  public String f12;\n"
+                  + "  public String f13;\n"
+                  + "  public String f14;\n"
+                  + "  public String toString() {return \"\" + ftrue + ffalse + "
+                  + "f3 + f4 + f5 + f6 + f7 + f8 + f9 + f10 + f11 + f12 + f13 + f14;}\n"
+                  + "}"));
+
+      ClassLoader classLoader =
+          JaninoUtils.compile(Thread.currentThread().getContextClassLoader(), compileUnit);
+      Fory fory =
+          builder()
+              .withCompatibleMode(CompatibleMode.COMPATIBLE)
+              .withClassLoader(classLoader)
+              .build();
+      Class<?> cls = classLoader.loadClass(compileUnit.getQualifiedClassName());
+      Assert.assertNotEquals(cls, o1.getClass());
+      Object o = fory.deserialize(bytes);
+      Assert.assertEquals(o.getClass(), cls);
+      List<Field> fields = ReflectionUtils.getSortedFields(cls, false);
+      for (Field field : fields) {
+        field.setAccessible(true);
+        Object fieldValue = field.get(o);
+        if (floatFields.contains(field.getName())) {
+          Assert.assertEquals(fieldValue.toString(), field.getName().substring(1) + ".0");
+        } else {
+          Assert.assertEquals(fieldValue.toString(), field.getName().substring(1));
+        }
+      }
+      Assert.assertEquals(o.toString(), o1.toString());
+    }
   }
 }

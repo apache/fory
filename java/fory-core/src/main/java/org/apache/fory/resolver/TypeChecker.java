@@ -23,14 +23,13 @@ package org.apache.fory.resolver;
  * Check whether class or objects of class should be serialized. If class checker will be invoked by
  * multiple {@link ClassResolver}, class checker should be thread safe.
  */
-@Deprecated
-public interface ClassChecker {
+public interface TypeChecker {
   /**
    * Check whether class should be allowed for serialization.
    *
-   * @param classResolver class resolver
+   * @param resolver type resolver
    * @param className full name of class
    * @return true if class is allowed for serialization.
    */
-  boolean checkClass(ClassResolver classResolver, String className);
+  boolean checkType(TypeResolver resolver, String className);
 }

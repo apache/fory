@@ -34,7 +34,7 @@ public class AllowListCheckerTest {
     {
       Fory fory = Fory.builder().requireClassRegistration(false).build();
       AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.STRICT);
-      fory.getClassResolver().setClassChecker(checker);
+      fory.getClassResolver().setTypeChecker(checker);
       assertThrows(InsecureException.class, () -> fory.serialize(new AllowListCheckerTest()));
       checker.allowClass(AllowListCheckerTest.class.getName());
       byte[] bytes = fory.serialize(new AllowListCheckerTest());
@@ -46,7 +46,7 @@ public class AllowListCheckerTest {
     {
       Fory fory = Fory.builder().requireClassRegistration(false).build();
       AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
-      fory.getClassResolver().setClassChecker(checker);
+      fory.getClassResolver().setTypeChecker(checker);
       checker.addListener(fory.getClassResolver());
       byte[] bytes = fory.serialize(new AllowListCheckerTest());
       checker.disallowClass(AllowListCheckerTest.class.getName());
@@ -60,7 +60,7 @@ public class AllowListCheckerTest {
     {
       Fory fory = Fory.builder().requireClassRegistration(false).build();
       AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.STRICT);
-      fory.getClassResolver().setClassChecker(checker);
+      fory.getClassResolver().setTypeChecker(checker);
       checker.addListener(fory.getClassResolver());
       assertThrows(InsecureException.class, () -> fory.serialize(new AllowListCheckerTest()));
       checker.allowClass("org.apache.fory.*");
@@ -72,7 +72,7 @@ public class AllowListCheckerTest {
     {
       Fory fory = Fory.builder().requireClassRegistration(false).build();
       AllowListChecker checker = new AllowListChecker(AllowListChecker.CheckLevel.WARN);
-      fory.getClassResolver().setClassChecker(checker);
+      fory.getClassResolver().setTypeChecker(checker);
       checker.addListener(fory.getClassResolver());
       byte[] bytes = fory.serialize(new AllowListCheckerTest());
       checker.disallowClass("org.apache.fory.*");
@@ -92,7 +92,7 @@ public class AllowListCheckerTest {
                       .requireClassRegistration(false)
                       .withClassLoader(classLoader)
                       .build();
-              f.getClassResolver().setClassChecker(checker);
+              f.getClassResolver().setTypeChecker(checker);
               checker.addListener(f.getClassResolver());
               return f;
             });

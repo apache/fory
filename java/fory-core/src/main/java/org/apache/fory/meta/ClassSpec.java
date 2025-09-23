@@ -29,19 +29,39 @@ public class ClassSpec {
 
   public final boolean isArray;
   public final int dimension;
+  public final int typeId;
+  public Class<?> type;
 
   public ClassSpec(Class<?> cls) {
-    this.entireClassName = cls.getName();
-    isEnum = cls.isEnum();
-    isArray = cls.isArray();
-    dimension = isArray ? TypeUtils.getArrayDimensions(cls) : 0;
+    this(
+        cls.getName(),
+        cls.isEnum(),
+        cls.isArray(),
+        cls.isArray() ? TypeUtils.getArrayDimensions(cls) : 0,
+        -1);
+    type = cls;
+  }
+
+  public ClassSpec(Class<?> cls, int typeId) {
+    this(
+        cls.getName(),
+        cls.isEnum(),
+        cls.isArray(),
+        cls.isArray() ? TypeUtils.getArrayDimensions(cls) : 0,
+        typeId);
   }
 
   public ClassSpec(String entireClassName, boolean isEnum, boolean isArray, int dimension) {
+    this(entireClassName, isEnum, isArray, dimension, -1);
+  }
+
+  public ClassSpec(
+      String entireClassName, boolean isEnum, boolean isArray, int dimension, int typeId) {
     this.entireClassName = entireClassName;
     this.isEnum = isEnum;
     this.isArray = isArray;
     this.dimension = dimension;
+    this.typeId = typeId;
   }
 
   @Override

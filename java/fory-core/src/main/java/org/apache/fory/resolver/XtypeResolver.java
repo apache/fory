@@ -25,7 +25,6 @@ import static org.apache.fory.meta.Encoders.GENERIC_ENCODER;
 import static org.apache.fory.meta.Encoders.PACKAGE_DECODER;
 import static org.apache.fory.meta.Encoders.PACKAGE_ENCODER;
 import static org.apache.fory.meta.Encoders.TYPE_NAME_DECODER;
-import static org.apache.fory.resolver.ClassResolver.NO_CLASS_ID;
 import static org.apache.fory.serializer.collection.MapSerializers.HashMapSerializer;
 import static org.apache.fory.type.TypeUtils.qualifiedName;
 
@@ -54,7 +53,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.Internal;
-import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.collection.IdentityObjectIntMap;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.ObjectMap;
@@ -110,10 +108,9 @@ public class XtypeResolver extends TypeResolver {
   private final Config config;
   private final Fory fory;
   private final ClassResolver classResolver;
-  private final ClassInfoHolder classInfoCache = new ClassInfoHolder(ClassResolver.NIL_CLASS_INFO);
+  private final ClassInfoHolder classInfoCache = new ClassInfoHolder(NIL_CLASS_INFO);
   private final MetaStringResolver metaStringResolver;
-  // IdentityMap has better lookup performance, when loadFactor is 0.05f, performance is better
-  private final IdentityMap<Class<?>, ClassInfo> classInfoMap = new IdentityMap<>(64, loadFactor);
+
   // Every deserialization for unregistered class will query it, performance is important.
   private final ObjectMap<TypeNameBytes, ClassInfo> compositeClassNameBytes2ClassInfo =
       new ObjectMap<>(16, loadFactor);
@@ -244,7 +241,9 @@ public class XtypeResolver extends TypeResolver {
   private void register(
       Class<?> type, Serializer<?> serializer, String namespace, String typeName, int xtypeId) {
     ClassInfo classInfo = newClassInfo(type, serializer, namespace, typeName, (short) xtypeId);
-    qualifiedType2ClassInfo.put(qualifiedName(namespace, typeName), classInfo);
+    String qualifiedName = qualifiedName(namespace, typeName);
+    qualifiedType2ClassInfo.put(qualifiedName, classInfo);
+    extRegistry.registeredClasses.put(qualifiedName, type);
     if (serializer == null) {
       if (type.isEnum()) {
         classInfo.serializer = new EnumSerializer(fory, (Class<Enum>) type);
@@ -465,15 +464,6 @@ public class XtypeResolver extends TypeResolver {
   }
 
   @Override
-  public boolean needToWriteRef(TypeRef<?> typeRef) {
-    ClassInfo classInfo = classInfoMap.get(typeRef.getRawType());
-    if (classInfo == null) {
-      return fory.trackingRef();
-    }
-    return classInfo.serializer.needToWriteRef();
-  }
-
-  @Override
   public GenericType buildGenericType(TypeRef<?> typeRef) {
     return classResolver.buildGenericType(typeRef);
   }
@@ -644,7 +634,7 @@ public class XtypeResolver extends TypeResolver {
 
   public void writeSharedClassMeta(MemoryBuffer buffer, ClassInfo classInfo) {
     MetaContext metaContext = fory.getSerializationContext().getMetaContext();
-    assert metaContext != null : ClassResolver.SET_META__CONTEXT_MSG;
+    assert metaContext != null : SET_META__CONTEXT_MSG;
     IdentityObjectIntMap<Class<?>> classMap = metaContext.classMap;
     int newId = classMap.size;
     int id = classMap.putOrGet(classInfo.cls, newId);
@@ -739,13 +729,18 @@ public class XtypeResolver extends TypeResolver {
     }
   }
 
+  @Override
+  public ClassInfo readSharedClassMeta(MemoryBuffer buffer, MetaContext metaContext) {
+    return readClassInfo(buffer);
+  }
+
   private ClassInfo readSharedClassMeta(MemoryBuffer buffer) {
     MetaContext metaContext = fory.getSerializationContext().getMetaContext();
-    assert metaContext != null : ClassResolver.SET_META__CONTEXT_MSG;
+    assert metaContext != null : SET_META__CONTEXT_MSG;
     int id = buffer.readVarUint32Small14();
     ClassInfo classInfo = metaContext.readClassInfos.get(id);
     if (classInfo == null) {
-      classInfo = classResolver.readClassInfoWithMetaShare(metaContext, id);
+      classInfo = readSharedClassMeta(metaContext, id);
     }
     return classInfo;
   }

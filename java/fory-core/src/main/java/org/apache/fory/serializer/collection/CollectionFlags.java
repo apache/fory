@@ -19,26 +19,26 @@
 
 package org.apache.fory.serializer.collection;
 
-/**
- * Default unset bitmap flags.
- *
- * <ul>
- *   <li>TRACKING_REF: false
- *   <li>HAS_NULL: false
- *   <li>NOT_DECL_ELEMENT_TYPE: false
- *   <li>NOT_SAME_TYPE: false
- * </ul>
- */
+/** bitmap flags for collection serialization. */
 public class CollectionFlags {
   /** Whether track elements ref. */
   public static int TRACKING_REF = 0b1;
 
-  /** Whether collection has null. */
+  /** Whether collection has null elements. */
   public static int HAS_NULL = 0b10;
 
-  /** Whether collection elements type is not declare type. */
-  public static int NOT_DECL_ELEMENT_TYPE = 0b100;
+  /** Whether collection elements type is declared type. */
+  public static int IS_DECL_ELEMENT_TYPE = 0b100;
 
-  /** Whether collection elements type different. */
-  public static int NOT_SAME_TYPE = 0b1000;
+  /** Whether collection elements type are same. */
+  public static int IS_SAME_TYPE = 0b1000;
+
+  public static int DECL_SAME_TYPE_TRACKING_REF =
+      IS_DECL_ELEMENT_TYPE | IS_SAME_TYPE | TRACKING_REF;
+
+  public static int DECL_SAME_TYPE_NOT_TRACKING_REF = IS_DECL_ELEMENT_TYPE | IS_SAME_TYPE;
+
+  public static int DECL_SAME_TYPE_HAS_NULL = IS_DECL_ELEMENT_TYPE | IS_SAME_TYPE | HAS_NULL;
+
+  public static int DECL_SAME_TYPE_NOT_HAS_NULL = IS_DECL_ELEMENT_TYPE | IS_SAME_TYPE;
 }

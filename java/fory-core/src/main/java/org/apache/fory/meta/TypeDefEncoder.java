@@ -58,10 +58,17 @@ class TypeDefEncoder {
                 fory.getClassResolver().getFieldDescriptors(type, true),
                 false,
                 Function.identity());
-    List<Field> fields =
-        descriptorGrouper.getSortedDescriptors().stream()
-            .map(Descriptor::getField)
-            .collect(Collectors.toList());
+    ClassInfo classInfo = fory._getTypeResolver().getClassInfo(type);
+    List<Field> fields;
+    int xtypeId = classInfo.getXtypeId();
+    if (Types.isStructType(xtypeId & 0xff)) {
+      fields =
+          descriptorGrouper.getSortedDescriptors().stream()
+              .map(Descriptor::getField)
+              .collect(Collectors.toList());
+    } else {
+      fields = new ArrayList<>();
+    }
     return buildClassDefWithFieldInfos(
         fory.getXtypeResolver(), type, buildFieldsInfo(fory.getXtypeResolver(), type, fields));
   }
@@ -93,8 +100,6 @@ class TypeDefEncoder {
   static MemoryBuffer encodeClassDef(
       XtypeResolver resolver, Class<?> type, List<FieldInfo> fields) {
     ClassInfo classInfo = resolver.getClassInfo(type);
-    int xtypeId = (classInfo.getXtypeId()) & 0xff;
-    Preconditions.checkArgument(Types.isStructType(xtypeId), "%s is not a struct", type);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(128);
     buffer.writeByte(-1); // placeholder for header, update later
     int currentClassHeader = fields.size();
@@ -126,7 +131,7 @@ class TypeDefEncoder {
       buffer = MemoryBuffer.fromByteArray(compressed);
       buffer.writerIndex(compressed.length);
     }
-    return prependHeader(buffer, isCompressed, true);
+    return prependHeader(buffer, isCompressed, !fields.isEmpty());
   }
 
   static Map<String, FieldInfo> getClassFields(Class<?> type, List<FieldInfo> fieldsInfo) {

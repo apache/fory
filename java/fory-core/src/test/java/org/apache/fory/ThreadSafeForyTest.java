@@ -256,7 +256,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
     CompletableFuture.runAsync(
             () -> {
               fory.setClassLoader(structClass1.getClassLoader(), staging);
-              fory.setClassChecker((classResolver, className1) -> true);
+              fory.setTypeChecker((classResolver, className1) -> true);
               fory.setSerializerFactory((fory1, cls) -> null);
               Assert.assertEquals(fory.deserialize(newBytes1), struct1);
             })

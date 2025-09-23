@@ -32,8 +32,6 @@ import static org.apache.fory.serializer.CodegenSerializer.supportCodegenForJava
 import static org.apache.fory.type.TypeUtils.OBJECT_TYPE;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
-import com.google.common.collect.BiMap;
-import com.google.common.collect.HashBiMap;
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.Serializable;
@@ -67,14 +65,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
-import java.util.Set;
 import java.util.SortedMap;
 import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -87,21 +83,14 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyCopyable;
 import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.annotation.Internal;
-import org.apache.fory.builder.CodecUtils;
-import org.apache.fory.builder.Generated.GeneratedMetaSharedSerializer;
-import org.apache.fory.builder.Generated.GeneratedObjectSerializer;
 import org.apache.fory.builder.JITContext;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Invoke;
 import org.apache.fory.codegen.Expression.Literal;
-import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.collection.IdentityObjectIntMap;
-import org.apache.fory.collection.LongMap;
-import org.apache.fory.collection.ObjectArray;
 import org.apache.fory.collection.ObjectMap;
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.exception.InsecureException;
 import org.apache.fory.logging.Logger;
@@ -112,7 +101,6 @@ import org.apache.fory.meta.ClassDef;
 import org.apache.fory.meta.ClassSpec;
 import org.apache.fory.meta.Encoders;
 import org.apache.fory.meta.MetaString;
-import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.serializer.ArraySerializers;
@@ -126,7 +114,6 @@ import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.JdkProxySerializer;
 import org.apache.fory.serializer.LambdaSerializer;
 import org.apache.fory.serializer.LocaleSerializer;
-import org.apache.fory.serializer.MetaSharedSerializer;
 import org.apache.fory.serializer.NoneSerializer;
 import org.apache.fory.serializer.NonexistentClass;
 import org.apache.fory.serializer.NonexistentClass.NonexistentMetaShared;
@@ -163,10 +150,10 @@ import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.GraalvmSupport;
-import org.apache.fory.util.GraalvmSupport.GraalvmSerializerHolder;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.function.Functions;
+import org.apache.fory.util.record.RecordUtils;
 
 /**
  * Class registry for types of serializing objects, responsible for reading/writing types, setting
@@ -176,10 +163,8 @@ import org.apache.fory.util.function.Functions;
 public class ClassResolver extends TypeResolver {
   private static final Logger LOG = LoggerFactory.getLogger(ClassResolver.class);
 
-  // bit 0 unset indicates class is written as an id.
-  public static final byte USE_CLASS_VALUE_FLAG = 0b1;
   // preserve 0 as flag for class id not set in ClassInfo`
-  public static final short NO_CLASS_ID = (short) 0;
+  public static final short NO_CLASS_ID = TypeResolver.NO_CLASS_ID;
   public static final short LAMBDA_STUB_ID = 1;
   public static final short JDK_PROXY_STUB_ID = 2;
   public static final short REPLACE_STUB_ID = 3;
@@ -218,75 +203,26 @@ public class ClassResolver extends TypeResolver {
   public static final short HASHSET_CLASS_ID = (short) (PRIMITIVE_DOUBLE_ARRAY_CLASS_ID + 5);
   public static final short CLASS_CLASS_ID = (short) (PRIMITIVE_DOUBLE_ARRAY_CLASS_ID + 6);
   public static final short EMPTY_OBJECT_ID = (short) (PRIMITIVE_DOUBLE_ARRAY_CLASS_ID + 7);
-  // use a lower load factor to minimize hash collision
-  private static final float foryMapLoadFactor = 0.25f;
-  private static final int estimatedNumRegistered = 150;
-  static final String SET_META__CONTEXT_MSG =
-      "Meta context must be set before serialization, "
-          + "please set meta context by SerializationContext.setMetaContext";
-  static final ClassInfo NIL_CLASS_INFO =
-      new ClassInfo(null, null, null, null, false, null, NO_CLASS_ID, NOT_SUPPORT_XLANG);
 
   private final Fory fory;
   XtypeResolver xtypeResolver;
   private ClassInfo[] registeredId2ClassInfo = new ClassInfo[] {};
-
-  // IdentityMap has better lookup performance, when loadFactor is 0.05f, performance is better
-  private final IdentityMap<Class<?>, ClassInfo> classInfoMap =
-      new IdentityMap<>(estimatedNumRegistered, foryMapLoadFactor);
   private ClassInfo classInfoCache;
   // Every deserialization for unregistered class will query it, performance is important.
   private final ObjectMap<TypeNameBytes, ClassInfo> compositeNameBytes2ClassInfo =
       new ObjectMap<>(16, foryMapLoadFactor);
-  private final MetaStringResolver metaStringResolver;
-  private final boolean metaContextShareEnabled;
   private final Map<Class<?>, ClassDef> classDefMap = new HashMap<>();
   private Class<?> currentReadClass;
   // class id of last default registered class.
   private short innerEndClassId;
-  private final ExtRegistry extRegistry;
   private final ShimDispatcher shimDispatcher;
-
-  private static class ExtRegistry {
-    // Here we set it to 1 because `NO_CLASS_ID` is 0 to avoid calculating it again in
-    // `register(Class<?> cls)`.
-    private short classIdGenerator = 1;
-    private SerializerFactory serializerFactory;
-    private final IdentityMap<Class<?>, Short> registeredClassIdMap =
-        new IdentityMap<>(estimatedNumRegistered);
-    private final BiMap<String, Class<?>> registeredClasses =
-        HashBiMap.create(estimatedNumRegistered);
-    // cache absClassInfo, support customized serializer for abstract or interface.
-    private final IdentityMap<Class<?>, ClassInfo> absClassInfo =
-        new IdentityMap<>(estimatedNumRegistered, foryMapLoadFactor);
-    // avoid potential recursive call for seq codec generation.
-    // ex. A->field1: B, B.field1: A
-    private final Set<Class<?>> getClassCtx = new HashSet<>();
-    private final Map<Class<?>, FieldResolver> fieldResolverMap = new HashMap<>();
-    private final LongMap<Tuple2<ClassDef, ClassInfo>> classIdToDef = new LongMap<>();
-    private final Map<Class<?>, ClassDef> currentLayerClassDef = new HashMap<>();
-    // Tuple2<Class, Class>: Tuple2<From Class, To Class>
-    private final Map<Tuple2<Class<?>, Class<?>>, ClassInfo> transformedClassInfo = new HashMap<>();
-    // TODO(chaokunyang) Better to  use soft reference, see ObjectStreamClass.
-    private final ConcurrentHashMap<Tuple2<Class<?>, Boolean>, SortedMap<Member, Descriptor>>
-        descriptorsCache = new ConcurrentHashMap<>();
-    private ClassChecker classChecker = (classResolver, className) -> true;
-    private GenericType objectGenericType;
-    private final IdentityMap<Type, GenericType> genericTypes = new IdentityMap<>();
-    private final Map<Class, Map<String, GenericType>> classGenericTypes = new HashMap<>();
-    private final Map<List<ClassLoader>, CodeGenerator> codeGeneratorMap = new HashMap<>();
-    private final Set<ClassInfo> initialClassInfos = new HashSet<>();
-  }
 
   public ClassResolver(Fory fory) {
     super(fory);
     this.fory = fory;
-    metaStringResolver = fory.getMetaStringResolver();
     classInfoCache = NIL_CLASS_INFO;
-    metaContextShareEnabled = fory.getConfig().isMetaShareEnabled();
-    extRegistry = new ExtRegistry();
     shimDispatcher = new ShimDispatcher(fory);
-    ClassResolver._addGraalvmClassRegistry(fory.getConfig().getConfigHash(), this);
+    _addGraalvmClassRegistry(fory.getConfig().getConfigHash(), this);
   }
 
   @Override
@@ -820,7 +756,7 @@ public class ClassResolver extends TypeResolver {
 
   /**
    * Set serializer to avoid circular error when there is a serializer query for fields by {@link
-   * #readClassInfoWithMetaShare} and {@link #getSerializer(Class)} which access current creating
+   * #readSharedClassMeta} and {@link #getSerializer(Class)} which access current creating
    * serializer. This method is used to avoid overwriting existing serializer for class when
    * creating a data serializer for serialization of parts fields of a class.
    */
@@ -1129,12 +1065,15 @@ public class ClassResolver extends TypeResolver {
     }
   }
 
-  public ClassChecker getClassChecker() {
-    return extRegistry.classChecker;
-  }
-
+  @Deprecated
   public void setClassChecker(ClassChecker classChecker) {
-    extRegistry.classChecker = classChecker;
+    extRegistry.typeChecker =
+        (resolver, className) -> {
+          if (resolver instanceof ClassResolver) {
+            return classChecker.checkClass((ClassResolver) resolver, className);
+          }
+          return false;
+        };
   }
 
   public FieldResolver getFieldResolver(Class<?> cls) {
@@ -1167,30 +1106,6 @@ public class ClassResolver extends TypeResolver {
     // when jit thread query this, it is already built by serialization main thread.
     return extRegistry.descriptorsCache.computeIfAbsent(
         Tuple2.of(clz, searchParent), t -> Descriptor.getAllDescriptorsMap(clz, searchParent));
-  }
-
-  /**
-   * Whether to track reference for this type. If false, reference tracing of subclasses may be
-   * ignored too.
-   */
-  @Override
-  public boolean needToWriteRef(TypeRef<?> typeRef) {
-    Object extInfo = typeRef.getExtInfo();
-    if (extInfo instanceof TypeExtMeta) {
-      TypeExtMeta meta = (TypeExtMeta) extInfo;
-      return meta.trackingRef();
-    }
-    Class<?> cls = typeRef.getRawType();
-    if (fory.trackingRef()) {
-      ClassInfo classInfo = getClassInfo(cls, false);
-      if (classInfo == null || classInfo.serializer == null) {
-        // TODO group related logic together for extendability and consistency.
-        return !cls.isEnum();
-      } else {
-        return classInfo.serializer.needToWriteRef();
-      }
-    }
-    return false;
   }
 
   public ClassInfo getClassInfo(short classId) {
@@ -1377,6 +1292,10 @@ public class ClassResolver extends TypeResolver {
           .put(cls, getGraalvmSerializerClass(classInfo.serializer));
       classInfo.serializer = null;
       classInfoCache = NIL_CLASS_INFO;
+      if (RecordUtils.isRecord(cls)) {
+        RecordUtils.getRecordConstructor(cls);
+        RecordUtils.getRecordComponents(cls);
+      }
     }
   }
 
@@ -1403,7 +1322,7 @@ public class ClassResolver extends TypeResolver {
           || extRegistry.registeredClassIdMap.containsKey(cls)
           || shimDispatcher.contains(cls);
     } else {
-      return extRegistry.classChecker.checkClass(this, cls.getName());
+      return extRegistry.typeChecker.checkType(this, cls.getName());
     }
     // Don't take java Exception as secure in case future JDK introduce insecure JDK exception.
     // if (Exception.class.isAssignableFrom(cls)
@@ -1502,25 +1421,8 @@ public class ClassResolver extends TypeResolver {
     return classDef;
   }
 
-  boolean needToWriteClassDef(Serializer serializer) {
-    if (fory.getConfig().getCompatibleMode() != CompatibleMode.COMPATIBLE) {
-      return false;
-    }
-    if (GraalvmSupport.isGraalBuildtime() && serializer instanceof GraalvmSerializerHolder) {
-      Class<? extends Serializer> serializerClass =
-          ((GraalvmSerializerHolder) serializer).getSerializerClass();
-      return GeneratedObjectSerializer.class.isAssignableFrom(serializerClass)
-          || GeneratedMetaSharedSerializer.class.isAssignableFrom(serializerClass);
-    }
-    return (serializer instanceof GeneratedObjectSerializer
-        // May already switched to MetaSharedSerializer when update class info cache.
-        || serializer instanceof GeneratedMetaSharedSerializer
-        || serializer instanceof LazyInitBeanSerializer
-        || serializer instanceof ObjectSerializer
-        || serializer instanceof MetaSharedSerializer);
-  }
-
-  private ClassInfo readClassInfoWithMetaShare(MemoryBuffer buffer, MetaContext metaContext) {
+  @Override
+  public ClassInfo readSharedClassMeta(MemoryBuffer buffer, MetaContext metaContext) {
     assert metaContext != null : SET_META__CONTEXT_MSG;
     int header = buffer.readVarUint32Small14();
     int id = header >>> 1;
@@ -1529,179 +1431,9 @@ public class ClassResolver extends TypeResolver {
     }
     ClassInfo classInfo = metaContext.readClassInfos.get(id);
     if (classInfo == null) {
-      classInfo = readClassInfoWithMetaShare(metaContext, id);
+      classInfo = readSharedClassMeta(metaContext, id);
     }
     return classInfo;
-  }
-
-  ClassInfo readClassInfoWithMetaShare(MetaContext metaContext, int index) {
-    ClassDef classDef = metaContext.readClassDefs.get(index);
-    Tuple2<ClassDef, ClassInfo> classDefTuple = extRegistry.classIdToDef.get(classDef.getId());
-    ClassInfo classInfo;
-    if (classDefTuple == null || classDefTuple.f1 == null || classDefTuple.f1.serializer == null) {
-      classInfo = buildMetaSharedClassInfo(classDefTuple, classDef);
-    } else {
-      classInfo = classDefTuple.f1;
-    }
-    metaContext.readClassInfos.set(index, classInfo);
-    return classInfo;
-  }
-
-  public ClassInfo readClassInfoWithMetaShare(MemoryBuffer buffer, Class<?> targetClass) {
-    assert metaContextShareEnabled;
-    ClassInfo classInfo =
-        readClassInfoWithMetaShare(buffer, fory.getSerializationContext().getMetaContext());
-    Class<?> readClass = classInfo.getCls();
-    // replace target class if needed
-    if (targetClass != readClass) {
-      Tuple2<Class<?>, Class<?>> key = Tuple2.of(readClass, targetClass);
-      ClassInfo newClassInfo = extRegistry.transformedClassInfo.get(key);
-      if (newClassInfo == null) {
-        // similar to create serializer for `NonexistentMetaShared`
-        newClassInfo =
-            getMetaSharedClassInfo(
-                classInfo.classDef.replaceRootClassTo(this, targetClass), targetClass);
-        extRegistry.transformedClassInfo.put(key, newClassInfo);
-      }
-      return newClassInfo;
-    }
-    return classInfo;
-  }
-
-  private ClassInfo buildMetaSharedClassInfo(
-      Tuple2<ClassDef, ClassInfo> classDefTuple, ClassDef classDef) {
-    ClassInfo classInfo;
-    if (classDefTuple != null) {
-      classDef = classDefTuple.f0;
-    }
-    Class<?> cls = loadClass(classDef.getClassSpec());
-    if (!classDef.hasFieldsMeta()) {
-      classInfo = getClassInfo(cls);
-    } else {
-      classInfo = getMetaSharedClassInfo(classDef, cls);
-    }
-    // Share serializer for same version class def to avoid too much different meta
-    // context take up too much memory.
-    putClassDef(classDef, classInfo);
-    return classInfo;
-  }
-
-  // TODO(chaokunyang) if ClassDef is consistent with class in this process,
-  //  use existing serializer instead.
-  private ClassInfo getMetaSharedClassInfo(ClassDef classDef, Class<?> clz) {
-    if (clz == NonexistentSkip.class) {
-      clz = NonexistentMetaShared.class;
-    }
-    Class<?> cls = clz;
-    Short classId = extRegistry.registeredClassIdMap.get(cls);
-    ClassInfo classInfo =
-        new ClassInfo(this, cls, null, classId == null ? NO_CLASS_ID : classId, NOT_SUPPORT_XLANG);
-    classInfo.classDef = classDef;
-    if (NonexistentClass.class.isAssignableFrom(TypeUtils.getComponentIfArray(cls))) {
-      if (cls == NonexistentMetaShared.class) {
-        classInfo.setSerializer(this, new NonexistentClassSerializer(fory, classDef));
-        // ensure `NonexistentMetaSharedClass` registered to write fixed-length class def,
-        // so we can rewrite it in `NonexistentClassSerializer`.
-        Preconditions.checkNotNull(classId);
-      } else {
-        classInfo.serializer =
-            NonexistentClassSerializers.getSerializer(fory, classDef.getClassName(), cls);
-      }
-      return classInfo;
-    }
-    if (clz.isArray() || cls.isEnum()) {
-      return getClassInfo(cls);
-    }
-    Class<? extends Serializer> sc =
-        getMetaSharedDeserializerClassFromGraalvmRegistry(cls, classDef);
-    if (sc == null) {
-      if (GraalvmSupport.isGraalRuntime()) {
-        sc = MetaSharedSerializer.class;
-        LOG.warn(
-            "Can't generate class at runtime in graalvm for class def {}, use {} instead",
-            classDef,
-            sc);
-      } else {
-        sc =
-            fory.getJITContext()
-                .registerSerializerJITCallback(
-                    () -> MetaSharedSerializer.class,
-                    () -> CodecUtils.loadOrGenMetaSharedCodecClass(fory, cls, classDef),
-                    c -> classInfo.setSerializer(this, Serializers.newSerializer(fory, cls, c)));
-      }
-    }
-    if (sc == MetaSharedSerializer.class) {
-      classInfo.setSerializer(this, new MetaSharedSerializer(fory, cls, classDef));
-    } else {
-      classInfo.setSerializer(this, Serializers.newSerializer(fory, cls, sc));
-    }
-    return classInfo;
-  }
-
-  /**
-   * Write all new class definitions meta to buffer at last, so that if some class doesn't exist on
-   * peer, but one of class which exists on both side are sent in this stream, the definition meta
-   * can still be stored in peer, and can be resolved next time when sent only an id.
-   */
-  public void writeClassDefs(MemoryBuffer buffer) {
-    MetaContext metaContext = fory.getSerializationContext().getMetaContext();
-    ObjectArray<ClassDef> writingClassDefs = metaContext.writingClassDefs;
-    final int size = writingClassDefs.size;
-    buffer.writeVarUint32Small7(size);
-    if (buffer.isHeapFullyWriteable()) {
-      writeClassDefs(buffer, writingClassDefs, size);
-    } else {
-      for (int i = 0; i < size; i++) {
-        writingClassDefs.get(i).writeClassDef(buffer);
-      }
-    }
-    metaContext.writingClassDefs.size = 0;
-  }
-
-  private void writeClassDefs(
-      MemoryBuffer buffer, ObjectArray<ClassDef> writingClassDefs, int size) {
-    for (int i = 0; i < size; i++) {
-      buffer.writeBytes(writingClassDefs.get(i).getEncoded());
-      MemoryBuffer memoryBuffer = MemoryBuffer.fromByteArray(writingClassDefs.get(i).getEncoded());
-      ClassDef.readClassDef(fory, memoryBuffer, memoryBuffer.readInt64());
-    }
-  }
-
-  /**
-   * Ensure all class definition are read and populated, even there are deserialization exception
-   * such as ClassNotFound. So next time a class def written previously identified by an id can be
-   * got from the meta context.
-   */
-  public void readClassDefs(MemoryBuffer buffer) {
-    MetaContext metaContext = fory.getSerializationContext().getMetaContext();
-    assert metaContext != null : SET_META__CONTEXT_MSG;
-    int numClassDefs = buffer.readVarUint32Small7();
-    for (int i = 0; i < numClassDefs; i++) {
-      long id = buffer.readInt64();
-      Tuple2<ClassDef, ClassInfo> tuple2 = extRegistry.classIdToDef.get(id);
-      if (tuple2 != null) {
-        ClassDef.skipClassDef(buffer, id);
-      } else {
-        tuple2 = readClassDef(buffer, id);
-      }
-      metaContext.readClassDefs.add(tuple2.f0);
-      metaContext.readClassInfos.add(tuple2.f1);
-    }
-  }
-
-  private Tuple2<ClassDef, ClassInfo> readClassDef(MemoryBuffer buffer, long header) {
-    ClassDef readClassDef = ClassDef.readClassDef(fory, buffer, header);
-    Tuple2<ClassDef, ClassInfo> tuple2 = extRegistry.classIdToDef.get(readClassDef.getId());
-    if (tuple2 == null) {
-      tuple2 = putClassDef(readClassDef, null);
-    }
-    return tuple2;
-  }
-
-  private Tuple2<ClassDef, ClassInfo> putClassDef(ClassDef classDef, ClassInfo classInfo) {
-    Tuple2<ClassDef, ClassInfo> tuple2 = Tuple2.of(classDef, classInfo);
-    extRegistry.classIdToDef.put(classDef.getId(), tuple2);
-    return tuple2;
   }
 
   @Override
@@ -1798,7 +1530,7 @@ public class ClassResolver extends TypeResolver {
    */
   public ClassInfo readClassInfo(MemoryBuffer buffer) {
     if (metaContextShareEnabled) {
-      return readClassInfoWithMetaShare(buffer, fory.getSerializationContext().getMetaContext());
+      return readSharedClassMeta(buffer, fory.getSerializationContext().getMetaContext());
     }
     int header = buffer.readVarUint32Small14();
     ClassInfo classInfo;
@@ -1820,7 +1552,7 @@ public class ClassResolver extends TypeResolver {
   @Override
   public ClassInfo readClassInfo(MemoryBuffer buffer, ClassInfo classInfoCache) {
     if (metaContextShareEnabled) {
-      return readClassInfoWithMetaShare(buffer, fory.getSerializationContext().getMetaContext());
+      return readSharedClassMeta(buffer, fory.getSerializationContext().getMetaContext());
     }
     int header = buffer.readVarUint32Small14();
     if ((header & 0b1) != 0) {
@@ -1835,7 +1567,7 @@ public class ClassResolver extends TypeResolver {
   @CodegenInvoke
   public ClassInfo readClassInfo(MemoryBuffer buffer, ClassInfoHolder classInfoHolder) {
     if (metaContextShareEnabled) {
-      return readClassInfoWithMetaShare(buffer, fory.getSerializationContext().getMetaContext());
+      return readSharedClassMeta(buffer, fory.getSerializationContext().getMetaContext());
     }
     int header = buffer.readVarUint32Small14();
     if ((header & 0b1) != 0) {
@@ -1848,7 +1580,7 @@ public class ClassResolver extends TypeResolver {
   private ClassInfo readClassInfoByCache(
       MemoryBuffer buffer, ClassInfo classInfoCache, int header) {
     if (metaContextShareEnabled) {
-      return readClassInfoWithMetaShare(buffer, fory.getSerializationContext().getMetaContext());
+      return readSharedClassMeta(buffer, fory.getSerializationContext().getMetaContext());
     }
     return readClassInfoFromBytes(buffer, classInfoCache, header);
   }
@@ -1856,7 +1588,7 @@ public class ClassResolver extends TypeResolver {
   private ClassInfo readClassInfoFromBytes(
       MemoryBuffer buffer, ClassInfoHolder classInfoHolder, int header) {
     if (metaContextShareEnabled) {
-      return readClassInfoWithMetaShare(buffer, fory.getSerializationContext().getMetaContext());
+      return readSharedClassMeta(buffer, fory.getSerializationContext().getMetaContext());
     }
     ClassInfo classInfo = readClassInfoFromBytes(buffer, classInfoHolder.classInfo, header);
     classInfoHolder.classInfo = classInfo;
@@ -1939,41 +1671,6 @@ public class ClassResolver extends TypeResolver {
     return currentReadClass;
   }
 
-  private Class<?> loadClass(ClassSpec classSpec) {
-    return loadClass(classSpec.entireClassName, classSpec.isEnum, classSpec.dimension);
-  }
-
-  private Class<?> loadClass(String className, boolean isEnum, int arrayDims) {
-    return loadClass(className, isEnum, arrayDims, fory.getConfig().deserializeNonexistentClass());
-  }
-
-  private Class<?> loadClass(
-      String className, boolean isEnum, int arrayDims, boolean deserializeNonexistentClass) {
-    extRegistry.classChecker.checkClass(this, className);
-    Class<?> cls = extRegistry.registeredClasses.get(className);
-    if (cls != null) {
-      return cls;
-    }
-    try {
-      return Class.forName(className, false, fory.getClassLoader());
-    } catch (ClassNotFoundException e) {
-      try {
-        return Class.forName(className, false, Thread.currentThread().getContextClassLoader());
-      } catch (ClassNotFoundException ex) {
-        String msg =
-            String.format(
-                "Class %s not found from classloaders [%s, %s]",
-                className, fory.getClassLoader(), Thread.currentThread().getContextClassLoader());
-        if (deserializeNonexistentClass) {
-          LOG.warn(msg);
-          return NonexistentClass.getNonexistentClass(
-              className, isEnum, arrayDims, metaContextShareEnabled);
-        }
-        throw new IllegalStateException(msg, ex);
-      }
-    }
-  }
-
   public void reset() {
     resetRead();
     resetWrite();
@@ -2052,10 +1749,6 @@ public class ClassResolver extends TypeResolver {
     return classId >= PRIMITIVE_VOID_CLASS_ID && classId <= PRIMITIVE_DOUBLE_CLASS_ID;
   }
 
-  public MetaStringResolver getMetaStringResolver() {
-    return metaStringResolver;
-  }
-
   public CodeGenerator getCodeGenerator(ClassLoader... loaders) {
     List<ClassLoader> loaderList = new ArrayList<>(loaders.length);
     Collections.addAll(loaderList, loaders);
@@ -2114,95 +1807,5 @@ public class ClassResolver extends TypeResolver {
     } finally {
       fory.getJITContext().unlock();
     }
-  }
-
-  private static final ConcurrentMap<Integer, GraalvmClassRegistry> GRAALVM_REGISTRY =
-      new ConcurrentHashMap<>();
-
-  // CHECKSTYLE.OFF:MethodName
-  public static void _addGraalvmClassRegistry(int foryConfigHash, ClassResolver classResolver) {
-    // CHECKSTYLE.ON:MethodName
-    if (GraalvmSupport.isGraalBuildtime()) {
-      GraalvmClassRegistry registry =
-          GRAALVM_REGISTRY.computeIfAbsent(foryConfigHash, k -> new GraalvmClassRegistry());
-      registry.resolvers.add(classResolver);
-    }
-  }
-
-  private static class GraalvmClassRegistry {
-    private final List<ClassResolver> resolvers;
-    private final Map<Class<?>, Class<? extends Serializer>> serializerClassMap;
-    private final Map<Long, Class<? extends Serializer>> deserializerClassMap;
-
-    private GraalvmClassRegistry() {
-      resolvers = Collections.synchronizedList(new ArrayList<>());
-      serializerClassMap = new ConcurrentHashMap<>();
-      deserializerClassMap = new ConcurrentHashMap<>();
-    }
-  }
-
-  private GraalvmClassRegistry getGraalvmClassRegistry() {
-    return GRAALVM_REGISTRY.computeIfAbsent(
-        fory.getConfig().getConfigHash(), k -> new GraalvmClassRegistry());
-  }
-
-  private Class<? extends Serializer> getGraalvmSerializerClass(Serializer serializer) {
-    if (serializer instanceof GraalvmSerializerHolder) {
-      return ((GraalvmSerializerHolder) serializer).getSerializerClass();
-    }
-    return serializer.getClass();
-  }
-
-  private Class<? extends Serializer> getSerializerClassFromGraalvmRegistry(Class<?> cls) {
-    GraalvmClassRegistry registry = getGraalvmClassRegistry();
-    List<ClassResolver> classResolvers = registry.resolvers;
-    if (classResolvers.isEmpty()) {
-      return null;
-    }
-    for (ClassResolver classResolver : classResolvers) {
-      if (classResolver != this) {
-        ClassInfo classInfo = classResolver.classInfoMap.get(cls);
-        if (classInfo != null && classInfo.serializer != null) {
-          return classInfo.serializer.getClass();
-        }
-      }
-    }
-    Class<? extends Serializer> serializerClass = registry.serializerClassMap.get(cls);
-    // noinspection Duplicates
-    if (serializerClass != null) {
-      return serializerClass;
-    }
-    if (GraalvmSupport.isGraalRuntime()) {
-      if (Functions.isLambda(cls) || ReflectionUtils.isJdkProxy(cls)) {
-        return null;
-      }
-      throw new RuntimeException(String.format("Class %s is not registered", cls));
-    }
-    return null;
-  }
-
-  private Class<? extends Serializer> getMetaSharedDeserializerClassFromGraalvmRegistry(
-      Class<?> cls, ClassDef classDef) {
-    GraalvmClassRegistry registry = getGraalvmClassRegistry();
-    List<ClassResolver> classResolvers = registry.resolvers;
-    if (classResolvers.isEmpty()) {
-      return null;
-    }
-    Class<? extends Serializer> deserializerClass =
-        registry.deserializerClassMap.get(classDef.getId());
-    // noinspection Duplicates
-    if (deserializerClass != null) {
-      return deserializerClass;
-    }
-    if (GraalvmSupport.isGraalRuntime()) {
-      if (Functions.isLambda(cls) || ReflectionUtils.isJdkProxy(cls)) {
-        return null;
-      }
-      throw new RuntimeException(
-          String.format(
-              "Class %s is not registered, registered classes: %s",
-              cls, registry.deserializerClassMap));
-    }
-    return null;
   }
 }

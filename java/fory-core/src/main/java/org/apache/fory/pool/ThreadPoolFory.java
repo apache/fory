@@ -34,7 +34,6 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
-import org.apache.fory.resolver.ClassChecker;
 import org.apache.fory.serializer.BufferCallback;
 import org.apache.fory.util.LoaderBinding;
 
@@ -292,15 +291,6 @@ public class ThreadPoolFory extends AbstractThreadSafeFory {
   @Override
   public ClassLoader getClassLoader() {
     return foryPooledObjectFactory.getClassLoader();
-  }
-
-  @Override
-  public void setClassChecker(ClassChecker classChecker) {
-    execute(
-        fory -> {
-          fory.getClassResolver().setClassChecker(classChecker);
-          return null;
-        });
   }
 
   @Override

@@ -23,6 +23,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.resolver.ClassChecker;
+import org.apache.fory.resolver.TypeChecker;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.SerializerFactory;
 
@@ -78,8 +79,14 @@ public abstract class AbstractThreadSafeFory implements ThreadSafeFory {
   }
 
   @Override
+  @Deprecated
   public void setClassChecker(ClassChecker classChecker) {
     registerCallback(fory -> fory.getClassResolver().setClassChecker(classChecker));
+  }
+
+  @Override
+  public void setTypeChecker(TypeChecker typeChecker) {
+    registerCallback(fory -> fory._getTypeResolver().setTypeChecker(typeChecker));
   }
 
   @Override

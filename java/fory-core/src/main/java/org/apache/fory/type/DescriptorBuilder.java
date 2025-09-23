@@ -23,6 +23,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.serializer.converter.FieldConverter;
 
 public class DescriptorBuilder {
 
@@ -38,6 +39,7 @@ public class DescriptorBuilder {
   ForyField foryField;
   boolean nullable;
   boolean trackingRef;
+  FieldConverter fieldConverter;
 
   public DescriptorBuilder(Descriptor descriptor) {
     this.typeRef = descriptor.getTypeRef();
@@ -52,6 +54,7 @@ public class DescriptorBuilder {
     this.foryField = descriptor.getForyField();
     this.nullable = descriptor.isNullable();
     this.trackingRef = descriptor.isTrackingRef();
+    this.fieldConverter = descriptor.getFieldConverter();
   }
 
   public DescriptorBuilder typeRef(TypeRef<?> typeRef) {

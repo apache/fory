@@ -50,6 +50,7 @@ import org.apache.fory.collection.Collections;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.TypeRef;
+import org.apache.fory.serializer.converter.FieldConverter;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.record.RecordComponent;
@@ -89,6 +90,7 @@ public class Descriptor {
   private ForyField foryField;
   private boolean nullable;
   private boolean trackingRef;
+  private FieldConverter<?> fieldConverter;
 
   public Descriptor(Field field, TypeRef<?> typeRef, Method readMethod, Method writeMethod) {
     this.field = field;
@@ -185,6 +187,7 @@ public class Descriptor {
     this.trackingRef = builder.trackingRef;
     this.type = builder.type;
     this.foryField = builder.foryField;
+    this.fieldConverter = builder.fieldConverter;
   }
 
   public DescriptorBuilder copyBuilder() {
@@ -277,6 +280,14 @@ public class Descriptor {
       this.typeRef = typeRef = TypeRef.of(field.getGenericType());
     }
     return typeRef;
+  }
+
+  public FieldConverter<?> getFieldConverter() {
+    return fieldConverter;
+  }
+
+  public void setFieldConverter(FieldConverter<?> fieldConverter) {
+    this.fieldConverter = fieldConverter;
   }
 
   @Override

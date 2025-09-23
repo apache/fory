@@ -208,11 +208,15 @@ class TimestampSerializer(CrossLanguageCompatibleSerializer):
         return datetime.datetime.fromtimestamp(ts)
 
 
-COLLECTION_DEFAULT_FLAG = 0b0
-COLLECTION_TRACKING_REF = 0b1
-COLLECTION_HAS_NULL = 0b10
-COLLECTION_NOT_DECL_ELEMENT_TYPE = 0b100
-COLLECTION_NOT_SAME_TYPE = 0b1000
+COLL_DEFAULT_FLAG = 0b0
+COLL_TRACKING_REF = 0b1
+COLL_HAS_NULL = 0b10
+COLL_IS_DECL_ELEMENT_TYPE = 0b100
+COLL_IS_SAME_TYPE = 0b1000
+COLL_DECL_SAME_TYPE_TRACKING_REF = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE | COLL_TRACKING_REF
+COLL_DECL_SAME_TYPE_NOT_TRACKING_REF = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
+COLL_DECL_SAME_TYPE_HAS_NULL = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE | COLL_HAS_NULL
+COLL_DECL_SAME_TYPE_NOT_HAS_NULL = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
 
 
 class CollectionSerializer(Serializer):
@@ -242,40 +246,42 @@ class CollectionSerializer(Serializer):
         self.is_py = fory.is_py
 
     def write_header(self, buffer, value):
-        collect_flag = COLLECTION_DEFAULT_FLAG
+        collect_flag = COLL_DEFAULT_FLAG
         elem_type = self.elem_type
         elem_typeinfo = self.elem_typeinfo
         has_null = False
-        has_different_type = False
+        has_same_type = True
         if elem_type is None:
-            collect_flag |= COLLECTION_NOT_DECL_ELEMENT_TYPE
             for s in value:
                 if not has_null and s is None:
                     has_null = True
                     continue
                 if elem_type is None:
                     elem_type = type(s)
-                elif not has_different_type and type(s) is not elem_type:
-                    collect_flag |= COLLECTION_NOT_SAME_TYPE
-                    has_different_type = True
-            if not has_different_type and elem_type is not None:
-                elem_typeinfo = self.type_resolver.get_typeinfo(elem_type)
+                elif has_same_type and type(s) is not elem_type:
+                    has_same_type = False
+            if has_same_type:
+                collect_flag |= COLL_IS_SAME_TYPE
+                if elem_type is not None:
+                    elem_typeinfo = self.type_resolver.get_typeinfo(elem_type)
         else:
+            collect_flag |= COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
             for s in value:
                 if s is None:
                     has_null = True
                     break
+
         if has_null:
-            collect_flag |= COLLECTION_HAS_NULL
+            collect_flag |= COLL_HAS_NULL
         if self.fory.ref_tracking:
             if self.elem_tracking_ref == 1:
-                collect_flag |= COLLECTION_TRACKING_REF
+                collect_flag |= COLL_TRACKING_REF
             elif self.elem_tracking_ref == -1:
-                if has_different_type or elem_typeinfo.serializer.need_to_write_ref:
-                    collect_flag |= COLLECTION_TRACKING_REF
+                if not has_same_type or elem_typeinfo.serializer.need_to_write_ref:
+                    collect_flag |= COLL_TRACKING_REF
         buffer.write_varuint32(len(value))
         buffer.write_int8(collect_flag)
-        if not has_different_type and (collect_flag & COLLECTION_NOT_DECL_ELEMENT_TYPE) != 0:
+        if has_same_type and (collect_flag & COLL_IS_DECL_ELEMENT_TYPE) == 0:
             self.type_resolver.write_typeinfo(buffer, elem_typeinfo)
         return collect_flag, elem_typeinfo
 
@@ -284,8 +290,8 @@ class CollectionSerializer(Serializer):
             buffer.write_varuint32(0)
             return
         collect_flag, typeinfo = self.write_header(buffer, value)
-        if (collect_flag & COLLECTION_NOT_SAME_TYPE) == 0:
-            if (collect_flag & COLLECTION_TRACKING_REF) == 0:
+        if (collect_flag & COLL_IS_SAME_TYPE) != 0:
+            if (collect_flag & COLL_TRACKING_REF) == 0:
                 self._write_same_type_no_ref(buffer, value, typeinfo)
             else:
                 self._write_same_type_ref(buffer, value, typeinfo)
@@ -326,12 +332,12 @@ class CollectionSerializer(Serializer):
         if len_ == 0:
             return collection_
         collect_flag = buffer.read_int8()
-        if (collect_flag & COLLECTION_NOT_SAME_TYPE) == 0:
-            if collect_flag & COLLECTION_NOT_DECL_ELEMENT_TYPE != 0:
+        if (collect_flag & COLL_IS_SAME_TYPE) != 0:
+            if collect_flag & COLL_IS_DECL_ELEMENT_TYPE == 0:
                 typeinfo = self.type_resolver.read_typeinfo(buffer)
             else:
                 typeinfo = self.elem_typeinfo
-            if (collect_flag & COLLECTION_TRACKING_REF) == 0:
+            if (collect_flag & COLL_TRACKING_REF) == 0:
                 self._read_same_type_no_ref(buffer, len_, collection_, typeinfo)
             else:
                 self._read_same_type_ref(buffer, len_, collection_, typeinfo)

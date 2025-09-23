@@ -173,19 +173,23 @@ func createStructFieldInfos(f *Fory, type_ reflect.Type) (structFieldsInfo, erro
 		if field.Type.Kind() == reflect.Interface {
 			field.Type = reflect.ValueOf(field.Type).Elem().Type()
 		}
-		fieldSerializer, _ := f.typeResolver.getSerializerByType(field.Type, true)
-		if field.Type.Kind() == reflect.Array {
-			// When a struct field is an array type,
-			// retrieve its corresponding slice serializer and populate it into fieldInfo for reuse.
-			elemType := field.Type.Elem()
-			sliceType := reflect.SliceOf(elemType)
-			fieldSerializer = f.typeResolver.typeToSerializers[sliceType]
-		} else if field.Type.Kind() == reflect.Slice {
-			// If the field is a concrete slice type, dynamically create a valid serializer
-			// so it has the potential and capability to use readSameTypes function.
-			if field.Type.Elem().Kind() != reflect.Interface {
-				fieldSerializer = sliceSerializer{
-					f.typeResolver.typesInfo[field.Type.Elem()],
+		var fieldSerializer Serializer
+		if field.Type.Kind() != reflect.Struct {
+			var _ error
+			fieldSerializer, _ = f.typeResolver.getSerializerByType(field.Type, true)
+			if field.Type.Kind() == reflect.Array {
+				// When a struct field is an array type,
+				// retrieve its corresponding slice serializer and populate it into fieldInfo for reuse.
+				elemType := field.Type.Elem()
+				sliceType := reflect.SliceOf(elemType)
+				fieldSerializer = f.typeResolver.typeToSerializers[sliceType]
+			} else if field.Type.Kind() == reflect.Slice {
+				// If the field is a concrete slice type, dynamically create a valid serializer
+				// so it has the potential and capability to use readSameTypes function.
+				if field.Type.Elem().Kind() != reflect.Interface {
+					fieldSerializer = sliceSerializer{
+						f.typeResolver.typesInfo[field.Type.Elem()],
+					}
 				}
 			}
 		}
@@ -254,19 +258,26 @@ func createStructFieldInfosFromFieldDefs(f *Fory, fieldDefs []FieldDef, type_ re
 	for i, def := range fieldDefs {
 		current_field_names[def.name] = i
 
+		fieldTypeFromDef, err := resolveFieldDefType(f, def)
+		if err != nil {
+			return nil, err
+		}
+
 		fieldIndex := -1 // Default to -1 if field doesn't exist in current struct
 		var fieldType reflect.Type
+		var structField reflect.StructField
 
 		if structFieldIndex, exists := fieldNameToIndex[def.name]; exists {
-			fieldIndex = structFieldIndex
-			fieldType = type_.Field(structFieldIndex).Type
-		} else {
-			// Field doesn't exist in current struct version, we need the type from FieldDef
-			if info, exists := f.typeResolver.typeIDToTypeInfo[int32(def.fieldType.TypeId())]; exists {
-				fieldType = info.Type
+			structField = type_.Field(structFieldIndex)
+			fieldType = fieldTypeFromDef
+			if typesCompatible(structField.Type, fieldTypeFromDef) {
+				fieldIndex = structFieldIndex
+				fieldType = structField.Type
 			} else {
-				return nil, fmt.Errorf("unknown type for field %s with typeId %d", def.name, def.fieldType.TypeId())
+				fieldType = fieldTypeFromDef
 			}
+		} else {
+			fieldType = fieldTypeFromDef
 		}
 
 		fieldSerializer, err := def.fieldType.getSerializer(f)
@@ -276,6 +287,7 @@ func createStructFieldInfosFromFieldDefs(f *Fory, fieldDefs []FieldDef, type_ re
 
 		fieldInfo := &fieldInfo{
 			name:         def.name,
+			field:        structField,
 			fieldIndex:   fieldIndex,
 			type_:        fieldType,
 			referencable: def.nullable,
@@ -286,6 +298,57 @@ func createStructFieldInfosFromFieldDefs(f *Fory, fieldDefs []FieldDef, type_ re
 	}
 
 	return fields, nil
+}
+
+func resolveFieldDefType(f *Fory, def FieldDef) (reflect.Type, error) {
+	typeInfo, err := def.fieldType.getTypeInfo(f)
+	if err != nil {
+		return nil, fmt.Errorf("unknown type for field %s with typeId %d: %w", def.name, def.fieldType.TypeId(), err)
+	}
+	if typeInfo.Type == nil {
+		return nil, fmt.Errorf("type information missing for field %s with typeId %d", def.name, def.fieldType.TypeId())
+	}
+	return typeInfo.Type, nil
+}
+
+func typesCompatible(actual, expected reflect.Type) bool {
+	if actual == nil || expected == nil {
+		return false
+	}
+	if actual == expected {
+		return true
+	}
+	if actual.AssignableTo(expected) || expected.AssignableTo(actual) {
+		return true
+	}
+	if actual.Kind() == reflect.Ptr && actual.Elem() == expected {
+		return true
+	}
+	if expected.Kind() == reflect.Ptr && expected.Elem() == actual {
+		return true
+	}
+	if actual.Kind() == expected.Kind() {
+		switch actual.Kind() {
+		case reflect.Slice, reflect.Array:
+			return elementTypesCompatible(actual.Elem(), expected.Elem())
+		case reflect.Map:
+			return elementTypesCompatible(actual.Key(), expected.Key()) && elementTypesCompatible(actual.Elem(), expected.Elem())
+		}
+	}
+	return false
+}
+
+func elementTypesCompatible(actual, expected reflect.Type) bool {
+	if actual == nil || expected == nil {
+		return false
+	}
+	if actual == expected || actual.AssignableTo(expected) || expected.AssignableTo(actual) {
+		return true
+	}
+	if actual.Kind() == reflect.Ptr {
+		return elementTypesCompatible(actual, expected.Elem())
+	}
+	return false
 }
 
 type triple struct {

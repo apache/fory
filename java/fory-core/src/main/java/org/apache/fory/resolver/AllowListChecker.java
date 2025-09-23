@@ -35,7 +35,7 @@ import org.apache.fory.serializer.Serializer;
 
 /** White/black list based class checker. */
 @ThreadSafe
-public class AllowListChecker implements ClassChecker {
+public class AllowListChecker implements TypeChecker {
   private static final Logger LOG = LoggerFactory.getLogger(AllowListChecker.class);
 
   public enum CheckLevel {
@@ -80,7 +80,7 @@ public class AllowListChecker implements ClassChecker {
   }
 
   @Override
-  public boolean checkClass(ClassResolver classResolver, String className) {
+  public boolean checkType(TypeResolver resolver, String className) {
     try {
       lock.readLock().lock();
       return check(className);

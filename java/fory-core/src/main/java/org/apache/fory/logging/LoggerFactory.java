@@ -26,7 +26,7 @@ import org.apache.fory.util.GraalvmSupport;
  */
 public class LoggerFactory {
   private static volatile boolean useSlf4jLogger;
-  private static volatile int logLevel = LogLevel.INFO_LEVEL;
+  private static volatile int logLevel = LogLevel.ERROR_LEVEL;
 
   /** Disable Logger, there will be no log output. */
   public static void disableLogging() {

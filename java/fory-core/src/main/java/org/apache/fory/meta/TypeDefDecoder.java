@@ -66,9 +66,9 @@ class TypeDefDecoder {
       int xtypeId = buffer.readVarUint32Small7();
       ClassInfo userTypeInfo = resolver.getUserTypeInfo(xtypeId);
       if (userTypeInfo == null) {
-        classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class);
+        classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class, xtypeId);
       } else {
-        classSpec = new ClassSpec(userTypeInfo.getCls());
+        classSpec = new ClassSpec(userTypeInfo.getCls(), xtypeId);
       }
     }
     List<ClassDef.FieldInfo> classFields =

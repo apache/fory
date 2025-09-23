@@ -31,7 +31,6 @@ import org.apache.fory.meta.DeflaterMetaCompressor;
 import org.apache.fory.meta.MetaCompressor;
 import org.apache.fory.pool.ThreadPoolFory;
 import org.apache.fory.reflect.ReflectionUtils;
-import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.ObjectStreamSerializer;
 import org.apache.fory.serializer.Serializer;
@@ -280,8 +279,9 @@ public final class ForyBuilder {
    * attack if the classes `constructor`/`equals`/`hashCode` method contain malicious code. Do not
    * disable class registration if you can't ensure your environment are *indeed secure*. We are not
    * responsible for security risks if you disable this option. If you disable this option, you can
-   * configure {@link org.apache.fory.resolver.ClassChecker} by {@link
-   * ClassResolver#setClassChecker} to control which classes are allowed being serialized.
+   * configure {@link org.apache.fory.resolver.TypeChecker} by {@link
+   * org.apache.fory.resolver.TypeResolver#setTypeChecker} to control which classes are allowed
+   * being serialized.
    */
   public ForyBuilder requireClassRegistration(boolean requireClassRegistration) {
     this.requireClassRegistration = requireClassRegistration;
@@ -458,8 +458,8 @@ public final class ForyBuilder {
       LOG.warn(
           "Class registration isn't forced, unknown classes can be deserialized. "
               + "If the environment isn't secure, please enable class registration by "
-              + "`ForyBuilder#requireClassRegistration(true)` or configure ClassChecker by "
-              + "`ClassResolver#setClassChecker`");
+              + "`ForyBuilder#requireClassRegistration(true)` or configure TypeChecker by "
+              + "`TypeResolver#setTypeChecker`");
     }
     if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && asyncCompilationEnabled) {
       LOG.info("Use sync compilation for graalvm native image since it doesn't support JIT.");

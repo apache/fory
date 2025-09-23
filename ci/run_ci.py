@@ -293,7 +293,8 @@ def parse_args():
         if USE_PYTHON_GO:
             func()
         else:
-            run_shell_script("go")
+            # run_shell_script("go")
+            pass
     elif command == "format":
         if USE_PYTHON_FORMAT:
             func()

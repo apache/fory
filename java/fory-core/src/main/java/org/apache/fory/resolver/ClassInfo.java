@@ -67,13 +67,13 @@ public class ClassInfo {
     this.xtypeId = xtypeId;
     this.serializer = serializer;
     this.classId = classId;
-    if (cls != null && classId == ClassResolver.NO_CLASS_ID) {
+    if (cls != null && classId == TypeResolver.NO_CLASS_ID) {
       Preconditions.checkArgument(typeNameBytes != null);
     }
   }
 
   ClassInfo(
-      ClassResolver classResolver,
+      TypeResolver classResolver,
       Class<?> cls,
       Serializer<?> serializer,
       short classId,
@@ -142,7 +142,7 @@ public class ClassInfo {
     this.serializer = serializer;
   }
 
-  void setSerializer(ClassResolver resolver, Serializer<?> serializer) {
+  void setSerializer(TypeResolver resolver, Serializer<?> serializer) {
     this.serializer = serializer;
     needToWriteClassDef = serializer != null && resolver.needToWriteClassDef(serializer);
   }

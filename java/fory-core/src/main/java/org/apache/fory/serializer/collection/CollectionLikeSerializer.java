@@ -135,8 +135,8 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       boolean trackingRef = elemGenericType.trackingRef(typeResolver);
       if (elemGenericType.isMonomorphic()) {
         if (trackingRef) {
-          buffer.writeByte(CollectionFlags.TRACKING_REF);
-          return CollectionFlags.TRACKING_REF;
+          buffer.writeByte(CollectionFlags.DECL_SAME_TYPE_TRACKING_REF);
+          return CollectionFlags.DECL_SAME_TYPE_TRACKING_REF;
         } else {
           return writeNullabilityHeader(buffer, value);
         }
@@ -151,8 +151,8 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
     } else {
       if (elemSerializer != null) {
         if (elemSerializer.needToWriteRef()) {
-          buffer.writeByte(CollectionFlags.TRACKING_REF);
-          return CollectionFlags.TRACKING_REF;
+          buffer.writeByte(CollectionFlags.DECL_SAME_TYPE_TRACKING_REF);
+          return CollectionFlags.DECL_SAME_TYPE_TRACKING_REF;
         } else {
           return writeNullabilityHeader(buffer, value);
         }
@@ -171,15 +171,18 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   public int writeNullabilityHeader(MemoryBuffer buffer, Collection value) {
     for (Object elem : value) {
       if (elem == null) {
-        buffer.writeByte(CollectionFlags.HAS_NULL);
-        return CollectionFlags.HAS_NULL;
+        buffer.writeByte(CollectionFlags.DECL_SAME_TYPE_HAS_NULL);
+        return CollectionFlags.DECL_SAME_TYPE_HAS_NULL;
       }
     }
-    buffer.writeByte(0);
-    return 0;
+    buffer.writeByte(CollectionFlags.DECL_SAME_TYPE_NOT_HAS_NULL);
+    return CollectionFlags.DECL_SAME_TYPE_NOT_HAS_NULL;
   }
 
-  /** Need to track elements ref, can't check elements nullability. */
+  /**
+   * Need to track elements ref, declared element type is not morphic, can't check elements
+   * nullability.
+   */
   @CodegenInvoke
   public int writeTypeHeader(
       MemoryBuffer buffer, Collection value, Class<?> declareElementType, ClassInfoHolder cache) {
@@ -199,17 +202,17 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       }
     }
     if (hasDifferentClass) {
-      bitmap |= CollectionFlags.NOT_SAME_TYPE | CollectionFlags.NOT_DECL_ELEMENT_TYPE;
       buffer.writeByte(bitmap);
     } else {
       if (elemClass == null) {
         elemClass = void.class;
       }
+      bitmap |= CollectionFlags.IS_SAME_TYPE;
       // Write class in case peer doesn't have this class.
       if (!fory.getConfig().isMetaShareEnabled() && elemClass == declareElementType) {
+        bitmap |= CollectionFlags.IS_DECL_ELEMENT_TYPE;
         buffer.writeByte(bitmap);
       } else {
-        bitmap |= CollectionFlags.NOT_DECL_ELEMENT_TYPE;
         buffer.writeByte(bitmap);
         // Update classinfo, the caller will use it.
         TypeResolver typeResolver = this.typeResolver;
@@ -222,7 +225,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   /** Maybe track elements ref, or write elements nullability. */
   @CodegenInvoke
   public int writeTypeHeader(MemoryBuffer buffer, Collection value, ClassInfoHolder cache) {
-    int bitmap = CollectionFlags.NOT_DECL_ELEMENT_TYPE;
+    int bitmap = 0;
     boolean hasDifferentClass = false;
     Class<?> elemClass = null;
     boolean containsNull = false;
@@ -241,7 +244,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       bitmap |= CollectionFlags.HAS_NULL;
     }
     if (hasDifferentClass) {
-      bitmap |= CollectionFlags.NOT_SAME_TYPE | CollectionFlags.TRACKING_REF;
+      bitmap |= CollectionFlags.TRACKING_REF;
       buffer.writeByte(bitmap);
     } else {
       TypeResolver typeResolver = this.typeResolver;
@@ -250,6 +253,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       if (elemClass == null) {
         elemClass = void.class;
       }
+      bitmap |= CollectionFlags.IS_SAME_TYPE;
       ClassInfo classInfo = typeResolver.getClassInfo(elemClass, cache);
       if (classInfo.getSerializer().needToWriteRef()) {
         bitmap |= CollectionFlags.TRACKING_REF;
@@ -286,8 +290,6 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       bitmap |= CollectionFlags.HAS_NULL;
     }
     if (hasDifferentClass) {
-      // If collection contains null only, the type header will be meaningless
-      bitmap |= CollectionFlags.NOT_SAME_TYPE | CollectionFlags.NOT_DECL_ELEMENT_TYPE;
       buffer.writeByte(bitmap);
     } else {
       // When serialize a collection with all elements null directly, the declare type
@@ -295,11 +297,12 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       if (elemClass == null) {
         elemClass = Object.class;
       }
+      bitmap |= CollectionFlags.IS_SAME_TYPE;
       // Write class in case peer doesn't have this class.
       if (!fory.getConfig().isMetaShareEnabled() && elemClass == declareElementType) {
+        bitmap |= CollectionFlags.IS_DECL_ELEMENT_TYPE;
         buffer.writeByte(bitmap);
       } else {
-        bitmap |= CollectionFlags.NOT_DECL_ELEMENT_TYPE;
         buffer.writeByte(bitmap);
         TypeResolver typeResolver = this.typeResolver;
         ClassInfo classInfo = typeResolver.getClassInfo(elemClass, cache);
@@ -392,10 +395,9 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       Collection collection,
       GenericType elemGenericType,
       int flags) {
-    if ((flags & CollectionFlags.NOT_SAME_TYPE) != CollectionFlags.NOT_SAME_TYPE) {
+    if ((flags & CollectionFlags.IS_SAME_TYPE) == CollectionFlags.IS_SAME_TYPE) {
       Serializer serializer;
-      if ((flags & CollectionFlags.NOT_DECL_ELEMENT_TYPE)
-          != CollectionFlags.NOT_DECL_ELEMENT_TYPE) {
+      if ((flags & CollectionFlags.IS_DECL_ELEMENT_TYPE) == CollectionFlags.IS_DECL_ELEMENT_TYPE) {
         Preconditions.checkNotNull(elemGenericType);
         serializer = elemGenericType.getSerializer(typeResolver);
       } else {
@@ -650,11 +652,10 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       int numElements,
       int flags,
       GenericType elemGenericType) {
-    if ((flags & CollectionFlags.NOT_SAME_TYPE) != CollectionFlags.NOT_SAME_TYPE) {
+    if ((flags & CollectionFlags.IS_SAME_TYPE) == CollectionFlags.IS_SAME_TYPE) {
       Serializer serializer;
       TypeResolver typeResolver = this.typeResolver;
-      if ((flags & CollectionFlags.NOT_DECL_ELEMENT_TYPE)
-          == CollectionFlags.NOT_DECL_ELEMENT_TYPE) {
+      if ((flags & CollectionFlags.IS_DECL_ELEMENT_TYPE) != CollectionFlags.IS_DECL_ELEMENT_TYPE) {
         serializer = typeResolver.readClassInfo(buffer, elementClassInfoHolder).getSerializer();
       } else {
         serializer = elemGenericType.getSerializer(typeResolver);

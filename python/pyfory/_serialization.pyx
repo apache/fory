@@ -1480,14 +1480,18 @@ cdef class TimestampSerializer(CrossLanguageCompatibleSerializer):
 Collection serialization format:
 https://fory.apache.org/docs/specification/fory_xlang_serialization_spec/#list
 Has the following changes:
-* None has an independent NonType type, so COLLECTION_NOT_SAME_TYPE can also cover the concept of being nullable.
+* None has an independent type, so COLL_NOT_SAME_TYPE can also cover the concept of being nullable.
 * No flag is needed to indicate that the element type is not the declared type.
 """
-cdef int8_t COLLECTION_DEFAULT_FLAG = 0b0
-cdef int8_t COLLECTION_TRACKING_REF = 0b1
-cdef int8_t COLLECTION_HAS_NULL = 0b10
-cdef int8_t COLLECTION_NOT_DECL_ELEMENT_TYPE = 0b100
-cdef int8_t COLLECTION_NOT_SAME_TYPE = 0b1000
+cdef int8_t COLL_DEFAULT_FLAG = 0b0
+cdef int8_t COLL_TRACKING_REF = 0b1
+cdef int8_t COLL_HAS_NULL = 0b10
+cdef int8_t COLL_IS_DECL_ELEMENT_TYPE = 0b100
+cdef int8_t COLL_IS_SAME_TYPE = 0b1000
+cdef int8_t COLL_DECL_SAME_TYPE_TRACKING_REF = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE | COLL_TRACKING_REF
+cdef int8_t COLL_DECL_SAME_TYPE_NOT_TRACKING_REF = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
+cdef int8_t COLL_DECL_SAME_TYPE_HAS_NULL = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE | COLL_HAS_NULL
+cdef int8_t COLL_DECL_SAME_TYPE_NOT_HAS_NULL = COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
 
 
 cdef class CollectionSerializer(Serializer):
@@ -1515,41 +1519,41 @@ cdef class CollectionSerializer(Serializer):
         self.is_py = fory.is_py
 
     cdef pair[int8_t, int64_t] write_header(self, Buffer buffer, value):
-        cdef int8_t collect_flag = COLLECTION_DEFAULT_FLAG
+        cdef int8_t collect_flag = COLL_DEFAULT_FLAG
         elem_type = self.elem_type
         cdef TypeInfo elem_typeinfo = self.elem_typeinfo
         cdef c_bool has_null = False
-        cdef c_bool has_different_type = False
+        cdef c_bool has_same_type = True
         if elem_type is None:
-            collect_flag = COLLECTION_NOT_DECL_ELEMENT_TYPE
             for s in value:
                 if not has_null and s is None:
                     has_null = True
                     continue
                 if elem_type is None:
                     elem_type = type(s)
-                elif not has_different_type and type(s) is not elem_type:
-                    collect_flag |= COLLECTION_NOT_SAME_TYPE
-                    has_different_type = True
-            if not has_different_type:
+                elif has_same_type and type(s) is not elem_type:
+                    has_same_type = False
+            if has_same_type:
+                collect_flag |= COLL_IS_SAME_TYPE
                 elem_typeinfo = self.type_resolver.get_typeinfo(elem_type)
         else:
+            collect_flag |= COLL_IS_DECL_ELEMENT_TYPE | COLL_IS_SAME_TYPE
             for s in value:
                 if s is None:
                     has_null = True
                     break
         if has_null:
-            collect_flag |= COLLECTION_HAS_NULL
+            collect_flag |= COLL_HAS_NULL
         if self.fory.ref_tracking:
             if self.elem_tracking_ref == 1:
-                collect_flag |= COLLECTION_TRACKING_REF
+                collect_flag |= COLL_TRACKING_REF
             elif self.elem_tracking_ref == -1:
-                if has_different_type or elem_typeinfo.serializer.need_to_write_ref:
-                    collect_flag |= COLLECTION_TRACKING_REF
+                if not has_same_type or elem_typeinfo.serializer.need_to_write_ref:
+                    collect_flag |= COLL_TRACKING_REF
         buffer.write_varuint32(len(value))
         buffer.write_int8(collect_flag)
-        if (not has_different_type and
-                collect_flag & COLLECTION_NOT_DECL_ELEMENT_TYPE != 0):
+        if (has_same_type and
+                collect_flag & COLL_IS_DECL_ELEMENT_TYPE == 0):
             self.type_resolver.write_typeinfo(buffer, elem_typeinfo)
         return pair[int8_t, int64_t](collect_flag, obj2int(elem_typeinfo))
 
@@ -1566,7 +1570,7 @@ cdef class CollectionSerializer(Serializer):
         cdef TypeResolver type_resolver = self.type_resolver
         cdef c_bool is_py = self.is_py
         cdef serializer = type(elem_typeinfo.serializer)
-        if (collect_flag & COLLECTION_NOT_SAME_TYPE) == 0:
+        if (collect_flag & COLL_IS_SAME_TYPE) != 0:
             if elem_type is str:
                 self._write_string(buffer, value)
             elif serializer is Int64Serializer:
@@ -1576,7 +1580,7 @@ cdef class CollectionSerializer(Serializer):
             elif serializer is Float64Serializer:
                 self._write_float(buffer, value)
             else:
-                if (collect_flag & COLLECTION_TRACKING_REF) == 0:
+                if (collect_flag & COLL_TRACKING_REF) == 0:
                     self._write_same_type_no_ref(buffer, value, elem_typeinfo)
                 else:
                     self._write_same_type_ref(buffer, value, elem_typeinfo)
@@ -1723,12 +1727,12 @@ cdef class ListSerializer(CollectionSerializer):
         cdef c_bool is_py = self.is_py
         cdef TypeInfo typeinfo
         cdef int32_t type_id = -1
-        if (collect_flag & COLLECTION_NOT_SAME_TYPE) == 0:
-            if collect_flag & COLLECTION_NOT_DECL_ELEMENT_TYPE != 0:
+        if (collect_flag & COLL_IS_SAME_TYPE) != 0:
+            if collect_flag & COLL_IS_DECL_ELEMENT_TYPE == 0:
                 typeinfo = self.type_resolver.read_typeinfo(buffer)
             else:
                 typeinfo = self.elem_typeinfo
-            if (collect_flag & COLLECTION_HAS_NULL) == 0:
+            if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
                 if type_id == <int32_t>TypeId.STRING:
                     self._read_string(buffer, len_, list_)
@@ -1742,7 +1746,7 @@ cdef class ListSerializer(CollectionSerializer):
                 elif type_id == <int32_t>TypeId.FLOAT64:
                     self._read_float(buffer, len_, list_)
                     return list_
-            if (collect_flag & COLLECTION_TRACKING_REF) == 0:
+            if (collect_flag & COLL_TRACKING_REF) == 0:
                 self._read_same_type_no_ref(buffer, len_, list_, typeinfo)
             else:
                 self._read_same_type_ref(buffer, len_, list_, typeinfo)
@@ -1809,12 +1813,12 @@ cdef class TupleSerializer(CollectionSerializer):
         cdef c_bool is_py = self.is_py
         cdef TypeInfo typeinfo
         cdef int32_t type_id = -1
-        if (collect_flag & COLLECTION_NOT_SAME_TYPE) == 0:
-            if collect_flag & COLLECTION_NOT_DECL_ELEMENT_TYPE != 0:
+        if (collect_flag & COLL_IS_SAME_TYPE) != 0:
+            if collect_flag & COLL_IS_DECL_ELEMENT_TYPE == 0:
                 typeinfo = self.type_resolver.read_typeinfo(buffer)
             else:
                 typeinfo = self.elem_typeinfo
-            if (collect_flag & COLLECTION_HAS_NULL) == 0:
+            if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
                 if type_id == <int32_t>TypeId.STRING:
                     self._read_string(buffer, len_, tuple_)
@@ -1828,7 +1832,7 @@ cdef class TupleSerializer(CollectionSerializer):
                 if type_id == <int32_t>TypeId.FLOAT64:
                     self._read_float(buffer, len_, tuple_)
                     return tuple_
-            if (collect_flag & COLLECTION_TRACKING_REF) == 0:
+            if (collect_flag & COLL_TRACKING_REF) == 0:
                 self._read_same_type_no_ref(buffer, len_, tuple_, typeinfo)
             else:
                 self._read_same_type_ref(buffer, len_, tuple_, typeinfo)
@@ -1870,12 +1874,12 @@ cdef class SetSerializer(CollectionSerializer):
         cdef TypeInfo typeinfo
         cdef int32_t type_id = -1
         cdef c_bool is_py = self.is_py
-        if (collect_flag & COLLECTION_NOT_SAME_TYPE) == 0:
-            if collect_flag & COLLECTION_NOT_DECL_ELEMENT_TYPE != 0:
+        if (collect_flag & COLL_IS_SAME_TYPE) != 0:
+            if collect_flag & COLL_IS_DECL_ELEMENT_TYPE == 0:
                 typeinfo = self.type_resolver.read_typeinfo(buffer)
             else:
                 typeinfo = self.elem_typeinfo
-            if (collect_flag & COLLECTION_HAS_NULL) == 0:
+            if (collect_flag & COLL_HAS_NULL) == 0:
                 type_id = typeinfo.type_id
                 if type_id == <int32_t>TypeId.STRING:
                     self._read_string(buffer, len_, instance)
@@ -1889,7 +1893,7 @@ cdef class SetSerializer(CollectionSerializer):
                 if type_id == <int32_t>TypeId.FLOAT64:
                     self._read_float(buffer, len_, instance)
                     return instance
-            if (collect_flag & COLLECTION_TRACKING_REF) == 0:
+            if (collect_flag & COLL_TRACKING_REF) == 0:
                 self._read_same_type_no_ref(buffer, len_, instance, typeinfo)
             else:
                 self._read_same_type_ref(buffer, len_, instance, typeinfo)

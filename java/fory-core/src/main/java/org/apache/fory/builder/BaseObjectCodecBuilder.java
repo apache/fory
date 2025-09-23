@@ -911,12 +911,12 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             writeContainerElements(elementType, false, null, hasNull, buffer, collection, size));
       }
     } else {
-      Literal flag = ofInt(CollectionFlags.NOT_SAME_TYPE);
-      Expression sameElementClass = neq(new BitAnd(flags, flag), flag, "sameElementClass");
+      Literal flag = ofInt(CollectionFlags.IS_SAME_TYPE);
+      Expression sameElementClass = eq(new BitAnd(flags, flag), flag, "sameElementClass");
       builder.add(sameElementClass);
       //  if ((flags & Flags.NOT_DECL_ELEMENT_TYPE) == Flags.NOT_DECL_ELEMENT_TYPE)
-      Literal notDeclTypeFlag = ofInt(CollectionFlags.NOT_DECL_ELEMENT_TYPE);
-      Expression isDeclType = neq(new BitAnd(flags, notDeclTypeFlag), notDeclTypeFlag);
+      Literal isDeclTypeFlag = ofInt(CollectionFlags.IS_DECL_ELEMENT_TYPE);
+      Expression isDeclType = eq(new BitAnd(flags, isDeclTypeFlag), isDeclTypeFlag);
       Expression elemSerializer; // make it in scope of `if(sameElementClass)`
       boolean maybeDecl = typeResolver(r -> r.isSerializable(elemClass));
       TypeRef<?> serializerType = getSerializerType(elementType);
@@ -1764,12 +1764,12 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             readContainerElements(elementType, false, null, hasNull, buffer, collection, size));
       }
     } else {
-      Literal notSameTypeFlag = ofInt(CollectionFlags.NOT_SAME_TYPE);
+      Literal isSameTypeFlag = ofInt(CollectionFlags.IS_SAME_TYPE);
       Expression sameElementClass =
-          neq(new BitAnd(flags, notSameTypeFlag), notSameTypeFlag, "sameElementClass");
+          eq(new BitAnd(flags, isSameTypeFlag), isSameTypeFlag, "sameElementClass");
       //  if ((flags & Flags.NOT_DECL_ELEMENT_TYPE) == Flags.NOT_DECL_ELEMENT_TYPE)
-      Literal notDeclTypeFlag = ofInt(CollectionFlags.NOT_DECL_ELEMENT_TYPE);
-      Expression isDeclType = neq(new BitAnd(flags, notDeclTypeFlag), notDeclTypeFlag);
+      Literal isDeclTypeFlag = ofInt(CollectionFlags.IS_DECL_ELEMENT_TYPE);
+      Expression isDeclType = eq(new BitAnd(flags, isDeclTypeFlag), isDeclTypeFlag);
       Invoke serializer =
           inlineInvoke(readClassInfo(elemClass, buffer), "getSerializer", SERIALIZER_TYPE);
       TypeRef<?> serializerType = getSerializerType(elementType);

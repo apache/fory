@@ -30,54 +30,151 @@ type SimpleStruct struct {
 	Name string
 }
 
-// TestTypeDefEncodingDecoding tests the encoding and decoding of TypeDef
+type SliceStruct struct {
+	ID    int32
+	Items []string
+}
+
+type NestedSliceStruct struct {
+	ID      int32
+	Matrix  [][]int
+	Records [][]string
+}
+
+type MapStruct struct {
+	ID   int32
+	Data map[string]int
+}
+
+type ComplexStruct struct {
+	ID       int32
+	SliceMap map[string][]int
+	MapSlice []map[string]int
+}
+
+// TestTypeDefEncodingDecodingTableDriven tests encoding and decoding of TypeDef
+// This ensure the peer can successfully encode and decode the same TypeDef, and obtain appropriate serializer to read or skip data
 func TestTypeDefEncodingDecoding(t *testing.T) {
-	// Create a Fory instance for testing
-	fory := NewFory(false)
-
-	// Create a test struct instance
-	testStruct := SimpleStruct{
-		ID:   42,
-		Name: "test",
+	tests := []struct {
+		name       string
+		tagName    string
+		testStruct interface{}
+	}{
+		{
+			name:    "SimpleStruct with basic fields",
+			tagName: "example.SimpleStruct",
+			testStruct: SimpleStruct{
+				ID:   42,
+				Name: "test",
+			},
+		},
+		{
+			name:    "SliceStruct with basic items",
+			tagName: "example.SliceStruct",
+			testStruct: SliceStruct{
+				ID:    100,
+				Items: []string{"item1", "item2", "item3"},
+			},
+		},
+		{
+			name:    "NestedSliceStruct with nested collections",
+			tagName: "example.NestedSliceStruct",
+			testStruct: NestedSliceStruct{
+				ID:      200,
+				Matrix:  [][]int{{1, 2}, {3, 4}},
+				Records: [][]string{{"a", "b"}, {"c", "d"}},
+			},
+		},
+		{
+			name:    "MapStruct with map fields",
+			tagName: "example.MapStruct",
+			testStruct: MapStruct{
+				ID:   300,
+				Data: map[string]int{"key1": 1, "key2": 2},
+			},
+		},
+		{
+			name:    "ComplexStruct with complex nested types",
+			tagName: "example.ComplexStruct",
+			testStruct: ComplexStruct{
+				ID:       400,
+				SliceMap: map[string][]int{"list1": {1, 2, 3}, "list2": {4, 5, 6}},
+				MapSlice: []map[string]int{{"a": 1}, {"b": 2}},
+			},
+		},
 	}
 
-	if err := fory.RegisterTagType("example.SimpleStruct", testStruct); err != nil {
-		t.Fatalf("Failed to register tag type: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fory := NewFory(false)
+
+			if err := fory.RegisterTagType(tt.tagName, tt.testStruct); err != nil {
+				t.Fatalf("Failed to register tag type: %v", err)
+			}
+
+			structValue := reflect.ValueOf(tt.testStruct)
+			originalTypeDef, err := buildTypeDef(fory, structValue)
+			if err != nil {
+				t.Fatalf("Failed to build TypeDef: %v", err)
+			}
+
+			buffer := NewByteBuffer(make([]byte, 0, 256))
+			originalTypeDef.writeTypeDef(buffer)
+
+			decodedTypeDef, err := readTypeDef(fory, buffer, int64(buffer.ReadInt64()))
+			if err != nil {
+				t.Fatalf("Failed to decode TypeDef: %v", err)
+			}
+
+			// basic checks
+			assert.True(t, decodedTypeDef.typeId == originalTypeDef.typeId || decodedTypeDef.typeId == -originalTypeDef.typeId, "TypeId mismatch")
+			assert.Equal(t, originalTypeDef.registerByName, decodedTypeDef.registerByName, "RegisterByName mismatch")
+			assert.Equal(t, originalTypeDef.compressed, decodedTypeDef.compressed, "Compressed flag mismatch")
+			assert.Equal(t, len(originalTypeDef.fieldDefs), len(decodedTypeDef.fieldDefs), "Field count mismatch")
+
+			for i, originalField := range originalTypeDef.fieldDefs {
+				checkFieldDef(t, originalField, decodedTypeDef.fieldDefs[i])
+			}
+		})
 	}
+}
 
-	// Build TypeDef from the struct
-	structValue := reflect.ValueOf(testStruct)
-	originalTypeDef, err := buildTypeDef(fory, structValue)
-	if err != nil {
-		t.Fatalf("Failed to build TypeDef: %v", err)
-	}
+func checkFieldDef(t *testing.T, original, decoded FieldDef) {
+	assert.Equal(t, original.name, decoded.name, "Field name mismatch")
+	assert.Equal(t, original.nameEncoding, decoded.nameEncoding, "Field name encoding mismatch")
+	assert.Equal(t, original.nullable, decoded.nullable, "Field nullable mismatch")
+	assert.Equal(t, original.trackingRef, decoded.trackingRef, "Field trackingRef mismatch")
+	checkFieldTypeRecursively(t, original.fieldType, decoded.fieldType, original.name)
+}
 
-	// Create a buffer with the encoded data
-	buffer := NewByteBuffer(make([]byte, 0, 256))
-	originalTypeDef.writeTypeDef(buffer)
+func checkFieldTypeRecursively(t *testing.T, original, decoded FieldType, path string) {
+	// Check TypeId
+	assert.Equal(t, original.TypeId(), decoded.TypeId(), "FieldType TypeId mismatch at path: %s", path)
 
-	// Decode the TypeDef
-	decodedTypeDef, err := readTypeDef(fory, buffer, int64(buffer.ReadInt64()))
-	if err != nil {
-		t.Fatalf("Failed to decode TypeDef: %v", err)
-	}
+	// Check type consistency based on the actual type
+	switch originalType := original.(type) {
+	case *SimpleFieldType:
+		_, ok := decoded.(*SimpleFieldType)
+		assert.True(t, ok, "Type mismatch at path %s: original is SimpleFieldType but decoded is not", path)
 
-	// Verify typeId(ignore sign)
-	assert.True(t, decodedTypeDef.typeId == originalTypeDef.typeId || decodedTypeDef.typeId == -originalTypeDef.typeId, "TypeId mismatch")
-	assert.Equal(t, originalTypeDef.registerByName, decodedTypeDef.registerByName, "RegisterByName mismatch")
-	assert.Equal(t, originalTypeDef.compressed, decodedTypeDef.compressed, "Compressed flag mismatch")
+	case *CollectionFieldType:
+		decodedCollection, ok := decoded.(*CollectionFieldType)
+		assert.True(t, ok, "Type mismatch at path %s: original is CollectionFieldType but decoded is not", path)
+		if ok {
+			// Recursively check element type
+			checkFieldTypeRecursively(t, originalType.elementType, decodedCollection.elementType, path+"[]")
+		}
 
-	// Verify field count matches
-	assert.Equal(t, len(originalTypeDef.fieldDefs), len(decodedTypeDef.fieldDefs), "Field count mismatch")
+	case *MapFieldType:
+		decodedMap, ok := decoded.(*MapFieldType)
+		assert.True(t, ok, "Type mismatch at path %s: original is MapFieldType but decoded is not", path)
+		if ok {
+			// Recursively check key and value types
+			checkFieldTypeRecursively(t, originalType.keyType, decodedMap.keyType, path+"[key]")
+			checkFieldTypeRecursively(t, originalType.valueType, decodedMap.valueType, path+"[value]")
+		}
 
-	// Verify field names match
-	for i, originalField := range originalTypeDef.fieldDefs {
-		decodedField := decodedTypeDef.fieldDefs[i]
-
-		assert.Equal(t, originalField.name, decodedField.name, "Field name mismatch at index %d", i)
-		assert.Equal(t, originalField.nameEncoding, decodedField.nameEncoding, "Field name encoding mismatch at index %d", i)
-		assert.Equal(t, originalField.nullable, decodedField.nullable, "Field nullable mismatch at index %d", i)
-		assert.Equal(t, originalField.trackingRef, decodedField.trackingRef, "Field trackingRef mismatch at index %d", i)
-		assert.Equal(t, originalField.fieldType.TypeId(), decodedField.fieldType.TypeId(), "Field type ID mismatch at index %d", i)
+	default:
+		t.Errorf("Unknown FieldType at path %s: %T", path, original)
 	}
 }

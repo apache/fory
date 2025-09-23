@@ -144,8 +144,8 @@ func writeMetaHeader(buffer *ByteBuffer, typeDef *TypeDef) error {
 //   - first 1 byte: header (2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag)
 //   - next variable bytes: FieldType info
 //   - next variable bytes: field name or tag id
-func writeFieldDefs(typeResolver *typeResolver, buffer *ByteBuffer, fieldInfos []FieldDef) error {
-	for _, field := range fieldInfos {
+func writeFieldDefs(typeResolver *typeResolver, buffer *ByteBuffer, fieldDefs []FieldDef) error {
+	for _, field := range fieldDefs {
 		if err := writeFieldDef(typeResolver, buffer, field); err != nil {
 			return fmt.Errorf("failed to write field def for field %s: %w", field.name, err)
 		}

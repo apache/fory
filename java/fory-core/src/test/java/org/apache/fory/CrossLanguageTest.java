@@ -864,6 +864,27 @@ public class CrossLanguageTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "compatible")
+  public void testNamedEnum(boolean compatible) {
+    Fory fory =
+        Fory.builder()
+            // avoid generated code conflict with register by name
+            .withName("testEnumObject")
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(
+                compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+            .requireClassRegistration(true)
+            .build();
+    fory.register(EnumTestClass.class, "demo.Enum1");
+    fory.register(EnumFieldStruct.class, "demo.EnumFieldStruct");
+    Assert.assertEquals(xserDe(fory, EnumTestClass.FOO), EnumTestClass.FOO);
+    EnumFieldStruct a = new EnumFieldStruct();
+    a.f1 = EnumTestClass.FOO;
+    a.f2 = EnumTestClass.BAR;
+    a.f3 = "abc";
+    Assert.assertEquals(xserDe(fory, a), a);
+  }
+
+  @Test(dataProvider = "compatible")
   public void testEnumFieldRegisterById(boolean compatible) throws java.io.IOException {
     Fory fory =
         Fory.builder()

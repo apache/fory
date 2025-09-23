@@ -58,6 +58,8 @@ import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.NonexistentClass;
+import org.apache.fory.serializer.converter.FieldConverter;
+import org.apache.fory.serializer.converter.FieldConverters;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.FinalObjectTypeStub;
 import org.apache.fory.type.GenericType;
@@ -276,6 +278,11 @@ public class ClassDef implements Serializable {
             descriptor = descriptor.copyWithTypeName(newDesc.getTypeName());
             descriptors.add(descriptor);
           } else {
+            FieldConverter<?> converter =
+                FieldConverters.getConverter(rawType, descriptor.getField());
+            if (converter != null) {
+              newDesc.setFieldConverter(converter);
+            }
             descriptors.add(newDesc);
           }
         } else {

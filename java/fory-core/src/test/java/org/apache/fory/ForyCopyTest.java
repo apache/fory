@@ -142,7 +142,7 @@ public class ForyCopyTest extends ForyTestBase {
     AtomicReference<Throwable> ex = new AtomicReference<>();
     ThreadLocalFory threadLocalFory =
         builder().withCodegen(false).withRefCopy(true).buildThreadLocalFory();
-    threadLocalFory.setClassChecker((classResolver, className1) -> true);
+    threadLocalFory.setTypeChecker((classResolver, className1) -> true);
     threadLocalFory.setSerializerFactory((fory1, cls) -> null);
     threadLocalFory.register(BeanA.class);
     assetEqualsButNotSame(threadLocalFory.copy(beanA));

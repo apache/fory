@@ -43,6 +43,7 @@ import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.converter.FieldConverter;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.FinalObjectTypeStub;
@@ -990,6 +991,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     protected final short classId;
     protected final String qualifiedFieldName;
     protected final FieldAccessor fieldAccessor;
+    protected final FieldConverter<?> fieldConverter;
     protected boolean nullable;
     protected boolean trackingRef;
 
@@ -998,6 +1000,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       this.classId = classId;
       this.qualifiedFieldName = d.getDeclaringClass() + "." + d.getName();
       this.fieldAccessor = d.getField() != null ? FieldAccessor.createAccessor(d.getField()) : null;
+      fieldConverter = d.getFieldConverter();
       ForyField foryField = d.getForyField();
       nullable = d.isNullable();
       if (fory.trackingRef()) {

@@ -26,7 +26,7 @@ public class MapFlags {
   /** Whether key has null. */
   public static int KEY_HAS_NULL = 0b10;
 
-  /** Whether key is not declare type. */
+  /** Whether key is declared type. */
   public static int KEY_DECL_TYPE = 0b100;
 
   /** Whether track value ref. */
@@ -35,7 +35,7 @@ public class MapFlags {
   /** Whether value has null. */
   public static int VALUE_HAS_NULL = 0b10000;
 
-  /** Whether value is not declare type. */
+  /** Whether value is declared type. */
   public static int VALUE_DECL_TYPE = 0b100000;
 
   // When key or value is null that entry will be serialized as a new chunk with size 1.
