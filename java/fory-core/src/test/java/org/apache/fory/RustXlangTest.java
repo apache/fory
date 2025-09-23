@@ -406,8 +406,6 @@ public class RustXlangTest extends ForyTestBase {
 
     //    Set<Object> set = new HashSet<>(list);
     //    fory.serialize(buffer, set);
-    System.out.println(
-        "java write bytes: " + Arrays.toString(buffer.getBytes(0, buffer.writerIndex())));
 
     BiConsumer<MemoryBuffer, Boolean> function =
         (MemoryBuffer buf, Boolean useToString) -> {
@@ -448,20 +446,6 @@ public class RustXlangTest extends ForyTestBase {
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     function.accept(buffer2, true);
-  }
-
-  public void testNamedEnum() {
-    Fory fory =
-        Fory.builder()
-            // avoid generated code conflict with register by name
-            .withName("testEnumObject")
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .requireClassRegistration(true)
-            .build();
-    fory.register(Color.class, "demo");
-    byte[] serialize = fory.serialize(Color.White);
-    System.out.println(Arrays.toString(serialize));
   }
 
   @Data
@@ -583,8 +567,6 @@ public class RustXlangTest extends ForyTestBase {
     fory.serialize(buffer, strList2);
     fory.serialize(buffer, itemList);
     fory.serialize(buffer, itemList2);
-
-    System.out.println(Arrays.toString(buffer.getBytes(0, buffer.writerIndex())));
 
     Path dataFile = Files.createTempFile("test_list", "data");
     Pair<Map<String, String>, File> env_workdir =
