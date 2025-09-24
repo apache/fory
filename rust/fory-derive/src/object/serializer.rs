@@ -85,19 +85,19 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
             let fields = sorted_fields(&s.fields);
             (read::gen_deserialize_nullable(&fields),)
         }
-        syn::Data::Enum(s) => (quote! {},),
+        syn::Data::Enum(_s) => (quote! {},),
         syn::Data::Union(_) => {
             panic!("Union is not supported")
         }
     };
 
     // Allocate a unique type ID once and share it between both functions
-    let type_id = misc::allocate_type_id();
+    let type_idx = misc::allocate_type_id();
 
     let gen = quote! {
         impl fory_core::serializer::StructSerializer for #name {
             fn type_index() -> u32 {
-                #type_id
+                #type_idx
             }
 
             fn actual_type_id(type_id: u32, register_by_name: bool, mode: &fory_core::types::Mode) -> u32 {
@@ -119,7 +119,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
         impl fory_core::types::ForyGeneralList for #name {}
         impl fory_core::serializer::Serializer for #name {
             fn get_type_id(fory: &fory_core::fory::Fory) -> u32 {
-                fory.get_type_resolver().get_type_id(&std::any::TypeId::of::<Self>(), #type_id)
+                fory.get_type_resolver().get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
             }
 
             fn reserved_space() -> usize {

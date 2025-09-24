@@ -30,6 +30,7 @@ pub fn allocate_type_id() -> u32 {
     TYPE_ID_COUNTER.fetch_add(1, Ordering::SeqCst)
 }
 
+#[allow(dead_code)]
 fn hash(fields: &[&Field]) -> TokenStream {
     let props = fields.iter().map(|field| {
         let ty = &field.ty;

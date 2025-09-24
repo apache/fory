@@ -162,31 +162,29 @@ impl TypeResolver {
         self.type_id_index[index] = type_info.type_id;
 
         if type_info.register_by_name {
+            let namespace = type_info.namespace.clone();
+            let type_name = type_info.type_name.clone();
             if self
                 .name_serialize_map
-                .contains_key(&(type_info.namespace.clone(), type_info.type_name.clone()))
+                .contains_key(&(namespace.clone(), type_name.clone()))
             {
                 panic!("TypeId {:?} already registered_by_name", type_info.type_id);
             }
-            let namespace_bytes = type_info.namespace.clone();
-            let type_name_bytes = type_info.type_name.clone();
-            self.type_name_map.insert(
-                rs_type_id,
-                (namespace_bytes.clone(), type_name_bytes.clone()),
-            );
+            self.type_name_map
+                .insert(rs_type_id, (namespace.clone(), type_name.clone()));
             self.name_serialize_map.insert(
-                (namespace_bytes, type_name_bytes),
+                (namespace, type_name),
                 Harness::new(serializer::<T>, deserializer::<T>),
             );
         } else {
-            if self.serialize_map.contains_key(&type_info.type_id) {
-                panic!("TypeId {:?} already registered_by_id", type_info.type_id);
+            let type_id = type_info.type_id;
+            if self.serialize_map.contains_key(&type_id) {
+                panic!("TypeId {:?} already registered_by_id", type_id);
             }
-            self.type_id_map.insert(rs_type_id, type_info.type_id);
-            self.serialize_map.insert(
-                type_info.type_id,
-                Harness::new(serializer::<T>, deserializer::<T>),
-            );
+
+            self.type_id_map.insert(rs_type_id, type_id);
+            self.serialize_map
+                .insert(type_id, Harness::new(serializer::<T>, deserializer::<T>));
         }
     }
 

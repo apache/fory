@@ -459,11 +459,11 @@ public class RustXlangTest extends ForyTestBase {
     int f2;
     Item f3;
     String f4;
-    //    Color f5;
+    Color f5;
     List<String> f6;
     int f7;
-    //    Integer f8;
-    //    Integer last;
+    Integer f8;
+    Integer last;
   }
 
   private void testSimpleStruct(Language language, List<String> command)
@@ -488,11 +488,11 @@ public class RustXlangTest extends ForyTestBase {
     obj.f2 = 39;
     obj.f3 = item;
     obj.f4 = "f4";
-    //    obj.f5 = Color.White;
+    obj.f5 = Color.White;
     obj.f6 = Collections.singletonList("f6");
     obj.f7 = 40;
-    //    obj.f8 = 41;
-    //    obj.last = 42;
+    obj.f8 = 41;
+    obj.last = 42;
 
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     fory.serialize(buffer, obj);
@@ -527,11 +527,11 @@ public class RustXlangTest extends ForyTestBase {
     obj.f2 = 39;
     obj.f3 = item;
     obj.f4 = "f4";
-    //    obj.f5 = Color.White;
+    obj.f5 = Color.White;
     obj.f6 = Collections.singletonList("f6");
     obj.f7 = 40;
-    //    obj.f8 = 41;
-    //    obj.last = 42;
+    obj.f8 = 41;
+    obj.last = 42;
 
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     fory.serialize(buffer, obj);
@@ -659,13 +659,13 @@ public class RustXlangTest extends ForyTestBase {
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
 
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
-    //        Item1 newItem1 = (Item1) fory.deserialize(buffer2);
-    //        Assert.assertEquals(newItem1.f1, 1);
-    //        Assert.assertEquals(newItem1.f2, 2);
-    //        Assert.assertEquals(newItem1.f3, 3);
-    //        Assert.assertEquals(newItem1.f4, 4);
-    //        Assert.assertEquals(newItem1.f5, 0);
-    //        Assert.assertNull(newItem1.f6);
+    Item1 newItem1 = (Item1) fory.deserialize(buffer2);
+    Assert.assertEquals(newItem1.f1, 1);
+    Assert.assertEquals(newItem1.f2, 2);
+    Assert.assertEquals(newItem1.f3, 3);
+    Assert.assertEquals(newItem1.f4, 4);
+    Assert.assertEquals(newItem1.f5, 0);
+    Assert.assertNull(newItem1.f6);
     Assert.assertEquals(fory.deserialize(buffer2), 1);
     Assert.assertEquals(fory.deserialize(buffer2), 2);
     Assert.assertEquals(fory.deserialize(buffer2), 3);

@@ -591,6 +591,7 @@ fn boxed() {
 }
 
 #[test]
+#[ignore]
 fn skip_custom_type() {
-
+    todo!()
 }

@@ -136,21 +136,10 @@ pub fn skip_field_value(
                 }
                 Ok(())
             } else if type_id == TypeId::NAMED_ENUM {
-                let remote_type_id = context.reader.var_uint32();
-                assert_eq!(type_id_num, remote_type_id);
-                let meta_index = context.reader.var_uint32();
-                let type_def = context.get_meta(meta_index as usize);
-                let type_resolver = context.get_fory().get_type_resolver();
-                type_resolver
-                    .get_name_harness(
-                        &type_def.get_namespace().original,
-                        &type_def.get_type_name().original,
-                    )
-                    .unwrap()
-                    .get_deserializer()(context, true, true)?;
+                let _ordinal = context.reader.var_uint32();
                 Ok(())
             } else {
-                unreachable!();
+                unreachable!("unimplemented type: {:?}", type_id);
             }
         }
         Err(_) => {
@@ -171,13 +160,7 @@ pub fn skip_field_value(
                     skip_field_value(context, &nullable_field_type, read_ref_flag)?;
                 }
             } else if internal_id == ENUM_ID {
-                let remote_type_id = context.reader.var_uint32();
-                assert_eq!(type_id_num, remote_type_id);
-                let type_resolver = context.get_fory().get_type_resolver();
-                type_resolver
-                    .get_harness(type_id_num)
-                    .unwrap()
-                    .get_deserializer()(context, true, true)?;
+                let _ordinal = context.reader.var_uint32();
             } else {
                 unimplemented!()
             }

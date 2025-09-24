@@ -494,7 +494,7 @@ impl TypeMeta {
         // global_binary_header:| hash:50bits | is_compressed:1bit | write_fields_meta:1bit | meta_size:12bits |
         let meta_size = layers_writer.len() as i64;
         let mut header: i64 = min(META_SIZE_MASK, meta_size);
-        let write_meta_fields_flag = self.get_field_infos().is_empty();
+        let write_meta_fields_flag = !self.get_field_infos().is_empty();
         if write_meta_fields_flag {
             header |= HAS_FIELDS_META_FLAG;
         }

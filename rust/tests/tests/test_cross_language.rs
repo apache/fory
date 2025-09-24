@@ -52,11 +52,11 @@ struct SimpleStruct {
     f2: i32,
     f3: Item,
     f4: Option<String>,
-    // f5: Color,
+    f5: Color,
     f6: Vec<Option<String>>,
     f7: i32,
-    // f8: i32,
-    // last: i32,
+    f8: i32,
+    last: i32,
 }
 
 #[test]
@@ -360,11 +360,11 @@ fn test_simple_struct() {
             name: Some("item".to_string()),
         },
         f4: Some("f4".to_string()),
-        // f5: Color::White,
+        f5: Color::White,
         f6: vec![Some("f6".to_string())],
         f7: 40,
-        // f8: 41,
-        // last: 42,
+        f8: 41,
+        last: 42,
     };
     let remote_obj: SimpleStruct = fory.deserialize(&bytes).unwrap();
     assert_eq!(remote_obj, local_obj);
@@ -391,11 +391,11 @@ fn test_simple_named_struct() {
             name: Some("item".to_string()),
         },
         f4: Some("f4".to_string()),
-        // f5: Color::White,
+        f5: Color::White,
         f6: vec![Some("f6".to_string())],
         f7: 40,
-        // f8: 41,
-        // last: 42,
+        f8: 41,
+        last: 42,
     };
     let remote_obj: SimpleStruct = fory.deserialize(&bytes).unwrap();
     assert_eq!(remote_obj, local_obj);
@@ -579,7 +579,7 @@ fn test_integer() {
 
     let mut writer = Writer::default();
     let mut context = WriteContext::new(&fory, &mut writer);
-    // fory.serialize_with_context(&remote_item2, &mut context);
+    fory.serialize_with_context(&remote_item2, &mut context);
     fory.serialize_with_context(&remote_f1, &mut context);
     fory.serialize_with_context(&remote_f2, &mut context);
     fory.serialize_with_context(&remote_f3, &mut context);

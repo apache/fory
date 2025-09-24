@@ -187,7 +187,7 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
                         fory_core::serializer::skip::skip_field_value(context, &remote_nullable_type, read_ref_flag).unwrap();
                         #var_name = Some(#base_ty::default());
                     } else {
-                        println!("Try to deserialize: {}", #field_name_str);
+                        println!("Try to deserialize_compatible: {}", #field_name_str);
                         #var_name = Some(
                             #struct_ident::#deserialize_nullable_fn_name(
                                 context,
