@@ -942,8 +942,8 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
     Assert.assertEquals(ReflectionUtils.getObjectFieldValue(o1, "f3"), 30);
   }
 
-  @Test
-  public void testCompatibleFieldConvert() throws Exception {
+  @Test(dataProvider = "language")
+  public void testCompatibleFieldConvert(Language language) throws Exception {
     byte[] bytes;
     Object o1;
     ImmutableSet<String> floatFields = ImmutableSet.of("f11", "f12", "f13", "f14");
@@ -985,9 +985,13 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
       }
       Fory fory =
           builder()
+              .withLanguage(language)
               .withCompatibleMode(CompatibleMode.COMPATIBLE)
               .withClassLoader(classLoader)
               .build();
+      if (language == Language.XLANG) {
+        fory.register(cls);
+      }
       bytes = fory.serialize(o1);
     }
     {
@@ -1019,9 +1023,13 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
       Assert.assertNotEquals(cls, o1.getClass());
       Fory fory =
           builder()
+              .withLanguage(language)
               .withCompatibleMode(CompatibleMode.COMPATIBLE)
               .withClassLoader(classLoader)
               .build();
+      if (language == Language.XLANG) {
+        fory.register(cls);
+      }
       Object o = fory.deserialize(bytes);
       Assert.assertEquals(o.getClass(), cls);
       List<Field> fields = ReflectionUtils.getSortedFields(cls, false);
@@ -1064,11 +1072,15 @@ public class MetaSharedCompatibleTest extends ForyTestBase {
           JaninoUtils.compile(Thread.currentThread().getContextClassLoader(), compileUnit);
       Fory fory =
           builder()
+              .withLanguage(language)
               .withCompatibleMode(CompatibleMode.COMPATIBLE)
               .withClassLoader(classLoader)
               .build();
       Class<?> cls = classLoader.loadClass(compileUnit.getQualifiedClassName());
       Assert.assertNotEquals(cls, o1.getClass());
+      if (language == Language.XLANG) {
+        fory.register(cls);
+      }
       Object o = fory.deserialize(bytes);
       Assert.assertEquals(o.getClass(), cls);
       List<Field> fields = ReflectionUtils.getSortedFields(cls, false);

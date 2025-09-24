@@ -601,10 +601,13 @@ public class ClassDef implements Serializable {
       if (resolver instanceof XtypeResolver) {
         cls = ((XtypeResolver) resolver).getXtypeInfo(classId).getCls();
         if (Types.isPrimitiveType(classId)) {
-          if (declared.isPrimitive() && !nullable) {
+          // For primitive types, ensure we use the correct primitive/boxed form
+          // based on the nullable flag, not the declared type
+          if (!nullable) {
+            // nullable=false means the source was primitive, use primitive type
             cls = TypeUtils.unwrap(cls);
-          }
-          if (nullable && !declared.isPrimitive()) {
+          } else {
+            // nullable=true means the source was boxed, use boxed type
             cls = TypeUtils.wrap(cls);
           }
         }
