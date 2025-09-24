@@ -24,6 +24,7 @@ mod any;
 mod bool;
 pub mod collection;
 mod datetime;
+pub mod enum_;
 mod list;
 pub mod map;
 mod number;
@@ -32,6 +33,7 @@ mod primitive_list;
 mod set;
 pub mod skip;
 mod string;
+pub mod struct_;
 
 pub fn write_data<T: Serializer + 'static>(
     record: &T,

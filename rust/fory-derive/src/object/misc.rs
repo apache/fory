@@ -54,85 +54,13 @@ fn hash(fields: &[&Field]) -> TokenStream {
     }
 }
 
-fn type_def(fields: &[&Field]) -> TokenStream {
-    let field_infos = fields.iter().map(|field| {
-        let ty = &field.ty;
-        let name = format!("{}", field.ident.as_ref().expect("should be field name"));
-        let generic_tree = parse_generic_tree(ty);
-        let generic_token = generic_tree_to_tokens(&generic_tree, false);
-        quote! {
-            fory_core::meta::FieldInfo::new(#name, #generic_token)
-        }
-    });
-    quote! {
-         let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::get_sorted_field_names(fory);
-        let field_infos: Vec<fory_core::meta::FieldInfo> = vec![#(#field_infos),*];
-        let mut sorted_field_infos = Vec::with_capacity(field_infos.len());
-        for name in &sorted_field_names {
-            if let Some(info) = field_infos.iter().find(|f| &f.field_name == name) {
-                sorted_field_infos.push(info.clone());
-            } else {
-                panic!("Field {} not found in field_infos", name);
-            }
-        }
-        let namespace_metastring = fory_core::meta::NAMESPACE_ENCODER.encode_with_encodings(namespace, fory_core::meta::NAMESPACE_ENCODINGS).unwrap();
-        let type_name_metastring = fory_core::meta::TYPE_NAME_ENCODER.encode_with_encodings(type_name, fory_core::meta::TYPE_NAME_ENCODINGS).unwrap();
-        let meta = fory_core::meta::TypeMeta::from_fields(
-            type_id,
-            namespace_metastring,
-            type_name_metastring,
-            register_by_name,
-            sorted_field_infos,
-        );
-        meta.to_bytes().unwrap()
-    }
-}
-
-pub fn gen_in_struct_impl(fields: &[&Field]) -> TokenStream {
-    let _hash_token_stream = hash(fields);
-    let type_def_token_stream = type_def(fields);
-
-    quote! {
-        #type_def_token_stream
-    }
-}
-
 pub fn gen_actual_type_id() -> TokenStream {
     quote! {
-        if mode == &fory_core::types::Mode::Compatible {
-            if register_by_name {
-                fory_core::types::TypeId::NAMED_COMPATIBLE_STRUCT as u32
-            } else {
-                (type_id << 8) + fory_core::types::TypeId::COMPATIBLE_STRUCT as u32
-            }
-        } else {
-            if register_by_name {
-                fory_core::types::TypeId::NAMED_STRUCT as u32
-            } else {
-                (type_id << 8) + fory_core::types::TypeId::STRUCT as u32
-            }
-        }
-
+        fory_core::serializer::struct_::actual_type_id(type_id, register_by_name, mode)
     }
 }
 
-pub fn gen(type_id: u32) -> TokenStream {
-    quote! {
-        fn get_type_id(fory: &fory_core::fory::Fory) -> u32 {
-            fory.get_type_resolver().get_type_id(&std::any::TypeId::of::<Self>(), #type_id)
-        }
-    }
-}
-
-pub fn gen_type_index(type_id: u32) -> TokenStream {
-    quote! {
-        fn type_index() -> u32 {
-            #type_id
-        }
-    }
-}
-
-pub fn gen_sort_fields(fields: &[&Field]) -> TokenStream {
+pub fn gen_get_sorted_field_names(fields: &[&Field]) -> TokenStream {
     let create_sorted_field_names = get_sort_fields_ts(fields);
     quote! {
         let sorted_field_names = match fory.get_type_resolver().get_sorted_field_names::<Self>(std::any::TypeId::of::<Self>()) {
@@ -144,5 +72,21 @@ pub fn gen_sort_fields(fields: &[&Field]) -> TokenStream {
             }
         };
         sorted_field_names
+    }
+}
+
+pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
+    let field_infos = fields.iter().map(|field| {
+        let ty = &field.ty;
+        let name = format!("{}", field.ident.as_ref().expect("should be field name"));
+        let generic_tree = parse_generic_tree(ty);
+        let generic_token = generic_tree_to_tokens(&generic_tree, false);
+        quote! {
+            fory_core::meta::FieldInfo::new(#name, #generic_token)
+        }
+    });
+    quote! {
+        let field_infos: Vec<fory_core::meta::FieldInfo> = vec![#(#field_infos),*];
+        fory_core::serializer::struct_::type_def::<Self>(fory, type_id, namespace, type_name, register_by_name, &field_infos)
     }
 }

@@ -19,7 +19,34 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Field;
 
-pub fn gen(fields: &[&Field]) -> TokenStream {
+pub fn gen_reserved_space(fields: &[&Field]) -> TokenStream {
+    let reserved_size_expr: Vec<_> = fields.iter().map(|field| {
+        let ty = &field.ty;
+        quote! {
+            <#ty as fory_core::serializer::Serializer>::reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+        }
+    }).collect();
+    if reserved_size_expr.is_empty() {
+        quote! { 0 }
+    } else {
+        quote! { #(#reserved_size_expr)+* }
+    }
+}
+
+pub fn gen_write_type_info() -> TokenStream {
+    quote! {
+        fory_core::serializer::struct_::write_type_info::<Self>(context, is_field)
+    }
+}
+
+pub fn gen_write(fields: &[&Field]) -> TokenStream {
+    // let accessor_expr = fields.iter().map(|field| {
+    //     let ty = &field.ty;
+    //     let ident = &field.ident;
+    //     quote! {
+    //         <#ty as fory_core::serializer::Serializer>::serialize(&self.#ident, context, true);
+    //     }
+    // });
     let sorted_serialize = if fields.is_empty() {
         quote! {}
     } else {
@@ -44,66 +71,16 @@ pub fn gen(fields: &[&Field]) -> TokenStream {
             }
         }
     };
-
-    // let accessor_expr = fields.iter().map(|field| {
-    //     let ty = &field.ty;
-    //     let ident = &field.ident;
-    //     quote! {
-    //         // println!("before writer is:{:?}",context.writer.dump());
-    //         <#ty as fory_core::serializer::Serializer>::serialize(&self.#ident, context, true);
-    //         // println!("after writer is:{:?}",context.writer.dump());
-    //     }
-    // });
-
-    let reserved_size_expr: Vec<_> = fields.iter().map(|field| {
-        let ty = &field.ty;
-        quote! {
-            <#ty as fory_core::serializer::Serializer>::reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
-        }
-    }).collect();
-
-    let reserved_fn_body = if reserved_size_expr.is_empty() {
-        quote! { 0 }
-    } else {
-        quote! { #(#reserved_size_expr)+* }
-    };
-
     quote! {
-        fn serialize(&self, context: &mut fory_core::resolver::context::WriteContext, _is_field: bool) {
-            match context.get_fory().get_mode() {
-                fory_core::types::Mode::SchemaConsistent => {
-                    context.writer.i8(fory_core::types::RefFlag::NotNullValue as i8);
-                    Self::write_type_info(context, false);
-                    self.write(context, true);
-                },
-                fory_core::types::Mode::Compatible => {
-                    context.writer.i8(fory_core::types::RefFlag::NotNullValue as i8);
-                    Self::write_type_info(context, false);
-                    self.write(context, true);
-                }
-            }
-        }
+        // write way before
+        // #(#accessor_expr)*
+        // sort and write
+        #sorted_serialize
+    }
+}
 
-        fn write(&self, context: &mut fory_core::resolver::context::WriteContext, _is_field: bool) {
-            // write way before
-            // #(#accessor_expr)*
-            // sort and write
-            #sorted_serialize
-        }
-
-         fn write_type_info(context: &mut fory_core::resolver::context::WriteContext, _is_field: bool){
-            let type_id = Self::get_type_id(context.get_fory());
-            context.writer.var_uint32(type_id);
-            if *context.get_fory().get_mode() == fory_core::types::Mode::Compatible {
-                let meta_index = context.push_meta(
-                    std::any::TypeId::of::<Self>()
-                ) as u32;
-                context.writer.var_uint32(meta_index);
-            }
-        }
-
-        fn reserved_space() -> usize {
-            #reserved_fn_body
-        }
+pub fn gen_serialize() -> TokenStream {
+    quote! {
+        fory_core::serializer::struct_::serialize::<Self>(self, context, is_field)
     }
 }

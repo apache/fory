@@ -589,3 +589,8 @@ fn boxed() {
     let item2_f6: Option<i32> = fory2.deserialize(&bytes).unwrap();
     assert_eq!(item2.f6, item2_f6);
 }
+
+#[test]
+fn skip_custom_type() {
+
+}
