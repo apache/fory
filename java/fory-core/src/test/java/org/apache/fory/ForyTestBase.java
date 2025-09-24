@@ -181,6 +181,11 @@ public abstract class ForyTestBase {
     };
   }
 
+  @DataProvider
+  public static Object[][] language() {
+    return new Object[][] {{Language.JAVA}, {Language.XLANG}};
+  }
+
   @DataProvider(name = "javaFory")
   public static Object[][] javaForyConfig() {
     return new Object[][] {
