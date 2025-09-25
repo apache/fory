@@ -680,7 +680,6 @@ public class ClassResolver extends TypeResolver {
     }
     addSerializer(type, serializer);
     ClassInfo classInfo = classInfoMap.get(type);
-    classInfoMap.put(type, classInfo);
     // in order to support customized serializer for abstract or interface.
     if (!type.isPrimitive() && (ReflectionUtils.isAbstract(type) || type.isInterface())) {
       extRegistry.absClassInfo.put(type, classInfo);
