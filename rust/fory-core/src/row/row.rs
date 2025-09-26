@@ -55,18 +55,18 @@ macro_rules! impl_row_for_number {
         }
     };
 }
-impl_row_for_number!(i8, Writer::i8, read_i8_from_bytes);
-impl_row_for_number!(i16, Writer::i16, LittleEndian::read_i16);
-impl_row_for_number!(i32, Writer::i32, LittleEndian::read_i32);
-impl_row_for_number!(i64, Writer::i64, LittleEndian::read_i64);
-impl_row_for_number!(f32, Writer::f32, LittleEndian::read_f32);
-impl_row_for_number!(f64, Writer::f64, LittleEndian::read_f64);
+impl_row_for_number!(i8, Writer::write_i8, read_i8_from_bytes);
+impl_row_for_number!(i16, Writer::write_i16, LittleEndian::read_i16);
+impl_row_for_number!(i32, Writer::write_i32, LittleEndian::read_i32);
+impl_row_for_number!(i64, Writer::write_i64, LittleEndian::read_i64);
+impl_row_for_number!(f32, Writer::write_f32, LittleEndian::read_f32);
+impl_row_for_number!(f64, Writer::write_f64, LittleEndian::read_f64);
 
 impl<'a> Row<'a> for String {
     type ReadResult = &'a str;
 
     fn write(v: &Self, writer: &mut Writer) {
-        writer.bytes(v.as_bytes());
+        writer.write_bytes(v.as_bytes());
     }
 
     fn cast(bytes: &'a [u8]) -> Self::ReadResult {
@@ -78,7 +78,7 @@ impl Row<'_> for bool {
     type ReadResult = Self;
 
     fn write(v: &Self, writer: &mut Writer) {
-        writer.u8(if *v { 1 } else { 0 });
+        writer.write_u8(if *v { 1 } else { 0 });
     }
 
     fn cast(bytes: &[u8]) -> Self::ReadResult {
@@ -91,7 +91,7 @@ impl Row<'_> for NaiveDate {
 
     fn write(v: &Self, writer: &mut Writer) {
         let days_since_epoch = v.signed_duration_since(EPOCH).num_days();
-        writer.u32(days_since_epoch as u32);
+        writer.write_u32(days_since_epoch as u32);
     }
 
     fn cast(bytes: &[u8]) -> Self::ReadResult {
@@ -108,7 +108,7 @@ impl Row<'_> for NaiveDateTime {
     type ReadResult = Result<NaiveDateTime, Error>;
 
     fn write(v: &Self, writer: &mut Writer) {
-        writer.i64(v.and_utc().timestamp_millis());
+        writer.write_i64(v.and_utc().timestamp_millis());
     }
 
     fn cast(bytes: &[u8]) -> Self::ReadResult {
@@ -125,7 +125,7 @@ impl<'a> Row<'a> for Vec<u8> {
     type ReadResult = &'a [u8];
 
     fn write(v: &Self, writer: &mut Writer) {
-        writer.bytes(v);
+        writer.write_bytes(v);
     }
 
     fn cast(bytes: &'a [u8]) -> Self::ReadResult {

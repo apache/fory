@@ -65,29 +65,29 @@ fn test_buffer() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
-    assert_eq!(reader.u8(), 1);
-    assert_eq!(reader.i8(), i8::MAX);
-    assert_eq!(reader.i16(), i16::MAX);
-    assert_eq!(reader.i32(), i32::MAX);
-    assert_eq!(reader.i64(), i64::MAX);
-    assert_eq!(reader.f32(), -1.1f32);
-    assert_eq!(reader.f64(), -1.1f64);
-    assert_eq!(reader.var_uint32(), 100);
-    let bytes_size = reader.i32() as usize;
+    assert_eq!(reader.read_u8(), 1);
+    assert_eq!(reader.read_i8(), i8::MAX);
+    assert_eq!(reader.read_i16(), i16::MAX);
+    assert_eq!(reader.read_i32(), i32::MAX);
+    assert_eq!(reader.read_i64(), i64::MAX);
+    assert_eq!(reader.read_f32(), -1.1f32);
+    assert_eq!(reader.read_f64(), -1.1f64);
+    assert_eq!(reader.read_var_uint32(), 100);
+    let bytes_size = reader.read_i32() as usize;
     let binary = b"ab";
-    assert_eq!(reader.bytes(bytes_size), binary);
+    assert_eq!(reader.read_bytes(bytes_size), binary);
 
     let mut writer = Writer::default();
-    writer.u8(1);
-    writer.i8(i8::MAX);
-    writer.i16(i16::MAX);
-    writer.i32(i32::MAX);
-    writer.i64(i64::MAX);
-    writer.f32(-1.1);
-    writer.f64(-1.1);
-    writer.var_uint32(100);
-    writer.i32(binary.len() as i32);
-    writer.bytes(binary);
+    writer.write_u8(1);
+    writer.write_i8(i8::MAX);
+    writer.write_i16(i16::MAX);
+    writer.write_i32(i32::MAX);
+    writer.write_i64(i64::MAX);
+    writer.write_f32(-1.1);
+    writer.write_f64(-1.1);
+    writer.write_var_uint32(100);
+    writer.write_i32(binary.len() as i32);
+    writer.write_bytes(binary);
 
     fs::write(&data_file_path, writer.dump()).unwrap();
 }
@@ -120,7 +120,7 @@ fn test_buffer_var() {
         i32::MAX,
     ];
     for &expected in &var_int32_values {
-        let value = reader.var_int32();
+        let value = reader.read_var_int32();
         assert_eq!(expected, value, "var_int32 value mismatch");
     }
     let var_uint32_values = vec![
@@ -138,7 +138,7 @@ fn test_buffer_var() {
         i32::MAX,
     ];
     for &expected in &var_uint32_values {
-        let value = reader.var_uint32();
+        let value = reader.read_var_uint32();
         assert_eq!(expected, value as i32, "var_uint32 value mismatch");
     }
     let var_uint64_values = vec![
@@ -163,7 +163,7 @@ fn test_buffer_var() {
         i64::MAX as u64,
     ];
     for &expected in &var_uint64_values {
-        let value = reader.var_uint64();
+        let value = reader.read_var_uint64();
         assert_eq!(expected, value, "var_uint64 value mismatch");
     }
     let var_int64_values = vec![
@@ -184,22 +184,22 @@ fn test_buffer_var() {
         i64::MAX,
     ];
     for &expected in &var_int64_values {
-        let value = reader.var_int64();
+        let value = reader.read_var_int64();
         assert_eq!(expected, value, "var_int64 value mismatch");
     }
 
     let mut writer = Writer::default();
     for &value in &var_int32_values {
-        writer.var_int32(value);
+        writer.write_var_int32(value);
     }
     for &value in &var_uint32_values {
-        writer.var_uint32(value as u32);
+        writer.write_var_uint32(value as u32);
     }
     for &value in &var_uint64_values {
-        writer.var_uint64(value);
+        writer.write_var_uint64(value);
     }
     for &value in &var_int64_values {
-        writer.var_int64(value);
+        writer.write_var_int64(value);
     }
     fs::write(data_file_path, writer.dump()).unwrap();
 }
@@ -211,8 +211,8 @@ fn test_murmurhash3() {
     let bytes = fs::read(&data_file_path).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
     let (h1, h2) = murmurhash3_x64_128(&[1, 2, 8], 47);
-    assert_eq!(reader.i64(), h1 as i64);
-    assert_eq!(reader.i64(), h2 as i64);
+    assert_eq!(reader.read_i64(), h1 as i64);
+    assert_eq!(reader.read_i64(), h2 as i64);
 }
 
 #[test]
@@ -429,7 +429,7 @@ fn test_list() {
     let item_list = vec![Some(item), Some(item2)];
     let item_list2 = vec![None, Some(item3)];
 
-    let bytes = reader.slice();
+    let bytes = reader.get_slice();
     let remote_str_list: Vec<Option<String>> = fory.deserialize(bytes).unwrap();
     assert_eq!(remote_str_list, str_list);
     let data_bytes1 = fory.serialize(&remote_str_list);

@@ -122,7 +122,7 @@ impl FieldType {
                 header |= 2;
             }
         }
-        writer.var_uint32(header);
+        writer.write_var_uint32(header);
         match self.type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 let generic = self.generics.first().unwrap();
@@ -140,7 +140,7 @@ impl FieldType {
     }
 
     fn from_bytes(reader: &mut Reader, read_flag: bool, nullable: Option<bool>) -> Self {
-        let header = reader.var_uint32();
+        let header = reader.read_var_uint32();
         let type_id;
         let _nullable;
         if read_flag {
@@ -209,19 +209,19 @@ impl FieldInfo {
     }
 
     pub fn from_bytes(reader: &mut Reader) -> FieldInfo {
-        let header = reader.u8();
+        let header = reader.read_u8();
         let nullable = (header & 2) != 0;
         // let ref_tracking = (header & 1) != 0;
         let encoding = Self::u8_to_encoding((header >> 6) & 0b11).unwrap();
         let mut name_size = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD as u8) as usize;
         if name_size == FIELD_NAME_SIZE_THRESHOLD {
-            name_size += reader.var_uint32() as usize;
+            name_size += reader.read_var_uint32() as usize;
         }
         name_size += 1;
 
         let field_type = FieldType::from_bytes(reader, false, Option::from(nullable));
 
-        let field_name_bytes = reader.bytes(name_size);
+        let field_name_bytes = reader.read_bytes(name_size);
 
         let field_name = FIELD_NAME_DECODER
             .decode(field_name_bytes, encoding)
@@ -254,13 +254,13 @@ impl FieldInfo {
             .position(|x| *x == meta_string.encoding)
             .unwrap() as u8;
         header |= encoding_idx << 6;
-        writer.u8(header);
+        writer.write_u8(header);
         if name_size >= FIELD_NAME_SIZE_THRESHOLD {
-            writer.var_uint32((name_size - FIELD_NAME_SIZE_THRESHOLD) as u32);
+            writer.write_var_uint32((name_size - FIELD_NAME_SIZE_THRESHOLD) as u32);
         }
         self.field_type.to_bytes(&mut writer, false, nullable)?;
         // write field_name
-        writer.bytes(name_encoded);
+        writer.write_bytes(name_encoded);
         Ok(writer.dump())
     }
 }
@@ -317,12 +317,12 @@ impl TypeMetaLayer {
         let encoding_idx = encodings.iter().position(|x| *x == name.encoding).unwrap() as u8;
         let bytes = name.bytes.as_slice();
         if bytes.len() >= BIG_NAME_THRESHOLD {
-            writer.u8((BIG_NAME_THRESHOLD << 2) as u8 | encoding_idx);
-            writer.var_uint32((bytes.len() - BIG_NAME_THRESHOLD) as u32);
+            writer.write_u8((BIG_NAME_THRESHOLD << 2) as u8 | encoding_idx);
+            writer.write_var_uint32((bytes.len() - BIG_NAME_THRESHOLD) as u32);
         } else {
-            writer.u8((bytes.len() << 2) as u8 | encoding_idx);
+            writer.write_u8((bytes.len() << 2) as u8 | encoding_idx);
         }
-        writer.bytes(bytes);
+        writer.write_bytes(bytes);
     }
 
     pub fn write_namespace(&self, writer: &mut Writer) {
@@ -338,15 +338,15 @@ impl TypeMetaLayer {
         decoder: &MetaStringDecoder,
         encodings: &[Encoding],
     ) -> MetaString {
-        let header = reader.u8();
+        let header = reader.read_u8();
         let encoding_idx = header & 0b11;
         let length = header >> 2;
         let length = if length >= BIG_NAME_THRESHOLD as u8 {
-            BIG_NAME_THRESHOLD + reader.var_uint32() as usize
+            BIG_NAME_THRESHOLD + reader.read_var_uint32() as usize
         } else {
             length as usize
         };
-        let bytes = reader.bytes(length);
+        let bytes = reader.read_bytes(length);
         let encoding = encodings[encoding_idx as usize];
         let name_str = decoder.decode(bytes, encoding).unwrap();
         MetaString::new(
@@ -377,28 +377,28 @@ impl TypeMetaLayer {
         if self.register_by_name {
             meta_header |= REGISTER_BY_NAME_FLAG;
         }
-        writer.u8(meta_header);
+        writer.write_u8(meta_header);
         if num_fields >= SMALL_NUM_FIELDS_THRESHOLD {
-            writer.var_uint32((num_fields - SMALL_NUM_FIELDS_THRESHOLD) as u32);
+            writer.write_var_uint32((num_fields - SMALL_NUM_FIELDS_THRESHOLD) as u32);
         }
         if self.register_by_name {
             self.write_namespace(&mut writer);
             self.write_type_name(&mut writer);
         } else {
-            writer.var_uint32(self.type_id);
+            writer.write_var_uint32(self.type_id);
         }
         for field in self.field_infos.iter() {
-            writer.bytes(field.to_bytes()?.as_slice());
+            writer.write_bytes(field.to_bytes()?.as_slice());
         }
         Ok(writer.dump())
     }
 
     fn from_bytes(reader: &mut Reader) -> TypeMetaLayer {
-        let meta_header = reader.u8();
+        let meta_header = reader.read_u8();
         let register_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0;
         let mut num_fields = meta_header as usize & SMALL_NUM_FIELDS_THRESHOLD;
         if num_fields == SMALL_NUM_FIELDS_THRESHOLD {
-            num_fields += reader.var_uint32() as usize;
+            num_fields += reader.read_var_uint32() as usize;
         }
         let type_id;
         let namespace;
@@ -408,7 +408,7 @@ impl TypeMetaLayer {
             type_name = Self::read_type_name(reader);
             type_id = TypeId::UNKNOWN as u32;
         } else {
-            type_id = reader.var_uint32();
+            type_id = reader.read_var_uint32();
             let empty_name = MetaString::default();
             namespace = empty_name.clone();
             type_name = empty_name;
@@ -465,10 +465,10 @@ impl TypeMeta {
     }
     #[allow(unused_assignments)]
     pub fn from_bytes(reader: &mut Reader) -> TypeMeta {
-        let header = reader.i64();
+        let header = reader.read_i64();
         let mut meta_size = header & META_SIZE_MASK;
         if meta_size == META_SIZE_MASK {
-            meta_size += reader.var_uint32() as i64;
+            meta_size += reader.read_var_uint32() as i64;
         }
 
         // let write_fields_meta = (header & HAS_FIELDS_META_FLAG) != 0;
@@ -490,7 +490,7 @@ impl TypeMeta {
         // for layer in self.layers.iter() {
         //     layers_writer.bytes(layer.to_bytes()?.as_slice());
         // }
-        layers_writer.bytes(self.layers.first().unwrap().to_bytes()?.as_slice());
+        layers_writer.write_bytes(self.layers.first().unwrap().to_bytes()?.as_slice());
         // global_binary_header:| hash:50bits | is_compressed:1bit | write_fields_meta:1bit | meta_size:12bits |
         let meta_size = layers_writer.len() as i64;
         let mut header: i64 = min(META_SIZE_MASK, meta_size);
@@ -504,11 +504,11 @@ impl TypeMeta {
         }
         let meta_hash = murmurhash3_x64_128(layers_writer.dump().as_slice(), 47).0 as i64;
         header |= (meta_hash << (64 - NUM_HASH_BITS)).abs();
-        result.i64(header);
+        result.write_i64(header);
         if meta_size >= META_SIZE_MASK {
-            result.var_uint32((meta_size - META_SIZE_MASK) as u32);
+            result.write_var_uint32((meta_size - META_SIZE_MASK) as u32);
         }
-        result.bytes(layers_writer.dump().as_slice());
+        result.write_bytes(layers_writer.dump().as_slice());
         Ok(result.dump())
     }
 }

@@ -75,7 +75,7 @@ impl Fory {
         const HEAD_SIZE: usize = 10;
         writer.reserve(<T as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
         if self.xlang {
-            writer.u16(MAGIC_NUMBER);
+            writer.write_u16(MAGIC_NUMBER);
         }
         #[cfg(target_endian = "big")]
         let mut bitmap = 0;
@@ -87,18 +87,18 @@ impl Fory {
         if is_none {
             bitmap |= IS_NULL_FLAG;
         }
-        writer.u8(bitmap);
+        writer.write_u8(bitmap);
         if is_none {
             return;
         }
         if self.xlang {
-            writer.u8(Language::Rust as u8);
+            writer.write_u8(Language::Rust as u8);
         }
     }
 
     fn read_head(&self, reader: &mut Reader) -> Result<bool, Error> {
         if self.xlang {
-            let magic_numer = reader.u16();
+            let magic_numer = reader.read_u16();
             ensure!(
                 magic_numer == MAGIC_NUMBER,
                 anyhow!(
@@ -109,7 +109,7 @@ impl Fory {
                 )
             )
         }
-        let bitmap = reader.u8();
+        let bitmap = reader.read_u8();
         let peer_is_xlang = (bitmap & IS_CROSS_LANGUAGE_FLAG) != 0;
         ensure!(
             self.xlang == peer_is_xlang,
@@ -127,7 +127,7 @@ impl Fory {
             return Ok(true);
         }
         if peer_is_xlang {
-            let _peer_lang = reader.u8();
+            let _peer_lang = reader.read_u8();
         }
         Ok(false)
     }
@@ -148,7 +148,7 @@ impl Fory {
         }
         let mut bytes_to_skip = 0;
         if self.mode == Mode::Compatible {
-            let meta_offset = context.reader.i32();
+            let meta_offset = context.reader.read_i32();
             if meta_offset != -1 {
                 bytes_to_skip = context.load_meta(meta_offset as usize);
             }
@@ -176,7 +176,7 @@ impl Fory {
         let meta_start_offset = context.writer.len();
         if !is_none {
             if self.mode == Mode::Compatible {
-                context.writer.i32(-1);
+                context.writer.write_i32(-1);
             };
             <T as Serializer>::serialize(record, context, false);
             if self.mode == Mode::Compatible && !context.empty() {

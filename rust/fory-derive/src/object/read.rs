@@ -128,7 +128,7 @@ pub fn gen_read(fields: &[&Field]) -> TokenStream {
 
 pub fn gen_deserialize(struct_ident: &Ident) -> TokenStream {
     quote! {
-        let ref_flag = context.reader.i8();
+        let ref_flag = context.reader.read_i8();
         if ref_flag == (fory_core::types::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::types::RefFlag::RefValue as i8) {
             match context.get_fory().get_mode() {
                 fory_core::types::Mode::SchemaConsistent => {
@@ -206,8 +206,8 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
     let declare_ts: Vec<TokenStream> = declare_var(fields);
     let assign_ts: Vec<TokenStream> = assign_value(fields);
     quote! {
-        let remote_type_id = context.reader.var_uint32();
-        let meta_index = context.reader.var_uint32();
+        let remote_type_id = context.reader.read_var_uint32();
+        let meta_index = context.reader.read_var_uint32();
         let meta = context.get_meta(meta_index as usize);
         let fields = {
             let meta = context.get_meta(meta_index as usize);

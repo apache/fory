@@ -162,18 +162,18 @@ impl NullableTypeNode {
                     let element_tokens = generic_node.to_deserialize_tokens(&new_path, false);
                     let element_ty: Type = parse_str(&generic_node.to_string()).unwrap();
                     let vec_ts = quote! {
-                        let length = context.reader.var_uint32() as usize;
+                        let length = context.reader.read_var_uint32() as usize;
                         if length == 0 {
                             Vec::default()
                         } else {
                             let mut v = Vec::with_capacity(length);
-                            let header = context.reader.u8();
+                            let header = context.reader.read_u8();
                             let has_null = (header & fory_core::serializer::collection::HAS_NULL) != 0;
                             let is_same_type = (header & fory_core::serializer::collection::IS_SAME_TYPE) != 0;
                             let read_ref_flag = !(is_same_type && !has_null);
                             for _ in 0..length {
                                 let ref_flag = if read_ref_flag {
-                                    context.reader.i8()
+                                    context.reader.read_i8()
                                 } else {
                                     fory_core::types::RefFlag::NotNullValue as i8
                                 };
@@ -213,18 +213,18 @@ impl NullableTypeNode {
                     let element_tokens = generic_node.to_deserialize_tokens(&new_path, false);
                     let element_ty: Type = parse_str(&generic_node.to_string()).unwrap();
                     let set_ts = quote! {
-                        let length = context.reader.var_uint32() as usize;
+                        let length = context.reader.read_var_uint32() as usize;
                         if length == 0 {
                             HashSet::default()
                         } else {
                             let mut s = HashSet::with_capacity(length);
-                            let header = context.reader.u8();
+                            let header = context.reader.read_u8();
                             let has_null = (header & fory_core::serializer::collection::HAS_NULL) != 0;
                             let is_same_type = (header & fory_core::serializer::collection::IS_SAME_TYPE) != 0;
                             let read_ref_flag = !(is_same_type && !has_null);
                             for _ in 0..length {
                                 let ref_flag = if read_ref_flag {
-                                    context.reader.i8()
+                                    context.reader.read_i8()
                                 } else {
                                     fory_core::types::RefFlag::NotNullValue as i8
                                 };
@@ -272,7 +272,7 @@ impl NullableTypeNode {
                     let val_ty: Type = parse_str(&val_generic_node.to_string()).unwrap();
 
                     let map_ts = quote! {
-                        let length = context.reader.var_uint32();
+                        let length = context.reader.read_var_uint32();
                         let mut map = HashMap::with_capacity(length as usize);
                         if length == 0 {
                             map
@@ -282,7 +282,7 @@ impl NullableTypeNode {
                                 if len_counter == length {
                                     break;
                                 }
-                                let header = context.reader.u8();
+                                let header = context.reader.read_u8();
                                 if header & fory_core::serializer::map::KEY_NULL != 0 && header & fory_core::serializer::map::VALUE_NULL != 0 {
                                     map.insert(<#key_ty>::default(), <#val_ty>::default());
                                     len_counter += 1;
@@ -300,7 +300,7 @@ impl NullableTypeNode {
                                     len_counter += 1;
                                     continue;
                                 }
-                                let chunk_size = context.reader.u8();
+                                let chunk_size = context.reader.read_u8();
                                 <#key_ty as fory_core::serializer::Serializer>::read_type_info(context, true);
                                 <#val_ty as fory_core::serializer::Serializer>::read_type_info(context, true);
                                 for _ in (0..chunk_size).enumerate() {
@@ -396,7 +396,7 @@ impl NullableTypeNode {
             quote! {
                 let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(cur_remote_nullable_type);
                 let ref_flag = if read_ref_flag {
-                    context.reader.i8()
+                    context.reader.read_i8()
                 } else {
                     fory_core::types::RefFlag::NotNullValue as i8
                 };

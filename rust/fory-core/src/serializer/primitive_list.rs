@@ -27,26 +27,26 @@ macro_rules! impl_primitive_vec {
         impl Serializer for Vec<$ty> {
             fn write(&self, context: &mut WriteContext, _is_field: bool) {
                 let len_bytes = self.len() * std::mem::size_of::<$ty>();
-                context.writer.var_uint32(len_bytes as u32);
+                context.writer.write_var_uint32(len_bytes as u32);
                 context.writer.reserve(len_bytes);
 
                 if !self.is_empty() {
                     unsafe {
                         let ptr = self.as_ptr() as *const u8;
                         let slice = std::slice::from_raw_parts(ptr, len_bytes);
-                        context.writer.bytes(slice);
+                        context.writer.write_bytes(slice);
                     }
                 }
             }
 
             fn write_type_info(context: &mut WriteContext, is_field: bool) {
                 if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
-                    context.writer.var_uint32($field_type as u32);
+                    context.writer.write_var_uint32($field_type as u32);
                 }
             }
 
             fn read(context: &mut ReadContext) -> Result<Self, Error> {
-                let size_bytes = context.reader.var_uint32() as usize;
+                let size_bytes = context.reader.read_var_uint32() as usize;
                 if size_bytes % std::mem::size_of::<$ty>() != 0 {
                     panic!("Invalid data length");
                 }
@@ -54,7 +54,7 @@ macro_rules! impl_primitive_vec {
                 let mut vec: Vec<$ty> = Vec::with_capacity(len);
                 unsafe {
                     let dst_ptr = vec.as_mut_ptr() as *mut u8;
-                    let src = context.reader.bytes(size_bytes);
+                    let src = context.reader.read_bytes(size_bytes);
                     std::ptr::copy_nonoverlapping(src.as_ptr(), dst_ptr, size_bytes);
                     vec.set_len(len);
                 }
@@ -63,7 +63,7 @@ macro_rules! impl_primitive_vec {
 
             fn read_type_info(context: &mut ReadContext, is_field: bool) {
                 if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
-                    let remote_type_id = context.reader.var_uint32();
+                    let remote_type_id = context.reader.read_var_uint32();
                     assert_eq!(remote_type_id, $field_type as u32);
                 }
             }

@@ -43,10 +43,10 @@ pub fn write_data<T: Serializer + 'static>(
     skip_type_info: bool,
 ) {
     if record.is_none() {
-        context.writer.i8(RefFlag::Null as i8);
+        context.writer.write_i8(RefFlag::Null as i8);
     } else {
         if !skip_ref_flag {
-            context.writer.i8(RefFlag::NotNullValue as i8);
+            context.writer.write_i8(RefFlag::NotNullValue as i8);
         }
         if !skip_type_info {
             T::write_type_info(context, is_field);
@@ -62,7 +62,7 @@ pub fn read_data<T: Serializer + Default>(
     skip_type_info: bool,
 ) -> Result<T, Error> {
     if !skip_ref_flag {
-        let ref_flag = context.reader.i8();
+        let ref_flag = context.reader.read_i8();
         if ref_flag == RefFlag::Null as i8 {
             Ok(T::default())
         } else if ref_flag == (RefFlag::NotNullValue as i8) {

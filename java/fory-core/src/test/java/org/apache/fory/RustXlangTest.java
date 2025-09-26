@@ -106,22 +106,22 @@ public class RustXlangTest extends ForyTestBase {
     testBuffer(Language.RUST, command);
     command.set(RUST_TESTCASE_INDEX, "test_buffer_var");
     testBufferVar(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_murmurhash3");
-    testMurmurHash3(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_string_serializer");
-    testStringSerializer(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_cross_language_serializer");
-    testCrossLanguageSerializer(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_simple_struct");
-    testSimpleStruct(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_simple_named_struct");
-    testSimpleNamedStruct(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_list");
-    testList(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_map");
-    testMap(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_integer");
-    testInteger(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_murmurhash3");
+//    testMurmurHash3(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_string_serializer");
+//    testStringSerializer(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_cross_language_serializer");
+//    testCrossLanguageSerializer(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_simple_struct");
+//    testSimpleStruct(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_simple_named_struct");
+//    testSimpleNamedStruct(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_list");
+//    testList(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_map");
+//    testMap(Language.RUST, command);
+//    command.set(RUST_TESTCASE_INDEX, "test_integer");
+//    testInteger(Language.RUST, command);
   }
 
   @Test

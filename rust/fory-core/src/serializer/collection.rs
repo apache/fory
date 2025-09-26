@@ -37,7 +37,7 @@ pub fn write_collection_type_info(
     collection_type_id: u32,
 ) {
     if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-        context.writer.var_uint32(collection_type_id);
+        context.writer.write_var_uint32(collection_type_id);
     }
 }
 
@@ -48,7 +48,7 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
 ) {
     let items: Vec<&T> = iter.into_iter().collect();
     let len = items.len();
-    context.writer.var_uint32(len as u32);
+    context.writer.write_var_uint32(len as u32);
     if len == 0 {
         return;
     }
@@ -72,7 +72,7 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
     if is_same_type {
         header |= IS_SAME_TYPE;
     }
-    context.writer.u8(header);
+    context.writer.write_u8(header);
     T::write_type_info(context, is_field);
     // context.writer.reserve((T::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
     for item in &items {
@@ -88,7 +88,7 @@ pub fn read_collection_type_info(
     collection_type_id: u32,
 ) {
     if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-        let remote_collection_type_id = context.reader.var_uint32();
+        let remote_collection_type_id = context.reader.read_var_uint32();
         assert_eq!(remote_collection_type_id, collection_type_id);
     }
 }
@@ -98,11 +98,11 @@ where
     T: Serializer,
     C: FromIterator<T>,
 {
-    let len = context.reader.var_uint32();
+    let len = context.reader.read_var_uint32();
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
-    let header = context.reader.u8();
+    let header = context.reader.read_u8();
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
     T::read_type_info(context, declared);
     let has_null = (header & HAS_NULL) != 0;

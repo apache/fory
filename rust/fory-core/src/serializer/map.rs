@@ -40,7 +40,7 @@ fn check_and_write_null<K: Serializer + Eq + std::hash::Hash, V: Serializer>(
     value: &V,
 ) -> bool {
     if key.is_none() && value.is_none() {
-        context.writer.u8(KEY_NULL | VALUE_NULL);
+        context.writer.write_u8(KEY_NULL | VALUE_NULL);
         return true;
     }
     if key.is_none() {
@@ -53,7 +53,7 @@ fn check_and_write_null<K: Serializer + Eq + std::hash::Hash, V: Serializer>(
             skip_ref_flag = false;
             chunk_header |= TRACKING_VALUE_REF;
         }
-        context.writer.u8(chunk_header);
+        context.writer.write_u8(chunk_header);
 
         crate::serializer::write_data(value, context, is_field, skip_ref_flag, false);
         return true;
@@ -69,7 +69,7 @@ fn check_and_write_null<K: Serializer + Eq + std::hash::Hash, V: Serializer>(
             skip_ref_flag = false;
             chunk_header |= TRACKING_KEY_REF;
         }
-        context.writer.u8(chunk_header);
+        context.writer.write_u8(chunk_header);
         crate::serializer::write_data(key, context, is_field, skip_ref_flag, false);
         return true;
     }
@@ -83,7 +83,7 @@ fn write_chunk_size(context: &mut WriteContext, header_offset: usize, size: u8) 
 impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap<K, V> {
     fn write(&self, context: &mut WriteContext, is_field: bool) {
         let length = self.len();
-        context.writer.var_uint32(length as u32);
+        context.writer.write_var_uint32(length as u32);
         if length == 0 {
             return;
         }
@@ -105,7 +105,7 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
                     continue;
                 }
                 header_offset = context.writer.len();
-                context.writer.i16(-1);
+                context.writer.write_i16(-1);
                 let mut chunk_header = 0;
                 if is_field {
                     chunk_header |= DECL_KEY_TYPE;
@@ -148,7 +148,7 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
     }
 
     fn read(context: &mut ReadContext) -> Result<Self, Error> {
-        let len = context.reader.var_uint32();
+        let len = context.reader.read_var_uint32();
         let mut map = HashMap::<K, V>::with_capacity(len as usize);
         if len == 0 {
             return Ok(map);
@@ -158,7 +158,7 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
             if len_counter == len {
                 break;
             }
-            let header = context.reader.u8();
+            let header = context.reader.read_u8();
             if header & KEY_NULL != 0 && header & VALUE_NULL != 0 {
                 map.insert(K::default(), V::default());
                 len_counter += 1;
@@ -194,7 +194,7 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
                 len_counter += 1;
                 continue;
             }
-            let chunk_size = context.reader.u8();
+            let chunk_size = context.reader.read_u8();
             K::read_type_info(context, key_declared);
             V::read_type_info(context, value_declared);
             assert!(len_counter + chunk_size as u32 <= len);
@@ -212,13 +212,13 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
 
     fn write_type_info(context: &mut WriteContext, is_field: bool) {
         if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            context.writer.var_uint32(TypeId::MAP as u32);
+            context.writer.write_var_uint32(TypeId::MAP as u32);
         }
     }
 
     fn read_type_info(context: &mut ReadContext, is_field: bool) {
         if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            let remote_collection_type_id = context.reader.var_uint32();
+            let remote_collection_type_id = context.reader.read_var_uint32();
             assert_eq!(remote_collection_type_id, TypeId::MAP as u32);
         }
     }

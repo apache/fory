@@ -56,7 +56,7 @@ pub fn gen_write(data_enum: &DataEnum) -> TokenStream {
         match self {
             #(
                 Self::#variant_idents => {
-                    context.writer.var_uint32(#variant_values);
+                    context.writer.write_var_uint32(#variant_values);
                 }
             )*
         }
@@ -67,7 +67,7 @@ pub fn gen_read(data_enum: &DataEnum) -> TokenStream {
     let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
     let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as u32).collect();
     quote! {
-        let ordinal = context.reader.var_uint32();
+        let ordinal = context.reader.read_var_uint32();
         match ordinal {
            #(
                #variant_values => Ok(Self::#variant_idents),

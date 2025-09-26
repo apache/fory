@@ -76,19 +76,19 @@ pub fn type_def<T: Serializer + StructSerializer>(
 #[inline(always)]
 pub fn write_type_info<T: Serializer>(context: &mut WriteContext, _is_field: bool) {
     let type_id = T::get_type_id(context.get_fory());
-    context.writer.var_uint32(type_id);
+    context.writer.write_var_uint32(type_id);
     if *context.get_fory().get_mode() == Mode::Compatible {
         let meta_index = context.push_meta(std::any::TypeId::of::<T>()) as u32;
-        context.writer.var_uint32(meta_index);
+        context.writer.write_var_uint32(meta_index);
     }
 }
 
 #[inline(always)]
 pub fn read_type_info<T: Serializer>(context: &mut ReadContext, _is_field: bool) {
-    let remote_type_id = context.reader.var_uint32();
+    let remote_type_id = context.reader.read_var_uint32();
     assert_eq!(remote_type_id, T::get_type_id(context.get_fory()));
     if *context.get_fory().get_mode() == Mode::Compatible {
-        let _meta_index = context.reader.var_uint32();
+        let _meta_index = context.reader.read_var_uint32();
     }
 }
 
@@ -97,12 +97,12 @@ pub fn serialize<T: Serializer>(this: &T, context: &mut WriteContext, _is_field:
     match context.get_fory().get_mode() {
         // currently same
         Mode::SchemaConsistent => {
-            context.writer.i8(RefFlag::NotNullValue as i8);
+            context.writer.write_i8(RefFlag::NotNullValue as i8);
             T::write_type_info(context, false);
             this.write(context, true);
         }
         Mode::Compatible => {
-            context.writer.i8(RefFlag::NotNullValue as i8);
+            context.writer.write_i8(RefFlag::NotNullValue as i8);
             T::write_type_info(context, false);
             this.write(context, true);
         }
