@@ -153,7 +153,7 @@ impl TypeResolver {
         if self.type_info_map.contains_key(&rs_type_id) {
             panic!("rs_struct:{:?} already registered", type_info.type_id);
         }
-        self.type_info_map.insert(rs_type_id, (*type_info).clone());
+        self.type_info_map.insert(rs_type_id, type_info.clone());
 
         let index = T::fory_type_index() as usize;
         if index >= self.type_id_index.len() {
@@ -162,18 +162,18 @@ impl TypeResolver {
         self.type_id_index[index] = type_info.type_id;
 
         if type_info.register_by_name {
-            let namespace = type_info.namespace.clone();
-            let type_name = type_info.type_name.clone();
+            let namespace = &type_info.namespace;
+            let type_name = &type_info.type_name;
             if self
                 .name_serialize_map
-                .contains_key(&(namespace.clone(), type_name.clone()))
+                .contains_key(&(namespace.to_string(), type_name.to_string()))
             {
                 panic!("TypeId {:?} already registered_by_name", type_info.type_id);
             }
             self.type_name_map
-                .insert(rs_type_id, (namespace.clone(), type_name.clone()));
+                .insert(rs_type_id, (namespace.to_string(), type_name.to_string()));
             self.name_serialize_map.insert(
-                (namespace, type_name),
+                (namespace.to_string(), type_name.to_string()),
                 Harness::new(serializer::<T>, deserializer::<T>),
             );
         } else {

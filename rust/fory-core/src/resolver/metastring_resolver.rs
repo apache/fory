@@ -36,7 +36,7 @@ impl MetaStringResolver {
         }
         let metastring_bytes = MetaStringBytes::from(str);
         self.metastring_to_bytes_map
-            .insert((*str).clone(), metastring_bytes.clone());
+            .insert(str.clone(), metastring_bytes.clone());
         metastring_bytes
     }
 }

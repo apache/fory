@@ -301,12 +301,12 @@ impl TypeMetaLayer {
         self.type_id
     }
 
-    pub fn get_type_name(&self) -> MetaString {
-        self.type_name.clone()
+    pub fn get_type_name(&self) -> &MetaString {
+        &self.type_name
     }
 
-    pub fn get_namespace(&self) -> MetaString {
-        self.namespace.clone()
+    pub fn get_namespace(&self) -> &MetaString {
+        &self.namespace
     }
 
     pub fn get_field_infos(&self) -> &Vec<FieldInfo> {
@@ -438,11 +438,11 @@ impl TypeMeta {
     }
 
     pub fn get_type_name(&self) -> MetaString {
-        self.layers.first().unwrap().get_type_name()
+        self.layers.first().unwrap().get_type_name().clone()
     }
 
     pub fn get_namespace(&self) -> MetaString {
-        self.layers.first().unwrap().get_namespace()
+        self.layers.first().unwrap().get_namespace().clone()
     }
 
     pub fn from_fields(
