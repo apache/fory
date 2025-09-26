@@ -84,24 +84,24 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext, is_field: bool) 
 #[inline(always)]
 pub fn read_compatible<T: Serializer>(context: &mut ReadContext) -> Result<T, Error> {
     T::fory_read_type_info(context, true);
-    T::fory_read(context)
+    T::fory_read_data(context)
 }
 
 #[inline(always)]
-pub fn serialize<T: Serializer>(this: &T, context: &mut WriteContext, is_field: bool) {
+pub fn write<T: Serializer>(this: &T, context: &mut WriteContext, is_field: bool) {
     context.writer.write_i8(RefFlag::NotNullValue as i8);
     T::fory_write_type_info(context, is_field);
-    this.fory_write(context, is_field);
+    this.fory_write_data(context, is_field);
 }
 
 #[inline(always)]
-pub fn deserialize<T: Serializer>(context: &mut ReadContext, _is_field: bool) -> Result<T, Error> {
+pub fn read<T: Serializer>(context: &mut ReadContext, _is_field: bool) -> Result<T, Error> {
     let ref_flag = context.reader.read_i8();
     if ref_flag == RefFlag::Null as i8 {
         Ok(T::default())
     } else if ref_flag == (RefFlag::NotNullValue as i8) {
         T::fory_read_type_info(context, false);
-        T::fory_read(context)
+        T::fory_read_data(context)
     } else {
         unimplemented!()
     }

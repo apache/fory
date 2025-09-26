@@ -25,8 +25,8 @@ fn create_private_field_name(field: &Field) -> Ident {
     format_ident!("_{}", field.ident.as_ref().expect(""))
 }
 
-fn create_deserialize_nullable_fn_name(field: &Field) -> Ident {
-    format_ident!("fory_deserialize_nullable_{}", field.ident.as_ref().expect(""))
+fn create_read_nullable_fn_name(field: &Field) -> Ident {
+    format_ident!("fory_read_nullable_{}", field.ident.as_ref().expect(""))
 }
 
 fn declare_var(fields: &[&Field]) -> Vec<TokenStream> {
@@ -61,7 +61,7 @@ pub fn gen_read_type_info() -> TokenStream {
     }
 }
 
-pub fn gen_read(fields: &[&Field]) -> TokenStream {
+pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
     // read way before:
     // let assign_stmt = fields.iter().map(|field| {
     //     let ty = &field.ty;
@@ -74,7 +74,7 @@ pub fn gen_read(fields: &[&Field]) -> TokenStream {
         .iter()
         .map(|f| create_private_field_name(f))
         .collect();
-    let sorted_deserialize = if fields.is_empty() {
+    let sorted_read = if fields.is_empty() {
         quote! {}
     } else {
         let declare_var_ts =
@@ -93,7 +93,7 @@ pub fn gen_read(fields: &[&Field]) -> TokenStream {
             quote! {
                 #name_str => {
                     let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    #private_ident = fory_core::serializer::read_data::<#ty>(context, true, skip_ref_flag, false)?;
+                    #private_ident = fory_core::serializer::read_info_data::<#ty>(context, true, skip_ref_flag, false)?;
                 }
             }
         });
@@ -118,7 +118,7 @@ pub fn gen_read(fields: &[&Field]) -> TokenStream {
             }
         });
     quote! {
-        #sorted_deserialize
+        #sorted_read
         Ok(Self {
             #(#field_idents),*
             // #(#assign_stmt),*
@@ -126,14 +126,14 @@ pub fn gen_read(fields: &[&Field]) -> TokenStream {
     }
 }
 
-pub fn gen_deserialize(struct_ident: &Ident) -> TokenStream {
+pub fn gen_read(struct_ident: &Ident) -> TokenStream {
     quote! {
         let ref_flag = context.reader.read_i8();
         if ref_flag == (fory_core::types::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::types::RefFlag::RefValue as i8) {
             match context.get_fory().get_mode() {
                 fory_core::types::Mode::SchemaConsistent => {
                     Self::fory_read_type_info(context, false);
-                    Self::fory_read(context)
+                    Self::fory_read_data(context)
                 },
                 fory_core::types::Mode::Compatible => {
                     <#struct_ident as fory_core::serializer::StructSerializer>::fory_read_compatible(context)
@@ -142,7 +142,7 @@ pub fn gen_deserialize(struct_ident: &Ident) -> TokenStream {
             }
         } else if ref_flag == (fory_core::types::RefFlag::Null as i8) {
             Ok(Self::default())
-            // Err(fory_core::error::AnyhowError::msg("Try to deserialize non-option type to null"))?
+            // Err(fory_core::error::AnyhowError::msg("Try to read non-option type to null"))?
         } else if ref_flag == (fory_core::types::RefFlag::Ref as i8) {
             Err(fory_core::error::Error::Ref)
         } else {
@@ -155,7 +155,7 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
     let pattern_items = fields.iter().map(|field| {
         let ty = &field.ty;
         let var_name = create_private_field_name(field);
-        let deserialize_nullable_fn_name = create_deserialize_nullable_fn_name(field);
+        let read_nullable_fn_name = create_read_nullable_fn_name(field);
 
         let generic_tree = parse_generic_tree(ty);
         // dbg!(&generic_tree);
@@ -173,7 +173,7 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
                 let local_field_type = #generic_token;
                 if &_field.field_type == &local_field_type {
                     let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    #var_name = Some(fory_core::serializer::read_data::<#ty>(context, true, skip_ref_flag, false).unwrap_or_else(|_err| {
+                    #var_name = Some(fory_core::serializer::read_info_data::<#ty>(context, true, skip_ref_flag, false).unwrap_or_else(|_err| {
                         // same type, err means something wrong
                         panic!("Err at deserializing {:?}: {:?}", #field_name_str, _err);
                     }));
@@ -189,7 +189,7 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
                     } else {
                         println!("Try to deserialize_compatible: {}", #field_name_str);
                         #var_name = Some(
-                            #struct_ident::#deserialize_nullable_fn_name(
+                            #struct_ident::#read_nullable_fn_name(
                                 context,
                                 &local_nullable_type,
                                 &remote_nullable_type
@@ -228,15 +228,15 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
     }
 }
 
-pub fn gen_deserialize_nullable(fields: &[&Field]) -> TokenStream {
+pub fn gen_read_nullable(fields: &[&Field]) -> TokenStream {
     let func_tokens: Vec<TokenStream> = fields
         .iter()
         .map(|field| {
-            let fn_name = create_deserialize_nullable_fn_name(field);
+            let fn_name = create_read_nullable_fn_name(field);
             let ty = &field.ty;
             let generic_tree = parse_generic_tree(ty);
             let nullable_generic_tree = NullableTypeNode::from(generic_tree);
-            let deserialize_tokens = nullable_generic_tree.to_deserialize_tokens(&vec![], true);
+            let read_tokens = nullable_generic_tree.to_read_tokens(&vec![], true);
             quote! {
                 fn #fn_name(
                     context: &mut fory_core::resolver::context::ReadContext,
@@ -245,7 +245,7 @@ pub fn gen_deserialize_nullable(fields: &[&Field]) -> TokenStream {
                 ) -> Result<#ty, fory_core::error::Error> {
                     // println!("remote:{:#?}", remote_nullable_type);
                     // println!("local:{:#?}", local_nullable_type);
-                    #deserialize_tokens
+                    #read_tokens
                 }
             }
         })

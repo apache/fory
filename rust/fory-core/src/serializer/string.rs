@@ -35,7 +35,7 @@ impl Serializer for String {
         mem::size_of::<i32>()
     }
 
-    fn fory_write(&self, context: &mut WriteContext, _is_field: bool) {
+    fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) {
         let mut len = get_latin1_length(self);
         if len >= 0 {
             let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
@@ -70,7 +70,7 @@ impl Serializer for String {
         }
     }
 
-    fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let bitor = context.reader.var_uint36_small();
         let len = bitor >> 2;
         let encoding = bitor & 0b11;

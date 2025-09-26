@@ -28,7 +28,7 @@ impl Serializer for bool {
         mem::size_of::<i32>()
     }
 
-    fn fory_write(&self, context: &mut WriteContext, _is_field: bool) {
+    fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) {
         context.writer.write_u8(if *self { 1 } else { 0 });
     }
 
@@ -38,7 +38,7 @@ impl Serializer for bool {
         }
     }
 
-    fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         Ok(context.reader.read_u8() == 1)
     }
 

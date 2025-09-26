@@ -31,7 +31,7 @@ impl<T> Serializer for Vec<T>
 where
     T: Serializer + ForyGeneralList,
 {
-    fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
         write_collection(self, context, is_field);
     }
 
@@ -39,7 +39,7 @@ where
         write_collection_type_info(context, is_field, TypeId::LIST as u32);
     }
 
-    fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         read_collection(context)
     }
 

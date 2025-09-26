@@ -23,17 +23,17 @@ use crate::serializer::Serializer;
 use crate::types::ForyGeneralList;
 
 impl<T: Serializer> Serializer for Option<T> {
-    fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
-        Ok(Some(T::fory_read(context)?))
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        Ok(Some(T::fory_read_data(context)?))
     }
 
     fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
         T::fory_read_type_info(context, is_field);
     }
 
-    fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
         if let Some(v) = self {
-            T::fory_write(v, context, is_field)
+            T::fory_write_data(v, context, is_field)
         } else {
             unreachable!("write should be call by serialize")
         }

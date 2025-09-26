@@ -33,7 +33,7 @@ macro_rules! basic_type_deserialize {
         $(
             if $tid == TypeId::$id {
                 <$ty>::fory_read_type_info($context, true);
-                <$ty>::fory_read($context)?;
+                <$ty>::fory_read_data($context)?;
                 return Ok(());
             }
         )+else {

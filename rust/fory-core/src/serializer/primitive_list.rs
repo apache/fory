@@ -25,7 +25,7 @@ use crate::types::TypeId;
 macro_rules! impl_primitive_vec {
     ($name:ident, $ty:ty, $field_type:expr) => {
         impl Serializer for Vec<$ty> {
-            fn fory_write(&self, context: &mut WriteContext, _is_field: bool) {
+            fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) {
                 let len_bytes = self.len() * std::mem::size_of::<$ty>();
                 context.writer.write_var_uint32(len_bytes as u32);
                 context.writer.reserve(len_bytes);
@@ -45,7 +45,7 @@ macro_rules! impl_primitive_vec {
                 }
             }
 
-            fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
+            fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
                 let size_bytes = context.reader.read_var_uint32() as usize;
                 if size_bytes % std::mem::size_of::<$ty>() != 0 {
                     panic!("Invalid data length");

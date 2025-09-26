@@ -93,18 +93,18 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext, _is_field: bool)
 }
 
 #[inline(always)]
-pub fn serialize<T: Serializer>(this: &T, context: &mut WriteContext, _is_field: bool) {
+pub fn write<T: Serializer>(this: &T, context: &mut WriteContext, _is_field: bool) {
     match context.get_fory().get_mode() {
         // currently same
         Mode::SchemaConsistent => {
             context.writer.write_i8(RefFlag::NotNullValue as i8);
             T::fory_write_type_info(context, false);
-            this.fory_write(context, true);
+            this.fory_write_data(context, true);
         }
         Mode::Compatible => {
             context.writer.write_i8(RefFlag::NotNullValue as i8);
             T::fory_write_type_info(context, false);
-            this.fory_write(context, true);
+            this.fory_write_data(context, true);
         }
     }
 }

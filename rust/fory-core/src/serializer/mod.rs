@@ -35,7 +35,7 @@ pub mod skip;
 mod string;
 pub mod struct_;
 
-pub fn write_data<T: Serializer + 'static>(
+pub fn write_info_data<T: Serializer + 'static>(
     record: &T,
     context: &mut WriteContext,
     is_field: bool,
@@ -51,11 +51,11 @@ pub fn write_data<T: Serializer + 'static>(
         if !skip_type_info {
             T::fory_write_type_info(context, is_field);
         }
-        record.fory_write(context, is_field);
+        record.fory_write_data(context, is_field);
     }
 }
 
-pub fn read_data<T: Serializer + Default>(
+pub fn read_info_data<T: Serializer + Default>(
     context: &mut ReadContext,
     is_field: bool,
     skip_ref_flag: bool,
@@ -69,7 +69,7 @@ pub fn read_data<T: Serializer + Default>(
             if !skip_type_info {
                 T::fory_read_type_info(context, is_field);
             }
-            T::fory_read(context)
+            T::fory_read_data(context)
         } else {
             unimplemented!()
         }
@@ -77,7 +77,7 @@ pub fn read_data<T: Serializer + Default>(
         if !skip_type_info {
             T::fory_read_type_info(context, is_field);
         }
-        T::fory_read(context)
+        T::fory_read_data(context)
     }
 }
 
@@ -95,7 +95,7 @@ where
     fn fory_reserved_space() -> usize;
 
     /// Write the data into the buffer.
-    fn fory_write(&self, context: &mut WriteContext, is_field: bool);
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool);
 
     fn fory_write_type_info(context: &mut WriteContext, is_field: bool);
 
@@ -103,16 +103,16 @@ where
     ///
     /// Step 1: write the type flag and type flag into the buffer.
     /// Step 2: invoke the write function to write the Rust object.
-    fn fory_serialize(&self, context: &mut WriteContext, is_field: bool) {
-        write_data(self, context, is_field, false, false);
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
+        write_info_data(self, context, is_field, false, false);
     }
 
-    fn fory_read(context: &mut ReadContext) -> Result<Self, Error>;
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error>;
 
     fn fory_read_type_info(context: &mut ReadContext, is_field: bool);
 
-    fn fory_deserialize(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        read_data(context, is_field, false, false)
+    fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        read_info_data(context, is_field, false, false)
     }
 
     fn fory_get_type_id(_fory: &Fory) -> u32;

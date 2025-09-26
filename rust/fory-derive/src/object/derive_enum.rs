@@ -49,7 +49,7 @@ pub fn gen_read_type_info() -> TokenStream {
     }
 }
 
-pub fn gen_write(data_enum: &DataEnum) -> TokenStream {
+pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
     let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
     let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as u32).collect();
     quote! {
@@ -63,7 +63,7 @@ pub fn gen_write(data_enum: &DataEnum) -> TokenStream {
     }
 }
 
-pub fn gen_read(data_enum: &DataEnum) -> TokenStream {
+pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
     let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
     let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as u32).collect();
     quote! {
@@ -83,14 +83,14 @@ pub fn gen_read_compatible() -> TokenStream {
     }
 }
 
-pub fn gen_serialize(_data_enum: &DataEnum) -> TokenStream {
+pub fn gen_write(_data_enum: &DataEnum) -> TokenStream {
     quote! {
-        fory_core::serializer::enum_::serialize::<Self>(self, context, is_field)
+        fory_core::serializer::enum_::write::<Self>(self, context, is_field)
     }
 }
 
-pub fn gen_deserialize(_data_enum: &DataEnum) -> TokenStream {
+pub fn gen_read(_data_enum: &DataEnum) -> TokenStream {
     quote! {
-        fory_core::serializer::enum_::deserialize::<Self>(context, is_field)
+        fory_core::serializer::enum_::read::<Self>(context, is_field)
     }
 }

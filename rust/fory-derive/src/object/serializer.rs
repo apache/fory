@@ -49,10 +49,10 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
         reserved_space_ts,
         write_type_info_ts,
         read_type_info_ts,
+        write_data_ts,
+        read_data_ts,
         write_ts,
         read_ts,
-        serialize_ts,
-        deserialize_ts,
     ) = match &ast.data {
         syn::Data::Struct(s) => {
             let fields = sorted_fields(&s.fields);
@@ -60,20 +60,20 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 write::gen_reserved_space(&fields),
                 write::gen_write_type_info(),
                 read::gen_read_type_info(),
-                write::gen_write(&fields),
-                read::gen_read(&fields),
-                write::gen_serialize(),
-                read::gen_deserialize(name),
+                write::gen_write_data(&fields),
+                read::gen_read_data(&fields),
+                write::gen_write(),
+                read::gen_read(name),
             )
         }
         syn::Data::Enum(e) => (
             derive_enum::gen_reserved_space(),
             derive_enum::gen_write_type_info(),
             derive_enum::gen_read_type_info(),
+            derive_enum::gen_write_data(e),
+            derive_enum::gen_read_data(e),
             derive_enum::gen_write(e),
             derive_enum::gen_read(e),
-            derive_enum::gen_serialize(e),
-            derive_enum::gen_deserialize(e),
         ),
         syn::Data::Union(_) => {
             panic!("Union is not supported")
@@ -83,7 +83,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
     let (deserialize_nullable_ts,) = match &ast.data {
         syn::Data::Struct(s) => {
             let fields = sorted_fields(&s.fields);
-            (read::gen_deserialize_nullable(&fields),)
+            (read::gen_read_nullable(&fields),)
         }
         syn::Data::Enum(_s) => (quote! {},),
         syn::Data::Union(_) => {
@@ -134,20 +134,20 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #read_type_info_ts
             }
 
+            fn fory_write_data(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
+                #write_data_ts
+            }
+
+            fn fory_read_data(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
+                #read_data_ts
+            }
+
             fn fory_write(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
                 #write_ts
             }
 
-            fn fory_read(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
+            fn fory_read(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
                 #read_ts
-            }
-
-            fn fory_serialize(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
-                #serialize_ts
-            }
-
-            fn fory_deserialize(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
-                #deserialize_ts
             }
         }
         impl #name {

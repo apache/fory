@@ -153,7 +153,7 @@ impl Fory {
                 bytes_to_skip = context.load_meta(meta_offset as usize);
             }
         }
-        let result = <T as Serializer>::fory_deserialize(context, false);
+        let result = <T as Serializer>::fory_read(context, false);
         if bytes_to_skip > 0 {
             context.reader.skip(bytes_to_skip as u32);
         }
@@ -178,7 +178,7 @@ impl Fory {
             if self.mode == Mode::Compatible {
                 context.writer.write_i32(-1);
             };
-            <T as Serializer>::fory_serialize(record, context, false);
+            <T as Serializer>::fory_write(record, context, false);
             if self.mode == Mode::Compatible && !context.empty() {
                 context.write_meta(meta_start_offset);
             }

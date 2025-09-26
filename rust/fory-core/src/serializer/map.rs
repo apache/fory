@@ -55,7 +55,7 @@ fn check_and_write_null<K: Serializer + Eq + std::hash::Hash, V: Serializer>(
         }
         context.writer.write_u8(chunk_header);
 
-        crate::serializer::write_data(value, context, is_field, skip_ref_flag, false);
+        crate::serializer::write_info_data(value, context, is_field, skip_ref_flag, false);
         return true;
     }
     if value.fory_is_none() {
@@ -70,7 +70,7 @@ fn check_and_write_null<K: Serializer + Eq + std::hash::Hash, V: Serializer>(
             chunk_header |= TRACKING_KEY_REF;
         }
         context.writer.write_u8(chunk_header);
-        crate::serializer::write_data(key, context, is_field, skip_ref_flag, false);
+        crate::serializer::write_info_data(key, context, is_field, skip_ref_flag, false);
         return true;
     }
     false
@@ -81,7 +81,7 @@ fn write_chunk_size(context: &mut WriteContext, header_offset: usize, size: u8) 
 }
 
 impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap<K, V> {
-    fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
         let length = self.len();
         context.writer.write_var_uint32(length as u32);
         if length == 0 {
@@ -133,8 +133,8 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
                 check_and_write_null(context, is_field, key, value);
                 continue;
             }
-            crate::serializer::write_data(key, context, is_field, skip_key_ref_flag, true);
-            crate::serializer::write_data(value, context, is_field, skip_val_ref_flag, true);
+            crate::serializer::write_info_data(key, context, is_field, skip_key_ref_flag, true);
+            crate::serializer::write_info_data(value, context, is_field, skip_val_ref_flag, true);
             pair_counter += 1;
             if pair_counter == MAX_CHUNK_SIZE {
                 write_chunk_size(context, header_offset, pair_counter);
@@ -147,7 +147,7 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
         }
     }
 
-    fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_var_uint32();
         let mut map = HashMap::<K, V>::with_capacity(len as usize);
         if len == 0 {
@@ -176,7 +176,7 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
                     false
                 };
                 let value =
-                    crate::serializer::read_data(context, value_declared, skip_ref_flag, false)?;
+                    crate::serializer::read_info_data(context, value_declared, skip_ref_flag, false)?;
                 map.insert(K::default(), value);
                 len_counter += 1;
                 continue;
@@ -189,7 +189,7 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
                     false
                 };
                 let key =
-                    crate::serializer::read_data(context, key_declared, skip_ref_flag, false)?;
+                    crate::serializer::read_info_data(context, key_declared, skip_ref_flag, false)?;
                 map.insert(key, V::default());
                 len_counter += 1;
                 continue;
@@ -200,9 +200,9 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
             assert!(len_counter + chunk_size as u32 <= len);
             for _ in (0..chunk_size).enumerate() {
                 // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<K>(context.get_fory());
-                let key = crate::serializer::read_data(context, key_declared, true, true)?;
+                let key = crate::serializer::read_info_data(context, key_declared, true, true)?;
                 // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<V>(context.get_fory());
-                let value = crate::serializer::read_data(context, value_declared, true, true)?;
+                let value = crate::serializer::read_info_data(context, value_declared, true, true)?;
                 map.insert(key, value);
             }
             len_counter += chunk_size as u32;

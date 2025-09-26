@@ -26,7 +26,7 @@ use crate::types::{ForyGeneralList, TypeId};
 macro_rules! impl_num_serializer {
     ($ty:ty, $writer:expr, $reader:expr, $field_type:expr) => {
         impl Serializer for $ty {
-            fn fory_write(&self, context: &mut WriteContext, _is_field: bool) {
+            fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) {
                 $writer(&mut context.writer, *self);
             }
 
@@ -36,7 +36,7 @@ macro_rules! impl_num_serializer {
                 }
             }
 
-            fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
+            fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
                 Ok($reader(&mut context.reader))
             }
 

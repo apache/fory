@@ -39,7 +39,7 @@ pub fn gen_write_type_info() -> TokenStream {
     }
 }
 
-pub fn gen_write(fields: &[&Field]) -> TokenStream {
+pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
     // let accessor_expr = fields.iter().map(|field| {
     //     let ty = &field.ty;
     //     let ident = &field.ident;
@@ -57,7 +57,7 @@ pub fn gen_write(fields: &[&Field]) -> TokenStream {
             quote! {
                 #name_str => {
                     let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    fory_core::serializer::write_data::<#ty>(&self.#ident, context, true, skip_ref_flag, false);
+                    fory_core::serializer::write_info_data::<#ty>(&self.#ident, context, true, skip_ref_flag, false);
                 }
             }
         });
@@ -79,8 +79,8 @@ pub fn gen_write(fields: &[&Field]) -> TokenStream {
     }
 }
 
-pub fn gen_serialize() -> TokenStream {
+pub fn gen_write() -> TokenStream {
     quote! {
-        fory_core::serializer::struct_::serialize::<Self>(self, context, is_field)
+        fory_core::serializer::struct_::write::<Self>(self, context, is_field)
     }
 }

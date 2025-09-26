@@ -42,14 +42,14 @@ macro_rules! basic_type_deserialize {
                     if $nullable {
                         quote! {
                             <$ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                            let res1 = Some(<$ty as fory_core::serializer::Serializer>::fory_read(context)
+                            let res1 = Some(<$ty as fory_core::serializer::Serializer>::fory_read_data(context)
                                 .map_err(fory_core::error::Error::from)?);
                             Ok::<Option<$ty>, fory_core::error::Error>(res1)
                         }
                     } else {
                         quote! {
                             <$ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                            let res2 = <$ty as fory_core::serializer::Serializer>::fory_read(context)
+                            let res2 = <$ty as fory_core::serializer::Serializer>::fory_read_data(context)
                                 .map_err(fory_core::error::Error::from)?;
                             Ok::<$ty, fory_core::error::Error>(res2)
                         }
@@ -108,7 +108,7 @@ pub fn try_primitive_vec_type_name(node: &NullableTypeNode) -> Option<String> {
 }
 
 impl NullableTypeNode {
-    pub(super) fn to_deserialize_tokens(
+    pub(super) fn to_read_tokens(
         &self,
         generic_path: &Vec<i8>,
         read_ref_flag: bool,
@@ -122,7 +122,7 @@ impl NullableTypeNode {
                         None
                     } else {
                         <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                        Some(<#ty_type as fory_core::serializer::Serializer>::fory_read(context)
+                        Some(<#ty_type as fory_core::serializer::Serializer>::fory_read_data(context)
                             .map_err(fory_core::error::Error::from)?)
                     };
                     Ok::<Option<#ty_type>, fory_core::error::Error>(res1)
@@ -133,7 +133,7 @@ impl NullableTypeNode {
                         Vec::default()
                     } else {
                         <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                        <#ty_type as fory_core::serializer::Serializer>::fory_read(context)
+                        <#ty_type as fory_core::serializer::Serializer>::fory_read_data(context)
                             .map_err(fory_core::error::Error::from)?
                     };
                     Ok::<#ty_type, fory_core::error::Error>(res2)
@@ -159,7 +159,7 @@ impl NullableTypeNode {
                 "Vec" => {
                     new_path.push(0);
                     let generic_node = self.generics.first().unwrap();
-                    let element_tokens = generic_node.to_deserialize_tokens(&new_path, false);
+                    let element_tokens = generic_node.to_read_tokens(&new_path, false);
                     let element_ty: Type = parse_str(&generic_node.to_string()).unwrap();
                     let vec_ts = quote! {
                         let length = context.reader.read_var_uint32() as usize;
@@ -210,7 +210,7 @@ impl NullableTypeNode {
                 "HashSet" => {
                     new_path.push(0);
                     let generic_node = self.generics.first().unwrap();
-                    let element_tokens = generic_node.to_deserialize_tokens(&new_path, false);
+                    let element_tokens = generic_node.to_read_tokens(&new_path, false);
                     let element_ty: Type = parse_str(&generic_node.to_string()).unwrap();
                     let set_ts = quote! {
                         let length = context.reader.read_var_uint32() as usize;
@@ -263,10 +263,10 @@ impl NullableTypeNode {
                     let val_generic_node = self.generics.get(1).unwrap();
 
                     new_path.push(0);
-                    let key_tokens = key_generic_node.to_deserialize_tokens(&new_path, false);
+                    let key_tokens = key_generic_node.to_read_tokens(&new_path, false);
                     new_path.pop();
                     new_path.push(1);
-                    let val_tokens = val_generic_node.to_deserialize_tokens(&new_path, false);
+                    let val_tokens = val_generic_node.to_read_tokens(&new_path, false);
 
                     let key_ty: Type = parse_str(&key_generic_node.to_string()).unwrap();
                     let val_ty: Type = parse_str(&val_generic_node.to_string()).unwrap();

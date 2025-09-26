@@ -133,7 +133,7 @@ impl TypeResolver {
                 Some(v) => {
                     let skip_ref_flag =
                         crate::serializer::get_skip_ref_flag::<T2>(context.get_fory());
-                    crate::serializer::write_data(v, context, is_field, skip_ref_flag, true);
+                    crate::serializer::write_info_data(v, context, is_field, skip_ref_flag, true);
                 }
                 None => todo!(),
             }
@@ -144,7 +144,7 @@ impl TypeResolver {
             is_field: bool,
             skip_ref_flag: bool,
         ) -> Result<Box<dyn Any>, Error> {
-            match crate::serializer::read_data::<T2>(context, is_field, skip_ref_flag, true) {
+            match crate::serializer::read_info_data::<T2>(context, is_field, skip_ref_flag, true) {
                 Ok(v) => Ok(Box::new(v)),
                 Err(e) => Err(e),
             }
