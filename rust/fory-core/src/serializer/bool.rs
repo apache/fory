@@ -24,32 +24,32 @@ use crate::types::{Mode, TypeId};
 use std::mem;
 
 impl Serializer for bool {
-    fn reserved_space() -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }
 
-    fn write(&self, context: &mut WriteContext, _is_field: bool) {
+    fn fory_write(&self, context: &mut WriteContext, _is_field: bool) {
         context.writer.write_u8(if *self { 1 } else { 0 });
     }
 
-    fn write_type_info(context: &mut WriteContext, is_field: bool) {
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
         if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
             context.writer.write_var_uint32(TypeId::BOOL as u32);
         }
     }
 
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
         Ok(context.reader.read_u8() == 1)
     }
 
-    fn read_type_info(context: &mut ReadContext, is_field: bool) {
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
         if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
             let remote_type_id = context.reader.read_var_uint32();
             assert_eq!(remote_type_id, TypeId::BOOL as u32);
         }
     }
 
-    fn get_type_id(_fory: &Fory) -> u32 {
+    fn fory_get_type_id(_fory: &Fory) -> u32 {
         TypeId::BOOL as u32
     }
 }

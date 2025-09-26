@@ -54,9 +54,9 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
     }
     let mut header = 0;
     let mut has_null = false;
-    if T::is_option() {
+    if T::fory_is_option() {
         for item in &items {
-            if item.is_none() {
+            if item.fory_is_none() {
                 has_null = true;
                 break;
             }
@@ -73,7 +73,7 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
         header |= IS_SAME_TYPE;
     }
     context.writer.write_u8(header);
-    T::write_type_info(context, is_field);
+    T::fory_write_type_info(context, is_field);
     // context.writer.reserve((T::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
     for item in &items {
         // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
@@ -104,7 +104,7 @@ where
     }
     let header = context.reader.read_u8();
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
-    T::read_type_info(context, declared);
+    T::fory_read_type_info(context, declared);
     let has_null = (header & HAS_NULL) != 0;
     let is_same_type = (header & IS_SAME_TYPE) != 0;
     let skip_ref_flag = is_same_type && !has_null;

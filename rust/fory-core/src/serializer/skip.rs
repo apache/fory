@@ -32,8 +32,8 @@ macro_rules! basic_type_deserialize {
     ($tid:expr, $context:expr; $(($ty:ty, $id:ident)),+ $(,)?) => {
         $(
             if $tid == TypeId::$id {
-                <$ty>::read_type_info($context, true);
-                <$ty>::read($context)?;
+                <$ty>::fory_read_type_info($context, true);
+                <$ty>::fory_read($context)?;
                 return Ok(());
             }
         )+else {

@@ -48,7 +48,7 @@ pub fn type_def<T: Serializer + StructSerializer>(
     register_by_name: bool,
     field_infos: &[FieldInfo],
 ) -> Vec<u8> {
-    let sorted_field_names = T::get_sorted_field_names(fory);
+    let sorted_field_names = T::fory_get_sorted_field_names(fory);
     let mut sorted_field_infos = Vec::with_capacity(field_infos.len());
     for name in &sorted_field_names {
         if let Some(info) = field_infos.iter().find(|f| &f.field_name == name) {
@@ -75,7 +75,7 @@ pub fn type_def<T: Serializer + StructSerializer>(
 
 #[inline(always)]
 pub fn write_type_info<T: Serializer>(context: &mut WriteContext, _is_field: bool) {
-    let type_id = T::get_type_id(context.get_fory());
+    let type_id = T::fory_get_type_id(context.get_fory());
     context.writer.write_var_uint32(type_id);
     if *context.get_fory().get_mode() == Mode::Compatible {
         let meta_index = context.push_meta(std::any::TypeId::of::<T>()) as u32;
@@ -86,7 +86,7 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext, _is_field: boo
 #[inline(always)]
 pub fn read_type_info<T: Serializer>(context: &mut ReadContext, _is_field: bool) {
     let remote_type_id = context.reader.read_var_uint32();
-    assert_eq!(remote_type_id, T::get_type_id(context.get_fory()));
+    assert_eq!(remote_type_id, T::fory_get_type_id(context.get_fory()));
     if *context.get_fory().get_mode() == Mode::Compatible {
         let _meta_index = context.reader.read_var_uint32();
     }
@@ -98,13 +98,13 @@ pub fn serialize<T: Serializer>(this: &T, context: &mut WriteContext, _is_field:
         // currently same
         Mode::SchemaConsistent => {
             context.writer.write_i8(RefFlag::NotNullValue as i8);
-            T::write_type_info(context, false);
-            this.write(context, true);
+            T::fory_write_type_info(context, false);
+            this.fory_write(context, true);
         }
         Mode::Compatible => {
             context.writer.write_i8(RefFlag::NotNullValue as i8);
-            T::write_type_info(context, false);
-            this.write(context, true);
+            T::fory_write_type_info(context, false);
+            this.fory_write(context, true);
         }
     }
 }

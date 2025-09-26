@@ -26,7 +26,7 @@ fn create_private_field_name(field: &Field) -> Ident {
 }
 
 fn create_deserialize_nullable_fn_name(field: &Field) -> Ident {
-    format_ident!("_deserialize_nullable_{}", field.ident.as_ref().expect(""))
+    format_ident!("fory_deserialize_nullable_{}", field.ident.as_ref().expect(""))
 }
 
 fn declare_var(fields: &[&Field]) -> Vec<TokenStream> {
@@ -99,7 +99,7 @@ pub fn gen_read(fields: &[&Field]) -> TokenStream {
         });
         quote! {
              #(#declare_var_ts)*
-            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::get_sorted_field_names(context.get_fory());
+            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
             for field_name in sorted_field_names {
                 match field_name.as_str() {
                     #(#match_ts),*
@@ -132,11 +132,11 @@ pub fn gen_deserialize(struct_ident: &Ident) -> TokenStream {
         if ref_flag == (fory_core::types::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::types::RefFlag::RefValue as i8) {
             match context.get_fory().get_mode() {
                 fory_core::types::Mode::SchemaConsistent => {
-                    Self::read_type_info(context, false);
-                    Self::read(context)
+                    Self::fory_read_type_info(context, false);
+                    Self::fory_read(context)
                 },
                 fory_core::types::Mode::Compatible => {
-                    <#struct_ident as fory_core::serializer::StructSerializer>::read_compatible(context)
+                    <#struct_ident as fory_core::serializer::StructSerializer>::fory_read_compatible(context)
                 },
                 _ => unreachable!()
             }

@@ -246,14 +246,14 @@ fn test_string_serializer() {
     ];
     for s in &test_strings {
         // make is_field=true to skip read/write type_id
-        assert_eq!(*s, String::read(&mut context).unwrap());
-        assert_eq!(*s, String::read(&mut context_compress).unwrap());
+        assert_eq!(*s, String::fory_read(&mut context).unwrap());
+        assert_eq!(*s, String::fory_read(&mut context_compress).unwrap());
     }
     let mut writer = Writer::default();
     let fory = Fory::default().mode(Compatible).xlang(true);
     let mut context = WriteContext::new(&fory, &mut writer);
     for s in &test_strings {
-        s.write(&mut context, true);
+        s.fory_write(&mut context, true);
     }
     fs::write(&data_file_path, context.writer.dump()).unwrap();
 }

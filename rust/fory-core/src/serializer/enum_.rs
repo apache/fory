@@ -60,7 +60,7 @@ pub fn type_def(
 #[inline(always)]
 pub fn write_type_info<T: Serializer>(context: &mut WriteContext, is_field: bool) {
     if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-        let type_id = T::get_type_id(context.get_fory());
+        let type_id = T::fory_get_type_id(context.get_fory());
         context.writer.write_var_uint32(type_id);
         if type_id & 0xff == TypeId::NAMED_ENUM as u32 {
             let meta_index = context.push_meta(std::any::TypeId::of::<T>()) as u32;
@@ -72,7 +72,7 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext, is_field: bool
 #[inline(always)]
 pub fn read_type_info<T: Serializer>(context: &mut ReadContext, is_field: bool) {
     if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-        let local_type_id = T::get_type_id(context.get_fory());
+        let local_type_id = T::fory_get_type_id(context.get_fory());
         let remote_type_id = context.reader.read_var_uint32();
         assert_eq!(local_type_id, remote_type_id);
         if local_type_id & 0xff == TypeId::NAMED_ENUM as u32 {
@@ -83,15 +83,15 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext, is_field: bool) 
 
 #[inline(always)]
 pub fn read_compatible<T: Serializer>(context: &mut ReadContext) -> Result<T, Error> {
-    T::read_type_info(context, true);
-    T::read(context)
+    T::fory_read_type_info(context, true);
+    T::fory_read(context)
 }
 
 #[inline(always)]
 pub fn serialize<T: Serializer>(this: &T, context: &mut WriteContext, is_field: bool) {
     context.writer.write_i8(RefFlag::NotNullValue as i8);
-    T::write_type_info(context, is_field);
-    this.write(context, is_field);
+    T::fory_write_type_info(context, is_field);
+    this.fory_write(context, is_field);
 }
 
 #[inline(always)]
@@ -100,8 +100,8 @@ pub fn deserialize<T: Serializer>(context: &mut ReadContext, _is_field: bool) ->
     if ref_flag == RefFlag::Null as i8 {
         Ok(T::default())
     } else if ref_flag == (RefFlag::NotNullValue as i8) {
-        T::read_type_info(context, false);
-        T::read(context)
+        T::fory_read_type_info(context, false);
+        T::fory_read(context)
     } else {
         unimplemented!()
     }

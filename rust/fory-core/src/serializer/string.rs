@@ -31,11 +31,11 @@ enum StrEncoding {
 }
 
 impl Serializer for String {
-    fn reserved_space() -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }
 
-    fn write(&self, context: &mut WriteContext, _is_field: bool) {
+    fn fory_write(&self, context: &mut WriteContext, _is_field: bool) {
         let mut len = get_latin1_length(self);
         if len >= 0 {
             let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
@@ -64,13 +64,13 @@ impl Serializer for String {
         }
     }
 
-    fn write_type_info(context: &mut WriteContext, is_field: bool) {
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
         if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
             context.writer.write_var_uint32(TypeId::STRING as u32);
         }
     }
 
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
         let bitor = context.reader.var_uint36_small();
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
@@ -90,14 +90,14 @@ impl Serializer for String {
         Ok(s)
     }
 
-    fn read_type_info(context: &mut ReadContext, is_field: bool) {
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
         if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
             let remote_type_id = context.reader.read_var_uint32();
             assert_eq!(remote_type_id, TypeId::STRING as u32);
         }
     }
 
-    fn get_type_id(_fory: &Fory) -> u32 {
+    fn fory_get_type_id(_fory: &Fory) -> u32 {
         TypeId::STRING as u32
     }
 }

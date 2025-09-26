@@ -26,32 +26,32 @@ use crate::types::{ForyGeneralList, TypeId};
 macro_rules! impl_num_serializer {
     ($ty:ty, $writer:expr, $reader:expr, $field_type:expr) => {
         impl Serializer for $ty {
-            fn write(&self, context: &mut WriteContext, _is_field: bool) {
+            fn fory_write(&self, context: &mut WriteContext, _is_field: bool) {
                 $writer(&mut context.writer, *self);
             }
 
-            fn write_type_info(context: &mut WriteContext, is_field: bool) {
+            fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
                 if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
                     context.writer.write_var_uint32($field_type as u32);
                 }
             }
 
-            fn read(context: &mut ReadContext) -> Result<Self, Error> {
+            fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
                 Ok($reader(&mut context.reader))
             }
 
-            fn read_type_info(context: &mut ReadContext, is_field: bool) {
+            fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
                 if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
                     let remote_type_id = context.reader.read_var_uint32();
                     assert_eq!(remote_type_id, $field_type as u32);
                 }
             }
 
-            fn reserved_space() -> usize {
+            fn fory_reserved_space() -> usize {
                 std::mem::size_of::<$ty>()
             }
 
-            fn get_type_id(_fory: &Fory) -> u32 {
+            fn fory_get_type_id(_fory: &Fory) -> u32 {
                 $field_type as u32
             }
         }

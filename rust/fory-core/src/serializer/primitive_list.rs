@@ -25,7 +25,7 @@ use crate::types::TypeId;
 macro_rules! impl_primitive_vec {
     ($name:ident, $ty:ty, $field_type:expr) => {
         impl Serializer for Vec<$ty> {
-            fn write(&self, context: &mut WriteContext, _is_field: bool) {
+            fn fory_write(&self, context: &mut WriteContext, _is_field: bool) {
                 let len_bytes = self.len() * std::mem::size_of::<$ty>();
                 context.writer.write_var_uint32(len_bytes as u32);
                 context.writer.reserve(len_bytes);
@@ -39,13 +39,13 @@ macro_rules! impl_primitive_vec {
                 }
             }
 
-            fn write_type_info(context: &mut WriteContext, is_field: bool) {
+            fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
                 if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
                     context.writer.write_var_uint32($field_type as u32);
                 }
             }
 
-            fn read(context: &mut ReadContext) -> Result<Self, Error> {
+            fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
                 let size_bytes = context.reader.read_var_uint32() as usize;
                 if size_bytes % std::mem::size_of::<$ty>() != 0 {
                     panic!("Invalid data length");
@@ -61,18 +61,18 @@ macro_rules! impl_primitive_vec {
                 Ok(vec)
             }
 
-            fn read_type_info(context: &mut ReadContext, is_field: bool) {
+            fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
                 if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
                     let remote_type_id = context.reader.read_var_uint32();
                     assert_eq!(remote_type_id, $field_type as u32);
                 }
             }
 
-            fn reserved_space() -> usize {
+            fn fory_reserved_space() -> usize {
                 std::mem::size_of::<$ty>()
             }
 
-            fn get_type_id(_fory: &Fory) -> u32 {
+            fn fory_get_type_id(_fory: &Fory) -> u32 {
                 $field_type as u32
             }
         }

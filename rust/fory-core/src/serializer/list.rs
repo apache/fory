@@ -31,28 +31,28 @@ impl<T> Serializer for Vec<T>
 where
     T: Serializer + ForyGeneralList,
 {
-    fn write(&self, context: &mut WriteContext, is_field: bool) {
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
         write_collection(self, context, is_field);
     }
 
-    fn write_type_info(context: &mut WriteContext, is_field: bool) {
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
         write_collection_type_info(context, is_field, TypeId::LIST as u32);
     }
 
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
         read_collection(context)
     }
 
-    fn read_type_info(context: &mut ReadContext, is_field: bool) {
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
         read_collection_type_info(context, is_field, TypeId::LIST as u32)
     }
 
-    fn reserved_space() -> usize {
+    fn fory_reserved_space() -> usize {
         // size of the vec
         mem::size_of::<u32>()
     }
 
-    fn get_type_id(_fory: &Fory) -> u32 {
+    fn fory_get_type_id(_fory: &Fory) -> u32 {
         TypeId::LIST as u32
     }
 }

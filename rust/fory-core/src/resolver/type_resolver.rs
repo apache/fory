@@ -66,7 +66,7 @@ impl TypeInfo {
         register_by_name: bool,
     ) -> TypeInfo {
         TypeInfo {
-            type_def: T::type_def(fory, type_id, namespace, type_name, register_by_name),
+            type_def: T::fory_type_def(fory, type_id, namespace, type_name, register_by_name),
             type_id,
             namespace: namespace.to_owned(),
             type_name: type_name.to_owned(),
@@ -155,7 +155,7 @@ impl TypeResolver {
         }
         self.type_info_map.insert(rs_type_id, (*type_info).clone());
 
-        let index = T::type_index() as usize;
+        let index = T::fory_type_index() as usize;
         if index >= self.type_id_index.len() {
             self.type_id_index.resize(index + 1, NO_TYPE_ID);
         }

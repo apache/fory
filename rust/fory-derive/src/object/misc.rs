@@ -36,7 +36,7 @@ fn hash(fields: &[&Field]) -> TokenStream {
         let ty = &field.ty;
         let name = format!("{}", field.ident.as_ref().expect("should be field name"));
         quote! {
-            (#name, <#ty as fory_core::serializer::Serializer>::get_type_id())
+            (#name, <#ty as fory_core::serializer::Serializer>::fory_get_type_id())
         }
     });
 

@@ -39,11 +39,11 @@ fn check_and_write_null<K: Serializer + Eq + std::hash::Hash, V: Serializer>(
     key: &K,
     value: &V,
 ) -> bool {
-    if key.is_none() && value.is_none() {
+    if key.fory_is_none() && value.fory_is_none() {
         context.writer.write_u8(KEY_NULL | VALUE_NULL);
         return true;
     }
-    if key.is_none() {
+    if key.fory_is_none() {
         let mut chunk_header = KEY_NULL;
         let skip_ref_flag;
         if is_field {
@@ -58,7 +58,7 @@ fn check_and_write_null<K: Serializer + Eq + std::hash::Hash, V: Serializer>(
         crate::serializer::write_data(value, context, is_field, skip_ref_flag, false);
         return true;
     }
-    if value.is_none() {
+    if value.fory_is_none() {
         let mut chunk_header = VALUE_NULL;
         let skip_ref_flag;
         if is_field {
@@ -81,15 +81,15 @@ fn write_chunk_size(context: &mut WriteContext, header_offset: usize, size: u8) 
 }
 
 impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap<K, V> {
-    fn write(&self, context: &mut WriteContext, is_field: bool) {
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
         let length = self.len();
         context.writer.write_var_uint32(length as u32);
         if length == 0 {
             return;
         }
-        let reserved_space = (<K as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE)
+        let reserved_space = (<K as Serializer>::fory_reserved_space() + SIZE_OF_REF_AND_TYPE)
             * self.len()
-            + (<V as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE) * self.len();
+            + (<V as Serializer>::fory_reserved_space() + SIZE_OF_REF_AND_TYPE) * self.len();
         context.writer.reserve(reserved_space);
 
         let mut header_offset = 0;
@@ -121,12 +121,12 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
                 if !skip_val_ref_flag {
                     chunk_header |= TRACKING_VALUE_REF;
                 }
-                K::write_type_info(context, is_field);
-                V::write_type_info(context, is_field);
+                K::fory_write_type_info(context, is_field);
+                V::fory_write_type_info(context, is_field);
                 context.writer.set_bytes(header_offset, &[chunk_header]);
                 need_write_header = false;
             }
-            if key.is_none() || value.is_none() {
+            if key.fory_is_none() || value.fory_is_none() {
                 write_chunk_size(context, header_offset, pair_counter);
                 pair_counter = 0;
                 need_write_header = true;
@@ -147,7 +147,7 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
         }
     }
 
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
         let len = context.reader.read_var_uint32();
         let mut map = HashMap::<K, V>::with_capacity(len as usize);
         if len == 0 {
@@ -195,8 +195,8 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
                 continue;
             }
             let chunk_size = context.reader.read_u8();
-            K::read_type_info(context, key_declared);
-            V::read_type_info(context, value_declared);
+            K::fory_read_type_info(context, key_declared);
+            V::fory_read_type_info(context, value_declared);
             assert!(len_counter + chunk_size as u32 <= len);
             for _ in (0..chunk_size).enumerate() {
                 // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<K>(context.get_fory());
@@ -210,24 +210,24 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
         Ok(map)
     }
 
-    fn write_type_info(context: &mut WriteContext, is_field: bool) {
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
         if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
             context.writer.write_var_uint32(TypeId::MAP as u32);
         }
     }
 
-    fn read_type_info(context: &mut ReadContext, is_field: bool) {
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
         if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
             let remote_collection_type_id = context.reader.read_var_uint32();
             assert_eq!(remote_collection_type_id, TypeId::MAP as u32);
         }
     }
 
-    fn reserved_space() -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }
 
-    fn get_type_id(_fory: &Fory) -> u32 {
+    fn fory_get_type_id(_fory: &Fory) -> u32 {
         TypeId::MAP as u32
     }
 }

@@ -23,39 +23,39 @@ use crate::serializer::Serializer;
 use crate::types::ForyGeneralList;
 
 impl<T: Serializer> Serializer for Option<T> {
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
-        Ok(Some(T::read(context)?))
+    fn fory_read(context: &mut ReadContext) -> Result<Self, Error> {
+        Ok(Some(T::fory_read(context)?))
     }
 
-    fn read_type_info(context: &mut ReadContext, is_field: bool) {
-        T::read_type_info(context, is_field);
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
+        T::fory_read_type_info(context, is_field);
     }
 
-    fn write(&self, context: &mut WriteContext, is_field: bool) {
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
         if let Some(v) = self {
-            T::write(v, context, is_field)
+            T::fory_write(v, context, is_field)
         } else {
             unreachable!("write should be call by serialize")
         }
     }
 
-    fn write_type_info(context: &mut WriteContext, is_field: bool) {
-        T::write_type_info(context, is_field);
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
+        T::fory_write_type_info(context, is_field);
     }
 
-    fn reserved_space() -> usize {
+    fn fory_reserved_space() -> usize {
         std::mem::size_of::<T>()
     }
 
-    fn get_type_id(fory: &Fory) -> u32 {
-        T::get_type_id(fory)
+    fn fory_get_type_id(fory: &Fory) -> u32 {
+        T::fory_get_type_id(fory)
     }
 
-    fn is_option() -> bool {
+    fn fory_is_option() -> bool {
         true
     }
 
-    fn is_none(&self) -> bool {
+    fn fory_is_none(&self) -> bool {
         self.is_none()
     }
 }

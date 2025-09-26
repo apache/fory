@@ -73,7 +73,7 @@ impl Fory {
 
     pub fn write_head<T: Serializer>(&self, is_none: bool, writer: &mut Writer) {
         const HEAD_SIZE: usize = 10;
-        writer.reserve(<T as Serializer>::reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
+        writer.reserve(<T as Serializer>::fory_reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
         if self.xlang {
             writer.write_u16(MAGIC_NUMBER);
         }
@@ -153,7 +153,7 @@ impl Fory {
                 bytes_to_skip = context.load_meta(meta_offset as usize);
             }
         }
-        let result = <T as Serializer>::deserialize(context, false);
+        let result = <T as Serializer>::fory_deserialize(context, false);
         if bytes_to_skip > 0 {
             context.reader.skip(bytes_to_skip as u32);
         }
@@ -171,14 +171,14 @@ impl Fory {
         record: &T,
         context: &mut WriteContext,
     ) -> Vec<u8> {
-        let is_none = record.is_none();
+        let is_none = record.fory_is_none();
         self.write_head::<T>(is_none, context.writer);
         let meta_start_offset = context.writer.len();
         if !is_none {
             if self.mode == Mode::Compatible {
                 context.writer.write_i32(-1);
             };
-            <T as Serializer>::serialize(record, context, false);
+            <T as Serializer>::fory_serialize(record, context, false);
             if self.mode == Mode::Compatible && !context.empty() {
                 context.write_meta(meta_start_offset);
             }
@@ -191,7 +191,7 @@ impl Fory {
     }
 
     pub fn register<T: 'static + StructSerializer>(&mut self, id: u32) {
-        let actual_type_id = T::actual_type_id(id, false, &self.mode);
+        let actual_type_id = T::fory_actual_type_id(id, false, &self.mode);
         let empty_string = String::new();
         let type_info =
             TypeInfo::new::<T>(self, actual_type_id, &empty_string, &empty_string, false);
@@ -203,7 +203,7 @@ impl Fory {
         namespace: &str,
         type_name: &str,
     ) {
-        let actual_type_id = T::actual_type_id(0, true, &self.mode);
+        let actual_type_id = T::fory_actual_type_id(0, true, &self.mode);
         let type_info = TypeInfo::new::<T>(self, actual_type_id, namespace, type_name, true);
         self.type_resolver.register::<T>(&type_info);
     }

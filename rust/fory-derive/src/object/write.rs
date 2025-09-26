@@ -23,7 +23,7 @@ pub fn gen_reserved_space(fields: &[&Field]) -> TokenStream {
     let reserved_size_expr: Vec<_> = fields.iter().map(|field| {
         let ty = &field.ty;
         quote! {
-            <#ty as fory_core::serializer::Serializer>::reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+            <#ty as fory_core::serializer::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
         }
     }).collect();
     if reserved_size_expr.is_empty() {
@@ -62,7 +62,7 @@ pub fn gen_write(fields: &[&Field]) -> TokenStream {
             }
         });
         quote! {
-            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::get_sorted_field_names(context.get_fory());
+            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
             for field_name in sorted_field_names {
                 match field_name.as_str() {
                     #(#match_ts),*
