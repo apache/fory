@@ -175,8 +175,12 @@ impl<K: Serializer + Eq + std::hash::Hash, V: Serializer> Serializer for HashMap
                 } else {
                     false
                 };
-                let value =
-                    crate::serializer::read_info_data(context, value_declared, skip_ref_flag, false)?;
+                let value = crate::serializer::read_info_data(
+                    context,
+                    value_declared,
+                    skip_ref_flag,
+                    false,
+                )?;
                 map.insert(K::default(), value);
                 len_counter += 1;
                 continue;
