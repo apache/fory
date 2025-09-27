@@ -21,6 +21,7 @@ use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::{Mode, RefFlag, PRIMITIVE_TYPES};
 
 mod any;
+mod arc;
 mod bool;
 mod box_;
 pub mod collection;
@@ -31,6 +32,7 @@ pub mod map;
 mod number;
 mod option;
 mod primitive_list;
+mod rc;
 mod set;
 pub mod skip;
 mod string;
@@ -71,8 +73,18 @@ pub fn read_data<T: Serializer + Default>(
                 T::read_type_info(context, is_field);
             }
             T::read(context)
+        } else if ref_flag == (RefFlag::RefValue as i8) {
+            // First time seeing this referenceable object
+            if !skip_type_info {
+                T::read_type_info(context, is_field);
+            }
+            T::read(context)
+        } else if ref_flag == (RefFlag::Ref as i8) {
+            // This is a reference to a previously deserialized object
+            // For now, just return default - this should be handled by specific types
+            Ok(T::default())
         } else {
-            unimplemented!()
+            unimplemented!("Unknown ref flag: {}", ref_flag)
         }
     } else {
         if !skip_type_info {
