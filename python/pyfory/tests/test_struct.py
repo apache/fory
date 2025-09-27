@@ -23,7 +23,7 @@ import pytest
 import typing
 
 import pyfory
-from pyfory import Fory, Language
+from pyfory import Fory
 from pyfory.error import TypeUnregisteredError
 from pyfory.serializer import DataClassSerializer
 
@@ -53,7 +53,7 @@ class ComplexObject:
 
 
 def test_struct():
-    fory = Fory(language=Language.XLANG, ref_tracking=True)
+    fory = Fory(xlang=True, ref=True)
     fory.register_type(SimpleObject, typename="SimpleObject")
     fory.register_type(ComplexObject, typename="example.ComplexObject")
     o = SimpleObject(f1={1: 1.0 / 3})
@@ -95,8 +95,8 @@ class ChildClass1(SuperClass1):
     f3: Dict[str, pyfory.Float64Type] = None
 
 
-def test_require_type_registration():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True)
+def test_strict():
+    fory = Fory(xlang=False, ref=True)
     obj = ChildClass1(f1="a", f2=-10, f3={"a": -10.0, "b": 1 / 3})
     with pytest.raises(TypeUnregisteredError):
         fory.serialize(obj)
@@ -106,7 +106,7 @@ def test_inheritance():
     type_hints = typing.get_type_hints(ChildClass1)
     print(type_hints)
     assert type_hints.keys() == {"f1", "f2", "f3"}
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
     obj = ChildClass1(f1="a", f2=-10, f3={"a": -10.0, "b": 1 / 3})
     assert ser_de(fory, obj) == obj
     assert type(fory.type_resolver.get_serializer(ChildClass1)) is pyfory.DataClassSerializer
@@ -138,7 +138,7 @@ class DataClassObject:
 
 
 def test_data_class_serializer_xlang():
-    fory = Fory(language=Language.XLANG, ref_tracking=True)
+    fory = Fory(xlang=True, ref=True)
     fory.register_type(ComplexObject, typename="example.ComplexObject")
     fory.register_type(DataClassObject, typename="example.TestDataClassObject")
 
@@ -197,7 +197,7 @@ def test_data_class_serializer_xlang():
 
 def test_data_class_serializer_xlang_codegen():
     """Test that DataClassSerializer generates xwrite/xread methods correctly in xlang mode."""
-    fory = Fory(language=Language.XLANG, ref_tracking=True)
+    fory = Fory(xlang=True, ref=True)
 
     # Register types first
     fory.register_type(ComplexObject, typename="example.ComplexObject")
@@ -262,7 +262,7 @@ def test_data_class_serializer_xlang_codegen_with_jit():
 
         importlib.reload(pyfory.serializer)
 
-        fory = Fory(language=Language.XLANG, ref_tracking=True)
+        fory = Fory(xlang=True, ref=True)
 
         # Register types first
         fory.register_type(ComplexObject, typename="example.ComplexObject")
@@ -314,7 +314,7 @@ def test_data_class_serializer_xlang_codegen_with_jit():
 
 def test_data_class_serializer_xlang_codegen_generated_code():
     """Test that the generated code contains expected elements."""
-    fory = Fory(language=Language.XLANG, ref_tracking=True)
+    fory = Fory(xlang=True, ref=True)
 
     # Register types first
     fory.register_type(ComplexObject, typename="example.ComplexObject")
@@ -351,8 +351,8 @@ def test_data_class_serializer_xlang_codegen_generated_code():
 
 def test_data_class_serializer_xlang_vs_non_xlang():
     """Test that xlang and non-xlang modes produce different serializers."""
-    fory_xlang = Fory(language=Language.XLANG, ref_tracking=True)
-    fory_python = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory_xlang = Fory(xlang=True, ref=True)
+    fory_python = Fory(xlang=False, ref=True, strict=False)
 
     # Register types for xlang
     fory_xlang.register_type(ComplexObject, typename="example.ComplexObject")

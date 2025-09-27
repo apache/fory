@@ -17,7 +17,7 @@
 
 import dataclasses
 from typing import List, Dict
-from pyfory import Fory, Language
+from pyfory import Fory
 import pyfory
 
 
@@ -96,19 +96,19 @@ class TestMetaShareMode:
 
     def test_meta_share_enabled(self):
         """Test that meta share mode can be enabled."""
-        fory = Fory(language=Language.XLANG, compatible=True)
+        fory = Fory(xlang=True, compatible=True)
         assert fory.serialization_context.scoped_meta_share_enabled
         assert fory.serialization_context.meta_context is not None
 
     def test_meta_share_disabled(self):
         """Test that meta share mode can be disabled."""
-        fory = Fory(language=Language.XLANG, compatible=False)
+        fory = Fory(xlang=True, compatible=False)
         assert not fory.serialization_context.scoped_meta_share_enabled
         assert fory.serialization_context.meta_context is None
 
     def test_simple_dataclass_serialization(self):
         """Test serialization of simple dataclass with meta share."""
-        fory = Fory(language=Language.XLANG, compatible=True)
+        fory = Fory(xlang=True, compatible=True)
 
         # Register the dataclass
         fory.register_type(SimpleDataClass)
@@ -124,7 +124,7 @@ class TestMetaShareMode:
 
     def test_multiple_objects_same_type(self):
         """Test that multiple objects of same type reuse type definition."""
-        fory = Fory(language=Language.XLANG, compatible=True)
+        fory = Fory(xlang=True, compatible=True)
 
         # Register the dataclass
         fory.register_type(SimpleDataClass)
@@ -137,7 +137,7 @@ class TestMetaShareMode:
         buffer2 = fory.serialize(obj2)
 
         # Create a new fory instance with the same meta context for deserialization
-        fory2 = Fory(language=Language.XLANG, compatible=True)
+        fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(SimpleDataClass)
         # Copy the meta context from the first fory instance
         fory2.serialization_context.meta_context = fory.serialization_context.meta_context
@@ -153,7 +153,7 @@ class TestMetaShareMode:
 
     def test_simple_nested_dataclass_serialization(self):
         """Test serialization of simple nested dataclass with meta share."""
-        fory = Fory(language=Language.XLANG, compatible=True)
+        fory = Fory(xlang=True, compatible=True)
 
         # Register the dataclass
         fory.register_type(SimpleNestedDataClass)
@@ -168,7 +168,7 @@ class TestMetaShareMode:
 
     def test_serialization_without_meta_share(self):
         """Test that serialization works without meta share mode."""
-        fory = Fory(language=Language.XLANG, compatible=False)
+        fory = Fory(xlang=True, compatible=False)
 
         # Register the dataclass
         fory.register_type(SimpleDataClass)
@@ -183,14 +183,14 @@ class TestMetaShareMode:
 
     def test_schema_evolution_more_fields(self):
         # Serialize with original schema
-        fory1 = Fory(language=Language.XLANG, compatible=True)
+        fory1 = Fory(xlang=True, compatible=True)
         fory1.register_type(SimpleDataClass)
 
         obj = SimpleDataClass(name="test", age=25, active=True)
         buffer = fory1.serialize(obj)
 
         # Deserialize with extended schema (more fields)
-        fory2 = Fory(language=Language.XLANG, compatible=True)
+        fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(ExtendedDataClass)
         deserialized = fory2.deserialize(buffer)
 
@@ -203,13 +203,13 @@ class TestMetaShareMode:
 
     def test_schema_evolution_fewer_fields(self):
         # Serialize with original schema
-        fory1 = Fory(language=Language.XLANG, compatible=True)
+        fory1 = Fory(xlang=True, compatible=True)
         fory1.register_type(SimpleDataClass)
         obj = SimpleDataClass(name="test", age=25, active=True)
         buffer = fory1.serialize(obj)
 
         # Deserialize with reduced schema (fewer fields)
-        fory2 = Fory(language=Language.XLANG, compatible=True)
+        fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(ReducedDataClass)
         deserialized = fory2.deserialize(buffer)
 
@@ -222,7 +222,7 @@ class TestMetaShareMode:
     def test_schema_inconsistent_nested_struct(self):
         """Test schema inconsistency with nested struct types."""
         # Serialize with original schema
-        fory1 = Fory(language=Language.XLANG, compatible=True)
+        fory1 = Fory(xlang=True, compatible=True)
         fory1.register_type(NestedStructClass)
         fory1.register_type(SimpleNestedDataClass)
 
@@ -230,7 +230,7 @@ class TestMetaShareMode:
         buffer = fory1.serialize(obj)
 
         # Deserialize with inconsistent schema (different nested type)
-        fory2 = Fory(language=Language.XLANG, compatible=True)
+        fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(NestedStructClassInconsistent)
         fory2.register_type(ExtendedDataClass)
 
@@ -244,14 +244,14 @@ class TestMetaShareMode:
     def test_schema_inconsistent_list_fields(self):
         """Test schema inconsistency with List field types."""
         # Serialize with original schema
-        fory1 = Fory(language=Language.XLANG, compatible=True)
+        fory1 = Fory(xlang=True, compatible=True)
         fory1.register_type(ListFieldsClass)
 
         obj = ListFieldsClass(name="test", int_list=[1, 2, 3], str_list=["a", "b", "c"])
         buffer = fory1.serialize(obj)
 
         # Deserialize with inconsistent schema (swapped List types)
-        fory2 = Fory(language=Language.XLANG, compatible=True)
+        fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(ListFieldsClassInconsistent)
 
         # This should handle the schema inconsistency gracefully
@@ -265,14 +265,18 @@ class TestMetaShareMode:
     def test_schema_inconsistent_dict_fields(self):
         """Test schema inconsistency with Dict field types."""
         # Serialize with original schema
-        fory1 = Fory(language=Language.XLANG, compatible=True)
+        fory1 = Fory(xlang=True, compatible=True)
         fory1.register_type(DictFieldsClass)
 
-        obj = DictFieldsClass(name="test", int_dict={"key1": 1, "key2": 2}, str_dict={"key1": "value1", "key2": "value2"})
+        obj = DictFieldsClass(
+            name="test",
+            int_dict={"key1": 1, "key2": 2},
+            str_dict={"key1": "value1", "key2": "value2"},
+        )
         buffer = fory1.serialize(obj)
 
         # Deserialize with inconsistent schema (swapped Dict value types)
-        fory2 = Fory(language=Language.XLANG, compatible=True)
+        fory2 = Fory(xlang=True, compatible=True)
         fory2.register_type(DictFieldsClassInconsistent)
 
         # This should handle the schema inconsistency gracefully

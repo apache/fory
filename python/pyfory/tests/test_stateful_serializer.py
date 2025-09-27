@@ -16,7 +16,7 @@
 # under the License.
 
 import pytest
-from pyfory import Fory, Language
+from pyfory import Fory
 from pyfory.serializer import StatefulSerializer
 
 
@@ -121,7 +121,11 @@ class ComplexStateObject:
         self.count = len(self.items)
 
     def __getstate__(self):
-        return {"name": self.name, "items": self.items, "extra_info": {"serialized_at": "test_time"}}
+        return {
+            "name": self.name,
+            "items": self.items,
+            "extra_info": {"serialized_at": "test_time"},
+        }
 
     def __setstate__(self, state):
         self.name = state["name"]
@@ -142,7 +146,7 @@ class ComplexStateObject:
 
 def test_basic_stateful_object():
     """Test basic object with __getstate__ and __setstate__"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = BasicStatefulObject(42, "original_secret")
     serialized = fory.serialize(obj)
@@ -161,7 +165,7 @@ def test_basic_stateful_object():
 
 def test_immutable_with_getnewargs_ex():
     """Test object with __getnewargs_ex__"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = ImmutableWithArgsEx(10, 20, "test")
     # Simulate the state that would be set by __setstate__ for comparison
@@ -184,7 +188,7 @@ def test_immutable_with_getnewargs_ex():
 
 def test_immutable_with_getnewargs():
     """Test object with __getnewargs__ (old style)"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = ImmutableWithArgs(100, 200)
     # Simulate the state that would be set by __setstate__ for comparison
@@ -206,7 +210,7 @@ def test_immutable_with_getnewargs():
 
 def test_stateful_only_object():
     """Test object with only state methods, no constructor args"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = StatefulOnlyObject("test_data")
     # Simulate the state that would be set by __setstate__ for comparison
@@ -227,7 +231,7 @@ def test_stateful_only_object():
 
 def test_complex_state_object():
     """Test object with a complex nested state"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = ComplexStateObject("test", [1, 2, 3, {"nested": "value"}])
     # Simulate the state that would be set by __setstate__ for comparison
@@ -250,7 +254,7 @@ def test_complex_state_object():
 
 def test_reference_tracking():
     """Test that reference tracking works with StatefulSerializer"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = BasicStatefulObject(42)
     # Create a list with the same object referenced twice
@@ -267,7 +271,7 @@ def test_reference_tracking():
 
 def test_nested_stateful_objects():
     """Test serialization of nested stateful objects"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     inner = BasicStatefulObject(10)
     outer = ComplexStateObject("outer", [inner, BasicStatefulObject(20)])
@@ -286,7 +290,7 @@ def test_nested_stateful_objects():
 
 def test_cross_language_compatibility():
     """Test that StatefulSerializer works with type registration"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=True)
+    fory = Fory(xlang=False, ref=True, strict=True)
 
     # Register the type explicitly
     fory.register_type(BasicStatefulObject)
@@ -295,7 +299,7 @@ def test_cross_language_compatibility():
     serialized = fory.serialize(obj)
 
     # Deserialize with a new Fory instance that also has the type registered
-    fory_new = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=True)
+    fory_new = Fory(xlang=False, ref=True, strict=True)
     fory_new.register_type(BasicStatefulObject)
     deserialized = fory_new.deserialize(serialized)
 

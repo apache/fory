@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from pyfory import Fory, Language
+from pyfory import Fory
 from pyfory.serializer import ReduceSerializer
 
 
@@ -137,7 +137,7 @@ class BothReduceAndStateful:
 
 def test_basic_reduce_object():
     """Test basic __reduce__ functionality"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = BasicReduceObject(42, 3)
 
@@ -156,7 +156,7 @@ def test_basic_reduce_object():
 
 def test_reduce_with_state_object():
     """Test __reduce__ with state"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = ReduceWithStateObject("test", {"key": "value"})
 
@@ -176,7 +176,7 @@ def test_reduce_with_state_object():
 
 def test_reduce_ex_object():
     """Test __reduce_ex__ functionality"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = ReduceExObject(5, 7)
 
@@ -196,7 +196,7 @@ def test_reduce_ex_object():
 
 def test_reduce_with_list_items():
     """Test __reduce__ with list items"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = ReduceWithListItems([1, 2, 3, 4])
 
@@ -215,7 +215,7 @@ def test_reduce_with_list_items():
 
 def test_reduce_with_dict_items():
     """Test __reduce__ with dict items"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = ReduceWithDictItems({"a": 1, "b": 2})
 
@@ -234,7 +234,7 @@ def test_reduce_with_dict_items():
 
 def test_reduce_precedence_over_stateful():
     """Test that ReduceSerializer has higher precedence than StatefulSerializer"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = BothReduceAndStateful(100)
 
@@ -254,7 +254,7 @@ def test_reduce_precedence_over_stateful():
 
 def test_reference_tracking():
     """Test that reference tracking works with ReduceSerializer"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj1 = BasicReduceObject(42)
     obj2 = BasicReduceObject(42)
@@ -274,7 +274,7 @@ def test_reference_tracking():
 
 def test_nested_reduce_objects():
     """Test nested objects with __reduce__"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     inner = BasicReduceObject(10, 2)
     outer = ReduceWithStateObject("outer", {"inner": inner})
@@ -291,7 +291,7 @@ def test_nested_reduce_objects():
 
 def test_cross_language_compatibility():
     """Test cross-language compatibility"""
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     obj = BasicReduceObject(123, 4)
 

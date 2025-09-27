@@ -49,7 +49,7 @@ pa = lazy_import("pyarrow")
 
 
 def test_float():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True)
+    fory = Fory(xlang=False, ref=True)
     assert ser_de(fory, -1.0) == -1.0
     assert ser_de(fory, 1 / 3) == 1 / 3
     serializer = fory.type_resolver.get_serializer(float)
@@ -57,13 +57,13 @@ def test_float():
 
 
 def test_tuple():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True)
+    fory = Fory(xlang=False, ref=True)
     print(len(fory.serialize((-1.0, 2))))
     assert ser_de(fory, (-1.0, 2)) == (-1.0, 2)
 
 
 def test_string():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True)
+    fory = Fory(xlang=False, ref=True)
     assert ser_de(fory, "hello") == "hello"
     assert ser_de(fory, "hello，世界") == "hello，世界"
     assert ser_de(fory, "hello，世界" * 10) == "hello，世界" * 10
@@ -73,7 +73,7 @@ def test_string():
 
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_dict(track_ref):
-    fory = Fory(language=Language.PYTHON, ref_tracking=track_ref)
+    fory = Fory(xlang=False, ref=track_ref)
     assert ser_de(fory, {1: 2}) == {1: 2}
     assert ser_de(fory, {1 / 3: 2.0}) == {1 / 3: 2.0}
     assert ser_de(fory, {1 / 3: 2}) == {1 / 3: 2}
@@ -95,7 +95,7 @@ def test_dict(track_ref):
 
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_multi_chunk_simple_dict(track_ref):
-    fory = Fory(language=Language.PYTHON, ref_tracking=track_ref)
+    fory = Fory(xlang=False, ref=track_ref)
     dict0 = {
         1: 2.0,
         2: 3,
@@ -106,7 +106,7 @@ def test_multi_chunk_simple_dict(track_ref):
 
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_multi_chunk_complex_dict(track_ref):
-    fory = Fory(language=Language.PYTHON, ref_tracking=track_ref)
+    fory = Fory(xlang=False, ref=track_ref)
     now = datetime.datetime.now()
     day = datetime.date(2021, 11, 23)
     dict0 = {"a": "a", 1: 1, -1.0: -1.0, True: True, now: now, day: day}  # noqa: F601
@@ -115,7 +115,7 @@ def test_multi_chunk_complex_dict(track_ref):
 
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_big_chunk_dict(track_ref):
-    fory = Fory(language=Language.PYTHON, ref_tracking=track_ref)
+    fory = Fory(xlang=False, ref=track_ref)
     now = datetime.datetime.now()
     day = datetime.date(2021, 11, 23)
     dict0 = {}
@@ -129,7 +129,7 @@ def test_big_chunk_dict(track_ref):
 
 @pytest.mark.parametrize("language", [Language.XLANG, Language.PYTHON])
 def test_basic_serializer(language):
-    fory = Fory(language=language, ref_tracking=True)
+    fory = Fory(language=language, ref=True)
     typeinfo = fory.type_resolver.get_typeinfo(datetime.datetime)
     assert isinstance(typeinfo.serializer, (TimestampSerializer, _serialization.TimestampSerializer))
     if language == Language.XLANG:
@@ -167,7 +167,7 @@ def test_basic_serializer(language):
 
 @pytest.mark.parametrize("language", [Language.XLANG, Language.PYTHON])
 def test_ref_tracking(language):
-    fory = Fory(language=language, ref_tracking=True)
+    fory = Fory(language=language, ref=True)
 
     simple_list = []
     simple_list.append(simple_list)
@@ -204,7 +204,7 @@ def test_ref_tracking(language):
 def test_tmp_ref(language):
     # FIXME this can't simulate the case where new objects are allocated on memory
     #  address of released tmp object.
-    fory = Fory(language=language, ref_tracking=True)
+    fory = Fory(language=language, ref=True)
     buffer = Buffer.allocate(128)
     writer_index = buffer.writer_index
     x = 1
@@ -228,7 +228,7 @@ def test_tmp_ref(language):
 def test_multiple_ref(language):
     # FIXME this can't simulate the case where new objects are allocated on memory
     #  address of released tmp object.
-    fory = Fory(language=language, ref_tracking=True)
+    fory = Fory(language=language, ref=True)
     buffer = Buffer.allocate(128)
     for i in range(1000):
         fory.serialize([], buffer)
@@ -252,7 +252,7 @@ class RefTestClass2:
 def test_ref_cleanup(language):
     # FIXME this can't simulate the case where new objects are allocated on memory
     #  address of released tmp object.
-    fory = Fory(language=language, ref_tracking=True, require_type_registration=False)
+    fory = Fory(language=language, ref=True, strict=False)
     # TODO support Language.XLANG, current unpickler will error for xlang,
     o1 = RefTestClass1()
     o2 = RefTestClass2(f1=o1)
@@ -269,7 +269,7 @@ def test_ref_cleanup(language):
 
 @pytest.mark.parametrize("language", [Language.XLANG, Language.PYTHON])
 def test_array_serializer(language):
-    fory = Fory(language=language, ref_tracking=True, require_type_registration=False)
+    fory = Fory(language=language, ref=True, strict=False)
     for typecode in PyArraySerializer.typecode_dict.keys():
         arr = array.array(typecode, list(range(10)))
         new_arr = ser_de(fory, arr)
@@ -343,7 +343,7 @@ def test_pickle():
 def test_serialize_arrow():
     record_batch = create_record_batch(10000)
     table = pa.Table.from_batches([record_batch, record_batch])
-    fory = Fory(language=Language.XLANG, ref_tracking=True)
+    fory = Fory(xlang=True, ref=True)
     serialized_data = Buffer.allocate(32)
     fory.serialize(record_batch, buffer=serialized_data)
     fory.serialize(table, buffer=serialized_data)
@@ -358,7 +358,7 @@ def test_serialize_arrow_zero_copy():
     record_batch = create_record_batch(10000)
     table = pa.Table.from_batches([record_batch, record_batch])
     buffer_objects = []
-    fory = Fory(language=Language.XLANG, ref_tracking=True)
+    fory = Fory(xlang=True, ref=True)
     serialized_data = Buffer.allocate(32)
     fory.serialize(record_batch, buffer=serialized_data, buffer_callback=buffer_objects.append)
     fory.serialize(table, buffer=serialized_data, buffer_callback=buffer_objects.append)
@@ -403,7 +403,7 @@ class RegisterClass:
 
 
 def test_register_py_serializer():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     class Serializer(pyfory.Serializer):
         def write(self, buffer, value):
@@ -431,7 +431,7 @@ class A:
 
 
 def test_register_type():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True)
+    fory = Fory(xlang=False, ref=True)
 
     class Serializer(pyfory.Serializer):
         def write(self, buffer, value):
@@ -455,7 +455,7 @@ def test_register_type():
 
 
 def test_np_types():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
     o1 = [1, True, np.dtype(np.int32)]
     data1 = fory.serialize(o1)
     new_o1 = fory.deserialize(data1)
@@ -463,14 +463,14 @@ def test_np_types():
 
 
 def test_pandas_dataframe():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
     df = pd.DataFrame({"a": list(range(10))})
     df2 = fory.deserialize(fory.serialize(df))
     assert df2.equals(df)
 
 
 def test_unsupported_callback():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     # Test with functions that now have proper serialization support
     # Functions should no longer be treated as unsupported
@@ -498,7 +498,7 @@ def test_unsupported_callback():
 
 
 def test_slice():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True)
+    fory = Fory(xlang=False, ref=True)
     assert fory.deserialize(fory.serialize(slice(1, None, "10"))) == slice(1, None, "10")
     assert fory.deserialize(fory.serialize(slice(1, 100, 10))) == slice(1, 100, 10)
     assert fory.deserialize(fory.serialize(slice(1, None, 10))) == slice(1, None, 10)
@@ -530,7 +530,7 @@ class EnumClass(Enum):
 
 
 def test_enum():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True)
+    fory = Fory(xlang=False, ref=True)
     assert ser_de(fory, EnumClass.E1) == EnumClass.E1
     assert ser_de(fory, EnumClass.E2) == EnumClass.E2
     assert ser_de(fory, EnumClass.E3) == EnumClass.E3
@@ -539,7 +539,7 @@ def test_enum():
 
 
 def test_duplicate_serialize():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True)
+    fory = Fory(xlang=False, ref=True)
     assert ser_de(fory, EnumClass.E1) == EnumClass.E1
     assert ser_de(fory, EnumClass.E2) == EnumClass.E2
     assert ser_de(fory, EnumClass.E4) == EnumClass.E4
@@ -549,7 +549,7 @@ def test_duplicate_serialize():
 
 
 def test_pandas_range_index():
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
     fory.register_type(pd.RangeIndex, serializer=pyfory.PandasRangeIndexSerializer(fory))
     index = pd.RangeIndex(1, 100, 2, name="a")
     new_index = ser_de(fory, index)
@@ -570,9 +570,9 @@ class PyDataClass1:
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_py_serialize_dataclass(track_ref):
     fory = Fory(
-        language=Language.PYTHON,
-        ref_tracking=track_ref,
-        require_type_registration=False,
+        xlang=False,
+        ref=track_ref,
+        strict=False,
     )
     obj1 = PyDataClass1(f1=1, f2=-2.0, f3="abc", f4=True, f5="xyz", f6=[1, 2], f7={"k1": "v1"})
     assert ser_de(fory, obj1) == obj1
@@ -583,9 +583,9 @@ def test_py_serialize_dataclass(track_ref):
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_function(track_ref):
     fory = Fory(
-        language=Language.PYTHON,
-        ref_tracking=track_ref,
-        require_type_registration=False,
+        xlang=False,
+        ref=track_ref,
+        strict=False,
     )
     c = fory.deserialize(fory.serialize(lambda x: x * 2))
     assert c(2) == 4
@@ -616,9 +616,9 @@ class MapFields:
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_map_fields_chunk_serializer(track_ref):
     fory = Fory(
-        language=Language.PYTHON,
-        ref_tracking=track_ref,
-        require_type_registration=False,
+        xlang=False,
+        ref=track_ref,
+        strict=False,
     )
 
     # Test case
@@ -690,9 +690,9 @@ class SomeTestSlotsObject:
 @pytest.mark.parametrize("track_ref", [False, True])
 def test_py_serialize_object(track_ref):
     fory = Fory(
-        language=Language.PYTHON,
-        ref_tracking=track_ref,
-        require_type_registration=False,
+        xlang=False,
+        ref=track_ref,
+        strict=False,
     )
     fory.register_type(SomeTestObject)
     fory.register_type(SomeTestSlotsObject)
@@ -700,6 +700,14 @@ def test_py_serialize_object(track_ref):
     assert ser_de(fory, obj1) == obj1
     obj2 = SomeTestSlotsObject(f1=1, f2="abc")
     assert ser_de(fory, obj2) == obj2
+
+
+def test_dumps_loads():
+    fory = Fory(xlang=False, ref=True)
+    obj = {"a": 1, "b": 2}
+    data = fory.dumps(obj)
+    new_obj = fory.loads(data)
+    assert obj == new_obj
 
 
 if __name__ == "__main__":

@@ -99,9 +99,9 @@ cdef class MapRefResolver:
     cdef object read_object
     cdef c_bool ref_tracking
 
-    def __cinit__(self, c_bool ref_tracking):
+    def __cinit__(self, c_bool ref):
         self.read_object = None
-        self.ref_tracking = ref_tracking
+        self.ref_tracking = ref
 
     # Special methods of extension types must be declared with def, not cdef.
     def __dealloc__(self):
@@ -801,7 +801,7 @@ cdef class SerializationContext:
 cdef class Fory:
     cdef readonly object language
     cdef readonly c_bool ref_tracking
-    cdef readonly c_bool require_type_registration
+    cdef readonly c_bool strict
     cdef readonly c_bool is_py
     cdef readonly c_bool compatible
     cdef readonly MapRefResolver ref_resolver
@@ -819,37 +819,58 @@ cdef class Fory:
 
     def __init__(
             self,
-            language=Language.PYTHON,
-            ref_tracking: bool = False,
-            require_type_registration: bool = True,
+            xlang: bool = False,
+            ref: bool = False,
+            strict: bool = True,
             compatible: bool = False,
             max_depth: int = 50,
+            **kwargs,
     ):
         """
-       :param require_type_registration:
-        Whether to require registering types for serialization, enabled by default.
+        :param xlang:
+         Whether to enable cross-language serialization. When set to False, enables Python-native
+         serialization supporting all serializable Python objects including dataclasses,
+         structs, classes with __getstate__/__setstate__/__reduce__/__reduce_ex__, local
+         functions/classes, and classes defined in IPython. With ref=True and strict=False,
+         Fury can serve as a drop-in replacement for pickle and cloudpickle.
+         When set to True, serializes objects in cross-language format that can
+         be deserialized by other Fury-supported languages, but Python-specific features
+         like functions/classes/methods and custom __reduce__ methods are not supported.
+        :param ref:
+         Whether to enable reference tracking for shared and circular references.
+         When enabled, duplicate objects will be stored only once and circular references
+         are supported. Disabled by default for better performance.
+        :param strict:
+         Whether to require registering types for serialization, enabled by default.
          If disabled, unknown insecure types can be deserialized, which can be
          insecure and cause remote code execution attack if the types
-         `__new__`/`__init__`/`__eq__`/`__hash__` method contain malicious code.
-          Do not disable type registration if you can't ensure your environment are
+         `__new__`/`__init__`/`__eq__`/`__hash__` method contain malicious code, or you
+         are deserializing local functions/methods/classes.
+          Do not disable strict mode if you can't ensure your environment are
           *indeed secure*. We are not responsible for security risks if
           you disable this option.
-       :param compatible:
-        Whether to enable compatible mode for cross-language serialization.
+        :param compatible:
+         Whether to enable compatible mode for cross-language serialization.
          When enabled, type forward/backward compatibility for struct fields will be enabled.
-       :param max_depth:
-        The maximum depth of the deserialization data.
-        If the depth exceeds the maximum depth, an exception will be raised.
-        The default value is 50.
+        :param max_depth:
+         The maximum depth of the deserialization data.
+         If the depth exceeds the maximum depth, an exception will be raised.
+         The default value is 50.
         """
-        self.language = language
-        if _ENABLE_TYPE_REGISTRATION_FORCIBLY or require_type_registration:
-            self.require_type_registration = True
+        self.language = Language.XLANG if xlang else Language.PYTHON
+        if kwargs.get("language") is not None:
+            self.language = kwargs.get("language")
+        if kwargs.get("ref_tracking") is not None:
+            ref = kwargs.get("ref_tracking")
+        if kwargs.get("require_type_registration") is not None:
+            strict = kwargs.get("require_type_registration")
+        if _ENABLE_TYPE_REGISTRATION_FORCIBLY or strict:
+            self.strict = True
         else:
-            self.require_type_registration = False
+            self.strict = False
         self.compatible = compatible
-        self.ref_tracking = ref_tracking
-        self.ref_resolver = MapRefResolver(ref_tracking)
+        self.ref_tracking = ref
+        self.ref_resolver = MapRefResolver(ref)
         self.is_py = self.language == Language.PYTHON
         self.metastring_resolver = MetaStringResolver()
         self.type_resolver = TypeResolver(self, meta_share=compatible)
@@ -890,6 +911,29 @@ cdef class Fory:
     ):
         self.type_resolver.register_type(
             cls, type_id=type_id, namespace=namespace, typename=typename, serializer=serializer)
+
+    def dumps(
+        self,
+        obj,
+        buffer: Buffer = None,
+        buffer_callback=None,
+        unsupported_callback=None,
+    ) -> Union[Buffer, bytes]:
+        """
+        Serialize an object to bytes, alias for `serialize` method.
+        """
+        return self.serialize(obj, buffer, buffer_callback, unsupported_callback)
+    
+    def loads(
+        self,
+        buffer: Union[Buffer, bytes],
+        buffers: Iterable = None,
+        unsupported_objects: Iterable = None,
+    ):
+        """
+        Deserialize bytes to an object, alias for `deserialize` method.
+        """
+        return self.deserialize(buffer, buffers, unsupported_objects)
 
     def serialize(
             self, obj,

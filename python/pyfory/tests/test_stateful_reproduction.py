@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from pyfory import Fory, Language
+from pyfory import Fory
 
 
 # Test class with __getstate__ and __setstate__
@@ -101,7 +101,7 @@ class ImmutableOldStyle:
 def test_current_behavior():
     print("Testing current behavior with stateful objects...")
 
-    fory = Fory(language=Language.PYTHON, ref_tracking=True, require_type_registration=False)
+    fory = Fory(xlang=False, ref=True, strict=False)
 
     # Test basic stateful object
     obj1 = StatefulObject(42, "original_secret")
