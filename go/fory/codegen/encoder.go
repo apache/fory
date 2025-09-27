@@ -137,7 +137,7 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteFloat64(%s)\n", fieldAccess)
 		case types.String:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(0) // RefValueFlag\n")
+			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tfory.WriteString(buf, %s)\n", fieldAccess)
 		default:
 			fmt.Fprintf(buf, "\t// TODO: unsupported basic type %s\n", basic.String())
@@ -160,10 +160,9 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(0) // RefValueFlag\n")
 			fmt.Fprintf(buf, "\t\t// Write slice length\n")
 			fmt.Fprintf(buf, "\t\tbuf.WriteVarUint32(uint32(len(%s)))\n", fieldAccess)
-			fmt.Fprintf(buf, "\t\t// Write collection flags (13 = NotDeclElementType + NotSameType + TrackingRef for dynamic slices)\n")
-			fmt.Fprintf(buf, "\t\t// Always write collection flags with tracking ref enabled (13)\n")
-			fmt.Fprintf(buf, "\t\t// This matches the reflection implementation which uses NewFory(true)\n")
-			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(13) // 12 + 1 (CollectionTrackingRef)\n")
+			fmt.Fprintf(buf, "\t\t// Write collection flags for dynamic slice []interface{}\n")
+			fmt.Fprintf(buf, "\t\t// Only CollectionTrackingRef is set (no declared type, may have different types)\n")
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(1) // CollectionTrackingRef only\n")
 			fmt.Fprintf(buf, "\t\t// Write each element using WriteReferencable\n")
 			fmt.Fprintf(buf, "\t\tfor _, elem := range %s {\n", fieldAccess)
 			fmt.Fprintf(buf, "\t\t\tf.WriteReferencable(buf, reflect.ValueOf(elem))\n")
@@ -286,28 +285,19 @@ func generateSliceWriteInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAc
 	// Write collection header and elements for non-empty slice
 	fmt.Fprintf(buf, "\t\tif sliceLen > 0 {\n")
 
-	// For codegen, follow reflection's behavior exactly:
-	// Set CollectionNotDeclElementType (0b0100 = 4) and CollectionNotSameType (0b1000 = 8)
-	// Add CollectionTrackingRef (0b0001 = 1) when reference tracking is enabled
-	fmt.Fprintf(buf, "\t\t\tcollectFlag := 12 // CollectionNotDeclElementType + CollectionNotSameType\n")
-	fmt.Fprintf(buf, "\t\t\t// Access private field f.refTracking using reflection to match behavior\n")
-	fmt.Fprintf(buf, "\t\t\tforyValue := reflect.ValueOf(f).Elem()\n")
-	fmt.Fprintf(buf, "\t\t\trefTrackingField := foryValue.FieldByName(\"refTracking\")\n")
-	fmt.Fprintf(buf, "\t\t\tif refTrackingField.IsValid() && refTrackingField.Bool() {\n")
-	fmt.Fprintf(buf, "\t\t\t\tcollectFlag |= 1 // Add CollectionTrackingRef\n")
-	fmt.Fprintf(buf, "\t\t\t}\n")
+	// For codegen, follow reflection's behavior:
+	// For typed slices, reflection only sets CollectionIsSameType (not CollectionIsDeclElementType)
+	// because sliceSerializer.declaredType is nil
+	fmt.Fprintf(buf, "\t\t\tcollectFlag := 8 // CollectionIsSameType only\n")
 	fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(int8(collectFlag))\n")
 
-	// For each element, write type info + value (because CollectionNotSameType is set)
-	fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
-	fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
-
-	// Write element type ID
+	// Write element type ID since CollectionIsDeclElementType is not set
 	if err := generateElementTypeIDWriteInline(buf, elemType); err != nil {
 		return err
 	}
 
-	// Write element value
+	// Write elements directly without per-element flags/type IDs
+	fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
 	if err := generateSliceElementWriteInline(buf, elemType, "elem"); err != nil {
 		return err
 	}

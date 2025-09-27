@@ -26,8 +26,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestActualCodegenName - Analyze actual type names used by codegen
-func TestActualCodegenName(t *testing.T) {
+// TestValidationDemoXlang - Test cross-language compatibility of ValidationDemo
+func TestValidationDemoXlang(t *testing.T) {
 	// From source code analysis:
 	// RegisterSerializerFactory calculates: typeTag := pkgPath + "." + typeName
 
