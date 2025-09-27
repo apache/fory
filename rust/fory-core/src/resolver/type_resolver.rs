@@ -66,7 +66,7 @@ impl TypeInfo {
         register_by_name: bool,
     ) -> TypeInfo {
         TypeInfo {
-            type_def: T::type_def(fory, type_id, namespace, type_name, register_by_name),
+            type_def: T::fory_type_def(fory, type_id, namespace, type_name, register_by_name),
             type_id,
             namespace: namespace.to_owned(),
             type_name: type_name.to_owned(),
@@ -133,7 +133,7 @@ impl TypeResolver {
                 Some(v) => {
                     let skip_ref_flag =
                         crate::serializer::get_skip_ref_flag::<T2>(context.get_fory());
-                    crate::serializer::write_data(v, context, is_field, skip_ref_flag, true);
+                    crate::serializer::write_info_data(v, context, is_field, skip_ref_flag, true);
                 }
                 None => todo!(),
             }
@@ -144,7 +144,7 @@ impl TypeResolver {
             is_field: bool,
             skip_ref_flag: bool,
         ) -> Result<Box<dyn Any>, Error> {
-            match crate::serializer::read_data::<T2>(context, is_field, skip_ref_flag, true) {
+            match crate::serializer::read_info_data::<T2>(context, is_field, skip_ref_flag, true) {
                 Ok(v) => Ok(Box::new(v)),
                 Err(e) => Err(e),
             }
@@ -153,27 +153,27 @@ impl TypeResolver {
         if self.type_info_map.contains_key(&rs_type_id) {
             panic!("rs_struct:{:?} already registered", type_info.type_id);
         }
-        self.type_info_map.insert(rs_type_id, (*type_info).clone());
+        self.type_info_map.insert(rs_type_id, type_info.clone());
 
-        let index = T::type_index() as usize;
+        let index = T::fory_type_index() as usize;
         if index >= self.type_id_index.len() {
             self.type_id_index.resize(index + 1, NO_TYPE_ID);
         }
         self.type_id_index[index] = type_info.type_id;
 
         if type_info.register_by_name {
-            let namespace = type_info.namespace.clone();
-            let type_name = type_info.type_name.clone();
+            let namespace = &type_info.namespace;
+            let type_name = &type_info.type_name;
             if self
                 .name_serialize_map
-                .contains_key(&(namespace.clone(), type_name.clone()))
+                .contains_key(&(namespace.to_string(), type_name.to_string()))
             {
                 panic!("TypeId {:?} already registered_by_name", type_info.type_id);
             }
             self.type_name_map
-                .insert(rs_type_id, (namespace.clone(), type_name.clone()));
+                .insert(rs_type_id, (namespace.to_string(), type_name.to_string()));
             self.name_serialize_map.insert(
-                (namespace, type_name),
+                (namespace.to_string(), type_name.to_string()),
                 Harness::new(serializer::<T>, deserializer::<T>),
             );
         } else {

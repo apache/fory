@@ -49,10 +49,10 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
         reserved_space_ts,
         write_type_info_ts,
         read_type_info_ts,
+        write_data_ts,
+        read_data_ts,
         write_ts,
         read_ts,
-        serialize_ts,
-        deserialize_ts,
     ) = match &ast.data {
         syn::Data::Struct(s) => {
             let fields = sorted_fields(&s.fields);
@@ -60,20 +60,20 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 write::gen_reserved_space(&fields),
                 write::gen_write_type_info(),
                 read::gen_read_type_info(),
-                write::gen_write(&fields),
-                read::gen_read(&fields),
-                write::gen_serialize(),
-                read::gen_deserialize(name),
+                write::gen_write_data(&fields),
+                read::gen_read_data(&fields),
+                write::gen_write(),
+                read::gen_read(name),
             )
         }
         syn::Data::Enum(e) => (
             derive_enum::gen_reserved_space(),
             derive_enum::gen_write_type_info(),
             derive_enum::gen_read_type_info(),
+            derive_enum::gen_write_data(e),
+            derive_enum::gen_read_data(e),
             derive_enum::gen_write(e),
             derive_enum::gen_read(e),
-            derive_enum::gen_serialize(e),
-            derive_enum::gen_deserialize(e),
         ),
         syn::Data::Union(_) => {
             panic!("Union is not supported")
@@ -83,7 +83,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
     let (deserialize_nullable_ts,) = match &ast.data {
         syn::Data::Struct(s) => {
             let fields = sorted_fields(&s.fields);
-            (read::gen_deserialize_nullable(&fields),)
+            (read::gen_read_nullable(&fields),)
         }
         syn::Data::Enum(_s) => (quote! {},),
         syn::Data::Union(_) => {
@@ -96,58 +96,58 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
 
     let gen = quote! {
         impl fory_core::serializer::StructSerializer for #name {
-            fn type_index() -> u32 {
+            fn fory_type_index() -> u32 {
                 #type_idx
             }
 
-            fn actual_type_id(type_id: u32, register_by_name: bool, mode: &fory_core::types::Mode) -> u32 {
+            fn fory_actual_type_id(type_id: u32, register_by_name: bool, mode: &fory_core::types::Mode) -> u32 {
                 #actual_type_id_ts
             }
 
-            fn get_sorted_field_names(fory: &fory_core::fory::Fory) -> Vec<String> {
+            fn fory_get_sorted_field_names(fory: &fory_core::fory::Fory) -> Vec<String> {
                 #get_sorted_field_names_ts
             }
 
-            fn type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: &str, type_name: &str, register_by_name: bool) -> Vec<u8> {
+            fn fory_type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: &str, type_name: &str, register_by_name: bool) -> Vec<u8> {
                 #type_def_ts
             }
 
-            fn read_compatible(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
+            fn fory_read_compatible(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
                 #read_compatible_ts
             }
         }
         impl fory_core::types::ForyGeneralList for #name {}
         impl fory_core::serializer::Serializer for #name {
-            fn get_type_id(fory: &fory_core::fory::Fory) -> u32 {
+            fn fory_get_type_id(fory: &fory_core::fory::Fory) -> u32 {
                 fory.get_type_resolver().get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
             }
 
-            fn reserved_space() -> usize {
+            fn fory_reserved_space() -> usize {
                 #reserved_space_ts
             }
 
-            fn write_type_info(context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
+            fn fory_write_type_info(context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
                 #write_type_info_ts
             }
 
-            fn read_type_info(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) {
+            fn fory_read_type_info(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) {
                 #read_type_info_ts
             }
 
-            fn write(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
+            fn fory_write_data(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
+                #write_data_ts
+            }
+
+            fn fory_read_data(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
+                #read_data_ts
+            }
+
+            fn fory_write(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
                 #write_ts
             }
 
-            fn read(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
+            fn fory_read(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
                 #read_ts
-            }
-
-            fn serialize(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
-                #serialize_ts
-            }
-
-            fn deserialize(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
-                #deserialize_ts
             }
         }
         impl #name {

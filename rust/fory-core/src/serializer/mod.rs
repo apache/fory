@@ -36,55 +36,55 @@ pub mod skip;
 mod string;
 pub mod struct_;
 
-pub fn write_data<T: Serializer + 'static>(
+pub fn write_info_data<T: Serializer + 'static>(
     record: &T,
     context: &mut WriteContext,
     is_field: bool,
     skip_ref_flag: bool,
     skip_type_info: bool,
 ) {
-    if record.is_none() {
-        context.writer.i8(RefFlag::Null as i8);
+    if record.fory_is_none() {
+        context.writer.write_i8(RefFlag::Null as i8);
     } else {
         if !skip_ref_flag {
-            context.writer.i8(RefFlag::NotNullValue as i8);
+            context.writer.write_i8(RefFlag::NotNullValue as i8);
         }
         if !skip_type_info {
-            T::write_type_info(context, is_field);
+            T::fory_write_type_info(context, is_field);
         }
-        record.write(context, is_field);
+        record.fory_write_data(context, is_field);
     }
 }
 
-pub fn read_data<T: Serializer + Default>(
+pub fn read_info_data<T: Serializer + Default>(
     context: &mut ReadContext,
     is_field: bool,
     skip_ref_flag: bool,
     skip_type_info: bool,
 ) -> Result<T, Error> {
     if !skip_ref_flag {
-        let ref_flag = context.reader.i8();
+        let ref_flag = context.reader.read_i8();
         if ref_flag == RefFlag::Null as i8 {
             Ok(T::default())
         } else if ref_flag == (RefFlag::NotNullValue as i8) {
             if !skip_type_info {
-                T::read_type_info(context, is_field);
+                T::fory_read_type_info(context, is_field);
             }
-            T::read(context)
+            T::fory_read_data(context)
         } else {
             unimplemented!()
         }
     } else {
         if !skip_type_info {
-            T::read_type_info(context, is_field);
+            T::fory_read_type_info(context, is_field);
         }
-        T::read(context)
+        T::fory_read_data(context)
     }
 }
 
 pub fn get_skip_ref_flag<T: Serializer>(fory: &Fory) -> bool {
-    let elem_type_id = T::get_type_id(fory);
-    !T::is_option() && PRIMITIVE_TYPES.contains(&elem_type_id)
+    let elem_type_id = T::fory_get_type_id(fory);
+    !T::fory_is_option() && PRIMITIVE_TYPES.contains(&elem_type_id)
 }
 
 pub trait Serializer
@@ -93,42 +93,42 @@ where
 {
     /// The possible max memory size of the type.
     /// Used to reserve the buffer space to avoid reallocation, which may hurt performance.
-    fn reserved_space() -> usize;
+    fn fory_reserved_space() -> usize;
 
     /// Write the data into the buffer.
-    fn write(&self, context: &mut WriteContext, is_field: bool);
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool);
 
-    fn write_type_info(context: &mut WriteContext, is_field: bool);
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool);
 
     /// Entry point of the serialization.
     ///
     /// Step 1: write the type flag and type flag into the buffer.
     /// Step 2: invoke the write function to write the Rust object.
-    fn serialize(&self, context: &mut WriteContext, is_field: bool) {
-        write_data(self, context, is_field, false, false);
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
+        write_info_data(self, context, is_field, false, false);
     }
 
-    fn read(context: &mut ReadContext) -> Result<Self, Error>;
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error>;
 
-    fn read_type_info(context: &mut ReadContext, is_field: bool);
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool);
 
-    fn deserialize(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        read_data(context, is_field, false, false)
+    fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        read_info_data(context, is_field, false, false)
     }
 
-    fn get_type_id(_fory: &Fory) -> u32;
+    fn fory_get_type_id(_fory: &Fory) -> u32;
 
-    fn is_option() -> bool {
+    fn fory_is_option() -> bool {
         false
     }
 
-    fn is_none(&self) -> bool {
+    fn fory_is_none(&self) -> bool {
         false
     }
 }
 
 pub trait StructSerializer: Serializer + 'static {
-    fn type_def(
+    fn fory_type_def(
         fory: &Fory,
         type_id: u32,
         namespace: &str,
@@ -136,10 +136,10 @@ pub trait StructSerializer: Serializer + 'static {
         register_by_name: bool,
     ) -> Vec<u8>;
 
-    fn type_index() -> u32;
-    fn actual_type_id(type_id: u32, register_by_name: bool, mode: &Mode) -> u32;
+    fn fory_type_index() -> u32;
+    fn fory_actual_type_id(type_id: u32, register_by_name: bool, mode: &Mode) -> u32;
 
-    fn read_compatible(context: &mut ReadContext) -> Result<Self, Error>;
+    fn fory_read_compatible(context: &mut ReadContext) -> Result<Self, Error>;
 
-    fn get_sorted_field_names(fory: &Fory) -> Vec<String>;
+    fn fory_get_sorted_field_names(fory: &Fory) -> Vec<String>;
 }

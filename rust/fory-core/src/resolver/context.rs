@@ -68,14 +68,14 @@ impl<'se> WriteContext<'se> {
         let mayby_idx = self.tags.iter().position(|x| *x == tag);
         match mayby_idx {
             Some(idx) => {
-                self.writer.u8(USESTRINGID);
-                self.writer.i16(idx as i16);
+                self.writer.write_u8(USESTRINGID);
+                self.writer.write_i16(idx as i16);
             }
             None => {
-                self.writer.u8(USESTRINGVALUE);
+                self.writer.write_u8(USESTRINGVALUE);
                 self.writer.skip(8); // todo tag hash
-                self.writer.i16(tag.len() as i16);
-                self.writer.bytes(tag.as_bytes());
+                self.writer.write_i16(tag.len() as i16);
+                self.writer.write_bytes(tag.as_bytes());
             }
         };
     }
@@ -115,14 +115,14 @@ impl<'de, 'bf: 'de> ReadContext<'de, 'bf> {
     pub fn read_tag(&mut self) -> Result<&str, Error> {
         const USESTRINGVALUE: u8 = 0;
         const USESTRINGID: u8 = 1;
-        let tag_type = self.reader.u8();
+        let tag_type = self.reader.read_u8();
         if tag_type == USESTRINGID {
-            Ok(self.tags[self.reader.i16() as usize])
+            Ok(self.tags[self.reader.read_i16() as usize])
         } else if tag_type == USESTRINGVALUE {
             self.reader.skip(8); // todo tag hash
-            let len = self.reader.i16();
+            let len = self.reader.read_i16();
             let tag: &str =
-                unsafe { std::str::from_utf8_unchecked(self.reader.bytes(len as usize)) };
+                unsafe { std::str::from_utf8_unchecked(self.reader.read_bytes(len as usize)) };
             self.tags.push(tag);
             Ok(tag)
         } else {

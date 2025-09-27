@@ -31,30 +31,30 @@ enum StrEncoding {
 }
 
 impl Serializer for String {
-    fn reserved_space() -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }
 
-    fn write(&self, context: &mut WriteContext, _is_field: bool) {
+    fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) {
         let mut len = get_latin1_length(self);
         if len >= 0 {
             let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
-            context.writer.var_uint36_small(bitor);
-            context.writer.latin1_string(self);
+            context.writer.write_var_uint36_small(bitor);
+            context.writer.write_latin1_string(self);
         } else if context.get_fory().is_compress_string() {
             // todo: support `writeNumUtf16BytesForUtf8Encoding` like in java
             len = self.len() as i32;
             let bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
-            context.writer.var_uint36_small(bitor);
-            context.writer.utf8_string(self);
+            context.writer.write_var_uint36_small(bitor);
+            context.writer.write_utf8_string(self);
         } else {
             let utf16: Vec<u16> = self.encode_utf16().collect();
             let bitor = (utf16.len() as u64 * 2) << 2 | StrEncoding::Utf16 as u64;
-            context.writer.var_uint36_small(bitor);
+            context.writer.write_var_uint36_small(bitor);
             for unit in utf16 {
                 #[cfg(target_endian = "little")]
                 {
-                    context.writer.u16(unit);
+                    context.writer.write_u16(unit);
                 }
                 #[cfg(target_endian = "big")]
                 {
@@ -64,13 +64,13 @@ impl Serializer for String {
         }
     }
 
-    fn write_type_info(context: &mut WriteContext, is_field: bool) {
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
         if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            context.writer.var_uint32(TypeId::STRING as u32);
+            context.writer.write_var_uint32(TypeId::STRING as u32);
         }
     }
 
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let bitor = context.reader.var_uint36_small();
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
@@ -83,21 +83,21 @@ impl Serializer for String {
             }
         };
         let s = match encoding {
-            StrEncoding::Latin1 => context.reader.latin1_string(len as usize),
-            StrEncoding::Utf16 => context.reader.utf16_string(len as usize),
-            StrEncoding::Utf8 => context.reader.utf8_string(len as usize),
+            StrEncoding::Latin1 => context.reader.read_latin1_string(len as usize),
+            StrEncoding::Utf16 => context.reader.read_utf16_string(len as usize),
+            StrEncoding::Utf8 => context.reader.read_utf8_string(len as usize),
         };
         Ok(s)
     }
 
-    fn read_type_info(context: &mut ReadContext, is_field: bool) {
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
         if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            let remote_type_id = context.reader.var_uint32();
+            let remote_type_id = context.reader.read_var_uint32();
             assert_eq!(remote_type_id, TypeId::STRING as u32);
         }
     }
 
-    fn get_type_id(_fory: &Fory) -> u32 {
+    fn fory_get_type_id(_fory: &Fory) -> u32 {
         TypeId::STRING as u32
     }
 }

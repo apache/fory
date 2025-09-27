@@ -23,7 +23,7 @@ pub fn gen_reserved_space(fields: &[&Field]) -> TokenStream {
     let reserved_size_expr: Vec<_> = fields.iter().map(|field| {
         let ty = &field.ty;
         quote! {
-            <#ty as fory_core::serializer::Serializer>::reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+            <#ty as fory_core::serializer::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
         }
     }).collect();
     if reserved_size_expr.is_empty() {
@@ -39,7 +39,7 @@ pub fn gen_write_type_info() -> TokenStream {
     }
 }
 
-pub fn gen_write(fields: &[&Field]) -> TokenStream {
+pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
     // let accessor_expr = fields.iter().map(|field| {
     //     let ty = &field.ty;
     //     let ident = &field.ident;
@@ -57,12 +57,12 @@ pub fn gen_write(fields: &[&Field]) -> TokenStream {
             quote! {
                 #name_str => {
                     let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    fory_core::serializer::write_data::<#ty>(&self.#ident, context, true, skip_ref_flag, false);
+                    fory_core::serializer::write_info_data::<#ty>(&self.#ident, context, true, skip_ref_flag, false);
                 }
             }
         });
         quote! {
-            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::get_sorted_field_names(context.get_fory());
+            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
             for field_name in sorted_field_names {
                 match field_name.as_str() {
                     #(#match_ts),*
@@ -79,8 +79,8 @@ pub fn gen_write(fields: &[&Field]) -> TokenStream {
     }
 }
 
-pub fn gen_serialize() -> TokenStream {
+pub fn gen_write() -> TokenStream {
     quote! {
-        fory_core::serializer::struct_::serialize::<Self>(self, context, is_field)
+        fory_core::serializer::struct_::write::<Self>(self, context, is_field)
     }
 }
