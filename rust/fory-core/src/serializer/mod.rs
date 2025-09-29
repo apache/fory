@@ -77,7 +77,7 @@ pub fn read_ref_info_data<T: Serializer + Default>(
         } else if ref_flag == (RefFlag::RefValue as i8) {
             // First time seeing this referenceable object
             if !skip_type_info {
-                T::read_type_info(context, is_field);
+                T::fory_read_type_info(context, is_field);
             }
             T::fory_read_data(context, is_field)
         } else if ref_flag == (RefFlag::Ref as i8) {

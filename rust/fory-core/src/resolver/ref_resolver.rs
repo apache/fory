@@ -81,15 +81,15 @@ impl RefWriter {
 
         if let Some(&ref_id) = self.refs.get(&ptr_addr) {
             // This object has been seen before, write a reference
-            writer.i8(RefFlag::Ref as i8);
-            writer.u32(ref_id);
+            writer.write_i8(RefFlag::Ref as i8);
+            writer.write_u32(ref_id);
             true
         } else {
             // First time seeing this object, register it and return false
             let ref_id = self.next_ref_id;
             self.next_ref_id += 1;
             self.refs.insert(ptr_addr, ref_id);
-            writer.i8(RefFlag::RefValue as i8);
+            writer.write_i8(RefFlag::RefValue as i8);
             false
         }
     }
@@ -114,15 +114,15 @@ impl RefWriter {
 
         if let Some(&ref_id) = self.refs.get(&ptr_addr) {
             // This object has been seen before, write a reference
-            writer.i8(RefFlag::Ref as i8);
-            writer.u32(ref_id);
+            writer.write_i8(RefFlag::Ref as i8);
+            writer.write_u32(ref_id);
             true
         } else {
             // First time seeing this object, register it and return false
             let ref_id = self.next_ref_id;
             self.next_ref_id += 1;
             self.refs.insert(ptr_addr, ref_id);
-            writer.i8(RefFlag::RefValue as i8);
+            writer.write_i8(RefFlag::RefValue as i8);
             false
         }
     }
@@ -245,7 +245,7 @@ impl RefReader {
     ///
     /// Panics if an invalid reference flag value is encountered
     pub fn read_ref_flag(&self, reader: &mut Reader) -> RefFlag {
-        let flag_value = reader.i8();
+        let flag_value = reader.read_i8();
         match flag_value {
             -3 => RefFlag::Null,
             -2 => RefFlag::Ref,
@@ -265,7 +265,7 @@ impl RefReader {
     ///
     /// The reference ID as a u32
     pub fn read_ref_id(&self, reader: &mut Reader) -> u32 {
-        reader.u32()
+        reader.read_u32()
     }
 
     /// Clear all stored references.
@@ -308,15 +308,15 @@ impl RefResolver {
 
         if let Some(&ref_id) = self.write_refs.get(&ptr_addr) {
             // This object has been seen before, write a reference
-            writer.i8(RefFlag::Ref as i8);
-            writer.u32(ref_id);
+            writer.write_i8(RefFlag::Ref as i8);
+            writer.write_u32(ref_id);
             true
         } else {
             // First time seeing this object, register it and return false
             let ref_id = self.next_ref_id;
             self.next_ref_id += 1;
             self.write_refs.insert(ptr_addr, ref_id);
-            writer.i8(RefFlag::RefValue as i8);
+            writer.write_i8(RefFlag::RefValue as i8);
             false
         }
     }
@@ -328,15 +328,15 @@ impl RefResolver {
 
         if let Some(&ref_id) = self.write_refs.get(&ptr_addr) {
             // This object has been seen before, write a reference
-            writer.i8(RefFlag::Ref as i8);
-            writer.u32(ref_id);
+            writer.write_i8(RefFlag::Ref as i8);
+            writer.write_u32(ref_id);
             true
         } else {
             // First time seeing this object, register it and return false
             let ref_id = self.next_ref_id;
             self.next_ref_id += 1;
             self.write_refs.insert(ptr_addr, ref_id);
-            writer.i8(RefFlag::RefValue as i8);
+            writer.write_i8(RefFlag::RefValue as i8);
             false
         }
     }
@@ -369,7 +369,7 @@ impl RefResolver {
 
     /// Read a reference flag and determine what action to take
     pub fn read_ref_flag(&self, reader: &mut Reader) -> RefFlag {
-        let flag_value = reader.i8();
+        let flag_value = reader.read_i8();
         match flag_value {
             -3 => RefFlag::Null,
             -2 => RefFlag::Ref,
@@ -381,7 +381,7 @@ impl RefResolver {
 
     /// Read a reference ID
     pub fn read_ref_id(&self, reader: &mut Reader) -> u32 {
-        reader.u32()
+        reader.read_u32()
     }
 
     /// Clear all stored references (useful for reusing the resolver)

@@ -19,12 +19,12 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::Serializer;
-use crate::types::{ForyGeneralList, RefFlag};
+use crate::types::RefFlag;
 use anyhow::anyhow;
 use std::sync::Arc;
 
 impl<T: Serializer + Send + Sync + 'static> Serializer for Arc<T> {
-    fn read(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader);
 
         match ref_flag {
@@ -37,11 +37,11 @@ impl<T: Serializer + Send + Sync + 'static> Serializer for Arc<T> {
                     .ok_or_else(|| anyhow!("Arc reference {} not found", ref_id).into())
             }
             RefFlag::NotNullValue => {
-                let inner = T::read(context)?;
+                let inner = T::fory_read_data(context, is_field)?;
                 Ok(Arc::new(inner))
             }
             RefFlag::RefValue => {
-                let inner = T::read(context)?;
+                let inner = T::fory_read_data(context, is_field)?;
                 let arc = Arc::new(inner);
                 context.ref_reader.store_arc_ref(arc.clone());
                 Ok(arc)
@@ -49,35 +49,25 @@ impl<T: Serializer + Send + Sync + 'static> Serializer for Arc<T> {
         }
     }
 
-    fn read_type_info(context: &mut ReadContext, is_field: bool) {
-        T::read_type_info(context, is_field);
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
+        T::fory_read_type_info(context, is_field);
     }
 
-    fn write(&self, context: &mut WriteContext, is_field: bool) {
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
         if !context.ref_writer.try_write_arc_ref(context.writer, self) {
-            T::write(self.as_ref(), context, is_field);
+            T::fory_write_data(self.as_ref(), context, is_field);
         }
     }
 
-    fn write_type_info(context: &mut WriteContext, is_field: bool) {
-        T::write_type_info(context, is_field);
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
+        T::fory_write_type_info(context, is_field);
     }
 
-    fn reserved_space() -> usize {
-        T::reserved_space()
+    fn fory_reserved_space() -> usize {
+        T::fory_reserved_space()
     }
 
-    fn get_type_id(fory: &Fory) -> u32 {
-        T::get_type_id(fory)
-    }
-
-    fn is_option() -> bool {
-        false
-    }
-
-    fn is_none(&self) -> bool {
-        false
+    fn fory_get_type_id(fory: &Fory) -> u32 {
+        T::fory_get_type_id(fory)
     }
 }
-
-impl<T: Serializer + Send + Sync> ForyGeneralList for Arc<T> {}
