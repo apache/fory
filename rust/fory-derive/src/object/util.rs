@@ -42,14 +42,14 @@ macro_rules! basic_type_deserialize {
                     if $nullable {
                         quote! {
                             <$ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                            let res1 = Some(<$ty as fory_core::serializer::Serializer>::fory_read_data(context)
+                            let res1 = Some(<$ty as fory_core::serializer::Serializer>::fory_read_data(context, true)
                                 .map_err(fory_core::error::Error::from)?);
                             Ok::<Option<$ty>, fory_core::error::Error>(res1)
                         }
                     } else {
                         quote! {
                             <$ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                            let res2 = <$ty as fory_core::serializer::Serializer>::fory_read_data(context)
+                            let res2 = <$ty as fory_core::serializer::Serializer>::fory_read_data(context, true)
                                 .map_err(fory_core::error::Error::from)?;
                             Ok::<$ty, fory_core::error::Error>(res2)
                         }
@@ -122,7 +122,7 @@ impl NullableTypeNode {
                         None
                     } else {
                         <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                        Some(<#ty_type as fory_core::serializer::Serializer>::fory_read_data(context)
+                        Some(<#ty_type as fory_core::serializer::Serializer>::fory_read_data(context, true)
                             .map_err(fory_core::error::Error::from)?)
                     };
                     Ok::<Option<#ty_type>, fory_core::error::Error>(res1)
@@ -133,7 +133,7 @@ impl NullableTypeNode {
                         Vec::default()
                     } else {
                         <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                        <#ty_type as fory_core::serializer::Serializer>::fory_read_data(context)
+                        <#ty_type as fory_core::serializer::Serializer>::fory_read_data(context, true)
                             .map_err(fory_core::error::Error::from)?
                     };
                     Ok::<#ty_type, fory_core::error::Error>(res2)
@@ -162,7 +162,7 @@ impl NullableTypeNode {
                     let element_tokens = generic_node.to_read_tokens(&new_path, false);
                     let element_ty: Type = parse_str(&generic_node.to_string()).unwrap();
                     let vec_ts = quote! {
-                        let length = context.reader.read_var_uint32() as usize;
+                        let length = context.reader.read_varuint32() as usize;
                         if length == 0 {
                             Vec::default()
                         } else {
@@ -213,7 +213,7 @@ impl NullableTypeNode {
                     let element_tokens = generic_node.to_read_tokens(&new_path, false);
                     let element_ty: Type = parse_str(&generic_node.to_string()).unwrap();
                     let set_ts = quote! {
-                        let length = context.reader.read_var_uint32() as usize;
+                        let length = context.reader.read_varuint32() as usize;
                         if length == 0 {
                             HashSet::default()
                         } else {
@@ -272,7 +272,7 @@ impl NullableTypeNode {
                     let val_ty: Type = parse_str(&val_generic_node.to_string()).unwrap();
 
                     let map_ts = quote! {
-                        let length = context.reader.read_var_uint32();
+                        let length = context.reader.read_varuint32();
                         let mut map = HashMap::with_capacity(length as usize);
                         if length == 0 {
                             map

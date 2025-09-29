@@ -15,11 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use anyhow::anyhow;
-
 use crate::ensure;
 use crate::error::Error;
 use crate::meta::string_util;
+use anyhow::anyhow;
 
 // equal to "std::i16::MAX"
 const SHORT_MAX_VALUE: usize = 32767;
@@ -434,17 +433,33 @@ impl MetaStringDecoder {
         }
     }
 
-    pub fn decode(&self, encoded_data: &[u8], encoding: Encoding) -> Result<String, Error> {
-        if encoded_data.is_empty() {
-            return Ok("".to_string());
-        }
-        match encoding {
-            Encoding::LowerSpecial => self.decode_lower_special(encoded_data),
-            Encoding::LowerUpperDigitSpecial => self.decode_lower_upper_digit_special(encoded_data),
-            Encoding::FirstToLowerSpecial => self.decode_rep_first_lower_special(encoded_data),
-            Encoding::AllToLowerSpecial => self.decode_rep_all_to_lower_special(encoded_data),
-            Encoding::Utf8 => Ok(String::from_utf8_lossy(encoded_data).into_owned()),
-        }
+    pub fn decode(&self, encoded_data: &[u8], encoding: Encoding) -> Result<MetaString, Error> {
+        let str = {
+            if encoded_data.is_empty() {
+                Ok("".to_string())
+            } else {
+                match encoding {
+                    Encoding::LowerSpecial => self.decode_lower_special(encoded_data),
+                    Encoding::LowerUpperDigitSpecial => {
+                        self.decode_lower_upper_digit_special(encoded_data)
+                    }
+                    Encoding::FirstToLowerSpecial => {
+                        self.decode_rep_first_lower_special(encoded_data)
+                    }
+                    Encoding::AllToLowerSpecial => {
+                        self.decode_rep_all_to_lower_special(encoded_data)
+                    }
+                    Encoding::Utf8 => Ok(String::from_utf8_lossy(encoded_data).into_owned()),
+                }
+            }
+        }?;
+        MetaString::new(
+            str,
+            encoding,
+            Vec::from(encoded_data),
+            self.special_char1,
+            self.special_char2,
+        )
     }
 
     fn decode_lower_special(&self, data: &[u8]) -> Result<String, Error> {

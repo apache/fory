@@ -32,8 +32,8 @@ macro_rules! basic_type_deserialize {
     ($tid:expr, $context:expr; $(($ty:ty, $id:ident)),+ $(,)?) => {
         $(
             if $tid == TypeId::$id {
-                <$ty>::fory_read_type_info($context, true);
-                <$ty>::fory_read_data($context)?;
+                <$ty as Serializer>::fory_read_type_info($context, true);
+                <$ty as Serializer>::fory_read_data($context, true)?;
                 return Ok(());
             }
         )+else {
@@ -70,7 +70,6 @@ pub fn skip_field_value(
                     (String, STRING),
                     (NaiveDate, LOCAL_DATE),
                     (NaiveDateTime, TIMESTAMP),
-                    (Vec<u8> , BINARY),
                     (Vec<bool> , BOOL_ARRAY),
                     (Vec<i8> , INT8_ARRAY),
                     (Vec<i16> , INT16_ARRAY),
@@ -81,7 +80,7 @@ pub fn skip_field_value(
                 );
             } else if CONTAINER_TYPES.contains(&type_id) {
                 if type_id == TypeId::LIST || type_id == TypeId::SET {
-                    let length = context.reader.read_var_uint32() as usize;
+                    let length = context.reader.read_varuint32() as usize;
                     if length == 0 {
                         return Ok(());
                     }
@@ -94,7 +93,7 @@ pub fn skip_field_value(
                         skip_field_value(context, elem_type, !skip_ref_flag)?;
                     }
                 } else if type_id == TypeId::MAP {
-                    let length = context.reader.read_var_uint32();
+                    let length = context.reader.read_varuint32();
                     if length == 0 {
                         return Ok(());
                     }
@@ -136,7 +135,7 @@ pub fn skip_field_value(
                 }
                 Ok(())
             } else if type_id == TypeId::NAMED_ENUM {
-                let _ordinal = context.reader.read_var_uint32();
+                let _ordinal = context.reader.read_varuint32();
                 Ok(())
             } else {
                 unreachable!("unimplemented type: {:?}", type_id);
@@ -146,10 +145,12 @@ pub fn skip_field_value(
             let internal_id = type_id_num & 0xff;
             const COMPATIBLE_STRUCT_ID: u32 = TypeId::COMPATIBLE_STRUCT as u32;
             const NAMED_COMPATIBLE_STRUCT_ID: u32 = TypeId::NAMED_COMPATIBLE_STRUCT as u32;
+            const EXT_ID: u32 = TypeId::EXT as u32;
+            const NAMED_EXT_ID: u32 = TypeId::NAMED_EXT as u32;
             const ENUM_ID: u32 = TypeId::ENUM as u32;
             if internal_id == COMPATIBLE_STRUCT_ID || internal_id == NAMED_COMPATIBLE_STRUCT_ID {
-                let remote_type_id = context.reader.read_var_uint32();
-                let meta_index = context.reader.read_var_uint32();
+                let remote_type_id = context.reader.read_varuint32();
+                let meta_index = context.reader.read_varuint32();
                 let type_def = context.get_meta(meta_index as usize);
                 assert_eq!(remote_type_id, type_def.get_type_id());
                 let field_infos = type_def.get_field_infos().to_vec();
@@ -160,9 +161,18 @@ pub fn skip_field_value(
                     skip_field_value(context, &nullable_field_type, read_ref_flag)?;
                 }
             } else if internal_id == ENUM_ID {
-                let _ordinal = context.reader.read_var_uint32();
-            } else {
-                unimplemented!()
+                let _ordinal = context.reader.read_varuint32();
+            } else if internal_id == EXT_ID {
+                let type_resolver = context.get_fory().get_type_resolver();
+                type_resolver
+                    .get_ext_harness(type_id_num)
+                    .unwrap()
+                    .get_read_fn()(context, true)
+                .unwrap();
+            } else if internal_id == NAMED_EXT_ID {
+                unimplemented!("NAMED_EXT_ID");
+                // let type_resolver = context.get_fory().get_type_resolver();
+                // type_resolver.get_ext_name_harness(type_id_num).unwrap().get_read_fn()(context, true).unwrap();
             }
             Ok(())
         }

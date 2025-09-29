@@ -27,11 +27,15 @@ use crate::types::{
     config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_LITTLE_ENDIAN_FLAG},
     Language, Mode, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
 };
+use crate::util::get_ext_actual_type_id;
 use anyhow::anyhow;
+
+static EMPTY_STRING: String = String::new();
 
 pub struct Fory {
     mode: Mode,
     xlang: bool,
+    share_meta: bool,
     type_resolver: TypeResolver,
     compress_string: bool,
 }
@@ -41,6 +45,7 @@ impl Default for Fory {
         Fory {
             mode: Mode::SchemaConsistent,
             xlang: true,
+            share_meta: false,
             type_resolver: TypeResolver::default(),
             compress_string: false,
         }
@@ -49,6 +54,8 @@ impl Default for Fory {
 
 impl Fory {
     pub fn mode(mut self, mode: Mode) -> Self {
+        // Setting share_meta individually is not supported currently
+        self.share_meta = mode != Mode::SchemaConsistent;
         self.mode = mode;
         self
     }
@@ -71,9 +78,13 @@ impl Fory {
         self.compress_string
     }
 
+    pub fn is_share_meta(&self) -> bool {
+        self.share_meta
+    }
+
     pub fn write_head<T: Serializer>(&self, is_none: bool, writer: &mut Writer) {
         const HEAD_SIZE: usize = 10;
-        writer.reserve(<T as Serializer>::fory_reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
+        writer.reserve(T::fory_reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
         if self.xlang {
             writer.write_u16(MAGIC_NUMBER);
         }
@@ -190,15 +201,14 @@ impl Fory {
         &self.type_resolver
     }
 
-    pub fn register<T: 'static + StructSerializer>(&mut self, id: u32) {
+    pub fn register<T: 'static + StructSerializer + Serializer>(&mut self, id: u32) {
         let actual_type_id = T::fory_actual_type_id(id, false, &self.mode);
-        let empty_string = String::new();
         let type_info =
-            TypeInfo::new::<T>(self, actual_type_id, &empty_string, &empty_string, false);
+            TypeInfo::new::<T>(self, actual_type_id, &EMPTY_STRING, &EMPTY_STRING, false);
         self.type_resolver.register::<T>(&type_info);
     }
 
-    pub fn register_by_namespace<T: 'static + StructSerializer>(
+    pub fn register_by_namespace<T: 'static + StructSerializer + Serializer>(
         &mut self,
         namespace: &str,
         type_name: &str,
@@ -208,7 +218,37 @@ impl Fory {
         self.type_resolver.register::<T>(&type_info);
     }
 
-    pub fn register_by_name<T: 'static + StructSerializer>(&mut self, type_name: &str) {
+    pub fn register_by_name<T: 'static + StructSerializer + Serializer>(
+        &mut self,
+        type_name: &str,
+    ) {
         self.register_by_namespace::<T>("", type_name);
     }
+
+    pub fn register_serializer<T: Serializer>(&mut self, id: u32) {
+        let actual_type_id = get_ext_actual_type_id(id, false);
+        let type_info = TypeInfo::new_with_empty_def::<T>(
+            self,
+            actual_type_id,
+            &EMPTY_STRING,
+            &EMPTY_STRING,
+            false,
+        );
+        self.type_resolver.register_serializer::<T>(&type_info);
+    }
+
+    pub fn register_serializer_by_name<T: Serializer>(&mut self, type_name: &str, namespace: &str) {
+        let actual_type_id = get_ext_actual_type_id(0, false);
+        let type_info =
+            TypeInfo::new_with_empty_def::<T>(self, actual_type_id, namespace, type_name, true);
+        self.type_resolver.register_serializer::<T>(&type_info);
+    }
+}
+
+pub fn write<T: Serializer>(this: &T, context: &mut WriteContext, is_field: bool) {
+    T::fory_write(this, context, is_field);
+}
+
+pub fn read<T: Serializer>(context: &mut ReadContext, is_field: bool) -> Result<T, Error> {
+    T::fory_read(context, is_field)
 }

@@ -21,7 +21,7 @@ use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{ForyGeneralList, TypeId};
+use crate::types::TypeId;
 
 macro_rules! impl_num_serializer {
     ($ty:ty, $writer:expr, $reader:expr, $field_type:expr) => {
@@ -30,21 +30,8 @@ macro_rules! impl_num_serializer {
                 $writer(&mut context.writer, *self);
             }
 
-            fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-                if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
-                    context.writer.write_var_uint32($field_type as u32);
-                }
-            }
-
-            fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+            fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
                 Ok($reader(&mut context.reader))
-            }
-
-            fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-                if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
-                    let remote_type_id = context.reader.read_var_uint32();
-                    assert_eq!(remote_type_id, $field_type as u32);
-                }
             }
 
             fn fory_reserved_space() -> usize {
@@ -58,22 +45,18 @@ macro_rules! impl_num_serializer {
     };
 }
 
-impl ForyGeneralList for u16 {}
-impl ForyGeneralList for u32 {}
-impl ForyGeneralList for u64 {}
-
 impl_num_serializer!(i8, Writer::write_i8, Reader::read_i8, TypeId::INT8);
 impl_num_serializer!(i16, Writer::write_i16, Reader::read_i16, TypeId::INT16);
 impl_num_serializer!(
     i32,
-    Writer::write_var_int32,
-    Reader::read_var_int32,
+    Writer::write_varint32,
+    Reader::read_varint32,
     TypeId::INT32
 );
 impl_num_serializer!(
     i64,
-    Writer::write_var_int64,
-    Reader::read_var_int64,
+    Writer::write_varint64,
+    Reader::read_varint64,
     TypeId::INT64
 );
 impl_num_serializer!(f32, Writer::write_f32, Reader::read_f32, TypeId::FLOAT32);

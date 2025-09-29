@@ -19,42 +19,80 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
+use crate::serializer::primitive_list;
 use crate::serializer::Serializer;
-use crate::types::{ForyGeneralList, TypeId};
+use crate::types::TypeId;
+use std::any::TypeId as RsTypeId;
 use std::mem;
 
 use super::collection::{
     read_collection, read_collection_type_info, write_collection, write_collection_type_info,
 };
 
-impl<T> Serializer for Vec<T>
-where
-    T: Serializer + ForyGeneralList,
-{
+fn check_primitive<T: 'static>() -> Option<TypeId> {
+    Some(match RsTypeId::of::<T>() {
+        id if id == RsTypeId::of::<bool>() => TypeId::BOOL_ARRAY,
+        id if id == RsTypeId::of::<i8>() => TypeId::INT8_ARRAY,
+        id if id == RsTypeId::of::<i16>() => TypeId::INT16_ARRAY,
+        id if id == RsTypeId::of::<i32>() => TypeId::INT32_ARRAY,
+        id if id == RsTypeId::of::<i64>() => TypeId::INT64_ARRAY,
+        id if id == RsTypeId::of::<f32>() => TypeId::FLOAT32_ARRAY,
+        id if id == RsTypeId::of::<f64>() => TypeId::FLOAT64_ARRAY,
+        _ => return None,
+    })
+}
+
+impl<T: Serializer> Serializer for Vec<T> {
     fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
-        write_collection(self, context, is_field);
+        match check_primitive::<T>() {
+            Some(_) => {
+                primitive_list::fory_write_data(self, context);
+            }
+            None => {
+                write_collection(self, context, is_field);
+            }
+        }
     }
 
     fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        write_collection_type_info(context, is_field, TypeId::LIST as u32);
+        match check_primitive::<T>() {
+            Some(type_id) => {
+                primitive_list::fory_write_type_info(context, is_field, type_id);
+            }
+            None => {
+                write_collection_type_info(context, is_field, TypeId::LIST as u32);
+            }
+        }
     }
 
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        read_collection(context)
+    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+        match check_primitive::<T>() {
+            Some(_) => primitive_list::fory_read_data(context),
+            None => read_collection(context),
+        }
     }
 
     fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-        read_collection_type_info(context, is_field, TypeId::LIST as u32)
+        match check_primitive::<T>() {
+            Some(type_id) => primitive_list::fory_read_type_info(context, is_field, type_id),
+            None => read_collection_type_info(context, is_field, TypeId::LIST as u32),
+        }
     }
 
     fn fory_reserved_space() -> usize {
-        // size of the vec
-        mem::size_of::<u32>()
+        match check_primitive::<T>() {
+            Some(_) => primitive_list::fory_reserved_space::<T>(),
+            None => {
+                // size of the vec
+                mem::size_of::<u32>()
+            }
+        }
     }
 
     fn fory_get_type_id(_fory: &Fory) -> u32 {
-        TypeId::LIST as u32
+        match check_primitive::<T>() {
+            Some(type_id) => type_id as u32,
+            None => TypeId::LIST as u32,
+        }
     }
 }
-
-impl<T> ForyGeneralList for Vec<T> where T: Serializer {}

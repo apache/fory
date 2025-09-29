@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::types::TypeId;
 use chrono::NaiveDate;
 use std::ptr;
 
@@ -118,4 +119,13 @@ pub fn to_utf8(utf16: &[u16], is_little_endian: bool) -> Result<Vec<u8>, String>
         utf8_bytes.set_len(offset);
     }
     Ok(utf8_bytes)
+}
+
+pub fn get_ext_actual_type_id(type_id: u32, register_by_name: bool) -> u32 {
+    (type_id << 8)
+        + if register_by_name {
+            TypeId::NAMED_EXT as u32
+        } else {
+            TypeId::EXT as u32
+        }
 }

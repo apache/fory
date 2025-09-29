@@ -20,14 +20,20 @@ use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{ForyGeneralList, Mode, TypeId};
+use crate::types::TypeId;
 use crate::util::EPOCH;
 use anyhow::anyhow;
 use chrono::{DateTime, Days, NaiveDate, NaiveDateTime};
 use std::mem;
 
 impl Serializer for NaiveDateTime {
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) {
+        let dt = self.and_utc();
+        let micros = dt.timestamp() * 1_000_000 + dt.timestamp_subsec_micros() as i64;
+        context.writer.write_i64(micros);
+    }
+
+    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
         let micros = context.reader.read_i64();
         let seconds = micros / 1_000_000;
         let subsec_micros = (micros % 1_000_000) as u32;
@@ -39,25 +45,6 @@ impl Serializer for NaiveDateTime {
             )))
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            let remote_type_id = context.reader.read_var_uint32();
-            assert_eq!(remote_type_id, TypeId::TIMESTAMP as u32);
-        }
-    }
-
-    fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) {
-        let dt = self.and_utc();
-        let micros = dt.timestamp() * 1_000_000 + dt.timestamp_subsec_micros() as i64;
-        context.writer.write_i64(micros);
-    }
-
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            context.writer.write_var_uint32(TypeId::TIMESTAMP as u32);
-        }
-    }
-
     fn fory_reserved_space() -> usize {
         mem::size_of::<u64>()
     }
@@ -67,25 +54,13 @@ impl Serializer for NaiveDateTime {
     }
 }
 
-impl ForyGeneralList for NaiveDateTime {}
-
 impl Serializer for NaiveDate {
     fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) {
         let days_since_epoch = self.signed_duration_since(EPOCH).num_days();
         context.writer.write_i32(days_since_epoch as i32);
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            context.writer.write_var_uint32(TypeId::LOCAL_DATE as u32);
-        }
-    }
-
-    fn fory_reserved_space() -> usize {
-        mem::size_of::<i32>()
-    }
-
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
         let days = context.reader.read_i32();
         EPOCH
             .checked_add_days(Days::new(days as u64))
@@ -94,16 +69,11 @@ impl Serializer for NaiveDate {
             )))
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-        if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-            let remote_type_id = context.reader.read_var_uint32();
-            assert_eq!(remote_type_id, TypeId::LOCAL_DATE as u32);
-        }
+    fn fory_reserved_space() -> usize {
+        mem::size_of::<i32>()
     }
 
     fn fory_get_type_id(_fory: &Fory) -> u32 {
         TypeId::LOCAL_DATE as u32
     }
 }
-
-impl ForyGeneralList for NaiveDate {}

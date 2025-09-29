@@ -93,7 +93,7 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
             quote! {
                 #name_str => {
                     let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    #private_ident = fory_core::serializer::read_info_data::<#ty>(context, true, skip_ref_flag, false)?;
+                    #private_ident = fory_core::serializer::read_ref_info_data::<#ty>(context, true, skip_ref_flag, false)?;
                 }
             }
         });
@@ -132,8 +132,8 @@ pub fn gen_read(struct_ident: &Ident) -> TokenStream {
         if ref_flag == (fory_core::types::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::types::RefFlag::RefValue as i8) {
             match context.get_fory().get_mode() {
                 fory_core::types::Mode::SchemaConsistent => {
-                    Self::fory_read_type_info(context, false);
-                    Self::fory_read_data(context)
+                    <Self as fory_core::serializer::Serializer>::fory_read_type_info(context, false);
+                    <Self as fory_core::serializer::Serializer>::fory_read_data(context, false)
                 },
                 fory_core::types::Mode::Compatible => {
                     <#struct_ident as fory_core::serializer::StructSerializer>::fory_read_compatible(context)
@@ -173,7 +173,7 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
                 let local_field_type = #generic_token;
                 if &_field.field_type == &local_field_type {
                     let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    #var_name = Some(fory_core::serializer::read_info_data::<#ty>(context, true, skip_ref_flag, false).unwrap_or_else(|_err| {
+                    #var_name = Some(fory_core::serializer::read_ref_info_data::<#ty>(context, true, skip_ref_flag, false).unwrap_or_else(|_err| {
                         // same type, err means something wrong
                         panic!("Err at deserializing {:?}: {:?}", #field_name_str, _err);
                     }));
@@ -206,8 +206,8 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
     let declare_ts: Vec<TokenStream> = declare_var(fields);
     let assign_ts: Vec<TokenStream> = assign_value(fields);
     quote! {
-        let remote_type_id = context.reader.read_var_uint32();
-        let meta_index = context.reader.read_var_uint32();
+        let remote_type_id = context.reader.read_varuint32();
+        let meta_index = context.reader.read_varuint32();
         let meta = context.get_meta(meta_index as usize);
         let fields = {
             let meta = context.get_meta(meta_index as usize);

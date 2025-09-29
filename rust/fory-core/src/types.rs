@@ -88,8 +88,6 @@ pub enum TypeId {
     ForyNullable = 265,
 }
 
-pub trait ForyGeneralList {}
-
 const MAX_UNT32: u64 = (1 << 31) - 1;
 
 // todo: struct hash

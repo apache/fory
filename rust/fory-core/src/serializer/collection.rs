@@ -37,7 +37,7 @@ pub fn write_collection_type_info(
     collection_type_id: u32,
 ) {
     if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-        context.writer.write_var_uint32(collection_type_id);
+        context.writer.write_varuint32(collection_type_id);
     }
 }
 
@@ -48,7 +48,7 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
 ) {
     let items: Vec<&T> = iter.into_iter().collect();
     let len = items.len();
-    context.writer.write_var_uint32(len as u32);
+    context.writer.write_varuint32(len as u32);
     if len == 0 {
         return;
     }
@@ -78,7 +78,7 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
     for item in &items {
         // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
         let skip_ref_flag = is_same_type && !has_null;
-        crate::serializer::write_info_data(*item, context, is_field, skip_ref_flag, true);
+        crate::serializer::write_ref_info_data(*item, context, is_field, skip_ref_flag, true);
     }
 }
 
@@ -88,7 +88,7 @@ pub fn read_collection_type_info(
     collection_type_id: u32,
 ) {
     if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-        let remote_collection_type_id = context.reader.read_var_uint32();
+        let remote_collection_type_id = context.reader.read_varuint32();
         assert_eq!(remote_collection_type_id, collection_type_id);
     }
 }
@@ -98,7 +98,7 @@ where
     T: Serializer,
     C: FromIterator<T>,
 {
-    let len = context.reader.read_var_uint32();
+    let len = context.reader.read_varuint32();
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
@@ -110,6 +110,6 @@ where
     let skip_ref_flag = is_same_type && !has_null;
     // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
     (0..len)
-        .map(|_| crate::serializer::read_info_data(context, declared, skip_ref_flag, true))
+        .map(|_| crate::serializer::read_ref_info_data(context, declared, skip_ref_flag, true))
         .collect::<Result<C, Error>>()
 }

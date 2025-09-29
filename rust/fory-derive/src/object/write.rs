@@ -57,7 +57,7 @@ pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
             quote! {
                 #name_str => {
                     let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    fory_core::serializer::write_info_data::<#ty>(&self.#ident, context, true, skip_ref_flag, false);
+                    fory_core::serializer::write_ref_info_data::<#ty>(&self.#ident, context, true, skip_ref_flag, false);
                 }
             }
         });

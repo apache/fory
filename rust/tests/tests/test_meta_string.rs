@@ -36,7 +36,10 @@ fn test_encode_meta_string_lower_special() {
     assert_eq!(bytes3.len(), 9);
     let decoder = &TYPE_NAME_DECODER;
     assert_eq!(
-        decoder.decode(&bytes1, Encoding::LowerSpecial).unwrap(),
+        decoder
+            .decode(&bytes1, Encoding::LowerSpecial)
+            .unwrap()
+            .original,
         "abc_def"
     );
     for i in 0..128 {
@@ -48,7 +51,7 @@ fn test_encode_meta_string_lower_special() {
         .collect();
         let encoded = encoder.encode_lower_special(&origin_string).unwrap();
         let decoded = decoder.decode(&encoded, Encoding::LowerSpecial).unwrap();
-        assert_eq!(decoded, origin_string);
+        assert_eq!(decoded.original, origin_string);
     }
 }
 
@@ -80,7 +83,7 @@ fn test_encode_meta_string_lower_upper_digit_special() {
     let decoded = decoder
         .decode(&encoded, Encoding::LowerUpperDigitSpecial)
         .unwrap();
-    assert_eq!(decoded, "ExampleInput123");
+    assert_eq!(decoded.original, "ExampleInput123");
 
     for i in 1..128 {
         let origin_string = create_string(
@@ -94,7 +97,7 @@ fn test_encode_meta_string_lower_upper_digit_special() {
         let decoded = decoder
             .decode(&encoded, Encoding::LowerUpperDigitSpecial)
             .unwrap();
-        assert_eq!(decoded, origin_string);
+        assert_eq!(decoded.original, origin_string);
     }
 }
 
@@ -112,7 +115,7 @@ fn test_meta_string() {
             let new_string = decoder
                 .decode(&meta_string.bytes, meta_string.encoding)
                 .unwrap();
-            assert_eq!(new_string, origin_string);
+            assert_eq!(new_string, meta_string);
         }
     }
 }
@@ -133,7 +136,7 @@ fn test_encode_empty_string() {
         let decoded = decoder
             .decode(&meta_string.bytes, meta_string.encoding)
             .unwrap();
-        assert_eq!(decoded, "");
+        assert_eq!(decoded, meta_string);
     }
 }
 
@@ -155,7 +158,7 @@ fn test_all_to_upper_special_encoding() {
     let decoded_string = decoder
         .decode(&meta_string.bytes, meta_string.encoding)
         .unwrap();
-    assert_eq!(decoded_string, test_string);
+    assert_eq!(decoded_string, meta_string);
 }
 
 #[test]
@@ -168,7 +171,7 @@ fn test_first_to_lower_special_encoding() {
     let decoded_string = decoder
         .decode(&meta_string.bytes, meta_string.encoding)
         .unwrap();
-    assert_eq!(decoded_string, test_string);
+    assert_eq!(decoded_string, meta_string);
 }
 
 #[test]
@@ -181,7 +184,7 @@ fn test_utf8_encoding() {
     let decoded_string = decoder
         .decode(&meta_string.bytes, meta_string.encoding)
         .unwrap();
-    assert_eq!(decoded_string, test_string);
+    assert_eq!(decoded_string.original, test_string);
     let test_string = "aA$";
     let meta_string = encoder.encode(test_string).unwrap();
     assert_eq!(meta_string.encoding, Encoding::Utf8);
@@ -189,7 +192,7 @@ fn test_utf8_encoding() {
     let decoded_string = decoder
         .decode(&meta_string.bytes, meta_string.encoding)
         .unwrap();
-    assert_eq!(decoded_string, test_string);
+    assert_eq!(decoded_string.original, test_string);
 }
 
 #[test]
@@ -213,7 +216,7 @@ fn test_empty_string() {
     let decoded = decoder
         .decode(&meta_string.bytes, meta_string.encoding)
         .unwrap();
-    assert_eq!(decoded, "");
+    assert_eq!(decoded, meta_string);
 }
 
 #[test]

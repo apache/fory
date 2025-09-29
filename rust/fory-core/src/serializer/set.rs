@@ -23,7 +23,7 @@ use crate::serializer::collection::{
     read_collection, read_collection_type_info, write_collection, write_collection_type_info,
 };
 use crate::serializer::Serializer;
-use crate::types::{ForyGeneralList, TypeId};
+use crate::types::TypeId;
 use std::collections::HashSet;
 use std::mem;
 
@@ -36,7 +36,7 @@ impl<T: Serializer + Eq + std::hash::Hash> Serializer for HashSet<T> {
         write_collection_type_info(context, is_field, TypeId::SET as u32);
     }
 
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
         read_collection(context)
     }
 
@@ -52,5 +52,3 @@ impl<T: Serializer + Eq + std::hash::Hash> Serializer for HashSet<T> {
         TypeId::SET as u32
     }
 }
-
-impl<T: Serializer + Eq + std::hash::Hash> ForyGeneralList for HashSet<T> {}

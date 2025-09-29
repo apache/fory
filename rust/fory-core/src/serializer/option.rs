@@ -20,11 +20,10 @@ use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::ForyGeneralList;
 
 impl<T: Serializer> Serializer for Option<T> {
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        Ok(Some(T::fory_read_data(context)?))
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        Ok(Some(T::fory_read_data(context, is_field)?))
     }
 
     fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
@@ -59,5 +58,3 @@ impl<T: Serializer> Serializer for Option<T> {
         self.is_none()
     }
 }
-
-impl<T: Serializer> ForyGeneralList for Option<T> {}

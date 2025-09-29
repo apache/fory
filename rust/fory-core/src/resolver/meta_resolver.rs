@@ -33,7 +33,7 @@ impl MetaReaderResolver {
     }
 
     pub fn load(&mut self, reader: &mut Reader) -> usize {
-        let meta_size = reader.read_var_uint32();
+        let meta_size = reader.read_varuint32();
         // self.reading_type_defs.reserve(meta_size as usize);
         for _ in 0..meta_size {
             self.reading_type_defs
@@ -68,7 +68,7 @@ impl<'a> MetaWriterResolver<'a> {
     }
 
     pub fn to_bytes(&self, writer: &mut Writer) -> Result<(), Error> {
-        writer.write_var_uint32(self.type_defs.len() as u32);
+        writer.write_varuint32(self.type_defs.len() as u32);
         for item in &self.type_defs {
             writer.write_bytes(item);
         }

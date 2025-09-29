@@ -108,7 +108,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #get_sorted_field_names_ts
             }
 
-            fn fory_type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: &str, type_name: &str, register_by_name: bool) -> Vec<u8> {
+            fn fory_type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: fory_core::meta::MetaString, type_name: fory_core::meta::MetaString, register_by_name: bool) -> Vec<u8> {
                 #type_def_ts
             }
 
@@ -116,7 +116,6 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #read_compatible_ts
             }
         }
-        impl fory_core::types::ForyGeneralList for #name {}
         impl fory_core::serializer::Serializer for #name {
             fn fory_get_type_id(fory: &fory_core::fory::Fory) -> u32 {
                 fory.get_type_resolver().get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
@@ -138,7 +137,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #write_data_ts
             }
 
-            fn fory_read_data(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
+            fn fory_read_data(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
                 #read_data_ts
             }
 

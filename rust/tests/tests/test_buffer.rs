@@ -18,7 +18,7 @@
 use fory_core::buffer::{Reader, Writer};
 
 #[test]
-fn test_var_int32() {
+fn test_varint32() {
     let test_data: Vec<i32> = vec![
         // 1 byte(0..127)
         0,
@@ -42,24 +42,24 @@ fn test_var_int32() {
     ];
     for &data in &test_data {
         let mut writer = Writer::default();
-        writer.write_var_int32(data);
+        writer.write_varint32(data);
         let binding = writer.dump();
         let mut reader = Reader::new(binding.as_slice());
-        let res = reader.read_var_int32();
+        let res = reader.read_varint32();
         assert_eq!(res, data);
     }
     for &data in &test_data {
         let mut writer = Writer::default();
-        writer.write_var_uint32(data as u32);
+        writer.write_varuint32(data as u32);
         let binding = writer.dump();
         let mut reader = Reader::new(binding.as_slice());
-        let res = reader.read_var_uint32();
+        let res = reader.read_varuint32();
         assert_eq!(res, data as u32);
     }
 }
 
 #[test]
-fn test_var_uint36_small() {
+fn test_varuint36_small() {
     let test_data: Vec<u64> = vec![
         // 1 byte
         0,
@@ -85,11 +85,11 @@ fn test_var_uint36_small() {
 
     for &data in &test_data {
         let mut writer = Writer::default();
-        writer.write_var_uint36_small(data);
+        writer.write_varuint36_small(data);
         let buf = writer.dump();
 
         let mut reader = Reader::new(buf.as_slice());
-        let value = reader.var_uint36_small();
+        let value = reader.read_varuint36small();
         assert_eq!(value, data, "failed for data {}", data);
     }
 }

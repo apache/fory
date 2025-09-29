@@ -100,16 +100,16 @@ impl Writer {
         self.bf.write_u64::<LittleEndian>(value).unwrap();
     }
 
-    pub fn write_var_int32(&mut self, value: i32) {
+    pub fn write_varint32(&mut self, value: i32) {
         let zigzag = ((value as i64) << 1) ^ ((value as i64) >> 31);
-        self._write_var_uint32(zigzag as u32)
+        self._write_varuint32(zigzag as u32)
     }
 
-    pub fn write_var_uint32(&mut self, value: u32) {
-        self._write_var_uint32(value)
+    pub fn write_varuint32(&mut self, value: u32) {
+        self._write_varuint32(value)
     }
 
-    fn _write_var_uint32(&mut self, value: u32) {
+    fn _write_varuint32(&mut self, value: u32) {
         if value < 0x80 {
             self.write_u8(value as u8);
         } else if value < 0x4000 {
@@ -147,16 +147,16 @@ impl Writer {
         }
     }
 
-    pub fn write_var_int64(&mut self, value: i64) {
+    pub fn write_varint64(&mut self, value: i64) {
         let zigzag = ((value << 1) ^ (value >> 63)) as u64;
-        self._write_var_uint64(zigzag)
+        self._write_varuint64(zigzag)
     }
 
-    pub fn write_var_uint64(&mut self, value: u64) {
-        self._write_var_uint64(value)
+    pub fn write_varuint64(&mut self, value: u64) {
+        self._write_varuint64(value)
     }
 
-    fn _write_var_uint64(&mut self, value: u64) {
+    fn _write_varuint64(&mut self, value: u64) {
         if value < 0x80 {
             self.write_u8(value as u8);
         } else if value < 0x4000 {
@@ -254,7 +254,7 @@ impl Writer {
         }
     }
 
-    pub fn write_var_uint36_small(&mut self, value: u64) {
+    pub fn write_varuint36_small(&mut self, value: u64) {
         assert!(value < (1u64 << 36), "value too large for 36-bit varint");
         if value < 0x80 {
             self.write_u8(value as u8);
@@ -387,7 +387,7 @@ impl<'bf> Reader<'bf> {
         result
     }
 
-    pub fn read_var_uint32(&mut self) -> u32 {
+    pub fn read_varuint32(&mut self) -> u32 {
         let start = self.cursor;
         let b0 = self.bf[start] as u32;
         if b0 < 0x80 {
@@ -423,12 +423,12 @@ impl<'bf> Reader<'bf> {
         encoded
     }
 
-    pub fn read_var_int32(&mut self) -> i32 {
-        let encoded = self.read_var_uint32();
+    pub fn read_varint32(&mut self) -> i32 {
+        let encoded = self.read_varuint32();
         ((encoded >> 1) as i32) ^ -((encoded & 1) as i32)
     }
 
-    pub fn read_var_uint64(&mut self) -> u64 {
+    pub fn read_varuint64(&mut self) -> u64 {
         let start = self.cursor;
         let b0 = self.bf[start] as u64;
         if b0 < 0x80 {
@@ -492,8 +492,8 @@ impl<'bf> Reader<'bf> {
         var64
     }
 
-    pub fn read_var_int64(&mut self) -> i64 {
-        let encoded = self.read_var_uint64();
+    pub fn read_varint64(&mut self) -> i64 {
+        let encoded = self.read_varuint64();
         ((encoded >> 1) as i64) ^ -((encoded & 1) as i64)
     }
 
@@ -525,7 +525,7 @@ impl<'bf> Reader<'bf> {
         result
     }
 
-    pub fn var_uint36_small(&mut self) -> u64 {
+    pub fn read_varuint36small(&mut self) -> u64 {
         let start = self.cursor;
         // fast path
         if self.slice_after_cursor().len() >= 8 {

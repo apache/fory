@@ -72,7 +72,7 @@ fn test_buffer() {
     assert_eq!(reader.read_i64(), i64::MAX);
     assert_eq!(reader.read_f32(), -1.1f32);
     assert_eq!(reader.read_f64(), -1.1f64);
-    assert_eq!(reader.read_var_uint32(), 100);
+    assert_eq!(reader.read_varuint32(), 100);
     let bytes_size = reader.read_i32() as usize;
     let binary = b"ab";
     assert_eq!(reader.read_bytes(bytes_size), binary);
@@ -85,7 +85,7 @@ fn test_buffer() {
     writer.write_i64(i64::MAX);
     writer.write_f32(-1.1);
     writer.write_f64(-1.1);
-    writer.write_var_uint32(100);
+    writer.write_varuint32(100);
     writer.write_i32(binary.len() as i32);
     writer.write_bytes(binary);
 
@@ -99,7 +99,7 @@ fn test_buffer_var() {
     let bytes = fs::read(&data_file_path).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
 
-    let var_int32_values = vec![
+    let varint32_values = vec![
         i32::MIN,
         i32::MIN + 1,
         -1000000,
@@ -119,11 +119,11 @@ fn test_buffer_var() {
         i32::MAX - 1,
         i32::MAX,
     ];
-    for &expected in &var_int32_values {
-        let value = reader.read_var_int32();
-        assert_eq!(expected, value, "var_int32 value mismatch");
+    for &expected in &varint32_values {
+        let value = reader.read_varint32();
+        assert_eq!(expected, value, "varint32 value mismatch");
     }
-    let var_uint32_values = vec![
+    let varuint32_values = vec![
         0,
         1,
         127,
@@ -137,11 +137,11 @@ fn test_buffer_var() {
         i32::MAX - 1,
         i32::MAX,
     ];
-    for &expected in &var_uint32_values {
-        let value = reader.read_var_uint32();
-        assert_eq!(expected, value as i32, "var_uint32 value mismatch");
+    for &expected in &varuint32_values {
+        let value = reader.read_varuint32();
+        assert_eq!(expected, value as i32, "varuint32 value mismatch");
     }
-    let var_uint64_values = vec![
+    let varuint64_values = vec![
         0u64,
         1,
         127,
@@ -162,11 +162,11 @@ fn test_buffer_var() {
         72057594037927936,
         i64::MAX as u64,
     ];
-    for &expected in &var_uint64_values {
-        let value = reader.read_var_uint64();
-        assert_eq!(expected, value, "var_uint64 value mismatch");
+    for &expected in &varuint64_values {
+        let value = reader.read_varuint64();
+        assert_eq!(expected, value, "varuint64 value mismatch");
     }
-    let var_int64_values = vec![
+    let varint64_values = vec![
         i64::MIN,
         i64::MIN + 1,
         -1000000000000,
@@ -183,23 +183,23 @@ fn test_buffer_var() {
         i64::MAX - 1,
         i64::MAX,
     ];
-    for &expected in &var_int64_values {
-        let value = reader.read_var_int64();
-        assert_eq!(expected, value, "var_int64 value mismatch");
+    for &expected in &varint64_values {
+        let value = reader.read_varint64();
+        assert_eq!(expected, value, "varint64 value mismatch");
     }
 
     let mut writer = Writer::default();
-    for &value in &var_int32_values {
-        writer.write_var_int32(value);
+    for &value in &varint32_values {
+        writer.write_varint32(value);
     }
-    for &value in &var_uint32_values {
-        writer.write_var_uint32(value as u32);
+    for &value in &varuint32_values {
+        writer.write_varuint32(value as u32);
     }
-    for &value in &var_uint64_values {
-        writer.write_var_uint64(value);
+    for &value in &varuint64_values {
+        writer.write_varuint64(value);
     }
-    for &value in &var_int64_values {
-        writer.write_var_int64(value);
+    for &value in &varint64_values {
+        writer.write_varint64(value);
     }
     fs::write(data_file_path, writer.dump()).unwrap();
 }
@@ -246,8 +246,11 @@ fn test_string_serializer() {
     ];
     for s in &test_strings {
         // make is_field=true to skip read/write type_id
-        assert_eq!(*s, String::fory_read_data(&mut context).unwrap());
-        assert_eq!(*s, String::fory_read_data(&mut context_compress).unwrap());
+        assert_eq!(*s, String::fory_read_data(&mut context, true).unwrap());
+        assert_eq!(
+            *s,
+            String::fory_read_data(&mut context_compress, true).unwrap()
+        );
     }
     let mut writer = Writer::default();
     let fory = Fory::default().mode(Compatible).xlang(true);

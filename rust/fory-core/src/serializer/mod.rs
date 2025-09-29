@@ -17,6 +17,7 @@
 
 use crate::error::Error;
 use crate::fory::Fory;
+use crate::meta::MetaString;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::{Mode, RefFlag, PRIMITIVE_TYPES};
 
@@ -35,7 +36,7 @@ pub mod skip;
 mod string;
 pub mod struct_;
 
-pub fn write_info_data<T: Serializer + 'static>(
+pub fn write_ref_info_data<T: Serializer + 'static>(
     record: &T,
     context: &mut WriteContext,
     is_field: bool,
@@ -55,7 +56,7 @@ pub fn write_info_data<T: Serializer + 'static>(
     }
 }
 
-pub fn read_info_data<T: Serializer + Default>(
+pub fn read_ref_info_data<T: Serializer + Default>(
     context: &mut ReadContext,
     is_field: bool,
     skip_ref_flag: bool,
@@ -69,7 +70,7 @@ pub fn read_info_data<T: Serializer + Default>(
             if !skip_type_info {
                 T::fory_read_type_info(context, is_field);
             }
-            T::fory_read_data(context)
+            T::fory_read_data(context, is_field)
         } else {
             unimplemented!()
         }
@@ -77,7 +78,7 @@ pub fn read_info_data<T: Serializer + Default>(
         if !skip_type_info {
             T::fory_read_type_info(context, is_field);
         }
-        T::fory_read_data(context)
+        T::fory_read_data(context, is_field)
     }
 }
 
@@ -90,32 +91,14 @@ pub trait Serializer
 where
     Self: Sized + Default + 'static,
 {
-    /// The possible max memory size of the type.
-    /// Used to reserve the buffer space to avoid reallocation, which may hurt performance.
-    fn fory_reserved_space() -> usize;
-
-    /// Write the data into the buffer.
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool);
-
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool);
-
     /// Entry point of the serialization.
-    ///
-    /// Step 1: write the type flag and type flag into the buffer.
-    /// Step 2: invoke the write function to write the Rust object.
     fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
-        write_info_data(self, context, is_field, false, false);
+        write_ref_info_data(self, context, is_field, false, false);
     }
-
-    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error>;
-
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool);
 
     fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        read_info_data(context, is_field, false, false)
+        read_ref_info_data(context, is_field, false, false)
     }
-
-    fn fory_get_type_id(_fory: &Fory) -> u32;
 
     fn fory_is_option() -> bool {
         false
@@ -124,21 +107,63 @@ where
     fn fory_is_none(&self) -> bool {
         false
     }
+
+    fn fory_get_type_id(fory: &Fory) -> u32 {
+        fory.get_type_resolver()
+            .get_type_info(std::any::TypeId::of::<Self>())
+            .get_type_id()
+    }
+
+    /// The possible max memory size of the type.
+    /// Used to reserve the buffer space to avoid reallocation, which may hurt performance.
+    fn fory_reserved_space() -> usize {
+        0
+    }
+
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
+        if !is_field {
+            let type_id = Self::fory_get_type_id(context.get_fory());
+            context.writer.write_varuint32(type_id);
+        }
+    }
+
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
+        if !is_field {
+            let remote_type_id = context.reader.read_varuint32();
+            let local_type_id = Self::fory_get_type_id(context.get_fory());
+            assert_eq!(remote_type_id, local_type_id);
+        }
+    }
+
+    /// Write/Read the data into the buffer. Need to be implemented.
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool);
+
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error>;
 }
 
 pub trait StructSerializer: Serializer + 'static {
     fn fory_type_def(
-        fory: &Fory,
-        type_id: u32,
-        namespace: &str,
-        type_name: &str,
-        register_by_name: bool,
-    ) -> Vec<u8>;
+        _fory: &Fory,
+        _type_id: u32,
+        _namespace: MetaString,
+        _type_name: MetaString,
+        _register_by_name: bool,
+    ) -> Vec<u8> {
+        Vec::default()
+    }
 
-    fn fory_type_index() -> u32;
-    fn fory_actual_type_id(type_id: u32, register_by_name: bool, mode: &Mode) -> u32;
+    fn fory_type_index() -> u32 {
+        unimplemented!()
+    }
+    fn fory_actual_type_id(type_id: u32, register_by_name: bool, mode: &Mode) -> u32 {
+        struct_::actual_type_id(type_id, register_by_name, mode)
+    }
 
-    fn fory_read_compatible(context: &mut ReadContext) -> Result<Self, Error>;
+    fn fory_read_compatible(_context: &mut ReadContext) -> Result<Self, Error> {
+        unimplemented!()
+    }
 
-    fn fory_get_sorted_field_names(fory: &Fory) -> Vec<String>;
+    fn fory_get_sorted_field_names(_fory: &Fory) -> Vec<String> {
+        unimplemented!()
+    }
 }
