@@ -36,6 +36,7 @@ public class Main {
     CompatibleThreadSafeExample.main(args);
     ProxyExample.main(args);
     ObjectStreamExample.main(args);
+    EnsureSerializerExample.main(args);
     Benchmark.main(args);
     CollectionExample.main(args);
     ArrayExample.main(args);

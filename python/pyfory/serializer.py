@@ -183,46 +183,66 @@ class TypeSerializer(Serializer):
         qualname = cls.__qualname__
         buffer.write_string(module)
         buffer.write_string(qualname)
+        fory = self.fory
 
         # Serialize base classes
         # Let Fory's normal serialization handle bases (including other local classes)
         bases = cls.__bases__
         buffer.write_varuint32(len(bases))
         for base in bases:
-            self.fory.serialize_ref(buffer, base)
+            fory.serialize_ref(buffer, base)
 
         # Serialize class dictionary (excluding special attributes)
         # FunctionSerializer will automatically handle methods with closures
         class_dict = {}
+        attr_names, class_methods = [], []
         for attr_name, attr_value in cls.__dict__.items():
             # Skip special attributes that are handled by type() constructor
             if attr_name in __skip_class_attr_names__:
                 continue
-            class_dict[attr_name] = attr_value
+            if isinstance(attr_value, classmethod):
+                attr_names.append(attr_name)
+                class_methods.append(attr_value)
+            else:
+                class_dict[attr_name] = attr_value
+        # serialize method specially to avoid circular deps in method deserialization
+        buffer.write_varuint32(len(class_methods))
+        for i in range(len(class_methods)):
+            buffer.write_string(attr_names[i])
+            class_method = class_methods[i]
+            fory.serialize_ref(buffer, class_method.__func__)
 
         # Let Fory's normal serialization handle the class dict
         # This will use FunctionSerializer for methods, which handles closures properly
-        self.fory.serialize_ref(buffer, class_dict)
+        fory.serialize_ref(buffer, class_dict)
 
     def _deserialize_local_class(self, buffer):
         """Deserialize a local class by recreating it with the captured context."""
-        assert self.fory.ref_tracking, "Reference tracking must be enabled for local classes deserialization"
+        fory = self.fory
+        assert fory.ref_tracking, "Reference tracking must be enabled for local classes deserialization"
         # Read basic class information
         module = buffer.read_string()
         qualname = buffer.read_string()
         name = qualname.rsplit(".", 1)[-1]
-        ref_id = self.fory.ref_resolver.last_preserved_ref_id()
+        ref_id = fory.ref_resolver.last_preserved_ref_id()
 
         # Read base classes
         num_bases = buffer.read_varuint32()
-        bases = tuple([self.fory.deserialize_ref(buffer) for _ in range(num_bases)])
+        bases = tuple([fory.deserialize_ref(buffer) for _ in range(num_bases)])
         # Create the class using type() constructor
         cls = type(name, bases, {})
         # `class_dict` may reference to `cls`, which is a circular reference
-        self.fory.ref_resolver.set_read_object(ref_id, cls)
+        fory.ref_resolver.set_read_object(ref_id, cls)
+
+        # classmethods
+        for i in range(buffer.read_varuint32()):
+            attr_name = buffer.read_string()
+            func = fory.deserialize_ref(buffer)
+            method = types.MethodType(func, cls)
+            setattr(cls, attr_name, method)
         # Read class dictionary
         # Fory's normal deserialization will handle methods via FunctionSerializer
-        class_dict = self.fory.deserialize_ref(buffer)
+        class_dict = fory.deserialize_ref(buffer)
         for k, v in class_dict.items():
             setattr(cls, k, v)
 
@@ -1115,19 +1135,17 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
 
         # Regular function or lambda
         code = func.__code__
-        name = func.__name__
         module = func.__module__
         qualname = func.__qualname__
 
         if "<locals>" not in qualname and module != "__main__":
             buffer.write_int8(1)  # Not a method
-            buffer.write_string(name)
             buffer.write_string(module)
+            buffer.write_string(qualname)
             return
 
         # Serialize function metadata
         buffer.write_int8(2)  # Not a method
-        buffer.write_string(name)
         buffer.write_string(module)
         buffer.write_string(qualname)
 
@@ -1212,15 +1230,17 @@ class FunctionSerializer(CrossLanguageCompatibleSerializer):
             return getattr(self_obj, method_name)
 
         if func_type_id == 1:
-            name = buffer.read_string()
             module = buffer.read_string()
+            qualname = buffer.read_string()
             mod = importlib.import_module(module)
-            return getattr(mod, name)
+            for name in qualname.split("."):
+                mod = getattr(mod, name)
+            return mod
 
         # Regular function or lambda
-        name = buffer.read_string()
         module = buffer.read_string()
         qualname = buffer.read_string()
+        name = qualname.rsplit(".")[-1]
 
         # Use marshal to load the code object, which handles all Python versions correctly
         marshalled_code = buffer.read_bytes_and_size()

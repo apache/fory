@@ -697,7 +697,7 @@ public abstract class TypeResolver {
     final IdentityMap<Type, GenericType> genericTypes = new IdentityMap<>();
     final Map<Class, Map<String, GenericType>> classGenericTypes = new HashMap<>();
     final Map<List<ClassLoader>, CodeGenerator> codeGeneratorMap = new HashMap<>();
-    final Set<ClassInfo> initialClassInfos = new HashSet<>();
+    final Set<ClassInfo> registeredClassInfos = new HashSet<>();
     boolean ensureSerializersCompiled;
   }
 }

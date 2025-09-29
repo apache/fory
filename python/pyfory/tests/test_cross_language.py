@@ -275,7 +275,7 @@ def test_cross_language_serializer(data_file_path):
     with open(data_file_path, "rb") as f:
         data_bytes = f.read()
         buffer = pyfory.Buffer(data_bytes)
-        fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+        fory = pyfory.Fory(xlang=True, ref=True)
         objects = []
         assert _deserialize_and_append(fory, buffer, objects) is True
         assert _deserialize_and_append(fory, buffer, objects) is False
@@ -350,7 +350,7 @@ def test_cross_language_reference(data_file_path):
     with open(data_file_path, "rb") as f:
         data_bytes = f.read()
         buffer = pyfory.Buffer(data_bytes)
-        fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+        fory = pyfory.Fory(xlang=True, ref=True)
         new_list = fory.deserialize(buffer)
         assert new_list[0] is new_list
         new_map = new_list[1]
@@ -376,7 +376,7 @@ def test_serialize_arrow_in_band(data_file_path):
         table = pa.Table.from_batches([batch] * 2)
         data_bytes = f.read()
         buffer = pyfory.Buffer(data_bytes)
-        fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+        fory = pyfory.Fory(xlang=True, ref=True)
         new_batch = fory.deserialize(buffer)
         assert new_batch == batch
         new_table = fory.deserialize(buffer)
@@ -398,7 +398,7 @@ def test_serialize_arrow_out_of_band(int_band_file, out_of_band_file):
         out_of_band_buffer.slice(8, len1),
         out_of_band_buffer.slice(8 + len1, len2),
     ]
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+    fory = pyfory.Fory(xlang=True, ref=True)
     objects = fory.deserialize(in_band_buffer, buffers=buffers)
     assert objects == [batch, table]
     buffer_objects = []
@@ -447,7 +447,7 @@ class ComplexObject2:
 
 
 def test_serialize_simple_struct_local():
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+    fory = pyfory.Fory(xlang=True, ref=True)
     fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
     obj = ComplexObject2(f1=True, f2={-1: 2})
     new_buf = fory.serialize(obj)
@@ -457,7 +457,7 @@ def test_serialize_simple_struct_local():
 @cross_language_test
 def test_serialize_simple_struct(data_file_path):
     compatible = "compatible" in data_file_path
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True, compatible=compatible)
+    fory = pyfory.Fory(xlang=True, ref=True, compatible=compatible)
     fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
     obj = ComplexObject2(f1=True, f2={-1: 2})
     struct_round_back(data_file_path, fory, obj)
@@ -466,7 +466,7 @@ def test_serialize_simple_struct(data_file_path):
 @cross_language_test
 def test_register_by_id(data_file_path):
     compatible = "compatible" in data_file_path
-    fory = pyfory.Fory(language=pyfory.XLANG, ref_tracking=True, compatible=compatible)
+    fory = pyfory.Fory(xlang=True, ref=True, compatible=compatible)
     fory.register_type(ComplexObject2, type_id=100)
     obj = ComplexObject2(f1=True, f2={-1: 2})
     struct_round_back(data_file_path, fory, obj)
@@ -479,7 +479,7 @@ class SomeClass:
 
 
 def test_custom_class_roundtrip():
-    fory = pyfory.Fory(ref_tracking=True)
+    fory = pyfory.Fory(ref=True)
     fory.register_type(SomeClass, typename="example.SomeClass")
     obj1 = SomeClass()
     obj1.f2 = {"k1": "v1", "k2": "v2"}
@@ -516,7 +516,7 @@ class EnumFieldStruct:
 @cross_language_test
 def test_enum_field(data_file_path):
     compatible = "compatible" in data_file_path
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=False, compatible=compatible)
+    fory = pyfory.Fory(xlang=True, ref=False, compatible=compatible)
     fory.register_type(EnumTestClass, namespace="test", typename="EnumTestClass")
     fory.register_type(EnumFieldStruct, namespace="test", typename="EnumFieldStruct")
     obj = EnumFieldStruct(f1=EnumTestClass.FOO, f2=EnumTestClass.BAR, f3="abc")
@@ -526,7 +526,7 @@ def test_enum_field(data_file_path):
 @cross_language_test
 def test_enum_field_register_by_id(data_file_path):
     compatible = "compatible" in data_file_path
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=False, compatible=compatible)
+    fory = pyfory.Fory(xlang=True, ref=False, compatible=compatible)
     fory.register_type(EnumTestClass, type_id=1)
     fory.register_type(EnumFieldStruct, type_id=2)
     obj = EnumFieldStruct(f1=EnumTestClass.FOO, f2=EnumTestClass.BAR, f3="abc")
@@ -539,7 +539,7 @@ def test_struct_hash(data_file_path):
         data_bytes = f.read()
     debug_print(f"len {len(data_bytes)}")
     read_hash = pyfory.Buffer(data_bytes).read_int32()
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+    fory = pyfory.Fory(xlang=True, ref=True)
     fory.register_type(ComplexObject1, typename="ComplexObject1")
     serializer = fory.type_resolver.get_serializer(ComplexObject1)._replace()
     from pyfory._struct import _get_hash
@@ -551,7 +551,7 @@ def test_struct_hash(data_file_path):
 @cross_language_test
 def test_serialize_complex_struct(data_file_path):
     compatible = "compatible" in data_file_path
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True, compatible=compatible)
+    fory = pyfory.Fory(xlang=True, ref=True, compatible=compatible)
     fory.register_type(ComplexObject1, namespace="test", typename="ComplexObject1")
     fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
 
@@ -616,7 +616,7 @@ def test_register_serializer(data_file_path):
         data_bytes = f.read()
     buffer = pyfory.Buffer(data_bytes)
 
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+    fory = pyfory.Fory(xlang=True, ref=True)
     fory.register_type(
         ComplexObject1,
         typename="test.ComplexObject1",
@@ -648,7 +648,7 @@ def test_oob_buffer(in_band_file_path, out_of_band_file_path):
         in_band_bytes = f.read()
     with open(out_of_band_file_path, "rb") as f:
         out_of_band_buffer = pyfory.Buffer(f.read())
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True)
+    fory = pyfory.Fory(xlang=True, ref=True)
     n_buffers = out_of_band_buffer.read_int32()
     buffers = []
     for i in range(n_buffers):
@@ -691,7 +691,7 @@ def test_oob_buffer(in_band_file_path, out_of_band_file_path):
 @cross_language_test
 def test_cross_language_meta_share(data_file_path):
     """Test cross-language meta sharing with ComplexObject2."""
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, compatible=True, ref_tracking=True)
+    fory = pyfory.Fory(xlang=True, compatible=True, ref=True)
 
     @dataclass
     class ComplexObject2:
@@ -730,7 +730,7 @@ def test_cross_language_meta_share(data_file_path):
 @cross_language_test
 def test_cross_language_meta_share_complex(data_file_path):
     """Test cross-language meta sharing with complex nested objects."""
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, compatible=True, ref_tracking=True)
+    fory = pyfory.Fory(xlang=True, compatible=True, ref=True)
 
     @dataclass
     class ComplexObject2:
@@ -787,7 +787,7 @@ def test_cross_language_meta_share_complex(data_file_path):
 @cross_language_test
 def test_schema_evolution(data_file_path):
     """Test schema evolution compatibility."""
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, compatible=True, ref_tracking=True)
+    fory = pyfory.Fory(xlang=True, compatible=True, ref=True)
 
     # Same V1 class reading V1 data - should work perfectly
     @dataclass
@@ -826,7 +826,7 @@ def test_schema_evolution(data_file_path):
 @cross_language_test
 def test_backward_compatibility(data_file_path):
     """Test backward compatibility - old version reading new data."""
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, compatible=True, ref_tracking=True)
+    fory = pyfory.Fory(xlang=True, compatible=True, ref=True)
 
     # Version 1 class (original) reading Version 2 data (should ignore unknown fields)
     @dataclass
@@ -862,7 +862,7 @@ def test_backward_compatibility(data_file_path):
 @cross_language_test
 def test_field_reordering_compatibility(data_file_path):
     """Test field reordering compatibility in metashare mode."""
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, ref_tracking=True, compatible=True)
+    fory = pyfory.Fory(xlang=True, ref=True, compatible=True)
 
     # Version 3 class with reordered fields matching Java CompatTestV3
     @dataclass
@@ -901,7 +901,7 @@ def test_field_reordering_compatibility(data_file_path):
 @cross_language_test
 def test_cross_version_compatibility(data_file_path):
     """Test mixed version compatibility."""
-    fory = pyfory.Fory(language=pyfory.Language.XLANG, compatible=True, ref_tracking=True)
+    fory = pyfory.Fory(xlang=True, compatible=True, ref=True)
 
     @dataclass
     class CompatTestV1:

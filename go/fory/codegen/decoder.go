@@ -146,8 +146,8 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\t}\n")
 			fmt.Fprintf(buf, "\t%s = buf.ReadFloat64()\n", fieldAccess)
 		case types.String:
-			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != 0 {\n")
-			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected RefValueFlag for field %s, got %%d\", flag)\n", field.GoName)
+			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
+			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for field %s, got %%d\", flag)\n", field.GoName)
 			fmt.Fprintf(buf, "\t}\n")
 			fmt.Fprintf(buf, "\t%s = fory.ReadString(buf)\n", fieldAccess)
 		default:
@@ -234,21 +234,21 @@ func generateSliceRead(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess st
 	// Read collection flags for non-empty slice
 	fmt.Fprintf(buf, "\t\t\t// Read collection flags\n")
 	fmt.Fprintf(buf, "\t\t\tcollectFlag := buf.ReadInt8()\n")
-	fmt.Fprintf(buf, "\t\t\t// Check if CollectionNotDeclElementType flag is set\n")
-	fmt.Fprintf(buf, "\t\t\tif (collectFlag & 4) != 0 {\n")
-	fmt.Fprintf(buf, "\t\t\t\t// Read element type ID (we expect it but don't need to validate it for codegen)\n")
+	fmt.Fprintf(buf, "\t\t\t// Check if CollectionIsDeclElementType flag is NOT set (meaning we need to read type ID)\n")
+	fmt.Fprintf(buf, "\t\t\tif (collectFlag & 4) == 0 {\n")
+	fmt.Fprintf(buf, "\t\t\t\t// Read element type ID (not declared, so we need to read it)\n")
 	fmt.Fprintf(buf, "\t\t\t\t_ = buf.ReadVarInt32()\n")
 	fmt.Fprintf(buf, "\t\t\t}\n")
 
 	// Create slice
 	fmt.Fprintf(buf, "\t\t\t%s = make(%s, sliceLen)\n", fieldAccess, sliceType.String())
 
-	// Read elements
+	// Read elements - for declared type slices, use direct element reading without flags
 	fmt.Fprintf(buf, "\t\t\tfor i := 0; i < sliceLen; i++ {\n")
 
-	// Generate element read code based on type
+	// Generate element read code - for typed slices, read directly via serializer
 	elemAccess := fmt.Sprintf("%s[i]", fieldAccess)
-	if err := generateSliceElementRead(buf, elemType, elemAccess); err != nil {
+	if err := generateSliceElementReadDirect(buf, elemType, elemAccess); err != nil {
 		return err
 	}
 
@@ -358,33 +358,32 @@ func generateSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAcc
 
 	// Read collection header
 	fmt.Fprintf(buf, "\t\t\tcollectFlag := buf.ReadInt8()\n")
-	fmt.Fprintf(buf, "\t\t\t// We expect 12 (no ref tracking) or 13 (with ref tracking)\n")
-	fmt.Fprintf(buf, "\t\t\tif collectFlag != 12 && collectFlag != 13 {\n")
-	fmt.Fprintf(buf, "\t\t\t\treturn fmt.Errorf(\"unexpected collection flag: %%d\", collectFlag)\n")
-	fmt.Fprintf(buf, "\t\t\t}\n")
+	fmt.Fprintf(buf, "\t\t\t// Check if CollectionIsDeclElementType is set (bit 2, value 4)\n")
+	fmt.Fprintf(buf, "\t\t\thasDeclType := (collectFlag & 4) != 0\n")
 
 	// Create slice
 	fmt.Fprintf(buf, "\t\t\t%s = make(%s, sliceLen)\n", fieldAccess, sliceType.String())
 
-	// Read elements
-	fmt.Fprintf(buf, "\t\t\tfor i := 0; i < sliceLen; i++ {\n")
-
-	// For each element, read NotNullValueFlag + TypeID + Value
-	fmt.Fprintf(buf, "\t\t\t\t// Read element NotNullValueFlag\n")
-	fmt.Fprintf(buf, "\t\t\t\tif flag := buf.ReadInt8(); flag != -1 {\n")
-	fmt.Fprintf(buf, "\t\t\t\t\treturn fmt.Errorf(\"expected NotNullValueFlag for element, got %%d\", flag)\n")
+	// Read elements based on whether CollectionIsDeclElementType is set
+	fmt.Fprintf(buf, "\t\t\tif hasDeclType {\n")
+	fmt.Fprintf(buf, "\t\t\t\t// Elements are written directly without flags/type IDs\n")
+	fmt.Fprintf(buf, "\t\t\t\tfor i := 0; i < sliceLen; i++ {\n")
+	if err := generateSliceElementReadDirect(buf, elemType, fmt.Sprintf("%s[i]", fieldAccess)); err != nil {
+		return err
+	}
 	fmt.Fprintf(buf, "\t\t\t\t}\n")
-
-	// Read and verify element type ID
-	if err := generateElementTypeIDReadInline(buf, elemType); err != nil {
+	fmt.Fprintf(buf, "\t\t\t} else {\n")
+	fmt.Fprintf(buf, "\t\t\t\t// Need to read type ID once if CollectionIsSameType is set\n")
+	fmt.Fprintf(buf, "\t\t\t\tif (collectFlag & 8) != 0 {\n")
+	fmt.Fprintf(buf, "\t\t\t\t\t// Read element type ID once for all elements\n")
+	fmt.Fprintf(buf, "\t\t\t\t\t_ = buf.ReadVarInt32()\n")
+	fmt.Fprintf(buf, "\t\t\t\t}\n")
+	fmt.Fprintf(buf, "\t\t\t\tfor i := 0; i < sliceLen; i++ {\n")
+	// For same type without declared type, read elements directly
+	if err := generateSliceElementReadDirect(buf, elemType, fmt.Sprintf("%s[i]", fieldAccess)); err != nil {
 		return err
 	}
-
-	// Read element value
-	if err := generateSliceElementReadInline(buf, elemType, fmt.Sprintf("%s[i]", fieldAccess)); err != nil {
-		return err
-	}
-
+	fmt.Fprintf(buf, "\t\t\t\t}\n")
 	fmt.Fprintf(buf, "\t\t\t}\n")
 	fmt.Fprintf(buf, "\t\t}\n")
 	fmt.Fprintf(buf, "\t}\n")
@@ -481,6 +480,46 @@ func generateSliceElementReadInline(buf *bytes.Buffer, elemType types.Type, elem
 	}
 
 	return fmt.Errorf("unsupported element type for read: %s", elemType.String())
+}
+
+// generateSliceElementReadDirect generates code to read slice elements directly via their serializers
+// This is used for typed slices with CollectionIsDeclElementType where no flags/type IDs are written per element
+func generateSliceElementReadDirect(buf *bytes.Buffer, elemType types.Type, elemAccess string) error {
+	// Handle basic types - read directly using their serializers (no flags)
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadBool()\n", elemAccess)
+		case types.Int8:
+			fmt.Fprintf(buf, "\t\t\t\t%s = int8(buf.ReadByte_())\n", elemAccess)
+		case types.Int16:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadInt16()\n", elemAccess)
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadVarint32()\n", elemAccess)
+		case types.Int, types.Int64:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadVarint64()\n", elemAccess)
+		case types.Uint8:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadByte_()\n", elemAccess)
+		case types.Uint16:
+			fmt.Fprintf(buf, "\t\t\t\t%s = uint16(buf.ReadInt16())\n", elemAccess)
+		case types.Uint32:
+			fmt.Fprintf(buf, "\t\t\t\t%s = uint32(buf.ReadInt32())\n", elemAccess)
+		case types.Uint, types.Uint64:
+			fmt.Fprintf(buf, "\t\t\t\t%s = uint64(buf.ReadInt64())\n", elemAccess)
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadFloat32()\n", elemAccess)
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\t\t\t%s = buf.ReadFloat64()\n", elemAccess)
+		case types.String:
+			// String serializer reads directly without flags
+			fmt.Fprintf(buf, "\t\t\t\t%s = fory.ReadString(buf)\n", elemAccess)
+		default:
+			return fmt.Errorf("unsupported basic type for direct element read: %s", basic.String())
+		}
+		return nil
+	}
+
+	return fmt.Errorf("unsupported element type for direct read: %s", elemType.String())
 }
 
 // generateMapReadInline generates inline map deserialization code following the chunk-based format

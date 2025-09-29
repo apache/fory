@@ -149,14 +149,14 @@ COMPLEX_OBJECT = ComplexObject1(
 )
 
 
-def fory_object(language, ref_tracking, obj):
-    fory = pyfory.Fory(language=language, ref_tracking=ref_tracking)
+def fory_object(xlang, ref, obj):
+    fory = pyfory.Fory(xlang=xlang, ref=ref)
     binary = fory.serialize(obj)
     fory.deserialize(binary)
 
 
-def fory_data_class(language, ref_tracking, obj, register_callable):
-    fory = pyfory.Fory(language=language, ref_tracking=ref_tracking)
+def fory_data_class(xlang, ref, obj, register_callable):
+    fory = pyfory.Fory(xlang=xlang, ref=ref)
     register_callable(fory)
     binary = fory.serialize(obj)
     fory.deserialize(binary)
@@ -183,35 +183,35 @@ def micro_benchmark():
         os.environ["ENABLE_FORY_CYTHON_SERIALIZATION"] = "0"
         sys.argv += ["--inherit-environ", "ENABLE_FORY_CYTHON_SERIALIZATION"]
     runner.parse_args()
-    language = pyfory.Language.XLANG if args.xlang else pyfory.Language.PYTHON
-    runner.bench_func("fory_dict", fory_object, language, not args.no_ref, DICT)
+    xlang = args.xlang
+    runner.bench_func("fory_dict", fory_object, xlang, not args.no_ref, DICT)
     runner.bench_func(
-        "fory_large_dict", fory_object, language, not args.no_ref, LARGE_DICT
+        "fory_large_dict", fory_object, xlang, not args.no_ref, LARGE_DICT
     )
     runner.bench_func(
-        "fory_dict_group", fory_object, language, not args.no_ref, DICT_GROUP
+        "fory_dict_group", fory_object, xlang, not args.no_ref, DICT_GROUP
     )
-    runner.bench_func("fory_tuple", fory_object, language, not args.no_ref, TUPLE)
+    runner.bench_func("fory_tuple", fory_object, xlang, not args.no_ref, TUPLE)
     runner.bench_func(
-        "fory_large_tuple", fory_object, language, not args.no_ref, LARGE_TUPLE
+        "fory_large_tuple", fory_object, xlang, not args.no_ref, LARGE_TUPLE
     )
     runner.bench_func(
         "fory_large_float_tuple",
         fory_object,
-        language,
+        xlang,
         not args.no_ref,
         LARGE_FLOAT_TUPLE,
     )
     runner.bench_func(
         "fory_large_boolean_tuple",
         fory_object,
-        language,
+        xlang,
         not args.no_ref,
         LARGE_BOOLEAN_TUPLE,
     )
-    runner.bench_func("fory_list", fory_object, language, not args.no_ref, LIST)
+    runner.bench_func("fory_list", fory_object, xlang, not args.no_ref, LIST)
     runner.bench_func(
-        "fory_large_list", fory_object, language, not args.no_ref, LARGE_LIST
+        "fory_large_list", fory_object, xlang, not args.no_ref, LARGE_LIST
     )
 
     def register_complex(fory):
@@ -225,7 +225,7 @@ def micro_benchmark():
     runner.bench_func(
         "fory_complex",
         fory_data_class,
-        language,
+        xlang,
         not args.no_ref,
         COMPLEX_OBJECT,
         register_complex,

@@ -275,7 +275,7 @@ public class ClassResolver extends TypeResolver {
       classInfoMap.forEach(
           (cls, classInfo) -> {
             if (classInfo.serializer != null) {
-              extRegistry.initialClassInfos.add(classInfo);
+              extRegistry.registeredClassInfos.add(classInfo);
             }
           });
     }
@@ -687,9 +687,11 @@ public class ClassResolver extends TypeResolver {
     addSerializer(type, serializer);
     ClassInfo classInfo = classInfoMap.get(type);
     classInfoMap.put(type, classInfo);
+    extRegistry.registeredClassInfos.add(classInfo);
     // in order to support customized serializer for abstract or interface.
     if (!type.isPrimitive() && (ReflectionUtils.isAbstract(type) || type.isInterface())) {
       extRegistry.absClassInfo.put(type, classInfo);
+      extRegistry.registeredClassInfos.add(classInfo);
     }
   }
 
@@ -1803,15 +1805,15 @@ public class ClassResolver extends TypeResolver {
             }
           });
       if (GraalvmSupport.isGraalBuildtime()) {
+        classInfoCache = NIL_CLASS_INFO;
         classInfoMap.forEach(
             (cls, classInfo) -> {
               if (classInfo.serializer != null
-                  && !extRegistry.initialClassInfos.contains(classInfo)) {
+                  && !extRegistry.registeredClassInfos.contains(classInfo)) {
                 classInfo.serializer = null;
               }
             });
       }
-      classInfoCache = NIL_CLASS_INFO;
     } finally {
       fory.getJITContext().unlock();
     }
