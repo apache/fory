@@ -707,6 +707,9 @@ public final class Fory implements BaseFory {
       } else {
         size = buffer.readVarUint32();
       }
+      if (buffer.readerIndex() + size > buffer.size() && buffer.getStreamReader() != null) {
+        buffer.getStreamReader().fillBuffer(buffer.readerIndex() + size - buffer.size());
+      }
       MemoryBuffer slice = buffer.slice(buffer.readerIndex(), size);
       buffer.readerIndex(buffer.readerIndex() + size);
       return slice;
