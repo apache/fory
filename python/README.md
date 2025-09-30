@@ -555,7 +555,7 @@ fory.register(MyClass, typename="my.package.MyClass", serializer=custom_serializ
 | **Functions/Lambdas** | ✓ Supported                 | ✗ Not allowed                         |
 | **Local Classes**     | ✓ Supported                 | ✗ Not allowed                         |
 | **Dynamic Classes**   | ✓ Supported                 | ✗ Not allowed                         |
-| **Schema Evolution**  | ✗ Not supported             | ✓ Supported (with `compatible=True`)  |
+| **Schema Evolution**  | ✓ Supported (with `compatible=True`)| ✓ Supported (with `compatible=True`)  |
 | **Performance**       | Extremely fast              | Very fast                             |
 | **Data Size**         | Compact                     | Compact with type metadata            |
 
