@@ -214,7 +214,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
       nestedWriter.reset();
     } else {
       nestedWriter.startIndex = getOffset(ordinal);
-      resetHeader();
+      nestedWriter.resetHeader();
     }
   }
 

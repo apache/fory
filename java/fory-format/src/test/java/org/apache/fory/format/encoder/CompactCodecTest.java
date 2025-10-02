@@ -675,4 +675,35 @@ public class CompactCodecTest {
             MemoryBuffer.fromByteBuffer(buf.slice(offset, bytes.length)));
     assertEquals(deserializedBean, expected);
   }
+
+  @Data
+  public static class HeaderClearObject {
+    public UUID f1;
+    public InnerHeaderClearObject f2;
+  }
+
+  @Data
+  public static class InnerHeaderClearObject {
+    public UUID f1;
+    public UUID f2;
+    public UUID f3;
+  }
+
+  @Test
+  public void testHeaderClear() {
+    final InnerHeaderClearObject inner = new InnerHeaderClearObject();
+    inner.f1 = UUID.randomUUID();
+
+    final HeaderClearObject outer = new HeaderClearObject();
+    outer.f2 = inner;
+
+    final RowEncoder<HeaderClearObject> encoder =
+        Encoders.buildBeanCodec(HeaderClearObject.class)
+            .compactEncoding()
+            .build()
+            .get();
+    final byte[] bytes = encoder.encode(outer);
+    final HeaderClearObject deserializedBean = encoder.decode(bytes);
+    assertEquals(deserializedBean, outer);
+  }
 }
