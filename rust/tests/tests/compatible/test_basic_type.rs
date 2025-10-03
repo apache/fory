@@ -34,7 +34,8 @@ const STR_LATIN1_VAL: &str = "Çüéâäàåçêëèïî";
 // time
 #[allow(deprecated)]
 const TIMESTAMP_VAL: NaiveDateTime = NaiveDateTime::from_timestamp(100, 0);
-const LOCAL_DATE_VAL: NaiveDate = NaiveDate::from_ymd_opt(2021, 11, 23).unwrap();
+#[allow(deprecated)]
+const LOCAL_DATE_VAL: NaiveDate = NaiveDate::from_ymd(2021, 11, 23);
 
 const BOOL_ARRAY: [bool; 1] = [true];
 const INT8_ARRAY: [i8; 1] = [48];
