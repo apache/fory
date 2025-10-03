@@ -191,6 +191,41 @@ fn benchmark_read_utf8(c: &mut Criterion) {
     }
 }
 
+fn benchmark_read_utf16(c: &mut Criterion) {
+    let sizes = [100, 1000, 10000, 100000];
+    let test_string = "Hello, 世界! 🌍";
+
+    for &size in &sizes {
+        let s = test_string.repeat(size / test_string.len() + 1);
+        // 构造 UTF-16 LE 字节数据
+        let mut data: Vec<u8> = Vec::with_capacity(s.len() * 2);
+        for u in s.encode_utf16() {
+            let lo = (u & 0x00FF) as u8;
+            let hi = (u >> 8) as u8;
+            data.push(lo);
+            data.push(hi);
+        }
+
+        let name_simd = format!("Read UTF-16 SIMD size {}", size);
+        c.bench_function(&name_simd, |b| {
+            b.iter(|| {
+                let mut reader = Reader::new(black_box(&data));
+                let result = reader.read_utf16_string_simd(black_box(data.len()));
+                black_box(result);
+            })
+        });
+
+        let name_scalar = format!("Read UTF-16 Standard size {}", size);
+        c.bench_function(&name_scalar, |b| {
+            b.iter(|| {
+                let mut reader = Reader::new(black_box(&data));
+                let result = reader.read_utf16_string(black_box(data.len()));
+                black_box(result);
+            })
+        });
+    }
+}
+
 fn criterion_benchmark(c: &mut Criterion) {
     let test_str_short = "Hello, World!";
     let test_str_long = "Hello, World! ".repeat(1000);
@@ -212,19 +247,21 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| unsafe { is_latin_avx(black_box(&test_str_long)) })
     });
 
-    // c.bench_function("Standard short", |b| {
-    //     b.iter(|| is_latin_std(black_box(test_str_short)))
-    // });
-    //
-    // c.bench_function("Standard long", |b| {
-    //     b.iter(|| is_latin_std(black_box(&test_str_long)))
-    // });
-    //
-    // benchmark_write_utf8(c);
-    // benchmark_write_latin1(c);
+    c.bench_function("Standard short", |b| {
+        b.iter(|| is_latin_std(black_box(test_str_short)))
+    });
+    
+    c.bench_function("Standard long", |b| {
+        b.iter(|| is_latin_std(black_box(&test_str_long)))
+    });
+    
+    benchmark_write_utf8(c);
+    benchmark_write_latin1(c);
 
-    // benchmark_read_latin1(c);
+    benchmark_read_latin1(c);
     benchmark_read_utf8(c);
+    
+    benchmark_read_utf16(c);
 }
 
 criterion_group!(benches, criterion_benchmark);

@@ -598,6 +598,14 @@ impl<'bf> Reader<'bf> {
         result
     }
 
+    pub fn read_utf16_string_simd(&mut self, len: usize) -> String {
+        assert!(len % 2 == 0, "UTF-16 length must be even");
+        let slice = &self.bf[self.cursor..self.cursor + len];
+        let result = crate::meta::read_utf16_simd(slice);
+        self.move_next(len);
+        result
+    }
+
     pub fn read_utf8_string(&mut self, len: usize) -> String {
         self.read_utf8_string_simd(len)
     }
