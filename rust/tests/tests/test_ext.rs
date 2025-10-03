@@ -19,7 +19,6 @@ use fory_core::error::Error;
 use fory_core::fory::Fory;
 use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::serializer::Serializer;
-use fory_core::types::Language::Python;
 use fory_core::types::Mode::Compatible;
 use fory_derive::Fory;
 

@@ -15,14 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::any::Any;
-use anyhow::anyhow;
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::meta::{MetaString, NAMESPACE_DECODER, NAMESPACE_ENCODER, NAMESPACE_ENCODINGS, TYPE_NAME_DECODER};
+use crate::meta::{MetaString, NAMESPACE_DECODER, TYPE_NAME_DECODER};
 use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::metastring_resolver::MetaStringBytes;
 use crate::types::{Mode, RefFlag, TypeId, PRIMITIVE_TYPES};
+use anyhow::anyhow;
+use std::any::Any;
 
 mod any;
 mod arc;
@@ -107,8 +106,6 @@ pub trait Serializer
 where
     Self: Sized + Default + 'static,
 {
-    
-    
     /// Entry point of the serialization.
     fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
         write_ref_info_data(self, context, is_field, false, false);
@@ -157,8 +154,12 @@ where
             let namespace = type_info.get_namespace().to_owned();
             let type_name = type_info.get_type_name().to_owned();
             let resolver = context.get_fory().get_metastring_resolver();
-            resolver.borrow_mut().write_meta_string_bytes(context, &namespace);
-            resolver.borrow_mut().write_meta_string_bytes(context, &type_name);
+            resolver
+                .borrow_mut()
+                .write_meta_string_bytes(context, &namespace);
+            resolver
+                .borrow_mut()
+                .write_meta_string_bytes(context, &type_name);
         }
     }
 
@@ -201,18 +202,18 @@ where
             let tsb = resolver.borrow_mut().read_meta_string_bytes(context);
             let ns = NAMESPACE_DECODER.decode(&nsb.bytes, nsb.encoding)?;
             let ts = TYPE_NAME_DECODER.decode(&tsb.bytes, tsb.encoding)?;
-            (ns ,ts)
+            (ns, ts)
         };
         let type_resolver = context.get_fory().get_type_resolver();
         type_resolver
             .get_name_harness(&namespace, &type_name)
             .unwrap()
             .get_read_data_fn()(context, true)
-            .and_then(|b: Box<dyn Any>| {
-                b.downcast::<Self>()
-                    .map(|boxed_self| *boxed_self)
-                    .map_err(|_| anyhow!("downcast to Self failed").into())
-            })
+        .and_then(|b: Box<dyn Any>| {
+            b.downcast::<Self>()
+                .map(|boxed_self| *boxed_self)
+                .map_err(|_| anyhow!("downcast to Self failed").into())
+        })
     }
 }
 

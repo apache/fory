@@ -66,8 +66,12 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext, is_field: bool
         let namespace = type_info.get_namespace().to_owned();
         let type_name = type_info.get_type_name().to_owned();
         let resolver = context.get_fory().get_metastring_resolver();
-        resolver.borrow_mut().write_meta_string_bytes(context, &namespace);
-        resolver.borrow_mut().write_meta_string_bytes(context, &type_name);
+        resolver
+            .borrow_mut()
+            .write_meta_string_bytes(context, &namespace);
+        resolver
+            .borrow_mut()
+            .write_meta_string_bytes(context, &type_name);
     }
 }
 

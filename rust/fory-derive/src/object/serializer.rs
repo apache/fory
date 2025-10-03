@@ -144,7 +144,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
             fn fory_read(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
                 #read_ts
             }
-            
+
              fn fory_read_compatible(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
                 #read_compatible_ts
             }

@@ -18,18 +18,21 @@
 use super::context::{ReadContext, WriteContext};
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::meta::{MetaString, TypeMeta, NAMESPACE_ENCODER, NAMESPACE_ENCODINGS, TYPE_NAME_ENCODER, TYPE_NAME_ENCODINGS};
+use crate::meta::{
+    MetaString, TypeMeta, NAMESPACE_ENCODER, NAMESPACE_ENCODINGS, TYPE_NAME_ENCODER,
+    TYPE_NAME_ENCODINGS,
+};
 use crate::serializer::{Serializer, StructSerializer};
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::{any::Any, collections::HashMap};
 
 type WriteDataFn = fn(&dyn Any, &mut WriteContext, is_field: bool);
-type ReadDataFn =
-    fn(&mut ReadContext, is_field: bool) -> Result<Box<dyn Any>, Error>;
+type ReadDataFn = fn(&mut ReadContext, is_field: bool) -> Result<Box<dyn Any>, Error>;
 
 pub type ExtWriteDataFn = dyn Fn(&dyn Any, &mut WriteContext, bool) + Send + Sync;
-pub type ExtReadDataFn = dyn Fn(&mut ReadContext, bool) -> Result<Box<dyn Any>, Error> + Send + Sync;
+pub type ExtReadDataFn =
+    dyn Fn(&mut ReadContext, bool) -> Result<Box<dyn Any>, Error> + Send + Sync;
 
 pub struct Harness {
     write_fn: WriteDataFn,
@@ -38,10 +41,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn new(write_fn: WriteDataFn, read_fn: ReadDataFn) -> Harness {
-        Harness {
-            write_fn,
-            read_fn,
-        }
+        Harness { write_fn, read_fn }
     }
 
     pub fn get_write_data_fn(&self) -> WriteDataFn {
@@ -219,13 +219,7 @@ impl TypeResolver {
             match this {
                 Some(v) => {
                     // write_data
-                    crate::serializer::write_ref_info_data(
-                        v,
-                        context,
-                        is_field,
-                        true,
-                        true,
-                    );
+                    crate::serializer::write_ref_info_data(v, context, is_field, true, true);
                 }
                 None => todo!(),
             }
@@ -236,12 +230,7 @@ impl TypeResolver {
             is_field: bool,
         ) -> Result<Box<dyn Any>, Error> {
             // read_data
-            match crate::serializer::read_ref_info_data::<T2>(
-                context,
-                is_field,
-                true,
-                true,
-            ) {
+            match crate::serializer::read_ref_info_data::<T2>(context, is_field, true, true) {
                 Ok(v) => Ok(Box::new(v)),
                 Err(e) => Err(e),
             }
@@ -335,7 +324,9 @@ impl TypeResolver {
     }
 
     pub fn get_ext_harness(&self, id: u32) -> &ExtHarness {
-        self.ext_serializer_map.get(&id).unwrap_or_else(|| panic!("ext type must be registered in both peers"))
+        self.ext_serializer_map
+            .get(&id)
+            .unwrap_or_else(|| panic!("ext type must be registered in both peers"))
     }
 
     pub fn get_ext_name_harness(
@@ -344,7 +335,9 @@ impl TypeResolver {
         type_name: &MetaString,
     ) -> &ExtHarness {
         let key = (namespace.clone(), type_name.clone());
-        self.ext_name_serializer_map.get(&key).unwrap_or_else(|| panic!("named_ext type must be registered in both peers"))
+        self.ext_name_serializer_map
+            .get(&key)
+            .unwrap_or_else(|| panic!("named_ext type must be registered in both peers"))
     }
 
     pub fn get_sorted_field_names<T: StructSerializer>(

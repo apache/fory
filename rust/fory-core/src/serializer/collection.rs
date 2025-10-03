@@ -19,7 +19,7 @@ use crate::error::Error;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::{Mode, PRIMITIVE_ARRAY_TYPES};
+use crate::types::PRIMITIVE_ARRAY_TYPES;
 
 // const TRACKING_REF: u8 = 0b1;
 

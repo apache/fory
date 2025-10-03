@@ -46,6 +46,7 @@ import org.apache.fory.test.TestUtils;
 import org.apache.fory.util.MurmurHash3;
 import org.testng.Assert;
 import org.testng.SkipException;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 /** Tests in this class need fory rust installed. */
@@ -73,7 +74,7 @@ public class RustXlangTest extends ForyTestBase {
 
   private static final int RUST_TESTCASE_INDEX = 4;
 
-  //  @BeforeClass
+  @BeforeClass
   public void isRustJavaCIEnabled() {
     String enabled = System.getenv("FORY_RUST_JAVA_CI");
     if (enabled == null || !enabled.equals("1")) {
@@ -97,30 +98,30 @@ public class RustXlangTest extends ForyTestBase {
   @Test
   public void testRust() throws Exception {
     List<String> command = rustBaseCommand;
-    //    command.set(RUST_TESTCASE_INDEX, "test_buffer");
-    //    testBuffer(Language.RUST, command);
-    //    command.set(RUST_TESTCASE_INDEX, "test_buffer_var");
-    //    testBufferVar(Language.RUST, command);
-    //    command.set(RUST_TESTCASE_INDEX, "test_murmurhash3");
-    //    testMurmurHash3(Language.RUST, command);
-    //    command.set(RUST_TESTCASE_INDEX, "test_string_serializer");
-    //    testStringSerializer(Language.RUST, command);
-    //    command.set(RUST_TESTCASE_INDEX, "test_cross_language_serializer");
-    //    testCrossLanguageSerializer(Language.RUST, command);
-    //    command.set(RUST_TESTCASE_INDEX, "test_simple_struct");
-    //    testSimpleStruct(Language.RUST, command);
-    //    command.set(RUST_TESTCASE_INDEX, "test_simple_named_struct");
-    //    testSimpleNamedStruct(Language.RUST, command);
-    //    command.set(RUST_TESTCASE_INDEX, "test_list");
-    //    testList(Language.RUST, command);
-    //    command.set(RUST_TESTCASE_INDEX, "test_map");
-    //    testMap(Language.RUST, command);
-    //    command.set(RUST_TESTCASE_INDEX, "test_integer");
-    //    testInteger(Language.RUST, command);
-    //      command.set(RUST_TESTCASE_INDEX, "test_skip_id_custom");
-    //      testSkipIdCustom(Language.RUST, command);
-    //      command.set(RUST_TESTCASE_INDEX, "test_skip_name_custom");
-    //      testSkipNameCustom(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_buffer");
+    testBuffer(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_buffer_var");
+    testBufferVar(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_murmurhash3");
+    testMurmurHash3(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_string_serializer");
+    testStringSerializer(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_cross_language_serializer");
+    testCrossLanguageSerializer(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_simple_struct");
+    testSimpleStruct(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_simple_named_struct");
+    testSimpleNamedStruct(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_list");
+    testList(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_map");
+    testMap(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_integer");
+    testInteger(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_skip_id_custom");
+    testSkipIdCustom(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_skip_name_custom");
+    testSkipNameCustom(Language.RUST, command);
     command.set(RUST_TESTCASE_INDEX, "test_consistent_named");
     testConsistentNamed(Language.RUST, command);
   }
@@ -745,6 +746,7 @@ public class RustXlangTest extends ForyTestBase {
         setFilePath(language, command, dataFile, serialize);
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+    // todo: https://github.com/apache/fory/issues/2698
     //        EmptyWrapper newWrapper = (EmptyWrapper) fory2.deserialize(buffer2);
     //        Assert.assertEquals(newWrapper, new EmptyWrapper());
   }
@@ -825,7 +827,6 @@ public class RustXlangTest extends ForyTestBase {
     fory.serialize(buffer, myExt);
     fory.serialize(buffer, myExt);
     byte[] bytes = buffer.getBytes(0, buffer.writerIndex());
-    System.out.println(Arrays.toString(bytes));
     Path dataFile = Files.createTempFile("test_consistent_named", "data");
     Pair<Map<String, String>, File> env_workdir = setFilePath(language, command, dataFile, bytes);
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));

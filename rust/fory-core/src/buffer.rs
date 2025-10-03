@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::arch::aarch64::{vld1q_u8, vst1q_u8};
 use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
+use std::arch::aarch64::{vld1q_u8, vst1q_u8};
 
 #[derive(Default)]
 pub struct Writer {
@@ -289,13 +289,15 @@ impl Writer {
     }
 
     pub fn write_latin1_string(&mut self, s: &str) {
-        let bytes = s.as_bytes();
-        self.write_bytes_simd(bytes);
+        // let bytes = s.as_bytes();
+        // self.write_bytes_simd(bytes);
+        self.write_latin1_string_standard(s);
     }
 
     pub fn write_utf8_string(&mut self, s: &str) {
-        let bytes = s.as_bytes();
-        self.write_bytes_simd(bytes);
+        // let bytes = s.as_bytes();
+        // self.write_bytes_simd(bytes);
+        self.write_utf8_string_standard(s);
     }
 
     pub fn write_latin1_string_standard(&mut self, s: &str) {
@@ -314,6 +316,7 @@ impl Writer {
     }
 
     #[inline]
+    #[allow(dead_code)]
     fn write_bytes_simd(&mut self, bytes: &[u8]) {
         let len = bytes.len();
         let mut i = 0usize;
@@ -345,7 +348,11 @@ impl Writer {
                     }
                 }
 
-                #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2"), target_feature = "sse2"))]
+                #[cfg(all(
+                    target_arch = "x86_64",
+                    not(target_feature = "avx2"),
+                    target_feature = "sse2"
+                ))]
                 {
                     const CHUNK: usize = 32;
                     while i + CHUNK <= len {
@@ -587,8 +594,55 @@ impl<'bf> Reader<'bf> {
         ((encoded >> 1) as i64) ^ -((encoded & 1) as i64)
     }
 
+    pub fn read_varuint36small(&mut self) -> u64 {
+        let start = self.cursor;
+        // fast path
+        if self.slice_after_cursor().len() >= 8 {
+            let bulk = self.read_u64();
+            let mut result = bulk & 0x7F;
+            let mut read_idx = start;
+
+            if (bulk & 0x80) != 0 {
+                read_idx += 1;
+                result |= (bulk >> 1) & 0x3F80;
+                if (bulk & 0x8000) != 0 {
+                    read_idx += 1;
+                    result |= (bulk >> 2) & 0x1FC000;
+                    if (bulk & 0x800000) != 0 {
+                        read_idx += 1;
+                        result |= (bulk >> 3) & 0xFE00000;
+                        if (bulk & 0x80000000) != 0 {
+                            read_idx += 1;
+                            result |= (bulk >> 4) & 0xFF0000000;
+                        }
+                    }
+                }
+            }
+            self.cursor = read_idx + 1;
+            return result;
+        }
+        // slow path
+        let mut result = 0u64;
+        let mut shift = 0;
+        while self.cursor < self.bf.len() {
+            let b = self.read_u8();
+            result |= ((b & 0x7F) as u64) << shift;
+            if (b & 0x80) == 0 {
+                break;
+            }
+            shift += 7;
+        }
+        result
+    }
+
     pub fn read_latin1_string(&mut self, len: usize) -> String {
-        self.read_latin1_string_simd(len)
+        // self.read_latin1_string_simd(len)
+        self.read_latin1_string_standard(len)
+    }
+
+    pub fn read_utf8_string(&mut self, len: usize) -> String {
+        // self.read_utf8_string_simd(len)
+        self.read_utf8_string_standard(len)
     }
 
     pub fn read_latin1_string_standard(&mut self, len: usize) -> String {
@@ -599,15 +653,11 @@ impl<'bf> Reader<'bf> {
     }
 
     pub fn read_utf16_string_simd(&mut self, len: usize) -> String {
-        assert!(len % 2 == 0, "UTF-16 length must be even");
+        assert_eq!(len % 2, 0, "UTF-16 length must be even");
         let slice = &self.bf[self.cursor..self.cursor + len];
         let result = crate::meta::read_utf16_simd(slice);
         self.move_next(len);
         result
-    }
-
-    pub fn read_utf8_string(&mut self, len: usize) -> String {
-        self.read_utf8_string_simd(len)
     }
 
     pub fn read_utf8_string_standard(&mut self, len: usize) -> String {
@@ -633,7 +683,7 @@ impl<'bf> Reader<'bf> {
     #[inline]
     unsafe fn read_bytes_simd(&self, bytes: &[u8]) -> Vec<u8> {
         let len = bytes.len();
-        let mut result = Vec::with_capacity(len);
+        let mut result = vec![0u8; len];
 
         #[cfg(any(
             all(target_arch = "x86_64", target_feature = "avx2"),
@@ -659,7 +709,11 @@ impl<'bf> Reader<'bf> {
                     i += CHUNK;
                 }
             }
-            #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2"), target_feature = "sse2"))]
+            #[cfg(all(
+                target_arch = "x86_64",
+                not(target_feature = "avx2"),
+                target_feature = "sse2"
+            ))]
             {
                 const CHUNK: usize = 32;
                 while i + CHUNK <= len {
@@ -728,47 +782,6 @@ impl<'bf> Reader<'bf> {
             // lossy
             .unwrap_or_else(|_| String::from("�"));
         self.move_next(len);
-        result
-    }
-
-    pub fn read_varuint36small(&mut self) -> u64 {
-        let start = self.cursor;
-        // fast path
-        if self.slice_after_cursor().len() >= 8 {
-            let bulk = self.read_u64();
-            let mut result = bulk & 0x7F;
-            let mut read_idx = start;
-
-            if (bulk & 0x80) != 0 {
-                read_idx += 1;
-                result |= (bulk >> 1) & 0x3F80;
-                if (bulk & 0x8000) != 0 {
-                    read_idx += 1;
-                    result |= (bulk >> 2) & 0x1FC000;
-                    if (bulk & 0x800000) != 0 {
-                        read_idx += 1;
-                        result |= (bulk >> 3) & 0xFE00000;
-                        if (bulk & 0x80000000) != 0 {
-                            read_idx += 1;
-                            result |= (bulk >> 4) & 0xFF0000000;
-                        }
-                    }
-                }
-            }
-            self.cursor = read_idx + 1;
-            return result;
-        }
-        // slow path
-        let mut result = 0u64;
-        let mut shift = 0;
-        while self.cursor < self.bf.len() {
-            let b = self.read_u8();
-            result |= ((b & 0x7F) as u64) << shift;
-            if (b & 0x80) == 0 {
-                break;
-            }
-            shift += 7;
-        }
         result
     }
 

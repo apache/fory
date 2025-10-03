@@ -17,7 +17,10 @@
 
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
-use crate::meta::{murmurhash3_x64_128, Encoding, MetaString, MetaStringDecoder, FIELD_NAME_DECODER, FIELD_NAME_ENCODER, NAMESPACE_DECODER, TYPE_NAME_DECODER};
+use crate::meta::{
+    murmurhash3_x64_128, Encoding, MetaString, MetaStringDecoder, FIELD_NAME_DECODER,
+    FIELD_NAME_ENCODER, NAMESPACE_DECODER, TYPE_NAME_DECODER,
+};
 use crate::types::{TypeId, FINAL_TYPES, PRIMITIVE_ARRAY_TYPES, PRIMITIVE_TYPES};
 use anyhow::anyhow;
 use std::clone::Clone;
@@ -382,7 +385,7 @@ impl TypeMetaLayer {
         Ok(writer.dump())
     }
 
-    fn sort_field_infos(field_infos: &Vec<FieldInfo>) -> Vec<FieldInfo> {
+    fn sort_field_infos(field_infos: &[FieldInfo]) -> Vec<FieldInfo> {
         // group
         let mut primitive_fields = Vec::new();
         let mut nullable_primitive_fields = Vec::new();
@@ -402,32 +405,42 @@ impl TypeMetaLayer {
             let internal_id = type_id & 0xff;
             if PRIMITIVE_TYPES.contains(&type_id) {
                 primitive_fields.push(field_info.clone());
-            } else if PRIMITIVE_ARRAY_TYPES.contains(&type_id) || FINAL_TYPES.contains(&type_id) || [TypeId::ENUM as u32, TypeId::NAMED_ENUM as u32].contains(&internal_id) {
+            } else if PRIMITIVE_ARRAY_TYPES.contains(&type_id)
+                || FINAL_TYPES.contains(&type_id)
+                || [TypeId::ENUM as u32, TypeId::NAMED_ENUM as u32].contains(&internal_id)
+            {
                 final_fields.push(field_info.clone());
             } else if [TypeId::LIST as u32, TypeId::SET as u32].contains(&type_id) {
                 collection_fields.push(field_info.clone());
             } else if TypeId::MAP as u32 == type_id {
                 map_fields.push(field_info.clone());
-            } else if [TypeId::COMPATIBLE_STRUCT as u32, TypeId::NAMED_COMPATIBLE_STRUCT as u32, TypeId::EXT as u32, TypeId::NAMED_EXT as u32].contains(&internal_id) {
+            } else if [
+                TypeId::COMPATIBLE_STRUCT as u32,
+                TypeId::NAMED_COMPATIBLE_STRUCT as u32,
+                TypeId::EXT as u32,
+                TypeId::NAMED_EXT as u32,
+            ]
+            .contains(&internal_id)
+            {
                 other_fields.push(field_info.clone());
             } else {
                 unreachable!()
             }
         }
         fn sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
-            let (a_id, b_id) = {
-                if a.field_type.type_id == TypeId::ForyNullable as u32 {
-                    (
-                        a.field_type.generics.first().unwrap().type_id,
-                        b.field_type.generics.first().unwrap().type_id,
-                    )
-                } else {
-                    (a.field_type.type_id,b.field_type.type_id)
-                }
+            let a_id = if a.field_type.type_id == TypeId::ForyNullable as u32 {
+                a.field_type.generics.first().unwrap().type_id
+            } else {
+                a.field_type.type_id
+            };
+            let b_id = if b.field_type.type_id == TypeId::ForyNullable as u32 {
+                b.field_type.generics.first().unwrap().type_id
+            } else {
+                b.field_type.type_id
             };
             let a_field_name = &a.field_name;
             let b_field_name = &b.field_name;
-            a_id.cmp(&b_id).then_with(|| a_field_name.cmp(&b_field_name))
+            a_id.cmp(&b_id).then_with(|| a_field_name.cmp(b_field_name))
         }
         fn get_primitive_type_size(type_id_num: u32) -> i32 {
             let type_id = TypeId::try_from(type_id_num as i16).unwrap();
@@ -452,12 +465,9 @@ impl TypeMetaLayer {
                 TypeId::VAR_INT32 as u32,
                 TypeId::VAR_INT64 as u32,
             ]
-                .contains(&type_id)
+            .contains(&type_id)
         }
-        fn numeric_sorter(
-            a: &FieldInfo,
-            b: &FieldInfo,
-        ) -> std::cmp::Ordering {
+        fn numeric_sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
             let (a_id, b_id) = {
                 // for nullable_primitive
                 if a.field_type.type_id == TypeId::ForyNullable as u32 {
@@ -466,7 +476,7 @@ impl TypeMetaLayer {
                         b.field_type.generics.first().unwrap().type_id,
                     )
                 } else {
-                    (a.field_type.type_id,b.field_type.type_id)
+                    (a.field_type.type_id, b.field_type.type_id)
                 }
             };
             let a_field_name = &a.field_name;
@@ -478,7 +488,7 @@ impl TypeMetaLayer {
             compress_a
                 .cmp(&compress_b)
                 .then_with(|| size_b.cmp(&size_a))
-                .then_with(|| a_field_name.cmp(&b_field_name))
+                .then_with(|| a_field_name.cmp(b_field_name))
         }
         primitive_fields.sort_by(numeric_sorter);
         nullable_primitive_fields.sort_by(numeric_sorter);
@@ -521,7 +531,13 @@ impl TypeMetaLayer {
             field_infos.push(FieldInfo::from_bytes(reader));
         }
         let sorted_field_infos = Self::sort_field_infos(&field_infos);
-        TypeMetaLayer::new(type_id, namespace, type_name, register_by_name, sorted_field_infos)
+        TypeMetaLayer::new(
+            type_id,
+            namespace,
+            type_name,
+            register_by_name,
+            sorted_field_infos,
+        )
     }
 }
 

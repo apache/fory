@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::collections::{HashMap, HashSet};
 use chrono::{NaiveDate, NaiveDateTime};
 use fory_core::buffer::{Reader, Writer};
 use fory_core::error::Error;
@@ -24,6 +23,7 @@ use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::serializer::Serializer;
 use fory_core::types::Mode::Compatible;
 use fory_derive::Fory;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Fory, Default, Debug, PartialEq, Eq, Hash)]
 struct Item {
@@ -99,8 +99,16 @@ fn basic() {
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
         let mut read_context = ReadContext::new(&fory, reader);
-        assert_eq!(person, fory.deserialize_with_context::<Person>(&mut read_context).unwrap());
-        assert_eq!(person, fory.deserialize_with_context::<Person>(&mut read_context).unwrap());
+        assert_eq!(
+            person,
+            fory.deserialize_with_context::<Person>(&mut read_context)
+                .unwrap()
+        );
+        assert_eq!(
+            person,
+            fory.deserialize_with_context::<Person>(&mut read_context)
+                .unwrap()
+        );
         assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
     }
 }
@@ -118,7 +126,10 @@ fn outer_nullable() {
     for fory in [fory1, fory2] {
         let null_person: Option<Person> = None;
         let bytes = fory.serialize(&null_person);
-        assert_eq!(fory.deserialize::<Person>(&bytes).unwrap(), Person::default());
+        assert_eq!(
+            fory.deserialize::<Person>(&bytes).unwrap(),
+            Person::default()
+        );
     }
 }
 
@@ -188,9 +199,15 @@ fn nested() {
 
     for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
         let bytes = fory1.serialize(&Nested::default());
-        assert_eq!(fory2.deserialize::<Empty>(&bytes).unwrap(), Empty::default());
+        assert_eq!(
+            fory2.deserialize::<Empty>(&bytes).unwrap(),
+            Empty::default()
+        );
         let bytes = fory2.serialize(&Empty::default());
-        assert_eq!(fory1.deserialize::<Nested>(&bytes).unwrap(), Nested::default());
+        assert_eq!(
+            fory1.deserialize::<Nested>(&bytes).unwrap(),
+            Nested::default()
+        );
     }
 }
 
@@ -246,7 +263,7 @@ fn compatible_nullable() {
         f28: Option<HashSet<String>>,
         f29: Option<HashMap<String, i32>>,
     }
-    let nullable_obj =  Nullable {
+    let nullable_obj = Nullable {
         f1: Some(bool::default()),
         f2: Some(i8::default()),
         f3: Some(i16::default()),
@@ -257,6 +274,7 @@ fn compatible_nullable() {
         f15: Some(String::default()),
         f16: Some(Color::default()),
         f17: Some(NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()),
+        #[allow(deprecated)]
         f18: Some(NaiveDateTime::from_timestamp_opt(0, 0).unwrap()),
         f19: Some(Item::default()),
         f20: Some(Vec::<bool>::default()),
@@ -292,7 +310,10 @@ fn compatible_nullable() {
         let bytes = fory1.serialize(&Nonnull::default());
         assert_eq!(fory2.deserialize::<Nullable>(&bytes).unwrap(), nullable_obj);
         let bytes = fory2.serialize(&Nullable::default());
-        assert_eq!(fory1.deserialize::<Nonnull>(&bytes).unwrap(), Nonnull::default());
+        assert_eq!(
+            fory1.deserialize::<Nonnull>(&bytes).unwrap(),
+            Nonnull::default()
+        );
     }
 }
 
@@ -350,9 +371,15 @@ fn name_mismatch() {
 
     for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
         let bytes = fory1.serialize(&Person::default());
-        assert_eq!(fory2.deserialize::<MismatchPerson>(&bytes).unwrap(), MismatchPerson::default());
+        assert_eq!(
+            fory2.deserialize::<MismatchPerson>(&bytes).unwrap(),
+            MismatchPerson::default()
+        );
         let bytes = fory2.serialize(&MismatchPerson::default());
-        assert_eq!(fory1.deserialize::<Person>(&bytes).unwrap(), Person::default());
+        assert_eq!(
+            fory1.deserialize::<Person>(&bytes).unwrap(),
+            Person::default()
+        );
     }
 }
 
@@ -386,7 +413,9 @@ fn ext() {
     name_fory.register::<ExtWrapper>(101);
 
     for fory in [id_fory, name_fory] {
-        let wrapper = ExtWrapper {f1: ExtItem { id: 1} };
+        let wrapper = ExtWrapper {
+            f1: ExtItem { id: 1 },
+        };
         let bytes = fory.serialize(&wrapper);
         assert_eq!(fory.deserialize::<ExtWrapper>(&bytes).unwrap(), wrapper);
     }
@@ -427,9 +456,14 @@ fn skip_ext() {
     name_fory2.register_serializer_by_name::<ExtItem>("ext_item");
     name_fory2.register::<Empty>(101);
 
-    for (fory1, fory2) in [(id_fory1, id_fory2),(name_fory1, name_fory2)] {
-        let wrapper = ExtWrapper {f1: ExtItem { id: 1} };
+    for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
+        let wrapper = ExtWrapper {
+            f1: ExtItem { id: 1 },
+        };
         let bytes = fory1.serialize(&wrapper);
-        assert_eq!(fory2.deserialize::<Empty>(&bytes).unwrap(), Empty::default());
+        assert_eq!(
+            fory2.deserialize::<Empty>(&bytes).unwrap(),
+            Empty::default()
+        );
     }
 }

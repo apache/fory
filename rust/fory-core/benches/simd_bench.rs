@@ -19,9 +19,9 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 #[cfg(target_feature = "avx2")]
 use std::arch::x86_64::*;
 
+use fory_core::buffer::{Reader, Writer};
 #[cfg(target_feature = "sse2")]
 use std::arch::x86_64::*;
-use fory_core::buffer::{Reader, Writer};
 
 #[cfg(target_feature = "avx2")]
 pub(crate) const MIN_DIM_SIZE_AVX: usize = 32;
@@ -250,17 +250,17 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("Standard short", |b| {
         b.iter(|| is_latin_std(black_box(test_str_short)))
     });
-    
+
     c.bench_function("Standard long", |b| {
         b.iter(|| is_latin_std(black_box(&test_str_long)))
     });
-    
+
     benchmark_write_utf8(c);
     benchmark_write_latin1(c);
 
     benchmark_read_latin1(c);
     benchmark_read_utf8(c);
-    
+
     benchmark_read_utf16(c);
 }
 

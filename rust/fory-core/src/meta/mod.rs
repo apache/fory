@@ -20,11 +20,12 @@ mod string_util;
 mod type_meta;
 
 pub use meta_string::{
-    Encoding, MetaString, MetaStringDecoder, MetaStringEncoder,
-    FIELD_NAME_DECODER, FIELD_NAME_ENCODER, NAMESPACE_DECODER, NAMESPACE_ENCODER,
-    TYPE_NAME_DECODER, TYPE_NAME_ENCODER,
+    Encoding, MetaString, MetaStringDecoder, MetaStringEncoder, FIELD_NAME_DECODER,
+    FIELD_NAME_ENCODER, NAMESPACE_DECODER, NAMESPACE_ENCODER, TYPE_NAME_DECODER, TYPE_NAME_ENCODER,
 };
-pub use string_util::{get_latin1_length, is_latin, murmurhash3_x64_128, read_utf8_simd, read_utf16_simd};
+pub use string_util::{
+    get_latin1_length, is_latin, murmurhash3_x64_128, read_utf16_simd, read_utf8_simd,
+};
 pub use type_meta::{
     FieldInfo, FieldType, NullableFieldType, TypeMeta, TypeMetaLayer, NAMESPACE_ENCODINGS,
     TYPE_NAME_ENCODINGS,

@@ -29,9 +29,6 @@ use std::arch::x86_64::*;
 #[cfg(target_arch = "x86_64")]
 use std::arch::is_x86_feature_detected;
 
-#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
-use std::arch::is_aarch64_feature_detected;
-
 #[cfg(target_arch = "x86_64")]
 pub const MIN_DIM_SIZE_AVX: usize = 32;
 
@@ -47,7 +44,6 @@ unsafe fn is_latin_avx(s: &str) -> bool {
     let bytes = s.as_bytes();
     let len = bytes.len();
     let mut i = 0;
-    // SIMD skip ASCII
     while i + MIN_DIM_SIZE_AVX <= len {
         let chunk = _mm256_loadu_si256(bytes.as_ptr().add(i) as *const __m256i);
         let hi_mask = _mm256_set1_epi8(0x80u8 as i8);
@@ -58,7 +54,6 @@ unsafe fn is_latin_avx(s: &str) -> bool {
         }
         i += MIN_DIM_SIZE_AVX;
     }
-    // check latin in remaining chars
     let s_tail = &s[i..];
     for c in s_tail.chars() {
         if c as u32 > 0xFF {
@@ -73,7 +68,6 @@ unsafe fn is_latin_sse(s: &str) -> bool {
     let bytes = s.as_bytes();
     let len = bytes.len();
     let mut i = 0;
-    // SIMD skip ASCII
     while i + MIN_DIM_SIZE_SIMD <= len {
         let chunk = _mm_loadu_si128(bytes.as_ptr().add(i) as *const __m128i);
         let hi_mask = _mm_set1_epi8(0x80u8 as i8);
@@ -84,7 +78,6 @@ unsafe fn is_latin_sse(s: &str) -> bool {
         }
         i += MIN_DIM_SIZE_SIMD;
     }
-    // check latin in remaining chars
     let s_tail = &s[i..];
     for c in s_tail.chars() {
         if c as u32 > 0xFF {
@@ -99,7 +92,6 @@ unsafe fn is_latin_neon(s: &str) -> bool {
     let bytes = s.as_bytes();
     let len = bytes.len();
     let mut i = 0;
-    // SIMD skip ASCII
     while i + MIN_DIM_SIZE_SIMD <= len {
         let chunk = vld1q_u8(bytes.as_ptr().add(i));
         let hi_mask = vdupq_n_u8(0x80);
@@ -109,7 +101,6 @@ unsafe fn is_latin_neon(s: &str) -> bool {
         }
         i += MIN_DIM_SIZE_SIMD;
     }
-    // check latin in remaining chars
     let s_tail = &s[i..];
     for c in s_tail.chars() {
         if c as u32 > 0xFF {
@@ -155,7 +146,6 @@ unsafe fn get_latin1_length_avx(s: &str) -> i32 {
     let bytes = s.as_bytes();
     let len = bytes.len();
     let mut count = 0;
-    // SIMD skip ASCII
     while count + MIN_DIM_SIZE_AVX <= len {
         let chunk = _mm256_loadu_si256(bytes.as_ptr().add(count) as *const __m256i);
         let hi_mask = _mm256_set1_epi8(0x80u8 as i8);
@@ -166,7 +156,6 @@ unsafe fn get_latin1_length_avx(s: &str) -> i32 {
         }
         count += MIN_DIM_SIZE_AVX;
     }
-    // check latin in remaining chars
     let s_tail = &s[count..];
     for c in s_tail.chars() {
         if c as u32 > 0xFF {
@@ -182,7 +171,6 @@ unsafe fn get_latin1_length_sse(s: &str) -> i32 {
     let bytes = s.as_bytes();
     let len = bytes.len();
     let mut count = 0;
-    // SIMD skip ASCII
     while count + MIN_DIM_SIZE_SIMD <= len {
         let chunk = _mm_loadu_si128(bytes.as_ptr().add(count) as *const __m128i);
         let hi_mask = _mm_set1_epi8(0x80u8 as i8);
@@ -193,7 +181,6 @@ unsafe fn get_latin1_length_sse(s: &str) -> i32 {
         }
         count += MIN_DIM_SIZE_SIMD;
     }
-    // check latin in remaining chars
     let s_tail = &s[count..];
     for c in s_tail.chars() {
         if c as u32 > 0xFF {
@@ -209,7 +196,6 @@ unsafe fn get_latin1_length_neon(s: &str) -> i32 {
     let bytes = s.as_bytes();
     let len = bytes.len();
     let mut count = 0;
-    // SIMD skip ASCII
     while count + MIN_DIM_SIZE_SIMD <= len {
         let chunk = vld1q_u8(bytes.as_ptr().add(count));
         let hi_mask = vdupq_n_u8(0x80);
@@ -219,7 +205,6 @@ unsafe fn get_latin1_length_neon(s: &str) -> i32 {
         }
         count += MIN_DIM_SIZE_SIMD;
     }
-    // check latin in remaining chars
     let s_tail = &s[count..];
     for c in s_tail.chars() {
         if c as u32 > 0xFF {
@@ -271,63 +256,57 @@ pub fn get_latin1_length(s: &str) -> i32 {
 #[cfg(target_feature = "avx2")]
 unsafe fn read_utf8_simd_avx(bytes: &[u8]) -> String {
     let len = bytes.len();
-    let mut result: Vec<u8> = Vec::with_capacity(len);
-    result.set_len(len);
-    
+    let mut result: Vec<u8> = vec![0; len];
+
     let mut i = 0usize;
     while i + MIN_DIM_SIZE_AVX <= len {
         let chunk = _mm256_loadu_si256(bytes.as_ptr().add(i) as *const __m256i);
         _mm256_storeu_si256(result.as_mut_ptr().add(i) as *mut __m256i, chunk);
         i += MIN_DIM_SIZE_AVX;
     }
-    
-    // Handle remaining bytes
+
     if i < len {
         std::ptr::copy_nonoverlapping(bytes.as_ptr().add(i), result.as_mut_ptr().add(i), len - i);
     }
-    
+
     String::from_utf8_unchecked(result)
 }
 
 #[cfg(target_feature = "sse2")]
 unsafe fn read_utf8_simd_sse(bytes: &[u8]) -> String {
     let len = bytes.len();
-    let mut result: Vec<u8> = Vec::with_capacity(len);
-    result.set_len(len);
-    
+    let mut result: Vec<u8> = vec![0; len];
+
     let mut i = 0usize;
     while i + MIN_DIM_SIZE_SIMD <= len {
         let chunk = _mm_loadu_si128(bytes.as_ptr().add(i) as *const __m128i);
         _mm_storeu_si128(result.as_mut_ptr().add(i) as *mut __m128i, chunk);
         i += MIN_DIM_SIZE_SIMD;
     }
-    
-    // Handle remaining bytes
+
     if i < len {
         std::ptr::copy_nonoverlapping(bytes.as_ptr().add(i), result.as_mut_ptr().add(i), len - i);
     }
-    
+
     String::from_utf8_unchecked(result)
 }
 
 #[cfg(target_feature = "neon")]
 unsafe fn read_utf8_simd_neon(bytes: &[u8]) -> String {
     let len = bytes.len();
-    let mut result: Vec<u8> = Vec::with_capacity(len);
-    result.set_len(len);
-    
+    let mut result: Vec<u8> = vec![0; len];
+
     let mut i = 0usize;
     while i + MIN_DIM_SIZE_SIMD <= len {
         let chunk = vld1q_u8(bytes.as_ptr().add(i));
         vst1q_u8(result.as_mut_ptr().add(i), chunk);
         i += MIN_DIM_SIZE_SIMD;
     }
-    
-    // Handle remaining bytes
+
     if i < len {
         std::ptr::copy_nonoverlapping(bytes.as_ptr().add(i), result.as_mut_ptr().add(i), len - i);
     }
-    
+
     String::from_utf8_unchecked(result)
 }
 
@@ -338,9 +317,7 @@ fn read_utf8_standard(bytes: &[u8]) -> String {
 pub fn read_utf8_simd(bytes: &[u8]) -> String {
     #[cfg(target_arch = "x86_64")]
     {
-        if is_x86_feature_detected!("avx2")
-            && bytes.len() >= MIN_DIM_SIZE_AVX
-        {
+        if is_x86_feature_detected!("avx2") && bytes.len() >= MIN_DIM_SIZE_AVX {
             return unsafe { read_utf8_simd_avx(bytes) };
         }
     }
@@ -366,7 +343,6 @@ fn read_utf16_standard(bytes: &[u8]) -> String {
     assert!(bytes.len() % 2 == 0, "UTF-16 length must be even");
     let units: Vec<u16> = bytes
         .chunks(2)
-        // little endian
         .map(|c| (c[0] as u16) | ((c[1] as u16) << 8))
         .collect();
     String::from_utf16(&units).unwrap_or_else(|_| String::from(""))
@@ -376,8 +352,7 @@ fn read_utf16_standard(bytes: &[u8]) -> String {
 unsafe fn read_utf16_simd_avx(bytes: &[u8]) -> String {
     let len = bytes.len();
     let unit_len = len / 2;
-    let mut units: Vec<u16> = Vec::with_capacity(unit_len);
-    units.set_len(unit_len);
+    let mut units: Vec<u16> = vec![0u16; unit_len];
 
     let dest_u8 = units.as_mut_ptr() as *mut u8;
     let src_u8 = bytes.as_ptr();
@@ -412,8 +387,7 @@ unsafe fn read_utf16_simd_avx(bytes: &[u8]) -> String {
 unsafe fn read_utf16_simd_sse(bytes: &[u8]) -> String {
     let len = bytes.len();
     let unit_len = len / 2;
-    let mut units: Vec<u16> = Vec::with_capacity(unit_len);
-    units.set_len(unit_len);
+    let mut units: Vec<u16> = vec![0u16; unit_len];
 
     let dest_u8 = units.as_mut_ptr() as *mut u8;
     let src_u8 = bytes.as_ptr();
@@ -443,8 +417,7 @@ unsafe fn read_utf16_simd_sse(bytes: &[u8]) -> String {
 unsafe fn read_utf16_simd_neon(bytes: &[u8]) -> String {
     let len = bytes.len();
     let unit_len = len / 2;
-    let mut units: Vec<u16> = Vec::with_capacity(unit_len);
-    units.set_len(unit_len);
+    let mut units: Vec<u16> = vec![0u16; unit_len];
 
     let dest_u8 = units.as_mut_ptr() as *mut u8;
     let src_u8 = bytes.as_ptr();
@@ -740,5 +713,3 @@ mod test_hash {
             == (9455322759164802692, 17863277201603478371));
     }
 }
-
-

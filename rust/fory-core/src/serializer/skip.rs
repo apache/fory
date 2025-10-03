@@ -16,7 +16,7 @@
 // under the License.
 
 use crate::error::Error;
-use crate::meta::{MetaStringDecoder, NullableFieldType};
+use crate::meta::NullableFieldType;
 use crate::resolver::context::ReadContext;
 use crate::serializer::collection::{HAS_NULL, IS_SAME_TYPE};
 use crate::serializer::Serializer;
@@ -149,8 +149,6 @@ pub fn skip_field_value(
                     let read_ref_flag = get_read_ref_flag(&nullable_field_type);
                     skip_field_value(context, &nullable_field_type, read_ref_flag)?;
                 }
-                // let type_resolver = context.get_fory().get_type_resolver();
-                // type_resolver.get_name_harness(&type_def.get_namespace(), &type_def.get_type_name()).unwrap().get_read_data_fn()(context, true)?;
                 Ok(())
             } else if type_id == TypeId::NAMED_EXT {
                 let remote_type_id = context.reader.read_varuint32();
@@ -191,7 +189,7 @@ pub fn skip_field_value(
                 let remote_type_id = context.reader.read_varuint32();
                 assert_eq!(remote_type_id, type_id_num);
                 let type_resolver = context.get_fory().get_type_resolver();
-                let res = type_resolver
+                type_resolver
                     .get_ext_harness(type_id_num)
                     .get_read_data_fn()(context, true)?;
             }
