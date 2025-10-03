@@ -599,7 +599,18 @@ impl<'bf> Reader<'bf> {
     }
 
     pub fn read_utf8_string(&mut self, len: usize) -> String {
+        self.read_utf8_string_simd(len)
+    }
+
+    pub fn read_utf8_string_standard(&mut self, len: usize) -> String {
         let result = String::from_utf8_lossy(&self.bf[self.cursor..self.cursor + len]).to_string();
+        self.move_next(len);
+        result
+    }
+
+    pub fn read_utf8_string_simd(&mut self, len: usize) -> String {
+        let slice = &self.bf[self.cursor..self.cursor + len];
+        let result = crate::meta::read_utf8_simd(slice);
         self.move_next(len);
         result
     }

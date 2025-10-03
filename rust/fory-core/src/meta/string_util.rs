@@ -27,6 +27,12 @@ use std::arch::x86_64::*;
 use std::arch::x86_64::*;
 
 #[cfg(target_arch = "x86_64")]
+use std::arch::is_x86_feature_detected;
+
+#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+use std::arch::is_aarch64_feature_detected;
+
+#[cfg(target_arch = "x86_64")]
 pub const MIN_DIM_SIZE_AVX: usize = 32;
 
 #[cfg(any(
@@ -260,6 +266,99 @@ pub fn get_latin1_length(s: &str) -> i32 {
         }
     }
     get_latin1_length_standard(s)
+}
+
+#[cfg(target_feature = "avx2")]
+unsafe fn read_utf8_simd_avx(bytes: &[u8]) -> String {
+    let len = bytes.len();
+    let mut result: Vec<u8> = Vec::with_capacity(len);
+    result.set_len(len);
+    
+    let mut i = 0usize;
+    while i + MIN_DIM_SIZE_AVX <= len {
+        let chunk = _mm256_loadu_si256(bytes.as_ptr().add(i) as *const __m256i);
+        _mm256_storeu_si256(result.as_mut_ptr().add(i) as *mut __m256i, chunk);
+        i += MIN_DIM_SIZE_AVX;
+    }
+    
+    // Handle remaining bytes
+    if i < len {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr().add(i), result.as_mut_ptr().add(i), len - i);
+    }
+    
+    String::from_utf8_unchecked(result)
+}
+
+#[cfg(target_feature = "sse2")]
+unsafe fn read_utf8_simd_sse(bytes: &[u8]) -> String {
+    let len = bytes.len();
+    let mut result: Vec<u8> = Vec::with_capacity(len);
+    result.set_len(len);
+    
+    let mut i = 0usize;
+    while i + MIN_DIM_SIZE_SIMD <= len {
+        let chunk = _mm_loadu_si128(bytes.as_ptr().add(i) as *const __m128i);
+        _mm_storeu_si128(result.as_mut_ptr().add(i) as *mut __m128i, chunk);
+        i += MIN_DIM_SIZE_SIMD;
+    }
+    
+    // Handle remaining bytes
+    if i < len {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr().add(i), result.as_mut_ptr().add(i), len - i);
+    }
+    
+    String::from_utf8_unchecked(result)
+}
+
+#[cfg(target_feature = "neon")]
+unsafe fn read_utf8_simd_neon(bytes: &[u8]) -> String {
+    let len = bytes.len();
+    let mut result: Vec<u8> = Vec::with_capacity(len);
+    result.set_len(len);
+    
+    let mut i = 0usize;
+    while i + MIN_DIM_SIZE_SIMD <= len {
+        let chunk = vld1q_u8(bytes.as_ptr().add(i));
+        vst1q_u8(result.as_mut_ptr().add(i), chunk);
+        i += MIN_DIM_SIZE_SIMD;
+    }
+    
+    // Handle remaining bytes
+    if i < len {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr().add(i), result.as_mut_ptr().add(i), len - i);
+    }
+    
+    String::from_utf8_unchecked(result)
+}
+
+fn read_utf8_standard(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).to_string()
+}
+
+pub fn read_utf8_simd(bytes: &[u8]) -> String {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2")
+            && bytes.len() >= MIN_DIM_SIZE_AVX
+        {
+            return unsafe { read_utf8_simd_avx(bytes) };
+        }
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        if is_x86_feature_detected!("sse2") && bytes.len() >= MIN_DIM_SIZE_SIMD {
+            return unsafe { read_utf8_simd_sse(bytes) };
+        }
+    }
+
+    #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+    {
+        if std::arch::is_aarch64_feature_detected!("neon") && bytes.len() >= MIN_DIM_SIZE_SIMD {
+            return unsafe { read_utf8_simd_neon(bytes) };
+        }
+    }
+    read_utf8_standard(bytes)
 }
 
 #[cfg(test)]
