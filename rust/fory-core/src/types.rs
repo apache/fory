@@ -134,17 +134,17 @@ pub static PRIMITIVE_TYPES: [u32; 7] = [
     TypeId::FLOAT64 as u32,
 ];
 
-pub static FINAL_TYPES: [TypeId; 3] = [TypeId::STRING, TypeId::LOCAL_DATE, TypeId::TIMESTAMP];
+pub static FINAL_TYPES: [u32; 3] = [TypeId::STRING as u32, TypeId::LOCAL_DATE as u32, TypeId::TIMESTAMP as u32];
 
-pub static PRIMITIVE_ARRAY_TYPES: [TypeId; 8] = [
-    TypeId::BOOL_ARRAY,
-    TypeId::BINARY,
-    TypeId::INT8_ARRAY,
-    TypeId::INT16_ARRAY,
-    TypeId::INT32_ARRAY,
-    TypeId::INT64_ARRAY,
-    TypeId::FLOAT32_ARRAY,
-    TypeId::FLOAT64_ARRAY,
+pub static PRIMITIVE_ARRAY_TYPES: [u32; 8] = [
+    TypeId::BOOL_ARRAY as u32,
+    TypeId::BINARY as u32,
+    TypeId::INT8_ARRAY as u32,
+    TypeId::INT16_ARRAY as u32,
+    TypeId::INT32_ARRAY as u32,
+    TypeId::INT64_ARRAY as u32,
+    TypeId::FLOAT32_ARRAY as u32,
+    TypeId::FLOAT64_ARRAY as u32,
 ];
 
 pub static BASIC_TYPE_NAMES: [&str; 10] = [

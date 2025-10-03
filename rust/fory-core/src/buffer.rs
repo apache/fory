@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::arch::aarch64::{vld1q_u8, vst1q_u8};
 use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
 
 #[derive(Default)]
@@ -287,8 +288,17 @@ impl Writer {
         }
     }
 
-    // TODO: simd
     pub fn write_latin1_string(&mut self, s: &str) {
+        let bytes = s.as_bytes();
+        self.write_bytes_simd(bytes);
+    }
+
+    pub fn write_utf8_string(&mut self, s: &str) {
+        let bytes = s.as_bytes();
+        self.write_bytes_simd(bytes);
+    }
+
+    pub fn write_latin1_string_standard(&mut self, s: &str) {
         for c in s.chars() {
             let b = c as u32;
             assert!(b <= 0xFF, "Non-Latin1 character found");
@@ -296,11 +306,91 @@ impl Writer {
         }
     }
 
-    // TODO: simd
-    pub fn write_utf8_string(&mut self, s: &str) {
+    pub fn write_utf8_string_standard(&mut self, s: &str) {
         let bytes = s.as_bytes();
         for &b in bytes {
             self.write_u8(b);
+        }
+    }
+
+    #[inline]
+    fn write_bytes_simd(&mut self, bytes: &[u8]) {
+        let len = bytes.len();
+        let mut i = 0usize;
+
+        self.bf.reserve(len);
+
+        #[cfg(any(
+            all(target_arch = "x86_64", target_feature = "avx2"),
+            all(target_arch = "x86_64", target_feature = "sse2"),
+            all(target_arch = "aarch64", target_feature = "neon")
+        ))]
+        {
+            unsafe {
+                #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+                {
+                    const CHUNK: usize = 64;
+                    while i + CHUNK <= len {
+                        let ptr = bytes.as_ptr().add(i);
+                        let chunk1 = _mm256_loadu_si256(ptr as *const __m256i);
+                        let chunk2 = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
+
+                        let current_len = self.bf.len();
+                        self.bf.set_len(current_len + CHUNK);
+                        let dest_ptr = self.bf.as_mut_ptr().add(current_len);
+
+                        _mm256_storeu_si256(dest_ptr as *mut __m256i, chunk1);
+                        _mm256_storeu_si256(dest_ptr.add(32) as *mut __m256i, chunk2);
+                        i += CHUNK;
+                    }
+                }
+
+                #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2"), target_feature = "sse2"))]
+                {
+                    const CHUNK: usize = 32;
+                    while i + CHUNK <= len {
+                        let ptr = bytes.as_ptr().add(i);
+                        let chunk1 = _mm_loadu_si128(ptr as *const __m128i);
+                        let chunk2 = _mm_loadu_si128(ptr.add(16) as *const __m128i);
+
+                        let current_len = self.bf.len();
+                        self.bf.set_len(current_len + CHUNK);
+                        let dest_ptr = self.bf.as_mut_ptr().add(current_len);
+
+                        _mm_storeu_si128(dest_ptr as *mut __m128i, chunk1);
+                        _mm_storeu_si128(dest_ptr.add(16) as *mut __m128i, chunk2);
+                        i += CHUNK;
+                    }
+                }
+
+                #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+                {
+                    const CHUNK: usize = 32;
+                    while i + CHUNK <= len {
+                        let ptr = bytes.as_ptr().add(i);
+                        let chunk1 = vld1q_u8(ptr);
+                        let chunk2 = vld1q_u8(ptr.add(16));
+
+                        let current_len = self.bf.len();
+                        self.bf.set_len(current_len + CHUNK);
+                        let dest_ptr = self.bf.as_mut_ptr().add(current_len);
+
+                        vst1q_u8(dest_ptr, chunk1);
+                        vst1q_u8(dest_ptr.add(16), chunk2);
+                        i += CHUNK;
+                    }
+                }
+            }
+        }
+
+        const MEDIUM_CHUNK: usize = 16;
+        while i + MEDIUM_CHUNK <= len {
+            self.bf.extend_from_slice(&bytes[i..i + MEDIUM_CHUNK]);
+            i += MEDIUM_CHUNK;
+        }
+
+        if i < len {
+            self.bf.extend_from_slice(&bytes[i..]);
         }
     }
 }

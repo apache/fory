@@ -19,7 +19,7 @@ use crate::error::Error;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
-use crate::types::Mode;
+use crate::types::{Mode, PRIMITIVE_ARRAY_TYPES};
 
 // const TRACKING_REF: u8 = 0b1;
 
@@ -36,9 +36,10 @@ pub fn write_collection_type_info(
     is_field: bool,
     collection_type_id: u32,
 ) {
-    if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-        context.writer.write_varuint32(collection_type_id);
+    if is_field {
+        return;
     }
+    context.writer.write_varuint32(collection_type_id);
 }
 
 pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
@@ -87,10 +88,15 @@ pub fn read_collection_type_info(
     is_field: bool,
     collection_type_id: u32,
 ) {
-    if *context.get_fory().get_mode() == Mode::Compatible && !is_field {
-        let remote_collection_type_id = context.reader.read_varuint32();
-        assert_eq!(remote_collection_type_id, collection_type_id);
+    if is_field {
+        return;
     }
+    let remote_collection_type_id = context.reader.read_varuint32();
+    assert_eq!(collection_type_id, remote_collection_type_id);
+    if PRIMITIVE_ARRAY_TYPES.contains(&remote_collection_type_id) {
+        panic!("Vec<number> belongs to the `number_array` type, and Vec<Option<number>> belongs to the `list` type. You should not read data of type `number_array` as data of type `list`");
+    }
+    assert_eq!(remote_collection_type_id, collection_type_id);
 }
 
 pub fn read_collection<C, T>(context: &mut ReadContext) -> Result<C, Error>

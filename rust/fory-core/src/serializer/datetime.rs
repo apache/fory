@@ -45,6 +45,23 @@ impl Serializer for NaiveDateTime {
             )))
     }
 
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
+        if is_field {
+            return;
+        }
+        let type_id = Self::fory_get_type_id(context.get_fory());
+        context.writer.write_varuint32(type_id);
+    }
+
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
+        if is_field {
+            return;
+        }
+        let local_type_id = Self::fory_get_type_id(context.get_fory());
+        let remote_type_id = context.reader.read_varuint32();
+        assert_eq!(local_type_id, remote_type_id);
+    }
+
     fn fory_reserved_space() -> usize {
         mem::size_of::<u64>()
     }
@@ -67,6 +84,23 @@ impl Serializer for NaiveDate {
             .ok_or(Error::from(anyhow!(
                 "Date out of range, {days} days since epoch"
             )))
+    }
+
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
+        if is_field {
+            return;
+        }
+        let type_id = Self::fory_get_type_id(context.get_fory());
+        context.writer.write_varuint32(type_id);
+    }
+
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
+        if is_field {
+            return;
+        }
+        let local_type_id = Self::fory_get_type_id(context.get_fory());
+        let remote_type_id = context.reader.read_varuint32();
+        assert_eq!(local_type_id, remote_type_id);
     }
 
     fn fory_reserved_space() -> usize {

@@ -15,17 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-mod meta_string;
-mod string_util;
-mod type_meta;
-
-pub use meta_string::{
-    Encoding, MetaString, MetaStringDecoder, MetaStringEncoder,
-    FIELD_NAME_DECODER, FIELD_NAME_ENCODER, NAMESPACE_DECODER, NAMESPACE_ENCODER,
-    TYPE_NAME_DECODER, TYPE_NAME_ENCODER,
-};
-pub use string_util::{get_latin1_length, is_latin, murmurhash3_x64_128};
-pub use type_meta::{
-    FieldInfo, FieldType, NullableFieldType, TypeMeta, TypeMetaLayer, NAMESPACE_ENCODINGS,
-    TYPE_NAME_ENCODINGS,
-};
+mod test_basic_type;
+mod test_container;
+mod test_struct_enum;

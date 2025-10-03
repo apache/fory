@@ -21,6 +21,7 @@ use std::arch::x86_64::*;
 
 #[cfg(target_feature = "sse2")]
 use std::arch::x86_64::*;
+use fory_core::buffer::Writer;
 
 #[cfg(target_feature = "avx2")]
 pub(crate) const MIN_DIM_SIZE_AVX: usize = 32;
@@ -78,6 +79,58 @@ fn is_latin_std(s: &str) -> bool {
     s.bytes().all(|b| b.is_ascii())
 }
 
+fn benchmark_write_utf8(c: &mut Criterion) {
+    let sizes = [100, 1000, 10000, 100000];
+    for &size in &sizes {
+        let s = "x".repeat(size);
+
+        let name_simd = format!("UTF-8 SIMD size {}", size);
+        c.bench_function(&name_simd, |b| {
+            b.iter(|| {
+                let mut w = Writer::default();
+                w.write_utf8_string(black_box(&s));
+                black_box(w);
+            })
+        });
+
+        let name_scalar = format!("UTF-8 Standard size {}", size);
+        c.bench_function(&name_scalar, |b| {
+            b.iter(|| {
+                let mut w = Writer::default();
+                w.write_utf8_string_standard(black_box(&s));
+                black_box(w);
+            })
+        });
+    }
+}
+
+fn benchmark_write_latin1(c: &mut Criterion) {
+    let sizes = [100, 1000, 10000, 100000];
+    let ascii_string = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+    for &size in &sizes {
+        let s_ascii = ascii_string.repeat(size / ascii_string.len() + 1);
+
+        let name_simd = format!("Latin-1 SIMD size {}", size);
+        c.bench_function(&name_simd, |b| {
+            b.iter(|| {
+                let mut w = Writer::default();
+                w.write_latin1_string(black_box(&s_ascii));
+                black_box(w);
+            })
+        });
+
+        let name_scalar = format!("Latin-1 Standard size {}", size);
+        c.bench_function(&name_scalar, |b| {
+            b.iter(|| {
+                let mut w = Writer::default();
+                w.write_latin1_string_standard(black_box(&s_ascii));
+                black_box(w);
+            })
+        });
+    }
+}
+
 fn criterion_benchmark(c: &mut Criterion) {
     let test_str_short = "Hello, World!";
     let test_str_long = "Hello, World! ".repeat(1000);
@@ -106,6 +159,9 @@ fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("Standard long", |b| {
         b.iter(|| is_latin_std(black_box(&test_str_long)))
     });
+
+    benchmark_write_utf8(c);
+    benchmark_write_latin1(c);
 }
 
 criterion_group!(benches, criterion_benchmark);

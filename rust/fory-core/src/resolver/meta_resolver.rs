@@ -36,8 +36,8 @@ impl MetaReaderResolver {
         let meta_size = reader.read_varuint32();
         // self.reading_type_defs.reserve(meta_size as usize);
         for _ in 0..meta_size {
-            self.reading_type_defs
-                .push(Rc::new(TypeMeta::from_bytes(reader)));
+            let type_meta = TypeMeta::from_bytes(reader);
+            self.reading_type_defs.push(Rc::new(type_meta));
         }
         reader.get_cursor()
     }

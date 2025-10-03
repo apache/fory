@@ -17,19 +17,23 @@
 
 use chrono::{NaiveDate, NaiveDateTime};
 use fory_core::buffer::{Reader, Writer};
-use fory_core::fory::Fory;
+use fory_core::fory::{read, write, Fory};
 use fory_core::meta::murmurhash3_x64_128;
 use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::serializer::Serializer;
-use fory_core::types::Mode::Compatible;
+use fory_core::types::Mode::{Compatible,SchemaConsistent};
 use fory_derive::Fory;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use fory_core::error::Error;
 
 // RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_cross_language
 fn get_data_file() -> String {
     std::env::var("DATA_FILE").expect("DATA_FILE not set")
 }
+
+#[derive(Fory, Default, Debug, PartialEq)]
+struct Empty {}
 
 #[derive(Fory, Debug, PartialEq, Default)]
 enum Color {
@@ -590,4 +594,120 @@ fn test_integer() {
     fory.serialize_with_context(&remote_f5, &mut context);
     fory.serialize_with_context(&remote_f6, &mut context);
     fs::write(&data_file_path, context.writer.dump()).unwrap();
+}
+
+#[derive(Fory, Debug, PartialEq, Default)]
+struct MyStruct {
+    id: i32,
+}
+#[derive(Debug, PartialEq, Default)]
+struct MyExt {
+    id: i32,
+}
+impl Serializer for MyExt {
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
+        // set is_field=false to write type_id like in java
+        write(&self.id, context, false, false, false);
+    }
+
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        Ok(Self {
+            // set is_field=false to write type_id like in java
+            id: read(context, false, false, false)?,
+        })
+    }
+}
+#[derive(Fory, Debug, PartialEq, Default)]
+struct MyWrapper {
+    color: Color,
+    my_struct: MyStruct,
+    my_ext: MyExt,
+}
+
+fn _test_skip_custom(fory1: &Fory, fory2: &Fory) {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+    assert_eq!(fory1.deserialize::<Empty>(&bytes).unwrap(), Empty::default());
+    let wrapper = MyWrapper {
+        color: Color::White,
+        my_struct: MyStruct {
+            id: 42,
+        },
+        my_ext: MyExt {
+            id: 43,
+        },
+    };
+    let bytes = fory2.serialize(&wrapper);
+    fs::write(&data_file_path, bytes).unwrap();
+}
+
+#[test]
+#[ignore]
+fn test_skip_id_custom() {
+    let mut fory1 = Fory::default().mode(Compatible);
+    fory1.register_serializer::<MyExt>(103);
+    fory1.register::<Empty>(104);
+    let mut fory2 = Fory::default().mode(Compatible);
+    fory2.register::<Color>(101);
+    fory2.register::<MyStruct>(102);
+    fory2.register_serializer::<MyExt>(103);
+    fory2.register::<MyWrapper>(104);
+    _test_skip_custom(&fory1, &fory2);
+
+}
+
+#[test]
+#[ignore]
+fn test_skip_name_custom() {
+    let mut fory1 = Fory::default().mode(Compatible);
+    fory1.register_serializer_by_name::<MyExt>("my_ext");
+    fory1.register_by_name::<Empty>("my_wrapper");
+    let mut fory2 = Fory::default().mode(Compatible);
+    fory2.register_by_name::<Color>("color");
+    fory2.register_by_name::<MyStruct>("my_struct");
+    fory2.register_serializer_by_name::<MyExt>("my_ext");
+    fory2.register_by_name::<MyWrapper>("my_wrapper");
+    _test_skip_custom(&fory1, &fory2);
+}
+
+#[test]
+#[ignore]
+fn test_consistent_named() {
+    let mut fory = Fory::default().mode(SchemaConsistent);
+    fory.register_by_name::<Color>("color");
+    fory.register_by_name::<MyStruct>("my_struct");
+    fory.register_serializer_by_name::<MyExt>("my_ext");
+
+    let color = Color::White;
+    let my_struct = MyStruct {
+        id: 42,
+    };
+    let my_ext = MyExt {
+        id: 43,
+    };
+
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+    let reader = Reader::new(bytes.as_slice());
+    let mut context = ReadContext::new(&fory, reader);
+
+    assert_eq!(fory.deserialize_with_context::<Color>(&mut context).unwrap(), color);
+    assert_eq!(fory.deserialize_with_context::<Color>(&mut context).unwrap(), color);
+    assert_eq!(fory.deserialize_with_context::<Color>(&mut context).unwrap(), color);
+    // assert_eq!(fory.deserialize_with_context::<MyStruct>(&mut context).unwrap(), my_struct);
+    assert_eq!(fory.deserialize_with_context::<MyExt>(&mut context).unwrap(), my_ext);
+    assert_eq!(fory.deserialize_with_context::<MyExt>(&mut context).unwrap(), my_ext);
+    assert_eq!(fory.deserialize_with_context::<MyExt>(&mut context).unwrap(), my_ext);
+
+    let mut writer = Writer::default();
+    let mut context = WriteContext::new(&fory, &mut writer);
+    fory.serialize_with_context(&color, &mut context);
+    fory.serialize_with_context(&color, &mut context);
+    fory.serialize_with_context(&color, &mut context);
+    // todo: checkVersion
+    // fory.serialize_with_context(&my_struct, &mut context);
+    fory.serialize_with_context(&my_ext, &mut context);
+    fory.serialize_with_context(&my_ext, &mut context);
+    fory.serialize_with_context(&my_ext, &mut context);
+    fs::write(&data_file_path, &context.writer.dump()).unwrap();
 }

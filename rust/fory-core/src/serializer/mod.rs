@@ -15,11 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::any::Any;
+use anyhow::anyhow;
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::meta::MetaString;
+use crate::meta::{MetaString, NAMESPACE_DECODER, NAMESPACE_ENCODER, NAMESPACE_ENCODINGS, TYPE_NAME_DECODER};
 use crate::resolver::context::{ReadContext, WriteContext};
-use crate::types::{Mode, RefFlag, PRIMITIVE_TYPES};
+use crate::resolver::metastring_resolver::MetaStringBytes;
+use crate::types::{Mode, RefFlag, TypeId, PRIMITIVE_TYPES};
 
 mod any;
 mod arc;
@@ -104,6 +107,8 @@ pub trait Serializer
 where
     Self: Sized + Default + 'static,
 {
+    
+    
     /// Entry point of the serialization.
     fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
         write_ref_info_data(self, context, is_field, false, false);
@@ -133,18 +138,44 @@ where
         0
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        if !is_field {
-            let type_id = Self::fory_get_type_id(context.get_fory());
-            context.writer.write_varuint32(type_id);
+    fn fory_write_type_info(context: &mut WriteContext, _is_field: bool) {
+        // default implementation only for ext/named_ext
+        let type_id = Self::fory_get_type_id(context.get_fory());
+        context.writer.write_varuint32(type_id);
+        if type_id & 0xff == TypeId::EXT as u32 {
+            return;
+        }
+        let rs_type_id = std::any::TypeId::of::<Self>();
+        if context.get_fory().is_share_meta() {
+            let meta_index = context.push_meta(rs_type_id) as u32;
+            context.writer.write_varuint32(meta_index);
+        } else {
+            let type_info = {
+                let type_resolver = context.get_fory().get_type_resolver();
+                type_resolver.get_type_info(rs_type_id)
+            };
+            let namespace = type_info.get_namespace().to_owned();
+            let type_name = type_info.get_type_name().to_owned();
+            let resolver = context.get_fory().get_metastring_resolver();
+            resolver.borrow_mut().write_meta_string_bytes(context, &namespace);
+            resolver.borrow_mut().write_meta_string_bytes(context, &type_name);
         }
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-        if !is_field {
-            let remote_type_id = context.reader.read_varuint32();
-            let local_type_id = Self::fory_get_type_id(context.get_fory());
-            assert_eq!(remote_type_id, local_type_id);
+    fn fory_read_type_info(context: &mut ReadContext, _is_field: bool) {
+        // default implementation only for ext/named_ext
+        let local_type_id = Self::fory_get_type_id(context.get_fory());
+        let remote_type_id = context.reader.read_varuint32();
+        assert_eq!(local_type_id, remote_type_id);
+        if local_type_id & 0xff == TypeId::EXT as u32 {
+            return;
+        }
+        if context.get_fory().is_share_meta() {
+            let _meta_index = context.reader.read_varuint32();
+        } else {
+            let resolver = context.get_fory().get_metastring_resolver();
+            resolver.borrow_mut().read_meta_string_bytes(context);
+            resolver.borrow_mut().read_meta_string_bytes(context);
         }
     }
 
@@ -152,6 +183,37 @@ where
     fn fory_write_data(&self, context: &mut WriteContext, is_field: bool);
 
     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error>;
+
+    // only used by struct/enum
+    fn fory_read_compatible(context: &mut ReadContext) -> Result<Self, Error> {
+        // default logic only for named_ext
+        let remote_type_id = context.reader.read_varuint32();
+        let local_type_id = Self::fory_get_type_id(context.get_fory());
+        assert_eq!(remote_type_id, local_type_id);
+        // only for named_ext
+        let (namespace, type_name) = if context.get_fory().is_share_meta() {
+            let meta_index = context.reader.read_varuint32();
+            let type_def = context.get_meta(meta_index as usize);
+            (type_def.get_namespace(), type_def.get_type_name())
+        } else {
+            let resolver = context.get_fory().get_metastring_resolver();
+            let nsb = resolver.borrow_mut().read_meta_string_bytes(context);
+            let tsb = resolver.borrow_mut().read_meta_string_bytes(context);
+            let ns = NAMESPACE_DECODER.decode(&nsb.bytes, nsb.encoding)?;
+            let ts = TYPE_NAME_DECODER.decode(&tsb.bytes, tsb.encoding)?;
+            (ns ,ts)
+        };
+        let type_resolver = context.get_fory().get_type_resolver();
+        type_resolver
+            .get_name_harness(&namespace, &type_name)
+            .unwrap()
+            .get_read_data_fn()(context, true)
+            .and_then(|b: Box<dyn Any>| {
+                b.downcast::<Self>()
+                    .map(|boxed_self| *boxed_self)
+                    .map_err(|_| anyhow!("downcast to Self failed").into())
+            })
+    }
 }
 
 pub trait StructSerializer: Serializer + 'static {
@@ -170,10 +232,6 @@ pub trait StructSerializer: Serializer + 'static {
     }
     fn fory_actual_type_id(type_id: u32, register_by_name: bool, mode: &Mode) -> u32 {
         struct_::actual_type_id(type_id, register_by_name, mode)
-    }
-
-    fn fory_read_compatible(_context: &mut ReadContext) -> Result<Self, Error> {
-        unimplemented!()
     }
 
     fn fory_get_sorted_field_names(_fory: &Fory) -> Vec<String> {
