@@ -81,6 +81,14 @@ type InconsistentMapDataClass struct {
 	Counters map[int32]int32  // Different key type
 }
 
+type PointerDataClass struct {
+	Name     *string
+	Age      *int32
+	Nickname *string
+	Inner    *SimpleDataClass
+	Score    *int32
+}
+
 type NestedOuter struct {
 	Name  string
 	Inner SimpleDataClass
@@ -248,6 +256,54 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 				assert.Equal(t, in.Metadata, out.Metadata)
 				assert.Equal(t, len(in.Counters), len(out.Counters))
 				assert.Equal(t, in.Counters, out.Counters)
+			},
+		},
+		{
+			name:      "PointerFields",
+			tag:       "PointerDataClass",
+			writeType: PointerDataClass{},
+			readType:  PointerDataClass{},
+			input: func() PointerDataClass {
+				name := "ptr"
+				age := int32(42)
+				nickname := "alias"
+				score := int32(99)
+				return PointerDataClass{
+					Name:     &name,
+					Age:      &age,
+					Nickname: &nickname,
+					Inner: &SimpleDataClass{
+						Name:   "inner",
+						Age:    18,
+						Active: true,
+					},
+					Score: &score,
+				}
+			}(),
+			writerSetup: func(f *Fory) error {
+				return f.RegisterTagType("SimpleDataClass", SimpleDataClass{})
+			},
+			readerSetup: func(f *Fory) error {
+				return f.RegisterTagType("SimpleDataClass", SimpleDataClass{})
+			},
+			assertFunc: func(t *testing.T, input interface{}, output interface{}) {
+				in := input.(PointerDataClass)
+				out := output.(PointerDataClass)
+				if assert.NotNil(t, out.Name) {
+					assert.Equal(t, *in.Name, *out.Name)
+				}
+				if assert.NotNil(t, out.Age) {
+					assert.Equal(t, *in.Age, *out.Age)
+				}
+				if assert.NotNil(t, out.Nickname) {
+					assert.Equal(t, *in.Nickname, *out.Nickname)
+				}
+				if assert.NotNil(t, out.Inner) {
+					assert.Equal(t, *in.Inner, *out.Inner)
+				}
+				if assert.NotNil(t, out.Score) {
+					assert.Equal(t, *in.Score, *out.Score)
+				}
 			},
 		},
 		{
