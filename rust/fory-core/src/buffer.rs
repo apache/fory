@@ -588,6 +588,10 @@ impl<'bf> Reader<'bf> {
     }
 
     pub fn read_latin1_string(&mut self, len: usize) -> String {
+        self.read_latin1_string_simd(len)
+    }
+
+    pub fn read_latin1_string_standard(&mut self, len: usize) -> String {
         let slice = &self.bf[self.cursor..self.cursor + len];
         let result: String = slice.iter().map(|&b| b as char).collect();
         self.move_next(len);
@@ -597,6 +601,99 @@ impl<'bf> Reader<'bf> {
     pub fn read_utf8_string(&mut self, len: usize) -> String {
         let result = String::from_utf8_lossy(&self.bf[self.cursor..self.cursor + len]).to_string();
         self.move_next(len);
+        result
+    }
+
+    pub fn read_latin1_string_simd(&mut self, len: usize) -> String {
+        let slice = &self.bf[self.cursor..self.cursor + len];
+        let result = unsafe { self.read_bytes_simd(slice) };
+        self.move_next(len);
+        String::from_utf8_lossy(&result).to_string()
+    }
+
+    #[inline]
+    unsafe fn read_bytes_simd(&self, bytes: &[u8]) -> Vec<u8> {
+        let len = bytes.len();
+        let mut result = Vec::with_capacity(len);
+
+        #[cfg(any(
+            all(target_arch = "x86_64", target_feature = "avx2"),
+            all(target_arch = "x86_64", target_feature = "sse2"),
+            all(target_arch = "aarch64", target_feature = "neon")
+        ))]
+        {
+            result.set_len(len);
+            let dest_ptr: *mut u8 = result.as_mut_ptr();
+            let src_ptr: *const u8 = bytes.as_ptr();
+
+            let mut i = 0usize;
+
+            #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+            {
+                const CHUNK: usize = 64;
+                while i + CHUNK <= len {
+                    let chunk1 = _mm256_loadu_si256(src_ptr.add(i) as *const __m256i);
+                    let chunk2 = _mm256_loadu_si256(src_ptr.add(i + 32) as *const __m256i);
+
+                    _mm256_storeu_si256(dest_ptr.add(i) as *mut __m256i, chunk1);
+                    _mm256_storeu_si256(dest_ptr.add(i + 32) as *mut __m256i, chunk2);
+                    i += CHUNK;
+                }
+            }
+            #[cfg(all(target_arch = "x86_64", not(target_feature = "avx2"), target_feature = "sse2"))]
+            {
+                const CHUNK: usize = 32;
+                while i + CHUNK <= len {
+                    let chunk1 = _mm_loadu_si128(src_ptr.add(i) as *const __m128i);
+                    let chunk2 = _mm_loadu_si128(src_ptr.add(i + 16) as *const __m128i);
+
+                    _mm_storeu_si128(dest_ptr.add(i) as *mut __m128i, chunk1);
+                    _mm_storeu_si128(dest_ptr.add(i + 16) as *mut __m128i, chunk2);
+                    i += CHUNK;
+                }
+            }
+            #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+            {
+                const CHUNK: usize = 32;
+                while i + CHUNK <= len {
+                    let chunk1 = vld1q_u8(src_ptr.add(i));
+                    let chunk2 = vld1q_u8(src_ptr.add(i + 16));
+
+                    vst1q_u8(dest_ptr.add(i), chunk1);
+                    vst1q_u8(dest_ptr.add(i + 16), chunk2);
+                    i += CHUNK;
+                }
+            }
+            if i < len {
+                let remaining = len - i;
+                if remaining >= 16 {
+                    while i + 16 <= len {
+                        #[cfg(target_arch = "x86_64")]
+                        {
+                            let chunk = _mm_loadu_si128(src_ptr.add(i) as *const __m128i);
+                            _mm_storeu_si128(dest_ptr.add(i) as *mut __m128i, chunk);
+                        }
+                        #[cfg(target_arch = "aarch64")]
+                        {
+                            let chunk = vld1q_u8(src_ptr.add(i));
+                            vst1q_u8(dest_ptr.add(i), chunk);
+                        }
+                        i += 16;
+                    }
+                }
+                if i < len {
+                    std::ptr::copy_nonoverlapping(src_ptr.add(i), dest_ptr.add(i), len - i);
+                }
+            }
+        }
+        #[cfg(not(any(
+            all(target_arch = "x86_64", target_feature = "avx2"),
+            all(target_arch = "x86_64", target_feature = "sse2"),
+            all(target_arch = "aarch64", target_feature = "neon")
+        )))]
+        {
+            result.extend_from_slice(bytes);
+        }
         result
     }
 

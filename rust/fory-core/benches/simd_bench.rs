@@ -21,7 +21,7 @@ use std::arch::x86_64::*;
 
 #[cfg(target_feature = "sse2")]
 use std::arch::x86_64::*;
-use fory_core::buffer::Writer;
+use fory_core::buffer::{Reader, Writer};
 
 #[cfg(target_feature = "avx2")]
 pub(crate) const MIN_DIM_SIZE_AVX: usize = 32;
@@ -82,7 +82,7 @@ fn is_latin_std(s: &str) -> bool {
 fn benchmark_write_utf8(c: &mut Criterion) {
     let sizes = [100, 1000, 10000, 100000];
     for &size in &sizes {
-        let s = "x".repeat(size);
+        let s = "Hello, 世界! 🌍".repeat(size);
 
         let name_simd = format!("UTF-8 SIMD size {}", size);
         c.bench_function(&name_simd, |b| {
@@ -131,6 +131,66 @@ fn benchmark_write_latin1(c: &mut Criterion) {
     }
 }
 
+fn benchmark_read_latin1(c: &mut Criterion) {
+    let sizes = [100, 1000, 10000, 100000];
+    let ascii_string = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+    for &size in &sizes {
+        let s_ascii = ascii_string.repeat(size / ascii_string.len() + 1);
+        let mut writer = Writer::default();
+        writer.write_latin1_string(&s_ascii);
+        let data = writer.dump();
+
+        let name_simd = format!("Read Latin-1 SIMD size {}", size);
+        c.bench_function(&name_simd, |b| {
+            b.iter(|| {
+                let mut reader = Reader::new(black_box(&data));
+                let result = reader.read_latin1_string(black_box(s_ascii.len()));
+                black_box(result);
+            })
+        });
+
+        let name_scalar = format!("Read Latin-1 Standard size {}", size);
+        c.bench_function(&name_scalar, |b| {
+            b.iter(|| {
+                let mut reader = Reader::new(black_box(&data));
+                let result = reader.read_latin1_string_standard(black_box(s_ascii.len()));
+                black_box(result);
+            })
+        });
+    }
+}
+
+// fn benchmark_read_utf8(c: &mut Criterion) {
+//     let sizes = [100, 1000, 10000, 100000];
+//     let test_string = "Hello, 世界! 🌍";
+//
+//     for &size in &sizes {
+//         let s = test_string.repeat(size / test_string.len() + 1);
+//         let mut writer = Writer::default();
+//         writer.write_utf8_string(&s);
+//         let data = writer.dump();
+//
+//         let name_simd = format!("Read UTF-8 SIMD size {}", size);
+//         c.bench_function(&name_simd, |b| {
+//             b.iter(|| {
+//                 let mut reader = Reader::new(black_box(&data));
+//                 let result = reader.read_utf8_string(black_box(s.len()));
+//                 black_box(result);
+//             })
+//         });
+//
+//         let name_scalar = format!("Read UTF-8 Standard size {}", size);
+//         c.bench_function(&name_scalar, |b| {
+//             b.iter(|| {
+//                 let mut reader = Reader::new(black_box(&data));
+//                 let result = reader.read_utf8_string_standard(black_box(s.len()));
+//                 black_box(result);
+//             })
+//         });
+//     }
+// }
+
 fn criterion_benchmark(c: &mut Criterion) {
     let test_str_short = "Hello, World!";
     let test_str_long = "Hello, World! ".repeat(1000);
@@ -152,16 +212,19 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| unsafe { is_latin_avx(black_box(&test_str_long)) })
     });
 
-    c.bench_function("Standard short", |b| {
-        b.iter(|| is_latin_std(black_box(test_str_short)))
-    });
+    // c.bench_function("Standard short", |b| {
+    //     b.iter(|| is_latin_std(black_box(test_str_short)))
+    // });
+    //
+    // c.bench_function("Standard long", |b| {
+    //     b.iter(|| is_latin_std(black_box(&test_str_long)))
+    // });
+    //
+    // benchmark_write_utf8(c);
+    // benchmark_write_latin1(c);
 
-    c.bench_function("Standard long", |b| {
-        b.iter(|| is_latin_std(black_box(&test_str_long)))
-    });
-
-    benchmark_write_utf8(c);
-    benchmark_write_latin1(c);
+    benchmark_read_latin1(c);
+    // benchmark_read_utf8(c);
 }
 
 criterion_group!(benches, criterion_benchmark);
