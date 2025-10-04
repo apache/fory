@@ -15,13 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-mod compatible;
-
 use fory_core::fory::Fory;
 use fory_core::types::Mode::Compatible;
 use fory_derive::Fory;
 use std::collections::{HashMap, HashSet};
-// RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_compatible
+// RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_struct
 #[test]
 fn simple() {
     #[derive(Fory, Debug, Default)]

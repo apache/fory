@@ -173,7 +173,6 @@ pub fn skip_field_value(
                 let remote_type_id = context.reader.read_varuint32();
                 let meta_index = context.reader.read_varuint32();
                 let type_meta = context.get_meta(meta_index as usize);
-                println!("type_meta: {:?}", type_meta);
                 assert_eq!(remote_type_id, type_meta.get_type_id());
                 let field_infos = type_meta.get_field_infos().to_vec();
                 for field_info in field_infos.iter() {
@@ -185,7 +184,6 @@ pub fn skip_field_value(
             } else if internal_id == ENUM_ID {
                 let _ordinal = context.reader.read_varuint32();
             } else if internal_id == EXT_ID {
-                println!("rest: {:?}", context.reader.slice_after_cursor());
                 let remote_type_id = context.reader.read_varuint32();
                 assert_eq!(remote_type_id, type_id_num);
                 let type_resolver = context.get_fory().get_type_resolver();
