@@ -125,8 +125,32 @@ public class ObjectCreators {
       try {
         return (T) handle.invoke();
       } catch (Throwable e) {
-        throw new RuntimeException(e);
+        String errorMsg = createConstructorInvocationErrorMessage(type, e);
+        throw new ForyException(errorMsg, e);
       }
+    }
+
+    private static String createConstructorInvocationErrorMessage(Class<?> type, Throwable cause) {
+      StringBuilder sb = new StringBuilder();
+      sb.append("Failed to invoke no-arg constructor for class '")
+          .append(type.getName())
+          .append("'");
+
+      if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+        sb.append(" in GraalVM Native Image environment.\n\n");
+        sb.append("This typically indicates a reflection configuration issue.\n");
+        sb.append("SOLUTION: Ensure the constructor is registered for reflection access:\n");
+        sb.append("- Add to reflect-config.json:\n");
+        sb.append("  {\n");
+        sb.append("    \"name\": \"").append(type.getName()).append("\",\n");
+        sb.append("    \"methods\": [{\"name\": \"<init>\", \"parameterTypes\": []}]\n");
+        sb.append("  }\n\n");
+        sb.append("Root cause: ").append(cause.getMessage());
+      } else {
+        sb.append(".\nRoot cause: ").append(cause.getMessage());
+      }
+
+      return sb.toString();
     }
 
     @Override
@@ -141,6 +165,7 @@ public class ObjectCreators {
 
     public RecordObjectCreator(Class<T> type) {
       super(type);
+      @SuppressWarnings("rawtypes")
       Tuple2<Constructor, MethodHandle> tuple2 = RecordUtils.getRecordConstructor(type);
       constructor = tuple2.f0;
       handle = tuple2.f1;
@@ -148,8 +173,8 @@ public class ObjectCreators {
         try {
           constructor.setAccessible(true);
         } catch (Throwable t) {
-          throw new ForyException(
-              "Failed to create instance, please provide a public constructor for " + type, t);
+          String errorMsg = createRecordConstructorErrorMessage(type, t);
+          throw new ForyException(errorMsg, t);
         }
       }
     }
@@ -171,8 +196,56 @@ public class ObjectCreators {
           return (T) handle.invokeWithArguments(arguments);
         }
       } catch (Throwable e) {
-        throw new RuntimeException(e);
+        String errorMsg = createRecordInvocationErrorMessage(type, e);
+        throw new ForyException(errorMsg, e);
       }
+    }
+
+    private static String createRecordConstructorErrorMessage(Class<?> type, Throwable cause) {
+      StringBuilder sb = new StringBuilder();
+      sb.append("Failed to set accessibility for record constructor of class '")
+          .append(type.getName())
+          .append("'");
+
+      if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+        sb.append(" in GraalVM Native Image environment.\n\n");
+        sb.append("SOLUTION: Register the record constructor for reflection access:\n");
+        sb.append("- Add to reflect-config.json:\n");
+        sb.append("  {\n");
+        sb.append("    \"name\": \"").append(type.getName()).append("\",\n");
+        sb.append("    \"methods\": [{\"name\": \"<init>\", \"parameterTypes\": [...]}]\n");
+        sb.append("  }\n\n");
+        sb.append("Root cause: ").append(cause.getMessage());
+      } else {
+        sb.append(". Please ensure the record constructor is accessible.\n");
+        sb.append("Root cause: ").append(cause.getMessage());
+      }
+
+      return sb.toString();
+    }
+
+    private static String createRecordInvocationErrorMessage(Class<?> type, Throwable cause) {
+      StringBuilder sb = new StringBuilder();
+      sb.append("Failed to invoke record constructor for class '")
+          .append(type.getName())
+          .append("'");
+
+      if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+        sb.append(" in GraalVM Native Image environment.\n\n");
+        sb.append(
+            "This typically indicates missing reflection configuration for the record constructor.\n");
+        sb.append("SOLUTION: Ensure the record constructor is registered for reflection access:\n");
+        sb.append("- Add to reflect-config.json:\n");
+        sb.append("  {\n");
+        sb.append("    \"name\": \"").append(type.getName()).append("\",\n");
+        sb.append("    \"methods\": [{\"name\": \"<init>\", \"parameterTypes\": [...]}]\n");
+        sb.append("  }\n\n");
+        sb.append("Root cause: ").append(cause.getMessage());
+      } else {
+        sb.append(".\nRoot cause: ").append(cause.getMessage());
+      }
+
+      return sb.toString();
     }
   }
 
@@ -252,9 +325,35 @@ public class ObjectCreators {
       try {
         return constructor.newInstance();
       } catch (Exception e) {
-        throw new ForyException(
-            "Failed to create instance, please provide a no-arg constructor for " + type, e);
+        String errorMsg = createGraalVMFriendlyErrorMessage(type, e);
+        throw new ForyException(errorMsg, e);
       }
+    }
+
+    private static String createGraalVMFriendlyErrorMessage(Class<?> type, Exception cause) {
+      StringBuilder sb = new StringBuilder();
+      sb.append("Failed to create instance of class '").append(type.getName()).append("'");
+
+      if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+        sb.append(" in GraalVM Native Image environment.\n\n");
+        sb.append("SOLUTION OPTIONS:\n");
+        sb.append("1. Add a public or protected no-arg constructor to your class:\n");
+        sb.append("   public ").append(type.getSimpleName()).append("() {}\n\n");
+        sb.append("2. If you must use a private constructor, register it for reflection access:\n");
+        sb.append("   - Add to reflect-config.json:\n");
+        sb.append("     {\n");
+        sb.append("       \"name\": \"").append(type.getName()).append("\",\n");
+        sb.append("       \"methods\": [{\"name\": \"<init>\", \"parameterTypes\": []}]\n");
+        sb.append("     }\n\n");
+        sb.append(
+            "3. Use @RegisterForReflection annotation on your class if using Quarkus/other frameworks\n\n");
+        sb.append("Root cause: ").append(cause.getMessage());
+      } else {
+        sb.append(". Please provide a no-arg constructor for ").append(type.getName());
+        sb.append("\nRoot cause: ").append(cause.getMessage());
+      }
+
+      return sb.toString();
     }
 
     @Override
