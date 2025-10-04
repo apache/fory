@@ -349,9 +349,6 @@ impl NullableTypeNode {
                         Some(if internal_id == COMPATIBLE_STRUCT_ID || internal_id == NAMED_COMPATIBLE_STRUCT_ID || internal_id == ENUM_ID || internal_id == NAMED_ENUM_ID || internal_id == EXT_ID || internal_id == NAMED_EXT_ID {
                             <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(context)
                                     .map_err(fory_core::error::Error::from)?
-                        } else if internal_id == ENUM_ID || internal_id == NAMED_ENUM_ID {
-                            <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(context)
-                                .map_err(fory_core::error::Error::from)?
                         } else {
                             unimplemented!()
                         })
