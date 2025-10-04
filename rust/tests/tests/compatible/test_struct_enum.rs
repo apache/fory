@@ -441,7 +441,6 @@ fn skip_ext() {
     struct ExtWrapper {
         f1: ExtItem,
     }
-
     let mut id_fory1 = Fory::default().mode(Compatible).xlang(true);
     id_fory1.register_serializer::<ExtItem>(100);
     id_fory1.register::<ExtWrapper>(101);
@@ -464,6 +463,60 @@ fn skip_ext() {
         assert_eq!(
             fory2.deserialize::<Empty>(&bytes).unwrap(),
             Empty::default()
+        );
+    }
+}
+
+#[test]
+fn compatible_ext() {
+    #[derive(Debug, PartialEq, Default)]
+    struct ExtItem {
+        id: i32,
+    }
+    impl Serializer for ExtItem {
+        fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
+            write(&self.id, context, is_field, false, false);
+        }
+        fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+            Ok(Self {
+                id: read(context, is_field, false, false)?,
+            })
+        }
+    }
+    #[derive(Fory, Debug, PartialEq, Default)]
+    struct ExtWrapper1 {
+        f1: ExtItem,
+    }
+    #[derive(Fory, Debug, PartialEq, Default)]
+    struct ExtWrapper2 {
+        f1: Option<ExtItem>,
+    }
+    let mut id_fory1 = Fory::default().mode(Compatible).xlang(true);
+    id_fory1.register_serializer::<ExtItem>(100);
+    id_fory1.register::<ExtWrapper1>(101);
+    let mut id_fory2 = Fory::default().mode(Compatible).xlang(true);
+    id_fory2.register_serializer::<ExtItem>(100);
+    id_fory2.register::<ExtWrapper2>(101);
+
+    let mut name_fory1 = Fory::default().mode(Compatible).xlang(true);
+    name_fory1.register_serializer_by_name::<ExtItem>("ext_item");
+    name_fory1.register::<ExtWrapper1>(101);
+    let mut name_fory2 = Fory::default().mode(Compatible).xlang(true);
+    name_fory2.register_serializer_by_name::<ExtItem>("ext_item");
+    name_fory2.register::<ExtWrapper2>(101);
+
+    for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
+        let wrapper = ExtWrapper1 {
+            f1: ExtItem { id: 1 },
+        };
+        let bytes = fory1.serialize(&wrapper);
+        assert_eq!(
+            fory2
+                .deserialize::<ExtWrapper2>(&bytes)
+                .unwrap()
+                .f1
+                .unwrap(),
+            wrapper.f1
         );
     }
 }

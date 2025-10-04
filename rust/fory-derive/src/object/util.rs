@@ -346,7 +346,7 @@ impl NullableTypeNode {
                     } else {
                         let type_id = cur_remote_nullable_type.type_id;
                         let internal_id = type_id & 0xff;
-                        Some(if internal_id == COMPATIBLE_STRUCT_ID || internal_id == NAMED_COMPATIBLE_STRUCT_ID {
+                        Some(if internal_id == COMPATIBLE_STRUCT_ID || internal_id == NAMED_COMPATIBLE_STRUCT_ID || internal_id == ENUM_ID || internal_id == NAMED_ENUM_ID || internal_id == EXT_ID || internal_id == NAMED_EXT_ID {
                             <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(context)
                                     .map_err(fory_core::error::Error::from)?
                         } else if internal_id == ENUM_ID || internal_id == NAMED_ENUM_ID {
@@ -365,12 +365,9 @@ impl NullableTypeNode {
                     } else {
                         let type_id = cur_remote_nullable_type.type_id;
                         let internal_id = type_id & 0xff;
-                        if internal_id == COMPATIBLE_STRUCT_ID || internal_id == NAMED_COMPATIBLE_STRUCT_ID {
+                        if internal_id == COMPATIBLE_STRUCT_ID || internal_id == NAMED_COMPATIBLE_STRUCT_ID || internal_id == ENUM_ID || internal_id == NAMED_ENUM_ID || internal_id == EXT_ID || internal_id == NAMED_EXT_ID {
                             <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(context)
                                     .map_err(fory_core::error::Error::from)?
-                        } else if internal_id == ENUM_ID || internal_id == NAMED_ENUM_ID {
-                            <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(context)
-                                .map_err(fory_core::error::Error::from)?
                         } else {
                             unimplemented!("")
                         }
@@ -383,6 +380,8 @@ impl NullableTypeNode {
                 const ENUM_ID: u32 = fory_core::types::TypeId::ENUM as u32;
                 const NAMED_COMPATIBLE_STRUCT_ID: u32 = fory_core::types::TypeId::NAMED_COMPATIBLE_STRUCT as u32;
                 const NAMED_ENUM_ID: u32 = fory_core::types::TypeId::NAMED_ENUM as u32;
+                const EXT_ID: u32 = fory_core::types::TypeId::EXT as u32;
+                const NAMED_EXT_ID: u32 = fory_core::types::TypeId::NAMED_EXT as u32;
                 #ts
             }
         };

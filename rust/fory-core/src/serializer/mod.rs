@@ -187,33 +187,43 @@ where
 
     // only used by struct/enum
     fn fory_read_compatible(context: &mut ReadContext) -> Result<Self, Error> {
-        // default logic only for named_ext
+        // default logic only for ext/named_ext
         let remote_type_id = context.reader.read_varuint32();
         let local_type_id = Self::fory_get_type_id(context.get_fory());
         assert_eq!(remote_type_id, local_type_id);
-        // only for named_ext
-        let (namespace, type_name) = if context.get_fory().is_share_meta() {
-            let meta_index = context.reader.read_varuint32();
-            let type_def = context.get_meta(meta_index as usize);
-            (type_def.get_namespace(), type_def.get_type_name())
+        if local_type_id & 0xff == TypeId::EXT as u32 {
+            let type_resolver = context.get_fory().get_type_resolver();
+            type_resolver
+                .get_ext_harness(local_type_id)
+                .get_read_data_fn()(context, true)
+            .and_then(|b: Box<dyn Any>| {
+                b.downcast::<Self>()
+                    .map(|boxed_self| *boxed_self)
+                    .map_err(|_| anyhow!("downcast to Self failed").into())
+            })
         } else {
-            let resolver = context.get_fory().get_metastring_resolver();
-            let nsb = resolver.borrow_mut().read_meta_string_bytes(context);
-            let tsb = resolver.borrow_mut().read_meta_string_bytes(context);
-            let ns = NAMESPACE_DECODER.decode(&nsb.bytes, nsb.encoding)?;
-            let ts = TYPE_NAME_DECODER.decode(&tsb.bytes, tsb.encoding)?;
-            (ns, ts)
-        };
-        let type_resolver = context.get_fory().get_type_resolver();
-        type_resolver
-            .get_name_harness(&namespace, &type_name)
-            .unwrap()
-            .get_read_data_fn()(context, true)
-        .and_then(|b: Box<dyn Any>| {
-            b.downcast::<Self>()
-                .map(|boxed_self| *boxed_self)
-                .map_err(|_| anyhow!("downcast to Self failed").into())
-        })
+            let (namespace, type_name) = if context.get_fory().is_share_meta() {
+                let meta_index = context.reader.read_varuint32();
+                let type_def = context.get_meta(meta_index as usize);
+                (type_def.get_namespace(), type_def.get_type_name())
+            } else {
+                let resolver = context.get_fory().get_metastring_resolver();
+                let nsb = resolver.borrow_mut().read_meta_string_bytes(context);
+                let tsb = resolver.borrow_mut().read_meta_string_bytes(context);
+                let ns = NAMESPACE_DECODER.decode(&nsb.bytes, nsb.encoding)?;
+                let ts = TYPE_NAME_DECODER.decode(&tsb.bytes, tsb.encoding)?;
+                (ns, ts)
+            };
+            let type_resolver = context.get_fory().get_type_resolver();
+            type_resolver
+                .get_ext_name_harness(&namespace, &type_name)
+                .get_read_data_fn()(context, true)
+            .and_then(|b: Box<dyn Any>| {
+                b.downcast::<Self>()
+                    .map(|boxed_self| *boxed_self)
+                    .map_err(|_| anyhow!("downcast to Self failed").into())
+            })
+        }
     }
 }
 
