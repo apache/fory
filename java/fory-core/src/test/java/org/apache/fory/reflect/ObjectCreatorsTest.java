@@ -21,6 +21,8 @@ package org.apache.fory.reflect;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import org.apache.fory.reflect.ObjectCreators.ParentNoArgCtrObjectCreator;
+import org.apache.fory.reflect.ObjectCreators.DeclaredNoArgCtrObjectCreator;
+import org.apache.fory.reflect.ObjectCreators.UnsafeObjectCreator;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -34,6 +36,26 @@ public class ObjectCreatorsTest {
       this.f1 = f1;
     }
   }
+  
+  static class PrivateConstructorClass {
+    private int value;
+    
+    private PrivateConstructorClass() {
+      this.value = 42;
+    }
+    
+    public int getValue() {
+      return value;
+    }
+  }
+  
+  static class PublicConstructorClass {
+    public int value;
+    
+    public PublicConstructorClass() {
+      this.value = 100;
+    }
+  }
 
   @Test
   public void testObjectCreator() {
@@ -43,5 +65,57 @@ public class ObjectCreatorsTest {
     Assert.assertEquals(
         new ParentNoArgCtrObjectCreator<>(NoCtrTestClass.class).newInstance().getClass(),
         NoCtrTestClass.class);
+  }
+  
+  @Test
+  public void testCreateObjectCreatorWithPublicConstructor() {
+    ObjectCreator<PublicConstructorClass> creator = 
+        ObjectCreators.getObjectCreator(PublicConstructorClass.class);
+    Assert.assertNotNull(creator);
+    
+    PublicConstructorClass instance = creator.newInstance();
+    Assert.assertNotNull(instance);
+    Assert.assertEquals(instance.getClass(), PublicConstructorClass.class);
+    Assert.assertEquals(instance.value, 100);
+  }
+  
+  @Test
+  public void testCreateObjectCreatorWithPrivateConstructor() {
+    ObjectCreator<PrivateConstructorClass> creator = 
+        ObjectCreators.getObjectCreator(PrivateConstructorClass.class);
+    Assert.assertNotNull(creator);
+    
+    PrivateConstructorClass instance = creator.newInstance();
+    Assert.assertNotNull(instance);
+    Assert.assertEquals(instance.getClass(), PrivateConstructorClass.class);
+    Assert.assertEquals(instance.getValue(), 42);
+  }
+  
+  @Test
+  public void testDeclaredNoArgCtrObjectCreatorErrorHandling() {
+    try {
+      DeclaredNoArgCtrObjectCreator<PrivateConstructorClass> creator = 
+          new DeclaredNoArgCtrObjectCreator<>(PrivateConstructorClass.class);
+      PrivateConstructorClass instance = creator.newInstance();
+      Assert.assertNotNull(instance);
+      Assert.assertEquals(instance.getClass(), PrivateConstructorClass.class);
+    } catch (Exception e) {
+      String message = e.getMessage();
+      Assert.assertTrue(message.contains("GraalVM") || 
+                       message.contains("reflection") ||
+                       message.contains("Native Image"),
+                       "Error message should contain GraalVM guidance: " + message);
+    }
+  }
+  
+  @Test 
+  public void testUnsafeObjectCreatorFallback() {
+    UnsafeObjectCreator<PrivateConstructorClass> creator = 
+        new UnsafeObjectCreator<>(PrivateConstructorClass.class);
+    Assert.assertNotNull(creator);
+    
+    PrivateConstructorClass instance = creator.newInstance();
+    Assert.assertNotNull(instance);
+    Assert.assertEquals(instance.getClass(), PrivateConstructorClass.class);
   }
 }
