@@ -209,6 +209,9 @@ func (r *RefResolver) Reference(value reflect.Value) {
 		return
 	}
 	length := len(r.readRefIds)
+	if length <= 0 {
+		return
+	}
 	refId := r.readRefIds[length-1]
 	r.readRefIds = r.readRefIds[:length-1]
 	r.SetReadObject(refId, value)

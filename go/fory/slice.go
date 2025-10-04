@@ -19,310 +19,874 @@ package fory
 
 import (
 	"fmt"
+	"math"
 	"reflect"
+	"strconv"
 )
 
 const (
-	CollectionDefaultFlag       = 0b0000
-	CollectionTrackingRef       = 0b0001
-	CollectionHasNull           = 0b0010
-	CollectionIsDeclElementType = 0b0100
-	CollectionIsSameType        = 0b1000
-	CollectionDeclSameType      = CollectionIsSameType | CollectionIsDeclElementType
+	CollectionDefaultFlag            = 0b0000
+	CollectionTrackingRef            = 0b0001
+	CollectionHasNull                = 0b0010
+	CollectionIsDeclElementType      = 0b0100
+	CollectionIsSameType             = 0b1000
+	NOT_NULL_VALUE_FLAG              = -1
+	NOT_NULL_INT64_FLAG              = NOT_NULL_VALUE_FLAG&0b11111111 | (INT64 << 8)
+	NOT_NULL_FLOAT64_FLAG            = NOT_NULL_VALUE_FLAG&0b11111111 | (DOUBLE << 8)
+	NOT_NULL_BOOL_FLAG               = NOT_NULL_VALUE_FLAG&0b11111111 | (BOOL << 8)
+	NOT_NULL_STRING_FLAG             = NOT_NULL_VALUE_FLAG&0b11111111 | (STRING << 8)
+	COLLECTION_TRACKING_REF          = 0b1
+	COLLECTION_HAS_NULL              = 0b10
+	COLLECTION_NOT_DECL_ELEMENT_TYPE = 0b100
+	COLLECTION_NOT_SAME_TYPE         = 0b1000
+	COLLECTION_DEFAULT_FLAG          = 0b0
 )
 
 // sliceSerializer provides the dynamic slice implementation(e.g. []interface{}) that inspects
 // element values at runtime
 type sliceSerializer struct {
-	elemInfo     TypeInfo
-	declaredType reflect.Type
+	elemTypeInfo    TypeInfo
+	elemSerializer  Serializer
+	elemType        reflect.Type
+	elemTrackingRef int8
 }
 
 func (s sliceSerializer) TypeId() TypeId {
 	return LIST
 }
 
-func (s sliceSerializer) NeedWriteRef() bool {
-	return true
+func (s sliceSerializer) NeedWriteRef() int8 {
+	return 1
 }
 
-// Write serializes a slice value into the buffer
-func (s sliceSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
-	// Get slice length and handle empty slice case
-	length := value.Len()
-	if length == 0 {
-		buf.WriteVarUint32(0) // Write 0 for empty slice
-		return nil
+func NewSliceSerializer(f *Fory, elemSerializer Serializer, elemType reflect.Type) sliceSerializer {
+	s := sliceSerializer{
+		elemSerializer: elemSerializer,
 	}
-
-	// Write collection header and get type information
-	collectFlag, elemTypeInfo := s.writeHeader(f, buf, value)
-
-	// Choose serialization path based on type consistency
-	if (collectFlag & CollectionIsSameType) != 0 {
-		return s.writeSameType(f, buf, value, elemTypeInfo, collectFlag) // Optimized path for same-type elements
-	}
-	return s.writeDifferentTypes(f, buf, value) // Fallback path for mixed-type elements
-}
-
-// writeHeader prepares and writes collection metadata including:
-// - Collection size
-// - Type consistency flags
-// - Element type information (if homogeneous)
-func (s sliceSerializer) writeHeader(f *Fory, buf *ByteBuffer, value reflect.Value) (byte, TypeInfo) {
-	collectFlag := CollectionDefaultFlag
-	var elemTypeInfo TypeInfo
-	hasNull := false
-	hasSameType := true
-
-	// Seed elemTypeInfo from the first element so writeSameType can reuse it.
-	// Empty slices leave elemTypeInfo zero-value, which is also fine because
-	// writeSameType won't do anything in that case.
-	if value.Len() > 0 {
-		elemTypeInfo, _ = f.typeResolver.getTypeInfo(value.Index(0), true)
-	}
-
-	if s.declaredType != nil {
-		collectFlag |= CollectionIsDeclElementType | CollectionIsSameType
+	if elemSerializer == nil {
+		s.elemType = nil
+		s.elemTrackingRef = -1
 	} else {
-		// Iterate through elements to check for nulls and type consistency
-		var firstType reflect.Type
+		s.elemType = elemType
+		s.elemTypeInfo, _ = f.typeResolver.getTypeInfo(reflect.Value{}, elemType, true)
+		s.elemTrackingRef = elemSerializer.NeedWriteRef()
+	}
+	return s
+}
+
+func (s sliceSerializer) writeHeader(f *Fory, buf *ByteBuffer, value reflect.Value) (int8, TypeInfo) {
+	collectFlag := COLLECTION_DEFAULT_FLAG
+	elemType := s.elemType
+	elemTypeInfo := s.elemTypeInfo
+	hasNull, hasDifferentType := false, false
+	if elemType == nil {
+		collectFlag = COLLECTION_NOT_DECL_ELEMENT_TYPE
 		for i := 0; i < value.Len(); i++ {
-			elem := value.Index(i)
-			if elem.Kind() == reflect.Interface || elem.Kind() == reflect.Ptr {
-				elem = elem.Elem()
-			}
-			if isNull(elem) {
+			v := value.Index(i)
+			if !hasNull && isNull(value.Index(i)) {
 				hasNull = true
 				continue
 			}
-
-			// Compare each element's type with the first element's type
-			if firstType == nil {
-				firstType = elem.Type()
-			} else {
-				if firstType != elem.Type() {
-					hasSameType = false
+			if elemType == nil {
+				elemType = v.Type()
+				if elemType.Kind() == reflect.Interface {
+					elemType = v.Elem().Type()
+				}
+			} else if !hasDifferentType && !checkSameType(v, elemType) {
+				hasDifferentType = true
+				collectFlag |= COLLECTION_NOT_SAME_TYPE
+			}
+		}
+		if !hasDifferentType {
+			// todo: 这段代码的必要性存疑，应该可以删除
+			if elemType.Kind() == reflect.Interface {
+				elemType = reflect.TypeOf(elemType).Elem()
+			}
+			elemTypeInfo, _ = f.typeResolver.getTypeInfo(value.Index(0), elemType, true)
+			// 如果value自己是[]interface 并且元素为 [] 或者非基础类型的 array，截断式重置 elemtypeinfo 中的信息，比如序列化器信息。
+			if value.Type() == interfaceSliceType {
+				if (elemType.Kind() == reflect.Array && !isPrimitiveType_(elemType.Elem())) || elemType.Kind() == reflect.Slice {
+					elemTypeInfo.Serializer = NewSliceSerializer(f, nil, nil)
+					elemTypeInfo.TypeID = LIST
+					elemTypeInfo.Type = interfaceSliceType
 				}
 			}
 		}
+	} else {
+		for i := 0; i < value.Len(); i++ {
+			if isNull(value.Index(i)) {
+				hasNull = true
+				break
+			}
+		}
 	}
-
-	// Set collection flags based on findings
 	if hasNull {
-		collectFlag |= CollectionHasNull // Mark if collection contains null values
+		collectFlag |= COLLECTION_HAS_NULL
 	}
-	if hasSameType {
-		collectFlag |= CollectionIsSameType // Mark if elements have same types
+	if f.refTracking {
+		if s.elemTrackingRef == 1 {
+			collectFlag |= COLLECTION_TRACKING_REF
+		} else if s.elemTrackingRef == -1 {
+			if hasDifferentType || elemTypeInfo.Serializer.NeedWriteRef() == 1 {
+				collectFlag |= COLLECTION_TRACKING_REF
+			}
+		}
 	}
-
-	// Enable reference tracking if configured and element type supports it
-	if f.refTracking && (elemTypeInfo.Serializer == nil || elemTypeInfo.Serializer.NeedWriteRef()) {
-		collectFlag |= CollectionTrackingRef
+	buf.WriteVarUint32(uint32(value.Len()))
+	buf.WriteInt8(int8(collectFlag))
+	if !hasDifferentType && (collectFlag&COLLECTION_NOT_DECL_ELEMENT_TYPE != 0) {
+		f.typeResolver.writeTypeInfo(buf, elemTypeInfo)
 	}
-
-	// Write metadata to buffer
-	buf.WriteVarUint32(uint32(value.Len())) // Collection size
-	buf.WriteInt8(int8(collectFlag))        // Collection flags
-
-	// Write element type ID if all elements have same type and not using declared type
-	if hasSameType && (collectFlag&CollectionIsDeclElementType == 0) {
-		buf.WriteVarInt32(elemTypeInfo.TypeID)
-	}
-
-	return byte(collectFlag), elemTypeInfo
+	return int8(collectFlag), elemTypeInfo
 }
 
-// writeSameType efficiently serializes a slice where all elements share the same type
-func (s sliceSerializer) writeSameType(f *Fory, buf *ByteBuffer, value reflect.Value, typeInfo TypeInfo, flag byte) error {
-	serializer := typeInfo.Serializer
-	trackRefs := (flag & CollectionTrackingRef) != 0 // Check if reference tracking is enabled
-
-	for i := 0; i < value.Len(); i++ {
-		elem := value.Index(i)
-		if elem.Kind() == reflect.Interface || elem.Kind() == reflect.Ptr {
-			elem = elem.Elem()
+func checkSameType(v reflect.Value, rep reflect.Type) bool {
+	if v.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return true
 		}
-		if isNull(elem) {
-			buf.WriteInt8(NullFlag) // Write null marker
-			continue
+		v = v.Elem()
+	}
+	if v.Kind() == reflect.Map {
+		return false
+	}
+	if !v.IsValid() || rep == nil {
+		return false
+	}
+	t := v.Type()
+	if t.Kind() == reflect.Ptr || t.Kind() == reflect.Interface {
+		if v.IsNil() {
+			return false
 		}
+		t = t.Elem()
+	}
+	for rep.Kind() == reflect.Ptr || rep.Kind() == reflect.Interface {
+		rep = rep.Elem()
+	}
 
-		if trackRefs {
-			// Handle reference tracking if enabled
-			refWritten, err := f.refResolver.WriteRefOrNull(buf, elem)
-			if err != nil {
-				return err
-			}
-			if !refWritten {
-				// Write actual value if not a reference
-				if err := serializer.Write(f, buf, elem); err != nil {
+	ka, kb := t.Kind(), rep.Kind()
+	if ka == reflect.Array && kb == reflect.Array {
+		return t.Elem() == rep.Elem()
+	}
+	if ka == reflect.Slice && kb == reflect.Slice {
+		return t.Elem() == rep.Elem()
+	}
+	if (ka == reflect.Array && kb == reflect.Slice) || (ka == reflect.Slice && kb == reflect.Array) {
+		return false
+	}
+	return t == rep
+}
+
+func (s sliceSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+	if value.Kind() == reflect.Interface {
+		value = value.Elem()
+	}
+	if value.Len() == 0 {
+		buf.WriteVarUint64(0)
+		return nil
+	}
+	collectFlag, elemTypeInfo := s.writeHeader(f, buf, value)
+	elemType, elemSerializer := elemTypeInfo.Type, elemTypeInfo.Serializer
+	if collectFlag&COLLECTION_NOT_SAME_TYPE == 0 {
+		if elemType.Kind() == reflect.String {
+			s.writeString_(buf, value)
+		} else if elemSerializer.TypeId() == INT64 {
+			s.writeInt(buf, value)
+		} else if elemType.Kind() == reflect.Bool {
+			s.writeBool(buf, value)
+		} else if elemSerializer.TypeId() == DOUBLE {
+			s.writeFloat(buf, value)
+		} else {
+			if collectFlag&COLLECTION_TRACKING_REF == 0 {
+				err := s.writeSameTypeNoRef(f, buf, value, elemTypeInfo)
+				if err != nil {
+					return err
+				}
+			} else {
+				err := s.writeSameTypeRef(f, buf, value, elemTypeInfo)
+				if err != nil {
 					return err
 				}
 			}
-		} else {
-			// Directly write value without reference tracking
-			if err := serializer.Write(f, buf, elem); err != nil {
-				return err
+		}
+	} else {
+		for i := 0; i < value.Len(); i++ {
+			v, typ := value.Index(i), value.Index(i).Type()
+			if v.Kind() == reflect.Interface {
+				v = v.Elem()
+				typ = v.Type()
 			}
+			switch v.Kind() {
+
+			case reflect.String:
+				buf.WriteInt16(NOT_NULL_STRING_FLAG)
+				writeString(buf, v.String())
+				continue
+
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				buf.WriteInt16(NOT_NULL_INT64_FLAG)
+				buf.WriteVarint64(v.Int())
+				continue
+
+			case reflect.Bool:
+				buf.WriteInt16(NOT_NULL_BOOL_FLAG)
+				buf.WriteBool(v.Bool())
+				continue
+
+			case reflect.Float32, reflect.Float64:
+				buf.WriteInt16(NOT_NULL_FLOAT64_FLAG)
+				buf.WriteFloat64(v.Convert(reflect.TypeOf(float64(0))).Float())
+				continue
+			}
+
+			if ok, _ := f.refResolver.WriteRefOrNull(buf, v); !ok {
+				vTypeInfo, err := f.typeResolver.getTypeInfo(v, typ, true)
+				if err != nil {
+					return err
+				}
+				// 如果是集合里嵌套了集合，序列化器应该重置为非声明型的构造，而不是 gettypeinfo 中的结果
+				if typ.Kind() == reflect.Slice {
+					vTypeInfo.Serializer = NewSliceSerializer(f, nil, typ)
+					vTypeInfo.TypeID = LIST
+				}
+				f.typeResolver.writeTypeInfo(buf, vTypeInfo)
+				vTypeInfo.Serializer.Write(f, buf, v)
+			}
+
 		}
 	}
 	return nil
 }
 
-// writeDifferentTypes handles serialization of slices with mixed element types
-func (s sliceSerializer) writeDifferentTypes(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+func (s sliceSerializer) writeString_(buf *ByteBuffer, value reflect.Value) {
 	for i := 0; i < value.Len(); i++ {
-		elem := value.Index(i)
-		if elem.Kind() == reflect.Interface || elem.Kind() == reflect.Ptr {
-			elem = elem.Elem()
+		x := value.Index(i)
+		if x.Kind() == reflect.Interface && !x.IsNil() {
+			x = x.Elem()
 		}
-		if isNull(elem) {
-			buf.WriteInt8(NullFlag) // Write null marker
-			continue
+		writeString(buf, x.String())
+	}
+}
+
+func (s sliceSerializer) writeInt(buf *ByteBuffer, value reflect.Value) {
+	for i := 0; i < value.Len(); i++ {
+		x := value.Index(i)
+		if x.Kind() == reflect.Interface && !x.IsNil() {
+			x = x.Elem()
 		}
-		// The following write logic doesn’t cover the fast path for strings, so add it here
-		if elem.Kind() == reflect.String {
-			buf.WriteInt8(NotNullValueFlag)
-			buf.WriteVarInt32(STRING)
-			err := writeString(buf, elem.Interface().(string))
-			if err != nil {
-				return err
-			}
-			continue
+		buf.WriteVarint64(x.Int())
+	}
+}
+
+func (s sliceSerializer) writeBool(buf *ByteBuffer, value reflect.Value) {
+	for i := 0; i < value.Len(); i++ {
+		x := value.Index(i)
+		if x.Kind() == reflect.Interface && !x.IsNil() {
+			x = x.Elem()
 		}
-		// Handle reference tracking
-		refWritten, err := f.refResolver.WriteRefOrNull(buf, elem)
+		buf.WriteBool(x.Bool())
+	}
+}
+
+func (s sliceSerializer) writeFloat(buf *ByteBuffer, value reflect.Value) {
+	for i := 0; i < value.Len(); i++ {
+		x := value.Index(i)
+		if x.Kind() == reflect.Interface && !x.IsNil() {
+			x = x.Elem()
+		}
+		buf.WriteFloat64(x.Float())
+	}
+}
+
+func (s sliceSerializer) writeSameTypeNoRef(f *Fory, buf *ByteBuffer, value reflect.Value, elemTypeInfo TypeInfo) error {
+	for i := 0; i < value.Len(); i++ {
+		err := elemTypeInfo.Serializer.Write(f, buf, value.Index(i))
 		if err != nil {
 			return err
 		}
-		if refWritten {
-			continue // Skip if element was written as reference
-		}
+	}
+	return nil
+}
 
-		// Get and write type info for each element (since types vary)
-		typeInfo, _ := f.typeResolver.getTypeInfo(elem, true)
-		f.typeResolver.writeTypeInfo(buf, typeInfo)
-		// When writing the actual value, detect if elem is an array and convert it
-		// to the corresponding slice type so the existing slice serializer can be reused
-		if elem.Kind() == reflect.Array {
-			sliceType := reflect.SliceOf(elem.Type().Elem())
-			slice := reflect.MakeSlice(sliceType, elem.Len(), elem.Len())
-			reflect.Copy(slice, elem)
-			elem = slice
-		}
-		if err := typeInfo.Serializer.Write(f, buf, elem); err != nil {
+func (s sliceSerializer) writeSameTypeRef(f *Fory, buf *ByteBuffer, value reflect.Value, elemTypeInfo TypeInfo) error {
+	for i := 0; i < value.Len(); i++ {
+		if ok, err := f.refResolver.WriteRefOrNull(buf, value.Index(i)); !ok {
+			elemTypeInfo.Serializer.Write(f, buf, value.Index(i))
+		} else if err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// Read deserializes a slice from the buffer into the provided reflect.Value
-func (s sliceSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
-	// Read slice length from buffer
+// todo 目前read不说正确性，在功能性还差一步，就是diff的时候，没有对快速路径做读取。
+func (s sliceSerializer) Read(f *Fory, buf *ByteBuffer, typ reflect.Type, value reflect.Value) error {
 	length := int(buf.ReadVarUint32())
 	if length == 0 {
-		// Initialize empty slice if length is 0
-		value.Set(reflect.MakeSlice(type_, 0, 0))
+		switch typ.Kind() {
+		case reflect.Slice:
+			value.Set(reflect.MakeSlice(typ, 0, 0))
+		case reflect.Interface:
+			ifaceElem := reflect.TypeOf((*interface{})(nil)).Elem()
+			value.Set(reflect.MakeSlice(reflect.SliceOf(ifaceElem), 0, 0))
+			value = value.Elem()
+		default:
+			return fmt.Errorf("sliceSerializer expects slice/interface; got %v", typ)
+		}
 		return nil
 	}
-
-	// Read collection flags that indicate special characteristics
 	collectFlag := buf.ReadInt8()
 	var elemTypeInfo TypeInfo
-	// Read element type information if all elements are same type
-	if (collectFlag & CollectionIsSameType) != 0 {
-		if (collectFlag & CollectionIsDeclElementType) == 0 {
-			typeID := buf.ReadVarInt32()
-			var err error
-			elemTypeInfo, err = f.typeResolver.getTypeInfoById(int16(typeID))
+	var dst reflect.Value
+	var err error
+	outer := value
+	switch typ.Kind() {
+	case reflect.Slice:
+		dst = reflect.MakeSlice(typ, length, length)
+		value.Set(dst)
+	case reflect.Interface:
+		ifaceElem := reflect.TypeOf((*interface{})(nil)).Elem()
+		dst = reflect.MakeSlice(reflect.SliceOf(ifaceElem), length, length)
+		value.Set(dst)
+		value = value.Elem()
+	default:
+		return fmt.Errorf("sliceSerializer expects slice/interface; got %v", typ)
+	}
+	if err != nil {
+		return err
+	}
+	f.refResolver.Reference(value)
+	typeId, refID := int32(-1), int32(-1)
+	if collectFlag&COLLECTION_NOT_SAME_TYPE == 0 {
+		if collectFlag&COLLECTION_NOT_DECL_ELEMENT_TYPE != 0 {
+			elemTypeInfo, err = f.typeResolver.readTypeInfo(buf)
 			if err != nil {
-				elemTypeInfo = s.elemInfo
+				return err
+			}
+			if outer.Kind() == reflect.Interface {
+				T := elemTypeInfo.Type
+				out := reflect.MakeSlice(reflect.SliceOf(T), length, length)
+				outer.Set(out)
+				value = outer.Elem()
 			}
 		} else {
-			elemTypeInfo = s.elemInfo
+			// todo: 如果通过这里判断出反序列化方给的是非声明型的来接收声明型的，应该有报错提示才对
+			elemTypeInfo = s.elemTypeInfo
 		}
-	}
-	// Initialize slice with proper capacity
-
-	if value.IsZero() || value.Cap() < length {
-		if type_.Kind() != reflect.Slice {
-			if type_.Kind() == reflect.Interface {
-				type_ = reflect.TypeOf([]interface{}{})
+		if collectFlag&COLLECTION_HAS_NULL == 0 {
+			typeId = elemTypeInfo.TypeID
+			if typeId == STRING {
+				s.readString_(buf, length, value)
+				return nil
+			} else if typeId == VAR_INT64 {
+				s.readInt(buf, length, value)
+				return nil
+			} else if typeId == BOOL {
+				s.readBool(buf, length, value)
+				return nil
+			} else if typeId == DOUBLE {
+				s.readFloat(buf, length, value)
+				return nil
 			}
 		}
-		value.Set(reflect.MakeSlice(type_, length, length))
-		if value.Kind() == reflect.Interface || value.Kind() == reflect.Ptr {
-			value = value.Elem()
+		if collectFlag&COLLECTION_TRACKING_REF == 0 {
+			err = s.readSameTypeNoRef(f, buf, length, value, elemTypeInfo)
+			if err != nil {
+				return err
+			}
+		} else {
+			err = s.readSameTypeRef(f, buf, length, value, elemTypeInfo)
+			if err != nil {
+				return err
+			}
 		}
 	} else {
-		value.Set(value.Slice(0, length))
-	}
-	// Register reference for tracking
-	f.refResolver.Reference(value)
+		for i := 0; i < length; i++ {
+			refID, err = f.refResolver.TryPreserveRefId(buf)
+			if err != nil {
+				return err
+			}
+			slot := value.Index(i)
 
-	// Choose appropriate deserialization path based on type consistency
-	if (collectFlag & CollectionIsSameType) != 0 {
-		return s.readSameType(f, buf, value, elemTypeInfo, collectFlag)
-	}
-	return s.readDifferentTypes(f, buf, value)
-}
-
-// readSameType handles deserialization of slices where all elements share the same type
-func (s sliceSerializer) readSameType(f *Fory, buf *ByteBuffer, value reflect.Value, typeInfo TypeInfo, flag int8) error {
-	// Determine if reference tracking is enabled
-	trackRefs := (flag & CollectionTrackingRef) != 0
-	serializer := typeInfo.Serializer
-	var refID int32
-
-	for i := 0; i < value.Len(); i++ {
-		if trackRefs {
-			// Handle reference tracking if enabled
-			refID, _ = f.refResolver.TryPreserveRefId(buf)
-			if int8(refID) < NotNullValueFlag {
-				// Use existing reference if available
-				value.Index(i).Set(f.refResolver.GetCurrentReadObject())
+			if int8(refID) < NOT_NULL_VALUE_FLAG {
+				slot.Set(f.refResolver.GetCurrentReadObject())
 				continue
 			}
-		}
 
-		// Create new element of the correct type and deserialize from buffer
-		elem := reflect.New(typeInfo.Type).Elem()
-		if err := serializer.Read(f, buf, elem.Type(), elem); err != nil {
-			return err
+			typeInfo, err := f.typeResolver.readTypeInfo(buf)
+			if err != nil {
+				return fmt.Errorf("read typeinfo: %w", err)
+			}
+			typeID := typeInfo.TypeID
+
+			var (
+				v   interface{}
+				rve reflect.Value
+			)
+
+			switch typeID {
+			case STRING:
+				s := readString(buf)
+				v = s
+
+			case VAR_INT32, VAR_INT64:
+				i64 := buf.ReadVarint64()
+				v = i64
+
+			case BOOL:
+				b := buf.ReadBool()
+				v = b
+
+			case DOUBLE, FLOAT:
+				f64 := buf.ReadFloat64()
+				v = f64
+
+			default:
+				tgtType := typeInfo.Type
+				if tgtType == nil {
+					tgtType = slot.Type()
+				}
+				concrete := reflect.New(tgtType).Elem()
+				//是这里的问题，info中的type变成slice了，没办法 就是这样存的,这个设计就是这样存的，所以怎么把tgttype变成正确类型的array
+				if isPrimitiveArrayType(int16(typeInfo.TypeID)) {
+					tgtType = reflect.TypeOf((*interface{})(nil)).Elem()
+					concrete := reflect.New(tgtType).Elem() // 一个可设置的 interface{} 值
+
+					if typeInfo.Serializer == nil {
+						return fmt.Errorf("nil serializer for typeID=%v", typeInfo.TypeID)
+					}
+					if err := typeInfo.Serializer.Read(f, buf, tgtType, concrete); err != nil {
+						return err
+					}
+					// 读完 serializer 已经把 [n]T Set 到 concrete（作为 interface{} 的动态值）
+					slot.Set(concrete)
+					f.refResolver.SetReadObject(refID, concrete)
+					continue
+				}
+				if err := typeInfo.Serializer.Read(f, buf, tgtType, concrete); err != nil {
+					return err
+				}
+				rve = concrete
+			}
+
+			if rve.IsValid() {
+				if slot.Kind() == reflect.Interface {
+					if rve.Kind() == reflect.Int64 {
+						x := rve.Int()
+						if strconv.IntSize == 64 || (x >= math.MinInt32 && x <= math.MaxInt32) {
+							rve = reflect.ValueOf(int(x))
+						}
+					}
+				}
+				slot.Set(rve)
+				f.refResolver.SetReadObject(refID, rve)
+				continue
+			}
+
+			switch x := v.(type) {
+			case string:
+				if slot.Kind() == reflect.Interface {
+					slot.Set(reflect.ValueOf(x))
+				} else {
+					slot.SetString(x)
+				}
+				f.refResolver.SetReadObject(refID, slot)
+
+			case int64:
+				if slot.Kind() == reflect.Interface {
+					slot.Set(reflect.ValueOf(x))
+				} else {
+					switch slot.Kind() {
+					case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+						slot.SetInt(x)
+					default:
+						return fmt.Errorf("cannot assign int64 to %v", slot.Type())
+					}
+				}
+				f.refResolver.SetReadObject(refID, slot)
+
+			case bool:
+				if slot.Kind() == reflect.Interface {
+					slot.Set(reflect.ValueOf(x))
+				} else {
+					if slot.Kind() != reflect.Bool {
+						return fmt.Errorf("cannot assign bool to %v", slot.Type())
+					}
+					slot.SetBool(x)
+				}
+				f.refResolver.SetReadObject(refID, slot)
+
+			case float64:
+				if slot.Kind() == reflect.Interface {
+					slot.Set(reflect.ValueOf(x))
+				} else {
+					switch slot.Kind() {
+					case reflect.Float32, reflect.Float64:
+						slot.SetFloat(x)
+					default:
+						return fmt.Errorf("cannot assign float64 to %v", slot.Type())
+					}
+				}
+				f.refResolver.SetReadObject(refID, slot)
+
+			default:
+				return fmt.Errorf("unhandled primitive %T", v)
+			}
 		}
-		// Set element in slice and register reference
-		value.Index(i).Set(elem)
-		f.refResolver.SetReadObject(refID, elem)
 	}
 	return nil
 }
 
-// readDifferentTypes handles deserialization of slices with mixed element types
-func (s sliceSerializer) readDifferentTypes(f *Fory, buf *ByteBuffer, value reflect.Value) error {
-	for i := 0; i < value.Len(); i++ {
-		// Handle reference tracking for each element
-		refID, _ := f.refResolver.TryPreserveRefId(buf)
-		if int8(refID) < NotNullValueFlag {
-			// Use existing reference if available
+func (s sliceSerializer) readString_(buf *ByteBuffer, length int, value reflect.Value) {
+	for i := 0; i < length; i++ {
+		s := readString(buf)
+		value.Index(i).Set(reflect.ValueOf(s))
+	}
+}
+
+func (s sliceSerializer) readInt(buf *ByteBuffer, length int, value reflect.Value) {
+	for i := 0; i < length; i++ {
+		s := buf.ReadVarint64()
+		value.Index(i).Set(reflect.ValueOf(s))
+	}
+}
+
+func (s sliceSerializer) readBool(buf *ByteBuffer, length int, value reflect.Value) {
+	for i := 0; i < length; i++ {
+		s := buf.ReadBool()
+		value.Index(i).Set(reflect.ValueOf(s))
+	}
+}
+
+func (s sliceSerializer) readFloat(buf *ByteBuffer, length int, value reflect.Value) {
+	for i := 0; i < length; i++ {
+		s := buf.ReadFloat64()
+		value.Index(i).Set(reflect.ValueOf(s))
+	}
+}
+
+func (s sliceSerializer) readSameTypeNoRef(f *Fory, buf *ByteBuffer, length int, value reflect.Value, elemTypeInfo TypeInfo) error {
+	for i := 0; i < length; i++ {
+		elemSerializer := elemTypeInfo.Serializer
+		slot := value.Index(i)
+		slotType := slot.Type()
+		if elemSerializer == nil {
+			elemInfo, _ := f.typeResolver.getTypeInfo(slot, slotType, true)
+			elemSerializer = elemInfo.Serializer
+		}
+		err := elemSerializer.Read(f, buf, elemTypeInfo.Type, value.Index(i))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s sliceSerializer) readSameTypeRef(f *Fory, buf *ByteBuffer, length int, value reflect.Value, elemTypeInfo TypeInfo) error {
+	for i := 0; i < length; i++ {
+		refId, err := f.refResolver.TryPreserveRefId(buf)
+		if err != nil {
+			return err
+		}
+		if int8(refId) < NOT_NULL_VALUE_FLAG {
 			value.Index(i).Set(f.refResolver.GetCurrentReadObject())
-			continue
+		} else {
+			slot := value.Index(i)
+			slotType := slot.Type()
+			elem := reflect.New(slotType).Elem()
+			elemSerializer := elemTypeInfo.Serializer
+			//如果反序列化时，遇到了声明式的而且里面没有elem信息，需要根据value来获取。
+			if elemSerializer == nil {
+				elemInfo, _ := f.typeResolver.getTypeInfo(slot, slotType, true)
+				elemSerializer = elemInfo.Serializer
+			}
+			if err = elemSerializer.Read(f, buf, slotType, elem); err != nil {
+				return err
+			}
+			slot.Set(elem)
+			f.refResolver.SetReadObject(refId, elem)
 		}
-
-		typeInfo, _ := f.typeResolver.readTypeInfo(buf)
-
-		// Create new element and deserialize from buffer
-		elem := reflect.New(typeInfo.Type).Elem()
-		if err := typeInfo.Serializer.Read(f, buf, typeInfo.Type, elem); err != nil {
-			return err
-		}
-		// Set element in slice and register reference
-		f.refResolver.SetReadObject(refID, elem)
-		value.Index(i).Set(elem)
 	}
 	return nil
 }
+
+//// Write serializes a slice value into the buffer
+//func (s sliceSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+//	// Get slice length and handle empty slice case
+//	length := value.Len()
+//	if length == 0 {
+//		buf.WriteVarUint32(0) // Write 0 for empty slice
+//		return nil
+//	}
+//
+//	// Write collection header and get type information
+//	collectFlag, elemTypeInfo := s.writeHeader(f, buf, value)
+//
+//	// Choose serialization path based on type consistency
+//	if (collectFlag & CollectionIsSameType) != 0 {
+//		return s.writeSameType(f, buf, value, elemTypeInfo, collectFlag) // Optimized path for same-type elements
+//	}
+//	return s.writeDifferentTypes(f, buf, value) // Fallback path for mixed-type elements
+//}
+//
+//// writeHeader prepares and writes collection metadata including:
+//// - Collection size
+//// - Type consistency flags
+//// - Element type information (if homogeneous)
+//func (s sliceSerializer) writeHeader(f *Fory, buf *ByteBuffer, value reflect.Value) (byte, TypeInfo) {
+//	collectFlag := CollectionDefaultFlag
+//	var elemTypeInfo TypeInfo
+//	hasNull := false
+//	hasSameType := true
+//
+//	// Seed elemTypeInfo from the first element so writeSameType can reuse it.
+//	// Empty slices leave elemTypeInfo zero-value, which is also fine because
+//	// writeSameType won't do anything in that case.
+//	if value.Len() > 0 {
+//		elemTypeInfo, _ = f.typeResolver.getTypeInfo(value.Index(0), true)
+//	}
+//
+//	if s.declaredType != nil {
+//		collectFlag |= CollectionIsDeclElementType | CollectionIsSameType
+//	} else {
+//		// Iterate through elements to check for nulls and type consistency
+//		var firstType reflect.Type
+//		for i := 0; i < value.Len(); i++ {
+//			elem := value.Index(i)
+//			if elem.Kind() == reflect.Interface || elem.Kind() == reflect.Ptr {
+//				elem = elem.Elem()
+//			}
+//			if isNull(elem) {
+//				hasNull = true
+//				continue
+//			}
+//
+//			// Compare each element's type with the first element's type
+//			if firstType == nil {
+//				firstType = elem.Type()
+//			} else {
+//				if firstType != elem.Type() {
+//					hasSameType = false
+//				}
+//			}
+//		}
+//	}
+//
+//	// Set collection flags based on findings
+//	if hasNull {
+//		collectFlag |= CollectionHasNull // Mark if collection contains null values
+//	}
+//	if hasSameType {
+//		collectFlag |= CollectionIsSameType // Mark if elements have same types
+//	}
+//
+//	// Enable reference tracking if configured and element type supports it
+//	if f.refTracking && (elemTypeInfo.Serializer == nil || elemTypeInfo.Serializer.NeedWriteRef()) {
+//		collectFlag |= CollectionTrackingRef
+//	}
+//
+//	// Write metadata to buffer
+//	buf.WriteVarUint32(uint32(value.Len())) // Collection size
+//	buf.WriteInt8(int8(collectFlag))        // Collection flags
+//
+//	// Write element type ID if all elements have same type and not using declared type
+//	if hasSameType && (collectFlag&CollectionIsDeclElementType == 0) {
+//		buf.WriteVarInt32(elemTypeInfo.TypeID)
+//	}
+//
+//	return byte(collectFlag), elemTypeInfo
+//}
+//
+//// writeSameType efficiently serializes a slice where all elements share the same type
+//func (s sliceSerializer) writeSameType(f *Fory, buf *ByteBuffer, value reflect.Value, typeInfo TypeInfo, flag byte) error {
+//	serializer := typeInfo.Serializer
+//	trackRefs := (flag & CollectionTrackingRef) != 0 // Check if reference tracking is enabled
+//
+//	for i := 0; i < value.Len(); i++ {
+//		elem := value.Index(i)
+//		if elem.Kind() == reflect.Interface || elem.Kind() == reflect.Ptr {
+//			elem = elem.Elem()
+//		}
+//		if isNull(elem) {
+//			buf.WriteInt8(NullFlag) // Write null marker
+//			continue
+//		}
+//
+//		if trackRefs {
+//			// Handle reference tracking if enabled
+//			refWritten, err := f.refResolver.WriteRefOrNull(buf, elem)
+//			if err != nil {
+//				return err
+//			}
+//			if !refWritten {
+//				// Write actual value if not a reference
+//				if err := serializer.Write(f, buf, elem); err != nil {
+//					return err
+//				}
+//			}
+//		} else {
+//			// Directly write value without reference tracking
+//			if err := serializer.Write(f, buf, elem); err != nil {
+//				return err
+//			}
+//		}
+//	}
+//	return nil
+//}
+//
+//// writeDifferentTypes handles serialization of slices with mixed element types
+//func (s sliceSerializer) writeDifferentTypes(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+//	for i := 0; i < value.Len(); i++ {
+//		elem := value.Index(i)
+//		if elem.Kind() == reflect.Interface || elem.Kind() == reflect.Ptr {
+//			elem = elem.Elem()
+//		}
+//		if isNull(elem) {
+//			buf.WriteInt8(NullFlag) // Write null marker
+//			continue
+//		}
+//		// The following write logic doesn’t cover the fast path for strings, so add it here
+//		if elem.Kind() == reflect.String {
+//			buf.WriteInt8(NotNullValueFlag)
+//			buf.WriteVarInt32(STRING)
+//			err := writeString(buf, elem.Interface().(string))
+//			if err != nil {
+//				return err
+//			}
+//			continue
+//		}
+//		// Handle reference tracking
+//		refWritten, err := f.refResolver.WriteRefOrNull(buf, elem)
+//		if err != nil {
+//			return err
+//		}
+//		if refWritten {
+//			continue // Skip if element was written as reference
+//		}
+//
+//		// Get and write type info for each element (since types vary)
+//		typeInfo, _ := f.typeResolver.getTypeInfo(elem, true)
+//		f.typeResolver.writeTypeInfo(buf, typeInfo)
+//		// When writing the actual value, detect if elem is an array and convert it
+//		// to the corresponding slice type so the existing slice serializer can be reused
+//		if elem.Kind() == reflect.Array {
+//			sliceType := reflect.SliceOf(elem.Type().Elem())
+//			slice := reflect.MakeSlice(sliceType, elem.Len(), elem.Len())
+//			reflect.Copy(slice, elem)
+//			elem = slice
+//		}
+//		if err := typeInfo.Serializer.Write(f, buf, elem); err != nil {
+//			return err
+//		}
+//	}
+//	return nil
+//}
+//
+//// Read deserializes a slice from the buffer into the provided reflect.Value
+//func (s sliceSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+//	// Read slice length from buffer
+//	length := int(buf.ReadVarUint32())
+//	if length == 0 {
+//		// Initialize empty slice if length is 0
+//		value.Set(reflect.MakeSlice(type_, 0, 0))
+//		return nil
+//	}
+//
+//	// Read collection flags that indicate special characteristics
+//	collectFlag := buf.ReadInt8()
+//	var elemTypeInfo TypeInfo
+//	// Read element type information if all elements are same type
+//	if (collectFlag & CollectionIsSameType) != 0 {
+//		if (collectFlag & CollectionIsDeclElementType) == 0 {
+//			typeID := buf.ReadVarInt32()
+//			var err error
+//			elemTypeInfo, err = f.typeResolver.getTypeInfoById(int16(typeID))
+//			if err != nil {
+//				elemTypeInfo = s.elemInfo
+//			}
+//		} else {
+//			elemTypeInfo = s.elemInfo
+//		}
+//	}
+//	// Initialize slice with proper capacity
+//
+//	if value.IsZero() || value.Cap() < length {
+//		if type_.Kind() != reflect.Slice {
+//			if type_.Kind() == reflect.Interface {
+//				type_ = reflect.TypeOf([]interface{}{})
+//			}
+//		}
+//		value.Set(reflect.MakeSlice(type_, length, length))
+//		if value.Kind() == reflect.Interface || value.Kind() == reflect.Ptr {
+//			value = value.Elem()
+//		}
+//	} else {
+//		value.Set(value.Slice(0, length))
+//	}
+//	// Register reference for tracking
+//	f.refResolver.Reference(value)
+//
+//	// Choose appropriate deserialization path based on type consistency
+//	if (collectFlag & CollectionIsSameType) != 0 {
+//		return s.readSameType(f, buf, value, elemTypeInfo, collectFlag)
+//	}
+//	return s.readDifferentTypes(f, buf, value)
+//}
+//
+//// readSameType handles deserialization of slices where all elements share the same type
+//func (s sliceSerializer) readSameType(f *Fory, buf *ByteBuffer, value reflect.Value, typeInfo TypeInfo, flag int8) error {
+//	// Determine if reference tracking is enabled
+//	trackRefs := (flag & CollectionTrackingRef) != 0
+//	serializer := typeInfo.Serializer
+//	var refID int32
+//
+//	for i := 0; i < value.Len(); i++ {
+//		if trackRefs {
+//			// Handle reference tracking if enabled
+//			refID, _ = f.refResolver.TryPreserveRefId(buf)
+//			if int8(refID) < NotNullValueFlag {
+//				// Use existing reference if available
+//				value.Index(i).Set(f.refResolver.GetCurrentReadObject())
+//				continue
+//			}
+//		}
+//
+//		// Create new element of the correct type and deserialize from buffer
+//		elem := reflect.New(typeInfo.Type).Elem()
+//		if err := serializer.Read(f, buf, elem.Type(), elem); err != nil {
+//			return err
+//		}
+//		// Set element in slice and register reference
+//		value.Index(i).Set(elem)
+//		f.refResolver.SetReadObject(refID, elem)
+//	}
+//	return nil
+//}
+//
+//// readDifferentTypes handles deserialization of slices with mixed element types
+//func (s sliceSerializer) readDifferentTypes(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+//	for i := 0; i < value.Len(); i++ {
+//		// Handle reference tracking for each element
+//		refID, _ := f.refResolver.TryPreserveRefId(buf)
+//		if int8(refID) < NotNullValueFlag {
+//			// Use existing reference if available
+//			value.Index(i).Set(f.refResolver.GetCurrentReadObject())
+//			continue
+//		}
+//
+//		typeInfo, _ := f.typeResolver.readTypeInfo(buf)
+//
+//		// Create new element and deserialize from buffer
+//		elem := reflect.New(typeInfo.Type).Elem()
+//		if err := typeInfo.Serializer.Read(f, buf, typeInfo.Type, elem); err != nil {
+//			return err
+//		}
+//		// Set element in slice and register reference
+//		f.refResolver.SetReadObject(refID, elem)
+//		value.Index(i).Set(elem)
+//	}
+//	return nil
+//}
 
 // Helper function to check if a value is null/nil
 func isNull(v reflect.Value) bool {
@@ -345,8 +909,8 @@ func (s *sliceConcreteValueSerializer) TypeId() TypeId {
 	return -LIST
 }
 
-func (s *sliceConcreteValueSerializer) NeedWriteRef() bool {
-	return true
+func (s *sliceConcreteValueSerializer) NeedWriteRef() int8 {
+	return 1
 }
 
 func (s *sliceConcreteValueSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
@@ -410,8 +974,8 @@ func (s byteSliceSerializer) TypeId() TypeId {
 	return BINARY
 }
 
-func (s byteSliceSerializer) NeedWriteRef() bool {
-	return true
+func (s byteSliceSerializer) NeedWriteRef() int8 {
+	return 1
 }
 
 func (s byteSliceSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
@@ -459,321 +1023,6 @@ func (o *ByteSliceBufferObject) WriteTo(buf *ByteBuffer) {
 
 func (o *ByteSliceBufferObject) ToBuffer() *ByteBuffer {
 	return NewByteBuffer(o.data)
-}
-
-type boolArraySerializer struct {
-}
-
-func (s boolArraySerializer) TypeId() TypeId {
-	return BOOL_ARRAY
-}
-
-func (s boolArraySerializer) NeedWriteRef() bool {
-	return true
-}
-
-func (s boolArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
-	v := value.Interface().([]bool)
-	size := len(v)
-	if size >= MaxInt32 {
-		return fmt.Errorf("too long slice: %d", len(v))
-	}
-	buf.WriteLength(size)
-	for _, elem := range v {
-		buf.WriteBool(elem)
-	}
-	return nil
-}
-
-func (s boolArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
-	length := buf.ReadLength()
-	var r reflect.Value
-	switch type_.Kind() {
-	case reflect.Slice:
-		r = reflect.MakeSlice(type_, length, length)
-	case reflect.Array:
-		if length != type_.Len() {
-			return fmt.Errorf("length %d does not match array type %v", length, type_)
-		}
-		r = reflect.New(type_).Elem()
-	default:
-		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
-	}
-	for i := 0; i < length; i++ {
-		r.Index(i).SetBool(buf.ReadBool())
-	}
-	value.Set(r)
-	return nil
-}
-
-type int8ArraySerializer struct {
-}
-
-func (s int8ArraySerializer) TypeId() TypeId {
-	return INT8_ARRAY
-}
-
-func (s int8ArraySerializer) NeedWriteRef() bool {
-	return true
-}
-
-func (s int8ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
-	v := value.Interface().([]int8)
-	size := len(v)
-	if size >= MaxInt32 {
-		return fmt.Errorf("too long slice: %d", len(v))
-	}
-	buf.WriteLength(size)
-	for _, elem := range v {
-		buf.WriteByte_(byte(elem))
-	}
-	return nil
-}
-
-func (s int8ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
-	length := buf.ReadLength()
-	var r reflect.Value
-	switch type_.Kind() {
-	case reflect.Slice:
-		r = reflect.MakeSlice(type_, length, length)
-	case reflect.Array:
-		if length != type_.Len() {
-			return fmt.Errorf("length %d does not match array type %v", length, type_)
-		}
-		r = reflect.New(type_).Elem()
-	default:
-		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
-	}
-	for i := 0; i < length; i++ {
-		r.Index(i).SetInt(int64(int8(buf.ReadByte_())))
-	}
-	value.Set(r)
-	return nil
-}
-
-type int16ArraySerializer struct {
-}
-
-func (s int16ArraySerializer) TypeId() TypeId {
-	return INT16_ARRAY
-}
-
-func (s int16ArraySerializer) NeedWriteRef() bool {
-	return true
-}
-
-func (s int16ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
-	v := value.Interface().([]int16)
-	size := len(v) * 2
-	if size >= MaxInt32 {
-		return fmt.Errorf("too long slice: %d", len(v))
-	}
-	buf.WriteLength(size)
-	for _, elem := range v {
-		buf.WriteInt16(elem)
-	}
-	return nil
-}
-
-func (s int16ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
-	length := buf.ReadLength() / 2
-	var r reflect.Value
-	switch type_.Kind() {
-	case reflect.Slice:
-		r = reflect.MakeSlice(type_, length, length)
-	case reflect.Array:
-		if length != type_.Len() {
-			return fmt.Errorf("length %d does not match array type %v", length, type_)
-		}
-		r = reflect.New(type_).Elem()
-	default:
-		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
-	}
-	for i := 0; i < length; i++ {
-		r.Index(i).SetInt(int64(buf.ReadInt16()))
-	}
-	value.Set(r)
-	return nil
-}
-
-type int32ArraySerializer struct {
-}
-
-func (s int32ArraySerializer) TypeId() TypeId {
-	return INT32_ARRAY
-}
-
-func (s int32ArraySerializer) NeedWriteRef() bool {
-	return true
-}
-
-func (s int32ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
-	v := value.Interface().([]int32)
-	size := len(v) * 4
-	if size >= MaxInt32 {
-		return fmt.Errorf("too long slice: %d", len(v))
-	}
-	buf.WriteLength(size)
-	for _, elem := range v {
-		buf.WriteInt32(elem)
-	}
-	return nil
-}
-
-func (s int32ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
-	length := buf.ReadLength() / 4
-	var r reflect.Value
-	switch type_.Kind() {
-	case reflect.Slice:
-		r = reflect.MakeSlice(type_, length, length)
-	case reflect.Array:
-		if length != type_.Len() {
-			return fmt.Errorf("length %d does not match array type %v", length, type_)
-		}
-		r = reflect.New(type_).Elem()
-	default:
-		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
-	}
-	for i := 0; i < length; i++ {
-		r.Index(i).SetInt(int64(buf.ReadInt32()))
-	}
-	value.Set(r)
-	return nil
-}
-
-type int64ArraySerializer struct {
-}
-
-func (s int64ArraySerializer) TypeId() TypeId {
-	return INT64_ARRAY
-}
-
-func (s int64ArraySerializer) NeedWriteRef() bool {
-	return true
-}
-
-func (s int64ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
-	v := value.Interface().([]int64)
-	size := len(v) * 8
-	if size >= MaxInt32 {
-		return fmt.Errorf("too long slice: %d", len(v))
-	}
-	buf.WriteLength(size)
-	for _, elem := range v {
-		buf.WriteInt64(elem)
-	}
-	return nil
-}
-
-func (s int64ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
-	length := buf.ReadLength() / 8
-	var r reflect.Value
-	switch type_.Kind() {
-	case reflect.Slice:
-		r = reflect.MakeSlice(type_, length, length)
-	case reflect.Array:
-		if length != type_.Len() {
-			return fmt.Errorf("length %d does not match array type %v", length, type_)
-		}
-		r = reflect.New(type_).Elem()
-	default:
-		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
-	}
-	for i := 0; i < length; i++ {
-		r.Index(i).SetInt(buf.ReadInt64())
-	}
-	value.Set(r)
-	return nil
-}
-
-type float32ArraySerializer struct {
-}
-
-func (s float32ArraySerializer) TypeId() TypeId {
-	return FLOAT32_ARRAY
-}
-
-func (s float32ArraySerializer) NeedWriteRef() bool {
-	return true
-}
-
-func (s float32ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
-	v := value.Interface().([]float32)
-	size := len(v) * 4
-	if size >= MaxInt32 {
-		return fmt.Errorf("too long slice: %d", len(v))
-	}
-	buf.WriteLength(size)
-	for _, elem := range v {
-		buf.WriteFloat32(elem)
-	}
-	return nil
-}
-
-func (s float32ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
-	length := buf.ReadLength() / 4
-	var r reflect.Value
-	switch type_.Kind() {
-	case reflect.Slice:
-		r = reflect.MakeSlice(type_, length, length)
-	case reflect.Array:
-		if length != type_.Len() {
-			return fmt.Errorf("length %d does not match array type %v", length, type_)
-		}
-		r = reflect.New(type_).Elem()
-	default:
-		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
-	}
-	for i := 0; i < length; i++ {
-		r.Index(i).SetFloat(float64(buf.ReadFloat32()))
-	}
-	value.Set(r)
-	return nil
-}
-
-type float64ArraySerializer struct {
-}
-
-func (s float64ArraySerializer) TypeId() TypeId {
-	return FLOAT64_ARRAY
-}
-
-func (s float64ArraySerializer) NeedWriteRef() bool {
-	return true
-}
-
-func (s float64ArraySerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
-	v := value.Interface().([]float64)
-	size := len(v) * 8
-	if size >= MaxInt32 {
-		return fmt.Errorf("too long slice: %d", len(v))
-	}
-	buf.WriteLength(size)
-	for _, elem := range v {
-		buf.WriteFloat64(elem)
-	}
-	return nil
-}
-
-func (s float64ArraySerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
-	length := buf.ReadLength() / 8
-	var r reflect.Value
-	switch type_.Kind() {
-	case reflect.Slice:
-		r = reflect.MakeSlice(type_, length, length)
-	case reflect.Array:
-		if length != type_.Len() {
-			return fmt.Errorf("length %d does not match array type %v", length, type_)
-		}
-		r = reflect.New(type_).Elem()
-	default:
-		return fmt.Errorf("unsupported kind %v, want slice/array", type_.Kind())
-	}
-	for i := 0; i < length; i++ {
-		r.Index(i).SetFloat(buf.ReadFloat64())
-	}
-	value.Set(r)
-	return nil
 }
 
 // Legacy slice serializers - kept for backward compatibility but not used for xlang
@@ -1055,8 +1304,8 @@ func (s stringSliceSerializer) TypeId() TypeId {
 	return FORY_STRING_ARRAY
 }
 
-func (s stringSliceSerializer) NeedWriteRef() bool {
-	return true
+func (s stringSliceSerializer) NeedWriteRef() int8 {
+	return 1
 }
 
 func (s stringSliceSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {

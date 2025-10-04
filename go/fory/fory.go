@@ -351,22 +351,12 @@ func (f *Fory) writeValue(buffer *ByteBuffer, value reflect.Value, serializer Se
 		value = value.Elem()
 	}
 
-	// For array types, pre-convert the value
-	// so the corresponding slice serializer can be reused
-	if value.Kind() == reflect.Array {
-		length := value.Len()
-		sliceType := reflect.SliceOf(value.Type().Elem())
-		slice := reflect.MakeSlice(sliceType, length, length)
-		reflect.Copy(slice, value)
-		value = slice
-	}
-
 	if serializer != nil {
 		return serializer.Write(f, buffer, value)
 	}
 
 	// Get type information for the value
-	typeInfo, err := f.typeResolver.getTypeInfo(value, true)
+	typeInfo, err := f.typeResolver.getTypeInfo(value, value.Type(), true)
 	if err != nil {
 		return fmt.Errorf("cannot get typeinfo for value %v: %v", value, err)
 	}
@@ -481,7 +471,7 @@ func (f *Fory) ReadReferencable(buffer *ByteBuffer, value reflect.Value) error {
 
 func (f *Fory) readReferencableBySerializer(buf *ByteBuffer, value reflect.Value, serializer Serializer) (err error) {
 	// dynamic-with-refroute or unknown serializer
-	if serializer == nil || serializer.NeedWriteRef() {
+	if serializer == nil || serializer.NeedWriteRef() == 1 {
 		refId, err := f.refResolver.TryPreserveRefId(buf)
 		if err != nil {
 			return fmt.Errorf("failed to preserve refID: %w", err)

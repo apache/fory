@@ -98,7 +98,7 @@ func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
 		return nil, fmt.Errorf("failed to extract field infos: %w", err)
 	}
 
-	info, err := fory.typeResolver.getTypeInfo(value, true)
+	info, err := fory.typeResolver.getTypeInfo(value, value.Type(), true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get type info for value %v: %w", value, err)
 	}
@@ -283,7 +283,7 @@ func (c *CollectionFieldType) getTypeInfo(f *Fory) (TypeInfo, error) {
 	if err != nil {
 		return TypeInfo{}, err
 	}
-	sliceSerializer := &sliceSerializer{elemInfo: elemInfo, declaredType: elemInfo.Type}
+	sliceSerializer := NewSliceSerializer(f, elemInfo.Serializer, elemInfo.Type)
 	return TypeInfo{Type: collectionType, Serializer: sliceSerializer}, nil
 }
 
@@ -400,7 +400,7 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 
 	// For all other types, get the type ID and treat as ObjectFieldType
 	var typeId TypeId
-	typeInfo, err := fory.typeResolver.getTypeInfo(fieldValue, true)
+	typeInfo, err := fory.typeResolver.getTypeInfo(fieldValue, fieldType, true)
 	if err != nil {
 		return nil, err
 	}

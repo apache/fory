@@ -54,8 +54,8 @@ func (s mapSerializer) TypeId() TypeId {
 	return MAP
 }
 
-func (s mapSerializer) NeedWriteRef() bool {
-	return true
+func (s mapSerializer) NeedWriteRef() int8 {
+	return 1
 }
 
 func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
@@ -94,7 +94,7 @@ func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 					break
 				}
 				if keySerializer != nil {
-					if keySerializer.NeedWriteRef() {
+					if keySerializer.NeedWriteRef() == 1 {
 						buf.WriteInt8(NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF)
 						if written, err := refResolver.WriteRefOrNull(buf, entryKey); err != nil {
 							return err
@@ -121,7 +121,7 @@ func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 			} else {
 				if valValid {
 					if valueSerializer != nil {
-						if valueSerializer.NeedWriteRef() {
+						if valueSerializer.NeedWriteRef() == 1 {
 							buf.WriteInt8(NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF)
 							if written, err := refResolver.WriteRefOrNull(buf, entryKey); err != nil {
 								return err
@@ -197,14 +197,14 @@ func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 			valueSerializer = valueTypeInfo.Serializer
 		}
 		keyWriteRef := s.keyReferencable
-		if keySerializer != nil {
-			keyWriteRef = keySerializer.NeedWriteRef()
+		if keySerializer != nil && keySerializer.NeedWriteRef() == 1 {
+			keyWriteRef = true
 		} else {
 			keyWriteRef = false
 		}
 		valueWriteRef := s.valueReferencable
-		if valueSerializer != nil {
-			valueWriteRef = valueSerializer.NeedWriteRef()
+		if valueSerializer != nil && valueSerializer.NeedWriteRef() == 1 {
+			valueWriteRef = true
 		} else {
 			valueWriteRef = false
 		}
@@ -497,9 +497,9 @@ func getActualTypeInfo(v reflect.Value, resolver *typeResolver) (TypeInfo, error
 		if !elem.IsValid() {
 			return TypeInfo{}, fmt.Errorf("invalid interface value")
 		}
-		return resolver.getTypeInfo(elem, true)
+		return resolver.getTypeInfo(elem, elem.Type(), true)
 	}
-	return resolver.getTypeInfo(v, true)
+	return resolver.getTypeInfo(v, v.Type(), true)
 }
 
 func UnwrapReflectValue(v reflect.Value) reflect.Value {

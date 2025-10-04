@@ -40,8 +40,8 @@ func (s *structSerializer) TypeId() TypeId {
 	return NAMED_STRUCT
 }
 
-func (s *structSerializer) NeedWriteRef() bool {
-	return true
+func (s *structSerializer) NeedWriteRef() int8 {
+	return 1
 }
 
 func (s *structSerializer) ensureFieldsInfo(f *Fory, fallbackType reflect.Type) error {
@@ -189,10 +189,11 @@ func createStructFieldInfos(f *Fory, type_ reflect.Type) (structFieldsInfo, erro
 			} else if field.Type.Kind() == reflect.Slice {
 				// If the field is a concrete slice type, dynamically create a valid serializer
 				// so it has the potential and capability to use readSameTypes function.
+				// todo
 				if field.Type.Elem().Kind() != reflect.Interface {
-					fieldSerializer = sliceSerializer{
-						elemInfo: f.typeResolver.typesInfo[field.Type.Elem()],
-					}
+					elemSerializer := f.typeResolver.typeToSerializers[field.Type.Elem()]
+					elemType := field.Type.Elem()
+					fieldSerializer = NewSliceSerializer(f, elemSerializer, elemType)
 				}
 			}
 		}
@@ -467,8 +468,8 @@ func (s *ptrToStructSerializer) TypeId() TypeId {
 	return FORY_TYPE_TAG
 }
 
-func (s *ptrToStructSerializer) NeedWriteRef() bool {
-	return true
+func (s *ptrToStructSerializer) NeedWriteRef() int8 {
+	return 1
 }
 
 func (s *ptrToStructSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {

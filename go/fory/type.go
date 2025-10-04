@@ -501,11 +501,11 @@ func (r *typeResolver) RegisterTypeTag(value reflect.Value, tag string) error {
 	r.typeToTypeInfo[ptrType] = "*@" + tag
 	r.typeInfoToType["*@"+tag] = ptrType
 	// For named structs, directly register both their value and pointer types
-	info, err := r.getTypeInfo(value, true)
+	info, err := r.getTypeInfo(value, type_, true)
 	if err != nil {
 		return fmt.Errorf("failed to register named structs: info is %v", info)
 	}
-	info, err = r.getTypeInfo(ptrValue, true)
+	info, err = r.getTypeInfo(ptrValue, ptrType, true)
 	if err != nil {
 		return fmt.Errorf("failed to register named structs: info is %v", info)
 	}
@@ -538,23 +538,47 @@ func (r *typeResolver) getSerializerByTypeTag(typeTag string) (Serializer, error
 	}
 }
 
-func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, error) {
+func (r *typeResolver) getTypeInfo(value reflect.Value, type_ reflect.Type, create bool) (TypeInfo, error) {
 	// First check if type info exists in cache
 	if value.Kind() == reflect.Interface {
 		// make sure the concrete value don't miss its real typeInfo
 		value = value.Elem()
 	}
-	typeString := value.Type()
-	if info, ok := r.typesInfo[typeString]; ok {
+	//如果是基础类型的一维数组，应该使用它相应的切片类型获取到真正属于他的信息
+	if type_.Kind() == reflect.Array && (isPrimitiveType_(type_.Elem())) {
+		typ := reflect.SliceOf(type_.Elem())
+		fmt.Println(r.typesInfo[typ])
+		return r.typesInfo[typ], nil
+	} else if (type_.Kind() == reflect.Slice || type_.Kind() == reflect.Array) && value.IsValid() {
+		//而多维的 slice， array，我们应该直接返回一个非声明式的 slice 序列化器，以便序列化正确的信息，在反序列化时，如果是多维的，拿到非声明的序列化器，
+		//也能通过非声明路径正确获取信息。暂时没有考虑 tensor 类型
+		//[]interface{} / [n] interface{} 自然也要给一个非声明的构造，
+		if needsNonDeclared(value) {
+			var info TypeInfo
+			info.TypeID = LIST
+			info.Type = interfaceSliceType
+			info.Serializer = NewSliceSerializer(r.fory, nil, nil)
+			return info, nil
+		}
+	}
+
+	//其他的情况 map 一维的array，slice，内部类型不是interface 我们需要走声明式的构造，也就是走 create 的方法
+	if info, ok := r.typesInfo[type_]; ok || type_.Kind() == reflect.Slice || type_.Kind() == reflect.Array {
+		// 如果基础类型的 array，在进入这里之前就会拿到并返回
+		// 否则在这里重新创建成 list interface
 		if info.Serializer == nil {
 			/*
 			   Lazy initialize serializer if not created yet
 			   mapInStruct equals false because this path isn’t taken when extracting field info from structs;
 			   for all other map cases, it remains false
 			*/
-			serializer, err := r.createSerializer(value.Type(), false)
+			serializer, err := r.createSerializer(type_, false)
 			if err != nil {
 				fmt.Errorf("failed to create serializer: %w", err)
+			}
+			if type_.Kind() == reflect.Slice || type_.Kind() == reflect.Array {
+				info.TypeID = LIST
+				info.Type = type_
 			}
 			info.Serializer = serializer
 		}
@@ -567,7 +591,7 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 	if !create {
 		fmt.Errorf("type %v not registered and create=false", value.Type())
 	}
-	type_ := value.Type()
+	type_ = value.Type()
 	// Get package path and type name for registration
 	var typeName string
 	var pkgPath string
@@ -622,12 +646,6 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 		typeID = -NAMED_STRUCT
 	} else if value.Kind() == reflect.Map {
 		typeID = MAP
-	} else if value.Kind() == reflect.Array {
-		type_ = reflect.SliceOf(type_.Elem())
-		return r.typesInfo[type_], nil
-	} else if isMultiDimensionaSlice(value) {
-		typeID = LIST
-		return r.typeIDToTypeInfo[typeID], nil
 	}
 
 	// Register the type with full metadata
@@ -640,13 +658,19 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 		internal)
 }
 
-// Check if the slice is multidimensional
-func isMultiDimensionaSlice(v reflect.Value) bool {
+// Check if the slice/array needs declared constructor
+func needsNonDeclared(v reflect.Value) bool {
+	//保证到这里的顶层是被解过的，所以只需要看一层儿子，解一层儿子（如果需要）
 	t := v.Type()
-	if t.Kind() != reflect.Slice {
+	if t.Kind() != reflect.Slice && t.Kind() != reflect.Array {
 		return false
 	}
-	return t.Elem().Kind() == reflect.Slice
+	et := t.Elem()
+	//把指针解透。。。
+	for et.Kind() == reflect.Ptr {
+		et = et.Elem()
+	}
+	return et.Kind() == reflect.Slice || et.Kind() == reflect.Array || et.Kind() == reflect.Interface
 }
 
 func (r *typeResolver) registerType(
@@ -770,7 +794,6 @@ func (r *typeResolver) writeTypeInfo(buffer *ByteBuffer, typeInfo TypeInfo) erro
 
 	// Write the type ID to buffer (variable-length encoding)
 	buffer.WriteVarUint32(uint32(typeID))
-
 	// For namespaced types, write additional metadata:
 	if IsNamespacedType(TypeId(internalTypeID)) {
 		if r.metaShareEnabled() {
@@ -891,72 +914,25 @@ func (r *typeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 		return &ptrToValueSerializer{valueSerializer}, nil
 	case reflect.Slice:
 		elem := type_.Elem()
-		// Handle special slice types for xlang compatibility
-		if r.language == XLANG {
-			// Basic type slices should use array types for efficiency
-			switch elem.Kind() {
-			case reflect.Bool:
-				if type_ == boolSliceType {
-					return boolArraySerializer{}, nil
-				}
-			case reflect.Int8:
-				if type_ == int8SliceType {
-					return int8ArraySerializer{}, nil
-				}
-			case reflect.Int16:
-				if type_ == int16SliceType {
-					return int16ArraySerializer{}, nil
-				}
-			case reflect.Int32:
-				if type_ == int32SliceType {
-					return int32ArraySerializer{}, nil
-				}
-			case reflect.Int64:
-				if type_ == int64SliceType {
-					return int64ArraySerializer{}, nil
-				}
-			case reflect.Float32:
-				if type_ == float32SliceType {
-					return float32ArraySerializer{}, nil
-				}
-			case reflect.Float64:
-				if type_ == float64SliceType {
-					return float64ArraySerializer{}, nil
-				}
-			case reflect.Int, reflect.Uint:
-				// Platform-dependent types should use LIST for cross-platform compatibility
-				// We treat them as dynamic types to force LIST serialization
-				return sliceSerializer{}, nil
-			}
-		}
-		// For dynamic types or non-xlang mode, use generic slice serializer
-		if isDynamicType(elem) {
-			return sliceSerializer{}, nil
+		if elem.Kind() == reflect.Interface {
+			return NewSliceSerializer(r.fory, nil, nil), nil
 		} else {
-			elemSerializer, err := r.getSerializerByType(type_.Elem(), false)
+			elemTypeInfo, err := r.getTypeInfo(reflect.Value{}, elem, true)
 			if err != nil {
 				return nil, err
 			}
-			return &sliceConcreteValueSerializer{
-				type_:          type_,
-				elemSerializer: elemSerializer,
-				referencable:   nullable(type_.Elem()),
-			}, nil
+			return NewSliceSerializer(r.fory, elemTypeInfo.Serializer, elemTypeInfo.Type), nil
 		}
 	case reflect.Array:
 		elem := type_.Elem()
-		if isDynamicType(elem) {
-			return arraySerializer{}, nil
+		if elem.Kind() == reflect.Interface {
+			return NewSliceSerializer(r.fory, nil, nil), nil
 		} else {
-			elemSerializer, err := r.getSerializerByType(type_.Elem(), false)
+			elemTypeInfo, err := r.getTypeInfo(reflect.Value{}, elem, true)
 			if err != nil {
 				return nil, err
 			}
-			return &arrayConcreteValueSerializer{
-				type_:          type_,
-				elemSerializer: elemSerializer,
-				referencable:   nullable(type_.Elem()),
-			}, nil
+			return NewSliceSerializer(r.fory, elemTypeInfo.Serializer, elemTypeInfo.Type), nil
 		}
 	case reflect.Map:
 		hasKeySerializer, hasValueSerializer := !isDynamicType(type_.Key()), !isDynamicType(type_.Elem())
@@ -1320,6 +1296,21 @@ func computeStringHash(str string) int32 {
 		}
 	}
 	return int32(hash)
+}
+
+func isPrimitiveType_(type_ reflect.Type) bool {
+	switch type_.Kind() {
+	case reflect.Bool,
+		reflect.Int8,
+		reflect.Int16,
+		reflect.Int32,
+		reflect.Int64,
+		reflect.Float32,
+		reflect.Float64:
+		return true
+	default:
+		return false
+	}
 }
 
 func isPrimitiveType(typeID int16) bool {

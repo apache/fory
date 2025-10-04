@@ -36,8 +36,8 @@ func (s setSerializer) TypeId() TypeId {
 	return SET
 }
 
-func (s setSerializer) NeedWriteRef() bool {
-	return true
+func (s setSerializer) NeedWriteRef() int8 {
+	return 1
 }
 
 func (s setSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
@@ -82,7 +82,7 @@ func (s setSerializer) writeHeader(f *Fory, buf *ByteBuffer, keys []reflect.Valu
 			hasNull = true
 		} else {
 			// Get type info for first element to use as reference
-			elemTypeInfo, _ = f.typeResolver.getTypeInfo(firstElem, true)
+			elemTypeInfo, _ = f.typeResolver.getTypeInfo(firstElem, firstElem.Type(), true)
 		}
 	}
 
@@ -95,7 +95,7 @@ func (s setSerializer) writeHeader(f *Fory, buf *ByteBuffer, keys []reflect.Valu
 		}
 
 		// Compare each element's type with the reference type
-		currentTypeInfo, _ := f.typeResolver.getTypeInfo(key, true)
+		currentTypeInfo, _ := f.typeResolver.getTypeInfo(key, key.Type(), true)
 		if currentTypeInfo.TypeID != elemTypeInfo.TypeID {
 			hasSameType = false
 		}
@@ -170,7 +170,7 @@ func (s setSerializer) writeDifferentTypes(f *Fory, buf *ByteBuffer, keys []refl
 		}
 
 		// Get type info for each element (since types vary)
-		typeInfo, _ := f.typeResolver.getTypeInfo(key, true)
+		typeInfo, _ := f.typeResolver.getTypeInfo(key, key.Type(), true)
 
 		// Handle reference tracking
 		refWritten, err := f.refResolver.WriteRefOrNull(buf, key)
