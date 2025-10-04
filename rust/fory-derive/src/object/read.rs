@@ -20,6 +20,7 @@ use quote::{format_ident, quote};
 use syn::{Field, Type};
 
 use super::util::{generic_tree_to_tokens, parse_generic_tree, NullableTypeNode};
+use crate::util::{is_arc_dyn_trait, is_box_dyn_trait, is_rc_dyn_trait};
 
 fn create_private_field_name(field: &Field) -> Ident {
     format_ident!("_{}", field.ident.as_ref().expect(""))
@@ -35,8 +36,17 @@ fn declare_var(fields: &[&Field]) -> Vec<TokenStream> {
         .map(|field| {
             let ty = &field.ty;
             let var_name = create_private_field_name(field);
-            quote! {
-                let mut #var_name: Option<#ty> = None;
+            if is_box_dyn_trait(ty).is_some()
+                || is_rc_dyn_trait(ty).is_some()
+                || is_arc_dyn_trait(ty).is_some()
+            {
+                quote! {
+                    let mut #var_name: #ty = Default::default();
+                }
+            } else {
+                quote! {
+                    let mut #var_name: Option<#ty> = None;
+                }
             }
         })
         .collect()
@@ -48,8 +58,17 @@ fn assign_value(fields: &[&Field]) -> Vec<TokenStream> {
         .map(|field| {
             let name = &field.ident;
             let var_name = create_private_field_name(field);
-            quote! {
-                #name: #var_name.unwrap_or_default()
+            if is_box_dyn_trait(&field.ty).is_some()
+                || is_rc_dyn_trait(&field.ty).is_some()
+                || is_arc_dyn_trait(&field.ty).is_some()
+            {
+                quote! {
+                    #name: #var_name
+                }
+            } else {
+                quote! {
+                    #name: #var_name.unwrap_or_default()
+                }
             }
         })
         .collect()
@@ -83,17 +102,71 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
                 .zip(private_idents.iter())
                 .map(|(field, private_ident)| {
                     let ty = &field.ty;
-                    quote! {
-                        let mut #private_ident: #ty = Default::default();
+                    if is_box_dyn_trait(ty).is_some()
+                        || is_rc_dyn_trait(ty).is_some()
+                        || is_arc_dyn_trait(ty).is_some()
+                    {
+                        quote! {
+                            let mut #private_ident: #ty = Default::default();
+                        }
+                    } else {
+                        quote! {
+                            let mut #private_ident: Option<#ty> = None;
+                        }
                     }
                 });
         let match_ts = fields.iter().zip(private_idents.iter()).map(|(field, private_ident)| {
             let ty = &field.ty;
             let name_str = field.ident.as_ref().unwrap().to_string();
-            quote! {
-                #name_str => {
-                    let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    #private_ident = fory_core::serializer::read_ref_info_data::<#ty>(context, true, skip_ref_flag, false)?;
+
+            if is_box_dyn_trait(ty).is_some() {
+                quote! {
+                    #name_str => {
+                        let ref_flag = context.reader.read_i8();
+                        if ref_flag != fory_core::types::RefFlag::NotNullValue as i8 {
+                            panic!("Expected NotNullValue for trait object field");
+                        }
+
+                        let fory_type_id = context.reader.read_varuint32();
+
+                        let harness = context.get_fory()
+                            .get_type_resolver()
+                            .get_harness(fory_type_id)
+                            .expect("Type not registered for trait object field");
+
+                        let deserializer_fn = harness.get_deserializer();
+                        let any_box = deserializer_fn(context, true, false)?;
+
+                        let base_type_id = fory_type_id >> 8;
+                        #private_ident = __fory_trait_helpers::from_any_internal(any_box, base_type_id)?;
+                    }
+                }
+            } else if let Some((_, trait_name)) = is_rc_dyn_trait(ty) {
+                let wrapper_ty = quote::format_ident!("Dyn{}Rc", trait_name);
+                let trait_ident = quote::format_ident!("{}", trait_name);
+                quote! {
+                    #name_str => {
+                        let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#wrapper_ty>(context.get_fory());
+                        let wrapper = fory_core::serializer::read_ref_info_data::<#wrapper_ty>(context, true, skip_ref_flag, false)?;
+                        #private_ident = std::rc::Rc::<dyn #trait_ident>::from(wrapper);
+                    }
+                }
+            } else if let Some((_, trait_name)) = is_arc_dyn_trait(ty) {
+                let wrapper_ty = quote::format_ident!("Dyn{}Arc", trait_name);
+                let trait_ident = quote::format_ident!("{}", trait_name);
+                quote! {
+                    #name_str => {
+                        let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#wrapper_ty>(context.get_fory());
+                        let wrapper = fory_core::serializer::read_ref_info_data::<#wrapper_ty>(context, true, skip_ref_flag, false)?;
+                        #private_ident = std::sync::Arc::<dyn #trait_ident + Send + Sync>::from(wrapper);
+                    }
+                }
+            } else {
+                quote! {
+                    #name_str => {
+                        let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
+                        #private_ident = Some(fory_core::serializer::read_ref_info_data::<#ty>(context, true, skip_ref_flag, false)?);
+                    }
                 }
             }
         });
@@ -113,8 +186,18 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
         .zip(private_idents.iter())
         .map(|(field, private_ident)| {
             let original_ident = &field.ident;
-            quote! {
-                #original_ident: #private_ident
+            let ty = &field.ty;
+            if is_box_dyn_trait(ty).is_some()
+                || is_rc_dyn_trait(ty).is_some()
+                || is_arc_dyn_trait(ty).is_some()
+            {
+                quote! {
+                    #original_ident: #private_ident
+                }
+            } else {
+                quote! {
+                    #original_ident: #private_ident.unwrap_or_default()
+                }
             }
         });
     quote! {
@@ -157,47 +240,90 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
         let var_name = create_private_field_name(field);
         let read_nullable_fn_name = create_read_nullable_fn_name(field);
 
-        let generic_tree = parse_generic_tree(ty);
-        // dbg!(&generic_tree);
-        let generic_token = generic_tree_to_tokens(&generic_tree, true);
-
-        let field_name_str = field.ident.as_ref().unwrap().to_string();
-        let base_ty = match &ty {
-            Type::Path(type_path) => {
-                &type_path.path.segments.first().unwrap().ident
+        if is_box_dyn_trait(ty).is_some() {
+            let field_name_str = field.ident.as_ref().unwrap().to_string();
+            quote! {
+                if _field.field_name.as_str() == #field_name_str {
+                    let ref_flag = context.reader.read_i8();
+                    if ref_flag != fory_core::types::RefFlag::NotNullValue as i8 {
+                        panic!("Expected NotNullValue for trait object field");
+                    }
+                    let fory_type_id = context.reader.read_varuint32();
+                    let harness = context.get_fory()
+                        .get_type_resolver()
+                        .get_harness(fory_type_id)
+                        .expect("Type not registered for trait object field");
+                    let deserializer_fn = harness.get_deserializer();
+                    let any_box = deserializer_fn(context, true, false).unwrap();
+                    let base_type_id = fory_type_id >> 8;
+                    #var_name = __fory_trait_helpers::from_any_internal(any_box, base_type_id).unwrap();
+                }
             }
-            _ => panic!("Unsupported type"),
-        };
-        quote! {
-            if _field.field_name.as_str() == #field_name_str {
-                let local_field_type = #generic_token;
-                if &_field.field_type == &local_field_type {
-                    let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    #var_name = Some(fory_core::serializer::read_ref_info_data::<#ty>(context, true, skip_ref_flag, false).unwrap_or_else(|_err| {
-                        // same type, err means something wrong
-                        panic!("Err at deserializing {:?}: {:?}", #field_name_str, _err);
-                    }));
-                } else {
-                    let local_nullable_type = fory_core::meta::NullableFieldType::from(local_field_type.clone());
-                    let remote_nullable_type = fory_core::meta::NullableFieldType::from(_field.field_type.clone());
-                    if local_nullable_type != remote_nullable_type {
-                        // set default and skip bytes
-                        println!("Type not match, just skip: {}", #field_name_str);
-                        let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(&remote_nullable_type);
-                        fory_core::serializer::skip::skip_field_value(context, &remote_nullable_type, read_ref_flag).unwrap();
-                        #var_name = Some(#base_ty::default());
+        } else if let Some((_, trait_name)) = is_rc_dyn_trait(ty) {
+            let wrapper_ty = quote::format_ident!("Dyn{}Rc", trait_name);
+            let trait_ident = quote::format_ident!("{}", trait_name);
+            let field_name_str = field.ident.as_ref().unwrap().to_string();
+            quote! {
+                if _field.field_name.as_str() == #field_name_str {
+                    let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#wrapper_ty>(context.get_fory());
+                    let wrapper = fory_core::serializer::read_ref_info_data::<#wrapper_ty>(context, true, skip_ref_flag, false).unwrap();
+                    #var_name = Some(std::rc::Rc::<dyn #trait_ident>::from(wrapper));
+                }
+            }
+        } else if let Some((_, trait_name)) = is_arc_dyn_trait(ty) {
+            let wrapper_ty = quote::format_ident!("Dyn{}Arc", trait_name);
+            let trait_ident = quote::format_ident!("{}", trait_name);
+            let field_name_str = field.ident.as_ref().unwrap().to_string();
+            quote! {
+                if _field.field_name.as_str() == #field_name_str {
+                    let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#wrapper_ty>(context.get_fory());
+                    let wrapper = fory_core::serializer::read_ref_info_data::<#wrapper_ty>(context, true, skip_ref_flag, false).unwrap();
+                    #var_name = Some(std::sync::Arc::<dyn #trait_ident + Send + Sync>::from(wrapper));
+                }
+            }
+        } else {
+            let generic_tree = parse_generic_tree(ty);
+            // dbg!(&generic_tree);
+            let generic_token = generic_tree_to_tokens(&generic_tree, true);
+
+            let field_name_str = field.ident.as_ref().unwrap().to_string();
+            let base_ty = match &ty {
+                Type::Path(type_path) => {
+                    &type_path.path.segments.first().unwrap().ident
+                }
+                _ => panic!("Unsupported type"),
+            };
+            quote! {
+                if _field.field_name.as_str() == #field_name_str {
+                    let local_field_type = #generic_token;
+                    if &_field.field_type == &local_field_type {
+                        let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
+                        #var_name = Some(fory_core::serializer::read_ref_info_data::<#ty>(context, true, skip_ref_flag, false).unwrap_or_else(|_err| {
+                            // same type, err means something wrong
+                            panic!("Err at deserializing {:?}: {:?}", #field_name_str, _err);
+                        }));
                     } else {
-                        println!("Try to deserialize_compatible: {}", #field_name_str);
-                        #var_name = Some(
-                            #struct_ident::#read_nullable_fn_name(
-                                context,
-                                &local_nullable_type,
-                                &remote_nullable_type
-                            ).unwrap_or_else(|_err| {
-                                // same nulable type, err means something wrong
-                                panic!("Err at deserializing {:?}: {:?}", #field_name_str, _err);
-                            })
-                        );
+                        let local_nullable_type = fory_core::meta::NullableFieldType::from(local_field_type.clone());
+                        let remote_nullable_type = fory_core::meta::NullableFieldType::from(_field.field_type.clone());
+                        if local_nullable_type != remote_nullable_type {
+                            // set default and skip bytes
+                            println!("Type not match, just skip: {}", #field_name_str);
+                            let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(&remote_nullable_type);
+                            fory_core::serializer::skip::skip_field_value(context, &remote_nullable_type, read_ref_flag).unwrap();
+                            #var_name = Some(#base_ty::default());
+                        } else {
+                            println!("Try to deserialize_compatible: {}", #field_name_str);
+                            #var_name = Some(
+                                #struct_ident::#read_nullable_fn_name(
+                                    context,
+                                    &local_nullable_type,
+                                    &remote_nullable_type
+                                ).unwrap_or_else(|_err| {
+                                    // same nulable type, err means something wrong
+                                    panic!("Err at deserializing {:?}: {:?}", #field_name_str, _err);
+                                })
+                            );
+                        }
                     }
                 }
             }
@@ -231,22 +357,26 @@ pub fn gen_read_compatible(fields: &[&Field], struct_ident: &Ident) -> TokenStre
 pub fn gen_read_nullable(fields: &[&Field]) -> TokenStream {
     let func_tokens: Vec<TokenStream> = fields
         .iter()
-        .map(|field| {
-            let fn_name = create_read_nullable_fn_name(field);
+        .filter_map(|field| {
             let ty = &field.ty;
-            let generic_tree = parse_generic_tree(ty);
-            let nullable_generic_tree = NullableTypeNode::from(generic_tree);
-            let read_tokens = nullable_generic_tree.to_read_tokens(&vec![], true);
-            quote! {
-                fn #fn_name(
-                    context: &mut fory_core::resolver::context::ReadContext,
-                    local_nullable_type: &fory_core::meta::NullableFieldType,
-                    remote_nullable_type: &fory_core::meta::NullableFieldType
-                ) -> Result<#ty, fory_core::error::Error> {
-                    // println!("remote:{:#?}", remote_nullable_type);
-                    // println!("local:{:#?}", local_nullable_type);
-                    #read_tokens
-                }
+            if is_box_dyn_trait(ty).is_some() {
+                None
+            } else {
+                let fn_name = create_read_nullable_fn_name(field);
+                let generic_tree = parse_generic_tree(ty);
+                let nullable_generic_tree = NullableTypeNode::from(generic_tree);
+                let read_tokens = nullable_generic_tree.to_read_tokens(&vec![], true);
+                Some(quote! {
+                    fn #fn_name(
+                        context: &mut fory_core::resolver::context::ReadContext,
+                        local_nullable_type: &fory_core::meta::NullableFieldType,
+                        remote_nullable_type: &fory_core::meta::NullableFieldType
+                    ) -> Result<#ty, fory_core::error::Error> {
+                        // println!("remote:{:#?}", remote_nullable_type);
+                        // println!("local:{:#?}", local_nullable_type);
+                        #read_tokens
+                    }
+                })
             }
         })
         .collect::<Vec<_>>();

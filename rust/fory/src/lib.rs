@@ -44,7 +44,7 @@
 //! use fory::{Fory, Error};
 //! use fory_derive::Fory;
 //! use std::collections::HashMap;
-//! #[derive(Fory, Debug, PartialEq, Default)]
+//! #[derive(Fory, Debug, PartialEq)]
 //! struct Person {
 //!     name: String,
 //!     age: i32,
@@ -53,7 +53,7 @@
 //!     metadata: HashMap<String, String>,
 //! }
 //!
-//! #[derive(Fory, Debug, PartialEq, Default)]
+//! #[derive(Fory, Debug, PartialEq)]
 //! struct Address {
 //!     street: String,
 //!     city: String,
@@ -185,7 +185,7 @@
 //! use fory_core::types::Mode;
 //! use fory_derive::Fory;
 //!
-//! #[derive(Fory, Debug, Default)]
+//! #[derive(Fory, Debug)]
 //! struct Config {
 //!     name: String,
 //!     value: i32,
@@ -204,7 +204,7 @@
 //! use fory::{Fory, Error};
 //! use fory_derive::Fory;
 //!
-//! #[derive(Fory, Default)]
+//! #[derive(Fory)]
 //! struct Data {
 //!     value: i32,
 //! }
@@ -248,7 +248,7 @@
 //! ```rust
 //! use fory_derive::{Fory, ForyRow};
 //!
-//! #[derive(Fory, Default)]        // For object serialization
+//! #[derive(Fory)]        // For object serialization
 //! #[derive(ForyRow)]     // For row-based serialization
 //! struct MyData {
 //!     field1: String,
@@ -256,4 +256,5 @@
 //! }
 //! ```
 
-pub use fory_core::{error::Error, fory::Fory, row::from_row, row::to_row};
+pub use fory_core::{error::Error, fory::Fory, register_trait_type, row::from_row, row::to_row};
+pub use fory_derive::fory_trait;

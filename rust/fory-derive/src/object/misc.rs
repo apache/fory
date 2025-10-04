@@ -21,6 +21,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use syn::Field;
 
 use super::util::{generic_tree_to_tokens, get_sort_fields_ts, parse_generic_tree};
+use crate::util::is_box_dyn_trait;
 
 // Global type ID counter that auto-grows from 0 at macro processing time
 static TYPE_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -80,10 +81,20 @@ pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
     let field_infos = fields.iter().map(|field| {
         let ty = &field.ty;
         let name = format!("{}", field.ident.as_ref().expect("should be field name"));
-        let generic_tree = parse_generic_tree(ty);
-        let generic_token = generic_tree_to_tokens(&generic_tree, false);
-        quote! {
-            fory_core::meta::FieldInfo::new(#name, #generic_token)
+
+        if is_box_dyn_trait(ty).is_some() {
+            quote! {
+                fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
+                    type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                    generics: Vec::new()
+                })
+            }
+        } else {
+            let generic_tree = parse_generic_tree(ty);
+            let generic_token = generic_tree_to_tokens(&generic_tree, false);
+            quote! {
+                fory_core::meta::FieldInfo::new(#name, #generic_token)
+            }
         }
     });
     quote! {

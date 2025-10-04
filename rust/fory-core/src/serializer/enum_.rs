@@ -89,7 +89,7 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext, is_field: bool) 
 }
 
 #[inline(always)]
-pub fn read_compatible<T: Serializer>(context: &mut ReadContext) -> Result<T, Error> {
+pub fn read_compatible<T: Serializer + Default>(context: &mut ReadContext) -> Result<T, Error> {
     T::fory_read_type_info(context, true);
     T::fory_read_data(context, true)
 }
@@ -102,7 +102,10 @@ pub fn write<T: Serializer>(this: &T, context: &mut WriteContext, is_field: bool
 }
 
 #[inline(always)]
-pub fn read<T: Serializer>(context: &mut ReadContext, is_field: bool) -> Result<T, Error> {
+pub fn read<T: Serializer + Default>(
+    context: &mut ReadContext,
+    is_field: bool,
+) -> Result<T, Error> {
     let ref_flag = context.reader.read_i8();
     if ref_flag == RefFlag::Null as i8 {
         Ok(T::default())

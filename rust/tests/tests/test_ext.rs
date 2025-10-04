@@ -25,7 +25,7 @@ use fory_derive::Fory;
 #[test]
 #[allow(dead_code)]
 fn test_duplicate_impl() {
-    #[derive(Debug, Fory, PartialEq, Default)]
+    #[derive(Debug, Fory, PartialEq)]
     struct Item1 {
         f1: i32,
     }
@@ -62,6 +62,10 @@ fn test_use() {
                 f1: read(context, is_field)?,
                 f2: 0,
             })
+        }
+
+        fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+            Self::fory_get_type_id(fory)
         }
     }
     let mut fory = Fory::default().mode(Compatible).xlang(true);

@@ -15,73 +15,52 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// use crate::error::Error;
-// use crate::fory::Fory;
-// use crate::resolver::context::{ReadContext, WriteContext};
-// use crate::serializer::Serializer;
-// use crate::types::TypeId;
-// use std::any::Any;
+use crate::error::Error;
+use crate::resolver::context::{ReadContext, WriteContext};
+use crate::types::RefFlag;
+use std::any::Any;
 
-// impl Serializer for Box<dyn Any> {
-//     fn reserved_space() -> usize {
-//         0
-//     }
-//
-//     fn write(&self, _context: &mut WriteContext) {
-//         panic!("unreachable")
-//     }
-//
-//     fn read(_context: &mut ReadContext) -> Result<Self, Error> {
-//         panic!("unreachable")
-//     }
-//
-//     fn get_type_id(_fory: &Fory) -> u32 {
-//         TypeId::ForyAny as u32
-//     }
-//
-//     fn serialize(&self, context: &mut WriteContext) {
-//         context
-//             .get_fory()
-//             .get_type_resolver()
-//             .get_harness_by_type(self.as_ref().type_id())
-//             .unwrap()
-//             .get_serializer()(self.as_ref(), context);
-//     }
-//
-//     fn deserialize(_context: &mut ReadContext) -> Result<Self, Error> {
-//         todo!()
-//         // let reset_cursor = context.reader.reset_cursor_to_here();
-//         // // ref flag
-//         // let ref_flag = context.reader.i8();
-//         //
-//         // if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
-//         //     if context.get_fory().get_mode().eq(&Mode::Compatible) {
-//         //         let type_id = context.meta_resolver.get(meta_index as usize).get_type_id();
-//         //         reset_cursor(&mut context.reader);
-//         //         context
-//         //             .get_fory()
-//         //             .get_type_resolver()
-//         //             .get_harness(type_id)
-//         //             .unwrap()
-//         //             .get_deserializer()(context)
-//         //     } else {
-//         //         let type_id = context.reader.i16();
-//         //         reset_cursor(&mut context.reader);
-//         //         context
-//         //             .get_fory()
-//         //             .get_type_resolver()
-//         //             .get_harness(type_id)
-//         //             .unwrap()
-//         //             .get_deserializer()(context)
-//         //     }
-//         // } else if ref_flag == (RefFlag::Null as i8) {
-//         //     Err(anyhow!("Try to deserialize `any` to null"))?
-//         // } else if ref_flag == (RefFlag::Ref as i8) {
-//         //     reset_cursor(&mut context.reader);
-//         //     Err(Error::Ref)
-//         // } else {
-//         //     reset_cursor(&mut context.reader);
-//         //     Err(anyhow!("Unknown ref flag, value:{ref_flag}"))?
-//         // }
-//     }
-// }
+/// Helper function to serialize a Box<dyn Any>
+pub fn serialize_any_box(any_box: &Box<dyn Any>, context: &mut WriteContext, is_field: bool) {
+    context.writer.write_i8(RefFlag::NotNullValue as i8);
+
+    let concrete_type_id = (**any_box).type_id();
+
+    let fory_type_id = context
+        .get_fory()
+        .get_type_resolver()
+        .get_fory_type_id(concrete_type_id)
+        .expect("Type not registered");
+
+    context.writer.write_varuint32(fory_type_id);
+
+    let harness = context
+        .get_fory()
+        .get_type_resolver()
+        .get_harness(fory_type_id)
+        .expect("Harness not found");
+
+    let serializer_fn = harness.get_serializer();
+    serializer_fn(&**any_box, context, is_field);
+}
+
+/// Helper function to deserialize to Box<dyn Any>
+pub fn deserialize_any_box(context: &mut ReadContext) -> Result<Box<dyn Any>, Error> {
+    let ref_flag = context.reader.read_i8();
+    if ref_flag != RefFlag::NotNullValue as i8 {
+        return Err(Error::Other(anyhow::anyhow!(
+            "Expected NotNullValue for Box<dyn Any>"
+        )));
+    }
+
+    let fory_type_id = context.reader.read_varuint32();
+
+    let harness = context
+        .get_fory()
+        .get_type_resolver()
+        .get_harness(fory_type_id)
+        .ok_or_else(|| Error::Other(anyhow::anyhow!("Type {} not registered", fory_type_id)))?;
+
+    let deserializer_fn = harness.get_deserializer();
+    deserializer_fn(context, true, true)
+}

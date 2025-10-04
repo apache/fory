@@ -21,7 +21,7 @@ use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::Serializer;
 
-impl<T: Serializer> Serializer for Option<T> {
+impl<T: Serializer + Default> Serializer for Option<T> {
     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         Ok(Some(T::fory_read_data(context, is_field)?))
     }
@@ -48,6 +48,13 @@ impl<T: Serializer> Serializer for Option<T> {
 
     fn fory_get_type_id(fory: &Fory) -> u32 {
         T::fory_get_type_id(fory)
+    }
+
+    fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+        match self {
+            Some(val) => val.fory_type_id_dyn(fory),
+            None => T::fory_get_type_id(fory),
+        }
     }
 
     fn fory_is_option() -> bool {

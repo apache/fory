@@ -40,12 +40,12 @@ enum Color {
     White,
 }
 
-#[derive(Fory, Debug, PartialEq, Default)]
+#[derive(Fory, Debug, PartialEq)]
 struct Item {
     name: Option<String>,
 }
 
-#[derive(Fory, Debug, PartialEq, Default)]
+#[derive(Fory, Debug, PartialEq)]
 struct SimpleStruct {
     // field_order != sorted_order
     f1: HashMap<i32, f64>,
@@ -532,7 +532,7 @@ fn test_map() {
 #[test]
 #[ignore]
 fn test_integer() {
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Item2 {
         f1: i32,
         f2: Option<i32>,

@@ -67,12 +67,12 @@ fn enum_without_payload() {
 
 #[test]
 fn complex_struct() {
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Animal {
         category: String,
     }
 
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Person {
         // c1: Vec<u8>,  // binary
         c2: Vec<i16>, // primitive array
@@ -118,12 +118,12 @@ fn complex_struct() {
 
 #[test]
 fn encode_to_obin() {
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Animal {
         category: String,
     }
 
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Person {
         f1: String,
         f2: HashMap<String, i8>,

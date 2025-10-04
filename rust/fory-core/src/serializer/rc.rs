@@ -23,7 +23,7 @@ use crate::types::RefFlag;
 use anyhow::anyhow;
 use std::rc::Rc;
 
-impl<T: Serializer + 'static> Serializer for Rc<T> {
+impl<T: Serializer + Default + 'static> Serializer for Rc<T> {
     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader);
 
@@ -69,5 +69,9 @@ impl<T: Serializer + 'static> Serializer for Rc<T> {
 
     fn fory_get_type_id(fory: &Fory) -> u32 {
         T::fory_get_type_id(fory)
+    }
+
+    fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+        (**self).fory_type_id_dyn(fory)
     }
 }

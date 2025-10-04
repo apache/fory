@@ -19,9 +19,31 @@ use crate::object::{derive_enum, misc, read, write};
 use crate::util::sorted_fields;
 use proc_macro::TokenStream;
 use quote::quote;
+use syn::Data;
 
 pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
+
+    // Check if Default is already derived/implemented
+    let has_existing_default = ast.attrs.iter().any(|attr| {
+        attr.path().is_ident("derive") && {
+            let mut has_default = false;
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("Default") {
+                    has_default = true;
+                }
+                Ok(())
+            });
+            has_default
+        }
+    });
+
+    let default_impl = if !has_existing_default {
+        generate_default_impl(ast)
+    } else {
+        quote! {}
+    };
+
     // StructSerializer
     let (actual_type_id_ts, get_sorted_field_names_ts, type_def_ts, read_compatible_ts) =
         match &ast.data {
@@ -95,6 +117,8 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
     let type_idx = misc::allocate_type_id();
 
     let gen = quote! {
+        #default_impl
+
         impl fory_core::serializer::StructSerializer for #name {
             fn fory_type_index() -> u32 {
                 #type_idx
@@ -119,6 +143,10 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
         impl fory_core::serializer::Serializer for #name {
             fn fory_get_type_id(fory: &fory_core::fory::Fory) -> u32 {
                 fory.get_type_resolver().get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
+            }
+
+            fn fory_type_id_dyn(&self, fory: &fory_core::fory::Fory) -> u32 {
+                Self::fory_get_type_id(fory)
             }
 
             fn fory_reserved_space() -> usize {
@@ -154,4 +182,31 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
         }
     };
     gen.into()
+}
+
+fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
+    let name = &ast.ident;
+
+    if let Data::Struct(s) = &ast.data {
+        let fields = sorted_fields(&s.fields);
+
+        let field_inits = fields.iter().map(|field| {
+            let ident = &field.ident;
+            quote! {
+                #ident: Default::default()
+            }
+        });
+
+        return quote! {
+            impl std::default::Default for #name {
+                fn default() -> Self {
+                    Self {
+                        #(#field_inits),*
+                    }
+                }
+            }
+        };
+    }
+
+    quote! {}
 }

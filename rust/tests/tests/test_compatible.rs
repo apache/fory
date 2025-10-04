@@ -23,7 +23,7 @@ use std::collections::{HashMap, HashSet};
 // RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_compatible
 #[test]
 fn simple() {
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     struct Animal1 {
         f1: HashMap<i8, Vec<i8>>,
         f2: String,
@@ -34,7 +34,7 @@ fn simple() {
         last: i8,
     }
 
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     struct Animal2 {
         f1: HashMap<i8, Vec<i8>>,
         f3: Vec<i8>,
@@ -70,14 +70,14 @@ fn simple() {
 
 #[test]
 fn skip_option() {
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     struct Item1 {
         f1: Option<i32>,
         f2: Option<String>,
         last: i64,
     }
 
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     struct Item2 {
         f1: i8,
         f2: i8,
@@ -102,21 +102,21 @@ fn skip_option() {
 
 #[test]
 fn nonexistent_struct() {
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     pub struct Item1 {
         f1: i8,
     }
-    #[derive(Fory, Debug, Default, PartialEq)]
+    #[derive(Fory, Debug, PartialEq)]
     pub struct Item2 {
         f1: i64,
     }
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     struct Person1 {
         f2: Item1,
         f3: i8,
         last: String,
     }
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     struct Person2 {
         f2: Item2,
         f3: i64,
@@ -142,7 +142,7 @@ fn nonexistent_struct() {
 
 #[test]
 fn option() {
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Animal {
         f1: Option<String>,
         f2: Option<String>,
@@ -176,7 +176,7 @@ fn nullable() {
         f5: Option(None) -> Option(None)
         f6: Option(None) -> value_default
     */
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     pub struct Item1 {
         f2: i8,
         f3: Option<i8>,
@@ -186,7 +186,7 @@ fn nullable() {
         last: i64,
     }
 
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     pub struct Item2 {
         f2: Option<i8>,
         f3: i8,
@@ -222,7 +222,7 @@ fn nullable() {
 
 #[test]
 fn nullable_container() {
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     pub struct Item1 {
         f1: Vec<i8>,
         f2: Option<Vec<i8>>,
@@ -236,7 +236,7 @@ fn nullable_container() {
         last: i64,
     }
 
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     pub struct Item2 {
         f1: Option<Vec<i8>>,
         f2: Vec<i8>,
@@ -285,7 +285,7 @@ fn nullable_container() {
 
 #[test]
 fn inner_nullable() {
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     pub struct Item1 {
         f1: Vec<Option<String>>,
         f2: HashSet<Option<i8>>,
@@ -293,7 +293,7 @@ fn inner_nullable() {
         last: i64,
     }
 
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     pub struct Item2 {
         f1: Vec<String>,
         f2: HashSet<i8>,
@@ -322,14 +322,14 @@ fn inner_nullable() {
 
 #[test]
 fn nullable_struct() {
-    #[derive(Fory, Debug, Default, PartialEq)]
+    #[derive(Fory, Debug, PartialEq)]
     pub struct Item {
         name: String,
         data: Vec<Option<String>>,
         last: i64,
     }
 
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     pub struct Person1 {
         f1: Item,
         f2: Option<Item>,
@@ -337,7 +337,7 @@ fn nullable_struct() {
         last: i64,
     }
 
-    #[derive(Fory, Debug, Default)]
+    #[derive(Fory, Debug)]
     pub struct Person2 {
         f1: Option<Item>,
         f2: Item,
@@ -391,7 +391,7 @@ fn enum_without_payload() {
         Red,
         Blue,
     }
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Person1 {
         f1: Color1,
         f2: Color1,
@@ -403,7 +403,7 @@ fn enum_without_payload() {
         f8: Color1,
         last: i8,
     }
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Person2 {
         // same
         f1: Color1,
@@ -458,7 +458,7 @@ fn named_enum() {
         Blue,
         White,
     }
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Item1 {
         f1: Color,
         f2: Color,
@@ -472,7 +472,7 @@ fn named_enum() {
         f9: Option<Color>,
         last: i8,
     }
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Item2 {
         f1: Color,
         f2: Option<Color>,
@@ -517,7 +517,7 @@ fn named_enum() {
 #[test]
 #[allow(clippy::unnecessary_literal_unwrap)]
 fn boxed() {
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Item1 {
         f1: i32,
         f2: i32,
@@ -527,7 +527,7 @@ fn boxed() {
         f6: Option<i32>,
     }
 
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Item2 {
         f1: i32,
         f2: Option<i32>,

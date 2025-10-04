@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // Fory models
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(Fory, Debug, Clone, PartialEq)]
 pub struct ForyLogEntry {
     pub id: String,
     pub level: i32, // 0=DEBUG, 1=INFO, 2=WARN, 3=ERROR, 4=FATAL
@@ -34,7 +34,7 @@ pub struct ForyLogEntry {
     pub duration_ms: f64,
 }
 
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(Fory, Debug, Clone, PartialEq)]
 pub struct ForyUserProfile {
     pub user_id: String,
     pub username: String,
@@ -45,7 +45,7 @@ pub struct ForyUserProfile {
     pub is_active: bool,
 }
 
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(Fory, Debug, Clone, PartialEq)]
 pub struct ForyAPIMetrics {
     pub endpoint: String,
     pub request_count: i64,
@@ -55,7 +55,7 @@ pub struct ForyAPIMetrics {
     pub measured_at: NaiveDateTime,
 }
 
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(Fory, Debug, Clone, PartialEq)]
 pub struct SystemData {
     pub logs: Vec<ForyLogEntry>,
     pub users: Vec<ForyUserProfile>,

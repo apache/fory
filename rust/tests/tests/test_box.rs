@@ -46,7 +46,7 @@ fn test_box_primitive() {
 
 #[test]
 fn test_box_struct() {
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Person {
         name: String,
         age: i32,
@@ -69,7 +69,7 @@ fn test_box_struct() {
 
 #[test]
 fn test_box_struct_separate() {
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(Fory, Debug, PartialEq)]
     struct Person {
         name: String,
         age: i32,

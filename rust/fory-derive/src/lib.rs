@@ -39,7 +39,7 @@
 //! use fory_derive::Fory;
 //! use std::collections::HashMap;
 //!
-//! #[derive(Fory, Debug, PartialEq, Default)]
+//! #[derive(Fory, Debug, PartialEq)]
 //! struct Person {
 //!     name: String,
 //!     age: i32,
@@ -48,7 +48,7 @@
 //!     metadata: HashMap<String, String>,
 //! }
 //!
-//! #[derive(Fory, Debug, PartialEq, Default)]
+//! #[derive(Fory, Debug, PartialEq)]
 //! struct Address {
 //!     street: String,
 //!     city: String,
@@ -136,7 +136,7 @@
 //! use fory_core::{fory::Fory, error::Error};
 //! use fory_derive::Fory;
 //!
-//! #[derive(Fory, Debug, PartialEq, Default)]
+//! #[derive(Fory, Debug, PartialEq)]
 //! struct MyData {
 //!     value: i32,
 //!     text: String,
@@ -168,7 +168,7 @@
 
 use fory_row::derive_row;
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{parse_macro_input, DeriveInput, ItemTrait};
 
 mod fory_row;
 mod object;
@@ -185,14 +185,14 @@ mod util;
 /// ```rust
 /// use fory_derive::Fory;
 ///
-/// #[derive(Fory, Debug, PartialEq, Default)]
+/// #[derive(Fory, Debug, PartialEq)]
 /// struct Person {
 ///     name: String,
 ///     age: i32,
 ///     address: Address,
 /// }
 ///
-/// #[derive(Fory, Debug, PartialEq, Default)]
+/// #[derive(Fory, Debug, PartialEq)]
 /// struct Address {
 ///     street: String,
 ///     city: String,
@@ -201,6 +201,9 @@ mod util;
 #[proc_macro_derive(Fory)]
 pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+
+    // Check if this is being applied to a trait (which is not possible with derive macros)
+    // Derive macros can only be applied to structs, enums, and unions
     object::derive_serializer(&input)
 }
 
@@ -227,4 +230,40 @@ pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStr
 pub fn proc_macro_derive_fory_row(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     derive_row(&input)
+}
+
+/// Attribute macro for trait definitions to auto-generate `as_any()` method.
+///
+/// This macro automatically adds the `as_any()` method required for trait object
+/// serialization to any trait definition.
+///
+/// # Example
+///
+/// ```rust
+/// use fory_derive::fory_trait;
+///
+/// #[fory_trait]
+/// trait Animal {
+///     fn speak(&self) -> String;
+///     fn name(&self) -> &str;
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn fory_trait(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as ItemTrait);
+    let trait_name = &input.ident;
+    let vis = &input.vis;
+    let generics = &input.generics;
+    let supertraits = &input.supertraits;
+    let items = &input.items;
+
+    let expanded = quote::quote! {
+        #vis trait #trait_name #generics: #supertraits {
+            #(#items)*
+
+            fn as_any(&self) -> &dyn std::any::Any;
+        }
+    };
+
+    TokenStream::from(expanded)
 }

@@ -21,7 +21,7 @@ use crate::meta::MetaString;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::{Mode, RefFlag, PRIMITIVE_TYPES};
 
-mod any;
+pub mod any;
 mod arc;
 mod bool;
 mod box_;
@@ -38,6 +38,7 @@ mod set;
 pub mod skip;
 mod string;
 pub mod struct_;
+pub mod trait_object;
 
 pub fn write_ref_info_data<T: Serializer + 'static>(
     record: &T,
@@ -100,20 +101,26 @@ pub fn get_skip_ref_flag<T: Serializer>(fory: &Fory) -> bool {
     !T::fory_is_option() && PRIMITIVE_TYPES.contains(&elem_type_id)
 }
 
-pub trait Serializer
-where
-    Self: Sized + Default + 'static,
-{
+pub trait Serializer: 'static {
     /// Entry point of the serialization.
-    fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool)
+    where
+        Self: Sized,
+    {
         write_ref_info_data(self, context, is_field, false, false);
     }
 
-    fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+    fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error>
+    where
+        Self: Sized + Default,
+    {
         read_ref_info_data(context, is_field, false, false)
     }
 
-    fn fory_is_option() -> bool {
+    fn fory_is_option() -> bool
+    where
+        Self: Sized,
+    {
         false
     }
 
@@ -121,26 +128,47 @@ where
         false
     }
 
-    fn fory_get_type_id(fory: &Fory) -> u32 {
+    fn fory_is_polymorphic() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
+    fn fory_get_type_id(fory: &Fory) -> u32
+    where
+        Self: Sized,
+    {
         fory.get_type_resolver()
             .get_type_info(std::any::TypeId::of::<Self>())
             .get_type_id()
     }
 
+    fn fory_type_id_dyn(&self, fory: &Fory) -> u32;
+
     /// The possible max memory size of the type.
     /// Used to reserve the buffer space to avoid reallocation, which may hurt performance.
-    fn fory_reserved_space() -> usize {
+    fn fory_reserved_space() -> usize
+    where
+        Self: Sized,
+    {
         0
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool)
+    where
+        Self: Sized,
+    {
         if !is_field {
             let type_id = Self::fory_get_type_id(context.get_fory());
             context.writer.write_varuint32(type_id);
         }
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool)
+    where
+        Self: Sized,
+    {
         if !is_field {
             let remote_type_id = context.reader.read_varuint32();
             let local_type_id = Self::fory_get_type_id(context.get_fory());
@@ -151,7 +179,20 @@ where
     /// Write/Read the data into the buffer. Need to be implemented.
     fn fory_write_data(&self, context: &mut WriteContext, is_field: bool);
 
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error>;
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error>
+    where
+        Self: Sized + Default;
+
+    fn fory_concrete_type_id(&self) -> std::any::TypeId {
+        std::any::TypeId::of::<Self>()
+    }
+
+    fn fory_as_any(&self) -> &dyn std::any::Any
+    where
+        Self: Sized,
+    {
+        self
+    }
 }
 
 pub trait StructSerializer: Serializer + 'static {
@@ -172,7 +213,10 @@ pub trait StructSerializer: Serializer + 'static {
         struct_::actual_type_id(type_id, register_by_name, mode)
     }
 
-    fn fory_read_compatible(_context: &mut ReadContext) -> Result<Self, Error> {
+    fn fory_read_compatible(_context: &mut ReadContext) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
         unimplemented!()
     }
 

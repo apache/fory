@@ -62,7 +62,7 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
             }
         }
     }
-    let is_same_type = true;
+    let is_same_type = !T::fory_is_polymorphic();
     if has_null {
         header |= HAS_NULL;
     }
@@ -75,10 +75,16 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
     context.writer.write_u8(header);
     T::fory_write_type_info(context, is_field);
     // context.writer.reserve((T::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
-    for item in &items {
-        // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
-        let skip_ref_flag = is_same_type && !has_null;
-        crate::serializer::write_ref_info_data(*item, context, is_field, skip_ref_flag, true);
+    if T::fory_is_polymorphic() {
+        for item in &items {
+            item.fory_write(context, is_field);
+        }
+    } else {
+        for item in &items {
+            // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
+            let skip_ref_flag = is_same_type && !has_null;
+            crate::serializer::write_ref_info_data(*item, context, is_field, skip_ref_flag, true);
+        }
     }
 }
 
@@ -95,7 +101,7 @@ pub fn read_collection_type_info(
 
 pub fn read_collection<C, T>(context: &mut ReadContext) -> Result<C, Error>
 where
-    T: Serializer,
+    T: Serializer + Default,
     C: FromIterator<T>,
 {
     let len = context.reader.read_varuint32();
@@ -107,9 +113,15 @@ where
     T::fory_read_type_info(context, declared);
     let has_null = (header & HAS_NULL) != 0;
     let is_same_type = (header & IS_SAME_TYPE) != 0;
-    let skip_ref_flag = is_same_type && !has_null;
-    // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
-    (0..len)
-        .map(|_| crate::serializer::read_ref_info_data(context, declared, skip_ref_flag, true))
-        .collect::<Result<C, Error>>()
+    if T::fory_is_polymorphic() {
+        (0..len)
+            .map(|_| T::fory_read(context, declared))
+            .collect::<Result<C, Error>>()
+    } else {
+        let skip_ref_flag = is_same_type && !has_null;
+        // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
+        (0..len)
+            .map(|_| crate::serializer::read_ref_info_data(context, declared, skip_ref_flag, true))
+            .collect::<Result<C, Error>>()
+    }
 }

@@ -41,6 +41,10 @@ macro_rules! impl_num_serializer {
             fn fory_get_type_id(_fory: &Fory) -> u32 {
                 $field_type as u32
             }
+
+            fn fory_type_id_dyn(&self, _fory: &Fory) -> u32 {
+                $field_type as u32
+            }
         }
     };
 }
