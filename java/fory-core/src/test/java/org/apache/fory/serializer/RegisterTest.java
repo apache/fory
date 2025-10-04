@@ -24,6 +24,7 @@ import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
+import org.apache.fory.memory.MemoryBuffer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -67,4 +68,106 @@ public class RegisterTest extends ForyTestBase {
   }
 
   public static class B {}
+
+  @Test
+  public void testRegisterThenRegisterSerializer() {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(false)
+            .build();
+
+    fory.register(MyExt.class, 103);
+
+    fory.registerSerializer(MyExt.class, MyExtSerializer.class);
+
+    MyExt original = new MyExt();
+    original.id = "test-123";
+
+    byte[] bytes = fory.serialize(original);
+    MyExt deserialized = (MyExt) fory.deserialize(bytes);
+
+    Assert.assertNotNull(deserialized);
+    Assert.assertEquals(deserialized.id, "test-123");
+  }
+
+  @Test
+  public void testRegisterSerializerThenRegister() {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(false)
+            .build();
+    fory.register(MyExt.class, "test.pkg", "MyExt");
+    fory.registerSerializer(MyExt.class, MyExtSerializer.class);
+
+    MyExt original = new MyExt();
+    original.id = "reverse-order-test";
+
+    byte[] bytes = fory.serialize(original);
+    MyExt deserialized = (MyExt) fory.deserialize(bytes);
+
+    Assert.assertNotNull(deserialized);
+    Assert.assertEquals(deserialized.id, "reverse-order-test");
+  }
+
+  @Test
+  public void testMultipleRegisterSerializer() {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(false)
+            .build();
+
+    fory.register(MyExt.class, 104);
+
+    fory.registerSerializer(MyExt.class, MyExtSerializer.class);
+    fory.registerSerializer(MyExt.class, MyExtSerializer.class);
+
+    MyExt original = new MyExt();
+    original.id = "idempotent-test";
+
+    byte[] bytes = fory.serialize(original);
+    MyExt deserialized = (MyExt) fory.deserialize(bytes);
+
+    Assert.assertNotNull(deserialized);
+    Assert.assertEquals(deserialized.id, "idempotent-test");
+  }
+
+  public static class MyExt {
+    public String id;
+  }
+
+  public static class MyExtSerializer extends Serializer<MyExt> {
+    public MyExtSerializer(Fory fory) {
+      super(fory, MyExt.class);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, MyExt value) {
+      fory.writeJavaString(buffer, value.id);
+    }
+
+    @Override
+    public void xwrite(MemoryBuffer buffer, MyExt value) {
+      fory.writeString(buffer, value.id);
+    }
+
+    @Override
+    public MyExt read(MemoryBuffer buffer) {
+      MyExt result = new MyExt();
+      result.id = fory.readJavaString(buffer);
+      return result;
+    }
+
+    @Override
+    public MyExt xread(MemoryBuffer buffer) {
+      MyExt result = new MyExt();
+      result.id = fory.readString(buffer);
+      return result;
+    }
+  }
 }

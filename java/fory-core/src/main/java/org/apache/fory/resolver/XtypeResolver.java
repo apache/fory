@@ -346,19 +346,31 @@ public class XtypeResolver extends TypeResolver {
     if (!serializer.getClass().getPackage().getName().startsWith("org.apache.fory")) {
       SerializationUtils.validate(type, serializer.getClass());
     }
-    int xtypeId = classInfo.xtypeId;
-    int foryId = xtypeId & 0xff;
+    int oldXtypeId = classInfo.xtypeId;
+    int foryId = oldXtypeId & 0xff;
+
+    if (oldXtypeId != 0 && xtypeIdToClassMap.get(oldXtypeId) == classInfo) {
+      xtypeIdToClassMap.remove(oldXtypeId);
+      registeredTypeIds.remove(oldXtypeId);
+    }
+
     if (foryId != Types.EXT && foryId != Types.NAMED_EXT) {
       if (foryId == Types.STRUCT || foryId == Types.COMPATIBLE_STRUCT) {
-        classInfo.xtypeId = (xtypeId & 0xffffff00) | Types.EXT;
+        classInfo.xtypeId = (oldXtypeId & 0xffffff00) | Types.EXT;
       } else if (foryId == Types.NAMED_STRUCT || foryId == Types.NAMED_COMPATIBLE_STRUCT) {
-        classInfo.xtypeId = (xtypeId & 0xffffff00) | Types.NAMED_EXT;
+        classInfo.xtypeId = (oldXtypeId & 0xffffff00) | Types.NAMED_EXT;
       } else {
         throw new IllegalArgumentException(
-            String.format("Can't register serializer for type %s with id %s", type, xtypeId));
+            String.format("Can't register serializer for type %s with id %s", type, oldXtypeId));
       }
     }
     classInfo.serializer = serializer;
+
+    int newXtypeId = classInfo.xtypeId;
+    if (newXtypeId != 0) {
+      xtypeIdToClassMap.put(newXtypeId, classInfo);
+      registeredTypeIds.add(newXtypeId);
+    }
   }
 
   private ClassInfo checkClassRegistration(Class<?> type) {
