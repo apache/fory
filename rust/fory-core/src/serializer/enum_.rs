@@ -59,13 +59,19 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext, is_field: bool
         let meta_index = context.push_meta(rs_type_id) as u32;
         context.writer.write_varuint32(meta_index);
     } else {
-        let resolver = context.get_fory().get_type_resolver();
-        let type_info = resolver.get_type_info(rs_type_id);
-        let _namespace = type_info.get_namespace().to_owned();
-        let _type_name = type_info.get_type_name().to_owned();
-        unimplemented!("unimplement NamedEnum::write_type_info when non-share_meta")
-        // context.writer.write_bytes(namespace.bytes.as_slice());
-        // context.writer.write_bytes(type_name.bytes.as_slice());
+        let type_info = context
+            .get_fory()
+            .get_type_resolver()
+            .get_type_info(rs_type_id);
+        let namespace = type_info.get_namespace().to_owned();
+        let type_name = type_info.get_type_name().to_owned();
+        let resolver = context.get_fory().get_metastring_resolver();
+        resolver
+            .borrow_mut()
+            .write_meta_string_bytes(context, &namespace);
+        resolver
+            .borrow_mut()
+            .write_meta_string_bytes(context, &type_name);
     }
 }
 
@@ -84,7 +90,9 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext, is_field: bool) 
     if context.get_fory().is_share_meta() {
         let _meta_index = context.reader.read_varuint32();
     } else {
-        unimplemented!("unimplement NamedEnum::read_type_info when non-share_meta")
+        let resolver = context.get_fory().get_metastring_resolver();
+        resolver.borrow_mut().read_meta_string_bytes(context);
+        resolver.borrow_mut().read_meta_string_bytes(context);
     }
 }
 

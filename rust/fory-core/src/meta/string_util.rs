@@ -27,6 +27,9 @@ use std::arch::x86_64::*;
 use std::arch::x86_64::*;
 
 #[cfg(target_arch = "x86_64")]
+use std::arch::is_x86_feature_detected;
+
+#[cfg(target_arch = "x86_64")]
 pub const MIN_DIM_SIZE_AVX: usize = 32;
 
 #[cfg(any(

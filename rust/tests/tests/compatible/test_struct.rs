@@ -19,8 +19,7 @@ use fory_core::fory::Fory;
 use fory_core::types::Mode::Compatible;
 use fory_derive::Fory;
 use std::collections::{HashMap, HashSet};
-
-// RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_compatible
+// RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_struct
 #[test]
 fn simple() {
     #[derive(Fory, Debug, Default)]
@@ -588,10 +587,4 @@ fn boxed() {
     let bytes = fory1.serialize(&f6);
     let item2_f6: Option<i32> = fory2.deserialize(&bytes).unwrap();
     assert_eq!(item2.f6, item2_f6);
-}
-
-#[test]
-#[ignore]
-fn skip_custom_type() {
-    todo!()
 }

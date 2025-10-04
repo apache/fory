@@ -136,7 +136,7 @@ pub fn gen_read(struct_ident: &Ident) -> TokenStream {
                     <Self as fory_core::serializer::Serializer>::fory_read_data(context, false)
                 },
                 fory_core::types::Mode::Compatible => {
-                    <#struct_ident as fory_core::serializer::StructSerializer>::fory_read_compatible(context)
+                    <#struct_ident as fory_core::serializer::Serializer>::fory_read_compatible(context)
                 },
                 _ => unreachable!()
             }
