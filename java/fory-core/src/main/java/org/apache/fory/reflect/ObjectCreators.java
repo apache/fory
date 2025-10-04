@@ -132,8 +132,10 @@ public class ObjectCreators {
 
     private static String createConstructorInvocationErrorMessage(Class<?> type, Throwable cause) {
       StringBuilder sb = new StringBuilder();
-      sb.append("Failed to invoke no-arg constructor for class '").append(type.getName()).append("'");
-      
+      sb.append("Failed to invoke no-arg constructor for class '")
+          .append(type.getName())
+          .append("'");
+
       if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
         sb.append(" in GraalVM Native Image environment.\n\n");
         sb.append("This typically indicates a reflection configuration issue.\n");
@@ -147,7 +149,7 @@ public class ObjectCreators {
       } else {
         sb.append(".\nRoot cause: ").append(cause.getMessage());
       }
-      
+
       return sb.toString();
     }
 
@@ -201,8 +203,10 @@ public class ObjectCreators {
 
     private static String createRecordConstructorErrorMessage(Class<?> type, Throwable cause) {
       StringBuilder sb = new StringBuilder();
-      sb.append("Failed to set accessibility for record constructor of class '").append(type.getName()).append("'");
-      
+      sb.append("Failed to set accessibility for record constructor of class '")
+          .append(type.getName())
+          .append("'");
+
       if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
         sb.append(" in GraalVM Native Image environment.\n\n");
         sb.append("SOLUTION: Register the record constructor for reflection access:\n");
@@ -216,17 +220,20 @@ public class ObjectCreators {
         sb.append(". Please ensure the record constructor is accessible.\n");
         sb.append("Root cause: ").append(cause.getMessage());
       }
-      
+
       return sb.toString();
     }
 
     private static String createRecordInvocationErrorMessage(Class<?> type, Throwable cause) {
       StringBuilder sb = new StringBuilder();
-      sb.append("Failed to invoke record constructor for class '").append(type.getName()).append("'");
-      
+      sb.append("Failed to invoke record constructor for class '")
+          .append(type.getName())
+          .append("'");
+
       if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
         sb.append(" in GraalVM Native Image environment.\n\n");
-        sb.append("This typically indicates missing reflection configuration for the record constructor.\n");
+        sb.append(
+            "This typically indicates missing reflection configuration for the record constructor.\n");
         sb.append("SOLUTION: Ensure the record constructor is registered for reflection access:\n");
         sb.append("- Add to reflect-config.json:\n");
         sb.append("  {\n");
@@ -237,7 +244,7 @@ public class ObjectCreators {
       } else {
         sb.append(".\nRoot cause: ").append(cause.getMessage());
       }
-      
+
       return sb.toString();
     }
   }
@@ -326,7 +333,7 @@ public class ObjectCreators {
     private static String createGraalVMFriendlyErrorMessage(Class<?> type, Exception cause) {
       StringBuilder sb = new StringBuilder();
       sb.append("Failed to create instance of class '").append(type.getName()).append("'");
-      
+
       if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
         sb.append(" in GraalVM Native Image environment.\n\n");
         sb.append("SOLUTION OPTIONS:\n");
@@ -338,13 +345,14 @@ public class ObjectCreators {
         sb.append("       \"name\": \"").append(type.getName()).append("\",\n");
         sb.append("       \"methods\": [{\"name\": \"<init>\", \"parameterTypes\": []}]\n");
         sb.append("     }\n\n");
-        sb.append("3. Use @RegisterForReflection annotation on your class if using Quarkus/other frameworks\n\n");
+        sb.append(
+            "3. Use @RegisterForReflection annotation on your class if using Quarkus/other frameworks\n\n");
         sb.append("Root cause: ").append(cause.getMessage());
       } else {
         sb.append(". Please provide a no-arg constructor for ").append(type.getName());
         sb.append("\nRoot cause: ").append(cause.getMessage());
       }
-      
+
       return sb.toString();
     }
 
