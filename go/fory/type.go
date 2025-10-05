@@ -544,15 +544,10 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, type_ reflect.Type, crea
 		// make sure the concrete value don't miss its real typeInfo
 		value = value.Elem()
 	}
-	//如果是基础类型的一维数组，应该使用它相应的切片类型获取到真正属于他的信息
 	if type_.Kind() == reflect.Array && (isPrimitiveType_(type_.Elem())) {
 		typ := reflect.SliceOf(type_.Elem())
-		fmt.Println(r.typesInfo[typ])
 		return r.typesInfo[typ], nil
 	} else if (type_.Kind() == reflect.Slice || type_.Kind() == reflect.Array) && value.IsValid() {
-		//而多维的 slice， array，我们应该直接返回一个非声明式的 slice 序列化器，以便序列化正确的信息，在反序列化时，如果是多维的，拿到非声明的序列化器，
-		//也能通过非声明路径正确获取信息。暂时没有考虑 tensor 类型
-		//[]interface{} / [n] interface{} 自然也要给一个非声明的构造，
 		if needsNonDeclared(value) {
 			var info TypeInfo
 			info.TypeID = LIST
@@ -562,11 +557,8 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, type_ reflect.Type, crea
 		}
 	}
 
-	//其他的情况 map 一维的array，slice，内部类型不是interface 我们需要走声明式的构造，也就是走 create 的方法
 	if info, ok := r.typesInfo[type_]; ok || type_.Kind() == reflect.Slice || type_.Kind() == reflect.Array {
-		// 如果基础类型的 array，在进入这里之前就会拿到并返回
-		// 否则在这里重新创建成 list interface
-		if info.Serializer == nil {
+		if info.Serializer == nil || ((type_.Kind() == reflect.Slice || type_.Kind() == reflect.Array) && value.IsValid()) {
 			/*
 			   Lazy initialize serializer if not created yet
 			   mapInStruct equals false because this path isn’t taken when extracting field info from structs;
@@ -591,7 +583,6 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, type_ reflect.Type, crea
 	if !create {
 		fmt.Errorf("type %v not registered and create=false", value.Type())
 	}
-	type_ = value.Type()
 	// Get package path and type name for registration
 	var typeName string
 	var pkgPath string
@@ -660,13 +651,11 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, type_ reflect.Type, crea
 
 // Check if the slice/array needs declared constructor
 func needsNonDeclared(v reflect.Value) bool {
-	//保证到这里的顶层是被解过的，所以只需要看一层儿子，解一层儿子（如果需要）
 	t := v.Type()
 	if t.Kind() != reflect.Slice && t.Kind() != reflect.Array {
 		return false
 	}
 	et := t.Elem()
-	//把指针解透。。。
 	for et.Kind() == reflect.Ptr {
 		et = et.Elem()
 	}
@@ -791,7 +780,6 @@ func (r *typeResolver) writeTypeInfo(buffer *ByteBuffer, typeInfo TypeInfo) erro
 	if typeID < 0 {
 		internalTypeID = -internalTypeID
 	}
-
 	// Write the type ID to buffer (variable-length encoding)
 	buffer.WriteVarUint32(uint32(typeID))
 	// For namespaced types, write additional metadata:

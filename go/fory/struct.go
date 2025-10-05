@@ -189,7 +189,6 @@ func createStructFieldInfos(f *Fory, type_ reflect.Type) (structFieldsInfo, erro
 			} else if field.Type.Kind() == reflect.Slice {
 				// If the field is a concrete slice type, dynamically create a valid serializer
 				// so it has the potential and capability to use readSameTypes function.
-				// todo
 				if field.Type.Elem().Kind() != reflect.Interface {
 					elemSerializer := f.typeResolver.typeToSerializers[field.Type.Elem()]
 					elemType := field.Type.Elem()

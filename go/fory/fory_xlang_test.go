@@ -19,8 +19,6 @@ package fory_test
 
 import (
 	"fmt"
-	"github.com/apache/fory/go/fory"
-	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -28,6 +26,9 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"github.com/apache/fory/go/fory"
+	"github.com/stretchr/testify/require"
 )
 
 const pythonModule = "pyfory.tests.test_cross_language"

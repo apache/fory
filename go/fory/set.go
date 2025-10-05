@@ -17,7 +17,9 @@
 
 package fory
 
-import "reflect"
+import (
+	"reflect"
+)
 
 // GenericSet type.
 // TODO use golang generics; support more concrete key types
@@ -55,7 +57,7 @@ func (s setSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 	collectFlag, elemTypeInfo := s.writeHeader(f, buf, keys)
 
 	// Check if all elements are of same type
-	if (collectFlag & CollectionIsSameType) != 0 {
+	if (collectFlag & COLLECTION_NOT_SAME_TYPE) == 0 {
 		// Optimized path for same-type elements
 		return s.writeSameType(f, buf, keys, elemTypeInfo, collectFlag)
 	}
@@ -69,7 +71,7 @@ func (s setSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 // - Element type information (if homogeneous)
 func (s setSerializer) writeHeader(f *Fory, buf *ByteBuffer, keys []reflect.Value) (byte, TypeInfo) {
 	// Initialize collection flags and type tracking variables
-	collectFlag := CollectionDefaultFlag
+	collectFlag := COLLECTION_DEFAULT_FLAG
 	var elemTypeInfo TypeInfo
 	hasNull := false
 	hasSameType := true
@@ -103,15 +105,15 @@ func (s setSerializer) writeHeader(f *Fory, buf *ByteBuffer, keys []reflect.Valu
 
 	// Set collection flags based on findings
 	if hasNull {
-		collectFlag |= CollectionHasNull // Mark if collection contains null values
+		collectFlag |= COLLECTION_HAS_NULL // Mark if collection contains null values
 	}
-	if hasSameType {
-		collectFlag |= CollectionIsSameType // Mark if elements have different types
+	if !hasSameType {
+		collectFlag |= COLLECTION_NOT_SAME_TYPE // Mark if elements have different types
 	}
 
 	// Enable reference tracking if configured
 	if f.refTracking {
-		collectFlag |= CollectionTrackingRef
+		collectFlag |= COLLECTION_TRACKING_REF
 	}
 
 	// Write metadata to buffer
@@ -129,7 +131,7 @@ func (s setSerializer) writeHeader(f *Fory, buf *ByteBuffer, keys []reflect.Valu
 // writeSameType efficiently serializes a collection where all elements share the same type
 func (s setSerializer) writeSameType(f *Fory, buf *ByteBuffer, keys []reflect.Value, typeInfo TypeInfo, flag byte) error {
 	serializer := typeInfo.Serializer
-	trackRefs := (flag & CollectionTrackingRef) != 0 // Check if reference tracking is enabled
+	trackRefs := (flag & COLLECTION_TRACKING_REF) != 0 // Check if reference tracking is enabled
 
 	for _, key := range keys {
 		key = UnwrapReflectValue(key)
@@ -206,7 +208,7 @@ func (s setSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 	var elemTypeInfo TypeInfo
 
 	// If all elements are same type, read the shared type info
-	if (collectFlag & CollectionIsSameType) != 0 {
+	if (collectFlag & COLLECTION_NOT_SAME_TYPE) == 0 {
 		typeID := buf.ReadVarInt32()
 		elemTypeInfo, _ = f.typeResolver.getTypeInfoById(int16(typeID))
 	}
@@ -219,7 +221,7 @@ func (s setSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 	f.refResolver.Reference(value)
 
 	// Choose appropriate deserialization path based on type consistency
-	if (collectFlag & CollectionIsSameType) != 0 {
+	if (collectFlag & COLLECTION_NOT_SAME_TYPE) == 0 {
 		return s.readSameType(f, buf, value, elemTypeInfo, collectFlag, length)
 	}
 	return s.readDifferentTypes(f, buf, value, length)
@@ -228,7 +230,7 @@ func (s setSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 // readSameType handles deserialization of sets where all elements share the same type
 func (s setSerializer) readSameType(f *Fory, buf *ByteBuffer, value reflect.Value, typeInfo TypeInfo, flag int8, length int) error {
 	// Determine if reference tracking is enabled
-	trackRefs := (flag & CollectionTrackingRef) != 0
+	trackRefs := (flag & COLLECTION_TRACKING_REF) != 0
 	serializer := typeInfo.Serializer
 
 	for i := 0; i < length; i++ {
