@@ -118,7 +118,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
                         .get_harness(fory_type_id)
                         .expect("Harness not found for trait object field");
 
-                    let serializer_fn = harness.get_serializer();
+                    let serializer_fn = harness.get_write_fn();
                     serializer_fn(any_ref, context, true);
                 }
             }

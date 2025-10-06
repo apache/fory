@@ -19,7 +19,10 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
-use crate::serializer::{read_ref_info_data, write_ref_info_data, ForyDefault, Serializer};
+use crate::serializer::{
+    read_ref_info_data, read_type_info, write_ref_info_data, write_type_info, ForyDefault,
+    Serializer,
+};
 use crate::types::{TypeId, SIZE_OF_REF_AND_TYPE};
 use std::collections::HashMap;
 use std::mem;
@@ -239,6 +242,14 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
+        write_type_info::<Self>(context, is_field);
+    }
+
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
+        read_type_info::<Self>(context, is_field);
     }
 }
 

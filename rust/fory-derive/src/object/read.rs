@@ -102,7 +102,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
                         .get_harness(fory_type_id)
                         .expect("Type not registered for trait object field");
 
-                    let deserializer_fn = harness.get_deserializer();
+                    let deserializer_fn = harness.get_read_fn();
                     let any_box = deserializer_fn(context, true, false)?;
 
                     let base_type_id = fory_type_id >> 8;
@@ -293,7 +293,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                         .get_type_resolver()
                         .get_harness(fory_type_id)
                         .expect("Type not registered for trait object field");
-                    let deserializer_fn = harness.get_deserializer();
+                    let deserializer_fn = harness.get_read_fn();
                     let any_box = deserializer_fn(context, true, false).unwrap();
                     let base_type_id = fory_type_id >> 8;
                     #var_name = #helper_mod::#from_any_fn(any_box, base_type_id).unwrap();
@@ -436,7 +436,7 @@ pub fn gen_read(struct_ident: &Ident) -> TokenStream {
                     <Self as fory_core::serializer::Serializer>::fory_read_data(context, false)
                 },
                 fory_core::types::Mode::Compatible => {
-                    <#struct_ident as fory_core::serializer::StructSerializer>::fory_read_compatible(context)
+                    <#struct_ident as fory_core::serializer::Serializer>::fory_read_compatible(context)
                 },
                 _ => unreachable!()
             }

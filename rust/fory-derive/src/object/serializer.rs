@@ -140,10 +140,6 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
             fn fory_type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: fory_core::meta::MetaString, type_name: fory_core::meta::MetaString, register_by_name: bool) -> Vec<u8> {
                 #type_def_ts
             }
-
-            fn fory_read_compatible(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
-                #read_compatible_ts
-            }
         }
         impl fory_core::serializer::Serializer for #name {
             fn fory_get_type_id(fory: &fory_core::fory::Fory) -> u32 {
@@ -184,6 +180,10 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
 
             fn fory_read(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
                 #read_ts
+            }
+
+            fn fory_read_compatible(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
+                #read_compatible_ts
             }
         }
         impl #name {

@@ -20,7 +20,7 @@ use crate::fory::Fory;
 use crate::meta::get_latin1_length;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
-use crate::serializer::{ForyDefault, Serializer};
+use crate::serializer::{read_type_info, write_type_info, ForyDefault, Serializer};
 use crate::types::TypeId;
 use std::mem;
 
@@ -94,6 +94,14 @@ impl Serializer for String {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
+        write_type_info::<Self>(context, is_field);
+    }
+
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
+        read_type_info::<Self>(context, is_field);
     }
 }
 

@@ -30,7 +30,7 @@ pub fn serialize_any_box(any_box: &Box<dyn Any>, context: &mut WriteContext, is_
 
     let concrete_type_id = (**any_box).type_id();
     let harness = context.write_any_typeinfo(concrete_type_id);
-    let serializer_fn = harness.get_serializer_no_ref();
+    let serializer_fn = harness.get_write_data_fn();
     serializer_fn(&**any_box, context, is_field);
 }
 
@@ -43,7 +43,7 @@ pub fn deserialize_any_box(context: &mut ReadContext) -> Result<Box<dyn Any>, Er
         )));
     }
     let harness = context.read_any_typeinfo();
-    let deserializer_fn = harness.get_deserializer_no_ref();
+    let deserializer_fn = harness.get_read_data_fn();
     deserializer_fn(context, true)
 }
 
@@ -109,7 +109,7 @@ impl Serializer for Rc<dyn Any> {
         if !context.ref_writer.try_write_rc_ref(context.writer, self) {
             let concrete_type_id = (**self).type_id();
             let harness = context.write_any_typeinfo(concrete_type_id);
-            let serializer_fn = harness.get_serializer_no_ref();
+            let serializer_fn = harness.get_write_data_fn();
             serializer_fn(&**self, context, is_field);
         }
     }
@@ -134,13 +134,13 @@ impl Serializer for Rc<dyn Any> {
             }
             RefFlag::NotNullValue => {
                 let harness = context.read_any_typeinfo();
-                let deserializer_fn = harness.get_deserializer_no_ref();
+                let deserializer_fn = harness.get_read_data_fn();
                 let boxed = deserializer_fn(context, true)?;
                 Ok(Rc::<dyn Any>::from(boxed))
             }
             RefFlag::RefValue => {
                 let harness = context.read_any_typeinfo();
-                let deserializer_fn = harness.get_deserializer_no_ref();
+                let deserializer_fn = harness.get_read_data_fn();
                 let boxed = deserializer_fn(context, true)?;
                 let rc: Rc<dyn Any> = Rc::from(boxed);
                 context.ref_reader.store_rc_ref(rc.clone());
@@ -192,7 +192,7 @@ impl Serializer for Arc<dyn Any> {
         if !context.ref_writer.try_write_arc_ref(context.writer, self) {
             let concrete_type_id = (**self).type_id();
             let harness = context.write_any_typeinfo(concrete_type_id);
-            let serializer_fn = harness.get_serializer_no_ref();
+            let serializer_fn = harness.get_write_data_fn();
             serializer_fn(&**self, context, is_field);
         }
     }
@@ -217,13 +217,13 @@ impl Serializer for Arc<dyn Any> {
             }
             RefFlag::NotNullValue => {
                 let harness = context.read_any_typeinfo();
-                let deserializer_fn = harness.get_deserializer_no_ref();
+                let deserializer_fn = harness.get_read_data_fn();
                 let boxed = deserializer_fn(context, true)?;
                 Ok(Arc::<dyn Any>::from(boxed))
             }
             RefFlag::RefValue => {
                 let harness = context.read_any_typeinfo();
-                let deserializer_fn = harness.get_deserializer_no_ref();
+                let deserializer_fn = harness.get_read_data_fn();
                 let boxed = deserializer_fn(context, true)?;
                 let arc: Arc<dyn Any> = Arc::from(boxed);
                 context.ref_reader.store_arc_ref(arc.clone());
