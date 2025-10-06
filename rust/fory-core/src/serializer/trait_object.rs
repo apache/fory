@@ -284,23 +284,38 @@ macro_rules! generate_smart_pointer_wrapper {
     (Rc, $trait_name:ident, $($impl_type:ty),+ $(,)?) => {
         $crate::paste::paste! {
             #[derive(Clone)]
-            pub struct [<$trait_name Rc>](std::rc::Rc<dyn $trait_name>);
+            pub(crate) struct [<$trait_name Rc>](std::rc::Rc<dyn $trait_name>);
 
             impl [<$trait_name Rc>] {
-                pub fn new(inner: std::rc::Rc<dyn $trait_name>) -> Self {
+                pub(crate) fn new(inner: std::rc::Rc<dyn $trait_name>) -> Self {
                     Self(inner)
                 }
 
-                pub fn into_inner(self) -> std::rc::Rc<dyn $trait_name> {
+                pub(crate) fn into_inner(self) -> std::rc::Rc<dyn $trait_name> {
                     self.0
                 }
 
-                pub fn unwrap(self) -> std::rc::Rc<dyn $trait_name> {
+                pub(crate) fn unwrap(self) -> std::rc::Rc<dyn $trait_name> {
                     self.0
                 }
 
-                pub fn as_ref(&self) -> &dyn $trait_name {
+                pub(crate) fn as_ref(&self) -> &dyn $trait_name {
                     &*self.0
+                }
+            }
+
+            impl std::ops::Deref for [<$trait_name Rc>] {
+                type Target = dyn $trait_name;
+
+                fn deref(&self) -> &Self::Target {
+                    &*self.0
+                }
+            }
+
+            impl std::ops::DerefMut for [<$trait_name Rc>] {
+                fn deref_mut(&mut self) -> &mut Self::Target {
+                    std::rc::Rc::get_mut(&mut self.0)
+                        .expect("Cannot get mutable reference to Rc with multiple strong references")
                 }
             }
 
@@ -356,23 +371,38 @@ macro_rules! generate_smart_pointer_wrapper {
     (Arc, $trait_name:ident, $($impl_type:ty),+ $(,)?) => {
         $crate::paste::paste! {
             #[derive(Clone)]
-            pub struct [<$trait_name Arc>](std::sync::Arc<dyn $trait_name>);
+            pub(crate) struct [<$trait_name Arc>](std::sync::Arc<dyn $trait_name>);
 
             impl [<$trait_name Arc>] {
-                pub fn new(inner: std::sync::Arc<dyn $trait_name>) -> Self {
+                pub(crate) fn new(inner: std::sync::Arc<dyn $trait_name>) -> Self {
                     Self(inner)
                 }
 
-                pub fn into_inner(self) -> std::sync::Arc<dyn $trait_name> {
+                pub(crate) fn into_inner(self) -> std::sync::Arc<dyn $trait_name> {
                     self.0
                 }
 
-                pub fn unwrap(self) -> std::sync::Arc<dyn $trait_name> {
+                pub(crate) fn unwrap(self) -> std::sync::Arc<dyn $trait_name> {
                     self.0
                 }
 
-                pub fn as_ref(&self) -> &dyn $trait_name {
+                pub(crate) fn as_ref(&self) -> &dyn $trait_name {
                     &*self.0
+                }
+            }
+
+            impl std::ops::Deref for [<$trait_name Arc>] {
+                type Target = dyn $trait_name;
+
+                fn deref(&self) -> &Self::Target {
+                    &*self.0
+                }
+            }
+
+            impl std::ops::DerefMut for [<$trait_name Arc>] {
+                fn deref_mut(&mut self) -> &mut Self::Target {
+                    std::sync::Arc::get_mut(&mut self.0)
+                        .expect("Cannot get mutable reference to Arc with multiple strong references")
                 }
             }
 

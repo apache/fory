@@ -32,6 +32,7 @@ fn fory_compatible() -> Fory {
 trait Animal: Serializer + Send + Sync {
     fn speak(&self) -> String;
     fn name(&self) -> &str;
+    fn set_name(&mut self, name: String);
 }
 
 #[derive(ForyObject, Debug, PartialEq)]
@@ -48,6 +49,10 @@ impl Animal for Dog {
     fn name(&self) -> &str {
         &self.name
     }
+
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
 }
 
 #[derive(ForyObject, Debug, PartialEq)]
@@ -63,6 +68,10 @@ impl Animal for Cat {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn set_name(&mut self, name: String) {
+        self.name = name;
     }
 }
 
@@ -464,4 +473,44 @@ fn test_arc_shared_ref_tracking() {
     let arc2 = Arc::<dyn Animal>::from(deserialized[2].clone());
     assert!(Arc::ptr_eq(&arc0, &arc1));
     assert!(Arc::ptr_eq(&arc1, &arc2));
+}
+
+#[test]
+fn test_deref_wrapper() {
+    let dog_rc = AnimalRc::from(Rc::new(Dog {
+        name: "Rex".to_string(),
+        breed: "Golden Retriever".to_string(),
+    }) as Rc<dyn Animal>);
+
+    assert_eq!(dog_rc.name(), "Rex");
+    assert_eq!(dog_rc.speak(), "Woof!");
+
+    let cat_arc = AnimalArc::from(Arc::new(Cat {
+        name: "Whiskers".to_string(),
+        color: "Orange".to_string(),
+    }) as Arc<dyn Animal>);
+
+    assert_eq!(cat_arc.name(), "Whiskers");
+    assert_eq!(cat_arc.speak(), "Meow!");
+}
+
+#[test]
+fn test_deref_mut_wrapper() {
+    let mut dog_rc = AnimalRc::from(Rc::new(Dog {
+        name: "Rex".to_string(),
+        breed: "Golden Retriever".to_string(),
+    }) as Rc<dyn Animal>);
+
+    assert_eq!(dog_rc.name(), "Rex");
+    dog_rc.set_name("Max".to_string());
+    assert_eq!(dog_rc.name(), "Max");
+
+    let mut cat_arc = AnimalArc::from(Arc::new(Cat {
+        name: "Whiskers".to_string(),
+        color: "Orange".to_string(),
+    }) as Arc<dyn Animal>);
+
+    assert_eq!(cat_arc.name(), "Whiskers");
+    cat_arc.set_name("Mittens".to_string());
+    assert_eq!(cat_arc.name(), "Mittens");
 }
