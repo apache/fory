@@ -21,7 +21,7 @@ use fory_core::buffer::{Reader, Writer};
 use fory_core::fory::Fory;
 use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::types::Mode::Compatible;
-use fory_derive::{ForyObject};
+use fory_derive::ForyObject;
 
 #[derive(ForyObject, PartialEq, Eq, Hash, Debug)]
 struct Item {
@@ -467,7 +467,7 @@ fn map_inner() {
             fory.deserialize_with_context::<HashMap<Option<String>, Option<String>>>(
                 &mut read_context
             )
-                .unwrap()
+            .unwrap()
         );
         assert_eq!(
             nullable_item_map(false),
@@ -499,7 +499,7 @@ fn map_inner_auto_conv() {
             fory.deserialize_with_context::<HashMap<Option<String>, Option<String>>>(
                 &mut read_context
             )
-                .unwrap()
+            .unwrap()
         );
         assert_eq!(
             nullable_item_map(true),
