@@ -15,11 +15,15 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::meta::buffer_rw_string::{
+    read_latin1_simd, read_utf16_simd, read_utf8_simd, write_latin1_simd, write_utf16_simd,
+    write_utf8_simd,
+};
 use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
 
 #[derive(Default)]
 pub struct Writer {
-    bf: Vec<u8>,
+    pub(crate) bf: Vec<u8>,
     reserved: usize,
 }
 
@@ -287,27 +291,22 @@ impl Writer {
         }
     }
 
-    // TODO: simd
     pub fn write_latin1_string(&mut self, s: &str) {
-        for c in s.chars() {
-            let b = c as u32;
-            assert!(b <= 0xFF, "Non-Latin1 character found");
-            self.write_u8(b as u8);
-        }
+        write_latin1_simd(self, s);
     }
 
-    // TODO: simd
     pub fn write_utf8_string(&mut self, s: &str) {
-        let bytes = s.as_bytes();
-        for &b in bytes {
-            self.write_u8(b);
-        }
+        write_utf8_simd(self, s);
+    }
+
+    pub fn write_utf16_bytes(&mut self, bytes: &[u16]) {
+        write_utf16_simd(self, bytes);
     }
 }
 
 pub struct Reader<'de> {
-    bf: &'de [u8],
-    cursor: usize,
+    pub(crate) bf: &'de [u8],
+    pub(crate) cursor: usize,
 }
 
 impl<'bf> Reader<'bf> {
@@ -315,7 +314,7 @@ impl<'bf> Reader<'bf> {
         Reader { bf, cursor: 0 }
     }
 
-    fn move_next(&mut self, additional: usize) {
+    pub(crate) fn move_next(&mut self, additional: usize) {
         self.cursor += additional;
     }
 
@@ -498,31 +497,15 @@ impl<'bf> Reader<'bf> {
     }
 
     pub fn read_latin1_string(&mut self, len: usize) -> String {
-        let slice = &self.bf[self.cursor..self.cursor + len];
-        let result: String = slice.iter().map(|&b| b as char).collect();
-        self.move_next(len);
-        result
+        read_latin1_simd(self, len)
     }
 
     pub fn read_utf8_string(&mut self, len: usize) -> String {
-        let result = String::from_utf8_lossy(&self.bf[self.cursor..self.cursor + len]).to_string();
-        self.move_next(len);
-        result
+        read_utf8_simd(self, len)
     }
 
     pub fn read_utf16_string(&mut self, len: usize) -> String {
-        assert!(len % 2 == 0, "UTF-16 length must be even");
-        let slice = &self.bf[self.cursor..self.cursor + len];
-        let units: Vec<u16> = slice
-            .chunks(2)
-            // little endian
-            .map(|c| (c[0] as u16) | ((c[1] as u16) << 8))
-            .collect();
-        let result = String::from_utf16(&units)
-            // lossy
-            .unwrap_or_else(|_| String::from("�"));
-        self.move_next(len);
-        result
+        read_utf16_simd(self, len)
     }
 
     pub fn read_varuint36small(&mut self) -> u64 {
