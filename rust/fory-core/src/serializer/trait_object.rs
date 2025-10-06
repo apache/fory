@@ -166,10 +166,28 @@ macro_rules! register_trait_type {
         }
 
         // 2. Auto-generate Rc wrapper type and conversions
-        $crate::generate_smart_pointer_wrapper!(Rc, $trait_name, $($impl_type),+);
+        $crate::generate_smart_pointer_wrapper!(
+            std::rc::Rc,
+            Rc,
+            std::rc::Rc::get_mut,
+            $trait_name,
+            try_write_rc_ref,
+            get_rc_ref,
+            store_rc_ref,
+            $($impl_type),+
+        );
 
         // 3. Auto-generate Arc wrapper type and conversions
-        $crate::generate_smart_pointer_wrapper!(Arc, $trait_name, $($impl_type),+);
+        $crate::generate_smart_pointer_wrapper!(
+            std::sync::Arc,
+            Arc,
+            std::sync::Arc::get_mut,
+            $trait_name,
+            try_write_arc_ref,
+            get_arc_ref,
+            store_arc_ref,
+            $($impl_type),+
+        );
 
         // 4. Serializer implementation for Box<dyn Trait> (existing functionality)
         impl $crate::serializer::Serializer for Box<dyn $trait_name> {
@@ -281,21 +299,21 @@ macro_rules! register_trait_type {
 /// Supports both Rc and Arc pointer types
 #[macro_export]
 macro_rules! generate_smart_pointer_wrapper {
-    (Rc, $trait_name:ident, $($impl_type:ty),+ $(,)?) => {
+    ($ptr_path:path, $ptr_name:ident, $get_mut:path, $trait_name:ident, $try_write_ref:ident, $get_ref:ident, $store_ref:ident, $($impl_type:ty),+ $(,)?) => {
         $crate::paste::paste! {
             #[derive(Clone)]
-            pub(crate) struct [<$trait_name Rc>](std::rc::Rc<dyn $trait_name>);
+            pub(crate) struct [<$trait_name $ptr_name>]($ptr_path<dyn $trait_name>);
 
-            impl [<$trait_name Rc>] {
-                pub(crate) fn new(inner: std::rc::Rc<dyn $trait_name>) -> Self {
+            impl [<$trait_name $ptr_name>] {
+                pub(crate) fn new(inner: $ptr_path<dyn $trait_name>) -> Self {
                     Self(inner)
                 }
 
-                pub(crate) fn into_inner(self) -> std::rc::Rc<dyn $trait_name> {
+                pub(crate) fn into_inner(self) -> $ptr_path<dyn $trait_name> {
                     self.0
                 }
 
-                pub(crate) fn unwrap(self) -> std::rc::Rc<dyn $trait_name> {
+                pub(crate) fn unwrap(self) -> $ptr_path<dyn $trait_name> {
                     self.0
                 }
 
@@ -304,7 +322,7 @@ macro_rules! generate_smart_pointer_wrapper {
                 }
             }
 
-            impl std::ops::Deref for [<$trait_name Rc>] {
+            impl std::ops::Deref for [<$trait_name $ptr_name>] {
                 type Target = dyn $trait_name;
 
                 fn deref(&self) -> &Self::Target {
@@ -312,144 +330,57 @@ macro_rules! generate_smart_pointer_wrapper {
                 }
             }
 
-            impl std::ops::DerefMut for [<$trait_name Rc>] {
+            impl std::ops::DerefMut for [<$trait_name $ptr_name>] {
                 fn deref_mut(&mut self) -> &mut Self::Target {
-                    std::rc::Rc::get_mut(&mut self.0)
-                        .expect("Cannot get mutable reference to Rc with multiple strong references")
+                    $get_mut(&mut self.0)
+                        .expect(&format!("Cannot get mutable reference to {} with multiple strong references", stringify!($ptr_name)))
                 }
             }
 
-            impl From<std::rc::Rc<dyn $trait_name>> for [<$trait_name Rc>] {
-                fn from(ptr: std::rc::Rc<dyn $trait_name>) -> Self {
+            impl From<$ptr_path<dyn $trait_name>> for [<$trait_name $ptr_name>] {
+                fn from(ptr: $ptr_path<dyn $trait_name>) -> Self {
                     Self::new(ptr)
                 }
             }
 
-            impl From<[<$trait_name Rc>]> for std::rc::Rc<dyn $trait_name> {
-                fn from(wrapper: [<$trait_name Rc>]) -> Self {
+            impl From<[<$trait_name $ptr_name>]> for $ptr_path<dyn $trait_name> {
+                fn from(wrapper: [<$trait_name $ptr_name>]) -> Self {
                     wrapper.into_inner()
                 }
             }
 
-            impl std::default::Default for [<$trait_name Rc>] {
+            impl std::default::Default for [<$trait_name $ptr_name>] {
                 fn default() -> Self {
-                    Self(std::rc::Rc::new(<register_trait_type!(@first_type $($impl_type),+) as std::default::Default>::default()))
+                    Self($ptr_path::new(<$crate::register_trait_type!(@first_type $($impl_type),+) as std::default::Default>::default()))
                 }
             }
 
-            impl $crate::serializer::ForyDefault for [<$trait_name Rc>] {
+            impl $crate::serializer::ForyDefault for [<$trait_name $ptr_name>] {
                 fn fory_default() -> Self {
-                    Self(std::rc::Rc::new(<register_trait_type!(@first_type $($impl_type),+) as std::default::Default>::default()))
+                    Self($ptr_path::new(<$crate::register_trait_type!(@first_type $($impl_type),+) as std::default::Default>::default()))
                 }
             }
 
-            impl std::fmt::Debug for [<$trait_name Rc>] {
+            impl std::fmt::Debug for [<$trait_name $ptr_name>] {
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                     let any_obj = <dyn $trait_name as $crate::serializer::Serializer>::as_any(&*self.0);
                     $(
                         if let Some(concrete) = any_obj.downcast_ref::<$impl_type>() {
-                            return write!(f, "{}Rc({:?})", stringify!($trait_name), concrete);
+                            return write!(f, concat!(stringify!($trait_name), stringify!($ptr_name), "({:?})"), concrete);
                         }
                     )*
-                    write!(f, "{}Rc({:p})", stringify!($trait_name), &*self.0)
+                    write!(f, concat!(stringify!($trait_name), stringify!($ptr_name), "({:p})"), &*self.0)
                 }
             }
 
             $crate::impl_smart_pointer_serializer!(
-                [<$trait_name Rc>],
-                std::rc::Rc<dyn $trait_name>,
-                std::rc::Rc::new,
+                [<$trait_name $ptr_name>],
+                $ptr_path<dyn $trait_name>,
+                $ptr_path::new,
                 $trait_name,
-                try_write_rc_ref,
-                get_rc_ref,
-                store_rc_ref,
-                $($impl_type),+
-            );
-        }
-    };
-
-    (Arc, $trait_name:ident, $($impl_type:ty),+ $(,)?) => {
-        $crate::paste::paste! {
-            #[derive(Clone)]
-            pub(crate) struct [<$trait_name Arc>](std::sync::Arc<dyn $trait_name>);
-
-            impl [<$trait_name Arc>] {
-                pub(crate) fn new(inner: std::sync::Arc<dyn $trait_name>) -> Self {
-                    Self(inner)
-                }
-
-                pub(crate) fn into_inner(self) -> std::sync::Arc<dyn $trait_name> {
-                    self.0
-                }
-
-                pub(crate) fn unwrap(self) -> std::sync::Arc<dyn $trait_name> {
-                    self.0
-                }
-
-                pub(crate) fn as_ref(&self) -> &dyn $trait_name {
-                    &*self.0
-                }
-            }
-
-            impl std::ops::Deref for [<$trait_name Arc>] {
-                type Target = dyn $trait_name;
-
-                fn deref(&self) -> &Self::Target {
-                    &*self.0
-                }
-            }
-
-            impl std::ops::DerefMut for [<$trait_name Arc>] {
-                fn deref_mut(&mut self) -> &mut Self::Target {
-                    std::sync::Arc::get_mut(&mut self.0)
-                        .expect("Cannot get mutable reference to Arc with multiple strong references")
-                }
-            }
-
-            impl From<std::sync::Arc<dyn $trait_name>> for [<$trait_name Arc>] {
-                fn from(ptr: std::sync::Arc<dyn $trait_name>) -> Self {
-                    Self::new(ptr)
-                }
-            }
-
-            impl From<[<$trait_name Arc>]> for std::sync::Arc<dyn $trait_name> {
-                fn from(wrapper: [<$trait_name Arc>]) -> Self {
-                    wrapper.into_inner()
-                }
-            }
-
-            impl std::default::Default for [<$trait_name Arc>] {
-                fn default() -> Self {
-                    Self(std::sync::Arc::new(<register_trait_type!(@first_type $($impl_type),+) as std::default::Default>::default()))
-                }
-            }
-
-            impl $crate::serializer::ForyDefault for [<$trait_name Arc>] {
-                fn fory_default() -> Self {
-                    Self(std::sync::Arc::new(<register_trait_type!(@first_type $($impl_type),+) as std::default::Default>::default()))
-                }
-            }
-
-            impl std::fmt::Debug for [<$trait_name Arc>] {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                    let any_obj = <dyn $trait_name as $crate::serializer::Serializer>::as_any(&*self.0);
-                    $(
-                        if let Some(concrete) = any_obj.downcast_ref::<$impl_type>() {
-                            return write!(f, "{}Arc({:?})", stringify!($trait_name), concrete);
-                        }
-                    )*
-                    write!(f, "{}Arc({:p})", stringify!($trait_name), &*self.0)
-                }
-            }
-
-            $crate::impl_smart_pointer_serializer!(
-                [<$trait_name Arc>],
-                std::sync::Arc<dyn $trait_name>,
-                std::sync::Arc::new,
-                $trait_name,
-                try_write_arc_ref,
-                get_arc_ref,
-                store_arc_ref,
+                $try_write_ref,
+                $get_ref,
+                $store_ref,
                 $($impl_type),+
             );
         }
