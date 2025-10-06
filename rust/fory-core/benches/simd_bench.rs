@@ -91,7 +91,7 @@ fn benchmark_write_latin1(c: &mut Criterion) {
     for &size in &sizes {
         let s_ascii = ascii_string.repeat(size / ascii_string.len() + 1);
 
-        let name_simd = format!("Latin-1 SIMD size {}", size);
+        let name_simd = format!("Write Latin-1 SIMD size {}", size);
         c.bench_function(&name_simd, |b| {
             b.iter(|| {
                 let mut w = Writer::default();
@@ -99,7 +99,7 @@ fn benchmark_write_latin1(c: &mut Criterion) {
             })
         });
 
-        let name_scalar = format!("Latin-1 Standard size {}", size);
+        let name_scalar = format!("Write Latin-1 Standard size {}", size);
         c.bench_function(&name_scalar, |b| {
             b.iter(|| {
                 let mut w = Writer::default();
@@ -114,7 +114,7 @@ fn benchmark_write_utf8(c: &mut Criterion) {
     for &size in &sizes {
         let s = "Hello, 世界! 🌍".repeat(size);
 
-        let name_simd = format!("UTF-8 SIMD size {}", size);
+        let name_simd = format!("Write UTF-8 SIMD size {}", size);
         c.bench_function(&name_simd, |b| {
             b.iter(|| {
                 let mut w = Writer::default();
@@ -122,7 +122,7 @@ fn benchmark_write_utf8(c: &mut Criterion) {
             })
         });
 
-        let name_scalar = format!("UTF-8 Standard size {}", size);
+        let name_scalar = format!("Write UTF-8 Standard size {}", size);
         c.bench_function(&name_scalar, |b| {
             b.iter(|| {
                 let mut w = Writer::default();
@@ -137,7 +137,7 @@ fn benchmark_write_utf16(c: &mut Criterion) {
     for &size in &sizes {
         let s = "Hello, 世界! 🌍".repeat(size);
 
-        let name_simd = format!("UTF-16 SIMD size {}", size);
+        let name_simd = format!("Write UTF-16 SIMD size {}", size);
         c.bench_function(&name_simd, |b| {
             b.iter(|| {
                 let mut w = Writer::default();
@@ -146,7 +146,7 @@ fn benchmark_write_utf16(c: &mut Criterion) {
             })
         });
 
-        let name_scalar = format!("UTF-16 Standard size {}", size);
+        let name_scalar = format!("Write UTF-16 Standard size {}", size);
         c.bench_function(&name_scalar, |b| {
             b.iter(|| {
                 let mut w = Writer::default();

@@ -788,7 +788,7 @@ pub mod buffer_rw_string {
                     while i + 32 <= len {
                         let ptr = src.as_ptr().add(i) as *const __m256i;
                         let chunk = _mm256_loadu_si256(ptr);
-                        let mask = _mm256_movemask_epi8(chunk) as i32;
+                        let mask = _mm256_movemask_epi8(chunk);
                         if mask == 0 {
                             let mut buf32: [u8; 32] = std::mem::zeroed();
                             _mm256_storeu_si256(buf32.as_mut_ptr() as *mut __m256i, chunk);
@@ -810,7 +810,7 @@ pub mod buffer_rw_string {
                     while i + 16 <= len {
                         let ptr = src.as_ptr().add(i) as *const __m128i;
                         let chunk = _mm_loadu_si128(ptr);
-                        let mask = _mm_movemask_epi8(chunk) as i32;
+                        let mask = _mm_movemask_epi8(chunk);
                         if mask == 0 {
                             let mut buf16: [u8; 16] = std::mem::zeroed();
                             _mm_storeu_si128(buf16.as_mut_ptr() as *mut __m128i, chunk);
