@@ -391,6 +391,7 @@ impl TypeMetaLayer {
         let mut nullable_primitive_fields = Vec::new();
         let mut final_fields = Vec::new();
         let mut other_fields = Vec::new();
+        let mut unknown_fields = Vec::new();
         let mut collection_fields = Vec::new();
         let mut map_fields = Vec::new();
         for field_info in field_infos.iter() {
@@ -423,8 +424,10 @@ impl TypeMetaLayer {
             .contains(&internal_id)
             {
                 other_fields.push(field_info.clone());
+            } else if internal_id == TypeId::UNKNOWN as u32 {
+                unknown_fields.push(field_info.clone());
             } else {
-                unreachable!()
+                unreachable!("type_id: {type_id}");
             }
         }
         fn sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
@@ -494,6 +497,7 @@ impl TypeMetaLayer {
         nullable_primitive_fields.sort_by(numeric_sorter);
         final_fields.sort_by(sorter);
         other_fields.sort_by(sorter);
+        unknown_fields.sort_by(sorter);
         collection_fields.sort_by(sorter);
         map_fields.sort_by(sorter);
         let mut sorted_field_infos = Vec::with_capacity(field_infos.len());
@@ -501,6 +505,7 @@ impl TypeMetaLayer {
         sorted_field_infos.extend(nullable_primitive_fields);
         sorted_field_infos.extend(final_fields);
         sorted_field_infos.extend(other_fields);
+        sorted_field_infos.extend(unknown_fields);
         sorted_field_infos.extend(collection_fields);
         sorted_field_infos.extend(map_fields);
         sorted_field_infos

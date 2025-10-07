@@ -107,6 +107,7 @@ pub enum CollectionTraitInfo {
     VecArc(String),
     HashMapRc(Box<Type>, String),
     HashMapArc(Box<Type>, String),
+    // todo HashSet
 }
 
 /// Check if a type is a collection containing Rc<dyn Trait> or Arc<dyn Trait>

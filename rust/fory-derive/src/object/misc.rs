@@ -83,13 +83,28 @@ pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
     let field_infos = fields.iter().map(|field| {
         let ty = &field.ty;
         let name = format!("{}", field.ident.as_ref().expect("should be field name"));
-
         match classify_trait_object_field(ty) {
             TraitObjectField::None => {
                 let generic_tree = parse_generic_tree(ty);
                 let generic_token = generic_tree_to_tokens(&generic_tree, false);
                 quote! {
                     fory_core::meta::FieldInfo::new(#name, #generic_token)
+                }
+            }
+            TraitObjectField::VecRc(_) | TraitObjectField::VecArc(_) => {
+                quote! {
+                    fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
+                        type_id: fory_core::types::TypeId::LIST as u32,
+                        generics: Vec::new()
+                    })
+                }
+            }
+            TraitObjectField::HashMapRc(..) | TraitObjectField::HashMapArc(..) => {
+                quote! {
+                    fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
+                        type_id: fory_core::types::TypeId::MAP as u32,
+                        generics: Vec::new()
+                    })
                 }
             }
             _ => {

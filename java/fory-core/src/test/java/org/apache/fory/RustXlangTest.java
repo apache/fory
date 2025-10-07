@@ -119,12 +119,12 @@ public class RustXlangTest extends ForyTestBase {
     testMap(Language.RUST, command);
     command.set(RUST_TESTCASE_INDEX, "test_integer");
     testInteger(Language.RUST, command);
-    //      command.set(RUST_TESTCASE_INDEX, "test_skip_id_custom");
-    //      testSkipIdCustom(Language.RUST, command);
-    //      command.set(RUST_TESTCASE_INDEX, "test_skip_name_custom");
-    //      testSkipNameCustom(Language.RUST, command);
-    //      command.set(RUST_TESTCASE_INDEX, "test_consistent_named");
-    //      testConsistentNamed(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_skip_id_custom");
+    testSkipIdCustom(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_skip_name_custom");
+    testSkipNameCustom(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_consistent_named");
+    testConsistentNamed(Language.RUST, command);
   }
 
   private void testBuffer(Language language, List<String> command) throws IOException {
@@ -709,15 +709,14 @@ public class RustXlangTest extends ForyTestBase {
 
     @Override
     public void xwrite(MemoryBuffer buffer, MyExt value) {
-      fory.xwriteRef(buffer, value.id);
+      buffer.writeVarInt32(value.id);
     }
 
     @SuppressWarnings("unchecked")
     @Override
     public MyExt xread(MemoryBuffer buffer) {
       MyExt obj = new MyExt();
-      fory.getRefResolver().reference(obj);
-      obj.id = (int) fory.xreadRef(buffer);
+      obj.id = buffer.readVarInt32();
       return obj;
     }
   }
@@ -732,7 +731,7 @@ public class RustXlangTest extends ForyTestBase {
   @Data
   static class EmptyWrapper {}
 
-  private void _testSkipIdCustom(
+  private void _testSkipCustom(
       Fory fory1, Fory fory2, Language language, List<String> command, String caseName)
       throws IOException {
     MyWrapper wrapper = new MyWrapper();
@@ -773,7 +772,7 @@ public class RustXlangTest extends ForyTestBase {
     fory2.register(MyExt.class, 103);
     fory2.registerSerializer(MyExt.class, MyExtSerializer.class);
     fory2.register(EmptyWrapper.class, 104);
-    _testSkipIdCustom(fory1, fory2, language, command, "test_skip_id_custom");
+    _testSkipCustom(fory1, fory2, language, command, "test_skip_id_custom");
   }
 
   private void testSkipNameCustom(Language language, List<String> command)
@@ -798,7 +797,7 @@ public class RustXlangTest extends ForyTestBase {
     fory2.register(MyExt.class, "my_ext");
     fory2.registerSerializer(MyExt.class, MyExtSerializer.class);
     fory2.register(EmptyWrapper.class, "my_wrapper");
-    _testSkipIdCustom(fory1, fory2, language, command, "test_skip_name_custom");
+    _testSkipCustom(fory1, fory2, language, command, "test_skip_name_custom");
   }
 
   private void testConsistentNamed(Language language, List<String> command)
