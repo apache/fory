@@ -84,6 +84,12 @@ def run():
     java_dir = os.path.join("..", "java")
     subprocess.check_call(["mvn", "clean", "install", "-DskipTests"], cwd=java_dir)
     subprocess.check_call(
-        ["mvn", "test", "-Dtest=org.apache.fory.RustXlangTest"],
+        [
+            "mvn",
+            "-B",
+            "--no-transfer-progress",
+            "test",
+            "-Dtest=org.apache.fory.RustXlangTest",
+        ],
         cwd=os.path.join(java_dir, "fory-core"),
     )
