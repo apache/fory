@@ -346,16 +346,14 @@ jobs:
         run: python ./ci/run_ci.py format
 
 
-          cleanup_commit_message:
+  cleanup_commit_message:
     name: Cleanup commit message
     runs-on: ubuntu-latest
-    # only run on pull_request events
     if: ${{ github.event_name == 'pull_request' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          # ensure the full commit history is available
           fetch-depth: 0
 
       - name: Get last commit message
@@ -366,4 +364,3 @@ jobs:
 
       - name: Show cleaned commit message
         run: cat commit_msg.txt
-
