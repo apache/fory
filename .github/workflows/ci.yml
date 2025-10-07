@@ -345,7 +345,6 @@ jobs:
       - name: Check code style
         run: python ./ci/run_ci.py format
 
-
   cleanup_commit_message:
     name: Cleanup commit message
     runs-on: ubuntu-latest
