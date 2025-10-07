@@ -47,16 +47,7 @@ impl Serializer for String {
             let utf16: Vec<u16> = self.encode_utf16().collect();
             let bitor = (utf16.len() as u64 * 2) << 2 | StrEncoding::Utf16 as u64;
             context.writer.write_varuint36_small(bitor);
-            for unit in utf16 {
-                #[cfg(target_endian = "little")]
-                {
-                    context.writer.write_u16(unit);
-                }
-                #[cfg(target_endian = "big")]
-                {
-                    unimplemented!()
-                }
-            }
+            context.writer.write_utf16_bytes(&utf16);
         }
     }
 
