@@ -19,7 +19,6 @@
 # Script to remove commented lines (# or HTML comments) from commit messages.
 
 echo "Running remove-commented-commit.sh"
-#!/bin/bash
 # remove-commented-commit.sh
 # Remove commented lines (# or <!-- -->) from Git commit messages
 # Usage: ./remove-commented-commit.sh COMMIT_MSG_FILE
