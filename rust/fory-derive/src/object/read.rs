@@ -21,7 +21,7 @@ use syn::{Field, Type};
 
 use super::util::{
     classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
-    generic_tree_to_tokens, parse_generic_tree, NullableTypeNode, TraitObjectField,
+    generic_tree_to_tokens, parse_generic_tree, NullableTypeNode, StructField,
 };
 
 fn create_private_field_name(field: &Field) -> Ident {
@@ -39,9 +39,9 @@ fn declare_var(fields: &[&Field]) -> Vec<TokenStream> {
             let ty = &field.ty;
             let var_name = create_private_field_name(field);
             match classify_trait_object_field(ty) {
-                TraitObjectField::BoxDyn(_)
-                | TraitObjectField::RcDyn(_)
-                | TraitObjectField::ArcDyn(_) => {
+                StructField::BoxDyn(_)
+                | StructField::RcDyn(_)
+                | StructField::ArcDyn(_) => {
                     quote! {
                         let mut #var_name: #ty = <#ty as fory_core::serializer::ForyDefault>::fory_default();
                     }
@@ -63,9 +63,7 @@ fn assign_value(fields: &[&Field]) -> Vec<TokenStream> {
             let name = &field.ident;
             let var_name = create_private_field_name(field);
             match classify_trait_object_field(&field.ty) {
-                TraitObjectField::BoxDyn(_)
-                | TraitObjectField::RcDyn(_)
-                | TraitObjectField::ArcDyn(_) => {
+                StructField::BoxDyn(_) | StructField::RcDyn(_) | StructField::ArcDyn(_) => {
                     quote! {
                         #name: #var_name
                     }
@@ -85,7 +83,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
     let name_str = field.ident.as_ref().unwrap().to_string();
 
     match classify_trait_object_field(ty) {
-        TraitObjectField::BoxDyn(trait_name) => {
+        StructField::BoxDyn(trait_name) => {
             let from_any_fn = format_ident!("from_any_internal_{}", trait_name);
             let helper_mod = format_ident!("__fory_trait_helpers_{}", trait_name);
             quote! {
@@ -102,7 +100,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
                         .get_harness(fory_type_id)
                         .expect("Type not registered for trait object field");
 
-                    let deserializer_fn = harness.get_deserializer();
+                    let deserializer_fn = harness.get_read_fn();
                     let any_box = deserializer_fn(context, true, false)?;
 
                     let base_type_id = fory_type_id >> 8;
@@ -110,7 +108,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
                 }
             }
         }
-        TraitObjectField::RcDyn(trait_name) => {
+        StructField::RcDyn(trait_name) => {
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -121,7 +119,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
                 }
             }
         }
-        TraitObjectField::ArcDyn(trait_name) => {
+        StructField::ArcDyn(trait_name) => {
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -132,7 +130,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
                 }
             }
         }
-        TraitObjectField::VecRc(trait_name) => {
+        StructField::VecRc(trait_name) => {
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -145,7 +143,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
                 }
             }
         }
-        TraitObjectField::VecArc(trait_name) => {
+        StructField::VecArc(trait_name) => {
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -158,7 +156,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
                 }
             }
         }
-        TraitObjectField::HashMapRc(key_ty, trait_name) => {
+        StructField::HashMapRc(key_ty, trait_name) => {
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -171,7 +169,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
                 }
             }
         }
-        TraitObjectField::HashMapArc(key_ty, trait_name) => {
+        StructField::HashMapArc(key_ty, trait_name) => {
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -181,6 +179,13 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
                     #private_ident = Some(wrapper_map.into_iter()
                         .map(|(k, v)| (k, std::sync::Arc::<dyn #trait_ident>::from(v)))
                         .collect());
+                }
+            }
+        }
+        StructField::Forward => {
+            quote! {
+                #name_str => {
+                    #private_ident = Some(fory_core::serializer::Serializer::fory_read(context, true)?);
                 }
             }
         }
@@ -216,9 +221,9 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
                 .map(|(field, private_ident)| {
                     let ty = &field.ty;
                     match classify_trait_object_field(ty) {
-                        TraitObjectField::BoxDyn(_)
-                        | TraitObjectField::RcDyn(_)
-                        | TraitObjectField::ArcDyn(_) => {
+                        StructField::BoxDyn(_)
+                        | StructField::RcDyn(_)
+                        | StructField::ArcDyn(_) => {
                             quote! {
                                 let mut #private_ident: #ty = <#ty as fory_core::serializer::ForyDefault>::fory_default();
                             }
@@ -252,9 +257,7 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
             let original_ident = &field.ident;
             let ty = &field.ty;
             match classify_trait_object_field(ty) {
-                TraitObjectField::BoxDyn(_)
-                | TraitObjectField::RcDyn(_)
-                | TraitObjectField::ArcDyn(_) => {
+                StructField::BoxDyn(_) | StructField::RcDyn(_) | StructField::ArcDyn(_) => {
                     quote! {
                         #original_ident: #private_ident
                     }
@@ -279,7 +282,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
     let field_name_str = field.ident.as_ref().unwrap().to_string();
 
     match classify_trait_object_field(ty) {
-        TraitObjectField::BoxDyn(trait_name) => {
+        StructField::BoxDyn(trait_name) => {
             let from_any_fn = format_ident!("from_any_internal_{}", trait_name);
             let helper_mod = format_ident!("__fory_trait_helpers_{}", trait_name);
             quote! {
@@ -293,14 +296,14 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                         .get_type_resolver()
                         .get_harness(fory_type_id)
                         .expect("Type not registered for trait object field");
-                    let deserializer_fn = harness.get_deserializer();
+                    let deserializer_fn = harness.get_read_fn();
                     let any_box = deserializer_fn(context, true, false).unwrap();
                     let base_type_id = fory_type_id >> 8;
                     #var_name = #helper_mod::#from_any_fn(any_box, base_type_id).unwrap();
                 }
             }
         }
-        TraitObjectField::RcDyn(trait_name) => {
+        StructField::RcDyn(trait_name) => {
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -311,7 +314,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                 }
             }
         }
-        TraitObjectField::ArcDyn(trait_name) => {
+        StructField::ArcDyn(trait_name) => {
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -322,7 +325,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                 }
             }
         }
-        TraitObjectField::VecRc(trait_name) => {
+        StructField::VecRc(trait_name) => {
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -335,7 +338,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                 }
             }
         }
-        TraitObjectField::VecArc(trait_name) => {
+        StructField::VecArc(trait_name) => {
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -348,7 +351,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                 }
             }
         }
-        TraitObjectField::HashMapRc(key_ty, trait_name) => {
+        StructField::HashMapRc(key_ty, trait_name) => {
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -361,7 +364,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                 }
             }
         }
-        TraitObjectField::HashMapArc(key_ty, trait_name) => {
+        StructField::HashMapArc(key_ty, trait_name) => {
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -374,7 +377,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                 }
             }
         }
-        TraitObjectField::ContainsTraitObject => {
+        StructField::ContainsTraitObject => {
             quote! {
                 if _field.field_name.as_str() == #field_name_str {
                     let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
@@ -382,7 +385,14 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                 }
             }
         }
-        TraitObjectField::None => {
+        StructField::Forward => {
+            quote! {
+                if _field.field_name.as_str() == #field_name_str {
+                    #var_name = Some(fory_core::serializer::Serializer::fory_read(context, true).unwrap());
+                }
+            }
+        }
+        StructField::None => {
             let generic_tree = parse_generic_tree(ty);
             let generic_token = generic_tree_to_tokens(&generic_tree, true);
             let read_nullable_fn_name = create_read_nullable_fn_name(field);
@@ -436,7 +446,7 @@ pub fn gen_read(struct_ident: &Ident) -> TokenStream {
                     <Self as fory_core::serializer::Serializer>::fory_read_data(context, false)
                 },
                 fory_core::types::Mode::Compatible => {
-                    <#struct_ident as fory_core::serializer::StructSerializer>::fory_read_compatible(context)
+                    <#struct_ident as fory_core::serializer::Serializer>::fory_read_compatible(context)
                 },
                 _ => unreachable!()
             }
@@ -451,7 +461,7 @@ pub fn gen_read(struct_ident: &Ident) -> TokenStream {
     }
 }
 
-pub fn gen_read_compatible(fields: &[&Field], _struct_ident: &Ident) -> TokenStream {
+pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
     let pattern_items = fields.iter().map(|field| {
         let var_name = create_private_field_name(field);
         gen_read_compatible_match_arm(field, &var_name)
@@ -487,7 +497,7 @@ pub fn gen_read_nullable(fields: &[&Field]) -> TokenStream {
         .filter_map(|field| {
             let ty = &field.ty;
             match classify_trait_object_field(ty) {
-                TraitObjectField::None => {
+                StructField::None => {
                     let fn_name = create_read_nullable_fn_name(field);
                     let generic_tree = parse_generic_tree(ty);
                     let nullable_generic_tree = NullableTypeNode::from(generic_tree);

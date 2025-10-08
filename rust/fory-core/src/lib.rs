@@ -148,4 +148,4 @@ pub mod util;
 // Re-export paste for use in macros
 pub use paste;
 
-// Trait object macros are available at crate root due to #[macro_export]
+pub use crate::serializer::weak::{ArcWeak, RcWeak};

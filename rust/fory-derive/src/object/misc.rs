@@ -22,7 +22,7 @@ use syn::Field;
 
 use super::util::{
     classify_trait_object_field, generic_tree_to_tokens, get_sort_fields_ts, parse_generic_tree,
-    TraitObjectField,
+    StructField,
 };
 
 // Global type ID counter that auto-grows from 0 at macro processing time
@@ -83,13 +83,28 @@ pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
     let field_infos = fields.iter().map(|field| {
         let ty = &field.ty;
         let name = format!("{}", field.ident.as_ref().expect("should be field name"));
-
         match classify_trait_object_field(ty) {
-            TraitObjectField::None => {
+            StructField::None => {
                 let generic_tree = parse_generic_tree(ty);
                 let generic_token = generic_tree_to_tokens(&generic_tree, false);
                 quote! {
                     fory_core::meta::FieldInfo::new(#name, #generic_token)
+                }
+            }
+            StructField::VecRc(_) | StructField::VecArc(_) => {
+                quote! {
+                    fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
+                        type_id: fory_core::types::TypeId::LIST as u32,
+                        generics: Vec::new()
+                    })
+                }
+            }
+            StructField::HashMapRc(..) | StructField::HashMapArc(..) => {
+                quote! {
+                    fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
+                        type_id: fory_core::types::TypeId::MAP as u32,
+                        generics: Vec::new()
+                    })
                 }
             }
             _ => {

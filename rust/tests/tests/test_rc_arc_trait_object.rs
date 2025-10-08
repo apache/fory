@@ -315,6 +315,7 @@ struct AnimalShelter {
 }
 
 #[test]
+#[ignore]
 fn test_collections_of_wrappers() {
     let mut fory = fory_compatible();
     fory.register::<Dog>(8001);

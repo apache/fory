@@ -24,7 +24,28 @@ use anyhow::anyhow;
 use std::rc::Rc;
 
 impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+    fn fory_is_shared_ref() -> bool {
+        true
+    }
+
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
+        if !context.ref_writer.try_write_rc_ref(context.writer, self) {
+            T::fory_write_data(self.as_ref(), context, is_field);
+        }
+    }
+
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
+        // When Rc is nested inside another shared ref (like Arc<Rc<T>>),
+        // the outer ref calls fory_write_data on the inner Rc.
+        // We still need to track the Rc's own references here.
+        self.fory_write(context, is_field);
+    }
+
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
+        T::fory_write_type_info(context, is_field);
+    }
+
+    fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader);
 
         match ref_flag {
@@ -41,30 +62,29 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
                 Ok(Rc::new(inner))
             }
             RefFlag::RefValue => {
+                let ref_id = context.ref_reader.reserve_ref_id();
                 let inner = T::fory_read_data(context, is_field)?;
                 let rc = Rc::new(inner);
-                context.ref_reader.store_rc_ref(rc.clone());
+                context.ref_reader.store_rc_ref_at(ref_id, rc.clone());
                 Ok(rc)
             }
         }
+    }
+
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        // When Rc is nested inside another shared ref, fory_read_data is called.
+        // Delegate to fory_read which handles ref tracking properly.
+        Self::fory_read(context, is_field)
     }
 
     fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
         T::fory_read_type_info(context, is_field);
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
-        if !context.ref_writer.try_write_rc_ref(context.writer, self) {
-            T::fory_write_data(self.as_ref(), context, is_field);
-        }
-    }
-
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        T::fory_write_type_info(context, is_field);
-    }
-
     fn fory_reserved_space() -> usize {
-        T::fory_reserved_space()
+        // Rc is a shared ref, so we just need space for the ref tracking
+        // We don't recursively compute inner type's space to avoid infinite recursion
+        4
     }
 
     fn fory_get_type_id(fory: &Fory) -> u32 {

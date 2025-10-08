@@ -55,13 +55,15 @@ pub struct RefWriter {
     next_ref_id: u32,
 }
 
+type UpdateCallback = Box<dyn FnOnce(&RefReader)>;
+
 impl RefWriter {
     /// Creates a new RefWriter instance.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Attempt to write a reference for an Rc<T>.
+    /// Attempt to write a reference for an `Rc<T>`.
     ///
     /// Returns true if a reference was written (indicating this object has been
     /// seen before), false if this is the first occurrence and the object should
@@ -80,12 +82,10 @@ impl RefWriter {
         let ptr_addr = Rc::as_ptr(rc) as *const () as usize;
 
         if let Some(&ref_id) = self.refs.get(&ptr_addr) {
-            // This object has been seen before, write a reference
             writer.write_i8(RefFlag::Ref as i8);
             writer.write_u32(ref_id);
             true
         } else {
-            // First time seeing this object, register it and return false
             let ref_id = self.next_ref_id;
             self.next_ref_id += 1;
             self.refs.insert(ptr_addr, ref_id);
@@ -94,7 +94,7 @@ impl RefWriter {
         }
     }
 
-    /// Attempt to write a reference for an Arc<T>.
+    /// Attempt to write a reference for an `Arc<T>`.
     ///
     /// Returns true if a reference was written (indicating this object has been
     /// seen before), false if this is the first occurrence and the object should
@@ -163,6 +163,8 @@ impl RefWriter {
 pub struct RefReader {
     /// Vector to store boxed objects for reference resolution
     refs: Vec<Box<dyn Any>>,
+    /// Callbacks to execute when references are resolved
+    callbacks: Vec<UpdateCallback>,
 }
 
 impl RefReader {
@@ -171,7 +173,26 @@ impl RefReader {
         Self::default()
     }
 
-    /// Store an Rc<T> for later reference resolution during deserialization.
+    /// Reserve a reference ID slot without storing anything yet.
+    ///
+    /// Returns the reserved reference ID that will be used when storing the object later.
+    pub fn reserve_ref_id(&mut self) -> u32 {
+        let ref_id = self.refs.len() as u32;
+        self.refs.push(Box::new(()));
+        ref_id
+    }
+
+    /// Store an `Rc<T>` at a previously reserved reference ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `ref_id` - The reference ID that was reserved
+    /// * `rc` - The Rc to store
+    pub fn store_rc_ref_at<T: 'static + ?Sized>(&mut self, ref_id: u32, rc: Rc<T>) {
+        self.refs[ref_id as usize] = Box::new(rc);
+    }
+
+    /// Store an `Rc<T>` for later reference resolution during deserialization.
     ///
     /// # Arguments
     ///
@@ -186,7 +207,17 @@ impl RefReader {
         ref_id
     }
 
-    /// Store an Arc<T> for later reference resolution during deserialization.
+    /// Store an `Arc<T>` at a previously reserved reference ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `ref_id` - The reference ID that was reserved
+    /// * `arc` - The Arc to store
+    pub fn store_arc_ref_at<T: 'static + ?Sized>(&mut self, ref_id: u32, arc: Arc<T>) {
+        self.refs[ref_id as usize] = Box::new(arc);
+    }
+
+    /// Store an `Arc<T>` for later reference resolution during deserialization.
     ///
     /// # Arguments
     ///
@@ -231,6 +262,15 @@ impl RefReader {
         any_box.downcast_ref::<Arc<T>>().cloned()
     }
 
+    /// Add a callback to be executed when weak references are resolved.
+    ///
+    /// # Arguments
+    ///
+    /// * `callback` - A closure that takes a reference to the RefReader
+    pub fn add_callback(&mut self, callback: UpdateCallback) {
+        self.callbacks.push(callback);
+    }
+
     /// Read a reference flag and determine what action to take.
     ///
     /// # Arguments
@@ -268,10 +308,23 @@ impl RefReader {
         reader.read_u32()
     }
 
-    /// Clear all stored references.
+    /// Execute all pending callbacks to resolve weak pointer references.
+    ///
+    /// This should be called after deserialization completes to update any weak pointers
+    /// that referenced objects which were not yet available during deserialization.
+    pub fn resolve_callbacks(&mut self) {
+        let callbacks = std::mem::take(&mut self.callbacks);
+        for callback in callbacks {
+            callback(self);
+        }
+    }
+
+    /// Clear all stored references and callbacks.
     ///
     /// This is useful for reusing the RefReader for multiple deserialization operations.
     pub fn clear(&mut self) {
+        self.resolve_callbacks();
         self.refs.clear();
+        self.callbacks.clear();
     }
 }
