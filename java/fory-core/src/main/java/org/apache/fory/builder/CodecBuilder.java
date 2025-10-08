@@ -124,6 +124,8 @@ public abstract class CodecBuilder {
         .forEach(ctx::reserveName);
   }
 
+  public abstract String codecClassName(Class<?> cls);
+
   /** Generate codec class code. */
   public abstract String genCode();
 
