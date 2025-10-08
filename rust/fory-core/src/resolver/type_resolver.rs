@@ -531,7 +531,7 @@ impl TypeResolver {
         let key = (namespace.clone(), type_name.clone());
         self.name_serializer_map
             .get(&key)
-            .unwrap_or_else(|| panic!("named_ext type must be registered in both peers"))
+            .expect("named_ext type must be registered in both peers")
     }
 
     pub fn get_sorted_field_names<T: StructSerializer>(
