@@ -223,15 +223,39 @@ pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
     let sorted_serialize = if fields.is_empty() {
         quote! {}
     } else {
-        let match_ts = fields.iter().map(|field| gen_write_match_arm(field));
-        quote! {
-            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
+        let match_ts: Vec<_> = fields
+            .iter()
+            .map(|field| gen_write_match_arm(field))
+            .collect();
+        #[cfg(not(feature = "fields-loop-unroll"))]
+        let loop_ts = quote! {
+            println!("disable");
             for field_name in sorted_field_names {
                 match field_name.as_str() {
                     #(#match_ts),*
                     , _ => {unreachable!()}
                 }
             }
+        };
+        #[cfg(feature = "fields-loop-unroll")]
+        let loop_ts = {
+            let loop_item_ts = fields.iter().enumerate().map(|(i, _field)| {
+                let idx = syn::Index::from(i);
+                quote! {
+                    let field_name = sorted_field_names.get(#idx).unwrap();
+                    match field_name.as_str() {
+                        #(#match_ts),*
+                        , _ => { unreachable!() }
+                    }
+                }
+            });
+            quote! {
+                #(#loop_item_ts)*
+            }
+        };
+        quote! {
+            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
+            #loop_ts
         }
     };
     quote! {

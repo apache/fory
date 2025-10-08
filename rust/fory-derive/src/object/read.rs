@@ -235,19 +235,41 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
                         }
                     }
                 });
-        let match_ts = fields
+        let match_ts: Vec<_> = fields
             .iter()
             .zip(private_idents.iter())
-            .map(|(field, private_ident)| gen_read_match_arm(field, private_ident));
-        quote! {
-             #(#declare_var_ts)*
-            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
+            .map(|(field, private_ident)| gen_read_match_arm(field, private_ident))
+            .collect();
+        #[cfg(not(feature = "fields-loop-unroll"))]
+        let loop_ts = quote! {
             for field_name in sorted_field_names {
                 match field_name.as_str() {
                     #(#match_ts),*
                     , _ => unreachable!()
                 }
             }
+        };
+        #[cfg(feature = "fields-loop-unroll")]
+        let loop_ts = {
+            let loop_item_ts = fields.iter().enumerate().map(|(i, _field)| {
+                let idx = syn::Index::from(i);
+                quote! {
+                    let field_name = sorted_field_names.get(#idx).unwrap();
+                    match field_name.as_str() {
+                        #(#match_ts),*
+                        , _ => { unreachable!() }
+                    }
+                }
+            });
+            quote! {
+                println!("enable");
+                #(#loop_item_ts)*
+            }
+        };
+        quote! {
+             #(#declare_var_ts)*
+            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
+            #loop_ts
         }
     };
     let field_idents = fields
