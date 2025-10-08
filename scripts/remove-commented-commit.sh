@@ -15,23 +15,29 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
-# Script to remove commented lines (# or HTML comments) from commit messages.
 
-echo "Running remove-commented-commit.sh"
-# remove-commented-commit.sh
-# Remove commented lines (# or <!-- -->) from Git commit messages
-# Usage: ./remove-commented-commit.sh COMMIT_MSG_FILE
+# Script to remove commented content from git commit messages
+# This ensures clean and readable commit history by filtering out
+# lines starting with # or wrapped in <!-- -->
 
-COMMIT_MSG_FILE="$1"
+# Read the commit message file
+COMMIT_MSG_FILE=$1
 
-if [ ! -f "$COMMIT_MSG_FILE" ]; then
-    echo "Commit message file not found!"
+if [ -z "$COMMIT_MSG_FILE" ]; then
+    echo "Error: No commit message file provided"
     exit 1
 fi
 
-# Remove lines starting with '#' (Git comments)
-sed -i '/^#/d' "$COMMIT_MSG_FILE"
+# Create a temporary file
+TEMP_FILE=$(mktemp)
 
-# Remove HTML-style comment blocks (<!-- -->)
-sed -i '/^<!--/,/-->$/d' "$COMMIT_MSG_FILE"
+# Remove commented lines and HTML comments
+# - Lines starting with # (after optional whitespace)
+# - HTML comment blocks <!-- -->
+grep -v '^\s*#' "$COMMIT_MSG_FILE" | \
+    sed '/<!--/,/-->/d' > "$TEMP_FILE"
+
+# Replace original file with cleaned content
+mv "$TEMP_FILE" "$COMMIT_MSG_FILE"
+
+exit 0
