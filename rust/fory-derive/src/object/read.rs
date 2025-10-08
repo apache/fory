@@ -206,19 +206,51 @@ pub fn gen_read_type_info() -> TokenStream {
     }
 }
 
-pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
-    let private_idents: Vec<Ident> = fields
+fn get_fields_loop_ts(fields: &[&Field]) -> TokenStream {
+    let match_ts: Vec<_> = fields
         .iter()
-        .map(|f| create_private_field_name(f))
+        .map(|field| {
+            let private_ident = create_private_field_name(field);
+            gen_read_match_arm(field, &private_ident)
+        })
         .collect();
+    #[cfg(not(feature = "fields-loop-unroll"))]
+    let loop_ts = quote! {
+        for field_name in field_names {
+            match field_name.as_str() {
+                #(#match_ts),*
+                , _ => unreachable!()
+            }
+        }
+    };
+    #[cfg(feature = "fields-loop-unroll")]
+    let loop_ts = {
+        let loop_item_ts = fields.iter().enumerate().map(|(i, _field)| {
+            let idx = syn::Index::from(i);
+            quote! {
+                let field_name = field_names.get(#idx).unwrap();
+                match field_name.as_str() {
+                    #(#match_ts),*
+                    , _ => { unreachable!() }
+                }
+            }
+        });
+        quote! {
+            #(#loop_item_ts)*
+        }
+    };
+    loop_ts
+}
+
+pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
     let sorted_read = if fields.is_empty() {
         quote! {}
     } else {
         let declare_var_ts =
             fields
                 .iter()
-                .zip(private_idents.iter())
-                .map(|(field, private_ident)| {
+                .map(|field| {
+                    let private_ident = create_private_field_name(field);
                     let ty = &field.ty;
                     match classify_trait_object_field(ty) {
                         StructField::BoxDyn(_)
@@ -235,61 +267,30 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
                         }
                     }
                 });
-        let match_ts: Vec<_> = fields
-            .iter()
-            .zip(private_idents.iter())
-            .map(|(field, private_ident)| gen_read_match_arm(field, private_ident))
-            .collect();
-        #[cfg(not(feature = "fields-loop-unroll"))]
-        let loop_ts = quote! {
-            for field_name in sorted_field_names {
-                match field_name.as_str() {
-                    #(#match_ts),*
-                    , _ => unreachable!()
-                }
-            }
-        };
-        #[cfg(feature = "fields-loop-unroll")]
-        let loop_ts = {
-            let loop_item_ts = fields.iter().enumerate().map(|(i, _field)| {
-                let idx = syn::Index::from(i);
-                quote! {
-                    let field_name = sorted_field_names.get(#idx).unwrap();
-                    match field_name.as_str() {
-                        #(#match_ts),*
-                        , _ => { unreachable!() }
-                    }
-                }
-            });
-            quote! {
-                #(#loop_item_ts)*
-            }
-        };
+        let loop_ts = get_fields_loop_ts(fields);
         quote! {
              #(#declare_var_ts)*
-            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
+            let field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
             #loop_ts
         }
     };
-    let field_idents = fields
-        .iter()
-        .zip(private_idents.iter())
-        .map(|(field, private_ident)| {
-            let original_ident = &field.ident;
-            let ty = &field.ty;
-            match classify_trait_object_field(ty) {
-                StructField::BoxDyn(_) | StructField::RcDyn(_) | StructField::ArcDyn(_) => {
-                    quote! {
-                        #original_ident: #private_ident
-                    }
-                }
-                _ => {
-                    quote! {
-                        #original_ident: #private_ident.unwrap_or_default()
-                    }
+    let field_idents = fields.iter().map(|field| {
+        let private_ident = create_private_field_name(field);
+        let original_ident = &field.ident;
+        let ty = &field.ty;
+        match classify_trait_object_field(ty) {
+            StructField::BoxDyn(_) | StructField::RcDyn(_) | StructField::ArcDyn(_) => {
+                quote! {
+                    #original_ident: #private_ident
                 }
             }
-        });
+            _ => {
+                quote! {
+                    #original_ident: #private_ident.unwrap_or_default()
+                }
+            }
+        }
+    });
     quote! {
         #sorted_read
         Ok(Self {
@@ -489,6 +490,8 @@ pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
     });
     let declare_ts: Vec<TokenStream> = declare_var(fields);
     let assign_ts: Vec<TokenStream> = assign_value(fields);
+
+    let consistent_fields_loop_ts = get_fields_loop_ts(fields);
     quote! {
         let remote_type_id = context.reader.read_varuint32();
         let meta_index = context.reader.read_varuint32();
@@ -498,12 +501,22 @@ pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
             meta.get_field_infos().clone()
         };
         #(#declare_ts)*
-        for _field in fields.iter() {
-            #(#pattern_items else)* {
-                println!("skip {:?}:{:?}", _field.field_name.as_str(), _field.field_type);
-                let nullable_field_type = fory_core::meta::NullableFieldType::from(_field.field_type.clone());
-                let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(&nullable_field_type);
-                fory_core::serializer::skip::skip_field_value(context, &nullable_field_type, read_ref_flag).unwrap();
+
+        let local_type_def = context.get_fory().get_type_resolver().get_type_info(std::any::TypeId::of::<Self>()).get_type_def();
+        let high_bytes = &local_type_def[..8];
+        let local_type_hash = i64::from_le_bytes(high_bytes.try_into().unwrap());
+        if meta.get_hash() == local_type_hash {
+            // fast path
+            let field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
+            #consistent_fields_loop_ts
+        } else {
+            for _field in fields.iter() {
+                #(#pattern_items else)* {
+                    println!("skip {:?}:{:?}", _field.field_name.as_str(), _field.field_type);
+                    let nullable_field_type = fory_core::meta::NullableFieldType::from(_field.field_type.clone());
+                    let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(&nullable_field_type);
+                    fory_core::serializer::skip::skip_field_value(context, &nullable_field_type, read_ref_flag).unwrap();
+                }
             }
         }
         Ok(Self {
