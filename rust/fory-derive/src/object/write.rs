@@ -16,8 +16,7 @@
 // under the License.
 
 use super::util::{
-    classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
-    TraitObjectField,
+    classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc, StructField,
 };
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -27,51 +26,56 @@ pub fn gen_reserved_space(fields: &[&Field]) -> TokenStream {
     let reserved_size_expr: Vec<_> = fields.iter().map(|field| {
         let ty = &field.ty;
         match classify_trait_object_field(ty) {
-            TraitObjectField::BoxDyn(_) => {
+            StructField::BoxDyn(_) => {
                 quote! {
                     fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
-            TraitObjectField::RcDyn(trait_name) => {
+            StructField::RcDyn(trait_name) => {
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
                     <#wrapper_ty as fory_core::serializer::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
-            TraitObjectField::ArcDyn(trait_name) => {
+            StructField::ArcDyn(trait_name) => {
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
                     <#wrapper_ty as fory_core::serializer::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
-            TraitObjectField::VecRc(trait_name) => {
+            StructField::VecRc(trait_name) => {
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
                     <Vec<#wrapper_ty> as fory_core::serializer::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
-            TraitObjectField::VecArc(trait_name) => {
+            StructField::VecArc(trait_name) => {
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
                     <Vec<#wrapper_ty> as fory_core::serializer::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
-            TraitObjectField::HashMapRc(key_ty, trait_name) => {
+            StructField::HashMapRc(key_ty, trait_name) => {
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
                     <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::serializer::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
-            TraitObjectField::HashMapArc(key_ty, trait_name) => {
+            StructField::HashMapArc(key_ty, trait_name) => {
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
                     <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::serializer::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                }
+            }
+            StructField::Forward => {
+                quote! {
+                    <#ty as fory_core::serializer::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
             _ => {
@@ -100,7 +104,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
     let name_str = ident.as_ref().unwrap().to_string();
 
     match classify_trait_object_field(ty) {
-        TraitObjectField::BoxDyn(_) => {
+        StructField::BoxDyn(_) => {
             quote! {
                 #name_str => {
                     let any_ref = self.#ident.as_any();
@@ -118,12 +122,12 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
                         .get_harness(fory_type_id)
                         .expect("Harness not found for trait object field");
 
-                    let serializer_fn = harness.get_serializer();
+                    let serializer_fn = harness.get_write_fn();
                     serializer_fn(any_ref, context, true);
                 }
             }
         }
-        TraitObjectField::RcDyn(trait_name) => {
+        StructField::RcDyn(trait_name) => {
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -134,7 +138,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
                 }
             }
         }
-        TraitObjectField::ArcDyn(trait_name) => {
+        StructField::ArcDyn(trait_name) => {
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -145,7 +149,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
                 }
             }
         }
-        TraitObjectField::VecRc(trait_name) => {
+        StructField::VecRc(trait_name) => {
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -158,7 +162,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
                 }
             }
         }
-        TraitObjectField::VecArc(trait_name) => {
+        StructField::VecArc(trait_name) => {
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -171,7 +175,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
                 }
             }
         }
-        TraitObjectField::HashMapRc(key_ty, trait_name) => {
+        StructField::HashMapRc(key_ty, trait_name) => {
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -184,7 +188,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
                 }
             }
         }
-        TraitObjectField::HashMapArc(key_ty, trait_name) => {
+        StructField::HashMapArc(key_ty, trait_name) => {
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -194,6 +198,13 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
                         .map(|(k, v)| (k.clone(), #wrapper_ty::from(v.clone() as std::sync::Arc<dyn #trait_ident>)))
                         .collect();
                     fory_core::serializer::Serializer::fory_write(&wrapper_map, context, true);
+                }
+            }
+        }
+        StructField::Forward => {
+            quote! {
+                #name_str => {
+                    fory_core::serializer::Serializer::fory_write(&self.#ident, context, true);
                 }
             }
         }

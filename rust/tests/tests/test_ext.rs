@@ -46,7 +46,7 @@ fn test_duplicate_impl() {
 
 #[test]
 fn test_use() {
-    use fory_core::fory::{read, write};
+    use fory_core::fory::{read_data, write_data};
     #[derive(Debug, PartialEq)]
     struct Item {
         f1: i32,
@@ -61,12 +61,12 @@ fn test_use() {
 
     impl Serializer for Item {
         fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
-            write(&self.f1, context, is_field);
+            write_data(&self.f1, context, is_field);
         }
 
         fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
             Ok(Self {
-                f1: read(context, is_field)?,
+                f1: read_data(context, is_field)?,
                 f2: 0,
             })
         }

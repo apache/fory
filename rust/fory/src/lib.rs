@@ -256,4 +256,8 @@
 //! }
 //! ```
 
-pub use fory_core::{error::Error, fory::Fory, register_trait_type, row::from_row, row::to_row};
+pub use fory_core::{
+    error::Error, fory::Fory, register_trait_type, row::from_row, row::to_row, types::Mode,
+    types::TypeId, ArcWeak, RcWeak,
+};
+pub use fory_derive::{ForyObject, ForyRow};

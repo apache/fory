@@ -397,7 +397,7 @@ macro_rules! impl_smart_pointer_serializer {
                     let any_obj = <dyn $trait_name as $crate::serializer::Serializer>::as_any(&*self.0);
                     let concrete_type_id = any_obj.type_id();
                     let harness = context.write_any_typeinfo(concrete_type_id);
-                    let serializer_fn = harness.get_serializer_no_ref();
+                    let serializer_fn = harness.get_write_data_fn();
                     serializer_fn(any_obj, context, is_field);
                 }
             }
@@ -426,7 +426,7 @@ macro_rules! impl_smart_pointer_serializer {
                     }
                     RefFlag::NotNullValue => {
                         let harness = context.read_any_typeinfo();
-                        let deserializer_fn = harness.get_deserializer_no_ref();
+                        let deserializer_fn = harness.get_read_data_fn();
                         let boxed_any = deserializer_fn(context, is_field)?;
 
                         $(
@@ -444,7 +444,7 @@ macro_rules! impl_smart_pointer_serializer {
                     }
                     RefFlag::RefValue => {
                         let harness = context.read_any_typeinfo();
-                        let deserializer_fn = harness.get_deserializer_no_ref();
+                        let deserializer_fn = harness.get_read_data_fn();
                         let boxed_any = deserializer_fn(context, is_field)?;
 
                         $(
@@ -561,7 +561,7 @@ impl Serializer for Box<dyn Serializer> {
         let type_resolver = context.get_fory().get_type_resolver();
 
         if let Some(harness) = type_resolver.get_harness(fory_type_id) {
-            let deserializer_fn = harness.get_deserializer();
+            let deserializer_fn = harness.get_read_fn();
             let to_serializer_fn = harness.get_to_serializer();
             let boxed_any = deserializer_fn(context, is_field, true)?;
             let trait_object = to_serializer_fn(boxed_any)?;

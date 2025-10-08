@@ -114,6 +114,12 @@ fn complex_struct() {
     let bin: Vec<u8> = fory.serialize(&person);
     let obj: Person = fory.deserialize(&bin).expect("should success");
     assert_eq!(person, obj);
+    let mut fory = Fory::default();
+    fory.register_by_name::<Animal>("animal");
+    fory.register_by_name::<Person>("person");
+    let bin: Vec<u8> = fory.serialize(&person);
+    let obj: Person = fory.deserialize(&bin).expect("should success");
+    assert_eq!(person, obj);
 }
 
 #[test]
