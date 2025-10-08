@@ -262,7 +262,6 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
                 }
             });
             quote! {
-                println!("enable");
                 #(#loop_item_ts)*
             }
         };

@@ -229,7 +229,6 @@ pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
             .collect();
         #[cfg(not(feature = "fields-loop-unroll"))]
         let loop_ts = quote! {
-            println!("disable");
             for field_name in sorted_field_names {
                 match field_name.as_str() {
                     #(#match_ts),*
