@@ -34,7 +34,7 @@ type ReadFn = fn(
     skip_ref_flag: bool,
 ) -> Result<Box<dyn Any>, Error>;
 
-type WriteDataFn = fn(&dyn Any, ory: &Fory, &mut WriteContext, is_field: bool);
+type WriteDataFn = fn(&dyn Any, fory: &Fory, &mut WriteContext, is_field: bool);
 type ReadDataFn = fn(fory: &Fory, &mut ReadContext, is_field: bool) -> Result<Box<dyn Any>, Error>;
 type ToSerializerFn = fn(Box<dyn Any>) -> Result<Box<dyn Serializer>, Error>;
 

@@ -240,7 +240,7 @@ impl<T> Pool<T> {
         item
     }
 
-    // return manually
+    // put back manually
     pub fn put(&self, item: T) {
         self.items.lock().unwrap().push(item);
     }
