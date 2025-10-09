@@ -550,6 +550,9 @@ public class XtypeResolver extends TypeResolver {
       } else {
         xtypeId = shareMeta ? Types.COMPATIBLE_STRUCT : Types.STRUCT;
       }
+    } else if (cls == Object.class) {
+      serializer = new ObjectSerializer(fory, cls);
+      xtypeId = Types.STRUCT;
     } else {
       Class<Enum> enclosingClass = (Class<Enum>) cls.getEnclosingClass();
       if (enclosingClass != null && enclosingClass.isEnum()) {
