@@ -65,23 +65,20 @@ pub fn type_def<T: Serializer + StructSerializer>(
 }
 
 #[inline(always)]
-pub fn write_type_info<T: Serializer>(context: &mut WriteContext, _is_field: bool) {
-    let type_id = T::fory_get_type_id(context.get_fory());
+pub fn write_type_info<T: Serializer>(fory: &Fory, context: &mut WriteContext, _is_field: bool) {
+    let type_id = T::fory_get_type_id(fory);
     context.writer.write_varuint32(type_id);
     let rs_type_id = std::any::TypeId::of::<T>();
 
     if type_id & 0xff == TypeId::NAMED_STRUCT as u32 {
-        if context.get_fory().is_share_meta() {
-            let meta_index = context.push_meta(rs_type_id) as u32;
+        if fory.is_share_meta() {
+            let meta_index = context.push_meta(fory, rs_type_id) as u32;
             context.writer.write_varuint32(meta_index);
         } else {
-            let type_info = context
-                .get_fory()
-                .get_type_resolver()
-                .get_type_info(rs_type_id);
+            let type_info = fory.get_type_resolver().get_type_info(rs_type_id);
             let namespace = type_info.get_namespace().to_owned();
             let type_name = type_info.get_type_name().to_owned();
-            let resolver = context.get_fory().get_metastring_resolver();
+            let resolver = fory.get_metastring_resolver();
             resolver
                 .borrow_mut()
                 .write_meta_string_bytes(context, &namespace);
@@ -92,22 +89,22 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext, _is_field: boo
     } else if type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
         || type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32
     {
-        let meta_index = context.push_meta(rs_type_id) as u32;
+        let meta_index = context.push_meta(fory, rs_type_id) as u32;
         context.writer.write_varuint32(meta_index);
     }
 }
 
 #[inline(always)]
-pub fn read_type_info<T: Serializer>(context: &mut ReadContext, _is_field: bool) {
+pub fn read_type_info<T: Serializer>(fory: &Fory, context: &mut ReadContext, _is_field: bool) {
     let remote_type_id = context.reader.read_varuint32();
-    let local_type_id = T::fory_get_type_id(context.get_fory());
+    let local_type_id = T::fory_get_type_id(fory);
     assert_eq!(remote_type_id, local_type_id);
 
     if local_type_id & 0xff == TypeId::NAMED_STRUCT as u32 {
-        if context.get_fory().is_share_meta() {
+        if fory.is_share_meta() {
             let _meta_index = context.reader.read_varuint32();
         } else {
-            let resolver = context.get_fory().get_metastring_resolver();
+            let resolver = fory.get_metastring_resolver();
             resolver.borrow_mut().read_meta_string_bytes(context);
             resolver.borrow_mut().read_meta_string_bytes(context);
         }
@@ -119,18 +116,18 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext, _is_field: bool)
 }
 
 #[inline(always)]
-pub fn write<T: Serializer>(this: &T, context: &mut WriteContext, _is_field: bool) {
-    match context.get_fory().get_mode() {
+pub fn write<T: Serializer>(this: &T, fory: &Fory, context: &mut WriteContext, _is_field: bool) {
+    match fory.get_mode() {
         // currently same
         Mode::SchemaConsistent => {
             context.writer.write_i8(RefFlag::NotNullValue as i8);
-            T::fory_write_type_info(context, false);
-            this.fory_write_data(context, true);
+            T::fory_write_type_info(fory, context, false);
+            this.fory_write_data(fory, context, true);
         }
         Mode::Compatible => {
             context.writer.write_i8(RefFlag::NotNullValue as i8);
-            T::fory_write_type_info(context, false);
-            this.fory_write_data(context, true);
+            T::fory_write_type_info(fory, context, false);
+            this.fory_write_data(fory, context, true);
         }
     }
 }

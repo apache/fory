@@ -18,8 +18,8 @@
 use crate::buffer::{Reader, Writer};
 use crate::ensure;
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
+use crate::resolver::context::{Pool, ReadContext};
 use crate::resolver::metastring_resolver::MetaStringResolver;
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::ForyDefault;
@@ -87,10 +87,22 @@ pub struct Fory {
     metastring_resolver: Rc<RefCell<MetaStringResolver>>,
     compress_string: bool,
     max_dyn_depth: u32,
+
+    write_context_pool: Pool<WriteContext>,
+    read_context_pool: Pool<ReadContext>,
 }
 
 impl Default for Fory {
     fn default() -> Self {
+        let write_context_constructor = || {
+            let writer = Writer::default();
+            WriteContext::new(writer)
+        };
+        let read_context_constructor = || {
+            let reader = Reader::new(&[]);
+            // when context is popped out, max_dyn_depth will be assigned a valid value
+            ReadContext::new(reader, 0)
+        };
         Fory {
             mode: Mode::SchemaConsistent,
             xlang: true,
@@ -99,6 +111,8 @@ impl Default for Fory {
             metastring_resolver: Rc::from(RefCell::from(MetaStringResolver::default())),
             compress_string: false,
             max_dyn_depth: 5,
+            write_context_pool: Pool::new(write_context_constructor),
+            read_context_pool: Pool::new(read_context_constructor),
         }
     }
 }
@@ -382,12 +396,14 @@ impl Fory {
     /// let deserialized: Point = fory.deserialize(&bytes).unwrap();
     /// ```
     pub fn deserialize<T: Serializer + ForyDefault>(&self, bf: &[u8]) -> Result<T, Error> {
-        let reader = Reader::new(bf);
-        let mut context = ReadContext::new(self, reader, self.max_dyn_depth);
+        let mut context = self.read_context_pool.get();
+        context.init(bf, self.max_dyn_depth);
         let result = self.deserialize_with_context(&mut context);
         if result.is_ok() {
             assert_eq!(context.reader.slice_after_cursor().len(), 0);
         }
+        context.reset();
+        self.read_context_pool.put(context);
         result
     }
 
@@ -406,7 +422,7 @@ impl Fory {
                 bytes_to_skip = context.load_meta(meta_offset as usize);
             }
         }
-        let result = <T as Serializer>::fory_read(context, false);
+        let result = <T as Serializer>::fory_read(self, context, false);
         if bytes_to_skip > 0 {
             context.reader.skip(bytes_to_skip as u32);
         }
@@ -442,9 +458,11 @@ impl Fory {
     /// let bytes = fory.serialize(&point);
     /// ```
     pub fn serialize<T: Serializer>(&self, record: &T) -> Vec<u8> {
-        let mut writer = Writer::default();
-        let mut context: WriteContext<'_> = WriteContext::new(self, &mut writer);
-        self.serialize_with_context(record, &mut context)
+        let mut context = self.write_context_pool.get();
+        let result = self.serialize_with_context(record, &mut context);
+        context.reset();
+        self.write_context_pool.put(context);
+        result
     }
 
     pub fn serialize_with_context<T: Serializer>(
@@ -453,13 +471,13 @@ impl Fory {
         context: &mut WriteContext,
     ) -> Vec<u8> {
         let is_none = record.fory_is_none();
-        self.write_head::<T>(is_none, context.writer);
+        self.write_head::<T>(is_none, &mut context.writer);
         let meta_start_offset = context.writer.len();
         if !is_none {
             if self.mode == Mode::Compatible {
                 context.writer.write_i32(-1);
             };
-            <T as Serializer>::fory_write(record, context, false);
+            <T as Serializer>::fory_write(record, self, context, false);
             if self.mode == Mode::Compatible && !context.empty() {
                 context.write_meta(meta_start_offset);
             }
@@ -658,13 +676,19 @@ impl Fory {
     }
 }
 
-pub fn write_data<T: Serializer>(this: &T, context: &mut WriteContext, is_field: bool) {
-    T::fory_write_data(this, context, is_field);
+pub fn write_data<T: Serializer>(
+    this: &T,
+    fory: &Fory,
+    context: &mut WriteContext,
+    is_field: bool,
+) {
+    T::fory_write_data(this, fory, context, is_field);
 }
 
 pub fn read_data<T: Serializer + ForyDefault>(
+    fory: &Fory,
     context: &mut ReadContext,
     is_field: bool,
 ) -> Result<T, Error> {
-    T::fory_read_data(context, is_field)
+    T::fory_read_data(fory, context, is_field)
 }

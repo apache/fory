@@ -28,6 +28,11 @@ pub struct Writer {
 }
 
 impl Writer {
+    pub fn clear(&mut self) {
+        // keep capacity and reset len to 0
+        self.bf.clear();
+    }
+
     pub fn dump(&self) -> Vec<u8> {
         self.bf.clone()
     }
@@ -304,14 +309,26 @@ impl Writer {
     }
 }
 
-pub struct Reader<'de> {
-    pub(crate) bf: &'de [u8],
+pub struct Reader {
+    pub(crate) bf: Vec<u8>,
     pub(crate) cursor: usize,
 }
 
-impl<'bf> Reader<'bf> {
-    pub fn new(bf: &'bf [u8]) -> Reader<'bf> {
-        Reader { bf, cursor: 0 }
+impl Reader {
+    pub fn new(bf: &[u8]) -> Reader {
+        Reader {
+            bf: bf.to_vec(),
+            cursor: 0,
+        }
+    }
+
+    pub fn init(&mut self, bf: &[u8]) {
+        self.bf = bf.to_vec();
+        self.cursor = 0;
+    }
+
+    pub fn clear(&mut self) {
+        // no need to reset bf
     }
 
     pub(crate) fn move_next(&mut self, additional: usize) {
@@ -554,12 +571,13 @@ impl<'bf> Reader<'bf> {
     }
 
     pub fn get_slice(&self) -> &[u8] {
-        self.bf
+        self.bf.as_slice()
     }
 
-    pub fn read_bytes(&mut self, len: usize) -> &'bf [u8] {
-        let result = &self.bf[self.cursor..self.cursor + len];
+    pub fn read_bytes(&mut self, len: usize) -> &[u8] {
+        let old_cursor = self.cursor;
         self.move_next(len);
+        let result = &self.bf[old_cursor..old_cursor + len];
         result
     }
 

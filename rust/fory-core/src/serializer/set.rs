@@ -29,19 +29,23 @@ use std::collections::HashSet;
 use std::mem;
 
 impl<T: Serializer + ForyDefault + Eq + std::hash::Hash> Serializer for HashSet<T> {
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
-        write_collection(self, context, is_field);
+    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        write_collection(self, fory, context, is_field);
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
+    fn fory_write_type_info(_fory: &Fory, context: &mut WriteContext, is_field: bool) {
         write_collection_type_info(context, is_field, TypeId::SET as u32);
     }
 
-    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
-        read_collection(context)
+    fn fory_read_data(
+        fory: &Fory,
+        context: &mut ReadContext,
+        _is_field: bool,
+    ) -> Result<Self, Error> {
+        read_collection(fory, context)
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
+    fn fory_read_type_info(_fory: &Fory, context: &mut ReadContext, is_field: bool) {
         read_collection_type_info(context, is_field, TypeId::SET as u32)
     }
 

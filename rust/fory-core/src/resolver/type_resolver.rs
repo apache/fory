@@ -26,14 +26,19 @@ use crate::serializer::{ForyDefault, Serializer, StructSerializer};
 use std::cell::RefCell;
 use std::{any::Any, collections::HashMap};
 
-type WriteFn = fn(&dyn Any, &mut WriteContext, is_field: bool);
-type ReadFn =
-    fn(&mut ReadContext, is_field: bool, skip_ref_flag: bool) -> Result<Box<dyn Any>, Error>;
+type WriteFn = fn(&dyn Any, fory: &Fory, &mut WriteContext, is_field: bool);
+type ReadFn = fn(
+    fory: &Fory,
+    &mut ReadContext,
+    is_field: bool,
+    skip_ref_flag: bool,
+) -> Result<Box<dyn Any>, Error>;
 
-type WriteDataFn = fn(&dyn Any, &mut WriteContext, is_field: bool);
-type ReadDataFn = fn(&mut ReadContext, is_field: bool) -> Result<Box<dyn Any>, Error>;
+type WriteDataFn = fn(&dyn Any, ory: &Fory, &mut WriteContext, is_field: bool);
+type ReadDataFn = fn(fory: &Fory, &mut ReadContext, is_field: bool) -> Result<Box<dyn Any>, Error>;
 type ToSerializerFn = fn(Box<dyn Any>) -> Result<Box<dyn Serializer>, Error>;
 
+#[derive(Clone)]
 pub struct Harness {
     write_fn: WriteFn,
     read_fn: ReadFn,
@@ -267,16 +272,17 @@ impl TypeResolver {
     ) {
         fn write<T2: 'static + Serializer>(
             this: &dyn Any,
+            fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
         ) {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => {
-                    let skip_ref_flag =
-                        crate::serializer::get_skip_ref_flag::<T2>(context.get_fory());
+                    let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T2>(fory);
                     crate::serializer::write_ref_info_data(
                         v,
+                        fory,
                         context,
                         is_field,
                         skip_ref_flag,
@@ -288,11 +294,13 @@ impl TypeResolver {
         }
 
         fn read<T2: 'static + Serializer + ForyDefault>(
+            fory: &Fory,
             context: &mut ReadContext,
             is_field: bool,
             skip_ref_flag: bool,
         ) -> Result<Box<dyn Any>, Error> {
             match crate::serializer::read_ref_info_data::<T2>(
+                fory,
                 context,
                 is_field,
                 skip_ref_flag,
@@ -305,23 +313,25 @@ impl TypeResolver {
 
         fn write_data<T2: 'static + Serializer>(
             this: &dyn Any,
+            fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
         ) {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => {
-                    T2::fory_write_data(v, context, is_field);
+                    T2::fory_write_data(v, fory, context, is_field);
                 }
                 None => todo!(),
             }
         }
 
         fn read_data<T2: 'static + Serializer + ForyDefault>(
+            fory: &Fory,
             context: &mut ReadContext,
             is_field: bool,
         ) -> Result<Box<dyn Any>, Error> {
-            match T2::fory_read_data(context, is_field) {
+            match T2::fory_read_data(fory, context, is_field) {
                 Ok(v) => Ok(Box::new(v)),
                 Err(e) => Err(e),
             }
@@ -394,30 +404,32 @@ impl TypeResolver {
     pub fn register_serializer<T: Serializer + ForyDefault>(&mut self, type_info: &TypeInfo) {
         fn write<T2: 'static + Serializer>(
             this: &dyn Any,
+            fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
         ) {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => {
-                    v.fory_write(context, is_field);
+                    v.fory_write(fory, context, is_field);
                 }
                 None => todo!(),
             }
         }
 
         fn read<T2: 'static + Serializer + ForyDefault>(
+            fory: &Fory,
             context: &mut ReadContext,
             is_field: bool,
             skip_ref_flag: bool,
         ) -> Result<Box<dyn Any>, Error> {
             if skip_ref_flag {
-                match T2::fory_read_data(context, is_field) {
+                match T2::fory_read_data(fory, context, is_field) {
                     Ok(v) => Ok(Box::new(v)),
                     Err(e) => Err(e),
                 }
             } else {
-                match T2::fory_read(context, is_field) {
+                match T2::fory_read(fory, context, is_field) {
                     Ok(v) => Ok(Box::new(v)),
                     Err(e) => Err(e),
                 }
@@ -426,23 +438,25 @@ impl TypeResolver {
 
         fn write_data<T2: 'static + Serializer>(
             this: &dyn Any,
+            fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
         ) {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => {
-                    T2::fory_write_data(v, context, is_field);
+                    T2::fory_write_data(v, fory, context, is_field);
                 }
                 None => todo!(),
             }
         }
 
         fn read_data<T2: 'static + Serializer + ForyDefault>(
+            fory: &Fory,
             context: &mut ReadContext,
             is_field: bool,
         ) -> Result<Box<dyn Any>, Error> {
-            match T2::fory_read_data(context, is_field) {
+            match T2::fory_read_data(fory, context, is_field) {
                 Ok(v) => Ok(Box::new(v)),
                 Err(e) => Err(e),
             }
@@ -450,9 +464,9 @@ impl TypeResolver {
 
         fn to_serializer<T2: 'static + Serializer>(
             boxed_any: Box<dyn Any>,
-        ) -> Result<Box<dyn crate::serializer::Serializer>, Error> {
+        ) -> Result<Box<dyn Serializer>, Error> {
             match boxed_any.downcast::<T2>() {
-                Ok(concrete) => Ok(Box::new(*concrete) as Box<dyn crate::serializer::Serializer>),
+                Ok(concrete) => Ok(Box::new(*concrete) as Box<dyn Serializer>),
                 Err(_) => Err(Error::Other(anyhow::anyhow!(
                     "Failed to downcast to concrete type"
                 ))),

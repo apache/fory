@@ -230,15 +230,15 @@ macro_rules! basic_type_deserialize {
                 $ty_str => {
                     if $nullable {
                         quote! {
-                            <$ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                            let res1 = Some(<$ty as fory_core::serializer::Serializer>::fory_read_data(context, true)
+                            <$ty as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
+                            let res1 = Some(<$ty as fory_core::serializer::Serializer>::fory_read_data(fory, context, true)
                                 .map_err(fory_core::error::Error::from)?);
                             Ok::<Option<$ty>, fory_core::error::Error>(res1)
                         }
                     } else {
                         quote! {
-                            <$ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                            let res2 = <$ty as fory_core::serializer::Serializer>::fory_read_data(context, true)
+                            <$ty as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
+                            let res2 = <$ty as fory_core::serializer::Serializer>::fory_read_data(fory, context, true)
                                 .map_err(fory_core::error::Error::from)?;
                             Ok::<$ty, fory_core::error::Error>(res2)
                         }
@@ -310,8 +310,8 @@ impl NullableTypeNode {
                     let res1 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         None
                     } else {
-                        <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                        Some(<#ty_type as fory_core::serializer::Serializer>::fory_read_data(context, true)
+                        <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
+                        Some(<#ty_type as fory_core::serializer::Serializer>::fory_read_data(fory, context, true)
                             .map_err(fory_core::error::Error::from)?)
                     };
                     Ok::<Option<#ty_type>, fory_core::error::Error>(res1)
@@ -321,8 +321,8 @@ impl NullableTypeNode {
                     let res2 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         Vec::default()
                     } else {
-                        <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                        <#ty_type as fory_core::serializer::Serializer>::fory_read_data(context, true)
+                        <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
+                        <#ty_type as fory_core::serializer::Serializer>::fory_read_data(fory, context, true)
                             .map_err(fory_core::error::Error::from)?
                     };
                     Ok::<#ty_type, fory_core::error::Error>(res2)
@@ -490,8 +490,8 @@ impl NullableTypeNode {
                                     continue;
                                 }
                                 let chunk_size = context.reader.read_u8();
-                                <#key_ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                                <#val_ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
+                                <#key_ty as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
+                                <#val_ty as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
                                 for _ in (0..chunk_size).enumerate() {
                                     let key: #key_ty = {#key_tokens}?;
                                     let value: #val_ty = {#val_tokens}?;
@@ -543,7 +543,7 @@ impl NullableTypeNode {
                                 || internal_id == EXT_ID
                                 || internal_id == NAMED_EXT_ID
                             {
-                                <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(context)
+                                <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(fory, context)
                                     .map_err(fory_core::error::Error::from)?
                             } else {
                                 unimplemented!()
@@ -566,7 +566,7 @@ impl NullableTypeNode {
                             || internal_id == EXT_ID
                             || internal_id == NAMED_EXT_ID
                         {
-                            <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(context)
+                            <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(fory, context)
                                 .map_err(fory_core::error::Error::from)?
                         } else {
                             unimplemented!()
@@ -766,15 +766,6 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
         vec![]
     };
     let ty: syn::Type = syn::parse_str(&node.to_string()).unwrap();
-    let param = if have_context {
-        quote! {
-            context.get_fory()
-        }
-    } else {
-        quote! {
-            fory
-        }
-    };
     let get_type_id = if node.name == "Option" {
         let option_type_id = TypeId::ForyNullable as u32;
         quote! { #option_type_id }
@@ -782,7 +773,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
         ts
     } else {
         quote! {
-            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(#param)
+            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(fory)
         }
     };
     quote! {

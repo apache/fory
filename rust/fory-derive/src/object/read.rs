@@ -100,13 +100,12 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
 
                     let fory_type_id = context.reader.read_varuint32();
 
-                    let harness = context.get_fory()
-                        .get_type_resolver()
+                    let harness = fory.get_type_resolver()
                         .get_harness(fory_type_id)
                         .expect("Type not registered for trait object field");
 
                     let deserializer_fn = harness.get_read_fn();
-                    let any_box = deserializer_fn(context, true, false)?;
+                    let any_box = deserializer_fn(fory, context, true, false)?;
 
                     let base_type_id = fory_type_id >> 8;
                     #private_ident = #helper_mod::#from_any_fn(any_box, base_type_id)?;
@@ -119,7 +118,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
             let trait_ident = types.trait_ident;
             quote! {
                 #name_str => {
-                    let wrapper = <#wrapper_ty as fory_core::serializer::Serializer>::fory_read(context, true)?;
+                    let wrapper = <#wrapper_ty as fory_core::serializer::Serializer>::fory_read(fory, context, true)?;
                     #private_ident = std::rc::Rc::<dyn #trait_ident>::from(wrapper);
                 }
             }
@@ -130,7 +129,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
             let trait_ident = types.trait_ident;
             quote! {
                 #name_str => {
-                    let wrapper = <#wrapper_ty as fory_core::serializer::Serializer>::fory_read(context, true)?;
+                    let wrapper = <#wrapper_ty as fory_core::serializer::Serializer>::fory_read(fory, context, true)?;
                     #private_ident = std::sync::Arc::<dyn #trait_ident>::from(wrapper);
                 }
             }
@@ -141,7 +140,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
             let trait_ident = types.trait_ident;
             quote! {
                 #name_str => {
-                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::serializer::Serializer>::fory_read(context, true)?;
+                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::serializer::Serializer>::fory_read(fory, context, true)?;
                     #private_ident = Some(wrapper_vec.into_iter()
                         .map(|w| std::rc::Rc::<dyn #trait_ident>::from(w))
                         .collect());
@@ -154,7 +153,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
             let trait_ident = types.trait_ident;
             quote! {
                 #name_str => {
-                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::serializer::Serializer>::fory_read(context, true)?;
+                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::serializer::Serializer>::fory_read(fory, context, true)?;
                     #private_ident = Some(wrapper_vec.into_iter()
                         .map(|w| std::sync::Arc::<dyn #trait_ident>::from(w))
                         .collect());
@@ -167,7 +166,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
             let trait_ident = types.trait_ident;
             quote! {
                 #name_str => {
-                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::serializer::Serializer>::fory_read(context, true)?;
+                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::serializer::Serializer>::fory_read(fory, context, true)?;
                     #private_ident = Some(wrapper_map.into_iter()
                         .map(|(k, v)| (k, std::rc::Rc::<dyn #trait_ident>::from(v)))
                         .collect());
@@ -180,7 +179,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
             let trait_ident = types.trait_ident;
             quote! {
                 #name_str => {
-                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::serializer::Serializer>::fory_read(context, true)?;
+                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::serializer::Serializer>::fory_read(fory, context, true)?;
                     #private_ident = Some(wrapper_map.into_iter()
                         .map(|(k, v)| (k, std::sync::Arc::<dyn #trait_ident>::from(v)))
                         .collect());
@@ -190,15 +189,15 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
         StructField::Forward => {
             quote! {
                 #name_str => {
-                    #private_ident = Some(fory_core::serializer::Serializer::fory_read(context, true)?);
+                    #private_ident = Some(fory_core::serializer::Serializer::fory_read(fory, context, true)?);
                 }
             }
         }
         _ => {
             quote! {
                 #name_str => {
-                    let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    #private_ident = Some(fory_core::serializer::read_ref_info_data::<#ty>(context, true, skip_ref_flag, false)?);
+                    let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(fory);
+                    #private_ident = Some(fory_core::serializer::read_ref_info_data::<#ty>(fory, context, true, skip_ref_flag, false)?);
                 }
             }
         }
@@ -207,7 +206,7 @@ fn gen_read_match_arm(field: &Field, private_ident: &Ident) -> TokenStream {
 
 pub fn gen_read_type_info() -> TokenStream {
     quote! {
-        fory_core::serializer::struct_::read_type_info::<Self>(context, is_field)
+        fory_core::serializer::struct_::read_type_info::<Self>(fory, context, is_field)
     }
 }
 
@@ -275,7 +274,7 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
         let loop_ts = get_fields_loop_ts(fields);
         quote! {
              #(#declare_var_ts)*
-            let field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
+            let field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(fory);
             #loop_ts
         }
     };
@@ -324,12 +323,11 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                         panic!("Expected NotNullValue for trait object field");
                     }
                     let fory_type_id = context.reader.read_varuint32();
-                    let harness = context.get_fory()
-                        .get_type_resolver()
+                    let harness = fory.get_type_resolver()
                         .get_harness(fory_type_id)
                         .expect("Type not registered for trait object field");
                     let deserializer_fn = harness.get_read_fn();
-                    let any_box = deserializer_fn(context, true, false).unwrap();
+                    let any_box = deserializer_fn(fory, context, true, false).unwrap();
                     let base_type_id = fory_type_id >> 8;
                     #var_name = #helper_mod::#from_any_fn(any_box, base_type_id).unwrap();
                 }
@@ -341,7 +339,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
             let trait_ident = types.trait_ident;
             quote! {
                 if _field.field_name.as_str() == #field_name_str {
-                    let wrapper = <#wrapper_ty as fory_core::serializer::Serializer>::fory_read(context, true).unwrap();
+                    let wrapper = <#wrapper_ty as fory_core::serializer::Serializer>::fory_read(fory, context, true).unwrap();
                     #var_name = Some(std::rc::Rc::<dyn #trait_ident>::from(wrapper));
                 }
             }
@@ -352,7 +350,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
             let trait_ident = types.trait_ident;
             quote! {
                 if _field.field_name.as_str() == #field_name_str {
-                    let wrapper = <#wrapper_ty as fory_core::serializer::Serializer>::fory_read(context, true).unwrap();
+                    let wrapper = <#wrapper_ty as fory_core::serializer::Serializer>::fory_read(fory, context, true).unwrap();
                     #var_name = Some(std::sync::Arc::<dyn #trait_ident>::from(wrapper));
                 }
             }
@@ -363,7 +361,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
             let trait_ident = types.trait_ident;
             quote! {
                 if _field.field_name.as_str() == #field_name_str {
-                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::serializer::Serializer>::fory_read(context, true).unwrap();
+                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::serializer::Serializer>::fory_read(fory, context, true).unwrap();
                     #var_name = Some(wrapper_vec.into_iter()
                         .map(|w| std::rc::Rc::<dyn #trait_ident>::from(w))
                         .collect());
@@ -376,7 +374,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
             let trait_ident = types.trait_ident;
             quote! {
                 if _field.field_name.as_str() == #field_name_str {
-                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::serializer::Serializer>::fory_read(context, true).unwrap();
+                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::serializer::Serializer>::fory_read(fory, context, true).unwrap();
                     #var_name = Some(wrapper_vec.into_iter()
                         .map(|w| std::sync::Arc::<dyn #trait_ident>::from(w))
                         .collect());
@@ -389,7 +387,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
             let trait_ident = types.trait_ident;
             quote! {
                 if _field.field_name.as_str() == #field_name_str {
-                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::serializer::Serializer>::fory_read(context, true).unwrap();
+                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::serializer::Serializer>::fory_read(fory, context, true).unwrap();
                     #var_name = Some(wrapper_map.into_iter()
                         .map(|(k, v)| (k, std::rc::Rc::<dyn #trait_ident>::from(v)))
                         .collect());
@@ -402,7 +400,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
             let trait_ident = types.trait_ident;
             quote! {
                 if _field.field_name.as_str() == #field_name_str {
-                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::serializer::Serializer>::fory_read(context, true).unwrap();
+                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::serializer::Serializer>::fory_read(fory, context, true).unwrap();
                     #var_name = Some(wrapper_map.into_iter()
                         .map(|(k, v)| (k, std::sync::Arc::<dyn #trait_ident>::from(v)))
                         .collect());
@@ -412,15 +410,15 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
         StructField::ContainsTraitObject => {
             quote! {
                 if _field.field_name.as_str() == #field_name_str {
-                    let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    #var_name = Some(fory_core::serializer::read_ref_info_data::<#ty>(context, true, skip_ref_flag, false)?);
+                    let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(fory);
+                    #var_name = Some(fory_core::serializer::read_ref_info_data::<#ty>(fory, context, true, skip_ref_flag, false)?);
                 }
             }
         }
         StructField::Forward => {
             quote! {
                 if _field.field_name.as_str() == #field_name_str {
-                    #var_name = Some(fory_core::serializer::Serializer::fory_read(context, true).unwrap());
+                    #var_name = Some(fory_core::serializer::Serializer::fory_read(fory, context, true).unwrap());
                 }
             }
         }
@@ -437,8 +435,8 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                 if _field.field_name.as_str() == #field_name_str {
                     let local_field_type = #generic_token;
                     if &_field.field_type == &local_field_type {
-                        let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                        #var_name = Some(fory_core::serializer::read_ref_info_data::<#ty>(context, true, skip_ref_flag, false).unwrap_or_else(|_err| {
+                        let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(fory);
+                        #var_name = Some(fory_core::serializer::read_ref_info_data::<#ty>(fory, context, true, skip_ref_flag, false).unwrap_or_else(|_err| {
                             panic!("Err at deserializing {:?}: {:?}", #field_name_str, _err);
                         }));
                     } else {
@@ -447,12 +445,13 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                         if local_nullable_type != remote_nullable_type {
                             println!("Type not match, just skip: {}", #field_name_str);
                             let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(&remote_nullable_type);
-                            fory_core::serializer::skip::skip_field_value(context, &remote_nullable_type, read_ref_flag).unwrap();
+                            fory_core::serializer::skip::skip_field_value(fory, context, &remote_nullable_type, read_ref_flag).unwrap();
                             #var_name = Some(<#ty as fory_core::serializer::ForyDefault>::fory_default());
                         } else {
                             println!("Try to deserialize_compatible: {}", #field_name_str);
                             #var_name = Some(
                                 Self::#read_nullable_fn_name(
+                                    fory,
                                     context,
                                     &local_nullable_type,
                                     &remote_nullable_type
@@ -472,13 +471,13 @@ pub fn gen_read(struct_ident: &Ident) -> TokenStream {
     quote! {
         let ref_flag = context.reader.read_i8();
         if ref_flag == (fory_core::types::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::types::RefFlag::RefValue as i8) {
-            match context.get_fory().get_mode() {
+            match fory.get_mode() {
                 fory_core::types::Mode::SchemaConsistent => {
-                    <Self as fory_core::serializer::Serializer>::fory_read_type_info(context, false);
-                    <Self as fory_core::serializer::Serializer>::fory_read_data(context, false)
+                    <Self as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, false);
+                    <Self as fory_core::serializer::Serializer>::fory_read_data(fory, context, false)
                 },
                 fory_core::types::Mode::Compatible => {
-                    <#struct_ident as fory_core::serializer::Serializer>::fory_read_compatible(context)
+                    <#struct_ident as fory_core::serializer::Serializer>::fory_read_compatible(fory, context)
                 },
                 _ => unreachable!()
             }
@@ -512,12 +511,12 @@ pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
         };
         #(#declare_ts)*
 
-        let local_type_def = context.get_fory().get_type_resolver().get_type_info(std::any::TypeId::of::<Self>()).get_type_def();
+        let local_type_def = fory.get_type_resolver().get_type_info(std::any::TypeId::of::<Self>()).get_type_def();
         let high_bytes = &local_type_def[..8];
         let local_type_hash = i64::from_le_bytes(high_bytes.try_into().unwrap());
         if meta.get_hash() == local_type_hash {
             // fast path
-            let field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(context.get_fory());
+            let field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(fory);
             #consistent_fields_loop_ts
         } else {
             for _field in fields.iter() {
@@ -525,7 +524,7 @@ pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
                     println!("skip {:?}:{:?}", _field.field_name.as_str(), _field.field_type);
                     let nullable_field_type = fory_core::meta::NullableFieldType::from(_field.field_type.clone());
                     let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(&nullable_field_type);
-                    fory_core::serializer::skip::skip_field_value(context, &nullable_field_type, read_ref_flag).unwrap();
+                    fory_core::serializer::skip::skip_field_value(fory, context, &nullable_field_type, read_ref_flag).unwrap();
                 }
             }
         }
@@ -548,6 +547,7 @@ pub fn gen_read_nullable(fields: &[&Field]) -> TokenStream {
                     let read_tokens = nullable_generic_tree.to_read_tokens(&vec![], true);
                     Some(quote! {
                         fn #fn_name(
+                            fory: &fory_core::fory::Fory,
                             context: &mut fory_core::resolver::context::ReadContext,
                             local_nullable_type: &fory_core::meta::NullableFieldType,
                             remote_nullable_type: &fory_core::meta::NullableFieldType

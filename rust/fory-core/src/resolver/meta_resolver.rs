@@ -66,24 +66,29 @@ impl MetaReaderResolver {
         };
         NAMESPACE_DECODER.decode(bytes, encoding).unwrap()
     }
+
+    pub fn reset(&mut self) {
+        self.reading_type_defs.clear();
+    }
 }
 
 #[derive(Default)]
-pub struct MetaWriterResolver<'a> {
-    type_defs: Vec<&'a Vec<u8>>,
+pub struct MetaWriterResolver {
+    type_defs: Vec<Vec<u8>>,
     type_id_index_map: HashMap<std::any::TypeId, usize>,
 }
 
 #[allow(dead_code)]
-impl<'a> MetaWriterResolver<'a> {
-    pub fn push<'b: 'a>(&mut self, type_id: std::any::TypeId, fory: &'a Fory) -> usize {
+impl MetaWriterResolver {
+    pub fn push(&mut self, type_id: std::any::TypeId, fory: &Fory) -> usize {
         match self.type_id_index_map.get(&type_id) {
             None => {
                 let index = self.type_defs.len();
                 self.type_defs.push(
                     fory.get_type_resolver()
                         .get_type_info(type_id)
-                        .get_type_def(),
+                        .get_type_def()
+                        .to_vec(),
                 );
                 self.type_id_index_map.insert(type_id, index);
                 index
@@ -106,5 +111,6 @@ impl<'a> MetaWriterResolver<'a> {
 
     pub fn reset(&mut self) {
         self.type_defs.clear();
+        self.type_id_index_map.clear();
     }
 }

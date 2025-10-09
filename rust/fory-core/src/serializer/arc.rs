@@ -28,24 +28,27 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
         true
     }
 
-    fn fory_write(&self, context: &mut WriteContext, is_field: bool) {
-        if !context.ref_writer.try_write_arc_ref(context.writer, self) {
-            T::fory_write_data(self.as_ref(), context, is_field);
+    fn fory_write(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        if !context
+            .ref_writer
+            .try_write_arc_ref(&mut context.writer, self)
+        {
+            T::fory_write_data(self.as_ref(), fory, context, is_field);
         }
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
+    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
         // When Arc is nested inside another shared ref (like Rc<Arc<T>>),
         // the outer ref calls fory_write_data on the inner Arc.
         // We still need to track the Arc's own references here.
-        self.fory_write(context, is_field);
+        self.fory_write(fory, context, is_field);
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        T::fory_write_type_info(context, is_field);
+    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        T::fory_write_type_info(fory, context, is_field);
     }
 
-    fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+    fn fory_read(fory: &Fory, context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader);
 
         match ref_flag {
@@ -58,12 +61,12 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
                     .ok_or_else(|| anyhow!("Arc reference {} not found", ref_id).into())
             }
             RefFlag::NotNullValue => {
-                let inner = T::fory_read_data(context, is_field)?;
+                let inner = T::fory_read_data(fory, context, is_field)?;
                 Ok(Arc::new(inner))
             }
             RefFlag::RefValue => {
                 let ref_id = context.ref_reader.reserve_ref_id();
-                let inner = T::fory_read_data(context, is_field)?;
+                let inner = T::fory_read_data(fory, context, is_field)?;
                 let arc = Arc::new(inner);
                 context.ref_reader.store_arc_ref_at(ref_id, arc.clone());
                 Ok(arc)
@@ -71,14 +74,18 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
         }
     }
 
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+    fn fory_read_data(
+        fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+    ) -> Result<Self, Error> {
         // When Arc is nested inside another shared ref, fory_read_data is called.
         // Delegate to fory_read which handles ref tracking properly.
-        Self::fory_read(context, is_field)
+        Self::fory_read(fory, context, is_field)
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-        T::fory_read_type_info(context, is_field);
+    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
+        T::fory_read_type_info(fory, context, is_field);
     }
 
     fn fory_reserved_space() -> usize {
