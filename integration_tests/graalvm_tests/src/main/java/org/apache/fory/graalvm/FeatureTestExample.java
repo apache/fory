@@ -84,8 +84,8 @@ public class FeatureTestExample {
             .withRefTracking(true)
             .build();
         
-        // Register problematic class
         fory.register(ProblematicClass.class);
+        fory.register(TestInvocationHandler.class);
         
         // Register proxy interface
         Fory.addProxyInterface(TestInterface.class);
