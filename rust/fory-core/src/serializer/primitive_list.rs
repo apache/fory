@@ -35,9 +35,10 @@ pub fn fory_write_data<T>(this: &[T], context: &mut WriteContext) {
 }
 
 pub fn fory_write_type_info(context: &mut WriteContext, is_field: bool, type_id: TypeId) {
-    if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
-        context.writer.write_varuint32(type_id as u32);
+    if is_field {
+        return;
     }
+    context.writer.write_varuint32(type_id as u32);
 }
 
 pub fn fory_read_data<T>(context: &mut ReadContext) -> Result<Vec<T>, Error> {
@@ -57,10 +58,14 @@ pub fn fory_read_data<T>(context: &mut ReadContext) -> Result<Vec<T>, Error> {
 }
 
 pub fn fory_read_type_info(context: &mut ReadContext, is_field: bool, type_id: TypeId) {
-    if *context.get_fory().get_mode() == crate::types::Mode::Compatible && !is_field {
-        let remote_type_id = context.reader.read_varuint32();
-        assert_eq!(remote_type_id, type_id as u32);
+    if is_field {
+        return;
     }
+    let remote_type_id = context.reader.read_varuint32();
+    if remote_type_id == TypeId::LIST as u32 {
+        panic!("Vec<number> belongs to the `number_array` type, and Vec<Option<number>> belongs to the `list` type. You should not read data of type `list` as data of type `number_array`");
+    }
+    assert_eq!(remote_type_id, type_id as u32);
 }
 
 pub fn fory_reserved_space<T>() -> usize {

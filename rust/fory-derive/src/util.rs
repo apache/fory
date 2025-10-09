@@ -64,6 +64,9 @@ pub fn is_rc_dyn_trait(ty: &Type) -> Option<(&TypeTraitObject, String)> {
                         {
                             if let Some(segment) = trait_bound.path.segments.last() {
                                 let trait_name = segment.ident.to_string();
+                                if trait_name == "Any" {
+                                    return None;
+                                }
                                 return Some((trait_obj, trait_name));
                             }
                         }
@@ -90,6 +93,9 @@ pub fn is_arc_dyn_trait(ty: &Type) -> Option<(&TypeTraitObject, String)> {
                         {
                             if let Some(segment) = trait_bound.path.segments.last() {
                                 let trait_name = segment.ident.to_string();
+                                if trait_name == "Any" {
+                                    return None;
+                                }
                                 return Some((trait_obj, trait_name));
                             }
                         }
@@ -107,9 +113,10 @@ pub enum CollectionTraitInfo {
     VecArc(String),
     HashMapRc(Box<Type>, String),
     HashMapArc(Box<Type>, String),
+    // todo HashSet
 }
 
-/// Check if a type is a collection containing Rc<dyn Trait> or Arc<dyn Trait>
+/// Check if a type is a collection containing `Rc<dyn Trait>` or `Arc<dyn Trait>`
 pub fn detect_collection_with_trait_object(ty: &Type) -> Option<CollectionTraitInfo> {
     if let Type::Path(TypePath { path, .. }) = ty {
         if let Some(seg) = path.segments.last() {
