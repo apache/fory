@@ -111,15 +111,19 @@ pub struct ReadContext<'de, 'bf: 'de> {
     fory: &'de Fory,
     pub meta_resolver: MetaReaderResolver,
     pub ref_reader: RefReader,
+    max_dyn_depth: u32,
+    current_depth: u32,
 }
 
 impl<'de, 'bf: 'de> ReadContext<'de, 'bf> {
-    pub fn new(fory: &'de Fory, reader: Reader<'bf>) -> ReadContext<'de, 'bf> {
+    pub fn new(fory: &'de Fory, reader: Reader<'bf>, max_dyn_depth: u32) -> ReadContext<'de, 'bf> {
         ReadContext {
             reader,
             fory,
             meta_resolver: MetaReaderResolver::default(),
             ref_reader: RefReader::new(),
+            max_dyn_depth,
+            current_depth: 0,
         }
     }
 
@@ -174,5 +178,24 @@ impl<'de, 'bf: 'de> ReadContext<'de, 'bf> {
                 .get_harness(fory_type_id)
                 .expect("ID harness not found")
         }
+    }
+
+    pub fn inc_depth(&mut self) -> Result<(), crate::error::Error> {
+        self.current_depth += 1;
+        if self.current_depth > self.max_dyn_depth {
+            return Err(crate::error::Error::Other(crate::error::AnyhowError::msg(
+                format!(
+                    "Maximum dynamic object nesting depth ({}) exceeded. Current depth: {}. \
+                    This may indicate a circular reference or overly deep object graph. \
+                    Consider increasing max_dyn_depth if this is expected.",
+                    self.max_dyn_depth, self.current_depth
+                ),
+            )));
+        }
+        Ok(())
+    }
+
+    pub fn dec_depth(&mut self) {
+        self.current_depth = self.current_depth.saturating_sub(1);
     }
 }

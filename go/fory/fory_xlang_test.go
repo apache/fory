@@ -19,8 +19,6 @@ package fory_test
 
 import (
 	"fmt"
-	"github.com/apache/fory/go/fory"
-	"github.com/stretchr/testify/require"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -28,6 +26,9 @@ import (
 	"testing"
 	"time"
 	"unsafe"
+
+	"github.com/apache/fory/go/fory"
+	"github.com/stretchr/testify/require"
 )
 
 const pythonModule = "pyfory.tests.test_cross_language"
@@ -228,7 +229,7 @@ func TestSerializeSimpleStruct(t *testing.T) {
 	// Temporarily disabled
 	// t.Skip()
 	fory_ := fory.NewFory(true)
-	require.Nil(t, fory_.RegisterTagType("test.ComplexObject2", ComplexObject2{}))
+	require.Nil(t, fory_.RegisterNamedType(ComplexObject2{}, "test.ComplexObject2"))
 	obj2 := ComplexObject2{}
 	obj2.F1 = true
 	obj2.F2 = map[int8]int32{-1: 2}
@@ -239,8 +240,8 @@ func TestSerializeComplexStruct(t *testing.T) {
 	// Temporarily disabled
 	// t.Skip()
 	fory_ := fory.NewFory(true)
-	require.Nil(t, fory_.RegisterTagType("test.ComplexObject1", ComplexObject1{}))
-	require.Nil(t, fory_.RegisterTagType("test.ComplexObject2", ComplexObject2{}))
+	require.Nil(t, fory_.RegisterNamedType(ComplexObject1{}, "test.ComplexObject1"))
+	require.Nil(t, fory_.RegisterNamedType(ComplexObject2{}, "test.ComplexObject2"))
 	obj2 := ComplexObject2{}
 	obj2.F1 = true
 	obj2.F2 = map[int8]int32{-1: 2}

@@ -1,6 +1,6 @@
 ---
 title: Row Format Guide
-sidebar_position: 1
+sidebar_position: 5
 id: row_format_guide
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more

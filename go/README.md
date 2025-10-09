@@ -198,6 +198,23 @@ fory := NewForyWithOptions(
 )
 ```
 
+## Best Practices
+
+### Type Registration Patterns
+
+Choose the right registration approach for your use case:
+
+```go
+// Register using an explicit namespace and type name pair.
+func (f *Fory) RegisterByNamespace(User{}, "example", "user") error
+
+// Register using a name
+func (f *Fory) RegisterNamedType(User{}, "example.user") error
+
+// Register using a pre-assigned numeric type identifier.
+func (f *Fory) Register(User{}, 101) error
+```
+
 ## How to test
 
 ```bash

@@ -1,6 +1,6 @@
 ---
 title: Xlang Serialization Guide
-sidebar_position: 2
+sidebar_position: 4
 id: xlang_object_graph_guide
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -289,10 +289,10 @@ func main() {
   F2 map[int8]int32
  }
  fory := forygo.NewFory()
- if err := fory.RegisterTagType("example.SomeClass1", SomeClass1{}); err != nil {
+ if err := fory.RegisterNamedType(SomeClass1{}, "example.SomeClass1"); err != nil {
   panic(err)
  }
- if err := fory.RegisterTagType("example.SomeClass2", SomeClass2{}); err != nil {
+ if err := fory.RegisterNamedType(SomeClass2{}, "example.SomeClass2"); err != nil {
   panic(err)
  }
  obj1 := &SomeClass1{}
@@ -481,7 +481,7 @@ func main() {
   F3 map[string]string
  }
  fory := forygo.NewFory(true)
- if err := fory.RegisterTagType("example.SomeClass", SomeClass{}); err != nil {
+ if err := fory.Register(SomeClass{}, 65); err != nil {
   panic(err)
  }
  value := &SomeClass{F2: map[string]string{"k1": "v1", "k2": "v2"}}

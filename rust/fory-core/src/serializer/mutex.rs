@@ -20,7 +20,7 @@
 //! This module implements [`Serializer`] and [`ForyDefault`] for [`std::sync::Mutex<T>`].
 //! It allows thread-safe mutable containers to be part of serialized graphs.
 //!
-//! Unlike [`Rc`] and [`Arc`], `Mutex` does not do reference counting, so this wrapper relies
+//! Unlike [`std::rc::Rc`] and [`std::sync::Arc`], `Mutex` does not do reference counting, so this wrapper relies
 //! on the serialization of the contained `T` only.
 //!
 //! This is commonly used together with `Arc<Mutex<T>>` in threaded graph structures.
@@ -28,7 +28,7 @@
 //! # Example
 //! ```rust
 //! use std::sync::Mutex;
-//! use fory_core::serializer::{Serializer, ForyDefault};
+//! use fory_core::{Serializer, ForyDefault};
 //!
 //! let mutex = Mutex::new(42);
 //! // Can be serialized by the Fory framework

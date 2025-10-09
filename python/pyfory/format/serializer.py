@@ -45,16 +45,22 @@ class ArrowRecordBatchBufferObject(BufferObject):
     def total_bytes(self) -> int:
         return self.nbytes
 
-    def write_to(self, buffer: Buffer):
-        assert isinstance(buffer, Buffer)
-
-        sink = pa.FixedSizeBufferWriter(pa.py_buffer(buffer))
+    def write_to(self, stream):
+        if isinstance(stream, Buffer):
+            sink = pa.FixedSizeBufferWriter(pa.py_buffer(stream))
+        else:
+            sink = pa.BufferOutputStream()
         self._write(self.batch, sink)
+        if not isinstance(stream, Buffer):
+            data = sink.getvalue()
+            if hasattr(stream, "write"):
+                stream.write(data.to_pybytes())
 
-    def to_buffer(self) -> Buffer:
+    def getbuffer(self) -> memoryview:
         sink = pa.BufferOutputStream()
         ArrowRecordBatchBufferObject._write(self.batch, sink)
-        return Buffer(sink.getvalue())
+        arrow_buffer = sink.getvalue()
+        return memoryview(arrow_buffer)
 
     @staticmethod
     def _write(batch, sink):
@@ -88,15 +94,22 @@ class ArrowTableBufferObject(BufferObject):
     def total_bytes(self) -> int:
         return self.nbytes
 
-    def write_to(self, buffer: Buffer):
-        assert isinstance(buffer, Buffer)
-        sink = pa.FixedSizeBufferWriter(pa.py_buffer(buffer))
+    def write_to(self, stream):
+        if isinstance(stream, Buffer):
+            sink = pa.FixedSizeBufferWriter(pa.py_buffer(stream))
+        else:
+            sink = pa.BufferOutputStream()
         ArrowTableBufferObject._write(self.table, sink)
+        if not isinstance(stream, Buffer):
+            data = sink.getvalue()
+            if hasattr(stream, "write"):
+                stream.write(data.to_pybytes())
 
-    def to_buffer(self) -> Buffer:
+    def getbuffer(self) -> memoryview:
         sink = pa.BufferOutputStream()
         self._write(self.table, sink)
-        return Buffer(sink.getvalue())
+        arrow_buffer = sink.getvalue()
+        return memoryview(arrow_buffer)
 
     @staticmethod
     def _write(table, sink):

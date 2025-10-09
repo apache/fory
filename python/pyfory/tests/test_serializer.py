@@ -362,7 +362,7 @@ def test_serialize_arrow_zero_copy():
     serialized_data = Buffer.allocate(32)
     fory.serialize(record_batch, buffer=serialized_data, buffer_callback=buffer_objects.append)
     fory.serialize(table, buffer=serialized_data, buffer_callback=buffer_objects.append)
-    buffers = [o.to_buffer() for o in buffer_objects]
+    buffers = [o.getbuffer() for o in buffer_objects]
     new_batch = fory.deserialize(serialized_data, buffers=buffers[:1])
     new_table = fory.deserialize(serialized_data, buffers=buffers[1:])
     buffer_objects.clear()

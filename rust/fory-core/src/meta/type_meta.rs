@@ -548,7 +548,8 @@ impl TypeMetaLayer {
 
 #[derive(Debug)]
 pub struct TypeMeta {
-    // hash: u64,
+    // assigned valid value and used, only during deserializing
+    hash: i64,
     layers: Vec<TypeMetaLayer>,
 }
 
@@ -559,6 +560,10 @@ impl TypeMeta {
 
     pub fn get_type_id(&self) -> u32 {
         self.layers.first().unwrap().get_type_id()
+    }
+
+    pub fn get_hash(&self) -> i64 {
+        self.hash
     }
 
     pub fn get_type_name(&self) -> MetaString {
@@ -577,7 +582,7 @@ impl TypeMeta {
         field_infos: Vec<FieldInfo>,
     ) -> TypeMeta {
         TypeMeta {
-            // hash: 0,
+            hash: 0,
             layers: vec![TypeMetaLayer::new(
                 type_id,
                 namespace,
@@ -604,7 +609,10 @@ impl TypeMeta {
         // while current_meta_size < meta_size {}
         let layer = TypeMetaLayer::from_bytes(reader);
         layers.push(layer);
-        TypeMeta { layers }
+        TypeMeta {
+            layers,
+            hash: header,
+        }
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
