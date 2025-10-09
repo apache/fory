@@ -282,23 +282,4 @@
       </plugin>
     </plugins>
   </build>
-</project>nkXRef>false</linkXRef>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>com.diffplug.spotless</groupId>
-        <artifactId>spotless-maven-plugin</artifactId>
-        <version>${maven-spotless-plugin.version}</version>
-        <configuration>
-          <java>
-            <googleJavaFormat>
-              <!-- 1.19.1 support JDK21 -->
-              <version>1.19.1</version>
-              <style>GOOGLE</style>
-            </googleJavaFormat>
-          </java>
-        </configuration>
-      </plugin>
-    </plugins>
-  </build>
 </project>
