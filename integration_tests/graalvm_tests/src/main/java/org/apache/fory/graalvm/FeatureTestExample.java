@@ -82,6 +82,7 @@ public class FeatureTestExample {
         Fory fory = Fory.builder()
             .withLanguage(Language.JAVA)
             .withRefTracking(true)
+            .withCodegen(false)
             .build();
         
         fory.register(ProblematicClass.class);
