@@ -68,6 +68,11 @@ fn assign_value(fields: &[&Field]) -> Vec<TokenStream> {
                         #name: #var_name
                     }
                 }
+                StructField::ContainsTraitObject => {
+                    quote! {
+                        #name: #var_name.unwrap()
+                    }
+                }
                 _ => {
                     quote! {
                         #name: #var_name.unwrap_or_default()
@@ -283,10 +288,15 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
                 quote! {
                     #original_ident: #private_ident
                 }
-            }
-            _ => {
-                quote! {
-                    #original_ident: #private_ident.unwrap_or_default()
+                StructField::ContainsTraitObject => {
+                    quote! {
+                        #original_ident: #private_ident.unwrap()
+                    }
+                }
+                _ => {
+                    quote! {
+                        #original_ident: #private_ident.unwrap_or_default()
+                    }
                 }
             }
         }
@@ -403,7 +413,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
             quote! {
                 if _field.field_name.as_str() == #field_name_str {
                     let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(context.get_fory());
-                    #var_name = Some(fory_core::serializer::read_ref_info_data::<#ty>(context, true, skip_ref_flag, false).unwrap());
+                    #var_name = Some(fory_core::serializer::read_ref_info_data::<#ty>(context, true, skip_ref_flag, false)?);
                 }
             }
         }

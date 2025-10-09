@@ -41,18 +41,21 @@
 //!
 //! ```rust,ignore
 //! use fory_core::RcWeak;
+//! use fory_core::Fory;
 //! use std::cell::RefCell;
 //! use std::rc::Rc;
 //! use fory_derive::ForyObject;
 //!
-//! // #[derive(ForyObject)]
+//! #[derive(ForyObject)]
 //! struct Node {
 //!     value: i32,
 //!     parent: RcWeak<RefCell<Node>>,
 //!     children: Vec<Rc<RefCell<Node>>>,
 //! }
 //!
-//! // Build a parent with two children
+//! let mut fory = Fory::default();
+//! fory.register::<Node>(2000);
+//!
 //! let parent = Rc::new(RefCell::new(Node {
 //!     value: 1,
 //!     parent: RcWeak::new(),
@@ -74,12 +77,8 @@
 //! parent.borrow_mut().children.push(child1);
 //! parent.borrow_mut().children.push(child2);
 //!
-//! // Serialize & deserialize while preserving reference identity
-//! let mut fury = fory_core::fory::Fory::default();
-//! fury.register::<Node>(2000);
-//!
-//! let serialized = fury.serialize(&parent);
-//! let deserialized: Rc<RefCell<Node>> = fury.deserialize(&serialized).unwrap();
+//! let serialized = fory.serialize(&parent);
+//! let deserialized: Rc<RefCell<Node>> = fory.deserialize(&serialized).unwrap();
 //!
 //! assert_eq!(deserialized.borrow().children.len(), 2);
 //! for child in &deserialized.borrow().children {
@@ -91,23 +90,25 @@
 //! ## Example — Arc for Multi-Threaded Graphs
 //!
 //! ```rust,ignore
-//! use fory_core::serializer::weak::ArcWeak;
+//! use fory_core::ArcWeak;
+//! use fory_core::Fory;
 //! use std::sync::{Arc, Mutex};
+//! use fory_derive::ForyObject;
 //!
-//! #[derive(fory_derive::ForyObject)]
+//! #[derive(ForyObject)]
 //! struct Node {
 //!     value: i32,
 //!     parent: ArcWeak<Mutex<Node>>,
 //! }
 //!
+//! let mut fory = Fory::default();
+//! fory.register::<Node>(2001);
+//!
 //! let parent = Arc::new(Mutex::new(Node { value: 1, parent: ArcWeak::new() }));
 //! let child = Arc::new(Mutex::new(Node { value: 2, parent: ArcWeak::from(&parent) }));
 //!
-//! let mut fury = fory_core::fory::Fory::default();
-//! fury.register::<Node>(2001);
-//!
-//! let serialized = fury.serialize(&child);
-//! let deserialized: Arc<Mutex<Node>> = fury.deserialize(&serialized).unwrap();
+//! let serialized = fory.serialize(&child);
+//! let deserialized: Arc<Mutex<Node>> = fory.deserialize(&serialized).unwrap();
 //! assert_eq!(deserialized.lock().unwrap().value, 2);
 //! ```
 //!
@@ -337,7 +338,9 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         match ref_flag {
             RefFlag::Null => Ok(RcWeak::new()),
             RefFlag::RefValue => {
+                context.inc_depth()?;
                 let data = T::fory_read_data(context, _is_field)?;
+                context.dec_depth();
                 let rc = Rc::new(data);
                 let ref_id = context.ref_reader.store_rc_ref(rc);
                 let rc = context.ref_reader.get_rc_ref::<T>(ref_id).unwrap();
@@ -434,7 +437,9 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         match ref_flag {
             RefFlag::Null => Ok(ArcWeak::new()),
             RefFlag::RefValue => {
+                context.inc_depth()?;
                 let data = T::fory_read_data(context, _is_field)?;
+                context.dec_depth();
                 let arc = Arc::new(data);
                 let ref_id = context.ref_reader.store_arc_ref(arc);
                 let arc = context.ref_reader.get_arc_ref::<T>(ref_id).unwrap();
@@ -464,7 +469,6 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
             _ => Err(anyhow!("Weak can only be Null, RefValue or Ref, got {:?}", ref_flag).into()),
         }
     }
-
     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         Self::fory_read(context, is_field)
     }

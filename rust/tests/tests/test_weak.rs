@@ -25,31 +25,31 @@ use std::sync::Mutex;
 
 #[test]
 fn test_rc_weak_null_serialization() {
-    let fury = Fory::default();
+    let fory = Fory::default();
 
     let weak: RcWeak<i32> = RcWeak::new();
 
-    let serialized = fury.serialize(&weak);
-    let deserialized: RcWeak<i32> = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&weak);
+    let deserialized: RcWeak<i32> = fory.deserialize(&serialized).unwrap();
 
     assert!(deserialized.upgrade().is_none());
 }
 
 #[test]
 fn test_arc_weak_null_serialization() {
-    let fury = Fory::default();
+    let fory = Fory::default();
 
     let weak: ArcWeak<i32> = ArcWeak::new();
 
-    let serialized = fury.serialize(&weak);
-    let deserialized: ArcWeak<i32> = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&weak);
+    let deserialized: ArcWeak<i32> = fory.deserialize(&serialized).unwrap();
 
     assert!(deserialized.upgrade().is_none());
 }
 
 #[test]
 fn test_rc_weak_dead_pointer_serializes_as_null() {
-    let fury = Fory::default();
+    let fory = Fory::default();
 
     let weak = {
         let rc = Rc::new(42i32);
@@ -61,15 +61,15 @@ fn test_rc_weak_dead_pointer_serializes_as_null() {
     assert!(weak.upgrade().is_none());
 
     // Should serialize as Null
-    let serialized = fury.serialize(&weak);
-    let deserialized: RcWeak<i32> = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&weak);
+    let deserialized: RcWeak<i32> = fory.deserialize(&serialized).unwrap();
 
     assert!(deserialized.upgrade().is_none());
 }
 
 #[test]
 fn test_arc_weak_dead_pointer_serializes_as_null() {
-    let fury = Fory::default();
+    let fory = Fory::default();
 
     let weak = {
         let arc = Arc::new(String::from("test"));
@@ -81,15 +81,15 @@ fn test_arc_weak_dead_pointer_serializes_as_null() {
     assert!(weak.upgrade().is_none());
 
     // Should serialize as Null
-    let serialized = fury.serialize(&weak);
-    let deserialized: ArcWeak<String> = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&weak);
+    let deserialized: ArcWeak<String> = fory.deserialize(&serialized).unwrap();
 
     assert!(deserialized.upgrade().is_none());
 }
 
 #[test]
 fn test_rc_weak_in_vec_circular_reference() {
-    let fury = Fory::default();
+    let fory = Fory::default();
 
     let data1 = Rc::new(42i32);
     let data2 = Rc::new(100i32);
@@ -99,15 +99,15 @@ fn test_rc_weak_in_vec_circular_reference() {
     let weak3 = weak1.clone();
 
     let weaks = vec![weak1, weak2, weak3];
-    let serialized = fury.serialize(&weaks);
-    let deserialized: Vec<RcWeak<i32>> = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&weaks);
+    let deserialized: Vec<RcWeak<i32>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
 }
 
 #[test]
 fn test_arc_weak_in_vec_circular_reference() {
-    let fury = Fory::default();
+    let fory = Fory::default();
 
     let data1 = Arc::new(String::from("hello"));
     let data2 = Arc::new(String::from("world"));
@@ -117,8 +117,8 @@ fn test_arc_weak_in_vec_circular_reference() {
     let weak3 = weak1.clone();
 
     let weaks = vec![weak1, weak2, weak3];
-    let serialized = fury.serialize(&weaks);
-    let deserialized: Vec<ArcWeak<String>> = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&weaks);
+    let deserialized: Vec<ArcWeak<String>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
 }
@@ -133,8 +133,8 @@ fn test_rc_weak_field_in_struct() {
         weak_ref: RcWeak<i32>,
     }
 
-    let mut fury = Fory::default();
-    fury.register::<SimpleNode>(1000);
+    let mut fory = Fory::default();
+    fory.register::<SimpleNode>(1000);
 
     let data = Rc::new(42i32);
     let node = SimpleNode {
@@ -142,8 +142,8 @@ fn test_rc_weak_field_in_struct() {
         weak_ref: RcWeak::from(&data),
     };
 
-    let serialized = fury.serialize(&node);
-    let deserialized: SimpleNode = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&node);
+    let deserialized: SimpleNode = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.value, 1);
 }
@@ -160,8 +160,8 @@ struct Node {
 #[test]
 fn test_node_circular_reference_with_parent_children() {
     // Register the Node type with Fory
-    let mut fury = Fory::default();
-    fury.register::<Node>(2000);
+    let mut fory = Fory::default();
+    fory.register::<Node>(2000);
 
     // Create parent
     let parent = Rc::new(RefCell::new(Node {
@@ -192,10 +192,10 @@ fn test_node_circular_reference_with_parent_children() {
     child2.borrow_mut().parent = RcWeak::from(&parent);
 
     // --- Serialize the parent node (will include children recursively) ---
-    let serialized = fury.serialize(&parent);
+    let serialized = fory.serialize(&parent);
 
     // --- Deserialize ---
-    let deserialized: Rc<RefCell<Node>> = fury.deserialize(&serialized).unwrap();
+    let deserialized: Rc<RefCell<Node>> = fory.deserialize(&serialized).unwrap();
 
     // --- Verify ---
     let des_parent = deserialized.borrow();
@@ -218,8 +218,8 @@ fn test_arc_mutex_circular_reference() {
         children: Vec<Arc<Mutex<Node>>>,
     }
 
-    let mut fury = Fory::default();
-    fury.register::<Node>(6000);
+    let mut fory = Fory::default();
+    fory.register::<Node>(6000);
 
     let parent = Arc::new(Mutex::new(Node {
         val: 10,
@@ -242,8 +242,8 @@ fn test_arc_mutex_circular_reference() {
     parent.lock().unwrap().children.push(child1.clone());
     parent.lock().unwrap().children.push(child2.clone());
 
-    let serialized = fury.serialize(&parent);
-    let deserialized: Arc<Mutex<Node>> = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&parent);
+    let deserialized: Arc<Mutex<Node>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.lock().unwrap().children.len(), 2);
     for child in &deserialized.lock().unwrap().children {
