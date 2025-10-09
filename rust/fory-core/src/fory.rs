@@ -20,7 +20,9 @@ use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
+use crate::resolver::metastring_resolver::MetaStringResolver;
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
+use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::IS_NULL_FLAG;
 use crate::types::{
@@ -29,6 +31,8 @@ use crate::types::{
 };
 use crate::util::get_ext_actual_type_id;
 use anyhow::anyhow;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 static EMPTY_STRING: String = String::new();
 
@@ -37,6 +41,7 @@ pub struct Fory {
     xlang: bool,
     share_meta: bool,
     type_resolver: TypeResolver,
+    metastring_resolver: Rc<RefCell<MetaStringResolver>>,
     compress_string: bool,
 }
 
@@ -47,6 +52,7 @@ impl Default for Fory {
             xlang: true,
             share_meta: false,
             type_resolver: TypeResolver::default(),
+            metastring_resolver: Rc::from(RefCell::from(MetaStringResolver::default())),
             compress_string: false,
         }
     }
@@ -80,6 +86,14 @@ impl Fory {
 
     pub fn is_share_meta(&self) -> bool {
         self.share_meta
+    }
+
+    pub fn get_type_resolver(&self) -> &TypeResolver {
+        &self.type_resolver
+    }
+
+    pub fn get_metastring_resolver(&self) -> Rc<RefCell<MetaStringResolver>> {
+        Rc::clone(&self.metastring_resolver)
     }
 
     pub fn write_head<T: Serializer>(&self, is_none: bool, writer: &mut Writer) {
@@ -143,19 +157,21 @@ impl Fory {
         Ok(false)
     }
 
-    pub fn deserialize<T: Serializer>(&self, bf: &[u8]) -> Result<T, Error> {
+    pub fn deserialize<T: Serializer + ForyDefault>(&self, bf: &[u8]) -> Result<T, Error> {
         let reader = Reader::new(bf);
         let mut context = ReadContext::new(self, reader);
-        self.deserialize_with_context(&mut context)
+        let result = self.deserialize_with_context(&mut context);
+        assert_eq!(context.reader.slice_after_cursor().len(), 0);
+        result
     }
 
-    pub fn deserialize_with_context<T: Serializer>(
+    pub fn deserialize_with_context<T: Serializer + ForyDefault>(
         &self,
         context: &mut ReadContext,
     ) -> Result<T, Error> {
         let is_none = self.read_head(&mut context.reader)?;
         if is_none {
-            return Ok(T::default());
+            return Ok(T::fory_default());
         }
         let mut bytes_to_skip = 0;
         if self.mode == Mode::Compatible {
@@ -168,6 +184,7 @@ impl Fory {
         if bytes_to_skip > 0 {
             context.reader.skip(bytes_to_skip as u32);
         }
+        context.ref_reader.resolve_callbacks();
         result
     }
 
@@ -197,18 +214,14 @@ impl Fory {
         context.writer.dump()
     }
 
-    pub fn get_type_resolver(&self) -> &TypeResolver {
-        &self.type_resolver
-    }
-
-    pub fn register<T: 'static + StructSerializer + Serializer>(&mut self, id: u32) {
+    pub fn register<T: 'static + StructSerializer + Serializer + ForyDefault>(&mut self, id: u32) {
         let actual_type_id = T::fory_actual_type_id(id, false, &self.mode);
         let type_info =
             TypeInfo::new::<T>(self, actual_type_id, &EMPTY_STRING, &EMPTY_STRING, false);
         self.type_resolver.register::<T>(&type_info);
     }
 
-    pub fn register_by_namespace<T: 'static + StructSerializer + Serializer>(
+    pub fn register_by_namespace<T: 'static + StructSerializer + Serializer + ForyDefault>(
         &mut self,
         namespace: &str,
         type_name: &str,
@@ -218,16 +231,16 @@ impl Fory {
         self.type_resolver.register::<T>(&type_info);
     }
 
-    pub fn register_by_name<T: 'static + StructSerializer + Serializer>(
+    pub fn register_by_name<T: 'static + StructSerializer + Serializer + ForyDefault>(
         &mut self,
         type_name: &str,
     ) {
         self.register_by_namespace::<T>("", type_name);
     }
 
-    pub fn register_serializer<T: Serializer>(&mut self, id: u32) {
+    pub fn register_serializer<T: Serializer + ForyDefault>(&mut self, id: u32) {
         let actual_type_id = get_ext_actual_type_id(id, false);
-        let type_info = TypeInfo::new_with_empty_def::<T>(
+        let type_info = TypeInfo::new_with_empty_fields::<T>(
             self,
             actual_type_id,
             &EMPTY_STRING,
@@ -237,18 +250,29 @@ impl Fory {
         self.type_resolver.register_serializer::<T>(&type_info);
     }
 
-    pub fn register_serializer_by_name<T: Serializer>(&mut self, type_name: &str, namespace: &str) {
-        let actual_type_id = get_ext_actual_type_id(0, false);
+    pub fn register_serializer_by_namespace<T: Serializer + ForyDefault>(
+        &mut self,
+        namespace: &str,
+        type_name: &str,
+    ) {
+        let actual_type_id = get_ext_actual_type_id(0, true);
         let type_info =
-            TypeInfo::new_with_empty_def::<T>(self, actual_type_id, namespace, type_name, true);
+            TypeInfo::new_with_empty_fields::<T>(self, actual_type_id, namespace, type_name, true);
         self.type_resolver.register_serializer::<T>(&type_info);
+    }
+
+    pub fn register_serializer_by_name<T: Serializer + ForyDefault>(&mut self, type_name: &str) {
+        self.register_serializer_by_namespace::<T>("", type_name);
     }
 }
 
-pub fn write<T: Serializer>(this: &T, context: &mut WriteContext, is_field: bool) {
-    T::fory_write(this, context, is_field);
+pub fn write_data<T: Serializer>(this: &T, context: &mut WriteContext, is_field: bool) {
+    T::fory_write_data(this, context, is_field);
 }
 
-pub fn read<T: Serializer>(context: &mut ReadContext, is_field: bool) -> Result<T, Error> {
-    T::fory_read(context, is_field)
+pub fn read_data<T: Serializer + ForyDefault>(
+    context: &mut ReadContext,
+    is_field: bool,
+) -> Result<T, Error> {
+    T::fory_read_data(context, is_field)
 }

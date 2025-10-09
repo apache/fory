@@ -43,31 +43,7 @@ pub enum Encoding {
     AllToLowerSpecial = 0x04,
 }
 
-#[derive(Clone, Debug, Default, Hash, PartialEq, Eq)]
-pub struct MetaStringBytes {
-    pub data: Vec<u8>,
-    pub hash: i64,
-}
-
-impl MetaStringBytes {
-    pub fn from(_str: &MetaString) -> Self {
-        unimplemented!()
-        // let bytes = str.bytes.clone();
-        // let value = (murmurhash3_x64_128(&bytes, 47).0 as i64).abs();
-        // let hash = if value == 0 { value+256 } else { value } & 0xffffffffffffff00;
-        // let hash = hash | (str.encoding.clone() as i64 & HEADER_MASK);
-        // Self {
-        //     data: bytes,
-        //     hash,
-        // }
-    }
-
-    pub fn to(&self) -> MetaString {
-        unimplemented!()
-    }
-}
-
-#[derive(Debug, PartialEq, Hash, Eq, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct MetaString {
     pub original: String,
     pub encoding: Encoding,
@@ -75,6 +51,20 @@ pub struct MetaString {
     pub strip_last_char: bool,
     pub special_char1: char,
     pub special_char2: char,
+}
+
+impl PartialEq for MetaString {
+    fn eq(&self, other: &Self) -> bool {
+        self.bytes == other.bytes
+    }
+}
+
+impl Eq for MetaString {}
+
+impl std::hash::Hash for MetaString {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.bytes.hash(state);
+    }
 }
 
 impl MetaString {
@@ -99,6 +89,11 @@ impl MetaString {
             special_char1,
             special_char2,
         })
+    }
+
+    pub fn write_to(&self, writer: &mut crate::buffer::Writer) {
+        writer.write_varuint32(self.bytes.len() as u32);
+        writer.write_bytes(&self.bytes);
     }
 }
 

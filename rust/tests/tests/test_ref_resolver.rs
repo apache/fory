@@ -19,6 +19,7 @@
 
 use fory_core::buffer::Writer;
 use fory_core::resolver::ref_resolver::{RefReader, RefWriter};
+use fory_core::serializer::weak::{ArcWeak, RcWeak};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -126,4 +127,64 @@ fn test_ref_writer_ref_reader_separation() {
     let ref_id = ref_reader.store_rc_ref(rc1.clone());
     let retrieved = ref_reader.get_rc_ref::<i32>(ref_id).unwrap();
     assert!(Rc::ptr_eq(&rc1, &retrieved));
+}
+
+#[test]
+fn test_rc_weak_wrapper() {
+    let rc = Rc::new(42i32);
+    let weak = RcWeak::from(&rc);
+
+    // Test upgrade
+    assert_eq!(*weak.upgrade().unwrap(), 42);
+
+    // Test strong and weak counts
+    assert_eq!(weak.strong_count(), 1);
+    assert!(weak.weak_count() > 0);
+
+    // Test clone
+    let weak2 = weak.clone();
+    assert_eq!(*weak2.upgrade().unwrap(), 42);
+}
+
+#[test]
+fn test_arc_weak_wrapper() {
+    let arc = Arc::new(42i32);
+    let weak = ArcWeak::from(&arc);
+
+    // Test upgrade
+    assert_eq!(*weak.upgrade().unwrap(), 42);
+
+    // Test strong and weak counts
+    assert_eq!(weak.strong_count(), 1);
+    assert!(weak.weak_count() > 0);
+
+    // Test clone
+    let weak2 = weak.clone();
+    assert_eq!(*weak2.upgrade().unwrap(), 42);
+}
+
+#[test]
+fn test_rc_weak_update() {
+    let rc1 = Rc::new(10i32);
+    let rc2 = Rc::new(20i32);
+
+    let weak = RcWeak::from(&rc1);
+    assert_eq!(*weak.upgrade().unwrap(), 10);
+
+    // Update the weak to point to rc2
+    weak.update(Rc::downgrade(&rc2));
+    assert_eq!(*weak.upgrade().unwrap(), 20);
+}
+
+#[test]
+fn test_arc_weak_update() {
+    let arc1 = Arc::new(10i32);
+    let arc2 = Arc::new(20i32);
+
+    let weak = ArcWeak::from(&arc1);
+    assert_eq!(*weak.upgrade().unwrap(), 10);
+
+    // Update the weak to point to arc2
+    weak.update(Arc::downgrade(&arc2));
+    assert_eq!(*weak.upgrade().unwrap(), 20);
 }

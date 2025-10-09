@@ -52,6 +52,7 @@
 //! - Optional types (`Option<T>`)
 //! - Date/time types (chrono integration)
 //! - Custom structs and enums
+//! - Trait objects (Box, Rc, Arc)
 //!
 //! ### Performance Optimizations
 //!
@@ -60,6 +61,79 @@
 //! - **Variable-length encoding** for compact representation
 //! - **Little-endian byte order** for cross-platform compatibility
 //!
+//! ### Trait Object Serialization
+//!
+//! Fory supports polymorphic serialization through trait objects:
+//!
+//! #### Box-Based Trait Objects
+//!
+//! Define custom traits and register implementations:
+//!
+//! ```rust,ignore
+//! use fory_core::{Fory, register_trait_type, Serializer, Mode};
+//! use fory_derive::ForyObject;
+//!
+//! trait Animal: Serializer {
+//!     fn speak(&self) -> String;
+//! }
+//!
+//! #[derive(ForyObject, Debug)]
+//! struct Dog { name: String }
+//!
+//! #[derive(ForyObject, Debug)]
+//! struct Cat { name: String }
+//!
+//! impl Animal for Dog {
+//!     fn speak(&self) -> String { "Woof!".to_string() }
+//! }
+//!
+//! impl Animal for Cat {
+//!     fn speak(&self) -> String { "Meow!".to_string() }
+//! }
+//!
+//! register_trait_type!(Animal, Dog, Cat);
+//!
+//! #[derive(ForyObject)]
+//! struct Zoo {
+//!     star_animal: Box<dyn Animal>,
+//! }
+//!
+//! # fn main() {
+//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! fory.register::<Dog>(100);
+//! fory.register::<Cat>(101);
+//! fory.register::<Zoo>(102);
+//!
+//! let zoo = Zoo {
+//!     star_animal: Box::new(Dog { name: "Buddy".to_string() }),
+//! };
+//!
+//! let bytes = fory.serialize(&zoo);
+//! let decoded: Zoo = fory.deserialize(&bytes).unwrap();
+//! assert_eq!(decoded.star_animal.speak(), "Woof!");
+//! # }
+//! ```
+//!
+//! #### Rc/Arc-Based Trait Objects
+//!
+//! For reference-counted trait objects, use them directly in struct fields:
+//!
+//! ```rust,ignore
+//! # use fory_core::Serializer;
+//! # use fory_derive::ForyObject;
+//! # use std::rc::Rc;
+//! # use std::sync::Arc;
+//! # trait Animal: Serializer { fn speak(&self) -> String; }
+//! #[derive(ForyObject)]
+//! struct Shelter {
+//!     animals_rc: Vec<Rc<dyn Animal>>,
+//!     animals_arc: Vec<Arc<dyn Animal>>,
+//! }
+//! ```
+//!
+//! For standalone serialization, use auto-generated wrapper types (e.g., `AnimalRc`, `AnimalArc`)
+//! created by `register_trait_type!` due to Rust's orphan rule limitations.
+//!
 //! ## Usage
 //!
 //! This crate is typically used through the higher-level `fory` crate,
@@ -67,7 +141,9 @@
 //! you can use the core types directly for advanced use cases.
 //!
 //! ```rust
-//! use fory_core::{fory::Fory, error::Error, types::Mode};
+//! use fory_core::fory::Fory;
+//! use fory_core::error::Error;
+//! use fory_core::types::Mode;
 //! use fory_core::row::{to_row, from_row};
 //!
 //! // Create a Fory instance
@@ -90,3 +166,13 @@ pub mod row;
 pub mod serializer;
 pub mod types;
 pub mod util;
+
+// Re-export paste for use in macros
+pub use paste;
+
+pub use crate::buffer::{Reader, Writer};
+pub use crate::fory::Fory;
+pub use crate::resolver::context::{ReadContext, WriteContext};
+pub use crate::resolver::type_resolver::TypeResolver;
+pub use crate::serializer::weak::{ArcWeak, RcWeak};
+pub use crate::serializer::{ForyDefault, Serializer};

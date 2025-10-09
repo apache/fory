@@ -22,7 +22,7 @@
 //!
 //! ## Available Macros
 //!
-//! ### `#[derive(Fory)]`
+//! ### `#[derive(ForyObject)]`
 //!
 //! Generates object serialization code for structs and enums. This macro
 //! implements the `Serializer` trait, enabling full object graph serialization
@@ -36,10 +36,10 @@
 //!
 //! **Example:**
 //! ```rust
-//! use fory_derive::Fory;
+//! use fory_derive::ForyObject;
 //! use std::collections::HashMap;
 //!
-//! #[derive(Fory, Debug, PartialEq, Default)]
+//! #[derive(ForyObject, Debug, PartialEq)]
 //! struct Person {
 //!     name: String,
 //!     age: i32,
@@ -48,13 +48,13 @@
 //!     metadata: HashMap<String, String>,
 //! }
 //!
-//! #[derive(Fory, Debug, PartialEq, Default)]
+//! #[derive(ForyObject, Debug, PartialEq)]
 //! struct Address {
 //!     street: String,
 //!     city: String,
 //! }
 //!
-//! #[derive(Fory, Debug, PartialEq, Default)]
+//! #[derive(ForyObject, Debug, PartialEq, Default)]
 //! enum Status {
 //!     #[default]
 //!     Active,
@@ -90,7 +90,7 @@
 //!
 //! ## Generated Code
 //!
-//! ### For `#[derive(Fory)]`
+//! ### For `#[derive(ForyObject)]`
 //!
 //! The macro generates:
 //! - `Serializer` trait implementation
@@ -134,9 +134,9 @@
 //!
 //! ```rust
 //! use fory_core::{fory::Fory, error::Error};
-//! use fory_derive::Fory;
+//! use fory_derive::ForyObject;
 //!
-//! #[derive(Fory, Debug, PartialEq, Default)]
+//! #[derive(ForyObject, Debug, PartialEq)]
 //! struct MyData {
 //!     value: i32,
 //!     text: String,
@@ -183,24 +183,27 @@ mod util;
 /// # Example
 ///
 /// ```rust
-/// use fory_derive::Fory;
+/// use fory_derive::ForyObject;
 ///
-/// #[derive(Fory, Debug, PartialEq, Default)]
+/// #[derive(ForyObject, Debug, PartialEq)]
 /// struct Person {
 ///     name: String,
 ///     age: i32,
 ///     address: Address,
 /// }
 ///
-/// #[derive(Fory, Debug, PartialEq, Default)]
+/// #[derive(ForyObject, Debug, PartialEq)]
 /// struct Address {
 ///     street: String,
 ///     city: String,
 /// }
 /// ```
-#[proc_macro_derive(Fory)]
+#[proc_macro_derive(ForyObject)]
 pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+
+    // Check if this is being applied to a trait (which is not possible with derive macros)
+    // Derive macros can only be applied to structs, enums, and unions
     object::derive_serializer(&input)
 }
 

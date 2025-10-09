@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_derive::Fory;
+use fory_derive::ForyObject;
 use std::collections::HashMap;
 
 #[test]
@@ -46,7 +46,7 @@ fn test_box_primitive() {
 
 #[test]
 fn test_box_struct() {
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(ForyObject, Debug, PartialEq)]
     struct Person {
         name: String,
         age: i32,
@@ -69,7 +69,7 @@ fn test_box_struct() {
 
 #[test]
 fn test_box_struct_separate() {
-    #[derive(Fory, Debug, PartialEq, Default)]
+    #[derive(ForyObject, Debug, PartialEq)]
     struct Person {
         name: String,
         age: i32,

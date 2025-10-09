@@ -20,7 +20,7 @@ use crate::fory::Fory;
 use crate::meta::get_latin1_length;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
-use crate::serializer::Serializer;
+use crate::serializer::{read_type_info, write_type_info, ForyDefault, Serializer};
 use crate::types::TypeId;
 use std::mem;
 
@@ -47,16 +47,7 @@ impl Serializer for String {
             let utf16: Vec<u16> = self.encode_utf16().collect();
             let bitor = (utf16.len() as u64 * 2) << 2 | StrEncoding::Utf16 as u64;
             context.writer.write_varuint36_small(bitor);
-            for unit in utf16 {
-                #[cfg(target_endian = "little")]
-                {
-                    context.writer.write_u16(unit);
-                }
-                #[cfg(target_endian = "big")]
-                {
-                    unimplemented!()
-                }
-            }
+            context.writer.write_utf16_bytes(&utf16);
         }
     }
 
@@ -86,5 +77,27 @@ impl Serializer for String {
 
     fn fory_get_type_id(_fory: &Fory) -> u32 {
         TypeId::STRING as u32
+    }
+
+    fn fory_type_id_dyn(&self, _fory: &Fory) -> u32 {
+        TypeId::STRING as u32
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
+        write_type_info::<Self>(context, is_field);
+    }
+
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
+        read_type_info::<Self>(context, is_field);
+    }
+}
+
+impl ForyDefault for String {
+    fn fory_default() -> Self {
+        String::new()
     }
 }

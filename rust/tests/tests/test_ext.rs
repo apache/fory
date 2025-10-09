@@ -18,14 +18,14 @@
 use fory_core::error::Error;
 use fory_core::fory::Fory;
 use fory_core::resolver::context::{ReadContext, WriteContext};
-use fory_core::serializer::Serializer;
+use fory_core::serializer::{ForyDefault, Serializer};
 use fory_core::types::Mode::Compatible;
-use fory_derive::Fory;
+use fory_derive::ForyObject;
 
 #[test]
 #[allow(dead_code)]
 fn test_duplicate_impl() {
-    #[derive(Debug, Fory, PartialEq, Default)]
+    #[derive(ForyObject, Debug, PartialEq)]
     struct Item1 {
         f1: i32,
     }
@@ -46,22 +46,37 @@ fn test_duplicate_impl() {
 
 #[test]
 fn test_use() {
-    use fory_core::fory::{read, write};
-    #[derive(Debug, PartialEq, Default)]
+    use fory_core::fory::{read_data, write_data};
+    #[derive(Debug, PartialEq)]
     struct Item {
         f1: i32,
         f2: i8,
     }
+
+    impl ForyDefault for Item {
+        fn fory_default() -> Self {
+            Self { f1: 0, f2: 0 }
+        }
+    }
+
     impl Serializer for Item {
         fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
-            write(&self.f1, context, is_field);
+            write_data(&self.f1, context, is_field);
         }
 
         fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
             Ok(Self {
-                f1: read(context, is_field)?,
+                f1: read_data(context, is_field)?,
                 f2: 0,
             })
+        }
+
+        fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+            Self::fory_get_type_id(fory)
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
         }
     }
     let mut fory = Fory::default().mode(Compatible).xlang(true);

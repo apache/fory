@@ -22,12 +22,13 @@ use crate::resolver::context::WriteContext;
 use crate::serializer::collection::{
     read_collection, read_collection_type_info, write_collection, write_collection_type_info,
 };
-use crate::serializer::Serializer;
+
+use crate::serializer::{ForyDefault, Serializer};
 use crate::types::TypeId;
 use std::collections::HashSet;
 use std::mem;
 
-impl<T: Serializer + Eq + std::hash::Hash> Serializer for HashSet<T> {
+impl<T: Serializer + ForyDefault + Eq + std::hash::Hash> Serializer for HashSet<T> {
     fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
         write_collection(self, context, is_field);
     }
@@ -50,5 +51,19 @@ impl<T: Serializer + Eq + std::hash::Hash> Serializer for HashSet<T> {
 
     fn fory_get_type_id(_fory: &Fory) -> u32 {
         TypeId::SET as u32
+    }
+
+    fn fory_type_id_dyn(&self, _fory: &Fory) -> u32 {
+        TypeId::SET as u32
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl<T> ForyDefault for HashSet<T> {
+    fn fory_default() -> Self {
+        HashSet::new()
     }
 }

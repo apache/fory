@@ -16,12 +16,12 @@
 // under the License.
 
 use crate::models::{generate_random_string, TestDataGenerator};
-use fory_derive::Fory;
+use fory_derive::ForyObject;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // Fory models
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct SimpleStruct {
     pub id: i32,
     pub name: String,
@@ -29,13 +29,13 @@ pub struct SimpleStruct {
     pub score: f64,
 }
 
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct SimpleList {
     pub numbers: Vec<i32>,
     pub names: Vec<String>,
 }
 
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct SimpleMap {
     pub string_to_int: HashMap<String, i32>,
     pub int_to_string: HashMap<i32, String>,

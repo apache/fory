@@ -18,7 +18,7 @@
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::meta::TypeMeta;
+use crate::meta::{Encoding, MetaString, TypeMeta, NAMESPACE_DECODER};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -36,10 +36,35 @@ impl MetaReaderResolver {
         let meta_size = reader.read_varuint32();
         // self.reading_type_defs.reserve(meta_size as usize);
         for _ in 0..meta_size {
-            self.reading_type_defs
-                .push(Rc::new(TypeMeta::from_bytes(reader)));
+            let type_meta = TypeMeta::from_bytes(reader);
+            self.reading_type_defs.push(Rc::new(type_meta));
         }
         reader.get_cursor()
+    }
+
+    pub fn read_metastring(&self, reader: &mut Reader) -> MetaString {
+        let len = reader.read_varuint32() as usize;
+        if len == 0 {
+            return MetaString {
+                bytes: vec![],
+                encoding: Encoding::Utf8,
+                original: String::new(),
+                strip_last_char: false,
+                special_char1: '\0',
+                special_char2: '\0',
+            };
+        }
+        let bytes = reader.read_bytes(len);
+        let encoding_byte = bytes[0] & 0x07;
+        let encoding = match encoding_byte {
+            0x00 => Encoding::Utf8,
+            0x01 => Encoding::LowerSpecial,
+            0x02 => Encoding::LowerUpperDigitSpecial,
+            0x03 => Encoding::FirstToLowerSpecial,
+            0x04 => Encoding::AllToLowerSpecial,
+            _ => Encoding::Utf8,
+        };
+        NAMESPACE_DECODER.decode(bytes, encoding).unwrap()
     }
 }
 

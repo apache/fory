@@ -62,6 +62,8 @@ go test -v fory_xlang_test.go
 ```bash
 cd rust
 cargo test
+# run test with specific test file and method
+cargo test -p fory-tests  --test $test_file $test_method
 ```
 
 ### JavaScript

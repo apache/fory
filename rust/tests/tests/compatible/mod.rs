@@ -14,3 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+
+mod test_basic_type;
+mod test_container;
+mod test_struct;
+mod test_struct_enum;

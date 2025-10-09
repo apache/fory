@@ -17,12 +17,12 @@
 
 use crate::models::{generate_random_string, generate_random_strings, TestDataGenerator};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use fory_derive::Fory;
+use fory_derive::ForyObject;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 // Fory models
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct ForyProduct {
     pub id: String,
     pub name: String,
@@ -31,7 +31,7 @@ pub struct ForyProduct {
     pub attributes: HashMap<String, String>,
 }
 
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct ForyOrderItem {
     pub product: ForyProduct,
     pub quantity: i32,
@@ -39,7 +39,7 @@ pub struct ForyOrderItem {
     pub customizations: HashMap<String, String>,
 }
 
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct ForyCustomer {
     pub id: String,
     pub name: String,
@@ -49,7 +49,7 @@ pub struct ForyCustomer {
     pub member_since: NaiveDateTime,
 }
 
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct ForyOrder {
     pub id: String,
     pub customer: ForyCustomer,
@@ -60,7 +60,7 @@ pub struct ForyOrder {
     pub metadata: HashMap<String, String>,
 }
 
-#[derive(Fory, Debug, Clone, PartialEq, Default)]
+#[derive(ForyObject, Debug, Clone, PartialEq)]
 pub struct ECommerceData {
     pub orders: Vec<ForyOrder>,
     pub customers: Vec<ForyCustomer>,

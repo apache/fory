@@ -55,13 +55,15 @@ pub struct RefWriter {
     next_ref_id: u32,
 }
 
+type UpdateCallback = Box<dyn FnOnce(&RefReader)>;
+
 impl RefWriter {
     /// Creates a new RefWriter instance.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Attempt to write a reference for an Rc<T>.
+    /// Attempt to write a reference for an `Rc<T>`.
     ///
     /// Returns true if a reference was written (indicating this object has been
     /// seen before), false if this is the first occurrence and the object should
@@ -76,16 +78,14 @@ impl RefWriter {
     ///
     /// * `true` if a reference was written
     /// * `false` if this is the first occurrence of the object
-    pub fn try_write_rc_ref<T>(&mut self, writer: &mut Writer, rc: &Rc<T>) -> bool {
-        let ptr_addr = Rc::as_ptr(rc) as usize;
+    pub fn try_write_rc_ref<T: ?Sized>(&mut self, writer: &mut Writer, rc: &Rc<T>) -> bool {
+        let ptr_addr = Rc::as_ptr(rc) as *const () as usize;
 
         if let Some(&ref_id) = self.refs.get(&ptr_addr) {
-            // This object has been seen before, write a reference
             writer.write_i8(RefFlag::Ref as i8);
             writer.write_u32(ref_id);
             true
         } else {
-            // First time seeing this object, register it and return false
             let ref_id = self.next_ref_id;
             self.next_ref_id += 1;
             self.refs.insert(ptr_addr, ref_id);
@@ -94,7 +94,7 @@ impl RefWriter {
         }
     }
 
-    /// Attempt to write a reference for an Arc<T>.
+    /// Attempt to write a reference for an `Arc<T>`.
     ///
     /// Returns true if a reference was written (indicating this object has been
     /// seen before), false if this is the first occurrence and the object should
@@ -109,8 +109,8 @@ impl RefWriter {
     ///
     /// * `true` if a reference was written
     /// * `false` if this is the first occurrence of the object
-    pub fn try_write_arc_ref<T>(&mut self, writer: &mut Writer, arc: &Arc<T>) -> bool {
-        let ptr_addr = Arc::as_ptr(arc) as usize;
+    pub fn try_write_arc_ref<T: ?Sized>(&mut self, writer: &mut Writer, arc: &Arc<T>) -> bool {
+        let ptr_addr = Arc::as_ptr(arc) as *const () as usize;
 
         if let Some(&ref_id) = self.refs.get(&ptr_addr) {
             // This object has been seen before, write a reference
@@ -163,6 +163,8 @@ impl RefWriter {
 pub struct RefReader {
     /// Vector to store boxed objects for reference resolution
     refs: Vec<Box<dyn Any>>,
+    /// Callbacks to execute when references are resolved
+    callbacks: Vec<UpdateCallback>,
 }
 
 impl RefReader {
@@ -171,7 +173,26 @@ impl RefReader {
         Self::default()
     }
 
-    /// Store an Rc<T> for later reference resolution during deserialization.
+    /// Reserve a reference ID slot without storing anything yet.
+    ///
+    /// Returns the reserved reference ID that will be used when storing the object later.
+    pub fn reserve_ref_id(&mut self) -> u32 {
+        let ref_id = self.refs.len() as u32;
+        self.refs.push(Box::new(()));
+        ref_id
+    }
+
+    /// Store an `Rc<T>` at a previously reserved reference ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `ref_id` - The reference ID that was reserved
+    /// * `rc` - The Rc to store
+    pub fn store_rc_ref_at<T: 'static + ?Sized>(&mut self, ref_id: u32, rc: Rc<T>) {
+        self.refs[ref_id as usize] = Box::new(rc);
+    }
+
+    /// Store an `Rc<T>` for later reference resolution during deserialization.
     ///
     /// # Arguments
     ///
@@ -180,13 +201,23 @@ impl RefReader {
     /// # Returns
     ///
     /// The reference ID that can be used to retrieve this object later
-    pub fn store_rc_ref<T: 'static>(&mut self, rc: Rc<T>) -> u32 {
+    pub fn store_rc_ref<T: 'static + ?Sized>(&mut self, rc: Rc<T>) -> u32 {
         let ref_id = self.refs.len() as u32;
         self.refs.push(Box::new(rc));
         ref_id
     }
 
-    /// Store an Arc<T> for later reference resolution during deserialization.
+    /// Store an `Arc<T>` at a previously reserved reference ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `ref_id` - The reference ID that was reserved
+    /// * `arc` - The Arc to store
+    pub fn store_arc_ref_at<T: 'static + ?Sized>(&mut self, ref_id: u32, arc: Arc<T>) {
+        self.refs[ref_id as usize] = Box::new(arc);
+    }
+
+    /// Store an `Arc<T>` for later reference resolution during deserialization.
     ///
     /// # Arguments
     ///
@@ -195,13 +226,13 @@ impl RefReader {
     /// # Returns
     ///
     /// The reference ID that can be used to retrieve this object later
-    pub fn store_arc_ref<T: 'static>(&mut self, arc: Arc<T>) -> u32 {
+    pub fn store_arc_ref<T: 'static + ?Sized>(&mut self, arc: Arc<T>) -> u32 {
         let ref_id = self.refs.len() as u32;
         self.refs.push(Box::new(arc));
         ref_id
     }
 
-    /// Get an Rc<T> by reference ID during deserialization.
+    /// Get an `Rc<T>` by reference ID during deserialization.
     ///
     /// # Arguments
     ///
@@ -211,12 +242,12 @@ impl RefReader {
     ///
     /// * `Some(Rc<T>)` if the reference ID is valid and the type matches
     /// * `None` if the reference ID is invalid or the type doesn't match
-    pub fn get_rc_ref<T: 'static>(&self, ref_id: u32) -> Option<Rc<T>> {
+    pub fn get_rc_ref<T: 'static + ?Sized>(&self, ref_id: u32) -> Option<Rc<T>> {
         let any_box = self.refs.get(ref_id as usize)?;
         any_box.downcast_ref::<Rc<T>>().cloned()
     }
 
-    /// Get an Arc<T> by reference ID during deserialization.
+    /// Get an `Arc<T>` by reference ID during deserialization.
     ///
     /// # Arguments
     ///
@@ -226,9 +257,18 @@ impl RefReader {
     ///
     /// * `Some(Arc<T>)` if the reference ID is valid and the type matches
     /// * `None` if the reference ID is invalid or the type doesn't match
-    pub fn get_arc_ref<T: 'static>(&self, ref_id: u32) -> Option<Arc<T>> {
+    pub fn get_arc_ref<T: 'static + ?Sized>(&self, ref_id: u32) -> Option<Arc<T>> {
         let any_box = self.refs.get(ref_id as usize)?;
         any_box.downcast_ref::<Arc<T>>().cloned()
+    }
+
+    /// Add a callback to be executed when weak references are resolved.
+    ///
+    /// # Arguments
+    ///
+    /// * `callback` - A closure that takes a reference to the RefReader
+    pub fn add_callback(&mut self, callback: UpdateCallback) {
+        self.callbacks.push(callback);
     }
 
     /// Read a reference flag and determine what action to take.
@@ -268,126 +308,23 @@ impl RefReader {
         reader.read_u32()
     }
 
-    /// Clear all stored references.
+    /// Execute all pending callbacks to resolve weak pointer references.
+    ///
+    /// This should be called after deserialization completes to update any weak pointers
+    /// that referenced objects which were not yet available during deserialization.
+    pub fn resolve_callbacks(&mut self) {
+        let callbacks = std::mem::take(&mut self.callbacks);
+        for callback in callbacks {
+            callback(self);
+        }
+    }
+
+    /// Clear all stored references and callbacks.
     ///
     /// This is useful for reusing the RefReader for multiple deserialization operations.
     pub fn clear(&mut self) {
+        self.resolve_callbacks();
         self.refs.clear();
-    }
-}
-
-/// Legacy RefResolver that combines both reading and writing functionality.
-///
-/// This type is maintained for backward compatibility but it's recommended
-/// to use RefWriter and RefReader separately for better separation of concerns.
-///
-/// # Deprecated
-///
-/// Use RefWriter for serialization and RefReader for deserialization instead.
-#[deprecated(note = "Use RefWriter for serialization and RefReader for deserialization")]
-#[derive(Default)]
-pub struct RefResolver {
-    /// Maps pointer addresses to reference IDs for serialization
-    write_refs: HashMap<usize, u32>,
-    /// Vector to store boxed objects for deserialization
-    read_refs: Vec<Box<dyn Any>>,
-    /// Next reference ID to assign
-    next_ref_id: u32,
-}
-
-#[allow(deprecated)]
-impl RefResolver {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Attempt to write a reference for an Rc<T>. Returns true if reference was written,
-    /// false if this is the first occurrence and should be serialized normally.
-    pub fn try_write_rc_ref<T>(&mut self, writer: &mut Writer, rc: &Rc<T>) -> bool {
-        let ptr_addr = Rc::as_ptr(rc) as usize;
-
-        if let Some(&ref_id) = self.write_refs.get(&ptr_addr) {
-            // This object has been seen before, write a reference
-            writer.write_i8(RefFlag::Ref as i8);
-            writer.write_u32(ref_id);
-            true
-        } else {
-            // First time seeing this object, register it and return false
-            let ref_id = self.next_ref_id;
-            self.next_ref_id += 1;
-            self.write_refs.insert(ptr_addr, ref_id);
-            writer.write_i8(RefFlag::RefValue as i8);
-            false
-        }
-    }
-
-    /// Attempt to write a reference for an Arc<T>. Returns true if reference was written,
-    /// false if this is the first occurrence and should be serialized normally.
-    pub fn try_write_arc_ref<T>(&mut self, writer: &mut Writer, arc: &Arc<T>) -> bool {
-        let ptr_addr = Arc::as_ptr(arc) as usize;
-
-        if let Some(&ref_id) = self.write_refs.get(&ptr_addr) {
-            // This object has been seen before, write a reference
-            writer.write_i8(RefFlag::Ref as i8);
-            writer.write_u32(ref_id);
-            true
-        } else {
-            // First time seeing this object, register it and return false
-            let ref_id = self.next_ref_id;
-            self.next_ref_id += 1;
-            self.write_refs.insert(ptr_addr, ref_id);
-            writer.write_i8(RefFlag::RefValue as i8);
-            false
-        }
-    }
-
-    /// Store an Rc<T> for later reference resolution during deserialization
-    pub fn store_rc_ref<T: 'static>(&mut self, rc: Rc<T>) -> u32 {
-        let ref_id = self.read_refs.len() as u32;
-        self.read_refs.push(Box::new(rc));
-        ref_id
-    }
-
-    /// Store an Arc<T> for later reference resolution during deserialization
-    pub fn store_arc_ref<T: 'static>(&mut self, arc: Arc<T>) -> u32 {
-        let ref_id = self.read_refs.len() as u32;
-        self.read_refs.push(Box::new(arc));
-        ref_id
-    }
-
-    /// Get an Rc<T> by reference ID during deserialization
-    pub fn get_rc_ref<T: 'static>(&self, ref_id: u32) -> Option<Rc<T>> {
-        let any_box = self.read_refs.get(ref_id as usize)?;
-        any_box.downcast_ref::<Rc<T>>().cloned()
-    }
-
-    /// Get an Arc<T> by reference ID during deserialization
-    pub fn get_arc_ref<T: 'static>(&self, ref_id: u32) -> Option<Arc<T>> {
-        let any_box = self.read_refs.get(ref_id as usize)?;
-        any_box.downcast_ref::<Arc<T>>().cloned()
-    }
-
-    /// Read a reference flag and determine what action to take
-    pub fn read_ref_flag(&self, reader: &mut Reader) -> RefFlag {
-        let flag_value = reader.read_i8();
-        match flag_value {
-            -3 => RefFlag::Null,
-            -2 => RefFlag::Ref,
-            -1 => RefFlag::NotNullValue,
-            0 => RefFlag::RefValue,
-            _ => panic!("Invalid reference flag: {}", flag_value),
-        }
-    }
-
-    /// Read a reference ID
-    pub fn read_ref_id(&self, reader: &mut Reader) -> u32 {
-        reader.read_u32()
-    }
-
-    /// Clear all stored references (useful for reusing the resolver)
-    pub fn clear(&mut self) {
-        self.write_refs.clear();
-        self.read_refs.clear();
-        self.next_ref_id = 0;
+        self.callbacks.clear();
     }
 }

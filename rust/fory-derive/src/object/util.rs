@@ -15,11 +15,200 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::util::{
+    detect_collection_with_trait_object, is_arc_dyn_trait, is_box_dyn_trait, is_rc_dyn_trait,
+    CollectionTraitInfo,
+};
 use fory_core::types::{TypeId, BASIC_TYPE_NAMES, CONTAINER_TYPE_NAMES, PRIMITIVE_ARRAY_TYPE_MAP};
-use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+use proc_macro2::{Ident, TokenStream};
+use quote::{format_ident, quote, ToTokens};
+use std::cell::RefCell;
 use std::fmt;
 use syn::{parse_str, Field, GenericArgument, PathArguments, Type};
+
+thread_local! {
+    static MACRO_CONTEXT: RefCell<Option<MacroContext>> = const {RefCell::new(None)};
+}
+
+struct MacroContext {
+    struct_name: String,
+}
+
+pub(super) fn set_struct_context(name: &str) {
+    MACRO_CONTEXT.with(|ctx| {
+        *ctx.borrow_mut() = Some(MacroContext {
+            struct_name: name.to_string(),
+        });
+    });
+}
+
+pub(super) fn clear_struct_context() {
+    MACRO_CONTEXT.with(|ctx| {
+        *ctx.borrow_mut() = None;
+    });
+}
+
+fn get_struct_name() -> Option<String> {
+    MACRO_CONTEXT.with(|ctx| ctx.borrow().as_ref().map(|c| c.struct_name.clone()))
+}
+
+pub(super) fn contains_trait_object(ty: &Type) -> bool {
+    match ty {
+        Type::TraitObject(_) => true,
+        Type::Path(type_path) => {
+            if is_box_dyn_trait(ty).is_some()
+                || is_rc_dyn_trait(ty).is_some()
+                || is_arc_dyn_trait(ty).is_some()
+            {
+                return true;
+            }
+
+            if let Some(seg) = type_path.path.segments.last() {
+                if let PathArguments::AngleBracketed(args) = &seg.arguments {
+                    return args.args.iter().any(|arg| {
+                        if let GenericArgument::Type(inner_ty) = arg {
+                            contains_trait_object(inner_ty)
+                        } else {
+                            false
+                        }
+                    });
+                }
+            }
+            false
+        }
+        _ => false,
+    }
+}
+
+pub(super) struct WrapperTypes {
+    pub wrapper_ty: Ident,
+    pub trait_ident: Ident,
+}
+
+pub(super) fn create_wrapper_types_rc(trait_name: &str) -> WrapperTypes {
+    WrapperTypes {
+        wrapper_ty: format_ident!("{}Rc", trait_name),
+        trait_ident: format_ident!("{}", trait_name),
+    }
+}
+
+pub(super) fn create_wrapper_types_arc(trait_name: &str) -> WrapperTypes {
+    WrapperTypes {
+        wrapper_ty: format_ident!("{}Arc", trait_name),
+        trait_ident: format_ident!("{}", trait_name),
+    }
+}
+
+pub(super) enum StructField {
+    BoxDyn(String),
+    RcDyn(String),
+    ArcDyn(String),
+    VecRc(String),
+    VecArc(String),
+    HashMapRc(Box<Type>, String),
+    HashMapArc(Box<Type>, String),
+    ContainsTraitObject,
+    Forward,
+    None,
+}
+
+fn is_forward_field(ty: &Type) -> bool {
+    let struct_name = match get_struct_name() {
+        Some(name) => name,
+        None => return false,
+    };
+    is_forward_field_internal(ty, &struct_name)
+}
+
+fn is_forward_field_internal(ty: &Type, struct_name: &str) -> bool {
+    match ty {
+        Type::TraitObject(_) => true,
+
+        Type::Path(type_path) => {
+            if let Some(seg) = type_path.path.segments.last() {
+                // Direct match: type is the struct itself
+                if seg.ident == struct_name {
+                    return true;
+                }
+
+                // Special cases for weak pointers
+                if seg.ident == "RcWeak" || seg.ident == "ArcWeak" {
+                    return true;
+                }
+
+                // Check smart pointers: Rc<T> / Arc<T>
+                if seg.ident == "Rc" || seg.ident == "Arc" {
+                    if let PathArguments::AngleBracketed(args) = &seg.arguments {
+                        if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
+                            match inner_ty {
+                                // Inner type is trait object
+                                Type::TraitObject(trait_obj) => {
+                                    if trait_obj
+                                        .bounds
+                                        .iter()
+                                        .any(|b| b.to_token_stream().to_string() == "Any")
+                                    {
+                                        // Rc<dyn Any> → return true
+                                        return true;
+                                    } else {
+                                        // Rc<dyn SomethingElse> → return false
+                                        return false;
+                                    }
+                                }
+                                // Inner type is not a trait object → return true
+                                _ => {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Recursively check other generic args
+                if let PathArguments::AngleBracketed(args) = &seg.arguments {
+                    for arg in &args.args {
+                        if let GenericArgument::Type(inner_ty) = arg {
+                            if is_forward_field_internal(inner_ty, struct_name) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            false
+        }
+
+        _ => false,
+    }
+}
+
+pub(super) fn classify_trait_object_field(ty: &Type) -> StructField {
+    if is_forward_field(ty) {
+        return StructField::Forward;
+    }
+    if let Some((_, trait_name)) = is_box_dyn_trait(ty) {
+        return StructField::BoxDyn(trait_name);
+    }
+    if let Some((_, trait_name)) = is_rc_dyn_trait(ty) {
+        return StructField::RcDyn(trait_name);
+    }
+    if let Some((_, trait_name)) = is_arc_dyn_trait(ty) {
+        return StructField::ArcDyn(trait_name);
+    }
+    if let Some(collection_info) = detect_collection_with_trait_object(ty) {
+        return match collection_info {
+            CollectionTraitInfo::VecRc(t) => StructField::VecRc(t),
+            CollectionTraitInfo::VecArc(t) => StructField::VecArc(t),
+            CollectionTraitInfo::HashMapRc(k, t) => StructField::HashMapRc(k, t),
+            CollectionTraitInfo::HashMapArc(k, t) => StructField::HashMapArc(k, t),
+        };
+    }
+    if contains_trait_object(ty) {
+        return StructField::ContainsTraitObject;
+    }
+    StructField::None
+}
 
 #[derive(Debug)]
 pub(super) struct TypeNode {
@@ -178,7 +367,7 @@ impl NullableTypeNode {
                                     fory_core::types::RefFlag::NotNullValue as i8
                                 };
                                 let element = if ref_flag == fory_core::types::RefFlag::Null as i8 {
-                                    <#element_ty>::default()
+                                    <#element_ty as fory_core::serializer::ForyDefault>::fory_default()
                                 } else {
                                     #element_tokens?
                                 };
@@ -229,7 +418,7 @@ impl NullableTypeNode {
                                     fory_core::types::RefFlag::NotNullValue as i8
                                 };
                                 let element = if ref_flag == fory_core::types::RefFlag::Null as i8 {
-                                    <#element_ty>::default()
+                                    <#element_ty as fory_core::serializer::ForyDefault>::fory_default()
                                 } else {
                                     #element_tokens?
                                 };
@@ -284,19 +473,19 @@ impl NullableTypeNode {
                                 }
                                 let header = context.reader.read_u8();
                                 if header & fory_core::serializer::map::KEY_NULL != 0 && header & fory_core::serializer::map::VALUE_NULL != 0 {
-                                    map.insert(<#key_ty>::default(), <#val_ty>::default());
+                                    map.insert(<#key_ty as fory_core::serializer::ForyDefault>::fory_default(), <#val_ty as fory_core::serializer::ForyDefault>::fory_default());
                                     len_counter += 1;
                                     continue;
                                 }
                                 if header & fory_core::serializer::map::KEY_NULL != 0 {
                                     let value: #val_ty = {#val_tokens}?;
-                                    map.insert(<#key_ty>::default(), value);
+                                    map.insert(<#key_ty as fory_core::serializer::ForyDefault>::fory_default(), value);
                                     len_counter += 1;
                                     continue;
                                 }
                                 if header & fory_core::serializer::map::VALUE_NULL != 0 {
                                     let key: #key_ty = {#key_tokens}?;
-                                    map.insert(key, <#val_ty>::default());
+                                    map.insert(key, <#val_ty as fory_core::serializer::ForyDefault>::fory_default());
                                     len_counter += 1;
                                     continue;
                                 }
@@ -346,33 +535,41 @@ impl NullableTypeNode {
                     } else {
                         let type_id = cur_remote_nullable_type.type_id;
                         let internal_id = type_id & 0xff;
-                        Some(if internal_id == COMPATIBLE_STRUCT_ID || internal_id == NAMED_COMPATIBLE_STRUCT_ID {
-                            <#nullable_ty as fory_core::serializer::StructSerializer>::fory_read_compatible(context)
+                        Some(
+                            if internal_id == COMPATIBLE_STRUCT_ID
+                                || internal_id == NAMED_COMPATIBLE_STRUCT_ID
+                                || internal_id == ENUM_ID
+                                || internal_id == NAMED_ENUM_ID
+                                || internal_id == EXT_ID
+                                || internal_id == NAMED_EXT_ID
+                            {
+                                <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(context)
                                     .map_err(fory_core::error::Error::from)?
-                        } else if internal_id == ENUM_ID || internal_id == NAMED_ENUM_ID {
-                            <#nullable_ty as fory_core::serializer::StructSerializer>::fory_read_compatible(context)
-                                .map_err(fory_core::error::Error::from)?
-                        } else {
-                            unimplemented!()
-                        })
+                            } else {
+                                unimplemented!()
+                            }
+                        )
                     };
                     Ok::<#ty, fory_core::error::Error>(res1)
                 }
             } else {
                 quote! {
                     let res2 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
-                        #ty::default()
+                        <#ty as fory_core::serializer::ForyDefault>::fory_default()
                     } else {
                         let type_id = cur_remote_nullable_type.type_id;
                         let internal_id = type_id & 0xff;
-                        if internal_id == COMPATIBLE_STRUCT_ID || internal_id == NAMED_COMPATIBLE_STRUCT_ID {
-                            <#nullable_ty as fory_core::serializer::StructSerializer>::fory_read_compatible(context)
-                                    .map_err(fory_core::error::Error::from)?
-                        } else if internal_id == ENUM_ID || internal_id == NAMED_ENUM_ID {
-                            <#nullable_ty as fory_core::serializer::StructSerializer>::fory_read_compatible(context)
+                        if internal_id == COMPATIBLE_STRUCT_ID
+                            || internal_id == NAMED_COMPATIBLE_STRUCT_ID
+                            || internal_id == ENUM_ID
+                            || internal_id == NAMED_ENUM_ID
+                            || internal_id == EXT_ID
+                            || internal_id == NAMED_EXT_ID
+                        {
+                            <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(context)
                                 .map_err(fory_core::error::Error::from)?
                         } else {
-                            unimplemented!("")
+                            unimplemented!()
                         }
                     };
                     Ok::<#ty, fory_core::error::Error>(res2)
@@ -383,6 +580,8 @@ impl NullableTypeNode {
                 const ENUM_ID: u32 = fory_core::types::TypeId::ENUM as u32;
                 const NAMED_COMPATIBLE_STRUCT_ID: u32 = fory_core::types::TypeId::NAMED_COMPATIBLE_STRUCT as u32;
                 const NAMED_ENUM_ID: u32 = fory_core::types::TypeId::NAMED_ENUM as u32;
+                const EXT_ID: u32 = fory_core::types::TypeId::EXT as u32;
+                const NAMED_EXT_ID: u32 = fory_core::types::TypeId::NAMED_EXT as u32;
                 #ts
             }
         };
@@ -501,12 +700,22 @@ impl fmt::Display for NullableTypeNode {
 fn extract_type_name(ty: &Type) -> String {
     if let Type::Path(type_path) = ty {
         type_path.path.segments.last().unwrap().ident.to_string()
+    } else if matches!(ty, Type::TraitObject(_)) {
+        "TraitObject".to_string()
     } else {
         quote!(#ty).to_string()
     }
 }
 
 pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
+    // Handle trait objects specially - they can't be parsed as normal types
+    if matches!(ty, Type::TraitObject(_)) {
+        return TypeNode {
+            name: "TraitObject".to_string(),
+            generics: vec![],
+        };
+    }
+
     let name = extract_type_name(ty);
 
     let generics = if let Type::Path(type_path) = ty {
@@ -533,11 +742,16 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
 }
 
 pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> TokenStream {
-    if node.name == "Option" && node.generics.first().unwrap().name == "Option" {
-        return quote! {
-            compile_error!("adjacent Options are not supported");
-        };
+    if node.name == "Option" {
+        if let Some(first_generic) = node.generics.first() {
+            if first_generic.name == "Option" {
+                return quote! {
+                    compile_error!("adjacent Options are not supported");
+                };
+            }
+        }
     }
+
     if let Some(ts) = try_vec_of_option_primitive(node) {
         return ts;
     }
@@ -632,6 +846,14 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
         let mut map_fields = Vec::new();
         let mut struct_or_enum_fields = Vec::new();
 
+        // First handle Forward fields separately to avoid borrow checker issues
+        for field in fields {
+            if is_forward_field(&field.ty) {
+                let ident = field.ident.as_ref().unwrap().to_string();
+                collection_fields.push((ident, "Forward".to_string(), TypeId::LIST as u32));
+            }
+        }
+
         let mut group_field = |ident: String, ty: &str| {
             if PRIMITIVE_TYPE_NAMES.contains(&ty) {
                 let type_id = get_primitive_type_id(ty);
@@ -664,6 +886,13 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
         };
 
         for field in fields {
+            let ident = field.ident.as_ref().unwrap().to_string();
+
+            // Skip if already handled as Forward field
+            if is_forward_field(&field.ty) {
+                continue;
+            }
+
             let ty: String = field
                 .ty
                 .to_token_stream()
@@ -671,7 +900,6 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
                 .chars()
                 .filter(|c| !c.is_whitespace())
                 .collect::<String>();
-            let ident = field.ident.as_ref().unwrap().to_string();
             // handle Option<Primitive> specially
             if let Some(inner) = extract_option_inner(&ty) {
                 if PRIMITIVE_TYPE_NAMES.contains(&inner) {
@@ -684,6 +912,15 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
                 }
             } else {
                 group_field(ident, &ty);
+            }
+        }
+
+        for field in fields {
+            if is_box_dyn_trait(&field.ty).is_some() {
+                let ident = field.ident.as_ref().unwrap().to_string();
+                if let Some(pos) = struct_or_enum_fields.iter().position(|x| x.0 == ident) {
+                    struct_or_enum_fields[pos].2 = TypeId::UNKNOWN as u32;
+                }
             }
         }
 
@@ -836,18 +1073,45 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
             )
         }
     };
+    let trait_object_fields_ts = {
+        let trait_obj_fields: Vec<_> = struct_or_enum_fields
+            .iter()
+            .filter(|(_, _, type_id)| *type_id == fory_core::types::TypeId::UNKNOWN as u32)
+            .collect();
+
+        if trait_obj_fields.is_empty() {
+            quote! {}
+        } else {
+            let names = trait_obj_fields.iter().map(|(name, _, type_id)| {
+                quote! {
+                    final_fields.push((#type_id, #name.to_string()));
+                }
+            });
+            quote! {
+                #(#names)*
+            }
+        }
+    };
+
     let group_sort_enum_other_fields = {
         if struct_or_enum_fields.is_empty() {
             quote! {}
         } else {
             let ts = struct_or_enum_fields
                 .iter()
+                .filter(|(_, _, type_id)| *type_id != fory_core::types::TypeId::UNKNOWN as u32)
                 .map(|(name, ty, _)| {
                     let ty_type: Type = syn::parse_str(ty).unwrap();
                     quote! {
                         let field_type_id = <#ty_type as fory_core::serializer::Serializer>::fory_get_type_id(fory);
                         let internal_id = field_type_id & 0xff;
-                        if internal_id == fory_core::types::TypeId::COMPATIBLE_STRUCT as u32 || internal_id == fory_core::types::TypeId::NAMED_COMPATIBLE_STRUCT as u32 || internal_id == fory_core::types::TypeId::STRUCT as u32 || internal_id == fory_core::types::TypeId::NAMED_STRUCT as u32 {
+                        if internal_id == fory_core::types::TypeId::COMPATIBLE_STRUCT as u32
+                            || internal_id == fory_core::types::TypeId::NAMED_COMPATIBLE_STRUCT as u32
+                            || internal_id == fory_core::types::TypeId::STRUCT as u32
+                            || internal_id == fory_core::types::TypeId::NAMED_STRUCT as u32
+                            || internal_id == fory_core::types::TypeId::EXT as u32
+                            || internal_id == fory_core::types::TypeId::NAMED_EXT as u32
+                        {
                             other_fields.push((field_type_id, #name.to_string()));
                         } else if internal_id == fory_core::types::TypeId::ENUM as u32 || internal_id == fory_core::types::TypeId::NAMED_ENUM as u32 {
                             final_fields.push((field_type_id, #name.to_string()));
@@ -877,6 +1141,7 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
             #other_declare
             #container_declare
 
+            #trait_object_fields_ts
             #group_sort_enum_other_fields
 
             let mut sorted_field_names: Vec<String> = Vec::new();
