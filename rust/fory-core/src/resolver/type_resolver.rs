@@ -23,7 +23,7 @@ use crate::meta::{
     TYPE_NAME_ENCODINGS,
 };
 use crate::serializer::{ForyDefault, Serializer, StructSerializer};
-use std::cell::RefCell;
+use std::sync::RwLock;
 use std::{any::Any, collections::HashMap};
 
 type WriteFn = fn(&dyn Any, fory: &Fory, &mut WriteContext, is_field: bool);
@@ -182,7 +182,7 @@ pub struct TypeResolver {
     type_info_cache: HashMap<std::any::TypeId, TypeInfo>,
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
-    sorted_field_names_map: RefCell<HashMap<std::any::TypeId, Vec<String>>>,
+    sorted_field_names_map: RwLock<HashMap<std::any::TypeId, Vec<String>>>,
 }
 
 const NO_TYPE_ID: u32 = 1000000000;
@@ -196,7 +196,7 @@ impl Default for TypeResolver {
             type_name_map: HashMap::new(),
             type_info_cache: HashMap::new(),
             type_id_index: Vec::new(),
-            sorted_field_names_map: RefCell::new(HashMap::new()),
+            sorted_field_names_map: RwLock::new(HashMap::new()),
         };
         resolver.register_builtin_types();
         resolver
@@ -552,12 +552,12 @@ impl TypeResolver {
         &self,
         type_id: std::any::TypeId,
     ) -> Option<Vec<String>> {
-        let map = self.sorted_field_names_map.borrow();
+        let map = self.sorted_field_names_map.read().unwrap();
         map.get(&type_id).cloned()
     }
 
     pub fn set_sorted_field_names<T: StructSerializer>(&self, field_names: &[String]) {
-        let mut map = self.sorted_field_names_map.borrow_mut();
+        let mut map = self.sorted_field_names_map.write().unwrap();
         map.insert(std::any::TypeId::of::<T>(), field_names.to_owned());
     }
 

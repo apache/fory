@@ -741,7 +741,7 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
     TypeNode { name, generics }
 }
 
-pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> TokenStream {
+pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     if node.name == "Option" {
         if let Some(first_generic) = node.generics.first() {
             if first_generic.name == "Option" {
@@ -758,10 +758,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
     let primitive_vec = try_primitive_vec_type(node);
 
     let children_tokens: Vec<TokenStream> = if primitive_vec.is_none() {
-        node.generics
-            .iter()
-            .map(|child| generic_tree_to_tokens(child, have_context))
-            .collect()
+        node.generics.iter().map(generic_tree_to_tokens).collect()
     } else {
         vec![]
     };

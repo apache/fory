@@ -223,7 +223,7 @@ fn complex_container2() -> Vec<HashMap<Vec<Item>, Vec<Item>>> {
 fn container_outer_auto_conv() {
     let fory = Fory::default().mode(Compatible);
     // serialize_outer_non-null
-    let mut writer = Writer::default();
+    let writer = Writer::default();
     let mut write_context = WriteContext::new(writer);
     fory.serialize_with_context(&basic_list(), &mut write_context);
     fory.serialize_with_context(&basic_set(), &mut write_context);
@@ -249,7 +249,7 @@ fn container_outer_auto_conv() {
     );
     assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
     // serialize_outer_nullable
-    let mut writer = Writer::default();
+    let writer = Writer::default();
     let mut write_context = WriteContext::new(writer);
     fory.serialize_with_context(&Some(basic_list()), &mut write_context);
     fory.serialize_with_context(&Some(basic_set()), &mut write_context);
@@ -302,7 +302,7 @@ fn collection_inner() {
     fory2.register_by_name::<Item>("item");
     for fory in [fory1, fory2] {
         // serialize
-        let mut writer = Writer::default();
+        let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
         fory.serialize_with_context(&basic_list(), &mut write_context);
         fory.serialize_with_context(&item_list(), &mut write_context);
@@ -368,7 +368,7 @@ fn collection_inner_auto_conv() {
     fory2.register_by_name::<Item>("item");
     for fory in [fory1, fory2] {
         // serialize_non-null
-        let mut writer = Writer::default();
+        let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
         fory.serialize_with_context(&basic_list(), &mut write_context);
         fory.serialize_with_context(&item_list(), &mut write_context);
@@ -400,7 +400,7 @@ fn collection_inner_auto_conv() {
         );
         assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
         // serialize_nullable
-        let mut writer = Writer::default();
+        let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
         fory.serialize_with_context(&nullable_basic_list(false), &mut write_context);
         fory.serialize_with_context(&nullable_item_list(false), &mut write_context);
@@ -442,7 +442,7 @@ fn map_inner() {
     fory2.register_by_name::<Item>("item");
     for fory in [fory1, fory2] {
         // serialize
-        let mut writer = Writer::default();
+        let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
         fory.serialize_with_context(&basic_map(), &mut write_context);
         fory.serialize_with_context(&item_map(), &mut write_context);
@@ -486,7 +486,7 @@ fn map_inner_auto_conv() {
     fory2.register_by_name::<Item>("item");
     for fory in [fory1, fory2] {
         // serialize_non-null
-        let mut writer = Writer::default();
+        let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
         fory.serialize_with_context(&basic_map(), &mut write_context);
         fory.serialize_with_context(&item_map(), &mut write_context);
@@ -508,7 +508,7 @@ fn map_inner_auto_conv() {
         );
         assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
         // serialize_nullable
-        let mut writer = Writer::default();
+        let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
         fory.serialize_with_context(&nullable_basic_map(false), &mut write_context);
         fory.serialize_with_context(&nullable_item_map(false), &mut write_context);
@@ -537,7 +537,7 @@ fn complex() {
     let mut fory2 = Fory::default().mode(Compatible);
     fory2.register_by_name::<Item>("item");
     for fory in [fory1, fory2] {
-        let mut writer = Writer::default();
+        let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
         fory.serialize_with_context(&nested_collection(), &mut write_context);
         fory.serialize_with_context(&complex_container1(), &mut write_context);

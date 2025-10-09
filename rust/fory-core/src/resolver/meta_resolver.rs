@@ -20,15 +20,15 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::{Encoding, MetaString, TypeMeta, NAMESPACE_DECODER};
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Default)]
 pub struct MetaReaderResolver {
-    pub reading_type_defs: Vec<Rc<TypeMeta>>,
+    pub reading_type_defs: Vec<Arc<TypeMeta>>,
 }
 
 impl MetaReaderResolver {
-    pub fn get(&self, index: usize) -> &Rc<TypeMeta> {
+    pub fn get(&self, index: usize) -> &Arc<TypeMeta> {
         unsafe { self.reading_type_defs.get_unchecked(index) }
     }
 
@@ -37,7 +37,7 @@ impl MetaReaderResolver {
         // self.reading_type_defs.reserve(meta_size as usize);
         for _ in 0..meta_size {
             let type_meta = TypeMeta::from_bytes(reader);
-            self.reading_type_defs.push(Rc::new(type_meta));
+            self.reading_type_defs.push(Arc::new(type_meta));
         }
         reader.get_cursor()
     }

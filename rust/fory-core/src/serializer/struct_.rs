@@ -79,12 +79,9 @@ pub fn write_type_info<T: Serializer>(fory: &Fory, context: &mut WriteContext, _
             let namespace = type_info.get_namespace().to_owned();
             let type_name = type_info.get_type_name().to_owned();
             let resolver = fory.get_metastring_resolver();
-            resolver
-                .borrow_mut()
-                .write_meta_string_bytes(context, &namespace);
-            resolver
-                .borrow_mut()
-                .write_meta_string_bytes(context, &type_name);
+            let mut r = resolver.lock().unwrap();
+            r.write_meta_string_bytes(context, &namespace);
+            r.write_meta_string_bytes(context, &type_name);
         }
     } else if type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
         || type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32
@@ -105,8 +102,9 @@ pub fn read_type_info<T: Serializer>(fory: &Fory, context: &mut ReadContext, _is
             let _meta_index = context.reader.read_varuint32();
         } else {
             let resolver = fory.get_metastring_resolver();
-            resolver.borrow_mut().read_meta_string_bytes(context);
-            resolver.borrow_mut().read_meta_string_bytes(context);
+            let mut r = resolver.lock().unwrap();
+            r.read_meta_string_bytes(context);
+            r.read_meta_string_bytes(context);
         }
     } else if local_type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
         || local_type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32

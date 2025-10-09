@@ -322,7 +322,7 @@ fn test_cross_language_serializer() {
     assert_de!(fory, context, HashMap::<String, String>, str_map);
     assert_de!(fory, context, Color, color);
 
-    let mut writer = Writer::default();
+    let writer = Writer::default();
     let mut context = WriteContext::new(writer);
     fory.serialize_with_context(&true, &mut context);
     fory.serialize_with_context(&false, &mut context);
@@ -450,7 +450,7 @@ fn test_list() {
     let remote_item_list2: Vec<Option<Item>> = fory.deserialize_with_context(&mut context).unwrap();
     assert_eq!(remote_item_list2, item_list2);
 
-    let mut writer = Writer::default();
+    let writer = Writer::default();
     let mut context = WriteContext::new(writer);
     fory.serialize_with_context(&remote_str_list, &mut context);
     fory.serialize_with_context(&remote_str_list2, &mut context);
@@ -570,7 +570,7 @@ fn test_integer() {
     let remote_f6: Option<i32> = fory.deserialize_with_context(&mut context).unwrap();
     assert_eq!(remote_f6, f6);
 
-    let mut writer = Writer::default();
+    let writer = Writer::default();
     let mut context = WriteContext::new(writer);
     fory.serialize_with_context(&remote_item2, &mut context);
     fory.serialize_with_context(&remote_f1, &mut context);
@@ -739,7 +739,7 @@ fn test_consistent_named() {
         my_ext
     );
 
-    let mut writer = Writer::default();
+    let writer = Writer::default();
     let mut context = WriteContext::new(writer);
     fory.serialize_with_context(&color, &mut context);
     fory.serialize_with_context(&color, &mut context);

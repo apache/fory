@@ -91,7 +91,7 @@ fn basic() {
     fory2.register_by_name::<Item>("item");
     fory2.register_by_name::<Person>("person");
     for fory in [fory1, fory2] {
-        let mut writer = Writer::default();
+        let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
         let person = Person::default();
         fory.serialize_with_context(&person, &mut write_context);

@@ -54,7 +54,7 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
         }
     }
 
-    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
+    fn fory_write_type_info(_fory: &Fory, context: &mut WriteContext, is_field: bool) {
         match check_primitive::<T>() {
             Some(type_id) => {
                 primitive_list::fory_write_type_info(context, is_field, type_id);

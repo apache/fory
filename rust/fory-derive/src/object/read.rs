@@ -424,7 +424,7 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
         }
         StructField::None => {
             let generic_tree = parse_generic_tree(ty);
-            let generic_token = generic_tree_to_tokens(&generic_tree, true);
+            let generic_token = generic_tree_to_tokens(&generic_tree);
             let read_nullable_fn_name = create_read_nullable_fn_name(field);
 
             let _base_ty = match &ty {

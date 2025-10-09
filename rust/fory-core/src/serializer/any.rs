@@ -285,11 +285,11 @@ impl Serializer for Arc<dyn Any> {
         true
     }
 
-    fn fory_write_type_info(fory: &Fory, _context: &mut WriteContext, _is_field: bool) {
+    fn fory_write_type_info(_fory: &Fory, _context: &mut WriteContext, _is_field: bool) {
         // Arc<dyn Any> is polymorphic - type info is written per element
     }
 
-    fn fory_read_type_info(fory: &Fory, _context: &mut ReadContext, _is_field: bool) {
+    fn fory_read_type_info(_fory: &Fory, _context: &mut ReadContext, _is_field: bool) {
         // Arc<dyn Any> is polymorphic - type info is read per element
     }
 

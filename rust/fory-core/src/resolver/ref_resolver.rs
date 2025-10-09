@@ -167,6 +167,10 @@ pub struct RefReader {
     callbacks: Vec<UpdateCallback>,
 }
 
+// danger but useful for multi-thread
+unsafe impl Send for RefReader {}
+unsafe impl Sync for RefReader {}
+
 impl RefReader {
     /// Creates a new RefReader instance.
     pub fn new() -> Self {

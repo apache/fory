@@ -86,7 +86,7 @@ pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
         match classify_trait_object_field(ty) {
             StructField::None => {
                 let generic_tree = parse_generic_tree(ty);
-                let generic_token = generic_tree_to_tokens(&generic_tree, false);
+                let generic_token = generic_tree_to_tokens(&generic_tree);
                 quote! {
                     fory_core::meta::FieldInfo::new(#name, #generic_token)
                 }
@@ -104,7 +104,7 @@ pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
             }
             StructField::HashMapRc(key_ty, _) | StructField::HashMapArc(key_ty, _) => {
                 let key_generic_tree = parse_generic_tree(key_ty.as_ref());
-                let key_generic_token = generic_tree_to_tokens(&key_generic_tree, false);
+                let key_generic_token = generic_tree_to_tokens(&key_generic_tree);
                 quote! {
                     fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
                         type_id: fory_core::types::TypeId::MAP as u32,

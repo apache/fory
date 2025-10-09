@@ -22,9 +22,7 @@ use crate::meta::TypeMeta;
 use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
 use crate::resolver::type_resolver::Harness;
-use std::marker::PhantomData;
-use std::rc::Rc;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex};
 
 pub struct WriteContext {
     pub writer: Writer,
@@ -121,7 +119,7 @@ pub struct ReadContext {
     current_depth: u32,
 }
 
-impl<'a> ReadContext {
+impl ReadContext {
     pub fn new(reader: Reader, max_dyn_depth: u32) -> ReadContext {
         ReadContext {
             reader,
@@ -138,7 +136,7 @@ impl<'a> ReadContext {
         self.current_depth = 0;
     }
 
-    pub fn get_meta(&self, type_index: usize) -> &Rc<TypeMeta> {
+    pub fn get_meta(&self, type_index: usize) -> &Arc<TypeMeta> {
         self.meta_resolver.get(type_index)
     }
 
@@ -232,10 +230,14 @@ impl<T> Pool<T> {
     }
 
     pub fn get(&self) -> T {
-        let item = self.items.lock().unwrap().pop().unwrap_or_else(|| (self.factory)());
-        println!("Object address: {:p}", &item);
+        let item = self
+            .items
+            .lock()
+            .unwrap()
+            .pop()
+            .unwrap_or_else(|| (self.factory)());
+        // println!("Object address: {:p}", &item);
         item
-
     }
 
     // return manually

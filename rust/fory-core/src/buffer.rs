@@ -577,8 +577,7 @@ impl Reader {
     pub fn read_bytes(&mut self, len: usize) -> &[u8] {
         let old_cursor = self.cursor;
         self.move_next(len);
-        let result = &self.bf[old_cursor..old_cursor + len];
-        result
+        &self.bf[old_cursor..old_cursor + len]
     }
 
     pub fn reset_cursor_to_here(&self) -> impl FnOnce(&mut Self) {
