@@ -16,3 +16,4 @@
 // under the License.
 
 mod compatible;
+mod test_max_dyn_depth;

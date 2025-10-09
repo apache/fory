@@ -231,7 +231,7 @@ fn container_outer_auto_conv() {
     // deserialize_outer_nullable
     let bytes = write_context.writer.dump();
     let reader = Reader::new(bytes.as_slice());
-    let mut read_context = ReadContext::new(&fory, reader);
+    let mut read_context = ReadContext::new(&fory, reader, 5);
     assert_eq!(
         Some(basic_list()),
         fory.deserialize_with_context::<Option<Vec<String>>>(&mut read_context)
@@ -260,7 +260,7 @@ fn container_outer_auto_conv() {
     // deserialize_outer_non-null
     let bytes = write_context.writer.dump();
     let reader = Reader::new(bytes.as_slice());
-    let mut read_context = ReadContext::new(&fory, reader);
+    let mut read_context = ReadContext::new(&fory, reader, 5);
     assert_eq!(
         basic_list(),
         fory.deserialize_with_context::<Vec<String>>(&mut read_context)
@@ -315,7 +315,7 @@ fn collection_inner() {
         // deserialize
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
-        let mut read_context = ReadContext::new(&fory, reader);
+        let mut read_context = ReadContext::new(&fory, reader, 5);
         assert_eq!(
             basic_list(),
             fory.deserialize_with_context::<Vec<String>>(&mut read_context)
@@ -377,7 +377,7 @@ fn collection_inner_auto_conv() {
         // deserialize_nullable
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
-        let mut read_context = ReadContext::new(&fory, reader);
+        let mut read_context = ReadContext::new(&fory, reader, 5);
         assert_eq!(
             nullable_basic_list(true),
             fory.deserialize_with_context::<Vec<Option<String>>>(&mut read_context)
@@ -409,7 +409,7 @@ fn collection_inner_auto_conv() {
         // deserialize_non-null
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
-        let mut read_context = ReadContext::new(&fory, reader);
+        let mut read_context = ReadContext::new(&fory, reader, 5);
         assert_eq!(
             basic_list(),
             fory.deserialize_with_context::<Vec<String>>(&mut read_context)
@@ -451,7 +451,7 @@ fn map_inner() {
         // deserialize
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
-        let mut read_context = ReadContext::new(&fory, reader);
+        let mut read_context = ReadContext::new(&fory, reader, 5);
         assert_eq!(
             basic_map(),
             fory.deserialize_with_context::<HashMap<String, String>>(&mut read_context)
@@ -493,7 +493,7 @@ fn map_inner_auto_conv() {
         // deserialize_nullable
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
-        let mut read_context = ReadContext::new(&fory, reader);
+        let mut read_context = ReadContext::new(&fory, reader, 5);
         assert_eq!(
             nullable_basic_map(true),
             fory.deserialize_with_context::<HashMap<Option<String>, Option<String>>>(
@@ -515,7 +515,7 @@ fn map_inner_auto_conv() {
         // deserialize_non-null
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
-        let mut read_context = ReadContext::new(&fory, reader);
+        let mut read_context = ReadContext::new(&fory, reader, 5);
         assert_eq!(
             basic_map(),
             fory.deserialize_with_context::<HashMap<String, String>>(&mut read_context)
@@ -544,7 +544,7 @@ fn complex() {
         fory.serialize_with_context(&complex_container2(), &mut write_context);
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
-        let mut read_context = ReadContext::new(&fory, reader);
+        let mut read_context = ReadContext::new(&fory, reader, 5);
         assert_eq!(
             nested_collection(),
             fory.deserialize_with_context::<Vec<HashSet<Item>>>(&mut read_context)

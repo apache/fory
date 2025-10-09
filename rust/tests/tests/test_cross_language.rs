@@ -229,13 +229,13 @@ fn test_string_serializer() {
         .mode(Compatible)
         .xlang(true)
         .compress_string(false);
-    let mut context = ReadContext::new(&fory, reader);
+    let mut context = ReadContext::new(&fory, reader, 5);
     let reader_compress = Reader::new(bytes.as_slice());
     let fory_compress = Fory::default()
         .mode(Compatible)
         .xlang(true)
         .compress_string(true);
-    let mut context_compress = ReadContext::new(&fory_compress, reader_compress);
+    let mut context_compress = ReadContext::new(&fory_compress, reader_compress, 5);
     let test_strings: Vec<String> = vec![
         // Latin1
         "ab".to_string(),
@@ -291,7 +291,7 @@ fn test_cross_language_serializer() {
     let reader = Reader::new(bytes.as_slice());
     let mut fory = Fory::default().mode(Compatible).xlang(true);
     fory.register::<Color>(101);
-    let mut context = ReadContext::new(&fory, reader);
+    let mut context = ReadContext::new(&fory, reader, 5);
     assert_de!(fory, context, bool, true);
     assert_de!(fory, context, bool, false);
     assert_de!(fory, context, i32, -1);
@@ -421,7 +421,7 @@ fn test_list() {
     let mut fory = Fory::default().mode(Compatible);
     fory.register::<Item>(102);
     let reader = Reader::new(bytes.as_slice());
-    let mut context = ReadContext::new(&fory, reader);
+    let mut context = ReadContext::new(&fory, reader, 5);
 
     let str_list = vec![Some("a".to_string()), Some("b".to_string())];
     let str_list2 = vec![None, Some("b".to_string())];
@@ -466,7 +466,7 @@ fn test_map() {
     let mut fory = Fory::default().mode(Compatible);
     fory.register::<Item>(102);
     let reader = Reader::new(bytes.as_slice());
-    let mut context = ReadContext::new(&fory, reader);
+    let mut context = ReadContext::new(&fory, reader, 5);
 
     let str_map = HashMap::from([
         (Some("k1".to_string()), Some("v1".to_string())),
@@ -536,7 +536,7 @@ fn test_integer() {
     fory.register::<Item2>(101);
     let reader = Reader::new(bytes.as_slice());
 
-    let mut context = ReadContext::new(&fory, reader);
+    let mut context = ReadContext::new(&fory, reader, 5);
     let f1 = 1;
     let f2 = Some(2);
     let f3 = Some(3);
@@ -698,7 +698,7 @@ fn test_consistent_named() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
     let reader = Reader::new(bytes.as_slice());
-    let mut context = ReadContext::new(&fory, reader);
+    let mut context = ReadContext::new(&fory, reader, 5);
 
     assert_eq!(
         fory.deserialize_with_context::<Color>(&mut context)

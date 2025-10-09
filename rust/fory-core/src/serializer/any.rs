@@ -36,6 +36,7 @@ pub fn serialize_any_box(any_box: &Box<dyn Any>, context: &mut WriteContext, is_
 
 /// Helper function to deserialize to `Box<dyn Any>`
 pub fn deserialize_any_box(context: &mut ReadContext) -> Result<Box<dyn Any>, Error> {
+    context.inc_depth()?;
     let ref_flag = context.reader.read_i8();
     if ref_flag != RefFlag::NotNullValue as i8 {
         return Err(Error::Other(anyhow::anyhow!(
@@ -44,7 +45,9 @@ pub fn deserialize_any_box(context: &mut ReadContext) -> Result<Box<dyn Any>, Er
     }
     let harness = context.read_any_typeinfo();
     let deserializer_fn = harness.get_read_data_fn();
-    deserializer_fn(context, true)
+    let result = deserializer_fn(context, true);
+    context.dec_depth();
+    result
 }
 
 impl ForyDefault for Box<dyn Any> {
@@ -133,15 +136,19 @@ impl Serializer for Rc<dyn Any> {
                     })
             }
             RefFlag::NotNullValue => {
+                context.inc_depth()?;
                 let harness = context.read_any_typeinfo();
                 let deserializer_fn = harness.get_read_data_fn();
                 let boxed = deserializer_fn(context, true)?;
+                context.dec_depth();
                 Ok(Rc::<dyn Any>::from(boxed))
             }
             RefFlag::RefValue => {
+                context.inc_depth()?;
                 let harness = context.read_any_typeinfo();
                 let deserializer_fn = harness.get_read_data_fn();
                 let boxed = deserializer_fn(context, true)?;
+                context.dec_depth();
                 let rc: Rc<dyn Any> = Rc::from(boxed);
                 context.ref_reader.store_rc_ref(rc.clone());
                 Ok(rc)
@@ -216,15 +223,19 @@ impl Serializer for Arc<dyn Any> {
                     })
             }
             RefFlag::NotNullValue => {
+                context.inc_depth()?;
                 let harness = context.read_any_typeinfo();
                 let deserializer_fn = harness.get_read_data_fn();
                 let boxed = deserializer_fn(context, true)?;
+                context.dec_depth();
                 Ok(Arc::<dyn Any>::from(boxed))
             }
             RefFlag::RefValue => {
+                context.inc_depth()?;
                 let harness = context.read_any_typeinfo();
                 let deserializer_fn = harness.get_read_data_fn();
                 let boxed = deserializer_fn(context, true)?;
+                context.dec_depth();
                 let arc: Arc<dyn Any> = Arc::from(boxed);
                 context.ref_reader.store_arc_ref(arc.clone());
                 Ok(arc)

@@ -35,3 +35,7 @@ syn = { default-features = false, version = "2.0", features = [
 ] }
 quote = { default-features = false, version = "1.0" }
 thiserror = { default-features = false, version = "1.0" }
+
+[features]
+default = ["fields-loop-unroll"]
+fields-loop-unroll = []

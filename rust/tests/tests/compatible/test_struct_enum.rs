@@ -98,7 +98,7 @@ fn basic() {
         fory.serialize_with_context(&person, &mut write_context);
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
-        let mut read_context = ReadContext::new(&fory, reader);
+        let mut read_context = ReadContext::new(&fory, reader, 5);
         assert_eq!(
             person,
             fory.deserialize_with_context::<Person>(&mut read_context)
