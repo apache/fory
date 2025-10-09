@@ -288,15 +288,15 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
                 quote! {
                     #original_ident: #private_ident
                 }
-                StructField::ContainsTraitObject => {
-                    quote! {
-                        #original_ident: #private_ident.unwrap()
-                    }
+            }
+            StructField::ContainsTraitObject => {
+                quote! {
+                    #original_ident: #private_ident.unwrap()
                 }
-                _ => {
-                    quote! {
-                        #original_ident: #private_ident.unwrap_or_default()
-                    }
+            }
+            _ => {
+                quote! {
+                    #original_ident: #private_ident.unwrap_or_default()
                 }
             }
         }
