@@ -15,35 +15,105 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! # Fory
+//! # Apache Fory™ Rust
 //!
-//! Fory is a blazingly fast multi-language serialization framework powered by
-//! just-in-time compilation and zero-copy techniques. It provides two main
-//! serialization approaches: object serialization for complex data structures
-//! and row-based serialization for high-performance scenarios.
+//! **Apache Fory™** is a blazingly fast multi-language serialization framework powered by
+//! **JIT compilation** and **zero-copy** techniques, providing up to ultra-fast performance
+//! while maintaining ease of use and safety.
 //!
-//! ## Key Features
+//! The Rust implementation provides versatile and high-performance serialization with
+//! automatic memory management and compile-time type safety.
 //!
-//! - **High Performance**: Optimized for speed with zero-copy deserialization
-//! - **Cross-Language**: Designed for multi-language environments
-//! - **Two Serialization Modes**: Object serialization and row-based serialization
-//! - **Type Safety**: Compile-time type checking with derive macros
-//! - **Schema Evolution**: Support for compatible mode with field additions/deletions
+//! **GitHub**: <https://github.com/apache/fory>
 //!
-//! ## Serialization Modes
+//! ## Why Apache Fory™ Rust?
 //!
-//! Fory provides two distinct serialization approaches:
+//! Apache Fory™ Rust solves the fundamental serialization dilemma: **you shouldn't have to
+//! choose between performance and developer experience**. Traditional frameworks force you
+//! to pick between fast but fragile binary formats, flexible but slow text-based protocols,
+//! or complex solutions that don't support your language's advanced features.
 //!
-//! ### 1. Object Serialization
+//! **Key differentiators:**
 //!
-//! Object serialization is designed for complex data structures and provides
-//! full object graph serialization with reference handling. This mode is
-//! ideal for general-purpose serialization needs.
+//! - **🔥 Blazingly Fast**: Zero-copy deserialization and optimized binary protocols
+//! - **🌍 Cross-Language**: Seamlessly serialize/deserialize data across Java, Python, C++, Go, JavaScript, and Rust
+//! - **🎯 Type-Safe**: Compile-time type checking with derive macros
+//! - **🔄 Circular References**: Automatic tracking of shared and circular references with `Rc`/`Arc` and weak pointers
+//! - **🧬 Polymorphic**: Serialize trait objects with `Box<dyn Trait>`, `Rc<dyn Trait>`, and `Arc<dyn Trait>`
+//! - **📦 Schema Evolution**: Compatible mode for independent schema changes
+//! - **⚡ Two Modes**: Object graph serialization and zero-copy row-based format
+//!
+//! ## Quick Start
+//!
+//! Add Apache Fory™ to your `Cargo.toml`:
+//!
+//! ```toml
+//! [dependencies]
+//! fory = "0.13"
+//! fory-derive = "0.13"
+//! ```
+//!
+//! ### Basic Example
 //!
 //! ```rust
 //! use fory::{Fory, Error};
-//! use fory_derive::ForyObject;
+//! use fory::ForyObject;
+//!
+//! #[derive(ForyObject, Debug, PartialEq)]
+//! struct User {
+//!     name: String,
+//!     age: i32,
+//!     email: String,
+//! }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default();
+//! fory.register::<User>(1);
+//!
+//! let user = User {
+//!     name: "Alice".to_string(),
+//!     age: 30,
+//!     email: "alice@example.com".to_string(),
+//! };
+//!
+//! let bytes = fory.serialize(&user);
+//! let decoded: User = fory.deserialize(&bytes)?;
+//! assert_eq!(user, decoded);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Core Features
+//!
+//! Apache Fory™ Rust provides seven major feature categories, each designed to solve
+//! specific serialization challenges in modern applications.
+//!
+//! ### 1. Object Graph Serialization
+//!
+//! **What it does:** Automatically serializes complex nested data structures while
+//! preserving relationships and hierarchies.
+//!
+//! **Why it matters:** Most real-world applications deal with complex domain models,
+//! not just flat data structures. Apache Fory™ handles arbitrary nesting depth,
+//! collections, and optional fields without manual mapping code.
+//!
+//! **Technical approach:** The `#[derive(ForyObject)]` macro generates efficient
+//! serialization code at compile time using procedural macros. This eliminates runtime
+//! reflection overhead while maintaining type safety.
+//!
+//! **Key capabilities:**
+//!
+//! - Nested struct serialization with arbitrary depth
+//! - Collection types (`Vec`, `HashMap`, `HashSet`, `BTreeMap`)
+//! - Optional fields with `Option<T>`
+//! - Automatic handling of primitive types and strings
+//! - Efficient binary encoding with variable-length integers
+//!
+//! ```rust
+//! use fory::{Fory, Error};
+//! use fory::ForyObject;
 //! use std::collections::HashMap;
+//!
 //! #[derive(ForyObject, Debug, PartialEq)]
 //! struct Person {
 //!     name: String,
@@ -61,6 +131,10 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default();
+//! fory.register::<Address>(100);
+//! fory.register::<Person>(200);
+//!
 //! let person = Person {
 //!     name: "John Doe".to_string(),
 //!     age: 30,
@@ -71,32 +145,660 @@
 //!     },
 //!     hobbies: vec!["reading".to_string(), "coding".to_string()],
 //!     metadata: HashMap::from([
-//!         ("department".to_string(), "engineering".to_string()),
-//!         ("level".to_string(), "senior".to_string()),
+//!         ("role".to_string(), "developer".to_string()),
 //!     ]),
 //! };
 //!
-//! // Create a Fory instance and register types
-//! let mut fory = Fory::default();
-//! fory.register::<Address>(100);
-//! fory.register::<Person>(200);
-//!
-//! // Serialize the object
-//! let serialized = fory.serialize(&person);
-//!
-//! // Deserialize back to the original type
-//! let deserialized: Person = fory.deserialize(&serialized)?;
-//!
-//! assert_eq!(person, deserialized);
+//! let bytes = fory.serialize(&person);
+//! let decoded: Person = fory.deserialize(&bytes)?;
+//! assert_eq!(person, decoded);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! ### 2. Row-Based Serialization
+//! ### 2. Shared and Circular References
 //!
-//! Row-based serialization provides zero-copy deserialization for maximum
-//! performance. This mode is ideal for high-throughput scenarios where you
-//! need to process large amounts of data efficiently.
+//! **What it does:** Automatically tracks and preserves reference identity for shared
+//! objects using `Rc<T>` and `Arc<T>`, and handles circular references using weak pointers.
+//!
+//! **Why it matters:** Graph-like data structures (trees, linked lists, object-relational
+//! models) are common in real applications but notoriously difficult to serialize. Most
+//! frameworks either panic on circular references or require extensive manual handling.
+//!
+//! **Technical approach:** Apache Fory™ maintains a reference tracking map during
+//! serialization. When the same object is encountered multiple times, it's serialized
+//! only once and subsequent references use IDs. Weak pointers (`RcWeak<T>`, `ArcWeak<T>`)
+//! break cycles by serializing as references without strong ownership.
+//!
+//! **Benefits:**
+//!
+//! - **Space efficiency**: No data duplication in serialized output
+//! - **Reference identity preservation**: Deserialized objects maintain the same sharing relationships
+//! - **Circular reference support**: Use `RcWeak<T>` and `ArcWeak<T>` to break cycles
+//! - **Forward reference resolution**: Callbacks handle weak pointers appearing before targets
+//!
+//! #### Shared References with Rc/Arc
+//!
+//! ```rust
+//! use fory::Fory;
+//! use fory::Error;
+//! use std::rc::Rc;
+//!
+//! # fn main() -> Result<(), Error> {
+//! let fory = Fory::default();
+//!
+//! let shared = Rc::new(String::from("shared_value"));
+//! let data = vec![shared.clone(), shared.clone(), shared.clone()];
+//!
+//! let bytes = fory.serialize(&data);
+//! let decoded: Vec<Rc<String>> = fory.deserialize(&bytes)?;
+//!
+//! assert_eq!(decoded.len(), 3);
+//! assert!(Rc::ptr_eq(&decoded[0], &decoded[1]));
+//! assert!(Rc::ptr_eq(&decoded[1], &decoded[2]));
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! For thread-safe shared references, use `Arc<T>`:
+//!
+//! ```rust
+//! use fory::Fory;
+//! use fory::Error;
+//! use std::sync::Arc;
+//!
+//! # fn main() -> Result<(), Error> {
+//! let fory = Fory::default();
+//! let shared = Arc::new(String::from("shared_value"));
+//! let data = vec![shared.clone(), shared.clone()];
+//!
+//! let bytes = fory.serialize(&data);
+//! let decoded: Vec<Arc<String>> = fory.deserialize(&bytes)?;
+//!
+//! assert!(Arc::ptr_eq(&decoded[0], &decoded[1]));
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! #### Circular References with Weak Pointers
+//!
+//! **How it works:**
+//!
+//! - Weak pointers serialize as references to their target objects
+//! - If the strong pointer has been dropped, weak serializes as `Null`
+//! - Forward references (weak appearing before target) are resolved via callbacks
+//! - All clones of a weak pointer share the same internal cell for automatic updates
+//!
+//! ```rust
+//! use fory::{Fory, Error, RcWeak};
+//! use fory::ForyObject;
+//! use std::rc::Rc;
+//! use std::cell::RefCell;
+//!
+//! #[derive(ForyObject, Debug)]
+//! struct Node {
+//!     value: i32,
+//!     parent: RcWeak<RefCell<Node>>,
+//!     children: Vec<Rc<RefCell<Node>>>,
+//! }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default();
+//! fory.register::<Node>(2000);
+//!
+//! let parent = Rc::new(RefCell::new(Node {
+//!     value: 1,
+//!     parent: RcWeak::new(),
+//!     children: vec![],
+//! }));
+//!
+//! let child1 = Rc::new(RefCell::new(Node {
+//!     value: 2,
+//!     parent: RcWeak::from(&parent),
+//!     children: vec![],
+//! }));
+//!
+//! parent.borrow_mut().children.push(child1.clone());
+//!
+//! let bytes = fory.serialize(&parent);
+//! let decoded: Rc<RefCell<Node>> = fory.deserialize(&bytes)?;
+//!
+//! assert_eq!(decoded.borrow().children.len(), 1);
+//! let upgraded_parent = decoded.borrow().children[0].borrow().parent.upgrade().unwrap();
+//! assert!(Rc::ptr_eq(&decoded, &upgraded_parent));
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! **Thread-Safe Circular Graphs with Arc:**
+//!
+//! ```rust
+//! use fory::{Fory, Error, ArcWeak};
+//! use fory::ForyObject;
+//! use std::sync::{Arc, Mutex};
+//!
+//! #[derive(ForyObject)]
+//! struct Node {
+//!     val: i32,
+//!     parent: ArcWeak<Mutex<Node>>,
+//!     children: Vec<Arc<Mutex<Node>>>,
+//! }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default();
+//! fory.register::<Node>(6000);
+//!
+//! let parent = Arc::new(Mutex::new(Node {
+//!     val: 10,
+//!     parent: ArcWeak::new(),
+//!     children: vec![],
+//! }));
+//!
+//! let child = Arc::new(Mutex::new(Node {
+//!     val: 20,
+//!     parent: ArcWeak::from(&parent),
+//!     children: vec![],
+//! }));
+//!
+//! parent.lock().unwrap().children.push(child.clone());
+//!
+//! let bytes = fory.serialize(&parent);
+//! let decoded: Arc<Mutex<Node>> = fory.deserialize(&bytes)?;
+//!
+//! assert_eq!(decoded.lock().unwrap().children.len(), 1);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### 3. Trait Object Serialization
+//!
+//! **What it does:** Enables polymorphic serialization through trait objects, supporting
+//! dynamic dispatch and type flexibility.
+//!
+//! **Why it matters:** Rust's trait system is powerful for abstraction, but serializing
+//! `Box<dyn Trait>` is notoriously difficult. This feature is essential for plugin systems,
+//! heterogeneous collections, and extensible architectures.
+//!
+//! **Technical approach:** The `register_trait_type!` macro generates type registration
+//! and dispatch code for trait implementations. During serialization, type IDs are written
+//! alongside data, enabling correct deserialization to the concrete type.
+//!
+//! **Supported trait object types:**
+//!
+//! - `Box<dyn Trait>` - Owned trait objects
+//! - `Rc<dyn Trait>` - Reference-counted trait objects
+//! - `Arc<dyn Trait>` - Thread-safe reference-counted trait objects
+//! - `Rc<dyn Any>` / `Arc<dyn Any>` - Runtime type dispatch without custom traits
+//! - Collections: `Vec<Box<dyn Trait>>`, `HashMap<K, Box<dyn Trait>>`
+//!
+//! #### Basic Trait Object Serialization
+//!
+//! ```rust
+//! use fory::{Fory, register_trait_type, Serializer, Mode, Error};
+//! use fory::ForyObject;
+//!
+//! trait Animal: Serializer {
+//!     fn speak(&self) -> String;
+//!     fn name(&self) -> &str;
+//! }
+//!
+//! #[derive(ForyObject, Debug)]
+//! struct Dog { name: String, breed: String }
+//!
+//! impl Animal for Dog {
+//!     fn speak(&self) -> String { "Woof!".to_string() }
+//!     fn name(&self) -> &str { &self.name }
+//! }
+//!
+//! #[derive(ForyObject, Debug)]
+//! struct Cat { name: String, color: String }
+//!
+//! impl Animal for Cat {
+//!     fn speak(&self) -> String { "Meow!".to_string() }
+//!     fn name(&self) -> &str { &self.name }
+//! }
+//!
+//! register_trait_type!(Animal, Dog, Cat);
+//!
+//! #[derive(ForyObject)]
+//! struct Zoo {
+//!     star_animal: Box<dyn Animal>,
+//! }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! fory.register::<Dog>(100);
+//! fory.register::<Cat>(101);
+//! fory.register::<Zoo>(102);
+//!
+//! let zoo = Zoo {
+//!     star_animal: Box::new(Dog {
+//!         name: "Buddy".to_string(),
+//!         breed: "Labrador".to_string(),
+//!     }),
+//! };
+//!
+//! let bytes = fory.serialize(&zoo);
+//! let decoded: Zoo = fory.deserialize(&bytes)?;
+//!
+//! assert_eq!(decoded.star_animal.name(), "Buddy");
+//! assert_eq!(decoded.star_animal.speak(), "Woof!");
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! #### Serializing `dyn Any` Trait Objects
+//!
+//! **What it does:** Supports serializing `Rc<dyn Any>` and `Arc<dyn Any>` for maximum
+//! runtime type flexibility without defining custom traits.
+//!
+//! **When to use:** Plugin systems, dynamic type handling, or when you need runtime type
+//! dispatch without compile-time trait definitions.
+//!
+//! **Key points:**
+//!
+//! - Works with any type that implements `Serializer`
+//! - Requires downcasting after deserialization to access the concrete type
+//! - Type information is preserved during serialization
+//!
+//! ```rust
+//! use fory::Fory;
+//! use fory::Error;
+//! use std::rc::Rc;
+//! use std::any::Any;
+//! use fory::ForyObject;
+//!
+//! #[derive(ForyObject)]
+//! struct Dog { name: String }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default();
+//! fory.register::<Dog>(100);
+//!
+//! let dog: Rc<dyn Any> = Rc::new(Dog {
+//!     name: "Rex".to_string()
+//! });
+//!
+//! let bytes = fory.serialize(&dog);
+//! let decoded: Rc<dyn Any> = fory.deserialize(&bytes)?;
+//!
+//! let unwrapped = decoded.downcast_ref::<Dog>().unwrap();
+//! assert_eq!(unwrapped.name, "Rex");
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! For thread-safe scenarios, use `Arc<dyn Any>`:
+//!
+//! ```rust
+//! use fory::Fory;
+//! use fory::Error;
+//! use std::sync::Arc;
+//! use std::any::Any;
+//! use fory::ForyObject;
+//!
+//! #[derive(ForyObject)]
+//! struct Cat { name: String }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default();
+//! fory.register::<Cat>(101);
+//!
+//! let cat: Arc<dyn Any> = Arc::new(Cat {
+//!     name: "Whiskers".to_string()
+//! });
+//!
+//! let bytes = fory.serialize(&cat);
+//! let decoded: Arc<dyn Any> = fory.deserialize(&bytes)?;
+//!
+//! let unwrapped = decoded.downcast_ref::<Cat>().unwrap();
+//! assert_eq!(unwrapped.name, "Whiskers");
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! #### Rc/Arc-Based Trait Objects in Structs
+//!
+//! For struct fields containing `Rc<dyn Trait>` or `Arc<dyn Trait>`, Apache Fory™
+//! automatically handles the conversion without needing wrappers:
+//!
+//! ```rust
+//! use fory::{Fory, register_trait_type, Serializer, Mode, Error};
+//! use fory::ForyObject;
+//! use std::sync::Arc;
+//! use std::rc::Rc;
+//!
+//! trait Animal: Serializer {
+//!     fn name(&self) -> &str;
+//! }
+//!
+//! #[derive(ForyObject, Debug)]
+//! struct Dog { name: String }
+//! impl Animal for Dog {
+//!     fn name(&self) -> &str { &self.name }
+//! }
+//!
+//! #[derive(ForyObject, Debug)]
+//! struct Cat { name: String }
+//! impl Animal for Cat {
+//!     fn name(&self) -> &str { &self.name }
+//! }
+//!
+//! register_trait_type!(Animal, Dog, Cat);
+//!
+//! #[derive(ForyObject)]
+//! struct AnimalShelter {
+//!     animals_rc: Vec<Rc<dyn Animal>>,
+//!     animals_arc: Vec<Arc<dyn Animal>>,
+//! }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! fory.register::<Dog>(100);
+//! fory.register::<Cat>(101);
+//! fory.register::<AnimalShelter>(102);
+//!
+//! let shelter = AnimalShelter {
+//!     animals_rc: vec![
+//!         Rc::new(Dog { name: "Rex".to_string() }),
+//!         Rc::new(Cat { name: "Mittens".to_string() }),
+//!     ],
+//!     animals_arc: vec![
+//!         Arc::new(Dog { name: "Buddy".to_string() }),
+//!     ],
+//! };
+//!
+//! let bytes = fory.serialize(&shelter);
+//! let decoded: AnimalShelter = fory.deserialize(&bytes)?;
+//!
+//! assert_eq!(decoded.animals_rc[0].name(), "Rex");
+//! assert_eq!(decoded.animals_arc[0].name(), "Buddy");
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! #### Standalone Trait Object Serialization with Wrappers
+//!
+//! Due to Rust's orphan rule, `Rc<dyn Trait>` and `Arc<dyn Trait>` cannot implement
+//! `Serializer` directly. For standalone serialization (not inside struct fields),
+//! the `register_trait_type!` macro generates wrapper types.
+//!
+//! **Note:** If you don't want to use wrapper types, you can serialize as `Rc<dyn Any>`
+//! or `Arc<dyn Any>` instead (see the `dyn Any` section above).
+//!
+//! The `register_trait_type!` macro generates `AnimalRc` and `AnimalArc` wrapper types:
+//!
+//! ```rust
+//! use fory::{Fory, Mode, Error, register_trait_type, Serializer};
+//! use fory::ForyObject;
+//! use std::sync::Arc;
+//! use std::rc::Rc;
+//!
+//! trait Animal: Serializer {
+//!     fn name(&self) -> &str;
+//! }
+//!
+//! #[derive(ForyObject, Debug)]
+//! struct Dog { name: String }
+//! impl Animal for Dog {
+//!     fn name(&self) -> &str { &self.name }
+//! }
+//!
+//! register_trait_type!(Animal, Dog);
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! fory.register::<Dog>(100);
+//!
+//! // For Rc<dyn Trait>
+//! let dog_rc: Rc<dyn Animal> = Rc::new(Dog { name: "Rex".to_string() });
+//! let wrapper = AnimalRc::from(dog_rc);
+//!
+//! let bytes = fory.serialize(&wrapper);
+//! let decoded: AnimalRc = fory.deserialize(&bytes)?;
+//!
+//! // Unwrap back to Rc<dyn Animal>
+//! let unwrapped: Rc<dyn Animal> = decoded.unwrap();
+//! assert_eq!(unwrapped.name(), "Rex");
+//!
+//! // For Arc<dyn Trait>
+//! let dog_arc: Arc<dyn Animal> = Arc::new(Dog { name: "Buddy".to_string() });
+//! let wrapper = AnimalArc::from(dog_arc);
+//!
+//! let bytes = fory.serialize(&wrapper);
+//! let decoded: AnimalArc = fory.deserialize(&bytes)?;
+//!
+//! let unwrapped: Arc<dyn Animal> = decoded.unwrap();
+//! assert_eq!(unwrapped.name(), "Buddy");
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### 4. Schema Evolution
+//!
+//! **What it does:** Supports schema evolution in **Compatible mode**, allowing
+//! serialization and deserialization peers to have different type definitions.
+//!
+//! **Why it matters:** In distributed systems and microservices, different services
+//! evolve independently. Schema evolution enables zero-downtime deployments where
+//! services can be updated gradually without breaking communication.
+//!
+//! **Technical approach:** In Compatible mode, Apache Fory™ includes field names and
+//! type metadata in the serialized data. During deserialization, fields are matched by
+//! name, allowing for additions, deletions, and reordering.
+//!
+//! **Features:**
+//!
+//! - Add new fields with default values
+//! - Remove obsolete fields (skipped during deserialization)
+//! - Change field nullability (`T` ↔ `Option<T>`)
+//! - Reorder fields (matched by name, not position)
+//! - Type-safe fallback to default values for missing fields
+//!
+//! **Compatibility rules:**
+//!
+//! - Field names must match (case-sensitive)
+//! - Type changes are not supported (except nullable/non-nullable)
+//! - Nested struct types must be registered on both sides
+//!
+//! ```rust
+//! use fory::{Fory, Error, Mode};
+//! use fory::ForyObject;
+//! use std::collections::HashMap;
+//!
+//! #[derive(ForyObject, Debug)]
+//! struct PersonV1 {
+//!     name: String,
+//!     age: i32,
+//!     address: String,
+//! }
+//!
+//! #[derive(ForyObject, Debug)]
+//! struct PersonV2 {
+//!     name: String,
+//!     age: i32,
+//!     phone: Option<String>,
+//!     metadata: HashMap<String, String>,
+//! }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory1 = Fory::default().mode(Mode::Compatible);
+//! fory1.register::<PersonV1>(1);
+//!
+//! let mut fory2 = Fory::default().mode(Mode::Compatible);
+//! fory2.register::<PersonV2>(1);
+//!
+//! let person_v1 = PersonV1 {
+//!     name: "Alice".to_string(),
+//!     age: 30,
+//!     address: "123 Main St".to_string(),
+//! };
+//!
+//! let bytes = fory1.serialize(&person_v1);
+//! let person_v2: PersonV2 = fory2.deserialize(&bytes)?;
+//!
+//! assert_eq!(person_v2.name, "Alice");
+//! assert_eq!(person_v2.age, 30);
+//! assert_eq!(person_v2.phone, None);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### 5. Enum Support
+//!
+//! **What it does:** Supports C-style enums (enums without data payloads) with efficient
+//! varint encoding.
+//!
+//! **Why it matters:** Enums are common for state machines, status codes, and type
+//! discriminators. Efficient encoding and schema evolution support are essential.
+//!
+//! **Technical approach:** Each variant is assigned an ordinal value (0, 1, 2, ...)
+//! during serialization. Ordinals are encoded using variable-length integers for
+//! space efficiency.
+//!
+//! **Features:**
+//!
+//! - Efficient varint encoding for ordinals
+//! - Schema evolution support in Compatible mode
+//! - Type-safe variant matching
+//! - Default variant support with `#[default]`
+//!
+//! ```rust
+//! use fory::Fory;
+//! use fory::Error;
+//! use fory::ForyObject;
+//!
+//! #[derive(ForyObject, Debug, PartialEq, Default)]
+//! enum Status {
+//!     #[default]
+//!     Pending,
+//!     Active,
+//!     Inactive,
+//!     Deleted,
+//! }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default();
+//! fory.register::<Status>(1);
+//!
+//! let status = Status::Active;
+//! let bytes = fory.serialize(&status);
+//! let decoded: Status = fory.deserialize(&bytes)?;
+//! assert_eq!(status, decoded);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### 6. Custom Serializers
+//!
+//! **What it does:** Allows manual implementation of the `Serializer` trait for types
+//! that don't support `#[derive(ForyObject)]`.
+//!
+//! **When to use:**
+//!
+//! - External types from other crates that you can't modify
+//! - Types with special serialization requirements
+//! - Legacy data format compatibility
+//! - Performance-critical custom encoding
+//! - Complex types that require special handling
+//!
+//! **Technical approach:** Implement the `Serializer` trait's `fory_write_data()` and
+//! `fory_read_data()` methods to control exactly how data is written to and read from
+//! the binary buffer.
+//!
+//! ```rust
+//! use fory::{Fory, ReadContext, WriteContext, Serializer, ForyDefault, Error};
+//! use std::any::Any;
+//!
+//! #[derive(Debug, PartialEq, Default)]
+//! struct CustomType {
+//!     value: i32,
+//!     name: String,
+//! }
+//!
+//! impl Serializer for CustomType {
+//!     fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
+//!         context.writer.write_i32(self.value);
+//!         context.writer.write_varuint32(self.name.len() as u32);
+//!         context.writer.write_utf8_string(&self.name);
+//!     }
+//!
+//!     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+//!         let value = context.reader.read_i32();
+//!         let len = context.reader.read_varuint32() as usize;
+//!         let name = context.reader.read_utf8_string(len);
+//!         Ok(Self { value, name })
+//!     }
+//!
+//!     fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+//!         Self::fory_get_type_id(fory)
+//!     }
+//!
+//!     fn as_any(&self) -> &dyn Any {
+//!         self
+//!     }
+//! }
+//!
+//! impl ForyDefault for CustomType {
+//!     fn fory_default() -> Self {
+//!         Self::default()
+//!     }
+//! }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default();
+//! fory.register_serializer::<CustomType>(100);
+//!
+//! let custom = CustomType {
+//!     value: 42,
+//!     name: "test".to_string(),
+//! };
+//! let bytes = fory.serialize(&custom);
+//! let decoded: CustomType = fory.deserialize(&bytes)?;
+//! assert_eq!(custom, decoded);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### 7. Row-Based Serialization
+//!
+//! **What it does:** Provides a high-performance **row format** for zero-copy
+//! deserialization, enabling random access to fields directly from binary data
+//! without full object reconstruction.
+//!
+//! **Why it matters:** Traditional serialization reconstructs entire objects in memory.
+//! For analytics workloads or when you only need a few fields from large objects,
+//! this is wasteful. Row format provides O(1) field access without deserialization.
+//!
+//! **Technical approach:** Fields are encoded in a binary row with fixed offsets for
+//! primitives. Variable-length data (strings, collections) are stored with offset
+//! pointers. A null bitmap tracks which fields are present. The generated code provides
+//! accessor methods that read directly from the binary buffer.
+//!
+//! **Key benefits:**
+//!
+//! - **Zero-copy access**: Read fields without allocating or copying data
+//! - **Partial deserialization**: Access only the fields you need
+//! - **Memory-mapped files**: Work with data larger than RAM
+//! - **Cache-friendly**: Sequential memory layout for better CPU cache utilization
+//! - **Lazy evaluation**: Defer expensive operations until field access
+//!
+//! **When to use row format:**
+//!
+//! - Analytics workloads with selective field access
+//! - Large datasets where only a subset of fields is needed
+//! - Memory-constrained environments
+//! - High-throughput data pipelines
+//! - Reading from memory-mapped files or shared memory
+//!
+//! **Performance characteristics:**
+//!
+//! | Operation            | Object Format                 | Row Format                      |
+//! |----------------------|-------------------------------|---------------------------------|
+//! | Full deserialization | Allocates all objects         | Zero allocation                 |
+//! | Single field access  | Full deserialization required | Direct offset read (O(1))       |
+//! | Memory usage         | Full object graph in memory   | Only accessed fields in memory  |
+//! | Suitable for         | Small objects, full access    | Large objects, selective access |
 //!
 //! ```rust
 //! use fory::{to_row, from_row};
@@ -113,6 +815,7 @@
 //!     is_active: bool,
 //! }
 //!
+//! # fn main() {
 //! let profile = UserProfile {
 //!     id: 12345,
 //!     username: "alice".to_string(),
@@ -125,84 +828,170 @@
 //!     is_active: true,
 //! };
 //!
-//! // Serialize to row format
 //! let row_data = to_row(&profile);
-//!
-//! // Deserialize with zero-copy access
 //! let row = from_row::<UserProfile>(&row_data);
 //!
-//! // Access fields directly from the row data
 //! assert_eq!(row.id(), 12345);
 //! assert_eq!(row.username(), "alice");
-//! assert_eq!(row.email(), "alice@example.com");
 //! assert_eq!(row.is_active(), true);
 //!
-//! // Access collections efficiently
 //! let scores = row.scores();
 //! assert_eq!(scores.size(), 4);
 //! assert_eq!(scores.get(0), 95);
-//! assert_eq!(scores.get(1), 87);
-//!
-//! let prefs = row.preferences();
-//! assert_eq!(prefs.keys().size(), 2);
-//! assert_eq!(prefs.keys().get(0), "language");
-//! assert_eq!(prefs.values().get(0), "en");
+//! # }
 //! ```
 //!
 //! ## Supported Types
 //!
-//! Fory supports a wide range of Rust types:
+//! Apache Fory™ supports a comprehensive type system for maximum flexibility.
 //!
 //! ### Primitive Types
-//! - `bool`, `i8`, `i16`, `i32`, `i64`, `f32`, `f64`
-//! - `String`, `&str` (in row format)
-//! - `Vec<u8>` for binary data
+//!
+//! - `bool` - Boolean values
+//! - `i8`, `i16`, `i32`, `i64` - Signed integers
+//! - `f32`, `f64` - Floating point numbers
+//! - `String` - UTF-8 encoded strings
 //!
 //! ### Collections
-//! - `Vec<T>` for arrays/lists
-//! - `HashMap<K, V>` and `BTreeMap<K, V>` for maps
-//! - `Option<T>` for nullable values
 //!
-//! ### Date and Time
-//! - `chrono::NaiveDate` for dates
-//! - `chrono::NaiveDateTime` for timestamps
+//! - `Vec<T>` - Dynamic arrays
+//! - `HashMap<K, V>` - Hash-based maps
+//! - `BTreeMap<K, V>` - Ordered maps
+//! - `HashSet<T>` - Hash-based sets
+//! - `Option<T>` - Optional values
+//!
+//! ### Smart Pointers
+//!
+//! - `Box<T>` - Heap allocation
+//! - `Rc<T>` - Reference counting (shared references tracked automatically)
+//! - `Arc<T>` - Thread-safe reference counting (shared references tracked)
+//! - `RcWeak<T>` - Weak reference to `Rc<T>` (breaks circular references)
+//! - `ArcWeak<T>` - Weak reference to `Arc<T>` (breaks circular references)
+//! - `RefCell<T>` - Interior mutability with runtime borrow checking
+//! - `Mutex<T>` - Thread-safe interior mutability
+//!
+//! ### Date and Time (requires `chrono` feature)
+//!
+//! - `chrono::NaiveDate` - Date without timezone
+//! - `chrono::NaiveDateTime` - Timestamp without timezone
 //!
 //! ### Custom Types
-//! - Structs with `#[derive(ForyObject)]` or `#[derive(ForyRow)]`
-//! - Enums with `#[derive(ForyObject)]`
+//!
+//! - Structs with `#[derive(ForyObject)]` - Object graph serialization
+//! - Structs with `#[derive(ForyRow)]` - Row-based serialization
+//! - C-style enums with `#[derive(ForyObject)]` - Enum support
+//! - Manual `Serializer` implementation - Custom serialization logic
+//!
+//! ### Trait Objects
+//!
+//! - `Box<dyn Trait>` - Owned trait objects
+//! - `Rc<dyn Trait>` - Reference-counted trait objects
+//! - `Arc<dyn Trait>` - Thread-safe reference-counted trait objects
+//! - `Rc<dyn Any>` - Runtime type dispatch without custom traits
+//! - `Arc<dyn Any>` - Thread-safe runtime type dispatch
 //!
 //! ## Serialization Modes
 //!
-//! Fory supports two serialization modes:
+//! Apache Fory™ supports two serialization modes to balance between performance
+//! and flexibility:
 //!
-//! - **SchemaConsistent**: Type declarations must be consistent between
-//!   serialization and deserialization peers (default)
-//! - **Compatible**: Type declarations can differ between peers, allowing
-//!   independent field additions/deletions
+//! ### SchemaConsistent Mode (Default)
+//!
+//! **When to use:** Maximum performance when schemas are guaranteed to match.
+//!
+//! **Characteristics:**
+//! - Type declarations must match exactly between serialization and deserialization
+//! - Smaller payload size (no field names or metadata)
+//! - Faster serialization and deserialization
+//! - Suitable for monolithic applications or tightly coupled services
 //!
 //! ```rust
 //! use fory::Fory;
-//! use fory_core::types::Mode;
-//! use fory_derive::ForyObject;
 //!
-//! #[derive(ForyObject, Debug)]
-//! struct Config {
-//!     name: String,
-//!     value: i32,
+//! let fory = Fory::default();
+//! ```
+//!
+//! ### Compatible Mode
+//!
+//! **When to use:** Schema evolution in distributed systems or microservices.
+//!
+//! **Characteristics:**
+//! - Type declarations can differ between peers
+//! - Allows field additions, deletions, and reordering
+//! - Larger payload size (includes field names and metadata)
+//! - Slightly slower due to metadata processing
+//! - Essential for zero-downtime deployments
+//!
+//! ```rust
+//! use fory::{Fory, Mode};
+//!
+//! let fory = Fory::default().mode(Mode::Compatible);
+//! ```
+//!
+//! ## Cross-Language Serialization
+//!
+//! **What it enables:** Seamless data exchange across Java, Python, C++, Go,
+//! JavaScript, and Rust implementations.
+//!
+//! **Why it matters:** Microservices architectures often use multiple languages.
+//! Apache Fory™ provides a common binary protocol without IDL files or code generation.
+//!
+//! **How to enable:**
+//!
+//! ```rust
+//! use fory::{Fory, Mode};
+//! use fory::ForyObject;
+//!
+//! let mut fory = Fory::default()
+//!     .mode(Mode::Compatible)
+//!     .xlang(true);
+//!
+//! #[derive(ForyObject)]
+//! struct MyStruct {
+//!     field1: i32,
+//!     field2: String,
 //! }
 //!
-//! let mut fory = Fory::default().mode(Mode::Compatible);
-//! fory.register::<Config>(100);
-//! // ... use fory for serialization
+//! fory.register_by_namespace::<MyStruct>("com.example", "MyStruct");
 //! ```
+//!
+//! **Type registration strategies:**
+//!
+//! - **ID-based registration**: `fory.register::<T>(id)` - Fastest, requires coordination
+//! - **Namespace-based registration**: `fory.register_by_namespace::<T>(namespace, name)` - Automatic cross-language mapping
+//!
+//! ## Performance Characteristics
+//!
+//! Apache Fory™ Rust is designed for maximum performance through multiple techniques:
+//!
+//! **Compile-time code generation:**
+//! - Procedural macros generate specialized serialization code
+//! - Zero runtime overhead, no reflection
+//! - Monomorphization for type-specific optimizations
+//!
+//! **Zero-copy techniques:**
+//! - Row format enables direct memory access
+//! - No intermediate object allocation
+//! - Memory-mapped file support
+//!
+//! **Space efficiency:**
+//! - Variable-length integer encoding
+//! - Reference deduplication (shared objects serialized once)
+//! - Compact binary format
+//!
+//! **Buffer management:**
+//! - Pre-allocation based on `fory_reserved_space()` hints
+//! - Minimized reallocations
+//! - Little-endian layout for modern CPUs
 //!
 //! ## Error Handling
 //!
-//! Fory provides comprehensive error handling through the `Error` type:
+//! Apache Fory™ uses `Result<T, Error>` for all fallible operations, providing
+//! comprehensive error handling:
 //!
 //! ```rust
 //! use fory::{Fory, Error};
-//! use fory_derive::ForyObject;
+//! use fory::ForyObject;
 //!
 //! #[derive(ForyObject)]
 //! struct Data {
@@ -212,52 +1001,52 @@
 //! fn process_data(bytes: &[u8]) -> Result<Data, Error> {
 //!     let mut fory = Fory::default();
 //!     fory.register::<Data>(100);
-//!     
-//!     // This can fail if the data is corrupted or type mismatches
+//!
 //!     let data: Data = fory.deserialize(bytes)?;
 //!     Ok(data)
 //! }
 //! ```
 //!
-//! ## Performance Considerations
+//! ## Thread Safety
 //!
-//! - **Object Serialization**: Best for complex object graphs with references
-//! - **Row Serialization**: Best for high-throughput, zero-copy scenarios
-//! - **Type Registration**: Register all types before serialization for optimal performance
-//! - **Buffer Pre-allocation**: Fory automatically reserves space to minimize allocations
-//!
-//! ## Cross-Language Compatibility
-//!
-//! Fory is designed to work across multiple programming languages, making it
-//! ideal for microservices architectures and distributed systems where different
-//! services may be implemented in different languages.
-//!
-//! ## Getting Started
-//!
-//! Add Fory to your `Cargo.toml`:
-//!
-//! ```toml
-//! [dependencies]
-//! fory = "0.1"
-//! fory-derive = "0.1"
-//! chrono = "0.4"
-//! ```
-//!
-//! Then use the derive macros to make your types serializable:
+//! **Important:** `Fory` instances are **not thread-safe**. Use one instance per thread:
 //!
 //! ```rust
-//! use fory_derive::{ForyObject, ForyRow};
+//! use std::thread_local;
+//! use std::cell::RefCell;
+//! use fory::Fory;
 //!
-//! #[derive(ForyObject)]        // For object serialization
-//! #[derive(ForyRow)]     // For row-based serialization
-//! struct MyData {
-//!     field1: String,
-//!     field2: i32,
+//! thread_local! {
+//!     static FORY: RefCell<Fory> = RefCell::new(Fory::default());
 //! }
+//!
+//! # fn serialize_data() -> Vec<u8> {
+//! FORY.with(|fory| {
+//!     let data = vec![1, 2, 3];
+//!     fory.borrow().serialize(&data)
+//! })
+//! # }
 //! ```
+//!
+//! ## Examples
+//!
+//! See the `tests/` directory for comprehensive examples:
+//!
+//! - `tests/tests/test_complex_struct.rs` - Complex nested structures
+//! - `tests/tests/test_rc_arc_trait_object.rs` - Trait object serialization
+//! - `tests/tests/test_weak.rs` - Circular reference handling
+//! - `tests/tests/test_cross_language.rs` - Cross-language compatibility
+//!
+//! ## Documentation
+//!
+//! - **[Protocol Specification](https://fory.apache.org/docs/specification/fory_xlang_serialization_spec)** - Binary protocol details
+//! - **[Row Format Specification](https://fory.apache.org/docs/specification/fory_row_format_spec)** - Row format internals
+//! - **[Type Mapping](https://fory.apache.org/docs/guide/xlang_type_mapping)** - Cross-language type mappings
+//! - **[API Documentation](https://docs.rs/fory)** - Complete API reference
+//! - **[GitHub Repository](https://github.com/apache/fory)** - Source code and issue tracking
 
 pub use fory_core::{
     error::Error, fory::Fory, register_trait_type, row::from_row, row::to_row, types::Mode,
-    types::TypeId, ArcWeak, RcWeak,
+    types::TypeId, ArcWeak, ForyDefault, RcWeak, ReadContext, Serializer, WriteContext,
 };
 pub use fory_derive::{ForyObject, ForyRow};

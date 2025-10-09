@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Tests for shared reference handling in Fury Rust
+//! Tests for shared reference handling in Fory Rust
 
 use fory_core::fory::Fory;
 use std::rc::Rc;
@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 #[test]
 fn test_rc_shared_in_nested_vec() {
-    let fury = Fory::default();
+    let fory = Fory::default();
 
     let shared1 = Rc::new(String::from("shared_1"));
     let shared2 = Rc::new(String::from("shared_2"));
@@ -35,8 +35,8 @@ fn test_rc_shared_in_nested_vec() {
         vec![shared1.clone()],
     ];
 
-    let serialized = fury.serialize(&nested);
-    let deserialized: Vec<Vec<Rc<String>>> = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&nested);
+    let deserialized: Vec<Vec<Rc<String>>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
     assert_eq!(deserialized[0].len(), 2);
@@ -55,7 +55,7 @@ fn test_rc_shared_in_nested_vec() {
 
 #[test]
 fn test_arc_shared_in_nested_vec() {
-    let fury = Fory::default();
+    let fory = Fory::default();
 
     let shared1 = Arc::new(String::from("shared_1"));
     let shared2 = Arc::new(String::from("shared_2"));
@@ -67,8 +67,8 @@ fn test_arc_shared_in_nested_vec() {
         vec![shared1.clone()],
     ];
 
-    let serialized = fury.serialize(&nested);
-    let deserialized: Vec<Vec<Arc<String>>> = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&nested);
+    let deserialized: Vec<Vec<Arc<String>>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
     assert_eq!(deserialized[0].len(), 2);
@@ -87,7 +87,7 @@ fn test_arc_shared_in_nested_vec() {
 
 #[test]
 fn test_mixed_rc_arc_sharing() {
-    let fury = Fory::default();
+    let fory = Fory::default();
 
     // Test both Rc and Arc sharing within the same structure
     let shared_rc = Rc::new(42i32);
@@ -97,11 +97,11 @@ fn test_mixed_rc_arc_sharing() {
     let rc_vec = vec![shared_rc.clone(), shared_rc.clone()];
     let arc_vec = vec![shared_arc.clone(), shared_arc.clone()];
 
-    let serialized_rc = fury.serialize(&rc_vec);
-    let serialized_arc = fury.serialize(&arc_vec);
+    let serialized_rc = fory.serialize(&rc_vec);
+    let serialized_arc = fory.serialize(&arc_vec);
 
-    let deserialized_rc: Vec<Rc<i32>> = fury.deserialize(&serialized_rc).unwrap();
-    let deserialized_arc: Vec<Arc<String>> = fury.deserialize(&serialized_arc).unwrap();
+    let deserialized_rc: Vec<Rc<i32>> = fory.deserialize(&serialized_rc).unwrap();
+    let deserialized_arc: Vec<Arc<String>> = fory.deserialize(&serialized_arc).unwrap();
 
     // Verify Rc sharing
     assert!(Rc::ptr_eq(&deserialized_rc[0], &deserialized_rc[1]));
@@ -114,7 +114,7 @@ fn test_mixed_rc_arc_sharing() {
 
 #[test]
 fn test_deep_sharing_stress_test() {
-    let fury = Fory::default();
+    let fory = Fory::default();
 
     // Create a stress test with deep nesting and many shared references
     let shared = Rc::new(String::from("deep_shared"));
@@ -125,8 +125,8 @@ fn test_deep_sharing_stress_test() {
         vec![vec![shared.clone()]],
     ];
 
-    let serialized = fury.serialize(&deep_structure);
-    let deserialized: Vec<Vec<Vec<Rc<String>>>> = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&deep_structure);
+    let deserialized: Vec<Vec<Vec<Rc<String>>>> = fory.deserialize(&serialized).unwrap();
 
     // Verify structure
     assert_eq!(deserialized.len(), 3);

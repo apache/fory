@@ -1,14 +1,14 @@
-# Apache Fury™ Rust
+# Apache Fory™ Rust
 
-[![Crates.io](https://img.shields.io/crates/v/fury.svg)](https://crates.io/crates/fury)
-[![Documentation](https://docs.rs/fury/badge.svg)](https://docs.rs/fury)
+[![Crates.io](https://img.shields.io/crates/v/fory.svg)](https://crates.io/crates/fory)
+[![Documentation](https://docs.rs/fory/badge.svg)](https://docs.rs/fory)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-**Apache Fury™** is a blazing fast multi-language serialization framework powered by **JIT compilation** and **zero-copy** techniques, providing up to **ultra-fast performance** while maintaining ease of use and safety.
+**Apache Fory™** is a blazing fast multi-language serialization framework powered by **JIT compilation** and **zero-copy** techniques, providing up to **ultra-fast performance** while maintaining ease of use and safety.
 
 The Rust implementation provides versatile and high-performance serialization with automatic memory management and compile-time type safety.
 
-## 🚀 Why Apache Fury™ Rust?
+## 🚀 Why Apache Fory™ Rust?
 
 - **🔥 Blazingly Fast**: Zero-copy deserialization and optimized binary protocols
 - **🌍 Cross-Language**: Seamlessly serialize/deserialize data across Java, Python, C++, Go, JavaScript, and Rust
@@ -22,27 +22,26 @@ The Rust implementation provides versatile and high-performance serialization wi
 
 | Crate                         | Description                       | Version                                                                                               |
 | ----------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| [`fury`](fury/)               | High-level API with derive macros | [![crates.io](https://img.shields.io/crates/v/fury.svg)](https://crates.io/crates/fury)               |
-| [`fury-core`](fury-core/)     | Core serialization engine         | [![crates.io](https://img.shields.io/crates/v/fury-core.svg)](https://crates.io/crates/fury-core)     |
-| [`fury-derive`](fury-derive/) | Procedural macros                 | [![crates.io](https://img.shields.io/crates/v/fury-derive.svg)](https://crates.io/crates/fury-derive) |
+| [`fory`](fory/)               | High-level API with derive macros | [![crates.io](https://img.shields.io/crates/v/fory.svg)](https://crates.io/crates/fory)               |
+| [`fory-core`](fory-core/)     | Core serialization engine         | [![crates.io](https://img.shields.io/crates/v/fory-core.svg)](https://crates.io/crates/fory-core)     |
+| [`fory-derive`](fory-derive/) | Procedural macros                 | [![crates.io](https://img.shields.io/crates/v/fory-derive.svg)](https://crates.io/crates/fory-derive) |
 
 ## 🏃 Quick Start
 
-Add Apache Fury™ to your `Cargo.toml`:
+Add Apache Fory™ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fury = "0.13"
-fury-derive = "0.13"
+fory = "0.13"
 ```
 
 ### Basic Example
 
 ```rust
-use fury::{Fury, Error};
-use fury_derive::FuryObject;
+use fory::{Fory, Error};
+use fory::ForyObject;
 
-#[derive(FuryObject, Debug, PartialEq)]
+#[derive(ForyObject, Debug, PartialEq)]
 struct User {
     name: String,
     age: i32,
@@ -50,8 +49,8 @@ struct User {
 }
 
 fn main() -> Result<(), Error> {
-    let mut fury = Fury::default();
-    fury.register::<User>(1);
+    let mut fory = Fory::default();
+    fory.register::<User>(1);
 
     let user = User {
         name: "Alice".to_string(),
@@ -60,10 +59,10 @@ fn main() -> Result<(), Error> {
     };
 
     // Serialize
-    let bytes = fury.serialize(&user);
+    let bytes = fory.serialize(&user);
 
     // Deserialize
-    let decoded: User = fury.deserialize(&bytes)?;
+    let decoded: User = fory.deserialize(&bytes)?;
     assert_eq!(user, decoded);
 
     Ok(())
@@ -74,7 +73,7 @@ fn main() -> Result<(), Error> {
 
 ### 1. Object Graph Serialization
 
-Apache Fury™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `#[derive(FuryObject)]` macro generates efficient serialization code at compile time, eliminating runtime overhead.
+Apache Fory™ provides automatic serialization of complex object graphs, preserving the structure and relationships between objects. The `#[derive(ForyObject)]` macro generates efficient serialization code at compile time, eliminating runtime overhead.
 
 **Key capabilities:**
 
@@ -85,11 +84,11 @@ Apache Fury™ provides automatic serialization of complex object graphs, preser
 - Efficient binary encoding with variable-length integers
 
 ```rust
-use fury::{Fury, Error};
-use fury_derive::FuryObject;
+use fory::{Fory, Error};
+use fory::ForyObject;
 use std::collections::HashMap;
 
-#[derive(FuryObject, Debug, PartialEq, Default)]
+#[derive(ForyObject, Debug, PartialEq, Default)]
 struct Person {
     name: String,
     age: i32,
@@ -98,16 +97,16 @@ struct Person {
     metadata: HashMap<String, String>,
 }
 
-#[derive(FuryObject, Debug, PartialEq, Default)]
+#[derive(ForyObject, Debug, PartialEq, Default)]
 struct Address {
     street: String,
     city: String,
     country: String,
 }
 
-let mut fury = Fury::default();
-fury.register::<Address>(100);
-fury.register::<Person>(200);
+let mut fory = Fory::default();
+fory.register::<Address>(100);
+fory.register::<Person>(200);
 
 let person = Person {
     name: "John Doe".to_string(),
@@ -123,14 +122,14 @@ let person = Person {
     ]),
 };
 
-let bytes = fury.serialize(&person);
-let decoded: Person = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&person);
+let decoded: Person = fory.deserialize(&bytes)?;
 assert_eq!(person, decoded);
 ```
 
 ### 2. Shared and Circular References
 
-Apache Fury™ automatically tracks and preserves reference identity for shared objects using `Rc<T>` and `Arc<T>`. When the same object is referenced multiple times, Fury serializes it only once and uses reference IDs for subsequent occurrences. This ensures:
+Apache Fory™ automatically tracks and preserves reference identity for shared objects using `Rc<T>` and `Arc<T>`. When the same object is referenced multiple times, Fory serializes it only once and uses reference IDs for subsequent occurrences. This ensures:
 
 - **Space efficiency**: No data duplication in serialized output
 - **Reference identity preservation**: Deserialized objects maintain the same sharing relationships
@@ -139,10 +138,10 @@ Apache Fury™ automatically tracks and preserves reference identity for shared 
 #### Shared References with Rc/Arc
 
 ```rust
-use fury::Fury;
+use fory::Fory;
 use std::rc::Rc;
 
-let fury = Fury::default();
+let fory = Fory::default();
 
 // Create a shared value
 let shared = Rc::new(String::from("shared_value"));
@@ -151,8 +150,8 @@ let shared = Rc::new(String::from("shared_value"));
 let data = vec![shared.clone(), shared.clone(), shared.clone()];
 
 // The shared value is serialized only once
-let bytes = fury.serialize(&data);
-let decoded: Vec<Rc<String>> = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&data);
+let decoded: Vec<Rc<String>> = fory.deserialize(&bytes)?;
 
 // Verify reference identity is preserved
 assert_eq!(decoded.len(), 3);
@@ -171,8 +170,8 @@ use std::sync::Arc;
 let shared = Arc::new(String::from("shared_value"));
 let data = vec![shared.clone(), shared.clone(), shared.clone()];
 
-let bytes = fury.serialize(&data);
-let decoded: Vec<Arc<String>> = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&data);
+let decoded: Vec<Arc<String>> = fory.deserialize(&bytes)?;
 
 // Reference identity is preserved with Arc too
 assert!(Arc::ptr_eq(&decoded[0], &decoded[1]));
@@ -190,21 +189,21 @@ To serialize circular references like parent-child relationships or doubly-linke
 - All clones of a weak pointer share the same internal cell for automatic updates
 
 ```rust
-use fury::{Fury, Error};
-use fury_derive::FuryObject;
-use fury_core::serializer::weak::RcWeak;
+use fory::{Fory, Error};
+use fory::ForyObject;
+use fory::RcWeak;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-#[derive(FuryObject, Debug)]
+#[derive(ForyObject, Debug)]
 struct Node {
     value: i32,
     parent: RcWeak<RefCell<Node>>,
     children: Vec<Rc<RefCell<Node>>>,
 }
 
-let mut fury = Fury::default();
-fury.register::<Node>(2000);
+let mut fory = Fory::default();
+fory.register::<Node>(2000);
 
 // Build a parent-child tree
 let parent = Rc::new(RefCell::new(Node {
@@ -229,8 +228,8 @@ parent.borrow_mut().children.push(child1.clone());
 parent.borrow_mut().children.push(child2.clone());
 
 // Serialize and deserialize the circular structure
-let bytes = fury.serialize(&parent);
-let decoded: Rc<RefCell<Node>> = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&parent);
+let decoded: Rc<RefCell<Node>> = fory.deserialize(&bytes)?;
 
 // Verify the circular relationship
 assert_eq!(decoded.borrow().children.len(), 2);
@@ -243,20 +242,20 @@ for child in &decoded.borrow().children {
 **Thread-Safe Circular Graphs with Arc:**
 
 ```rust
-use fury::{Fury, Error};
-use fury_derive::FuryObject;
-use fury_core::serializer::weak::ArcWeak;
+use fory::{Fory, Error};
+use fory::ForyObject;
+use fory::ArcWeak;
 use std::sync::{Arc, Mutex};
 
-#[derive(FuryObject)]
+#[derive(ForyObject)]
 struct Node {
     val: i32,
     parent: ArcWeak<Mutex<Node>>,
     children: Vec<Arc<Mutex<Node>>>,
 }
 
-let mut fury = Fury::default();
-fury.register::<Node>(6000);
+let mut fory = Fory::default();
+fory.register::<Node>(6000);
 
 let parent = Arc::new(Mutex::new(Node {
     val: 10,
@@ -279,8 +278,8 @@ let child2 = Arc::new(Mutex::new(Node {
 parent.lock().unwrap().children.push(child1.clone());
 parent.lock().unwrap().children.push(child2.clone());
 
-let bytes = fury.serialize(&parent);
-let decoded: Arc<Mutex<Node>> = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&parent);
+let decoded: Arc<Mutex<Node>> = fory.deserialize(&bytes)?;
 
 assert_eq!(decoded.lock().unwrap().children.len(), 2);
 for child in &decoded.lock().unwrap().children {
@@ -291,7 +290,7 @@ for child in &decoded.lock().unwrap().children {
 
 ### 3. Trait Object Serialization
 
-Apache Fury™ supports polymorphic serialization through trait objects, enabling dynamic dispatch and type flexibility. This is essential for plugin systems, heterogeneous collections, and extensible architectures.
+Apache Fory™ supports polymorphic serialization through trait objects, enabling dynamic dispatch and type flexibility. This is essential for plugin systems, heterogeneous collections, and extensible architectures.
 
 **Supported trait object types:**
 
@@ -303,17 +302,17 @@ Apache Fury™ supports polymorphic serialization through trait objects, enablin
 #### Basic Trait Object Serialization
 
 ```rust
-use fury_core::{Fury, register_trait_type};
-use fury_core::serializer::Serializer;
-use fury_derive::FuryObject;
-use fury_core::types::Mode;
+use fory::{Fory, register_trait_type};
+use fory::Serializer;
+use fory::ForyObject;
+use fory::Mode;
 
 trait Animal: Serializer {
     fn speak(&self) -> String;
     fn name(&self) -> &str;
 }
 
-#[derive(FuryObject)]
+#[derive(ForyObject)]
 struct Dog { name: String, breed: String }
 
 impl Animal for Dog {
@@ -321,7 +320,7 @@ impl Animal for Dog {
     fn name(&self) -> &str { &self.name }
 }
 
-#[derive(FuryObject)]
+#[derive(ForyObject)]
 struct Cat { name: String, color: String }
 
 impl Animal for Cat {
@@ -332,15 +331,15 @@ impl Animal for Cat {
 // Register trait implementations
 register_trait_type!(Animal, Dog, Cat);
 
-#[derive(FuryObject)]
+#[derive(ForyObject)]
 struct Zoo {
     star_animal: Box<dyn Animal>,
 }
 
-let mut fury = Fury::default().mode(Mode::Compatible);
-fury.register::<Dog>(100);
-fury.register::<Cat>(101);
-fury.register::<Zoo>(102);
+let mut fory = Fory::default().mode(Mode::Compatible);
+fory.register::<Dog>(100);
+fory.register::<Cat>(101);
+fory.register::<Zoo>(102);
 
 let zoo = Zoo {
     star_animal: Box::new(Dog {
@@ -349,8 +348,8 @@ let zoo = Zoo {
     }),
 };
 
-let bytes = fury.serialize(&zoo);
-let decoded: Zoo = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&zoo);
+let decoded: Zoo = fory.deserialize(&bytes)?;
 
 assert_eq!(decoded.star_animal.name(), "Buddy");
 assert_eq!(decoded.star_animal.speak(), "Woof!");
@@ -358,7 +357,7 @@ assert_eq!(decoded.star_animal.speak(), "Woof!");
 
 #### Serializing `dyn Any` Trait Objects
 
-Apache Fury™ supports serializing `Rc<dyn Any>` and `Arc<dyn Any>` for runtime type dispatch. This is useful when you need maximum flexibility and don't want to define a custom trait.
+Apache Fory™ supports serializing `Rc<dyn Any>` and `Arc<dyn Any>` for runtime type dispatch. This is useful when you need maximum flexibility and don't want to define a custom trait.
 
 **Key points:**
 
@@ -380,8 +379,8 @@ let dog_rc: Rc<dyn Animal> = Rc::new(Dog {
 let dog_any: Rc<dyn Any> = dog_rc.clone();
 
 // Serialize the Any wrapper
-let bytes = fury.serialize(&dog_any);
-let decoded: Rc<dyn Any> = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&dog_any);
+let decoded: Rc<dyn Any> = fory.deserialize(&bytes)?;
 
 // Downcast back to the concrete type
 let unwrapped = decoded.downcast_ref::<Dog>().unwrap();
@@ -402,8 +401,8 @@ let dog_arc: Arc<dyn Animal> = Arc::new(Dog {
 // Convert to Arc<dyn Any>
 let dog_any: Arc<dyn Any> = dog_arc.clone();
 
-let bytes = fury.serialize(&dog_any);
-let decoded: Arc<dyn Any> = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&dog_any);
+let decoded: Arc<dyn Any> = fory.deserialize(&bytes)?;
 
 // Downcast to concrete type
 let unwrapped = decoded.downcast_ref::<Dog>().unwrap();
@@ -412,24 +411,24 @@ assert_eq!(unwrapped.name, "Buddy");
 
 #### Rc/Arc-Based Trait Objects in Structs
 
-For fields with `Rc<dyn Trait>` or `Arc<dyn Trait>`, Fury automatically handles the conversion:
+For fields with `Rc<dyn Trait>` or `Arc<dyn Trait>`, Fory automatically handles the conversion:
 
 ```rust
 use std::sync::Arc;
 use std::rc::Rc;
 use std::collections::HashMap;
 
-#[derive(FuryObject)]
+#[derive(ForyObject)]
 struct AnimalShelter {
     animals_rc: Vec<Rc<dyn Animal>>,
     animals_arc: Vec<Arc<dyn Animal>>,
     registry: HashMap<String, Arc<dyn Animal>>,
 }
 
-let mut fury = Fury::default().mode(Mode::Compatible);
-fury.register::<Dog>(100);
-fury.register::<Cat>(101);
-fury.register::<AnimalShelter>(102);
+let mut fory = Fory::default().mode(Mode::Compatible);
+fory.register::<Dog>(100);
+fory.register::<Cat>(101);
+fory.register::<AnimalShelter>(102);
 
 let shelter = AnimalShelter {
     animals_rc: vec![
@@ -447,8 +446,8 @@ let shelter = AnimalShelter {
     ]),
 };
 
-let bytes = fury.serialize(&shelter);
-let decoded: AnimalShelter = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&shelter);
+let decoded: AnimalShelter = fory.deserialize(&bytes)?;
 
 assert_eq!(decoded.animals_rc[0].name(), "Rex");
 assert_eq!(decoded.animals_arc[0].speak(), "Woof!");
@@ -470,8 +469,8 @@ let dog_rc: Rc<dyn Animal> = Rc::new(Dog {
 });
 let wrapper = AnimalRc::from(dog_rc);
 
-let bytes = fury.serialize(&wrapper);
-let decoded: AnimalRc = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&wrapper);
+let decoded: AnimalRc = fory.deserialize(&bytes)?;
 
 // Unwrap back to Rc<dyn Animal>
 let unwrapped: Rc<dyn Animal> = decoded.unwrap();
@@ -484,8 +483,8 @@ let dog_arc: Arc<dyn Animal> = Arc::new(Dog {
 });
 let wrapper = AnimalArc::from(dog_arc);
 
-let bytes = fury.serialize(&wrapper);
-let decoded: AnimalArc = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&wrapper);
+let decoded: AnimalArc = fory.deserialize(&bytes)?;
 
 let unwrapped: Arc<dyn Animal> = decoded.unwrap();
 assert_eq!(unwrapped.name(), "Buddy");
@@ -493,7 +492,7 @@ assert_eq!(unwrapped.name(), "Buddy");
 
 ### 4. Schema Evolution
 
-Apache Fury™ supports schema evolution in **Compatible mode**, allowing serialization and deserialization peers to have different type definitions. This enables independent evolution of services in distributed systems without breaking compatibility.
+Apache Fory™ supports schema evolution in **Compatible mode**, allowing serialization and deserialization peers to have different type definitions. This enables independent evolution of services in distributed systems without breaking compatibility.
 
 **Features:**
 
@@ -510,19 +509,19 @@ Apache Fury™ supports schema evolution in **Compatible mode**, allowing serial
 - Nested struct types must be registered on both sides
 
 ```rust
-use fury::Fury;
-use fury_core::types::Mode;
-use fury_derive::FuryObject;
+use fory::Fory;
+use fory::Mode;
+use fory::ForyObject;
 use std::collections::HashMap;
 
-#[derive(FuryObject, Debug)]
+#[derive(ForyObject, Debug)]
 struct PersonV1 {
     name: String,
     age: i32,
     address: String,
 }
 
-#[derive(FuryObject, Debug)]
+#[derive(ForyObject, Debug)]
 struct PersonV2 {
     name: String,
     age: i32,
@@ -532,11 +531,11 @@ struct PersonV2 {
     metadata: HashMap<String, String>,
 }
 
-let mut fury1 = Fury::default().mode(Mode::Compatible);
-fury1.register::<PersonV1>(1);
+let mut fory1 = Fory::default().mode(Mode::Compatible);
+fory1.register::<PersonV1>(1);
 
-let mut fury2 = Fury::default().mode(Mode::Compatible);
-fury2.register::<PersonV2>(1);
+let mut fory2 = Fory::default().mode(Mode::Compatible);
+fory2.register::<PersonV2>(1);
 
 let person_v1 = PersonV1 {
     name: "Alice".to_string(),
@@ -545,10 +544,10 @@ let person_v1 = PersonV1 {
 };
 
 // Serialize with V1
-let bytes = fury1.serialize(&person_v1);
+let bytes = fory1.serialize(&person_v1);
 
 // Deserialize with V2 - missing fields get default values
-let person_v2: PersonV2 = fury2.deserialize(&bytes)?;
+let person_v2: PersonV2 = fory2.deserialize(&bytes)?;
 assert_eq!(person_v2.name, "Alice");
 assert_eq!(person_v2.age, 30);
 assert_eq!(person_v2.phone, None);
@@ -556,7 +555,7 @@ assert_eq!(person_v2.phone, None);
 
 ### 5. Enum Support
 
-Apache Fury™ supports enums without data payloads (C-style enums). Each variant is assigned an ordinal value (0, 1, 2, ...) during serialization.
+Apache Fory™ supports enums without data payloads (C-style enums). Each variant is assigned an ordinal value (0, 1, 2, ...) during serialization.
 
 **Features:**
 
@@ -566,9 +565,9 @@ Apache Fury™ supports enums without data payloads (C-style enums). Each varian
 - Default variant support with `#[default]`
 
 ```rust
-use fury_derive::FuryObject;
+use fory::ForyObject;
 
-#[derive(FuryObject, Debug, PartialEq, Default)]
+#[derive(ForyObject, Debug, PartialEq, Default)]
 enum Status {
     #[default]
     Pending,
@@ -577,18 +576,18 @@ enum Status {
     Deleted,
 }
 
-let mut fury = Fury::default();
-fury.register::<Status>(1);
+let mut fory = Fory::default();
+fory.register::<Status>(1);
 
 let status = Status::Active;
-let bytes = fury.serialize(&status);
-let decoded: Status = fury.deserialize(&bytes)?;
+let bytes = fory.serialize(&status);
+let decoded: Status = fory.deserialize(&bytes)?;
 assert_eq!(status, decoded);
 ```
 
 ### 6. Custom Serializers
 
-For types that don't support `#[derive(FuryObject)]`, implement the `Serializer` trait manually. This is useful for:
+For types that don't support `#[derive(ForyObject)]`, implement the `Serializer` trait manually. This is useful for:
 
 - External types from other crates
 - Types with special serialization requirements
@@ -596,30 +595,31 @@ For types that don't support `#[derive(FuryObject)]`, implement the `Serializer`
 - Performance-critical custom encoding
 
 ```rust
-use fury_core::fury::{Fury, read_data, write_data};
-use fury_core::resolver::context::{ReadContext, WriteContext};
-use fury_core::serializer::{Serializer, FuryDefault};
-use fury_core::error::Error;
+use fory::{Fory, ReadContext, WriteContext, Serializer, ForyDefault, Error};
 use std::any::Any;
 
 #[derive(Debug, PartialEq, Default)]
 struct CustomType {
     value: i32,
+    name: String,
 }
 
 impl Serializer for CustomType {
-    fn fury_write_data(&self, context: &mut WriteContext, is_field: bool) {
-        write_data(&self.value, context, is_field);
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
+        context.writer.write_i32(self.value);
+        context.writer.write_varuint32(self.name.len() as u32);
+        context.writer.write_utf8_string(&self.name);
     }
 
-    fn fury_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        Ok(Self {
-            value: read_data(context, is_field)?,
-        })
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        let value = context.reader.read_i32();
+        let len = context.reader.read_varuint32() as usize;
+        let name = context.reader.read_utf8_string(len);
+        Ok(Self { value, name })
     }
 
-    fn fury_type_id_dyn(&self, fury: &Fury) -> u32 {
-        Self::fury_get_type_id(fury)
+    fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+        Self::fory_get_type_id(fory)
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -627,24 +627,27 @@ impl Serializer for CustomType {
     }
 }
 
-impl FuryDefault for CustomType {
-    fn fury_default() -> Self {
+impl ForyDefault for CustomType {
+    fn fory_default() -> Self {
         Self::default()
     }
 }
 
-let mut fury = Fury::default();
-fury.register_serializer::<CustomType>(100);
+let mut fory = Fory::default();
+fory.register_serializer::<CustomType>(100);
 
-let custom = CustomType { value: 42 };
-let bytes = fury.serialize(&custom);
-let decoded: CustomType = fury.deserialize(&bytes)?;
+let custom = CustomType {
+    value: 42,
+    name: "test".to_string(),
+};
+let bytes = fory.serialize(&custom);
+let decoded: CustomType = fory.deserialize(&bytes)?;
 assert_eq!(custom, decoded);
 ```
 
 ### 7. Row-Based Serialization
 
-Apache Fury™ provides a high-performance **row format** for zero-copy deserialization. Unlike traditional object serialization that reconstructs entire objects in memory, row format enables **random access** to fields directly from binary data without full deserialization.
+Apache Fory™ provides a high-performance **row format** for zero-copy deserialization. Unlike traditional object serialization that reconstructs entire objects in memory, row format enables **random access** to fields directly from binary data without full deserialization.
 
 **Key benefits:**
 
@@ -670,11 +673,11 @@ Apache Fury™ provides a high-performance **row format** for zero-copy deserial
 - Nested structures supported through recursive row encoding
 
 ```rust
-use fury::{to_row, from_row};
-use fury_derive::FuryRow;
+use fory::{to_row, from_row};
+use fory::ForyRow;
 use std::collections::BTreeMap;
 
-#[derive(FuryRow)]
+#[derive(ForyRow)]
 struct UserProfile {
     id: i64,
     username: String,
@@ -773,34 +776,34 @@ assert_eq!(prefs.values().get(0), "en");
 
 | Macro                   | Description                |
 | ----------------------- | -------------------------- |
-| `#[derive(FuryObject)]` | Object graph serialization |
-| `#[derive(FuryRow)]`    | Row-based serialization    |
+| `#[derive(ForyObject)]` | Object graph serialization |
+| `#[derive(ForyRow)]`    | Row-based serialization    |
 
 ## 🌍 Cross-Language Serialization
 
-Apache Fury™ supports seamless data exchange across multiple languages:
+Apache Fory™ supports seamless data exchange across multiple languages:
 
 ```rust
-use fury::Fury;
-use fury_core::types::Mode;
+use fory::Fory;
+use fory::Mode;
 
 // Enable cross-language mode
-let mut fury = Fury::default()
+let mut fory = Fory::default()
     .mode(Mode::Compatible)
     .xlang(true);
 
 // Register types with consistent IDs across languages
-fury.register::<MyStruct>(100);
+fory.register::<MyStruct>(100);
 
 // Or use namespace-based registration
-fury.register_by_namespace::<MyStruct>("com.example", "MyStruct");
+fory.register_by_namespace::<MyStruct>("com.example", "MyStruct");
 ```
 
 See [xlang_type_mapping.md](../docs/guide/xlang_type_mapping.md) for type mapping across languages.
 
 ## ⚡ Performance
 
-Apache Fury™ Rust is designed for maximum performance:
+Apache Fory™ Rust is designed for maximum performance:
 
 - **Zero-Copy Deserialization**: Row format enables direct memory access without copying
 - **Buffer Pre-allocation**: Minimizes memory allocations during serialization
@@ -812,12 +815,12 @@ Run benchmarks:
 
 ```bash
 cd rust
-cargo bench --package fury-benchmarks
+cargo bench --package fory-benchmarks
 ```
 
 ## 📖 Documentation
 
-- **[API Documentation](https://docs.rs/fury)** - Complete API reference
+- **[API Documentation](https://docs.rs/fory)** - Complete API reference
 - **[Protocol Specification](../docs/specification/xlang_serialization_spec.md)** - Serialization protocol details
 - **[Row Format Specification](../docs/specification/row_format_spec.md)** - Row format details
 - **[Type Mapping](../docs/guide/xlang_type_mapping.md)** - Cross-language type mappings
@@ -845,12 +848,12 @@ cargo bench --package fury-benchmarks
 The Rust implementation consists of three main crates:
 
 ```
-fury/                   # High-level API
+fory/                   # High-level API
 ├── src/lib.rs         # Public API exports
 
-fury-core/             # Core serialization engine
+fory-core/             # Core serialization engine
 ├── src/
-│   ├── fury.rs       # Main serialization entry point
+│   ├── fory.rs       # Main serialization entry point
 │   ├── buffer.rs     # Binary buffer management
 │   ├── serializer/   # Type-specific serializers
 │   ├── resolver/     # Type resolution and metadata
@@ -858,22 +861,22 @@ fury-core/             # Core serialization engine
 │   ├── row/          # Row format implementation
 │   └── types.rs      # Type definitions
 
-fury-derive/           # Procedural macros
+fory-derive/           # Procedural macros
 ├── src/
-│   ├── object/       # FuryObject macro
-│   └── fury_row.rs  # FuryRow macro
+│   ├── object/       # ForyObject macro
+│   └── fory_row.rs  # ForyRow macro
 ```
 
 ## 🔄 Serialization Modes
 
-Apache Fury™ supports two serialization modes:
+Apache Fory™ supports two serialization modes:
 
 ### SchemaConsistent Mode (Default)
 
 Type declarations must match exactly between peers:
 
 ```rust
-let fury = Fury::default(); // SchemaConsistent by default
+let fory = Fory::default(); // SchemaConsistent by default
 ```
 
 ### Compatible Mode
@@ -881,10 +884,43 @@ let fury = Fury::default(); // SchemaConsistent by default
 Allows independent schema evolution:
 
 ```rust
-use fury_core::types::Mode;
+use fory::Mode;
 
-let fury = Fury::default().mode(Mode::Compatible);
+let fory = Fory::default().mode(Mode::Compatible);
 ```
+
+## ⚙️ Configuration
+
+### Maximum Dynamic Object Nesting Depth
+
+Apache Fory™ provides protection against stack overflow from deeply nested dynamic objects during deserialization. By default, the maximum nesting depth is set to 5 levels for trait objects and containers.
+
+**Default configuration:**
+
+```rust
+let fory = Fory::default(); // max_dyn_depth = 5
+```
+
+**Custom depth limit:**
+
+```rust
+let fory = Fory::default().max_dyn_depth(10); // Allow up to 10 levels
+```
+
+**When to adjust:**
+
+- **Increase**: For legitimate deeply nested data structures
+- **Decrease**: For stricter security requirements or shallow data structures
+
+**Protected types:**
+
+- `Box<dyn Any>`, `Rc<dyn Any>`, `Arc<dyn Any>`
+- `Box<dyn Trait>`, `Rc<dyn Trait>`, `Arc<dyn Trait>` (trait objects)
+- `RcWeak<T>`, `ArcWeak<T>`
+- Collection types (Vec, HashMap, HashSet)
+- Nested struct types in Compatible mode
+
+Note: Static data types (non-dynamic types) are secure by nature and not subject to depth limits, as their structure is known at compile time.
 
 ## 🛠️ Development
 
@@ -902,7 +938,7 @@ cargo build
 cargo test --features tests
 
 # Run specific test
-cargo test -p fury-tests --test test_complex_struct
+cargo test -p fory-tests --test test_complex_struct
 ```
 
 ### Code Quality
@@ -941,11 +977,11 @@ We welcome contributions! Please see our [Contributing Guide](../CONTRIBUTING.md
 
 ## 📞 Support
 
-- **Documentation**: [docs.rs/fury](https://docs.rs/fury)
-- **Issues**: [GitHub Issues](https://github.com/apache/fury/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/apache/fury/discussions)
-- **Slack**: [Apache Fury Slack](https://join.slack.com/t/fury-project/shared_invite/zt-1u8soj4qc-ieYEu7ciHOqA2mo47llS8A)
+- **Documentation**: [docs.rs/fory](https://docs.rs/fory)
+- **Issues**: [GitHub Issues](https://github.com/apache/fory/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/apache/fory/discussions)
+- **Slack**: [Apache Fory Slack](https://join.slack.com/t/fory-project/shared_invite/zt-1u8soj4qc-ieYEu7ciHOqA2mo47llS8A)
 
 ---
 
-**Apache Fury™** - Blazingly fast multi-language serialization framework.
+**Apache Fory™** - Blazingly fast multi-language serialization framework.

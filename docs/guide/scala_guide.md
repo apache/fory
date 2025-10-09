@@ -1,6 +1,6 @@
 ---
 title: Scala Serialization Guide
-sidebar_position: 4
+sidebar_position: 3
 id: scala_guide
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more

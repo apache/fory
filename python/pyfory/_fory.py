@@ -79,15 +79,27 @@ class BufferObject(ABC):
 
     @abstractmethod
     def total_bytes(self) -> int:
-        """total size for serialized bytes of an object"""
+        """Total size for serialized bytes of an object."""
 
     @abstractmethod
-    def write_to(self, buffer: "Buffer"):
-        """Write serialized object to a buffer."""
+    def write_to(self, stream):
+        """
+        Write serialized object to a writable stream.
+
+        Args:
+            stream: Any writable object with write() method (Buffer, file, BytesIO, etc.)
+        """
 
     @abstractmethod
-    def to_buffer(self) -> "Buffer":
-        """Write serialized data as Buffer."""
+    def getbuffer(self) -> memoryview:
+        """
+        Return serialized data as memoryview for zero-copy access.
+
+        Returns:
+            memoryview: A memoryview of the serialized data. For objects with
+                contiguous memory (bytes, bytearray, numpy arrays), this is zero-copy.
+                For non-contiguous data, a copy may be created to ensure contiguity.
+        """
 
 
 class Fory:

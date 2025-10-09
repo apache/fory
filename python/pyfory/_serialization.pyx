@@ -809,7 +809,7 @@ cdef class Fory:
     cdef readonly MetaStringResolver metastring_resolver
     cdef readonly SerializationContext serialization_context
     cdef Buffer buffer
-    cdef object _buffer_callback
+    cdef public object buffer_callback
     cdef object _buffers  # iterator
     cdef object _unsupported_callback
     cdef object _unsupported_objects  # iterator
@@ -877,7 +877,7 @@ cdef class Fory:
         self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
         self.type_resolver.initialize()
         self.buffer = Buffer.allocate(32)
-        self._buffer_callback = None
+        self.buffer_callback = None
         self._buffers = None
         self._unsupported_callback = None
         self._unsupported_objects = None
@@ -952,7 +952,7 @@ cdef class Fory:
 
     cpdef inline _serialize(
             self, obj, Buffer buffer, buffer_callback=None, unsupported_callback=None):
-        self._buffer_callback = buffer_callback
+        self.buffer_callback = buffer_callback
         self._unsupported_callback = unsupported_callback
         if buffer is None:
             self.buffer.writer_index = 0
@@ -981,7 +981,7 @@ cdef class Fory:
         else:
             # set reader as native.
             clear_bit(buffer, mask_index, 2)
-        if self._buffer_callback is not None:
+        if self.buffer_callback is not None:
             set_bit(buffer, mask_index, 3)
         else:
             clear_bit(buffer, mask_index, 3)
@@ -1237,20 +1237,23 @@ cdef class Fory:
         )
 
     cpdef inline write_buffer_object(self, Buffer buffer, buffer_object):
-        if self._buffer_callback is not None and self._buffer_callback(buffer_object):
+        cdef int32_t size
+        cdef int32_t writer_index
+        cdef Buffer buf
+        if self.buffer_callback is None or self.buffer_callback(buffer_object):
+            buffer.write_bool(True)
+            size = buffer_object.total_bytes()
+            # writer length.
+            buffer.write_varuint32(size)
+            writer_index = buffer.writer_index
+            buffer.ensure(writer_index + size)
+            buf = buffer.slice(buffer.writer_index, size)
+            buffer_object.write_to(buf)
+            buffer.writer_index += size
+        else:
             buffer.write_bool(False)
-            return
-        buffer.write_bool(True)
-        cdef int32_t size = buffer_object.total_bytes()
-        # writer length.
-        buffer.write_varuint32(size)
-        cdef int32_t writer_index = buffer.writer_index
-        buffer.ensure(writer_index + size)
-        cdef Buffer buf = buffer.slice(buffer.writer_index, size)
-        buffer_object.write_to(buf)
-        buffer.writer_index += size
 
-    cpdef inline Buffer read_buffer_object(self, Buffer buffer):
+    cpdef inline object read_buffer_object(self, Buffer buffer):
         cdef c_bool in_band = buffer.read_bool()
         if not in_band:
             assert self._buffers is not None

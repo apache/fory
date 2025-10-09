@@ -27,12 +27,12 @@ struct Simple {
 
 #[test]
 fn test_rc_refcell_simple() {
-    let mut fury = Fory::default();
-    fury.register::<Simple>(3000);
+    let mut fory = Fory::default();
+    fory.register::<Simple>(3000);
 
     let node = Rc::new(RefCell::new(Simple { value: 42 }));
-    let serialized = fury.serialize(&node);
-    let deserialized: Rc<RefCell<Simple>> = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&node);
+    let deserialized: Rc<RefCell<Simple>> = fory.deserialize(&serialized).unwrap();
     assert_eq!(deserialized.borrow().value, 42);
 }
 
@@ -44,17 +44,17 @@ struct Parent {
 
 #[test]
 fn test_rc_refcell_in_struct() {
-    let mut fury = Fory::default();
-    fury.register::<Simple>(3001);
-    fury.register::<Parent>(3002);
+    let mut fory = Fory::default();
+    fory.register::<Simple>(3001);
+    fory.register::<Parent>(3002);
 
     let child = Rc::new(RefCell::new(Simple { value: 99 }));
     let parent = Parent {
         value: 1,
         child: Some(child),
     };
-    let serialized = fury.serialize(&parent);
-    let deserialized: Parent = fury.deserialize(&serialized).unwrap();
+    let serialized = fory.serialize(&parent);
+    let deserialized: Parent = fory.deserialize(&serialized).unwrap();
     assert_eq!(deserialized.value, 1);
     assert_eq!(deserialized.child.unwrap().borrow().value, 99);
 }
