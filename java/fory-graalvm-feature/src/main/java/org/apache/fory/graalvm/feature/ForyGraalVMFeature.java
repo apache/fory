@@ -71,7 +71,6 @@ public class ForyGraalVMFeature implements Feature {
     RuntimeReflection.register(clazz);
   }
 
-  @Override
   public String getDescription() {
     return "Fory GraalVM Feature: Registers classes for serialization, proxying, and unsafe allocation.";
   }

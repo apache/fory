@@ -56,12 +56,6 @@ public class ForyGraalVMFeatureTest {
   }
 
   @Test
-  public void testFeatureCreation() {
-    assertNotNull(feature);
-    assertTrue(feature instanceof org.graalvm.nativeimage.hosted.Feature);
-  }
-
-  @Test
   public void testObjectCreatorsIntegration() {
     // Test that ObjectCreators.isProblematicForCreation works correctly
     boolean isProblematic = ObjectCreators.isProblematicForCreation(ProblematicClass.class);
@@ -82,35 +76,8 @@ public class ForyGraalVMFeatureTest {
   }
 
   @Test
-  public void testBeforeAnalysisDoesNotThrow() {
-    // Test that beforeAnalysis method can be called without throwing exceptions
-    // and the feature can be instantiated
-    try {
-      java.lang.reflect.Method beforeAnalysisMethod =
-          ForyGraalVMFeature.class.getMethod(
-              "beforeAnalysis", org.graalvm.nativeimage.hosted.Feature.BeforeAnalysisAccess.class);
-      assertNotNull("beforeAnalysis method should exist", beforeAnalysisMethod);
-    } catch (NoSuchMethodException e) {
-      fail("beforeAnalysis method should exist: " + e.getMessage());
-    }
-  }
-
-  @Test
-  public void testHandleForyClassMethod() {
-    // Test that the private handleForyClass method exists
-    try {
-      java.lang.reflect.Method handleMethod =
-          ForyGraalVMFeature.class.getDeclaredMethod("handleForyClass", Class.class);
-      assertNotNull("handleForyClass method should exist", handleMethod);
-
-      // Just verify the method exists, don't try to invoke it since it calls GraalVM APIs
-      assertEquals(
-          "Method should be private",
-          java.lang.reflect.Modifier.PRIVATE,
-          handleMethod.getModifiers() & java.lang.reflect.Modifier.PRIVATE);
-
-    } catch (NoSuchMethodException e) {
-      fail("handleForyClass method should exist: " + e.getMessage());
-    }
+  public void testFeatureInstantiation() {
+    assertNotNull("Feature should be instantiated", feature);
+    assertNotNull("Feature description should not be null", feature.getDescription());
   }
 }

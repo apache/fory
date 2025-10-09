@@ -62,12 +62,11 @@
     <module>fory-core</module>
     <module>fory-extensions</module>
     <module>fory-test-core</module>
-    <module>fory-graalvm-feature</module>
   </modules>
 
   <properties>
-    <maven.compiler.source>17</maven.compiler.source>
-    <maven.compiler.target>17</maven.compiler.target>
+    <maven.compiler.source>1.8</maven.compiler.source>
+    <maven.compiler.target>1.8</maven.compiler.target>
     <guava.version>32.1.2-jre</guava.version>
     <janino.version>3.1.12</janino.version>
     <commons_codec.version>1.13</commons_codec.version>

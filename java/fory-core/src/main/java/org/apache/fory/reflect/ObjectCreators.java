@@ -87,7 +87,9 @@ public class ObjectCreators {
    * @return true if the class is problematic for creation, false otherwise
    */
   public static boolean isProblematicForCreation(Class<?> type) {
-    if (type.isInterface() || java.lang.reflect.Modifier.isAbstract(type.getModifiers()) || type.isArray()) {
+    if (type.isInterface()
+        || java.lang.reflect.Modifier.isAbstract(type.getModifiers())
+        || type.isArray()) {
       return false;
     }
     try {
