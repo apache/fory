@@ -19,6 +19,8 @@
 
 package org.apache.fory.serializer.collection;
 
+import static org.testng.Assert.assertEquals;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -59,5 +61,17 @@ public class XlangCollectionSerializerTest extends ForyTestBase {
     Assert.assertEquals(obj.set1.getClass(), LinkedHashSet.class);
     Assert.assertEquals(obj.list1.getClass(), LinkedList.class);
     Assert.assertEquals(obj.map1.getClass(), LinkedHashMap.class);
+  }
+
+  @SuppressWarnings("unchecked")
+  @Test
+  public void testSerializeListWithNullElements() {
+    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+    ArrayList<String> strList = new ArrayList<>();
+    strList.add(null);
+    byte[] serialized = fory.serialize(strList);
+    ArrayList<String> deserialized = (ArrayList<String>) fory.deserialize(serialized);
+    assertEquals(deserialized.size(), 1);
+    Assert.assertNull(deserialized.get(0));
   }
 }
