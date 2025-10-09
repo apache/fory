@@ -25,8 +25,11 @@ import java.io.OutputStream;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -88,6 +91,10 @@ import org.apache.fory.util.StringUtils;
 @NotThreadSafe
 public final class Fory implements BaseFory {
   private static final Logger LOG = LoggerFactory.getLogger(Fory.class);
+
+  // Static collections for GraalVM Feature support
+  private static final Set<Class<?>> REGISTERED_CLASSES = ConcurrentHashMap.newKeySet();
+  private static final Set<Class<?>> PROXY_INTERFACES = ConcurrentHashMap.newKeySet();
 
   public static final byte NULL_FLAG = -3;
   // This flag indicates that object is a not-null value.
@@ -177,11 +184,13 @@ public final class Fory implements BaseFory {
   @Override
   public void register(Class<?> cls) {
     _getTypeResolver().register(cls);
+    REGISTERED_CLASSES.add(cls);
   }
 
   @Override
   public void register(Class<?> cls, int id) {
     _getTypeResolver().register(cls, id);
+    REGISTERED_CLASSES.add(cls);
   }
 
   @Deprecated
@@ -213,6 +222,7 @@ public final class Fory implements BaseFory {
 
   public void register(Class<?> cls, String namespace, String typeName) {
     _getTypeResolver().register(cls, namespace, typeName);
+    REGISTERED_CLASSES.add(cls);
   }
 
   @Override
@@ -1763,5 +1773,17 @@ public final class Fory implements BaseFory {
 
   public static ForyBuilder builder() {
     return new ForyBuilder();
+  }
+
+  public static Set<Class<?>> getRegisteredClasses() {
+    return Collections.unmodifiableSet(REGISTERED_CLASSES);
+  }
+
+  public static Set<Class<?>> getProxyInterfaces() {
+    return Collections.unmodifiableSet(PROXY_INTERFACES);
+  }
+
+  public static void addProxyInterface(Class<?> anInterface) {
+    PROXY_INTERFACES.add(anInterface);
   }
 }

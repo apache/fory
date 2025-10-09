@@ -62,6 +62,7 @@
     <module>fory-core</module>
     <module>fory-extensions</module>
     <module>fory-test-core</module>
+    <module>fory-graalvm-feature</module>
   </modules>
 
   <properties>
