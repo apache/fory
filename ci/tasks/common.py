@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import shutil
 import subprocess
 import platform
 import urllib.request as ulib
@@ -88,6 +87,34 @@ def get_bazel_download_url():
     return f"{download_url_base}/bazel-{bazel_version}-{get_os_name_lower()}-{get_os_machine()}"
 
 
+def urlretrieve_with_retries(url, filename, max_attempts=5, initial_delay=2):
+    """Download a URL to filename with retries and exponential backoff.
+
+    Raises the last exception if all attempts fail.
+    """
+    attempt = 1
+    delay = initial_delay
+    last_exc = None
+    while attempt <= max_attempts:
+        try:
+            logging.info(f"Downloading (attempt {attempt}) {url} -> {filename}")
+            ulib.urlretrieve(url, filename)
+            return
+        except Exception as e:
+            logging.error(f"Download attempt {attempt} failed: {e}")
+            last_exc = e
+            if attempt == max_attempts:
+                break
+            logging.info(f"Retrying in {delay} seconds...")
+            import time
+
+            time.sleep(delay)
+            delay *= 2
+            attempt += 1
+    logging.error(f"All {max_attempts} download attempts failed for URL: {url}")
+    raise last_exc
+
+
 def cd_project_subdir(subdir):
     """Change to a subdirectory of the project."""
     os.chdir(os.path.join(PROJECT_ROOT_DIR, subdir))
@@ -124,7 +151,7 @@ def install_bazel():
         # For Windows, download the installer and add it to PATH
         local_name = "bazel.exe"
         try:
-            ulib.urlretrieve(bazel_download_url, local_name)
+            urlretrieve_with_retries(bazel_download_url, local_name)
         except Exception as e:
             logging.error(f"Failed to download bazel: {e}")
             logging.error(f"URL: {bazel_download_url}")
@@ -142,7 +169,7 @@ def install_bazel():
         bazel_path = os.path.join(home_bin, "bazel")
 
         try:
-            ulib.urlretrieve(bazel_download_url, bazel_path)
+            urlretrieve_with_retries(bazel_download_url, bazel_path)
         except Exception as e:
             logging.error(f"Failed to download bazel: {e}")
             logging.error(f"URL: {bazel_download_url}")
