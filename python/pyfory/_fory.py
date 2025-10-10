@@ -593,3 +593,167 @@ _ENABLE_TYPE_REGISTRATION_FORCIBLY = os.getenv("ENABLE_TYPE_REGISTRATION_FORCIBL
     "1",
     "true",
 }
+
+
+class ThreadSafeFory:
+    """
+    Thread-safe wrapper for Fory using instance pooling.
+
+    ThreadSafeFory maintains a pool of Fory instances protected by a lock to enable
+    safe concurrent serialization/deserialization across multiple threads. When a thread
+    needs to serialize or deserialize data, it acquires an instance from the pool, uses it,
+    and returns it for reuse by other threads.
+
+    All type registrations must be performed before any serialization operations to ensure
+    consistency across all pooled instances. Attempting to register types after the first
+    serialization will raise a RuntimeError.
+
+    Args:
+        xlang (bool): Whether to enable cross-language serialization. Defaults to False.
+        ref (bool): Whether to enable reference tracking. Defaults to False.
+        strict (bool): Whether to require type registration. Defaults to True.
+        compatible (bool): Whether to enable compatible mode. Defaults to False.
+        max_depth (int): Maximum depth for deserialization. Defaults to 50.
+
+    Example:
+        >>> import pyfury
+        >>> import threading
+        >>> from dataclasses import dataclass
+        >>>
+        >>> @dataclass
+        >>> class Person:
+        ...     name: str
+        ...     age: int
+        >>>
+        >>> # Create thread-safe instance
+        >>> fory = pyfury.ThreadSafeFory()
+        >>> fory.register(Person)
+        >>>
+        >>> # Use safely from multiple threads
+        >>> def worker(thread_id):
+        ...     person = Person(f"User{thread_id}", 25)
+        ...     data = fory.serialize(person)
+        ...     result = fory.deserialize(data)
+        ...     print(f"Thread {thread_id}: {result}")
+        >>>
+        >>> threads = [threading.Thread(target=worker, args=(i,)) for i in range(5)]
+        >>> for t in threads: t.start()
+        >>> for t in threads: t.join()
+
+    Note:
+        - Register all types before calling serialize/deserialize
+        - The pool grows dynamically as needed based on thread contention
+        - Instances are automatically returned to the pool after use
+        - Both Python and Cython modes are supported automatically
+    """
+
+    def __init__(self, **kwargs):
+        import threading
+
+        self._config = kwargs
+        self._callbacks = []
+        self._lock = threading.Lock()
+        self._pool = []
+        self._fory_class = self._get_fory_class()
+        self._instances_created = False
+
+    def _get_fory_class(self):
+        try:
+            from pyfory._serialization import ENABLE_FORY_CYTHON_SERIALIZATION
+
+            if ENABLE_FORY_CYTHON_SERIALIZATION:
+                from pyfory._serialization import Fory as CythonFory
+
+                return CythonFory
+        except ImportError:
+            pass
+        return Fory
+
+    def _get_fory(self):
+        with self._lock:
+            if self._pool:
+                return self._pool.pop()
+            self._instances_created = True
+            fory = self._fory_class(**self._config)
+            for callback in self._callbacks:
+                callback(fory)
+            return fory
+
+    def _return_fory(self, fory):
+        with self._lock:
+            self._pool.append(fory)
+
+    def _register_callback(self, callback):
+        with self._lock:
+            if self._instances_created:
+                raise RuntimeError(
+                    "Cannot register types after Fory instances have been created. Please register all types before calling serialize/deserialize."
+                )
+            self._callbacks.append(callback)
+
+    def register(
+        self,
+        cls: Union[type, TypeVar],
+        *,
+        type_id: int = None,
+        namespace: str = None,
+        typename: str = None,
+        serializer=None,
+    ):
+        self._register_callback(lambda f: f.register(cls, type_id=type_id, namespace=namespace, typename=typename, serializer=serializer))
+
+    def register_type(
+        self,
+        cls: Union[type, TypeVar],
+        *,
+        type_id: int = None,
+        namespace: str = None,
+        typename: str = None,
+        serializer=None,
+    ):
+        self._register_callback(lambda f: f.register_type(cls, type_id=type_id, namespace=namespace, typename=typename, serializer=serializer))
+
+    def register_serializer(self, cls: type, serializer):
+        self._register_callback(lambda f: f.register_serializer(cls, serializer))
+
+    def serialize(
+        self,
+        obj,
+        buffer: Buffer = None,
+        buffer_callback=None,
+        unsupported_callback=None,
+    ) -> Union[Buffer, bytes]:
+        fory = self._get_fory()
+        try:
+            return fory.serialize(obj, buffer, buffer_callback, unsupported_callback)
+        finally:
+            self._return_fory(fory)
+
+    def deserialize(
+        self,
+        buffer: Union[Buffer, bytes],
+        buffers: Iterable = None,
+        unsupported_objects: Iterable = None,
+    ):
+        fory = self._get_fory()
+        try:
+            return fory.deserialize(buffer, buffers, unsupported_objects)
+        finally:
+            self._return_fory(fory)
+
+    def dumps(
+        self,
+        obj,
+        buffer: Buffer = None,
+        buffer_callback=None,
+        unsupported_callback=None,
+    ) -> Union[Buffer, bytes]:
+        return self.serialize(obj, buffer, buffer_callback, unsupported_callback)
+
+    def loads(
+        self,
+        buffer: Union[Buffer, bytes],
+        buffers: Iterable = None,
+        unsupported_objects: Iterable = None,
+    ):
+        return self.deserialize(buffer, buffers, unsupported_objects)

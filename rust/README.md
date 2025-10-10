@@ -88,7 +88,7 @@ use fory::{Fory, Error};
 use fory::ForyObject;
 use std::collections::HashMap;
 
-#[derive(ForyObject, Debug, PartialEq, Default)]
+#[derive(ForyObject, Debug, PartialEq)]
 struct Person {
     name: String,
     age: i32,
@@ -97,7 +97,7 @@ struct Person {
     metadata: HashMap<String, String>,
 }
 
-#[derive(ForyObject, Debug, PartialEq, Default)]
+#[derive(ForyObject, Debug, PartialEq)]
 struct Address {
     street: String,
     city: String,
@@ -567,7 +567,7 @@ Apache Fory™ supports enums without data payloads (C-style enums). Each varian
 ```rust
 use fory::ForyObject;
 
-#[derive(ForyObject, Debug, PartialEq, Default)]
+#[derive(Default, ForyObject, Debug, PartialEq)]
 enum Status {
     #[default]
     Pending,
@@ -598,7 +598,7 @@ For types that don't support `#[derive(ForyObject)]`, implement the `Serializer`
 use fory::{Fory, ReadContext, WriteContext, Serializer, ForyDefault, Error};
 use std::any::Any;
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq)]
 struct CustomType {
     value: i32,
     name: String,
@@ -745,13 +745,17 @@ assert_eq!(prefs.values().get(0), "en");
 
 ### Collections
 
-| Rust Type        | Description    |
-| ---------------- | -------------- |
-| `Vec<T>`         | Dynamic array  |
-| `HashMap<K, V>`  | Hash map       |
-| `BTreeMap<K, V>` | Ordered map    |
-| `HashSet<T>`     | Hash set       |
-| `Option<T>`      | Optional value |
+| Rust Type        | Description        |
+| ---------------- | ------------------ |
+| `Vec<T>`         | Dynamic array      |
+| `VecDeque<T>`    | Double-ended queue |
+| `LinkedList<T>`  | Doubly-linked list |
+| `HashMap<K, V>`  | Hash map           |
+| `BTreeMap<K, V>` | Ordered map        |
+| `HashSet<T>`     | Hash set           |
+| `BTreeSet<T>`    | Ordered set        |
+| `BinaryHeap<T>`  | Binary heap        |
+| `Option<T>`      | Optional value     |
 
 ### Smart Pointers
 

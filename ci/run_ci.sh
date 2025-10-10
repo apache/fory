@@ -96,7 +96,23 @@ install_bazel() {
   BINARY_URL="https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-${OS}-${ARCH}"
 
   echo "Downloading bazel from: $BINARY_URL"
-  curl -L -sSf -o "$BAZEL_DIR/bazel" "$BINARY_URL" || { echo "Failed to download bazel"; exit 1; }
+  # Retry download with exponential backoff to avoid transient network errors in CI
+  MAX_ATTEMPTS=5
+  SLEEP_SECONDS=2
+  attempt=1
+  while [ $attempt -le $MAX_ATTEMPTS ]; do
+    if curl -L -sSf -o "$BAZEL_DIR/bazel" "$BINARY_URL"; then
+      break
+    fi
+    echo "Attempt $attempt to download bazel failed."
+    if [ $attempt -eq $MAX_ATTEMPTS ]; then
+      echo "Failed to download bazel after $MAX_ATTEMPTS attempts"
+      exit 1
+    fi
+    sleep $SLEEP_SECONDS
+    SLEEP_SECONDS=$((SLEEP_SECONDS * 2))
+    attempt=$((attempt + 1))
+  done
   chmod +x "$BAZEL_DIR/bazel"
 
   # Add to current shell's PATH
