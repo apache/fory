@@ -865,11 +865,12 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
             } else if ty.starts_with("Vec<")
                 || ty.starts_with("VecDeque<")
                 || ty.starts_with("LinkedList<")
+                || ty.starts_with("BinaryHeap<")
             {
                 collection_fields.push((ident, ty.to_string(), TypeId::LIST as u32));
-            } else if ty.starts_with("HashSet<") {
+            } else if ty.starts_with("HashSet<") || ty.starts_with("BTreeSet<") {
                 collection_fields.push((ident, ty.to_string(), TypeId::SET as u32));
-            } else if ty.starts_with("HashMap<") {
+            } else if ty.starts_with("HashMap<") || ty.starts_with("BTreeMap<") {
                 map_fields.push((ident, ty.to_string(), TypeId::MAP as u32));
             } else {
                 struct_or_enum_fields.push((ident, ty.to_string(), 0));

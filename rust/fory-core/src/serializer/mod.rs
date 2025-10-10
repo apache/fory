@@ -30,6 +30,7 @@ mod box_;
 pub mod collection;
 mod datetime;
 pub mod enum_;
+mod heap;
 mod list;
 pub mod map;
 mod mutex;

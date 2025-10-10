@@ -753,6 +753,8 @@ assert_eq!(prefs.values().get(0), "en");
 | `HashMap<K, V>`  | Hash map           |
 | `BTreeMap<K, V>` | Ordered map        |
 | `HashSet<T>`     | Hash set           |
+| `BTreeSet<T>`    | Ordered set        |
+| `BinaryHeap<T>`  | Binary heap        |
 | `Option<T>`      | Optional value     |
 
 ### Smart Pointers
