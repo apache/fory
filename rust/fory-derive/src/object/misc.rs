@@ -71,8 +71,9 @@ pub fn gen_get_sorted_field_names(fields: &[&Field]) -> TokenStream {
             Some(result) => result,
             None => {
                 #create_sorted_field_names
-                fory.get_type_resolver().set_sorted_field_names::<Self>(&sorted_field_names);
-                sorted_field_names
+                let arc_sorted_field_names = std::sync::Arc::new(sorted_field_names);
+                fory.get_type_resolver().set_sorted_field_names::<Self>(arc_sorted_field_names.clone());
+                arc_sorted_field_names
             }
         };
         sorted_field_names

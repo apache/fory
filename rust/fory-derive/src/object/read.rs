@@ -275,6 +275,7 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
         quote! {
              #(#declare_var_ts)*
             let field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(fory);
+            let field_names = field_names.as_ref();
             #loop_ts
         }
     };
@@ -517,6 +518,7 @@ pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
         if meta.get_hash() == local_type_hash {
             // fast path
             let field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(fory);
+            let field_names = field_names.as_ref();
             #consistent_fields_loop_ts
         } else {
             for _field in fields.iter() {

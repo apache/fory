@@ -22,6 +22,7 @@ use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::{Mode, RefFlag, TypeId, PRIMITIVE_TYPES};
 use anyhow::anyhow;
 use std::any::Any;
+use std::sync::Arc;
 
 pub mod any;
 mod arc;
@@ -324,7 +325,7 @@ pub trait StructSerializer: Serializer + 'static {
         struct_::actual_type_id(type_id, register_by_name, mode)
     }
 
-    fn fory_get_sorted_field_names(_fory: &Fory) -> Vec<String> {
+    fn fory_get_sorted_field_names(_fory: &Fory) -> Arc<Vec<String>> {
         unimplemented!()
     }
 }

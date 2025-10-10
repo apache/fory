@@ -135,7 +135,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #actual_type_id_ts
             }
 
-            fn fory_get_sorted_field_names(fory: &fory_core::fory::Fory) -> Vec<String> {
+            fn fory_get_sorted_field_names(fory: &fory_core::fory::Fory) -> std::sync::Arc<Vec<String>> {
                 #get_sorted_field_names_ts
             }
 

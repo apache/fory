@@ -253,6 +253,7 @@ pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
         };
         quote! {
             let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(fory);
+            let sorted_field_names = sorted_field_names.as_ref();
             #loop_ts
         }
     };
