@@ -43,29 +43,30 @@ pub fn write_collection_type_info(
     context.writer.write_varuint32(collection_type_id);
 }
 
-pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
-    iter: I,
-    fory: &Fory,
-    context: &mut WriteContext,
-    is_field: bool,
-) {
-    let items: Vec<&T> = iter.into_iter().collect();
-    let len = items.len();
+pub fn write_collection<'a, T, I>(iter: I, fory: &Fory, context: &mut WriteContext, is_field: bool)
+where
+    T: Serializer + 'a,
+    I: IntoIterator<Item = &'a T>,
+    I::IntoIter: ExactSizeIterator + Clone,
+{
+    let iter = iter.into_iter();
+    let len = iter.len();
     context.writer.write_varuint32(len as u32);
     if len == 0 {
         return;
     }
     let mut header = 0;
     let mut has_null = false;
+    let is_same_type = !T::fory_is_polymorphic();
     if T::fory_is_option() {
-        for item in &items {
+        // iter.clone() is zero-copy
+        for item in iter.clone() {
             if item.fory_is_none() {
                 has_null = true;
                 break;
             }
         }
     }
-    let is_same_type = !T::fory_is_polymorphic();
     if has_null {
         header |= HAS_NULL;
     }
@@ -80,15 +81,15 @@ pub fn write_collection<'a, T: Serializer + 'a, I: IntoIterator<Item = &'a T>>(
     // context.writer.reserve((T::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         // TOTO: make it xlang compatible
-        for item in &items {
+        for item in iter {
             item.fory_write(fory, context, is_field);
         }
     } else {
         // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
         let skip_ref_flag = is_same_type && !has_null;
-        for item in &items {
+        for item in iter {
             crate::serializer::write_ref_info_data(
-                *item,
+                item,
                 fory,
                 context,
                 is_field,

@@ -155,8 +155,7 @@ pub fn skip_field_value(
                 let field_infos = type_meta.get_field_infos().to_vec();
                 context.inc_depth()?;
                 for field_info in field_infos.iter() {
-                    let nullable_field_type =
-                        NullableFieldType::from(field_info.field_type.clone());
+                    let nullable_field_type = NullableFieldType::from(&field_info.field_type);
                     let read_ref_flag = get_read_ref_flag(&nullable_field_type);
                     skip_field_value(fory, context, &nullable_field_type, read_ref_flag)?;
                 }
@@ -189,8 +188,7 @@ pub fn skip_field_value(
                 let field_infos = type_meta.get_field_infos().to_vec();
                 context.inc_depth()?;
                 for field_info in field_infos.iter() {
-                    let nullable_field_type =
-                        NullableFieldType::from(field_info.field_type.clone());
+                    let nullable_field_type = NullableFieldType::from(&field_info.field_type);
                     let read_ref_flag = get_read_ref_flag(&nullable_field_type);
                     skip_field_value(fory, context, &nullable_field_type, read_ref_flag)?;
                 }

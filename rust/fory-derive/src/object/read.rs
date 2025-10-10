@@ -440,8 +440,8 @@ fn gen_read_compatible_match_arm(field: &Field, var_name: &Ident) -> TokenStream
                             panic!("Err at deserializing {:?}: {:?}", #field_name_str, _err);
                         }));
                     } else {
-                        let local_nullable_type = fory_core::meta::NullableFieldType::from(local_field_type.clone());
-                        let remote_nullable_type = fory_core::meta::NullableFieldType::from(_field.field_type.clone());
+                        let local_nullable_type = fory_core::meta::NullableFieldType::from(&local_field_type);
+                        let remote_nullable_type = fory_core::meta::NullableFieldType::from(&_field.field_type);
                         if local_nullable_type != remote_nullable_type {
                             println!("Type not match, just skip: {}", #field_name_str);
                             let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(&remote_nullable_type);
@@ -522,7 +522,7 @@ pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
             for _field in fields.iter() {
                 #(#pattern_items else)* {
                     println!("skip {:?}:{:?}", _field.field_name.as_str(), _field.field_type);
-                    let nullable_field_type = fory_core::meta::NullableFieldType::from(_field.field_type.clone());
+                    let nullable_field_type = fory_core::meta::NullableFieldType::from(&_field.field_type);
                     let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(&nullable_field_type);
                     fory_core::serializer::skip::skip_field_value(fory, context, &nullable_field_type, read_ref_flag).unwrap();
                 }

@@ -79,7 +79,7 @@ impl MetaStringBytes {
     }
 
     pub(crate) fn from_metastring(meta_string: &MetaString) -> Self {
-        let bytes = meta_string.bytes.to_vec();
+        let mut bytes = meta_string.bytes.to_vec();
         let mut hash_code = murmurhash3_x64_128(&bytes, 47).0 as i64;
         hash_code = hash_code.abs();
         if hash_code == 0 {
@@ -91,12 +91,13 @@ impl MetaStringBytes {
         hash_code |= header;
         let header = (hash_code & HEADER_MASK) as u8;
         let encoding = byte_to_encoding(header);
-        let mut data = bytes.clone();
-        if data.len() < 16 {
-            data.resize(16, 0);
+
+        if bytes.len() < 16 {
+            bytes.resize(16, 0);
         }
-        let first8 = u64::from_le_bytes(data[0..8].try_into().unwrap());
-        let second8 = u64::from_le_bytes(data[8..16].try_into().unwrap());
+        let first8 = u64::from_le_bytes(bytes[0..8].try_into().unwrap());
+        let second8 = u64::from_le_bytes(bytes[8..16].try_into().unwrap());
+
         Self::new(bytes, hash_code, encoding, first8, second8)
     }
 }
@@ -124,7 +125,7 @@ impl MetaStringWriterResolver {
         if let Some(b) = self.meta_string_to_bytes.get(m) {
             return b.clone();
         }
-        let bytes = m.bytes.clone();
+        let bytes = m.bytes.to_vec();
         let hash_code = murmurhash3_x64_128(&bytes, 47).0 as i64;
         let encoding = m.encoding;
         let mut first8: u64 = 0;
@@ -137,7 +138,7 @@ impl MetaStringWriterResolver {
                 second8 |= (bytes[8 + j] as u64) << (8 * j);
             }
         }
-        let msb = MetaStringBytes::new(bytes.clone(), hash_code, encoding, first8, second8);
+        let msb = MetaStringBytes::new(bytes, hash_code, encoding, first8, second8);
         self.meta_string_to_bytes.insert(m.clone(), msb.clone());
         msb
     }

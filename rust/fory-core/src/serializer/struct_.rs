@@ -43,14 +43,21 @@ pub fn type_def<T: Serializer + StructSerializer>(
     namespace: MetaString,
     type_name: MetaString,
     register_by_name: bool,
-    field_infos: &[FieldInfo],
+    mut field_infos: Vec<FieldInfo>,
 ) -> Vec<u8> {
     let sorted_field_names = T::fory_get_sorted_field_names(fory);
-    let mut sorted_field_infos = Vec::with_capacity(field_infos.len());
-    for name in &sorted_field_names {
-        if let Some(info) = field_infos.iter().find(|f| &f.field_name == name) {
-            sorted_field_infos.push(info.clone());
-        } else {
+    let mut sorted_field_infos: Vec<FieldInfo> = Vec::with_capacity(field_infos.len());
+    for name in sorted_field_names.iter() {
+        let mut found = false;
+        for i in 0..field_infos.len() {
+            if &field_infos[i].field_name == name {
+                // swap_remove is faster
+                sorted_field_infos.push(field_infos.swap_remove(i));
+                found = true;
+                break;
+            }
+        }
+        if !found {
             panic!("Field {} not found in field_infos", name);
         }
     }

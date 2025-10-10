@@ -1043,8 +1043,7 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
                 },
                 quote! {
                     final_fields.sort_by(#sorter_ts);
-                    let final_field_names: Vec<String> = final_fields.iter().map(|(_, name)| name.clone()).collect();
-                    sorted_field_names.extend(final_field_names);
+                    for (_, name) in final_fields.drain(..) { sorted_field_names.push(name); }
                 },
             )
         }
@@ -1059,8 +1058,7 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
                 },
                 quote! {
                     other_fields.sort_by(#sorter_ts);
-                    let other_field_names: Vec<String> = other_fields.iter().map(|(_, name)| name.clone()).collect();
-                    sorted_field_names.extend(other_field_names);
+                    for (_, name) in other_fields.drain(..) { sorted_field_names.push(name); }
                 },
             )
         }
@@ -1126,6 +1124,8 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
     let (final_declare, final_extend) = final_fields_declare_extend_ts;
     let (other_declare, other_extend) = other_fields_declare_extend_ts;
 
+    let fields_len = fields.len();
+
     quote! {
         let sorted_field_names = {
             #all_primitive_declare
@@ -1136,7 +1136,7 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
             #trait_object_fields_ts
             #group_sort_enum_other_fields
 
-            let mut sorted_field_names: Vec<String> = Vec::new();
+            let mut sorted_field_names: Vec<String> = Vec::with_capacity(#fields_len);
             #all_primitive_extend
             #final_extend
             #other_extend
