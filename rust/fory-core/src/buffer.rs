@@ -28,7 +28,7 @@ pub struct Writer {
 }
 
 impl Writer {
-    pub fn clear(&mut self) {
+    pub fn reset(&mut self) {
         // keep capacity and reset len to 0
         self.bf.clear();
     }
@@ -327,7 +327,7 @@ impl Reader {
         self.cursor = 0;
     }
 
-    pub fn clear(&mut self) {
+    pub fn reset(&mut self) {
         // no need to reset bf
     }
 

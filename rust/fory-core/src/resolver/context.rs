@@ -18,8 +18,11 @@
 use crate::buffer::{Reader, Writer};
 use crate::fory::Fory;
 
-use crate::meta::TypeMeta;
+use crate::meta::{MetaString, TypeMeta};
 use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
+use crate::resolver::metastring_resolver::{
+    MetaStringBytes, MetaStringReaderResolver, MetaStringWriterResolver,
+};
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
 use crate::resolver::type_resolver::Harness;
 use std::sync::{Arc, Mutex};
@@ -27,6 +30,7 @@ use std::sync::{Arc, Mutex};
 pub struct WriteContext {
     pub writer: Writer,
     meta_resolver: MetaWriterResolver,
+    meta_string_resolver: MetaStringWriterResolver,
     pub ref_writer: RefWriter,
 }
 
@@ -35,6 +39,7 @@ impl WriteContext {
         WriteContext {
             writer,
             meta_resolver: MetaWriterResolver::default(),
+            meta_string_resolver: MetaStringWriterResolver::default(),
             ref_writer: RefWriter::new(),
         }
     }
@@ -104,16 +109,22 @@ impl WriteContext {
         }
     }
 
+    pub fn write_meta_string_bytes(&mut self, ms: &MetaString) {
+        self.meta_string_resolver
+            .write_meta_string_bytes(&mut self.writer, ms);
+    }
+
     pub fn reset(&mut self) {
         self.meta_resolver.reset();
-        self.ref_writer.clear();
-        self.writer.clear();
+        self.ref_writer.reset();
+        self.writer.reset();
     }
 }
 
 pub struct ReadContext {
     pub reader: Reader,
     pub meta_resolver: MetaReaderResolver,
+    meta_string_resolver: MetaStringReaderResolver,
     pub ref_reader: RefReader,
     max_dyn_depth: u32,
     current_depth: u32,
@@ -124,6 +135,7 @@ impl ReadContext {
         ReadContext {
             reader,
             meta_resolver: MetaReaderResolver::default(),
+            meta_string_resolver: MetaStringReaderResolver::default(),
             ref_reader: RefReader::new(),
             max_dyn_depth,
             current_depth: 0,
@@ -190,6 +202,11 @@ impl ReadContext {
         }
     }
 
+    pub fn read_meta_string_bytes(&mut self) -> MetaStringBytes {
+        self.meta_string_resolver
+            .read_meta_string_bytes(&mut self.reader)
+    }
+
     pub fn inc_depth(&mut self) -> Result<(), crate::error::Error> {
         self.current_depth += 1;
         if self.current_depth > self.max_dyn_depth {
@@ -210,9 +227,9 @@ impl ReadContext {
     }
 
     pub fn reset(&mut self) {
-        self.reader.clear();
+        self.reader.reset();
         self.meta_resolver.reset();
-        self.ref_reader.clear();
+        self.ref_reader.reset();
     }
 }
 

@@ -20,7 +20,6 @@ use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::WriteContext;
 use crate::resolver::context::{Pool, ReadContext};
-use crate::resolver::metastring_resolver::MetaStringResolver;
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
@@ -31,7 +30,6 @@ use crate::types::{
 };
 use crate::util::get_ext_actual_type_id;
 use anyhow::anyhow;
-use std::sync::{Arc, Mutex};
 
 static EMPTY_STRING: String = String::new();
 
@@ -83,7 +81,6 @@ pub struct Fory {
     xlang: bool,
     share_meta: bool,
     type_resolver: TypeResolver,
-    metastring_resolver: Arc<Mutex<MetaStringResolver>>,
     compress_string: bool,
     max_dyn_depth: u32,
     write_context_pool: Pool<WriteContext>,
@@ -106,7 +103,6 @@ impl Default for Fory {
             xlang: true,
             share_meta: false,
             type_resolver: TypeResolver::default(),
-            metastring_resolver: Arc::new(Mutex::new(MetaStringResolver::default())),
             compress_string: false,
             max_dyn_depth: 5,
             write_context_pool: Pool::new(write_context_constructor),
@@ -287,15 +283,6 @@ impl Fory {
     /// A reference to the internal `TypeResolver` used for type registration and lookup.
     pub fn get_type_resolver(&self) -> &TypeResolver {
         &self.type_resolver
-    }
-
-    /// Returns a cloned reference to the meta string resolver.
-    ///
-    /// # Returns
-    ///
-    /// An `Arc<Mutex<MetaStringResolver>>` for meta string compression and decompression.
-    pub fn get_metastring_resolver(&self) -> Arc<Mutex<MetaStringResolver>> {
-        Arc::clone(&self.metastring_resolver)
     }
 
     pub fn write_head<T: Serializer>(&self, is_none: bool, writer: &mut Writer) {

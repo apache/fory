@@ -62,10 +62,8 @@ pub fn write_type_info<T: Serializer>(fory: &Fory, context: &mut WriteContext, i
         let type_info = fory.get_type_resolver().get_type_info(rs_type_id);
         let namespace = type_info.get_namespace().to_owned();
         let type_name = type_info.get_type_name().to_owned();
-        let resolver = fory.get_metastring_resolver();
-        let mut r = resolver.lock().unwrap();
-        r.write_meta_string_bytes(context, &namespace);
-        r.write_meta_string_bytes(context, &type_name);
+        context.write_meta_string_bytes(&namespace);
+        context.write_meta_string_bytes(&type_name);
     }
 }
 
@@ -84,10 +82,8 @@ pub fn read_type_info<T: Serializer>(fory: &Fory, context: &mut ReadContext, is_
     if fory.is_share_meta() {
         let _meta_index = context.reader.read_varuint32();
     } else {
-        let resolver = fory.get_metastring_resolver();
-        let mut r = resolver.lock().unwrap();
-        r.read_meta_string_bytes(context);
-        r.read_meta_string_bytes(context);
+        let _namespace_msb = context.read_meta_string_bytes();
+        let _type_name_msb = context.read_meta_string_bytes();
     }
 }
 

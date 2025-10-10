@@ -130,7 +130,7 @@ impl RefWriter {
     /// Clear all stored references.
     ///
     /// This is useful for reusing the RefWriter for multiple serialization operations.
-    pub fn clear(&mut self) {
+    pub fn reset(&mut self) {
         self.refs.clear();
         self.next_ref_id = 0;
     }
@@ -326,7 +326,7 @@ impl RefReader {
     /// Clear all stored references and callbacks.
     ///
     /// This is useful for reusing the RefReader for multiple deserialization operations.
-    pub fn clear(&mut self) {
+    pub fn reset(&mut self) {
         self.resolve_callbacks();
         self.refs.clear();
         self.callbacks.clear();

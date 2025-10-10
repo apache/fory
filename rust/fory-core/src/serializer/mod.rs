@@ -220,10 +220,8 @@ pub trait Serializer: 'static {
             };
             let namespace = type_info.get_namespace().to_owned();
             let type_name = type_info.get_type_name().to_owned();
-            let resolver = fory.get_metastring_resolver();
-            let mut r = resolver.lock().unwrap();
-            r.write_meta_string_bytes(context, &namespace);
-            r.write_meta_string_bytes(context, &type_name);
+            context.write_meta_string_bytes(&namespace);
+            context.write_meta_string_bytes(&type_name);
         }
     }
 
@@ -241,10 +239,8 @@ pub trait Serializer: 'static {
         if fory.is_share_meta() {
             let _meta_index = context.reader.read_varuint32();
         } else {
-            let resolver = fory.get_metastring_resolver();
-            let mut r = resolver.lock().unwrap();
-            r.read_meta_string_bytes(context);
-            r.read_meta_string_bytes(context);
+            let _namespace_msb = context.read_meta_string_bytes();
+            let _type_name_msb = context.read_meta_string_bytes();
         }
     }
 
@@ -273,13 +269,8 @@ pub trait Serializer: 'static {
                 let type_def = context.get_meta(meta_index as usize);
                 (type_def.get_namespace(), type_def.get_type_name())
             } else {
-                let resolver = fory.get_metastring_resolver();
-                let (nsb, tsb) = {
-                    let mut r = resolver.lock().unwrap();
-                    let nsb = r.read_meta_string_bytes(context);
-                    let tsb = r.read_meta_string_bytes(context);
-                    (nsb, tsb)
-                };
+                let nsb = context.read_meta_string_bytes();
+                let tsb = context.read_meta_string_bytes();
                 let ns = NAMESPACE_DECODER.decode(&nsb.bytes, nsb.encoding)?;
                 let ts = TYPE_NAME_DECODER.decode(&tsb.bytes, tsb.encoding)?;
                 (ns, ts)
