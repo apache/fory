@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import shutil
 import subprocess
 import platform
 import urllib.request as ulib
@@ -145,6 +144,32 @@ def update_shell_profile():
 
 def install_bazel():
     """Download and install bazel."""
+    # Check if bazel is already cached (from GitHub Actions cache)
+    if not is_windows():
+        home_bin = os.path.expanduser("~/bin")
+        bazel_path = os.path.join(home_bin, "bazel")
+
+        # Also check ~/.local/bin for some systems
+        alt_bin = os.path.expanduser("~/.local/bin")
+        alt_bazel_path = os.path.join(alt_bin, "bazel")
+
+        for path in [bazel_path, alt_bazel_path]:
+            if os.path.exists(path) and os.access(path, os.X_OK):
+                logging.info(f"Bazel already exists at {path}, verifying...")
+                try:
+                    # Verify it works
+                    result = exec_cmd(f"{path} --version")
+                    logging.info(f"Cached Bazel binary is valid: {result.strip()}")
+                    logging.info("Skipping Bazel download, using cached binary")
+                    return
+                except Exception as e:
+                    logging.warning(f"Cached Bazel binary at {path} is invalid: {e}")
+                    logging.info("Re-downloading Bazel...")
+                    try:
+                        os.remove(path)
+                    except Exception:
+                        pass
+
     bazel_download_url = get_bazel_download_url()
     logging.info(f"Downloading bazel from: {bazel_download_url}")
 
