@@ -83,9 +83,9 @@ fn write_chunk_size(context: &mut WriteContext, header_offset: usize, size: u8) 
     context.writer.set_bytes(header_offset + 1, &[size]);
 }
 
-fn write_map_data<'a, K, V, I>(iter: I, length: usize, context: &mut WriteContext, is_field: bool)
+fn write_map_data<'a, K, V, I>(iter: I, length: usize, fory: &Fory, context: &mut WriteContext, is_field: bool)
 where
-    K: Serializer + ForyDefault + 'a,
+    K: Serializer + ForyDefault + 'a + Eq + std::hash::Hash,
     V: Serializer + ForyDefault + 'a,
     I: Iterator<Item = (&'a K, &'a V)>,
 {
@@ -104,7 +104,7 @@ where
     let mut skip_val_ref_flag = false;
     for (key, value) in iter {
         if need_write_header {
-            if check_and_write_null(context, is_field, key, value) {
+            if check_and_write_null(fory, context, is_field, key, value) {
                 continue;
             }
             header_offset = context.writer.len();
@@ -121,8 +121,8 @@ where
             if !skip_val_ref_flag {
                 chunk_header |= TRACKING_VALUE_REF;
             }
-            K::fory_write_type_info(context, is_field);
-            V::fory_write_type_info(context, is_field);
+            K::fory_write_type_info(fory, context, is_field);
+            V::fory_write_type_info(fory, context, is_field);
             context.writer.set_bytes(header_offset, &[chunk_header]);
             need_write_header = false;
         }
@@ -130,18 +130,18 @@ where
             write_chunk_size(context, header_offset, pair_counter);
             pair_counter = 0;
             need_write_header = true;
-            check_and_write_null(context, is_field, key, value);
+            check_and_write_null(fory, context, is_field, key, value);
             continue;
         }
         if K::fory_is_polymorphic() || K::fory_is_shared_ref() {
-            key.fory_write(context, is_field);
+            key.fory_write(fory, context, is_field);
         } else {
-            write_ref_info_data(key, context, is_field, skip_key_ref_flag, true);
+            write_ref_info_data(key, fory, context, is_field, skip_key_ref_flag, true);
         }
         if V::fory_is_polymorphic() || V::fory_is_shared_ref() {
-            value.fory_write(context, is_field);
+            value.fory_write(fory, context, is_field);
         } else {
-            write_ref_info_data(value, context, is_field, skip_val_ref_flag, true);
+            write_ref_info_data(value, fory, context, is_field, skip_val_ref_flag, true);
         }
         pair_counter += 1;
         if pair_counter == MAX_CHUNK_SIZE {
@@ -158,8 +158,8 @@ where
 impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDefault> Serializer
     for HashMap<K, V>
 {
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
-        write_map_data(self.iter(), self.len(), context, is_field);
+    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        write_map_data(self.iter(), self.len(), fory, context, is_field);
     }
 
     fn fory_read_data(
@@ -263,12 +263,12 @@ impl<K, V> ForyDefault for HashMap<K, V> {
     }
 }
 
-impl<K: Serializer + ForyDefault + Ord, V: Serializer + ForyDefault> Serializer for BTreeMap<K, V> {
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
-        write_map_data(self.iter(), self.len(), context, is_field);
+impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDefault> Serializer for BTreeMap<K, V> {
+    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        write_map_data(self.iter(), self.len(), fory,  context, is_field);
     }
 
-    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    fn fory_read_data(fory: &Fory, context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
         let len = context.reader.read_varuint32();
         let mut map = BTreeMap::<K, V>::new();
         if len == 0 {
@@ -289,40 +289,40 @@ impl<K: Serializer + ForyDefault + Ord, V: Serializer + ForyDefault> Serializer 
             let value_declared = (header & DECL_VALUE_TYPE) != 0;
             if header & KEY_NULL != 0 {
                 let skip_ref_flag = if value_declared {
-                    crate::serializer::get_skip_ref_flag::<V>(context.get_fory())
+                    crate::serializer::get_skip_ref_flag::<V>(fory)
                 } else {
                     false
                 };
-                let value = read_ref_info_data(context, value_declared, skip_ref_flag, false)?;
+                let value = read_ref_info_data(fory, context, value_declared, skip_ref_flag, false)?;
                 map.insert(K::fory_default(), value);
                 len_counter += 1;
                 continue;
             }
             if header & VALUE_NULL != 0 {
                 let skip_ref_flag = if key_declared {
-                    crate::serializer::get_skip_ref_flag::<K>(context.get_fory())
+                    crate::serializer::get_skip_ref_flag::<K>(fory)
                 } else {
                     false
                 };
-                let key = read_ref_info_data(context, key_declared, skip_ref_flag, false)?;
+                let key = read_ref_info_data(fory, context, key_declared, skip_ref_flag, false)?;
                 map.insert(key, V::fory_default());
                 len_counter += 1;
                 continue;
             }
             let chunk_size = context.reader.read_u8();
-            K::fory_read_type_info(context, key_declared);
-            V::fory_read_type_info(context, value_declared);
+            K::fory_read_type_info(fory, context, key_declared);
+            V::fory_read_type_info(fory, context, value_declared);
             assert!(len_counter + chunk_size as u32 <= len);
             for _ in 0..chunk_size {
                 let key = if K::fory_is_polymorphic() {
-                    K::fory_read(context, key_declared)?
+                    K::fory_read(fory, context, key_declared)?
                 } else {
-                    read_ref_info_data(context, key_declared, true, true)?
+                    read_ref_info_data(fory, context, key_declared, true, true)?
                 };
                 let value = if V::fory_is_polymorphic() {
-                    V::fory_read(context, value_declared)?
+                    V::fory_read(fory, context, value_declared)?
                 } else {
-                    read_ref_info_data(context, value_declared, true, true)?
+                    read_ref_info_data(fory, context, value_declared, true, true)?
                 };
                 map.insert(key, value);
             }
@@ -347,12 +347,12 @@ impl<K: Serializer + ForyDefault + Ord, V: Serializer + ForyDefault> Serializer 
         self
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        write_type_info::<Self>(context, is_field);
+    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        write_type_info::<Self>(fory, context, is_field);
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-        read_type_info::<Self>(context, is_field);
+    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
+        read_type_info::<Self>(fory, context, is_field);
     }
 }
 
