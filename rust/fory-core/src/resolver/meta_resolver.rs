@@ -74,7 +74,7 @@ impl MetaReaderResolver {
 
 #[derive(Default)]
 pub struct MetaWriterResolver {
-    type_defs: Vec<Vec<u8>>,
+    type_defs: Vec<Arc<Vec<u8>>>,
     type_id_index_map: HashMap<std::any::TypeId, usize>,
 }
 
@@ -87,8 +87,7 @@ impl MetaWriterResolver {
                 self.type_defs.push(
                     fory.get_type_resolver()
                         .get_type_info(type_id)
-                        .get_type_def()
-                        .to_vec(),
+                        .get_type_def(),
                 );
                 self.type_id_index_map.insert(type_id, index);
                 index

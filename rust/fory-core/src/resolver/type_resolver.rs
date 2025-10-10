@@ -87,7 +87,7 @@ impl Harness {
 
 #[derive(Clone, Debug)]
 pub struct TypeInfo {
-    type_def: Vec<u8>,
+    type_def: Arc<Vec<u8>>,
     type_id: u32,
     namespace: MetaString,
     type_name: MetaString,
@@ -109,13 +109,13 @@ impl TypeInfo {
             .encode_with_encodings(type_name, TYPE_NAME_ENCODINGS)
             .unwrap();
         TypeInfo {
-            type_def: T::fory_type_def(
+            type_def: Arc::from(T::fory_type_def(
                 fory,
                 type_id,
                 namespace_metastring.clone(),
                 type_name_metastring.clone(),
                 register_by_name,
-            ),
+            )),
             type_id,
             namespace: namespace_metastring,
             type_name: type_name_metastring,
@@ -145,7 +145,7 @@ impl TypeInfo {
         );
         let type_def = meta.to_bytes().unwrap();
         TypeInfo {
-            type_def,
+            type_def: Arc::from(type_def),
             type_id,
             namespace: namespace_metastring,
             type_name: type_name_metastring,
@@ -165,8 +165,8 @@ impl TypeInfo {
         &self.type_name
     }
 
-    pub fn get_type_def(&self) -> &Vec<u8> {
-        &self.type_def
+    pub fn get_type_def(&self) -> Arc<Vec<u8>> {
+        self.type_def.clone()
     }
 
     pub fn is_registered_by_name(&self) -> bool {
@@ -175,8 +175,8 @@ impl TypeInfo {
 }
 
 pub struct TypeResolver {
-    serializer_map: HashMap<u32, Harness>,
-    name_serializer_map: HashMap<(MetaString, MetaString), Harness>,
+    serializer_map: HashMap<u32, Arc<Harness>>,
+    name_serializer_map: HashMap<(MetaString, MetaString), Arc<Harness>>,
     type_id_map: HashMap<std::any::TypeId, u32>,
     type_name_map: HashMap<std::any::TypeId, (MetaString, MetaString)>,
     type_info_cache: HashMap<std::any::TypeId, TypeInfo>,
@@ -210,7 +210,7 @@ impl TypeResolver {
         macro_rules! register_basic_type {
             ($ty:ty, $type_id:expr) => {{
                 let type_info = TypeInfo {
-                    type_def: vec![],
+                    type_def: Arc::from(vec![]),
                     type_id: $type_id as u32,
                     namespace: NAMESPACE_ENCODER
                         .encode_with_encodings("", NAMESPACE_ENCODINGS)
@@ -374,13 +374,13 @@ impl TypeResolver {
             self.type_name_map.insert(rs_type_id, key.clone());
             self.name_serializer_map.insert(
                 key,
-                Harness::new(
+                Arc::from(Harness::new(
                     write::<T>,
                     read::<T>,
                     write_data::<T>,
                     read_data::<T>,
                     to_serializer::<T>,
-                ),
+                )),
             );
         } else {
             let type_id = type_info.type_id;
@@ -390,13 +390,13 @@ impl TypeResolver {
             self.type_id_map.insert(rs_type_id, type_id);
             self.serializer_map.insert(
                 type_id,
-                Harness::new(
+                Arc::from(Harness::new(
                     write::<T>,
                     read::<T>,
                     write_data::<T>,
                     read_data::<T>,
                     to_serializer::<T>,
-                ),
+                )),
             );
         }
     }
@@ -491,13 +491,13 @@ impl TypeResolver {
             self.type_name_map.insert(rs_type_id, key.clone());
             self.name_serializer_map.insert(
                 key,
-                Harness::new(
+                Arc::from(Harness::new(
                     write::<T>,
                     read::<T>,
                     write_data::<T>,
                     read_data::<T>,
                     to_serializer::<T>,
-                ),
+                )),
             );
         } else {
             let type_id = type_info.type_id;
@@ -507,32 +507,28 @@ impl TypeResolver {
             self.type_id_map.insert(rs_type_id, type_id);
             self.serializer_map.insert(
                 type_id,
-                Harness::new(
+                Arc::from(Harness::new(
                     write::<T>,
                     read::<T>,
                     write_data::<T>,
                     read_data::<T>,
                     to_serializer::<T>,
-                ),
+                )),
             );
         }
     }
 
-    pub fn get_harness_by_type(&self, type_id: std::any::TypeId) -> Option<&Harness> {
-        self.get_harness(*self.type_id_map.get(&type_id).unwrap())
-    }
-
-    pub fn get_harness(&self, id: u32) -> Option<&Harness> {
-        self.serializer_map.get(&id)
+    pub fn get_harness(&self, id: u32) -> Option<Arc<Harness>> {
+        self.serializer_map.get(&id).cloned()
     }
 
     pub fn get_name_harness(
         &self,
         namespace: &MetaString,
         type_name: &MetaString,
-    ) -> Option<&Harness> {
+    ) -> Option<Arc<Harness>> {
         let key = (namespace.clone(), type_name.clone());
-        self.name_serializer_map.get(&key)
+        self.name_serializer_map.get(&key).cloned()
     }
 
     pub fn get_ext_harness(&self, id: u32) -> &Harness {

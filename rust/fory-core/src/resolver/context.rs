@@ -64,7 +64,7 @@ impl WriteContext {
         &mut self,
         fory: &Fory,
         concrete_type_id: std::any::TypeId,
-    ) -> Harness {
+    ) -> Arc<Harness> {
         use crate::types::TypeId as ForyTypeId;
 
         let type_resolver = fory.get_type_resolver();
@@ -90,10 +90,9 @@ impl WriteContext {
                 type_info.get_namespace().write_to(&mut self.writer);
                 type_info.get_type_name().write_to(&mut self.writer);
             }
-            (*type_resolver
+            type_resolver
                 .get_name_harness(type_info.get_namespace(), type_info.get_type_name())
-                .expect("Name harness not found"))
-            .clone()
+                .expect("Name harness not found")
         } else {
             if fory_type_id & 0xff == ForyTypeId::COMPATIBLE_STRUCT as u32 {
                 self.writer.write_varuint32(fory_type_id);
@@ -105,7 +104,6 @@ impl WriteContext {
             type_resolver
                 .get_harness(fory_type_id)
                 .expect("ID harness not found")
-                .to_owned()
         }
     }
 
@@ -158,7 +156,7 @@ impl ReadContext {
         ))
     }
 
-    pub fn read_any_typeinfo(&mut self, fory: &Fory) -> Harness {
+    pub fn read_any_typeinfo(&mut self, fory: &Fory) -> Arc<Harness> {
         use crate::types::TypeId as ForyTypeId;
 
         let fory_type_id = self.reader.read_varuint32();
@@ -167,25 +165,22 @@ impl ReadContext {
         if fory_type_id == u32::MAX {
             let namespace = self.meta_resolver.read_metastring(&mut self.reader);
             let type_name = self.meta_resolver.read_metastring(&mut self.reader);
-            (*type_resolver
+            type_resolver
                 .get_name_harness(&namespace, &type_name)
-                .expect("Name harness not found"))
-            .clone()
+                .expect("Name harness not found")
         } else if fory_type_id & 0xff == ForyTypeId::NAMED_STRUCT as u32 {
             if fory.is_share_meta() {
                 let _meta_index = self.reader.read_varuint32();
             } else {
                 let namespace = self.meta_resolver.read_metastring(&mut self.reader);
                 let type_name = self.meta_resolver.read_metastring(&mut self.reader);
-                return (*type_resolver
+                return type_resolver
                     .get_name_harness(&namespace, &type_name)
-                    .expect("Name harness not found"))
-                .clone();
+                    .expect("Name harness not found");
             }
             type_resolver
                 .get_harness(fory_type_id)
                 .expect("ID harness not found")
-                .to_owned()
         } else if fory_type_id & 0xff == ForyTypeId::NAMED_COMPATIBLE_STRUCT as u32
             || fory_type_id & 0xff == ForyTypeId::COMPATIBLE_STRUCT as u32
         {
@@ -193,12 +188,10 @@ impl ReadContext {
             type_resolver
                 .get_harness(fory_type_id)
                 .expect("ID harness not found")
-                .to_owned()
         } else {
             type_resolver
                 .get_harness(fory_type_id)
                 .expect("ID harness not found")
-                .to_owned()
         }
     }
 
