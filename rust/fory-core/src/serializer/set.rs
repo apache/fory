@@ -81,7 +81,11 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BTreeSet<T> {
         write_collection_type_info(context, is_field, TypeId::SET as u32);
     }
 
-    fn fory_read_data(fory: &Fory, context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    fn fory_read_data(
+        fory: &Fory,
+        context: &mut ReadContext,
+        _is_field: bool,
+    ) -> Result<Self, Error> {
         read_collection(fory, context)
     }
 

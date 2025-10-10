@@ -83,8 +83,13 @@ fn write_chunk_size(context: &mut WriteContext, header_offset: usize, size: u8) 
     context.writer.set_bytes(header_offset + 1, &[size]);
 }
 
-fn write_map_data<'a, K, V, I>(iter: I, length: usize, fory: &Fory, context: &mut WriteContext, is_field: bool)
-where
+fn write_map_data<'a, K, V, I>(
+    iter: I,
+    length: usize,
+    fory: &Fory,
+    context: &mut WriteContext,
+    is_field: bool,
+) where
     K: Serializer + ForyDefault + 'a + Eq + std::hash::Hash,
     V: Serializer + ForyDefault + 'a,
     I: Iterator<Item = (&'a K, &'a V)>,
@@ -263,12 +268,18 @@ impl<K, V> ForyDefault for HashMap<K, V> {
     }
 }
 
-impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDefault> Serializer for BTreeMap<K, V> {
+impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDefault> Serializer
+    for BTreeMap<K, V>
+{
     fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        write_map_data(self.iter(), self.len(), fory,  context, is_field);
+        write_map_data(self.iter(), self.len(), fory, context, is_field);
     }
 
-    fn fory_read_data(fory: &Fory, context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    fn fory_read_data(
+        fory: &Fory,
+        context: &mut ReadContext,
+        _is_field: bool,
+    ) -> Result<Self, Error> {
         let len = context.reader.read_varuint32();
         let mut map = BTreeMap::<K, V>::new();
         if len == 0 {
@@ -293,7 +304,8 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
                 } else {
                     false
                 };
-                let value = read_ref_info_data(fory, context, value_declared, skip_ref_flag, false)?;
+                let value =
+                    read_ref_info_data(fory, context, value_declared, skip_ref_flag, false)?;
                 map.insert(K::fory_default(), value);
                 len_counter += 1;
                 continue;

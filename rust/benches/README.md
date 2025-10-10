@@ -5,6 +5,7 @@ cargo flamegraph --bin fory_profiler -- --operation deserialize --serializer for
 ```
 
 detailed command:
+
 ```bash
 cd benches
 rm -rf cargo-flamegraph.trace
@@ -26,6 +27,7 @@ cargo bench
 ```
 
 To run only a specific benchmark group, you can use a command like
+
 ```bash
 cargo bench --bench serialization_bench -- simple_struct
 ```
