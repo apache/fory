@@ -568,7 +568,7 @@ pub mod buffer_rw_string {
 
     #[inline]
     pub fn read_latin1_standard(reader: &mut Reader, len: usize) -> String {
-        let slice = &reader.bf[reader.cursor..reader.cursor + len];
+        let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
         let result: String = slice.iter().map(|&b| b as char).collect();
         reader.move_next(len);
         result
@@ -576,8 +576,8 @@ pub mod buffer_rw_string {
 
     #[inline]
     pub fn read_utf8_standard(reader: &mut Reader, len: usize) -> String {
-        let result =
-            String::from_utf8_lossy(&reader.bf[reader.cursor..reader.cursor + len]).to_string();
+        let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
+        let result = String::from_utf8_lossy(slice).to_string();
         reader.move_next(len);
         result
     }
@@ -585,7 +585,7 @@ pub mod buffer_rw_string {
     #[inline]
     pub fn read_utf16_standard(reader: &mut Reader, len: usize) -> String {
         assert!(len % 2 == 0, "UTF-16 length must be even");
-        let slice = &reader.bf[reader.cursor..reader.cursor + len];
+        let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
         let units: Vec<u16> = slice
             .chunks(2)
             // little endian
@@ -773,7 +773,7 @@ pub mod buffer_rw_string {
         if len == 0 {
             return String::new();
         }
-        let src = &reader.bf[reader.cursor..reader.cursor + len];
+        let src = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
 
         let mut out: Vec<u8> = Vec::with_capacity(len + len / 4);
 
@@ -873,7 +873,7 @@ pub mod buffer_rw_string {
             return String::new();
         }
 
-        let src = &reader.bf[reader.cursor..reader.cursor + len];
+        let src = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
         let mut result = String::with_capacity(len);
 
         unsafe {
@@ -999,7 +999,7 @@ pub mod buffer_rw_string {
             String::from_utf16(&units).unwrap_or_else(|_| String::new())
         }
 
-        let slice = &reader.bf[reader.cursor..reader.cursor + len];
+        let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
         #[cfg(target_arch = "x86_64")]
         {
             if std::arch::is_x86_feature_detected!("avx2") {

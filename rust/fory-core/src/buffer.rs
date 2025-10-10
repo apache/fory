@@ -20,6 +20,7 @@ use crate::meta::buffer_rw_string::{
     write_utf8_simd,
 };
 use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
+use std::slice;
 
 #[derive(Default)]
 pub struct Writer {
@@ -310,33 +311,48 @@ impl Writer {
 }
 
 pub struct Reader {
-    pub(crate) bf: Vec<u8>,
+    pub(crate) bf: *const u8,
+    len: usize,
     pub(crate) cursor: usize,
 }
 
 impl Reader {
     pub fn new(bf: &[u8]) -> Reader {
         Reader {
-            bf: bf.to_vec(),
+            bf: bf.as_ptr(),
+            len: bf.len(),
             cursor: 0,
         }
     }
 
     pub fn init(&mut self, bf: &[u8]) {
-        self.bf = bf.to_vec();
+        self.bf = bf.as_ptr();
+        self.len = bf.len();
         self.cursor = 0;
     }
 
     pub fn reset(&mut self) {
-        // no need to reset bf
+        self.bf = std::ptr::null();
+        self.len = 0;
+        self.cursor = 0;
     }
 
     pub(crate) fn move_next(&mut self, additional: usize) {
         self.cursor += additional;
     }
 
+    #[inline]
+    unsafe fn ptr_at(&self, offset: usize) -> *const u8 {
+        self.bf.add(offset)
+    }
+
     pub fn slice_after_cursor(&self) -> &[u8] {
-        &self.bf[self.cursor..self.bf.len()]
+        let remaining = self.len - self.cursor;
+        if self.bf.is_null() || remaining == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(self.bf.add(self.cursor), remaining) }
+        }
     }
 
     pub fn get_cursor(&self) -> usize {
@@ -344,15 +360,13 @@ impl Reader {
     }
 
     pub fn read_u8(&mut self) -> u8 {
-        let result = self.bf[self.cursor];
+        let result = unsafe { *self.ptr_at(self.cursor) };
         self.move_next(1);
         result
     }
 
     pub fn read_i8(&mut self) -> i8 {
-        let result = self.bf[self.cursor];
-        self.move_next(1);
-        result as i8
+        self.read_u8() as i8
     }
 
     pub fn read_u16(&mut self) -> u16 {
@@ -405,35 +419,35 @@ impl Reader {
 
     pub fn read_varuint32(&mut self) -> u32 {
         let start = self.cursor;
-        let b0 = self.bf[start] as u32;
+        let b0 = unsafe { *self.bf.add(start) as u32 };
         if b0 < 0x80 {
             self.cursor += 1;
             return b0;
         }
 
         let mut encoded = b0 & 0x7F;
-        let b1 = self.bf[start + 1] as u32;
+        let b1 = unsafe { *self.bf.add(start + 1) as u32 };
         encoded |= (b1 & 0x7F) << 7;
         if b1 < 0x80 {
             self.cursor += 2;
             return encoded;
         }
 
-        let b2 = self.bf[start + 2] as u32;
+        let b2 = unsafe { *self.bf.add(start + 2) as u32 };
         encoded |= (b2 & 0x7F) << 14;
         if b2 < 0x80 {
             self.cursor += 3;
             return encoded;
         }
 
-        let b3 = self.bf[start + 3] as u32;
+        let b3 = unsafe { *self.bf.add(start + 3) as u32 };
         encoded |= (b3 & 0x7F) << 21;
         if b3 < 0x80 {
             self.cursor += 4;
             return encoded;
         }
 
-        let b4 = self.bf[start + 4] as u32;
+        let b4 = unsafe { *self.bf.add(start + 4) as u32 };
         encoded |= b4 << 28;
         self.cursor += 5;
         encoded
@@ -446,63 +460,63 @@ impl Reader {
 
     pub fn read_varuint64(&mut self) -> u64 {
         let start = self.cursor;
-        let b0 = self.bf[start] as u64;
+        let b0 = unsafe { *self.bf.add(start) } as u64;
         if b0 < 0x80 {
             self.cursor += 1;
             return b0;
         }
 
         let mut var64 = b0 & 0x7F;
-        let b1 = self.bf[start + 1] as u64;
+        let b1 = unsafe { *self.bf.add(start + 1) } as u64;
         var64 |= (b1 & 0x7F) << 7;
         if b1 < 0x80 {
             self.cursor += 2;
             return var64;
         }
 
-        let b2 = self.bf[start + 2] as u64;
+        let b2 = unsafe { *self.bf.add(start + 2) } as u64;
         var64 |= (b2 & 0x7F) << 14;
         if b2 < 0x80 {
             self.cursor += 3;
             return var64;
         }
 
-        let b3 = self.bf[start + 3] as u64;
+        let b3 = unsafe { *self.bf.add(start + 3) } as u64;
         var64 |= (b3 & 0x7F) << 21;
         if b3 < 0x80 {
             self.cursor += 4;
             return var64;
         }
 
-        let b4 = self.bf[start + 4] as u64;
+        let b4 = unsafe { *self.bf.add(start + 4) } as u64;
         var64 |= (b4 & 0x7F) << 28;
         if b4 < 0x80 {
             self.cursor += 5;
             return var64;
         }
 
-        let b5 = self.bf[start + 5] as u64;
+        let b5 = unsafe { *self.bf.add(start + 5) } as u64;
         var64 |= (b5 & 0x7F) << 35;
         if b5 < 0x80 {
             self.cursor += 6;
             return var64;
         }
 
-        let b6 = self.bf[start + 6] as u64;
+        let b6 = unsafe { *self.bf.add(start + 6) } as u64;
         var64 |= (b6 & 0x7F) << 42;
         if b6 < 0x80 {
             self.cursor += 7;
             return var64;
         }
 
-        let b7 = self.bf[start + 7] as u64;
+        let b7 = unsafe { *self.bf.add(start + 7) } as u64;
         var64 |= (b7 & 0x7F) << 49;
         if b7 < 0x80 {
             self.cursor += 8;
             return var64;
         }
 
-        let b8 = self.bf[start + 8] as u64;
+        let b8 = unsafe { *self.bf.add(start + 8) } as u64;
         var64 |= (b8 & 0xFF) << 56;
         self.cursor += 9;
         var64
@@ -555,7 +569,7 @@ impl Reader {
         // slow path
         let mut result = 0u64;
         let mut shift = 0;
-        while self.cursor < self.bf.len() {
+        while self.cursor < self.len {
             let b = self.read_u8();
             result |= ((b & 0x7F) as u64) << shift;
             if (b & 0x80) == 0 {
@@ -571,13 +585,17 @@ impl Reader {
     }
 
     pub fn get_slice(&self) -> &[u8] {
-        self.bf.as_slice()
+        if self.bf.is_null() || self.len == 0 {
+            &[]
+        } else {
+            unsafe { slice::from_raw_parts(self.bf, self.len) }
+        }
     }
 
     pub fn read_bytes(&mut self, len: usize) -> &[u8] {
-        let old_cursor = self.cursor;
+        let s = unsafe { slice::from_raw_parts(self.bf.add(self.cursor), len) };
         self.move_next(len);
-        &self.bf[old_cursor..old_cursor + len]
+        s
     }
 
     pub fn reset_cursor_to_here(&self) -> impl FnOnce(&mut Self) {
@@ -588,6 +606,12 @@ impl Reader {
     }
 
     pub fn aligned<T>(&self) -> bool {
-        unsafe { (self.bf.as_ptr().add(self.cursor) as usize) % std::mem::align_of::<T>() == 0 }
+        if self.bf.is_null() {
+            return false;
+        }
+        unsafe { (self.bf.add(self.cursor) as usize) % std::mem::align_of::<T>() == 0 }
     }
 }
+
+unsafe impl Send for Reader {}
+unsafe impl Sync for Reader {}
