@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1776,14 +1777,26 @@ public final class Fory implements BaseFory {
   }
 
   public static Set<Class<?>> getRegisteredClasses() {
-    return Collections.unmodifiableSet(REGISTERED_CLASSES);
+    return Collections.unmodifiableSet(new HashSet<>(REGISTERED_CLASSES));
   }
 
   public static Set<Class<?>> getProxyInterfaces() {
-    return Collections.unmodifiableSet(PROXY_INTERFACES);
+    return Collections.unmodifiableSet(new HashSet<>(PROXY_INTERFACES));
   }
 
   public static void addProxyInterface(Class<?> anInterface) {
+    if (anInterface == null) {
+      throw new NullPointerException("Proxy interface must not be null");
+    }
+    if (!anInterface.isInterface()) {
+      throw new IllegalArgumentException(
+          "Proxy type must be an interface: " + anInterface.getName());
+    }
     PROXY_INTERFACES.add(anInterface);
+  }
+
+  public static void clearRegistrations() {
+    REGISTERED_CLASSES.clear();
+    PROXY_INTERFACES.clear();
   }
 }

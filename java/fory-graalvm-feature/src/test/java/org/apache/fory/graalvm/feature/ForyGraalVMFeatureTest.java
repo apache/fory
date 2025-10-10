@@ -24,6 +24,7 @@ import static org.junit.Assert.*;
 import java.util.Set;
 import org.apache.fory.Fory;
 import org.apache.fory.reflect.ObjectCreators;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -31,20 +32,42 @@ public class ForyGraalVMFeatureTest {
 
   private ForyGraalVMFeature feature;
 
-  public static class TestClass {
+  public static class PublicNoArgConstructorClass {
     private String field1;
     private int field2;
   }
 
-  public static class ProblematicClass {
+  public static class ProtectedNoArgConstructorClass {
+    protected ProtectedNoArgConstructorClass() {}
+  }
+
+  public static class PrivateParameterizedConstructorClass {
     private String data;
 
-    private ProblematicClass() {}
+    private PrivateParameterizedConstructorClass(String data) {
+      this.data = data;
+    }
+  }
+
+  public interface SampleProxyInterface {
+    void execute();
+  }
+
+  public static class NonInterfaceProxy {}
+
+  public enum SampleEnum {
+    VALUE
   }
 
   @Before
   public void setUp() {
+    Fory.clearRegistrations();
     feature = new ForyGraalVMFeature();
+  }
+
+  @After
+  public void tearDown() {
+    Fory.clearRegistrations();
   }
 
   @Test
@@ -56,13 +79,22 @@ public class ForyGraalVMFeatureTest {
   }
 
   @Test
-  public void testObjectCreatorsIntegration() {
-    // Test that ObjectCreators.isProblematicForCreation works correctly
-    boolean isProblematic = ObjectCreators.isProblematicForCreation(ProblematicClass.class);
-    assertTrue("ProblematicClass should be detected as problematic", isProblematic);
+  public void testObjectCreatorsProblematicDetection() {
+    assertTrue(
+        "Class without no-arg constructor should be problematic",
+        ObjectCreators.isProblematicForCreation(PrivateParameterizedConstructorClass.class));
 
-    boolean isNotProblematic = ObjectCreators.isProblematicForCreation(TestClass.class);
-    assertFalse("TestClass should not be detected as problematic", isNotProblematic);
+    assertFalse(
+        "Public no-arg constructor should not be problematic",
+        ObjectCreators.isProblematicForCreation(PublicNoArgConstructorClass.class));
+
+    assertFalse(
+        "Protected no-arg constructor should not be problematic",
+        ObjectCreators.isProblematicForCreation(ProtectedNoArgConstructorClass.class));
+
+    assertFalse(
+        "Enums should not be considered problematic",
+        ObjectCreators.isProblematicForCreation(SampleEnum.class));
   }
 
   @Test
@@ -73,11 +105,54 @@ public class ForyGraalVMFeatureTest {
 
     Set<Class<?>> proxyInterfaces = Fory.getProxyInterfaces();
     assertNotNull("Proxy interfaces should not be null", proxyInterfaces);
+
+    try {
+      registeredClasses.add(PublicNoArgConstructorClass.class);
+      fail("Snapshots should be unmodifiable");
+    } catch (UnsupportedOperationException expected) {
+      // expected
+    }
   }
 
   @Test
   public void testFeatureInstantiation() {
     assertNotNull("Feature should be instantiated", feature);
     assertNotNull("Feature description should not be null", feature.getDescription());
+  }
+
+  @Test
+  public void testAddProxyInterfaceRejectsNull() {
+    try {
+      Fory.addProxyInterface(null);
+      fail("Null proxy interface should throw NullPointerException");
+    } catch (NullPointerException expected) {
+      // expected
+    }
+  }
+
+  @Test
+  public void testAddProxyInterfaceRejectsNonInterface() {
+    try {
+      Fory.addProxyInterface(NonInterfaceProxy.class);
+      fail("Non-interface proxy type should throw IllegalArgumentException");
+    } catch (IllegalArgumentException expected) {
+      // expected
+    }
+  }
+
+  @Test
+  public void testClearRegistrationsResetsState() {
+    Fory builderInstance = Fory.builder().build();
+    Fory.clearRegistrations();
+    builderInstance.register(PublicNoArgConstructorClass.class);
+    Fory.addProxyInterface(SampleProxyInterface.class);
+
+    assertFalse(Fory.getRegisteredClasses().isEmpty());
+    assertFalse(Fory.getProxyInterfaces().isEmpty());
+
+    Fory.clearRegistrations();
+
+    assertTrue(Fory.getRegisteredClasses().isEmpty());
+    assertTrue(Fory.getProxyInterfaces().isEmpty());
   }
 }

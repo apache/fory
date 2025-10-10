@@ -21,6 +21,7 @@ package org.apache.fory.graalvm.feature;
 
 import java.lang.reflect.Field;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.fory.Fory;
 import org.apache.fory.reflect.ObjectCreators;
 import org.graalvm.nativeimage.hosted.Feature;
@@ -40,38 +41,55 @@ import org.graalvm.nativeimage.hosted.RuntimeReflection;
  */
 public class ForyGraalVMFeature implements Feature {
 
+  private final Set<Class<?>> processedClasses = ConcurrentHashMap.newKeySet();
+  private final Set<Class<?>> processedProxyInterfaces = ConcurrentHashMap.newKeySet();
+
   @Override
-  public void beforeAnalysis(BeforeAnalysisAccess access) {
-    // Process all registered classes
-    Set<Class<?>> registeredClasses = Fory.getRegisteredClasses();
-    for (Class<?> clazz : registeredClasses) {
-      handleForyClass(clazz);
-    }
+  public void duringAnalysis(DuringAnalysisAccess access) {
+    boolean changed = false;
 
-    // Process all proxy interfaces
-    Set<Class<?>> proxyInterfaces = Fory.getProxyInterfaces();
-    for (Class<?> proxyInterface : proxyInterfaces) {
-      RuntimeReflection.register(proxyInterface);
-      RuntimeReflection.register(proxyInterface.getMethods());
-    }
-  }
-
-  private void handleForyClass(Class<?> clazz) {
-    if (ObjectCreators.isProblematicForCreation(clazz)) {
-      // Register for unsafe allocation
-      RuntimeReflection.registerForReflectiveInstantiation(clazz);
-
-      // Register all fields for reflection access
-      for (Field field : clazz.getDeclaredFields()) {
-        RuntimeReflection.register(field);
+    for (Class<?> clazz : Fory.getRegisteredClasses()) {
+      if (processedClasses.add(clazz)) {
+        handleForyClass(clazz);
+        changed = true;
       }
     }
 
-    // Always register the class itself for reflection
-    RuntimeReflection.register(clazz);
+    for (Class<?> proxyInterface : Fory.getProxyInterfaces()) {
+      if (processedProxyInterfaces.add(proxyInterface)) {
+        RuntimeReflection.register(proxyInterface);
+        RuntimeReflection.register(proxyInterface.getMethods());
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      access.requireAnalysisIteration();
+    }
   }
 
   public String getDescription() {
     return "Fory GraalVM Feature: Registers classes for serialization, proxying, and unsafe allocation.";
+  }
+
+  private void handleForyClass(Class<?> clazz) {
+    if (ObjectCreators.isProblematicForCreation(clazz)) {
+      try {
+        RuntimeReflection.registerForReflectiveInstantiation(clazz);
+        for (Field field : clazz.getDeclaredFields()) {
+          RuntimeReflection.register(field);
+        }
+      } catch (Exception e) {
+        throw new RuntimeException(
+            String.format(
+                "Failed to register class '%s' for GraalVM Native Image. "
+                    + "This class lacks an accessible no-arg constructor. "
+                    + "Please ensure fory-graalvm-feature is included in your native-image build.",
+                clazz.getName()),
+            e);
+      }
+    }
+
+    RuntimeReflection.register(clazz);
   }
 }

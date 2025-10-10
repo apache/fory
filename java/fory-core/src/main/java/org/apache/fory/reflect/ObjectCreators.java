@@ -89,15 +89,23 @@ public class ObjectCreators {
   public static boolean isProblematicForCreation(Class<?> type) {
     if (type.isInterface()
         || java.lang.reflect.Modifier.isAbstract(type.getModifiers())
-        || type.isArray()) {
+        || type.isArray()
+        || type.isEnum()
+        || type.isAnonymousClass()
+        || type.isLocalClass()
+        || RecordUtils.isRecord(type)) {
       return false;
     }
-    try {
-      type.getConstructor();
-      return false;
-    } catch (NoSuchMethodException e) {
+    Constructor<?>[] constructors = type.getDeclaredConstructors();
+    if (constructors.length == 0) {
       return true;
     }
+    for (Constructor<?> constructor : constructors) {
+      if (constructor.getParameterCount() == 0) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private static <T> ObjectCreator<T> creategetObjectCreator(Class<T> type) {
