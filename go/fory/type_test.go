@@ -34,8 +34,8 @@ func TestTypeResolver(t *testing.T) {
 	type A struct {
 		F1 string
 	}
-	require.Nil(t, typeResolver.RegisterTypeTag(reflect.ValueOf(A{}), "example.A"))
-	require.Error(t, typeResolver.RegisterTypeTag(reflect.ValueOf(A{}), "example.A"))
+	require.Nil(t, typeResolver.RegisterNamedType(reflect.TypeOf(A{}), 0, "", "example.A"))
+	require.Error(t, typeResolver.RegisterNamedType(reflect.TypeOf(A{}), 0, "", "example.A"))
 
 	var tests = []struct {
 		type_    reflect.Type

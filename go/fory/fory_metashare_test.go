@@ -284,13 +284,13 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 				Inner: SimpleDataClass{Name: "inner", Age: 18, Active: true},
 			},
 			writerSetup: func(f *Fory) error {
-				if err := f.RegisterTagType("SimpleDataClass", SimpleDataClass{}); err != nil {
+				if err := f.RegisterNamedType(SimpleDataClass{}, "SimpleDataClass"); err != nil {
 					return err
 				}
 				return nil
 			},
 			readerSetup: func(f *Fory) error {
-				if err := f.RegisterTagType("SimpleDataClass", SimpleDataClass{}); err != nil {
+				if err := f.RegisterNamedType(SimpleDataClass{}, "SimpleDataClass"); err != nil {
 					return err
 				}
 				return nil
@@ -312,13 +312,13 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 				Inner: SimpleDataClass{Name: "inner", Age: 18, Active: true},
 			},
 			writerSetup: func(f *Fory) error {
-				if err := f.RegisterTagType("SimpleDataClass", SimpleDataClass{}); err != nil {
+				if err := f.RegisterNamedType(SimpleDataClass{}, "SimpleDataClass"); err != nil {
 					return err
 				}
 				return nil
 			},
 			readerSetup: func(f *Fory) error {
-				if err := f.RegisterTagType("SimpleDataClass", InconsistentDataClass{}); err != nil {
+				if err := f.RegisterNamedType(InconsistentDataClass{}, "SimpleDataClass"); err != nil {
 					return err
 				}
 				return nil
@@ -360,7 +360,7 @@ func runCompatibilityCase(t *testing.T, tc compatibilityCase) {
 		err := tc.writerSetup(writer)
 		assert.NoError(t, err)
 	}
-	err := writer.RegisterTagType(tc.tag, tc.writeType)
+	err := writer.RegisterNamedType(tc.writeType, tc.tag)
 	assert.NoError(t, err)
 
 	data, err := writer.Marshal(tc.input)
@@ -371,7 +371,7 @@ func runCompatibilityCase(t *testing.T, tc compatibilityCase) {
 		err = tc.readerSetup(reader)
 		assert.NoError(t, err)
 	}
-	err = reader.RegisterTagType(tc.tag, tc.readType)
+	err = reader.RegisterNamedType(tc.readType, tc.tag)
 	assert.NoError(t, err)
 
 	target := reflect.New(reflect.TypeOf(tc.readType))

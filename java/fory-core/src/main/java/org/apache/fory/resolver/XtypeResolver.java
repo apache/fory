@@ -550,6 +550,8 @@ public class XtypeResolver extends TypeResolver {
       } else {
         xtypeId = shareMeta ? Types.COMPATIBLE_STRUCT : Types.STRUCT;
       }
+    } else if (cls == Object.class) {
+      return classResolver.getClassInfo(cls);
     } else {
       Class<Enum> enclosingClass = (Class<Enum>) cls.getEnclosingClass();
       if (enclosingClass != null && enclosingClass.isEnum()) {

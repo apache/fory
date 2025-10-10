@@ -671,6 +671,65 @@ class Fory:
     )
 ```
 
+### ThreadSafeFory Class
+
+Thread-safe serialization interface using thread-local storage:
+
+```python
+class ThreadSafeFory:
+    def __init__(
+        self,
+        xlang: bool = False,
+        ref: bool = False,
+        strict: bool = True,
+        compatible: bool = False,
+        max_depth: int = 50
+    )
+```
+
+`ThreadSafeFory` provides thread-safe serialization by maintaining a pool of `Fory` instances protected by a lock. When a thread needs to serialize/deserialize, it gets an instance from the pool, uses it, and returns it. All type registrations must be done before any serialization to ensure consistency across all instances.
+
+**Thread Safety Example:**
+
+```python
+import pyfory
+import threading
+from dataclasses import dataclass
+
+@dataclass
+class Person:
+    name: str
+    age: int
+
+# Create thread-safe Fory instance
+fory = pyfory.ThreadSafeFory(xlang=False, ref=True)
+fory.register(Person)
+
+# Use in multiple threads safely
+def serialize_in_thread(thread_id):
+    person = Person(name=f"User{thread_id}", age=25 + thread_id)
+    data = fory.serialize(person)
+    result = fory.deserialize(data)
+    print(f"Thread {thread_id}: {result}")
+
+threads = [threading.Thread(target=serialize_in_thread, args=(i,)) for i in range(10)]
+for t in threads: t.start()
+for t in threads: t.join()
+```
+
+**Key Features:**
+
+- **Instance Pool**: Maintains a pool of `Fory` instances protected by a lock for thread safety
+- **Shared Configuration**: All registrations must be done upfront and are applied to all instances
+- **Same API**: Drop-in replacement for `Fory` class with identical methods
+- **Registration Safety**: Prevents registration after first use to ensure consistency
+
+**When to Use:**
+
+- **Multi-threaded Applications**: Web servers, concurrent workers, parallel processing
+- **Shared Fory Instances**: When multiple threads need to serialize/deserialize data
+- **Thread Pools**: Applications using thread pools or concurrent.futures
+
 **Parameters:**
 
 - **`xlang`** (`bool`, default=`False`): Enable cross-language serialization. When `False`, enables Python-native mode supporting all Python objects. When `True`, enables cross-language mode compatible with Java, Go, Rust, etc.

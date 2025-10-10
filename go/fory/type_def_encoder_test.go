@@ -108,7 +108,7 @@ func TestTypeDefEncodingDecoding(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fory := NewFory(false)
 
-			if err := fory.RegisterTagType(tt.tagName, tt.testStruct); err != nil {
+			if err := fory.RegisterNamedType(tt.testStruct, tt.tagName); err != nil {
 				t.Fatalf("Failed to register tag type: %v", err)
 			}
 

@@ -862,7 +862,10 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
                     ("Vec<f64>", TypeId::FLOAT64_ARRAY),
                 );
                 final_fields.push((ident, ty.to_string(), type_id));
-            } else if ty.starts_with("Vec<") {
+            } else if ty.starts_with("Vec<")
+                || ty.starts_with("VecDeque<")
+                || ty.starts_with("LinkedList<")
+            {
                 collection_fields.push((ident, ty.to_string(), TypeId::LIST as u32));
             } else if ty.starts_with("HashSet<") {
                 collection_fields.push((ident, ty.to_string(), TypeId::SET as u32));
