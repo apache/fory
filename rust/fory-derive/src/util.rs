@@ -18,9 +18,23 @@
 use syn::{Field, Fields, GenericArgument, PathArguments, Type, TypePath, TypeTraitObject};
 
 pub fn sorted_fields(fields: &Fields) -> Vec<&Field> {
-    let mut fields = fields.iter().collect::<Vec<&Field>>();
-    fields.sort_by(|a, b| a.ident.cmp(&b.ident));
-    fields
+    let fields = fields.iter().collect::<Vec<&Field>>();
+    get_sorted_fields(&fields)
+}
+
+pub fn get_sorted_fields<'a>(fields: &[&'a Field]) -> Vec<&'a Field> {
+    use crate::object::util::get_sorted_field_names;
+
+    let sorted_names = get_sorted_field_names(fields);
+    let mut sorted_fields = Vec::with_capacity(fields.len());
+
+    for name in &sorted_names {
+        if let Some(field) = fields.iter().find(|f| *f.ident.as_ref().unwrap() == name) {
+            sorted_fields.push(*field);
+        }
+    }
+
+    sorted_fields
 }
 
 /// Check if a type is `Box<dyn Trait>` and return the trait type and trait name if it is

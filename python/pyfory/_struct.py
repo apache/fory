@@ -118,7 +118,7 @@ def _sort_fields(type_resolver, field_names, serializers):
     boxed_types = []
     collection_types = []
     map_types = []
-    final_types = []
+    str_types = []
     other_types = []
     type_ids = []
     for field_name, serializer in zip(field_names, serializers):
@@ -139,10 +139,8 @@ def _sort_fields(type_resolver, field_names, serializers):
             container = collection_types
         elif is_map_type(serializer.type_):
             container = map_types
-        elif (
-            type_id in {TypeId.STRING} or is_primitive_array_type(type_id) or is_subclass(serializer.type_, enum.Enum)
-        ) or serializer.type_ in _time_types:
-            container = final_types
+        elif type_id == TypeId.STRING:
+            container = str_types
         else:
             container = other_types
         container.append((type_id, serializer, field_name))
@@ -162,10 +160,10 @@ def _sort_fields(type_resolver, field_names, serializers):
 
     boxed_types = sorted(boxed_types, key=numeric_sorter)
     collection_types = sorted(collection_types, key=sorter)
-    final_types = sorted(final_types, key=sorter)
+    str_types = sorted(str_types, key=sorter)
     map_types = sorted(map_types, key=sorter)
     other_types = sorted(other_types, key=sorter)
-    all_types = boxed_types + final_types + other_types + collection_types + map_types
+    all_types = boxed_types + str_types + other_types + collection_types + map_types
     return [t[2] for t in all_types], [t[1] for t in all_types]
 
 

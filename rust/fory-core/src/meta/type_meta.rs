@@ -21,7 +21,7 @@ use crate::meta::{
     murmurhash3_x64_128, Encoding, MetaString, MetaStringDecoder, FIELD_NAME_DECODER,
     FIELD_NAME_ENCODER, NAMESPACE_DECODER, TYPE_NAME_DECODER,
 };
-use crate::types::{TypeId, FINAL_TYPES, PRIMITIVE_ARRAY_TYPES, PRIMITIVE_TYPES};
+use crate::types::{TypeId, PRIMITIVE_TYPES};
 use anyhow::anyhow;
 use std::clone::Clone;
 use std::cmp::min;
@@ -386,11 +386,11 @@ impl TypeMetaLayer {
         // group
         let mut primitive_fields = Vec::new();
         let mut nullable_primitive_fields = Vec::new();
-        let mut final_fields = Vec::new();
-        let mut other_fields = Vec::new();
-        let mut unknown_fields = Vec::new();
-        let mut collection_fields = Vec::new();
+        let mut string_fields = Vec::new();
+        let mut list_fields = Vec::new();
+        let mut set_fields = Vec::new();
         let mut map_fields = Vec::new();
+        let mut other_fields = Vec::new();
 
         for field_info in field_infos.into_iter() {
             let mut type_id = field_info.field_type.type_id;
@@ -402,49 +402,21 @@ impl TypeMetaLayer {
                 }
             }
 
-            let internal_id = type_id & 0xff;
             if PRIMITIVE_TYPES.contains(&type_id) {
                 primitive_fields.push(field_info);
-            } else if PRIMITIVE_ARRAY_TYPES.contains(&type_id)
-                || FINAL_TYPES.contains(&type_id)
-                || [TypeId::ENUM as u32, TypeId::NAMED_ENUM as u32].contains(&internal_id)
-            {
-                final_fields.push(field_info);
-            } else if [TypeId::LIST as u32, TypeId::SET as u32].contains(&type_id) {
-                collection_fields.push(field_info);
+            } else if TypeId::STRING as u32 == type_id {
+                string_fields.push(field_info);
+            } else if TypeId::LIST as u32 == type_id {
+                list_fields.push(field_info);
+            } else if TypeId::SET as u32 == type_id {
+                set_fields.push(field_info);
             } else if TypeId::MAP as u32 == type_id {
                 map_fields.push(field_info);
-            } else if [
-                TypeId::COMPATIBLE_STRUCT as u32,
-                TypeId::NAMED_COMPATIBLE_STRUCT as u32,
-                TypeId::EXT as u32,
-                TypeId::NAMED_EXT as u32,
-            ]
-            .contains(&internal_id)
-            {
-                other_fields.push(field_info);
-            } else if internal_id == TypeId::UNKNOWN as u32 {
-                unknown_fields.push(field_info);
             } else {
-                unreachable!("type_id: {type_id}");
+                other_fields.push(field_info);
             }
         }
 
-        fn sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
-            let a_id = if a.field_type.type_id == TypeId::ForyNullable as u32 {
-                a.field_type.generics.first().unwrap().type_id
-            } else {
-                a.field_type.type_id
-            };
-            let b_id = if b.field_type.type_id == TypeId::ForyNullable as u32 {
-                b.field_type.generics.first().unwrap().type_id
-            } else {
-                b.field_type.type_id
-            };
-            let a_field_name = &a.field_name;
-            let b_field_name = &b.field_name;
-            a_id.cmp(&b_id).then_with(|| a_field_name.cmp(b_field_name))
-        }
         fn get_primitive_type_size(type_id_num: u32) -> i32 {
             let type_id = TypeId::try_from(type_id_num as i16).unwrap();
             match type_id {
@@ -491,22 +463,26 @@ impl TypeMetaLayer {
             compress_a
                 .cmp(&compress_b)
                 .then_with(|| size_b.cmp(&size_a))
+                .then_with(|| a_id.cmp(&b_id))
                 .then_with(|| a_field_name.cmp(b_field_name))
+        }
+        fn name_sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
+            a.field_name.cmp(&b.field_name)
         }
         primitive_fields.sort_by(numeric_sorter);
         nullable_primitive_fields.sort_by(numeric_sorter);
-        final_fields.sort_by(sorter);
-        other_fields.sort_by(sorter);
-        unknown_fields.sort_by(sorter);
-        collection_fields.sort_by(sorter);
-        map_fields.sort_by(sorter);
+        string_fields.sort_by(name_sorter);
+        list_fields.sort_by(name_sorter);
+        set_fields.sort_by(name_sorter);
+        map_fields.sort_by(name_sorter);
+        other_fields.sort_by(name_sorter);
         let mut sorted_field_infos = Vec::with_capacity(fields_len);
         sorted_field_infos.extend(primitive_fields);
         sorted_field_infos.extend(nullable_primitive_fields);
-        sorted_field_infos.extend(final_fields);
+        sorted_field_infos.extend(string_fields);
         sorted_field_infos.extend(other_fields);
-        sorted_field_infos.extend(unknown_fields);
-        sorted_field_infos.extend(collection_fields);
+        sorted_field_infos.extend(list_fields);
+        sorted_field_infos.extend(set_fields);
         sorted_field_infos.extend(map_fields);
         sorted_field_infos
     }

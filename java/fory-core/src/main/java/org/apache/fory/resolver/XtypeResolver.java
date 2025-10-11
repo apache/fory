@@ -887,7 +887,7 @@ public class XtypeResolver extends TypeResolver {
       boolean descriptorsGroupedOrdered,
       Function<Descriptor, Descriptor> descriptorUpdator) {
     return DescriptorGrouper.createDescriptorGrouper(
-        this::isMonomorphic,
+        cls -> cls == String.class,
         descriptors,
         descriptorsGroupedOrdered,
         descriptorUpdator,

@@ -347,10 +347,10 @@ impl Reader {
     }
 
     pub fn slice_after_cursor(&self) -> &[u8] {
-        let remaining = self.len - self.cursor;
-        if self.bf.is_null() || remaining == 0 {
+        if self.bf.is_null() || self.cursor >= self.len {
             &[]
         } else {
+            let remaining = self.len - self.cursor;
             unsafe { std::slice::from_raw_parts(self.bf.add(self.cursor), remaining) }
         }
     }
