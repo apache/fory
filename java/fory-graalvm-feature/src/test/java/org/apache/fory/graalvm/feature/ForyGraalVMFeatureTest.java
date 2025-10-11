@@ -1,0 +1,158 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.fory.graalvm.feature;
+
+import static org.junit.Assert.*;
+
+import java.util.Set;
+import org.apache.fory.Fory;
+import org.apache.fory.reflect.ObjectCreators;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
+public class ForyGraalVMFeatureTest {
+
+  private ForyGraalVMFeature feature;
+
+  public static class PublicNoArgConstructorClass {
+    private String field1;
+    private int field2;
+  }
+
+  public static class ProtectedNoArgConstructorClass {
+    protected ProtectedNoArgConstructorClass() {}
+  }
+
+  public static class PrivateParameterizedConstructorClass {
+    private String data;
+
+    private PrivateParameterizedConstructorClass(String data) {
+      this.data = data;
+    }
+  }
+
+  public interface SampleProxyInterface {
+    void execute();
+  }
+
+  public static class NonInterfaceProxy {}
+
+  public enum SampleEnum {
+    VALUE
+  }
+
+  @Before
+  public void setUp() {
+    Fory.clearRegistrations();
+    feature = new ForyGraalVMFeature();
+  }
+
+  @After
+  public void tearDown() {
+    Fory.clearRegistrations();
+  }
+
+  @Test
+  public void testGetDescription() {
+    String description = feature.getDescription();
+    assertEquals(
+        "Fory GraalVM Feature: Registers classes for serialization, proxying, and unsafe allocation.",
+        description);
+  }
+
+  @Test
+  public void testObjectCreatorsProblematicDetection() {
+    assertTrue(
+        "Class without no-arg constructor should be problematic",
+        ObjectCreators.isProblematicForCreation(PrivateParameterizedConstructorClass.class));
+
+    assertFalse(
+        "Public no-arg constructor should not be problematic",
+        ObjectCreators.isProblematicForCreation(PublicNoArgConstructorClass.class));
+
+    assertFalse(
+        "Protected no-arg constructor should not be problematic",
+        ObjectCreators.isProblematicForCreation(ProtectedNoArgConstructorClass.class));
+
+    assertFalse(
+        "Enums should not be considered problematic",
+        ObjectCreators.isProblematicForCreation(SampleEnum.class));
+  }
+
+  @Test
+  public void testForyStaticMethods() {
+    // Test that Fory static methods are accessible
+    Set<Class<?>> registeredClasses = Fory.getRegisteredClasses();
+    assertNotNull("Registered classes should not be null", registeredClasses);
+
+    Set<Class<?>> proxyInterfaces = Fory.getProxyInterfaces();
+    assertNotNull("Proxy interfaces should not be null", proxyInterfaces);
+
+    try {
+      registeredClasses.add(PublicNoArgConstructorClass.class);
+      fail("Snapshots should be unmodifiable");
+    } catch (UnsupportedOperationException expected) {
+      // expected
+    }
+  }
+
+  @Test
+  public void testFeatureInstantiation() {
+    assertNotNull("Feature should be instantiated", feature);
+    assertNotNull("Feature description should not be null", feature.getDescription());
+  }
+
+  @Test
+  public void testAddProxyInterfaceRejectsNull() {
+    try {
+      Fory.addProxyInterface(null);
+      fail("Null proxy interface should throw NullPointerException");
+    } catch (NullPointerException expected) {
+      // expected
+    }
+  }
+
+  @Test
+  public void testAddProxyInterfaceRejectsNonInterface() {
+    try {
+      Fory.addProxyInterface(NonInterfaceProxy.class);
+      fail("Non-interface proxy type should throw IllegalArgumentException");
+    } catch (IllegalArgumentException expected) {
+      // expected
+    }
+  }
+
+  @Test
+  public void testClearRegistrationsResetsState() {
+    Fory builderInstance = Fory.builder().build();
+    Fory.clearRegistrations();
+    builderInstance.register(PublicNoArgConstructorClass.class);
+    Fory.addProxyInterface(SampleProxyInterface.class);
+
+    assertFalse(Fory.getRegisteredClasses().isEmpty());
+    assertFalse(Fory.getProxyInterfaces().isEmpty());
+
+    Fory.clearRegistrations();
+
+    assertTrue(Fory.getRegisteredClasses().isEmpty());
+    assertTrue(Fory.getProxyInterfaces().isEmpty());
+  }
+}

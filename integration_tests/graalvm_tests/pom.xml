@@ -59,6 +59,11 @@
       <artifactId>fory-core</artifactId>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>org.apache.fory</groupId>
+      <artifactId>fory-graalvm-feature</artifactId>
+      <version>${project.version}</version>
+    </dependency>
   </dependencies>
 
   <build>

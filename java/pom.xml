@@ -93,6 +93,7 @@
       </activation>
       <modules>
         <module>fory-simd</module>
+        <module>fory-graalvm-feature</module>
       </modules>
     </profile>
   </profiles>
