@@ -230,15 +230,15 @@ macro_rules! basic_type_deserialize {
                 $ty_str => {
                     if $nullable {
                         quote! {
-                            <$ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                            let res1 = Some(<$ty as fory_core::serializer::Serializer>::fory_read_data(context, true)
+                            <$ty as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
+                            let res1 = Some(<$ty as fory_core::serializer::Serializer>::fory_read_data(fory, context, true)
                                 .map_err(fory_core::error::Error::from)?);
                             Ok::<Option<$ty>, fory_core::error::Error>(res1)
                         }
                     } else {
                         quote! {
-                            <$ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                            let res2 = <$ty as fory_core::serializer::Serializer>::fory_read_data(context, true)
+                            <$ty as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
+                            let res2 = <$ty as fory_core::serializer::Serializer>::fory_read_data(fory, context, true)
                                 .map_err(fory_core::error::Error::from)?;
                             Ok::<$ty, fory_core::error::Error>(res2)
                         }
@@ -310,8 +310,8 @@ impl NullableTypeNode {
                     let res1 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         None
                     } else {
-                        <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                        Some(<#ty_type as fory_core::serializer::Serializer>::fory_read_data(context, true)
+                        <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
+                        Some(<#ty_type as fory_core::serializer::Serializer>::fory_read_data(fory, context, true)
                             .map_err(fory_core::error::Error::from)?)
                     };
                     Ok::<Option<#ty_type>, fory_core::error::Error>(res1)
@@ -321,8 +321,8 @@ impl NullableTypeNode {
                     let res2 = if cur_remote_nullable_type.nullable && ref_flag == (fory_core::types::RefFlag::Null as i8) {
                         Vec::default()
                     } else {
-                        <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                        <#ty_type as fory_core::serializer::Serializer>::fory_read_data(context, true)
+                        <#ty_type as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
+                        <#ty_type as fory_core::serializer::Serializer>::fory_read_data(fory, context, true)
                             .map_err(fory_core::error::Error::from)?
                     };
                     Ok::<#ty_type, fory_core::error::Error>(res2)
@@ -490,8 +490,8 @@ impl NullableTypeNode {
                                     continue;
                                 }
                                 let chunk_size = context.reader.read_u8();
-                                <#key_ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
-                                <#val_ty as fory_core::serializer::Serializer>::fory_read_type_info(context, true);
+                                <#key_ty as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
+                                <#val_ty as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, true);
                                 for _ in (0..chunk_size).enumerate() {
                                     let key: #key_ty = {#key_tokens}?;
                                     let value: #val_ty = {#val_tokens}?;
@@ -543,7 +543,7 @@ impl NullableTypeNode {
                                 || internal_id == EXT_ID
                                 || internal_id == NAMED_EXT_ID
                             {
-                                <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(context)
+                                <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(fory, context)
                                     .map_err(fory_core::error::Error::from)?
                             } else {
                                 unimplemented!()
@@ -566,7 +566,7 @@ impl NullableTypeNode {
                             || internal_id == EXT_ID
                             || internal_id == NAMED_EXT_ID
                         {
-                            <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(context)
+                            <#nullable_ty as fory_core::serializer::Serializer>::fory_read_compatible(fory, context)
                                 .map_err(fory_core::error::Error::from)?
                         } else {
                             unimplemented!()
@@ -741,7 +741,7 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
     TypeNode { name, generics }
 }
 
-pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> TokenStream {
+pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     if node.name == "Option" {
         if let Some(first_generic) = node.generics.first() {
             if first_generic.name == "Option" {
@@ -758,23 +758,11 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
     let primitive_vec = try_primitive_vec_type(node);
 
     let children_tokens: Vec<TokenStream> = if primitive_vec.is_none() {
-        node.generics
-            .iter()
-            .map(|child| generic_tree_to_tokens(child, have_context))
-            .collect()
+        node.generics.iter().map(generic_tree_to_tokens).collect()
     } else {
         vec![]
     };
     let ty: syn::Type = syn::parse_str(&node.to_string()).unwrap();
-    let param = if have_context {
-        quote! {
-            context.get_fory()
-        }
-    } else {
-        quote! {
-            fory
-        }
-    };
     let get_type_id = if node.name == "Option" {
         let option_type_id = TypeId::ForyNullable as u32;
         quote! { #option_type_id }
@@ -782,7 +770,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode, have_context: bool) -> Tok
         ts
     } else {
         quote! {
-            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(#param)
+            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(fory)
         }
     };
     quote! {
@@ -1055,8 +1043,7 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
                 },
                 quote! {
                     final_fields.sort_by(#sorter_ts);
-                    let final_field_names: Vec<String> = final_fields.iter().map(|(_, name)| name.clone()).collect();
-                    sorted_field_names.extend(final_field_names);
+                    for (_, name) in final_fields.drain(..) { sorted_field_names.push(name); }
                 },
             )
         }
@@ -1071,8 +1058,7 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
                 },
                 quote! {
                     other_fields.sort_by(#sorter_ts);
-                    let other_field_names: Vec<String> = other_fields.iter().map(|(_, name)| name.clone()).collect();
-                    sorted_field_names.extend(other_field_names);
+                    for (_, name) in other_fields.drain(..) { sorted_field_names.push(name); }
                 },
             )
         }
@@ -1138,6 +1124,8 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
     let (final_declare, final_extend) = final_fields_declare_extend_ts;
     let (other_declare, other_extend) = other_fields_declare_extend_ts;
 
+    let fields_len = fields.len();
+
     quote! {
         let sorted_field_names = {
             #all_primitive_declare
@@ -1148,7 +1136,7 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
             #trait_object_fields_ts
             #group_sort_enum_other_fields
 
-            let mut sorted_field_names: Vec<String> = Vec::new();
+            let mut sorted_field_names: Vec<String> = Vec::with_capacity(#fields_len);
             #all_primitive_extend
             #final_extend
             #other_extend

@@ -24,11 +24,15 @@ use crate::types::TypeId;
 use std::mem;
 
 impl Serializer for bool {
-    fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) {
+    fn fory_write_data(&self, _fory: &Fory, context: &mut WriteContext, _is_field: bool) {
         context.writer.write_u8(if *self { 1 } else { 0 });
     }
 
-    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    fn fory_read_data(
+        _fory: &Fory,
+        context: &mut ReadContext,
+        _is_field: bool,
+    ) -> Result<Self, Error> {
         Ok(context.reader.read_u8() == 1)
     }
 
@@ -48,12 +52,12 @@ impl Serializer for bool {
         self
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        write_type_info::<Self>(context, is_field);
+    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        write_type_info::<Self>(fory, context, is_field);
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-        read_type_info::<Self>(context, is_field);
+    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
+        read_type_info::<Self>(fory, context, is_field);
     }
 }
 

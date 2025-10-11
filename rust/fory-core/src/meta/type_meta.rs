@@ -70,20 +70,16 @@ pub struct NullableFieldType {
 }
 
 impl NullableFieldType {
-    pub fn from(node: FieldType) -> Self {
+    pub fn from(node: &FieldType) -> Self {
         if node.type_id == TypeId::ForyNullable as u32 {
-            let inner = NullableFieldType::from(node.generics.into_iter().next().unwrap());
+            let inner = NullableFieldType::from(&node.generics[0]);
             NullableFieldType {
                 type_id: inner.type_id,
                 generics: inner.generics,
                 nullable: true,
             }
         } else {
-            let generics = node
-                .generics
-                .into_iter()
-                .map(NullableFieldType::from)
-                .collect();
+            let generics = node.generics.iter().map(NullableFieldType::from).collect();
             NullableFieldType {
                 type_id: node.type_id,
                 generics,
@@ -385,7 +381,8 @@ impl TypeMetaLayer {
         Ok(writer.dump())
     }
 
-    fn sort_field_infos(field_infos: &[FieldInfo]) -> Vec<FieldInfo> {
+    fn sort_field_infos(field_infos: Vec<FieldInfo>) -> Vec<FieldInfo> {
+        let fields_len = field_infos.len();
         // group
         let mut primitive_fields = Vec::new();
         let mut nullable_primitive_fields = Vec::new();
@@ -394,27 +391,29 @@ impl TypeMetaLayer {
         let mut unknown_fields = Vec::new();
         let mut collection_fields = Vec::new();
         let mut map_fields = Vec::new();
-        for field_info in field_infos.iter() {
+
+        for field_info in field_infos.into_iter() {
             let mut type_id = field_info.field_type.type_id;
             if type_id == TypeId::ForyNullable as u32 {
                 type_id = field_info.field_type.generics.first().unwrap().type_id;
                 if PRIMITIVE_TYPES.contains(&type_id) {
-                    nullable_primitive_fields.push(field_info.clone());
+                    nullable_primitive_fields.push(field_info);
                     continue;
                 }
             }
+
             let internal_id = type_id & 0xff;
             if PRIMITIVE_TYPES.contains(&type_id) {
-                primitive_fields.push(field_info.clone());
+                primitive_fields.push(field_info);
             } else if PRIMITIVE_ARRAY_TYPES.contains(&type_id)
                 || FINAL_TYPES.contains(&type_id)
                 || [TypeId::ENUM as u32, TypeId::NAMED_ENUM as u32].contains(&internal_id)
             {
-                final_fields.push(field_info.clone());
+                final_fields.push(field_info);
             } else if [TypeId::LIST as u32, TypeId::SET as u32].contains(&type_id) {
-                collection_fields.push(field_info.clone());
+                collection_fields.push(field_info);
             } else if TypeId::MAP as u32 == type_id {
-                map_fields.push(field_info.clone());
+                map_fields.push(field_info);
             } else if [
                 TypeId::COMPATIBLE_STRUCT as u32,
                 TypeId::NAMED_COMPATIBLE_STRUCT as u32,
@@ -423,13 +422,14 @@ impl TypeMetaLayer {
             ]
             .contains(&internal_id)
             {
-                other_fields.push(field_info.clone());
+                other_fields.push(field_info);
             } else if internal_id == TypeId::UNKNOWN as u32 {
-                unknown_fields.push(field_info.clone());
+                unknown_fields.push(field_info);
             } else {
                 unreachable!("type_id: {type_id}");
             }
         }
+
         fn sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
             let a_id = if a.field_type.type_id == TypeId::ForyNullable as u32 {
                 a.field_type.generics.first().unwrap().type_id
@@ -500,7 +500,7 @@ impl TypeMetaLayer {
         unknown_fields.sort_by(sorter);
         collection_fields.sort_by(sorter);
         map_fields.sort_by(sorter);
-        let mut sorted_field_infos = Vec::with_capacity(field_infos.len());
+        let mut sorted_field_infos = Vec::with_capacity(fields_len);
         sorted_field_infos.extend(primitive_fields);
         sorted_field_infos.extend(nullable_primitive_fields);
         sorted_field_infos.extend(final_fields);
@@ -535,7 +535,7 @@ impl TypeMetaLayer {
         for _ in 0..num_fields {
             field_infos.push(FieldInfo::from_bytes(reader));
         }
-        let sorted_field_infos = Self::sort_field_infos(&field_infos);
+        let sorted_field_infos = Self::sort_field_infos(field_infos);
         TypeMetaLayer::new(
             type_id,
             namespace,

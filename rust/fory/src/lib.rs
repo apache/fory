@@ -717,13 +717,13 @@
 //! }
 //!
 //! impl Serializer for CustomType {
-//!     fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
+//!     fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
 //!         context.writer.write_i32(self.value);
 //!         context.writer.write_varuint32(self.name.len() as u32);
 //!         context.writer.write_utf8_string(&self.name);
 //!     }
 //!
-//!     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+//!     fn fory_read_data(fory: &Fory, context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
 //!         let value = context.reader.read_i32();
 //!         let len = context.reader.read_varuint32() as usize;
 //!         let name = context.reader.read_utf8_string(len);

@@ -20,15 +20,15 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::{Encoding, MetaString, TypeMeta, NAMESPACE_DECODER};
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Default)]
 pub struct MetaReaderResolver {
-    pub reading_type_defs: Vec<Rc<TypeMeta>>,
+    pub reading_type_defs: Vec<Arc<TypeMeta>>,
 }
 
 impl MetaReaderResolver {
-    pub fn get(&self, index: usize) -> &Rc<TypeMeta> {
+    pub fn get(&self, index: usize) -> &Arc<TypeMeta> {
         unsafe { self.reading_type_defs.get_unchecked(index) }
     }
 
@@ -37,7 +37,7 @@ impl MetaReaderResolver {
         // self.reading_type_defs.reserve(meta_size as usize);
         for _ in 0..meta_size {
             let type_meta = TypeMeta::from_bytes(reader);
-            self.reading_type_defs.push(Rc::new(type_meta));
+            self.reading_type_defs.push(Arc::new(type_meta));
         }
         reader.get_cursor()
     }
@@ -66,17 +66,21 @@ impl MetaReaderResolver {
         };
         NAMESPACE_DECODER.decode(bytes, encoding).unwrap()
     }
+
+    pub fn reset(&mut self) {
+        self.reading_type_defs.clear();
+    }
 }
 
 #[derive(Default)]
-pub struct MetaWriterResolver<'a> {
-    type_defs: Vec<&'a Vec<u8>>,
+pub struct MetaWriterResolver {
+    type_defs: Vec<Arc<Vec<u8>>>,
     type_id_index_map: HashMap<std::any::TypeId, usize>,
 }
 
 #[allow(dead_code)]
-impl<'a> MetaWriterResolver<'a> {
-    pub fn push<'b: 'a>(&mut self, type_id: std::any::TypeId, fory: &'a Fory) -> usize {
+impl MetaWriterResolver {
+    pub fn push(&mut self, type_id: std::any::TypeId, fory: &Fory) -> usize {
         match self.type_id_index_map.get(&type_id) {
             None => {
                 let index = self.type_defs.len();
@@ -106,5 +110,6 @@ impl<'a> MetaWriterResolver<'a> {
 
     pub fn reset(&mut self) {
         self.type_defs.clear();
+        self.type_id_index_map.clear();
     }
 }
