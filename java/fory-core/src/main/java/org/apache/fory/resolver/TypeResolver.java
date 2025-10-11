@@ -701,8 +701,8 @@ public abstract class TypeResolver {
   }
 
   /**
-   * Register a class in the GraalVM registry for native image compilation.
-   * This should be called from {@link org.apache.fory.Fory#register} methods.
+   * Register a class in the GraalVM registry for native image compilation. This should be called
+   * from {@link org.apache.fory.Fory#register} methods.
    *
    * @param cls the class to register
    * @param configHash the configuration hash for the Fory instance
@@ -732,9 +732,7 @@ public abstract class TypeResolver {
     registry.proxyInterfaces.add(proxyInterface);
   }
 
-  /**
-   * Clear all GraalVM registrations. This is primarily for testing purposes.
-   */
+  /** Clear all GraalVM registrations. This is primarily for testing purposes. */
   public static void clearGraalvmRegistrations() {
     for (GraalvmClassRegistry registry : GRAALVM_REGISTRY.values()) {
       registry.registeredClasses.clear();
