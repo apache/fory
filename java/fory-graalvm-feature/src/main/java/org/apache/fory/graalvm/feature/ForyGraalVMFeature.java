@@ -22,8 +22,8 @@ package org.apache.fory.graalvm.feature;
 import java.lang.reflect.Field;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import org.apache.fory.Fory;
 import org.apache.fory.reflect.ObjectCreators;
+import org.apache.fory.resolver.TypeResolver;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
 
@@ -48,14 +48,14 @@ public class ForyGraalVMFeature implements Feature {
   public void duringAnalysis(DuringAnalysisAccess access) {
     boolean changed = false;
 
-    for (Class<?> clazz : Fory.getRegisteredClasses()) {
+    for (Class<?> clazz : TypeResolver.getAllRegisteredClasses()) {
       if (processedClasses.add(clazz)) {
         handleForyClass(clazz);
         changed = true;
       }
     }
 
-    for (Class<?> proxyInterface : Fory.getProxyInterfaces()) {
+    for (Class<?> proxyInterface : TypeResolver.getAllProxyInterfaces()) {
       if (processedProxyInterfaces.add(proxyInterface)) {
         RuntimeReflection.register(proxyInterface);
         RuntimeReflection.register(proxyInterface.getMethods());

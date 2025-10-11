@@ -93,10 +93,6 @@ import org.apache.fory.util.StringUtils;
 public final class Fory implements BaseFory {
   private static final Logger LOG = LoggerFactory.getLogger(Fory.class);
 
-  // Static collections for GraalVM Feature support
-  private static final Set<Class<?>> REGISTERED_CLASSES = ConcurrentHashMap.newKeySet();
-  private static final Set<Class<?>> PROXY_INTERFACES = ConcurrentHashMap.newKeySet();
-
   public static final byte NULL_FLAG = -3;
   // This flag indicates that object is a not-null value.
   // We don't use another byte to indicate REF, so that we can save one byte.
@@ -185,13 +181,13 @@ public final class Fory implements BaseFory {
   @Override
   public void register(Class<?> cls) {
     _getTypeResolver().register(cls);
-    REGISTERED_CLASSES.add(cls);
+    TypeResolver.registerClassForGraalvm(cls, config.getConfigHash());
   }
 
   @Override
   public void register(Class<?> cls, int id) {
     _getTypeResolver().register(cls, id);
-    REGISTERED_CLASSES.add(cls);
+    TypeResolver.registerClassForGraalvm(cls, config.getConfigHash());
   }
 
   @Deprecated
@@ -223,7 +219,7 @@ public final class Fory implements BaseFory {
 
   public void register(Class<?> cls, String namespace, String typeName) {
     _getTypeResolver().register(cls, namespace, typeName);
-    REGISTERED_CLASSES.add(cls);
+    TypeResolver.registerClassForGraalvm(cls, config.getConfigHash());
   }
 
   @Override
@@ -1776,27 +1772,46 @@ public final class Fory implements BaseFory {
     return new ForyBuilder();
   }
 
+  /**
+   * Get all registered classes for GraalVM native image compilation.
+   * This is a convenience method that delegates to {@link TypeResolver#getAllRegisteredClasses()}.
+   *
+   * @return unmodifiable set of all registered classes
+   */
   public static Set<Class<?>> getRegisteredClasses() {
-    return Collections.unmodifiableSet(new HashSet<>(REGISTERED_CLASSES));
+    return TypeResolver.getAllRegisteredClasses();
   }
 
+  /**
+   * Get all registered proxy interfaces for GraalVM native image compilation.
+   * This is a convenience method that delegates to {@link TypeResolver#getAllProxyInterfaces()}.
+   *
+   * @return unmodifiable set of all registered proxy interfaces
+   */
   public static Set<Class<?>> getProxyInterfaces() {
-    return Collections.unmodifiableSet(new HashSet<>(PROXY_INTERFACES));
+    return TypeResolver.getAllProxyInterfaces();
   }
 
-  public static void addProxyInterface(Class<?> anInterface) {
-    if (anInterface == null) {
-      throw new NullPointerException("Proxy interface must not be null");
-    }
-    if (!anInterface.isInterface()) {
-      throw new IllegalArgumentException(
-          "Proxy type must be an interface: " + anInterface.getName());
-    }
-    PROXY_INTERFACES.add(anInterface);
+  /**
+   * Register a proxy interface for GraalVM native image compilation.
+   * This is a convenience method that delegates to {@link TypeResolver#registerProxyInterfaceForGraalvm}.
+   *
+   * <p>Note: This registers the proxy interface globally across all Fory configurations.
+   * If you need per-configuration registration, use the TypeResolver methods directly.
+   *
+   * @param proxyInterface the proxy interface to register
+   * @throws NullPointerException if proxyInterface is null
+   * @throws IllegalArgumentException if proxyInterface is not an interface
+   */
+  public static void addProxyInterface(Class<?> proxyInterface) {
+    TypeResolver.registerProxyInterfaceForGraalvm(proxyInterface, 0);
   }
 
+  /**
+   * Clear all GraalVM registrations. This is primarily for testing purposes.
+   * This is a convenience method that delegates to {@link TypeResolver#clearGraalvmRegistrations()}.
+   */
   public static void clearRegistrations() {
-    REGISTERED_CLASSES.clear();
-    PROXY_INTERFACES.clear();
+    TypeResolver.clearGraalvmRegistrations();
   }
 }
