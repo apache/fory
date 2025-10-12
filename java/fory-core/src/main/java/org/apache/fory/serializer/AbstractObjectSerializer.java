@@ -127,7 +127,13 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       SerializationBinding binding, GenericTypeField fieldInfo, MemoryBuffer buffer) {
     Object fieldValue;
     boolean nullable = fieldInfo.nullable;
-    if (fieldInfo.trackingRef) {
+    if (fieldInfo.genericType.getCls().isEnum()) {
+      if (buffer.readByte() == Fory.NULL_FLAG) {
+        return null;
+      } else {
+        return fieldInfo.genericType.getSerializer(binding.typeResolver).read(buffer);
+      }
+    } else if (fieldInfo.trackingRef) {
       fieldValue = binding.readRef(buffer, fieldInfo);
     } else {
       binding.preserveRefId(-1);

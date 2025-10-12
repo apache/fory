@@ -19,6 +19,7 @@
 
 package org.apache.fory.serializer;
 
+import static org.apache.fory.serializer.ObjectSerializer.writeOtherFieldValue;
 import static org.apache.fory.serializer.SerializationUtils.getTypeResolver;
 
 import java.util.ArrayList;
@@ -75,6 +76,7 @@ public final class NonexistentClassSerializers {
     private final ClassInfoHolder classInfoHolder;
     private final LongMap<ClassFieldsInfo> fieldsInfoMap;
     private final SerializationBinding binding;
+    private final TypeResolver typeResolver;
 
     public NonexistentClassSerializer(Fory fory, ClassDef classDef) {
       super(fory, NonexistentClass.NonexistentMetaShared.class);
@@ -82,6 +84,7 @@ public final class NonexistentClassSerializers {
       classInfoHolder = fory.getClassResolver().nilClassInfoHolder();
       fieldsInfoMap = new LongMap<>();
       binding = SerializationBinding.createBinding(fory);
+      typeResolver = fory._getTypeResolver();
       Preconditions.checkArgument(fory.getConfig().isMetaShareEnabled());
     }
 
@@ -140,20 +143,15 @@ public final class NonexistentClassSerializers {
           }
         }
       }
-      for (ObjectSerializer.GenericTypeField fieldInfo : fieldsInfo.otherFields) {
-        Object fieldValue = value.get(fieldInfo.qualifiedFieldName);
-        boolean nullable = fieldInfo.nullable;
-        if (fieldInfo.trackingRef) {
-          binding.writeRef(buffer, fieldValue, fieldInfo.classInfoHolder);
-        } else {
-          binding.writeNullable(buffer, fieldValue, fieldInfo.classInfoHolder, nullable);
-        }
-      }
       Generics generics = fory.getGenerics();
       for (ObjectSerializer.GenericTypeField fieldInfo : fieldsInfo.containerFields) {
         Object fieldValue = value.get(fieldInfo.qualifiedFieldName);
         ObjectSerializer.writeContainerFieldValue(
             binding, refResolver, classResolver, generics, fieldInfo, buffer, fieldValue);
+      }
+      for (ObjectSerializer.GenericTypeField fieldInfo : fieldsInfo.otherFields) {
+        Object fieldValue = value.get(fieldInfo.qualifiedFieldName);
+        writeOtherFieldValue(binding, typeResolver, buffer, fieldInfo, fieldValue);
       }
     }
 
@@ -214,15 +212,15 @@ public final class NonexistentClassSerializers {
         }
         entries.add(new MapEntry(fieldInfo.qualifiedFieldName, fieldValue));
       }
-      for (ObjectSerializer.GenericTypeField fieldInfo : fieldsInfo.otherFields) {
-        Object fieldValue =
-            AbstractObjectSerializer.readOtherFieldValue(binding, fieldInfo, buffer);
-        entries.add(new MapEntry(fieldInfo.qualifiedFieldName, fieldValue));
-      }
       Generics generics = fory.getGenerics();
       for (ObjectSerializer.GenericTypeField fieldInfo : fieldsInfo.containerFields) {
         Object fieldValue =
             AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
+        entries.add(new MapEntry(fieldInfo.qualifiedFieldName, fieldValue));
+      }
+      for (ObjectSerializer.GenericTypeField fieldInfo : fieldsInfo.otherFields) {
+        Object fieldValue =
+            AbstractObjectSerializer.readOtherFieldValue(binding, fieldInfo, buffer);
         entries.add(new MapEntry(fieldInfo.qualifiedFieldName, fieldValue));
       }
       obj.setEntries(entries);

@@ -28,6 +28,7 @@ import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.resolver.XtypeResolver;
 
 // This polymorphic interface has cost, do not expose it as a public class
@@ -37,10 +38,12 @@ import org.apache.fory.resolver.XtypeResolver;
 abstract class SerializationBinding {
   protected final Fory fory;
   protected final RefResolver refResolver;
+  protected final TypeResolver typeResolver;
 
   SerializationBinding(Fory fory) {
     this.fory = fory;
     this.refResolver = fory.getRefResolver();
+    typeResolver = fory._getTypeResolver();
   }
 
   abstract <T> void writeRef(MemoryBuffer buffer, T obj);

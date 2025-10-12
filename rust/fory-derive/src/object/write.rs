@@ -16,7 +16,8 @@
 // under the License.
 
 use super::util::{
-    classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc, StructField,
+    classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc, skip_ref_flag,
+    StructField,
 };
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -98,15 +99,13 @@ pub fn gen_write_type_info() -> TokenStream {
     }
 }
 
-fn gen_write_match_arm(field: &Field) -> TokenStream {
+fn gen_write_field(field: &Field) -> TokenStream {
     let ty = &field.ty;
     let ident = &field.ident;
-    let name_str = ident.as_ref().unwrap().to_string();
-
     match classify_trait_object_field(ty) {
         StructField::BoxDyn(_) => {
             quote! {
-                #name_str => {
+                {
                     let any_ref = self.#ident.as_any();
                     let concrete_type_id = any_ref.type_id();
                     let fory_type_id = fory.get_type_resolver()
@@ -131,7 +130,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                #name_str => {
+                {
                     let wrapper = #wrapper_ty::from(self.#ident.clone() as std::rc::Rc<dyn #trait_ident>);
                     fory_core::serializer::Serializer::fory_write(&wrapper, fory, context, true);
                 }
@@ -142,7 +141,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                #name_str => {
+                {
                     let wrapper = #wrapper_ty::from(self.#ident.clone() as std::sync::Arc<dyn #trait_ident>);
                     fory_core::serializer::Serializer::fory_write(&wrapper, fory, context, true);
                 }
@@ -153,7 +152,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                #name_str => {
+                {
                     let wrapper_vec: Vec<#wrapper_ty> = self.#ident.iter()
                         .map(|item| #wrapper_ty::from(item.clone() as std::rc::Rc<dyn #trait_ident>))
                         .collect();
@@ -166,7 +165,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                #name_str => {
+                {
                     let wrapper_vec: Vec<#wrapper_ty> = self.#ident.iter()
                         .map(|item| #wrapper_ty::from(item.clone() as std::sync::Arc<dyn #trait_ident>))
                         .collect();
@@ -179,7 +178,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                #name_str => {
+                {
                     let wrapper_map: std::collections::HashMap<#key_ty, #wrapper_ty> = self.#ident.iter()
                         .map(|(k, v)| (k.clone(), #wrapper_ty::from(v.clone() as std::rc::Rc<dyn #trait_ident>)))
                         .collect();
@@ -192,7 +191,7 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                #name_str => {
+                {
                     let wrapper_map: std::collections::HashMap<#key_ty, #wrapper_ty> = self.#ident.iter()
                         .map(|(k, v)| (k.clone(), #wrapper_ty::from(v.clone() as std::sync::Arc<dyn #trait_ident>)))
                         .collect();
@@ -202,63 +201,28 @@ fn gen_write_match_arm(field: &Field) -> TokenStream {
         }
         StructField::Forward => {
             quote! {
-                #name_str => {
+                {
                     fory_core::serializer::Serializer::fory_write(&self.#ident, fory, context, true);
                 }
             }
         }
         _ => {
+            let skip_ref_flag = skip_ref_flag(ty);
             quote! {
-                #name_str => {
-                    let skip_ref_flag = fory_core::serializer::get_skip_ref_flag::<#ty>(fory);
-                    fory_core::serializer::write_ref_info_data::<#ty>(&self.#ident, fory, context, true, skip_ref_flag, false);
-                }
+                fory_core::serializer::write_ref_info_data::<#ty>(&self.#ident, fory, context, true, #skip_ref_flag, false);
             }
         }
     }
 }
 
 pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
-    let sorted_serialize = if fields.is_empty() {
+    if fields.is_empty() {
         quote! {}
     } else {
-        let match_ts: Vec<_> = fields
-            .iter()
-            .map(|field| gen_write_match_arm(field))
-            .collect();
-        #[cfg(not(feature = "fields-loop-unroll"))]
-        let loop_ts = quote! {
-            for field_name in sorted_field_names {
-                match field_name.as_str() {
-                    #(#match_ts),*
-                    , _ => {unreachable!()}
-                }
-            }
-        };
-        #[cfg(feature = "fields-loop-unroll")]
-        let loop_ts = {
-            let loop_item_ts = fields.iter().enumerate().map(|(i, _field)| {
-                let idx = syn::Index::from(i);
-                quote! {
-                    let field_name = sorted_field_names.get(#idx).unwrap();
-                    match field_name.as_str() {
-                        #(#match_ts),*
-                        , _ => { unreachable!() }
-                    }
-                }
-            });
-            quote! {
-                #(#loop_item_ts)*
-            }
-        };
+        let write_fields_ts: Vec<_> = fields.iter().map(|field| gen_write_field(field)).collect();
         quote! {
-            let sorted_field_names = <Self as fory_core::serializer::StructSerializer>::fory_get_sorted_field_names(fory);
-            let sorted_field_names = sorted_field_names.as_ref();
-            #loop_ts
+            #(#write_fields_ts)*
         }
-    };
-    quote! {
-        #sorted_serialize
     }
 }
 

@@ -71,8 +71,8 @@ const (
 	NAMED_STRUCT = 17
 	// NAMED_COMPATIBLE_STRUCT a compatible_struct whose type mapping will be encoded as a name
 	NAMED_COMPATIBLE_STRUCT = 18
-	// EXTENSION a type which will be serialized by a customized serializer
-	EXTENSION = 19
+	// EXT a type which will be serialized by a customized serializer
+	EXT = 19
 	// NAMED_EXT an ext type whose type mapping will be encoded as a name
 	NAMED_EXT = 20
 	// LIST A list of some logical data type
@@ -1381,6 +1381,11 @@ func isPrimitiveType(typeID int16) bool {
 func isListType(typeID int16) bool {
 	return typeID == LIST
 }
+
+func isSetType(typeID int16) bool {
+	return typeID == SET
+}
+
 func isMapType(typeID int16) bool {
 	return typeID == MAP
 }
@@ -1417,4 +1422,15 @@ func getPrimitiveTypeSize(typeID int16) int {
 		return sz
 	}
 	return -1
+}
+
+func isUserDefinedType(typeID int16) bool {
+	return typeID == STRUCT ||
+		typeID == COMPATIBLE_STRUCT ||
+		typeID == NAMED_STRUCT ||
+		typeID == NAMED_COMPATIBLE_STRUCT ||
+		typeID == EXT ||
+		typeID == NAMED_EXT ||
+		typeID == ENUM ||
+		typeID == NAMED_ENUM
 }

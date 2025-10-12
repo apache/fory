@@ -194,7 +194,7 @@ public class GenericType {
     this.serializer = serializer;
   }
 
-  public Serializer<?> getSerializer(TypeResolver classResolver) {
+  public Serializer getSerializer(TypeResolver classResolver) {
     Serializer<?> serializer = this.serializer;
     if (serializer == null) {
       serializer = classResolver.getSerializer(cls);

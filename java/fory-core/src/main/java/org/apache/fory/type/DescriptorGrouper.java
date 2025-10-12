@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.TreeSet;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.record.RecordUtils;
 
 /**
@@ -55,6 +56,11 @@ public class DescriptorGrouper {
         }
         return c;
       };
+  private final Collection<Descriptor> descriptors;
+  private final Predicate<Class<?>> isMonomorphic;
+  private final Function<Descriptor, Descriptor> descriptorUpdater;
+  private final boolean descriptorsGroupedOrdered;
+  private boolean sorted = false;
 
   /**
    * When compress disabled, sort primitive descriptors from largest to smallest, if size is the
@@ -138,7 +144,7 @@ public class DescriptorGrouper {
   // The key/value type should be final.
   private final Collection<Descriptor> mapDescriptors;
   private final Collection<Descriptor> finalDescriptors;
-  private final Collection<Descriptor> otherDescriptors;
+  private Collection<Descriptor> otherDescriptors;
 
   /**
    * Create a descriptor grouper.
@@ -157,6 +163,10 @@ public class DescriptorGrouper {
       Function<Descriptor, Descriptor> descriptorUpdater,
       Comparator<Descriptor> primitiveComparator,
       Comparator<Descriptor> comparator) {
+    this.descriptors = descriptors;
+    this.isMonomorphic = isMonomorphic;
+    this.descriptorUpdater = descriptorUpdater;
+    this.descriptorsGroupedOrdered = descriptorsGroupedOrdered;
     this.primitiveDescriptors =
         descriptorsGroupedOrdered ? new ArrayList<>() : new TreeSet<>(primitiveComparator);
     this.boxedDescriptors =
@@ -168,6 +178,19 @@ public class DescriptorGrouper {
         descriptorsGroupedOrdered ? new ArrayList<>() : new TreeSet<>(comparator);
     this.otherDescriptors =
         descriptorsGroupedOrdered ? new ArrayList<>() : new TreeSet<>(comparator);
+  }
+
+  public DescriptorGrouper setOtherDescriptorComparator(Comparator<Descriptor> comparator) {
+    Preconditions.checkArgument(!sorted);
+    this.otherDescriptors =
+        descriptorsGroupedOrdered ? new ArrayList<>() : new TreeSet<>(comparator);
+    return this;
+  }
+
+  public DescriptorGrouper sort() {
+    if (sorted) {
+      return this;
+    }
     for (Descriptor descriptor : descriptors) {
       if (TypeUtils.isPrimitive(descriptor.getRawType())) {
         primitiveDescriptors.add(descriptorUpdater.apply(descriptor));
@@ -183,40 +206,49 @@ public class DescriptorGrouper {
         otherDescriptors.add(descriptorUpdater.apply(descriptor));
       }
     }
+    sorted = true;
+    return this;
   }
 
   public List<Descriptor> getSortedDescriptors() {
+    Preconditions.checkArgument(sorted);
     List<Descriptor> descriptors = new ArrayList<>(getNumDescriptors());
     descriptors.addAll(getPrimitiveDescriptors());
     descriptors.addAll(getBoxedDescriptors());
     descriptors.addAll(getFinalDescriptors());
-    descriptors.addAll(getOtherDescriptors());
     descriptors.addAll(getCollectionDescriptors());
     descriptors.addAll(getMapDescriptors());
+    descriptors.addAll(getOtherDescriptors());
     return descriptors;
   }
 
   public Collection<Descriptor> getPrimitiveDescriptors() {
+    Preconditions.checkArgument(sorted);
     return primitiveDescriptors;
   }
 
   public Collection<Descriptor> getBoxedDescriptors() {
+    Preconditions.checkArgument(sorted);
     return boxedDescriptors;
   }
 
   public Collection<Descriptor> getCollectionDescriptors() {
+    Preconditions.checkArgument(sorted);
     return collectionDescriptors;
   }
 
   public Collection<Descriptor> getMapDescriptors() {
+    Preconditions.checkArgument(sorted);
     return mapDescriptors;
   }
 
   public Collection<Descriptor> getFinalDescriptors() {
+    Preconditions.checkArgument(sorted);
     return finalDescriptors;
   }
 
   public Collection<Descriptor> getOtherDescriptors() {
+    Preconditions.checkArgument(sorted);
     return otherDescriptors;
   }
 
@@ -250,6 +282,7 @@ public class DescriptorGrouper {
   }
 
   public int getNumDescriptors() {
+    Preconditions.checkArgument(sorted);
     return primitiveDescriptors.size()
         + boxedDescriptors.size()
         + collectionDescriptors.size()

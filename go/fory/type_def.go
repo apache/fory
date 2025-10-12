@@ -252,7 +252,7 @@ func readFieldType(buffer *ByteBuffer) (FieldType, error) {
 			return nil, fmt.Errorf("failed to read value type: %w", err)
 		}
 		return NewMapFieldType(TypeId(typeId), keyType, valueType), nil
-	case EXTENSION, STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
+	case EXT, STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
 		return NewDynamicFieldType(TypeId(typeId)), nil
 	}
 	return NewSimpleFieldType(TypeId(typeId)), nil
@@ -341,7 +341,7 @@ func NewSimpleFieldType(typeId TypeId) *SimpleFieldType {
 	}
 }
 
-// DynamicFieldType represents a field type that is determined at runtime, like EXTENSION or STRUCT
+// DynamicFieldType represents a field type that is determined at runtime, like EXT or STRUCT
 type DynamicFieldType struct {
 	BaseFieldType
 }
@@ -406,7 +406,7 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 	}
 	typeId = TypeId(typeInfo.TypeID)
 
-	if typeId == EXTENSION || typeId == STRUCT || typeId == NAMED_STRUCT ||
+	if typeId == EXT || typeId == STRUCT || typeId == NAMED_STRUCT ||
 		typeId == COMPATIBLE_STRUCT || typeId == NAMED_COMPATIBLE_STRUCT {
 		return NewDynamicFieldType(typeId), nil
 	}

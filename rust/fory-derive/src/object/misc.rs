@@ -65,18 +65,9 @@ pub fn gen_actual_type_id() -> TokenStream {
 }
 
 pub fn gen_get_sorted_field_names(fields: &[&Field]) -> TokenStream {
-    let create_sorted_field_names = get_sort_fields_ts(fields);
+    let static_field_names = get_sort_fields_ts(fields);
     quote! {
-        let sorted_field_names = match fory.get_type_resolver().get_sorted_field_names::<Self>(std::any::TypeId::of::<Self>()) {
-            Some(result) => result,
-            None => {
-                #create_sorted_field_names
-                let arc_sorted_field_names = std::sync::Arc::new(sorted_field_names);
-                fory.get_type_resolver().set_sorted_field_names::<Self>(arc_sorted_field_names.clone());
-                arc_sorted_field_names
-            }
-        };
-        sorted_field_names
+        #static_field_names
     }
 }
 

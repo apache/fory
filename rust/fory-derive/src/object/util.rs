@@ -250,7 +250,7 @@ macro_rules! basic_type_deserialize {
     };
 }
 
-pub fn try_primitive_vec_type(node: &TypeNode) -> Option<TokenStream> {
+pub(super) fn try_primitive_vec_type(node: &TypeNode) -> Option<TokenStream> {
     if node.name != "Vec" {
         return None;
     }
@@ -263,7 +263,7 @@ pub fn try_primitive_vec_type(node: &TypeNode) -> Option<TokenStream> {
     None
 }
 
-pub fn try_vec_of_option_primitive(node: &TypeNode) -> Option<TokenStream> {
+pub(super) fn try_vec_of_option_primitive(node: &TypeNode) -> Option<TokenStream> {
     if node.name != "Vec" {
         return None;
     }
@@ -283,7 +283,7 @@ pub fn try_vec_of_option_primitive(node: &TypeNode) -> Option<TokenStream> {
     None
 }
 
-pub fn try_primitive_vec_type_name(node: &NullableTypeNode) -> Option<String> {
+pub(super) fn try_primitive_vec_type_name(node: &NullableTypeNode) -> Option<String> {
     if node.name != "Vec" {
         return None;
     }
@@ -782,367 +782,223 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
 }
 
 type FieldGroup = Vec<(String, String, u32)>;
-type FieldGroups = (FieldGroup, FieldGroup, FieldGroup, FieldGroup);
-pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
-    fn group_fields(fields: &[&Field]) -> FieldGroups {
-        const PRIMITIVE_TYPE_NAMES: [&str; 7] = ["bool", "i8", "i16", "i32", "i64", "f32", "f64"];
-        const FINAL_TYPE_NAMES: [&str; 3] = ["String", "NaiveDate", "NaiveDateTime"];
-        const PRIMITIVE_ARRAY_NAMES: [&str; 7] = [
-            "Vec<bool>",
-            "Vec<i8>",
-            "Vec<i16>",
-            "Vec<i32>",
-            "Vec<i64>",
-            "Vec<f32>",
-            "Vec<f64>",
-        ];
+type FieldGroups = (
+    FieldGroup,
+    FieldGroup,
+    FieldGroup,
+    FieldGroup,
+    FieldGroup,
+    FieldGroup,
+    FieldGroup,
+);
 
-        fn extract_option_inner(s: &str) -> Option<&str> {
-            s.strip_prefix("Option<")?.strip_suffix(">")
-        }
+const PRIMITIVE_TYPE_NAMES: [&str; 7] = ["bool", "i8", "i16", "i32", "i64", "f32", "f64"];
 
-        macro_rules! match_ty {
-            ($ty:expr, $(($name:expr, $ret:expr)),+ $(,)?) => {
-                $(
-                    if $ty == $name {
-                        $ret as u32
-                    } else
-                )+
-                {
-                    unreachable!("Unknown type: {}", $ty);
-                }
-            };
-        }
+fn get_primitive_type_id(ty: &str) -> u32 {
+    match ty {
+        "bool" => TypeId::BOOL as u32,
+        "i8" => TypeId::INT8 as u32,
+        "i16" => TypeId::INT16 as u32,
+        "i32" => TypeId::INT32 as u32,
+        "i64" => TypeId::INT64 as u32,
+        "f32" => TypeId::FLOAT32 as u32,
+        "f64" => TypeId::FLOAT64 as u32,
+        _ => unreachable!("Unknown primitive type: {}", ty),
+    }
+}
 
-        fn get_primitive_type_id(ty: &str) -> u32 {
-            match_ty!(
-                ty,
-                ("bool", TypeId::BOOL),
-                ("i8", TypeId::INT8),
-                ("i16", TypeId::INT16),
-                ("i32", TypeId::INT32),
-                ("i64", TypeId::INT64),
-                ("f32", TypeId::FLOAT32),
-                ("f64", TypeId::FLOAT64),
-            )
-        }
+fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
+    fn extract_option_inner(s: &str) -> Option<&str> {
+        s.strip_prefix("Option<")?.strip_suffix(">")
+    }
 
-        let mut primitive_fields = Vec::new();
-        let mut nullable_primitive_fields = Vec::new();
-        let mut final_fields = Vec::new();
-        let mut collection_fields = Vec::new();
-        let mut map_fields = Vec::new();
-        let mut struct_or_enum_fields = Vec::new();
+    let mut primitive_fields = Vec::new();
+    let mut nullable_primitive_fields = Vec::new();
+    let mut internal_type_fields = Vec::new();
+    let mut list_fields = Vec::new();
+    let mut set_fields = Vec::new();
+    let mut map_fields = Vec::new();
+    let mut other_fields = Vec::new();
 
-        // First handle Forward fields separately to avoid borrow checker issues
-        for field in fields {
-            if is_forward_field(&field.ty) {
-                let ident = field.ident.as_ref().unwrap().to_string();
-                collection_fields.push((ident, "Forward".to_string(), TypeId::LIST as u32));
-            }
-        }
-
-        let mut group_field = |ident: String, ty: &str| {
-            if PRIMITIVE_TYPE_NAMES.contains(&ty) {
-                let type_id = get_primitive_type_id(ty);
-                primitive_fields.push((ident, ty.to_string(), type_id));
-            } else if FINAL_TYPE_NAMES.contains(&ty) || PRIMITIVE_ARRAY_NAMES.contains(&ty) {
-                let type_id = match_ty!(
-                    ty,
-                    ("String", TypeId::STRING),
-                    ("NaiveDate", TypeId::LOCAL_DATE),
-                    ("NaiveDateTime", TypeId::TIMESTAMP),
-                    ("Vec<u8>", TypeId::BINARY),
-                    ("Vec<bool>", TypeId::BOOL_ARRAY),
-                    ("Vec<i8>", TypeId::INT8_ARRAY),
-                    ("Vec<i16>", TypeId::INT16_ARRAY),
-                    ("Vec<i32>", TypeId::INT32_ARRAY),
-                    ("Vec<i64>", TypeId::INT64_ARRAY),
-                    ("Vec<f32>", TypeId::FLOAT32_ARRAY),
-                    ("Vec<f64>", TypeId::FLOAT64_ARRAY),
-                );
-                final_fields.push((ident, ty.to_string(), type_id));
-            } else if ty.starts_with("Vec<")
-                || ty.starts_with("VecDeque<")
-                || ty.starts_with("LinkedList<")
-                || ty.starts_with("BinaryHeap<")
-            {
-                collection_fields.push((ident, ty.to_string(), TypeId::LIST as u32));
-            } else if ty.starts_with("HashSet<") || ty.starts_with("BTreeSet<") {
-                collection_fields.push((ident, ty.to_string(), TypeId::SET as u32));
-            } else if ty.starts_with("HashMap<") || ty.starts_with("BTreeMap<") {
-                map_fields.push((ident, ty.to_string(), TypeId::MAP as u32));
-            } else {
-                struct_or_enum_fields.push((ident, ty.to_string(), 0));
-            }
-        };
-
-        for field in fields {
+    // First handle Forward fields separately to avoid borrow checker issues
+    for field in fields {
+        if is_forward_field(&field.ty) {
             let ident = field.ident.as_ref().unwrap().to_string();
+            other_fields.push((ident, "Forward".to_string(), TypeId::UNKNOWN as u32));
+        }
+    }
 
-            // Skip if already handled as Forward field
-            if is_forward_field(&field.ty) {
-                continue;
-            }
+    fn get_other_internal_type_id(ty: &str) -> u32 {
+        match ty {
+            "String" => TypeId::STRING as u32,
+            "NaiveDate" => TypeId::LOCAL_DATE as u32,
+            "NaiveDateTime" => TypeId::TIMESTAMP as u32,
+            "Duration" => TypeId::DURATION as u32,
+            "Decimal" => TypeId::DECIMAL as u32,
+            "Vec<u8>" | "bytes" => TypeId::BINARY as u32,
+            "Vec<bool>" => TypeId::BOOL_ARRAY as u32,
+            "Vec<i8>" => TypeId::INT8_ARRAY as u32,
+            "Vec<i16>" => TypeId::INT16_ARRAY as u32,
+            "Vec<i32>" => TypeId::INT32_ARRAY as u32,
+            "Vec<i64>" => TypeId::INT64_ARRAY as u32,
+            "Vec<f16>" => TypeId::FLOAT16_ARRAY as u32,
+            "Vec<f32>" => TypeId::FLOAT32_ARRAY as u32,
+            "Vec<f64>" => TypeId::FLOAT64_ARRAY as u32,
+            _ => 0,
+        }
+    }
 
-            let ty: String = field
-                .ty
-                .to_token_stream()
-                .to_string()
-                .chars()
-                .filter(|c| !c.is_whitespace())
-                .collect::<String>();
-            // handle Option<Primitive> specially
-            if let Some(inner) = extract_option_inner(&ty) {
-                if PRIMITIVE_TYPE_NAMES.contains(&inner) {
-                    let type_id = get_primitive_type_id(inner);
-                    nullable_primitive_fields.push((ident, ty.to_string(), type_id));
-                } else {
-                    // continue to handle Option<not Primitive>
-                    // already avoid Option<Option<T>> at compile-time
-                    group_field(ident, inner);
-                }
+    let mut group_field = |ident: String, ty: &str| {
+        if PRIMITIVE_TYPE_NAMES.contains(&ty) {
+            primitive_fields.push((ident, ty.to_string(), get_primitive_type_id(ty)));
+        } else if get_other_internal_type_id(ty) > 0 {
+            let internal_type_id = get_other_internal_type_id(ty);
+            internal_type_fields.push((ident, ty.to_string(), internal_type_id));
+        } else if ty.starts_with("Vec<")
+            || ty.starts_with("VecDeque<")
+            || ty.starts_with("LinkedList<")
+            || ty.starts_with("BinaryHeap<")
+        {
+            list_fields.push((ident, ty.to_string(), TypeId::LIST as u32));
+        } else if ty.starts_with("HashSet<") || ty.starts_with("BTreeSet<") {
+            set_fields.push((ident, ty.to_string(), TypeId::SET as u32));
+        } else if ty.starts_with("HashMap<") || ty.starts_with("BTreeMap<") {
+            map_fields.push((ident, ty.to_string(), TypeId::MAP as u32));
+        } else {
+            other_fields.push((ident, ty.to_string(), TypeId::UNKNOWN as u32));
+        }
+    };
+
+    for field in fields {
+        let ident = field.ident.as_ref().unwrap().to_string();
+
+        // Skip if already handled as Forward field
+        if is_forward_field(&field.ty) {
+            continue;
+        }
+
+        let ty: String = field
+            .ty
+            .to_token_stream()
+            .to_string()
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>();
+        // handle Option<Primitive> specially
+        if let Some(inner) = extract_option_inner(&ty) {
+            if PRIMITIVE_TYPE_NAMES.contains(&inner) {
+                let type_id = get_primitive_type_id(inner);
+                nullable_primitive_fields.push((ident, ty.to_string(), type_id));
             } else {
-                group_field(ident, &ty);
+                group_field(ident, inner);
             }
-        }
-
-        for field in fields {
-            if is_box_dyn_trait(&field.ty).is_some() {
-                let ident = field.ident.as_ref().unwrap().to_string();
-                if let Some(pos) = struct_or_enum_fields.iter().position(|x| x.0 == ident) {
-                    struct_or_enum_fields[pos].2 = TypeId::UNKNOWN as u32;
-                }
-            }
-        }
-
-        fn sorter(a: &(String, String, u32), b: &(String, String, u32)) -> std::cmp::Ordering {
-            a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0))
-        }
-        fn get_primitive_type_size(type_id_num: u32) -> i32 {
-            let type_id = TypeId::try_from(type_id_num as i16).unwrap();
-            match type_id {
-                TypeId::BOOL => 1,
-                TypeId::INT8 => 1,
-                TypeId::INT16 => 2,
-                TypeId::INT32 => 4,
-                TypeId::VAR_INT32 => 4,
-                TypeId::INT64 => 8,
-                TypeId::VAR_INT64 => 8,
-                TypeId::FLOAT16 => 2,
-                TypeId::FLOAT32 => 4,
-                TypeId::FLOAT64 => 8,
-                _ => unreachable!(),
-            }
-        }
-
-        fn is_compress(type_id: u32) -> bool {
-            [
-                TypeId::INT32 as u32,
-                TypeId::INT64 as u32,
-                TypeId::VAR_INT32 as u32,
-                TypeId::VAR_INT64 as u32,
-            ]
-            .contains(&type_id)
-        }
-
-        fn numeric_sorter(
-            a: &(String, String, u32),
-            b: &(String, String, u32),
-        ) -> std::cmp::Ordering {
-            let compress_a = is_compress(a.2);
-            let compress_b = is_compress(b.2);
-            let size_a = get_primitive_type_size(a.2);
-            let size_b = get_primitive_type_size(b.2);
-            compress_a
-                .cmp(&compress_b)
-                .then_with(|| size_b.cmp(&size_a))
-                .then_with(|| a.0.cmp(&b.0))
-        }
-
-        primitive_fields.sort_by(numeric_sorter);
-        nullable_primitive_fields.sort_by(numeric_sorter);
-        primitive_fields.extend(nullable_primitive_fields);
-        collection_fields.sort_by(sorter);
-        map_fields.sort_by(sorter);
-        let container_fields = {
-            let mut container_fields = collection_fields;
-            container_fields.extend(map_fields);
-            container_fields
-        };
-        (
-            primitive_fields,
-            final_fields,
-            container_fields,
-            struct_or_enum_fields,
-        )
-    }
-
-    fn gen_vec_token_stream(fields: &[(String, String, u32)]) -> TokenStream {
-        let names = fields.iter().map(|(name, _, _)| {
-            quote! { #name.to_string() }
-        });
-        quote! {
-            vec![#(#names),*]
+        } else {
+            group_field(ident, &ty);
         }
     }
 
-    fn gen_vec_tuple_token_stream(fields: &[(String, String, u32)]) -> TokenStream {
-        let names = fields.iter().map(|(name, _, type_id)| {
-            quote! { (#type_id, #name.to_string()) }
-        });
-        quote! {
-            vec![#(#names),*]
+    fn get_primitive_type_size(type_id_num: u32) -> i32 {
+        let type_id = TypeId::try_from(type_id_num as i16).unwrap();
+        match type_id {
+            TypeId::BOOL => 1,
+            TypeId::INT8 => 1,
+            TypeId::INT16 => 2,
+            TypeId::INT32 => 4,
+            TypeId::VAR_INT32 => 4,
+            TypeId::INT64 => 8,
+            TypeId::VAR_INT64 => 8,
+            TypeId::FLOAT16 => 2,
+            TypeId::FLOAT32 => 4,
+            TypeId::FLOAT64 => 8,
+            _ => unreachable!(),
         }
     }
 
-    let (all_primitive_fields, final_fields, container_fields, struct_or_enum_fields) =
-        group_fields(fields);
+    fn is_compress(type_id: u32) -> bool {
+        [
+            TypeId::INT32 as u32,
+            TypeId::INT64 as u32,
+            TypeId::VAR_INT32 as u32,
+            TypeId::VAR_INT64 as u32,
+        ]
+        .contains(&type_id)
+    }
 
-    let all_primitive_field_names_declare_extend_ts = {
-        if all_primitive_fields.is_empty() {
-            (quote! {}, quote! {})
-        } else {
-            let all_primitive_field_names_ts = gen_vec_token_stream(&all_primitive_fields);
-            (
-                quote! {
-                    let all_primitive_field_names: Vec<String> = #all_primitive_field_names_ts;
-                },
-                quote! {
-                    sorted_field_names.extend(all_primitive_field_names);
-                },
-            )
-        }
-    };
-    let container_field_names_declare_extend_ts = {
-        if container_fields.is_empty() {
-            (quote! {}, quote! {})
-        } else {
-            let container_field_names_ts = gen_vec_token_stream(&container_fields);
-            (
-                quote! {
-                    let container_field_names: Vec<String> = #container_field_names_ts;
-                },
-                quote! {
-                    sorted_field_names.extend(container_field_names);
-                },
-            )
-        }
-    };
-    let sorter_ts = quote! {
-        |a: &(u32, String), b: &(u32, String)| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1))
-    };
-    let final_fields_declare_extend_ts = {
-        if final_fields.is_empty() && struct_or_enum_fields.is_empty() {
-            (quote! {}, quote! {})
-        } else {
-            let final_fields_ts = gen_vec_tuple_token_stream(&final_fields);
-            (
-                quote! {
-                    let mut final_fields: Vec<(u32, String)> = #final_fields_ts;
-                },
-                quote! {
-                    final_fields.sort_by(#sorter_ts);
-                    for (_, name) in final_fields.drain(..) { sorted_field_names.push(name); }
-                },
-            )
-        }
-    };
-    let other_fields_declare_extend_ts = {
-        if struct_or_enum_fields.is_empty() {
-            (quote! {}, quote! {})
-        } else {
-            (
-                quote! {
-                    let mut other_fields: Vec<(u32, String)> = vec![];
-                },
-                quote! {
-                    other_fields.sort_by(#sorter_ts);
-                    for (_, name) in other_fields.drain(..) { sorted_field_names.push(name); }
-                },
-            )
-        }
-    };
-    let trait_object_fields_ts = {
-        let trait_obj_fields: Vec<_> = struct_or_enum_fields
-            .iter()
-            .filter(|(_, _, type_id)| *type_id == fory_core::types::TypeId::UNKNOWN as u32)
-            .collect();
+    fn numeric_sorter(a: &(String, String, u32), b: &(String, String, u32)) -> std::cmp::Ordering {
+        let compress_a = is_compress(a.2);
+        let compress_b = is_compress(b.2);
+        let size_a = get_primitive_type_size(a.2);
+        let size_b = get_primitive_type_size(b.2);
+        compress_a
+            .cmp(&compress_b)
+            .then_with(|| size_b.cmp(&size_a))
+            .then_with(|| a.2.cmp(&b.2))
+            .then_with(|| a.0.cmp(&b.0))
+    }
 
-        if trait_obj_fields.is_empty() {
-            quote! {}
-        } else {
-            let names = trait_obj_fields.iter().map(|(name, _, type_id)| {
-                quote! {
-                    final_fields.push((#type_id, #name.to_string()));
-                }
-            });
-            quote! {
-                #(#names)*
-            }
-        }
-    };
+    fn type_id_then_name_sorter(
+        a: &(String, String, u32),
+        b: &(String, String, u32),
+    ) -> std::cmp::Ordering {
+        a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0))
+    }
 
-    let group_sort_enum_other_fields = {
-        if struct_or_enum_fields.is_empty() {
-            quote! {}
-        } else {
-            let ts = struct_or_enum_fields
-                .iter()
-                .filter(|(_, _, type_id)| *type_id != fory_core::types::TypeId::UNKNOWN as u32)
-                .map(|(name, ty, _)| {
-                    let ty_type: Type = syn::parse_str(ty).unwrap();
-                    quote! {
-                        let field_type_id = <#ty_type as fory_core::serializer::Serializer>::fory_get_type_id(fory);
-                        let internal_id = field_type_id & 0xff;
-                        if internal_id == fory_core::types::TypeId::COMPATIBLE_STRUCT as u32
-                            || internal_id == fory_core::types::TypeId::NAMED_COMPATIBLE_STRUCT as u32
-                            || internal_id == fory_core::types::TypeId::STRUCT as u32
-                            || internal_id == fory_core::types::TypeId::NAMED_STRUCT as u32
-                            || internal_id == fory_core::types::TypeId::EXT as u32
-                            || internal_id == fory_core::types::TypeId::NAMED_EXT as u32
-                        {
-                            other_fields.push((field_type_id, #name.to_string()));
-                        } else if internal_id == fory_core::types::TypeId::ENUM as u32 || internal_id == fory_core::types::TypeId::NAMED_ENUM as u32 {
-                            final_fields.push((field_type_id, #name.to_string()));
-                        } else {
-                            unimplemented!("unknown internal_id when group_sort_enum_other_fields");
-                        }
-                    }
-                })
-                .collect::<Vec<_>>();
-            quote! {
-                {
-                    #(#ts)*
-                }
-            }
-        }
-    };
+    fn name_sorter(a: &(String, String, u32), b: &(String, String, u32)) -> std::cmp::Ordering {
+        a.0.cmp(&b.0)
+    }
 
-    let (all_primitive_declare, all_primitive_extend) = all_primitive_field_names_declare_extend_ts;
-    let (container_declare, container_extend) = container_field_names_declare_extend_ts;
-    let (final_declare, final_extend) = final_fields_declare_extend_ts;
-    let (other_declare, other_extend) = other_fields_declare_extend_ts;
+    primitive_fields.sort_by(numeric_sorter);
+    nullable_primitive_fields.sort_by(numeric_sorter);
+    internal_type_fields.sort_by(type_id_then_name_sorter);
+    list_fields.sort_by(name_sorter);
+    set_fields.sort_by(name_sorter);
+    map_fields.sort_by(name_sorter);
+    other_fields.sort_by(name_sorter);
 
-    let fields_len = fields.len();
+    (
+        primitive_fields,
+        nullable_primitive_fields,
+        internal_type_fields,
+        list_fields,
+        set_fields,
+        map_fields,
+        other_fields,
+    )
+}
 
+pub(crate) fn get_sorted_field_names(fields: &[&Field]) -> Vec<String> {
+    let (
+        primitive_fields,
+        nullable_primitive_fields,
+        internal_type_fields,
+        list_fields,
+        set_fields,
+        map_fields,
+        other_fields,
+    ) = group_fields_by_type(fields);
+
+    let mut all_fields = primitive_fields;
+    all_fields.extend(nullable_primitive_fields);
+    all_fields.extend(internal_type_fields);
+    all_fields.extend(list_fields);
+    all_fields.extend(set_fields);
+    all_fields.extend(map_fields);
+    all_fields.extend(other_fields);
+
+    all_fields.into_iter().map(|(name, _, _)| name).collect()
+}
+
+pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
+    let sorted_names = get_sorted_field_names(fields);
+    let names = sorted_names.iter().map(|name| {
+        quote! { #name }
+    });
     quote! {
-        let sorted_field_names = {
-            #all_primitive_declare
-            #final_declare
-            #other_declare
-            #container_declare
-
-            #trait_object_fields_ts
-            #group_sort_enum_other_fields
-
-            let mut sorted_field_names: Vec<String> = Vec::with_capacity(#fields_len);
-            #all_primitive_extend
-            #final_extend
-            #other_extend
-            #container_extend
-
-            sorted_field_names
-        };
+        &[#(#names),*]
     }
+}
+
+pub(crate) fn skip_ref_flag(ty: &Type) -> bool {
+    // !T::fory_is_option() && PRIMITIVE_TYPES.contains(&elem_type_id)
+    PRIMITIVE_TYPE_NAMES.contains(&extract_type_name(ty).as_str())
 }
