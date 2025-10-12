@@ -54,6 +54,14 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "temurin"
+      - name: Restore Maven Repos
+        id: restore-maven-cache
+        uses: actions/cache/restore@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
       - name: Set up Python3.8
         uses: actions/setup-python@v5
         with:
@@ -89,6 +97,14 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "adopt-openj9"
+      - name: Restore Maven Repos
+        id: restore-maven-cache
+        uses: actions/cache/restore@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
       - name: Set up Python3.8
         uses: actions/setup-python@v5
         with:
@@ -117,6 +133,14 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "temurin"
+      - name: Restore Maven Repos
+        id: restore-maven-cache
+        uses: actions/cache/restore@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
       - name: Set up Python 3.8
         uses: actions/setup-python@v5
         with:
@@ -139,6 +163,14 @@ jobs:
           distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-job-reports: "true"
+      - name: Restore Maven Repos
+        id: restore-maven-cache
+        uses: actions/cache/restore@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
       - name: Set up Python3.8
         uses: actions/setup-python@v5
         with:
@@ -162,6 +194,14 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "temurin"
+      - name: Restore Maven Repos
+        id: restore-maven-cache
+        uses: actions/cache/restore@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
       - name: Set up Python 3.8
         uses: actions/setup-python@v5
         with:
@@ -182,6 +222,14 @@ jobs:
           java-version: 11
           distribution: "temurin"
           cache: sbt
+      - name: Restore Maven Repos
+        id: restore-maven-cache
+        uses: actions/cache/restore@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
       - uses: sbt/setup-sbt@v1
       - name: Install fory java
         run: cd java && mvn -T10 --no-transfer-progress clean install -DskipTests && cd -
@@ -199,6 +247,14 @@ jobs:
         with:
           java-version: 11
           distribution: "temurin"
+      - name: Restore Maven Repos
+        id: restore-maven-cache
+        uses: actions/cache/restore@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
       - name: Set up Python 3.8
         uses: actions/setup-python@v5
         with:
@@ -253,6 +309,14 @@ jobs:
         with:
           java-version: 11
           distribution: temurin
+      - name: Restore Maven Repos
+        id: restore-maven-cache
+        uses: actions/cache/restore@v3
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
       - name: Run Rust CI
         run: python ./ci/run_ci.py rust
 
