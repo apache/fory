@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/fory.svg)](https://crates.io/crates/fory)
 [![Documentation](https://docs.rs/fory/badge.svg)](https://docs.rs/fory)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/apache/fory/blob/main/LICENSE)
 
 **Apache Fory™** is a blazing fast multi-language serialization framework powered by **JIT compilation** and **zero-copy** techniques, providing up to **ultra-fast performance** while maintaining ease of use and safety.
 
@@ -22,9 +22,9 @@ The Rust implementation provides versatile and high-performance serialization wi
 
 | Crate                         | Description                       | Version                                                                                               |
 | ----------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| [`fory`](fory/)               | High-level API with derive macros | [![crates.io](https://img.shields.io/crates/v/fory.svg)](https://crates.io/crates/fory)               |
-| [`fory-core`](fory-core/)     | Core serialization engine         | [![crates.io](https://img.shields.io/crates/v/fory-core.svg)](https://crates.io/crates/fory-core)     |
-| [`fory-derive`](fory-derive/) | Procedural macros                 | [![crates.io](https://img.shields.io/crates/v/fory-derive.svg)](https://crates.io/crates/fory-derive) |
+| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)               | High-level API with derive macros | [![crates.io](https://img.shields.io/crates/v/fory.svg)](https://crates.io/crates/fory)               |
+| [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Core serialization engine         | [![crates.io](https://img.shields.io/crates/v/fory-core.svg)](https://crates.io/crates/fory-core)     |
+| [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Procedural macros                 | [![crates.io](https://img.shields.io/crates/v/fory-derive.svg)](https://crates.io/crates/fory-derive) |
 
 ## 🏃 Quick Start
 
