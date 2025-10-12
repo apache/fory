@@ -101,6 +101,8 @@ add_header "python/README.md" "docs/guide/python_guide.md" "$PYTHON_HEADER"
 # Process Rust guide
 rm -rf docs/guide/rust_guide.md
 add_header "rust/README.md" "docs/guide/rust_guide.md" "$RUST_HEADER"
+git config --global user.email "dev@fory.apache.org"
+git config --global user.name "Apache Fory"
 git add docs/guide/rust_guide.md
 git add docs/guide/python_guide.md
 git commit -m "Added rust and python docs"
