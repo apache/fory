@@ -803,7 +803,7 @@ fory.register::<MyStruct>(100);
 fory.register_by_namespace::<MyStruct>("com.example", "MyStruct");
 ```
 
-See [xlang_type_mapping.md](../docs/guide/xlang_type_mapping.md) for type mapping across languages.
+See [xlang_type_mapping.md](https://fory.apache.org/docs/specification/fory_xlang_serialization_spec) for type mapping across languages.
 
 ## ⚡ Performance
 
@@ -825,9 +825,8 @@ cargo bench --package fory-benchmarks
 ## 📖 Documentation
 
 - **[API Documentation](https://docs.rs/fory)** - Complete API reference
-- **[Protocol Specification](../docs/specification/xlang_serialization_spec.md)** - Serialization protocol details
-- **[Row Format Specification](../docs/specification/row_format_spec.md)** - Row format details
-- **[Type Mapping](../docs/guide/xlang_type_mapping.md)** - Cross-language type mappings
+- **[Protocol Specification](https://fory.apache.org/docs/specification/fory_xlang_serialization_spec)** - Serialization protocol details
+- **[Type Mapping](https://fory.apache.org/docs/docs/guide/xlang_type_mapping)** - Cross-language type mappings
 
 ## 🎯 Use Cases
 
@@ -975,11 +974,11 @@ cargo clippy --all-targets --all-features -- -D warnings
 
 ## 📄 License
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](../LICENSE) for details.
+Licensed under the Apache License, Version 2.0. See [LICENSE](https://github.com/apache/fory/blob/main/LICENSE) for details.
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](../CONTRIBUTING.md) for details.
+We welcome contributions! Please see our [Contributing Guide](https://github.com/apache/fory/blob/main/CONTRIBUTING.md) for details.
 
 ## 📞 Support
 
