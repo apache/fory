@@ -54,9 +54,8 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "temurin"
-      - name: Restore Maven Repos
-        id: restore-maven-cache
-        uses: actions/cache/restore@v3
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -97,9 +96,8 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "adopt-openj9"
-      - name: Restore Maven Repos
-        id: restore-maven-cache
-        uses: actions/cache/restore@v3
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -133,9 +131,8 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "temurin"
-      - name: Restore Maven Repos
-        id: restore-maven-cache
-        uses: actions/cache/restore@v3
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -163,9 +160,8 @@ jobs:
           distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
           native-image-job-reports: "true"
-      - name: Restore Maven Repos
-        id: restore-maven-cache
-        uses: actions/cache/restore@v3
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -194,9 +190,8 @@ jobs:
         with:
           java-version: ${{ matrix.java-version }}
           distribution: "temurin"
-      - name: Restore Maven Repos
-        id: restore-maven-cache
-        uses: actions/cache/restore@v3
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -222,9 +217,8 @@ jobs:
           java-version: 11
           distribution: "temurin"
           cache: sbt
-      - name: Restore Maven Repos
-        id: restore-maven-cache
-        uses: actions/cache/restore@v3
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -247,9 +241,8 @@ jobs:
         with:
           java-version: 11
           distribution: "temurin"
-      - name: Restore Maven Repos
-        id: restore-maven-cache
-        uses: actions/cache/restore@v3
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
@@ -309,9 +302,8 @@ jobs:
         with:
           java-version: 11
           distribution: temurin
-      - name: Restore Maven Repos
-        id: restore-maven-cache
-        uses: actions/cache/restore@v3
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
