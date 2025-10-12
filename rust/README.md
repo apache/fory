@@ -968,6 +968,8 @@ cargo clippy --all-targets --all-features -- -D warnings
 - [x] Trait object serialization with polymorphism
 - [x] Schema evolution in compatible mode
 - [x] SIMD optimizations for string encoding
+- [ ] Cross-language support for shared and circular reference tracking
+- [ ] Cross-language support for trait objects
 - [ ] Performance optimizations
 - [ ] More comprehensive benchmarks
 
