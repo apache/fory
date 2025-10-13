@@ -365,9 +365,29 @@ impl MetaStringEncoder {
     }
 
     pub fn encode_first_to_lower_special(&self, input: &str) -> Result<Vec<u8>, Error> {
-        let mut chars: Vec<char> = input.chars().collect();
-        chars[0] = chars[0].to_lowercase().next().unwrap();
-        self.encode_generic(&chars.iter().collect::<String>(), 5)
+        if input.is_empty() {
+            return self.encode_generic("", 5);
+        }
+
+        let mut iter = input.char_indices();
+        let (first_idx, first_char) = iter.next().unwrap();
+
+        let lower = first_char.to_lowercase().to_string();
+
+        // Fast path: if lowercase has the same byte length and is ASCII,
+        // we can modify the first byte directly without rebuilding the string.
+        if lower.len() == first_char.len_utf8() && first_char.is_ascii() {
+            let mut bytes = input.as_bytes().to_owned();
+            bytes[first_idx] = lower.as_bytes()[0];
+            return self.encode_generic(std::str::from_utf8(&bytes).unwrap(), 5);
+        }
+
+        // rebuild only the necessary prefix + suffix (still efficient).
+        let (_, rest) = input.split_at(first_char.len_utf8());
+        let mut result = String::with_capacity(input.len() + lower.len() - first_char.len_utf8());
+        result.push_str(&lower);
+        result.push_str(rest);
+        self.encode_generic(&result, 5)
     }
 
     pub fn encode_all_to_lower_special(

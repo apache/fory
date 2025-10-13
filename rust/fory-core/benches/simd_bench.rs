@@ -219,7 +219,6 @@ fn benchmark_read_utf16(c: &mut Criterion) {
 
     for &size in &sizes {
         let s = test_string.repeat(size / test_string.len() + 1);
-        // 构造 UTF-16 LE 字节数据
         let mut data: Vec<u8> = Vec::with_capacity(s.len() * 2);
         for u in s.encode_utf16() {
             let lo = (u & 0x00FF) as u8;

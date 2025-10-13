@@ -109,6 +109,11 @@ class ArrowTypeVisitor(TypeVisitor):
         elem_field = infer_field("item", elem_type, self, types_path=types_path)
         return pa.field(field_name, pa.list_(elem_field.type))
 
+    def visit_set(self, field_name, elem_type, types_path=None):
+        # Infer type recursively for type such as Set[Dict[str, str]]
+        elem_field = infer_field("item", elem_type, self, types_path=types_path)
+        return pa.field(field_name, pa.list_(elem_field.type))
+
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
         # Infer type recursively for type such as Dict[str, Dict[str, str]]
         key_field = infer_field("key", key_type, self, types_path=types_path)

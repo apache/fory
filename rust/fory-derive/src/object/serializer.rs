@@ -106,17 +106,6 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
             panic!("Union is not supported")
         }
     };
-    // extra
-    let (deserialize_nullable_ts,) = match &ast.data {
-        syn::Data::Struct(s) => {
-            let fields = sorted_fields(&s.fields);
-            (read::gen_read_nullable(&fields),)
-        }
-        syn::Data::Enum(_s) => (quote! {},),
-        syn::Data::Union(_) => {
-            panic!("Union is not supported")
-        }
-    };
 
     // Allocate a unique type ID once and share it between both functions
     let type_idx = misc::allocate_type_id();
@@ -135,11 +124,11 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #actual_type_id_ts
             }
 
-            fn fory_get_sorted_field_names(fory: &fory_core::fory::Fory) -> Vec<String> {
+            fn fory_get_sorted_field_names(_fory: &fory_core::fory::Fory) -> &'static [&'static str] {
                 #get_sorted_field_names_ts
             }
 
-            fn fory_type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: fory_core::meta::MetaString, type_name: fory_core::meta::MetaString, register_by_name: bool) -> Vec<u8> {
+            fn fory_type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: fory_core::meta::MetaString, type_name: fory_core::meta::MetaString, register_by_name: bool) -> (Vec<u8>, fory_core::meta::TypeMeta) {
                 #type_def_ts
             }
         }
@@ -160,36 +149,33 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #reserved_space_ts
             }
 
-            fn fory_write_type_info(context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
+            fn fory_write_type_info(fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
                 #write_type_info_ts
             }
 
-            fn fory_read_type_info(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) {
+            fn fory_read_type_info(fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::ReadContext, is_field: bool) {
                 #read_type_info_ts
             }
 
-            fn fory_write_data(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
+            fn fory_write_data(&self, fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
                 #write_data_ts
             }
 
-            fn fory_read_data(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
+            fn fory_read_data(fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
                 #read_data_ts
             }
 
-            fn fory_write(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
+            fn fory_write(&self, fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
                 #write_ts
             }
 
-            fn fory_read(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
+            fn fory_read(fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
                 #read_ts
             }
 
-            fn fory_read_compatible(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
+            fn fory_read_compatible(fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
                 #read_compatible_ts
             }
-        }
-        impl #name {
-            #deserialize_nullable_ts
         }
     };
     let code = gen.into();

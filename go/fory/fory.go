@@ -174,8 +174,29 @@ type Fory struct {
 	metaContext    *MetaContext
 }
 
-func (f *Fory) RegisterTagType(tag string, v interface{}) error {
-	return f.typeResolver.RegisterTypeTag(reflect.ValueOf(v), tag)
+// RegisterByNamespace registers a type using a namespace and type name tag.
+func (f *Fory) RegisterByNamespace(
+	v interface{},
+	namespace string,
+	typeName string,
+) error {
+	return f.typeResolver.RegisterNamedType(reflect.TypeOf(v), 0, namespace, typeName)
+}
+
+// RegisterNamedType register by name
+func (f *Fory) RegisterNamedType(
+	v interface{},
+	name string,
+) error {
+	return f.typeResolver.RegisterNamedType(reflect.TypeOf(v), 0, "", name)
+}
+
+// Register reister by typeId
+func (f *Fory) Register(
+	v interface{},
+	typeId int32,
+) error {
+	return f.typeResolver.RegisterNamedType(reflect.TypeOf(v), typeId, "", "")
 }
 
 func (f *Fory) Marshal(v interface{}) ([]byte, error) {

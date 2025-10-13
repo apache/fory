@@ -517,6 +517,7 @@ fn named_enum() {
 #[test]
 #[allow(clippy::unnecessary_literal_unwrap)]
 fn boxed() {
+    // cargo expand --test mod compatible::test_struct > e1.rs
     #[derive(ForyObject, Debug, PartialEq)]
     struct Item1 {
         f1: i32,

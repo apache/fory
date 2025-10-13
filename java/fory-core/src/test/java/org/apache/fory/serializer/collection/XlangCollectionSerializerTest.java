@@ -60,4 +60,13 @@ public class XlangCollectionSerializerTest extends ForyTestBase {
     Assert.assertEquals(obj.list1.getClass(), LinkedList.class);
     Assert.assertEquals(obj.map1.getClass(), LinkedHashMap.class);
   }
+
+  @Test
+  public void testSerializeListWithNullElements() {
+    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+    ArrayList<String> strList = new ArrayList<>();
+    strList.add(null);
+    byte[] serialized = fory.serialize(strList);
+    Assert.assertTrue(serialized.length > 0);
+  }
 }

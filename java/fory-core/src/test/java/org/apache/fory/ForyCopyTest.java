@@ -243,7 +243,7 @@ public class ForyCopyTest extends ForyTestBase {
     ChildArrayDeque<String> list = new ChildArrayDeque<>();
     list.addAll(data);
     Assert.assertEquals(data, ImmutableList.copyOf(fory.copy(list)));
-    Assert.assertEquals(data, ImmutableList.copyOf(new PriorityQueue<>(data)));
+    Assert.assertEquals(data, ImmutableList.sortedCopyOf(new PriorityQueue<>(data)));
   }
 
   private void primitiveCopyTest() {

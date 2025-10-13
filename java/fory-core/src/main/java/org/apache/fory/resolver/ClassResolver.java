@@ -1767,13 +1767,14 @@ public class ClassResolver extends TypeResolver {
       boolean descriptorsGroupedOrdered,
       Function<Descriptor, Descriptor> descriptorUpdator) {
     return DescriptorGrouper.createDescriptorGrouper(
-        fory.getClassResolver()::isMonomorphic,
-        descriptors,
-        descriptorsGroupedOrdered,
-        descriptorUpdator,
-        fory.compressInt(),
-        fory.compressLong(),
-        DescriptorGrouper.COMPARATOR_BY_TYPE_AND_NAME);
+            fory.getClassResolver()::isMonomorphic,
+            descriptors,
+            descriptorsGroupedOrdered,
+            descriptorUpdator,
+            fory.compressInt(),
+            fory.compressLong(),
+            DescriptorGrouper.COMPARATOR_BY_TYPE_AND_NAME)
+        .sort();
   }
 
   /**

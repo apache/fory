@@ -31,13 +31,14 @@ enum StrEncoding {
 }
 
 impl Serializer for String {
-    fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) {
+    #[inline]
+    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, _is_field: bool) {
         let mut len = get_latin1_length(self);
         if len >= 0 {
             let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
             context.writer.write_varuint36_small(bitor);
             context.writer.write_latin1_string(self);
-        } else if context.get_fory().is_compress_string() {
+        } else if fory.is_compress_string() {
             // todo: support `writeNumUtf16BytesForUtf8Encoding` like in java
             len = self.len() as i32;
             let bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
@@ -51,7 +52,12 @@ impl Serializer for String {
         }
     }
 
-    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    #[inline]
+    fn fory_read_data(
+        _fory: &Fory,
+        context: &mut ReadContext,
+        _is_field: bool,
+    ) -> Result<Self, Error> {
         let bitor = context.reader.read_varuint36small();
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
@@ -71,10 +77,12 @@ impl Serializer for String {
         Ok(s)
     }
 
+    #[inline]
     fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }
 
+    #[inline(always)]
     fn fory_get_type_id(_fory: &Fory) -> u32 {
         TypeId::STRING as u32
     }
@@ -83,20 +91,24 @@ impl Serializer for String {
         TypeId::STRING as u32
     }
 
+    #[inline(always)]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        write_type_info::<Self>(context, is_field);
+    #[inline(always)]
+    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        write_type_info::<Self>(fory, context, is_field);
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-        read_type_info::<Self>(context, is_field);
+    #[inline(always)]
+    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
+        read_type_info::<Self>(fory, context, is_field);
     }
 }
 
 impl ForyDefault for String {
+    #[inline(always)]
     fn fory_default() -> Self {
         String::new()
     }

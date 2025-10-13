@@ -130,7 +130,7 @@ impl RefWriter {
     /// Clear all stored references.
     ///
     /// This is useful for reusing the RefWriter for multiple serialization operations.
-    pub fn clear(&mut self) {
+    pub fn reset(&mut self) {
         self.refs.clear();
         self.next_ref_id = 0;
     }
@@ -166,6 +166,10 @@ pub struct RefReader {
     /// Callbacks to execute when references are resolved
     callbacks: Vec<UpdateCallback>,
 }
+
+// danger but useful for multi-thread
+unsafe impl Send for RefReader {}
+unsafe impl Sync for RefReader {}
 
 impl RefReader {
     /// Creates a new RefReader instance.
@@ -322,7 +326,7 @@ impl RefReader {
     /// Clear all stored references and callbacks.
     ///
     /// This is useful for reusing the RefReader for multiple deserialization operations.
-    pub fn clear(&mut self) {
+    pub fn reset(&mut self) {
         self.resolve_callbacks();
         self.refs.clear();
         self.callbacks.clear();

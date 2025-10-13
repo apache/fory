@@ -26,18 +26,26 @@ use crate::types::TypeId;
 macro_rules! impl_num_serializer {
     ($ty:ty, $writer:expr, $reader:expr, $field_type:expr) => {
         impl Serializer for $ty {
-            fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) {
+            #[inline]
+            fn fory_write_data(&self, _fory: &Fory, context: &mut WriteContext, _is_field: bool) {
                 $writer(&mut context.writer, *self);
             }
 
-            fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+            #[inline]
+            fn fory_read_data(
+                _fory: &Fory,
+                context: &mut ReadContext,
+                _is_field: bool,
+            ) -> Result<Self, Error> {
                 Ok($reader(&mut context.reader))
             }
 
+            #[inline]
             fn fory_reserved_space() -> usize {
                 std::mem::size_of::<$ty>()
             }
 
+            #[inline]
             fn fory_get_type_id(_fory: &Fory) -> u32 {
                 $field_type as u32
             }
@@ -46,19 +54,23 @@ macro_rules! impl_num_serializer {
                 $field_type as u32
             }
 
+            #[inline]
             fn as_any(&self) -> &dyn std::any::Any {
                 self
             }
 
-            fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-                write_type_info::<Self>(context, is_field);
+            #[inline]
+            fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
+                write_type_info::<Self>(fory, context, is_field);
             }
 
-            fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-                read_type_info::<Self>(context, is_field);
+            #[inline]
+            fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
+                read_type_info::<Self>(fory, context, is_field);
             }
         }
         impl ForyDefault for $ty {
+            #[inline]
             fn fory_default() -> Self {
                 0 as $ty
             }

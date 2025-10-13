@@ -64,6 +64,8 @@ cd rust
 cargo test
 # run test with specific test file and method
 cargo test -p fory-tests  --test $test_file $test_method
+# run specific test under subdirectory
+ cargo test --test mod $dir$::$test_file::$test_method
 ```
 
 ### JavaScript

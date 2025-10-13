@@ -28,6 +28,10 @@ jobs:
     if: github.repository == 'apache/fory'
     steps:
       - uses: actions/checkout@v5
+
+      - name: Add headers to guide files
+        run: bash .github/scripts/add_doc_headers.sh
+
       - name: Sync files
         uses: betahuhn/repo-file-sync-action@8b92be3375cf1d1b0cd579af488a9255572e4619
         with:

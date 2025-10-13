@@ -22,34 +22,45 @@ use crate::resolver::context::WriteContext;
 use crate::serializer::{ForyDefault, Serializer};
 
 impl<T: Serializer + ForyDefault> Serializer for Option<T> {
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        Ok(Some(T::fory_read_data(context, is_field)?))
+    #[inline(always)]
+    fn fory_read_data(
+        fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+    ) -> Result<Self, Error> {
+        Ok(Some(T::fory_read_data(fory, context, is_field)?))
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-        T::fory_read_type_info(context, is_field);
+    #[inline(always)]
+    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
+        T::fory_read_type_info(fory, context, is_field);
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
+    #[inline(always)]
+    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
         if let Some(v) = self {
-            T::fory_write_data(v, context, is_field)
+            T::fory_write_data(v, fory, context, is_field)
         } else {
             unreachable!("write should be call by serialize")
         }
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        T::fory_write_type_info(context, is_field);
+    #[inline(always)]
+    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        T::fory_write_type_info(fory, context, is_field);
     }
 
+    #[inline(always)]
     fn fory_reserved_space() -> usize {
         std::mem::size_of::<T>()
     }
 
+    #[inline(always)]
     fn fory_get_type_id(fory: &Fory) -> u32 {
         T::fory_get_type_id(fory)
     }
 
+    #[inline(always)]
     fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
         match self {
             Some(val) => val.fory_type_id_dyn(fory),
@@ -57,20 +68,24 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
         }
     }
 
+    #[inline(always)]
     fn fory_is_option() -> bool {
         true
     }
 
+    #[inline(always)]
     fn fory_is_none(&self) -> bool {
         self.is_none()
     }
 
+    #[inline(always)]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
 impl<T: ForyDefault> ForyDefault for Option<T> {
+    #[inline(always)]
     fn fory_default() -> Self {
         None
     }

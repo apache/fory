@@ -21,10 +21,12 @@ use crate::meta::{
     murmurhash3_x64_128, Encoding, MetaString, MetaStringDecoder, FIELD_NAME_DECODER,
     FIELD_NAME_ENCODER, NAMESPACE_DECODER, TYPE_NAME_DECODER,
 };
-use crate::types::{TypeId, FINAL_TYPES, PRIMITIVE_ARRAY_TYPES, PRIMITIVE_TYPES};
+use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
+use crate::types::{TypeId, PRIMITIVE_TYPES};
 use anyhow::anyhow;
 use std::clone::Clone;
 use std::cmp::min;
+use std::collections::HashMap;
 
 const SMALL_NUM_FIELDS_THRESHOLD: usize = 0b11111;
 const REGISTER_BY_NAME_FLAG: u8 = 0b100000;
@@ -59,61 +61,20 @@ static FIELD_NAME_ENCODINGS: &[Encoding] = &[
 #[derive(Debug, Eq, Clone)]
 pub struct FieldType {
     pub type_id: u32,
+    pub nullable: bool,
     pub generics: Vec<FieldType>,
 }
 
-#[derive(Debug, Clone)]
-pub struct NullableFieldType {
-    pub type_id: u32,
-    pub generics: Vec<NullableFieldType>,
-    pub nullable: bool,
-}
-
-impl NullableFieldType {
-    pub fn from(node: FieldType) -> Self {
-        if node.type_id == TypeId::ForyNullable as u32 {
-            let inner = NullableFieldType::from(node.generics.into_iter().next().unwrap());
-            NullableFieldType {
-                type_id: inner.type_id,
-                generics: inner.generics,
-                nullable: true,
-            }
-        } else {
-            let generics = node
-                .generics
-                .into_iter()
-                .map(NullableFieldType::from)
-                .collect();
-            NullableFieldType {
-                type_id: node.type_id,
-                generics,
-                nullable: false,
-            }
-        }
-    }
-}
-
-impl PartialEq for NullableFieldType {
-    fn eq(&self, other: &Self) -> bool {
-        self.type_id == other.type_id && self.generics == other.generics
-    }
-}
-
-impl Eq for NullableFieldType {}
-
 impl FieldType {
-    pub fn new(type_id: u32, generics: Vec<FieldType>) -> Self {
-        FieldType { type_id, generics }
+    pub fn new(type_id: u32, nullable: bool, generics: Vec<FieldType>) -> Self {
+        FieldType {
+            type_id,
+            nullable,
+            generics,
+        }
     }
 
     fn to_bytes(&self, writer: &mut Writer, write_flag: bool, nullable: bool) -> Result<(), Error> {
-        if self.type_id == TypeId::ForyNullable as u32 {
-            self.generics
-                .first()
-                .unwrap()
-                .to_bytes(writer, write_flag, true)?;
-            return Ok(());
-        }
         let mut header = self.type_id;
         if write_flag {
             header <<= 2;
@@ -151,11 +112,12 @@ impl FieldType {
             type_id = header;
             _nullable = nullable.unwrap();
         }
-        let field_type = match type_id {
+        match type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 let generic = Self::from_bytes(reader, true, None);
                 Self {
                     type_id,
+                    nullable: _nullable,
                     generics: vec![generic],
                 }
             }
@@ -164,27 +126,22 @@ impl FieldType {
                 let val_generic = Self::from_bytes(reader, true, None);
                 Self {
                     type_id,
+                    nullable: _nullable,
                     generics: vec![key_generic, val_generic],
                 }
             }
             _ => Self {
                 type_id,
+                nullable: _nullable,
                 generics: vec![],
             },
-        };
-        if _nullable {
-            Self {
-                type_id: TypeId::ForyNullable as u32,
-                generics: vec![field_type],
-            }
-        } else {
-            field_type
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FieldInfo {
+    pub field_id: i16,
     pub field_name: String,
     pub field_type: FieldType,
 }
@@ -192,6 +149,7 @@ pub struct FieldInfo {
 impl FieldInfo {
     pub fn new(field_name: &str, field_type: FieldType) -> FieldInfo {
         FieldInfo {
+            field_id: -1i16,
             field_name: field_name.to_string(),
             field_type,
         }
@@ -227,6 +185,7 @@ impl FieldInfo {
             .decode(field_name_bytes, encoding)
             .unwrap();
         FieldInfo {
+            field_id: -1i16,
             field_name: field_name.original,
             field_type,
         }
@@ -242,7 +201,7 @@ impl FieldInfo {
         let name_size = name_encoded.len() - 1;
         let mut header: u8 = (min(FIELD_NAME_SIZE_THRESHOLD, name_size) as u8) << 2;
         // let ref_tracking = false;
-        let nullable = self.field_type.type_id == TypeId::ForyNullable as u32;
+        let nullable = self.field_type.nullable;
         // if ref_tracking {
         //     header |= 1;
         // }
@@ -294,6 +253,16 @@ impl TypeMetaLayer {
             type_name,
             register_by_name,
             field_infos,
+        }
+    }
+
+    pub fn empty() -> TypeMetaLayer {
+        TypeMetaLayer {
+            type_id: 0,
+            namespace: MetaString::default(),
+            type_name: MetaString::default(),
+            register_by_name: false,
+            field_infos: vec![],
         }
     }
 
@@ -385,66 +354,40 @@ impl TypeMetaLayer {
         Ok(writer.dump())
     }
 
-    fn sort_field_infos(field_infos: &[FieldInfo]) -> Vec<FieldInfo> {
+    fn sort_field_infos(field_infos: Vec<FieldInfo>) -> Vec<FieldInfo> {
+        let fields_len = field_infos.len();
         // group
         let mut primitive_fields = Vec::new();
         let mut nullable_primitive_fields = Vec::new();
-        let mut final_fields = Vec::new();
-        let mut other_fields = Vec::new();
-        let mut unknown_fields = Vec::new();
-        let mut collection_fields = Vec::new();
+        let mut internal_type_fields = Vec::new();
+        let mut list_fields = Vec::new();
+        let mut set_fields = Vec::new();
         let mut map_fields = Vec::new();
-        for field_info in field_infos.iter() {
-            let mut type_id = field_info.field_type.type_id;
-            if type_id == TypeId::ForyNullable as u32 {
-                type_id = field_info.field_type.generics.first().unwrap().type_id;
-                if PRIMITIVE_TYPES.contains(&type_id) {
-                    nullable_primitive_fields.push(field_info.clone());
-                    continue;
-                }
+        let mut other_fields = Vec::new();
+
+        for field_info in field_infos.into_iter() {
+            let type_id = field_info.field_type.type_id;
+            let is_nullable = field_info.field_type.nullable;
+            if is_nullable && PRIMITIVE_TYPES.contains(&type_id) {
+                nullable_primitive_fields.push(field_info);
+                continue;
             }
-            let internal_id = type_id & 0xff;
+
             if PRIMITIVE_TYPES.contains(&type_id) {
-                primitive_fields.push(field_info.clone());
-            } else if PRIMITIVE_ARRAY_TYPES.contains(&type_id)
-                || FINAL_TYPES.contains(&type_id)
-                || [TypeId::ENUM as u32, TypeId::NAMED_ENUM as u32].contains(&internal_id)
-            {
-                final_fields.push(field_info.clone());
-            } else if [TypeId::LIST as u32, TypeId::SET as u32].contains(&type_id) {
-                collection_fields.push(field_info.clone());
+                primitive_fields.push(field_info);
+            } else if TypeId::LIST as u32 == type_id {
+                list_fields.push(field_info);
+            } else if TypeId::SET as u32 == type_id {
+                set_fields.push(field_info);
             } else if TypeId::MAP as u32 == type_id {
-                map_fields.push(field_info.clone());
-            } else if [
-                TypeId::COMPATIBLE_STRUCT as u32,
-                TypeId::NAMED_COMPATIBLE_STRUCT as u32,
-                TypeId::EXT as u32,
-                TypeId::NAMED_EXT as u32,
-            ]
-            .contains(&internal_id)
-            {
-                other_fields.push(field_info.clone());
-            } else if internal_id == TypeId::UNKNOWN as u32 {
-                unknown_fields.push(field_info.clone());
+                map_fields.push(field_info);
+            } else if crate::types::is_internal_type(type_id) {
+                internal_type_fields.push(field_info);
             } else {
-                unreachable!("type_id: {type_id}");
+                other_fields.push(field_info);
             }
         }
-        fn sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
-            let a_id = if a.field_type.type_id == TypeId::ForyNullable as u32 {
-                a.field_type.generics.first().unwrap().type_id
-            } else {
-                a.field_type.type_id
-            };
-            let b_id = if b.field_type.type_id == TypeId::ForyNullable as u32 {
-                b.field_type.generics.first().unwrap().type_id
-            } else {
-                b.field_type.type_id
-            };
-            let a_field_name = &a.field_name;
-            let b_field_name = &b.field_name;
-            a_id.cmp(&b_id).then_with(|| a_field_name.cmp(b_field_name))
-        }
+
         fn get_primitive_type_size(type_id_num: u32) -> i32 {
             let type_id = TypeId::try_from(type_id_num as i16).unwrap();
             match type_id {
@@ -471,47 +414,50 @@ impl TypeMetaLayer {
             .contains(&type_id)
         }
         fn numeric_sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
-            let (a_id, b_id) = {
-                // for nullable_primitive
-                if a.field_type.type_id == TypeId::ForyNullable as u32 {
-                    (
-                        a.field_type.generics.first().unwrap().type_id,
-                        b.field_type.generics.first().unwrap().type_id,
-                    )
-                } else {
-                    (a.field_type.type_id, b.field_type.type_id)
-                }
-            };
+            let (a_id, b_id) = (a.field_type.type_id, b.field_type.type_id);
             let a_field_name = &a.field_name;
             let b_field_name = &b.field_name;
             let compress_a = is_compress(a_id);
             let compress_b = is_compress(b_id);
             let size_a = get_primitive_type_size(a_id);
             let size_b = get_primitive_type_size(b_id);
-            compress_a
-                .cmp(&compress_b)
-                .then_with(|| size_b.cmp(&size_a))
-                .then_with(|| a_field_name.cmp(b_field_name))
+            let a_nullable = a.field_type.nullable;
+            let b_nullable = b.field_type.nullable;
+            a_nullable
+                .cmp(&b_nullable) // non-nullable first
+                .then_with(|| compress_a.cmp(&compress_b)) // fixed-size (false) first, then variable-size (true) last
+                .then_with(|| size_b.cmp(&size_a)) // when same compress status: larger size first
+                .then_with(|| a_id.cmp(&b_id)) // when same size: smaller type id first
+                .then_with(|| a_field_name.cmp(b_field_name)) // when same id: lexicographic name
+        }
+        fn type_then_name_sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
+            a.field_type
+                .type_id
+                .cmp(&b.field_type.type_id)
+                .then_with(|| a.field_name.cmp(&b.field_name))
+        }
+        fn name_sorter(a: &FieldInfo, b: &FieldInfo) -> std::cmp::Ordering {
+            a.field_name.cmp(&b.field_name)
         }
         primitive_fields.sort_by(numeric_sorter);
         nullable_primitive_fields.sort_by(numeric_sorter);
-        final_fields.sort_by(sorter);
-        other_fields.sort_by(sorter);
-        unknown_fields.sort_by(sorter);
-        collection_fields.sort_by(sorter);
-        map_fields.sort_by(sorter);
-        let mut sorted_field_infos = Vec::with_capacity(field_infos.len());
+        internal_type_fields.sort_by(type_then_name_sorter);
+        list_fields.sort_by(name_sorter);
+        set_fields.sort_by(name_sorter);
+        map_fields.sort_by(name_sorter);
+        other_fields.sort_by(name_sorter);
+        let mut sorted_field_infos = Vec::with_capacity(fields_len);
         sorted_field_infos.extend(primitive_fields);
         sorted_field_infos.extend(nullable_primitive_fields);
-        sorted_field_infos.extend(final_fields);
-        sorted_field_infos.extend(other_fields);
-        sorted_field_infos.extend(unknown_fields);
-        sorted_field_infos.extend(collection_fields);
+        sorted_field_infos.extend(internal_type_fields);
+        sorted_field_infos.extend(list_fields);
+        sorted_field_infos.extend(set_fields);
         sorted_field_infos.extend(map_fields);
+        sorted_field_infos.extend(other_fields);
         sorted_field_infos
     }
 
-    fn from_bytes(reader: &mut Reader) -> TypeMetaLayer {
+    fn from_bytes(reader: &mut Reader, type_resolver: &TypeResolver) -> TypeMetaLayer {
         let meta_header = reader.read_u8();
         let register_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0;
         let mut num_fields = meta_header as usize & SMALL_NUM_FIELDS_THRESHOLD;
@@ -531,11 +477,23 @@ impl TypeMetaLayer {
             namespace = empty_name.clone();
             type_name = empty_name;
         }
+
         let mut field_infos = Vec::with_capacity(num_fields);
         for _ in 0..num_fields {
             field_infos.push(FieldInfo::from_bytes(reader));
         }
-        let sorted_field_infos = Self::sort_field_infos(&field_infos);
+        let mut sorted_field_infos = Self::sort_field_infos(field_infos);
+
+        if register_by_name {
+            if let Some(type_info_current) =
+                type_resolver.get_type_info_by_name(&namespace.original, &type_name.original)
+            {
+                Self::assign_field_ids(type_info_current, &mut sorted_field_infos);
+            }
+        } else if let Some(type_info_current) = type_resolver.get_type_info_by_id(type_id) {
+            Self::assign_field_ids(type_info_current, &mut sorted_field_infos);
+        }
+        // if no type found, keep all fields id as -1 to be skipped.
         TypeMetaLayer::new(
             type_id,
             namespace,
@@ -544,22 +502,48 @@ impl TypeMetaLayer {
             sorted_field_infos,
         )
     }
+
+    fn assign_field_ids(type_info_current: &TypeInfo, field_infos: &mut [FieldInfo]) {
+        // convert to map: fiend_name -> field_info
+        let field_info_map = type_info_current
+            .get_type_meta()
+            .get_field_infos()
+            .iter()
+            .map(|field_info| (field_info.field_name.clone(), field_info.clone()))
+            .collect::<HashMap<String, FieldInfo>>();
+        for field in field_infos.iter_mut() {
+            match field_info_map.get(&field.field_name.clone()) {
+                Some(local_field_info) => {
+                    if field.field_type.type_id != local_field_info.field_type.type_id
+                        || field.field_type.generics != local_field_info.field_type.generics
+                    {
+                        field.field_id = -1;
+                    } else {
+                        field.field_id = local_field_info.field_id;
+                    }
+                }
+                None => {
+                    field.field_id = -1;
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct TypeMeta {
     // assigned valid value and used, only during deserializing
     hash: i64,
-    layers: Vec<TypeMetaLayer>,
+    layer: TypeMetaLayer,
 }
 
 impl TypeMeta {
     pub fn get_field_infos(&self) -> &Vec<FieldInfo> {
-        self.layers.first().unwrap().get_field_infos()
+        self.layer.get_field_infos()
     }
 
     pub fn get_type_id(&self) -> u32 {
-        self.layers.first().unwrap().get_type_id()
+        self.layer.get_type_id()
     }
 
     pub fn get_hash(&self) -> i64 {
@@ -567,11 +551,18 @@ impl TypeMeta {
     }
 
     pub fn get_type_name(&self) -> MetaString {
-        self.layers.first().unwrap().get_type_name().clone()
+        self.layer.get_type_name().clone()
     }
 
     pub fn get_namespace(&self) -> MetaString {
-        self.layers.first().unwrap().get_namespace().clone()
+        self.layer.get_namespace().clone()
+    }
+
+    pub fn empty() -> TypeMeta {
+        TypeMeta {
+            hash: 0,
+            layer: TypeMetaLayer::empty(),
+        }
     }
 
     pub fn from_fields(
@@ -583,17 +574,11 @@ impl TypeMeta {
     ) -> TypeMeta {
         TypeMeta {
             hash: 0,
-            layers: vec![TypeMetaLayer::new(
-                type_id,
-                namespace,
-                type_name,
-                register_by_name,
-                field_infos,
-            )],
+            layer: TypeMetaLayer::new(type_id, namespace, type_name, register_by_name, field_infos),
         }
     }
     #[allow(unused_assignments)]
-    pub fn from_bytes(reader: &mut Reader) -> TypeMeta {
+    pub fn from_bytes(reader: &mut Reader, type_resolver: &TypeResolver) -> TypeMeta {
         let header = reader.read_i64();
         let mut meta_size = header & META_SIZE_MASK;
         if meta_size == META_SIZE_MASK {
@@ -604,13 +589,11 @@ impl TypeMeta {
         // let is_compressed: bool = (header & COMPRESS_META_FLAG) != 0;
         // let meta_hash = header >> (64 - NUM_HASH_BITS);
 
-        let mut layers = Vec::new();
         // let current_meta_size = 0;
         // while current_meta_size < meta_size {}
-        let layer = TypeMetaLayer::from_bytes(reader);
-        layers.push(layer);
+        let layer = TypeMetaLayer::from_bytes(reader, type_resolver);
         TypeMeta {
-            layers,
+            layer,
             hash: header,
         }
     }
@@ -622,7 +605,7 @@ impl TypeMeta {
         // for layer in self.layers.iter() {
         //     layers_writer.bytes(layer.to_bytes()?.as_slice());
         // }
-        layers_writer.write_bytes(self.layers.first().unwrap().to_bytes()?.as_slice());
+        layers_writer.write_bytes(self.layer.to_bytes()?.as_slice());
         // global_binary_header:| hash:50bits | is_compressed:1bit | write_fields_meta:1bit | meta_size:12bits |
         let meta_size = layers_writer.len() as i64;
         let mut header: i64 = min(META_SIZE_MASK, meta_size);

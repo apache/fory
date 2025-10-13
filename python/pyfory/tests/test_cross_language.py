@@ -403,7 +403,7 @@ def test_serialize_arrow_out_of_band(int_band_file, out_of_band_file):
     assert objects == [batch, table]
     buffer_objects = []
     in_band_buffer = fory.serialize([batch, table], buffer_callback=buffer_objects.append)
-    buffers = [o.to_buffer() for o in buffer_objects]
+    buffers = [o.getbuffer() for o in buffer_objects]
     with open(int_band_file, "wb+") as f:
         f.write(in_band_buffer)
     with open(out_of_band_file, "wb+") as f:
@@ -676,8 +676,8 @@ def test_oob_buffer(in_band_file_path, out_of_band_file_path):
     # in_band_bytes size may be different because it may contain language-specific meta.
     debug_print(f"{len(serialized), len(in_band_bytes)}")
     debug_print(f"deserialized from other language {new_obj}")
-    debug_print(f"deserialized from python {fory.deserialize(serialized, [o.to_buffer() for o in buffer_objects])}")
-    fory.deserialize(serialized, [o.to_buffer() for o in buffer_objects])
+    debug_print(f"deserialized from python {fory.deserialize(serialized, [o.getbuffer() for o in buffer_objects])}")
+    fory.deserialize(serialized, [o.getbuffer() for o in buffer_objects])
     with open(in_band_file_path, "wb+") as f:
         f.write(serialized)
     out_of_band_buffer.write_int32(len(buffer_objects))

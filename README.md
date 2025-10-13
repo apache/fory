@@ -293,7 +293,7 @@ func main() {
   F3 map[string]string
  }
  fory := forygo.NewFory(true)
- if err := fory.RegisterTagType("example.SomeClass", SomeClass{}); err != nil {
+ if err := fory.RegisterNamedType(SomeClass{}, "example.SomeClass"); err != nil {
   panic(err)
  }
  value := &SomeClass{F2: map[string]string{"k1": "v1", "k2": "v2"}}

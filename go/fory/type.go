@@ -71,8 +71,8 @@ const (
 	NAMED_STRUCT = 17
 	// NAMED_COMPATIBLE_STRUCT a compatible_struct whose type mapping will be encoded as a name
 	NAMED_COMPATIBLE_STRUCT = 18
-	// EXTENSION a type which will be serialized by a customized serializer
-	EXTENSION = 19
+	// EXT a type which will be serialized by a customized serializer
+	EXT = 19
 	// NAMED_EXT an ext type whose type mapping will be encoded as a name
 	NAMED_EXT = 20
 	// LIST A list of some logical data type
@@ -184,6 +184,7 @@ var namedTypes = map[TypeId]struct{}{
 
 // IsNamespacedType checks whether the given type ID is a namespace type
 func IsNamespacedType(typeID TypeId) bool {
+	typeID = typeID & 0xFF
 	_, exists := namedTypes[typeID]
 	return exists
 }
@@ -479,10 +480,33 @@ func (r *typeResolver) RegisterSerializer(type_ reflect.Type, s Serializer) erro
 	return nil
 }
 
-func (r *typeResolver) RegisterTypeTag(value reflect.Value, tag string) error {
-	type_ := value.Type()
+func (r *typeResolver) RegisterNamedType(
+	type_ reflect.Type,
+	typeId int32,
+	namespace string,
+	typeName string,
+) error {
 	if prev, ok := r.typeToSerializers[type_]; ok {
 		return fmt.Errorf("type %s already has a serializer %s registered", type_, prev)
+	}
+	registerById := (typeId != 0)
+	if registerById && typeName != "" {
+		return fmt.Errorf("typename %s and typeId %d cannot be both register", typeName, typeId)
+	}
+	if namespace == "" {
+		if idx := strings.LastIndex(typeName, "."); idx != -1 {
+			namespace = typeName[:idx]
+			typeName = typeName[idx+1:]
+		}
+	}
+	if typeName == "" && namespace != "" {
+		return fmt.Errorf("typeName cannot be empty if namespace is provided")
+	}
+	var tag string
+	if namespace == "" {
+		tag = typeName
+	} else {
+		tag = namespace + "." + typeName
 	}
 	serializer := &structSerializer{type_: type_, typeTag: tag}
 	r.typeToSerializers[type_] = serializer
@@ -493,21 +517,38 @@ func (r *typeResolver) RegisterTypeTag(value reflect.Value, tag string) error {
 	r.typeInfoToType["@"+tag] = type_
 
 	ptrType := reflect.PtrTo(type_)
-	ptrValue := reflect.New(type_)
 	ptrSerializer := &ptrToStructSerializer{structSerializer: *serializer, type_: ptrType}
 	r.typeToSerializers[ptrType] = ptrSerializer
 	// use `ptrToStructSerializer` as default deserializer when deserializing data from other languages.
 	r.typeTagToSerializers[tag] = ptrSerializer
 	r.typeToTypeInfo[ptrType] = "*@" + tag
 	r.typeInfoToType["*@"+tag] = ptrType
-	// For named structs, directly register both their value and pointer types
-	info, err := r.getTypeInfo(value, true)
-	if err != nil {
-		return fmt.Errorf("failed to register named structs: info is %v", info)
+	if typeId == 0 {
+		if r.metaShareEnabled() {
+			typeId = (typeId << 8) + NAMED_COMPATIBLE_STRUCT
+		} else {
+			typeId = (typeId << 8) + NAMED_STRUCT
+		}
+	} else {
+		if r.metaShareEnabled() {
+			typeId = COMPATIBLE_STRUCT
+		} else {
+			typeId = STRUCT
+		}
 	}
-	info, err = r.getTypeInfo(ptrValue, true)
+	if registerById {
+		if info, ok := r.typeIDToTypeInfo[typeId]; ok {
+			return fmt.Errorf("type %s with id %d has been registered", info.Type, typeId)
+		}
+	}
+	// For named structs, directly register both their value and pointer types
+	_, err := r.registerType(type_, typeId, namespace, typeName, nil, false)
 	if err != nil {
-		return fmt.Errorf("failed to register named structs: info is %v", info)
+		return fmt.Errorf("failed to register named structs: %w", err)
+	}
+	_, err = r.registerType(ptrType, -typeId, namespace, typeName, nil, false)
+	if err != nil {
+		return fmt.Errorf("failed to register named structs: %w", err)
 	}
 	return nil
 }
@@ -1340,6 +1381,11 @@ func isPrimitiveType(typeID int16) bool {
 func isListType(typeID int16) bool {
 	return typeID == LIST
 }
+
+func isSetType(typeID int16) bool {
+	return typeID == SET
+}
+
 func isMapType(typeID int16) bool {
 	return typeID == MAP
 }
@@ -1376,4 +1422,15 @@ func getPrimitiveTypeSize(typeID int16) int {
 		return sz
 	}
 	return -1
+}
+
+func isUserDefinedType(typeID int16) bool {
+	return typeID == STRUCT ||
+		typeID == COMPATIBLE_STRUCT ||
+		typeID == NAMED_STRUCT ||
+		typeID == NAMED_COMPATIBLE_STRUCT ||
+		typeID == EXT ||
+		typeID == NAMED_EXT ||
+		typeID == ENUM ||
+		typeID == NAMED_ENUM
 }

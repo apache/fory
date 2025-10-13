@@ -19,64 +19,19 @@ use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::{Encoding, MetaString, TypeMeta, NAMESPACE_DECODER};
+use crate::TypeResolver;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Default)]
-pub struct MetaReaderResolver {
-    pub reading_type_defs: Vec<Rc<TypeMeta>>,
-}
-
-impl MetaReaderResolver {
-    pub fn get(&self, index: usize) -> &Rc<TypeMeta> {
-        unsafe { self.reading_type_defs.get_unchecked(index) }
-    }
-
-    pub fn load(&mut self, reader: &mut Reader) -> usize {
-        let meta_size = reader.read_varuint32();
-        // self.reading_type_defs.reserve(meta_size as usize);
-        for _ in 0..meta_size {
-            let type_meta = TypeMeta::from_bytes(reader);
-            self.reading_type_defs.push(Rc::new(type_meta));
-        }
-        reader.get_cursor()
-    }
-
-    pub fn read_metastring(&self, reader: &mut Reader) -> MetaString {
-        let len = reader.read_varuint32() as usize;
-        if len == 0 {
-            return MetaString {
-                bytes: vec![],
-                encoding: Encoding::Utf8,
-                original: String::new(),
-                strip_last_char: false,
-                special_char1: '\0',
-                special_char2: '\0',
-            };
-        }
-        let bytes = reader.read_bytes(len);
-        let encoding_byte = bytes[0] & 0x07;
-        let encoding = match encoding_byte {
-            0x00 => Encoding::Utf8,
-            0x01 => Encoding::LowerSpecial,
-            0x02 => Encoding::LowerUpperDigitSpecial,
-            0x03 => Encoding::FirstToLowerSpecial,
-            0x04 => Encoding::AllToLowerSpecial,
-            _ => Encoding::Utf8,
-        };
-        NAMESPACE_DECODER.decode(bytes, encoding).unwrap()
-    }
-}
-
-#[derive(Default)]
-pub struct MetaWriterResolver<'a> {
-    type_defs: Vec<&'a Vec<u8>>,
+pub struct MetaWriterResolver {
+    type_defs: Vec<Arc<Vec<u8>>>,
     type_id_index_map: HashMap<std::any::TypeId, usize>,
 }
 
 #[allow(dead_code)]
-impl<'a> MetaWriterResolver<'a> {
-    pub fn push<'b: 'a>(&mut self, type_id: std::any::TypeId, fory: &'a Fory) -> usize {
+impl MetaWriterResolver {
+    pub fn push(&mut self, type_id: std::any::TypeId, fory: &Fory) -> usize {
         match self.type_id_index_map.get(&type_id) {
             None => {
                 let index = self.type_defs.len();
@@ -106,5 +61,56 @@ impl<'a> MetaWriterResolver<'a> {
 
     pub fn reset(&mut self) {
         self.type_defs.clear();
+        self.type_id_index_map.clear();
+    }
+}
+
+#[derive(Default)]
+pub struct MetaReaderResolver {
+    pub reading_type_defs: Vec<Arc<TypeMeta>>,
+}
+
+impl MetaReaderResolver {
+    pub fn get(&self, index: usize) -> &Arc<TypeMeta> {
+        unsafe { self.reading_type_defs.get_unchecked(index) }
+    }
+
+    pub fn load(&mut self, type_resolver: &TypeResolver, reader: &mut Reader) -> usize {
+        let meta_size = reader.read_varuint32();
+        // self.reading_type_defs.reserve(meta_size as usize);
+        for _ in 0..meta_size {
+            let type_meta = TypeMeta::from_bytes(reader, type_resolver);
+            self.reading_type_defs.push(Arc::new(type_meta));
+        }
+        reader.get_cursor()
+    }
+
+    pub fn read_metastring(&self, reader: &mut Reader) -> MetaString {
+        let len = reader.read_varuint32() as usize;
+        if len == 0 {
+            return MetaString {
+                bytes: vec![],
+                encoding: Encoding::Utf8,
+                original: String::new(),
+                strip_last_char: false,
+                special_char1: '\0',
+                special_char2: '\0',
+            };
+        }
+        let bytes = reader.read_bytes(len);
+        let encoding_byte = bytes[0] & 0x07;
+        let encoding = match encoding_byte {
+            0x00 => Encoding::Utf8,
+            0x01 => Encoding::LowerSpecial,
+            0x02 => Encoding::LowerUpperDigitSpecial,
+            0x03 => Encoding::FirstToLowerSpecial,
+            0x04 => Encoding::AllToLowerSpecial,
+            _ => Encoding::Utf8,
+        };
+        NAMESPACE_DECODER.decode(bytes, encoding).unwrap()
+    }
+
+    pub fn reset(&mut self) {
+        self.reading_type_defs.clear();
     }
 }

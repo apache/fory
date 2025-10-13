@@ -88,7 +88,7 @@ fn test_ref_writer_clear() {
     assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc));
 
     // Clear the writer
-    ref_writer.clear();
+    ref_writer.reset();
 
     // After clearing, should register as new reference again
     assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc));
@@ -104,7 +104,7 @@ fn test_ref_reader_clear() {
     assert!(ref_reader.get_rc_ref::<String>(ref_id).is_some());
 
     // Clear the reader
-    ref_reader.clear();
+    ref_reader.reset();
 
     // After clearing, reference should no longer be found
     assert!(ref_reader.get_rc_ref::<String>(ref_id).is_none());

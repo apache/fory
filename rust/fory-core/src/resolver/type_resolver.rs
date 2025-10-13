@@ -23,17 +23,23 @@ use crate::meta::{
     TYPE_NAME_ENCODINGS,
 };
 use crate::serializer::{ForyDefault, Serializer, StructSerializer};
-use std::cell::RefCell;
+use crate::Reader;
+use std::sync::Arc;
 use std::{any::Any, collections::HashMap};
 
-type WriteFn = fn(&dyn Any, &mut WriteContext, is_field: bool);
-type ReadFn =
-    fn(&mut ReadContext, is_field: bool, skip_ref_flag: bool) -> Result<Box<dyn Any>, Error>;
+type WriteFn = fn(&dyn Any, fory: &Fory, &mut WriteContext, is_field: bool);
+type ReadFn = fn(
+    fory: &Fory,
+    &mut ReadContext,
+    is_field: bool,
+    skip_ref_flag: bool,
+) -> Result<Box<dyn Any>, Error>;
 
-type WriteDataFn = fn(&dyn Any, &mut WriteContext, is_field: bool);
-type ReadDataFn = fn(&mut ReadContext, is_field: bool) -> Result<Box<dyn Any>, Error>;
+type WriteDataFn = fn(&dyn Any, fory: &Fory, &mut WriteContext, is_field: bool);
+type ReadDataFn = fn(fory: &Fory, &mut ReadContext, is_field: bool) -> Result<Box<dyn Any>, Error>;
 type ToSerializerFn = fn(Box<dyn Any>) -> Result<Box<dyn Serializer>, Error>;
 
+#[derive(Clone)]
 pub struct Harness {
     write_fn: WriteFn,
     read_fn: ReadFn,
@@ -82,7 +88,8 @@ impl Harness {
 
 #[derive(Clone, Debug)]
 pub struct TypeInfo {
-    type_def: Vec<u8>,
+    type_def: Arc<Vec<u8>>,
+    type_meta: Arc<TypeMeta>,
     type_id: u32,
     namespace: MetaString,
     type_name: MetaString,
@@ -103,14 +110,16 @@ impl TypeInfo {
         let type_name_metastring = TYPE_NAME_ENCODER
             .encode_with_encodings(type_name, TYPE_NAME_ENCODINGS)
             .unwrap();
+        let (type_def_bytes, type_meta) = T::fory_type_def(
+            fory,
+            type_id,
+            namespace_metastring.clone(),
+            type_name_metastring.clone(),
+            register_by_name,
+        );
         TypeInfo {
-            type_def: T::fory_type_def(
-                fory,
-                type_id,
-                namespace_metastring.clone(),
-                type_name_metastring.clone(),
-                register_by_name,
-            ),
+            type_def: Arc::from(type_def_bytes),
+            type_meta: Arc::new(type_meta),
             type_id,
             namespace: namespace_metastring,
             type_name: type_name_metastring,
@@ -139,8 +148,11 @@ impl TypeInfo {
             vec![],
         );
         let type_def = meta.to_bytes().unwrap();
+        let type_resolver = _fory.get_type_resolver();
+        let meta = TypeMeta::from_bytes(&mut Reader::new(&type_def), type_resolver);
         TypeInfo {
-            type_def,
+            type_def: Arc::from(type_def),
+            type_meta: Arc::new(meta),
             type_id,
             namespace: namespace_metastring,
             type_name: type_name_metastring,
@@ -160,8 +172,12 @@ impl TypeInfo {
         &self.type_name
     }
 
-    pub fn get_type_def(&self) -> &Vec<u8> {
-        &self.type_def
+    pub fn get_type_def(&self) -> Arc<Vec<u8>> {
+        self.type_def.clone()
+    }
+
+    pub fn get_type_meta(&self) -> Arc<TypeMeta> {
+        self.type_meta.clone()
     }
 
     pub fn is_registered_by_name(&self) -> bool {
@@ -170,14 +186,15 @@ impl TypeInfo {
 }
 
 pub struct TypeResolver {
-    serializer_map: HashMap<u32, Harness>,
-    name_serializer_map: HashMap<(MetaString, MetaString), Harness>,
+    serializer_map: HashMap<u32, Arc<Harness>>,
+    name_serializer_map: HashMap<(MetaString, MetaString), Arc<Harness>>,
     type_id_map: HashMap<std::any::TypeId, u32>,
     type_name_map: HashMap<std::any::TypeId, (MetaString, MetaString)>,
     type_info_cache: HashMap<std::any::TypeId, TypeInfo>,
+    type_info_map_by_id: HashMap<u32, TypeInfo>,
+    type_info_map_by_name: HashMap<(String, String), TypeInfo>,
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
-    sorted_field_names_map: RefCell<HashMap<std::any::TypeId, Vec<String>>>,
 }
 
 const NO_TYPE_ID: u32 = 1000000000;
@@ -190,8 +207,9 @@ impl Default for TypeResolver {
             type_id_map: HashMap::new(),
             type_name_map: HashMap::new(),
             type_info_cache: HashMap::new(),
+            type_info_map_by_id: HashMap::new(),
+            type_info_map_by_name: HashMap::new(),
             type_id_index: Vec::new(),
-            sorted_field_names_map: RefCell::new(HashMap::new()),
         };
         resolver.register_builtin_types();
         resolver
@@ -205,7 +223,8 @@ impl TypeResolver {
         macro_rules! register_basic_type {
             ($ty:ty, $type_id:expr) => {{
                 let type_info = TypeInfo {
-                    type_def: vec![],
+                    type_def: Arc::from(vec![]),
+                    type_meta: Arc::new(TypeMeta::empty()),
                     type_id: $type_id as u32,
                     namespace: NAMESPACE_ENCODER
                         .encode_with_encodings("", NAMESPACE_ENCODINGS)
@@ -240,10 +259,19 @@ impl TypeResolver {
     pub fn get_type_info(&self, type_id: std::any::TypeId) -> &TypeInfo {
         self.type_info_cache.get(&type_id).unwrap_or_else(|| {
             panic!(
-                "TypeId {:?} not found in type_info_map, maybe you forgot to register some types",
+                "TypeId {:?} not found in type_info registry, maybe you forgot to register some types",
                 type_id
             )
         })
+    }
+
+    pub fn get_type_info_by_id(&self, id: u32) -> Option<&TypeInfo> {
+        self.type_info_map_by_id.get(&id)
+    }
+
+    pub fn get_type_info_by_name(&self, namespace: &str, type_name: &str) -> Option<&TypeInfo> {
+        self.type_info_map_by_name
+            .get(&(namespace.to_owned(), type_name.to_owned()))
     }
 
     /// Fast path for getting type info by numeric ID (avoids HashMap lookup by TypeId)
@@ -267,16 +295,17 @@ impl TypeResolver {
     ) {
         fn write<T2: 'static + Serializer>(
             this: &dyn Any,
+            fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
         ) {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => {
-                    let skip_ref_flag =
-                        crate::serializer::get_skip_ref_flag::<T2>(context.get_fory());
+                    let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T2>(fory);
                     crate::serializer::write_ref_info_data(
                         v,
+                        fory,
                         context,
                         is_field,
                         skip_ref_flag,
@@ -288,11 +317,13 @@ impl TypeResolver {
         }
 
         fn read<T2: 'static + Serializer + ForyDefault>(
+            fory: &Fory,
             context: &mut ReadContext,
             is_field: bool,
             skip_ref_flag: bool,
         ) -> Result<Box<dyn Any>, Error> {
             match crate::serializer::read_ref_info_data::<T2>(
+                fory,
                 context,
                 is_field,
                 skip_ref_flag,
@@ -305,23 +336,25 @@ impl TypeResolver {
 
         fn write_data<T2: 'static + Serializer>(
             this: &dyn Any,
+            fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
         ) {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => {
-                    T2::fory_write_data(v, context, is_field);
+                    T2::fory_write_data(v, fory, context, is_field);
                 }
                 None => todo!(),
             }
         }
 
         fn read_data<T2: 'static + Serializer + ForyDefault>(
+            fory: &Fory,
             context: &mut ReadContext,
             is_field: bool,
         ) -> Result<Box<dyn Any>, Error> {
-            match T2::fory_read_data(context, is_field) {
+            match T2::fory_read_data(fory, context, is_field) {
                 Ok(v) => Ok(Box::new(v)),
                 Err(e) => Err(e),
             }
@@ -343,6 +376,8 @@ impl TypeResolver {
             panic!("rs_struct:{:?} already registered", rs_type_id);
         }
         self.type_info_cache.insert(rs_type_id, type_info.clone());
+        self.type_info_map_by_id
+            .insert(type_info.type_id, type_info.clone());
         let index = T::fory_type_index() as usize;
         if index >= self.type_id_index.len() {
             self.type_id_index.resize(index + 1, NO_TYPE_ID);
@@ -364,14 +399,17 @@ impl TypeResolver {
             self.type_name_map.insert(rs_type_id, key.clone());
             self.name_serializer_map.insert(
                 key,
-                Harness::new(
+                Arc::from(Harness::new(
                     write::<T>,
                     read::<T>,
                     write_data::<T>,
                     read_data::<T>,
                     to_serializer::<T>,
-                ),
+                )),
             );
+            let string_key = (namespace.original.clone(), type_name.original.clone());
+            self.type_info_map_by_name
+                .insert(string_key, type_info.clone());
         } else {
             let type_id = type_info.type_id;
             if self.serializer_map.contains_key(&type_id) {
@@ -380,13 +418,13 @@ impl TypeResolver {
             self.type_id_map.insert(rs_type_id, type_id);
             self.serializer_map.insert(
                 type_id,
-                Harness::new(
+                Arc::from(Harness::new(
                     write::<T>,
                     read::<T>,
                     write_data::<T>,
                     read_data::<T>,
                     to_serializer::<T>,
-                ),
+                )),
             );
         }
     }
@@ -394,30 +432,32 @@ impl TypeResolver {
     pub fn register_serializer<T: Serializer + ForyDefault>(&mut self, type_info: &TypeInfo) {
         fn write<T2: 'static + Serializer>(
             this: &dyn Any,
+            fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
         ) {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => {
-                    v.fory_write(context, is_field);
+                    v.fory_write(fory, context, is_field);
                 }
                 None => todo!(),
             }
         }
 
         fn read<T2: 'static + Serializer + ForyDefault>(
+            fory: &Fory,
             context: &mut ReadContext,
             is_field: bool,
             skip_ref_flag: bool,
         ) -> Result<Box<dyn Any>, Error> {
             if skip_ref_flag {
-                match T2::fory_read_data(context, is_field) {
+                match T2::fory_read_data(fory, context, is_field) {
                     Ok(v) => Ok(Box::new(v)),
                     Err(e) => Err(e),
                 }
             } else {
-                match T2::fory_read(context, is_field) {
+                match T2::fory_read(fory, context, is_field) {
                     Ok(v) => Ok(Box::new(v)),
                     Err(e) => Err(e),
                 }
@@ -426,23 +466,25 @@ impl TypeResolver {
 
         fn write_data<T2: 'static + Serializer>(
             this: &dyn Any,
+            fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
         ) {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => {
-                    T2::fory_write_data(v, context, is_field);
+                    T2::fory_write_data(v, fory, context, is_field);
                 }
                 None => todo!(),
             }
         }
 
         fn read_data<T2: 'static + Serializer + ForyDefault>(
+            fory: &Fory,
             context: &mut ReadContext,
             is_field: bool,
         ) -> Result<Box<dyn Any>, Error> {
-            match T2::fory_read_data(context, is_field) {
+            match T2::fory_read_data(fory, context, is_field) {
                 Ok(v) => Ok(Box::new(v)),
                 Err(e) => Err(e),
             }
@@ -450,9 +492,9 @@ impl TypeResolver {
 
         fn to_serializer<T2: 'static + Serializer>(
             boxed_any: Box<dyn Any>,
-        ) -> Result<Box<dyn crate::serializer::Serializer>, Error> {
+        ) -> Result<Box<dyn Serializer>, Error> {
             match boxed_any.downcast::<T2>() {
-                Ok(concrete) => Ok(Box::new(*concrete) as Box<dyn crate::serializer::Serializer>),
+                Ok(concrete) => Ok(Box::new(*concrete) as Box<dyn Serializer>),
                 Err(_) => Err(Error::Other(anyhow::anyhow!(
                     "Failed to downcast to concrete type"
                 ))),
@@ -477,13 +519,13 @@ impl TypeResolver {
             self.type_name_map.insert(rs_type_id, key.clone());
             self.name_serializer_map.insert(
                 key,
-                Harness::new(
+                Arc::from(Harness::new(
                     write::<T>,
                     read::<T>,
                     write_data::<T>,
                     read_data::<T>,
                     to_serializer::<T>,
-                ),
+                )),
             );
         } else {
             let type_id = type_info.type_id;
@@ -493,32 +535,28 @@ impl TypeResolver {
             self.type_id_map.insert(rs_type_id, type_id);
             self.serializer_map.insert(
                 type_id,
-                Harness::new(
+                Arc::from(Harness::new(
                     write::<T>,
                     read::<T>,
                     write_data::<T>,
                     read_data::<T>,
                     to_serializer::<T>,
-                ),
+                )),
             );
         }
     }
 
-    pub fn get_harness_by_type(&self, type_id: std::any::TypeId) -> Option<&Harness> {
-        self.get_harness(*self.type_id_map.get(&type_id).unwrap())
-    }
-
-    pub fn get_harness(&self, id: u32) -> Option<&Harness> {
-        self.serializer_map.get(&id)
+    pub fn get_harness(&self, id: u32) -> Option<Arc<Harness>> {
+        self.serializer_map.get(&id).cloned()
     }
 
     pub fn get_name_harness(
         &self,
         namespace: &MetaString,
         type_name: &MetaString,
-    ) -> Option<&Harness> {
+    ) -> Option<Arc<Harness>> {
         let key = (namespace.clone(), type_name.clone());
-        self.name_serializer_map.get(&key)
+        self.name_serializer_map.get(&key).cloned()
     }
 
     pub fn get_ext_harness(&self, id: u32) -> &Harness {
@@ -532,19 +570,6 @@ impl TypeResolver {
         self.name_serializer_map
             .get(&key)
             .expect("named_ext type must be registered in both peers")
-    }
-
-    pub fn get_sorted_field_names<T: StructSerializer>(
-        &self,
-        type_id: std::any::TypeId,
-    ) -> Option<Vec<String>> {
-        let map = self.sorted_field_names_map.borrow();
-        map.get(&type_id).cloned()
-    }
-
-    pub fn set_sorted_field_names<T: StructSerializer>(&self, field_names: &[String]) {
-        let mut map = self.sorted_field_names_map.borrow_mut();
-        map.insert(std::any::TypeId::of::<T>(), field_names.to_owned());
     }
 
     pub fn get_fory_type_id(&self, rust_type_id: std::any::TypeId) -> Option<u32> {

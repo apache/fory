@@ -313,33 +313,36 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         true
     }
 
-    fn fory_write(&self, context: &mut WriteContext, _is_field: bool) {
+    fn fory_write(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
         if let Some(rc) = self.upgrade() {
-            if context.ref_writer.try_write_rc_ref(context.writer, &rc) {
+            if context
+                .ref_writer
+                .try_write_rc_ref(&mut context.writer, &rc)
+            {
                 return;
             }
-            T::fory_write_data(&*rc, context, _is_field);
+            T::fory_write_data(&*rc, fory, context, is_field);
         } else {
             context.writer.write_i8(RefFlag::Null as i8);
         }
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
-        self.fory_write(context, is_field);
+    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        self.fory_write(fory, context, is_field);
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        T::fory_write_type_info(context, is_field);
+    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        T::fory_write_type_info(fory, context, is_field);
     }
 
-    fn fory_read(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    fn fory_read(fory: &Fory, context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader);
 
         match ref_flag {
             RefFlag::Null => Ok(RcWeak::new()),
             RefFlag::RefValue => {
                 context.inc_depth()?;
-                let data = T::fory_read_data(context, _is_field)?;
+                let data = T::fory_read_data(fory, context, is_field)?;
                 context.dec_depth();
                 let rc = Rc::new(data);
                 let ref_id = context.ref_reader.store_rc_ref(rc);
@@ -368,12 +371,16 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         }
     }
 
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        Self::fory_read(context, is_field)
+    fn fory_read_data(
+        fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+    ) -> Result<Self, Error> {
+        Self::fory_read(fory, context, is_field)
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-        T::fory_read_type_info(context, is_field);
+    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
+        T::fory_read_type_info(fory, context, is_field);
     }
 
     fn fory_reserved_space() -> usize {
@@ -409,36 +416,39 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         true
     }
 
-    fn fory_write(&self, context: &mut WriteContext, _is_field: bool) {
+    fn fory_write(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
         if let Some(arc) = self.upgrade() {
             // IMPORTANT: If the target Arc was serialized already, just write a ref
-            if context.ref_writer.try_write_arc_ref(context.writer, &arc) {
+            if context
+                .ref_writer
+                .try_write_arc_ref(&mut context.writer, &arc)
+            {
                 // Already seen, wrote Ref flag + id, we're done
                 return;
             }
             // First time seeing this object, write RefValue and then its data
-            T::fory_write_data(&*arc, context, _is_field);
+            T::fory_write_data(&*arc, fory, context, is_field);
         } else {
             context.writer.write_i8(RefFlag::Null as i8);
         }
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) {
-        self.fory_write(context, is_field);
+    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        self.fory_write(fory, context, is_field);
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) {
-        T::fory_write_type_info(context, is_field);
+    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
+        T::fory_write_type_info(fory, context, is_field);
     }
 
-    fn fory_read(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    fn fory_read(fory: &Fory, context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader);
 
         match ref_flag {
             RefFlag::Null => Ok(ArcWeak::new()),
             RefFlag::RefValue => {
                 context.inc_depth()?;
-                let data = T::fory_read_data(context, _is_field)?;
+                let data = T::fory_read_data(fory, context, _is_field)?;
                 context.dec_depth();
                 let arc = Arc::new(data);
                 let ref_id = context.ref_reader.store_arc_ref(arc);
@@ -469,12 +479,16 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
             _ => Err(anyhow!("Weak can only be Null, RefValue or Ref, got {:?}", ref_flag).into()),
         }
     }
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        Self::fory_read(context, is_field)
+    fn fory_read_data(
+        fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+    ) -> Result<Self, Error> {
+        Self::fory_read(fory, context, is_field)
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) {
-        T::fory_read_type_info(context, is_field);
+    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
+        T::fory_read_type_info(fory, context, is_field);
     }
 
     fn fory_reserved_space() -> usize {

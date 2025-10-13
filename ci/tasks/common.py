@@ -15,7 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import shutil
 import subprocess
 import platform
 import urllib.request as ulib
@@ -88,6 +87,34 @@ def get_bazel_download_url():
     return f"{download_url_base}/bazel-{bazel_version}-{get_os_name_lower()}-{get_os_machine()}"
 
 
+def urlretrieve_with_retries(url, filename, max_attempts=5, initial_delay=2):
+    """Download a URL to filename with retries and exponential backoff.
+
+    Raises the last exception if all attempts fail.
+    """
+    attempt = 1
+    delay = initial_delay
+    last_exc = None
+    while attempt <= max_attempts:
+        try:
+            logging.info(f"Downloading (attempt {attempt}) {url} -> {filename}")
+            ulib.urlretrieve(url, filename)
+            return
+        except Exception as e:
+            logging.error(f"Download attempt {attempt} failed: {e}")
+            last_exc = e
+            if attempt == max_attempts:
+                break
+            logging.info(f"Retrying in {delay} seconds...")
+            import time
+
+            time.sleep(delay)
+            delay *= 2
+            attempt += 1
+    logging.error(f"All {max_attempts} download attempts failed for URL: {url}")
+    raise last_exc
+
+
 def cd_project_subdir(subdir):
     """Change to a subdirectory of the project."""
     os.chdir(os.path.join(PROJECT_ROOT_DIR, subdir))
@@ -117,6 +144,32 @@ def update_shell_profile():
 
 def install_bazel():
     """Download and install bazel."""
+    # Check if bazel is already cached (from GitHub Actions cache)
+    if not is_windows():
+        home_bin = os.path.expanduser("~/bin")
+        bazel_path = os.path.join(home_bin, "bazel")
+
+        # Also check ~/.local/bin for some systems
+        alt_bin = os.path.expanduser("~/.local/bin")
+        alt_bazel_path = os.path.join(alt_bin, "bazel")
+
+        for path in [bazel_path, alt_bazel_path]:
+            if os.path.exists(path) and os.access(path, os.X_OK):
+                logging.info(f"Bazel already exists at {path}, verifying...")
+                try:
+                    # Verify it works
+                    result = exec_cmd(f"{path} --version")
+                    logging.info(f"Cached Bazel binary is valid: {result.strip()}")
+                    logging.info("Skipping Bazel download, using cached binary")
+                    return
+                except Exception as e:
+                    logging.warning(f"Cached Bazel binary at {path} is invalid: {e}")
+                    logging.info("Re-downloading Bazel...")
+                    try:
+                        os.remove(path)
+                    except Exception:
+                        pass
+
     bazel_download_url = get_bazel_download_url()
     logging.info(f"Downloading bazel from: {bazel_download_url}")
 
@@ -124,7 +177,7 @@ def install_bazel():
         # For Windows, download the installer and add it to PATH
         local_name = "bazel.exe"
         try:
-            ulib.urlretrieve(bazel_download_url, local_name)
+            urlretrieve_with_retries(bazel_download_url, local_name)
         except Exception as e:
             logging.error(f"Failed to download bazel: {e}")
             logging.error(f"URL: {bazel_download_url}")
@@ -142,7 +195,7 @@ def install_bazel():
         bazel_path = os.path.join(home_bin, "bazel")
 
         try:
-            ulib.urlretrieve(bazel_download_url, bazel_path)
+            urlretrieve_with_retries(bazel_download_url, bazel_path)
         except Exception as e:
             logging.error(f"Failed to download bazel: {e}")
             logging.error(f"URL: {bazel_download_url}")

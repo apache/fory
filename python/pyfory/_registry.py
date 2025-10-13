@@ -21,6 +21,7 @@ import datetime
 import enum
 import functools
 import logging
+import pickle
 import types
 from typing import TypeVar, Union
 from enum import Enum
@@ -65,6 +66,7 @@ from pyfory.serializer import (
     MethodSerializer,
     UnsupportedSerializer,
     NativeFuncMethodSerializer,
+    PickleBufferSerializer,
 )
 from pyfory.meta.metastring import MetaStringEncoder, MetaStringDecoder
 from pyfory.meta.meta_compressor import DeflaterMetaCompressor
@@ -219,6 +221,7 @@ class TypeResolver:
         register(np.ndarray, serializer=NDArraySerializer)
         register(array.array, serializer=DynamicPyArraySerializer)
         register(types.MappingProxyType, serializer=MappingProxySerializer)
+        register(pickle.PickleBuffer, serializer=PickleBufferSerializer)
         if not self.require_registration:
             register(types.ModuleType, serializer=ModuleSerializer)
             self._internal_py_serializer_map = {

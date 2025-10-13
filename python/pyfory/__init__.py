@@ -19,6 +19,7 @@ from pyfory import lib  # noqa: F401 # pylint: disable=unused-import
 from pyfory._fory import (  # noqa: F401 # pylint: disable=unused-import
     Fory,
     Language,
+    ThreadSafeFory,
 )
 
 PYTHON = Language.PYTHON

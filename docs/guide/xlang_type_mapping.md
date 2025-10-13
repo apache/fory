@@ -1,6 +1,6 @@
 ---
 title: Type Mapping of Xlang Serialization
-sidebar_position: 3
+sidebar_position: 7
 id: xlang_type_mapping
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more

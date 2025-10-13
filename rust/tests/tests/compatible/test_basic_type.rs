@@ -439,13 +439,13 @@ fn deserialize_nullable(fory: &Fory, context: &mut ReadContext, auto_conv: bool,
 fn basic() {
     let fory = Fory::default().mode(Compatible);
     // serialize
-    let mut writer = Writer::default();
-    let mut write_context = WriteContext::new(&fory, &mut writer);
+    let writer = Writer::default();
+    let mut write_context = WriteContext::new(writer);
     serialize_non_null(&fory, &mut write_context);
     // deserialize
     let bytes = write_context.writer.dump();
     let reader = Reader::new(bytes.as_slice());
-    let mut read_context = ReadContext::new(&fory, reader, 5);
+    let mut read_context = ReadContext::new(reader, 5);
     deserialize_non_null(&fory, &mut read_context, false, true);
 }
 
@@ -454,13 +454,13 @@ fn basic() {
 fn basic_nullable() {
     let fory = Fory::default().mode(Compatible);
     // serialize
-    let mut writer = Writer::default();
-    let mut write_context = WriteContext::new(&fory, &mut writer);
+    let writer = Writer::default();
+    let mut write_context = WriteContext::new(writer);
     serialize_nullable(&fory, &mut write_context);
     // deserialize
     let bytes = write_context.writer.dump();
     let reader = Reader::new(bytes.as_slice());
-    let mut read_context = ReadContext::new(&fory, reader, 5);
+    let mut read_context = ReadContext::new(reader, 5);
     deserialize_nullable(&fory, &mut read_context, false, true);
 }
 
@@ -469,21 +469,21 @@ fn basic_nullable() {
 fn auto_conv() {
     let fory = Fory::default().mode(Compatible);
     // serialize_non-null
-    let mut writer = Writer::default();
-    let mut write_context = WriteContext::new(&fory, &mut writer);
+    let writer = Writer::default();
+    let mut write_context = WriteContext::new(writer);
     serialize_non_null(&fory, &mut write_context);
     // deserialize_nullable
     let bytes = write_context.writer.dump();
     let reader = Reader::new(bytes.as_slice());
-    let mut read_context: ReadContext<'_, '_> = ReadContext::new(&fory, reader, 5);
+    let mut read_context: ReadContext = ReadContext::new(reader, 5);
     deserialize_nullable(&fory, &mut read_context, true, true);
     // serialize_nullable
-    let mut writer = Writer::default();
-    let mut write_context = WriteContext::new(&fory, &mut writer);
+    let writer = Writer::default();
+    let mut write_context = WriteContext::new(writer);
     serialize_nullable(&fory, &mut write_context);
     // deserialize_non-null
     let bytes = write_context.writer.dump();
     let reader = Reader::new(bytes.as_slice());
-    let mut read_context = ReadContext::new(&fory, reader, 5);
+    let mut read_context = ReadContext::new(reader, 5);
     deserialize_non_null(&fory, &mut read_context, true, true);
 }
