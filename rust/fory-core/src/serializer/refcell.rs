@@ -58,23 +58,41 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
         Ok(RefCell::new(T::fory_read_data(fory, context, is_field)?))
     }
 
-    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
-        T::fory_read_type_info(fory, context, is_field);
+    fn fory_read_type_info(
+        fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        T::fory_read_type_info(fory, context, is_field)
     }
 
-    fn fory_write(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+    fn fory_write(
+        &self,
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
         // Don't add ref tracking for RefCell itself, just delegate to inner type
         // The inner type will handle its own ref tracking
-        T::fory_write(&*self.borrow(), fory, context, is_field);
+        T::fory_write(&*self.borrow(), fory, context, is_field)
     }
 
-    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+    fn fory_write_data(
+        &self,
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
         // When called from Rc, just delegate to inner type's data serialization
         T::fory_write_data(&*self.borrow(), fory, context, is_field)
     }
 
-    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        T::fory_write_type_info(fory, context, is_field);
+    fn fory_write_type_info(
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        T::fory_write_type_info(fory, context, is_field)
     }
 
     fn fory_reserved_space() -> usize {
@@ -82,11 +100,11 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
         T::fory_reserved_space()
     }
 
-    fn fory_get_type_id(fory: &Fory) -> u32 {
+    fn fory_get_type_id(fory: &Fory) -> Result<u32, Error> {
         T::fory_get_type_id(fory)
     }
 
-    fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+    fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, Error> {
         (*self.borrow()).fory_type_id_dyn(fory)
     }
 

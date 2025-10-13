@@ -45,8 +45,8 @@ fn simple() {
     }
     let mut fory1 = Fory::default().compatible(true);
     let mut fory2 = Fory::default().compatible(true);
-    fory1.register::<Animal1>(999);
-    fory2.register::<Animal2>(999);
+    fory1.register::<Animal1>(999).unwrap();
+    fory2.register::<Animal2>(999).unwrap();
     let animal: Animal1 = Animal1 {
         f1: HashMap::from([(1, vec![2])]),
         f2: String::from("hello"),
@@ -56,7 +56,7 @@ fn simple() {
         f7: 43,
         last: 44,
     };
-    let bin = fory1.serialize(&animal);
+    let bin = fory1.serialize(&animal).unwrap();
     let obj: Animal2 = fory2.deserialize(&bin).unwrap();
     assert_eq!(animal.f1, obj.f1);
     assert_eq!(animal.f3, obj.f3);
@@ -84,14 +84,14 @@ fn skip_option() {
     }
     let mut fory1 = Fory::default().compatible(true);
     let mut fory2 = Fory::default().compatible(true);
-    fory1.register::<Item1>(999);
-    fory2.register::<Item2>(999);
+    fory1.register::<Item1>(999).unwrap();
+    fory2.register::<Item2>(999).unwrap();
     let item1 = Item1 {
         f1: None,
         f2: Some(String::from("f2")),
         last: 42,
     };
-    let bin = fory1.serialize(&item1);
+    let bin = fory1.serialize(&item1).unwrap();
     let item2: Item2 = fory2.deserialize(&bin).unwrap();
 
     assert_eq!(item2.f1, i8::default());
@@ -123,16 +123,16 @@ fn nonexistent_struct() {
     }
     let mut fory1 = Fory::default().compatible(true);
     let mut fory2 = Fory::default().compatible(true);
-    fory1.register::<Item1>(899);
-    fory1.register::<Person1>(999);
-    fory2.register::<Item2>(799);
-    fory2.register::<Person2>(999);
+    fory1.register::<Item1>(899).unwrap();
+    fory1.register::<Person1>(999).unwrap();
+    fory2.register::<Item2>(799).unwrap();
+    fory2.register::<Person2>(999).unwrap();
     let person = Person1 {
         f2: Item1 { f1: 42 },
         f3: 24,
         last: String::from("foo"),
     };
-    let bin = fory1.serialize(&person);
+    let bin = fory1.serialize(&person).unwrap();
     let obj: Person2 = fory2.deserialize(&bin).unwrap();
     assert_eq!(obj.f2, Item2::default());
     assert_eq!(obj.f3, i64::default());
@@ -152,7 +152,7 @@ fn option() {
         last: i64,
     }
     let mut fory = Fory::default().compatible(true);
-    fory.register::<Animal>(999);
+    fory.register::<Animal>(999).unwrap();
     let animal: Animal = Animal {
         f1: Some(String::from("f1")),
         f2: None,
@@ -160,7 +160,7 @@ fn option() {
         f5: vec![Some(vec![Some(String::from("f1"))])],
         last: 666,
     };
-    let bin = fory.serialize(&animal);
+    let bin = fory.serialize(&animal).unwrap();
     let obj: Animal = fory.deserialize(&bin).unwrap();
     assert_eq!(animal, obj);
 }
@@ -197,8 +197,8 @@ fn nullable() {
 
     let mut fory1 = Fory::default().compatible(true);
     let mut fory2 = Fory::default().compatible(true);
-    fory1.register::<Item1>(999);
-    fory2.register::<Item2>(999);
+    fory1.register::<Item1>(999).unwrap();
+    fory2.register::<Item2>(999).unwrap();
 
     let item1 = Item1 {
         f2: 43,
@@ -209,7 +209,7 @@ fn nullable() {
         last: 666,
     };
 
-    let bin = fory1.serialize(&item1);
+    let bin = fory1.serialize(&item1).unwrap();
     let item2: Item2 = fory2.deserialize(&bin).unwrap();
     assert_eq!(item2.f2.unwrap(), item1.f2);
     assert_eq!(item2.f3, item1.f3.unwrap());
@@ -251,8 +251,8 @@ fn nullable_container() {
 
     let mut fory1 = Fory::default().compatible(true);
     let mut fory2 = Fory::default().compatible(true);
-    fory1.register::<Item1>(999);
-    fory2.register::<Item2>(999);
+    fory1.register::<Item1>(999).unwrap();
+    fory2.register::<Item2>(999).unwrap();
 
     let item1 = Item1 {
         f1: vec![44, 45],
@@ -267,7 +267,7 @@ fn nullable_container() {
         last: 666,
     };
 
-    let bin = fory1.serialize(&item1);
+    let bin = fory1.serialize(&item1).unwrap();
     let item2: Item2 = fory2.deserialize(&bin).unwrap();
 
     assert_eq!(item2.f1.unwrap(), item1.f1);
@@ -301,8 +301,8 @@ fn inner_nullable() {
     }
     let mut fory1 = Fory::default().compatible(true);
     let mut fory2 = Fory::default().compatible(true);
-    fory1.register::<Item1>(999);
-    fory2.register::<Item2>(999);
+    fory1.register::<Item1>(999).unwrap();
+    fory2.register::<Item2>(999).unwrap();
 
     let item1 = Item1 {
         f1: vec![None, Some("hello".to_string())],
@@ -310,7 +310,7 @@ fn inner_nullable() {
         f3: HashMap::from([(44, None), (45, Some(46))]),
         last: 666,
     };
-    let bin = fory1.serialize(&item1);
+    let bin = fory1.serialize(&item1).unwrap();
     let item2: Item2 = fory2.deserialize(&bin).unwrap();
 
     assert_eq!(item2.f1, vec![String::default(), "hello".to_string()]);
@@ -345,10 +345,10 @@ fn nullable_struct() {
     }
     let mut fory1 = Fory::default().compatible(true);
     let mut fory2 = Fory::default().compatible(true);
-    fory1.register::<Item>(199);
-    fory1.register::<Person1>(200);
-    fory2.register::<Item>(199);
-    fory2.register::<Person2>(200);
+    fory1.register::<Item>(199).unwrap();
+    fory1.register::<Person1>(200).unwrap();
+    fory2.register::<Item>(199).unwrap();
+    fory2.register::<Person2>(200).unwrap();
 
     let person1 = Person1 {
         f1: Item {
@@ -364,7 +364,7 @@ fn nullable_struct() {
         }),
         last: 46,
     };
-    let bin = fory1.serialize(&person1);
+    let bin = fory1.serialize(&person1).unwrap();
     let person2: Person2 = fory2.deserialize(&bin).unwrap();
 
     assert_eq!(person2.f1.unwrap(), person1.f1);
@@ -418,13 +418,13 @@ fn enum_without_payload() {
     }
 
     let mut fory1 = Fory::default().compatible(true).xlang(true);
-    fory1.register::<Color1>(101);
-    fory1.register::<Color2>(102);
-    fory1.register::<Person1>(103);
+    fory1.register::<Color1>(101).unwrap();
+    fory1.register::<Color2>(102).unwrap();
+    fory1.register::<Person1>(103).unwrap();
     let mut fory2 = Fory::default().compatible(true).xlang(true);
-    fory2.register::<Color1>(101);
-    fory2.register::<Color2>(102);
-    fory2.register::<Person2>(103);
+    fory2.register::<Color1>(101).unwrap();
+    fory2.register::<Color2>(102).unwrap();
+    fory2.register::<Person2>(103).unwrap();
 
     let person1 = Person1 {
         f1: Color1::Blue,
@@ -436,7 +436,7 @@ fn enum_without_payload() {
         f8: Color1::Red,
         last: 10,
     };
-    let bin = fory1.serialize(&person1);
+    let bin = fory1.serialize(&person1).unwrap();
     let person2: Person2 = fory2.deserialize(&bin).expect("");
     assert_eq!(person2.f1, person1.f1);
     assert_eq!(person2.f2, Color2::default());
@@ -482,11 +482,11 @@ fn named_enum() {
         last: i8,
     }
     let mut fory1 = Fory::default().compatible(true).xlang(true);
-    fory1.register_by_name::<Color>("a");
-    fory1.register::<Item1>(101);
+    fory1.register_by_name::<Color>("a").unwrap();
+    fory1.register::<Item1>(101).unwrap();
     let mut fory2 = Fory::default().compatible(true).xlang(true);
-    fory2.register_by_name::<Color>("a");
-    fory2.register::<Item2>(101);
+    fory2.register_by_name::<Color>("a").unwrap();
+    fory2.register::<Item2>(101).unwrap();
     let item1 = Item1 {
         f1: Color::Red,
         f2: Color::Blue,
@@ -508,7 +508,7 @@ fn named_enum() {
         f6: None,
         last: 42,
     };
-    let bin = fory1.serialize(&item1);
+    let bin = fory1.serialize(&item1).unwrap();
     let actual_item2: Item2 = fory2.deserialize(&bin).unwrap();
     assert_eq!(expected_item2, actual_item2);
 }
@@ -538,9 +538,9 @@ fn boxed() {
     }
 
     let mut fory1 = Fory::default().compatible(true).xlang(true);
-    fory1.register::<Item1>(101);
+    fory1.register::<Item1>(101).unwrap();
     let mut fory2 = Fory::default().compatible(true).xlang(true);
-    fory2.register::<Item2>(101);
+    fory2.register::<Item2>(101).unwrap();
 
     let f1 = 1;
     let f2 = 2;
@@ -556,7 +556,7 @@ fn boxed() {
         f5,
         f6,
     };
-    let bytes = fory1.serialize(&item1);
+    let bytes = fory1.serialize(&item1).unwrap();
     let item2: Item2 = fory2.deserialize(&bytes).unwrap();
     assert_eq!(item2.f1, f1);
     assert_eq!(item2.f2.unwrap(), f2);
@@ -565,27 +565,27 @@ fn boxed() {
     assert_eq!(item2.f5, i32::default());
     assert_eq!(item2.f6, f6);
 
-    let bytes = fory1.serialize(&f1);
+    let bytes = fory1.serialize(&f1).unwrap();
     let item2_f1: i32 = fory2.deserialize(&bytes).unwrap();
     assert_eq!(item2.f1, item2_f1);
 
-    let bytes = fory1.serialize(&f2);
+    let bytes = fory1.serialize(&f2).unwrap();
     let item2_f2: Option<i32> = fory2.deserialize(&bytes).unwrap();
     assert_eq!(item2.f2, item2_f2);
 
-    let bytes = fory1.serialize(&f3);
+    let bytes = fory1.serialize(&f3).unwrap();
     let item2_f3: Option<i32> = fory2.deserialize(&bytes).unwrap();
     assert_eq!(item2.f3, item2_f3);
 
-    let bytes = fory1.serialize(&f4);
+    let bytes = fory1.serialize(&f4).unwrap();
     let item2_f4: i32 = fory2.deserialize(&bytes).unwrap();
     assert_eq!(item2.f4, item2_f4);
 
-    let bytes = fory1.serialize(&f5);
+    let bytes = fory1.serialize(&f5).unwrap();
     let item2_f5: i32 = fory2.deserialize(&bytes).unwrap();
     assert_eq!(item2.f5, item2_f5);
 
-    let bytes = fory1.serialize(&f6);
+    let bytes = fory1.serialize(&f6).unwrap();
     let item2_f6: Option<i32> = fory2.deserialize(&bytes).unwrap();
     assert_eq!(item2.f6, item2_f6);
 }

@@ -15,7 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::bail;
 use crate::buffer::{Reader, Writer};
+use crate::error::Error;
 use crate::types::RefFlag;
 use std::any::Any;
 use std::collections::HashMap;
@@ -41,11 +43,11 @@ use std::sync::Arc;
 /// let rc = Rc::new(42);
 ///
 /// // First encounter - returns false, indicating object should be serialized
-/// assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc));
+/// assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc).unwrap());
 ///
 /// // Second encounter - returns true, indicating reference was written
 /// let rc2 = rc.clone();
-/// assert!(ref_writer.try_write_rc_ref(&mut writer, &rc2));
+/// assert!(ref_writer.try_write_rc_ref(&mut writer, &rc2).unwrap());
 /// ```
 #[derive(Default)]
 pub struct RefWriter {
@@ -78,20 +80,24 @@ impl RefWriter {
     ///
     /// * `true` if a reference was written
     /// * `false` if this is the first occurrence of the object
-    pub fn try_write_rc_ref<T: ?Sized>(&mut self, writer: &mut Writer, rc: &Rc<T>) -> bool {
+    pub fn try_write_rc_ref<T: ?Sized>(
+        &mut self,
+        writer: &mut Writer,
+        rc: &Rc<T>,
+    ) -> Result<bool, Error> {
         let ptr_addr = Rc::as_ptr(rc) as *const () as usize;
 
-        if let Some(&ref_id) = self.refs.get(&ptr_addr) {
-            writer.write_i8(RefFlag::Ref as i8);
-            writer.write_u32(ref_id);
+        Ok(if let Some(&ref_id) = self.refs.get(&ptr_addr) {
+            writer.write_i8(RefFlag::Ref as i8)?;
+            writer.write_u32(ref_id)?;
             true
         } else {
             let ref_id = self.next_ref_id;
             self.next_ref_id += 1;
             self.refs.insert(ptr_addr, ref_id);
-            writer.write_i8(RefFlag::RefValue as i8);
+            writer.write_i8(RefFlag::RefValue as i8)?;
             false
-        }
+        })
     }
 
     /// Attempt to write a reference for an `Arc<T>`.
@@ -109,22 +115,26 @@ impl RefWriter {
     ///
     /// * `true` if a reference was written
     /// * `false` if this is the first occurrence of the object
-    pub fn try_write_arc_ref<T: ?Sized>(&mut self, writer: &mut Writer, arc: &Arc<T>) -> bool {
+    pub fn try_write_arc_ref<T: ?Sized>(
+        &mut self,
+        writer: &mut Writer,
+        arc: &Arc<T>,
+    ) -> Result<bool, Error> {
         let ptr_addr = Arc::as_ptr(arc) as *const () as usize;
 
-        if let Some(&ref_id) = self.refs.get(&ptr_addr) {
+        Ok(if let Some(&ref_id) = self.refs.get(&ptr_addr) {
             // This object has been seen before, write a reference
-            writer.write_i8(RefFlag::Ref as i8);
-            writer.write_u32(ref_id);
+            writer.write_i8(RefFlag::Ref as i8)?;
+            writer.write_u32(ref_id)?;
             true
         } else {
             // First time seeing this object, register it and return false
             let ref_id = self.next_ref_id;
             self.next_ref_id += 1;
             self.refs.insert(ptr_addr, ref_id);
-            writer.write_i8(RefFlag::RefValue as i8);
+            writer.write_i8(RefFlag::RefValue as i8)?;
             false
-        }
+        })
     }
 
     /// Clear all stored references.
@@ -288,15 +298,15 @@ impl RefReader {
     /// # Panics
     ///
     /// Panics if an invalid reference flag value is encountered
-    pub fn read_ref_flag(&self, reader: &mut Reader) -> RefFlag {
-        let flag_value = reader.read_i8();
-        match flag_value {
+    pub fn read_ref_flag(&self, reader: &mut Reader) -> Result<RefFlag, Error> {
+        let flag_value = reader.read_i8()?;
+        Ok(match flag_value {
             -3 => RefFlag::Null,
             -2 => RefFlag::Ref,
             -1 => RefFlag::NotNullValue,
             0 => RefFlag::RefValue,
-            _ => panic!("Invalid reference flag: {}", flag_value),
-        }
+            _ => bail!("Invalid reference flag: {}", flag_value),
+        })
     }
 
     /// Read a reference ID from the reader.
@@ -308,7 +318,7 @@ impl RefReader {
     /// # Returns
     ///
     /// The reference ID as a u32
-    pub fn read_ref_id(&self, reader: &mut Reader) -> u32 {
+    pub fn read_ref_id(&self, reader: &mut Reader) -> Result<u32, Error> {
         reader.read_u32()
     }
 

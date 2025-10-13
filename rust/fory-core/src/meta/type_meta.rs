@@ -23,7 +23,6 @@ use crate::meta::{
 };
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types::{TypeId, PRIMITIVE_TYPES};
-use anyhow::anyhow;
 use std::clone::Clone;
 use std::cmp::min;
 use std::collections::HashMap;
@@ -83,7 +82,7 @@ impl FieldType {
                 header |= 2;
             }
         }
-        writer.write_varuint32(header);
+        writer.write_varuint32(header)?;
         match self.type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 let generic = self.generics.first().unwrap();
@@ -100,8 +99,12 @@ impl FieldType {
         Ok(())
     }
 
-    fn from_bytes(reader: &mut Reader, read_flag: bool, nullable: Option<bool>) -> Self {
-        let header = reader.read_varuint32();
+    fn from_bytes(
+        reader: &mut Reader,
+        read_flag: bool,
+        nullable: Option<bool>,
+    ) -> Result<Self, Error> {
+        let header = reader.read_varuint32()?;
         let type_id;
         let _nullable;
         if read_flag {
@@ -112,9 +115,9 @@ impl FieldType {
             type_id = header;
             _nullable = nullable.unwrap();
         }
-        match type_id {
+        Ok(match type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
-                let generic = Self::from_bytes(reader, true, None);
+                let generic = Self::from_bytes(reader, true, None)?;
                 Self {
                     type_id,
                     nullable: _nullable,
@@ -122,8 +125,8 @@ impl FieldType {
                 }
             }
             x if x == TypeId::MAP as u32 => {
-                let key_generic = Self::from_bytes(reader, true, None);
-                let val_generic = Self::from_bytes(reader, true, None);
+                let key_generic = Self::from_bytes(reader, true, None)?;
+                let val_generic = Self::from_bytes(reader, true, None)?;
                 Self {
                     type_id,
                     nullable: _nullable,
@@ -135,7 +138,7 @@ impl FieldType {
                 nullable: _nullable,
                 generics: vec![],
             },
-        }
+        })
     }
 }
 
@@ -160,35 +163,35 @@ impl FieldInfo {
             0x00 => Ok(Encoding::Utf8),
             0x01 => Ok(Encoding::AllToLowerSpecial),
             0x02 => Ok(Encoding::LowerUpperDigitSpecial),
-            _ => Err(anyhow!(
-                "Unsupported encoding of field name in type meta, value:{value}"
+            _ => Err(Error::msg(
+                "Unsupported encoding of field name in type meta, value:{value}",
             ))?,
         }
     }
 
-    pub fn from_bytes(reader: &mut Reader) -> FieldInfo {
-        let header = reader.read_u8();
+    pub fn from_bytes(reader: &mut Reader) -> Result<FieldInfo, Error> {
+        let header = reader.read_u8()?;
         let nullable = (header & 2) != 0;
         // let ref_tracking = (header & 1) != 0;
-        let encoding = Self::u8_to_encoding((header >> 6) & 0b11).unwrap();
+        let encoding = Self::u8_to_encoding((header >> 6) & 0b11)?;
         let mut name_size = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD as u8) as usize;
         if name_size == FIELD_NAME_SIZE_THRESHOLD {
-            name_size += reader.read_varuint32() as usize;
+            name_size += reader.read_varuint32()? as usize;
         }
         name_size += 1;
 
-        let field_type = FieldType::from_bytes(reader, false, Option::from(nullable));
+        let field_type = FieldType::from_bytes(reader, false, Option::from(nullable))?;
 
-        let field_name_bytes = reader.read_bytes(name_size);
+        let field_name_bytes = reader.read_bytes(name_size)?;
 
         let field_name = FIELD_NAME_DECODER
             .decode(field_name_bytes, encoding)
             .unwrap();
-        FieldInfo {
+        Ok(FieldInfo {
             field_id: -1i16,
             field_name: field_name.original,
             field_type,
-        }
+        })
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
@@ -213,9 +216,9 @@ impl FieldInfo {
             .position(|x| *x == meta_string.encoding)
             .unwrap() as u8;
         header |= encoding_idx << 6;
-        writer.write_u8(header);
+        writer.write_u8(header)?;
         if name_size >= FIELD_NAME_SIZE_THRESHOLD {
-            writer.write_varuint32((name_size - FIELD_NAME_SIZE_THRESHOLD) as u32);
+            writer.write_varuint32((name_size - FIELD_NAME_SIZE_THRESHOLD) as u32)?;
         }
         self.field_type.to_bytes(&mut writer, false, nullable)?;
         // write field_name
@@ -282,49 +285,54 @@ impl TypeMetaLayer {
         &self.field_infos
     }
 
-    fn write_name(writer: &mut Writer, name: &MetaString, encodings: &[Encoding]) {
+    fn write_name(
+        writer: &mut Writer,
+        name: &MetaString,
+        encodings: &[Encoding],
+    ) -> Result<(), Error> {
         let encoding_idx = encodings.iter().position(|x| *x == name.encoding).unwrap() as u8;
         let bytes = name.bytes.as_slice();
         if bytes.len() >= BIG_NAME_THRESHOLD {
-            writer.write_u8((BIG_NAME_THRESHOLD << 2) as u8 | encoding_idx);
-            writer.write_varuint32((bytes.len() - BIG_NAME_THRESHOLD) as u32);
+            writer.write_u8((BIG_NAME_THRESHOLD << 2) as u8 | encoding_idx)?;
+            writer.write_varuint32((bytes.len() - BIG_NAME_THRESHOLD) as u32)?;
         } else {
-            writer.write_u8((bytes.len() << 2) as u8 | encoding_idx);
+            writer.write_u8((bytes.len() << 2) as u8 | encoding_idx)?;
         }
         writer.write_bytes(bytes);
+        Ok(())
     }
 
-    pub fn write_namespace(&self, writer: &mut Writer) {
-        Self::write_name(writer, &self.namespace, NAMESPACE_ENCODINGS);
+    pub fn write_namespace(&self, writer: &mut Writer) -> Result<(), Error> {
+        Self::write_name(writer, &self.namespace, NAMESPACE_ENCODINGS)
     }
 
-    pub fn write_type_name(&self, writer: &mut Writer) {
-        Self::write_name(writer, &self.type_name, TYPE_NAME_ENCODINGS);
+    pub fn write_type_name(&self, writer: &mut Writer) -> Result<(), Error> {
+        Self::write_name(writer, &self.type_name, TYPE_NAME_ENCODINGS)
     }
 
     fn read_name(
         reader: &mut Reader,
         decoder: &MetaStringDecoder,
         encodings: &[Encoding],
-    ) -> MetaString {
-        let header = reader.read_u8();
+    ) -> Result<MetaString, Error> {
+        let header = reader.read_u8()?;
         let encoding_idx = header & 0b11;
         let length = header >> 2;
         let length = if length >= BIG_NAME_THRESHOLD as u8 {
-            BIG_NAME_THRESHOLD + reader.read_varuint32() as usize
+            BIG_NAME_THRESHOLD + reader.read_varuint32()? as usize
         } else {
             length as usize
         };
-        let bytes = reader.read_bytes(length);
+        let bytes = reader.read_bytes(length)?;
         let encoding = encodings[encoding_idx as usize];
-        decoder.decode(bytes, encoding).unwrap()
+        decoder.decode(bytes, encoding)
     }
 
-    pub fn read_namespace(reader: &mut Reader) -> MetaString {
+    pub fn read_namespace(reader: &mut Reader) -> Result<MetaString, Error> {
         Self::read_name(reader, &NAMESPACE_DECODER, NAMESPACE_ENCODINGS)
     }
 
-    pub fn read_type_name(reader: &mut Reader) -> MetaString {
+    pub fn read_type_name(reader: &mut Reader) -> Result<MetaString, Error> {
         Self::read_name(reader, &TYPE_NAME_DECODER, TYPE_NAME_ENCODINGS)
     }
 
@@ -338,15 +346,15 @@ impl TypeMetaLayer {
         if self.register_by_name {
             meta_header |= REGISTER_BY_NAME_FLAG;
         }
-        writer.write_u8(meta_header);
+        writer.write_u8(meta_header)?;
         if num_fields >= SMALL_NUM_FIELDS_THRESHOLD {
-            writer.write_varuint32((num_fields - SMALL_NUM_FIELDS_THRESHOLD) as u32);
+            writer.write_varuint32((num_fields - SMALL_NUM_FIELDS_THRESHOLD) as u32)?;
         }
         if self.register_by_name {
-            self.write_namespace(&mut writer);
-            self.write_type_name(&mut writer);
+            self.write_namespace(&mut writer)?;
+            self.write_type_name(&mut writer)?;
         } else {
-            writer.write_varuint32(self.type_id);
+            writer.write_varuint32(self.type_id)?;
         }
         for field in self.field_infos.iter() {
             writer.write_bytes(field.to_bytes()?.as_slice());
@@ -457,22 +465,25 @@ impl TypeMetaLayer {
         sorted_field_infos
     }
 
-    fn from_bytes(reader: &mut Reader, type_resolver: &TypeResolver) -> TypeMetaLayer {
-        let meta_header = reader.read_u8();
+    fn from_bytes(
+        reader: &mut Reader,
+        type_resolver: &TypeResolver,
+    ) -> Result<TypeMetaLayer, Error> {
+        let meta_header = reader.read_u8()?;
         let register_by_name = (meta_header & REGISTER_BY_NAME_FLAG) != 0;
         let mut num_fields = meta_header as usize & SMALL_NUM_FIELDS_THRESHOLD;
         if num_fields == SMALL_NUM_FIELDS_THRESHOLD {
-            num_fields += reader.read_varuint32() as usize;
+            num_fields += reader.read_varuint32()? as usize;
         }
         let type_id;
         let namespace;
         let type_name;
         if register_by_name {
-            namespace = Self::read_namespace(reader);
-            type_name = Self::read_type_name(reader);
+            namespace = Self::read_namespace(reader)?;
+            type_name = Self::read_type_name(reader)?;
             type_id = 0;
         } else {
-            type_id = reader.read_varuint32();
+            type_id = reader.read_varuint32()?;
             let empty_name = MetaString::default();
             namespace = empty_name.clone();
             type_name = empty_name;
@@ -480,7 +491,7 @@ impl TypeMetaLayer {
 
         let mut field_infos = Vec::with_capacity(num_fields);
         for _ in 0..num_fields {
-            field_infos.push(FieldInfo::from_bytes(reader));
+            field_infos.push(FieldInfo::from_bytes(reader)?);
         }
         let mut sorted_field_infos = Self::sort_field_infos(field_infos);
 
@@ -494,13 +505,13 @@ impl TypeMetaLayer {
             Self::assign_field_ids(type_info_current, &mut sorted_field_infos);
         }
         // if no type found, keep all fields id as -1 to be skipped.
-        TypeMetaLayer::new(
+        Ok(TypeMetaLayer::new(
             type_id,
             namespace,
             type_name,
             register_by_name,
             sorted_field_infos,
-        )
+        ))
     }
 
     fn assign_field_ids(type_info_current: &TypeInfo, field_infos: &mut [FieldInfo]) {
@@ -578,11 +589,14 @@ impl TypeMeta {
         }
     }
     #[allow(unused_assignments)]
-    pub fn from_bytes(reader: &mut Reader, type_resolver: &TypeResolver) -> TypeMeta {
-        let header = reader.read_i64();
+    pub fn from_bytes(
+        reader: &mut Reader,
+        type_resolver: &TypeResolver,
+    ) -> Result<TypeMeta, Error> {
+        let header = reader.read_i64()?;
         let mut meta_size = header & META_SIZE_MASK;
         if meta_size == META_SIZE_MASK {
-            meta_size += reader.read_varuint32() as i64;
+            meta_size += reader.read_varuint32()? as i64;
         }
 
         // let write_fields_meta = (header & HAS_FIELDS_META_FLAG) != 0;
@@ -591,11 +605,11 @@ impl TypeMeta {
 
         // let current_meta_size = 0;
         // while current_meta_size < meta_size {}
-        let layer = TypeMetaLayer::from_bytes(reader, type_resolver);
-        TypeMeta {
+        let layer = TypeMetaLayer::from_bytes(reader, type_resolver)?;
+        Ok(TypeMeta {
             layer,
             hash: header,
-        }
+        })
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
@@ -619,9 +633,9 @@ impl TypeMeta {
         }
         let meta_hash = murmurhash3_x64_128(layers_writer.dump().as_slice(), 47).0 as i64;
         header |= (meta_hash << (64 - NUM_HASH_BITS)).abs();
-        result.write_i64(header);
+        result.write_i64(header)?;
         if meta_size >= META_SIZE_MASK {
-            result.write_varuint32((meta_size - META_SIZE_MASK) as u32);
+            result.write_varuint32((meta_size - META_SIZE_MASK) as u32)?;
         }
         result.write_bytes(layers_writer.dump().as_slice());
         Ok(result.dump())

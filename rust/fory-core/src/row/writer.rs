@@ -15,9 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::buffer::Writer;
-
 use super::{bit_util::calculate_bitmap_width_in_bytes, row::Row};
+use crate::buffer::Writer;
+use crate::error::Error;
 
 pub struct WriteCallbackInfo {
     field_offset: usize,
@@ -110,7 +110,7 @@ impl ArrayWriter<'_> {
         8 + bit_map_width_in_bytes + num_fields * 8
     }
 
-    pub fn new(num_fields: usize, writer: &mut Writer) -> ArrayWriter<'_> {
+    pub fn new(num_fields: usize, writer: &mut Writer) -> Result<ArrayWriter<'_>, Error> {
         let base_offset = writer.len();
         let bit_map_width_in_bytes = calculate_bitmap_width_in_bytes(num_fields);
         let array_writer = ArrayWriter {
@@ -125,9 +125,9 @@ impl ArrayWriter<'_> {
         array_writer
             .field_writer_helper
             .writer
-            .write_u64(num_fields as u64);
+            .write_u64(num_fields as u64)?;
         array_writer.field_writer_helper.writer.skip(fixed_size - 8);
-        array_writer
+        Ok(array_writer)
     }
 
     pub fn get_writer(&mut self) -> &mut Writer {
@@ -181,8 +181,8 @@ impl MapWriter<'_> {
     }
 }
 
-pub fn to_row<'a, T: Row<'a>>(v: &T) -> Vec<u8> {
+pub fn to_row<'a, T: Row<'a>>(v: &T) -> Result<Vec<u8>, Error> {
     let mut writer = Writer::default();
-    T::write(v, &mut writer);
-    writer.dump()
+    T::write(v, &mut writer)?;
+    Ok(writer.dump())
 }

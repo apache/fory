@@ -151,13 +151,13 @@
 //!
 //! // Serialize String
 //! let text = String::from("Hello, Fory!");
-//! let serialized_str = fory.serialize(&text);
+//! let serialized_str = fory.serialize(&text).unwrap();
 //! let deserialized_str: String = fory.deserialize(&serialized_str).unwrap();
 //! assert_eq!(text, deserialized_str);
 //!
 //! // Serialize Vec
 //! let vec_data = vec![1, 2, 3, 4, 5];
-//! let serialized_vec = fory.serialize(&vec_data);
+//! let serialized_vec = fory.serialize(&vec_data).unwrap();
 //! let deserialized_vec: Vec<i32> = fory.deserialize(&serialized_vec).unwrap();
 //! assert_eq!(vec_data, deserialized_vec);
 //!
@@ -165,7 +165,7 @@
 //! let mut map = HashMap::new();
 //! map.insert("key1".to_string(), 100);
 //! map.insert("key2".to_string(), 200);
-//! let serialized_map = fory.serialize(&map);
+//! let serialized_map = fory.serialize(&map).unwrap();
 //! let deserialized_map: HashMap<String, i32> = fory.deserialize(&serialized_map).unwrap();
 //! assert_eq!(map, deserialized_map);
 //! // Register types for object serialization

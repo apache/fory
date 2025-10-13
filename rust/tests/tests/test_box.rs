@@ -25,13 +25,13 @@ fn test_box_primitive() {
 
     // Test Box<i32>
     let value = Box::new(42i32);
-    let bin = fory.serialize(&value);
+    let bin = fory.serialize(&value).unwrap();
     let deserialized: Box<i32> = fory.deserialize(&bin).expect("Should deserialize Box<i32>");
     assert_eq!(*value, *deserialized);
 
     // Test Box<String>
     let value = Box::new("Hello, Box!".to_string());
-    let bin = fory.serialize(&value);
+    let bin = fory.serialize(&value).unwrap();
     let deserialized: Box<String> = fory
         .deserialize(&bin)
         .expect("Should deserialize Box<String>");
@@ -39,7 +39,7 @@ fn test_box_primitive() {
 
     // Test Box<f64>
     let value = Box::new(std::f64::consts::PI);
-    let bin = fory.serialize(&value);
+    let bin = fory.serialize(&value).unwrap();
     let deserialized: Box<f64> = fory.deserialize(&bin).expect("Should deserialize Box<f64>");
     assert_eq!(*value, *deserialized);
 }
@@ -53,14 +53,14 @@ fn test_box_struct() {
     }
 
     let mut fory = Fory::default();
-    fory.register::<Person>(999);
+    fory.register::<Person>(999).unwrap();
 
     let person = Person {
         name: "John Doe".to_string(),
         age: 30,
     };
     let value = Box::new(person);
-    let bin = fory.serialize(&value);
+    let bin = fory.serialize(&value).unwrap();
     let deserialized: Box<Person> = fory
         .deserialize(&bin)
         .expect("Should deserialize Box<Person>");
@@ -76,7 +76,7 @@ fn test_box_struct_separate() {
     }
 
     let mut fory = Fory::default();
-    fory.register::<Person>(999);
+    fory.register::<Person>(999).unwrap();
 
     // Test serializing the Box<Person> directly, not as a field
     let person = Person {
@@ -84,7 +84,7 @@ fn test_box_struct_separate() {
         age: 25,
     };
     let boxed_person = Box::new(person);
-    let bin = fory.serialize(&boxed_person);
+    let bin = fory.serialize(&boxed_person).unwrap();
     let deserialized: Box<Person> = fory
         .deserialize(&bin)
         .expect("Should deserialize Box<Person>");
@@ -97,7 +97,7 @@ fn test_box_collection() {
 
     // Test Box<Vec<i32>>
     let value = Box::new(vec![1, 2, 3, 4, 5]);
-    let bin = fory.serialize(&value);
+    let bin = fory.serialize(&value).unwrap();
     let deserialized: Box<Vec<i32>> = fory
         .deserialize(&bin)
         .expect("Should deserialize Box<Vec<i32>>");
@@ -108,7 +108,7 @@ fn test_box_collection() {
     map.insert("key1".to_string(), 10);
     map.insert("key2".to_string(), 20);
     let value = Box::new(map);
-    let bin = fory.serialize(&value);
+    let bin = fory.serialize(&value).unwrap();
     let deserialized: Box<HashMap<String, i32>> = fory
         .deserialize(&bin)
         .expect("Should deserialize Box<HashMap<String, i32>>");
@@ -121,7 +121,7 @@ fn test_box_option() {
 
     // Test Box<Option<String>> with Some value
     let value = Box::new(Some("Hello".to_string()));
-    let bin = fory.serialize(&value);
+    let bin = fory.serialize(&value).unwrap();
     let deserialized: Box<Option<String>> = fory
         .deserialize(&bin)
         .expect("Should deserialize Box<Option<String>>");
@@ -138,7 +138,7 @@ fn test_nested_box() {
     let fory = Fory::default();
 
     let value = Box::new(Box::new(42i32));
-    let bin = fory.serialize(&value);
+    let bin = fory.serialize(&value).unwrap();
     let deserialized: Box<Box<i32>> = fory
         .deserialize(&bin)
         .expect("Should deserialize Box<Box<i32>>");

@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::ensure;
+use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::{FieldInfo, MetaString, TypeMeta};
 use crate::resolver::context::{ReadContext, WriteContext};
@@ -58,7 +60,7 @@ pub fn type_def<T: Serializer + StructSerializer>(
             }
         }
         if !found {
-            panic!("Field {} not found in field_infos", name);
+            unreachable!("Field {} not found in field_infos", name);
         }
     }
     // assign field id in ascending order
@@ -77,60 +79,79 @@ pub fn type_def<T: Serializer + StructSerializer>(
 }
 
 #[inline(always)]
-pub fn write_type_info<T: Serializer>(fory: &Fory, context: &mut WriteContext, _is_field: bool) {
-    let type_id = T::fory_get_type_id(fory);
-    context.writer.write_varuint32(type_id);
+pub fn write_type_info<T: Serializer>(
+    fory: &Fory,
+    context: &mut WriteContext,
+    _is_field: bool,
+) -> Result<(), Error> {
+    let type_id = T::fory_get_type_id(fory)?;
+    context.writer.write_varuint32(type_id)?;
     let rs_type_id = std::any::TypeId::of::<T>();
 
     if type_id & 0xff == TypeId::NAMED_STRUCT as u32 {
         if fory.is_share_meta() {
-            let meta_index = context.push_meta(fory, rs_type_id) as u32;
-            context.writer.write_varuint32(meta_index);
+            let meta_index = context.push_meta(fory, rs_type_id)? as u32;
+            context.writer.write_varuint32(meta_index)?;
         } else {
-            let type_info = fory.get_type_resolver().get_type_info(rs_type_id);
+            let type_info = fory.get_type_resolver().get_type_info(rs_type_id)?;
             let namespace = type_info.get_namespace().to_owned();
             let type_name = type_info.get_type_name().to_owned();
-            context.write_meta_string_bytes(&namespace);
-            context.write_meta_string_bytes(&type_name);
+            context.write_meta_string_bytes(&namespace)?;
+            context.write_meta_string_bytes(&type_name)?;
         }
     } else if type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
         || type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32
     {
-        let meta_index = context.push_meta(fory, rs_type_id) as u32;
-        context.writer.write_varuint32(meta_index);
+        let meta_index = context.push_meta(fory, rs_type_id)? as u32;
+        context.writer.write_varuint32(meta_index)?;
     }
+    Ok(())
 }
 
 #[inline(always)]
-pub fn read_type_info<T: Serializer>(fory: &Fory, context: &mut ReadContext, _is_field: bool) {
-    let remote_type_id = context.reader.read_varuint32();
-    let local_type_id = T::fory_get_type_id(fory);
-    assert_eq!(remote_type_id, local_type_id);
+pub fn read_type_info<T: Serializer>(
+    fory: &Fory,
+    context: &mut ReadContext,
+    _is_field: bool,
+) -> Result<(), Error> {
+    let remote_type_id = context.reader.read_varuint32()?;
+    let local_type_id = T::fory_get_type_id(fory)?;
+    ensure!(
+        local_type_id == remote_type_id,
+        Error::TypeMismatch(local_type_id, remote_type_id)
+    );
 
     if local_type_id & 0xff == TypeId::NAMED_STRUCT as u32 {
         if fory.is_share_meta() {
-            let _meta_index = context.reader.read_varuint32();
+            let _meta_index = context.reader.read_varuint32()?;
         } else {
-            let _namespace_msb = context.read_meta_string_bytes();
-            let _type_name_msb = context.read_meta_string_bytes();
+            let _namespace_msb = context.read_meta_string_bytes()?;
+            let _type_name_msb = context.read_meta_string_bytes()?;
         }
     } else if local_type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
         || local_type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32
     {
         let _meta_index = context.reader.read_varuint32();
     }
+    Ok(())
 }
 
 #[inline(always)]
-pub fn write<T: Serializer>(this: &T, fory: &Fory, context: &mut WriteContext, _is_field: bool) {
+pub fn write<T: Serializer>(
+    this: &T,
+    fory: &Fory,
+    context: &mut WriteContext,
+    _is_field: bool,
+) -> Result<(), Error> {
     if fory.is_compatible() {
-        context.writer.write_i8(RefFlag::NotNullValue as i8);
-        T::fory_write_type_info(fory, context, false);
-        this.fory_write_data(fory, context, true);
+        context.writer.write_i8(RefFlag::NotNullValue as i8)?;
+        T::fory_write_type_info(fory, context, false)?;
+        this.fory_write_data(fory, context, true)?;
     } else {
         // currently same
-        context.writer.write_i8(RefFlag::NotNullValue as i8);
-        T::fory_write_type_info(fory, context, false);
-        this.fory_write_data(fory, context, true);
+        context.writer.write_i8(RefFlag::NotNullValue as i8)?;
+        T::fory_write_type_info(fory, context, false)?;
+        this.fory_write_data(fory, context, true)?;
     }
+    Ok(())
 }

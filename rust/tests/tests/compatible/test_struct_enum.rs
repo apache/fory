@@ -82,19 +82,21 @@ struct Empty {}
 #[test]
 fn basic() {
     let mut fory1 = Fory::default().compatible(true);
-    fory1.register::<Color>(101);
-    fory1.register::<Item>(102);
-    fory1.register::<Person>(103);
+    fory1.register::<Color>(101).unwrap();
+    fory1.register::<Item>(102).unwrap();
+    fory1.register::<Person>(103).unwrap();
     let mut fory2 = Fory::default().compatible(true);
-    fory2.register_by_name::<Color>("color");
-    fory2.register_by_name::<Item>("item");
-    fory2.register_by_name::<Person>("person");
+    fory2.register_by_name::<Color>("color").unwrap();
+    fory2.register_by_name::<Item>("item").unwrap();
+    fory2.register_by_name::<Person>("person").unwrap();
     for fory in [fory1, fory2] {
         let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
         let person = Person::default();
-        fory.serialize_with_context(&person, &mut write_context);
-        fory.serialize_with_context(&person, &mut write_context);
+        fory.serialize_with_context(&person, &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&person, &mut write_context)
+            .unwrap();
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
         let mut read_context = ReadContext::new(reader, 5);
@@ -108,23 +110,23 @@ fn basic() {
             fory.deserialize_with_context::<Person>(&mut read_context)
                 .unwrap()
         );
-        assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
+        assert_eq!(read_context.reader.slice_after_cursor().unwrap().len(), 0);
     }
 }
 
 #[test]
 fn outer_nullable() {
     let mut fory1 = Fory::default().compatible(true);
-    fory1.register::<Color>(101);
-    fory1.register::<Item>(102);
-    fory1.register::<Person>(103);
+    fory1.register::<Color>(101).unwrap();
+    fory1.register::<Item>(102).unwrap();
+    fory1.register::<Person>(103).unwrap();
     let mut fory2 = Fory::default().compatible(true);
-    fory2.register_by_name::<Color>("color");
-    fory2.register_by_name::<Item>("item");
-    fory2.register_by_name::<Person>("person");
+    fory2.register_by_name::<Color>("color").unwrap();
+    fory2.register_by_name::<Item>("item").unwrap();
+    fory2.register_by_name::<Person>("person").unwrap();
     for fory in [fory1, fory2] {
         let null_person: Option<Person> = None;
-        let bytes = fory.serialize(&null_person);
+        let bytes = fory.serialize(&null_person).unwrap();
         assert_eq!(
             fory.deserialize::<Person>(&bytes).unwrap(),
             Person::default()
@@ -138,23 +140,23 @@ fn skip_basic() {
     let person2_default = Empty::default();
 
     let mut id_fory1 = Fory::default().compatible(true);
-    id_fory1.register::<Color>(101);
-    id_fory1.register::<Item>(102);
-    id_fory1.register::<Person>(103);
+    id_fory1.register::<Color>(101).unwrap();
+    id_fory1.register::<Item>(102).unwrap();
+    id_fory1.register::<Person>(103).unwrap();
     let mut id_fory2 = Fory::default().compatible(true);
-    id_fory2.register::<Empty>(103);
+    id_fory2.register::<Empty>(103).unwrap();
 
     let mut name_fory1 = Fory::default().compatible(true);
-    name_fory1.register_by_name::<Color>("color");
-    name_fory1.register_by_name::<Item>("item");
-    name_fory1.register_by_name::<Person>("person");
+    name_fory1.register_by_name::<Color>("color").unwrap();
+    name_fory1.register_by_name::<Item>("item").unwrap();
+    name_fory1.register_by_name::<Person>("person").unwrap();
     let mut name_fory2 = Fory::default().compatible(true);
-    name_fory2.register_by_name::<Empty>("person");
+    name_fory2.register_by_name::<Empty>("person").unwrap();
 
     for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
-        let bytes = fory1.serialize(&person_default);
+        let bytes = fory1.serialize(&person_default).unwrap();
         assert_eq!(fory2.deserialize::<Empty>(&bytes).unwrap(), person2_default);
-        let bytes = fory2.serialize(&person2_default);
+        let bytes = fory2.serialize(&person2_default).unwrap();
         assert_eq!(fory1.deserialize::<Person>(&bytes).unwrap(), person_default);
     }
 }
@@ -181,28 +183,28 @@ fn nested() {
         f7: Element,
     }
     let mut id_fory1 = Fory::default().compatible(true);
-    id_fory1.register::<Item>(101);
-    id_fory1.register::<Color>(102);
-    id_fory1.register::<Element>(103);
-    id_fory1.register::<Nested>(104);
+    id_fory1.register::<Item>(101).unwrap();
+    id_fory1.register::<Color>(102).unwrap();
+    id_fory1.register::<Element>(103).unwrap();
+    id_fory1.register::<Nested>(104).unwrap();
     let mut id_fory2 = Fory::default().compatible(true);
-    id_fory2.register::<Empty>(104);
+    id_fory2.register::<Empty>(104).unwrap();
 
     let mut name_fory1 = Fory::default().compatible(true);
-    name_fory1.register_by_name::<Item>("item");
-    name_fory1.register_by_name::<Color>("color");
-    name_fory1.register_by_name::<Element>("element");
-    name_fory1.register_by_name::<Nested>("nested");
+    name_fory1.register_by_name::<Item>("item").unwrap();
+    name_fory1.register_by_name::<Color>("color").unwrap();
+    name_fory1.register_by_name::<Element>("element").unwrap();
+    name_fory1.register_by_name::<Nested>("nested").unwrap();
     let mut name_fory2 = Fory::default().compatible(true);
-    name_fory2.register_by_name::<Empty>("nested");
+    name_fory2.register_by_name::<Empty>("nested").unwrap();
 
     for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
-        let bytes = fory1.serialize(&Nested::default());
+        let bytes = fory1.serialize(&Nested::default()).unwrap();
         assert_eq!(
             fory2.deserialize::<Empty>(&bytes).unwrap(),
             Empty::default()
         );
-        let bytes = fory2.serialize(&Empty::default());
+        let bytes = fory2.serialize(&Empty::default()).unwrap();
         assert_eq!(
             fory1.deserialize::<Nested>(&bytes).unwrap(),
             Nested::default()
@@ -288,27 +290,27 @@ fn compatible_nullable() {
         f29: Some(HashMap::<String, i32>::default()),
     };
     let mut id_fory1 = Fory::default().compatible(true);
-    id_fory1.register::<Color>(101);
-    id_fory1.register::<Item>(102);
-    id_fory1.register::<Nonnull>(103);
+    id_fory1.register::<Color>(101).unwrap();
+    id_fory1.register::<Item>(102).unwrap();
+    id_fory1.register::<Nonnull>(103).unwrap();
     let mut id_fory2 = Fory::default().compatible(true);
-    id_fory2.register::<Color>(101);
-    id_fory2.register::<Item>(102);
-    id_fory2.register::<Nullable>(103);
+    id_fory2.register::<Color>(101).unwrap();
+    id_fory2.register::<Item>(102).unwrap();
+    id_fory2.register::<Nullable>(103).unwrap();
 
     let mut name_fory1 = Fory::default().compatible(true);
-    name_fory1.register_by_name::<Color>("color");
-    name_fory1.register_by_name::<Item>("item");
-    name_fory1.register_by_name::<Nonnull>("obj");
+    name_fory1.register_by_name::<Color>("color").unwrap();
+    name_fory1.register_by_name::<Item>("item").unwrap();
+    name_fory1.register_by_name::<Nonnull>("obj").unwrap();
     let mut name_fory2 = Fory::default().compatible(true);
-    name_fory2.register_by_name::<Color>("color");
-    name_fory2.register_by_name::<Item>("item");
-    name_fory2.register_by_name::<Nullable>("obj");
+    name_fory2.register_by_name::<Color>("color").unwrap();
+    name_fory2.register_by_name::<Item>("item").unwrap();
+    name_fory2.register_by_name::<Nullable>("obj").unwrap();
 
     for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
-        let bytes = fory1.serialize(&Nonnull::default());
+        let bytes = fory1.serialize(&Nonnull::default()).unwrap();
         assert_eq!(fory2.deserialize::<Nullable>(&bytes).unwrap(), nullable_obj);
-        let bytes = fory2.serialize(&Nullable::default());
+        let bytes = fory2.serialize(&Nullable::default()).unwrap();
         assert_eq!(
             fory1.deserialize::<Nonnull>(&bytes).unwrap(),
             Nonnull::default()
@@ -351,30 +353,32 @@ fn name_mismatch() {
         f30: HashMap<String, i32>,
     }
     let mut id_fory1 = Fory::default().compatible(true);
-    id_fory1.register::<Color>(101);
-    id_fory1.register::<Item>(102);
-    id_fory1.register::<Person>(103);
+    id_fory1.register::<Color>(101).unwrap();
+    id_fory1.register::<Item>(102).unwrap();
+    id_fory1.register::<Person>(103).unwrap();
     let mut id_fory2 = Fory::default().compatible(true);
-    id_fory2.register::<Color>(101);
-    id_fory2.register::<Item>(102);
-    id_fory2.register::<MismatchPerson>(103);
+    id_fory2.register::<Color>(101).unwrap();
+    id_fory2.register::<Item>(102).unwrap();
+    id_fory2.register::<MismatchPerson>(103).unwrap();
 
     let mut name_fory1 = Fory::default().compatible(true);
-    name_fory1.register_by_name::<Color>("color");
-    name_fory1.register_by_name::<Item>("item");
-    name_fory1.register_by_name::<Person>("person");
+    name_fory1.register_by_name::<Color>("color").unwrap();
+    name_fory1.register_by_name::<Item>("item").unwrap();
+    name_fory1.register_by_name::<Person>("person").unwrap();
     let mut name_fory2 = Fory::default().compatible(true);
-    name_fory2.register_by_name::<Color>("color");
-    name_fory2.register_by_name::<Item>("item");
-    name_fory2.register_by_name::<MismatchPerson>("person");
+    name_fory2.register_by_name::<Color>("color").unwrap();
+    name_fory2.register_by_name::<Item>("item").unwrap();
+    name_fory2
+        .register_by_name::<MismatchPerson>("person")
+        .unwrap();
 
     for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
-        let bytes = fory1.serialize(&Person::default());
+        let bytes = fory1.serialize(&Person::default()).unwrap();
         assert_eq!(
             fory2.deserialize::<MismatchPerson>(&bytes).unwrap(),
             MismatchPerson::default()
         );
-        let bytes = fory2.serialize(&MismatchPerson::default());
+        let bytes = fory2.serialize(&MismatchPerson::default()).unwrap();
         assert_eq!(
             fory1.deserialize::<Person>(&bytes).unwrap(),
             Person::default()
@@ -394,8 +398,13 @@ fn ext() {
         }
     }
     impl Serializer for ExtItem {
-        fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
-            write_data(&self.id, fory, context, is_field);
+        fn fory_write_data(
+            &self,
+            fory: &Fory,
+            context: &mut WriteContext,
+            is_field: bool,
+        ) -> Result<(), fory_core::error::Error> {
+            write_data(&self.id, fory, context, is_field)
         }
         fn fory_read_data(
             fory: &Fory,
@@ -407,7 +416,7 @@ fn ext() {
             })
         }
 
-        fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+        fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, fory_core::error::Error> {
             Self::fory_get_type_id(fory)
         }
 
@@ -421,18 +430,20 @@ fn ext() {
     }
 
     let mut id_fory = Fory::default().compatible(true).xlang(true);
-    id_fory.register_serializer::<ExtItem>(100);
-    id_fory.register::<ExtWrapper>(101);
+    id_fory.register_serializer::<ExtItem>(100).unwrap();
+    id_fory.register::<ExtWrapper>(101).unwrap();
 
     let mut name_fory = Fory::default().compatible(true).xlang(true);
-    name_fory.register_serializer_by_name::<ExtItem>("ext_item");
-    name_fory.register::<ExtWrapper>(101);
+    name_fory
+        .register_serializer_by_name::<ExtItem>("ext_item")
+        .unwrap();
+    name_fory.register::<ExtWrapper>(101).unwrap();
 
     for fory in [id_fory, name_fory] {
         let wrapper = ExtWrapper {
             f1: ExtItem { id: 1 },
         };
-        let bytes = fory.serialize(&wrapper);
+        let bytes = fory.serialize(&wrapper).unwrap();
         assert_eq!(fory.deserialize::<ExtWrapper>(&bytes).unwrap(), wrapper);
     }
 }
@@ -444,8 +455,13 @@ fn skip_ext() {
         id: i32,
     }
     impl Serializer for ExtItem {
-        fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
-            write_data(&self.id, fory, context, is_field);
+        fn fory_write_data(
+            &self,
+            fory: &Fory,
+            context: &mut WriteContext,
+            is_field: bool,
+        ) -> Result<(), fory_core::error::Error> {
+            write_data(&self.id, fory, context, is_field)
         }
         fn fory_read_data(
             fory: &Fory,
@@ -457,7 +473,7 @@ fn skip_ext() {
             })
         }
 
-        fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+        fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, fory_core::error::Error> {
             Self::fory_get_type_id(fory)
         }
 
@@ -475,24 +491,28 @@ fn skip_ext() {
         f1: ExtItem,
     }
     let mut id_fory1 = Fory::default().compatible(true).xlang(true);
-    id_fory1.register_serializer::<ExtItem>(100);
-    id_fory1.register::<ExtWrapper>(101);
+    id_fory1.register_serializer::<ExtItem>(100).unwrap();
+    id_fory1.register::<ExtWrapper>(101).unwrap();
     let mut id_fory2 = Fory::default().compatible(true).xlang(true);
-    id_fory2.register_serializer::<ExtItem>(100);
-    id_fory2.register::<Empty>(101);
+    id_fory2.register_serializer::<ExtItem>(100).unwrap();
+    id_fory2.register::<Empty>(101).unwrap();
 
     let mut name_fory1 = Fory::default().compatible(true).xlang(true);
-    name_fory1.register_serializer_by_name::<ExtItem>("ext_item");
-    name_fory1.register::<ExtWrapper>(101);
+    name_fory1
+        .register_serializer_by_name::<ExtItem>("ext_item")
+        .unwrap();
+    name_fory1.register::<ExtWrapper>(101).unwrap();
     let mut name_fory2 = Fory::default().compatible(true).xlang(true);
-    name_fory2.register_serializer_by_name::<ExtItem>("ext_item");
-    name_fory2.register::<Empty>(101);
+    name_fory2
+        .register_serializer_by_name::<ExtItem>("ext_item")
+        .unwrap();
+    name_fory2.register::<Empty>(101).unwrap();
 
     for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
         let wrapper = ExtWrapper {
             f1: ExtItem { id: 1 },
         };
-        let bytes = fory1.serialize(&wrapper);
+        let bytes = fory1.serialize(&wrapper).unwrap();
         assert_eq!(
             fory2.deserialize::<Empty>(&bytes).unwrap(),
             Empty::default()
@@ -507,8 +527,13 @@ fn compatible_ext() {
         id: i32,
     }
     impl Serializer for ExtItem {
-        fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
-            write_data(&self.id, fory, context, is_field);
+        fn fory_write_data(
+            &self,
+            fory: &Fory,
+            context: &mut WriteContext,
+            is_field: bool,
+        ) -> Result<(), fory_core::error::Error> {
+            write_data(&self.id, fory, context, is_field)
         }
         fn fory_read_data(
             fory: &Fory,
@@ -519,7 +544,7 @@ fn compatible_ext() {
                 id: read_data(fory, context, is_field)?,
             })
         }
-        fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+        fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, fory_core::error::Error> {
             Self::fory_get_type_id(fory)
         }
 
@@ -541,24 +566,28 @@ fn compatible_ext() {
         f1: Option<ExtItem>,
     }
     let mut id_fory1 = Fory::default().compatible(true).xlang(true);
-    id_fory1.register_serializer::<ExtItem>(100);
-    id_fory1.register::<ExtWrapper1>(101);
+    id_fory1.register_serializer::<ExtItem>(100).unwrap();
+    id_fory1.register::<ExtWrapper1>(101).unwrap();
     let mut id_fory2 = Fory::default().compatible(true).xlang(true);
-    id_fory2.register_serializer::<ExtItem>(100);
-    id_fory2.register::<ExtWrapper2>(101);
+    id_fory2.register_serializer::<ExtItem>(100).unwrap();
+    id_fory2.register::<ExtWrapper2>(101).unwrap();
 
     let mut name_fory1 = Fory::default().compatible(true).xlang(true);
-    name_fory1.register_serializer_by_name::<ExtItem>("ext_item");
-    name_fory1.register::<ExtWrapper1>(101);
+    name_fory1
+        .register_serializer_by_name::<ExtItem>("ext_item")
+        .unwrap();
+    name_fory1.register::<ExtWrapper1>(101).unwrap();
     let mut name_fory2 = Fory::default().compatible(true).xlang(true);
-    name_fory2.register_serializer_by_name::<ExtItem>("ext_item");
-    name_fory2.register::<ExtWrapper2>(101);
+    name_fory2
+        .register_serializer_by_name::<ExtItem>("ext_item")
+        .unwrap();
+    name_fory2.register::<ExtWrapper2>(101).unwrap();
 
     for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
         let wrapper = ExtWrapper1 {
             f1: ExtItem { id: 1 },
         };
-        let bytes = fory1.serialize(&wrapper);
+        let bytes = fory1.serialize(&wrapper).unwrap();
         assert_eq!(
             fory2
                 .deserialize::<ExtWrapper2>(&bytes)

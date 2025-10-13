@@ -76,7 +76,7 @@
 //!     email: "alice@example.com".to_string(),
 //! };
 //!
-//! let bytes = fory.serialize(&user);
+//! let bytes = fory.serialize(&user)?;
 //! let decoded: User = fory.deserialize(&bytes)?;
 //! assert_eq!(user, decoded);
 //! # Ok(())
@@ -149,7 +149,7 @@
 //!     ]),
 //! };
 //!
-//! let bytes = fory.serialize(&person);
+//! let bytes = fory.serialize(&person)?;
 //! let decoded: Person = fory.deserialize(&bytes)?;
 //! assert_eq!(person, decoded);
 //! # Ok(())
@@ -190,7 +190,7 @@
 //! let shared = Rc::new(String::from("shared_value"));
 //! let data = vec![shared.clone(), shared.clone(), shared.clone()];
 //!
-//! let bytes = fory.serialize(&data);
+//! let bytes = fory.serialize(&data)?;
 //! let decoded: Vec<Rc<String>> = fory.deserialize(&bytes)?;
 //!
 //! assert_eq!(decoded.len(), 3);
@@ -212,7 +212,7 @@
 //! let shared = Arc::new(String::from("shared_value"));
 //! let data = vec![shared.clone(), shared.clone()];
 //!
-//! let bytes = fory.serialize(&data);
+//! let bytes = fory.serialize(&data)?;
 //! let decoded: Vec<Arc<String>> = fory.deserialize(&bytes)?;
 //!
 //! assert!(Arc::ptr_eq(&decoded[0], &decoded[1]));
@@ -260,7 +260,7 @@
 //!
 //! parent.borrow_mut().children.push(child1.clone());
 //!
-//! let bytes = fory.serialize(&parent);
+//! let bytes = fory.serialize(&parent)?;
 //! let decoded: Rc<RefCell<Node>> = fory.deserialize(&bytes)?;
 //!
 //! assert_eq!(decoded.borrow().children.len(), 1);
@@ -302,7 +302,7 @@
 //!
 //! parent.lock().unwrap().children.push(child.clone());
 //!
-//! let bytes = fory.serialize(&parent);
+//! let bytes = fory.serialize(&parent)?;
 //! let decoded: Arc<Mutex<Node>> = fory.deserialize(&bytes)?;
 //!
 //! assert_eq!(decoded.lock().unwrap().children.len(), 1);
@@ -378,7 +378,7 @@
 //!     }),
 //! };
 //!
-//! let bytes = fory.serialize(&zoo);
+//! let bytes = fory.serialize(&zoo)?;
 //! let decoded: Zoo = fory.deserialize(&bytes)?;
 //!
 //! assert_eq!(decoded.star_animal.name(), "Buddy");
@@ -419,7 +419,7 @@
 //!     name: "Rex".to_string()
 //! });
 //!
-//! let bytes = fory.serialize(&dog);
+//! let bytes = fory.serialize(&dog)?;
 //! let decoded: Rc<dyn Any> = fory.deserialize(&bytes)?;
 //!
 //! let unwrapped = decoded.downcast_ref::<Dog>().unwrap();
@@ -448,7 +448,7 @@
 //!     name: "Whiskers".to_string()
 //! });
 //!
-//! let bytes = fory.serialize(&cat);
+//! let bytes = fory.serialize(&cat)?;
 //! let decoded: Arc<dyn Any> = fory.deserialize(&bytes)?;
 //!
 //! let unwrapped = decoded.downcast_ref::<Cat>().unwrap();
@@ -508,7 +508,7 @@
 //!     ],
 //! };
 //!
-//! let bytes = fory.serialize(&shelter);
+//! let bytes = fory.serialize(&shelter)?;
 //! let decoded: AnimalShelter = fory.deserialize(&bytes)?;
 //!
 //! assert_eq!(decoded.animals_rc[0].name(), "Rex");
@@ -554,7 +554,7 @@
 //! let dog_rc: Rc<dyn Animal> = Rc::new(Dog { name: "Rex".to_string() });
 //! let wrapper = AnimalRc::from(dog_rc);
 //!
-//! let bytes = fory.serialize(&wrapper);
+//! let bytes = fory.serialize(&wrapper)?;
 //! let decoded: AnimalRc = fory.deserialize(&bytes)?;
 //!
 //! // Unwrap back to Rc<dyn Animal>
@@ -565,7 +565,7 @@
 //! let dog_arc: Arc<dyn Animal> = Arc::new(Dog { name: "Buddy".to_string() });
 //! let wrapper = AnimalArc::from(dog_arc);
 //!
-//! let bytes = fory.serialize(&wrapper);
+//! let bytes = fory.serialize(&wrapper)?;
 //! let decoded: AnimalArc = fory.deserialize(&bytes)?;
 //!
 //! let unwrapped: Arc<dyn Animal> = decoded.unwrap();
@@ -634,7 +634,7 @@
 //!     address: "123 Main St".to_string(),
 //! };
 //!
-//! let bytes = fory1.serialize(&person_v1);
+//! let bytes = fory1.serialize(&person_v1)?;
 //! let person_v2: PersonV2 = fory2.deserialize(&bytes)?;
 //!
 //! assert_eq!(person_v2.name, "Alice");
@@ -682,7 +682,7 @@
 //! fory.register::<Status>(1);
 //!
 //! let status = Status::Active;
-//! let bytes = fory.serialize(&status);
+//! let bytes = fory.serialize(&status)?;
 //! let decoded: Status = fory.deserialize(&bytes)?;
 //! assert_eq!(status, decoded);
 //! # Ok(())
@@ -717,20 +717,21 @@
 //! }
 //!
 //! impl Serializer for CustomType {
-//!     fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
-//!         context.writer.write_i32(self.value);
-//!         context.writer.write_varuint32(self.name.len() as u32);
+//!     fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
+//!         context.writer.write_i32(self.value)?;
+//!         context.writer.write_varuint32(self.name.len() as u32)?;
 //!         context.writer.write_utf8_string(&self.name);
+//!         Ok(())
 //!     }
 //!
 //!     fn fory_read_data(fory: &Fory, context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-//!         let value = context.reader.read_i32();
-//!         let len = context.reader.read_varuint32() as usize;
-//!         let name = context.reader.read_utf8_string(len);
+//!         let value = context.reader.read_i32()?;
+//!         let len = context.reader.read_varuint32()? as usize;
+//!         let name = context.reader.read_utf8_string(len)?;
 //!         Ok(Self { value, name })
 //!     }
 //!
-//!     fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+//!     fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, Error> {
 //!         Self::fory_get_type_id(fory)
 //!     }
 //!
@@ -753,7 +754,7 @@
 //!     value: 42,
 //!     name: "test".to_string(),
 //! };
-//! let bytes = fory.serialize(&custom);
+//! let bytes = fory.serialize(&custom)?;
 //! let decoded: CustomType = fory.deserialize(&bytes)?;
 //! assert_eq!(custom, decoded);
 //! # Ok(())
@@ -828,7 +829,7 @@
 //!     is_active: true,
 //! };
 //!
-//! let row_data = to_row(&profile);
+//! let row_data = to_row(&profile).unwrap();
 //! let row = from_row::<UserProfile>(&row_data);
 //!
 //! assert_eq!(row.id(), 12345);
@@ -1023,7 +1024,7 @@
 //! # fn serialize_data() -> Vec<u8> {
 //! FORY.with(|fory| {
 //!     let data = vec![1, 2, 3];
-//!     fory.borrow().serialize(&data)
+//!     fory.borrow().serialize(&data).unwrap()
 //! })
 //! # }
 //! ```

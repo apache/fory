@@ -48,7 +48,8 @@ fn row() {
             f4: vec![-1, 2, -3],
             f5,
         },
-    });
+    })
+    .unwrap();
 
     let obj = from_row::<Bar>(&row);
     let f1: &str = obj.f3().f1();

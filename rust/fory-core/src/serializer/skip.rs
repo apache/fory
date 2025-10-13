@@ -21,7 +21,7 @@ use crate::resolver::context::ReadContext;
 use crate::serializer::collection::{HAS_NULL, IS_SAME_TYPE};
 use crate::serializer::Serializer;
 use crate::types::{RefFlag, TypeId, BASIC_TYPES, CONTAINER_TYPES, PRIMITIVE_TYPES};
-use crate::Fory;
+use crate::{ensure, Fory};
 use chrono::{NaiveDate, NaiveDateTime};
 
 pub fn get_read_ref_flag(field_type: &FieldType) -> bool {
@@ -33,7 +33,7 @@ macro_rules! basic_type_deserialize {
     ($fory:expr, $tid:expr, $context:expr; $(($ty:ty, $id:ident)),+ $(,)?) => {
         $(
             if $tid == TypeId::$id {
-                <$ty as Serializer>::fory_read_type_info($fory, $context, true);
+                <$ty as Serializer>::fory_read_type_info($fory, $context, true)?;
                 <$ty as Serializer>::fory_read_data($fory, $context, true)?;
                 return Ok(());
             }
@@ -52,7 +52,7 @@ pub fn skip_field_value(
     read_ref_flag: bool,
 ) -> Result<(), Error> {
     if read_ref_flag {
-        let ref_flag = context.reader.read_i8();
+        let ref_flag = context.reader.read_i8()?;
         if field_type.nullable && ref_flag == (RefFlag::Null as i8) {
             return Ok(());
         }
@@ -82,11 +82,11 @@ pub fn skip_field_value(
                 );
             } else if CONTAINER_TYPES.contains(&type_id) {
                 if type_id == TypeId::LIST || type_id == TypeId::SET {
-                    let length = context.reader.read_varuint32() as usize;
+                    let length = context.reader.read_varuint32()? as usize;
                     if length == 0 {
                         return Ok(());
                     }
-                    let header = context.reader.read_u8();
+                    let header = context.reader.read_u8()?;
                     let has_null = (header & HAS_NULL) != 0;
                     let is_same_type = (header & IS_SAME_TYPE) != 0;
                     let skip_ref_flag = is_same_type && !has_null;
@@ -97,7 +97,7 @@ pub fn skip_field_value(
                     }
                     context.dec_depth();
                 } else if type_id == TypeId::MAP {
-                    let length = context.reader.read_varuint32();
+                    let length = context.reader.read_varuint32()?;
                     if length == 0 {
                         return Ok(());
                     }
@@ -108,7 +108,7 @@ pub fn skip_field_value(
                         if len_counter == length {
                             break;
                         }
-                        let header = context.reader.read_u8();
+                        let header = context.reader.read_u8()?;
                         if header & crate::serializer::map::KEY_NULL != 0
                             && header & crate::serializer::map::VALUE_NULL != 0
                         {
@@ -131,7 +131,7 @@ pub fn skip_field_value(
                             len_counter += 1;
                             continue;
                         }
-                        let chunk_size = context.reader.read_u8();
+                        let chunk_size = context.reader.read_u8()?;
                         context.inc_depth()?;
                         for _ in (0..chunk_size).enumerate() {
                             // let read_ref_flag = get_read_ref_flag(key_type);
@@ -145,12 +145,15 @@ pub fn skip_field_value(
                 }
                 Ok(())
             } else if type_id == TypeId::NAMED_ENUM {
-                let _ordinal = context.reader.read_varuint32();
+                let _ordinal = context.reader.read_varuint32()?;
                 Ok(())
             } else if type_id == TypeId::NAMED_COMPATIBLE_STRUCT {
-                let remote_type_id = context.reader.read_varuint32();
-                assert_eq!(type_id_num, remote_type_id);
-                let meta_index = context.reader.read_varuint32();
+                let remote_type_id = context.reader.read_varuint32()?;
+                ensure!(
+                    type_id_num == remote_type_id,
+                    Error::TypeMismatch(type_id_num, remote_type_id)
+                );
+                let meta_index = context.reader.read_varuint32()?;
                 let type_meta = context.get_meta(meta_index as usize);
                 let field_infos = type_meta.get_field_infos().to_vec();
                 context.inc_depth()?;
@@ -161,13 +164,16 @@ pub fn skip_field_value(
                 context.dec_depth();
                 Ok(())
             } else if type_id == TypeId::NAMED_EXT {
-                let remote_type_id = context.reader.read_varuint32();
-                assert_eq!(type_id_num, remote_type_id);
-                let meta_index = context.reader.read_varuint32();
+                let remote_type_id = context.reader.read_varuint32()?;
+                ensure!(
+                    type_id_num == remote_type_id,
+                    Error::TypeMismatch(type_id_num, remote_type_id)
+                );
+                let meta_index = context.reader.read_varuint32()?;
                 let type_meta = context.get_meta(meta_index as usize);
                 let type_resolver = fory.get_type_resolver();
                 type_resolver
-                    .get_ext_name_harness(&type_meta.get_namespace(), &type_meta.get_type_name())
+                    .get_ext_name_harness(&type_meta.get_namespace(), &type_meta.get_type_name())?
                     .get_read_data_fn()(fory, context, true)?;
                 Ok(())
             } else {
@@ -180,10 +186,13 @@ pub fn skip_field_value(
             const EXT_ID: u32 = TypeId::EXT as u32;
             const ENUM_ID: u32 = TypeId::ENUM as u32;
             if internal_id == COMPATIBLE_STRUCT_ID {
-                let remote_type_id = context.reader.read_varuint32();
-                let meta_index = context.reader.read_varuint32();
+                let remote_type_id = context.reader.read_varuint32()?;
+                let meta_index = context.reader.read_varuint32()?;
                 let type_meta = context.get_meta(meta_index as usize);
-                assert_eq!(remote_type_id, type_meta.get_type_id());
+                ensure!(
+                    type_meta.get_type_id() == remote_type_id,
+                    Error::TypeMismatch(type_meta.get_type_id(), remote_type_id)
+                );
                 let field_infos = type_meta.get_field_infos().to_vec();
                 context.inc_depth()?;
                 for field_info in field_infos.iter() {
@@ -192,14 +201,17 @@ pub fn skip_field_value(
                 }
                 context.dec_depth();
             } else if internal_id == ENUM_ID {
-                let _ordinal = context.reader.read_varuint32();
+                let _ordinal = context.reader.read_varuint32()?;
             } else if internal_id == EXT_ID {
-                let remote_type_id = context.reader.read_varuint32();
-                assert_eq!(remote_type_id, type_id_num);
+                let remote_type_id = context.reader.read_varuint32()?;
+                ensure!(
+                    type_id_num == remote_type_id,
+                    Error::TypeMismatch(type_id_num, remote_type_id)
+                );
                 context.inc_depth()?;
                 let type_resolver = fory.get_type_resolver();
                 type_resolver
-                    .get_ext_harness(type_id_num)
+                    .get_ext_harness(type_id_num)?
                     .get_read_data_fn()(fory, context, true)?;
                 context.dec_depth();
             } else {

@@ -128,16 +128,16 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #get_sorted_field_names_ts
             }
 
-            fn fory_type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: fory_core::meta::MetaString, type_name: fory_core::meta::MetaString, register_by_name: bool) -> (Vec<u8>, fory_core::meta::TypeMeta) {
+            fn fory_type_def(fory: &fory_core::fory::Fory, type_id: u32, namespace: fory_core::meta::MetaString, type_name: fory_core::meta::MetaString, register_by_name: bool) -> Result<(Vec<u8>, fory_core::meta::TypeMeta), fory_core::error::Error> {
                 #type_def_ts
             }
         }
         impl fory_core::serializer::Serializer for #name {
-            fn fory_get_type_id(fory: &fory_core::fory::Fory) -> u32 {
+            fn fory_get_type_id(fory: &fory_core::fory::Fory) -> Result<u32, fory_core::error::Error> {
                 fory.get_type_resolver().get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
             }
 
-            fn fory_type_id_dyn(&self, fory: &fory_core::fory::Fory) -> u32 {
+            fn fory_type_id_dyn(&self, fory: &fory_core::fory::Fory) -> Result<u32, fory_core::error::Error> {
                 Self::fory_get_type_id(fory)
             }
 
@@ -149,15 +149,15 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #reserved_space_ts
             }
 
-            fn fory_write_type_info(fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
+            fn fory_write_type_info(fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) -> Result<(), fory_core::error::Error> {
                 #write_type_info_ts
             }
 
-            fn fory_read_type_info(fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::ReadContext, is_field: bool) {
+            fn fory_read_type_info(fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<(), fory_core::error::Error> {
                 #read_type_info_ts
             }
 
-            fn fory_write_data(&self, fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
+            fn fory_write_data(&self, fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) -> Result<(), fory_core::error::Error> {
                 #write_data_ts
             }
 
@@ -165,7 +165,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #read_data_ts
             }
 
-            fn fory_write(&self, fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) {
+            fn fory_write(&self, fory: &fory_core::fory::Fory, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) -> Result<(), fory_core::error::Error> {
                 #write_ts
             }
 

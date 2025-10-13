@@ -228,8 +228,8 @@ fn test_conversion_helper_macros() {
 #[test]
 fn test_nested_wrapper_collections() {
     let mut fory = fory_compatible();
-    fory.register::<Dog>(100);
-    fory.register::<Cat>(101);
+    fory.register::<Dog>(100).unwrap();
+    fory.register::<Cat>(101).unwrap();
 
     // Wrapper types are not registered since they're transparent
 
@@ -244,7 +244,7 @@ fn test_nested_wrapper_collections() {
             color: "Color1".to_string(),
         }) as Rc<dyn Animal>),
     ];
-    let serialized_simple = fory.serialize(&simple_wrappers);
+    let serialized_simple = fory.serialize(&simple_wrappers).unwrap();
     let deserialized_simple: Vec<AnimalRc> = fory.deserialize(&serialized_simple).unwrap();
 
     assert_eq!(deserialized_simple.len(), 2);
@@ -269,7 +269,7 @@ fn test_nested_wrapper_collections() {
         }) as Rc<dyn Animal>)],
     ];
 
-    let serialized = fory.serialize(&nested_wrappers);
+    let serialized = fory.serialize(&nested_wrappers).unwrap();
     let deserialized: Vec<Vec<AnimalRc>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 2);
@@ -286,22 +286,22 @@ fn test_nested_wrapper_collections() {
 #[test]
 fn test_empty_wrapper_collections() {
     let mut fory = fory_compatible();
-    fory.register::<Dog>(8001);
-    fory.register::<Cat>(8002);
+    fory.register::<Dog>(8001).unwrap();
+    fory.register::<Cat>(8002).unwrap();
 
     // Test empty collections
     let empty_rc_vec: Vec<AnimalRc> = vec![];
-    let serialized = fory.serialize(&empty_rc_vec);
+    let serialized = fory.serialize(&empty_rc_vec).unwrap();
     let deserialized: Vec<AnimalRc> = fory.deserialize(&serialized).unwrap();
     assert_eq!(deserialized.len(), 0);
 
     let empty_arc_vec: Vec<AnimalArc> = vec![];
-    let serialized = fory.serialize(&empty_arc_vec);
+    let serialized = fory.serialize(&empty_arc_vec).unwrap();
     let deserialized: Vec<AnimalArc> = fory.deserialize(&serialized).unwrap();
     assert_eq!(deserialized.len(), 0);
 
     let empty_map: HashMap<String, AnimalRc> = HashMap::new();
-    let serialized = fory.serialize(&empty_map);
+    let serialized = fory.serialize(&empty_map).unwrap();
     let deserialized: HashMap<String, AnimalRc> = fory.deserialize(&serialized).unwrap();
     assert_eq!(deserialized.len(), 0);
 }
@@ -316,9 +316,9 @@ struct AnimalShelter {
 #[test]
 fn test_collections_of_wrappers() {
     let mut fory = fory_compatible();
-    fory.register::<Dog>(8001);
-    fory.register::<Cat>(8002);
-    fory.register::<AnimalShelter>(8011);
+    fory.register::<Dog>(8001).unwrap();
+    fory.register::<Cat>(8002).unwrap();
+    fory.register::<AnimalShelter>(8011).unwrap();
 
     let shelter = AnimalShelter {
         animals_rc: vec![
@@ -355,7 +355,7 @@ fn test_collections_of_wrappers() {
         },
     };
 
-    let serialized = fory.serialize(&shelter);
+    let serialized = fory.serialize(&shelter).unwrap();
     let deserialized: AnimalShelter = fory.deserialize(&serialized).unwrap();
 
     // Test Vec<AnimalRc>
@@ -413,8 +413,8 @@ fn test_collections_of_wrappers() {
 #[test]
 fn test_rc_shared_ref_tracking() {
     let mut fory = fory_compatible();
-    fory.register::<Dog>(200);
-    fory.register::<Cat>(201);
+    fory.register::<Dog>(200).unwrap();
+    fory.register::<Cat>(201).unwrap();
 
     let dog = Rc::new(Dog {
         name: "Rex".to_string(),
@@ -427,7 +427,7 @@ fn test_rc_shared_ref_tracking() {
         AnimalRc::from(dog.clone()),
     ];
 
-    let serialized = fory.serialize(&shared_animals);
+    let serialized = fory.serialize(&shared_animals).unwrap();
     let deserialized: Vec<AnimalRc> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
@@ -445,8 +445,8 @@ fn test_rc_shared_ref_tracking() {
 #[test]
 fn test_arc_shared_ref_tracking() {
     let mut fory = fory_compatible();
-    fory.register::<Dog>(200);
-    fory.register::<Cat>(201);
+    fory.register::<Dog>(200).unwrap();
+    fory.register::<Cat>(201).unwrap();
 
     let cat = Arc::new(Cat {
         name: "Whiskers".to_string(),
@@ -459,7 +459,7 @@ fn test_arc_shared_ref_tracking() {
         AnimalArc::from(cat.clone()),
     ];
 
-    let serialized = fory.serialize(&shared_animals);
+    let serialized = fory.serialize(&shared_animals).unwrap();
     let deserialized: Vec<AnimalArc> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);

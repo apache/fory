@@ -29,12 +29,21 @@ use std::collections::{BTreeSet, HashSet};
 use std::mem;
 
 impl<T: Serializer + ForyDefault + Eq + std::hash::Hash> Serializer for HashSet<T> {
-    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        write_collection(self, fory, context, is_field);
+    fn fory_write_data(
+        &self,
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        write_collection(self, fory, context, is_field)
     }
 
-    fn fory_write_type_info(_fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        write_collection_type_info(context, is_field, TypeId::SET as u32);
+    fn fory_write_type_info(
+        _fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        write_collection_type_info(context, is_field, TypeId::SET as u32)
     }
 
     fn fory_read_data(
@@ -45,7 +54,11 @@ impl<T: Serializer + ForyDefault + Eq + std::hash::Hash> Serializer for HashSet<
         read_collection(fory, context)
     }
 
-    fn fory_read_type_info(_fory: &Fory, context: &mut ReadContext, is_field: bool) {
+    fn fory_read_type_info(
+        _fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
         read_collection_type_info(context, is_field, TypeId::SET as u32)
     }
 
@@ -53,12 +66,12 @@ impl<T: Serializer + ForyDefault + Eq + std::hash::Hash> Serializer for HashSet<
         mem::size_of::<i32>()
     }
 
-    fn fory_get_type_id(_fory: &Fory) -> u32 {
-        TypeId::SET as u32
+    fn fory_get_type_id(_fory: &Fory) -> Result<u32, Error> {
+        Ok(TypeId::SET as u32)
     }
 
-    fn fory_type_id_dyn(&self, _fory: &Fory) -> u32 {
-        TypeId::SET as u32
+    fn fory_type_id_dyn(&self, _fory: &Fory) -> Result<u32, Error> {
+        Ok(TypeId::SET as u32)
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -73,12 +86,21 @@ impl<T> ForyDefault for HashSet<T> {
 }
 
 impl<T: Serializer + ForyDefault + Ord> Serializer for BTreeSet<T> {
-    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        write_collection(self, fory, context, is_field);
+    fn fory_write_data(
+        &self,
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        write_collection(self, fory, context, is_field)
     }
 
-    fn fory_write_type_info(_fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        write_collection_type_info(context, is_field, TypeId::SET as u32);
+    fn fory_write_type_info(
+        _fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        write_collection_type_info(context, is_field, TypeId::SET as u32)
     }
 
     fn fory_read_data(
@@ -89,7 +111,11 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BTreeSet<T> {
         read_collection(fory, context)
     }
 
-    fn fory_read_type_info(_fory: &Fory, context: &mut ReadContext, is_field: bool) {
+    fn fory_read_type_info(
+        _fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
         read_collection_type_info(context, is_field, TypeId::SET as u32)
     }
 
@@ -97,12 +123,12 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BTreeSet<T> {
         mem::size_of::<i32>()
     }
 
-    fn fory_get_type_id(_fory: &Fory) -> u32 {
-        TypeId::SET as u32
+    fn fory_get_type_id(_fory: &Fory) -> Result<u32, Error> {
+        Ok(TypeId::SET as u32)
     }
 
-    fn fory_type_id_dyn(&self, _fory: &Fory) -> u32 {
-        TypeId::SET as u32
+    fn fory_type_id_dyn(&self, _fory: &Fory) -> Result<u32, Error> {
+        Ok(TypeId::SET as u32)
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

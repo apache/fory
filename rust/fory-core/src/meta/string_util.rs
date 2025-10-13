@@ -534,56 +534,60 @@ pub mod buffer_rw_string {
     const SIMD_CHUNK_SIZE: usize = 32;
 
     use crate::buffer::{Reader, Writer};
+    use crate::error::Error;
 
     #[inline]
-    pub fn write_latin1_standard(writer: &mut Writer, s: &str) {
+    pub fn write_latin1_standard(writer: &mut Writer, s: &str) -> Result<(), Error> {
         for c in s.chars() {
             let b = c as u32;
             assert!(b <= 0xFF, "Non-Latin1 character found");
-            writer.write_u8(b as u8);
+            writer.write_u8(b as u8)?;
         }
+        Ok(())
     }
 
     #[inline]
-    pub fn write_utf8_standard(writer: &mut Writer, s: &str) {
+    pub fn write_utf8_standard(writer: &mut Writer, s: &str) -> Result<(), Error> {
         let bytes = s.as_bytes();
         for &b in bytes {
-            writer.write_u8(b);
+            writer.write_u8(b)?;
         }
+        Ok(())
     }
 
     #[inline]
-    pub fn write_utf16_standard(writer: &mut Writer, utf16: &[u16]) {
+    pub fn write_utf16_standard(writer: &mut Writer, utf16: &[u16]) -> Result<(), Error> {
         for unit in utf16 {
             #[cfg(target_endian = "little")]
             {
-                writer.write_u16(*unit);
+                writer.write_u16(*unit)?;
             }
             #[cfg(target_endian = "big")]
             {
                 unimplemented!()
             }
         }
+        Ok(())
     }
 
     #[inline]
-    pub fn read_latin1_standard(reader: &mut Reader, len: usize) -> String {
+    pub fn read_latin1_standard(reader: &mut Reader, len: usize) -> Result<String, Error> {
         let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
         let result: String = slice.iter().map(|&b| b as char).collect();
-        reader.move_next(len);
-        result
+        reader.move_next(len)?;
+        Ok(result)
     }
 
     #[inline]
-    pub fn read_utf8_standard(reader: &mut Reader, len: usize) -> String {
+    pub fn read_utf8_standard(reader: &mut Reader, len: usize) -> Result<String, Error> {
         let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
         let result = String::from_utf8_lossy(slice).to_string();
-        reader.move_next(len);
-        result
+        reader.move_next(len)?;
+        Ok(result)
     }
 
     #[inline]
-    pub fn read_utf16_standard(reader: &mut Reader, len: usize) -> String {
+    pub fn read_utf16_standard(reader: &mut Reader, len: usize) -> Result<String, Error> {
         assert!(len % 2 == 0, "UTF-16 length must be even");
         let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
         let units: Vec<u16> = slice
@@ -594,8 +598,8 @@ pub mod buffer_rw_string {
         let result = String::from_utf16(&units)
             // lossy
             .unwrap_or_else(|_| String::from("�"));
-        reader.move_next(len);
-        result
+        reader.move_next(len)?;
+        Ok(result)
     }
 
     #[inline]
@@ -769,9 +773,9 @@ pub mod buffer_rw_string {
     }
 
     #[inline]
-    pub fn read_latin1_simd(reader: &mut Reader, len: usize) -> String {
+    pub fn read_latin1_simd(reader: &mut Reader, len: usize) -> Result<String, Error> {
         if len == 0 {
-            return String::new();
+            return Ok(String::new());
         }
         let src = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
 
@@ -862,15 +866,14 @@ pub mod buffer_rw_string {
                 i += 1;
             }
         }
-
-        reader.move_next(len);
-        unsafe { String::from_utf8_unchecked(out) }
+        reader.move_next(len)?;
+        Ok(unsafe { String::from_utf8_unchecked(out) })
     }
 
     #[inline]
-    pub fn read_utf8_simd(reader: &mut Reader, len: usize) -> String {
+    pub fn read_utf8_simd(reader: &mut Reader, len: usize) -> Result<String, Error> {
         if len == 0 {
-            return String::new();
+            return Ok(String::new());
         }
 
         let src = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
@@ -924,12 +927,12 @@ pub mod buffer_rw_string {
             }
         }
 
-        reader.move_next(len);
-        result
+        reader.move_next(len)?;
+        Ok(result)
     }
 
     #[inline]
-    pub fn read_utf16_simd(reader: &mut Reader, len: usize) -> String {
+    pub fn read_utf16_simd(reader: &mut Reader, len: usize) -> Result<String, Error> {
         assert_eq!(len % 2, 0, "UTF-16 length must be even");
         unsafe fn simd_impl(bytes: &[u8]) -> String {
             let len = bytes.len();
@@ -1004,7 +1007,7 @@ pub mod buffer_rw_string {
         {
             if std::arch::is_x86_feature_detected!("avx2") {
                 let s = unsafe { simd_impl(slice) };
-                reader.move_next(len);
+                reader.move_next(len)?;
                 return s;
             }
         }
@@ -1012,7 +1015,7 @@ pub mod buffer_rw_string {
         {
             if std::arch::is_x86_feature_detected!("sse2") {
                 let s = unsafe { simd_impl(slice) };
-                reader.move_next(len);
+                reader.move_next(len)?;
                 return s;
             }
         }
@@ -1020,8 +1023,8 @@ pub mod buffer_rw_string {
         {
             if std::arch::is_aarch64_feature_detected!("neon") {
                 let s = unsafe { simd_impl(slice) };
-                reader.move_next(len);
-                return s;
+                reader.move_next(len)?;
+                return Ok(s);
             }
         }
 
@@ -1050,17 +1053,17 @@ pub mod buffer_rw_string {
                 let bytes = &*writer.dump();
                 let bytes_len = bytes.len() / 2;
                 let mut reader = Reader::new(bytes);
-                assert_eq!(read_latin1_standard(&mut reader, bytes_len), s);
-                assert_eq!(read_latin1_standard(&mut reader, bytes_len), s);
+                assert_eq!(read_latin1_standard(&mut reader, bytes_len).unwrap(), s);
+                assert_eq!(read_latin1_standard(&mut reader, bytes_len).unwrap(), s);
 
                 let mut writer = Writer::default();
-                write_latin1_standard(&mut writer, s);
-                write_latin1_standard(&mut writer, s);
+                write_latin1_standard(&mut writer, s).unwrap();
+                write_latin1_standard(&mut writer, s).unwrap();
                 let bytes = &*writer.dump();
                 let bytes_len = bytes.len() / 2;
                 let mut reader = Reader::new(bytes);
-                assert_eq!(read_latin1_simd(&mut reader, bytes_len), s);
-                assert_eq!(read_latin1_simd(&mut reader, bytes_len), s);
+                assert_eq!(read_latin1_simd(&mut reader, bytes_len).unwrap(), s);
+                assert_eq!(read_latin1_simd(&mut reader, bytes_len).unwrap(), s);
             }
         }
 
@@ -1078,20 +1081,20 @@ pub mod buffer_rw_string {
                 let bytes_len = s.len();
 
                 let mut writer = Writer::default();
-                write_utf8_standard(&mut writer, s);
-                write_utf8_standard(&mut writer, s);
+                write_utf8_standard(&mut writer, s).unwrap();
+                write_utf8_standard(&mut writer, s).unwrap();
                 let bytes = &*writer.dump();
                 let mut reader = Reader::new(bytes);
-                assert_eq!(read_utf8_simd(&mut reader, bytes_len), s);
-                assert_eq!(read_utf8_simd(&mut reader, bytes_len), s);
+                assert_eq!(read_utf8_simd(&mut reader, bytes_len).unwrap(), s);
+                assert_eq!(read_utf8_simd(&mut reader, bytes_len).unwrap(), s);
 
                 let mut writer = Writer::default();
                 write_utf8_simd(&mut writer, s);
                 write_utf8_simd(&mut writer, s);
                 let bytes = &*writer.dump();
                 let mut reader = Reader::new(bytes);
-                assert_eq!(read_utf8_standard(&mut reader, bytes_len), s);
-                assert_eq!(read_utf8_standard(&mut reader, bytes_len), s);
+                assert_eq!(read_utf8_standard(&mut reader, bytes_len).unwrap(), s);
+                assert_eq!(read_utf8_standard(&mut reader, bytes_len).unwrap(), s);
             }
         }
 
@@ -1109,20 +1112,20 @@ pub mod buffer_rw_string {
                 let bytes_len = utf16.len() * 2;
 
                 let mut writer = Writer::default();
-                write_utf16_standard(&mut writer, &utf16);
-                write_utf16_standard(&mut writer, &utf16);
+                write_utf16_standard(&mut writer, &utf16).unwrap();
+                write_utf16_standard(&mut writer, &utf16).unwrap();
                 let bytes = &*writer.dump();
                 let mut reader = Reader::new(bytes);
-                assert_eq!(read_utf16_simd(&mut reader, bytes_len), s);
-                assert_eq!(read_utf16_simd(&mut reader, bytes_len), s);
+                assert_eq!(read_utf16_simd(&mut reader, bytes_len).unwrap(), s);
+                assert_eq!(read_utf16_simd(&mut reader, bytes_len).unwrap(), s);
 
                 let mut writer = Writer::default();
                 write_utf16_simd(&mut writer, &utf16);
                 write_utf16_simd(&mut writer, &utf16);
                 let bytes = &*writer.dump();
                 let mut reader = Reader::new(bytes);
-                assert_eq!(read_utf16_standard(&mut reader, bytes_len), s);
-                assert_eq!(read_utf16_standard(&mut reader, bytes_len), s);
+                assert_eq!(read_utf16_standard(&mut reader, bytes_len).unwrap(), s);
+                assert_eq!(read_utf16_standard(&mut reader, bytes_len).unwrap(), s);
             }
         }
     }

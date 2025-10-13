@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::bail;
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::RefFlag;
-use anyhow::anyhow;
 use std::sync::Arc;
 
 impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> {
@@ -28,50 +28,65 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
         true
     }
 
-    fn fory_write(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+    fn fory_write(
+        &self,
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
         if !context
             .ref_writer
-            .try_write_arc_ref(&mut context.writer, self)
+            .try_write_arc_ref(&mut context.writer, self)?
         {
-            T::fory_write_data(self.as_ref(), fory, context, is_field);
-        }
+            T::fory_write_data(self.as_ref(), fory, context, is_field)?
+        };
+        Ok(())
     }
 
-    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+    fn fory_write_data(
+        &self,
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
         // When Arc is nested inside another shared ref (like Rc<Arc<T>>),
         // the outer ref calls fory_write_data on the inner Arc.
         // We still need to track the Arc's own references here.
-        self.fory_write(fory, context, is_field);
+        self.fory_write(fory, context, is_field)
     }
 
-    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        T::fory_write_type_info(fory, context, is_field);
+    fn fory_write_type_info(
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        T::fory_write_type_info(fory, context, is_field)
     }
 
     fn fory_read(fory: &Fory, context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader);
+        let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
-        match ref_flag {
-            RefFlag::Null => Err(anyhow!("Arc cannot be null").into()),
+        Ok(match ref_flag {
+            RefFlag::Null => bail!("Arc cannot be null"),
             RefFlag::Ref => {
-                let ref_id = context.ref_reader.read_ref_id(&mut context.reader);
+                let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
                 context
                     .ref_reader
                     .get_arc_ref::<T>(ref_id)
-                    .ok_or_else(|| anyhow!("Arc reference {} not found", ref_id).into())
+                    .ok_or(Error::msg(format!("Arc reference {ref_id} not found")))?
             }
             RefFlag::NotNullValue => {
                 let inner = T::fory_read_data(fory, context, is_field)?;
-                Ok(Arc::new(inner))
+                Arc::new(inner)
             }
             RefFlag::RefValue => {
                 let ref_id = context.ref_reader.reserve_ref_id();
                 let inner = T::fory_read_data(fory, context, is_field)?;
                 let arc = Arc::new(inner);
                 context.ref_reader.store_arc_ref_at(ref_id, arc.clone());
-                Ok(arc)
+                arc
             }
-        }
+        })
     }
 
     fn fory_read_data(
@@ -84,8 +99,12 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
         Self::fory_read(fory, context, is_field)
     }
 
-    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
-        T::fory_read_type_info(fory, context, is_field);
+    fn fory_read_type_info(
+        fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        T::fory_read_type_info(fory, context, is_field)
     }
 
     fn fory_reserved_space() -> usize {
@@ -94,11 +113,11 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
         4
     }
 
-    fn fory_get_type_id(fory: &Fory) -> u32 {
+    fn fory_get_type_id(fory: &Fory) -> Result<u32, Error> {
         T::fory_get_type_id(fory)
     }
 
-    fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+    fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, Error> {
         (**self).fory_type_id_dyn(fory)
     }
 

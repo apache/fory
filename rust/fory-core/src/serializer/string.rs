@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::bail;
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::get_latin1_length;
@@ -32,24 +33,30 @@ enum StrEncoding {
 
 impl Serializer for String {
     #[inline]
-    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, _is_field: bool) {
+    fn fory_write_data(
+        &self,
+        fory: &Fory,
+        context: &mut WriteContext,
+        _is_field: bool,
+    ) -> Result<(), Error> {
         let mut len = get_latin1_length(self);
         if len >= 0 {
             let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
-            context.writer.write_varuint36_small(bitor);
+            context.writer.write_varuint36_small(bitor)?;
             context.writer.write_latin1_string(self);
         } else if fory.is_compress_string() {
             // todo: support `writeNumUtf16BytesForUtf8Encoding` like in java
             len = self.len() as i32;
             let bitor = (len as u64) << 2 | StrEncoding::Utf8 as u64;
-            context.writer.write_varuint36_small(bitor);
+            context.writer.write_varuint36_small(bitor)?;
             context.writer.write_utf8_string(self);
         } else {
             let utf16: Vec<u16> = self.encode_utf16().collect();
             let bitor = (utf16.len() as u64 * 2) << 2 | StrEncoding::Utf16 as u64;
-            context.writer.write_varuint36_small(bitor);
+            context.writer.write_varuint36_small(bitor)?;
             context.writer.write_utf16_bytes(&utf16);
         }
+        Ok(())
     }
 
     #[inline]
@@ -58,22 +65,20 @@ impl Serializer for String {
         context: &mut ReadContext,
         _is_field: bool,
     ) -> Result<Self, Error> {
-        let bitor = context.reader.read_varuint36small();
+        let bitor = context.reader.read_varuint36small()?;
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
         let encoding = match encoding {
             0 => StrEncoding::Latin1,
             1 => StrEncoding::Utf16,
             2 => StrEncoding::Utf8,
-            _ => {
-                panic!("wrong encoding value: {}", encoding);
-            }
+            _ => bail!("wrong encoding value: {}", encoding),
         };
         let s = match encoding {
             StrEncoding::Latin1 => context.reader.read_latin1_string(len as usize),
             StrEncoding::Utf16 => context.reader.read_utf16_string(len as usize),
             StrEncoding::Utf8 => context.reader.read_utf8_string(len as usize),
-        };
+        }?;
         Ok(s)
     }
 
@@ -83,12 +88,12 @@ impl Serializer for String {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_fory: &Fory) -> u32 {
-        TypeId::STRING as u32
+    fn fory_get_type_id(_fory: &Fory) -> Result<u32, Error> {
+        Ok(TypeId::STRING as u32)
     }
 
-    fn fory_type_id_dyn(&self, _fory: &Fory) -> u32 {
-        TypeId::STRING as u32
+    fn fory_type_id_dyn(&self, _fory: &Fory) -> Result<u32, Error> {
+        Ok(TypeId::STRING as u32)
     }
 
     #[inline(always)]
@@ -97,13 +102,21 @@ impl Serializer for String {
     }
 
     #[inline(always)]
-    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        write_type_info::<Self>(fory, context, is_field);
+    fn fory_write_type_info(
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        write_type_info::<Self>(fory, context, is_field)
     }
 
     #[inline(always)]
-    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
-        read_type_info::<Self>(fory, context, is_field);
+    fn fory_read_type_info(
+        fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        read_type_info::<Self>(fory, context, is_field)
     }
 }
 

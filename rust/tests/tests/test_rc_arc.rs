@@ -29,7 +29,7 @@ fn test_rc_string_serialization() {
     let data = String::from("Hello, Rc!");
     let rc_data = Rc::new(data);
 
-    let serialized = fory.serialize(&rc_data);
+    let serialized = fory.serialize(&rc_data).unwrap();
     let deserialized: Rc<String> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(*rc_data, *deserialized);
@@ -43,7 +43,7 @@ fn test_arc_string_serialization() {
     let data = String::from("Hello, Arc!");
     let arc_data = Arc::new(data);
 
-    let serialized = fory.serialize(&arc_data);
+    let serialized = fory.serialize(&arc_data).unwrap();
     let deserialized: Arc<String> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(*arc_data, *deserialized);
@@ -56,7 +56,7 @@ fn test_rc_number_serialization() {
 
     let rc_number = Rc::new(42i32);
 
-    let serialized = fory.serialize(&rc_number);
+    let serialized = fory.serialize(&rc_number).unwrap();
     let deserialized: Rc<i32> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(*rc_number, *deserialized);
@@ -69,7 +69,7 @@ fn test_arc_number_serialization() {
 
     let arc_number = Arc::new(100i64);
 
-    let serialized = fory.serialize(&arc_number);
+    let serialized = fory.serialize(&arc_number).unwrap();
     let deserialized: Arc<i64> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(*arc_number, *deserialized);
@@ -85,7 +85,7 @@ fn test_rc_in_collections() {
 
     let strings = vec![string1.clone(), string2.clone(), string1.clone()];
 
-    let serialized = fory.serialize(&strings);
+    let serialized = fory.serialize(&strings).unwrap();
     let deserialized: Vec<Rc<String>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(strings.len(), deserialized.len());
@@ -106,7 +106,7 @@ fn test_arc_in_collections() {
 
     let numbers = vec![number1.clone(), number2.clone(), number1.clone()];
 
-    let serialized = fory.serialize(&numbers);
+    let serialized = fory.serialize(&numbers).unwrap();
     let deserialized: Vec<Arc<i32>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(numbers.len(), deserialized.len());
@@ -125,7 +125,7 @@ fn test_rc_vec_serialization() {
     let data = vec![1, 2, 3, 4, 5];
     let rc_data = Rc::new(data);
 
-    let serialized = fory.serialize(&rc_data);
+    let serialized = fory.serialize(&rc_data).unwrap();
     let deserialized: Rc<Vec<i32>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(*rc_data, *deserialized);
@@ -139,7 +139,7 @@ fn test_arc_vec_serialization() {
     let data = vec![String::from("a"), String::from("b"), String::from("c")];
     let arc_data = Arc::new(data);
 
-    let serialized = fory.serialize(&arc_data);
+    let serialized = fory.serialize(&arc_data).unwrap();
     let deserialized: Arc<Vec<String>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(*arc_data, *deserialized);
@@ -154,8 +154,8 @@ fn test_mixed_rc_arc_serialization() {
     let rc_number = Rc::new(42i32);
     let arc_number = Arc::new(100i64);
 
-    let rc_serialized = fory.serialize(&rc_number);
-    let arc_serialized = fory.serialize(&arc_number);
+    let rc_serialized = fory.serialize(&rc_number).unwrap();
+    let arc_serialized = fory.serialize(&arc_number).unwrap();
 
     let rc_deserialized: Rc<i32> = fory.deserialize(&rc_serialized).unwrap();
     let arc_deserialized: Arc<i64> = fory.deserialize(&arc_serialized).unwrap();
@@ -172,7 +172,7 @@ fn test_nested_rc_arc() {
     let inner_data = Arc::new(String::from("nested"));
     let outer_data = Rc::new(inner_data.clone());
 
-    let serialized = fory.serialize(&outer_data);
+    let serialized = fory.serialize(&outer_data).unwrap();
     let deserialized: Rc<Arc<String>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(**outer_data, **deserialized);
@@ -188,7 +188,7 @@ fn test_rc_arc_with_hashmaps() {
     map.insert("key1".to_string(), string_data.clone());
     map.insert("key2".to_string(), string_data.clone());
 
-    let serialized = fory.serialize(&map);
+    let serialized = fory.serialize(&map).unwrap();
     let deserialized: HashMap<String, Arc<String>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(map.len(), deserialized.len());
@@ -205,7 +205,7 @@ fn test_arc_serialization_basic() {
     let fory = Fory::default();
     let arc = Arc::new(42i32);
 
-    let serialized = fory.serialize(&arc);
+    let serialized = fory.serialize(&arc).unwrap();
     let deserialized: Arc<i32> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(*deserialized, 42);
@@ -216,7 +216,7 @@ fn test_arc_shared_reference() {
     let fory = Fory::default();
     let arc1 = Arc::new(String::from("shared"));
 
-    let serialized = fory.serialize(&arc1);
+    let serialized = fory.serialize(&arc1).unwrap();
     let deserialized: Arc<String> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(*deserialized, "shared");
@@ -229,7 +229,7 @@ fn test_arc_shared_reference_in_vec() {
     let shared = Arc::new(String::from("shared_value"));
     let vec = vec![shared.clone(), shared.clone(), shared.clone()];
 
-    let serialized = fory.serialize(&vec);
+    let serialized = fory.serialize(&vec).unwrap();
     let deserialized: Vec<Arc<String>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
@@ -257,7 +257,7 @@ fn test_arc_multiple_shared_references() {
         shared1.clone(),
     ];
 
-    let serialized = fory.serialize(&vec);
+    let serialized = fory.serialize(&vec).unwrap();
     let deserialized: Vec<Arc<i32>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 5);
@@ -280,7 +280,7 @@ fn test_arc_thread_safety() {
     let fory = Fory::default();
     let arc = Arc::new(vec![1, 2, 3, 4, 5]);
 
-    let serialized = fory.serialize(&arc);
+    let serialized = fory.serialize(&arc).unwrap();
 
     // Test that Arc can be sent across threads
     let handle = thread::spawn(move || {
@@ -297,7 +297,7 @@ fn test_rc_serialization_basic() {
     let fory = Fory::default();
     let rc = Rc::new(42i32);
 
-    let serialized = fory.serialize(&rc);
+    let serialized = fory.serialize(&rc).unwrap();
     let deserialized: Rc<i32> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(*deserialized, 42);
@@ -308,7 +308,7 @@ fn test_rc_shared_reference() {
     let fory = Fory::default();
     let rc1 = Rc::new(String::from("shared"));
 
-    let serialized = fory.serialize(&rc1);
+    let serialized = fory.serialize(&rc1).unwrap();
     let deserialized: Rc<String> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(*deserialized, "shared");
@@ -321,7 +321,7 @@ fn test_rc_shared_reference_in_vec() {
     let shared = Rc::new(String::from("shared_value"));
     let vec = vec![shared.clone(), shared.clone(), shared.clone()];
 
-    let serialized = fory.serialize(&vec);
+    let serialized = fory.serialize(&vec).unwrap();
     let deserialized: Vec<Rc<String>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
@@ -349,7 +349,7 @@ fn test_rc_multiple_shared_references() {
         shared1.clone(),
     ];
 
-    let serialized = fory.serialize(&vec);
+    let serialized = fory.serialize(&vec).unwrap();
     let deserialized: Vec<Rc<i32>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 5);

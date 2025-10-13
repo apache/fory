@@ -30,7 +30,7 @@ fn test_simple_multi_thread() {
     for item in &src {
         let fory_clone = Arc::clone(&fory);
         let item = *item;
-        let handle = thread::spawn(move || fory_clone.serialize(&item));
+        let handle = thread::spawn(move || fory_clone.serialize(&item).unwrap());
         handles.push(handle);
     }
     let mut serialized_data = vec![];
@@ -61,7 +61,7 @@ fn test_struct_multi_thread() {
         f1: i32,
     }
     let mut fory = Fory::default();
-    fory.register::<Item1>(101);
+    fory.register::<Item1>(101).unwrap();
     let fory = Arc::new(fory);
     let src: HashSet<_> = [
         Item1 { f1: 42 },
@@ -77,7 +77,7 @@ fn test_struct_multi_thread() {
     for item in &src {
         let fory_clone = Arc::clone(&fory);
         let item = *item;
-        let handle = thread::spawn(move || fory_clone.serialize(&item));
+        let handle = thread::spawn(move || fory_clone.serialize(&item).unwrap());
         handles.push(handle);
     }
     let mut serialized_data = vec![];

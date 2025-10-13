@@ -17,7 +17,6 @@
 
 use crate::util::EPOCH;
 use crate::{buffer::Writer, error::Error};
-use anyhow::anyhow;
 use byteorder::{ByteOrder, LittleEndian};
 use chrono::{DateTime, Days, NaiveDate, NaiveDateTime};
 use std::collections::BTreeMap;
@@ -31,7 +30,7 @@ use super::{
 pub trait Row<'a> {
     type ReadResult;
 
-    fn write(v: &Self, writer: &mut Writer);
+    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error>;
 
     fn cast(bytes: &'a [u8]) -> Self::ReadResult;
 }
@@ -45,8 +44,8 @@ macro_rules! impl_row_for_number {
         impl<'a> Row<'a> for $tt {
             type ReadResult = Self;
 
-            fn write(v: &Self, writer: &mut Writer) {
-                $writer(writer, *v);
+            fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
+                $writer(writer, *v)
             }
 
             fn cast(bytes: &[u8]) -> Self::ReadResult {
@@ -65,8 +64,9 @@ impl_row_for_number!(f64, Writer::write_f64, LittleEndian::read_f64);
 impl<'a> Row<'a> for String {
     type ReadResult = &'a str;
 
-    fn write(v: &Self, writer: &mut Writer) {
+    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
         writer.write_bytes(v.as_bytes());
+        Ok(())
     }
 
     fn cast(bytes: &'a [u8]) -> Self::ReadResult {
@@ -77,8 +77,8 @@ impl<'a> Row<'a> for String {
 impl Row<'_> for bool {
     type ReadResult = Self;
 
-    fn write(v: &Self, writer: &mut Writer) {
-        writer.write_u8(if *v { 1 } else { 0 });
+    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
+        writer.write_u8(if *v { 1 } else { 0 })
     }
 
     fn cast(bytes: &[u8]) -> Self::ReadResult {
@@ -89,43 +89,40 @@ impl Row<'_> for bool {
 impl Row<'_> for NaiveDate {
     type ReadResult = Result<NaiveDate, Error>;
 
-    fn write(v: &Self, writer: &mut Writer) {
+    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
         let days_since_epoch = v.signed_duration_since(EPOCH).num_days();
-        writer.write_u32(days_since_epoch as u32);
+        writer.write_u32(days_since_epoch as u32)
     }
 
     fn cast(bytes: &[u8]) -> Self::ReadResult {
         let days = LittleEndian::read_u32(bytes);
         EPOCH
             .checked_add_days(Days::new(days.into()))
-            .ok_or(Error::from(anyhow!(
-                "Date out of range, {days} days since epoch"
-            )))
+            .ok_or(Error::msg("Date out of range, {days} days since epoch"))
     }
 }
 
 impl Row<'_> for NaiveDateTime {
     type ReadResult = Result<NaiveDateTime, Error>;
 
-    fn write(v: &Self, writer: &mut Writer) {
-        writer.write_i64(v.and_utc().timestamp_millis());
+    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
+        writer.write_i64(v.and_utc().timestamp_millis())
     }
 
     fn cast(bytes: &[u8]) -> Self::ReadResult {
         let timestamp = LittleEndian::read_u64(bytes);
         DateTime::from_timestamp_millis(timestamp as i64)
             .map(|dt| dt.naive_utc())
-            .ok_or(Error::from(anyhow!(
-                "Date out of range, timestamp:{timestamp}"
-            )))
+            .ok_or(Error::msg("Date out of range, timestamp:{timestamp}"))
     }
 }
 
 impl<'a> Row<'a> for Vec<u8> {
     type ReadResult = &'a [u8];
 
-    fn write(v: &Self, writer: &mut Writer) {
+    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
         writer.write_bytes(v);
+        Ok(())
     }
 
     fn cast(bytes: &'a [u8]) -> Self::ReadResult {
@@ -155,13 +152,14 @@ impl<'a, T: Row<'a>> ArrayGetter<'a, T> {
 impl<'a, T: Row<'a>> Row<'a> for Vec<T> {
     type ReadResult = ArrayGetter<'a, T>;
 
-    fn write(v: &Self, writer: &mut Writer) {
-        let mut array_writer = ArrayWriter::new(v.len(), writer);
-        v.iter().enumerate().for_each(|(idx, item)| {
+    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
+        let mut array_writer = ArrayWriter::new(v.len(), writer)?;
+        for (idx, item) in v.iter().enumerate() {
             let callback_info = array_writer.write_start(idx);
-            <T as Row>::write(item, array_writer.get_writer());
+            <T as Row>::write(item, array_writer.get_writer())?;
             array_writer.write_end(callback_info);
-        });
+        }
+        Ok(())
     }
 
     fn cast(row: &'a [u8]) -> Self::ReadResult {
@@ -215,26 +213,27 @@ impl<'a, T1: Row<'a> + Ord, T2: Row<'a> + Ord> MapGetter<'a, T1, T2> {
 impl<'a, T1: Row<'a> + Ord, T2: Row<'a> + Ord> Row<'a> for BTreeMap<T1, T2> {
     type ReadResult = MapGetter<'a, T1, T2>;
 
-    fn write(v: &Self, writer: &mut Writer) {
-        let mut map_writter = MapWriter::new(writer);
+    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
+        let mut map_writer = MapWriter::new(writer);
         {
-            let callback_info = map_writter.write_start(0);
-            let mut array_writer = ArrayWriter::new(v.len(), map_writter.get_writer());
-            v.keys().enumerate().for_each(|(idx, item)| {
+            let callback_info = map_writer.write_start(0);
+            let mut array_writer = ArrayWriter::new(v.len(), map_writer.get_writer())?;
+            for (idx, item) in v.keys().enumerate() {
                 let callback_info = array_writer.write_start(idx);
-                <T1 as Row>::write(item, array_writer.get_writer());
+                <T1 as Row>::write(item, array_writer.get_writer())?;
                 array_writer.write_end(callback_info);
-            });
-            map_writter.write_end(callback_info);
+            }
+            map_writer.write_end(callback_info);
         }
         {
-            let mut array_writer = ArrayWriter::new(v.len(), map_writter.get_writer());
-            v.values().enumerate().for_each(|(idx, item)| {
+            let mut array_writer = ArrayWriter::new(v.len(), map_writer.get_writer())?;
+            for (idx, item) in v.values().enumerate() {
                 let callback_info = array_writer.write_start(idx);
-                <T2 as Row>::write(item, array_writer.get_writer());
+                <T2 as Row>::write(item, array_writer.get_writer())?;
                 array_writer.write_end(callback_info);
-            });
+            }
         }
+        Ok(())
     }
 
     fn cast(row: &'a [u8]) -> Self::ReadResult {

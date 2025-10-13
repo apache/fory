@@ -58,9 +58,9 @@ fn enum_without_payload() {
         Blue,
     }
     let mut fory = Fory::default();
-    fory.register::<Color>(999);
+    fory.register::<Color>(999).unwrap();
     let color = Color::Red;
-    let bin = fory.serialize(&color);
+    let bin = fory.serialize(&color).unwrap();
     let color2: Color = fory.deserialize(&bin).expect("");
     assert_eq!(color, color2);
 }
@@ -109,15 +109,15 @@ fn complex_struct() {
         c6: 4.0,
     };
     let mut fory = Fory::default();
-    fory.register::<Animal>(899);
-    fory.register::<Person>(999);
-    let bin: Vec<u8> = fory.serialize(&person);
+    fory.register::<Animal>(899).unwrap();
+    fory.register::<Person>(999).unwrap();
+    let bin: Vec<u8> = fory.serialize(&person).unwrap();
     let obj: Person = fory.deserialize(&bin).expect("should success");
     assert_eq!(person, obj);
     let mut fory = Fory::default();
-    fory.register_by_name::<Animal>("animal");
-    fory.register_by_name::<Person>("person");
-    let bin: Vec<u8> = fory.serialize(&person);
+    fory.register_by_name::<Animal>("animal").unwrap();
+    fory.register_by_name::<Person>("person").unwrap();
+    let bin: Vec<u8> = fory.serialize(&person).unwrap();
     let obj: Person = fory.deserialize(&bin).expect("should success");
     assert_eq!(person, obj);
 }
@@ -142,19 +142,21 @@ fn encode_to_obin() {
         f10: HashMap<i32, f64>,
     }
     let mut fory = Fory::default();
-    fory.register::<Person>(999);
-    fory.register::<Animal>(899);
-    let bin: Vec<u8> = fory.serialize(&Person {
-        f1: "Hello".to_string(),
-        f2: HashMap::from([("hello1".to_string(), 1), ("hello2".to_string(), 2)]),
-        f3: 1,
-        f4: 2,
-        f5: 3,
-        f6: 4,
-        f7: 5.0,
-        f8: 6.0,
-        f10: HashMap::from([(1, 1.0), (2, 2.0)]),
-    });
+    fory.register::<Person>(999).unwrap();
+    fory.register::<Animal>(899).unwrap();
+    let bin: Vec<u8> = fory
+        .serialize(&Person {
+            f1: "Hello".to_string(),
+            f2: HashMap::from([("hello1".to_string(), 1), ("hello2".to_string(), 2)]),
+            f3: 1,
+            f4: 2,
+            f5: 3,
+            f6: 4,
+            f7: 5.0,
+            f8: 6.0,
+            f10: HashMap::from([(1, 1.0), (2, 2.0)]),
+        })
+        .unwrap();
 
     print!("{bin:?}");
 }

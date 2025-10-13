@@ -31,24 +31,24 @@ pub struct MetaWriterResolver {
 
 #[allow(dead_code)]
 impl MetaWriterResolver {
-    pub fn push(&mut self, type_id: std::any::TypeId, fory: &Fory) -> usize {
+    pub fn push(&mut self, type_id: std::any::TypeId, fory: &Fory) -> Result<usize, Error> {
         match self.type_id_index_map.get(&type_id) {
             None => {
                 let index = self.type_defs.len();
                 self.type_defs.push(
                     fory.get_type_resolver()
-                        .get_type_info(type_id)
+                        .get_type_info(type_id)?
                         .get_type_def(),
                 );
                 self.type_id_index_map.insert(type_id, index);
-                index
+                Ok(index)
             }
-            Some(index) => *index,
+            Some(index) => Ok(*index),
         }
     }
 
     pub fn to_bytes(&self, writer: &mut Writer) -> Result<(), Error> {
-        writer.write_varuint32(self.type_defs.len() as u32);
+        writer.write_varuint32(self.type_defs.len() as u32)?;
         for item in &self.type_defs {
             writer.write_bytes(item);
         }
@@ -75,29 +75,33 @@ impl MetaReaderResolver {
         unsafe { self.reading_type_defs.get_unchecked(index) }
     }
 
-    pub fn load(&mut self, type_resolver: &TypeResolver, reader: &mut Reader) -> usize {
-        let meta_size = reader.read_varuint32();
+    pub fn load(
+        &mut self,
+        type_resolver: &TypeResolver,
+        reader: &mut Reader,
+    ) -> Result<usize, Error> {
+        let meta_size = reader.read_varuint32()?;
         // self.reading_type_defs.reserve(meta_size as usize);
         for _ in 0..meta_size {
-            let type_meta = TypeMeta::from_bytes(reader, type_resolver);
+            let type_meta = TypeMeta::from_bytes(reader, type_resolver)?;
             self.reading_type_defs.push(Arc::new(type_meta));
         }
-        reader.get_cursor()
+        Ok(reader.get_cursor())
     }
 
-    pub fn read_metastring(&self, reader: &mut Reader) -> MetaString {
-        let len = reader.read_varuint32() as usize;
+    pub fn read_metastring(&self, reader: &mut Reader) -> Result<MetaString, Error> {
+        let len = reader.read_varuint32()? as usize;
         if len == 0 {
-            return MetaString {
+            return Ok(MetaString {
                 bytes: vec![],
                 encoding: Encoding::Utf8,
                 original: String::new(),
                 strip_last_char: false,
                 special_char1: '\0',
                 special_char2: '\0',
-            };
+            });
         }
-        let bytes = reader.read_bytes(len);
+        let bytes = reader.read_bytes(len)?;
         let encoding_byte = bytes[0] & 0x07;
         let encoding = match encoding_byte {
             0x00 => Encoding::Utf8,
@@ -107,7 +111,7 @@ impl MetaReaderResolver {
             0x04 => Encoding::AllToLowerSpecial,
             _ => Encoding::Utf8,
         };
-        NAMESPACE_DECODER.decode(bytes, encoding).unwrap()
+        NAMESPACE_DECODER.decode(bytes, encoding)
     }
 
     pub fn reset(&mut self) {

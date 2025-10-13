@@ -20,7 +20,7 @@ use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::PRIMITIVE_ARRAY_TYPES;
-use crate::Fory;
+use crate::{bail, ensure, Fory};
 
 // const TRACKING_REF: u8 = 0b1;
 
@@ -36,14 +36,19 @@ pub fn write_collection_type_info(
     context: &mut WriteContext,
     is_field: bool,
     collection_type_id: u32,
-) {
+) -> Result<(), Error> {
     if is_field {
-        return;
+        return Ok(());
     }
-    context.writer.write_varuint32(collection_type_id);
+    context.writer.write_varuint32(collection_type_id)
 }
 
-pub fn write_collection<'a, T, I>(iter: I, fory: &Fory, context: &mut WriteContext, is_field: bool)
+pub fn write_collection<'a, T, I>(
+    iter: I,
+    fory: &Fory,
+    context: &mut WriteContext,
+    is_field: bool,
+) -> Result<(), Error>
 where
     T: Serializer + 'a,
     I: IntoIterator<Item = &'a T>,
@@ -51,9 +56,9 @@ where
 {
     let iter = iter.into_iter();
     let len = iter.len();
-    context.writer.write_varuint32(len as u32);
+    context.writer.write_varuint32(len as u32)?;
     if len == 0 {
-        return;
+        return Ok(());
     }
     let mut header = 0;
     let mut has_null = false;
@@ -76,14 +81,15 @@ where
     if is_same_type {
         header |= IS_SAME_TYPE;
     }
-    context.writer.write_u8(header);
-    T::fory_write_type_info(fory, context, is_field);
+    context.writer.write_u8(header)?;
+    T::fory_write_type_info(fory, context, is_field)?;
     // context.writer.reserve((T::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         // TOTO: make it xlang compatible
         for item in iter {
-            item.fory_write(fory, context, is_field);
+            item.fory_write(fory, context, is_field)?;
         }
+        Ok(())
     } else {
         // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
         let skip_ref_flag = is_same_type && !has_null;
@@ -95,8 +101,9 @@ where
                 is_field,
                 skip_ref_flag,
                 true,
-            );
+            )?;
         }
+        Ok(())
     }
 }
 
@@ -104,16 +111,19 @@ pub fn read_collection_type_info(
     context: &mut ReadContext,
     is_field: bool,
     collection_type_id: u32,
-) {
+) -> Result<(), Error> {
     if is_field {
-        return;
+        return Ok(());
     }
-    let remote_collection_type_id = context.reader.read_varuint32();
-    assert_eq!(collection_type_id, remote_collection_type_id);
+    let remote_collection_type_id = context.reader.read_varuint32()?;
     if PRIMITIVE_ARRAY_TYPES.contains(&remote_collection_type_id) {
-        panic!("Vec<number> belongs to the `number_array` type, and Vec<Option<number>> belongs to the `list` type. You should not read data of type `number_array` as data of type `list`");
+        bail!("Vec<number> belongs to the `number_array` type, and Vec<Option<number>> belongs to the `list` type. You should not read data of type `number_array` as data of type `list`");
     }
-    assert_eq!(remote_collection_type_id, collection_type_id);
+    ensure!(
+        collection_type_id == remote_collection_type_id,
+        Error::TypeMismatch(collection_type_id, remote_collection_type_id)
+    );
+    Ok(())
 }
 
 pub fn read_collection<C, T>(fory: &Fory, context: &mut ReadContext) -> Result<C, Error>
@@ -121,13 +131,13 @@ where
     T: Serializer + ForyDefault,
     C: FromIterator<T>,
 {
-    let len = context.reader.read_varuint32();
+    let len = context.reader.read_varuint32()?;
     if len == 0 {
         return Ok(C::from_iter(std::iter::empty()));
     }
-    let header = context.reader.read_u8();
+    let header = context.reader.read_u8()?;
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
-    T::fory_read_type_info(fory, context, declared);
+    T::fory_read_type_info(fory, context, declared)?;
     let has_null = (header & HAS_NULL) != 0;
     let is_same_type = (header & IS_SAME_TYPE) != 0;
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
