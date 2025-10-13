@@ -20,6 +20,7 @@
 package org.apache.fory.util;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Modifier;
 import java.util.Objects;
 import java.util.Set;
 import org.apache.fory.Fory;
@@ -27,6 +28,7 @@ import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
+import org.apache.fory.util.record.RecordUtils;
 
 /** A helper for Graalvm native image support. */
 public class GraalvmSupport {
@@ -114,5 +116,33 @@ public class GraalvmSupport {
 
   public static ForyException throwNoArgCtrException(Class<?> type) {
     throw new ForyException("Please provide a no-arg constructor for " + type);
+  }
+
+  public static boolean isRecordConstructorPublicAccessible(Class<?> type) {
+    if (!RecordUtils.isRecord(type)) {
+      return false;
+    }
+
+    try {
+      Constructor<?>[] constructors = type.getDeclaredConstructors();
+      for (Constructor<?> constructor : constructors) {
+        if (Modifier.isPublic(constructor.getModifiers())) {
+          Class<?>[] paramTypes = constructor.getParameterTypes();
+          boolean allParamsPublic = true;
+          for (Class<?> paramType : paramTypes) {
+            if (!Modifier.isPublic(paramType.getModifiers())) {
+              allParamsPublic = false;
+              break;
+            }
+          }
+          if (allParamsPublic) {
+            return true;
+          }
+        }
+      }
+    } catch (Exception e) {
+      return false;
+    }
+    return false;
   }
 }

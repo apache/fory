@@ -23,7 +23,6 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Modifier;
 import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.exception.ForyException;
@@ -106,12 +105,7 @@ public class ObjectCreators {
       }
     }
     if (RecordUtils.isRecord(type)) {
-      for (Constructor<?> constructor : constructors) {
-        if (Modifier.isPublic(constructor.getModifiers())) {
-          return false;
-        }
-      }
-      return true;
+      return !GraalvmSupport.isRecordConstructorPublicAccessible(type);
     }
     return true;
   }
