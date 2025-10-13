@@ -19,7 +19,12 @@ use crate::types::TypeId;
 use chrono::NaiveDate;
 use std::ptr;
 
-pub const EPOCH: NaiveDate = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+pub const EPOCH: NaiveDate = match NaiveDate::from_ymd_opt(1970, 1, 1) {
+    None => {
+        panic!("Unreachable code")
+    }
+    Some(epoch) => epoch,
+};
 
 // Swapping the high 8 bits and the low 8 bits of a 16-bit value
 fn swap_endian(value: u16) -> u16 {
