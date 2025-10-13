@@ -21,9 +21,11 @@ package org.apache.fory.util;
 
 import java.lang.reflect.Constructor;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.fory.Fory;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
 
 /** A helper for Graalvm native image support. */
@@ -52,6 +54,23 @@ public class GraalvmSupport {
   public static boolean isGraalRuntime() {
     return IN_GRAALVM_NATIVE_IMAGE
         && GRAAL_IMAGE_RUNTIME.equals(System.getProperty(GRAAL_IMAGE_CODE_KEY));
+  }
+
+  /**
+   * Returns all classes registered for GraalVM native image compilation across all configurations.
+   */
+  public static Set<Class<?>> getRegisteredClasses() {
+    return TypeResolver.getAllRegisteredClasses();
+  }
+
+  /** Returns all proxy interfaces registered for GraalVM native image compilation. */
+  public static Set<Class<?>> getProxyInterfaces() {
+    return TypeResolver.getAllProxyInterfaces();
+  }
+
+  /** Clears all GraalVM native image registrations. Primarily for testing purposes. */
+  public static void clearRegistrations() {
+    TypeResolver.clearGraalvmRegistrations();
   }
 
   public static class GraalvmSerializerHolder extends Serializer {

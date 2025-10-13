@@ -23,6 +23,7 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Modifier;
 import org.apache.fory.collection.ClassValueCache;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.exception.ForyException;
@@ -102,6 +103,9 @@ public class ObjectCreators {
     }
     for (Constructor<?> constructor : constructors) {
       if (constructor.getParameterCount() == 0) {
+        return false;
+      }
+      if (RecordUtils.isRecord(type) && Modifier.isPublic(constructor.getModifiers())) {
         return false;
       }
     }

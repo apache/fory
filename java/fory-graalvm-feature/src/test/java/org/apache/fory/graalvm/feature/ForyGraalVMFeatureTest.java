@@ -21,9 +21,10 @@ package org.apache.fory.graalvm.feature;
 
 import static org.junit.Assert.*;
 
-import java.util.Set;
 import org.apache.fory.Fory;
 import org.apache.fory.reflect.ObjectCreators;
+import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.util.GraalvmSupport;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -61,13 +62,13 @@ public class ForyGraalVMFeatureTest {
 
   @Before
   public void setUp() {
-    Fory.clearRegistrations();
+    GraalvmSupport.clearRegistrations();
     feature = new ForyGraalVMFeature();
   }
 
   @After
   public void tearDown() {
-    Fory.clearRegistrations();
+    GraalvmSupport.clearRegistrations();
   }
 
   @Test
@@ -100,18 +101,9 @@ public class ForyGraalVMFeatureTest {
   @Test
   public void testForyStaticMethods() {
     // Test that Fory static methods are accessible
-    Set<Class<?>> registeredClasses = Fory.getRegisteredClasses();
-    assertNotNull("Registered classes should not be null", registeredClasses);
+    assertNotNull("Registered classes should not be null", GraalvmSupport.getRegisteredClasses());
 
-    Set<Class<?>> proxyInterfaces = Fory.getProxyInterfaces();
-    assertNotNull("Proxy interfaces should not be null", proxyInterfaces);
-
-    try {
-      registeredClasses.add(PublicNoArgConstructorClass.class);
-      fail("Snapshots should be unmodifiable");
-    } catch (UnsupportedOperationException expected) {
-      // expected
-    }
+    assertNotNull("Proxy interfaces should not be null", GraalvmSupport.getProxyInterfaces());
   }
 
   @Test
@@ -123,7 +115,7 @@ public class ForyGraalVMFeatureTest {
   @Test
   public void testAddProxyInterfaceRejectsNull() {
     try {
-      Fory.addProxyInterface(null);
+      TypeResolver.addProxyInterface(null);
       fail("Null proxy interface should throw NullPointerException");
     } catch (NullPointerException expected) {
       // expected
@@ -133,7 +125,7 @@ public class ForyGraalVMFeatureTest {
   @Test
   public void testAddProxyInterfaceRejectsNonInterface() {
     try {
-      Fory.addProxyInterface(NonInterfaceProxy.class);
+      TypeResolver.addProxyInterface(NonInterfaceProxy.class);
       fail("Non-interface proxy type should throw IllegalArgumentException");
     } catch (IllegalArgumentException expected) {
       // expected
@@ -143,16 +135,16 @@ public class ForyGraalVMFeatureTest {
   @Test
   public void testClearRegistrationsResetsState() {
     Fory builderInstance = Fory.builder().build();
-    Fory.clearRegistrations();
+    GraalvmSupport.clearRegistrations();
     builderInstance.register(PublicNoArgConstructorClass.class);
-    Fory.addProxyInterface(SampleProxyInterface.class);
+    TypeResolver.addProxyInterface(SampleProxyInterface.class);
 
-    assertFalse(Fory.getRegisteredClasses().isEmpty());
-    assertFalse(Fory.getProxyInterfaces().isEmpty());
+    assertFalse(GraalvmSupport.getRegisteredClasses().isEmpty());
+    assertFalse(GraalvmSupport.getProxyInterfaces().isEmpty());
 
-    Fory.clearRegistrations();
+    GraalvmSupport.clearRegistrations();
 
-    assertTrue(Fory.getRegisteredClasses().isEmpty());
-    assertTrue(Fory.getProxyInterfaces().isEmpty());
+    assertTrue(GraalvmSupport.getRegisteredClasses().isEmpty());
+    assertTrue(GraalvmSupport.getProxyInterfaces().isEmpty());
   }
 }

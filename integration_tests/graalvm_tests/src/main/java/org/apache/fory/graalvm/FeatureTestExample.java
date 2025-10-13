@@ -24,18 +24,18 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import org.apache.fory.Fory;
 import org.apache.fory.config.Language;
+import org.apache.fory.resolver.TypeResolver;
 
 public class FeatureTestExample {
 
-  // Test class with private constructor (problematic for creation)
-  public static class ProblematicClass {
+  public static class PrivateConstructorClass {
     private String value;
 
-    private ProblematicClass() {
+    private PrivateConstructorClass() {
       // Private constructor
     }
 
-    public ProblematicClass(String value) {
+    public PrivateConstructorClass(String value) {
       this.value = value;
     }
 
@@ -81,22 +81,22 @@ public class FeatureTestExample {
     Fory fory =
         Fory.builder().withLanguage(Language.JAVA).withRefTracking(true).withCodegen(false).build();
 
-    fory.register(ProblematicClass.class);
+    fory.register(PrivateConstructorClass.class);
     fory.register(TestInvocationHandler.class);
 
     // Register proxy interface
-    Fory.addProxyInterface(TestInterface.class);
+    TypeResolver.addProxyInterface(TestInterface.class);
 
     try {
-      // Test 1: Serialize/deserialize problematic class
-      ProblematicClass original = new ProblematicClass("test-value");
+      // Test 1: Serialize/deserialize class with private constructor
+      PrivateConstructorClass original = new PrivateConstructorClass("test-value");
       byte[] serialized = fory.serialize(original);
-      ProblematicClass deserialized = (ProblematicClass) fory.deserialize(serialized);
+      PrivateConstructorClass deserialized = (PrivateConstructorClass) fory.deserialize(serialized);
 
       if (!"test-value".equals(deserialized.getValue())) {
-        throw new RuntimeException("Problematic class test failed");
+        throw new RuntimeException("Private constructor class test failed");
       }
-      System.out.println("✓ Problematic class serialization test passed");
+      System.out.println("Private constructor class serialization test passed");
 
       // Test 2: Serialize/deserialize proxy object
       TestInterface proxy =
@@ -112,7 +112,7 @@ public class FeatureTestExample {
       if (!"proxy-value".equals(deserializedProxy.getValue())) {
         throw new RuntimeException("Proxy test failed");
       }
-      System.out.println("✓ Proxy serialization test passed");
+      System.out.println("Proxy serialization test passed");
 
       System.out.println("All GraalVM Feature tests passed!");
 

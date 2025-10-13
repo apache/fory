@@ -27,7 +27,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -1767,48 +1766,5 @@ public final class Fory implements BaseFory {
 
   public static ForyBuilder builder() {
     return new ForyBuilder();
-  }
-
-  /**
-   * Get all registered classes for GraalVM native image compilation. This is a convenience method
-   * that delegates to {@link TypeResolver#getAllRegisteredClasses()}.
-   *
-   * @return unmodifiable set of all registered classes
-   */
-  public static Set<Class<?>> getRegisteredClasses() {
-    return TypeResolver.getAllRegisteredClasses();
-  }
-
-  /**
-   * Get all registered proxy interfaces for GraalVM native image compilation. This is a convenience
-   * method that delegates to {@link TypeResolver#getAllProxyInterfaces()}.
-   *
-   * @return unmodifiable set of all registered proxy interfaces
-   */
-  public static Set<Class<?>> getProxyInterfaces() {
-    return TypeResolver.getAllProxyInterfaces();
-  }
-
-  /**
-   * Register a proxy interface for GraalVM native image compilation. This is a convenience method
-   * that delegates to {@link TypeResolver#registerProxyInterfaceForGraalvm}.
-   *
-   * <p>Note: This registers the proxy interface globally across all Fory configurations. If you
-   * need per-configuration registration, use the TypeResolver methods directly.
-   *
-   * @param proxyInterface the proxy interface to register
-   * @throws NullPointerException if proxyInterface is null
-   * @throws IllegalArgumentException if proxyInterface is not an interface
-   */
-  public static void addProxyInterface(Class<?> proxyInterface) {
-    TypeResolver.registerProxyInterfaceForGraalvm(proxyInterface, 0);
-  }
-
-  /**
-   * Clear all GraalVM registrations. This is primarily for testing purposes. This is a convenience
-   * method that delegates to {@link TypeResolver#clearGraalvmRegistrations()}.
-   */
-  public static void clearRegistrations() {
-    TypeResolver.clearGraalvmRegistrations();
   }
 }

@@ -732,6 +732,16 @@ public abstract class TypeResolver {
     registry.proxyInterfaces.add(proxyInterface);
   }
 
+  /**
+   * Register a proxy interface globally for GraalVM native image compilation.
+   *
+   * <p>This is a convenience wrapper over {@link #registerProxyInterfaceForGraalvm(Class, int)}
+   * with a shared registration scope.
+   */
+  public static void addProxyInterface(Class<?> proxyInterface) {
+    registerProxyInterfaceForGraalvm(proxyInterface, 0);
+  }
+
   /** Clear all GraalVM registrations. This is primarily for testing purposes. */
   public static void clearGraalvmRegistrations() {
     for (GraalvmClassRegistry registry : GRAALVM_REGISTRY.values()) {
