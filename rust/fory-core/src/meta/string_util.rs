@@ -1008,7 +1008,7 @@ pub mod buffer_rw_string {
             if std::arch::is_x86_feature_detected!("avx2") {
                 let s = unsafe { simd_impl(slice) };
                 reader.move_next(len)?;
-                return s;
+                return Ok(s);
             }
         }
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
@@ -1016,7 +1016,7 @@ pub mod buffer_rw_string {
             if std::arch::is_x86_feature_detected!("sse2") {
                 let s = unsafe { simd_impl(slice) };
                 reader.move_next(len)?;
-                return s;
+                return Ok(s);
             }
         }
         #[cfg(target_arch = "aarch64")]
