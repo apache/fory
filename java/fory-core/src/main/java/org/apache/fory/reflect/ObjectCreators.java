@@ -93,8 +93,7 @@ public class ObjectCreators {
         || type.isArray()
         || type.isEnum()
         || type.isAnonymousClass()
-        || type.isLocalClass()
-        || RecordUtils.isRecord(type)) {
+        || type.isLocalClass()) {
       return false;
     }
     Constructor<?>[] constructors = type.getDeclaredConstructors();
@@ -105,9 +104,14 @@ public class ObjectCreators {
       if (constructor.getParameterCount() == 0) {
         return false;
       }
-      if (RecordUtils.isRecord(type) && Modifier.isPublic(constructor.getModifiers())) {
-        return false;
+    }
+    if (RecordUtils.isRecord(type)) {
+      for (Constructor<?> constructor : constructors) {
+        if (Modifier.isPublic(constructor.getModifiers())) {
+          return false;
+        }
       }
+      return true;
     }
     return true;
   }
