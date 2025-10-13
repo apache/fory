@@ -34,7 +34,7 @@ type structSerializer struct {
 	codegenDelegate Serializer // Optional codegen serializer for performance (like Python's approach)
 }
 
-var UNKNOWN_TYPE_ID = int16(-1)
+var UNKNOWN_TYPE_ID = int16(63)
 
 func (s *structSerializer) TypeId() TypeId {
 	return NAMED_STRUCT
@@ -378,7 +378,7 @@ func sortFields(
 		}
 		typeTriples = append(typeTriples, triple{ser.TypeId(), ser, name})
 	}
-	var boxed, collection, maps, final []triple
+	var boxed, collection, setFields, maps, otherInternalTypeFields []triple
 
 	for _, t := range typeTriples {
 		switch {
@@ -386,12 +386,14 @@ func sortFields(
 			boxed = append(boxed, t)
 		case isListType(t.typeID):
 			collection = append(collection, t)
+		case isSetType(t.typeID):
+			setFields = append(setFields, t)
 		case isMapType(t.typeID):
 			maps = append(maps, t)
-		case t.typeID == STRING || isPrimitiveArrayType(t.typeID):
-			final = append(final, t)
-		default:
+		case isUserDefinedType(t.typeID) || t.typeID == UNKNOWN_TYPE_ID:
 			others = append(others, t)
+		default:
+			otherInternalTypeFields = append(otherInternalTypeFields, t)
 		}
 	}
 	sort.Slice(boxed, func(i, j int) bool {
@@ -417,17 +419,23 @@ func sortFields(
 			return s[i].name < s[j].name
 		})
 	}
-	sortTuple(final)
+	sortByTypeIDThenName := func(s []triple) {
+		sort.Slice(s, func(i, j int) bool {
+			return s[i].name < s[j].name
+		})
+	}
+	sortByTypeIDThenName(otherInternalTypeFields)
 	sortTuple(others)
 	sortTuple(collection)
 	sortTuple(maps)
 
 	all := make([]triple, 0, len(fieldNames))
 	all = append(all, boxed...)
-	all = append(all, final...)
-	all = append(all, others...)
+	all = append(all, otherInternalTypeFields...)
 	all = append(all, collection...)
+	all = append(all, setFields...)
 	all = append(all, maps...)
+	all = append(all, others...)
 
 	outSer := make([]Serializer, len(all))
 	outNam := make([]string, len(all))
