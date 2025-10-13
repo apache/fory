@@ -77,39 +77,6 @@ public class ObjectCreators {
     return (ObjectCreator<T>) cache.get(type, () -> creategetObjectCreator(type));
   }
 
-  /**
-   * Checks if a class is problematic for object creation and requires special handling in GraalVM.
-   *
-   * <p>A class is considered problematic if it lacks a public no-arg constructor and would
-   * typically require ReflectionFactory or unsafe allocation for instantiation.
-   *
-   * @param type the class to check
-   * @return true if the class is problematic for creation, false otherwise
-   */
-  public static boolean isProblematicForCreation(Class<?> type) {
-    if (type.isInterface()
-        || java.lang.reflect.Modifier.isAbstract(type.getModifiers())
-        || type.isArray()
-        || type.isEnum()
-        || type.isAnonymousClass()
-        || type.isLocalClass()) {
-      return false;
-    }
-    Constructor<?>[] constructors = type.getDeclaredConstructors();
-    if (constructors.length == 0) {
-      return true;
-    }
-    for (Constructor<?> constructor : constructors) {
-      if (constructor.getParameterCount() == 0) {
-        return false;
-      }
-    }
-    if (RecordUtils.isRecord(type)) {
-      return !GraalvmSupport.isRecordConstructorPublicAccessible(type);
-    }
-    return true;
-  }
-
   private static <T> ObjectCreator<T> creategetObjectCreator(Class<T> type) {
     if (RecordUtils.isRecord(type)) {
       return new RecordObjectCreator<>(type);

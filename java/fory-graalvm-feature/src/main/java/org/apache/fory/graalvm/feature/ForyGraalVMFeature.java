@@ -22,8 +22,8 @@ package org.apache.fory.graalvm.feature;
 import java.lang.reflect.Field;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.util.GraalvmSupport;
 import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
 
@@ -73,7 +73,7 @@ public class ForyGraalVMFeature implements Feature {
   }
 
   private void handleForyClass(Class<?> clazz) {
-    if (ObjectCreators.isProblematicForCreation(clazz)) {
+    if (GraalvmSupport.isProblematicForCreation(clazz)) {
       try {
         RuntimeReflection.registerForReflectiveInstantiation(clazz);
         for (Field field : clazz.getDeclaredFields()) {

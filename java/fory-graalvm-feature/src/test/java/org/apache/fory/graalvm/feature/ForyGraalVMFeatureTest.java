@@ -22,7 +22,6 @@ package org.apache.fory.graalvm.feature;
 import static org.junit.Assert.*;
 
 import org.apache.fory.Fory;
-import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.GraalvmSupport;
 import org.junit.After;
@@ -83,19 +82,19 @@ public class ForyGraalVMFeatureTest {
   public void testObjectCreatorsProblematicDetection() {
     assertTrue(
         "Class without no-arg constructor should be problematic",
-        ObjectCreators.isProblematicForCreation(PrivateParameterizedConstructorClass.class));
+        GraalvmSupport.isProblematicForCreation(PrivateParameterizedConstructorClass.class));
 
     assertFalse(
         "Public no-arg constructor should not be problematic",
-        ObjectCreators.isProblematicForCreation(PublicNoArgConstructorClass.class));
+        GraalvmSupport.isProblematicForCreation(PublicNoArgConstructorClass.class));
 
     assertFalse(
         "Protected no-arg constructor should not be problematic",
-        ObjectCreators.isProblematicForCreation(ProtectedNoArgConstructorClass.class));
+        GraalvmSupport.isProblematicForCreation(ProtectedNoArgConstructorClass.class));
 
     assertFalse(
         "Enums should not be considered problematic",
-        ObjectCreators.isProblematicForCreation(SampleEnum.class));
+        GraalvmSupport.isProblematicForCreation(SampleEnum.class));
   }
 
   @Test

@@ -19,7 +19,6 @@
 
 package org.apache.fory.util;
 
-import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.util.record.RecordUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -68,7 +67,7 @@ public class GraalvmSupportRecordTest {
 
   @Test
   public void testObjectCreators_IsProblematicForCreation_WithRegularClass() {
-    boolean result = ObjectCreators.isProblematicForCreation(RegularClass.class);
+    boolean result = GraalvmSupport.isProblematicForCreation(RegularClass.class);
     Assert.assertFalse(
         result, "RegularClass with no-arg constructor should not be problematic for creation");
   }
@@ -90,13 +89,13 @@ public class GraalvmSupportRecordTest {
 
   @Test
   public void testObjectCreators_BackwardCompatibility() {
-    Assert.assertFalse(ObjectCreators.isProblematicForCreation(RegularClass.class));
-    Assert.assertFalse(ObjectCreators.isProblematicForCreation(Object.class));
-    Assert.assertFalse(ObjectCreators.isProblematicForCreation(String.class));
+    Assert.assertFalse(GraalvmSupport.isProblematicForCreation(RegularClass.class));
+    Assert.assertFalse(GraalvmSupport.isProblematicForCreation(Object.class));
+    Assert.assertFalse(GraalvmSupport.isProblematicForCreation(String.class));
 
-    Assert.assertTrue(ObjectCreators.isProblematicForCreation(PrivateClass.class));
+    Assert.assertTrue(GraalvmSupport.isProblematicForCreation(PrivateClass.class));
 
-    Assert.assertFalse(ObjectCreators.isProblematicForCreation(Runnable.class));
+    Assert.assertFalse(GraalvmSupport.isProblematicForCreation(Runnable.class));
   }
 
   @Test
