@@ -20,9 +20,9 @@ The Rust implementation provides versatile and high-performance serialization wi
 
 ## 📦 Crates
 
-| Crate                         | Description                       | Version                                                                                               |
-| ----------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)               | High-level API with derive macros | [![crates.io](https://img.shields.io/crates/v/fory.svg)](https://crates.io/crates/fory)               |
+| Crate                                                                       | Description                       | Version                                                                                               |
+| --------------------------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| [`fory`](https://github.com/apache/fory/blob/main/rust/fory)                | High-level API with derive macros | [![crates.io](https://img.shields.io/crates/v/fory.svg)](https://crates.io/crates/fory)               |
 | [`fory-core`](https://github.com/apache/fory/blob/main/rust/fory-core/)     | Core serialization engine         | [![crates.io](https://img.shields.io/crates/v/fory-core.svg)](https://crates.io/crates/fory-core)     |
 | [`fory-derive`](https://github.com/apache/fory/blob/main/rust/fory-derive/) | Procedural macros                 | [![crates.io](https://img.shields.io/crates/v/fory-derive.svg)](https://crates.io/crates/fory-derive) |
 
