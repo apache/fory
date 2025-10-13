@@ -394,6 +394,13 @@ impl Reader {
     }
 
     #[inline(always)]
+    pub fn read_bool(&mut self) -> bool {
+        let result = unsafe { *self.ptr_at(self.cursor) };
+        self.move_next(1);
+        result != 0
+    }
+
+    #[inline(always)]
     pub fn read_u8(&mut self) -> u8 {
         let result = unsafe { *self.ptr_at(self.cursor) };
         self.move_next(1);

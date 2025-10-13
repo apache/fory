@@ -23,6 +23,7 @@ use crate::meta::{
     TYPE_NAME_ENCODINGS,
 };
 use crate::serializer::{ForyDefault, Serializer, StructSerializer};
+use crate::Reader;
 use std::sync::Arc;
 use std::{any::Any, collections::HashMap};
 
@@ -88,6 +89,7 @@ impl Harness {
 #[derive(Clone, Debug)]
 pub struct TypeInfo {
     type_def: Arc<Vec<u8>>,
+    type_meta: Arc<TypeMeta>,
     type_id: u32,
     namespace: MetaString,
     type_name: MetaString,
@@ -108,14 +110,16 @@ impl TypeInfo {
         let type_name_metastring = TYPE_NAME_ENCODER
             .encode_with_encodings(type_name, TYPE_NAME_ENCODINGS)
             .unwrap();
+        let (type_def_bytes, type_meta) = T::fory_type_def(
+            fory,
+            type_id,
+            namespace_metastring.clone(),
+            type_name_metastring.clone(),
+            register_by_name,
+        );
         TypeInfo {
-            type_def: Arc::from(T::fory_type_def(
-                fory,
-                type_id,
-                namespace_metastring.clone(),
-                type_name_metastring.clone(),
-                register_by_name,
-            )),
+            type_def: Arc::from(type_def_bytes),
+            type_meta: Arc::new(type_meta),
             type_id,
             namespace: namespace_metastring,
             type_name: type_name_metastring,
@@ -144,8 +148,11 @@ impl TypeInfo {
             vec![],
         );
         let type_def = meta.to_bytes().unwrap();
+        let type_resolver = _fory.get_type_resolver();
+        let meta = TypeMeta::from_bytes(&mut Reader::new(&type_def), type_resolver);
         TypeInfo {
             type_def: Arc::from(type_def),
+            type_meta: Arc::new(meta),
             type_id,
             namespace: namespace_metastring,
             type_name: type_name_metastring,
@@ -169,6 +176,10 @@ impl TypeInfo {
         self.type_def.clone()
     }
 
+    pub fn get_type_meta(&self) -> Arc<TypeMeta> {
+        self.type_meta.clone()
+    }
+
     pub fn is_registered_by_name(&self) -> bool {
         self.register_by_name
     }
@@ -180,6 +191,8 @@ pub struct TypeResolver {
     type_id_map: HashMap<std::any::TypeId, u32>,
     type_name_map: HashMap<std::any::TypeId, (MetaString, MetaString)>,
     type_info_cache: HashMap<std::any::TypeId, TypeInfo>,
+    type_info_map_by_id: HashMap<u32, TypeInfo>,
+    type_info_map_by_name: HashMap<(String, String), TypeInfo>,
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
 }
@@ -194,6 +207,8 @@ impl Default for TypeResolver {
             type_id_map: HashMap::new(),
             type_name_map: HashMap::new(),
             type_info_cache: HashMap::new(),
+            type_info_map_by_id: HashMap::new(),
+            type_info_map_by_name: HashMap::new(),
             type_id_index: Vec::new(),
         };
         resolver.register_builtin_types();
@@ -209,6 +224,7 @@ impl TypeResolver {
             ($ty:ty, $type_id:expr) => {{
                 let type_info = TypeInfo {
                     type_def: Arc::from(vec![]),
+                    type_meta: Arc::new(TypeMeta::empty()),
                     type_id: $type_id as u32,
                     namespace: NAMESPACE_ENCODER
                         .encode_with_encodings("", NAMESPACE_ENCODINGS)
@@ -243,10 +259,19 @@ impl TypeResolver {
     pub fn get_type_info(&self, type_id: std::any::TypeId) -> &TypeInfo {
         self.type_info_cache.get(&type_id).unwrap_or_else(|| {
             panic!(
-                "TypeId {:?} not found in type_info_map, maybe you forgot to register some types",
+                "TypeId {:?} not found in type_info registry, maybe you forgot to register some types",
                 type_id
             )
         })
+    }
+
+    pub fn get_type_info_by_id(&self, id: u32) -> Option<&TypeInfo> {
+        self.type_info_map_by_id.get(&id)
+    }
+
+    pub fn get_type_info_by_name(&self, namespace: &str, type_name: &str) -> Option<&TypeInfo> {
+        self.type_info_map_by_name
+            .get(&(namespace.to_owned(), type_name.to_owned()))
     }
 
     /// Fast path for getting type info by numeric ID (avoids HashMap lookup by TypeId)
@@ -351,6 +376,8 @@ impl TypeResolver {
             panic!("rs_struct:{:?} already registered", rs_type_id);
         }
         self.type_info_cache.insert(rs_type_id, type_info.clone());
+        self.type_info_map_by_id
+            .insert(type_info.type_id, type_info.clone());
         let index = T::fory_type_index() as usize;
         if index >= self.type_id_index.len() {
             self.type_id_index.resize(index + 1, NO_TYPE_ID);
@@ -380,6 +407,9 @@ impl TypeResolver {
                     to_serializer::<T>,
                 )),
             );
+            let string_key = (namespace.original.clone(), type_name.original.clone());
+            self.type_info_map_by_name
+                .insert(string_key, type_info.clone());
         } else {
             let type_id = type_info.type_id;
             if self.serializer_map.contains_key(&type_id) {

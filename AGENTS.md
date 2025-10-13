@@ -140,6 +140,12 @@ cargo test --features tests
 # run specific test
 cargo test -p fory-tests  --test $test_file $test_method
 
+# run specific test under subdirectory
+cargo test --test mod $dir$::$test_file::$test_method
+
+# inspect generated code by fory derive macro
+cargo expand --test mod $mod$::$file$ > expanded.rs
+
 # Format code
 cargo fmt
 

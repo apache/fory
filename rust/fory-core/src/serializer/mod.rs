@@ -17,7 +17,7 @@
 
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::meta::{MetaString, NAMESPACE_DECODER, TYPE_NAME_DECODER};
+use crate::meta::{MetaString, TypeMeta, NAMESPACE_DECODER, TYPE_NAME_DECODER};
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::{Mode, RefFlag, TypeId, PRIMITIVE_TYPES};
 use anyhow::anyhow;
@@ -318,8 +318,8 @@ pub trait StructSerializer: Serializer + 'static {
         _namespace: MetaString,
         _type_name: MetaString,
         _register_by_name: bool,
-    ) -> Vec<u8> {
-        Vec::default()
+    ) -> (Vec<u8>, TypeMeta) {
+        (Vec::default(), TypeMeta::empty())
     }
 
     fn fory_type_index() -> u32 {

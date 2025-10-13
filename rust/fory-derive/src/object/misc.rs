@@ -87,8 +87,10 @@ pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
                 quote! {
                     fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
                         type_id: fory_core::types::TypeId::LIST as u32,
+                        nullable: false,
                         generics: vec![fory_core::meta::FieldType {
                             type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                            nullable: false,
                             generics: Vec::new()
                         }]
                     })
@@ -100,10 +102,12 @@ pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
                 quote! {
                     fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
                         type_id: fory_core::types::TypeId::MAP as u32,
+                        nullable: false,
                         generics: vec![
                             #key_generic_token,
                             fory_core::meta::FieldType {
                                 type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                                nullable: false,
                                 generics: Vec::new()
                             }
                         ]
@@ -114,6 +118,7 @@ pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
                 quote! {
                     fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
                         type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                        nullable: false,
                         generics: Vec::new()
                     })
                 }

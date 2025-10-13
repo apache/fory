@@ -38,9 +38,10 @@ pub fn type_def(
     namespace: MetaString,
     type_name: MetaString,
     register_by_name: bool,
-) -> Vec<u8> {
+) -> (Vec<u8>, TypeMeta) {
     let meta = TypeMeta::from_fields(type_id, namespace, type_name, register_by_name, vec![]);
-    meta.to_bytes().unwrap()
+    let bytes = meta.to_bytes().unwrap();
+    (bytes, meta)
 }
 
 #[inline(always)]

@@ -24,7 +24,7 @@ use crate::resolver::metastring_resolver::{
     MetaStringBytes, MetaStringReaderResolver, MetaStringWriterResolver,
 };
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
-use crate::resolver::type_resolver::Harness;
+use crate::resolver::type_resolver::{Harness, TypeResolver};
 use std::sync::{Arc, Mutex};
 
 pub struct WriteContext {
@@ -158,10 +158,11 @@ impl ReadContext {
     }
 
     #[inline(always)]
-    pub fn load_meta(&mut self, offset: usize) -> usize {
-        self.meta_resolver.load(&mut Reader::new(
-            &self.reader.slice_after_cursor()[offset..],
-        ))
+    pub fn load_meta(&mut self, type_resolver: &TypeResolver, offset: usize) -> usize {
+        self.meta_resolver.load(
+            type_resolver,
+            &mut Reader::new(&self.reader.slice_after_cursor()[offset..]),
+        )
     }
 
     pub fn read_any_typeinfo(&mut self, fory: &Fory) -> Arc<Harness> {

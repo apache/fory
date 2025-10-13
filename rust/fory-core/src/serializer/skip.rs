@@ -16,7 +16,7 @@
 // under the License.
 
 use crate::error::Error;
-use crate::meta::NullableFieldType;
+use crate::meta::FieldType;
 use crate::resolver::context::ReadContext;
 use crate::serializer::collection::{HAS_NULL, IS_SAME_TYPE};
 use crate::serializer::Serializer;
@@ -24,7 +24,7 @@ use crate::types::{RefFlag, TypeId, BASIC_TYPES, CONTAINER_TYPES, PRIMITIVE_TYPE
 use crate::Fory;
 use chrono::{NaiveDate, NaiveDateTime};
 
-pub fn get_read_ref_flag(field_type: &NullableFieldType) -> bool {
+pub fn get_read_ref_flag(field_type: &FieldType) -> bool {
     let nullable = field_type.nullable;
     nullable || !PRIMITIVE_TYPES.contains(&field_type.type_id)
 }
@@ -48,7 +48,7 @@ macro_rules! basic_type_deserialize {
 pub fn skip_field_value(
     fory: &Fory,
     context: &mut ReadContext,
-    field_type: &NullableFieldType,
+    field_type: &FieldType,
     read_ref_flag: bool,
 ) -> Result<(), Error> {
     if read_ref_flag {
@@ -155,9 +155,8 @@ pub fn skip_field_value(
                 let field_infos = type_meta.get_field_infos().to_vec();
                 context.inc_depth()?;
                 for field_info in field_infos.iter() {
-                    let nullable_field_type = NullableFieldType::from(&field_info.field_type);
-                    let read_ref_flag = get_read_ref_flag(&nullable_field_type);
-                    skip_field_value(fory, context, &nullable_field_type, read_ref_flag)?;
+                    let read_ref_flag = get_read_ref_flag(&field_info.field_type);
+                    skip_field_value(fory, context, &field_info.field_type, read_ref_flag)?;
                 }
                 context.dec_depth();
                 Ok(())
@@ -188,9 +187,8 @@ pub fn skip_field_value(
                 let field_infos = type_meta.get_field_infos().to_vec();
                 context.inc_depth()?;
                 for field_info in field_infos.iter() {
-                    let nullable_field_type = NullableFieldType::from(&field_info.field_type);
-                    let read_ref_flag = get_read_ref_flag(&nullable_field_type);
-                    skip_field_value(fory, context, &nullable_field_type, read_ref_flag)?;
+                    let read_ref_flag = get_read_ref_flag(&field_info.field_type);
+                    skip_field_value(fory, context, &field_info.field_type, read_ref_flag)?;
                 }
                 context.dec_depth();
             } else if internal_id == ENUM_ID {

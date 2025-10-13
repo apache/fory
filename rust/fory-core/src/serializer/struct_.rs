@@ -44,7 +44,7 @@ pub fn type_def<T: Serializer + StructSerializer>(
     type_name: MetaString,
     register_by_name: bool,
     mut field_infos: Vec<FieldInfo>,
-) -> Vec<u8> {
+) -> (Vec<u8>, TypeMeta) {
     let sorted_field_names = T::fory_get_sorted_field_names(fory);
     let mut sorted_field_infos: Vec<FieldInfo> = Vec::with_capacity(field_infos.len());
     for name in sorted_field_names.iter() {
@@ -61,6 +61,10 @@ pub fn type_def<T: Serializer + StructSerializer>(
             panic!("Field {} not found in field_infos", name);
         }
     }
+    // assign field id in ascending order
+    for (i, field_info) in sorted_field_infos.iter_mut().enumerate() {
+        field_info.field_id = i as i16;
+    }
     let meta = TypeMeta::from_fields(
         type_id,
         namespace,
@@ -68,7 +72,8 @@ pub fn type_def<T: Serializer + StructSerializer>(
         register_by_name,
         sorted_field_infos,
     );
-    meta.to_bytes().unwrap()
+    let bytes = meta.to_bytes().unwrap();
+    (bytes, meta)
 }
 
 #[inline(always)]
