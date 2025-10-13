@@ -305,7 +305,6 @@ Apache Fory™ supports polymorphic serialization through trait objects, enablin
 use fory::{Fory, register_trait_type};
 use fory::Serializer;
 use fory::ForyObject;
-use fory::Mode;
 
 trait Animal: Serializer {
     fn speak(&self) -> String;
@@ -336,7 +335,7 @@ struct Zoo {
     star_animal: Box<dyn Animal>,
 }
 
-let mut fory = Fory::default().mode(Mode::Compatible);
+let mut fory = Fory::default().compatible(true);
 fory.register::<Dog>(100);
 fory.register::<Cat>(101);
 fory.register::<Zoo>(102);
@@ -425,7 +424,7 @@ struct AnimalShelter {
     registry: HashMap<String, Arc<dyn Animal>>,
 }
 
-let mut fory = Fory::default().mode(Mode::Compatible);
+let mut fory = Fory::default().compatible(true);
 fory.register::<Dog>(100);
 fory.register::<Cat>(101);
 fory.register::<AnimalShelter>(102);
@@ -510,7 +509,6 @@ Apache Fory™ supports schema evolution in **Compatible mode**, allowing serial
 
 ```rust
 use fory::Fory;
-use fory::Mode;
 use fory::ForyObject;
 use std::collections::HashMap;
 
@@ -531,10 +529,10 @@ struct PersonV2 {
     metadata: HashMap<String, String>,
 }
 
-let mut fory1 = Fory::default().mode(Mode::Compatible);
+let mut fory1 = Fory::default().compatible(true);
 fory1.register::<PersonV1>(1);
 
-let mut fory2 = Fory::default().mode(Mode::Compatible);
+let mut fory2 = Fory::default().compatible(true);
 fory2.register::<PersonV2>(1);
 
 let person_v1 = PersonV1 {
@@ -789,11 +787,10 @@ Apache Fory™ supports seamless data exchange across multiple languages:
 
 ```rust
 use fory::Fory;
-use fory::Mode;
 
 // Enable cross-language mode
 let mut fory = Fory::default()
-    .mode(Mode::Compatible)
+    .compatible(true)
     .xlang(true);
 
 // Register types with consistent IDs across languages
@@ -887,9 +884,7 @@ let fory = Fory::default(); // SchemaConsistent by default
 Allows independent schema evolution:
 
 ```rust
-use fory::Mode;
-
-let fory = Fory::default().mode(Mode::Compatible);
+let fory = Fory::default().compatible(true);
 ```
 
 ## ⚙️ Configuration

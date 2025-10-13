@@ -27,9 +27,8 @@ struct Container {
 
 #[test]
 fn test_max_dyn_depth_exceeded_box_dyn_any() {
-    use fory_core::types::Mode;
-    for mode in [Mode::SchemaConsistent, Mode::Compatible] {
-        let mut fory = Fory::default().max_dyn_depth(2).mode(mode);
+    for compatible in [false, true] {
+        let mut fory = Fory::default().max_dyn_depth(2).compatible(compatible);
         fory.register::<Container>(100);
 
         let level3 = Container {

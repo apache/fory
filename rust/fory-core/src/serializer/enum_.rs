@@ -20,10 +20,10 @@ use crate::fory::Fory;
 use crate::meta::{MetaString, TypeMeta};
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{Mode, RefFlag, TypeId};
+use crate::types::{RefFlag, TypeId};
 
 #[inline(always)]
-pub fn actual_type_id(type_id: u32, register_by_name: bool, _mode: &Mode) -> u32 {
+pub fn actual_type_id(type_id: u32, register_by_name: bool, _compatible: bool) -> u32 {
     if register_by_name {
         TypeId::NAMED_ENUM as u32
     } else {

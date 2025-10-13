@@ -334,7 +334,7 @@
 //! #### Basic Trait Object Serialization
 //!
 //! ```rust
-//! use fory::{Fory, register_trait_type, Serializer, Mode, Error};
+//! use fory::{Fory, register_trait_type, Serializer, Error};
 //! use fory::ForyObject;
 //!
 //! trait Animal: Serializer {
@@ -366,7 +366,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! let mut fory = Fory::default().compatible(true);
 //! fory.register::<Dog>(100);
 //! fory.register::<Cat>(101);
 //! fory.register::<Zoo>(102);
@@ -463,7 +463,7 @@
 //! automatically handles the conversion without needing wrappers:
 //!
 //! ```rust
-//! use fory::{Fory, register_trait_type, Serializer, Mode, Error};
+//! use fory::{Fory, register_trait_type, Serializer, Error};
 //! use fory::ForyObject;
 //! use std::sync::Arc;
 //! use std::rc::Rc;
@@ -493,7 +493,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! let mut fory = Fory::default().compatible(true);
 //! fory.register::<Dog>(100);
 //! fory.register::<Cat>(101);
 //! fory.register::<AnimalShelter>(102);
@@ -529,7 +529,7 @@
 //! The `register_trait_type!` macro generates `AnimalRc` and `AnimalArc` wrapper types:
 //!
 //! ```rust
-//! use fory::{Fory, Mode, Error, register_trait_type, Serializer};
+//! use fory::{Fory, Error, register_trait_type, Serializer};
 //! use fory::ForyObject;
 //! use std::sync::Arc;
 //! use std::rc::Rc;
@@ -547,7 +547,7 @@
 //! register_trait_type!(Animal, Dog);
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! let mut fory = Fory::default().compatible(true);
 //! fory.register::<Dog>(100);
 //!
 //! // For Rc<dyn Trait>
@@ -602,7 +602,7 @@
 //! - Nested struct types must be registered on both sides
 //!
 //! ```rust
-//! use fory::{Fory, Error, Mode};
+//! use fory::{Fory, Error};
 //! use fory::ForyObject;
 //! use std::collections::HashMap;
 //!
@@ -622,10 +622,10 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory1 = Fory::default().mode(Mode::Compatible);
+//! let mut fory1 = Fory::default().compatible(true);
 //! fory1.register::<PersonV1>(1);
 //!
-//! let mut fory2 = Fory::default().mode(Mode::Compatible);
+//! let mut fory2 = Fory::default().compatible(true);
 //! fory2.register::<PersonV2>(1);
 //!
 //! let person_v1 = PersonV1 {
@@ -923,9 +923,9 @@
 //! - Essential for zero-downtime deployments
 //!
 //! ```rust
-//! use fory::{Fory, Mode};
+//! use fory::Fory;
 //!
-//! let fory = Fory::default().mode(Mode::Compatible);
+//! let fory = Fory::default().compatible(true);
 //! ```
 //!
 //! ## Cross-Language Serialization
@@ -939,11 +939,11 @@
 //! **How to enable:**
 //!
 //! ```rust
-//! use fory::{Fory, Mode};
+//! use fory::Fory;
 //! use fory::ForyObject;
 //!
 //! let mut fory = Fory::default()
-//!     .mode(Mode::Compatible)
+//!     .compatible(true)
 //!     .xlang(true);
 //!
 //! #[derive(ForyObject)]
@@ -1046,7 +1046,7 @@
 //! - **[GitHub Repository](https://github.com/apache/fory)** - Source code and issue tracking
 
 pub use fory_core::{
-    error::Error, fory::Fory, register_trait_type, row::from_row, row::to_row, types::Mode,
-    types::TypeId, ArcWeak, ForyDefault, RcWeak, ReadContext, Serializer, WriteContext,
+    error::Error, fory::Fory, register_trait_type, row::from_row, row::to_row, types::TypeId,
+    ArcWeak, ForyDefault, RcWeak, ReadContext, Serializer, WriteContext,
 };
 pub use fory_derive::{ForyObject, ForyRow};

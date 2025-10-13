@@ -19,7 +19,6 @@ use chrono::{NaiveDate, NaiveDateTime};
 use fory_core::buffer::{Reader, Writer};
 use fory_core::fory::Fory;
 use fory_core::resolver::context::{ReadContext, WriteContext};
-use fory_core::types::Mode::Compatible;
 
 // primitive_val
 const BOOL_VAL: bool = true;
@@ -437,7 +436,7 @@ fn deserialize_nullable(fory: &Fory, context: &mut ReadContext, auto_conv: bool,
 // non-null <-> non-null
 #[test]
 fn basic() {
-    let fory = Fory::default().mode(Compatible);
+    let fory = Fory::default().compatible(true);
     // serialize
     let writer = Writer::default();
     let mut write_context = WriteContext::new(writer);
@@ -452,7 +451,7 @@ fn basic() {
 // nullable <-> nullable
 #[test]
 fn basic_nullable() {
-    let fory = Fory::default().mode(Compatible);
+    let fory = Fory::default().compatible(true);
     // serialize
     let writer = Writer::default();
     let mut write_context = WriteContext::new(writer);
@@ -467,7 +466,7 @@ fn basic_nullable() {
 // non-null -> nullable -> non-null
 #[test]
 fn auto_conv() {
-    let fory = Fory::default().mode(Compatible);
+    let fory = Fory::default().compatible(true);
     // serialize_non-null
     let writer = Writer::default();
     let mut write_context = WriteContext::new(writer);

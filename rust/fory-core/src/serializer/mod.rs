@@ -19,7 +19,7 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::{MetaString, TypeMeta, NAMESPACE_DECODER, TYPE_NAME_DECODER};
 use crate::resolver::context::{ReadContext, WriteContext};
-use crate::types::{Mode, RefFlag, TypeId, PRIMITIVE_TYPES};
+use crate::types::{RefFlag, TypeId, PRIMITIVE_TYPES};
 use anyhow::anyhow;
 use std::any::Any;
 
@@ -325,8 +325,8 @@ pub trait StructSerializer: Serializer + 'static {
     fn fory_type_index() -> u32 {
         unimplemented!()
     }
-    fn fory_actual_type_id(type_id: u32, register_by_name: bool, mode: &Mode) -> u32 {
-        struct_::actual_type_id(type_id, register_by_name, mode)
+    fn fory_actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) -> u32 {
+        struct_::actual_type_id(type_id, register_by_name, compatible)
     }
 
     fn fory_get_sorted_field_names(_fory: &Fory) -> &'static [&'static str] {

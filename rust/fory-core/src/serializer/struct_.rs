@@ -19,11 +19,11 @@ use crate::fory::Fory;
 use crate::meta::{FieldInfo, MetaString, TypeMeta};
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::{Serializer, StructSerializer};
-use crate::types::{Mode, RefFlag, TypeId};
+use crate::types::{RefFlag, TypeId};
 
 #[inline(always)]
-pub fn actual_type_id(type_id: u32, register_by_name: bool, mode: &Mode) -> u32 {
-    if mode == &Mode::Compatible {
+pub fn actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) -> u32 {
+    if compatible {
         if register_by_name {
             TypeId::NAMED_COMPATIBLE_STRUCT as u32
         } else {
@@ -123,17 +123,14 @@ pub fn read_type_info<T: Serializer>(fory: &Fory, context: &mut ReadContext, _is
 
 #[inline(always)]
 pub fn write<T: Serializer>(this: &T, fory: &Fory, context: &mut WriteContext, _is_field: bool) {
-    match fory.get_mode() {
+    if fory.is_compatible() {
+        context.writer.write_i8(RefFlag::NotNullValue as i8);
+        T::fory_write_type_info(fory, context, false);
+        this.fory_write_data(fory, context, true);
+    } else {
         // currently same
-        Mode::SchemaConsistent => {
-            context.writer.write_i8(RefFlag::NotNullValue as i8);
-            T::fory_write_type_info(fory, context, false);
-            this.fory_write_data(fory, context, true);
-        }
-        Mode::Compatible => {
-            context.writer.write_i8(RefFlag::NotNullValue as i8);
-            T::fory_write_type_info(fory, context, false);
-            this.fory_write_data(fory, context, true);
-        }
+        context.writer.write_i8(RefFlag::NotNullValue as i8);
+        T::fory_write_type_info(fory, context, false);
+        this.fory_write_data(fory, context, true);
     }
 }

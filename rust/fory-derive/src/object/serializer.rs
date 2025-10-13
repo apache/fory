@@ -120,7 +120,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 #type_idx
             }
 
-            fn fory_actual_type_id(type_id: u32, register_by_name: bool, mode: &fory_core::types::Mode) -> u32 {
+            fn fory_actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) -> u32 {
                 #actual_type_id_ts
             }
 

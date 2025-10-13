@@ -19,7 +19,6 @@ use fory_core::error::Error;
 use fory_core::fory::Fory;
 use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::serializer::{ForyDefault, Serializer};
-use fory_core::types::Mode::Compatible;
 use fory_derive::ForyObject;
 
 #[test]
@@ -83,7 +82,7 @@ fn test_use() {
             self
         }
     }
-    let mut fory = Fory::default().mode(Compatible).xlang(true);
+    let mut fory = Fory::default().compatible(true).xlang(true);
     let item = Item { f1: 1, f2: 2 };
     fory.register_serializer::<Item>(100);
     let bytes = fory.serialize(&item);

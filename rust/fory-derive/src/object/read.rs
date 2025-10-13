@@ -391,15 +391,11 @@ pub fn gen_read(struct_ident: &Ident) -> TokenStream {
     quote! {
         let ref_flag = context.reader.read_i8();
         if ref_flag == (fory_core::types::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::types::RefFlag::RefValue as i8) {
-            match fory.get_mode() {
-                fory_core::types::Mode::SchemaConsistent => {
-                    <Self as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, false);
-                    <Self as fory_core::serializer::Serializer>::fory_read_data(fory, context, false)
-                },
-                fory_core::types::Mode::Compatible => {
-                    <#struct_ident as fory_core::serializer::Serializer>::fory_read_compatible(fory, context)
-                },
-                _ => unreachable!()
+            if fory.is_compatible() {
+                <#struct_ident as fory_core::serializer::Serializer>::fory_read_compatible(fory, context)
+            } else {
+                <Self as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, false);
+                <Self as fory_core::serializer::Serializer>::fory_read_data(fory, context, false)
             }
         } else if ref_flag == (fory_core::types::RefFlag::Null as i8) {
             Ok(<Self as fory_core::serializer::ForyDefault>::fory_default())

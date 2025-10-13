@@ -16,7 +16,6 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_core::types::Mode::Compatible;
 use fory_derive::ForyObject;
 use std::collections::HashMap;
 
@@ -46,8 +45,8 @@ fn test_simple() {
         f7: i16,
         last: i8,
     }
-    let mut fory1 = Fory::default().mode(Compatible);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
     fory1.register::<Animal1>(999);
     fory2.register::<Animal2>(999);
     let animal: Animal1 = Animal1 {

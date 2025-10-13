@@ -16,7 +16,6 @@
 // under the License.
 
 use fory_core::fory::Fory;
-use fory_core::types::Mode::Compatible;
 use fory_derive::ForyObject;
 use std::collections::{HashMap, HashSet};
 
@@ -44,8 +43,8 @@ fn simple() {
         f7: i16,
         last: i8,
     }
-    let mut fory1 = Fory::default().mode(Compatible);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
     fory1.register::<Animal1>(999);
     fory2.register::<Animal2>(999);
     let animal: Animal1 = Animal1 {
@@ -83,8 +82,8 @@ fn skip_option() {
         f2: i8,
         last: i64,
     }
-    let mut fory1 = Fory::default().mode(Compatible);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
     fory1.register::<Item1>(999);
     fory2.register::<Item2>(999);
     let item1 = Item1 {
@@ -122,8 +121,8 @@ fn nonexistent_struct() {
         f3: i64,
         last: String,
     }
-    let mut fory1 = Fory::default().mode(Compatible);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
     fory1.register::<Item1>(899);
     fory1.register::<Person1>(999);
     fory2.register::<Item2>(799);
@@ -152,7 +151,7 @@ fn option() {
         f5: Vec<Option<Vec<Option<String>>>>,
         last: i64,
     }
-    let mut fory = Fory::default().mode(Compatible);
+    let mut fory = Fory::default().compatible(true);
     fory.register::<Animal>(999);
     let animal: Animal = Animal {
         f1: Some(String::from("f1")),
@@ -196,8 +195,8 @@ fn nullable() {
         last: i64,
     }
 
-    let mut fory1 = Fory::default().mode(Compatible);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
     fory1.register::<Item1>(999);
     fory2.register::<Item2>(999);
 
@@ -250,8 +249,8 @@ fn nullable_container() {
         last: i64,
     }
 
-    let mut fory1 = Fory::default().mode(Compatible);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
     fory1.register::<Item1>(999);
     fory2.register::<Item2>(999);
 
@@ -300,8 +299,8 @@ fn inner_nullable() {
         f3: HashMap<i8, i8>,
         last: i64,
     }
-    let mut fory1 = Fory::default().mode(Compatible);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
     fory1.register::<Item1>(999);
     fory2.register::<Item2>(999);
 
@@ -344,8 +343,8 @@ fn nullable_struct() {
         f3: Item,
         last: i64,
     }
-    let mut fory1 = Fory::default().mode(Compatible);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
     fory1.register::<Item>(199);
     fory1.register::<Person1>(200);
     fory2.register::<Item>(199);
@@ -418,11 +417,11 @@ fn enum_without_payload() {
         last: i8,
     }
 
-    let mut fory1 = Fory::default().mode(Compatible).xlang(true);
+    let mut fory1 = Fory::default().compatible(true).xlang(true);
     fory1.register::<Color1>(101);
     fory1.register::<Color2>(102);
     fory1.register::<Person1>(103);
-    let mut fory2 = Fory::default().mode(Compatible).xlang(true);
+    let mut fory2 = Fory::default().compatible(true).xlang(true);
     fory2.register::<Color1>(101);
     fory2.register::<Color2>(102);
     fory2.register::<Person2>(103);
@@ -482,10 +481,10 @@ fn named_enum() {
         f6: Option<Color>,
         last: i8,
     }
-    let mut fory1 = Fory::default().mode(Compatible).xlang(true);
+    let mut fory1 = Fory::default().compatible(true).xlang(true);
     fory1.register_by_name::<Color>("a");
     fory1.register::<Item1>(101);
-    let mut fory2 = Fory::default().mode(Compatible).xlang(true);
+    let mut fory2 = Fory::default().compatible(true).xlang(true);
     fory2.register_by_name::<Color>("a");
     fory2.register::<Item2>(101);
     let item1 = Item1 {
@@ -538,9 +537,9 @@ fn boxed() {
         f6: Option<i32>,
     }
 
-    let mut fory1 = Fory::default().mode(Compatible).xlang(true);
+    let mut fory1 = Fory::default().compatible(true).xlang(true);
     fory1.register::<Item1>(101);
-    let mut fory2 = Fory::default().mode(Compatible).xlang(true);
+    let mut fory2 = Fory::default().compatible(true).xlang(true);
     fory2.register::<Item2>(101);
 
     let f1 = 1;

@@ -21,7 +21,7 @@ use syn::DataEnum;
 
 pub fn gen_actual_type_id() -> TokenStream {
     quote! {
-       fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, mode)
+       fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
     }
 }
 

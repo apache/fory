@@ -26,7 +26,7 @@ use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::IS_NULL_FLAG;
 use crate::types::{
     config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_LITTLE_ENDIAN_FLAG},
-    Language, Mode, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
+    Language, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
 };
 use crate::util::get_ext_actual_type_id;
 use anyhow::anyhow;
@@ -69,15 +69,15 @@ static EMPTY_STRING: String = String::new();
 /// Custom configuration:
 ///
 /// ```rust
-/// use fory_core::{Fory, Mode};
+/// use fory_core::Fory;
 ///
 /// let fory = Fory::default()
-///     .mode(Mode::Compatible)
+///     .compatible(true)
 ///     .compress_string(true)
 ///     .max_dyn_depth(10);
 /// ```
 pub struct Fory {
-    mode: Mode,
+    compatible: bool,
     xlang: bool,
     share_meta: bool,
     type_resolver: TypeResolver,
@@ -99,7 +99,7 @@ impl Default for Fory {
             ReadContext::new(reader, 0)
         };
         Fory {
-            mode: Mode::SchemaConsistent,
+            compatible: false,
             xlang: true,
             share_meta: false,
             type_resolver: TypeResolver::default(),
@@ -112,14 +112,14 @@ impl Default for Fory {
 }
 
 impl Fory {
-    /// Sets the serialization mode for this Fory instance.
+    /// Sets the serialization compatible mode for this Fory instance.
     ///
     /// # Arguments
     ///
-    /// * `mode` - The serialization mode to use. Options are:
-    ///   - `Mode::SchemaConsistent`: Schema must be consistent between serialization and deserialization.
+    /// * `compatible` - The serialization compatible mode to use. Options are:
+    ///   - `false`: Schema must be consistent between serialization and deserialization.
     ///     No metadata is shared. This is the fastest mode.
-    ///   - `Mode::Compatible`: Supports schema evolution and type metadata sharing for better
+    ///   - true`: Supports schema evolution and type metadata sharing for better
     ///     cross-version compatibility.
     ///
     /// # Returns
@@ -128,21 +128,21 @@ impl Fory {
     ///
     /// # Note
     ///
-    /// Setting the mode also automatically configures the `share_meta` flag:
-    /// - `Mode::SchemaConsistent` → `share_meta = false`
-    /// - `Mode::Compatible` → `share_meta = true`
+    /// Setting the compatible mode also automatically configures the `share_meta` flag:
+    /// - `false` → `share_meta = false`
+    /// - true` → `share_meta = true`
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use fory_core::{Fory, Mode};
+    /// use fory_core::Fory;
     ///
-    /// let fory = Fory::default().mode(Mode::Compatible);
+    /// let fory = Fory::default().compatible(true);
     /// ```
-    pub fn mode(mut self, mode: Mode) -> Self {
+    pub fn compatible(mut self, compatible: bool) -> Self {
         // Setting share_meta individually is not supported currently
-        self.share_meta = mode != Mode::SchemaConsistent;
-        self.mode = mode;
+        self.share_meta = compatible;
+        self.compatible = compatible;
         self
     }
 
@@ -253,9 +253,9 @@ impl Fory {
     ///
     /// # Returns
     ///
-    /// A reference to the current `Mode` (either `SchemaConsistent` or `Compatible`).
-    pub fn get_mode(&self) -> &Mode {
-        &self.mode
+    /// `ture` if the serialization mode is compatible, `false` otherwise`.
+    pub fn is_compatible(&self) -> bool {
+        self.compatible
     }
 
     /// Returns whether string compression is enabled.
@@ -401,7 +401,7 @@ impl Fory {
             return Ok(T::fory_default());
         }
         let mut bytes_to_skip = 0;
-        if self.mode == Mode::Compatible {
+        if self.compatible {
             let meta_offset = context.reader.read_i32();
             if meta_offset != -1 {
                 bytes_to_skip = context.load_meta(self.get_type_resolver(), meta_offset as usize);
@@ -459,11 +459,11 @@ impl Fory {
         self.write_head::<T>(is_none, &mut context.writer);
         let meta_start_offset = context.writer.len();
         if !is_none {
-            if self.mode == Mode::Compatible {
+            if self.compatible {
                 context.writer.write_i32(-1);
             };
             <T as Serializer>::fory_write(record, self, context, false);
-            if self.mode == Mode::Compatible && !context.empty() {
+            if self.compatible && !context.empty() {
                 context.write_meta(meta_start_offset);
             }
         }
@@ -498,7 +498,7 @@ impl Fory {
     /// fory.register::<User>(100);
     /// ```
     pub fn register<T: 'static + StructSerializer + Serializer + ForyDefault>(&mut self, id: u32) {
-        let actual_type_id = T::fory_actual_type_id(id, false, &self.mode);
+        let actual_type_id = T::fory_actual_type_id(id, false, self.compatible);
         let type_info =
             TypeInfo::new::<T>(self, actual_type_id, &EMPTY_STRING, &EMPTY_STRING, false);
         self.type_resolver.register::<T>(&type_info);
@@ -539,7 +539,7 @@ impl Fory {
         namespace: &str,
         type_name: &str,
     ) {
-        let actual_type_id = T::fory_actual_type_id(0, true, &self.mode);
+        let actual_type_id = T::fory_actual_type_id(0, true, self.compatible);
         let type_info = TypeInfo::new::<T>(self, actual_type_id, namespace, type_name, true);
         self.type_resolver.register::<T>(&type_info);
     }

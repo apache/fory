@@ -20,7 +20,6 @@ use std::collections::{HashMap, HashSet};
 use fory_core::buffer::{Reader, Writer};
 use fory_core::fory::Fory;
 use fory_core::resolver::context::{ReadContext, WriteContext};
-use fory_core::types::Mode::Compatible;
 use fory_derive::ForyObject;
 
 #[derive(ForyObject, PartialEq, Eq, Hash, Debug)]
@@ -221,7 +220,7 @@ fn complex_container2() -> Vec<HashMap<Vec<Item>, Vec<Item>>> {
 
 #[test]
 fn container_outer_auto_conv() {
-    let fory = Fory::default().mode(Compatible);
+    let fory = Fory::default().compatible(true);
     // serialize_outer_non-null
     let writer = Writer::default();
     let mut write_context = WriteContext::new(writer);
@@ -296,9 +295,9 @@ fn container_outer_auto_conv() {
 
 #[test]
 fn collection_inner() {
-    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
     fory1.register::<Item>(101);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().compatible(true);
     fory2.register_by_name::<Item>("item");
     for fory in [fory1, fory2] {
         // serialize
@@ -362,9 +361,9 @@ fn collection_inner() {
 
 #[test]
 fn collection_inner_auto_conv() {
-    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
     fory1.register::<Item>(101);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().compatible(true);
     fory2.register_by_name::<Item>("item");
     for fory in [fory1, fory2] {
         // serialize_non-null
@@ -436,9 +435,9 @@ fn collection_inner_auto_conv() {
 
 #[test]
 fn map_inner() {
-    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
     fory1.register::<Item>(101);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().compatible(true);
     fory2.register_by_name::<Item>("item");
     for fory in [fory1, fory2] {
         // serialize
@@ -480,9 +479,9 @@ fn map_inner() {
 
 #[test]
 fn map_inner_auto_conv() {
-    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
     fory1.register::<Item>(101);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().compatible(true);
     fory2.register_by_name::<Item>("item");
     for fory in [fory1, fory2] {
         // serialize_non-null
@@ -532,9 +531,9 @@ fn map_inner_auto_conv() {
 
 #[test]
 fn complex() {
-    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
     fory1.register::<Item>(101);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().compatible(true);
     fory2.register_by_name::<Item>("item");
     for fory in [fory1, fory2] {
         let writer = Writer::default();

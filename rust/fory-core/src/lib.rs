@@ -70,7 +70,7 @@
 //! Define custom traits and register implementations:
 //!
 //! ```rust,ignore
-//! use fory_core::{Fory, register_trait_type, Serializer, Mode};
+//! use fory_core::{Fory, register_trait_type, Serializer};
 //! use fory_derive::ForyObject;
 //!
 //! trait Animal: Serializer {
@@ -99,7 +99,7 @@
 //! }
 //!
 //! # fn main() {
-//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! let mut fory = Fory::default().compatible(true);
 //! fory.register::<Dog>(100);
 //! fory.register::<Cat>(101);
 //! fory.register::<Zoo>(102);
@@ -143,12 +143,11 @@
 //! ```rust
 //! use fory_core::fory::Fory;
 //! use fory_core::error::Error;
-//! use fory_core::types::Mode;
 //! use fory_core::row::{to_row, from_row};
 //! use std::collections::HashMap;
 //!
 //! // Create a Fory instance
-//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! let mut fory = Fory::default().compatible(true);
 //!
 //! // Serialize String
 //! let text = String::from("Hello, Fory!");
@@ -196,4 +195,4 @@ pub use crate::resolver::context::{ReadContext, WriteContext};
 pub use crate::resolver::type_resolver::TypeResolver;
 pub use crate::serializer::weak::{ArcWeak, RcWeak};
 pub use crate::serializer::{ForyDefault, Serializer};
-pub use crate::types::{Mode, RefFlag, TypeId};
+pub use crate::types::{RefFlag, TypeId};

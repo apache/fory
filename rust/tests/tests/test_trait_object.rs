@@ -18,12 +18,11 @@
 use fory_core::fory::Fory;
 use fory_core::register_trait_type;
 use fory_core::serializer::Serializer;
-use fory_core::types::Mode;
 use fory_derive::ForyObject;
 use std::collections::{HashMap, HashSet};
 
 fn fory_compatible() -> Fory {
-    Fory::default().mode(Mode::Compatible)
+    Fory::default().compatible(true)
 }
 
 #[test]

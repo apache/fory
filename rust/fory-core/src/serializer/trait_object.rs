@@ -29,12 +29,12 @@ pub fn write_trait_object_headers(
     fory_type_id: u32,
     concrete_type_id: std::any::TypeId,
 ) {
-    use crate::types::{Mode, RefFlag, TypeId};
+    use crate::types::{RefFlag, TypeId};
 
     context.writer.write_i8(RefFlag::NotNullValue as i8);
     context.writer.write_varuint32(fory_type_id);
 
-    if fory.get_mode() == &Mode::Compatible
+    if fory.is_compatible()
         && (fory_type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
             || fory_type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32)
     {
@@ -45,7 +45,7 @@ pub fn write_trait_object_headers(
 
 /// Reads common trait object headers and returns the type ID
 pub fn read_trait_object_headers(fory: &Fory, context: &mut ReadContext) -> Result<u32, Error> {
-    use crate::types::{Mode, RefFlag, TypeId};
+    use crate::types::{RefFlag, TypeId};
 
     let ref_flag = context.reader.read_i8();
     if ref_flag != RefFlag::NotNullValue as i8 {
@@ -57,7 +57,7 @@ pub fn read_trait_object_headers(fory: &Fory, context: &mut ReadContext) -> Resu
 
     let fory_type_id = context.reader.read_varuint32();
 
-    if fory.get_mode() == &Mode::Compatible
+    if fory.is_compatible()
         && (fory_type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
             || fory_type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32)
     {
@@ -121,7 +121,7 @@ macro_rules! resolve_and_deserialize {
 /// # Example
 ///
 /// ```rust,ignore
-/// use fory_core::{fory::Fory, register_trait_type, serializer::Serializer, types::Mode};
+/// use fory_core::{fory::Fory, register_trait_type, serializer::Serializer};
 /// use fory_derive::ForyObject;
 ///
 /// trait Animal: Serializer {
@@ -148,7 +148,7 @@ macro_rules! resolve_and_deserialize {
 /// register_trait_type!(Animal, Dog, Cat);
 ///
 /// # fn main() {
-/// let mut fory = Fory::default().mode(Mode::Compatible);
+/// let mut fory = Fory::default().compatible(true);
 /// fory.register::<Dog>(100);
 /// fory.register::<Cat>(101);
 ///

@@ -22,7 +22,6 @@ use fory_core::fory::{read_data, write_data, Fory};
 use fory_core::meta::murmurhash3_x64_128;
 use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::serializer::{ForyDefault, Serializer};
-use fory_core::types::Mode::{Compatible, SchemaConsistent};
 use fory_derive::ForyObject;
 use std::collections::{HashMap, HashSet};
 use std::{fs, vec};
@@ -226,13 +225,13 @@ fn test_string_serializer() {
     let bytes = fs::read(&data_file_path).unwrap();
     let reader = Reader::new(bytes.as_slice());
     let fory = Fory::default()
-        .mode(Compatible)
+        .compatible(true)
         .xlang(true)
         .compress_string(false);
     let mut context = ReadContext::new(reader, 5);
     let reader_compress = Reader::new(bytes.as_slice());
     let fory_compress = Fory::default()
-        .mode(Compatible)
+        .compatible(true)
         .xlang(true)
         .compress_string(true);
     let mut context_compress = ReadContext::new(reader_compress, 5);
@@ -260,7 +259,7 @@ fn test_string_serializer() {
         );
     }
     let writer = Writer::default();
-    let fory = Fory::default().mode(Compatible).xlang(true);
+    let fory = Fory::default().compatible(true).xlang(true);
     let mut context = WriteContext::new(writer);
     for s in &test_strings {
         s.fory_write_data(&fory, &mut context, true);
@@ -292,7 +291,7 @@ fn test_cross_language_serializer() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
     let reader = Reader::new(bytes.as_slice());
-    let mut fory = Fory::default().mode(Compatible).xlang(true);
+    let mut fory = Fory::default().compatible(true).xlang(true);
     fory.register::<Color>(101);
     let mut context = ReadContext::new(reader, 5);
     assert_de!(fory, context, bool, true);
@@ -358,7 +357,7 @@ fn test_cross_language_serializer() {
 fn test_simple_struct() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
-    let mut fory = Fory::default().mode(Compatible).xlang(true);
+    let mut fory = Fory::default().compatible(true).xlang(true);
     fory.register::<Color>(101);
     fory.register::<Item>(102);
     fory.register::<SimpleStruct>(103);
@@ -389,7 +388,7 @@ fn test_simple_struct() {
 fn test_simple_named_struct() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
-    let mut fory = Fory::default().mode(Compatible).xlang(true);
+    let mut fory = Fory::default().compatible(true).xlang(true);
     fory.register_by_namespace::<Color>("demo", "color");
     fory.register_by_namespace::<Item>("demo", "item");
     fory.register_by_namespace::<SimpleStruct>("demo", "simple_struct");
@@ -421,7 +420,7 @@ fn test_list() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().mode(Compatible);
+    let mut fory = Fory::default().compatible(true);
     fory.register::<Item>(102);
     let reader = Reader::new(bytes.as_slice());
     let mut context = ReadContext::new(reader, 5);
@@ -466,7 +465,7 @@ fn test_map() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().mode(Compatible);
+    let mut fory = Fory::default().compatible(true);
     fory.register::<Item>(102);
     let reader = Reader::new(bytes.as_slice());
     let mut context = ReadContext::new(reader, 5);
@@ -535,7 +534,7 @@ fn test_integer() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
 
-    let mut fory = Fory::default().mode(Compatible);
+    let mut fory = Fory::default().compatible(true);
     fory.register::<Item2>(101);
     let reader = Reader::new(bytes.as_slice());
 
@@ -645,10 +644,10 @@ fn _test_skip_custom(fory1: &Fory, fory2: &Fory) {
 
 #[test]
 fn test_kankankan() {
-    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
     fory1.register_serializer::<MyExt>(103);
     fory1.register::<Empty>(104);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().compatible(true);
     fory2.register::<Color>(101);
     fory2.register::<MyStruct>(102);
     fory2.register_serializer::<MyExt>(103);
@@ -665,10 +664,10 @@ fn test_kankankan() {
 #[test]
 #[ignore]
 fn test_skip_id_custom() {
-    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
     fory1.register_serializer::<MyExt>(103);
     fory1.register::<Empty>(104);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().compatible(true);
     fory2.register::<Color>(101);
     fory2.register::<MyStruct>(102);
     fory2.register_serializer::<MyExt>(103);
@@ -679,10 +678,10 @@ fn test_skip_id_custom() {
 #[test]
 #[ignore]
 fn test_skip_name_custom() {
-    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
     fory1.register_serializer_by_name::<MyExt>("my_ext");
     fory1.register_by_name::<Empty>("my_wrapper");
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().compatible(true);
     fory2.register_by_name::<Color>("color");
     fory2.register_by_name::<MyStruct>("my_struct");
     fory2.register_serializer_by_name::<MyExt>("my_ext");
@@ -693,7 +692,7 @@ fn test_skip_name_custom() {
 #[test]
 #[ignore]
 fn test_consistent_named() {
-    let mut fory = Fory::default().mode(SchemaConsistent);
+    let mut fory = Fory::default().compatible(false);
     fory.register_by_name::<Color>("color");
     fory.register_by_name::<MyStruct>("my_struct");
     fory.register_serializer_by_name::<MyExt>("my_ext");

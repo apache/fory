@@ -21,7 +21,6 @@ use fory_core::error::Error;
 use fory_core::fory::{read_data, write_data, Fory};
 use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::serializer::{ForyDefault, Serializer};
-use fory_core::types::Mode::Compatible;
 use fory_derive::ForyObject;
 use std::collections::{HashMap, HashSet};
 
@@ -82,11 +81,11 @@ struct Empty {}
 
 #[test]
 fn basic() {
-    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
     fory1.register::<Color>(101);
     fory1.register::<Item>(102);
     fory1.register::<Person>(103);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().compatible(true);
     fory2.register_by_name::<Color>("color");
     fory2.register_by_name::<Item>("item");
     fory2.register_by_name::<Person>("person");
@@ -115,11 +114,11 @@ fn basic() {
 
 #[test]
 fn outer_nullable() {
-    let mut fory1 = Fory::default().mode(Compatible);
+    let mut fory1 = Fory::default().compatible(true);
     fory1.register::<Color>(101);
     fory1.register::<Item>(102);
     fory1.register::<Person>(103);
-    let mut fory2 = Fory::default().mode(Compatible);
+    let mut fory2 = Fory::default().compatible(true);
     fory2.register_by_name::<Color>("color");
     fory2.register_by_name::<Item>("item");
     fory2.register_by_name::<Person>("person");
@@ -138,18 +137,18 @@ fn skip_basic() {
     let person_default = Person::default();
     let person2_default = Empty::default();
 
-    let mut id_fory1 = Fory::default().mode(Compatible);
+    let mut id_fory1 = Fory::default().compatible(true);
     id_fory1.register::<Color>(101);
     id_fory1.register::<Item>(102);
     id_fory1.register::<Person>(103);
-    let mut id_fory2 = Fory::default().mode(Compatible);
+    let mut id_fory2 = Fory::default().compatible(true);
     id_fory2.register::<Empty>(103);
 
-    let mut name_fory1 = Fory::default().mode(Compatible);
+    let mut name_fory1 = Fory::default().compatible(true);
     name_fory1.register_by_name::<Color>("color");
     name_fory1.register_by_name::<Item>("item");
     name_fory1.register_by_name::<Person>("person");
-    let mut name_fory2 = Fory::default().mode(Compatible);
+    let mut name_fory2 = Fory::default().compatible(true);
     name_fory2.register_by_name::<Empty>("person");
 
     for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
@@ -181,20 +180,20 @@ fn nested() {
         f6: HashMap<Color, Color>,
         f7: Element,
     }
-    let mut id_fory1 = Fory::default().mode(Compatible);
+    let mut id_fory1 = Fory::default().compatible(true);
     id_fory1.register::<Item>(101);
     id_fory1.register::<Color>(102);
     id_fory1.register::<Element>(103);
     id_fory1.register::<Nested>(104);
-    let mut id_fory2 = Fory::default().mode(Compatible);
+    let mut id_fory2 = Fory::default().compatible(true);
     id_fory2.register::<Empty>(104);
 
-    let mut name_fory1 = Fory::default().mode(Compatible);
+    let mut name_fory1 = Fory::default().compatible(true);
     name_fory1.register_by_name::<Item>("item");
     name_fory1.register_by_name::<Color>("color");
     name_fory1.register_by_name::<Element>("element");
     name_fory1.register_by_name::<Nested>("nested");
-    let mut name_fory2 = Fory::default().mode(Compatible);
+    let mut name_fory2 = Fory::default().compatible(true);
     name_fory2.register_by_name::<Empty>("nested");
 
     for (fory1, fory2) in [(id_fory1, id_fory2), (name_fory1, name_fory2)] {
@@ -288,20 +287,20 @@ fn compatible_nullable() {
         f28: Some(HashSet::<String>::default()),
         f29: Some(HashMap::<String, i32>::default()),
     };
-    let mut id_fory1 = Fory::default().mode(Compatible);
+    let mut id_fory1 = Fory::default().compatible(true);
     id_fory1.register::<Color>(101);
     id_fory1.register::<Item>(102);
     id_fory1.register::<Nonnull>(103);
-    let mut id_fory2 = Fory::default().mode(Compatible);
+    let mut id_fory2 = Fory::default().compatible(true);
     id_fory2.register::<Color>(101);
     id_fory2.register::<Item>(102);
     id_fory2.register::<Nullable>(103);
 
-    let mut name_fory1 = Fory::default().mode(Compatible);
+    let mut name_fory1 = Fory::default().compatible(true);
     name_fory1.register_by_name::<Color>("color");
     name_fory1.register_by_name::<Item>("item");
     name_fory1.register_by_name::<Nonnull>("obj");
-    let mut name_fory2 = Fory::default().mode(Compatible);
+    let mut name_fory2 = Fory::default().compatible(true);
     name_fory2.register_by_name::<Color>("color");
     name_fory2.register_by_name::<Item>("item");
     name_fory2.register_by_name::<Nullable>("obj");
@@ -351,20 +350,20 @@ fn name_mismatch() {
         f29: HashSet<String>,
         f30: HashMap<String, i32>,
     }
-    let mut id_fory1 = Fory::default().mode(Compatible);
+    let mut id_fory1 = Fory::default().compatible(true);
     id_fory1.register::<Color>(101);
     id_fory1.register::<Item>(102);
     id_fory1.register::<Person>(103);
-    let mut id_fory2 = Fory::default().mode(Compatible);
+    let mut id_fory2 = Fory::default().compatible(true);
     id_fory2.register::<Color>(101);
     id_fory2.register::<Item>(102);
     id_fory2.register::<MismatchPerson>(103);
 
-    let mut name_fory1 = Fory::default().mode(Compatible);
+    let mut name_fory1 = Fory::default().compatible(true);
     name_fory1.register_by_name::<Color>("color");
     name_fory1.register_by_name::<Item>("item");
     name_fory1.register_by_name::<Person>("person");
-    let mut name_fory2 = Fory::default().mode(Compatible);
+    let mut name_fory2 = Fory::default().compatible(true);
     name_fory2.register_by_name::<Color>("color");
     name_fory2.register_by_name::<Item>("item");
     name_fory2.register_by_name::<MismatchPerson>("person");
@@ -421,11 +420,11 @@ fn ext() {
         f1: ExtItem,
     }
 
-    let mut id_fory = Fory::default().mode(Compatible).xlang(true);
+    let mut id_fory = Fory::default().compatible(true).xlang(true);
     id_fory.register_serializer::<ExtItem>(100);
     id_fory.register::<ExtWrapper>(101);
 
-    let mut name_fory = Fory::default().mode(Compatible).xlang(true);
+    let mut name_fory = Fory::default().compatible(true).xlang(true);
     name_fory.register_serializer_by_name::<ExtItem>("ext_item");
     name_fory.register::<ExtWrapper>(101);
 
@@ -475,17 +474,17 @@ fn skip_ext() {
     struct ExtWrapper {
         f1: ExtItem,
     }
-    let mut id_fory1 = Fory::default().mode(Compatible).xlang(true);
+    let mut id_fory1 = Fory::default().compatible(true).xlang(true);
     id_fory1.register_serializer::<ExtItem>(100);
     id_fory1.register::<ExtWrapper>(101);
-    let mut id_fory2 = Fory::default().mode(Compatible).xlang(true);
+    let mut id_fory2 = Fory::default().compatible(true).xlang(true);
     id_fory2.register_serializer::<ExtItem>(100);
     id_fory2.register::<Empty>(101);
 
-    let mut name_fory1 = Fory::default().mode(Compatible).xlang(true);
+    let mut name_fory1 = Fory::default().compatible(true).xlang(true);
     name_fory1.register_serializer_by_name::<ExtItem>("ext_item");
     name_fory1.register::<ExtWrapper>(101);
-    let mut name_fory2 = Fory::default().mode(Compatible).xlang(true);
+    let mut name_fory2 = Fory::default().compatible(true).xlang(true);
     name_fory2.register_serializer_by_name::<ExtItem>("ext_item");
     name_fory2.register::<Empty>(101);
 
@@ -541,17 +540,17 @@ fn compatible_ext() {
     struct ExtWrapper2 {
         f1: Option<ExtItem>,
     }
-    let mut id_fory1 = Fory::default().mode(Compatible).xlang(true);
+    let mut id_fory1 = Fory::default().compatible(true).xlang(true);
     id_fory1.register_serializer::<ExtItem>(100);
     id_fory1.register::<ExtWrapper1>(101);
-    let mut id_fory2 = Fory::default().mode(Compatible).xlang(true);
+    let mut id_fory2 = Fory::default().compatible(true).xlang(true);
     id_fory2.register_serializer::<ExtItem>(100);
     id_fory2.register::<ExtWrapper2>(101);
 
-    let mut name_fory1 = Fory::default().mode(Compatible).xlang(true);
+    let mut name_fory1 = Fory::default().compatible(true).xlang(true);
     name_fory1.register_serializer_by_name::<ExtItem>("ext_item");
     name_fory1.register::<ExtWrapper1>(101);
-    let mut name_fory2 = Fory::default().mode(Compatible).xlang(true);
+    let mut name_fory2 = Fory::default().compatible(true).xlang(true);
     name_fory2.register_serializer_by_name::<ExtItem>("ext_item");
     name_fory2.register::<ExtWrapper2>(101);
 
