@@ -16,7 +16,8 @@
 # under the License.
 
 from dataclasses import dataclass
-from typing import Dict, Any, List
+import datetime
+from typing import Dict, Any, List, Set
 
 import os
 import pytest
@@ -135,6 +136,46 @@ class DataClassObject:
             f_any="any_data",
             f_complex=None,
         )
+
+
+def test_sort_fields():
+    @dataclass
+    class TestClass:
+        f1: pyfory.Int32Type
+        f2: List[pyfory.Int16Type]
+        f3: Dict[str, pyfory.Float64Type]
+        f4: str
+        f5: pyfory.Float32Type
+        f6: bytes
+        f7: bool
+        f8: Any
+        f9: Dict[pyfory.Int32Type, pyfory.Float64Type]
+        f10: List[str]
+        f11: pyfory.Int8Type
+        f12: pyfory.Int64Type
+        f13: pyfory.Float64Type
+        f14: Set[pyfory.Int32Type]
+        f15: datetime.datetime
+
+    fory = Fory(xlang=True, ref=True)
+    serializer = DataClassSerializer(fory, TestClass, xlang=True)
+    assert serializer._field_names == [
+        "f13",
+        "f5",
+        "f11",
+        "f7",
+        "f12",
+        "f1",
+        "f4",
+        "f15",
+        "f6",
+        "f10",
+        "f2",
+        "f14",
+        "f3",
+        "f9",
+        "f8",
+    ]
 
 
 def test_data_class_serializer_xlang():

@@ -781,24 +781,11 @@ Field will be ordered as following, every group of fields will have its own orde
   - when same size and type id, sort by snake case field name
   - types: bool/int8/int16/int32/varint32/int64/varint64/sliint64/float16/float32/float64
 - nullable primitive fields: same order as primitive fields
-- morphic fields: same type together, then sorted by field name lexicographically using snake case style.
-- unknown fields: same sort algorithms as morphic fields
-- list fields: same sort algorithms as morphic fields
-- set fields: same sort algorithms as morphic fields
-- map fields: same sort algorithms as morphic fields
-
-#### Field order
-
-Fields in a struct are sorted in a ascending order by:
-
-- primitive fields first: bool/int8/int16/int32/varint32/int64/varint64/sliint64/float16/float32/float64, sorted by
-  type id.
-- nullable primitive fields
-- morphic types except `list/set/map`
-- unknown types
-- list types
-- set types
-- map types
+- other internal type fields: sort by type id then snake case field name
+- list fields: sort by snake case field name
+- set fields: sort by snake case field name
+- map fields: sort by snake case field name
+- other fields: sort by snake case field name
 
 If two fields have same type, then sort by snake_case styled field name.
 

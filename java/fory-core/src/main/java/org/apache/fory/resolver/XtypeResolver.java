@@ -38,6 +38,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -887,26 +888,43 @@ public class XtypeResolver extends TypeResolver {
       boolean descriptorsGroupedOrdered,
       Function<Descriptor, Descriptor> descriptorUpdator) {
     return DescriptorGrouper.createDescriptorGrouper(
-        this::isMonomorphic,
-        descriptors,
-        descriptorsGroupedOrdered,
-        descriptorUpdator,
-        fory.compressInt(),
-        fory.compressLong(),
-        (o1, o2) -> {
-          int xtypeId = getXtypeId(o1.getRawType());
-          int xtypeId2 = getXtypeId(o2.getRawType());
-          if (xtypeId == xtypeId2) {
-            return o1.getSnakeCaseName().compareTo(o2.getSnakeCaseName());
-          } else {
-            return xtypeId - xtypeId2;
-          }
-        });
+            clz -> {
+              ClassInfo classInfo = getClassInfo(clz, false);
+              if (classInfo == null || clz.isEnum()) {
+                return false;
+              }
+              byte foryTypeId = (byte) (classInfo.xtypeId & 0xff);
+              if (foryTypeId == 0
+                  || foryTypeId == Types.UNKNOWN
+                  || Types.isUserDefinedType(foryTypeId)) {
+                return false;
+              }
+              return foryTypeId != Types.LIST && foryTypeId != Types.SET && foryTypeId != Types.MAP;
+            },
+            descriptors,
+            descriptorsGroupedOrdered,
+            descriptorUpdator,
+            fory.compressInt(),
+            fory.compressLong(),
+            (o1, o2) -> {
+              int xtypeId = getXtypeId(o1.getRawType());
+              int xtypeId2 = getXtypeId(o2.getRawType());
+              if (xtypeId == xtypeId2) {
+                return o1.getSnakeCaseName().compareTo(o2.getSnakeCaseName());
+              } else {
+                return xtypeId - xtypeId2;
+              }
+            })
+        .setOtherDescriptorComparator(Comparator.comparing(Descriptor::getSnakeCaseName))
+        .sort();
   }
 
-  private static final int UNKNOWN_TYPE_ID = -1;
+  private static final int UNKNOWN_TYPE_ID = Types.UNKNOWN;
 
   private int getXtypeId(Class<?> cls) {
+    if (isSet(cls)) {
+      return Types.SET;
+    }
     if (isCollection(cls)) {
       return Types.LIST;
     }
@@ -921,6 +939,9 @@ public class XtypeResolver extends TypeResolver {
     } else {
       if (cls.isEnum()) {
         return Types.ENUM;
+      }
+      if (cls.isArray()) {
+        return Types.LIST;
       }
       if (ReflectionUtils.isMonomorphic(cls)) {
         throw new UnsupportedOperationException(cls + " is not supported for xlang serialization");

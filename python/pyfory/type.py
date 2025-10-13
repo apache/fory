@@ -130,6 +130,7 @@ class TypeId:
     See `org.apache.fory.types.Type`
     """
 
+    LOWER_BOUND = 0
     # null value
     NA = 0
     # a boolean value (true or false).
@@ -398,6 +399,10 @@ class TypeVisitor(ABC):
         pass
 
     @abstractmethod
+    def visit_set(self, field_name, elem_type, types_path=None):
+        pass
+
+    @abstractmethod
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
         pass
 
@@ -428,6 +433,9 @@ def infer_field(field_name, type_, visitor: TypeVisitor, types_path=None):
         if origin is list or origin == typing.List:
             elem_type = args[0]
             return visitor.visit_list(field_name, elem_type, types_path=types_path)
+        elif origin is set or origin == typing.Set:
+            elem_type = args[0]
+            return visitor.visit_set(field_name, elem_type, types_path=types_path)
         elif origin is dict or origin == typing.Dict:
             key_type, value_type = args
             return visitor.visit_dict(field_name, key_type, value_type, types_path=types_path)

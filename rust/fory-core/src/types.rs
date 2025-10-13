@@ -83,7 +83,6 @@ pub enum TypeId {
     ARROW_RECORD_BATCH = 38,
     ARROW_TABLE = 39,
     UNKNOWN = 63,
-    ForyAny = 256,
     // only used at receiver peer
     ForyNullable = 265,
 }
@@ -134,12 +133,6 @@ pub static PRIMITIVE_TYPES: [u32; 7] = [
     TypeId::FLOAT64 as u32,
 ];
 
-pub static FINAL_TYPES: [u32; 3] = [
-    TypeId::STRING as u32,
-    TypeId::LOCAL_DATE as u32,
-    TypeId::TIMESTAMP as u32,
-];
-
 pub static PRIMITIVE_ARRAY_TYPES: [u32; 8] = [
     TypeId::BOOL_ARRAY as u32,
     TypeId::BINARY as u32,
@@ -178,6 +171,23 @@ pub static PRIMITIVE_ARRAY_TYPE_MAP: &[(&str, u32, &str)] = &[
     ("f32", TypeId::FLOAT32_ARRAY as u32, "Vec<f32>"),
     ("f64", TypeId::FLOAT64_ARRAY as u32, "Vec<f64>"),
 ];
+
+pub fn is_internal_type(type_id: u32) -> bool {
+    if type_id == 0 || type_id >= TypeId::UNKNOWN as u32 {
+        return false;
+    }
+    let excluded = [
+        TypeId::ENUM as u32,
+        TypeId::NAMED_ENUM as u32,
+        TypeId::STRUCT as u32,
+        TypeId::COMPATIBLE_STRUCT as u32,
+        TypeId::NAMED_STRUCT as u32,
+        TypeId::NAMED_COMPATIBLE_STRUCT as u32,
+        TypeId::EXT as u32,
+        TypeId::NAMED_EXT as u32,
+    ];
+    !excluded.contains(&type_id)
+}
 
 pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
     let mut new_hash: u64 = (hash as u64) * 31 + (id as u64);

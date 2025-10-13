@@ -89,11 +89,9 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
         "Class version check should be disabled when compatible mode is enabled.");
     Preconditions.checkArgument(
         fory.getConfig().isMetaShareEnabled(), "Meta share must be enabled.");
-    boolean xlang = fory.isCrossLanguage();
-    Collection<Descriptor> descriptors =
-        consolidateFields(
-            xlang ? fory.getXtypeResolver() : fory.getClassResolver(), type, classDef);
-    DescriptorGrouper descriptorGrouper = classResolver.createDescriptorGrouper(descriptors, false);
+    Collection<Descriptor> descriptors = consolidateFields(fory._getTypeResolver(), type, classDef);
+    DescriptorGrouper descriptorGrouper =
+        fory._getTypeResolver().createDescriptorGrouper(descriptors, false);
     // d.getField() may be null if not exists in this class when meta share enabled.
     Tuple3<
             Tuple2<ObjectSerializer.FinalTypeField[], boolean[]>,
@@ -212,17 +210,17 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
         }
       }
     }
-    for (ObjectSerializer.GenericTypeField fieldInfo : otherFields) {
-      Object fieldValue = AbstractObjectSerializer.readOtherFieldValue(binding, fieldInfo, buffer);
+    Generics generics = fory.getGenerics();
+    for (ObjectSerializer.GenericTypeField fieldInfo : containerFields) {
+      Object fieldValue =
+          AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
         fieldAccessor.putObject(obj, fieldValue);
       }
     }
-    Generics generics = fory.getGenerics();
-    for (ObjectSerializer.GenericTypeField fieldInfo : containerFields) {
-      Object fieldValue =
-          AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
+    for (ObjectSerializer.GenericTypeField fieldInfo : otherFields) {
+      Object fieldValue = AbstractObjectSerializer.readOtherFieldValue(binding, fieldInfo, buffer);
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       if (fieldAccessor != null) {
         fieldAccessor.putObject(obj, fieldValue);

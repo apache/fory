@@ -44,14 +44,17 @@ impl WriteContext {
         }
     }
 
+    #[inline(always)]
     pub fn empty(&mut self) -> bool {
         self.meta_resolver.empty()
     }
 
+    #[inline(always)]
     pub fn push_meta(&mut self, fory: &Fory, type_id: std::any::TypeId) -> usize {
         self.meta_resolver.push(type_id, fory)
     }
 
+    #[inline(always)]
     pub fn write_meta(&mut self, offset: usize) {
         self.writer.set_bytes(
             offset,
@@ -107,11 +110,13 @@ impl WriteContext {
         }
     }
 
+    #[inline(always)]
     pub fn write_meta_string_bytes(&mut self, ms: &MetaString) {
         self.meta_string_resolver
             .write_meta_string_bytes(&mut self.writer, ms);
     }
 
+    #[inline(always)]
     pub fn reset(&mut self) {
         self.meta_resolver.reset();
         self.ref_writer.reset();
@@ -140,16 +145,19 @@ impl ReadContext {
         }
     }
 
+    #[inline(always)]
     pub fn init(&mut self, bytes: &[u8], max_dyn_depth: u32) {
         self.reader.init(bytes);
         self.max_dyn_depth = max_dyn_depth;
         self.current_depth = 0;
     }
 
+    #[inline(always)]
     pub fn get_meta(&self, type_index: usize) -> &Arc<TypeMeta> {
         self.meta_resolver.get(type_index)
     }
 
+    #[inline(always)]
     pub fn load_meta(&mut self, offset: usize) -> usize {
         self.meta_resolver.load(&mut Reader::new(
             &self.reader.slice_after_cursor()[offset..],
@@ -200,6 +208,7 @@ impl ReadContext {
             .read_meta_string_bytes(&mut self.reader)
     }
 
+    #[inline(always)]
     pub fn inc_depth(&mut self) -> Result<(), crate::error::Error> {
         self.current_depth += 1;
         if self.current_depth > self.max_dyn_depth {
@@ -215,10 +224,12 @@ impl ReadContext {
         Ok(())
     }
 
+    #[inline(always)]
     pub fn dec_depth(&mut self) {
         self.current_depth = self.current_depth.saturating_sub(1);
     }
 
+    #[inline(always)]
     pub fn reset(&mut self) {
         self.reader.reset();
         self.meta_resolver.reset();
@@ -239,6 +250,7 @@ impl<T> Pool<T> {
         }
     }
 
+    #[inline(always)]
     pub fn get(&self) -> T {
         let item = self
             .items
@@ -251,6 +263,7 @@ impl<T> Pool<T> {
     }
 
     // put back manually
+    #[inline(always)]
     pub fn put(&self, item: T) {
         self.items.lock().unwrap().push(item);
     }

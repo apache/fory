@@ -22,7 +22,6 @@ use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::{Mode, RefFlag, TypeId, PRIMITIVE_TYPES};
 use anyhow::anyhow;
 use std::any::Any;
-use std::sync::Arc;
 
 pub mod any;
 mod arc;
@@ -47,6 +46,7 @@ pub mod struct_;
 pub mod trait_object;
 pub mod weak;
 
+#[inline(always)]
 pub fn write_ref_info_data<T: Serializer + 'static>(
     record: &T,
     fory: &Fory,
@@ -68,6 +68,7 @@ pub fn write_ref_info_data<T: Serializer + 'static>(
     }
 }
 
+#[inline(always)]
 pub fn read_ref_info_data<T: Serializer + ForyDefault>(
     fory: &Fory,
     context: &mut ReadContext,
@@ -105,6 +106,7 @@ pub fn read_ref_info_data<T: Serializer + ForyDefault>(
     }
 }
 
+#[inline(always)]
 fn write_type_info<T: Serializer>(fory: &Fory, context: &mut WriteContext, is_field: bool) {
     if is_field {
         return;
@@ -113,6 +115,7 @@ fn write_type_info<T: Serializer>(fory: &Fory, context: &mut WriteContext, is_fi
     context.writer.write_varuint32(type_id);
 }
 
+#[inline(always)]
 fn read_type_info<T: Serializer>(fory: &Fory, context: &mut ReadContext, is_field: bool) {
     if is_field {
         return;
@@ -122,6 +125,7 @@ fn read_type_info<T: Serializer>(fory: &Fory, context: &mut ReadContext, is_fiel
     assert_eq!(local_type_id, remote_type_id);
 }
 
+#[inline(always)]
 pub fn get_skip_ref_flag<T: Serializer>(fory: &Fory) -> bool {
     let elem_type_id = T::fory_get_type_id(fory);
     !T::fory_is_option() && PRIMITIVE_TYPES.contains(&elem_type_id)
@@ -325,7 +329,7 @@ pub trait StructSerializer: Serializer + 'static {
         struct_::actual_type_id(type_id, register_by_name, mode)
     }
 
-    fn fory_get_sorted_field_names(_fory: &Fory) -> Arc<Vec<String>> {
-        unimplemented!()
+    fn fory_get_sorted_field_names(_fory: &Fory) -> &'static [&'static str] {
+        &[]
     }
 }
