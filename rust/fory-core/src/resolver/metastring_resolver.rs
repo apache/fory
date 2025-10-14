@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 use std::convert::TryInto;
+use std::rc::Rc;
 
 use crate::buffer::Writer;
 use crate::error::Error;
@@ -161,8 +162,6 @@ impl MetaStringWriterResolver {
             if id_usize >= self.dynamic_written.len() {
                 self.dynamic_written.resize(id_usize * 2, None);
             }
-            self.dynamic_written[id_usize] = Some(mb.clone());
-
             let len = mb.bytes.len();
             let header = ((len as u32) << 2) | 0b1;
             w.write_varuint32(header);
@@ -172,6 +171,8 @@ impl MetaStringWriterResolver {
                 w.write_u8(mb.encoding as i16 as u8);
             }
             w.write_bytes(&mb.bytes);
+
+            self.dynamic_written[id_usize] = Some(mb);
         } else {
             let header = ((id as u32 + 1) << 2) | 0b11;
             w.write_varuint32(header);
@@ -192,8 +193,6 @@ impl MetaStringWriterResolver {
             if id_usize >= self.dynamic_written.len() {
                 self.dynamic_written.resize(id_usize * 2 + 1, None);
             }
-            self.dynamic_written[id_usize] = Some(mb.clone());
-
             let len = mb.bytes.len();
             writer.write_varuint32((len as u32) << 1);
             if len > Self::SMALL_STRING_THRESHOLD {
@@ -202,6 +201,8 @@ impl MetaStringWriterResolver {
                 writer.write_u8(mb.encoding as i16 as u8);
             }
             writer.write_bytes(&mb.bytes);
+
+            self.dynamic_written[id_usize] = Some(mb);
         } else {
             let header = ((id as u32 + 1) << 1) | 1;
             writer.write_varuint32(header);
@@ -224,10 +225,10 @@ impl MetaStringWriterResolver {
 
 #[derive(Default)]
 pub struct MetaStringReaderResolver {
-    meta_string_bytes_to_string: HashMap<MetaStringBytes, String>,
-    hash_to_meta: HashMap<i64, MetaStringBytes>,
-    small_map: HashMap<(u64, u64, u8), MetaStringBytes>,
-    dynamic_read: Vec<Option<MetaStringBytes>>,
+    meta_string_bytes_to_string: HashMap<Rc<MetaStringBytes>, Rc<String>>,
+    hash_to_meta: HashMap<i64, Rc<MetaStringBytes>>,
+    small_map: HashMap<(u64, u64, u8), Rc<MetaStringBytes>>,
+    dynamic_read: Vec<Option<Rc<MetaStringBytes>>>,
     dynamic_read_id: usize,
 }
 
@@ -249,18 +250,18 @@ impl MetaStringReaderResolver {
         &mut self,
         reader: &mut Reader,
         header: u32,
-    ) -> Result<MetaStringBytes, Error> {
+    ) -> Result<Rc<MetaStringBytes>, Error> {
         let len = (header >> 2) as usize;
         if (header & 0b10) == 0 {
             if len <= Self::SMALL_STRING_THRESHOLD {
-                let mb = self.read_small_meta_string_bytes(reader, len)?;
-                self.update_dynamic_string(mb.clone());
-                Ok(mb)
+                let rc_mb = self.read_small_meta_string_bytes(reader, len)?;
+                self.update_dynamic_string(rc_mb.clone());
+                Ok(rc_mb)
             } else {
                 let hash_code = reader.read_i64()?;
-                let mb = self.read_big_meta_string_bytes(reader, len, hash_code)?;
-                self.update_dynamic_string(mb.clone());
-                Ok(mb)
+                let rc_mb = self.read_big_meta_string_bytes(reader, len, hash_code)?;
+                self.update_dynamic_string(rc_mb.clone());
+                Ok(rc_mb)
             }
         } else {
             let idx = len - 1;
@@ -274,19 +275,19 @@ impl MetaStringReaderResolver {
     pub fn read_meta_string_bytes(
         &mut self,
         reader: &mut Reader,
-    ) -> Result<MetaStringBytes, Error> {
+    ) -> Result<Rc<MetaStringBytes>, Error> {
         let header = reader.read_varuint32()?;
         let len = (header >> 1) as usize;
         if (header & 0b1) == 0 {
             if len > Self::SMALL_STRING_THRESHOLD {
                 let hash_code = reader.read_i64()?;
-                let mb = self.read_big_meta_string_bytes(reader, len, hash_code)?;
-                self.update_dynamic_string(mb.clone());
-                Ok(mb)
+                let rc_mb = self.read_big_meta_string_bytes(reader, len, hash_code)?;
+                self.update_dynamic_string(rc_mb.clone());
+                Ok(rc_mb)
             } else {
-                let mb = self.read_small_meta_string_bytes(reader, len)?;
-                self.update_dynamic_string(mb.clone());
-                Ok(mb)
+                let rc_mb = self.read_small_meta_string_bytes(reader, len)?;
+                self.update_dynamic_string(rc_mb.clone());
+                Ok(rc_mb)
             }
         } else {
             let idx = len - 1;
@@ -302,7 +303,7 @@ impl MetaStringReaderResolver {
         reader: &mut Reader,
         len: usize,
         hash_code: i64,
-    ) -> Result<MetaStringBytes, Error> {
+    ) -> Result<Rc<MetaStringBytes>, Error> {
         if let Some(existing) = self.hash_to_meta.get(&hash_code) {
             reader.skip(len)?;
             Ok(existing.clone())
@@ -319,8 +320,9 @@ impl MetaStringReaderResolver {
                 }
             }
             let mb = MetaStringBytes::new(bytes, hash_code, Encoding::Utf8, first8, second8);
-            self.hash_to_meta.insert(hash_code, mb.clone());
-            Ok(mb)
+            let rc_mb = Rc::from(mb);
+            self.hash_to_meta.insert(hash_code, rc_mb.clone());
+            Ok(rc_mb)
         }
     }
 
@@ -328,11 +330,11 @@ impl MetaStringReaderResolver {
         &mut self,
         reader: &mut Reader,
         len: usize,
-    ) -> Result<MetaStringBytes, Error> {
+    ) -> Result<Rc<MetaStringBytes>, Error> {
         let encoding_val = reader.read_u8()?;
         if len == 0 {
             debug_assert_eq!(encoding_val, Encoding::Utf8 as i16 as u8);
-            return Ok(MetaStringBytes::EMPTY.clone());
+            return Ok(Rc::from(MetaStringBytes::EMPTY.clone()));
         }
         let (v1, v2) = if len <= 8 {
             let v1 = Self::read_bytes_as_u64(reader, len)?;
@@ -366,8 +368,9 @@ impl MetaStringReaderResolver {
                 v1,
                 v2,
             );
-            self.small_map.insert(key, mb.clone());
-            Ok(mb)
+            let rc_mb = Rc::from(mb);
+            self.small_map.insert(key, rc_mb.clone());
+            Ok(rc_mb)
         }
     }
 
@@ -380,7 +383,7 @@ impl MetaStringReaderResolver {
         Ok(v)
     }
 
-    fn update_dynamic_string(&mut self, mb: MetaStringBytes) {
+    fn update_dynamic_string(&mut self, mb: Rc<MetaStringBytes>) {
         let id = self.dynamic_read_id;
         self.dynamic_read_id += 1;
         if id >= self.dynamic_read.len() {
@@ -398,14 +401,18 @@ impl MetaStringReaderResolver {
         }
     }
 
-    pub fn read_meta_string(&mut self, reader: &mut Reader) -> Result<String, Error> {
+    pub fn read_meta_string(&mut self, reader: &mut Reader) -> Result<Rc<String>, Error> {
         let mb = self.read_meta_string_bytes(reader)?;
         Ok(if let Some(s) = self.meta_string_bytes_to_string.get(&mb) {
             s.clone()
         } else {
-            let s = mb.decode_lossy();
-            self.meta_string_bytes_to_string.insert(mb, s.clone());
-            s
+            let s: String = mb.decode_lossy();
+            let rc_s: Rc<String> = Rc::from(s);
+            self.meta_string_bytes_to_string.insert(mb, rc_s.clone());
+            rc_s
         })
     }
 }
+
+unsafe impl Send for MetaStringReaderResolver {}
+unsafe impl Sync for MetaStringReaderResolver {}

@@ -26,6 +26,7 @@ use crate::resolver::metastring_resolver::{
 };
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
 use crate::resolver::type_resolver::{Harness, TypeResolver};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 pub struct WriteContext {
@@ -209,7 +210,7 @@ impl ReadContext {
         }
     }
 
-    pub fn read_meta_string_bytes(&mut self) -> Result<MetaStringBytes, Error> {
+    pub fn read_meta_string_bytes(&mut self) -> Result<Rc<MetaStringBytes>, Error> {
         self.meta_string_resolver
             .read_meta_string_bytes(&mut self.reader)
     }
