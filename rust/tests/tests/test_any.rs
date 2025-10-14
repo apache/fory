@@ -27,7 +27,7 @@ fn test_box_dyn_any() {
     let fory = Fory::default();
 
     let value: Box<dyn Any> = Box::new("hello".to_string());
-    let bytes = fory.serialize(&value);
+    let bytes = fory.serialize(&value).unwrap();
     let deserialized: Box<dyn Any> = fory.deserialize(&bytes).unwrap();
     assert_eq!(
         deserialized.downcast_ref::<String>().unwrap(),
@@ -35,17 +35,17 @@ fn test_box_dyn_any() {
     );
 
     let value2: Box<dyn Any> = Box::new(42i32);
-    let bytes2 = fory.serialize(&value2);
+    let bytes2 = fory.serialize(&value2).unwrap();
     let deserialized2: Box<dyn Any> = fory.deserialize(&bytes2).unwrap();
     assert_eq!(deserialized2.downcast_ref::<i32>().unwrap(), &42i32);
 
     let value3: Box<dyn Any> = Box::new("".to_string());
-    let bytes3 = fory.serialize(&value3);
+    let bytes3 = fory.serialize(&value3).unwrap();
     let deserialized3: Box<dyn Any> = fory.deserialize(&bytes3).unwrap();
     assert_eq!(deserialized3.downcast_ref::<String>().unwrap(), "");
 
     let value5: Box<dyn Any> = Box::new(3.15f64);
-    let bytes5 = fory.serialize(&value5);
+    let bytes5 = fory.serialize(&value5).unwrap();
     let deserialized5: Box<dyn Any> = fory.deserialize(&bytes5).unwrap();
     assert_eq!(deserialized5.downcast_ref::<f64>().unwrap(), &3.15f64);
 }
@@ -54,7 +54,7 @@ fn test_box_dyn_any() {
 fn test_rc_dyn_any() {
     let fory = Fory::default();
     let value: Rc<dyn Any> = Rc::new("world".to_string());
-    let bytes = fory.serialize(&value);
+    let bytes = fory.serialize(&value).unwrap();
     let deserialized: Rc<dyn Any> = fory.deserialize(&bytes).unwrap();
     assert_eq!(
         deserialized.downcast_ref::<String>().unwrap(),
@@ -62,12 +62,12 @@ fn test_rc_dyn_any() {
     );
 
     let value2: Rc<dyn Any> = Rc::new(99i32);
-    let bytes2 = fory.serialize(&value2);
+    let bytes2 = fory.serialize(&value2).unwrap();
     let deserialized2: Rc<dyn Any> = fory.deserialize(&bytes2).unwrap();
     assert_eq!(deserialized2.downcast_ref::<i32>().unwrap(), &99i32);
 
     let value3: Rc<dyn Any> = Rc::new(true);
-    let bytes3 = fory.serialize(&value3);
+    let bytes3 = fory.serialize(&value3).unwrap();
     let deserialized3: Rc<dyn Any> = fory.deserialize(&bytes3).unwrap();
     assert_eq!(deserialized3.downcast_ref::<bool>().unwrap(), &true);
 }
@@ -77,7 +77,7 @@ fn test_arc_dyn_any() {
     let fory = Fory::default();
 
     let value: Arc<dyn Any> = Arc::new("arc test".to_string());
-    let bytes = fory.serialize(&value);
+    let bytes = fory.serialize(&value).unwrap();
     let deserialized: Arc<dyn Any> = fory.deserialize(&bytes).unwrap();
     assert_eq!(
         deserialized.downcast_ref::<String>().unwrap(),
@@ -85,12 +85,12 @@ fn test_arc_dyn_any() {
     );
 
     let value2: Arc<dyn Any> = Arc::new(123i32);
-    let bytes2 = fory.serialize(&value2);
+    let bytes2 = fory.serialize(&value2).unwrap();
     let deserialized2: Arc<dyn Any> = fory.deserialize(&bytes2).unwrap();
     assert_eq!(deserialized2.downcast_ref::<i32>().unwrap(), &123i32);
 
     let value3: Arc<dyn Any> = Arc::new(vec![1, 2, 3]);
-    let bytes3 = fory.serialize(&value3);
+    let bytes3 = fory.serialize(&value3).unwrap();
     let deserialized3: Arc<dyn Any> = fory.deserialize(&bytes3).unwrap();
     assert_eq!(
         deserialized3.downcast_ref::<Vec<i32>>().unwrap(),
@@ -106,7 +106,7 @@ fn test_rc_dyn_any_shared_reference() {
 
     let data = vec![shared_str.clone(), shared_str.clone()];
 
-    let bytes = fory.serialize(&data);
+    let bytes = fory.serialize(&data).unwrap();
     let deserialized: Vec<Rc<dyn Any>> = fory.deserialize(&bytes).unwrap();
 
     let first_str = deserialized[0].downcast_ref::<String>().unwrap();
@@ -125,7 +125,7 @@ fn test_arc_dyn_any_shared_reference() {
 
     let data = vec![shared_vec.clone(), shared_vec.clone()];
 
-    let bytes = fory.serialize(&data);
+    let bytes = fory.serialize(&data).unwrap();
     let deserialized: Vec<Arc<dyn Any>> = fory.deserialize(&bytes).unwrap();
 
     let first_vec = deserialized[0].downcast_ref::<Vec<i32>>().unwrap();
@@ -146,7 +146,8 @@ fn test_any_registered_by_name() {
     }
 
     let mut fory = Fory::default();
-    fory.register_by_namespace::<Person>("test", "Person");
+    fory.register_by_namespace::<Person>("test", "Person")
+        .unwrap();
 
     let person = Person {
         name: "Alice".to_string(),
@@ -154,7 +155,7 @@ fn test_any_registered_by_name() {
     };
 
     let value: Box<dyn Any> = Box::new(person);
-    let bytes = fory.serialize(&value);
+    let bytes = fory.serialize(&value).unwrap();
     let deserialized: Box<dyn Any> = fory.deserialize(&bytes).unwrap();
 
     let result = deserialized.downcast_ref::<Person>().unwrap();
@@ -173,7 +174,7 @@ fn test_mixed_any_types() {
     }
 
     let mut fory = Fory::default();
-    fory.register_by_name::<Item>("Item");
+    fory.register_by_name::<Item>("Item").unwrap();
 
     let item = Item {
         id: 123,
@@ -187,7 +188,7 @@ fn test_mixed_any_types() {
         Box::new(3.15f64),
     ];
 
-    let bytes = fory.serialize(&mixed);
+    let bytes = fory.serialize(&mixed).unwrap();
     let deserialized: Vec<Box<dyn Any>> = fory.deserialize(&bytes).unwrap();
 
     assert_eq!(deserialized[0].downcast_ref::<i32>().unwrap(), &42i32);
@@ -209,7 +210,7 @@ struct Container {
 #[test]
 fn test_arc_by_name() {
     let mut fory = Fory::default();
-    fory.register_by_name::<Container>("Container");
+    fory.register_by_name::<Container>("Container").unwrap();
 
     let container = Container {
         id: 999,
@@ -217,7 +218,7 @@ fn test_arc_by_name() {
     };
 
     let value: Arc<dyn Any> = Arc::new(container);
-    let bytes = fory.serialize(&value);
+    let bytes = fory.serialize(&value).unwrap();
     let deserialized: Arc<dyn Any> = fory.deserialize(&bytes).unwrap();
 
     let result = deserialized.downcast_ref::<Container>().unwrap();
@@ -225,7 +226,7 @@ fn test_arc_by_name() {
     assert_eq!(result.items, vec!["a", "b", "c"]);
 
     let container_vec: Vec<Arc<dyn Any>> = vec![value.clone(), value.clone()];
-    let bytes_vec = fory.serialize(&container_vec);
+    let bytes_vec = fory.serialize(&container_vec).unwrap();
     let deserialized_vec: Vec<Arc<dyn Any>> = fory.deserialize(&bytes_vec).unwrap();
     assert_eq!(deserialized_vec.len(), 2);
     let first = deserialized_vec[0].downcast_ref::<Container>().unwrap();
@@ -240,7 +241,7 @@ fn test_arc_by_name() {
 #[test]
 fn test_rc_by_name() {
     let mut fory = Fory::default();
-    fory.register_by_name::<Container>("Container");
+    fory.register_by_name::<Container>("Container").unwrap();
 
     let container = Container {
         id: 555,
@@ -248,7 +249,7 @@ fn test_rc_by_name() {
     };
 
     let value: Rc<dyn Any> = Rc::new(container);
-    let bytes = fory.serialize(&value);
+    let bytes = fory.serialize(&value).unwrap();
     let deserialized: Rc<dyn Any> = fory.deserialize(&bytes).unwrap();
 
     let result = deserialized.downcast_ref::<Container>().unwrap();
@@ -256,7 +257,7 @@ fn test_rc_by_name() {
     assert_eq!(result.items, vec!["x", "y"]);
 
     let container_vec: Vec<Rc<dyn Any>> = vec![value.clone(), value.clone()];
-    let bytes_vec = fory.serialize(&container_vec);
+    let bytes_vec = fory.serialize(&container_vec).unwrap();
     let deserialized_vec: Vec<Rc<dyn Any>> = fory.deserialize(&bytes_vec).unwrap();
     assert_eq!(deserialized_vec.len(), 2);
     let first = deserialized_vec[0].downcast_ref::<Container>().unwrap();

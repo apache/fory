@@ -27,7 +27,7 @@ use crate::Reader;
 use std::sync::Arc;
 use std::{any::Any, collections::HashMap};
 
-type WriteFn = fn(&dyn Any, fory: &Fory, &mut WriteContext, is_field: bool);
+type WriteFn = fn(&dyn Any, fory: &Fory, &mut WriteContext, is_field: bool) -> Result<(), Error>;
 type ReadFn = fn(
     fory: &Fory,
     &mut ReadContext,
@@ -35,7 +35,8 @@ type ReadFn = fn(
     skip_ref_flag: bool,
 ) -> Result<Box<dyn Any>, Error>;
 
-type WriteDataFn = fn(&dyn Any, fory: &Fory, &mut WriteContext, is_field: bool);
+type WriteDataFn =
+    fn(&dyn Any, fory: &Fory, &mut WriteContext, is_field: bool) -> Result<(), Error>;
 type ReadDataFn = fn(fory: &Fory, &mut ReadContext, is_field: bool) -> Result<Box<dyn Any>, Error>;
 type ToSerializerFn = fn(Box<dyn Any>) -> Result<Box<dyn Serializer>, Error>;
 
@@ -103,28 +104,26 @@ impl TypeInfo {
         namespace: &str,
         type_name: &str,
         register_by_name: bool,
-    ) -> TypeInfo {
-        let namespace_metastring = NAMESPACE_ENCODER
-            .encode_with_encodings(namespace, NAMESPACE_ENCODINGS)
-            .unwrap();
-        let type_name_metastring = TYPE_NAME_ENCODER
-            .encode_with_encodings(type_name, TYPE_NAME_ENCODINGS)
-            .unwrap();
+    ) -> Result<TypeInfo, Error> {
+        let namespace_metastring =
+            NAMESPACE_ENCODER.encode_with_encodings(namespace, NAMESPACE_ENCODINGS)?;
+        let type_name_metastring =
+            TYPE_NAME_ENCODER.encode_with_encodings(type_name, TYPE_NAME_ENCODINGS)?;
         let (type_def_bytes, type_meta) = T::fory_type_def(
             fory,
             type_id,
             namespace_metastring.clone(),
             type_name_metastring.clone(),
             register_by_name,
-        );
-        TypeInfo {
+        )?;
+        Ok(TypeInfo {
             type_def: Arc::from(type_def_bytes),
             type_meta: Arc::new(type_meta),
             type_id,
             namespace: namespace_metastring,
             type_name: type_name_metastring,
             register_by_name,
-        }
+        })
     }
 
     pub fn new_with_empty_fields<T: Serializer>(
@@ -133,13 +132,11 @@ impl TypeInfo {
         namespace: &str,
         type_name: &str,
         register_by_name: bool,
-    ) -> TypeInfo {
-        let namespace_metastring = NAMESPACE_ENCODER
-            .encode_with_encodings(namespace, NAMESPACE_ENCODINGS)
-            .unwrap();
-        let type_name_metastring = TYPE_NAME_ENCODER
-            .encode_with_encodings(type_name, TYPE_NAME_ENCODINGS)
-            .unwrap();
+    ) -> Result<TypeInfo, Error> {
+        let namespace_metastring =
+            NAMESPACE_ENCODER.encode_with_encodings(namespace, NAMESPACE_ENCODINGS)?;
+        let type_name_metastring =
+            TYPE_NAME_ENCODER.encode_with_encodings(type_name, TYPE_NAME_ENCODINGS)?;
         let meta = TypeMeta::from_fields(
             type_id,
             namespace_metastring.clone(),
@@ -147,17 +144,17 @@ impl TypeInfo {
             register_by_name,
             vec![],
         );
-        let type_def = meta.to_bytes().unwrap();
+        let type_def = meta.to_bytes()?;
         let type_resolver = _fory.get_type_resolver();
-        let meta = TypeMeta::from_bytes(&mut Reader::new(&type_def), type_resolver);
-        TypeInfo {
+        let meta = TypeMeta::from_bytes(&mut Reader::new(&type_def), type_resolver)?;
+        Ok(TypeInfo {
             type_def: Arc::from(type_def),
             type_meta: Arc::new(meta),
             type_id,
             namespace: namespace_metastring,
             type_name: type_name_metastring,
             register_by_name,
-        }
+        })
     }
 
     pub fn get_type_id(&self) -> u32 {
@@ -211,14 +208,16 @@ impl Default for TypeResolver {
             type_info_map_by_name: HashMap::new(),
             type_id_index: Vec::new(),
         };
-        resolver.register_builtin_types();
+        resolver.register_builtin_types().unwrap();
         resolver
     }
 }
 
 impl TypeResolver {
-    fn register_builtin_types(&mut self) {
+    fn register_builtin_types(&mut self) -> Result<(), Error> {
         use crate::types::TypeId;
+        let namespace = NAMESPACE_ENCODER.encode_with_encodings("", NAMESPACE_ENCODINGS)?;
+        let type_name = TYPE_NAME_ENCODER.encode_with_encodings("", TYPE_NAME_ENCODINGS)?;
 
         macro_rules! register_basic_type {
             ($ty:ty, $type_id:expr) => {{
@@ -226,15 +225,11 @@ impl TypeResolver {
                     type_def: Arc::from(vec![]),
                     type_meta: Arc::new(TypeMeta::empty()),
                     type_id: $type_id as u32,
-                    namespace: NAMESPACE_ENCODER
-                        .encode_with_encodings("", NAMESPACE_ENCODINGS)
-                        .unwrap(),
-                    type_name: TYPE_NAME_ENCODER
-                        .encode_with_encodings("", TYPE_NAME_ENCODINGS)
-                        .unwrap(),
+                    namespace: namespace.clone(),
+                    type_name: type_name.clone(),
                     register_by_name: false,
                 };
-                self.register_serializer::<$ty>(&type_info);
+                self.register_serializer::<$ty>(&type_info)?;
             }};
         }
 
@@ -254,15 +249,16 @@ impl TypeResolver {
         register_basic_type!(Vec<i64>, TypeId::INT64_ARRAY);
         register_basic_type!(Vec<f32>, TypeId::FLOAT32_ARRAY);
         register_basic_type!(Vec<f64>, TypeId::FLOAT64_ARRAY);
+
+        Ok(())
     }
 
-    pub fn get_type_info(&self, type_id: std::any::TypeId) -> &TypeInfo {
-        self.type_info_cache.get(&type_id).unwrap_or_else(|| {
-            panic!(
+    pub fn get_type_info(&self, type_id: std::any::TypeId) -> Result<&TypeInfo, Error> {
+        self.type_info_cache.get(&type_id)
+            .ok_or_else(|| Error::TypeError(format!(
                 "TypeId {:?} not found in type_info registry, maybe you forgot to register some types",
                 type_id
-            )
-        })
+            ).into()))
     }
 
     pub fn get_type_info_by_id(&self, id: u32) -> Option<&TypeInfo> {
@@ -275,34 +271,37 @@ impl TypeResolver {
     }
 
     /// Fast path for getting type info by numeric ID (avoids HashMap lookup by TypeId)
-    pub fn get_type_id(&self, type_id: &std::any::TypeId, id: u32) -> u32 {
+    pub fn get_type_id(&self, type_id: &std::any::TypeId, id: u32) -> Result<u32, Error> {
         let id_usize = id as usize;
         if id_usize < self.type_id_index.len() {
             let type_id = self.type_id_index[id_usize];
             if type_id != NO_TYPE_ID {
-                return type_id;
+                return Ok(type_id);
             }
         }
-        panic!(
-            "TypeId {:?} not found in type_id_index, maybe you forgot to register some types",
-            type_id
-        )
+        Err(Error::TypeError(
+            format!(
+                "TypeId {:?} not found in type_id_index, maybe you forgot to register some types",
+                type_id
+            )
+            .into(),
+        ))
     }
 
     pub fn register<T: StructSerializer + Serializer + ForyDefault>(
         &mut self,
         type_info: &TypeInfo,
-    ) {
+    ) -> Result<(), Error> {
         fn write<T2: 'static + Serializer>(
             this: &dyn Any,
             fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
-        ) {
+        ) -> Result<(), Error> {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => {
-                    let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T2>(fory);
+                    let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T2>(fory)?;
                     crate::serializer::write_ref_info_data(
                         v,
                         fory,
@@ -310,7 +309,8 @@ impl TypeResolver {
                         is_field,
                         skip_ref_flag,
                         true,
-                    );
+                    )?;
+                    Ok(())
                 }
                 None => todo!(),
             }
@@ -339,12 +339,10 @@ impl TypeResolver {
             fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
-        ) {
+        ) -> Result<(), Error> {
             let this = this.downcast_ref::<T2>();
             match this {
-                Some(v) => {
-                    T2::fory_write_data(v, fory, context, is_field);
-                }
+                Some(v) => T2::fory_write_data(v, fory, context, is_field),
                 None => todo!(),
             }
         }
@@ -365,15 +363,17 @@ impl TypeResolver {
         ) -> Result<Box<dyn Serializer>, Error> {
             match boxed_any.downcast::<T2>() {
                 Ok(concrete) => Ok(Box::new(*concrete) as Box<dyn Serializer>),
-                Err(_) => Err(Error::Other(anyhow::anyhow!(
-                    "Failed to downcast to concrete type"
-                ))),
+                Err(_) => Err(Error::TypeError(
+                    "Failed to downcast to concrete type".into(),
+                )),
             }
         }
 
         let rs_type_id = std::any::TypeId::of::<T>();
         if self.type_info_cache.contains_key(&rs_type_id) {
-            panic!("rs_struct:{:?} already registered", rs_type_id);
+            return Err(Error::TypeError(
+                format!("rs_struct:{:?} already registered", rs_type_id).into(),
+            ));
         }
         self.type_info_cache.insert(rs_type_id, type_info.clone());
         self.type_info_map_by_id
@@ -381,8 +381,10 @@ impl TypeResolver {
         let index = T::fory_type_index() as usize;
         if index >= self.type_id_index.len() {
             self.type_id_index.resize(index + 1, NO_TYPE_ID);
-        } else if self.type_id_index.get(index).unwrap() != &NO_TYPE_ID {
-            panic!("please:{:?} already registered", type_info.type_id);
+        } else if self.type_id_index[index] != NO_TYPE_ID {
+            return Err(Error::TypeError(
+                format!("please:{:?} already registered", type_info.type_id).into(),
+            ));
         }
         self.type_id_index[index] = type_info.type_id;
 
@@ -391,10 +393,13 @@ impl TypeResolver {
             let type_name = &type_info.type_name;
             let key = (namespace.clone(), type_name.clone());
             if self.name_serializer_map.contains_key(&key) {
-                panic!(
-                    "Namespace:{:?} Name:{:?} already registered_by_name",
-                    namespace, type_name
-                );
+                return Err(Error::InvalidData(
+                    format!(
+                        "Namespace:{:?} Name:{:?} already registered_by_name",
+                        namespace, type_name
+                    )
+                    .into(),
+                ));
             }
             self.type_name_map.insert(rs_type_id, key.clone());
             self.name_serializer_map.insert(
@@ -413,7 +418,9 @@ impl TypeResolver {
         } else {
             let type_id = type_info.type_id;
             if self.serializer_map.contains_key(&type_id) {
-                panic!("TypeId {:?} already registered_by_id", type_id);
+                return Err(Error::TypeError(
+                    format!("TypeId {:?} already registered_by_id", type_id).into(),
+                ));
             }
             self.type_id_map.insert(rs_type_id, type_id);
             self.serializer_map.insert(
@@ -427,20 +434,22 @@ impl TypeResolver {
                 )),
             );
         }
+        Ok(())
     }
 
-    pub fn register_serializer<T: Serializer + ForyDefault>(&mut self, type_info: &TypeInfo) {
+    pub fn register_serializer<T: Serializer + ForyDefault>(
+        &mut self,
+        type_info: &TypeInfo,
+    ) -> Result<(), Error> {
         fn write<T2: 'static + Serializer>(
             this: &dyn Any,
             fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
-        ) {
+        ) -> Result<(), Error> {
             let this = this.downcast_ref::<T2>();
             match this {
-                Some(v) => {
-                    v.fory_write(fory, context, is_field);
-                }
+                Some(v) => Ok(v.fory_write(fory, context, is_field)?),
                 None => todo!(),
             }
         }
@@ -469,12 +478,10 @@ impl TypeResolver {
             fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
-        ) {
+        ) -> Result<(), Error> {
             let this = this.downcast_ref::<T2>();
             match this {
-                Some(v) => {
-                    T2::fory_write_data(v, fory, context, is_field);
-                }
+                Some(v) => T2::fory_write_data(v, fory, context, is_field),
                 None => todo!(),
             }
         }
@@ -495,15 +502,17 @@ impl TypeResolver {
         ) -> Result<Box<dyn Serializer>, Error> {
             match boxed_any.downcast::<T2>() {
                 Ok(concrete) => Ok(Box::new(*concrete) as Box<dyn Serializer>),
-                Err(_) => Err(Error::Other(anyhow::anyhow!(
-                    "Failed to downcast to concrete type"
-                ))),
+                Err(_) => Err(Error::TypeError(
+                    "Failed to downcast to concrete type".into(),
+                )),
             }
         }
 
         let rs_type_id = std::any::TypeId::of::<T>();
         if self.type_info_cache.contains_key(&rs_type_id) {
-            panic!("rs_struct:{:?} already registered", rs_type_id);
+            return Err(Error::TypeError(
+                format!("rs_struct:{:?} already registered", rs_type_id).into(),
+            ));
         }
         self.type_info_cache.insert(rs_type_id, type_info.clone());
         if type_info.register_by_name {
@@ -511,10 +520,13 @@ impl TypeResolver {
             let type_name = &type_info.type_name;
             let key = (namespace.clone(), type_name.clone());
             if self.name_serializer_map.contains_key(&key) {
-                panic!(
-                    "Namespace:{:?} Name:{:?} already registered_by_name",
-                    namespace, type_name
-                );
+                return Err(Error::InvalidData(
+                    format!(
+                        "Namespace:{:?} Name:{:?} already registered_by_name",
+                        namespace, type_name
+                    )
+                    .into(),
+                ));
             }
             self.type_name_map.insert(rs_type_id, key.clone());
             self.name_serializer_map.insert(
@@ -530,7 +542,9 @@ impl TypeResolver {
         } else {
             let type_id = type_info.type_id;
             if self.serializer_map.contains_key(&type_id) {
-                panic!("TypeId {:?} already registered_by_id", type_id);
+                return Err(Error::TypeError(
+                    format!("TypeId {:?} already registered_by_id", type_id).into(),
+                ));
             }
             self.type_id_map.insert(rs_type_id, type_id);
             self.serializer_map.insert(
@@ -544,6 +558,7 @@ impl TypeResolver {
                 )),
             );
         }
+        Ok(())
     }
 
     pub fn get_harness(&self, id: u32) -> Option<Arc<Harness>> {
@@ -559,17 +574,22 @@ impl TypeResolver {
         self.name_serializer_map.get(&key).cloned()
     }
 
-    pub fn get_ext_harness(&self, id: u32) -> &Harness {
+    pub fn get_ext_harness(&self, id: u32) -> Result<Arc<Harness>, Error> {
         self.serializer_map
             .get(&id)
-            .unwrap_or_else(|| panic!("ext type must be registered in both peers"))
+            .cloned()
+            .ok_or_else(|| Error::TypeError("ext type must be registered in both peers".into()))
     }
 
-    pub fn get_ext_name_harness(&self, namespace: &MetaString, type_name: &MetaString) -> &Harness {
+    pub fn get_ext_name_harness(
+        &self,
+        namespace: &MetaString,
+        type_name: &MetaString,
+    ) -> Result<Arc<Harness>, Error> {
         let key = (namespace.clone(), type_name.clone());
-        self.name_serializer_map
-            .get(&key)
-            .expect("named_ext type must be registered in both peers")
+        self.name_serializer_map.get(&key).cloned().ok_or_else(|| {
+            Error::TypeError("named_ext type must be registered in both peers".into())
+        })
     }
 
     pub fn get_fory_type_id(&self, rust_type_id: std::any::TypeId) -> Option<u32> {

@@ -29,7 +29,7 @@ fn test_btreeset_roundtrip() {
     original.insert(3);
 
     let trait_obj: Box<dyn Serializer> = Box::new(original.clone());
-    let serialized = fory.serialize(&trait_obj);
+    let serialized = fory.serialize(&trait_obj).unwrap();
 
     let deserialized_concrete: BTreeSet<i32> = fory.deserialize(&serialized).unwrap();
 
@@ -48,7 +48,7 @@ fn test_binaryheap_roundtrip() {
     original.push(20);
     original.push(15);
 
-    let serialized = fory.serialize(&original);
+    let serialized = fory.serialize(&original).unwrap();
     let deserialized_concrete: BinaryHeap<i32> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized_concrete.len(), 3);
@@ -64,7 +64,7 @@ struct SetContainer {
 #[test]
 fn test_set_container() {
     let mut fory: Fory = Fory::default();
-    fory.register::<SetContainer>(100);
+    fory.register::<SetContainer>(100).unwrap();
 
     let mut btree = BTreeSet::new();
     btree.insert("apple".to_string());
@@ -81,7 +81,7 @@ fn test_set_container() {
         hash_set: hash,
     };
 
-    let serialized = fory.serialize(&original);
+    let serialized = fory.serialize(&original).unwrap();
     let deserialized: SetContainer = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized, original);
@@ -103,7 +103,7 @@ struct HeapContainer {
 #[test]
 fn test_heap_container() {
     let mut fory: Fory = Fory::default();
-    fory.register::<HeapContainer>(100);
+    fory.register::<HeapContainer>(100).unwrap();
 
     let mut binary_heap = BinaryHeap::new();
     binary_heap.push(3);
@@ -112,7 +112,7 @@ fn test_heap_container() {
 
     let original = HeapContainer { binary_heap };
 
-    let serialized = fory.serialize(&original);
+    let serialized = fory.serialize(&original).unwrap();
     let deserialized: HeapContainer = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.binary_heap.len(), 3);

@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 fn test_mutex_basic_serialization() {
     let fory = Fory::default();
     let m = Mutex::new(42i32);
-    let serialized = fory.serialize(&m);
+    let serialized = fory.serialize(&m).unwrap();
     let deserialized: Mutex<i32> = fory.deserialize(&serialized).unwrap();
     assert_eq!(deserialized.lock().unwrap().clone(), 42);
 }
@@ -31,7 +31,7 @@ fn test_mutex_basic_serialization() {
 fn test_arc_mutex_serialization() {
     let fory = Fory::default();
     let arc_mutex = Arc::new(Mutex::new(String::from("hello")));
-    let serialized = fory.serialize(&arc_mutex);
+    let serialized = fory.serialize(&arc_mutex).unwrap();
     let deserialized: Arc<Mutex<String>> = fory.deserialize(&serialized).unwrap();
     assert_eq!(deserialized.lock().unwrap().as_str(), "hello");
 }
@@ -43,7 +43,7 @@ fn test_arc_mutex_sharing_preserved() {
     let data = Arc::new(Mutex::new(123i32));
     let list = vec![data.clone(), data.clone()];
 
-    let serialized = fory.serialize(&list);
+    let serialized = fory.serialize(&list).unwrap();
     let deserialized: Vec<Arc<Mutex<i32>>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 2);

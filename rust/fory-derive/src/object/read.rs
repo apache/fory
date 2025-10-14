@@ -26,7 +26,7 @@ use super::util::{
 };
 
 fn create_private_field_name(field: &Field) -> Ident {
-    format_ident!("_{}", field.ident.as_ref().expect(""))
+    format_ident!("_{}", field.ident.as_ref().unwrap())
 }
 
 fn need_declared_by_option(field: &Field) -> bool {
@@ -108,16 +108,16 @@ fn gen_read_field(field: &Field, private_ident: &Ident) -> TokenStream {
             let from_any_fn = format_ident!("from_any_internal_{}", trait_name);
             let helper_mod = format_ident!("__fory_trait_helpers_{}", trait_name);
             quote! {
-                let ref_flag = context.reader.read_i8();
+                let ref_flag = context.reader.read_i8()?;
                 if ref_flag != fory_core::types::RefFlag::NotNullValue as i8 {
-                    panic!("Expected NotNullValue for trait object field");
+                    return Err(Error::InvalidRef("Expected NotNullValue for trait object field".into()));
                 }
 
-                let fory_type_id = context.reader.read_varuint32();
+                let fory_type_id = context.reader.read_varuint32()?;
 
                 let harness = fory.get_type_resolver()
                     .get_harness(fory_type_id)
-                    .expect("Type not registered for trait object field");
+                    .ok_or_else(|| Error::TypeError("Type not registered for trait object field".into()))?;
 
                 let deserializer_fn = harness.get_read_fn();
                 let any_box = deserializer_fn(fory, context, true, false)?;
@@ -254,14 +254,14 @@ fn gen_read_compatible_match_arm_body(field: &Field, var_name: &Ident) -> TokenS
             let from_any_fn = format_ident!("from_any_internal_{}", trait_name);
             let helper_mod = format_ident!("__fory_trait_helpers_{}", trait_name);
             quote! {
-                let ref_flag = context.reader.read_i8();
+                let ref_flag = context.reader.read_i8()?;
                 if ref_flag != fory_core::types::RefFlag::NotNullValue as i8 {
-                    panic!("Expected NotNullValue for trait object field");
+                    return Err(Error::InvalidRef("Expected NotNullValue for trait object field".into()));
                 }
-                let fory_type_id = context.reader.read_varuint32();
+                let fory_type_id = context.reader.read_varuint32()?;
                 let harness = fory.get_type_resolver()
                     .get_harness(fory_type_id)
-                    .expect("Type not registered for trait object field");
+                    .ok_or_else(|| Error::TypeError("Type not registered for trait object field".into()))?;
                 let deserializer_fn = harness.get_read_fn();
                 let any_box = deserializer_fn(fory, context, true, false)?;
                 let base_type_id = fory_type_id >> 8;
@@ -374,7 +374,7 @@ fn gen_read_compatible_match_arm_body(field: &Field, var_name: &Ident) -> TokenS
                         if !_field.field_type.nullable {
                             #var_name = fory_core::serializer::read_ref_info_data::<#ty>(fory, context, true, true, false)?;
                         } else {
-                            if context.reader.read_i8() == #null_flag {
+                            if context.reader.read_i8()? == #null_flag {
                                 #var_name = <#ty as fory_core::serializer::ForyDefault>::fory_default();
                             } else {
                                 #var_name = fory_core::serializer::read_ref_info_data::<#ty>(fory, context, true, true, false)?;
@@ -389,21 +389,21 @@ fn gen_read_compatible_match_arm_body(field: &Field, var_name: &Ident) -> TokenS
 
 pub fn gen_read(struct_ident: &Ident) -> TokenStream {
     quote! {
-        let ref_flag = context.reader.read_i8();
+        let ref_flag = context.reader.read_i8()?;
         if ref_flag == (fory_core::types::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::types::RefFlag::RefValue as i8) {
             if fory.is_compatible() {
                 <#struct_ident as fory_core::serializer::Serializer>::fory_read_compatible(fory, context)
             } else {
-                <Self as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, false);
+                <Self as fory_core::serializer::Serializer>::fory_read_type_info(fory, context, false)?;
                 <Self as fory_core::serializer::Serializer>::fory_read_data(fory, context, false)
             }
         } else if ref_flag == (fory_core::types::RefFlag::Null as i8) {
             Ok(<Self as fory_core::serializer::ForyDefault>::fory_default())
-            // Err(fory_core::error::AnyhowError::msg("Try to read non-option type to null"))?
         } else if ref_flag == (fory_core::types::RefFlag::Ref as i8) {
-            Err(fory_core::error::Error::Ref)
+            // Err(fory_core::error::Error::Ref)
+            todo!()
         } else {
-            Err(fory_core::error::AnyhowError::msg("Unknown ref flag, value:{ref_flag}"))?
+            Err(fory_core::error::Error::InvalidRef(format!("Unknown ref flag, value:{ref_flag}").into()))
         }
     }
 }
@@ -428,8 +428,8 @@ pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
         .collect();
 
     quote! {
-        let remote_type_id = context.reader.read_varuint32();
-        let meta_index = context.reader.read_varuint32();
+        let remote_type_id = context.reader.read_varuint32()?;
+        let meta_index = context.reader.read_varuint32()?;
         let meta = context.get_meta(meta_index as usize);
         let fields = {
             let meta = context.get_meta(meta_index as usize);
@@ -437,7 +437,7 @@ pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
         };
         #(#declare_ts)*
 
-        let local_type_hash = fory.get_type_resolver().get_type_info(std::any::TypeId::of::<Self>()).get_type_meta().get_hash();
+        let local_type_hash = fory.get_type_resolver().get_type_info(std::any::TypeId::of::<Self>())?.get_type_meta().get_hash();
         if meta.get_hash() == local_type_hash {
             <Self as fory_core::serializer::Serializer>::fory_read_data(fory, context, false)
         } else {
@@ -447,7 +447,7 @@ pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
                     _ => {
                         let field_type = &_field.field_type;
                         let read_ref_flag = fory_core::serializer::skip::get_read_ref_flag(&field_type);
-                        fory_core::serializer::skip::skip_field_value(fory, context, &field_type, read_ref_flag).unwrap();
+                        fory_core::serializer::skip::skip_field_value(fory, context, &field_type, read_ref_flag)?;
                     }
                 }
             }

@@ -34,7 +34,7 @@ pub fn derive_row(ast: &syn::DeriveInput) -> TokenStream {
 
         quote! {
             let mut callback_info = struct_writer.write_start(#index);
-            <#ty as fory_core::row::Row<'a>>::write(&v.#ident, struct_writer.get_writer());
+            <#ty as fory_core::row::Row<'a>>::write(&v.#ident, struct_writer.get_writer())?;
             struct_writer.write_end(callback_info);
         }
     });
@@ -69,9 +69,10 @@ pub fn derive_row(ast: &syn::DeriveInput) -> TokenStream {
 
             type ReadResult = #getter<'a>;
 
-            fn write(v: &Self, writer: &mut fory_core::buffer::Writer) {
+            fn write(v: &Self, writer: &mut fory_core::buffer::Writer) -> Result<(), fory_core::error::Error> {
                 let mut struct_writer = fory_core::row::StructWriter::new(#num_fields, writer);
                 #(#write_exprs);*;
+                Ok(())
             }
 
             fn cast(bytes: &'a [u8]) -> Self::ReadResult {

@@ -32,12 +32,21 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
     }
 
     #[inline(always)]
-    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
-        T::fory_read_type_info(fory, context, is_field);
+    fn fory_read_type_info(
+        fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        T::fory_read_type_info(fory, context, is_field)
     }
 
     #[inline(always)]
-    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+    fn fory_write_data(
+        &self,
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
         if let Some(v) = self {
             T::fory_write_data(v, fory, context, is_field)
         } else {
@@ -46,8 +55,12 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
     }
 
     #[inline(always)]
-    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        T::fory_write_type_info(fory, context, is_field);
+    fn fory_write_type_info(
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        T::fory_write_type_info(fory, context, is_field)
     }
 
     #[inline(always)]
@@ -56,12 +69,12 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(fory: &Fory) -> u32 {
+    fn fory_get_type_id(fory: &Fory) -> Result<u32, Error> {
         T::fory_get_type_id(fory)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+    fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, Error> {
         match self {
             Some(val) => val.fory_type_id_dyn(fory),
             None => T::fory_get_type_id(fory),

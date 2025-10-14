@@ -16,6 +16,7 @@
 // under the License.
 
 use crate::buffer::{Reader, Writer};
+use crate::error::Error;
 use crate::types::RefFlag;
 use std::any::Any;
 use std::collections::HashMap;
@@ -288,15 +289,17 @@ impl RefReader {
     /// # Panics
     ///
     /// Panics if an invalid reference flag value is encountered
-    pub fn read_ref_flag(&self, reader: &mut Reader) -> RefFlag {
-        let flag_value = reader.read_i8();
-        match flag_value {
+    pub fn read_ref_flag(&self, reader: &mut Reader) -> Result<RefFlag, Error> {
+        let flag_value = reader.read_i8()?;
+        Ok(match flag_value {
             -3 => RefFlag::Null,
             -2 => RefFlag::Ref,
             -1 => RefFlag::NotNullValue,
             0 => RefFlag::RefValue,
-            _ => panic!("Invalid reference flag: {}", flag_value),
-        }
+            _ => Err(Error::InvalidRef(
+                format!("Invalid reference flag: {}", flag_value).into(),
+            ))?,
+        })
     }
 
     /// Read a reference ID from the reader.
@@ -308,7 +311,7 @@ impl RefReader {
     /// # Returns
     ///
     /// The reference ID as a u32
-    pub fn read_ref_id(&self, reader: &mut Reader) -> u32 {
+    pub fn read_ref_id(&self, reader: &mut Reader) -> Result<u32, Error> {
         reader.read_u32()
     }
 

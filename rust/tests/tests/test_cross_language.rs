@@ -68,17 +68,17 @@ fn test_buffer() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
-    assert_eq!(reader.read_u8(), 1);
-    assert_eq!(reader.read_i8(), i8::MAX);
-    assert_eq!(reader.read_i16(), i16::MAX);
-    assert_eq!(reader.read_i32(), i32::MAX);
-    assert_eq!(reader.read_i64(), i64::MAX);
-    assert_eq!(reader.read_f32(), -1.1f32);
-    assert_eq!(reader.read_f64(), -1.1f64);
-    assert_eq!(reader.read_varuint32(), 100);
-    let bytes_size = reader.read_i32() as usize;
+    assert_eq!(reader.read_u8().unwrap(), 1);
+    assert_eq!(reader.read_i8().unwrap(), i8::MAX);
+    assert_eq!(reader.read_i16().unwrap(), i16::MAX);
+    assert_eq!(reader.read_i32().unwrap(), i32::MAX);
+    assert_eq!(reader.read_i64().unwrap(), i64::MAX);
+    assert_eq!(reader.read_f32().unwrap(), -1.1f32);
+    assert_eq!(reader.read_f64().unwrap(), -1.1f64);
+    assert_eq!(reader.read_varuint32().unwrap(), 100);
+    let bytes_size = reader.read_i32().unwrap() as usize;
     let binary = b"ab";
-    assert_eq!(reader.read_bytes(bytes_size), binary);
+    assert_eq!(reader.read_bytes(bytes_size).unwrap(), binary);
 
     let mut writer = Writer::default();
     writer.write_u8(1);
@@ -123,7 +123,7 @@ fn test_buffer_var() {
         i32::MAX,
     ];
     for &expected in &varint32_values {
-        let value = reader.read_varint32();
+        let value = reader.read_varint32().unwrap();
         assert_eq!(expected, value, "varint32 value mismatch");
     }
     let varuint32_values = vec![
@@ -141,7 +141,7 @@ fn test_buffer_var() {
         i32::MAX,
     ];
     for &expected in &varuint32_values {
-        let value = reader.read_varuint32();
+        let value = reader.read_varuint32().unwrap();
         assert_eq!(expected, value as i32, "varuint32 value mismatch");
     }
     let varuint64_values = vec![
@@ -166,7 +166,7 @@ fn test_buffer_var() {
         i64::MAX as u64,
     ];
     for &expected in &varuint64_values {
-        let value = reader.read_varuint64();
+        let value = reader.read_varuint64().unwrap();
         assert_eq!(expected, value, "varuint64 value mismatch");
     }
     let varint64_values = vec![
@@ -187,7 +187,7 @@ fn test_buffer_var() {
         i64::MAX,
     ];
     for &expected in &varint64_values {
-        let value = reader.read_varint64();
+        let value = reader.read_varint64().unwrap();
         assert_eq!(expected, value, "varint64 value mismatch");
     }
 
@@ -214,8 +214,8 @@ fn test_murmurhash3() {
     let bytes = fs::read(&data_file_path).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
     let (h1, h2) = murmurhash3_x64_128(&[1, 2, 8], 47);
-    assert_eq!(reader.read_i64(), h1 as i64);
-    assert_eq!(reader.read_i64(), h2 as i64);
+    assert_eq!(reader.read_i64().unwrap(), h1 as i64);
+    assert_eq!(reader.read_i64().unwrap(), h2 as i64);
 }
 
 #[test]
@@ -262,7 +262,7 @@ fn test_string_serializer() {
     let fory = Fory::default().compatible(true).xlang(true);
     let mut context = WriteContext::new(writer);
     for s in &test_strings {
-        s.fory_write_data(&fory, &mut context, true);
+        s.fory_write_data(&fory, &mut context, true).unwrap();
     }
     fs::write(&data_file_path, context.writer.dump()).unwrap();
 }
@@ -292,7 +292,7 @@ fn test_cross_language_serializer() {
     let bytes = fs::read(&data_file_path).unwrap();
     let reader = Reader::new(bytes.as_slice());
     let mut fory = Fory::default().compatible(true).xlang(true);
-    fory.register::<Color>(101);
+    fory.register::<Color>(101).unwrap();
     let mut context = ReadContext::new(reader, 5);
     assert_de!(fory, context, bool, true);
     assert_de!(fory, context, bool, false);
@@ -323,32 +323,46 @@ fn test_cross_language_serializer() {
 
     let writer = Writer::default();
     let mut context = WriteContext::new(writer);
-    fory.serialize_with_context(&true, &mut context);
-    fory.serialize_with_context(&false, &mut context);
-    fory.serialize_with_context(&-1, &mut context);
-    fory.serialize_with_context(&i8::MAX, &mut context);
-    fory.serialize_with_context(&i8::MIN, &mut context);
-    fory.serialize_with_context(&i16::MAX, &mut context);
-    fory.serialize_with_context(&i16::MIN, &mut context);
-    fory.serialize_with_context(&i32::MAX, &mut context);
-    fory.serialize_with_context(&i32::MIN, &mut context);
-    fory.serialize_with_context(&i64::MAX, &mut context);
-    fory.serialize_with_context(&i64::MIN, &mut context);
-    fory.serialize_with_context(&-1f32, &mut context);
-    fory.serialize_with_context(&-1f64, &mut context);
-    fory.serialize_with_context(&"str".to_string(), &mut context);
-    fory.serialize_with_context(&day, &mut context);
-    fory.serialize_with_context(&instant, &mut context);
-    fory.serialize_with_context(&vec![true, false], &mut context);
-    fory.serialize_with_context(&vec![1, i16::MAX], &mut context);
-    fory.serialize_with_context(&vec![1, i32::MAX], &mut context);
-    fory.serialize_with_context(&vec![1, i64::MAX], &mut context);
-    fory.serialize_with_context(&vec![1f32, 2f32], &mut context);
-    fory.serialize_with_context(&vec![1f64, 2f64], &mut context);
-    fory.serialize_with_context(&str_list, &mut context);
-    fory.serialize_with_context(&str_set, &mut context);
-    fory.serialize_with_context(&str_map, &mut context);
-    fory.serialize_with_context(&color, &mut context);
+    fory.serialize_with_context(&true, &mut context).unwrap();
+    fory.serialize_with_context(&false, &mut context).unwrap();
+    fory.serialize_with_context(&-1, &mut context).unwrap();
+    fory.serialize_with_context(&i8::MAX, &mut context).unwrap();
+    fory.serialize_with_context(&i8::MIN, &mut context).unwrap();
+    fory.serialize_with_context(&i16::MAX, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&i16::MIN, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&i32::MAX, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&i32::MIN, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&i64::MAX, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&i64::MIN, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&-1f32, &mut context).unwrap();
+    fory.serialize_with_context(&-1f64, &mut context).unwrap();
+    fory.serialize_with_context(&"str".to_string(), &mut context)
+        .unwrap();
+    fory.serialize_with_context(&day, &mut context).unwrap();
+    fory.serialize_with_context(&instant, &mut context).unwrap();
+    fory.serialize_with_context(&vec![true, false], &mut context)
+        .unwrap();
+    fory.serialize_with_context(&vec![1, i16::MAX], &mut context)
+        .unwrap();
+    fory.serialize_with_context(&vec![1, i32::MAX], &mut context)
+        .unwrap();
+    fory.serialize_with_context(&vec![1, i64::MAX], &mut context)
+        .unwrap();
+    fory.serialize_with_context(&vec![1f32, 2f32], &mut context)
+        .unwrap();
+    fory.serialize_with_context(&vec![1f64, 2f64], &mut context)
+        .unwrap();
+    fory.serialize_with_context(&str_list, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&str_set, &mut context).unwrap();
+    fory.serialize_with_context(&str_map, &mut context).unwrap();
+    fory.serialize_with_context(&color, &mut context).unwrap();
     fs::write(&data_file_path, context.writer.dump()).unwrap();
 }
 
@@ -358,9 +372,9 @@ fn test_simple_struct() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
     let mut fory = Fory::default().compatible(true).xlang(true);
-    fory.register::<Color>(101);
-    fory.register::<Item>(102);
-    fory.register::<SimpleStruct>(103);
+    fory.register::<Color>(101).unwrap();
+    fory.register::<Item>(102).unwrap();
+    fory.register::<SimpleStruct>(103).unwrap();
 
     let local_obj = SimpleStruct {
         f1: HashMap::from([(1, 1.0f64), (2, 2.0f64)]),
@@ -377,7 +391,7 @@ fn test_simple_struct() {
     };
     let remote_obj: SimpleStruct = fory.deserialize(&bytes).unwrap();
     assert_eq!(remote_obj, local_obj);
-    let new_bytes = fory.serialize(&remote_obj);
+    let new_bytes = fory.serialize(&remote_obj).unwrap();
     let new_local_obj: SimpleStruct = fory.deserialize(&new_bytes).unwrap();
     assert_eq!(new_local_obj, local_obj);
     fs::write(&data_file_path, new_bytes).unwrap();
@@ -389,9 +403,11 @@ fn test_simple_named_struct() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
     let mut fory = Fory::default().compatible(true).xlang(true);
-    fory.register_by_namespace::<Color>("demo", "color");
-    fory.register_by_namespace::<Item>("demo", "item");
-    fory.register_by_namespace::<SimpleStruct>("demo", "simple_struct");
+    fory.register_by_namespace::<Color>("demo", "color")
+        .unwrap();
+    fory.register_by_namespace::<Item>("demo", "item").unwrap();
+    fory.register_by_namespace::<SimpleStruct>("demo", "simple_struct")
+        .unwrap();
 
     let local_obj = SimpleStruct {
         f1: HashMap::from([(1, 1.0f64), (2, 2.0f64)]),
@@ -408,7 +424,7 @@ fn test_simple_named_struct() {
     };
     let remote_obj: SimpleStruct = fory.deserialize(&bytes).unwrap();
     assert_eq!(remote_obj, local_obj);
-    let new_bytes = fory.serialize(&remote_obj);
+    let new_bytes = fory.serialize(&remote_obj).unwrap();
     let new_local_obj: SimpleStruct = fory.deserialize(&new_bytes).unwrap();
     assert_eq!(new_local_obj, local_obj);
     fs::write(&data_file_path, new_bytes).unwrap();
@@ -421,7 +437,7 @@ fn test_list() {
     let bytes = fs::read(&data_file_path).unwrap();
 
     let mut fory = Fory::default().compatible(true);
-    fory.register::<Item>(102);
+    fory.register::<Item>(102).unwrap();
     let reader = Reader::new(bytes.as_slice());
     let mut context = ReadContext::new(reader, 5);
 
@@ -451,10 +467,14 @@ fn test_list() {
 
     let writer = Writer::default();
     let mut context = WriteContext::new(writer);
-    fory.serialize_with_context(&remote_str_list, &mut context);
-    fory.serialize_with_context(&remote_str_list2, &mut context);
-    fory.serialize_with_context(&remote_item_list, &mut context);
-    fory.serialize_with_context(&remote_item_list2, &mut context);
+    fory.serialize_with_context(&remote_str_list, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&remote_str_list2, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&remote_item_list, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&remote_item_list2, &mut context)
+        .unwrap();
 
     fs::write(&data_file_path, context.writer.dump()).unwrap();
 }
@@ -466,7 +486,7 @@ fn test_map() {
     let bytes = fs::read(&data_file_path).unwrap();
 
     let mut fory = Fory::default().compatible(true);
-    fory.register::<Item>(102);
+    fory.register::<Item>(102).unwrap();
     let reader = Reader::new(bytes.as_slice());
     let mut context = ReadContext::new(reader, 5);
 
@@ -501,7 +521,7 @@ fn test_map() {
     let remote_str_map: HashMap<Option<String>, Option<String>> =
         fory.deserialize_with_context(&mut context).unwrap();
     assert_eq!(remote_str_map, str_map);
-    let data_bytes1 = fory.serialize(&remote_str_map);
+    let data_bytes1 = fory.serialize(&remote_str_map).unwrap();
     let new_local_str_map: HashMap<Option<String>, Option<String>> =
         fory.deserialize(&data_bytes1).unwrap();
     assert_eq!(new_local_str_map, str_map);
@@ -509,7 +529,7 @@ fn test_map() {
     let remote_item_map: HashMap<Option<String>, Option<Item>> =
         fory.deserialize_with_context(&mut context).unwrap();
     assert_eq!(remote_item_map, item_map);
-    let data_bytes2 = fory.serialize(&remote_item_map);
+    let data_bytes2 = fory.serialize(&remote_item_map).unwrap();
     let new_local_item_map: HashMap<Option<String>, Option<Item>> =
         fory.deserialize(&data_bytes2).unwrap();
     assert_eq!(new_local_item_map, item_map);
@@ -535,7 +555,7 @@ fn test_integer() {
     let bytes = fs::read(&data_file_path).unwrap();
 
     let mut fory = Fory::default().compatible(true);
-    fory.register::<Item2>(101);
+    fory.register::<Item2>(101).unwrap();
     let reader = Reader::new(bytes.as_slice());
 
     let mut context = ReadContext::new(reader, 5);
@@ -571,13 +591,20 @@ fn test_integer() {
 
     let writer = Writer::default();
     let mut context = WriteContext::new(writer);
-    fory.serialize_with_context(&remote_item2, &mut context);
-    fory.serialize_with_context(&remote_f1, &mut context);
-    fory.serialize_with_context(&remote_f2, &mut context);
-    fory.serialize_with_context(&remote_f3, &mut context);
-    fory.serialize_with_context(&remote_f4, &mut context);
-    fory.serialize_with_context(&remote_f5, &mut context);
-    fory.serialize_with_context(&remote_f6, &mut context);
+    fory.serialize_with_context(&remote_item2, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&remote_f1, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&remote_f2, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&remote_f3, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&remote_f4, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&remote_f5, &mut context)
+        .unwrap();
+    fory.serialize_with_context(&remote_f6, &mut context)
+        .unwrap();
     fs::write(&data_file_path, context.writer.dump()).unwrap();
 }
 
@@ -590,9 +617,14 @@ struct MyExt {
     id: i32,
 }
 impl Serializer for MyExt {
-    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, _is_field: bool) {
+    fn fory_write_data(
+        &self,
+        fory: &Fory,
+        context: &mut WriteContext,
+        _is_field: bool,
+    ) -> Result<(), fory_core::error::Error> {
         // set is_field=false to write type_id like in java
-        write_data(&self.id, fory, context, false);
+        write_data(&self.id, fory, context, false)
     }
 
     fn fory_read_data(
@@ -606,7 +638,7 @@ impl Serializer for MyExt {
         })
     }
 
-    fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+    fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, fory_core::error::Error> {
         Self::fory_get_type_id(fory)
     }
 
@@ -638,26 +670,26 @@ fn _test_skip_custom(fory1: &Fory, fory2: &Fory) {
         my_struct: MyStruct { id: 42 },
         my_ext: MyExt { id: 43 },
     };
-    let bytes = fory2.serialize(&wrapper);
+    let bytes = fory2.serialize(&wrapper).unwrap();
     fs::write(&data_file_path, bytes).unwrap();
 }
 
 #[test]
 fn test_kankankan() {
     let mut fory1 = Fory::default().compatible(true);
-    fory1.register_serializer::<MyExt>(103);
-    fory1.register::<Empty>(104);
+    fory1.register_serializer::<MyExt>(103).unwrap();
+    fory1.register::<Empty>(104).unwrap();
     let mut fory2 = Fory::default().compatible(true);
-    fory2.register::<Color>(101);
-    fory2.register::<MyStruct>(102);
-    fory2.register_serializer::<MyExt>(103);
-    fory2.register::<MyWrapper>(104);
+    fory2.register::<Color>(101).unwrap();
+    fory2.register::<MyStruct>(102).unwrap();
+    fory2.register_serializer::<MyExt>(103).unwrap();
+    fory2.register::<MyWrapper>(104).unwrap();
     let wrapper = MyWrapper {
         color: Color::White,
         my_struct: MyStruct { id: 42 },
         my_ext: MyExt { id: 43 },
     };
-    let bytes = fory2.serialize(&wrapper);
+    let bytes = fory2.serialize(&wrapper).unwrap();
     fory1.deserialize::<Empty>(&bytes).unwrap();
 }
 
@@ -665,13 +697,13 @@ fn test_kankankan() {
 #[ignore]
 fn test_skip_id_custom() {
     let mut fory1 = Fory::default().compatible(true);
-    fory1.register_serializer::<MyExt>(103);
-    fory1.register::<Empty>(104);
+    fory1.register_serializer::<MyExt>(103).unwrap();
+    fory1.register::<Empty>(104).unwrap();
     let mut fory2 = Fory::default().compatible(true);
-    fory2.register::<Color>(101);
-    fory2.register::<MyStruct>(102);
-    fory2.register_serializer::<MyExt>(103);
-    fory2.register::<MyWrapper>(104);
+    fory2.register::<Color>(101).unwrap();
+    fory2.register::<MyStruct>(102).unwrap();
+    fory2.register_serializer::<MyExt>(103).unwrap();
+    fory2.register::<MyWrapper>(104).unwrap();
     _test_skip_custom(&fory1, &fory2);
 }
 
@@ -679,23 +711,27 @@ fn test_skip_id_custom() {
 #[ignore]
 fn test_skip_name_custom() {
     let mut fory1 = Fory::default().compatible(true);
-    fory1.register_serializer_by_name::<MyExt>("my_ext");
-    fory1.register_by_name::<Empty>("my_wrapper");
+    fory1
+        .register_serializer_by_name::<MyExt>("my_ext")
+        .unwrap();
+    fory1.register_by_name::<Empty>("my_wrapper").unwrap();
     let mut fory2 = Fory::default().compatible(true);
-    fory2.register_by_name::<Color>("color");
-    fory2.register_by_name::<MyStruct>("my_struct");
-    fory2.register_serializer_by_name::<MyExt>("my_ext");
-    fory2.register_by_name::<MyWrapper>("my_wrapper");
+    fory2.register_by_name::<Color>("color").unwrap();
+    fory2.register_by_name::<MyStruct>("my_struct").unwrap();
+    fory2
+        .register_serializer_by_name::<MyExt>("my_ext")
+        .unwrap();
+    fory2.register_by_name::<MyWrapper>("my_wrapper").unwrap();
     _test_skip_custom(&fory1, &fory2);
 }
 
 #[test]
 #[ignore]
 fn test_consistent_named() {
-    let mut fory = Fory::default().compatible(false);
-    fory.register_by_name::<Color>("color");
-    fory.register_by_name::<MyStruct>("my_struct");
-    fory.register_serializer_by_name::<MyExt>("my_ext");
+    let mut fory = Fory::default().compatible(true);
+    fory.register_by_name::<Color>("color").unwrap();
+    fory.register_by_name::<MyStruct>("my_struct").unwrap();
+    fory.register_serializer_by_name::<MyExt>("my_ext").unwrap();
 
     let color = Color::White;
     let _my_struct = MyStruct { id: 42 };
@@ -740,13 +776,13 @@ fn test_consistent_named() {
 
     let writer = Writer::default();
     let mut context = WriteContext::new(writer);
-    fory.serialize_with_context(&color, &mut context);
-    fory.serialize_with_context(&color, &mut context);
-    fory.serialize_with_context(&color, &mut context);
+    fory.serialize_with_context(&color, &mut context).unwrap();
+    fory.serialize_with_context(&color, &mut context).unwrap();
+    fory.serialize_with_context(&color, &mut context).unwrap();
     // todo: checkVersion
     // fory.serialize_with_context(&my_struct, &mut context);
-    fory.serialize_with_context(&my_ext, &mut context);
-    fory.serialize_with_context(&my_ext, &mut context);
-    fory.serialize_with_context(&my_ext, &mut context);
+    fory.serialize_with_context(&my_ext, &mut context).unwrap();
+    fory.serialize_with_context(&my_ext, &mut context).unwrap();
+    fory.serialize_with_context(&my_ext, &mut context).unwrap();
     fs::write(&data_file_path, context.writer.dump()).unwrap();
 }

@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::ensure;
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::{MetaString, TypeMeta};
@@ -45,47 +46,60 @@ pub fn type_def(
 }
 
 #[inline(always)]
-pub fn write_type_info<T: Serializer>(fory: &Fory, context: &mut WriteContext, is_field: bool) {
+pub fn write_type_info<T: Serializer>(
+    fory: &Fory,
+    context: &mut WriteContext,
+    is_field: bool,
+) -> Result<(), Error> {
     if is_field {
-        return;
+        return Ok(());
     }
-    let type_id = T::fory_get_type_id(fory);
+    let type_id = T::fory_get_type_id(fory)?;
     context.writer.write_varuint32(type_id);
     let is_named_enum = type_id & 0xff == TypeId::NAMED_ENUM as u32;
     if !is_named_enum {
-        return;
+        return Ok(());
     }
     let rs_type_id = std::any::TypeId::of::<T>();
     if fory.is_share_meta() {
-        let meta_index = context.push_meta(fory, rs_type_id) as u32;
+        let meta_index = context.push_meta(fory, rs_type_id)? as u32;
         context.writer.write_varuint32(meta_index);
     } else {
-        let type_info = fory.get_type_resolver().get_type_info(rs_type_id);
+        let type_info = fory.get_type_resolver().get_type_info(rs_type_id)?;
         let namespace = type_info.get_namespace().to_owned();
         let type_name = type_info.get_type_name().to_owned();
-        context.write_meta_string_bytes(&namespace);
-        context.write_meta_string_bytes(&type_name);
+        context.write_meta_string_bytes(&namespace)?;
+        context.write_meta_string_bytes(&type_name)?;
     }
+    Ok(())
 }
 
 #[inline(always)]
-pub fn read_type_info<T: Serializer>(fory: &Fory, context: &mut ReadContext, is_field: bool) {
+pub fn read_type_info<T: Serializer>(
+    fory: &Fory,
+    context: &mut ReadContext,
+    is_field: bool,
+) -> Result<(), Error> {
     if is_field {
-        return;
+        return Ok(());
     }
-    let local_type_id = T::fory_get_type_id(fory);
-    let remote_type_id = context.reader.read_varuint32();
-    assert_eq!(local_type_id, remote_type_id);
+    let local_type_id = T::fory_get_type_id(fory)?;
+    let remote_type_id = context.reader.read_varuint32()?;
+    ensure!(
+        local_type_id == remote_type_id,
+        Error::TypeMismatch(local_type_id, remote_type_id)
+    );
     let is_named_enum = local_type_id & 0xff == TypeId::NAMED_ENUM as u32;
     if !is_named_enum {
-        return;
+        return Ok(());
     }
     if fory.is_share_meta() {
-        let _meta_index = context.reader.read_varuint32();
+        let _meta_index = context.reader.read_varuint32()?;
     } else {
-        let _namespace_msb = context.read_meta_string_bytes();
-        let _type_name_msb = context.read_meta_string_bytes();
+        let _namespace_msb = context.read_meta_string_bytes()?;
+        let _type_name_msb = context.read_meta_string_bytes()?;
     }
+    Ok(())
 }
 
 #[inline(always)]
@@ -93,15 +107,20 @@ pub fn read_compatible<T: Serializer + ForyDefault>(
     fory: &Fory,
     context: &mut ReadContext,
 ) -> Result<T, Error> {
-    T::fory_read_type_info(fory, context, true);
+    T::fory_read_type_info(fory, context, true)?;
     T::fory_read_data(fory, context, true)
 }
 
 #[inline(always)]
-pub fn write<T: Serializer>(this: &T, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+pub fn write<T: Serializer>(
+    this: &T,
+    fory: &Fory,
+    context: &mut WriteContext,
+    is_field: bool,
+) -> Result<(), Error> {
     context.writer.write_i8(RefFlag::NotNullValue as i8);
-    T::fory_write_type_info(fory, context, is_field);
-    this.fory_write_data(fory, context, is_field);
+    T::fory_write_type_info(fory, context, is_field)?;
+    this.fory_write_data(fory, context, is_field)
 }
 
 #[inline(always)]
@@ -110,11 +129,11 @@ pub fn read<T: Serializer + ForyDefault>(
     context: &mut ReadContext,
     is_field: bool,
 ) -> Result<T, Error> {
-    let ref_flag = context.reader.read_i8();
+    let ref_flag = context.reader.read_i8()?;
     if ref_flag == RefFlag::Null as i8 {
         Ok(T::fory_default())
     } else if ref_flag == (RefFlag::NotNullValue as i8) {
-        T::fory_read_type_info(fory, context, false);
+        T::fory_read_type_info(fory, context, false)?;
         T::fory_read_data(fory, context, is_field)
     } else {
         unimplemented!()

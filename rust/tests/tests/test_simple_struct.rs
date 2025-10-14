@@ -47,8 +47,8 @@ fn test_simple() {
     }
     let mut fory1 = Fory::default().compatible(true);
     let mut fory2 = Fory::default().compatible(true);
-    fory1.register::<Animal1>(999);
-    fory2.register::<Animal2>(999);
+    fory1.register::<Animal1>(999).unwrap();
+    fory2.register::<Animal2>(999).unwrap();
     let animal: Animal1 = Animal1 {
         f1: HashMap::from([(1, vec![2])]),
         f2: String::from("hello"),
@@ -59,7 +59,7 @@ fn test_simple() {
         last: 44,
     };
 
-    let bin = fory1.serialize(&animal);
+    let bin = fory1.serialize(&animal).unwrap();
     let obj: Animal2 = fory2.deserialize(&bin).unwrap();
     assert_eq!(animal.f1, obj.f1);
     assert_eq!(animal.f3, obj.f3);

@@ -151,7 +151,7 @@
 //!         text: "Hello, Fory!".to_string(),
 //!     };
 //!     
-//!     let serialized = fory.serialize(&data);
+//!     let serialized = fory.serialize(&data)?;
 //!     let deserialized: MyData = fory.deserialize(&serialized)?;
 //!     
 //!     assert_eq!(data, deserialized);

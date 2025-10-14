@@ -45,7 +45,7 @@ fn test_varint32() {
         writer.write_varint32(data);
         let binding = writer.dump();
         let mut reader = Reader::new(binding.as_slice());
-        let res = reader.read_varint32();
+        let res = reader.read_varint32().unwrap();
         assert_eq!(res, data);
     }
     for &data in &test_data {
@@ -53,7 +53,7 @@ fn test_varint32() {
         writer.write_varuint32(data as u32);
         let binding = writer.dump();
         let mut reader = Reader::new(binding.as_slice());
-        let res = reader.read_varuint32();
+        let res = reader.read_varuint32().unwrap();
         assert_eq!(res, data as u32);
     }
 }
@@ -89,7 +89,7 @@ fn test_varuint36_small() {
         let buf = writer.dump();
 
         let mut reader = Reader::new(buf.as_slice());
-        let value = reader.read_varuint36small();
+        let value = reader.read_varuint36small().unwrap();
         assert_eq!(value, data, "failed for data {}", data);
     }
 }

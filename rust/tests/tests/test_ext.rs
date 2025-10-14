@@ -59,8 +59,13 @@ fn test_use() {
     }
 
     impl Serializer for Item {
-        fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
-            write_data(&self.f1, fory, context, is_field);
+        fn fory_write_data(
+            &self,
+            fory: &Fory,
+            context: &mut WriteContext,
+            is_field: bool,
+        ) -> Result<(), Error> {
+            write_data(&self.f1, fory, context, is_field)
         }
 
         fn fory_read_data(
@@ -74,7 +79,7 @@ fn test_use() {
             })
         }
 
-        fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
+        fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, fory_core::error::Error> {
             Self::fory_get_type_id(fory)
         }
 
@@ -84,8 +89,8 @@ fn test_use() {
     }
     let mut fory = Fory::default().compatible(true).xlang(true);
     let item = Item { f1: 1, f2: 2 };
-    fory.register_serializer::<Item>(100);
-    let bytes = fory.serialize(&item);
+    fory.register_serializer::<Item>(100).unwrap();
+    let bytes = fory.serialize(&item).unwrap();
     let new_item: Item = fory.deserialize(&bytes).unwrap();
     assert_eq!(new_item.f1, item.f1);
     assert_eq!(new_item.f2, 0);

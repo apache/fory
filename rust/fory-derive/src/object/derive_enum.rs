@@ -27,7 +27,7 @@ pub fn gen_actual_type_id() -> TokenStream {
 
 pub fn gen_type_def(_data_enum: &DataEnum) -> TokenStream {
     quote! {
-        fory_core::serializer::enum_::type_def(fory, type_id, namespace, type_name, register_by_name)
+        Ok(fory_core::serializer::enum_::type_def(fory, type_id, namespace, type_name, register_by_name))
     }
 }
 
@@ -53,13 +53,13 @@ pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
     let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
     let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as u32).collect();
     quote! {
-        match self {
+        Ok(match self {
             #(
                 Self::#variant_idents => {
                     context.writer.write_varuint32(#variant_values);
                 }
             )*
-        }
+        })
     }
 }
 
@@ -67,12 +67,12 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
     let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
     let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as u32).collect();
     quote! {
-        let ordinal = context.reader.read_varuint32();
+        let ordinal = context.reader.read_varuint32()?;
         match ordinal {
            #(
                #variant_values => Ok(Self::#variant_idents),
            )*
-           _ => panic!("unknown value"),
+           _ => return Err(fory_core::error::Error::UnknownEnum("unknown enum value".into())),
         }
     }
 }

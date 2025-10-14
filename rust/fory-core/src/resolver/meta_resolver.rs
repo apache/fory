@@ -33,28 +33,27 @@ const MAX_PARSED_NUM_TYPE_DEFS: usize = 8192;
 
 #[allow(dead_code)]
 impl MetaWriterResolver {
-    pub fn push(&mut self, type_id: std::any::TypeId, fory: &Fory) -> usize {
+    pub fn push(&mut self, type_id: std::any::TypeId, fory: &Fory) -> Result<usize, Error> {
         match self.type_id_index_map.get(&type_id) {
             None => {
                 let index = self.type_defs.len();
                 self.type_defs.push(
                     fory.get_type_resolver()
-                        .get_type_info(type_id)
+                        .get_type_info(type_id)?
                         .get_type_def(),
                 );
                 self.type_id_index_map.insert(type_id, index);
-                index
+                Ok(index)
             }
-            Some(index) => *index,
+            Some(index) => Ok(*index),
         }
     }
 
-    pub fn to_bytes(&self, writer: &mut Writer) -> Result<(), Error> {
+    pub fn to_bytes(&self, writer: &mut Writer) {
         writer.write_varuint32(self.type_defs.len() as u32);
         for item in &self.type_defs {
             writer.write_bytes(item);
         }
-        Ok(())
     }
 
     pub fn empty(&mut self) -> bool {
@@ -78,20 +77,24 @@ impl MetaReaderResolver {
         unsafe { self.reading_type_defs.get_unchecked(index) }
     }
 
-    pub fn load(&mut self, type_resolver: &TypeResolver, reader: &mut Reader) -> usize {
-        let meta_size = reader.read_varuint32();
+    pub fn load(
+        &mut self,
+        type_resolver: &TypeResolver,
+        reader: &mut Reader,
+    ) -> Result<usize, Error> {
+        let meta_size = reader.read_varuint32()?;
         // self.reading_type_defs.reserve(meta_size as usize);
         for _ in 0..meta_size {
-            let meta_header = reader.read_i64();
+            let meta_header = reader.read_i64()?;
             if let Some(type_meta) = self.parsed_type_defs.get(&meta_header) {
                 self.reading_type_defs.push(type_meta.clone());
-                TypeMeta::skip_bytes(reader, meta_header);
+                TypeMeta::skip_bytes(reader, meta_header)?;
             } else {
                 let type_meta = Arc::new(TypeMeta::from_bytes_with_header(
                     reader,
                     type_resolver,
                     meta_header,
-                ));
+                )?);
                 if self.parsed_type_defs.len() < MAX_PARSED_NUM_TYPE_DEFS {
                     // avoid malicious type defs to OOM parsed_type_defs
                     self.parsed_type_defs.insert(meta_header, type_meta.clone());
@@ -99,22 +102,22 @@ impl MetaReaderResolver {
                 self.reading_type_defs.push(type_meta);
             }
         }
-        reader.get_cursor()
+        Ok(reader.get_cursor())
     }
 
-    pub fn read_metastring(&self, reader: &mut Reader) -> MetaString {
-        let len = reader.read_varuint32() as usize;
+    pub fn read_metastring(&self, reader: &mut Reader) -> Result<MetaString, Error> {
+        let len = reader.read_varuint32()? as usize;
         if len == 0 {
-            return MetaString {
+            return Ok(MetaString {
                 bytes: vec![],
                 encoding: Encoding::Utf8,
                 original: String::new(),
                 strip_last_char: false,
                 special_char1: '\0',
                 special_char2: '\0',
-            };
+            });
         }
-        let bytes = reader.read_bytes(len);
+        let bytes = reader.read_bytes(len)?;
         let encoding_byte = bytes[0] & 0x07;
         let encoding = match encoding_byte {
             0x00 => Encoding::Utf8,
@@ -124,7 +127,7 @@ impl MetaReaderResolver {
             0x04 => Encoding::AllToLowerSpecial,
             _ => Encoding::Utf8,
         };
-        NAMESPACE_DECODER.decode(bytes, encoding).unwrap()
+        NAMESPACE_DECODER.decode(bytes, encoding)
     }
 
     pub fn reset(&mut self) {

@@ -15,38 +15,118 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::borrow::Cow;
+use std::io;
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("Fory on Rust not support Ref type")]
-    Ref,
+    #[error("Type mismatch: type_a = {0}, type_b = {1}")]
+    TypeMismatch(u32, u32),
 
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    #[error("Buffer out of bound: {0} + {1} > {2}")]
+    BufferOutOfBound(usize, usize, usize),
+
+    #[error("IO error: {0}")]
+    Io(#[from] io::Error),
+
+    #[error("{0}")]
+    EncodeError(Cow<'static, str>),
+
+    #[error("{0}")]
+    InvalidData(Cow<'static, str>),
+
+    #[error("{0}")]
+    InvalidRef(Cow<'static, str>),
+
+    #[error("{0}")]
+    UnknownEnum(Cow<'static, str>),
+
+    #[error("{0}")]
+    TypeError(Cow<'static, str>),
+
+    #[error("{0}")]
+    EncodingError(Cow<'static, str>),
+
+    #[error("{0}")]
+    DepthExceed(Cow<'static, str>),
+
+    /// Do not construct this variant directly; use [`Error::unknown`] instead.
+    #[error("{0}")]
+    Unknown(Cow<'static, str>),
 }
 
-/// Works like anyhow's [ensure](https://docs.rs/anyhow/latest/anyhow/macro.ensure.html)
-/// But return `Return<T, ErrorFromAnyhow>`
+impl Error {
+    /// Creates a new [`Error::Unknown`] from a string or static message.
+    ///
+    /// This function is a convenient way to produce an error message
+    /// from a literal, `String`, or any type that can be converted into
+    /// a [`Cow<'static, str>`].
+    ///
+    /// # Example
+    /// ```
+    /// use fory_core::error::Error;
+    ///
+    /// let err = Error::unknown("Something went wrong");
+    /// let err = Error::unknown(format!("ID:{} not found", 1));
+    /// ```
+    #[inline(always)]
+    pub fn unknown<S: Into<Cow<'static, str>>>(s: S) -> Self {
+        Error::Unknown(s.into())
+    }
+}
+
+/// Ensures a condition is true; otherwise returns an [`Error`].
+///
+/// # Examples
+/// ```
+/// use fory_core::ensure;
+/// use fory_core::error::Error;
+///
+/// fn check_value(n: i32) -> Result<(), Error> {
+///     ensure!(n > 0, "value must be positive");
+///     ensure!(n < 10, "value {} too large", n);
+///     Ok(())
+/// }
+/// ```
 #[macro_export]
 macro_rules! ensure {
     ($cond:expr, $msg:literal) => {
         if !$cond {
-            return Err(anyhow::anyhow!($msg).into());
+            return Err($crate::error::Error::unknown($msg));
         }
     };
     ($cond:expr, $err:expr) => {
         if !$cond {
-            return Err($err.into());
+            return Err($err);
         }
     };
     ($cond:expr, $fmt:expr, $($arg:tt)*) => {
         if !$cond {
-            return Err(anyhow::anyhow!($fmt, $($arg)*).into());
+            return Err($crate::error::Error::unknown(format!($fmt, $($arg)*)));
         }
     };
 }
 
-// Re-export anyhow::Error since it may appear in the public API.
-pub use anyhow::Error as AnyhowError;
+/// Returns early with an [`Error`].
+///
+/// # Examples
+/// ```
+/// use fory_core::bail;
+/// use fory_core::error::Error;
+///
+/// fn fail_fast() -> Result<(), Error> {
+///     bail!("something went wrong");
+/// }
+/// ```
+#[macro_export]
+macro_rules! bail {
+    ($err:expr) => {
+        return Err($crate::error::Error::unknown($err))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        return Err($crate::error::Error::unknown(format!($fmt, $($arg)*)))
+    };
+}

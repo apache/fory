@@ -127,6 +127,6 @@ pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
     });
     quote! {
         let field_infos: Vec<fory_core::meta::FieldInfo> = vec![#(#field_infos),*];
-        fory_core::serializer::struct_::type_def::<Self>(fory, type_id, namespace, type_name, register_by_name, field_infos)
+        Ok(fory_core::serializer::struct_::type_def::<Self>(fory, type_id, namespace, type_name, register_by_name, field_infos))
     }
 }

@@ -224,9 +224,12 @@ fn container_outer_auto_conv() {
     // serialize_outer_non-null
     let writer = Writer::default();
     let mut write_context = WriteContext::new(writer);
-    fory.serialize_with_context(&basic_list(), &mut write_context);
-    fory.serialize_with_context(&basic_set(), &mut write_context);
-    fory.serialize_with_context(&basic_map(), &mut write_context);
+    fory.serialize_with_context(&basic_list(), &mut write_context)
+        .unwrap();
+    fory.serialize_with_context(&basic_set(), &mut write_context)
+        .unwrap();
+    fory.serialize_with_context(&basic_map(), &mut write_context)
+        .unwrap();
     // deserialize_outer_nullable
     let bytes = write_context.writer.dump();
     let reader = Reader::new(bytes.as_slice());
@@ -250,12 +253,18 @@ fn container_outer_auto_conv() {
     // serialize_outer_nullable
     let writer = Writer::default();
     let mut write_context = WriteContext::new(writer);
-    fory.serialize_with_context(&Some(basic_list()), &mut write_context);
-    fory.serialize_with_context(&Some(basic_set()), &mut write_context);
-    fory.serialize_with_context(&Some(basic_map()), &mut write_context);
-    fory.serialize_with_context(&Option::<Vec<String>>::None, &mut write_context);
-    fory.serialize_with_context(&Option::<HashSet<String>>::None, &mut write_context);
-    fory.serialize_with_context(&Option::<HashMap<String, String>>::None, &mut write_context);
+    fory.serialize_with_context(&Some(basic_list()), &mut write_context)
+        .unwrap();
+    fory.serialize_with_context(&Some(basic_set()), &mut write_context)
+        .unwrap();
+    fory.serialize_with_context(&Some(basic_map()), &mut write_context)
+        .unwrap();
+    fory.serialize_with_context(&Option::<Vec<String>>::None, &mut write_context)
+        .unwrap();
+    fory.serialize_with_context(&Option::<HashSet<String>>::None, &mut write_context)
+        .unwrap();
+    fory.serialize_with_context(&Option::<HashMap<String, String>>::None, &mut write_context)
+        .unwrap();
     // deserialize_outer_non-null
     let bytes = write_context.writer.dump();
     let reader = Reader::new(bytes.as_slice());
@@ -296,21 +305,29 @@ fn container_outer_auto_conv() {
 #[test]
 fn collection_inner() {
     let mut fory1 = Fory::default().compatible(true);
-    fory1.register::<Item>(101);
+    fory1.register::<Item>(101).unwrap();
     let mut fory2 = Fory::default().compatible(true);
-    fory2.register_by_name::<Item>("item");
+    fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize
         let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
-        fory.serialize_with_context(&basic_list(), &mut write_context);
-        fory.serialize_with_context(&item_list(), &mut write_context);
-        fory.serialize_with_context(&basic_set(), &mut write_context);
-        fory.serialize_with_context(&item_set(), &mut write_context);
-        fory.serialize_with_context(&nullable_basic_list(false), &mut write_context);
-        fory.serialize_with_context(&nullable_item_list(false), &mut write_context);
-        fory.serialize_with_context(&nullable_basic_set(false), &mut write_context);
-        fory.serialize_with_context(&nullable_item_set(false), &mut write_context);
+        fory.serialize_with_context(&basic_list(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&item_list(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&basic_set(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&item_set(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&nullable_basic_list(false), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&nullable_item_list(false), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&nullable_basic_set(false), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&nullable_item_set(false), &mut write_context)
+            .unwrap();
         // deserialize
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
@@ -362,17 +379,21 @@ fn collection_inner() {
 #[test]
 fn collection_inner_auto_conv() {
     let mut fory1 = Fory::default().compatible(true);
-    fory1.register::<Item>(101);
+    fory1.register::<Item>(101).unwrap();
     let mut fory2 = Fory::default().compatible(true);
-    fory2.register_by_name::<Item>("item");
+    fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize_non-null
         let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
-        fory.serialize_with_context(&basic_list(), &mut write_context);
-        fory.serialize_with_context(&item_list(), &mut write_context);
-        fory.serialize_with_context(&basic_set(), &mut write_context);
-        fory.serialize_with_context(&item_set(), &mut write_context);
+        fory.serialize_with_context(&basic_list(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&item_list(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&basic_set(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&item_set(), &mut write_context)
+            .unwrap();
         // deserialize_nullable
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
@@ -401,10 +422,14 @@ fn collection_inner_auto_conv() {
         // serialize_nullable
         let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
-        fory.serialize_with_context(&nullable_basic_list(false), &mut write_context);
-        fory.serialize_with_context(&nullable_item_list(false), &mut write_context);
-        fory.serialize_with_context(&nullable_basic_set(false), &mut write_context);
-        fory.serialize_with_context(&nullable_item_set(false), &mut write_context);
+        fory.serialize_with_context(&nullable_basic_list(false), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&nullable_item_list(false), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&nullable_basic_set(false), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&nullable_item_set(false), &mut write_context)
+            .unwrap();
         // deserialize_non-null
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
@@ -436,17 +461,21 @@ fn collection_inner_auto_conv() {
 #[test]
 fn map_inner() {
     let mut fory1 = Fory::default().compatible(true);
-    fory1.register::<Item>(101);
+    fory1.register::<Item>(101).unwrap();
     let mut fory2 = Fory::default().compatible(true);
-    fory2.register_by_name::<Item>("item");
+    fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize
         let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
-        fory.serialize_with_context(&basic_map(), &mut write_context);
-        fory.serialize_with_context(&item_map(), &mut write_context);
-        fory.serialize_with_context(&nullable_basic_map(false), &mut write_context);
-        fory.serialize_with_context(&nullable_item_map(false), &mut write_context);
+        fory.serialize_with_context(&basic_map(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&item_map(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&nullable_basic_map(false), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&nullable_item_map(false), &mut write_context)
+            .unwrap();
         // deserialize
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
@@ -480,15 +509,17 @@ fn map_inner() {
 #[test]
 fn map_inner_auto_conv() {
     let mut fory1 = Fory::default().compatible(true);
-    fory1.register::<Item>(101);
+    fory1.register::<Item>(101).unwrap();
     let mut fory2 = Fory::default().compatible(true);
-    fory2.register_by_name::<Item>("item");
+    fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         // serialize_non-null
         let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
-        fory.serialize_with_context(&basic_map(), &mut write_context);
-        fory.serialize_with_context(&item_map(), &mut write_context);
+        fory.serialize_with_context(&basic_map(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&item_map(), &mut write_context)
+            .unwrap();
         // deserialize_nullable
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
@@ -509,8 +540,10 @@ fn map_inner_auto_conv() {
         // serialize_nullable
         let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
-        fory.serialize_with_context(&nullable_basic_map(false), &mut write_context);
-        fory.serialize_with_context(&nullable_item_map(false), &mut write_context);
+        fory.serialize_with_context(&nullable_basic_map(false), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&nullable_item_map(false), &mut write_context)
+            .unwrap();
         // deserialize_non-null
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
@@ -532,15 +565,18 @@ fn map_inner_auto_conv() {
 #[test]
 fn complex() {
     let mut fory1 = Fory::default().compatible(true);
-    fory1.register::<Item>(101);
+    fory1.register::<Item>(101).unwrap();
     let mut fory2 = Fory::default().compatible(true);
-    fory2.register_by_name::<Item>("item");
+    fory2.register_by_name::<Item>("item").unwrap();
     for fory in [fory1, fory2] {
         let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
-        fory.serialize_with_context(&nested_collection(), &mut write_context);
-        fory.serialize_with_context(&complex_container1(), &mut write_context);
-        fory.serialize_with_context(&complex_container2(), &mut write_context);
+        fory.serialize_with_context(&nested_collection(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&complex_container1(), &mut write_context)
+            .unwrap();
+        fory.serialize_with_context(&complex_container2(), &mut write_context)
+            .unwrap();
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
         let mut read_context = ReadContext::new(reader, 5);

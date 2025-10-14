@@ -29,7 +29,7 @@ struct Container {
 fn test_max_dyn_depth_exceeded_box_dyn_any() {
     for compatible in [false, true] {
         let mut fory = Fory::default().max_dyn_depth(2).compatible(compatible);
-        fory.register::<Container>(100);
+        fory.register::<Container>(100).unwrap();
 
         let level3 = Container {
             value: 3,
@@ -45,7 +45,7 @@ fn test_max_dyn_depth_exceeded_box_dyn_any() {
         };
 
         let outer: Box<dyn Any> = Box::new(level1);
-        let bytes = fory.serialize(&outer);
+        let bytes = fory.serialize(&outer).unwrap();
         let result: Result<Box<dyn Any>, _> = fory.deserialize(&bytes);
         assert!(
             result.is_err(),
@@ -60,7 +60,7 @@ fn test_max_dyn_depth_exceeded_box_dyn_any() {
 #[test]
 fn test_max_dyn_depth_within_limit_box_dyn_any() {
     let mut fory = Fory::default().max_dyn_depth(3);
-    fory.register::<Container>(100);
+    fory.register::<Container>(100).unwrap();
 
     let level3 = Container {
         value: 3,
@@ -76,7 +76,7 @@ fn test_max_dyn_depth_within_limit_box_dyn_any() {
     };
 
     let outer: Box<dyn Any> = Box::new(level1);
-    let bytes = fory.serialize(&outer);
+    let bytes = fory.serialize(&outer).unwrap();
     let result: Result<Box<dyn Any>, _> = fory.deserialize(&bytes);
     assert!(result.is_ok());
 }
@@ -84,7 +84,7 @@ fn test_max_dyn_depth_within_limit_box_dyn_any() {
 #[test]
 fn test_max_dyn_depth_default_exceeded() {
     let mut fory = Fory::default();
-    fory.register::<Container>(100);
+    fory.register::<Container>(100).unwrap();
 
     let mut current = Container {
         value: 6,
@@ -99,7 +99,7 @@ fn test_max_dyn_depth_default_exceeded() {
     }
 
     let outer: Box<dyn Any> = Box::new(current);
-    let bytes = fory.serialize(&outer);
+    let bytes = fory.serialize(&outer).unwrap();
     let result: Result<Box<dyn Any>, _> = fory.deserialize(&bytes);
 
     assert!(result.is_err());
@@ -112,7 +112,7 @@ fn test_max_dyn_depth_default_exceeded() {
 #[test]
 fn test_max_dyn_depth_default_within_limit() {
     let mut fory = Fory::default();
-    fory.register::<Container>(100);
+    fory.register::<Container>(100).unwrap();
 
     let mut current = Container {
         value: 5,
@@ -127,7 +127,7 @@ fn test_max_dyn_depth_default_within_limit() {
     }
 
     let outer: Box<dyn Any> = Box::new(current);
-    let bytes = fory.serialize(&outer);
+    let bytes = fory.serialize(&outer).unwrap();
     let result: Result<Box<dyn Any>, _> = fory.deserialize(&bytes);
 
     assert!(result.is_ok());

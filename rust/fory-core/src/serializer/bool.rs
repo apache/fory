@@ -25,8 +25,14 @@ use std::mem;
 
 impl Serializer for bool {
     #[inline(always)]
-    fn fory_write_data(&self, _fory: &Fory, context: &mut WriteContext, _is_field: bool) {
+    fn fory_write_data(
+        &self,
+        _fory: &Fory,
+        context: &mut WriteContext,
+        _is_field: bool,
+    ) -> Result<(), Error> {
         context.writer.write_u8(if *self { 1 } else { 0 });
+        Ok(())
     }
 
     #[inline(always)]
@@ -35,7 +41,7 @@ impl Serializer for bool {
         context: &mut ReadContext,
         _is_field: bool,
     ) -> Result<Self, Error> {
-        Ok(context.reader.read_u8() == 1)
+        Ok(context.reader.read_u8()? == 1)
     }
 
     #[inline(always)]
@@ -44,12 +50,12 @@ impl Serializer for bool {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(_fory: &Fory) -> u32 {
-        TypeId::BOOL as u32
+    fn fory_get_type_id(_fory: &Fory) -> Result<u32, Error> {
+        Ok(TypeId::BOOL as u32)
     }
 
-    fn fory_type_id_dyn(&self, _fory: &Fory) -> u32 {
-        TypeId::BOOL as u32
+    fn fory_type_id_dyn(&self, _fory: &Fory) -> Result<u32, Error> {
+        Ok(TypeId::BOOL as u32)
     }
 
     #[inline(always)]
@@ -58,13 +64,21 @@ impl Serializer for bool {
     }
 
     #[inline(always)]
-    fn fory_write_type_info(fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        write_type_info::<Self>(fory, context, is_field);
+    fn fory_write_type_info(
+        fory: &Fory,
+        context: &mut WriteContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        write_type_info::<Self>(fory, context, is_field)
     }
 
     #[inline(always)]
-    fn fory_read_type_info(fory: &Fory, context: &mut ReadContext, is_field: bool) {
-        read_type_info::<Self>(fory, context, is_field);
+    fn fory_read_type_info(
+        fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+    ) -> Result<(), Error> {
+        read_type_info::<Self>(fory, context, is_field)
     }
 }
 
