@@ -588,28 +588,61 @@ impl TypeMeta {
             layer: TypeMetaLayer::new(type_id, namespace, type_name, register_by_name, field_infos),
         }
     }
-    #[allow(unused_assignments)]
+
     pub fn from_bytes(
         reader: &mut Reader,
         type_resolver: &TypeResolver,
     ) -> Result<TypeMeta, Error> {
         let header = reader.read_i64()?;
-        let mut meta_size = header & META_SIZE_MASK;
+        let meta_size = header & META_SIZE_MASK;
         if meta_size == META_SIZE_MASK {
-            meta_size += reader.read_varuint32()? as i64;
+            // meta_size += reader.read_varuint32() as i64;
+            reader.read_varuint32()?;
         }
 
         // let write_fields_meta = (header & HAS_FIELDS_META_FLAG) != 0;
         // let is_compressed: bool = (header & COMPRESS_META_FLAG) != 0;
-        // let meta_hash = header >> (64 - NUM_HASH_BITS);
+        let meta_hash = header >> (64 - NUM_HASH_BITS);
 
         // let current_meta_size = 0;
         // while current_meta_size < meta_size {}
         let layer = TypeMetaLayer::from_bytes(reader, type_resolver)?;
         Ok(TypeMeta {
             layer,
-            hash: header,
+            hash: meta_hash,
         })
+    }
+
+    pub fn from_bytes_with_header(
+        reader: &mut Reader,
+        type_resolver: &TypeResolver,
+        header: i64,
+    ) -> Result<TypeMeta, Error> {
+        let meta_size = header & META_SIZE_MASK;
+        if meta_size == META_SIZE_MASK {
+            // meta_size += reader.read_varuint32()? as i64;
+            reader.read_varuint32()?;
+        }
+
+        // let write_fields_meta = (header & HAS_FIELDS_META_FLAG) != 0;
+        // let is_compressed: bool = (header & COMPRESS_META_FLAG) != 0;
+        let meta_hash = header >> (64 - NUM_HASH_BITS);
+
+        // let current_meta_size = 0;
+        // while current_meta_size < meta_size {}
+        let layer = TypeMetaLayer::from_bytes(reader, type_resolver)?;
+        Ok(TypeMeta {
+            layer,
+            hash: meta_hash,
+        })
+    }
+
+    pub fn skip_bytes(reader: &mut Reader, header: i64) -> Result<(), Error> {
+        let mut meta_size = header & META_SIZE_MASK;
+        if meta_size == META_SIZE_MASK {
+            meta_size += reader.read_varuint32()? as i64;
+        }
+        reader.skip(meta_size as u32)
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {

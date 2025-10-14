@@ -17,19 +17,26 @@
  * under the License.
  */
 
-package org.apache.fory.format.encoder;
+package org.apache.fory.format.row.binary.writer;
 
-import org.apache.arrow.vector.types.pojo.Schema;
-import org.apache.fory.format.row.binary.BinaryRow;
+import java.util.Comparator;
+import org.apache.arrow.vector.types.pojo.Field;
 
-/**
- * Encoder to encode/decode object to/from row. A RowEncoder instance is reusable but not
- * thread-safe.
- */
-public interface RowEncoder<T> extends Encoder<T> {
-  Schema schema();
+class FieldAlignmentComparator implements Comparator<Field> {
+  @Override
+  public int compare(final Field f1, final Field f2) {
+    final int f1Size = CompactBinaryRowWriter.fixedRegionSpaceFor(f1);
+    final int f2Size = CompactBinaryRowWriter.fixedRegionSpaceFor(f2);
+    final int f1Align = tryAlign(f1Size);
+    final int f2Align = tryAlign(f2Size);
+    final int alignCmp = Integer.compare(f1Align, f2Align);
+    if (alignCmp != 0) {
+      return alignCmp;
+    }
+    return -Integer.compare(f1Size, f2Size);
+  }
 
-  T fromRow(BinaryRow row);
-
-  BinaryRow toRow(T obj);
+  protected int tryAlign(final int size) {
+    return size == 4 || size == 2 || (size & 7) == 0 ? 0 : 1;
+  }
 }

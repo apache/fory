@@ -29,6 +29,8 @@ pub struct MetaWriterResolver {
     type_id_index_map: HashMap<std::any::TypeId, usize>,
 }
 
+const MAX_PARSED_NUM_TYPE_DEFS: usize = 8192;
+
 #[allow(dead_code)]
 impl MetaWriterResolver {
     pub fn push(&mut self, type_id: std::any::TypeId, fory: &Fory) -> Result<usize, Error> {
@@ -68,6 +70,7 @@ impl MetaWriterResolver {
 #[derive(Default)]
 pub struct MetaReaderResolver {
     pub reading_type_defs: Vec<Arc<TypeMeta>>,
+    parsed_type_defs: HashMap<i64, Arc<TypeMeta>>,
 }
 
 impl MetaReaderResolver {
@@ -83,8 +86,22 @@ impl MetaReaderResolver {
         let meta_size = reader.read_varuint32()?;
         // self.reading_type_defs.reserve(meta_size as usize);
         for _ in 0..meta_size {
-            let type_meta = TypeMeta::from_bytes(reader, type_resolver)?;
-            self.reading_type_defs.push(Arc::new(type_meta));
+            let meta_header = reader.read_i64()?;
+            if let Some(type_meta) = self.parsed_type_defs.get(&meta_header) {
+                self.reading_type_defs.push(type_meta.clone());
+                TypeMeta::skip_bytes(reader, meta_header)?;
+            } else {
+                let type_meta = Arc::new(TypeMeta::from_bytes_with_header(
+                    reader,
+                    type_resolver,
+                    meta_header,
+                )?);
+                if self.parsed_type_defs.len() < MAX_PARSED_NUM_TYPE_DEFS {
+                    // avoid malicious type defs to OOM parsed_type_defs
+                    self.parsed_type_defs.insert(meta_header, type_meta.clone());
+                }
+                self.reading_type_defs.push(type_meta);
+            }
         }
         Ok(reader.get_cursor())
     }

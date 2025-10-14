@@ -17,19 +17,26 @@
  * under the License.
  */
 
-package org.apache.fory.format.encoder;
+package org.apache.fory.format.row.binary;
 
-import org.apache.arrow.vector.types.pojo.Schema;
-import org.apache.fory.format.row.binary.BinaryRow;
+import org.apache.arrow.vector.types.pojo.Field;
 
-/**
- * Encoder to encode/decode object to/from row. A RowEncoder instance is reusable but not
- * thread-safe.
- */
-public interface RowEncoder<T> extends Encoder<T> {
-  Schema schema();
+public class CompactBinaryMap extends BinaryMap {
+  public CompactBinaryMap(final Field field) {
+    super(field);
+  }
 
-  T fromRow(BinaryRow row);
+  public CompactBinaryMap(final BinaryArray keys, final BinaryArray values, final Field field) {
+    super(keys, values, field);
+  }
 
-  BinaryRow toRow(T obj);
+  @Override
+  protected BinaryArray newArray(final Field field) {
+    return new CompactBinaryArray(field);
+  }
+
+  @Override
+  protected BinaryMap newMap(final Field field) {
+    return new CompactBinaryMap(field);
+  }
 }
