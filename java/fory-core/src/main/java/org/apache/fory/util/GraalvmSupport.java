@@ -155,7 +155,7 @@ public class GraalvmSupport {
    * @param type the class to check
    * @return true if the class is problematic for creation, false otherwise
    */
-  public static boolean isProblematicForCreation(Class<?> type) {
+  public static boolean needReflectionRegisterForCreation(Class<?> type) {
     if (type.isInterface()
         || Modifier.isAbstract(type.getModifiers())
         || type.isArray()
