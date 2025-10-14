@@ -61,6 +61,26 @@ type MapDataClass struct {
 	Counters map[string]int32
 }
 
+type ComplexObject1 struct {
+	F1  interface{}
+	F2  string
+	F3  []string
+	F4  map[int8]int32
+	F5  int8
+	F6  int16
+	F7  int32
+	F8  int64
+	F9  float32
+	F10 float64
+	F11 [2]int16
+	F12 []int16
+}
+
+type ComplexObject2 struct {
+	F1 interface{}
+	F2 map[int8]int32
+}
+
 type UnsortedStruct struct {
 	StringField string
 	FloatField  float64
@@ -79,6 +99,14 @@ type InconsistentMapDataClass struct {
 	Name     string
 	Metadata map[string]int32 // Different value type
 	Counters map[int32]int32  // Different key type
+}
+
+type PointerDataClass struct {
+	Inner *SimpleDataClass
+}
+
+type PointerInconsistentDataClass struct {
+	Inner *InconsistentDataClass
 }
 
 type NestedOuter struct {
@@ -120,6 +148,48 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 				assert.Equal(t, in.Age, out.Age)
 				assert.Equal(t, in.Active, out.Active)
 				assert.Equal(t, in.Name, out.Name)
+			},
+		},
+		{
+			name:      "ComplexRoundTrip",
+			tag:       "ComplexObject1",
+			writeType: ComplexObject1{},
+			readType:  ComplexObject1{},
+			input: func() ComplexObject1 {
+				nested := ComplexObject2{
+					F1: true,
+					F2: map[int8]int32{-1: 2},
+				}
+				return ComplexObject1{
+					F1:  nested,
+					F2:  "abc",
+					F3:  []string{"abc", "abc"},
+					F4:  map[int8]int32{1: 2},
+					F5:  MaxInt8,
+					F6:  MaxInt16,
+					F7:  MaxInt32,
+					F8:  MaxInt64,
+					F9:  float32(0.5),
+					F10: 1 / 3.0,
+					F11: [2]int16{1, 2},
+					F12: []int16{-1, 4},
+				}
+			}(),
+			writerSetup: func(f *Fory) error {
+				return f.RegisterNamedType(ComplexObject2{}, "test.ComplexObject2")
+			},
+			readerSetup: func(f *Fory) error {
+				return f.RegisterNamedType(ComplexObject2{}, "test.ComplexObject2")
+			},
+			assertFunc: func(t *testing.T, input interface{}, output interface{}) {
+				in := input.(ComplexObject1)
+				out := output.(ComplexObject1)
+				assert.Equal(t, in, out)
+				inNested := in.F1.(ComplexObject2)
+				outNested, ok := out.F1.(ComplexObject2)
+				if assert.True(t, ok, "expected nested ComplexObject2 type") {
+					assert.Equal(t, inNested, outNested)
+				}
 			},
 		},
 		{
@@ -248,6 +318,64 @@ func TestCompatibleSerializationScenarios(t *testing.T) {
 				assert.Equal(t, in.Metadata, out.Metadata)
 				assert.Equal(t, len(in.Counters), len(out.Counters))
 				assert.Equal(t, in.Counters, out.Counters)
+			},
+		},
+		{
+			name:      "PointerFields",
+			tag:       "PointerDataClass",
+			writeType: PointerDataClass{},
+			readType:  PointerDataClass{},
+			input: func() PointerDataClass {
+				return PointerDataClass{
+					Inner: &SimpleDataClass{
+						Name:   "inner",
+						Age:    18,
+						Active: true,
+					},
+				}
+			}(),
+			writerSetup: func(f *Fory) error {
+				return f.RegisterNamedType(SimpleDataClass{}, "SimpleDataClass")
+			},
+			readerSetup: func(f *Fory) error {
+				return f.RegisterNamedType(SimpleDataClass{}, "SimpleDataClass")
+			},
+			assertFunc: func(t *testing.T, input interface{}, output interface{}) {
+				in := input.(PointerDataClass)
+				out := output.(PointerDataClass)
+				if assert.NotNil(t, out.Inner) {
+					assert.Equal(t, *in.Inner, *out.Inner)
+				}
+			},
+		},
+		{
+			name:      "PointerFieldsInconsistent",
+			tag:       "PointerDataClass",
+			writeType: PointerDataClass{},
+			readType:  PointerInconsistentDataClass{},
+			input: func() PointerDataClass {
+				return PointerDataClass{
+					Inner: &SimpleDataClass{
+						Name:   "inner",
+						Age:    18,
+						Active: true,
+					},
+				}
+			}(),
+			writerSetup: func(f *Fory) error {
+				return f.RegisterNamedType(SimpleDataClass{}, "SimpleDataClass")
+			},
+			readerSetup: func(f *Fory) error {
+				return f.RegisterNamedType(InconsistentDataClass{}, "SimpleDataClass")
+			},
+			assertFunc: func(t *testing.T, input interface{}, output interface{}) {
+				in := input.(PointerDataClass)
+				out := output.(PointerInconsistentDataClass)
+				if assert.NotNil(t, out.Inner) {
+					assert.Zero(t, out.Inner.Name)
+					assert.Equal(t, in.Inner.Age, out.Inner.Age)
+					assert.Equal(t, in.Inner.Active, out.Inner.Active)
+				}
 			},
 		},
 		{

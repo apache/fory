@@ -338,6 +338,11 @@ func typesCompatible(actual, expected reflect.Type) bool {
 			return elementTypesCompatible(actual.Key(), expected.Key()) && elementTypesCompatible(actual.Elem(), expected.Elem())
 		}
 	}
+	// we can safely treat slice and array as same
+	if (actual.Kind() == reflect.Array && expected.Kind() == reflect.Slice) ||
+		(actual.Kind() == reflect.Slice && expected.Kind() == reflect.Array) {
+		return true
+	}
 	return false
 }
 
@@ -384,7 +389,7 @@ func sortFields(
 		switch {
 		case isPrimitiveType(t.typeID):
 			boxed = append(boxed, t)
-		case isListType(t.typeID):
+		case isListType(t.typeID), isPrimitiveArrayType(t.typeID):
 			collection = append(collection, t)
 		case isSetType(t.typeID):
 			setFields = append(setFields, t)
@@ -411,7 +416,7 @@ func sortFields(
 		}
 		return ai.name < aj.name
 	})
-	sortTuple := func(s []triple) {
+	sortByTypeIDThenName := func(s []triple) {
 		sort.Slice(s, func(i, j int) bool {
 			if s[i].typeID != s[j].typeID {
 				return s[i].typeID < s[j].typeID
@@ -419,7 +424,7 @@ func sortFields(
 			return s[i].name < s[j].name
 		})
 	}
-	sortByTypeIDThenName := func(s []triple) {
+	sortTuple := func(s []triple) {
 		sort.Slice(s, func(i, j int) bool {
 			return s[i].name < s[j].name
 		})
