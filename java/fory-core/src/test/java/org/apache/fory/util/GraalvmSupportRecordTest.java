@@ -67,7 +67,7 @@ public class GraalvmSupportRecordTest {
 
   @Test
   public void testObjectCreators_IsProblematicForCreation_WithRegularClass() {
-    boolean result = GraalvmSupport.isProblematicForCreation(RegularClass.class);
+    boolean result = GraalvmSupport.needReflectionRegisterForCreation(RegularClass.class);
     Assert.assertFalse(
         result, "RegularClass with no-arg constructor should not be problematic for creation");
   }
@@ -89,13 +89,13 @@ public class GraalvmSupportRecordTest {
 
   @Test
   public void testObjectCreators_BackwardCompatibility() {
-    Assert.assertFalse(GraalvmSupport.isProblematicForCreation(RegularClass.class));
-    Assert.assertFalse(GraalvmSupport.isProblematicForCreation(Object.class));
-    Assert.assertFalse(GraalvmSupport.isProblematicForCreation(String.class));
+    Assert.assertFalse(GraalvmSupport.needReflectionRegisterForCreation(RegularClass.class));
+    Assert.assertFalse(GraalvmSupport.needReflectionRegisterForCreation(Object.class));
+    Assert.assertFalse(GraalvmSupport.needReflectionRegisterForCreation(String.class));
 
-    Assert.assertTrue(GraalvmSupport.isProblematicForCreation(PrivateClass.class));
+    Assert.assertTrue(GraalvmSupport.needReflectionRegisterForCreation(PrivateClass.class));
 
-    Assert.assertFalse(GraalvmSupport.isProblematicForCreation(Runnable.class));
+    Assert.assertFalse(GraalvmSupport.needReflectionRegisterForCreation(Runnable.class));
   }
 
   @Test

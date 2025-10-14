@@ -73,7 +73,7 @@ public class ForyGraalVMFeature implements Feature {
   }
 
   private void handleForyClass(Class<?> clazz) {
-    if (GraalvmSupport.isProblematicForCreation(clazz)) {
+    if (GraalvmSupport.needReflectionRegisterForCreation(clazz)) {
       try {
         RuntimeReflection.registerForReflectiveInstantiation(clazz);
         for (Field field : clazz.getDeclaredFields()) {
