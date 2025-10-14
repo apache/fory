@@ -79,7 +79,24 @@ func (r *RefResolver) WriteRefOrNull(buffer *ByteBuffer, value reflect.Value) (r
 	length := 0
 	isNil := false
 	kind := value.Kind()
-	// reference types such as channel/function are not handled here and will be handled by typeResolver.
+	if kind == reflect.Array && (!isPrimitiveType_(value.Type().Elem())) {
+		arrT := value.Type()
+		elemT := arrT.Elem()
+		n := value.Len()
+		sliceT := reflect.SliceOf(elemT)
+		arr := value
+		if !arr.CanAddr() {
+			tmpArr := reflect.New(arrT).Elem()
+			tmpArr.Set(value)
+			arr = tmpArr
+		}
+		src := arr.Slice(0, n)
+		dst := reflect.MakeSlice(sliceT, n, n)
+		reflect.Copy(dst, src)
+		value = dst
+		kind = reflect.Slice
+	}
+
 	switch kind {
 	case reflect.Ptr:
 		elemValue := value.Elem()
