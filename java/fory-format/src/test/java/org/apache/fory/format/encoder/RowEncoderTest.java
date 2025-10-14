@@ -114,7 +114,8 @@ public class RowEncoderTest {
     PrivateStruct s = new PrivateStruct();
     s.f1 = ofHashMap(10L, 100L);
     s.f2 = ofHashMap("k", "v");
-    PrivateStruct s1 = encoder.decode(encoder.encode(s));
+    byte[] encoded = encoder.encode(s);
+    PrivateStruct s1 = encoder.decode(encoded);
     Assert.assertEquals(s1.f1, s.f1);
     Assert.assertEquals(s1.f2, s.f2);
   }

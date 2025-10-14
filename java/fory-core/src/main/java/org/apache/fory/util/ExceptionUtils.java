@@ -71,4 +71,13 @@ public class ExceptionUtils {
   }
 
   public static void ignore(Object... args) {}
+
+  public static RuntimeException throwAnyway(Throwable t) {
+    throw ExceptionUtils.<RuntimeException>throwEvadingChecks(t);
+  }
+
+  @SuppressWarnings({"unchecked", "TypeParameterUnusedInFormals"})
+  private static <E extends Throwable> E throwEvadingChecks(Throwable throwable) throws E {
+    throw (E) throwable;
+  }
 }

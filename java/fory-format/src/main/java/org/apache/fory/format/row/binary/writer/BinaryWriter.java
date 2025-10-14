@@ -53,7 +53,7 @@ public abstract class BinaryWriter {
 
   // avoid polymorphic setNullAt/setNotNullAt to inline for performance.
   // array use 8 byte for numElements
-  private final int bytesBeforeBitMap;
+  protected final int bytesBeforeBitMap;
   protected final List<BinaryWriter> children;
 
   protected BinaryWriter(MemoryBuffer buffer, int bytesBeforeBitMap) {
@@ -103,11 +103,11 @@ public abstract class BinaryWriter {
     buffer.grow(neededSize);
   }
 
-  public final void setOffsetAndSize(int ordinal, int size) {
+  public void setOffsetAndSize(int ordinal, int size) {
     setOffsetAndSize(ordinal, buffer.writerIndex(), size);
   }
 
-  public final void setOffsetAndSize(int ordinal, int absoluteOffset, int size) {
+  public void setOffsetAndSize(int ordinal, int absoluteOffset, int size) {
     final long relativeOffset = absoluteOffset - startIndex;
     final long offsetAndSize = (relativeOffset << 32) | (long) size;
     write(ordinal, offsetAndSize);
@@ -128,11 +128,11 @@ public abstract class BinaryWriter {
     BitUtils.set(buffer, startIndex + bytesBeforeBitMap, ordinal);
   }
 
-  public final void setNotNullAt(int ordinal) {
+  public void setNotNullAt(int ordinal) {
     BitUtils.unset(buffer, startIndex + bytesBeforeBitMap, ordinal);
   }
 
-  public final boolean isNullAt(int ordinal) {
+  public boolean isNullAt(int ordinal) {
     return BitUtils.isSet(buffer, startIndex + bytesBeforeBitMap, ordinal);
   }
 
@@ -184,31 +184,36 @@ public abstract class BinaryWriter {
   }
 
   /** This operation will increase writerIndex by aligned 8-byte. */
-  public final void writeUnaligned(int ordinal, byte[] input, int offset, int numBytes) {
+  public void writeUnaligned(int ordinal, byte[] input, int offset, int numBytes) {
     final int roundedSize = roundNumberOfBytesToNearestWord(numBytes);
     buffer.grow(roundedSize);
     zeroOutPaddingBytes(numBytes);
-    buffer.put(buffer.writerIndex(), input, offset, numBytes);
+    buffer.put(bufferWriteIndexFor(ordinal), input, offset, numBytes);
     setOffsetAndSize(ordinal, numBytes);
-    buffer._increaseWriterIndexUnsafe(roundedSize);
+    if (copyShouldIncreaseWriterIndex(ordinal)) {
+      buffer._increaseWriterIndexUnsafe(roundedSize);
+    }
   }
 
   /** This operation will increase writerIndex by aligned 8-byte. */
-  public final void writeUnaligned(int ordinal, MemoryBuffer input, int offset, int numBytes) {
+  public void writeUnaligned(int ordinal, MemoryBuffer input, int offset, int numBytes) {
     final int roundedSize = roundNumberOfBytesToNearestWord(numBytes);
     buffer.grow(roundedSize);
     zeroOutPaddingBytes(numBytes);
-    buffer.copyFrom(buffer.writerIndex(), input, offset, numBytes);
+    buffer.copyFrom(bufferWriteIndexFor(ordinal), input, offset, numBytes);
     setOffsetAndSize(ordinal, numBytes);
-    buffer._increaseWriterIndexUnsafe(roundedSize);
+    if (copyShouldIncreaseWriterIndex(ordinal)) {
+      buffer._increaseWriterIndexUnsafe(roundedSize);
+    }
   }
 
-  public final void writeAlignedBytes(
-      int ordinal, MemoryBuffer input, int baseOffset, int numBytes) {
+  public void writeAlignedBytes(int ordinal, MemoryBuffer input, int baseOffset, int numBytes) {
     buffer.grow(numBytes);
-    buffer.copyFrom(buffer.writerIndex(), input, baseOffset, numBytes);
+    buffer.copyFrom(bufferWriteIndexFor(ordinal), input, baseOffset, numBytes);
     setOffsetAndSize(ordinal, numBytes);
-    buffer.increaseWriterIndex(numBytes);
+    if (copyShouldIncreaseWriterIndex(ordinal)) {
+      buffer.increaseWriterIndex(numBytes);
+    }
   }
 
   protected final void writeDecimal(int ordinal, BigDecimal value, ArrowType.Decimal type) {
@@ -219,13 +224,26 @@ public abstract class BinaryWriter {
       DecimalUtility.writeBigDecimalToArrowBuf(
           value, arrowBuf, 0, DecimalUtils.DECIMAL_BYTE_LENGTH);
       buffer.copyFromUnsafe(
-          writerIndex(), null, arrowBuf.memoryAddress(), DecimalUtils.DECIMAL_BYTE_LENGTH);
+          bufferWriteIndexFor(ordinal),
+          null,
+          arrowBuf.memoryAddress(),
+          DecimalUtils.DECIMAL_BYTE_LENGTH);
       arrowBuf.getReferenceManager().release();
       setOffsetAndSize(ordinal, writerIndex(), DecimalUtils.DECIMAL_BYTE_LENGTH);
-      increaseWriterIndex(DecimalUtils.DECIMAL_BYTE_LENGTH);
+      if (copyShouldIncreaseWriterIndex(ordinal)) {
+        increaseWriterIndex(DecimalUtils.DECIMAL_BYTE_LENGTH);
+      }
     } else {
       setNullAt(ordinal);
     }
+  }
+
+  protected int bufferWriteIndexFor(int ordinal) {
+    return buffer.writerIndex();
+  }
+
+  protected boolean copyShouldIncreaseWriterIndex(int ordinal) {
+    return true;
   }
 
   /** write long value to position pointed by current writerIndex. */
