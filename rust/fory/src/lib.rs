@@ -718,8 +718,8 @@
 //!
 //! impl Serializer for CustomType {
 //!     fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-//!         context.writer.write_i32(self.value)?;
-//!         context.writer.write_varuint32(self.name.len() as u32)?;
+//!         context.writer.write_i32(self.value);
+//!         context.writer.write_varuint32(self.name.len() as u32);
 //!         context.writer.write_utf8_string(&self.name);
 //!         Ok(())
 //!     }

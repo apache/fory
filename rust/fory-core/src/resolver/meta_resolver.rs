@@ -49,12 +49,11 @@ impl MetaWriterResolver {
         }
     }
 
-    pub fn to_bytes(&self, writer: &mut Writer) -> Result<(), Error> {
-        writer.write_varuint32(self.type_defs.len() as u32)?;
+    pub fn to_bytes(&self, writer: &mut Writer) {
+        writer.write_varuint32(self.type_defs.len() as u32);
         for item in &self.type_defs {
             writer.write_bytes(item);
         }
-        Ok(())
     }
 
     pub fn empty(&mut self) -> bool {

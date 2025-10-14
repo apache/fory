@@ -35,7 +35,8 @@ impl Serializer for NaiveDateTime {
     ) -> Result<(), Error> {
         let dt = self.and_utc();
         let micros = dt.timestamp() * 1_000_000 + dt.timestamp_subsec_micros() as i64;
-        context.writer.write_i64(micros)
+        context.writer.write_i64(micros);
+        Ok(())
     }
 
     fn fory_read_data(
@@ -93,7 +94,8 @@ impl Serializer for NaiveDate {
         _is_field: bool,
     ) -> Result<(), Error> {
         let days_since_epoch = self.signed_duration_since(EPOCH).num_days();
-        context.writer.write_i32(days_since_epoch as i32)
+        context.writer.write_i32(days_since_epoch as i32);
+        Ok(())
     }
 
     fn fory_read_data(

@@ -56,12 +56,12 @@ impl WriteContext {
     }
 
     #[inline(always)]
-    pub fn write_meta(&mut self, offset: usize) -> Result<(), Error> {
+    pub fn write_meta(&mut self, offset: usize) {
         self.writer.set_bytes(
             offset,
             &((self.writer.len() - offset - 4) as u32).to_le_bytes(),
         );
-        self.meta_resolver.to_bytes(&mut self.writer)
+        self.meta_resolver.to_bytes(&mut self.writer);
     }
 
     pub fn write_any_typeinfo(
@@ -77,33 +77,33 @@ impl WriteContext {
 
         if type_info.is_registered_by_name() {
             if fory_type_id & 0xff == ForyTypeId::NAMED_STRUCT as u32 {
-                self.writer.write_varuint32(fory_type_id)?;
+                self.writer.write_varuint32(fory_type_id);
                 if fory.is_share_meta() {
                     let meta_index = self.push_meta(fory, concrete_type_id)? as u32;
-                    self.writer.write_varuint32(meta_index)?;
+                    self.writer.write_varuint32(meta_index);
                 } else {
-                    type_info.get_namespace().write_to(&mut self.writer)?;
-                    type_info.get_type_name().write_to(&mut self.writer)?;
+                    type_info.get_namespace().write_to(&mut self.writer);
+                    type_info.get_type_name().write_to(&mut self.writer);
                 }
             } else if fory_type_id & 0xff == ForyTypeId::NAMED_COMPATIBLE_STRUCT as u32 {
-                self.writer.write_varuint32(fory_type_id)?;
+                self.writer.write_varuint32(fory_type_id);
                 let meta_index = self.push_meta(fory, concrete_type_id)? as u32;
-                self.writer.write_varuint32(meta_index)?;
+                self.writer.write_varuint32(meta_index);
             } else {
-                self.writer.write_varuint32(u32::MAX)?;
-                type_info.get_namespace().write_to(&mut self.writer)?;
-                type_info.get_type_name().write_to(&mut self.writer)?;
+                self.writer.write_varuint32(u32::MAX);
+                type_info.get_namespace().write_to(&mut self.writer);
+                type_info.get_type_name().write_to(&mut self.writer);
             }
             type_resolver
                 .get_name_harness(type_info.get_namespace(), type_info.get_type_name())
                 .ok_or_else(|| Error::msg("Name harness not found"))
         } else {
             if fory_type_id & 0xff == ForyTypeId::COMPATIBLE_STRUCT as u32 {
-                self.writer.write_varuint32(fory_type_id)?;
+                self.writer.write_varuint32(fory_type_id);
                 let meta_index = self.push_meta(fory, concrete_type_id)? as u32;
-                self.writer.write_varuint32(meta_index)?;
+                self.writer.write_varuint32(meta_index);
             } else {
-                self.writer.write_varuint32(fory_type_id)?;
+                self.writer.write_varuint32(fory_type_id);
             }
             type_resolver
                 .get_harness(fory_type_id)

@@ -35,7 +35,7 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
     ) -> Result<(), Error> {
         if !context
             .ref_writer
-            .try_write_rc_ref(&mut context.writer, self)?
+            .try_write_rc_ref(&mut context.writer, self)
         {
             T::fory_write_data(self.as_ref(), fory, context, is_field)?
         };

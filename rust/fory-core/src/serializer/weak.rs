@@ -321,13 +321,13 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         if let Some(rc) = self.upgrade() {
             if context
                 .ref_writer
-                .try_write_rc_ref(&mut context.writer, &rc)?
+                .try_write_rc_ref(&mut context.writer, &rc)
             {
                 return Ok(());
             }
             T::fory_write_data(&*rc, fory, context, is_field)?;
         } else {
-            context.writer.write_i8(RefFlag::Null as i8)?;
+            context.writer.write_i8(RefFlag::Null as i8);
         }
         Ok(())
     }
@@ -447,7 +447,7 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
             // IMPORTANT: If the target Arc was serialized already, just write a ref
             if context
                 .ref_writer
-                .try_write_arc_ref(&mut context.writer, &arc)?
+                .try_write_arc_ref(&mut context.writer, &arc)
             {
                 // Already seen, wrote Ref flag + id, we're done
                 return Ok(());
@@ -455,7 +455,7 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
             // First time seeing this object, write RefValue and then its data
             T::fory_write_data(&*arc, fory, context, is_field)?;
         } else {
-            context.writer.write_i8(RefFlag::Null as i8)?;
+            context.writer.write_i8(RefFlag::Null as i8);
         }
         Ok(())
     }

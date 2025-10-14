@@ -31,15 +31,15 @@ pub fn write_trait_object_headers(
 ) -> Result<(), Error> {
     use crate::types::{RefFlag, TypeId};
 
-    context.writer.write_i8(RefFlag::NotNullValue as i8)?;
-    context.writer.write_varuint32(fory_type_id)?;
+    context.writer.write_i8(RefFlag::NotNullValue as i8);
+    context.writer.write_varuint32(fory_type_id);
 
     if fory.is_compatible()
         && (fory_type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
             || fory_type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32)
     {
         let meta_index = context.push_meta(fory, concrete_type_id)? as u32;
-        context.writer.write_varuint32(meta_index)?;
+        context.writer.write_varuint32(meta_index);
     };
     Ok(())
 }
@@ -407,7 +407,7 @@ macro_rules! impl_smart_pointer_serializer {
     ($wrapper_name:ident, $pointer_type:ty, $constructor_expr:expr, $trait_name:ident, $try_write_ref:ident, $get_ref:ident, $store_ref:ident, $($impl_type:ty),+) => {
         impl $crate::serializer::Serializer for $wrapper_name {
             fn fory_write(&self, fory: &$crate::fory::Fory, context: &mut $crate::resolver::context::WriteContext, is_field: bool) -> Result<(), $crate::error::Error> {
-                if !context.ref_writer.$try_write_ref(&mut context.writer, &self.0)? {
+                if !context.ref_writer.$try_write_ref(&mut context.writer, &self.0) {
                     let any_obj = <dyn $trait_name as $crate::serializer::Serializer>::as_any(&*self.0);
                     let concrete_type_id = any_obj.type_id();
                     let harness = context.write_any_typeinfo(fory, concrete_type_id)?;

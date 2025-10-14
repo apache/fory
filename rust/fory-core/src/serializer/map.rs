@@ -43,7 +43,7 @@ fn check_and_write_null<K: Serializer + Eq + std::hash::Hash, V: Serializer>(
     value: &V,
 ) -> Result<bool, Error> {
     if key.fory_is_none() && value.fory_is_none() {
-        context.writer.write_u8(KEY_NULL | VALUE_NULL)?;
+        context.writer.write_u8(KEY_NULL | VALUE_NULL);
         return Ok(true);
     }
     if key.fory_is_none() {
@@ -56,7 +56,7 @@ fn check_and_write_null<K: Serializer + Eq + std::hash::Hash, V: Serializer>(
             skip_ref_flag = false;
             chunk_header |= TRACKING_VALUE_REF;
         }
-        context.writer.write_u8(chunk_header)?;
+        context.writer.write_u8(chunk_header);
 
         write_ref_info_data(value, fory, context, is_field, skip_ref_flag, false)?;
         return Ok(true);
@@ -72,7 +72,7 @@ fn check_and_write_null<K: Serializer + Eq + std::hash::Hash, V: Serializer>(
             skip_ref_flag = false;
             chunk_header |= TRACKING_KEY_REF;
         }
-        context.writer.write_u8(chunk_header)?;
+        context.writer.write_u8(chunk_header);
         write_ref_info_data(key, fory, context, is_field, skip_ref_flag, false)?;
         return Ok(true);
     }
@@ -95,7 +95,7 @@ where
     V: Serializer + ForyDefault + 'a,
     I: Iterator<Item = (&'a K, &'a V)>,
 {
-    context.writer.write_varuint32(length as u32)?;
+    context.writer.write_varuint32(length as u32);
     if length == 0 {
         return Ok(());
     }
@@ -114,7 +114,7 @@ where
                 continue;
             }
             header_offset = context.writer.len();
-            context.writer.write_i16(-1)?;
+            context.writer.write_i16(-1);
             let mut chunk_header = 0;
             if is_field {
                 chunk_header |= DECL_KEY_TYPE | DECL_VALUE_TYPE;

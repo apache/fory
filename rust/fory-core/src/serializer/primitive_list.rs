@@ -23,7 +23,7 @@ use crate::{bail, ensure};
 
 pub fn fory_write_data<T>(this: &[T], context: &mut WriteContext) -> Result<(), Error> {
     let len_bytes = std::mem::size_of_val(this);
-    context.writer.write_varuint32(len_bytes as u32)?;
+    context.writer.write_varuint32(len_bytes as u32);
     context.writer.reserve(len_bytes);
 
     if !this.is_empty() {
@@ -44,7 +44,8 @@ pub fn fory_write_type_info(
     if is_field {
         return Ok(());
     }
-    context.writer.write_varuint32(type_id as u32)
+    context.writer.write_varuint32(type_id as u32);
+    Ok(())
 }
 
 pub fn fory_read_data<T>(context: &mut ReadContext) -> Result<Vec<T>, Error> {

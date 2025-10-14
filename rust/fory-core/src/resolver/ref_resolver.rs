@@ -43,11 +43,11 @@ use std::sync::Arc;
 /// let rc = Rc::new(42);
 ///
 /// // First encounter - returns false, indicating object should be serialized
-/// assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc).unwrap());
+/// assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc));
 ///
 /// // Second encounter - returns true, indicating reference was written
 /// let rc2 = rc.clone();
-/// assert!(ref_writer.try_write_rc_ref(&mut writer, &rc2).unwrap());
+/// assert!(ref_writer.try_write_rc_ref(&mut writer, &rc2));
 /// ```
 #[derive(Default)]
 pub struct RefWriter {
@@ -80,24 +80,20 @@ impl RefWriter {
     ///
     /// * `true` if a reference was written
     /// * `false` if this is the first occurrence of the object
-    pub fn try_write_rc_ref<T: ?Sized>(
-        &mut self,
-        writer: &mut Writer,
-        rc: &Rc<T>,
-    ) -> Result<bool, Error> {
+    pub fn try_write_rc_ref<T: ?Sized>(&mut self, writer: &mut Writer, rc: &Rc<T>) -> bool {
         let ptr_addr = Rc::as_ptr(rc) as *const () as usize;
 
-        Ok(if let Some(&ref_id) = self.refs.get(&ptr_addr) {
-            writer.write_i8(RefFlag::Ref as i8)?;
-            writer.write_u32(ref_id)?;
+        if let Some(&ref_id) = self.refs.get(&ptr_addr) {
+            writer.write_i8(RefFlag::Ref as i8);
+            writer.write_u32(ref_id);
             true
         } else {
             let ref_id = self.next_ref_id;
             self.next_ref_id += 1;
             self.refs.insert(ptr_addr, ref_id);
-            writer.write_i8(RefFlag::RefValue as i8)?;
+            writer.write_i8(RefFlag::RefValue as i8);
             false
-        })
+        }
     }
 
     /// Attempt to write a reference for an `Arc<T>`.
@@ -115,26 +111,22 @@ impl RefWriter {
     ///
     /// * `true` if a reference was written
     /// * `false` if this is the first occurrence of the object
-    pub fn try_write_arc_ref<T: ?Sized>(
-        &mut self,
-        writer: &mut Writer,
-        arc: &Arc<T>,
-    ) -> Result<bool, Error> {
+    pub fn try_write_arc_ref<T: ?Sized>(&mut self, writer: &mut Writer, arc: &Arc<T>) -> bool {
         let ptr_addr = Arc::as_ptr(arc) as *const () as usize;
 
-        Ok(if let Some(&ref_id) = self.refs.get(&ptr_addr) {
+        if let Some(&ref_id) = self.refs.get(&ptr_addr) {
             // This object has been seen before, write a reference
-            writer.write_i8(RefFlag::Ref as i8)?;
-            writer.write_u32(ref_id)?;
+            writer.write_i8(RefFlag::Ref as i8);
+            writer.write_u32(ref_id);
             true
         } else {
             // First time seeing this object, register it and return false
             let ref_id = self.next_ref_id;
             self.next_ref_id += 1;
             self.refs.insert(ptr_addr, ref_id);
-            writer.write_i8(RefFlag::RefValue as i8)?;
+            writer.write_i8(RefFlag::RefValue as i8);
             false
-        })
+        }
     }
 
     /// Clear all stored references.

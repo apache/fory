@@ -125,7 +125,7 @@ impl ArrayWriter<'_> {
         array_writer
             .field_writer_helper
             .writer
-            .write_u64(num_fields as u64)?;
+            .write_u64(num_fields as u64);
         array_writer.field_writer_helper.writer.skip(fixed_size - 8);
         Ok(array_writer)
     }

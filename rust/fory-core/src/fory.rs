@@ -284,15 +284,11 @@ impl Fory {
         &self.type_resolver
     }
 
-    pub fn write_head<T: Serializer>(
-        &self,
-        is_none: bool,
-        writer: &mut Writer,
-    ) -> Result<(), Error> {
+    pub fn write_head<T: Serializer>(&self, is_none: bool, writer: &mut Writer) {
         const HEAD_SIZE: usize = 10;
         writer.reserve(T::fory_reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
         if self.xlang {
-            writer.write_u16(MAGIC_NUMBER)?;
+            writer.write_u16(MAGIC_NUMBER);
         }
         #[cfg(target_endian = "big")]
         let mut bitmap = 0;
@@ -304,14 +300,13 @@ impl Fory {
         if is_none {
             bitmap |= IS_NULL_FLAG;
         }
-        writer.write_u8(bitmap)?;
+        writer.write_u8(bitmap);
         if is_none {
-            return Ok(());
+            return;
         }
         if self.xlang {
-            writer.write_u8(Language::Rust as u8)?;
+            writer.write_u8(Language::Rust as u8);
         }
-        Ok(())
     }
 
     fn read_head(&self, reader: &mut Reader) -> Result<bool, Error> {
@@ -461,15 +456,15 @@ impl Fory {
         context: &mut WriteContext,
     ) -> Result<Vec<u8>, Error> {
         let is_none = record.fory_is_none();
-        self.write_head::<T>(is_none, &mut context.writer)?;
+        self.write_head::<T>(is_none, &mut context.writer);
         let meta_start_offset = context.writer.len();
         if !is_none {
             if self.compatible {
-                context.writer.write_i32(-1)?;
+                context.writer.write_i32(-1);
             };
             <T as Serializer>::fory_write(record, self, context, false)?;
             if self.compatible && !context.empty() {
-                context.write_meta(meta_start_offset)?;
+                context.write_meta(meta_start_offset);
             }
         }
         Ok(context.writer.dump())

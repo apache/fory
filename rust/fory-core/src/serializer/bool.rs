@@ -31,7 +31,8 @@ impl Serializer for bool {
         context: &mut WriteContext,
         _is_field: bool,
     ) -> Result<(), Error> {
-        context.writer.write_u8(if *self { 1 } else { 0 })
+        context.writer.write_u8(if *self { 1 } else { 0 });
+        Ok(())
     }
 
     #[inline(always)]

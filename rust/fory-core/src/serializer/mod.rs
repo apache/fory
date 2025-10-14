@@ -56,10 +56,10 @@ pub fn write_ref_info_data<T: Serializer + 'static>(
     skip_type_info: bool,
 ) -> Result<(), Error> {
     if record.fory_is_none() {
-        context.writer.write_i8(RefFlag::Null as i8)?;
+        context.writer.write_i8(RefFlag::Null as i8);
     } else {
         if !skip_ref_flag {
-            context.writer.write_i8(RefFlag::NotNullValue as i8)?;
+            context.writer.write_i8(RefFlag::NotNullValue as i8);
         }
         if !skip_type_info {
             T::fory_write_type_info(fory, context, is_field)?;
@@ -117,7 +117,7 @@ fn write_type_info<T: Serializer>(
         return Ok(());
     }
     let type_id = T::fory_get_type_id(fory)?;
-    context.writer.write_varuint32(type_id)?;
+    context.writer.write_varuint32(type_id);
     Ok(())
 }
 
@@ -235,14 +235,14 @@ pub trait Serializer: 'static {
     {
         // default implementation only for ext/named_ext
         let type_id = Self::fory_get_type_id(fory)?;
-        context.writer.write_varuint32(type_id)?;
+        context.writer.write_varuint32(type_id);
         if type_id & 0xff == TypeId::EXT as u32 {
             return Ok(());
         }
         let rs_type_id = std::any::TypeId::of::<Self>();
         if fory.is_share_meta() {
             let meta_index = context.push_meta(fory, rs_type_id)? as u32;
-            context.writer.write_varuint32(meta_index)?;
+            context.writer.write_varuint32(meta_index);
         } else {
             let type_info = {
                 let type_resolver = fory.get_type_resolver();

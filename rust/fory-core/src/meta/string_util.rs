@@ -537,37 +537,34 @@ pub mod buffer_rw_string {
     use crate::error::Error;
 
     #[inline]
-    pub fn write_latin1_standard(writer: &mut Writer, s: &str) -> Result<(), Error> {
+    pub fn write_latin1_standard(writer: &mut Writer, s: &str) {
         for c in s.chars() {
             let b = c as u32;
             assert!(b <= 0xFF, "Non-Latin1 character found");
-            writer.write_u8(b as u8)?;
+            writer.write_u8(b as u8);
         }
-        Ok(())
     }
 
     #[inline]
-    pub fn write_utf8_standard(writer: &mut Writer, s: &str) -> Result<(), Error> {
+    pub fn write_utf8_standard(writer: &mut Writer, s: &str) {
         let bytes = s.as_bytes();
         for &b in bytes {
-            writer.write_u8(b)?;
+            writer.write_u8(b);
         }
-        Ok(())
     }
 
     #[inline]
-    pub fn write_utf16_standard(writer: &mut Writer, utf16: &[u16]) -> Result<(), Error> {
+    pub fn write_utf16_standard(writer: &mut Writer, utf16: &[u16]) {
         for unit in utf16 {
             #[cfg(target_endian = "little")]
             {
-                writer.write_u16(*unit)?;
+                writer.write_u16(*unit);
             }
             #[cfg(target_endian = "big")]
             {
                 unimplemented!()
             }
         }
-        Ok(())
     }
 
     #[inline]
@@ -1057,8 +1054,8 @@ pub mod buffer_rw_string {
                 assert_eq!(read_latin1_standard(&mut reader, bytes_len).unwrap(), s);
 
                 let mut writer = Writer::default();
-                write_latin1_standard(&mut writer, s).unwrap();
-                write_latin1_standard(&mut writer, s).unwrap();
+                write_latin1_standard(&mut writer, s);
+                write_latin1_standard(&mut writer, s);
                 let bytes = &*writer.dump();
                 let bytes_len = bytes.len() / 2;
                 let mut reader = Reader::new(bytes);
@@ -1081,8 +1078,8 @@ pub mod buffer_rw_string {
                 let bytes_len = s.len();
 
                 let mut writer = Writer::default();
-                write_utf8_standard(&mut writer, s).unwrap();
-                write_utf8_standard(&mut writer, s).unwrap();
+                write_utf8_standard(&mut writer, s);
+                write_utf8_standard(&mut writer, s);
                 let bytes = &*writer.dump();
                 let mut reader = Reader::new(bytes);
                 assert_eq!(read_utf8_simd(&mut reader, bytes_len).unwrap(), s);
@@ -1112,8 +1109,8 @@ pub mod buffer_rw_string {
                 let bytes_len = utf16.len() * 2;
 
                 let mut writer = Writer::default();
-                write_utf16_standard(&mut writer, &utf16).unwrap();
-                write_utf16_standard(&mut writer, &utf16).unwrap();
+                write_utf16_standard(&mut writer, &utf16);
+                write_utf16_standard(&mut writer, &utf16);
                 let bytes = &*writer.dump();
                 let mut reader = Reader::new(bytes);
                 assert_eq!(read_utf16_simd(&mut reader, bytes_len).unwrap(), s);

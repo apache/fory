@@ -32,10 +32,10 @@ fn test_rc_ref_tracking() {
     let rc2 = rc1.clone();
 
     // First write should register the reference
-    assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc1).unwrap());
+    assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc1));
 
     // Second write should find existing reference
-    assert!(ref_writer.try_write_rc_ref(&mut writer, &rc2).unwrap());
+    assert!(ref_writer.try_write_rc_ref(&mut writer, &rc2));
 }
 
 #[test]
@@ -47,10 +47,10 @@ fn test_arc_ref_tracking() {
     let arc2 = arc1.clone();
 
     // First write should register the reference
-    assert!(!ref_writer.try_write_arc_ref(&mut writer, &arc1).unwrap());
+    assert!(!ref_writer.try_write_arc_ref(&mut writer, &arc1));
 
     // Second write should find existing reference
-    assert!(ref_writer.try_write_arc_ref(&mut writer, &arc2).unwrap());
+    assert!(ref_writer.try_write_arc_ref(&mut writer, &arc2));
 }
 
 #[test]
@@ -85,13 +85,13 @@ fn test_ref_writer_clear() {
     let rc = Rc::new(42i32);
 
     // Register a reference
-    assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc).unwrap());
+    assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc));
 
     // Clear the writer
     ref_writer.reset();
 
     // After clearing, should register as new reference again
-    assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc).unwrap());
+    assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc));
 }
 
 #[test]
@@ -120,8 +120,8 @@ fn test_ref_writer_ref_reader_separation() {
     let rc2 = rc1.clone();
 
     // Test writing with RefWriter
-    assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc1).unwrap());
-    assert!(ref_writer.try_write_rc_ref(&mut writer, &rc2).unwrap());
+    assert!(!ref_writer.try_write_rc_ref(&mut writer, &rc1));
+    assert!(ref_writer.try_write_rc_ref(&mut writer, &rc2));
 
     // Test storing and retrieving with RefReader
     let ref_id = ref_reader.store_rc_ref(rc1.clone());

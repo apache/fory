@@ -45,7 +45,8 @@ macro_rules! impl_row_for_number {
             type ReadResult = Self;
 
             fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
-                $writer(writer, *v)
+                $writer(writer, *v);
+                Ok(())
             }
 
             fn cast(bytes: &[u8]) -> Self::ReadResult {
@@ -78,7 +79,8 @@ impl Row<'_> for bool {
     type ReadResult = Self;
 
     fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
-        writer.write_u8(if *v { 1 } else { 0 })
+        writer.write_u8(if *v { 1 } else { 0 });
+        Ok(())
     }
 
     fn cast(bytes: &[u8]) -> Self::ReadResult {
@@ -91,7 +93,8 @@ impl Row<'_> for NaiveDate {
 
     fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
         let days_since_epoch = v.signed_duration_since(EPOCH).num_days();
-        writer.write_u32(days_since_epoch as u32)
+        writer.write_u32(days_since_epoch as u32);
+        Ok(())
     }
 
     fn cast(bytes: &[u8]) -> Self::ReadResult {
@@ -106,7 +109,8 @@ impl Row<'_> for NaiveDateTime {
     type ReadResult = Result<NaiveDateTime, Error>;
 
     fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
-        writer.write_i64(v.and_utc().timestamp_millis())
+        writer.write_i64(v.and_utc().timestamp_millis());
+        Ok(())
     }
 
     fn cast(bytes: &[u8]) -> Self::ReadResult {

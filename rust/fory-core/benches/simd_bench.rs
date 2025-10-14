@@ -103,7 +103,7 @@ fn benchmark_write_latin1(c: &mut Criterion) {
         c.bench_function(&name_scalar, |b| {
             b.iter(|| {
                 let mut w = Writer::default();
-                write_latin1_standard(black_box(&mut w), black_box(&s_ascii)).unwrap();
+                write_latin1_standard(black_box(&mut w), black_box(&s_ascii));
             })
         });
     }
@@ -126,7 +126,7 @@ fn benchmark_write_utf8(c: &mut Criterion) {
         c.bench_function(&name_scalar, |b| {
             b.iter(|| {
                 let mut w = Writer::default();
-                write_utf8_standard(black_box(&mut w), black_box(&s)).unwrap();
+                write_utf8_standard(black_box(&mut w), black_box(&s));
             })
         });
     }
@@ -151,7 +151,7 @@ fn benchmark_write_utf16(c: &mut Criterion) {
             b.iter(|| {
                 let mut w = Writer::default();
                 let utf16: Vec<u16> = s.encode_utf16().collect();
-                write_utf16_standard(black_box(&mut w), black_box(&utf16)).unwrap();
+                write_utf16_standard(black_box(&mut w), black_box(&utf16));
             })
         });
     }

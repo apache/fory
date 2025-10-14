@@ -33,7 +33,8 @@ macro_rules! impl_num_serializer {
                 context: &mut WriteContext,
                 _is_field: bool,
             ) -> Result<(), Error> {
-                $writer(&mut context.writer, *self)
+                $writer(&mut context.writer, *self);
+                Ok(())
             }
 
             #[inline]

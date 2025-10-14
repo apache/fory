@@ -152,11 +152,7 @@ impl MetaStringWriterResolver {
         msb
     }
 
-    pub fn write_meta_string_bytes_with_flag(
-        &mut self,
-        w: &mut Writer,
-        mut mb: MetaStringBytes,
-    ) -> Result<(), Error> {
+    pub fn write_meta_string_bytes_with_flag(&mut self, w: &mut Writer, mut mb: MetaStringBytes) {
         let id = mb.dynamic_write_id;
         if id == MetaStringBytes::DEFAULT_DYNAMIC_WRITE_STRING_ID {
             let id_usize = self.dynamic_write_id;
@@ -169,18 +165,17 @@ impl MetaStringWriterResolver {
 
             let len = mb.bytes.len();
             let header = ((len as u32) << 2) | 0b1;
-            w.write_varuint32(header)?;
+            w.write_varuint32(header);
             if len > Self::SMALL_STRING_THRESHOLD {
-                w.write_i64(mb.hash_code)?;
+                w.write_i64(mb.hash_code);
             } else {
-                w.write_u8(mb.encoding as i16 as u8)?;
+                w.write_u8(mb.encoding as i16 as u8);
             }
             w.write_bytes(&mb.bytes);
         } else {
             let header = ((id as u32 + 1) << 2) | 0b11;
-            w.write_varuint32(header)?;
+            w.write_varuint32(header);
         }
-        Ok(())
     }
 
     pub fn write_meta_string_bytes(
@@ -200,16 +195,16 @@ impl MetaStringWriterResolver {
             self.dynamic_written[id_usize] = Some(mb.clone());
 
             let len = mb.bytes.len();
-            writer.write_varuint32((len as u32) << 1)?;
+            writer.write_varuint32((len as u32) << 1);
             if len > Self::SMALL_STRING_THRESHOLD {
-                writer.write_i64(mb.hash_code)?;
+                writer.write_i64(mb.hash_code);
             } else {
-                writer.write_u8(mb.encoding as i16 as u8)?;
+                writer.write_u8(mb.encoding as i16 as u8);
             }
             writer.write_bytes(&mb.bytes);
         } else {
             let header = ((id as u32 + 1) << 1) | 1;
-            writer.write_varuint32(header)?;
+            writer.write_varuint32(header);
         }
         Ok(())
     }

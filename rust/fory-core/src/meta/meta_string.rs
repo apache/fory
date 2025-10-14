@@ -91,10 +91,9 @@ impl MetaString {
         })
     }
 
-    pub fn write_to(&self, writer: &mut crate::buffer::Writer) -> Result<(), Error> {
-        writer.write_varuint32(self.bytes.len() as u32)?;
+    pub fn write_to(&self, writer: &mut crate::buffer::Writer) {
+        writer.write_varuint32(self.bytes.len() as u32);
         writer.write_bytes(&self.bytes);
-        Ok(())
     }
 }
 

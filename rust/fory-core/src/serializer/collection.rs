@@ -40,7 +40,8 @@ pub fn write_collection_type_info(
     if is_field {
         return Ok(());
     }
-    context.writer.write_varuint32(collection_type_id)
+    context.writer.write_varuint32(collection_type_id);
+    Ok(())
 }
 
 pub fn write_collection<'a, T, I>(
@@ -56,7 +57,7 @@ where
 {
     let iter = iter.into_iter();
     let len = iter.len();
-    context.writer.write_varuint32(len as u32)?;
+    context.writer.write_varuint32(len as u32);
     if len == 0 {
         return Ok(());
     }
@@ -81,7 +82,7 @@ where
     if is_same_type {
         header |= IS_SAME_TYPE;
     }
-    context.writer.write_u8(header)?;
+    context.writer.write_u8(header);
     T::fory_write_type_info(fory, context, is_field)?;
     // context.writer.reserve((T::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {

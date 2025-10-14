@@ -31,7 +31,7 @@ pub fn serialize_any_box(
     context: &mut WriteContext,
     is_field: bool,
 ) -> Result<(), Error> {
-    context.writer.write_i8(RefFlag::NotNullValue as i8)?;
+    context.writer.write_i8(RefFlag::NotNullValue as i8);
 
     let concrete_type_id = (**any_box).type_id();
     let harness = context.write_any_typeinfo(fory, concrete_type_id)?;
@@ -143,7 +143,7 @@ impl Serializer for Rc<dyn Any> {
     ) -> Result<(), Error> {
         if !context
             .ref_writer
-            .try_write_rc_ref(&mut context.writer, self)?
+            .try_write_rc_ref(&mut context.writer, self)
         {
             let concrete_type_id = (**self).type_id();
             let harness = context.write_any_typeinfo(fory, concrete_type_id)?;
@@ -258,7 +258,7 @@ impl Serializer for Arc<dyn Any> {
     ) -> Result<(), Error> {
         if !context
             .ref_writer
-            .try_write_arc_ref(&mut context.writer, self)?
+            .try_write_arc_ref(&mut context.writer, self)
         {
             let concrete_type_id = (**self).type_id();
             let harness = context.write_any_typeinfo(fory, concrete_type_id)?;

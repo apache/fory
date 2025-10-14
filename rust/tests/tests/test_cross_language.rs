@@ -81,15 +81,15 @@ fn test_buffer() {
     assert_eq!(reader.read_bytes(bytes_size).unwrap(), binary);
 
     let mut writer = Writer::default();
-    writer.write_u8(1).unwrap();
-    writer.write_i8(i8::MAX).unwrap();
-    writer.write_i16(i16::MAX).unwrap();
-    writer.write_i32(i32::MAX).unwrap();
-    writer.write_i64(i64::MAX).unwrap();
-    writer.write_f32(-1.1).unwrap();
-    writer.write_f64(-1.1).unwrap();
-    writer.write_varuint32(100).unwrap();
-    writer.write_i32(binary.len() as i32).unwrap();
+    writer.write_u8(1);
+    writer.write_i8(i8::MAX);
+    writer.write_i16(i16::MAX);
+    writer.write_i32(i32::MAX);
+    writer.write_i64(i64::MAX);
+    writer.write_f32(-1.1);
+    writer.write_f64(-1.1);
+    writer.write_varuint32(100);
+    writer.write_i32(binary.len() as i32);
     writer.write_bytes(binary);
 
     fs::write(&data_file_path, writer.dump()).unwrap();
@@ -193,16 +193,16 @@ fn test_buffer_var() {
 
     let mut writer = Writer::default();
     for &value in &varint32_values {
-        writer.write_varint32(value).unwrap();
+        writer.write_varint32(value);
     }
     for &value in &varuint32_values {
-        writer.write_varuint32(value as u32).unwrap();
+        writer.write_varuint32(value as u32);
     }
     for &value in &varuint64_values {
-        writer.write_varuint64(value).unwrap();
+        writer.write_varuint64(value);
     }
     for &value in &varint64_values {
-        writer.write_varint64(value).unwrap();
+        writer.write_varint64(value);
     }
     fs::write(data_file_path, writer.dump()).unwrap();
 }

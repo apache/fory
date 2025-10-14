@@ -56,7 +56,7 @@ pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
         Ok(match self {
             #(
                 Self::#variant_idents => {
-                    context.writer.write_varuint32(#variant_values)?;
+                    context.writer.write_varuint32(#variant_values);
                 }
             )*
         })

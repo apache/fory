@@ -82,7 +82,7 @@ impl FieldType {
                 header |= 2;
             }
         }
-        writer.write_varuint32(header)?;
+        writer.write_varuint32(header);
         match self.type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 let generic = self.generics.first().unwrap();
@@ -216,9 +216,9 @@ impl FieldInfo {
             .position(|x| *x == meta_string.encoding)
             .unwrap() as u8;
         header |= encoding_idx << 6;
-        writer.write_u8(header)?;
+        writer.write_u8(header);
         if name_size >= FIELD_NAME_SIZE_THRESHOLD {
-            writer.write_varuint32((name_size - FIELD_NAME_SIZE_THRESHOLD) as u32)?;
+            writer.write_varuint32((name_size - FIELD_NAME_SIZE_THRESHOLD) as u32);
         }
         self.field_type.to_bytes(&mut writer, false, nullable)?;
         // write field_name
@@ -285,28 +285,23 @@ impl TypeMetaLayer {
         &self.field_infos
     }
 
-    fn write_name(
-        writer: &mut Writer,
-        name: &MetaString,
-        encodings: &[Encoding],
-    ) -> Result<(), Error> {
+    fn write_name(writer: &mut Writer, name: &MetaString, encodings: &[Encoding]) {
         let encoding_idx = encodings.iter().position(|x| *x == name.encoding).unwrap() as u8;
         let bytes = name.bytes.as_slice();
         if bytes.len() >= BIG_NAME_THRESHOLD {
-            writer.write_u8((BIG_NAME_THRESHOLD << 2) as u8 | encoding_idx)?;
-            writer.write_varuint32((bytes.len() - BIG_NAME_THRESHOLD) as u32)?;
+            writer.write_u8((BIG_NAME_THRESHOLD << 2) as u8 | encoding_idx);
+            writer.write_varuint32((bytes.len() - BIG_NAME_THRESHOLD) as u32);
         } else {
-            writer.write_u8((bytes.len() << 2) as u8 | encoding_idx)?;
+            writer.write_u8((bytes.len() << 2) as u8 | encoding_idx);
         }
         writer.write_bytes(bytes);
-        Ok(())
     }
 
-    pub fn write_namespace(&self, writer: &mut Writer) -> Result<(), Error> {
+    pub fn write_namespace(&self, writer: &mut Writer) {
         Self::write_name(writer, &self.namespace, NAMESPACE_ENCODINGS)
     }
 
-    pub fn write_type_name(&self, writer: &mut Writer) -> Result<(), Error> {
+    pub fn write_type_name(&self, writer: &mut Writer) {
         Self::write_name(writer, &self.type_name, TYPE_NAME_ENCODINGS)
     }
 
@@ -346,15 +341,15 @@ impl TypeMetaLayer {
         if self.register_by_name {
             meta_header |= REGISTER_BY_NAME_FLAG;
         }
-        writer.write_u8(meta_header)?;
+        writer.write_u8(meta_header);
         if num_fields >= SMALL_NUM_FIELDS_THRESHOLD {
-            writer.write_varuint32((num_fields - SMALL_NUM_FIELDS_THRESHOLD) as u32)?;
+            writer.write_varuint32((num_fields - SMALL_NUM_FIELDS_THRESHOLD) as u32);
         }
         if self.register_by_name {
-            self.write_namespace(&mut writer)?;
-            self.write_type_name(&mut writer)?;
+            self.write_namespace(&mut writer);
+            self.write_type_name(&mut writer);
         } else {
-            writer.write_varuint32(self.type_id)?;
+            writer.write_varuint32(self.type_id);
         }
         for field in self.field_infos.iter() {
             writer.write_bytes(field.to_bytes()?.as_slice());
@@ -666,9 +661,9 @@ impl TypeMeta {
         }
         let meta_hash = murmurhash3_x64_128(layers_writer.dump().as_slice(), 47).0 as i64;
         header |= (meta_hash << (64 - NUM_HASH_BITS)).abs();
-        result.write_i64(header)?;
+        result.write_i64(header);
         if meta_size >= META_SIZE_MASK {
-            result.write_varuint32((meta_size - META_SIZE_MASK) as u32)?;
+            result.write_varuint32((meta_size - META_SIZE_MASK) as u32);
         }
         result.write_bytes(layers_writer.dump().as_slice());
         Ok(result.dump())
