@@ -28,7 +28,6 @@ quote = { default-features = false, version = "1.0" }
 byteorder = { version = "1.4" }
 chrono = "0.4"
 thiserror = { default-features = false, version = "1.0" }
-anyhow = "1"
 num_enum = "0.5.1"
 paste = "1.0"
 

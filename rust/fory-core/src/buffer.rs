@@ -374,43 +374,20 @@ impl Reader {
     }
 
     #[inline(always)]
-    pub(crate) fn move_next(&mut self, additional: usize) -> Result<(), Error> {
-        ensure!(
-            self.cursor + additional <= self.len,
-            "cursor out of bounds: {} + {} > {}",
-            self.cursor,
-            additional,
-            self.len
-        );
+    pub(crate) fn move_next(&mut self, additional: usize) {
         self.cursor += additional;
-        Ok(())
     }
 
     #[inline(always)]
-    pub(crate) fn ptr_at(&self, offset: usize) -> Result<*const u8, Error> {
-        ensure!(
-            offset < self.len,
-            "offset {} out of bounds for length {}",
-            offset,
-            self.len
-        );
-        Ok(unsafe { self.bf.add(offset) })
+    pub(crate) fn ptr_at(&self, offset: usize) -> *const u8 {
+        unsafe { self.bf.add(offset) }
     }
 
     #[inline(always)]
-    pub fn slice_after_cursor(&self) -> Result<&[u8], Error> {
-        if self.bf.is_null() {
-            return Err(Error::msg("buffer pointer is null"));
-        }
-        if self.cursor > self.len {
-            return Err(Error::msg(format!(
-                "cursor out of bounds: {} > {}",
-                self.cursor, self.len
-            )));
-        }
+    pub fn slice_after_cursor(&self) -> &[u8] {
         let remaining = self.len - self.cursor;
         let ptr = unsafe { self.bf.add(self.cursor) };
-        Ok(unsafe { std::slice::from_raw_parts(ptr, remaining) })
+        unsafe { std::slice::from_raw_parts(ptr, remaining) }
     }
 
     #[inline(always)]
@@ -419,17 +396,28 @@ impl Reader {
     }
 
     #[inline(always)]
+    fn check_bound(&self, n: usize) -> Result<(), Error> {
+        // The upper layer guarantees it is non-null
+        // if self.bf.is_null() {
+        //     return Err(Error::msg("buffer pointer is null"));
+        // }
+        if self.cursor + n > self.len {
+            Err(Error::BufferOutOfBound(self.cursor, n, self.len))
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline(always)]
     pub fn read_bool(&mut self) -> Result<bool, Error> {
-        let ptr = self.ptr_at(self.cursor)?;
-        self.move_next(1)?;
-        let result = unsafe { *ptr };
-        Ok(result != 0)
+        Ok(self.read_u8()? != 0)
     }
 
     #[inline(always)]
     pub fn read_u8(&mut self) -> Result<u8, Error> {
-        let ptr = self.ptr_at(self.cursor)?;
-        self.move_next(1)?;
+        self.check_bound(1)?;
+        let ptr = self.ptr_at(self.cursor);
+        self.move_next(1);
         let result = unsafe { *ptr };
         Ok(result)
     }
@@ -441,112 +429,102 @@ impl Reader {
 
     #[inline(always)]
     pub fn read_u16(&mut self) -> Result<u16, Error> {
-        let slice = self.slice_after_cursor()?;
+        self.check_bound(2)?;
+        let slice = self.slice_after_cursor();
         let result = LittleEndian::read_u16(slice);
-        self.move_next(2)?;
+        self.move_next(2);
         Ok(result)
     }
 
     #[inline(always)]
     pub fn read_i16(&mut self) -> Result<i16, Error> {
-        let slice = self.slice_after_cursor()?;
-        let result = LittleEndian::read_i16(slice);
-        self.move_next(2)?;
-        Ok(result)
+        Ok(self.read_u16()? as i16)
     }
 
     #[inline(always)]
     pub fn read_u32(&mut self) -> Result<u32, Error> {
-        let slice = self.slice_after_cursor()?;
+        self.check_bound(4)?;
+        let slice = self.slice_after_cursor();
         let result = LittleEndian::read_u32(slice);
-        self.move_next(4)?;
+        self.move_next(4);
         Ok(result)
     }
 
     #[inline(always)]
     pub fn read_i32(&mut self) -> Result<i32, Error> {
-        let slice = self.slice_after_cursor()?;
-        let result = LittleEndian::read_i32(slice);
-        self.move_next(4)?;
-        Ok(result)
+        Ok(self.read_u32()? as i32)
     }
 
     #[inline(always)]
     pub fn read_u64(&mut self) -> Result<u64, Error> {
-        let slice = self.slice_after_cursor()?;
+        self.check_bound(8)?;
+        let slice = self.slice_after_cursor();
         let result = LittleEndian::read_u64(slice);
-        self.move_next(8)?;
+        self.move_next(8);
         Ok(result)
     }
 
     #[inline(always)]
     pub fn read_i64(&mut self) -> Result<i64, Error> {
-        let slice = self.slice_after_cursor()?;
-        let result = LittleEndian::read_i64(slice);
-        self.move_next(8)?;
-        Ok(result)
+        Ok(self.read_u64()? as i64)
     }
 
     #[inline(always)]
     pub fn read_f32(&mut self) -> Result<f32, Error> {
-        let slice = self.slice_after_cursor()?;
+        self.check_bound(4)?;
+        let slice = self.slice_after_cursor();
         let result = LittleEndian::read_f32(slice);
-        self.move_next(4)?;
+        self.move_next(4);
         Ok(result)
     }
 
     #[inline(always)]
     pub fn read_f64(&mut self) -> Result<f64, Error> {
-        let slice = self.slice_after_cursor()?;
+        self.check_bound(8)?;
+        let slice = self.slice_after_cursor();
         let result = LittleEndian::read_f64(slice);
-        self.move_next(8)?;
+        self.move_next(8);
         Ok(result)
     }
 
     #[inline(always)]
     pub fn read_varuint32(&mut self) -> Result<u32, Error> {
-        let slice = self.slice_after_cursor()?;
-
-        let b0 = *slice
-            .first()
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u32;
+        self.check_bound(1)?;
+        let slice = self.slice_after_cursor();
+        let b0 = slice[0] as u32;
         if b0 < 0x80 {
-            self.move_next(1)?;
+            self.move_next(1);
             return Ok(b0);
         }
 
-        let b1 = *slice
-            .get(1)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u32;
+        self.check_bound(2)?;
+        let b1 = slice[1] as u32;
         let mut encoded = (b0 & 0x7F) | ((b1 & 0x7F) << 7);
         if b1 < 0x80 {
-            self.move_next(2)?;
+            self.move_next(2);
             return Ok(encoded);
         }
 
-        let b2 = *slice
-            .get(2)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u32;
+        self.check_bound(3)?;
+        let b2 = slice[2] as u32;
         encoded |= (b2 & 0x7F) << 14;
         if b2 < 0x80 {
-            self.move_next(3)?;
+            self.move_next(3);
             return Ok(encoded);
         }
 
-        let b3 = *slice
-            .get(3)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u32;
+        self.check_bound(4)?;
+        let b3 = slice[3] as u32;
         encoded |= (b3 & 0x7F) << 21;
         if b3 < 0x80 {
-            self.move_next(4)?;
+            self.move_next(4);
             return Ok(encoded);
         }
 
-        let b4 = *slice
-            .get(4)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u32;
+        self.check_bound(5)?;
+        let b4 = slice[4] as u32;
         encoded |= b4 << 28;
-        self.move_next(5)?;
+        self.move_next(5);
         Ok(encoded)
     }
 
@@ -558,84 +536,74 @@ impl Reader {
 
     #[inline(always)]
     pub fn read_varuint64(&mut self) -> Result<u64, Error> {
-        let slice = self.slice_after_cursor()?;
-
-        let b0 = *slice
-            .first()
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u64;
+        self.check_bound(1)?;
+        let slice = self.slice_after_cursor();
+        let b0 = slice[0] as u64;
         if b0 < 0x80 {
-            self.move_next(1)?;
+            self.move_next(1);
             return Ok(b0);
         }
 
-        let b1 = *slice
-            .get(1)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u64;
+        self.check_bound(2)?;
+        let b1 = slice[1] as u64;
         let mut var64 = (b0 & 0x7F) | ((b1 & 0x7F) << 7);
         if b1 < 0x80 {
-            self.move_next(2)?;
+            self.move_next(2);
             return Ok(var64);
         }
 
-        let b2 = *slice
-            .get(2)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u64;
+        self.check_bound(3)?;
+        let b2 = slice[2] as u64;
         var64 |= (b2 & 0x7F) << 14;
         if b2 < 0x80 {
-            self.move_next(3)?;
+            self.move_next(3);
             return Ok(var64);
         }
 
-        let b3 = *slice
-            .get(3)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u64;
+        self.check_bound(4)?;
+        let b3 = slice[3] as u64;
         var64 |= (b3 & 0x7F) << 21;
         if b3 < 0x80 {
-            self.move_next(4)?;
+            self.move_next(4);
             return Ok(var64);
         }
 
-        let b4 = *slice
-            .get(4)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u64;
+        self.check_bound(5)?;
+        let b4 = slice[4] as u64;
         var64 |= (b4 & 0x7F) << 28;
         if b4 < 0x80 {
-            self.move_next(5)?;
+            self.move_next(5);
             return Ok(var64);
         }
 
-        let b5 = *slice
-            .get(5)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u64;
+        self.check_bound(6)?;
+        let b5 = slice[5] as u64;
         var64 |= (b5 & 0x7F) << 35;
         if b5 < 0x80 {
-            self.move_next(6)?;
+            self.move_next(6);
             return Ok(var64);
         }
 
-        let b6 = *slice
-            .get(6)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u64;
+        self.check_bound(7)?;
+        let b6 = slice[6] as u64;
         var64 |= (b6 & 0x7F) << 42;
         if b6 < 0x80 {
-            self.move_next(7)?;
+            self.move_next(7);
             return Ok(var64);
         }
 
-        let b7 = *slice
-            .get(7)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u64;
+        self.check_bound(8)?;
+        let b7 = slice[7] as u64;
         var64 |= (b7 & 0x7F) << 49;
         if b7 < 0x80 {
-            self.move_next(8)?;
+            self.move_next(8);
             return Ok(var64);
         }
 
-        let b8 = *slice
-            .get(8)
-            .ok_or_else(|| Error::msg("unexpected end of buffer"))? as u64;
+        self.check_bound(9)?;
+        let b8 = slice[8] as u64;
         var64 |= (b8 & 0xFF) << 56;
-        self.move_next(9)?;
+        self.move_next(9);
         Ok(var64)
     }
 
@@ -647,25 +615,29 @@ impl Reader {
 
     #[inline(always)]
     pub fn read_latin1_string(&mut self, len: usize) -> Result<String, Error> {
+        self.check_bound(len)?;
         read_latin1_simd(self, len)
     }
 
     #[inline(always)]
     pub fn read_utf8_string(&mut self, len: usize) -> Result<String, Error> {
+        self.check_bound(len)?;
         read_utf8_simd(self, len)
     }
 
     #[inline(always)]
     pub fn read_utf16_string(&mut self, len: usize) -> Result<String, Error> {
+        self.check_bound(len)?;
         read_utf16_simd(self, len)
     }
 
     #[inline(always)]
     pub fn read_varuint36small(&mut self) -> Result<u64, Error> {
         let start = self.cursor;
-        let slice = self.slice_after_cursor()?;
+        let slice = self.slice_after_cursor();
 
         if slice.len() >= 8 {
+            // here already check bound 
             let bulk = self.read_u64()?;
             let mut result = bulk & 0x7F;
             let mut read_idx = start;
@@ -693,7 +665,12 @@ impl Reader {
         let mut result = 0u64;
         let mut shift = 0;
         while self.cursor < self.len {
-            let b = self.read_u8()?;
+            let b = {
+                // read_u8 but no need to check bound
+                let ptr = self.ptr_at(self.cursor);
+                self.move_next(1);
+                unsafe { *ptr }
+            };
             result |= ((b & 0x7F) as u64) << shift;
             if (b & 0x80) == 0 {
                 break;
@@ -707,8 +684,10 @@ impl Reader {
     }
 
     #[inline(always)]
-    pub fn skip(&mut self, len: u32) -> Result<(), Error> {
-        self.move_next(len as usize)
+    pub fn skip(&mut self, len: usize) -> Result<(), Error> {
+        self.check_bound(len)?;
+        self.move_next(len as usize);
+        Ok(())
     }
 
     #[inline(always)]
@@ -722,15 +701,9 @@ impl Reader {
 
     #[inline(always)]
     pub fn read_bytes(&mut self, len: usize) -> Result<&[u8], Error> {
-        ensure!(
-            self.cursor + len <= self.len,
-            "read_bytes out of bounds: {} + {} > {}",
-            self.cursor,
-            len,
-            self.len
-        );
+        self.check_bound(len)?;
         let s = unsafe { slice::from_raw_parts(self.bf.add(self.cursor), len) };
-        self.move_next(len)?;
+        self.move_next(len);
         Ok(s)
     }
 

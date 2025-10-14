@@ -249,7 +249,7 @@ fn container_outer_auto_conv() {
         fory.deserialize_with_context::<Option<HashMap<String, String>>>(&mut read_context)
             .unwrap()
     );
-    assert_eq!(read_context.reader.slice_after_cursor().unwrap().len(), 0);
+    assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
     // serialize_outer_nullable
     let writer = Writer::default();
     let mut write_context = WriteContext::new(writer);
@@ -299,7 +299,7 @@ fn container_outer_auto_conv() {
         fory.deserialize_with_context::<HashMap<String, String>>(&mut read_context)
             .unwrap()
     );
-    assert_eq!(read_context.reader.slice_after_cursor().unwrap().len(), 0);
+    assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
 }
 
 #[test]
@@ -372,7 +372,7 @@ fn collection_inner() {
             fory.deserialize_with_context::<HashSet<Option<Item>>>(&mut read_context)
                 .unwrap()
         );
-        assert_eq!(read_context.reader.slice_after_cursor().unwrap().len(), 0);
+        assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
     }
 }
 
@@ -418,7 +418,7 @@ fn collection_inner_auto_conv() {
             fory.deserialize_with_context::<HashSet<Option<Item>>>(&mut read_context)
                 .unwrap()
         );
-        assert_eq!(read_context.reader.slice_after_cursor().unwrap().len(), 0);
+        assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
         // serialize_nullable
         let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
@@ -454,7 +454,7 @@ fn collection_inner_auto_conv() {
             fory.deserialize_with_context::<HashSet<Item>>(&mut read_context)
                 .unwrap()
         );
-        assert_eq!(read_context.reader.slice_after_cursor().unwrap().len(), 0);
+        assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
     }
 }
 
@@ -502,7 +502,7 @@ fn map_inner() {
             fory.deserialize_with_context::<HashMap<Option<Item>, Option<Item>>>(&mut read_context)
                 .unwrap()
         );
-        assert_eq!(read_context.reader.slice_after_cursor().unwrap().len(), 0);
+        assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
     }
 }
 
@@ -536,7 +536,7 @@ fn map_inner_auto_conv() {
             fory.deserialize_with_context::<HashMap<Option<Item>, Option<Item>>>(&mut read_context)
                 .unwrap()
         );
-        assert_eq!(read_context.reader.slice_after_cursor().unwrap().len(), 0);
+        assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
         // serialize_nullable
         let writer = Writer::default();
         let mut write_context = WriteContext::new(writer);
@@ -558,7 +558,7 @@ fn map_inner_auto_conv() {
             fory.deserialize_with_context::<HashMap<Item, Item>>(&mut read_context)
                 .unwrap()
         );
-        assert_eq!(read_context.reader.slice_after_cursor().unwrap().len(), 0);
+        assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
     }
 }
 
@@ -595,6 +595,6 @@ fn complex() {
             fory.deserialize_with_context::<Vec<HashMap<Vec<Item>, Vec<Item>>>>(&mut read_context)
                 .unwrap()
         );
-        assert_eq!(read_context.reader.slice_after_cursor().unwrap().len(), 0);
+        assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
     }
 }

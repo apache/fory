@@ -389,7 +389,7 @@ impl Fory {
         context.init(bf, self.max_dyn_depth);
         let result = self.deserialize_with_context(&mut context);
         if result.is_ok() {
-            assert_eq!(context.reader.slice_after_cursor()?.len(), 0);
+            assert_eq!(context.reader.slice_after_cursor().len(), 0);
         }
         context.reset();
         self.read_context_pool.put(context);
@@ -414,7 +414,7 @@ impl Fory {
         }
         let result = <T as Serializer>::fory_read(self, context, false);
         if bytes_to_skip > 0 {
-            context.reader.skip(bytes_to_skip as u32)?;
+            context.reader.skip(bytes_to_skip)?;
         }
         context.ref_reader.resolve_callbacks();
         result

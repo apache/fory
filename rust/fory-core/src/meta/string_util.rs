@@ -574,7 +574,7 @@ pub mod buffer_rw_string {
     pub fn read_latin1_standard(reader: &mut Reader, len: usize) -> Result<String, Error> {
         let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
         let result: String = slice.iter().map(|&b| b as char).collect();
-        reader.move_next(len)?;
+        reader.move_next(len);
         Ok(result)
     }
 
@@ -582,7 +582,7 @@ pub mod buffer_rw_string {
     pub fn read_utf8_standard(reader: &mut Reader, len: usize) -> Result<String, Error> {
         let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
         let result = String::from_utf8_lossy(slice).to_string();
-        reader.move_next(len)?;
+        reader.move_next(len);
         Ok(result)
     }
 
@@ -598,7 +598,7 @@ pub mod buffer_rw_string {
         let result = String::from_utf16(&units)
             // lossy
             .unwrap_or_else(|_| String::from("�"));
-        reader.move_next(len)?;
+        reader.move_next(len);
         Ok(result)
     }
 
@@ -866,7 +866,7 @@ pub mod buffer_rw_string {
                 i += 1;
             }
         }
-        reader.move_next(len)?;
+        reader.move_next(len);
         Ok(unsafe { String::from_utf8_unchecked(out) })
     }
 
@@ -927,7 +927,7 @@ pub mod buffer_rw_string {
             }
         }
 
-        reader.move_next(len)?;
+        reader.move_next(len);
         Ok(result)
     }
 
@@ -1007,7 +1007,7 @@ pub mod buffer_rw_string {
         {
             if std::arch::is_x86_feature_detected!("avx2") {
                 let s = unsafe { simd_impl(slice) };
-                reader.move_next(len)?;
+                reader.move_next(len);
                 return Ok(s);
             }
         }
@@ -1015,7 +1015,7 @@ pub mod buffer_rw_string {
         {
             if std::arch::is_x86_feature_detected!("sse2") {
                 let s = unsafe { simd_impl(slice) };
-                reader.move_next(len)?;
+                reader.move_next(len);
                 return Ok(s);
             }
         }
@@ -1023,7 +1023,7 @@ pub mod buffer_rw_string {
         {
             if std::arch::is_aarch64_feature_detected!("neon") {
                 let s = unsafe { simd_impl(slice) };
-                reader.move_next(len)?;
+                reader.move_next(len);
                 return Ok(s);
             }
         }

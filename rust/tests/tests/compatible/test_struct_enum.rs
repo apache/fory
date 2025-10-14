@@ -110,7 +110,7 @@ fn basic() {
             fory.deserialize_with_context::<Person>(&mut read_context)
                 .unwrap()
         );
-        assert_eq!(read_context.reader.slice_after_cursor().unwrap().len(), 0);
+        assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
     }
 }
 

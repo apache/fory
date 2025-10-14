@@ -309,7 +309,7 @@ impl MetaStringReaderResolver {
         hash_code: i64,
     ) -> Result<MetaStringBytes, Error> {
         if let Some(existing) = self.hash_to_meta.get(&hash_code) {
-            reader.skip(len as u32)?;
+            reader.skip(len)?;
             Ok(existing.clone())
         } else {
             let bytes = reader.read_bytes(len)?.to_vec();

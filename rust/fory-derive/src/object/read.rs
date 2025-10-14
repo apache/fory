@@ -399,7 +399,7 @@ pub fn gen_read(struct_ident: &Ident) -> TokenStream {
             }
         } else if ref_flag == (fory_core::types::RefFlag::Null as i8) {
             Ok(<Self as fory_core::serializer::ForyDefault>::fory_default())
-            // Err(fory_core::error::AnyhowError::msg("Try to read non-option type to null"))?
+            // Err(fory_core::error::Error::msg("Try to read non-option type to null"))?
         } else if ref_flag == (fory_core::types::RefFlag::Ref as i8) {
             // Err(fory_core::error::Error::Ref)
             todo!()

@@ -166,7 +166,7 @@ impl ReadContext {
     ) -> Result<usize, Error> {
         self.meta_resolver.load(
             type_resolver,
-            &mut Reader::new(&self.reader.slice_after_cursor()?[offset..]),
+            &mut Reader::new(&self.reader.slice_after_cursor()[offset..]),
         )
     }
 

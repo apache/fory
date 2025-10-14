@@ -16,26 +16,26 @@
 // under the License.
 
 use std::borrow::Cow;
+use std::io;
 
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
-    // not use this, just as a example.
-    // You can create new error enums for specific cases in the future.
     #[error("Type mismatch: type_a = {0}, type_b = {1}")]
     TypeMismatch(u32, u32),
 
-    // don't use this directly, use Error::from() instead
-    #[error(transparent)]
-    Wrapped(#[from] anyhow::Error),
+    #[error("Buffer out of bound: {0} + {1} > {2}")]
+    BufferOutOfBound(usize, usize, usize),
+
+    #[error("IO error: {0}")]
+    Io(#[from] io::Error),
 
     /// A simple error message, stored as a [`Cow<'static, str>`].
-    ///
     /// Do not construct this variant directly; use [`Error::msg`] instead.
     #[error("{0}")]
-    Msg(Cow<'static, str>),
+    Unknown(Cow<'static, str>),
 }
 
 impl Error {
@@ -50,9 +50,11 @@ impl Error {
     /// use fory_core::error::Error;
     ///
     /// let err = Error::msg("Something went wrong");
+    /// let err = Error::msg(format!("ID:{} not found", 1));
     /// ```
+    #[inline(always)]
     pub fn msg<S: Into<Cow<'static, str>>>(s: S) -> Self {
-        Error::Msg(s.into())
+        Error::Unknown(s.into())
     }
 }
 
@@ -107,10 +109,4 @@ macro_rules! bail {
     ($fmt:expr, $($arg:tt)*) => {
         return Err($crate::error::Error::msg(format!($fmt, $($arg)*)))
     };
-}
-
-impl From<std::io::Error> for Error {
-    fn from(e: std::io::Error) -> Self {
-        Error::Wrapped(e.into())
-    }
 }

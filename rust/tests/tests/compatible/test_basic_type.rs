@@ -292,7 +292,7 @@ fn deserialize_non_null(fory: &Fory, context: &mut ReadContext, auto_conv: bool,
         );
     }
     if to_end {
-        assert_eq!(context.reader.slice_after_cursor().unwrap().len(), 0);
+        assert_eq!(context.reader.slice_after_cursor().len(), 0);
     }
 }
 
@@ -472,7 +472,7 @@ fn deserialize_nullable(fory: &Fory, context: &mut ReadContext, auto_conv: bool,
         );
     }
     if to_end {
-        assert_eq!(context.reader.slice_after_cursor().unwrap().len(), 0);
+        assert_eq!(context.reader.slice_after_cursor().len(), 0);
     }
 }
 

@@ -642,7 +642,7 @@ impl TypeMeta {
         if meta_size == META_SIZE_MASK {
             meta_size += reader.read_varuint32()? as i64;
         }
-        reader.skip(meta_size as u32)
+        reader.skip(meta_size as usize)
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {
