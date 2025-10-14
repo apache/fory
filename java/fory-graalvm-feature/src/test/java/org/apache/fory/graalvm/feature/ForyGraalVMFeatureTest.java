@@ -82,7 +82,8 @@ public class ForyGraalVMFeatureTest {
   public void testObjectCreatorsProblematicDetection() {
     assertTrue(
         "Class without no-arg constructor should be problematic",
-        GraalvmSupport.needReflectionRegisterForCreation(PrivateParameterizedConstructorClass.class));
+        GraalvmSupport.needReflectionRegisterForCreation(
+            PrivateParameterizedConstructorClass.class));
 
     assertFalse(
         "Public no-arg constructor should not be problematic",
