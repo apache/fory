@@ -51,7 +51,7 @@ pub enum Error {
     EncodingError(Cow<'static, str>),
 
     #[error("{0}")]
-    DepthExceeded(Cow<'static, str>),
+    DepthExceed(Cow<'static, str>),
 
     /// Do not construct this variant directly; use [`Error::unknown`] instead.
     #[error("{0}")]

@@ -218,7 +218,7 @@ impl ReadContext {
     pub fn inc_depth(&mut self) -> Result<(), Error> {
         self.current_depth += 1;
         if self.current_depth > self.max_dyn_depth {
-            return Err(Error::DepthExceeded(
+            return Err(Error::DepthExceed(
                 format!(
                     "Maximum dynamic object nesting depth ({}) exceeded. Current depth: {}. \
                     This may indicate a circular reference or overly deep object graph. \
