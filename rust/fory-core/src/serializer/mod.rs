@@ -22,6 +22,7 @@ use crate::meta::{MetaString, TypeMeta, NAMESPACE_DECODER, TYPE_NAME_DECODER};
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::{RefFlag, TypeId, PRIMITIVE_TYPES};
 use std::any::Any;
+use std::sync::Arc;
 
 pub mod any;
 mod arc;
@@ -248,10 +249,10 @@ pub trait Serializer: 'static {
                 let type_resolver = fory.get_type_resolver();
                 type_resolver.get_type_info(rs_type_id)?
             };
-            let namespace = type_info.get_namespace().to_owned();
-            let type_name = type_info.get_type_name().to_owned();
-            context.write_meta_string_bytes(&namespace)?;
-            context.write_meta_string_bytes(&type_name)?;
+            let namespace = type_info.get_namespace();
+            let type_name = type_info.get_type_name();
+            context.write_meta_string_bytes(namespace)?;
+            context.write_meta_string_bytes(type_name)?;
         }
         Ok(())
     }
@@ -315,11 +316,11 @@ pub trait Serializer: 'static {
                 let tsb = context.read_meta_string_bytes()?;
                 let ns = NAMESPACE_DECODER.decode(&nsb.bytes, nsb.encoding)?;
                 let ts = TYPE_NAME_DECODER.decode(&tsb.bytes, tsb.encoding)?;
-                (ns, ts)
+                (Arc::from(ns), Arc::from(ts))
             };
             let type_resolver = fory.get_type_resolver();
             type_resolver
-                .get_ext_name_harness(&namespace, &type_name)?
+                .get_ext_name_harness(namespace, type_name)?
                 .get_read_data_fn()(fory, context, true)
             .and_then(|b: Box<dyn Any>| {
                 b.downcast::<Self>()

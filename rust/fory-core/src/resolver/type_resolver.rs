@@ -92,8 +92,8 @@ pub struct TypeInfo {
     type_def: Arc<Vec<u8>>,
     type_meta: Arc<TypeMeta>,
     type_id: u32,
-    namespace: MetaString,
-    type_name: MetaString,
+    namespace: Arc<MetaString>,
+    type_name: Arc<MetaString>,
     register_by_name: bool,
 }
 
@@ -120,8 +120,8 @@ impl TypeInfo {
             type_def: Arc::from(type_def_bytes),
             type_meta: Arc::new(type_meta),
             type_id,
-            namespace: namespace_metastring,
-            type_name: type_name_metastring,
+            namespace: Arc::from(namespace_metastring),
+            type_name: Arc::from(type_name_metastring),
             register_by_name,
         })
     }
@@ -151,8 +151,8 @@ impl TypeInfo {
             type_def: Arc::from(type_def),
             type_meta: Arc::new(meta),
             type_id,
-            namespace: namespace_metastring,
-            type_name: type_name_metastring,
+            namespace: Arc::from(namespace_metastring),
+            type_name: Arc::from(type_name_metastring),
             register_by_name,
         })
     }
@@ -161,12 +161,12 @@ impl TypeInfo {
         self.type_id
     }
 
-    pub fn get_namespace(&self) -> &MetaString {
-        &self.namespace
+    pub fn get_namespace(&self) -> Arc<MetaString> {
+        self.namespace.clone()
     }
 
-    pub fn get_type_name(&self) -> &MetaString {
-        &self.type_name
+    pub fn get_type_name(&self) -> Arc<MetaString> {
+        self.type_name.clone()
     }
 
     pub fn get_type_def(&self) -> Arc<Vec<u8>> {
@@ -184,9 +184,9 @@ impl TypeInfo {
 
 pub struct TypeResolver {
     serializer_map: HashMap<u32, Arc<Harness>>,
-    name_serializer_map: HashMap<(MetaString, MetaString), Arc<Harness>>,
+    name_serializer_map: HashMap<(Arc<MetaString>, Arc<MetaString>), Arc<Harness>>,
     type_id_map: HashMap<std::any::TypeId, u32>,
-    type_name_map: HashMap<std::any::TypeId, (MetaString, MetaString)>,
+    type_name_map: HashMap<std::any::TypeId, (Arc<MetaString>, Arc<MetaString>)>,
     type_info_cache: HashMap<std::any::TypeId, TypeInfo>,
     type_info_map_by_id: HashMap<u32, TypeInfo>,
     type_info_map_by_name: HashMap<(String, String), TypeInfo>,
@@ -225,8 +225,8 @@ impl TypeResolver {
                     type_def: Arc::from(vec![]),
                     type_meta: Arc::new(TypeMeta::empty()),
                     type_id: $type_id as u32,
-                    namespace: namespace.clone(),
-                    type_name: type_name.clone(),
+                    namespace: Arc::from(namespace.clone()),
+                    type_name: Arc::from(type_name.clone()),
                     register_by_name: false,
                 };
                 self.register_serializer::<$ty>(&type_info)?;
@@ -567,8 +567,8 @@ impl TypeResolver {
 
     pub fn get_name_harness(
         &self,
-        namespace: &MetaString,
-        type_name: &MetaString,
+        namespace: Arc<MetaString>,
+        type_name: Arc<MetaString>,
     ) -> Option<Arc<Harness>> {
         let key = (namespace.clone(), type_name.clone());
         self.name_serializer_map.get(&key).cloned()
@@ -583,8 +583,8 @@ impl TypeResolver {
 
     pub fn get_ext_name_harness(
         &self,
-        namespace: &MetaString,
-        type_name: &MetaString,
+        namespace: Arc<MetaString>,
+        type_name: Arc<MetaString>,
     ) -> Result<Arc<Harness>, Error> {
         let key = (namespace.clone(), type_name.clone());
         self.name_serializer_map.get(&key).cloned().ok_or_else(|| {

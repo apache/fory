@@ -15,9 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::buffer::Writer;
 use crate::error::Error;
@@ -80,7 +82,7 @@ impl MetaStringBytes {
         String::from_utf8_lossy(&self.bytes).into_owned()
     }
 
-    pub(crate) fn from_metastring(meta_string: &MetaString) -> Result<Self, Error> {
+    pub(crate) fn from_metastring(meta_string: Arc<MetaString>) -> Result<Self, Error> {
         let mut bytes = meta_string.bytes.to_vec();
         let mut hash_code = murmurhash3_x64_128(&bytes, 47).0 as i64;
         hash_code = hash_code.abs();
@@ -114,8 +116,8 @@ impl MetaStringBytes {
 
 #[derive(Default)]
 pub struct MetaStringWriterResolver {
-    meta_string_to_bytes: HashMap<MetaString, MetaStringBytes>,
-    dynamic_written: Vec<Option<MetaStringBytes>>,
+    meta_string_to_bytes: HashMap<Arc<MetaString>, Arc<RefCell<MetaStringBytes>>>,
+    dynamic_written: Vec<Option<Arc<RefCell<MetaStringBytes>>>>,
     dynamic_write_id: usize,
 }
 
@@ -131,46 +133,44 @@ impl MetaStringWriterResolver {
         }
     }
 
-    pub fn get_or_create_meta_string_bytes(&mut self, m: &MetaString) -> MetaStringBytes {
-        if let Some(b) = self.meta_string_to_bytes.get(m) {
-            return b.clone();
+    #[allow(clippy::arc_with_non_send_sync)]
+    pub fn get_or_create_meta_string_bytes(
+        &mut self,
+        ms: Arc<MetaString>,
+    ) -> Result<Arc<RefCell<MetaStringBytes>>, Error> {
+        if let Some(b) = self.meta_string_to_bytes.get(&ms) {
+            Ok(b.clone())
+        } else {
+            let mb = MetaStringBytes::from_metastring(ms.clone())?;
+            let arc_mb = Arc::new(RefCell::new(mb));
+            self.meta_string_to_bytes.insert(ms.clone(), arc_mb.clone());
+            Ok(arc_mb)
         }
-        let bytes = m.bytes.to_vec();
-        let hash_code = murmurhash3_x64_128(&bytes, 47).0 as i64;
-        let encoding = m.encoding;
-        let mut first8: u64 = 0;
-        let mut second8: u64 = 0;
-        for (i, b) in bytes.iter().take(8).enumerate() {
-            first8 |= (*b as u64) << (8 * i);
-        }
-        if bytes.len() > 8 {
-            for j in 0..usize::min(8, bytes.len() - 8) {
-                second8 |= (bytes[8 + j] as u64) << (8 * j);
-            }
-        }
-        let msb = MetaStringBytes::new(bytes, hash_code, encoding, first8, second8);
-        self.meta_string_to_bytes.insert(m.clone(), msb.clone());
-        msb
     }
 
-    pub fn write_meta_string_bytes_with_flag(&mut self, w: &mut Writer, mut mb: MetaStringBytes) {
-        let id = mb.dynamic_write_id;
+    pub fn write_meta_string_bytes_with_flag(
+        &mut self,
+        w: &mut Writer,
+        mb: Arc<RefCell<MetaStringBytes>>,
+    ) {
+        let id = mb.borrow().dynamic_write_id;
         if id == MetaStringBytes::DEFAULT_DYNAMIC_WRITE_STRING_ID {
             let id_usize = self.dynamic_write_id;
             self.dynamic_write_id += 1;
-            mb.dynamic_write_id = id_usize as i16;
             if id_usize >= self.dynamic_written.len() {
                 self.dynamic_written.resize(id_usize * 2, None);
             }
-            let len = mb.bytes.len();
+            let len = mb.borrow().bytes.len();
             let header = ((len as u32) << 2) | 0b1;
             w.write_varuint32(header);
             if len > Self::SMALL_STRING_THRESHOLD {
-                w.write_i64(mb.hash_code);
+                w.write_i64(mb.borrow().hash_code);
             } else {
-                w.write_u8(mb.encoding as i16 as u8);
+                w.write_u8(mb.borrow().encoding as i16 as u8);
             }
-            w.write_bytes(&mb.bytes);
+            w.write_bytes(&mb.borrow().bytes);
+
+            mb.borrow_mut().dynamic_write_id = id_usize as i16;
 
             self.dynamic_written[id_usize] = Some(mb);
         } else {
@@ -182,26 +182,26 @@ impl MetaStringWriterResolver {
     pub fn write_meta_string_bytes(
         &mut self,
         writer: &mut Writer,
-        ms: &MetaString,
+        mb: Arc<RefCell<MetaStringBytes>>,
     ) -> Result<(), Error> {
-        let mut mb = MetaStringBytes::from_metastring(ms)?;
-        let id = mb.dynamic_write_id;
+        let id = mb.borrow().dynamic_write_id;
         if id == MetaStringBytes::DEFAULT_DYNAMIC_WRITE_STRING_ID {
             let id_usize = self.dynamic_write_id;
             self.dynamic_write_id += 1;
-            mb.dynamic_write_id = id_usize as i16;
+
             if id_usize >= self.dynamic_written.len() {
                 self.dynamic_written.resize(id_usize * 2 + 1, None);
             }
-            let len = mb.bytes.len();
+            let len = mb.borrow().bytes.len();
             writer.write_varuint32((len as u32) << 1);
             if len > Self::SMALL_STRING_THRESHOLD {
-                writer.write_i64(mb.hash_code);
+                writer.write_i64(mb.borrow().hash_code);
             } else {
-                writer.write_u8(mb.encoding as i16 as u8);
+                writer.write_u8(mb.borrow().encoding as i16 as u8);
             }
-            writer.write_bytes(&mb.bytes);
+            writer.write_bytes(&mb.borrow().bytes);
 
+            mb.borrow_mut().dynamic_write_id = id_usize as i16;
             self.dynamic_written[id_usize] = Some(mb);
         } else {
             let header = ((id as u32 + 1) << 1) | 1;
@@ -214,7 +214,8 @@ impl MetaStringWriterResolver {
         if self.dynamic_write_id != 0 {
             for i in 0..self.dynamic_write_id {
                 if let Some(ref mut mb) = self.dynamic_written[i] {
-                    mb.dynamic_write_id = MetaStringBytes::DEFAULT_DYNAMIC_WRITE_STRING_ID;
+                    mb.borrow_mut().dynamic_write_id =
+                        MetaStringBytes::DEFAULT_DYNAMIC_WRITE_STRING_ID;
                 }
                 self.dynamic_written[i] = None;
             }
@@ -414,5 +415,7 @@ impl MetaStringReaderResolver {
     }
 }
 
+unsafe impl Send for MetaStringWriterResolver {}
+unsafe impl Sync for MetaStringWriterResolver {}
 unsafe impl Send for MetaStringReaderResolver {}
 unsafe impl Sync for MetaStringReaderResolver {}

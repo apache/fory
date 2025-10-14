@@ -32,7 +32,7 @@ use std::sync::{Arc, Mutex};
 pub struct WriteContext {
     pub writer: Writer,
     meta_resolver: MetaWriterResolver,
-    meta_string_resolver: MetaStringWriterResolver,
+    pub meta_string_resolver: MetaStringWriterResolver,
     pub ref_writer: RefWriter,
 }
 
@@ -113,9 +113,12 @@ impl WriteContext {
     }
 
     #[inline(always)]
-    pub fn write_meta_string_bytes(&mut self, ms: &MetaString) -> Result<(), Error> {
+    pub fn write_meta_string_bytes(&mut self, ms: Arc<MetaString>) -> Result<(), Error> {
+        let mb = self
+            .meta_string_resolver
+            .get_or_create_meta_string_bytes(ms.clone())?;
         self.meta_string_resolver
-            .write_meta_string_bytes(&mut self.writer, ms)
+            .write_meta_string_bytes(&mut self.writer, mb)
     }
 
     #[inline(always)]
@@ -181,7 +184,7 @@ impl ReadContext {
             let namespace = self.meta_resolver.read_metastring(&mut self.reader)?;
             let type_name = self.meta_resolver.read_metastring(&mut self.reader)?;
             type_resolver
-                .get_name_harness(&namespace, &type_name)
+                .get_name_harness(Arc::from(namespace), Arc::from(type_name))
                 .ok_or_else(|| Error::TypeError("Name harness not found".into()))
         } else if fory_type_id & 0xff == ForyTypeId::NAMED_STRUCT as u32 {
             if fory.is_share_meta() {
@@ -190,7 +193,7 @@ impl ReadContext {
                 let namespace = self.meta_resolver.read_metastring(&mut self.reader)?;
                 let type_name = self.meta_resolver.read_metastring(&mut self.reader)?;
                 return type_resolver
-                    .get_name_harness(&namespace, &type_name)
+                    .get_name_harness(Arc::from(namespace), Arc::from(type_name))
                     .ok_or_else(|| Error::TypeError("Name harness not found".into()));
             }
             type_resolver

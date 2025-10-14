@@ -66,10 +66,10 @@ pub fn write_type_info<T: Serializer>(
         context.writer.write_varuint32(meta_index);
     } else {
         let type_info = fory.get_type_resolver().get_type_info(rs_type_id)?;
-        let namespace = type_info.get_namespace().to_owned();
-        let type_name = type_info.get_type_name().to_owned();
-        context.write_meta_string_bytes(&namespace)?;
-        context.write_meta_string_bytes(&type_name)?;
+        let namespace = type_info.get_namespace();
+        let type_name = type_info.get_type_name();
+        context.write_meta_string_bytes(namespace)?;
+        context.write_meta_string_bytes(type_name)?;
     }
     Ok(())
 }

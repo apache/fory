@@ -173,7 +173,7 @@ pub fn skip_field_value(
                 let type_meta = context.get_meta(meta_index as usize);
                 let type_resolver = fory.get_type_resolver();
                 type_resolver
-                    .get_ext_name_harness(&type_meta.get_namespace(), &type_meta.get_type_name())?
+                    .get_ext_name_harness(type_meta.get_namespace(), type_meta.get_type_name())?
                     .get_read_data_fn()(fory, context, true)?;
                 Ok(())
             } else {
