@@ -97,14 +97,14 @@ impl MetaStringBytes {
             bytes.resize(16, 0);
         }
 
-        let first8: [u8; 8] = bytes[0..8]
-            .try_into()
-            .map_err(|_| Error::msg(format!("expected at least 8 bytes, got {}", bytes.len())))?;
+        let first8: [u8; 8] = bytes[0..8].try_into().map_err(|_| {
+            Error::InvalidData(format!("expected at least 8 bytes, got {}", bytes.len()).into())
+        })?;
         let first8 = u64::from_le_bytes(first8);
 
-        let second8: [u8; 8] = bytes[8..16]
-            .try_into()
-            .map_err(|_| Error::msg(format!("expected at least 16 bytes, got {}", bytes.len())))?;
+        let second8: [u8; 8] = bytes[8..16].try_into().map_err(|_| {
+            Error::InvalidData(format!("expected at least 16 bytes, got {}", bytes.len()).into())
+        })?;
         let second8 = u64::from_le_bytes(second8);
 
         Ok(Self::new(bytes, hash_code, encoding, first8, second8))
@@ -267,7 +267,7 @@ impl MetaStringReaderResolver {
             self.dynamic_read
                 .get(idx)
                 .and_then(|opt| opt.clone())
-                .ok_or_else(|| Error::msg("dynamic id not found"))
+                .ok_or_else(|| Error::InvalidData("dynamic id not found".into()))
         }
     }
 
@@ -293,7 +293,7 @@ impl MetaStringReaderResolver {
             self.dynamic_read
                 .get(idx)
                 .and_then(|opt| opt.clone())
-                .ok_or_else(|| Error::msg("dynamic id not found"))
+                .ok_or_else(|| Error::InvalidData("dynamic id not found".into()))
         }
     }
 

@@ -32,14 +32,34 @@ pub enum Error {
     #[error("IO error: {0}")]
     Io(#[from] io::Error),
 
-    /// A simple error message, stored as a [`Cow<'static, str>`].
-    /// Do not construct this variant directly; use [`Error::msg`] instead.
+    #[error("{0}")]
+    EncodeError(Cow<'static, str>),
+
+    #[error("{0}")]
+    InvalidData(Cow<'static, str>),
+
+    #[error("{0}")]
+    InvalidRef(Cow<'static, str>),
+
+    #[error("{0}")]
+    UnknownEnum(Cow<'static, str>),
+
+    #[error("{0}")]
+    TypeError(Cow<'static, str>),
+
+    #[error("{0}")]
+    EncodingError(Cow<'static, str>),
+
+    #[error("{0}")]
+    DepthExceeded(Cow<'static, str>),
+
+    /// Do not construct this variant directly; use [`Error::unknown`] instead.
     #[error("{0}")]
     Unknown(Cow<'static, str>),
 }
 
 impl Error {
-    /// Creates a new [`Error::Msg`] from a string or static message.
+    /// Creates a new [`Error::Unknown`] from a string or static message.
     ///
     /// This function is a convenient way to produce an error message
     /// from a literal, `String`, or any type that can be converted into
@@ -49,11 +69,11 @@ impl Error {
     /// ```
     /// use fory_core::error::Error;
     ///
-    /// let err = Error::msg("Something went wrong");
-    /// let err = Error::msg(format!("ID:{} not found", 1));
+    /// let err = Error::unknown("Something went wrong");
+    /// let err = Error::unknown(format!("ID:{} not found", 1));
     /// ```
     #[inline(always)]
-    pub fn msg<S: Into<Cow<'static, str>>>(s: S) -> Self {
+    pub fn unknown<S: Into<Cow<'static, str>>>(s: S) -> Self {
         Error::Unknown(s.into())
     }
 }
@@ -75,7 +95,7 @@ impl Error {
 macro_rules! ensure {
     ($cond:expr, $msg:literal) => {
         if !$cond {
-            return Err($crate::error::Error::msg($msg));
+            return Err($crate::error::Error::unknown($msg));
         }
     };
     ($cond:expr, $err:expr) => {
@@ -85,7 +105,7 @@ macro_rules! ensure {
     };
     ($cond:expr, $fmt:expr, $($arg:tt)*) => {
         if !$cond {
-            return Err($crate::error::Error::msg(format!($fmt, $($arg)*)));
+            return Err($crate::error::Error::unknown(format!($fmt, $($arg)*)));
         }
     };
 }
@@ -104,9 +124,9 @@ macro_rules! ensure {
 #[macro_export]
 macro_rules! bail {
     ($err:expr) => {
-        return Err($crate::error::Error::msg($err))
+        return Err($crate::error::Error::unknown($err))
     };
     ($fmt:expr, $($arg:tt)*) => {
-        return Err($crate::error::Error::msg(format!($fmt, $($arg)*)))
+        return Err($crate::error::Error::unknown(format!($fmt, $($arg)*)))
     };
 }

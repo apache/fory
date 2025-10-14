@@ -96,7 +96,7 @@ impl WriteContext {
             }
             type_resolver
                 .get_name_harness(type_info.get_namespace(), type_info.get_type_name())
-                .ok_or_else(|| Error::msg("Name harness not found"))
+                .ok_or_else(|| Error::TypeError("Name harness not found".into()))
         } else {
             if fory_type_id & 0xff == ForyTypeId::COMPATIBLE_STRUCT as u32 {
                 self.writer.write_varuint32(fory_type_id);
@@ -107,7 +107,7 @@ impl WriteContext {
             }
             type_resolver
                 .get_harness(fory_type_id)
-                .ok_or_else(|| Error::msg("ID harness not found"))
+                .ok_or_else(|| Error::TypeError("ID harness not found".into()))
         }
     }
 
@@ -181,7 +181,7 @@ impl ReadContext {
             let type_name = self.meta_resolver.read_metastring(&mut self.reader)?;
             type_resolver
                 .get_name_harness(&namespace, &type_name)
-                .ok_or_else(|| Error::msg("Name harness not found"))
+                .ok_or_else(|| Error::TypeError("Name harness not found".into()))
         } else if fory_type_id & 0xff == ForyTypeId::NAMED_STRUCT as u32 {
             if fory.is_share_meta() {
                 let _meta_index = self.reader.read_varuint32();
@@ -190,22 +190,22 @@ impl ReadContext {
                 let type_name = self.meta_resolver.read_metastring(&mut self.reader)?;
                 return type_resolver
                     .get_name_harness(&namespace, &type_name)
-                    .ok_or_else(|| Error::msg("Name harness not found"));
+                    .ok_or_else(|| Error::TypeError("Name harness not found".into()));
             }
             type_resolver
                 .get_harness(fory_type_id)
-                .ok_or_else(|| Error::msg("ID harness not found"))
+                .ok_or_else(|| Error::TypeError("ID harness not found".into()))
         } else if fory_type_id & 0xff == ForyTypeId::NAMED_COMPATIBLE_STRUCT as u32
             || fory_type_id & 0xff == ForyTypeId::COMPATIBLE_STRUCT as u32
         {
             let _meta_index = self.reader.read_varuint32();
             type_resolver
                 .get_harness(fory_type_id)
-                .ok_or_else(|| Error::msg("ID harness not found"))
+                .ok_or_else(|| Error::TypeError("ID harness not found".into()))
         } else {
             type_resolver
                 .get_harness(fory_type_id)
-                .ok_or_else(|| Error::msg("ID harness not found"))
+                .ok_or_else(|| Error::TypeError("ID harness not found".into()))
         }
     }
 
@@ -218,12 +218,15 @@ impl ReadContext {
     pub fn inc_depth(&mut self) -> Result<(), Error> {
         self.current_depth += 1;
         if self.current_depth > self.max_dyn_depth {
-            return Err(Error::msg(format!(
-                "Maximum dynamic object nesting depth ({}) exceeded. Current depth: {}. \
+            return Err(Error::DepthExceeded(
+                format!(
+                    "Maximum dynamic object nesting depth ({}) exceeded. Current depth: {}. \
                     This may indicate a circular reference or overly deep object graph. \
                     Consider increasing max_dyn_depth if this is expected.",
-                self.max_dyn_depth, self.current_depth
-            )));
+                    self.max_dyn_depth, self.current_depth
+                )
+                .into(),
+            ));
         }
         Ok(())
     }

@@ -314,25 +314,29 @@ impl Fory {
             let magic_numer = reader.read_u16()?;
             ensure!(
                 magic_numer == MAGIC_NUMBER,
-                Error::msg(format!(
-                    "The fory xlang serialization must start with magic number {:X}. \
+                Error::InvalidData(
+                    format!(
+                        "The fory xlang serialization must start with magic number {:X}. \
                     Please check whether the serialization is based on the xlang protocol \
                     and the data didn't corrupt.",
-                    MAGIC_NUMBER
-                ))
+                        MAGIC_NUMBER
+                    )
+                    .into()
+                )
             )
         }
         let bitmap = reader.read_u8()?;
         let peer_is_xlang = (bitmap & IS_CROSS_LANGUAGE_FLAG) != 0;
         ensure!(
             self.xlang == peer_is_xlang,
-            Error::msg("header bitmap mismatch at xlang bit")
+            Error::InvalidData("header bitmap mismatch at xlang bit".into())
         );
         let is_little_endian = (bitmap & IS_LITTLE_ENDIAN_FLAG) != 0;
         ensure!(
             is_little_endian,
-            Error::msg(
+            Error::InvalidData(
                 "Big endian is not supported for now, please ensure peer machine is little endian."
+                    .into()
             )
         );
         let is_none = (bitmap & IS_NULL_FLAG) != 0;

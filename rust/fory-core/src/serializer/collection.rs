@@ -20,7 +20,7 @@ use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::PRIMITIVE_ARRAY_TYPES;
-use crate::{bail, ensure, Fory};
+use crate::{ensure, Fory};
 
 // const TRACKING_REF: u8 = 0b1;
 
@@ -118,7 +118,12 @@ pub fn read_collection_type_info(
     }
     let remote_collection_type_id = context.reader.read_varuint32()?;
     if PRIMITIVE_ARRAY_TYPES.contains(&remote_collection_type_id) {
-        bail!("Vec<number> belongs to the `number_array` type, and Vec<Option<number>> belongs to the `list` type. You should not read data of type `number_array` as data of type `list`");
+        return Err(Error::TypeError(
+            "Vec<number> belongs to the `number_array` type, \
+            and Vec<Option<number>> belongs to the `list` type. \
+            You should not read data of type `number_array` as data of type `list`."
+                .into(),
+        ));
     }
     ensure!(
         collection_type_id == remote_collection_type_id,

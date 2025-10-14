@@ -50,9 +50,9 @@ pub fn read_trait_object_headers(fory: &Fory, context: &mut ReadContext) -> Resu
 
     let ref_flag = context.reader.read_i8()?;
     if ref_flag != RefFlag::NotNullValue as i8 {
-        return Err(Error::msg(format!(
-            "Expected NotNullValue ref flag, got {ref_flag}"
-        )));
+        return Err(Error::InvalidRef(
+            format!("Expected NotNullValue ref flag, got {ref_flag}").into(),
+        ));
     }
 
     let fory_type_id = context.reader.read_varuint32()?;
@@ -78,7 +78,7 @@ macro_rules! downcast_and_serialize {
                 }
             }
         )*
-        $crate::bail!("Failed to downcast to any registered type for trait {}", stringify!($trait_name));
+        return Err($crate::error::Error::TypeError(format!("Failed to downcast to any registered type for trait {}", stringify!($trait_name)).into()));
     }};
 }
 
@@ -94,8 +94,8 @@ macro_rules! resolve_and_deserialize {
                 }
             }
         )*
-        Err($crate::error::Error::msg(
-            format!("Type ID {} not registered for trait {}", $fory_type_id, stringify!($trait_name))
+        Err($crate::error::Error::TypeError(
+            format!("Type ID {} not registered for trait {}", $fory_type_id, stringify!($trait_name)).into()
         ))
     }};
 }
@@ -208,7 +208,7 @@ macro_rules! register_trait_type {
                     $crate::serializer::trait_object::write_trait_object_headers(fory, context, fory_type_id, concrete_type_id)?;
                     $crate::downcast_and_serialize!(any_ref, fory, context, is_field, $trait_name, $($impl_type),+);
                 } else {
-                    $crate::bail!("Type {:?} not registered for Box<dyn {}> serialization", concrete_type_id, stringify!($trait_name));
+                    return Err($crate::error::Error::TypeError(format!("Type {:?} not registered for Box<dyn {}> serialization", concrete_type_id, stringify!($trait_name)).into()));
                 }
             }
 
@@ -222,7 +222,7 @@ macro_rules! register_trait_type {
                 let concrete_type_id = any_ref.type_id();
                 fory.get_type_resolver()
                     .get_fory_type_id(concrete_type_id)
-                    .ok_or_else(|| $crate::error::Error::msg("Type not registered for trait object"))
+                    .ok_or_else(|| $crate::error::Error::TypeError("Type not registered for trait object".into()))
             }
 
             fn fory_is_polymorphic() -> bool {
@@ -288,15 +288,15 @@ macro_rules! register_trait_type {
                     $(
                         if any_box.is::<$impl_type>() {
                             let concrete = any_box.downcast::<$impl_type>()
-                                .map_err(|_| $crate::error::Error::msg(
-                                    format!("Failed to downcast to {}", stringify!($impl_type))
+                                .map_err(|_| $crate::error::Error::TypeError(
+                                    format!("Failed to downcast to {}", stringify!($impl_type)).into()
                                 ))?;
                             return Ok(Box::new(*concrete) as Box<dyn $trait_name>);
                         }
                     )+
 
-                    Err($crate::error::Error::msg(
-                        format!("No matching type found for trait {}", stringify!($trait_name))
+                    Err($crate::error::Error::TypeError(
+                        format!("No matching type found for trait {}", stringify!($trait_name)).into()
                     ))
                 }
             }
@@ -428,15 +428,15 @@ macro_rules! impl_smart_pointer_serializer {
                 let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
                 match ref_flag {
-                    RefFlag::Null => Err($crate::error::Error::msg(
-                        format!("{}<dyn {}> cannot be null", stringify!($pointer_type), stringify!($trait_name))
+                    RefFlag::Null => Err($crate::error::Error::InvalidRef(
+                        format!("{}<dyn {}> cannot be null", stringify!($pointer_type), stringify!($trait_name)).into()
                     )),
                     RefFlag::Ref => {
                         let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
                         context.ref_reader.$get_ref::<dyn $trait_name>(ref_id)
                             .map(|ptr| Self::from(ptr))
-                            .ok_or_else(|| $crate::error::Error::msg(
-                                format!("{}<dyn {}> reference {} not found", stringify!($pointer_type), stringify!($trait_name), ref_id)
+                            .ok_or_else(|| $crate::error::Error::InvalidData(
+                                format!("{}<dyn {}> reference {} not found", stringify!($pointer_type), stringify!($trait_name), ref_id).into()
                             ))
                     }
                     RefFlag::NotNullValue => {
@@ -449,14 +449,14 @@ macro_rules! impl_smart_pointer_serializer {
                         $(
                             if boxed_any.is::<$impl_type>() {
                                 let concrete = boxed_any.downcast::<$impl_type>()
-                                    .map_err(|_| $crate::error::Error::msg("Downcast failed"))?;
+                                    .map_err(|_| $crate::error::Error::TypeError("Downcast failed".into()))?;
                                 let ptr = $constructor_expr(*concrete) as $pointer_type;
                                 return Ok(Self::from(ptr));
                             }
                         )*
 
-                        Err($crate::error::Error::msg(
-                            format!("Deserialized type does not implement trait {}", stringify!($trait_name))
+                        Err($crate::error::Error::TypeError(
+                            format!("Deserialized type does not implement trait {}", stringify!($trait_name)).into()
                         ))
                     }
                     RefFlag::RefValue => {
@@ -469,15 +469,15 @@ macro_rules! impl_smart_pointer_serializer {
                         $(
                             if boxed_any.is::<$impl_type>() {
                                 let concrete = boxed_any.downcast::<$impl_type>()
-                                    .map_err(|_| $crate::error::Error::msg("Downcast failed"))?;
+                                    .map_err(|_| $crate::error::Error::TypeError("Downcast failed".into()))?;
                                 let ptr = $constructor_expr(*concrete) as $pointer_type;
                                 context.ref_reader.$store_ref(ptr.clone());
                                 return Ok(Self::from(ptr));
                             }
                         )*
 
-                        Err($crate::error::Error::msg(
-                            format!("Deserialized type does not implement trait {}", stringify!($trait_name))
+                        Err($crate::error::Error::TypeError(
+                            format!("Deserialized type does not implement trait {}", stringify!($trait_name)).into()
                         ))
                     }
                 }
@@ -515,7 +515,7 @@ macro_rules! impl_smart_pointer_serializer {
                 let concrete_type_id = any_obj.type_id();
                 fory.get_type_resolver()
                     .get_fory_type_id(concrete_type_id)
-                    .ok_or_else(|| $crate::error::Error::msg("Type not registered for trait object"))
+                    .ok_or_else(|| $crate::error::Error::TypeError("Type not registered for trait object".into()))
             }
 
             fn fory_concrete_type_id(&self) -> std::any::TypeId {
@@ -612,25 +612,25 @@ impl Serializer for Box<dyn Serializer> {
             context.dec_depth();
             match fory_type_id {
                 id if id == TypeId::LIST as u32 => {
-                    Err(Error::msg(format!(
+                    Err(Error::TypeError(format!(
                         "Cannot deserialize LIST type ID {fory_type_id} as Box<dyn Serializer> without knowing concrete type. \
                         Use concrete type instead (e.g., Vec<String>)"
-                    )))
+                    ).into()))
                 }
                 id if id == TypeId::MAP as u32 => {
-                    Err(Error::msg(format!(
+                    Err(Error::TypeError(format!(
                         "Cannot deserialize MAP type ID {fory_type_id} as Box<dyn Serializer> without knowing concrete type. \
                         Use concrete type instead (e.g., HashMap<String, i32>)"
-                    )))
+                    ).into()))
                 }
                 id if id == TypeId::SET as u32 => {
-                    Err(Error::msg(format!(
+                    Err(Error::TypeError(format!(
                         "Cannot deserialize SET type ID {fory_type_id} as Box<dyn Serializer> without knowing concrete type. \
                         Use concrete type instead (e.g., HashSet<i32>)"
-                    )))
+                    ).into()))
                 }
                 _ => {
-                    Err(Error::msg(format!("Type ID {fory_type_id} not registered")))
+                    Err(Error::TypeError(format!("Type ID {fory_type_id} not registered").into()))
                 }
             }
         }

@@ -101,7 +101,9 @@ impl Row<'_> for NaiveDate {
         let days = LittleEndian::read_u32(bytes);
         EPOCH
             .checked_add_days(Days::new(days.into()))
-            .ok_or(Error::msg("Date out of range, {days} days since epoch"))
+            .ok_or(Error::InvalidData(
+                format!("Date out of range, {days} days since epoch").into(),
+            ))
     }
 }
 
@@ -117,7 +119,9 @@ impl Row<'_> for NaiveDateTime {
         let timestamp = LittleEndian::read_u64(bytes);
         DateTime::from_timestamp_millis(timestamp as i64)
             .map(|dt| dt.naive_utc())
-            .ok_or(Error::msg("Date out of range, timestamp:{timestamp}"))
+            .ok_or(Error::InvalidData(
+                format!("Date out of range, timestamp:{timestamp}").into(),
+            ))
     }
 }
 

@@ -303,7 +303,7 @@ pub trait Serializer: 'static {
             .and_then(|b: Box<dyn Any>| {
                 b.downcast::<Self>()
                     .map(|boxed_self| *boxed_self)
-                    .map_err(|_| Error::msg("downcast to Self failed"))
+                    .map_err(|_| Error::TypeError("downcast to Self failed".into()))
             })
         } else {
             let (namespace, type_name) = if fory.is_share_meta() {
@@ -324,7 +324,7 @@ pub trait Serializer: 'static {
             .and_then(|b: Box<dyn Any>| {
                 b.downcast::<Self>()
                     .map(|boxed_self| *boxed_self)
-                    .map_err(|_| Error::msg("downcast to Self failed"))
+                    .map_err(|_| Error::TypeError("downcast to Self failed".into()))
             })
         }
     }

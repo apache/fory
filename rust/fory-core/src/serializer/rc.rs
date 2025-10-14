@@ -65,13 +65,12 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
     fn fory_read(fory: &Fory, context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
         match ref_flag {
-            RefFlag::Null => Err(Error::msg("Rc cannot be null")),
+            RefFlag::Null => Err(Error::InvalidRef("Rc cannot be null".into())),
             RefFlag::Ref => {
                 let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
-                context
-                    .ref_reader
-                    .get_rc_ref::<T>(ref_id)
-                    .ok_or_else(|| Error::msg(format!("Rc reference {ref_id} not found")))
+                context.ref_reader.get_rc_ref::<T>(ref_id).ok_or_else(|| {
+                    Error::InvalidRef(format!("Rc reference {ref_id} not found").into())
+                })
             }
             RefFlag::NotNullValue => {
                 let inner = T::fory_read_data(fory, context, is_field)?;

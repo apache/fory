@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::bail;
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
 use crate::types::RefFlag;
@@ -297,7 +296,9 @@ impl RefReader {
             -2 => RefFlag::Ref,
             -1 => RefFlag::NotNullValue,
             0 => RefFlag::RefValue,
-            _ => bail!("Invalid reference flag: {}", flag_value),
+            _ => Err(Error::InvalidRef(
+                format!("Invalid reference flag: {}", flag_value).into(),
+            ))?,
         })
     }
 

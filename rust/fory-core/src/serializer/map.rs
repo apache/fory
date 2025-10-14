@@ -227,9 +227,9 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
             let cur_len = len_counter + chunk_size as u32;
             ensure!(
                 cur_len <= len,
-                "current length {} exceeds total length {}",
-                cur_len,
-                len
+                Error::InvalidData(
+                    format!("current length {} exceeds total length {}", cur_len, len).into()
+                )
             );
             assert!(len_counter + chunk_size as u32 <= len);
             for _ in 0..chunk_size {

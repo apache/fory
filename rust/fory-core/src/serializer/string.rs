@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::bail;
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::get_latin1_length;
@@ -72,7 +71,11 @@ impl Serializer for String {
             0 => StrEncoding::Latin1,
             1 => StrEncoding::Utf16,
             2 => StrEncoding::Utf8,
-            _ => bail!("wrong encoding value: {}", encoding),
+            _ => {
+                return Err(Error::EncodingError(
+                    format!("wrong encoding value: {}", encoding).into(),
+                ))
+            }
         };
         let s = match encoding {
             StrEncoding::Latin1 => context.reader.read_latin1_string(len as usize),

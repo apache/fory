@@ -15,11 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::types::TypeId;
-use crate::{bail, ensure};
 
 pub fn fory_write_data<T>(this: &[T], context: &mut WriteContext) -> Result<(), Error> {
     let len_bytes = std::mem::size_of_val(this);
@@ -51,7 +51,7 @@ pub fn fory_write_type_info(
 pub fn fory_read_data<T>(context: &mut ReadContext) -> Result<Vec<T>, Error> {
     let size_bytes = context.reader.read_varuint32()? as usize;
     if size_bytes % std::mem::size_of::<T>() != 0 {
-        bail!("Invalid data length");
+        return Err(Error::InvalidData("Invalid data length".into()));
     }
     let len = size_bytes / std::mem::size_of::<T>();
     let mut vec: Vec<T> = Vec::with_capacity(len);
@@ -74,7 +74,12 @@ pub fn fory_read_type_info(
     }
     let remote_type_id = context.reader.read_varuint32()?;
     if remote_type_id == TypeId::LIST as u32 {
-        bail!("Vec<number> belongs to the `number_array` type, and Vec<Option<number>> belongs to the `list` type. You should not read data of type `list` as data of type `number_array`");
+        return Err(Error::TypeError(
+            "Vec<number> belongs to the `number_array` type, \
+                and Vec<Option<number>> belongs to the `list` type. \
+                You should not read data of type `list` as data of type `number_array`."
+                .into(),
+        ));
     }
     let local_type_id = type_id as u32;
     ensure!(

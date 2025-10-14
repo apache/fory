@@ -110,14 +110,14 @@ fn gen_read_field(field: &Field, private_ident: &Ident) -> TokenStream {
             quote! {
                 let ref_flag = context.reader.read_i8()?;
                 if ref_flag != fory_core::types::RefFlag::NotNullValue as i8 {
-                    bail!("Expected NotNullValue for trait object field");
+                    return Err(Error::InvalidRef("Expected NotNullValue for trait object field".into()));
                 }
 
                 let fory_type_id = context.reader.read_varuint32()?;
 
                 let harness = fory.get_type_resolver()
                     .get_harness(fory_type_id)
-                    .ok_or_else(|| Error::msg("Type not registered for trait object field"))?;
+                    .ok_or_else(|| Error::TypeError("Type not registered for trait object field".into()))?;
 
                 let deserializer_fn = harness.get_read_fn();
                 let any_box = deserializer_fn(fory, context, true, false)?;
@@ -256,12 +256,12 @@ fn gen_read_compatible_match_arm_body(field: &Field, var_name: &Ident) -> TokenS
             quote! {
                 let ref_flag = context.reader.read_i8()?;
                 if ref_flag != fory_core::types::RefFlag::NotNullValue as i8 {
-                    bail!("Expected NotNullValue for trait object field");
+                    return Err(Error::InvalidRef("Expected NotNullValue for trait object field".into()));
                 }
                 let fory_type_id = context.reader.read_varuint32()?;
                 let harness = fory.get_type_resolver()
                     .get_harness(fory_type_id)
-                    .ok_or_else(|| Error::msg("Type not registered for trait object field"))?;
+                    .ok_or_else(|| Error::TypeError("Type not registered for trait object field".into()))?;
                 let deserializer_fn = harness.get_read_fn();
                 let any_box = deserializer_fn(fory, context, true, false)?;
                 let base_type_id = fory_type_id >> 8;
@@ -399,12 +399,11 @@ pub fn gen_read(struct_ident: &Ident) -> TokenStream {
             }
         } else if ref_flag == (fory_core::types::RefFlag::Null as i8) {
             Ok(<Self as fory_core::serializer::ForyDefault>::fory_default())
-            // Err(fory_core::error::Error::msg("Try to read non-option type to null"))?
         } else if ref_flag == (fory_core::types::RefFlag::Ref as i8) {
             // Err(fory_core::error::Error::Ref)
             todo!()
         } else {
-            Err(fory_core::error::Error::msg(format!("Unknown ref flag, value:{ref_flag}")))
+            Err(fory_core::error::Error::InvalidRef(format!("Unknown ref flag, value:{ref_flag}").into()))
         }
     }
 }

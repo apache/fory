@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::ensure;
 use crate::error::Error;
 use crate::meta::buffer_rw_string::{
     read_latin1_simd, read_utf16_simd, read_utf8_simd, write_latin1_simd, write_utf16_simd,
@@ -396,7 +395,7 @@ impl Reader {
     fn check_bound(&self, n: usize) -> Result<(), Error> {
         // The upper layer guarantees it is non-null
         // if self.bf.is_null() {
-        //     return Err(Error::msg("buffer pointer is null"));
+        //     return Err(Error::InvalidData("buffer pointer is null".into()));
         // }
         if self.cursor + n > self.len {
             Err(Error::BufferOutOfBound(self.cursor, n, self.len))
@@ -674,7 +673,7 @@ impl Reader {
             }
             shift += 7;
             if shift >= 36 {
-                return Err(Error::msg("varuint36small overflow"));
+                return Err(Error::EncodeError("varuint36small overflow".into()));
             }
         }
         Ok(result)
@@ -713,9 +712,11 @@ impl Reader {
     }
 
     #[inline(always)]
-    pub fn aligned<T>(&self) -> Result<bool, Error> {
-        ensure!(!self.bf.is_null(), "buffer pointer is null");
-        Ok(unsafe { (self.bf.add(self.cursor) as usize) % align_of::<T>() == 0 })
+    pub fn aligned<T>(&self) -> bool {
+        if self.bf.is_null() {
+            return false;
+        }
+        unsafe { (self.bf.add(self.cursor) as usize) % align_of::<T>() == 0 }
     }
 }
 

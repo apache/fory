@@ -72,7 +72,7 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
            #(
                #variant_values => Ok(Self::#variant_idents),
            )*
-           _ => fory_core::bail!("unknown enum value"),
+           _ => return Err(fory_core::error::Error::UnknownEnum("unknown enum value".into())),
         }
     }
 }

@@ -110,7 +110,7 @@ fn gen_write_field(field: &Field) -> TokenStream {
                     let concrete_type_id = any_ref.type_id();
                     let fory_type_id = fory.get_type_resolver()
                         .get_fory_type_id(concrete_type_id)
-                        .ok_or_else(|| fory_core::error::Error::msg("Type not registered for trait object field"))?;
+                        .ok_or_else(|| fory_core::error::Error::TypeError("Type not registered for trait object field".into()))?;
 
                     context.writer.write_i8(fory_core::types::RefFlag::NotNullValue as i8)?;
                     context.writer.write_varuint32(fory_type_id);
@@ -118,7 +118,7 @@ fn gen_write_field(field: &Field) -> TokenStream {
                     let harness = fory
                         .get_type_resolver()
                         .get_harness(fory_type_id)
-                        .ok_or_else(|| fory_core::error::Error::msg("Harness not found for trait object field"))?;
+                        .ok_or_else(|| fory_core::error::Error::TypeError("Harness not found for trait object field".into()))?;
 
                     let serializer_fn = harness.get_write_fn();
                     serializer_fn(any_ref, fory, context, true)?;

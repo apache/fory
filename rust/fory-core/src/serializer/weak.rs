@@ -381,10 +381,9 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
                     Ok(result_weak)
                 }
             }
-            _ => Err(Error::msg(format!(
-                "Weak can only be Null, RefValue or Ref, got {:?}",
-                ref_flag
-            ))),
+            _ => Err(Error::InvalidRef(
+                format!("Weak can only be Null, RefValue or Ref, got {:?}", ref_flag).into(),
+            )),
         }
     }
 
@@ -511,10 +510,9 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
                 }
                 Ok(weak)
             }
-            _ => Err(Error::msg(format!(
-                "Weak can only be Null, RefValue or Ref, got {:?}",
-                ref_flag
-            ))),
+            _ => Err(Error::InvalidRef(
+                format!("Weak can only be Null, RefValue or Ref, got {:?}", ref_flag).into(),
+            )),
         }
     }
     fn fory_read_data(

@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::bail;
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
@@ -67,13 +66,15 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
         Ok(match ref_flag {
-            RefFlag::Null => bail!("Arc cannot be null"),
+            RefFlag::Null => Err(Error::InvalidRef("Arc cannot be null".into()))?,
             RefFlag::Ref => {
                 let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
                 context
                     .ref_reader
                     .get_arc_ref::<T>(ref_id)
-                    .ok_or(Error::msg(format!("Arc reference {ref_id} not found")))?
+                    .ok_or(Error::InvalidData(
+                        format!("Arc reference {ref_id} not found").into(),
+                    ))?
             }
             RefFlag::NotNullValue => {
                 let inner = T::fory_read_data(fory, context, is_field)?;

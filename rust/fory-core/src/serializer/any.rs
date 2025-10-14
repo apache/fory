@@ -44,7 +44,9 @@ pub fn deserialize_any_box(fory: &Fory, context: &mut ReadContext) -> Result<Box
     context.inc_depth()?;
     let ref_flag = context.reader.read_i8()?;
     if ref_flag != RefFlag::NotNullValue as i8 {
-        return Err(Error::msg("Expected NotNullValue for Box<dyn Any>"));
+        return Err(Error::InvalidRef(
+            "Expected NotNullValue for Box<dyn Any>".into(),
+        ));
     }
     let harness = context.read_any_typeinfo(fory)?;
     let deserializer_fn = harness.get_read_data_fn();
@@ -98,7 +100,7 @@ impl Serializer for Box<dyn Any> {
         let concrete_type_id = (**self).type_id();
         fory.get_type_resolver()
             .get_fory_type_id(concrete_type_id)
-            .ok_or_else(|| Error::msg("Type not registered"))
+            .ok_or_else(|| Error::TypeError("Type not registered".into()))
     }
 
     fn fory_is_polymorphic() -> bool {
@@ -166,14 +168,16 @@ impl Serializer for Rc<dyn Any> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
         match ref_flag {
-            RefFlag::Null => Err(Error::msg("Rc<dyn Any> cannot be null")),
+            RefFlag::Null => Err(Error::InvalidRef("Rc<dyn Any> cannot be null".into())),
             RefFlag::Ref => {
                 let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
                 context
                     .ref_reader
                     .get_rc_ref::<dyn Any>(ref_id)
                     .ok_or_else(|| {
-                        Error::msg(format!("Rc<dyn Any> reference {} not found", ref_id))
+                        Error::InvalidData(
+                            format!("Rc<dyn Any> reference {} not found", ref_id).into(),
+                        )
                     })
             }
             RefFlag::NotNullValue => {
@@ -213,7 +217,7 @@ impl Serializer for Rc<dyn Any> {
         let concrete_type_id = (**self).type_id();
         fory.get_type_resolver()
             .get_fory_type_id(concrete_type_id)
-            .ok_or_else(|| Error::msg("Type not registered"))
+            .ok_or_else(|| Error::TypeError("Type not registered".into()))
     }
 
     fn fory_is_polymorphic() -> bool {
@@ -281,14 +285,16 @@ impl Serializer for Arc<dyn Any> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
         match ref_flag {
-            RefFlag::Null => Err(Error::msg("Arc<dyn Any> cannot be null")),
+            RefFlag::Null => Err(Error::InvalidRef("Arc<dyn Any> cannot be null".into())),
             RefFlag::Ref => {
                 let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
                 context
                     .ref_reader
                     .get_arc_ref::<dyn Any>(ref_id)
                     .ok_or_else(|| {
-                        Error::msg(format!("Arc<dyn Any> reference {} not found", ref_id))
+                        Error::InvalidData(
+                            format!("Arc<dyn Any> reference {} not found", ref_id).into(),
+                        )
                     })
             }
             RefFlag::NotNullValue => {
@@ -328,7 +334,7 @@ impl Serializer for Arc<dyn Any> {
         let concrete_type_id = (**self).type_id();
         fory.get_type_resolver()
             .get_fory_type_id(concrete_type_id)
-            .ok_or_else(|| Error::msg("Type not registered"))
+            .ok_or_else(|| Error::TypeError("Type not registered".into()))
     }
 
     fn fory_is_polymorphic() -> bool {
