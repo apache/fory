@@ -437,9 +437,7 @@ pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
         };
         #(#declare_ts)*
 
-        let local_type_def = fory.get_type_resolver().get_type_info(std::any::TypeId::of::<Self>()).get_type_def();
-        let high_bytes = &local_type_def[..8];
-        let local_type_hash = i64::from_le_bytes(high_bytes.try_into().unwrap());
+        let local_type_hash = fory.get_type_resolver().get_type_info(std::any::TypeId::of::<Self>()).get_type_meta().get_hash();
         if meta.get_hash() == local_type_hash {
             <Self as fory_core::serializer::Serializer>::fory_read_data(fory, context, false)
         } else {
