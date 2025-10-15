@@ -431,6 +431,7 @@ public class ClassResolver extends TypeResolver {
     registeredId2ClassInfo[id] = classInfo;
     extRegistry.registeredClasses.put(cls.getName(), cls);
     extRegistry.classIdGenerator++;
+    TypeResolver.registerClassForGraalvm(cls, fory.getConfig().getConfigHash());
   }
 
   public void register(String className, int classId) {
@@ -476,6 +477,7 @@ public class ClassResolver extends TypeResolver {
     compositeNameBytes2ClassInfo.put(
         new TypeNameBytes(nsBytes.hashCode, nameBytes.hashCode), classInfo);
     extRegistry.registeredClasses.put(fullname, cls);
+    TypeResolver.registerClassForGraalvm(cls, fory.getConfig().getConfigHash());
   }
 
   private void checkRegistration(Class<?> cls, short classId, String name) {
