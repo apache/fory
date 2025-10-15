@@ -121,8 +121,10 @@ _UNKNOWN_TYPE_ID = -1
 _time_types = {datetime.date, datetime.datetime, datetime.timedelta}
 
 
-def _sort_fields(type_resolver, field_names, serializers):
+def _sort_fields(type_resolver, field_names, serializers, nullable_map=None):
+    nullable_map = nullable_map or {}
     boxed_types = []
+    nullable_boxed_types = []
     collection_types = []
     set_types = []
     map_types = []
@@ -141,8 +143,9 @@ def _sort_fields(type_resolver, field_names, serializers):
                 )
             )
     for type_id, serializer, field_name in type_ids:
+        is_nullable = nullable_map.get(field_name, False)
         if is_primitive_type(type_id):
-            container = boxed_types
+            container = nullable_boxed_types if is_nullable else boxed_types
         elif type_id == TypeId.SET:
             container = set_types
         elif is_list_type(serializer.type_):
@@ -174,11 +177,12 @@ def _sort_fields(type_resolver, field_names, serializers):
         return int(compress), -get_primitive_type_size(id_), item[2]
 
     boxed_types = sorted(boxed_types, key=numeric_sorter)
+    nullable_boxed_types = sorted(nullable_boxed_types, key=numeric_sorter)
     collection_types = sorted(collection_types, key=sorter)
     internal_types = sorted(internal_types, key=sorter)
     map_types = sorted(map_types, key=sorter)
     other_types = sorted(other_types, key=lambda item: item[2])
-    all_types = boxed_types + internal_types + collection_types + set_types + map_types + other_types
+    all_types = boxed_types + nullable_boxed_types + internal_types + collection_types + set_types + map_types + other_types
     return [t[2] for t in all_types], [t[1] for t in all_types]
 
 

@@ -420,7 +420,29 @@ def infer_field_types(type_):
     from pyfory._struct import StructTypeVisitor
 
     visitor = StructTypeVisitor(type_)
-    return {name: infer_field(name, type_, visitor) for name, type_ in sorted(type_hints.items())}
+    result = {}
+    for name, hint in sorted(type_hints.items()):
+        unwrapped, _ = unwrap_optional(hint)
+        result[name] = infer_field(name, unwrapped, visitor)
+    return result
+
+
+def is_optional_type(type_):
+    origin = typing.get_origin(type_) if hasattr(typing, "get_origin") else getattr(type_, "__origin__", None)
+    if origin is typing.Union:
+        args = typing.get_args(type_) if hasattr(typing, "get_args") else getattr(type_, "__args__", ())
+        return type(None) in args
+    return False
+
+
+def unwrap_optional(type_):
+    if not is_optional_type(type_):
+        return type_, False
+    args = typing.get_args(type_) if hasattr(typing, "get_args") else getattr(type_, "__args__", ())
+    non_none_types = [arg for arg in args if arg is not type(None)]
+    if len(non_none_types) == 1:
+        return non_none_types[0], True
+    return typing.Union[tuple(non_none_types)], True
 
 
 def infer_field(field_name, type_, visitor: TypeVisitor, types_path=None):

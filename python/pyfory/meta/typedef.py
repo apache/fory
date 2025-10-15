@@ -18,7 +18,7 @@
 import enum
 import typing
 from typing import List
-from pyfory.type import TypeId
+from pyfory.type import TypeId, is_primitive_type
 from pyfory._util import Buffer
 from pyfory.type import infer_field, is_polymorphic_type
 from pyfory.meta.metastring import Encoding
@@ -28,7 +28,8 @@ from pyfory.type import infer_field_types
 # Constants from the specification
 SMALL_NUM_FIELDS_THRESHOLD = 0b11111
 REGISTER_BY_NAME_FLAG = 0b100000
-FIELD_NAME_SIZE_THRESHOLD = 0b1111
+FIELD_NAME_SIZE_THRESHOLD = 0b1111  # 4-bit threshold for field names
+BIG_NAME_THRESHOLD = 0b111111  # 6-bit threshold for namespace/typename
 COMPRESS_META_FLAG = 0b1 << 13
 HAS_FIELDS_META_FLAG = 0b1 << 12
 META_SIZE_MASKS = 0xFFF
@@ -69,8 +70,14 @@ class TypeDef:
         from pyfory.serializer import DataClassSerializer
 
         fory = resolver.fory
+        nullable_fields = {f.name: f.field_type.is_nullable for f in self.fields}
         return DataClassSerializer(
-            fory, self.cls, xlang=not fory.is_py, field_names=self.get_field_names(), serializers=self.create_fields_serializer(resolver)
+            fory,
+            self.cls,
+            xlang=not fory.is_py,
+            field_names=self.get_field_names(),
+            serializers=self.create_fields_serializer(resolver),
+            nullable_fields=nullable_fields,
         )
 
     def __repr__(self):
@@ -180,7 +187,7 @@ class CollectionFieldType(FieldType):
     def create_serializer(self, resolver, type_):
         from pyfory.serializer import ListSerializer, SetSerializer
 
-        elem_type = type_[1] if len(type_) >= 2 else None
+        elem_type = type_[1] if type_ and len(type_) >= 2 else None
         elem_serializer = self.element_type.create_serializer(resolver, elem_type)
         if self.type_id == TypeId.LIST:
             return ListSerializer(resolver.fory, list, elem_serializer)
@@ -206,9 +213,9 @@ class MapFieldType(FieldType):
 
     def create_serializer(self, resolver, type_):
         key_type, value_type = None, None
-        if len(type_) >= 2:
+        if type_ and len(type_) >= 2:
             key_type = type_[1]
-        if len(type_) >= 3:
+        if type_ and len(type_) >= 3:
             value_type = type_[2]
         key_serializer = self.key_type.create_serializer(resolver, key_type)
         value_serializer = self.value_type.create_serializer(resolver, value_type)
@@ -237,22 +244,27 @@ class DynamicFieldType(FieldType):
 def build_field_infos(type_resolver, cls):
     """Build field information for the class."""
     from pyfory._struct import _sort_fields, StructTypeIdVisitor, get_field_names
+    from pyfory.type import unwrap_optional
 
     field_names = get_field_names(cls)
     type_hints = typing.get_type_hints(cls)
 
     field_infos = []
+    nullable_map = {}
     visitor = StructTypeIdVisitor(type_resolver.fory, cls)
 
     for field_name in field_names:
         field_type_hint = type_hints.get(field_name, typing.Any)
-        field_type = build_field_type(type_resolver, field_name, field_type_hint, visitor)
+        unwrapped_type, is_nullable = unwrap_optional(field_type_hint)
+        is_nullable = is_nullable or not is_primitive_type(unwrapped_type)
+        nullable_map[field_name] = is_nullable
+        field_type = build_field_type(type_resolver, field_name, unwrapped_type, visitor, is_nullable)
         field_info = FieldInfo(field_name, field_type, cls.__name__)
         field_infos.append(field_info)
     field_types = infer_field_types(cls)
     serializers = [field_info.field_type.create_serializer(type_resolver, field_types.get(field_info.name, None)) for field_info in field_infos]
 
-    field_names, serializers = _sort_fields(type_resolver, field_names, serializers)
+    field_names, serializers = _sort_fields(type_resolver, field_names, serializers, nullable_map)
     field_infos_map = {field_info.name: field_info for field_info in field_infos}
     new_field_infos = []
     for field_name in field_names:
@@ -261,16 +273,16 @@ def build_field_infos(type_resolver, cls):
     return new_field_infos
 
 
-def build_field_type(type_resolver, field_name: str, type_hint, visitor):
+def build_field_type(type_resolver, field_name: str, type_hint, visitor, is_nullable=False):
     """Build field type from type hint."""
     type_ids = infer_field(field_name, type_hint, visitor)
     try:
-        return build_field_type_from_type_ids(type_resolver, field_name, type_ids, visitor)
+        return build_field_type_from_type_ids(type_resolver, field_name, type_ids, visitor, is_nullable)
     except Exception as e:
         raise TypeError(f"Error building field type for field: {field_name} with type hint: {type_hint} in class: {visitor.cls}") from e
 
 
-def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, visitor):
+def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, visitor, is_nullable=False):
     tracking_ref = type_resolver.fory.ref_tracking
     type_id = type_ids[0]
     if type_id is None:
@@ -279,15 +291,15 @@ def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, vis
     type_id = type_id & 0xFF
     morphic = not is_polymorphic_type(type_id)
     if type_id in [TypeId.SET, TypeId.LIST]:
-        elem_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor)
-        return CollectionFieldType(type_id, morphic, True, tracking_ref, elem_type)
+        elem_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor, is_nullable=False)
+        return CollectionFieldType(type_id, morphic, is_nullable, tracking_ref, elem_type)
     elif type_id == TypeId.MAP:
-        key_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor)
-        value_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[2], visitor)
-        return MapFieldType(type_id, morphic, True, tracking_ref, key_type, value_type)
+        key_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor, is_nullable=False)
+        value_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[2], visitor, is_nullable=False)
+        return MapFieldType(type_id, morphic, is_nullable, tracking_ref, key_type, value_type)
     elif type_id in [TypeId.UNKNOWN, TypeId.EXT, TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT]:
-        return DynamicFieldType(type_id, False, True, tracking_ref)
+        return DynamicFieldType(type_id, False, is_nullable, tracking_ref)
     else:
         if type_id <= 0 or type_id >= TypeId.BOUND:
             raise TypeError(f"Unknown type: {type_id} for field: {field_name}")
-        return FieldType(type_id, morphic, True, tracking_ref)
+        return FieldType(type_id, morphic, is_nullable, tracking_ref)
