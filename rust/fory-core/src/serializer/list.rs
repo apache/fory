@@ -27,7 +27,7 @@ use std::collections::{LinkedList, VecDeque};
 use std::mem;
 
 use super::collection::{
-    read_collection, read_collection_type_info, write_collection, write_collection_type_info,
+    read_collection, read_collection_into, read_collection_type_info, write_collection, write_collection_type_info,
 };
 
 fn check_primitive<T: 'static>() -> Option<TypeId> {
@@ -75,6 +75,18 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
         match check_primitive::<T>() {
             Some(_) => primitive_list::fory_read_data(context),
             None => read_collection(fory, context),
+        }
+    }
+
+    fn fory_read_data_into(
+        fory: &Fory,
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        match check_primitive::<T>() {
+            Some(_) => primitive_list::fory_read_data_into(context, output),
+            None => read_collection_into(fory, context, output),
         }
     }
 
@@ -150,6 +162,15 @@ impl<T: Serializer + ForyDefault> Serializer for VecDeque<T> {
         read_collection(fory, context)
     }
 
+    fn fory_read_data_into(
+        fory: &Fory,
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        read_collection_into(fory, context, output)
+    }
+
     fn fory_read_type_info(
         _fory: &Fory,
         context: &mut ReadContext,
@@ -205,6 +226,15 @@ impl<T: Serializer + ForyDefault> Serializer for LinkedList<T> {
         _is_field: bool,
     ) -> Result<Self, Error> {
         read_collection(fory, context)
+    }
+
+    fn fory_read_data_into(
+        fory: &Fory,
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        read_collection_into(fory, context, output)
     }
 
     fn fory_read_type_info(

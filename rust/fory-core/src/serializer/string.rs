@@ -86,6 +86,34 @@ impl Serializer for String {
     }
 
     #[inline]
+    fn fory_read_data_into(
+        _fory: &Fory,
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        let bitor = context.reader.read_varuint36small()?;
+        let len = bitor >> 2;
+        let encoding = bitor & 0b11;
+        let encoding = match encoding {
+            0 => StrEncoding::Latin1,
+            1 => StrEncoding::Utf16,
+            2 => StrEncoding::Utf8,
+            _ => {
+                return Err(Error::EncodingError(
+                    format!("wrong encoding value: {}", encoding).into(),
+                ))
+            }
+        };
+        *output = match encoding {
+            StrEncoding::Latin1 => context.reader.read_latin1_string(len as usize),
+            StrEncoding::Utf16 => context.reader.read_utf16_string(len as usize),
+            StrEncoding::Utf8 => context.reader.read_utf8_string(len as usize),
+        }?;
+        Ok(())
+    }
+
+    #[inline]
     fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }

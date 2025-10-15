@@ -95,12 +95,32 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
         Ok(Mutex::new(T::fory_read(fory, context, is_field)?))
     }
 
+    fn fory_read_into(fory: &Fory, context: &mut ReadContext, is_field: bool, output: &mut Self) -> Result<(), Error> 
+    where
+        Self: Sized + ForyDefault,
+    {
+        let mut inner = output.lock().map_err(|_| Error::InvalidData("Failed to lock Mutex".into()))?;
+        T::fory_read_into(fory, context, is_field, &mut inner)?;
+        Ok(())
+    }
+
     fn fory_read_data(
         fory: &Fory,
         context: &mut ReadContext,
         is_field: bool,
     ) -> Result<Self, Error> {
         Ok(Mutex::new(T::fory_read_data(fory, context, is_field)?))
+    }
+
+    fn fory_read_data_into(
+        fory: &Fory,
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        let mut inner = output.lock().map_err(|_| Error::InvalidData("Failed to lock Mutex".into()))?;
+        T::fory_read_data_into(fory, context, is_field, &mut inner)?;
+        Ok(())
     }
 
     fn fory_read_type_info(

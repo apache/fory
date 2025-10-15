@@ -55,6 +55,22 @@ impl Serializer for NaiveDateTime {
             ))
     }
 
+    fn fory_read_data_into(
+        _fory: &Fory,
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        let micros = context.reader.read_i64()?;
+        let seconds = micros / 1_000_000;
+        let subsec_micros = (micros % 1_000_000) as u32;
+        let nanos = subsec_micros * 1_000;
+        *output = DateTime::from_timestamp(seconds, nanos)
+            .map(|dt| dt.naive_utc())
+            .ok_or(Error::InvalidData(format!("Date out of range, timestamp micros: {micros}").into()))?;
+        Ok(())
+    }
+
     fn fory_reserved_space() -> usize {
         mem::size_of::<u64>()
     }
@@ -111,6 +127,21 @@ impl Serializer for NaiveDate {
             .ok_or(Error::InvalidData(
                 format!("Date out of range, {days} days since epoch").into(),
             ))
+    }
+
+    fn fory_read_data_into(
+        _fory: &Fory,
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        let days = context.reader.read_i32()?;
+        *output = EPOCH
+            .checked_add_days(Days::new(days as u64))
+            .ok_or(Error::InvalidData(
+                format!("Date out of range, {days} days since epoch").into(),
+            ))?;
+        Ok(())
     }
 
     fn fory_reserved_space() -> usize {

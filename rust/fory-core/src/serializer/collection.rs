@@ -160,3 +160,41 @@ where
             .collect::<Result<C, Error>>()
     }
 }
+
+pub fn read_collection_into<C, T>(fory: &Fory, context: &mut ReadContext, output: &mut C) -> Result<(), Error>
+where
+    T: Serializer + ForyDefault,
+    C: FromIterator<T> + Default + Extend<T>,
+{
+    let len = context.reader.read_varuint32()?;
+    *output = C::default();
+    if len == 0 {
+        return Ok(());
+    }
+    let header = context.reader.read_u8()?;
+    let declared = (header & DECL_ELEMENT_TYPE) != 0;
+    T::fory_read_type_info(fory, context, declared)?;
+    let has_null = (header & HAS_NULL) != 0;
+    let is_same_type = (header & IS_SAME_TYPE) != 0;
+    if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
+        (0..len)
+            .map(|_| {
+                let mut element = T::fory_default();
+                T::fory_read_into(fory, context, declared, &mut element)?;
+                output.extend(std::iter::once(element));
+                Ok(())
+            })
+            .collect::<Result<(), Error>>()
+    } else {
+        let skip_ref_flag = is_same_type && !has_null;
+        // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
+        (0..len)
+            .map(|_| {
+                let mut element = T::fory_default();
+                crate::serializer::read_ref_info_data_into(fory, context, declared, skip_ref_flag, true, &mut element)?;
+                output.extend(std::iter::once(element));
+                Ok(())
+            })
+            .collect::<Result<(), Error>>()
+    }
+}

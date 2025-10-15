@@ -395,6 +395,18 @@ impl Fory {
         result
     }
 
+    pub fn deserialize_into<T: Serializer + ForyDefault>(&self, bf: &[u8], output: &mut T) -> Result<(), Error> {
+        let mut context = self.read_context_pool.get();
+        context.init(bf, self.max_dyn_depth);
+        let result = self.deserialize_into_with_context(&mut context, output);
+        if result.is_ok() {
+            assert_eq!(context.reader.slice_after_cursor().len(), 0);
+        }
+        context.reset();
+        self.read_context_pool.put(context);
+        result
+    }
+
     pub fn deserialize_with_context<T: Serializer + ForyDefault>(
         &self,
         context: &mut ReadContext,
@@ -417,6 +429,32 @@ impl Fory {
         }
         context.ref_reader.resolve_callbacks();
         result
+    }
+
+    pub fn deserialize_into_with_context<T: Serializer + ForyDefault>(
+        &self,
+        context: &mut ReadContext,
+        output: &mut T,
+    ) -> Result<(), Error> {
+        let is_none = self.read_head(&mut context.reader)?;
+        if is_none {
+            *output = T::fory_default();
+            return Ok(());
+        }
+        let mut bytes_to_skip = 0;
+        if self.compatible {
+            let meta_offset = context.reader.read_i32()?;
+            if meta_offset != -1 {
+                bytes_to_skip =
+                    context.load_meta(self.get_type_resolver(), meta_offset as usize)?;
+            }
+        }
+        <T as Serializer>::fory_read_into(self, context, false, output)?;
+        if bytes_to_skip > 0 {
+            context.reader.skip(bytes_to_skip)?;
+        }
+        context.ref_reader.resolve_callbacks();
+        Ok(())
     }
 
     /// Serializes a value of type `T` into a byte vector.

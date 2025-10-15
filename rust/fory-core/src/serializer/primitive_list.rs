@@ -64,6 +64,23 @@ pub fn fory_read_data<T>(context: &mut ReadContext) -> Result<Vec<T>, Error> {
     Ok(vec)
 }
 
+pub fn fory_read_data_into<T>(context: &mut ReadContext, output: &mut Vec<T>) -> Result<(), Error> {
+    let size_bytes = context.reader.read_varuint32()? as usize;
+    if size_bytes % std::mem::size_of::<T>() != 0 {
+        return Err(Error::InvalidData("Invalid data length".into()));
+    }
+    let len = size_bytes / std::mem::size_of::<T>();
+    output.clear();
+    output.reserve(len);
+    unsafe {
+        let dst_ptr = output.as_mut_ptr() as *mut u8;
+        let src = context.reader.read_bytes(size_bytes)?;
+        std::ptr::copy_nonoverlapping(src.as_ptr(), dst_ptr, size_bytes);
+        output.set_len(len);
+    }
+    Ok(())
+}
+
 pub fn fory_read_type_info(
     context: &mut ReadContext,
     is_field: bool,
