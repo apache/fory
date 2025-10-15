@@ -539,4 +539,25 @@ public class ClassResolverTest extends ForyTestBase {
         fory.getClassResolver().getSerializer(abs2Test.getClass()).getClass(),
         AbstractCustomSerializer.class);
   }
+
+  static class GraalvmRegistrationBean {
+    int value;
+  }
+
+  @Test
+  public void testEnsureSerializersCompiledRegistersClassesForGraalvm() {
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
+    Assert.assertFalse(
+        TypeResolver.getAllRegisteredClasses().contains(GraalvmRegistrationBean.class));
+
+    fory.register(GraalvmRegistrationBean.class);
+
+    Assert.assertFalse(
+        TypeResolver.getAllRegisteredClasses().contains(GraalvmRegistrationBean.class));
+
+    fory.ensureSerializersCompiled();
+
+    Assert.assertTrue(
+        TypeResolver.getAllRegisteredClasses().contains(GraalvmRegistrationBean.class));
+  }
 }

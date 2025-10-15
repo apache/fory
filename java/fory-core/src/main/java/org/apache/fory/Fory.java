@@ -177,13 +177,11 @@ public final class Fory implements BaseFory {
   @Override
   public void register(Class<?> cls) {
     _getTypeResolver().register(cls);
-    TypeResolver.registerClassForGraalvm(cls, config.getConfigHash());
   }
 
   @Override
   public void register(Class<?> cls, int id) {
     _getTypeResolver().register(cls, id);
-    TypeResolver.registerClassForGraalvm(cls, config.getConfigHash());
   }
 
   @Deprecated
@@ -215,7 +213,6 @@ public final class Fory implements BaseFory {
 
   public void register(Class<?> cls, String namespace, String typeName) {
     _getTypeResolver().register(cls, namespace, typeName);
-    TypeResolver.registerClassForGraalvm(cls, config.getConfigHash());
   }
 
   @Override
