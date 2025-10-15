@@ -16,51 +16,34 @@
 // under the License.
 
 use crate::error::Error;
-use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
+use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::{ForyDefault, Serializer};
 
 impl<T: Serializer + ForyDefault> Serializer for Option<T> {
     #[inline(always)]
-    fn fory_read_data(
-        fory: &Fory,
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<Self, Error> {
-        Ok(Some(T::fory_read_data(fory, context, is_field)?))
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        Ok(Some(T::fory_read_data(context, is_field)?))
     }
 
     #[inline(always)]
-    fn fory_read_type_info(
-        fory: &Fory,
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
-        T::fory_read_type_info(fory, context, is_field)
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
+        T::fory_read_type_info(context, is_field)
     }
 
     #[inline(always)]
-    fn fory_write_data(
-        &self,
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
         if let Some(v) = self {
-            T::fory_write_data(v, fory, context, is_field)
+            T::fory_write_data(v, context, is_field)
         } else {
             unreachable!("write should be call by serialize")
         }
     }
 
     #[inline(always)]
-    fn fory_write_type_info(
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
-        T::fory_write_type_info(fory, context, is_field)
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
+        T::fory_write_type_info(context, is_field)
     }
 
     #[inline(always)]
@@ -69,15 +52,15 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(fory: &Fory) -> Result<u32, Error> {
-        T::fory_get_type_id(fory)
+    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error> {
+        T::fory_get_type_id(type_resolver)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
         match self {
-            Some(val) => val.fory_type_id_dyn(fory),
-            None => T::fory_get_type_id(fory),
+            Some(val) => val.fory_type_id_dyn(type_resolver),
+            None => T::fory_get_type_id(type_resolver),
         }
     }
 

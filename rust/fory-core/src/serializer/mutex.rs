@@ -42,8 +42,8 @@
 //! - A poisoned mutex (from a panicked holder) will cause `.lock().unwrap()` to panic
 //!   during serialization — it is assumed this is a programmer error.
 use crate::error::Error;
-use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
+use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::{ForyDefault, Serializer};
 use std::sync::Mutex;
 
@@ -52,35 +52,21 @@ use std::sync::Mutex;
 /// Simply delegates to the serializer for `T`, allowing thread-safe interior mutable
 /// containers to be included in serialized graphs.
 impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
-    fn fory_write(
-        &self,
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
         // Don't add ref tracking for Mutex itself, just delegate to inner type
         // The inner type will handle its own ref tracking
         let guard = self.lock().unwrap();
-        T::fory_write(&*guard, fory, context, is_field)
+        T::fory_write(&*guard, context, is_field)
     }
 
-    fn fory_write_data(
-        &self,
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
         // When called from Rc/Arc, just delegate to inner type's data serialization
         let guard = self.lock().unwrap();
-        T::fory_write_data(&*guard, fory, context, is_field)
+        T::fory_write_data(&*guard, context, is_field)
     }
 
-    fn fory_write_type_info(
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
-        T::fory_write_type_info(fory, context, is_field)
+    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
+        T::fory_write_type_info(context, is_field)
     }
 
     fn fory_reserved_space() -> usize {
@@ -88,36 +74,28 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
         T::fory_reserved_space()
     }
 
-    fn fory_read(fory: &Fory, context: &mut ReadContext, is_field: bool) -> Result<Self, Error>
+    fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
     {
-        Ok(Mutex::new(T::fory_read(fory, context, is_field)?))
+        Ok(Mutex::new(T::fory_read(context, is_field)?))
     }
 
-    fn fory_read_data(
-        fory: &Fory,
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<Self, Error> {
-        Ok(Mutex::new(T::fory_read_data(fory, context, is_field)?))
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        Ok(Mutex::new(T::fory_read_data(context, is_field)?))
     }
 
-    fn fory_read_type_info(
-        fory: &Fory,
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
-        T::fory_read_type_info(fory, context, is_field)
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
+        T::fory_read_type_info(context, is_field)
     }
 
-    fn fory_get_type_id(fory: &Fory) -> Result<u32, Error> {
-        T::fory_get_type_id(fory)
+    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error> {
+        T::fory_get_type_id(type_resolver)
     }
 
-    fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
         let guard = self.lock().unwrap();
-        (*guard).fory_type_id_dyn(fory)
+        (*guard).fory_type_id_dyn(type_resolver)
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

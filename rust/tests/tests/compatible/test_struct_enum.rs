@@ -21,6 +21,7 @@ use fory_core::error::Error;
 use fory_core::fory::{read_data, write_data, Fory};
 use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::serializer::{ForyDefault, Serializer};
+use fory_core::TypeResolver;
 use fory_derive::ForyObject;
 use std::collections::{HashMap, HashSet};
 
@@ -91,7 +92,7 @@ fn basic() {
     fory2.register_by_name::<Person>("person").unwrap();
     for fory in [fory1, fory2] {
         let writer = Writer::default();
-        let mut write_context = WriteContext::new(writer);
+        let mut write_context = WriteContext::new_from_fory(writer, &fory);
         let person = Person::default();
         fory.serialize_with_context(&person, &mut write_context)
             .unwrap();
@@ -99,7 +100,7 @@ fn basic() {
             .unwrap();
         let bytes = write_context.writer.dump();
         let reader = Reader::new(bytes.as_slice());
-        let mut read_context = ReadContext::new(reader, 5);
+        let mut read_context = ReadContext::new_from_fory(reader, &fory);
         assert_eq!(
             person,
             fory.deserialize_with_context::<Person>(&mut read_context)
@@ -400,24 +401,22 @@ fn ext() {
     impl Serializer for ExtItem {
         fn fory_write_data(
             &self,
-            fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
         ) -> Result<(), fory_core::error::Error> {
-            write_data(&self.id, fory, context, is_field)
+            write_data(&self.id, context, is_field)
         }
-        fn fory_read_data(
-            fory: &Fory,
-            context: &mut ReadContext,
-            is_field: bool,
-        ) -> Result<Self, Error> {
+        fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
             Ok(Self {
-                id: read_data(fory, context, is_field)?,
+                id: read_data(context, is_field)?,
             })
         }
 
-        fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, fory_core::error::Error> {
-            Self::fory_get_type_id(fory)
+        fn fory_type_id_dyn(
+            &self,
+            type_resolver: &TypeResolver,
+        ) -> Result<u32, fory_core::error::Error> {
+            Self::fory_get_type_id(type_resolver)
         }
 
         fn as_any(&self) -> &dyn std::any::Any {
@@ -457,24 +456,22 @@ fn skip_ext() {
     impl Serializer for ExtItem {
         fn fory_write_data(
             &self,
-            fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
         ) -> Result<(), fory_core::error::Error> {
-            write_data(&self.id, fory, context, is_field)
+            write_data(&self.id, context, is_field)
         }
-        fn fory_read_data(
-            fory: &Fory,
-            context: &mut ReadContext,
-            is_field: bool,
-        ) -> Result<Self, Error> {
+        fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
             Ok(Self {
-                id: read_data(fory, context, is_field)?,
+                id: read_data(context, is_field)?,
             })
         }
 
-        fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, fory_core::error::Error> {
-            Self::fory_get_type_id(fory)
+        fn fory_type_id_dyn(
+            &self,
+            type_resolver: &TypeResolver,
+        ) -> Result<u32, fory_core::error::Error> {
+            Self::fory_get_type_id(type_resolver)
         }
 
         fn as_any(&self) -> &dyn std::any::Any {
@@ -529,23 +526,21 @@ fn compatible_ext() {
     impl Serializer for ExtItem {
         fn fory_write_data(
             &self,
-            fory: &Fory,
             context: &mut WriteContext,
             is_field: bool,
         ) -> Result<(), fory_core::error::Error> {
-            write_data(&self.id, fory, context, is_field)
+            write_data(&self.id, context, is_field)
         }
-        fn fory_read_data(
-            fory: &Fory,
-            context: &mut ReadContext,
-            is_field: bool,
-        ) -> Result<Self, Error> {
+        fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
             Ok(Self {
-                id: read_data(fory, context, is_field)?,
+                id: read_data(context, is_field)?,
             })
         }
-        fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, fory_core::error::Error> {
-            Self::fory_get_type_id(fory)
+        fn fory_type_id_dyn(
+            &self,
+            type_resolver: &TypeResolver,
+        ) -> Result<u32, fory_core::error::Error> {
+            Self::fory_get_type_id(type_resolver)
         }
 
         fn as_any(&self) -> &dyn std::any::Any {

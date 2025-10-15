@@ -22,6 +22,7 @@ use fory_core::fory::{read_data, write_data, Fory};
 use fory_core::meta::murmurhash3_x64_128;
 use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::serializer::{ForyDefault, Serializer};
+use fory_core::TypeResolver;
 use fory_derive::ForyObject;
 use std::collections::{HashMap, HashSet};
 use std::{fs, vec};
@@ -228,13 +229,13 @@ fn test_string_serializer() {
         .compatible(true)
         .xlang(true)
         .compress_string(false);
-    let mut context = ReadContext::new(reader, 5);
+    let mut context = ReadContext::new_from_fory(reader, &fory);
     let reader_compress = Reader::new(bytes.as_slice());
     let fory_compress = Fory::default()
         .compatible(true)
         .xlang(true)
         .compress_string(true);
-    let mut context_compress = ReadContext::new(reader_compress, 5);
+    let mut context_compress = ReadContext::new_from_fory(reader_compress, &fory_compress);
     let test_strings: Vec<String> = vec![
         // Latin1
         "ab".to_string(),
@@ -249,20 +250,17 @@ fn test_string_serializer() {
     ];
     for s in &test_strings {
         // make is_field=true to skip read/write type_id
+        assert_eq!(*s, String::fory_read_data(&mut context, true).unwrap());
         assert_eq!(
             *s,
-            String::fory_read_data(&fory, &mut context, true).unwrap()
-        );
-        assert_eq!(
-            *s,
-            String::fory_read_data(&fory_compress, &mut context_compress, true).unwrap()
+            String::fory_read_data(&mut context_compress, true).unwrap()
         );
     }
     let writer = Writer::default();
     let fory = Fory::default().compatible(true).xlang(true);
-    let mut context = WriteContext::new(writer);
+    let mut context = WriteContext::new_from_fory(writer, &fory);
     for s in &test_strings {
-        s.fory_write_data(&fory, &mut context, true).unwrap();
+        s.fory_write_data(&mut context, true).unwrap();
     }
     fs::write(&data_file_path, context.writer.dump()).unwrap();
 }
@@ -293,7 +291,7 @@ fn test_cross_language_serializer() {
     let reader = Reader::new(bytes.as_slice());
     let mut fory = Fory::default().compatible(true).xlang(true);
     fory.register::<Color>(101).unwrap();
-    let mut context = ReadContext::new(reader, 5);
+    let mut context = ReadContext::new_from_fory(reader, &fory);
     assert_de!(fory, context, bool, true);
     assert_de!(fory, context, bool, false);
     assert_de!(fory, context, i32, -1);
@@ -322,7 +320,7 @@ fn test_cross_language_serializer() {
     assert_de!(fory, context, Color, color);
 
     let writer = Writer::default();
-    let mut context = WriteContext::new(writer);
+    let mut context = WriteContext::new_from_fory(writer, &fory);
     fory.serialize_with_context(&true, &mut context).unwrap();
     fory.serialize_with_context(&false, &mut context).unwrap();
     fory.serialize_with_context(&-1, &mut context).unwrap();
@@ -439,7 +437,7 @@ fn test_list() {
     let mut fory = Fory::default().compatible(true);
     fory.register::<Item>(102).unwrap();
     let reader = Reader::new(bytes.as_slice());
-    let mut context = ReadContext::new(reader, 5);
+    let mut context = ReadContext::new_from_fory(reader, &fory);
 
     let str_list = vec![Some("a".to_string()), Some("b".to_string())];
     let str_list2 = vec![None, Some("b".to_string())];
@@ -466,7 +464,7 @@ fn test_list() {
     assert_eq!(remote_item_list2, item_list2);
 
     let writer = Writer::default();
-    let mut context = WriteContext::new(writer);
+    let mut context = WriteContext::new_from_fory(writer, &fory);
     fory.serialize_with_context(&remote_str_list, &mut context)
         .unwrap();
     fory.serialize_with_context(&remote_str_list2, &mut context)
@@ -488,7 +486,7 @@ fn test_map() {
     let mut fory = Fory::default().compatible(true);
     fory.register::<Item>(102).unwrap();
     let reader = Reader::new(bytes.as_slice());
-    let mut context = ReadContext::new(reader, 5);
+    let mut context = ReadContext::new_from_fory(reader, &fory);
 
     let str_map = HashMap::from([
         (Some("k1".to_string()), Some("v1".to_string())),
@@ -557,8 +555,7 @@ fn test_integer() {
     let mut fory = Fory::default().compatible(true);
     fory.register::<Item2>(101).unwrap();
     let reader = Reader::new(bytes.as_slice());
-
-    let mut context = ReadContext::new(reader, 5);
+    let mut context = ReadContext::new_from_fory(reader, &fory);
     let f1 = 1;
     let f2 = Some(2);
     let f3 = Some(3);
@@ -590,7 +587,7 @@ fn test_integer() {
     assert_eq!(remote_f6, f6);
 
     let writer = Writer::default();
-    let mut context = WriteContext::new(writer);
+    let mut context = WriteContext::new_from_fory(writer, &fory);
     fory.serialize_with_context(&remote_item2, &mut context)
         .unwrap();
     fory.serialize_with_context(&remote_f1, &mut context)
@@ -619,27 +616,25 @@ struct MyExt {
 impl Serializer for MyExt {
     fn fory_write_data(
         &self,
-        fory: &Fory,
         context: &mut WriteContext,
         _is_field: bool,
     ) -> Result<(), fory_core::error::Error> {
         // set is_field=false to write type_id like in java
-        write_data(&self.id, fory, context, false)
+        write_data(&self.id, context, false)
     }
 
-    fn fory_read_data(
-        fory: &Fory,
-        context: &mut ReadContext,
-        _is_field: bool,
-    ) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
         Ok(Self {
             // set is_field=false to write type_id like in java
-            id: read_data(fory, context, false)?,
+            id: read_data(context, false)?,
         })
     }
 
-    fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, fory_core::error::Error> {
-        Self::fory_get_type_id(fory)
+    fn fory_type_id_dyn(
+        &self,
+        type_resolver: &TypeResolver,
+    ) -> Result<u32, fory_core::error::Error> {
+        Self::fory_get_type_id(type_resolver)
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -740,7 +735,7 @@ fn test_consistent_named() {
     let data_file_path = get_data_file();
     let bytes = fs::read(&data_file_path).unwrap();
     let reader = Reader::new(bytes.as_slice());
-    let mut context = ReadContext::new(reader, 5);
+    let mut context = ReadContext::new_from_fory(reader, &fory);
 
     assert_eq!(
         fory.deserialize_with_context::<Color>(&mut context)
@@ -775,7 +770,7 @@ fn test_consistent_named() {
     );
 
     let writer = Writer::default();
-    let mut context = WriteContext::new(writer);
+    let mut context = WriteContext::new_from_fory(writer, &fory);
     fory.serialize_with_context(&color, &mut context).unwrap();
     fory.serialize_with_context(&color, &mut context).unwrap();
     fory.serialize_with_context(&color, &mut context).unwrap();

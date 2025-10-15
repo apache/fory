@@ -95,7 +95,7 @@ pub fn gen_reserved_space(fields: &[&Field]) -> TokenStream {
 
 pub fn gen_write_type_info() -> TokenStream {
     quote! {
-        fory_core::serializer::struct_::write_type_info::<Self>(fory, context, is_field)
+        fory_core::serializer::struct_::write_type_info::<Self>(context, is_field)
     }
 }
 
@@ -108,20 +108,20 @@ fn gen_write_field(field: &Field) -> TokenStream {
                 {
                     let any_ref = self.#ident.as_any();
                     let concrete_type_id = any_ref.type_id();
-                    let fory_type_id = fory.get_type_resolver()
+                    let fory_type_id = context.get_type_resolver()
                         .get_fory_type_id(concrete_type_id)
                         .ok_or_else(|| fory_core::error::Error::TypeError("Type not registered for trait object field".into()))?;
 
                     context.writer.write_i8(fory_core::types::RefFlag::NotNullValue as i8)?;
                     context.writer.write_varuint32(fory_type_id);
 
-                    let harness = fory
+                    let harness = context
                         .get_type_resolver()
                         .get_harness(fory_type_id)
                         .ok_or_else(|| fory_core::error::Error::TypeError("Harness not found for trait object field".into()))?;
 
                     let serializer_fn = harness.get_write_fn();
-                    serializer_fn(any_ref, fory, context, true)?;
+                    serializer_fn(any_ref, context, true)?;
                 }
             }
         }
@@ -132,7 +132,7 @@ fn gen_write_field(field: &Field) -> TokenStream {
             quote! {
                 {
                     let wrapper = #wrapper_ty::from(self.#ident.clone() as std::rc::Rc<dyn #trait_ident>);
-                    fory_core::serializer::Serializer::fory_write(&wrapper, fory, context, true)?;
+                    fory_core::serializer::Serializer::fory_write(&wrapper, context, true)?;
                 }
             }
         }
@@ -143,7 +143,7 @@ fn gen_write_field(field: &Field) -> TokenStream {
             quote! {
                 {
                     let wrapper = #wrapper_ty::from(self.#ident.clone() as std::sync::Arc<dyn #trait_ident>);
-                    fory_core::serializer::Serializer::fory_write(&wrapper, fory, context, true)?;
+                    fory_core::serializer::Serializer::fory_write(&wrapper, context, true)?;
                 }
             }
         }
@@ -156,7 +156,7 @@ fn gen_write_field(field: &Field) -> TokenStream {
                     let wrapper_vec: Vec<#wrapper_ty> = self.#ident.iter()
                         .map(|item| #wrapper_ty::from(item.clone() as std::rc::Rc<dyn #trait_ident>))
                         .collect();
-                    fory_core::serializer::Serializer::fory_write(&wrapper_vec, fory, context, true)?;
+                    fory_core::serializer::Serializer::fory_write(&wrapper_vec, context, true)?;
                 }
             }
         }
@@ -169,7 +169,7 @@ fn gen_write_field(field: &Field) -> TokenStream {
                     let wrapper_vec: Vec<#wrapper_ty> = self.#ident.iter()
                         .map(|item| #wrapper_ty::from(item.clone() as std::sync::Arc<dyn #trait_ident>))
                         .collect();
-                    fory_core::serializer::Serializer::fory_write(&wrapper_vec, fory, context, true)?;
+                    fory_core::serializer::Serializer::fory_write(&wrapper_vec, context, true)?;
                 }
             }
         }
@@ -182,7 +182,7 @@ fn gen_write_field(field: &Field) -> TokenStream {
                     let wrapper_map: std::collections::HashMap<#key_ty, #wrapper_ty> = self.#ident.iter()
                         .map(|(k, v)| (k.clone(), #wrapper_ty::from(v.clone() as std::rc::Rc<dyn #trait_ident>)))
                         .collect();
-                    fory_core::serializer::Serializer::fory_write(&wrapper_map, fory, context, true)?;
+                    fory_core::serializer::Serializer::fory_write(&wrapper_map, context, true)?;
                 }
             }
         }
@@ -195,21 +195,21 @@ fn gen_write_field(field: &Field) -> TokenStream {
                     let wrapper_map: std::collections::HashMap<#key_ty, #wrapper_ty> = self.#ident.iter()
                         .map(|(k, v)| (k.clone(), #wrapper_ty::from(v.clone() as std::sync::Arc<dyn #trait_ident>)))
                         .collect();
-                    fory_core::serializer::Serializer::fory_write(&wrapper_map, fory, context, true)?;
+                    fory_core::serializer::Serializer::fory_write(&wrapper_map, context, true)?;
                 }
             }
         }
         StructField::Forward => {
             quote! {
                 {
-                    fory_core::serializer::Serializer::fory_write(&self.#ident, fory, context, true)?;
+                    fory_core::serializer::Serializer::fory_write(&self.#ident, context, true)?;
                 }
             }
         }
         _ => {
             let skip_ref_flag = skip_ref_flag(ty);
             quote! {
-                fory_core::serializer::write_ref_info_data::<#ty>(&self.#ident, fory, context, true, #skip_ref_flag, false)?;
+                fory_core::serializer::write_ref_info_data::<#ty>(&self.#ident, context, true, #skip_ref_flag, false)?;
             }
         }
     }
@@ -225,6 +225,6 @@ pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
 
 pub fn gen_write() -> TokenStream {
     quote! {
-        fory_core::serializer::struct_::write::<Self>(self, fory, context, is_field)
+        fory_core::serializer::struct_::write::<Self>(self, context, is_field)
     }
 }

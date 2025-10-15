@@ -15,12 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::ensure;
 use crate::error::Error;
-use crate::fory::Fory;
-use crate::meta::{MetaString, TypeMeta, NAMESPACE_DECODER, TYPE_NAME_DECODER};
+use crate::meta::{FieldInfo, NAMESPACE_DECODER, TYPE_NAME_DECODER};
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::types::{RefFlag, TypeId, PRIMITIVE_TYPES};
+use crate::{ensure, TypeResolver};
 use std::any::Any;
 
 pub mod any;
@@ -49,7 +48,6 @@ pub mod weak;
 #[inline(always)]
 pub fn write_ref_info_data<T: Serializer + 'static>(
     record: &T,
-    fory: &Fory,
     context: &mut WriteContext,
     is_field: bool,
     skip_ref_flag: bool,
@@ -62,16 +60,15 @@ pub fn write_ref_info_data<T: Serializer + 'static>(
             context.writer.write_i8(RefFlag::NotNullValue as i8);
         }
         if !skip_type_info {
-            T::fory_write_type_info(fory, context, is_field)?;
+            T::fory_write_type_info(context, is_field)?;
         }
-        record.fory_write_data(fory, context, is_field)?;
+        record.fory_write_data(context, is_field)?;
     }
     Ok(())
 }
 
 #[inline(always)]
 pub fn read_ref_info_data<T: Serializer + ForyDefault>(
-    fory: &Fory,
     context: &mut ReadContext,
     is_field: bool,
     skip_ref_flag: bool,
@@ -83,15 +80,15 @@ pub fn read_ref_info_data<T: Serializer + ForyDefault>(
             Ok(T::fory_default())
         } else if ref_flag == (RefFlag::NotNullValue as i8) {
             if !skip_type_info {
-                T::fory_read_type_info(fory, context, is_field)?;
+                T::fory_read_type_info(context, is_field)?;
             }
-            T::fory_read_data(fory, context, is_field)
+            T::fory_read_data(context, is_field)
         } else if ref_flag == (RefFlag::RefValue as i8) {
             // First time seeing this referenceable object
             if !skip_type_info {
-                T::fory_read_type_info(fory, context, is_field)?;
+                T::fory_read_type_info(context, is_field)?;
             }
-            T::fory_read_data(fory, context, is_field)
+            T::fory_read_data(context, is_field)
         } else if ref_flag == (RefFlag::Ref as i8) {
             // This is a reference to a previously deserialized object
             // For now, just return default - this should be handled by specific types
@@ -101,36 +98,34 @@ pub fn read_ref_info_data<T: Serializer + ForyDefault>(
         }
     } else {
         if !skip_type_info {
-            T::fory_read_type_info(fory, context, is_field)?;
+            T::fory_read_type_info(context, is_field)?;
         }
-        T::fory_read_data(fory, context, is_field)
+        T::fory_read_data(context, is_field)
     }
 }
 
 #[inline(always)]
-fn write_type_info<T: Serializer>(
-    fory: &Fory,
+pub fn write_type_info<T: Serializer>(
     context: &mut WriteContext,
     is_field: bool,
 ) -> Result<(), Error> {
     if is_field {
         return Ok(());
     }
-    let type_id = T::fory_get_type_id(fory)?;
+    let type_id = T::fory_get_type_id(context.get_type_resolver())?;
     context.writer.write_varuint32(type_id);
     Ok(())
 }
 
 #[inline(always)]
-fn read_type_info<T: Serializer>(
-    fory: &Fory,
+pub fn read_type_info<T: Serializer>(
     context: &mut ReadContext,
     is_field: bool,
 ) -> Result<(), Error> {
     if is_field {
         return Ok(());
     }
-    let local_type_id = T::fory_get_type_id(fory)?;
+    let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
     let remote_type_id = context.reader.read_varuint32()?;
     ensure!(
         local_type_id == remote_type_id,
@@ -140,8 +135,8 @@ fn read_type_info<T: Serializer>(
 }
 
 #[inline(always)]
-pub fn get_skip_ref_flag<T: Serializer>(fory: &Fory) -> Result<bool, Error> {
-    let elem_type_id = T::fory_get_type_id(fory)?;
+pub fn get_skip_ref_flag<T: Serializer>(type_resolver: &TypeResolver) -> Result<bool, Error> {
+    let elem_type_id = T::fory_get_type_id(type_resolver)?;
     Ok(!T::fory_is_option() && PRIMITIVE_TYPES.contains(&elem_type_id))
 }
 
@@ -160,23 +155,18 @@ pub trait ForyDefault: Sized {
 
 pub trait Serializer: 'static {
     /// Entry point of the serialization.
-    fn fory_write(
-        &self,
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error>
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error>
     where
         Self: Sized,
     {
-        write_ref_info_data(self, fory, context, is_field, false, false)
+        write_ref_info_data(self, context, is_field, false, false)
     }
 
-    fn fory_read(fory: &Fory, context: &mut ReadContext, is_field: bool) -> Result<Self, Error>
+    fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
     {
-        read_ref_info_data(fory, context, is_field, false, false)
+        read_ref_info_data(context, is_field, false, false)
     }
 
     fn fory_is_option() -> bool
@@ -204,17 +194,16 @@ pub trait Serializer: 'static {
         false
     }
 
-    fn fory_get_type_id(fory: &Fory) -> Result<u32, Error>
+    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error>
     where
         Self: Sized,
     {
-        Ok(fory
-            .get_type_resolver()
+        Ok(type_resolver
             .get_type_info(std::any::TypeId::of::<Self>())?
             .get_type_id())
     }
 
-    fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, Error>;
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error>;
 
     /// The possible max memory size of the type.
     /// Used to reserve the buffer space to avoid reallocation, which may hurt performance.
@@ -225,29 +214,22 @@ pub trait Serializer: 'static {
         0
     }
 
-    fn fory_write_type_info(
-        fory: &Fory,
-        context: &mut WriteContext,
-        _is_field: bool,
-    ) -> Result<(), Error>
+    fn fory_write_type_info(context: &mut WriteContext, _is_field: bool) -> Result<(), Error>
     where
         Self: Sized,
     {
         // default implementation only for ext/named_ext
-        let type_id = Self::fory_get_type_id(fory)?;
+        let type_id = Self::fory_get_type_id(context.get_type_resolver())?;
         context.writer.write_varuint32(type_id);
         if type_id & 0xff == TypeId::EXT as u32 {
             return Ok(());
         }
         let rs_type_id = std::any::TypeId::of::<Self>();
-        if fory.is_share_meta() {
-            let meta_index = context.push_meta(fory, rs_type_id)? as u32;
+        if context.is_share_meta() {
+            let meta_index = context.push_meta(rs_type_id)? as u32;
             context.writer.write_varuint32(meta_index);
         } else {
-            let type_info = {
-                let type_resolver = fory.get_type_resolver();
-                type_resolver.get_type_info(rs_type_id)?
-            };
+            let type_info = context.get_type_resolver().get_type_info(rs_type_id)?;
             let namespace = type_info.get_namespace().to_owned();
             let type_name = type_info.get_type_name().to_owned();
             context.write_meta_string_bytes(&namespace)?;
@@ -256,16 +238,12 @@ pub trait Serializer: 'static {
         Ok(())
     }
 
-    fn fory_read_type_info(
-        fory: &Fory,
-        context: &mut ReadContext,
-        _is_field: bool,
-    ) -> Result<(), Error>
+    fn fory_read_type_info(context: &mut ReadContext, _is_field: bool) -> Result<(), Error>
     where
         Self: Sized,
     {
         // default implementation only for ext/named_ext
-        let local_type_id = Self::fory_get_type_id(fory)?;
+        let local_type_id = Self::fory_get_type_id(context.get_type_resolver())?;
         let remote_type_id = context.reader.read_varuint32()?;
         ensure!(
             local_type_id == remote_type_id,
@@ -274,7 +252,7 @@ pub trait Serializer: 'static {
         if local_type_id & 0xff == TypeId::EXT as u32 {
             return Ok(());
         }
-        if fory.is_share_meta() {
+        if context.is_share_meta() {
             let _meta_index = context.reader.read_varuint32()?;
         } else {
             let _namespace_msb = context.read_meta_string_bytes()?;
@@ -284,29 +262,29 @@ pub trait Serializer: 'static {
     }
 
     // only used by struct/enum/ext
-    fn fory_read_compatible(fory: &Fory, context: &mut ReadContext) -> Result<Self, Error>
+    fn fory_read_compatible(context: &mut ReadContext) -> Result<Self, Error>
     where
         Self: Sized,
     {
         // default logic only for ext/named_ext
         let remote_type_id = context.reader.read_varuint32()?;
-        let local_type_id = Self::fory_get_type_id(fory)?;
+        let local_type_id = Self::fory_get_type_id(context.get_type_resolver())?;
         ensure!(
             local_type_id == remote_type_id,
             Error::TypeMismatch(local_type_id, remote_type_id)
         );
         if local_type_id & 0xff == TypeId::EXT as u32 {
-            let type_resolver = fory.get_type_resolver();
-            type_resolver
+            context
+                .get_type_resolver()
                 .get_ext_harness(local_type_id)?
-                .get_read_data_fn()(fory, context, true)
+                .get_read_data_fn()(context, true)
             .and_then(|b: Box<dyn Any>| {
                 b.downcast::<Self>()
                     .map(|boxed_self| *boxed_self)
                     .map_err(|_| Error::TypeError("downcast to Self failed".into()))
             })
         } else {
-            let (namespace, type_name) = if fory.is_share_meta() {
+            let (namespace, type_name) = if context.is_share_meta() {
                 let meta_index = context.reader.read_varuint32()?;
                 let type_meta = context.get_meta(meta_index as usize);
                 (type_meta.get_namespace(), type_meta.get_type_name())
@@ -317,10 +295,10 @@ pub trait Serializer: 'static {
                 let ts = TYPE_NAME_DECODER.decode(&tsb.bytes, tsb.encoding)?;
                 (ns, ts)
             };
-            let type_resolver = fory.get_type_resolver();
-            type_resolver
+            context
+                .get_type_resolver()
                 .get_ext_name_harness(&namespace, &type_name)?
-                .get_read_data_fn()(fory, context, true)
+                .get_read_data_fn()(context, true)
             .and_then(|b: Box<dyn Any>| {
                 b.downcast::<Self>()
                     .map(|boxed_self| *boxed_self)
@@ -330,18 +308,9 @@ pub trait Serializer: 'static {
     }
 
     /// Write/Read the data into the buffer. Need to be implemented.
-    fn fory_write_data(
-        &self,
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error>;
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error>;
 
-    fn fory_read_data(
-        fory: &Fory,
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<Self, Error>
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault;
 
@@ -353,14 +322,8 @@ pub trait Serializer: 'static {
 }
 
 pub trait StructSerializer: Serializer + 'static {
-    fn fory_type_def(
-        _fory: &Fory,
-        _type_id: u32,
-        _namespace: MetaString,
-        _type_name: MetaString,
-        _register_by_name: bool,
-    ) -> Result<(Vec<u8>, TypeMeta), Error> {
-        Ok((Vec::default(), TypeMeta::empty()))
+    fn fory_fields_info(_: &TypeResolver) -> Result<Vec<FieldInfo>, Error> {
+        Ok(Vec::default())
     }
 
     fn fory_type_index() -> u32 {
@@ -370,7 +333,7 @@ pub trait StructSerializer: Serializer + 'static {
         struct_::actual_type_id(type_id, register_by_name, compatible)
     }
 
-    fn fory_get_sorted_field_names(_fory: &Fory) -> &'static [&'static str] {
+    fn fory_get_sorted_field_names() -> &'static [&'static str] {
         &[]
     }
 }
