@@ -412,7 +412,11 @@ fn ext() {
             })
         }
 
-        fn fory_read_data_into(context: &mut ReadContext, is_field: bool, output: &mut Self) -> Result<(), Error> {
+        fn fory_read_data_into(
+            context: &mut ReadContext,
+            is_field: bool,
+            output: &mut Self,
+        ) -> Result<(), Error> {
             output.id = read_data(context, is_field)?;
             Ok(())
         }
@@ -472,7 +476,11 @@ fn skip_ext() {
             })
         }
 
-        fn fory_read_data_into(context: &mut ReadContext, is_field: bool, output: &mut Self) -> Result<(), Error> {
+        fn fory_read_data_into(
+            context: &mut ReadContext,
+            is_field: bool,
+            output: &mut Self,
+        ) -> Result<(), Error> {
             output.id = read_data(context, is_field)?;
             Ok(())
         }
@@ -547,7 +555,11 @@ fn compatible_ext() {
             })
         }
 
-        fn fory_read_data_into(context: &mut ReadContext, is_field: bool, output: &mut Self) -> Result<(), Error> {
+        fn fory_read_data_into(
+            context: &mut ReadContext,
+            is_field: bool,
+            output: &mut Self,
+        ) -> Result<(), Error> {
             output.id = read_data(context, is_field)?;
             Ok(())
         }

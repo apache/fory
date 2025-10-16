@@ -208,7 +208,11 @@ pub trait Serializer: 'static {
         read_ref_info_data(context, is_field, false, false)
     }
 
-    fn fory_read_into(context: &mut ReadContext, is_field: bool, output: &mut Self) -> Result<(), Error>
+    fn fory_read_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error>
     where
         Self: Sized + ForyDefault,
     {
@@ -365,7 +369,8 @@ pub trait Serializer: 'static {
         is_field: bool,
         output: &mut Self,
     ) -> Result<(), Error>
-    where Self: Sized + ForyDefault;
+    where
+        Self: Sized + ForyDefault;
 
     fn fory_concrete_type_id(&self) -> std::any::TypeId {
         std::any::TypeId::of::<Self>()

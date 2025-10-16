@@ -630,7 +630,11 @@ impl Serializer for MyExt {
         })
     }
 
-    fn fory_read_data_into(context: &mut ReadContext, _is_field: bool, output: &mut Self) -> Result<(), Error> {
+    fn fory_read_data_into(
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
         // set is_field=false to write type_id like in java
         output.id = read_data(context, false)?;
         Ok(())

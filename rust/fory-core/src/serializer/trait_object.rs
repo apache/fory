@@ -732,7 +732,11 @@ impl Serializer for Box<dyn Serializer> {
         }
     }
 
-    fn fory_read_into(context: &mut ReadContext, is_field: bool, output: &mut Self) -> Result<(), Error> {
+    fn fory_read_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
         let fory_type_id = read_trait_object_headers(context)?;
         context.inc_depth()?;
         let type_resolver = context.get_type_resolver();
@@ -773,10 +777,7 @@ impl Serializer for Box<dyn Serializer> {
         }
     }
 
-    fn fory_read_data(
-        _context: &mut ReadContext,
-        _is_field: bool,
-    ) -> Result<Self, Error> {
+    fn fory_read_data(_context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
         panic!("fory_read_data should not be called directly on Box<dyn Serializer>");
     }
 

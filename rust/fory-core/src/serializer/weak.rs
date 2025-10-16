@@ -373,7 +373,11 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         }
     }
 
-    fn fory_read_into(context: &mut ReadContext, is_field: bool, output: &mut Self) -> Result<(), Error> {
+    fn fory_read_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
         match ref_flag {
@@ -417,10 +421,7 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         }
     }
 
-    fn fory_read_data(
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         Self::fory_read(context, is_field)
     }
 
@@ -432,10 +433,7 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         Self::fory_read_into(context, is_field, output)
     }
 
-    fn fory_read_type_info(
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
         T::fory_read_type_info(context, is_field)
     }
 
@@ -538,7 +536,11 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         }
     }
 
-    fn fory_read_into(context: &mut ReadContext, _is_field: bool, output: &mut Self) -> Result<(), Error> {
+    fn fory_read_into(
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
         match ref_flag {
@@ -582,10 +584,7 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         }
     }
 
-    fn fory_read_data(
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         Self::fory_read(context, is_field)
     }
 
@@ -597,10 +596,7 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         Self::fory_read_into(context, is_field, output)
     }
 
-    fn fory_read_type_info(
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
         T::fory_read_type_info(context, is_field)
     }
 

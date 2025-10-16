@@ -72,7 +72,11 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
         }
     }
 
-    fn fory_read_into(context: &mut ReadContext, is_field: bool, output: &mut Self) -> Result<(), Error> {
+    fn fory_read_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
         match ref_flag {
             RefFlag::Null => Err(Error::InvalidRef("Rc cannot be null".into())),
@@ -100,23 +104,21 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
         }
     }
 
-    fn fory_read_data(
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         // When Rc is nested inside another shared ref, fory_read_data is called.
         // Delegate to fory_read which handles ref tracking properly.
         Self::fory_read(context, is_field)
     }
 
-    fn fory_read_data_into(context: &mut ReadContext, is_field: bool, output: &mut Self) -> Result<(), Error> {
+    fn fory_read_data_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
         Self::fory_read_into(context, is_field, output)
     }
 
-    fn fory_read_type_info(
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
         T::fory_read_type_info(context, is_field)
     }
 

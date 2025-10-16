@@ -20,8 +20,8 @@ use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::{
-    read_ref_info_data, read_ref_info_data_into, read_type_info, write_ref_info_data, write_type_info, ForyDefault,
-    Serializer,
+    read_ref_info_data, read_ref_info_data_into, read_type_info, write_ref_info_data,
+    write_type_info, ForyDefault, Serializer,
 };
 use crate::types::{TypeId, SIZE_OF_REF_AND_TYPE};
 use std::collections::{BTreeMap, HashMap};
@@ -273,8 +273,7 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
                 } else {
                     false
                 };
-                let value =
-                    read_ref_info_data(context, value_declared, skip_ref_flag, false)?;
+                let value = read_ref_info_data(context, value_declared, skip_ref_flag, false)?;
                 output.insert(K::fory_default(), value);
                 len_counter += 1;
                 continue;
@@ -454,8 +453,7 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
                 } else {
                     false
                 };
-                let value =
-                    read_ref_info_data(context, value_declared, skip_ref_flag, false)?;
+                let value = read_ref_info_data(context, value_declared, skip_ref_flag, false)?;
                 output.insert(K::fory_default(), value);
                 len_counter += 1;
                 continue;

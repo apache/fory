@@ -20,7 +20,8 @@ use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::collection::{
-    read_collection, read_collection_into, read_collection_type_info, write_collection, write_collection_type_info,
+    read_collection, read_collection_into, read_collection_type_info, write_collection,
+    write_collection_type_info,
 };
 
 use crate::serializer::{ForyDefault, Serializer};
@@ -50,10 +51,7 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BinaryHeap<T> {
         Ok(())
     }
 
-    fn fory_read_type_info(
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
         read_collection_type_info(context, is_field, TypeId::SET as u32)
     }
 

@@ -182,7 +182,13 @@ where
         (0..len)
             .map(|_| {
                 let mut element = T::fory_default();
-                crate::serializer::read_ref_info_data_into(context, declared, skip_ref_flag, true, &mut element)?;
+                crate::serializer::read_ref_info_data_into(
+                    context,
+                    declared,
+                    skip_ref_flag,
+                    true,
+                    &mut element,
+                )?;
                 output.extend(std::iter::once(element));
                 Ok(())
             })

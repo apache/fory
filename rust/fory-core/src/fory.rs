@@ -414,7 +414,11 @@ impl Fory {
         result
     }
 
-    pub fn deserialize_into<T: Serializer + ForyDefault>(&self, bf: &[u8], output: &mut T) -> Result<(), Error> {
+    pub fn deserialize_into<T: Serializer + ForyDefault>(
+        &self,
+        bf: &[u8],
+        output: &mut T,
+    ) -> Result<(), Error> {
         let pool = self.read_context_pool.get_or_init(|| {
             let type_resolver = self.type_resolver.clone();
             let compatible = self.compatible;

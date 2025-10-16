@@ -73,16 +73,17 @@ impl Serializer for Box<dyn Any> {
         deserialize_any_box(context)
     }
 
-    fn fory_read_into(context: &mut ReadContext, _is_field: bool, output: &mut Self) -> Result<(), Error> {
+    fn fory_read_into(
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
         let new_value = deserialize_any_box(context)?;
         *output = new_value;
         Ok(())
     }
 
-    fn fory_read_data(
-        context: &mut ReadContext,
-        _is_field: bool,
-    ) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
         deserialize_any_box(context)
     }
 
@@ -187,7 +188,11 @@ impl Serializer for Rc<dyn Any> {
         }
     }
 
-    fn fory_read_into(context: &mut ReadContext, _is_field: bool, output: &mut Self) -> Result<(), Error> {
+    fn fory_read_into(
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
         match ref_flag {
@@ -227,10 +232,7 @@ impl Serializer for Rc<dyn Any> {
         }
     }
 
-    fn fory_read_data(
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         Self::fory_read(context, is_field)
     }
 
@@ -333,7 +335,11 @@ impl Serializer for Arc<dyn Any> {
         }
     }
 
-    fn fory_read_into(context: &mut ReadContext, _is_field: bool, output: &mut Self) -> Result<(), Error> {
+    fn fory_read_into(
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
         match ref_flag {
@@ -373,10 +379,7 @@ impl Serializer for Arc<dyn Any> {
         }
     }
 
-    fn fory_read_data(
-        context: &mut ReadContext,
-        is_field: bool,
-    ) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         Self::fory_read(context, is_field)
     }
 

@@ -57,7 +57,9 @@ impl Serializer for NaiveDateTime {
         let nanos = subsec_micros * 1_000;
         *output = DateTime::from_timestamp(seconds, nanos)
             .map(|dt| dt.naive_utc())
-            .ok_or(Error::InvalidData(format!("Date out of range, timestamp micros: {micros}").into()))?;
+            .ok_or(Error::InvalidData(
+                format!("Date out of range, timestamp micros: {micros}").into(),
+            ))?;
         Ok(())
     }
 
