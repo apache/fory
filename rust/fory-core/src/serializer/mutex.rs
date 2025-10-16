@@ -89,10 +89,10 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     where
         Self: Sized + ForyDefault,
     {
-        let mut inner = output
-            .lock()
-            .map_err(|_| Error::InvalidData("Failed to lock Mutex".into()))?;
-        T::fory_read_into(context, is_field, &mut inner)?;
+        let inner = output
+            .get_mut()
+            .map_err(|_| Error::InvalidData("Failed to get mutable reference to Mutex".into()))?;
+        T::fory_read_into(context, is_field, inner)?;
         Ok(())
     }
 
@@ -105,10 +105,10 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
         is_field: bool,
         output: &mut Self,
     ) -> Result<(), Error> {
-        let mut inner = output
-            .lock()
-            .map_err(|_| Error::InvalidData("Failed to lock Mutex".into()))?;
-        T::fory_read_data_into(context, is_field, &mut inner)?;
+        let inner = output
+            .get_mut()
+            .map_err(|_| Error::InvalidData("Failed to get mutable reference to Mutex".into()))?;
+        T::fory_read_data_into(context, is_field, inner)?;
         Ok(())
     }
 
