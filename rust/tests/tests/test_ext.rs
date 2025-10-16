@@ -71,6 +71,12 @@ fn test_use() {
             })
         }
 
+        fn fory_read_data_into(context: &mut ReadContext, is_field: bool, output: &mut Self) -> Result<(), Error> {
+            output.f1 = read_data(context, is_field)?;
+            output.f2 = 0;
+            Ok(())
+        }
+
         fn fory_type_id_dyn(
             &self,
             type_resolver: &TypeResolver,
