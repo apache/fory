@@ -118,8 +118,7 @@ public class FeatureTestExample {
 
     } catch (Exception e) {
       System.err.println("GraalVM Feature test failed: " + e.getMessage());
-      e.printStackTrace();
-      System.exit(1);
+      throw new RuntimeException(e);
     }
   }
 }
