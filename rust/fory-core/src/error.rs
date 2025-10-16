@@ -78,7 +78,7 @@ impl Error {
     }
 }
 
-/// Ensures a condition is true; otherwise returns an [`Error`].
+/// Ensures a condition is true; otherwise returns an [`enum@Error`].
 ///
 /// # Examples
 /// ```
@@ -110,7 +110,7 @@ macro_rules! ensure {
     };
 }
 
-/// Returns early with an [`Error`].
+/// Returns early with an [`enum@Error`].
 ///
 /// # Examples
 /// ```

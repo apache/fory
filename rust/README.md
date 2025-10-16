@@ -616,8 +616,8 @@ impl Serializer for CustomType {
         Ok(Self { value, name })
     }
 
-    fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
-        Self::fory_get_type_id(fory)
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> u32 {
+        Self::fory_get_type_id(type_resolver)
     }
 
     fn as_any(&self) -> &dyn Any {

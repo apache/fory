@@ -707,7 +707,7 @@
 //! the binary buffer.
 //!
 //! ```rust
-//! use fory::{Fory, ReadContext, WriteContext, Serializer, ForyDefault, Error};
+//! use fory::{Fory, TypeResolver, ReadContext, WriteContext, Serializer, ForyDefault, Error};
 //! use std::any::Any;
 //!
 //! #[derive(Debug, PartialEq, Default)]
@@ -717,22 +717,22 @@
 //! }
 //!
 //! impl Serializer for CustomType {
-//!     fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
+//!     fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
 //!         context.writer.write_i32(self.value);
 //!         context.writer.write_varuint32(self.name.len() as u32);
 //!         context.writer.write_utf8_string(&self.name);
 //!         Ok(())
 //!     }
 //!
-//!     fn fory_read_data(fory: &Fory, context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+//!     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
 //!         let value = context.reader.read_i32()?;
 //!         let len = context.reader.read_varuint32()? as usize;
 //!         let name = context.reader.read_utf8_string(len)?;
 //!         Ok(Self { value, name })
 //!     }
 //!
-//!     fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, Error> {
-//!         Self::fory_get_type_id(fory)
+//!     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+//!         Self::fory_get_type_id(type_resolver)
 //!     }
 //!
 //!     fn as_any(&self) -> &dyn Any {
@@ -1048,6 +1048,6 @@
 
 pub use fory_core::{
     error::Error, fory::Fory, register_trait_type, row::from_row, row::to_row, types::TypeId,
-    ArcWeak, ForyDefault, RcWeak, ReadContext, Serializer, WriteContext,
+    ArcWeak, ForyDefault, RcWeak, ReadContext, Serializer, TypeResolver, WriteContext,
 };
 pub use fory_derive::{ForyObject, ForyRow};

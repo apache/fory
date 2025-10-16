@@ -102,7 +102,7 @@ public class CrossLanguageTest extends ForyTestBase {
 
   @Data
   public static class A {
-    public Integer f1;
+    public int f1;
     public Map<String, String> f2;
 
     public static A create() {
@@ -184,7 +184,7 @@ public class CrossLanguageTest extends ForyTestBase {
   /** Keep this in sync with `foo_schema` in test_cross_language.py */
   @Data
   public static class Foo {
-    public Integer f1;
+    public int f1;
     public String f2;
     public List<String> f3;
     public Map<String, Integer> f4;
@@ -214,7 +214,7 @@ public class CrossLanguageTest extends ForyTestBase {
   /** Keep this in sync with `bar_schema` in test_cross_language.py */
   @Data
   public static class Bar {
-    public Integer f1;
+    public int f1;
     public String f2;
 
     public static Bar create() {
@@ -446,12 +446,12 @@ public class CrossLanguageTest extends ForyTestBase {
     String f2;
     List<String> f3;
     Map<Byte, Integer> f4;
-    Byte f5;
-    Short f6;
-    Integer f7;
-    Long f8;
-    Float f9;
-    Double f10;
+    byte f5;
+    short f6;
+    int f7;
+    long f8;
+    float f9;
+    double f10;
     short[] f11;
     List<Short> f12;
   }

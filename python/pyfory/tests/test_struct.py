@@ -17,7 +17,7 @@
 
 from dataclasses import dataclass
 import datetime
-from typing import Dict, Any, List, Set
+from typing import Dict, Any, List, Set, Optional
 
 import os
 import pytest
@@ -159,23 +159,7 @@ def test_sort_fields():
 
     fory = Fory(xlang=True, ref=True)
     serializer = DataClassSerializer(fory, TestClass, xlang=True)
-    assert serializer._field_names == [
-        "f13",
-        "f5",
-        "f11",
-        "f7",
-        "f12",
-        "f1",
-        "f4",
-        "f15",
-        "f6",
-        "f10",
-        "f2",
-        "f14",
-        "f3",
-        "f9",
-        "f8",
-    ]
+    assert serializer._field_names == ["f13", "f5", "f11", "f12", "f1", "f7", "f4", "f15", "f6", "f10", "f2", "f14", "f3", "f9", "f8"]
 
 
 def test_data_class_serializer_xlang():
@@ -376,12 +360,12 @@ def test_data_class_serializer_xlang_codegen_generated_code():
     # Check that xwrite code contains expected elements
     assert "def xwrite_" in xwrite_code
     assert "buffer.write_int32" in xwrite_code  # Hash writing
-    assert "fory.xserialize_ref" in xwrite_code  # Field serialization
+    assert "fory.xwrite_ref" in xwrite_code  # Field serialization
 
     # Check that xread code contains expected elements
     assert "def xread_" in xread_code
     assert "buffer.read_int32" in xread_code  # Hash reading
-    assert "fory.xdeserialize_ref" in xread_code  # Field deserialization
+    assert "fory.xread_ref" in xread_code  # Field deserialization
     assert "TypeNotCompatibleError" in xread_code  # Hash validation
 
     # Check that field names are referenced in the code
@@ -419,3 +403,141 @@ def test_data_class_serializer_xlang_vs_non_xlang():
     # They should have different method implementations
     assert serializer_xlang._generated_xwrite_method != serializer_python._generated_write_method
     assert serializer_xlang._generated_xread_method != serializer_python._generated_read_method
+
+
+@dataclass
+class OptionalFieldsObject:
+    f1: Optional[int] = None
+    f2: Optional[str] = None
+    f3: Optional[List[int]] = None
+    f4: int = 0
+    f5: str = ""
+
+
+@pytest.mark.parametrize("compatible", [False, True])
+def test_optional_fields(compatible):
+    fory = Fory(xlang=True, ref=True, compatible=compatible)
+    fory.register_type(OptionalFieldsObject, typename="example.OptionalFieldsObject")
+
+    obj_with_none = OptionalFieldsObject(f1=None, f2=None, f3=None, f4=42, f5="test")
+    result = ser_de(fory, obj_with_none)
+    assert result.f1 is None
+    assert result.f2 is None
+    assert result.f3 is None
+    assert result.f4 == 42
+    assert result.f5 == "test"
+
+    obj_with_values = OptionalFieldsObject(f1=100, f2="hello", f3=[1, 2, 3], f4=42, f5="test")
+    result = ser_de(fory, obj_with_values)
+    assert result.f1 == 100
+    assert result.f2 == "hello"
+    assert result.f3 == [1, 2, 3]
+    assert result.f4 == 42
+    assert result.f5 == "test"
+
+    obj_mixed = OptionalFieldsObject(f1=100, f2=None, f3=[1, 2, 3], f4=42, f5="test")
+    result = ser_de(fory, obj_mixed)
+    assert result.f1 == 100
+    assert result.f2 is None
+    assert result.f3 == [1, 2, 3]
+    assert result.f4 == 42
+    assert result.f5 == "test"
+
+
+@dataclass
+class NestedOptionalObject:
+    f1: Optional[ComplexObject] = None
+    f2: Optional[Dict[str, int]] = None
+    f3: str = ""
+
+
+@pytest.mark.parametrize("compatible", [False, True])
+def test_nested_optional_fields(compatible):
+    fory = Fory(xlang=True, ref=True, compatible=compatible)
+    fory.register_type(ComplexObject, typename="example.ComplexObject")
+    fory.register_type(NestedOptionalObject, typename="example.NestedOptionalObject")
+
+    obj_with_none = NestedOptionalObject(f1=None, f2=None, f3="test")
+    result = ser_de(fory, obj_with_none)
+    assert result.f1 is None
+    assert result.f2 is None
+    assert result.f3 == "test"
+
+    complex_obj = ComplexObject(f1="nested", f5=100, f8=3.14)
+    obj_with_values = NestedOptionalObject(f1=complex_obj, f2={"a": 1, "b": 2}, f3="test")
+    result = ser_de(fory, obj_with_values)
+    assert result.f1.f1 == "nested"
+    assert result.f1.f5 == 100
+    assert result.f2 == {"a": 1, "b": 2}
+    assert result.f3 == "test"
+
+
+@dataclass
+class OptionalV1:
+    f1: Optional[int] = None
+    f2: str = ""
+    f3: Optional[List[int]] = None
+
+
+@dataclass
+class OptionalV2:
+    f1: Optional[int] = None
+    f2: str = ""
+    f3: Optional[List[int]] = None
+    f4: Optional[str] = None
+
+
+@dataclass
+class OptionalV3:
+    f1: Optional[int] = None
+    f2: str = ""
+
+
+def test_optional_compatible_mode_evolution():
+    fory_v1 = Fory(xlang=True, ref=True, compatible=True)
+    fory_v2 = Fory(xlang=True, ref=True, compatible=True)
+    fory_v3 = Fory(xlang=True, ref=True, compatible=True)
+
+    fory_v1.register_type(OptionalV1, typename="example.OptionalVersioned")
+    fory_v2.register_type(OptionalV2, typename="example.OptionalVersioned")
+    fory_v3.register_type(OptionalV3, typename="example.OptionalVersioned")
+
+    v1_obj = OptionalV1(f1=100, f2="test", f3=[1, 2, 3])
+    v1_binary = fory_v1.serialize(v1_obj)
+
+    v2_result = fory_v2.deserialize(v1_binary)
+    assert v2_result.f1 == 100
+    assert v2_result.f2 == "test"
+    assert v2_result.f3 == [1, 2, 3]
+    assert v2_result.f4 is None
+
+    v1_obj_with_none = OptionalV1(f1=None, f2="test", f3=None)
+    v1_binary_with_none = fory_v1.serialize(v1_obj_with_none)
+
+    v2_result_with_none = fory_v2.deserialize(v1_binary_with_none)
+    assert v2_result_with_none.f1 is None
+    assert v2_result_with_none.f2 == "test"
+    assert v2_result_with_none.f3 is None
+    assert v2_result_with_none.f4 is None
+
+    v2_obj = OptionalV2(f1=200, f2="test2", f3=[4, 5], f4="extra")
+    v2_binary = fory_v2.serialize(v2_obj)
+
+    v3_result = fory_v3.deserialize(v2_binary)
+    assert v3_result.f1 == 200
+    assert v3_result.f2 == "test2"
+
+    v2_obj_partial_none = OptionalV2(f1=None, f2="test2", f3=None, f4=None)
+    v2_binary_partial_none = fory_v2.serialize(v2_obj_partial_none)
+
+    v3_result_partial_none = fory_v3.deserialize(v2_binary_partial_none)
+    assert v3_result_partial_none.f1 is None
+    assert v3_result_partial_none.f2 == "test2"
+
+    v3_obj = OptionalV3(f1=300, f2="test3")
+    v3_binary = fory_v3.serialize(v3_obj)
+
+    v1_result = fory_v1.deserialize(v3_binary)
+    assert v1_result.f1 == 300
+    assert v1_result.f2 == "test3"
+    assert v1_result.f3 is None

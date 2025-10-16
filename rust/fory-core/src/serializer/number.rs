@@ -17,9 +17,9 @@
 
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
-use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
+use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::{read_type_info, write_type_info, ForyDefault, Serializer};
 use crate::types::TypeId;
 
@@ -29,7 +29,7 @@ macro_rules! impl_num_serializer {
             #[inline]
             fn fory_write_data(
                 &self,
-                _fory: &Fory,
+
                 context: &mut WriteContext,
                 _is_field: bool,
             ) -> Result<(), Error> {
@@ -38,17 +38,12 @@ macro_rules! impl_num_serializer {
             }
 
             #[inline]
-            fn fory_read_data(
-                _fory: &Fory,
-                context: &mut ReadContext,
-                _is_field: bool,
-            ) -> Result<Self, Error> {
+            fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
                 $reader(&mut context.reader)
             }
 
             #[inline]
             fn fory_read_data_into(
-                _fory: &Fory,
                 context: &mut ReadContext,
                 _is_field: bool,
                 output: &mut Self,
@@ -63,11 +58,11 @@ macro_rules! impl_num_serializer {
             }
 
             #[inline]
-            fn fory_get_type_id(_fory: &Fory) -> Result<u32, Error> {
+            fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
                 Ok($field_type as u32)
             }
 
-            fn fory_type_id_dyn(&self, _fory: &Fory) -> Result<u32, Error> {
+            fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
                 Ok($field_type as u32)
             }
 
@@ -78,20 +73,15 @@ macro_rules! impl_num_serializer {
 
             #[inline]
             fn fory_write_type_info(
-                fory: &Fory,
                 context: &mut WriteContext,
                 is_field: bool,
             ) -> Result<(), Error> {
-                write_type_info::<Self>(fory, context, is_field)
+                write_type_info::<Self>(context, is_field)
             }
 
             #[inline]
-            fn fory_read_type_info(
-                fory: &Fory,
-                context: &mut ReadContext,
-                is_field: bool,
-            ) -> Result<(), Error> {
-                read_type_info::<Self>(fory, context, is_field)
+            fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
+                read_type_info::<Self>(context, is_field)
             }
         }
         impl ForyDefault for $ty {

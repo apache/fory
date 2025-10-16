@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::PRIMITIVE_ARRAY_TYPES;
-use crate::{ensure, Fory};
 
 // const TRACKING_REF: u8 = 0b1;
 
@@ -46,7 +46,7 @@ pub fn write_collection_type_info(
 
 pub fn write_collection<'a, T, I>(
     iter: I,
-    fory: &Fory,
+
     context: &mut WriteContext,
     is_field: bool,
 ) -> Result<(), Error>
@@ -83,26 +83,19 @@ where
         header |= IS_SAME_TYPE;
     }
     context.writer.write_u8(header);
-    T::fory_write_type_info(fory, context, is_field)?;
+    T::fory_write_type_info(context, is_field)?;
     // context.writer.reserve((T::reserved_space() + SIZE_OF_REF_AND_TYPE) * len);
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         // TOTO: make it xlang compatible
         for item in iter {
-            item.fory_write(fory, context, is_field)?;
+            item.fory_write(context, is_field)?;
         }
         Ok(())
     } else {
         // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
         let skip_ref_flag = is_same_type && !has_null;
         for item in iter {
-            crate::serializer::write_ref_info_data(
-                item,
-                fory,
-                context,
-                is_field,
-                skip_ref_flag,
-                true,
-            )?;
+            crate::serializer::write_ref_info_data(item, context, is_field, skip_ref_flag, true)?;
         }
         Ok(())
     }
@@ -132,7 +125,7 @@ pub fn read_collection_type_info(
     Ok(())
 }
 
-pub fn read_collection<C, T>(fory: &Fory, context: &mut ReadContext) -> Result<C, Error>
+pub fn read_collection<C, T>(context: &mut ReadContext) -> Result<C, Error>
 where
     T: Serializer + ForyDefault,
     C: FromIterator<T>,
@@ -143,25 +136,23 @@ where
     }
     let header = context.reader.read_u8()?;
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
-    T::fory_read_type_info(fory, context, declared)?;
+    T::fory_read_type_info(context, declared)?;
     let has_null = (header & HAS_NULL) != 0;
     let is_same_type = (header & IS_SAME_TYPE) != 0;
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         (0..len)
-            .map(|_| T::fory_read(fory, context, declared))
+            .map(|_| T::fory_read(context, declared))
             .collect::<Result<C, Error>>()
     } else {
         let skip_ref_flag = is_same_type && !has_null;
         // let skip_ref_flag = crate::serializer::get_skip_ref_flag::<T>(context.get_fory());
         (0..len)
-            .map(|_| {
-                crate::serializer::read_ref_info_data(fory, context, declared, skip_ref_flag, true)
-            })
+            .map(|_| crate::serializer::read_ref_info_data(context, declared, skip_ref_flag, true))
             .collect::<Result<C, Error>>()
     }
 }
 
-pub fn read_collection_into<C, T>(fory: &Fory, context: &mut ReadContext, output: &mut C) -> Result<(), Error>
+pub fn read_collection_into<C, T>(context: &mut ReadContext, output: &mut C) -> Result<(), Error>
 where
     T: Serializer + ForyDefault,
     C: FromIterator<T> + Default + Extend<T>,
@@ -173,14 +164,14 @@ where
     }
     let header = context.reader.read_u8()?;
     let declared = (header & DECL_ELEMENT_TYPE) != 0;
-    T::fory_read_type_info(fory, context, declared)?;
+    T::fory_read_type_info(context, declared)?;
     let has_null = (header & HAS_NULL) != 0;
     let is_same_type = (header & IS_SAME_TYPE) != 0;
     if T::fory_is_polymorphic() || T::fory_is_shared_ref() {
         (0..len)
             .map(|_| {
                 let mut element = T::fory_default();
-                T::fory_read_into(fory, context, declared, &mut element)?;
+                T::fory_read_into(context, declared, &mut element)?;
                 output.extend(std::iter::once(element));
                 Ok(())
             })
@@ -191,7 +182,7 @@ where
         (0..len)
             .map(|_| {
                 let mut element = T::fory_default();
-                crate::serializer::read_ref_info_data_into(fory, context, declared, skip_ref_flag, true, &mut element)?;
+                crate::serializer::read_ref_info_data_into(context, declared, skip_ref_flag, true, &mut element)?;
                 output.extend(std::iter::once(element));
                 Ok(())
             })

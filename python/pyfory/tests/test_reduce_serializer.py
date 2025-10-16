@@ -303,5 +303,5 @@ def test_cross_language_compatibility():
     assert deserialized == obj
 
     # The serialized data should use Fory's native format, not pickle
-    # This is verified by the fact that we're using serialize_ref/deserialize_ref
+    # This is verified by the fact that we're using serialize_ref/read_ref
     # in the ReduceSerializer implementation

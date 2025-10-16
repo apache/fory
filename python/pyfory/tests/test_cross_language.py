@@ -597,16 +597,16 @@ class ComplexObject1Serializer(pyfory.serializer.Serializer):
         return self.xread(buffer)
 
     def xwrite(self, buffer, value):
-        self.fory.xserialize_ref(buffer, value.f1)
-        self.fory.xserialize_ref(buffer, value.f2)
-        self.fory.xserialize_ref(buffer, value.f3)
+        self.fory.xwrite_ref(buffer, value.f1)
+        self.fory.xwrite_ref(buffer, value.f2)
+        self.fory.xwrite_ref(buffer, value.f3)
 
     def xread(self, buffer):
         obj = ComplexObject1(*([None] * len(typing.get_type_hints(ComplexObject1).keys())))
         self.fory.ref_resolver.reference(obj)
-        obj.f1 = self.fory.xdeserialize_ref(buffer)
-        obj.f2 = self.fory.xdeserialize_ref(buffer)
-        obj.f3 = self.fory.xdeserialize_ref(buffer)
+        obj.f1 = self.fory.xread_ref(buffer)
+        obj.f2 = self.fory.xread_ref(buffer)
+        obj.f3 = self.fory.xread_ref(buffer)
         return obj
 
 
@@ -817,6 +817,7 @@ def test_schema_evolution(data_file_path):
     # Serialize back
     new_serialized = fory.serialize(obj)
     debug_print(f"Re-serialized data length: {len(new_serialized)}")
+    assert fory.deserialize(new_serialized) == obj
 
     # Write back for Java to verify
     with open(data_file_path, "wb") as f:

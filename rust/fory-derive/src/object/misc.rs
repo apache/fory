@@ -71,7 +71,7 @@ pub fn gen_get_sorted_field_names(fields: &[&Field]) -> TokenStream {
     }
 }
 
-pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
+pub fn gen_field_fields_info(fields: &[&Field]) -> TokenStream {
     let field_infos = fields.iter().map(|field| {
         let ty = &field.ty;
         let name = format!("{}", field.ident.as_ref().expect("should be field name"));
@@ -127,6 +127,6 @@ pub fn gen_type_def(fields: &[&Field]) -> TokenStream {
     });
     quote! {
         let field_infos: Vec<fory_core::meta::FieldInfo> = vec![#(#field_infos),*];
-        Ok(fory_core::serializer::struct_::type_def::<Self>(fory, type_id, namespace, type_name, register_by_name, field_infos))
+        Ok(field_infos)
     }
 }

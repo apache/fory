@@ -16,8 +16,8 @@
 // under the License.
 
 use crate::error::Error;
-use crate::fory::Fory;
 use crate::resolver::context::{ReadContext, WriteContext};
+use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::RefFlag;
 use std::any::Any;
@@ -27,20 +27,19 @@ use std::sync::Arc;
 /// Helper function to serialize a `Box<dyn Any>`
 pub fn serialize_any_box(
     any_box: &Box<dyn Any>,
-    fory: &Fory,
     context: &mut WriteContext,
     is_field: bool,
 ) -> Result<(), Error> {
     context.writer.write_i8(RefFlag::NotNullValue as i8);
 
     let concrete_type_id = (**any_box).type_id();
-    let harness = context.write_any_typeinfo(fory, concrete_type_id)?;
+    let harness = context.write_any_typeinfo(concrete_type_id)?;
     let serializer_fn = harness.get_write_data_fn();
-    serializer_fn(&**any_box, fory, context, is_field)
+    serializer_fn(&**any_box, context, is_field)
 }
 
 /// Helper function to deserialize to `Box<dyn Any>`
-pub fn deserialize_any_box(fory: &Fory, context: &mut ReadContext) -> Result<Box<dyn Any>, Error> {
+pub fn deserialize_any_box(context: &mut ReadContext) -> Result<Box<dyn Any>, Error> {
     context.inc_depth()?;
     let ref_flag = context.reader.read_i8()?;
     if ref_flag != RefFlag::NotNullValue as i8 {
@@ -48,9 +47,9 @@ pub fn deserialize_any_box(fory: &Fory, context: &mut ReadContext) -> Result<Box
             "Expected NotNullValue for Box<dyn Any>".into(),
         ));
     }
-    let harness = context.read_any_typeinfo(fory)?;
+    let harness = context.read_any_typeinfo()?;
     let deserializer_fn = harness.get_read_data_fn();
-    let result = deserializer_fn(fory, context, true);
+    let result = deserializer_fn(context, true);
     context.dec_depth();
     result
 }
@@ -62,60 +61,48 @@ impl ForyDefault for Box<dyn Any> {
 }
 
 impl Serializer for Box<dyn Any> {
-    fn fory_write(
-        &self,
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
-        serialize_any_box(self, fory, context, is_field)
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
+        serialize_any_box(self, context, is_field)
     }
 
-    fn fory_write_data(
-        &self,
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
-        serialize_any_box(self, fory, context, is_field)
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
+        serialize_any_box(self, context, is_field)
     }
 
-    fn fory_read(fory: &Fory, context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
-        deserialize_any_box(fory, context)
+    fn fory_read(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+        deserialize_any_box(context)
     }
 
-    fn fory_read_into(fory: &Fory, context: &mut ReadContext, _is_field: bool, output: &mut Self) -> Result<(), Error> {
-        let new_value = deserialize_any_box(fory, context)?;
+    fn fory_read_into(context: &mut ReadContext, _is_field: bool, output: &mut Self) -> Result<(), Error> {
+        let new_value = deserialize_any_box(context)?;
         *output = new_value;
         Ok(())
     }
 
     fn fory_read_data(
-        fory: &Fory,
         context: &mut ReadContext,
         _is_field: bool,
     ) -> Result<Self, Error> {
-        deserialize_any_box(fory, context)
+        deserialize_any_box(context)
     }
 
     fn fory_read_data_into(
-        fory: &Fory,
         context: &mut ReadContext,
         _is_field: bool,
         output: &mut Self,
     ) -> Result<(), Error> {
-        let new_value = deserialize_any_box(fory, context)?;
+        let new_value = deserialize_any_box(context)?;
         *output = new_value;
         Ok(())
     }
 
-    fn fory_get_type_id(_fory: &Fory) -> Result<u32, Error> {
+    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
         unreachable!("Box<dyn Any> has no static type ID - use fory_type_id_dyn")
     }
 
-    fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
         let concrete_type_id = (**self).type_id();
-        fory.get_type_resolver()
+        type_resolver
             .get_fory_type_id(concrete_type_id)
             .ok_or_else(|| Error::TypeError("Type not registered".into()))
     }
@@ -124,20 +111,12 @@ impl Serializer for Box<dyn Any> {
         true
     }
 
-    fn fory_write_type_info(
-        _fory: &Fory,
-        _context: &mut WriteContext,
-        _is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_write_type_info(_context: &mut WriteContext, _is_field: bool) -> Result<(), Error> {
         // Rc<dyn Any> is polymorphic - type info is written per element
         Ok(())
     }
 
-    fn fory_read_type_info(
-        _fory: &Fory,
-        _context: &mut ReadContext,
-        _is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_read_type_info(_context: &mut ReadContext, _is_field: bool) -> Result<(), Error> {
         // Rc<dyn Any> is polymorphic - type info is read per element
         Ok(())
     }
@@ -154,34 +133,24 @@ impl ForyDefault for Rc<dyn Any> {
 }
 
 impl Serializer for Rc<dyn Any> {
-    fn fory_write(
-        &self,
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
         if !context
             .ref_writer
             .try_write_rc_ref(&mut context.writer, self)
         {
             let concrete_type_id = (**self).type_id();
-            let harness = context.write_any_typeinfo(fory, concrete_type_id)?;
+            let harness = context.write_any_typeinfo(concrete_type_id)?;
             let serializer_fn = harness.get_write_data_fn();
-            serializer_fn(&**self, fory, context, is_field)?
+            serializer_fn(&**self, context, is_field)?
         };
         Ok(())
     }
 
-    fn fory_write_data(
-        &self,
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
-        self.fory_write(fory, context, is_field)
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
+        self.fory_write(context, is_field)
     }
 
-    fn fory_read(fory: &Fory, context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    fn fory_read(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
         match ref_flag {
@@ -199,17 +168,17 @@ impl Serializer for Rc<dyn Any> {
             }
             RefFlag::NotNullValue => {
                 context.inc_depth()?;
-                let harness = context.read_any_typeinfo(fory)?;
+                let harness = context.read_any_typeinfo()?;
                 let deserializer_fn = harness.get_read_data_fn();
-                let boxed = deserializer_fn(fory, context, true)?;
+                let boxed = deserializer_fn(context, true)?;
                 context.dec_depth();
                 Ok(Rc::<dyn Any>::from(boxed))
             }
             RefFlag::RefValue => {
                 context.inc_depth()?;
-                let harness = context.read_any_typeinfo(fory)?;
+                let harness = context.read_any_typeinfo()?;
                 let deserializer_fn = harness.get_read_data_fn();
-                let boxed = deserializer_fn(fory, context, true)?;
+                let boxed = deserializer_fn(context, true)?;
                 context.dec_depth();
                 let rc: Rc<dyn Any> = Rc::from(boxed);
                 context.ref_reader.store_rc_ref(rc.clone());
@@ -218,7 +187,7 @@ impl Serializer for Rc<dyn Any> {
         }
     }
 
-    fn fory_read_into(fory: &Fory, context: &mut ReadContext, _is_field: bool, output: &mut Self) -> Result<(), Error> {
+    fn fory_read_into(context: &mut ReadContext, _is_field: bool, output: &mut Self) -> Result<(), Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
         match ref_flag {
@@ -237,18 +206,18 @@ impl Serializer for Rc<dyn Any> {
             }
             RefFlag::NotNullValue => {
                 context.inc_depth()?;
-                let harness = context.read_any_typeinfo(fory)?;
+                let harness = context.read_any_typeinfo()?;
                 let deserializer_fn = harness.get_read_data_fn();
-                let boxed = deserializer_fn(fory, context, true)?;
+                let boxed = deserializer_fn(context, true)?;
                 context.dec_depth();
                 *output = Rc::<dyn Any>::from(boxed);
                 Ok(())
             }
             RefFlag::RefValue => {
                 context.inc_depth()?;
-                let harness = context.read_any_typeinfo(fory)?;
+                let harness = context.read_any_typeinfo()?;
                 let deserializer_fn = harness.get_read_data_fn();
-                let boxed = deserializer_fn(fory, context, true)?;
+                let boxed = deserializer_fn(context, true)?;
                 context.dec_depth();
                 let rc: Rc<dyn Any> = Rc::from(boxed);
                 context.ref_reader.store_rc_ref(rc.clone());
@@ -259,29 +228,27 @@ impl Serializer for Rc<dyn Any> {
     }
 
     fn fory_read_data(
-        fory: &Fory,
         context: &mut ReadContext,
         is_field: bool,
     ) -> Result<Self, Error> {
-        Self::fory_read(fory, context, is_field)
+        Self::fory_read(context, is_field)
     }
 
     fn fory_read_data_into(
-        fory: &Fory,
         context: &mut ReadContext,
         _is_field: bool,
         output: &mut Self,
     ) -> Result<(), Error> {
-        Self::fory_read_into(fory, context, _is_field, output)
+        Self::fory_read_into(context, _is_field, output)
     }
 
-    fn fory_get_type_id(_fory: &Fory) -> Result<u32, Error> {
+    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
         unreachable!("Rc<dyn Any> has no static type ID - use fory_type_id_dyn")
     }
 
-    fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
         let concrete_type_id = (**self).type_id();
-        fory.get_type_resolver()
+        type_resolver
             .get_fory_type_id(concrete_type_id)
             .ok_or_else(|| Error::TypeError("Type not registered".into()))
     }
@@ -290,20 +257,12 @@ impl Serializer for Rc<dyn Any> {
         true
     }
 
-    fn fory_write_type_info(
-        _fory: &Fory,
-        _context: &mut WriteContext,
-        _is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_write_type_info(_context: &mut WriteContext, _is_field: bool) -> Result<(), Error> {
         // Rc<dyn Any> is polymorphic - type info is written per element
         Ok(())
     }
 
-    fn fory_read_type_info(
-        _fory: &Fory,
-        _context: &mut ReadContext,
-        _is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_read_type_info(_context: &mut ReadContext, _is_field: bool) -> Result<(), Error> {
         // Rc<dyn Any> is polymorphic - type info is read per element
         Ok(())
     }
@@ -320,34 +279,24 @@ impl ForyDefault for Arc<dyn Any> {
 }
 
 impl Serializer for Arc<dyn Any> {
-    fn fory_write(
-        &self,
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_write(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
         if !context
             .ref_writer
             .try_write_arc_ref(&mut context.writer, self)
         {
             let concrete_type_id = (**self).type_id();
-            let harness = context.write_any_typeinfo(fory, concrete_type_id)?;
+            let harness = context.write_any_typeinfo(concrete_type_id)?;
             let serializer_fn = harness.get_write_data_fn();
-            serializer_fn(&**self, fory, context, is_field)?;
+            serializer_fn(&**self, context, is_field)?;
         }
         Ok(())
     }
 
-    fn fory_write_data(
-        &self,
-        fory: &Fory,
-        context: &mut WriteContext,
-        is_field: bool,
-    ) -> Result<(), Error> {
-        self.fory_write(fory, context, is_field)
+    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
+        self.fory_write(context, is_field)
     }
 
-    fn fory_read(fory: &Fory, context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    fn fory_read(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
         match ref_flag {
@@ -365,17 +314,17 @@ impl Serializer for Arc<dyn Any> {
             }
             RefFlag::NotNullValue => {
                 context.inc_depth()?;
-                let harness = context.read_any_typeinfo(fory)?;
+                let harness = context.read_any_typeinfo()?;
                 let deserializer_fn = harness.get_read_data_fn();
-                let boxed = deserializer_fn(fory, context, true)?;
+                let boxed = deserializer_fn(context, true)?;
                 context.dec_depth();
                 Ok(Arc::<dyn Any>::from(boxed))
             }
             RefFlag::RefValue => {
                 context.inc_depth()?;
-                let harness = context.read_any_typeinfo(fory)?;
+                let harness = context.read_any_typeinfo()?;
                 let deserializer_fn = harness.get_read_data_fn();
-                let boxed = deserializer_fn(fory, context, true)?;
+                let boxed = deserializer_fn(context, true)?;
                 context.dec_depth();
                 let arc: Arc<dyn Any> = Arc::from(boxed);
                 context.ref_reader.store_arc_ref(arc.clone());
@@ -384,7 +333,7 @@ impl Serializer for Arc<dyn Any> {
         }
     }
 
-    fn fory_read_into(fory: &Fory, context: &mut ReadContext, _is_field: bool, output: &mut Self) -> Result<(), Error> {
+    fn fory_read_into(context: &mut ReadContext, _is_field: bool, output: &mut Self) -> Result<(), Error> {
         let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
 
         match ref_flag {
@@ -403,18 +352,18 @@ impl Serializer for Arc<dyn Any> {
             }
             RefFlag::NotNullValue => {
                 context.inc_depth()?;
-                let harness = context.read_any_typeinfo(fory)?;
+                let harness = context.read_any_typeinfo()?;
                 let deserializer_fn = harness.get_read_data_fn();
-                let boxed = deserializer_fn(fory, context, true)?;
+                let boxed = deserializer_fn(context, true)?;
                 context.dec_depth();
                 *output = Arc::<dyn Any>::from(boxed);
                 Ok(())
             }
             RefFlag::RefValue => {
                 context.inc_depth()?;
-                let harness = context.read_any_typeinfo(fory)?;
+                let harness = context.read_any_typeinfo()?;
                 let deserializer_fn = harness.get_read_data_fn();
-                let boxed = deserializer_fn(fory, context, true)?;
+                let boxed = deserializer_fn(context, true)?;
                 context.dec_depth();
                 let arc: Arc<dyn Any> = Arc::from(boxed);
                 context.ref_reader.store_arc_ref(arc.clone());
@@ -425,29 +374,27 @@ impl Serializer for Arc<dyn Any> {
     }
 
     fn fory_read_data(
-        fory: &Fory,
         context: &mut ReadContext,
         is_field: bool,
     ) -> Result<Self, Error> {
-        Self::fory_read(fory, context, is_field)
+        Self::fory_read(context, is_field)
     }
 
     fn fory_read_data_into(
-        fory: &Fory,
         context: &mut ReadContext,
         _is_field: bool,
         output: &mut Self,
     ) -> Result<(), Error> {
-        Self::fory_read_into(fory, context, _is_field, output)
+        Self::fory_read_into(context, _is_field, output)
     }
 
-    fn fory_get_type_id(_fory: &Fory) -> Result<u32, Error> {
+    fn fory_get_type_id(_type_resolver: &TypeResolver) -> Result<u32, Error> {
         unreachable!("Arc<dyn Any> has no static type ID - use fory_type_id_dyn")
     }
 
-    fn fory_type_id_dyn(&self, fory: &Fory) -> Result<u32, Error> {
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
         let concrete_type_id = (**self).type_id();
-        fory.get_type_resolver()
+        type_resolver
             .get_fory_type_id(concrete_type_id)
             .ok_or_else(|| Error::TypeError("Type not registered".into()))
     }
@@ -456,20 +403,12 @@ impl Serializer for Arc<dyn Any> {
         true
     }
 
-    fn fory_write_type_info(
-        _fory: &Fory,
-        _context: &mut WriteContext,
-        _is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_write_type_info(_context: &mut WriteContext, _is_field: bool) -> Result<(), Error> {
         // Arc<dyn Any> is polymorphic - type info is written per element
         Ok(())
     }
 
-    fn fory_read_type_info(
-        _fory: &Fory,
-        _context: &mut ReadContext,
-        _is_field: bool,
-    ) -> Result<(), Error> {
+    fn fory_read_type_info(_context: &mut ReadContext, _is_field: bool) -> Result<(), Error> {
         // Arc<dyn Any> is polymorphic - type info is read per element
         Ok(())
     }

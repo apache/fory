@@ -322,7 +322,7 @@ class Fory:
         if self.language == Language.PYTHON:
             self.serialize_ref(buffer, obj)
         else:
-            self.xserialize_ref(buffer, obj)
+            self.xwrite_ref(buffer, obj)
 
         # Write type definitions at the end, similar to Java implementation
         if self.serialization_context.scoped_meta_share_enabled:
@@ -379,18 +379,18 @@ class Fory:
             self.type_resolver.write_typeinfo(buffer, typeinfo)
             typeinfo.serializer.write(buffer, obj)
 
-    def xserialize_ref(self, buffer, obj, serializer=None):
+    def xwrite_ref(self, buffer, obj, serializer=None):
         if serializer is None or serializer.need_to_write_ref:
             if not self.ref_resolver.write_ref_or_null(buffer, obj):
-                self.xserialize_nonref(buffer, obj, serializer=serializer)
+                self.xwrite_no_ref(buffer, obj, serializer=serializer)
         else:
             if obj is None:
                 buffer.write_int8(NULL_FLAG)
             else:
                 buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                self.xserialize_nonref(buffer, obj, serializer=serializer)
+                self.xwrite_no_ref(buffer, obj, serializer=serializer)
 
-    def xserialize_nonref(self, buffer, obj, serializer=None):
+    def xwrite_no_ref(self, buffer, obj, serializer=None):
         if serializer is not None:
             serializer.xwrite(buffer, obj)
             return
@@ -458,12 +458,12 @@ class Fory:
                 buffer.reader_index = current_reader_index
 
         if is_target_x_lang:
-            obj = self.xdeserialize_ref(buffer)
+            obj = self.xread_ref(buffer)
         else:
-            obj = self.deserialize_ref(buffer)
+            obj = self.read_ref(buffer)
         return obj
 
-    def deserialize_ref(self, buffer):
+    def read_ref(self, buffer):
         ref_resolver = self.ref_resolver
         ref_id = ref_resolver.try_preserve_ref_id(buffer)
         # indicates that the object is first read.
@@ -477,7 +477,7 @@ class Fory:
         else:
             return ref_resolver.get_read_object()
 
-    def deserialize_nonref(self, buffer):
+    def read_no_ref(self, buffer):
         """Deserialize not-null and non-reference object from buffer."""
         typeinfo = self.type_resolver.read_typeinfo(buffer)
         self.inc_depth()
@@ -485,13 +485,13 @@ class Fory:
         self.dec_depth()
         return o
 
-    def xdeserialize_ref(self, buffer, serializer=None):
+    def xread_ref(self, buffer, serializer=None):
         if serializer is None or serializer.need_to_write_ref:
             ref_resolver = self.ref_resolver
             ref_id = ref_resolver.try_preserve_ref_id(buffer)
             # indicates that the object is first read.
             if ref_id >= NOT_NULL_VALUE_FLAG:
-                o = self.xdeserialize_nonref(buffer, serializer=serializer)
+                o = self.xread_no_ref(buffer, serializer=serializer)
                 ref_resolver.set_read_object(ref_id, o)
                 return o
             else:
@@ -499,9 +499,9 @@ class Fory:
         head_flag = buffer.read_int8()
         if head_flag == NULL_FLAG:
             return None
-        return self.xdeserialize_nonref(buffer, serializer=serializer)
+        return self.xread_no_ref(buffer, serializer=serializer)
 
-    def xdeserialize_nonref(self, buffer, serializer=None):
+    def xread_no_ref(self, buffer, serializer=None):
         if serializer is None:
             serializer = self.type_resolver.read_typeinfo(buffer).serializer
         self.inc_depth()
@@ -551,7 +551,7 @@ class Fory:
         typeinfo.serializer.write(buffer, value)
 
     def read_ref_pyobject(self, buffer):
-        return self.deserialize_ref(buffer)
+        return self.read_ref(buffer)
 
     def reset_write(self):
         self.ref_resolver.reset_write()

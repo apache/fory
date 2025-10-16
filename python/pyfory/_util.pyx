@@ -206,7 +206,17 @@ cdef class Buffer:
         self.c_buffer.get().UnsafePut(self.writer_index, value)
         self.writer_index += <int32_t>4
 
+    cpdef inline write_float32(self, float value):
+        self.grow(<int32_t>4)
+        self.c_buffer.get().UnsafePut(self.writer_index, value)
+        self.writer_index += <int32_t>4
+
     cpdef inline write_double(self, double value):
+        self.grow(<int32_t>8)
+        self.c_buffer.get().UnsafePut(self.writer_index, value)
+        self.writer_index += <int32_t>8
+
+    cpdef inline write_float64(self, double value):
         self.grow(<int32_t>8)
         self.c_buffer.get().UnsafePut(self.writer_index, value)
         self.writer_index += <int32_t>8
@@ -351,7 +361,17 @@ cdef class Buffer:
         self.reader_index += <int32_t>4
         return value
 
+    cpdef inline float read_float32(self):
+        value = self.get_float(self.reader_index)
+        self.reader_index += <int32_t>4
+        return value
+
     cpdef inline double read_double(self):
+        value = self.get_double(self.reader_index)
+        self.reader_index += <int32_t>8
+        return value
+
+    cpdef inline double read_float64(self):
         value = self.get_double(self.reader_index)
         self.reader_index += <int32_t>8
         return value
