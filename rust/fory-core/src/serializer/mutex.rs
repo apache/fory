@@ -81,8 +81,35 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
         Ok(Mutex::new(T::fory_read(context, is_field)?))
     }
 
+    fn fory_read_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error>
+    where
+        Self: Sized + ForyDefault,
+    {
+        let inner = output
+            .get_mut()
+            .map_err(|_| Error::InvalidData("Failed to get mutable reference to Mutex".into()))?;
+        T::fory_read_into(context, is_field, inner)?;
+        Ok(())
+    }
+
     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         Ok(Mutex::new(T::fory_read_data(context, is_field)?))
+    }
+
+    fn fory_read_data_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        let inner = output
+            .get_mut()
+            .map_err(|_| Error::InvalidData("Failed to get mutable reference to Mutex".into()))?;
+        T::fory_read_data_into(context, is_field, inner)?;
+        Ok(())
     }
 
     fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {

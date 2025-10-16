@@ -26,6 +26,15 @@ impl<T: Serializer + ForyDefault> Serializer for Box<T> {
         Ok(Box::new(T::fory_read_data(context, is_field)?))
     }
 
+    fn fory_read_data_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        *output = Box::new(T::fory_read_data(context, is_field)?);
+        Ok(())
+    }
+
     fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
         T::fory_read_type_info(context, is_field)
     }

@@ -43,6 +43,16 @@ macro_rules! impl_num_serializer {
             }
 
             #[inline]
+            fn fory_read_data_into(
+                context: &mut ReadContext,
+                _is_field: bool,
+                output: &mut Self,
+            ) -> Result<(), Error> {
+                *output = $reader(&mut context.reader)?;
+                Ok(())
+            }
+
+            #[inline]
             fn fory_reserved_space() -> usize {
                 std::mem::size_of::<$ty>()
             }

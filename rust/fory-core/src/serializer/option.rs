@@ -28,6 +28,23 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
     }
 
     #[inline(always)]
+    fn fory_read_data_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        match output {
+            Some(ref mut inner) => T::fory_read_data_into(context, is_field, inner),
+            None => {
+                let mut new_value = T::fory_default();
+                T::fory_read_data_into(context, is_field, &mut new_value)?;
+                *output = Some(new_value);
+                Ok(())
+            }
+        }
+    }
+
+    #[inline(always)]
     fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
         T::fory_read_type_info(context, is_field)
     }

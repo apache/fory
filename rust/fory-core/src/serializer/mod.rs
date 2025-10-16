@@ -105,6 +105,45 @@ pub fn read_ref_info_data<T: Serializer + ForyDefault>(
 }
 
 #[inline(always)]
+pub fn read_ref_info_data_into<T: Serializer + ForyDefault>(
+    context: &mut ReadContext,
+    is_field: bool,
+    skip_ref_flag: bool,
+    skip_type_info: bool,
+    output: &mut T,
+) -> Result<(), Error> {
+    if !skip_ref_flag {
+        let ref_flag = context.reader.read_i8()?;
+        if ref_flag == RefFlag::Null as i8 {
+            *output = T::fory_default();
+            Ok(())
+        } else if ref_flag == (RefFlag::NotNullValue as i8) {
+            if !skip_type_info {
+                T::fory_read_type_info(context, is_field)?;
+            }
+            T::fory_read_data_into(context, is_field, output)
+        } else if ref_flag == (RefFlag::RefValue as i8) {
+            // First time seeing this referenceable object
+            if !skip_type_info {
+                T::fory_read_type_info(context, is_field)?;
+            }
+            T::fory_read_data_into(context, is_field, output)
+        } else if ref_flag == (RefFlag::Ref as i8) {
+            // This is a reference to a previously deserialized object
+            // For now, just return default - this should be handled by specific types
+            *output = T::fory_default();
+            Ok(())
+        } else {
+            unimplemented!("Unknown ref flag: {}", ref_flag)
+        }
+    } else {
+        if !skip_type_info {
+            T::fory_read_type_info(context, is_field)?;
+        }
+        T::fory_read_data_into(context, is_field, output)
+    }
+}
+
 pub fn write_type_info<T: Serializer>(
     context: &mut WriteContext,
     is_field: bool,
@@ -167,6 +206,17 @@ pub trait Serializer: 'static {
         Self: Sized + ForyDefault,
     {
         read_ref_info_data(context, is_field, false, false)
+    }
+
+    fn fory_read_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error>
+    where
+        Self: Sized + ForyDefault,
+    {
+        read_ref_info_data_into(context, is_field, false, false, output)
     }
 
     fn fory_is_option() -> bool
@@ -311,6 +361,14 @@ pub trait Serializer: 'static {
     fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error>;
 
     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error>
+    where
+        Self: Sized + ForyDefault;
+
+    fn fory_read_data_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error>
     where
         Self: Sized + ForyDefault;
 

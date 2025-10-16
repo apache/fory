@@ -246,6 +246,27 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
     }
 }
 
+pub fn gen_read_data_into(fields: &[&Field]) -> TokenStream {
+    let sorted_read = if fields.is_empty() {
+        quote! { Ok(()) }
+    } else {
+        let loop_ts = get_fields_loop_ts(fields);
+        let field_assignments = fields.iter().map(|field| {
+            let private_ident = create_private_field_name(field);
+            let original_ident = &field.ident;
+            quote! {
+                output.#original_ident = #private_ident;
+            }
+        });
+        quote! {
+            #loop_ts
+            #(#field_assignments)*
+            Ok(())
+        }
+    };
+    sorted_read
+}
+
 fn gen_read_compatible_match_arm_body(field: &Field, var_name: &Ident) -> TokenStream {
     let ty = &field.ty;
 

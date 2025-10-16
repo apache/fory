@@ -414,6 +414,42 @@ impl Fory {
         result
     }
 
+    pub fn deserialize_into<T: Serializer + ForyDefault>(
+        &self,
+        bf: &[u8],
+        output: &mut T,
+    ) -> Result<(), Error> {
+        let pool = self.read_context_pool.get_or_init(|| {
+            let type_resolver = self.type_resolver.clone();
+            let compatible = self.compatible;
+            let share_meta = self.share_meta;
+            let xlang = self.xlang;
+            let max_dyn_depth = self.max_dyn_depth;
+
+            let factory = move || {
+                let reader = Reader::new(&[]);
+                ReadContext::new(
+                    reader,
+                    type_resolver.clone(),
+                    compatible,
+                    share_meta,
+                    xlang,
+                    max_dyn_depth,
+                )
+            };
+            Pool::new(factory)
+        });
+        let mut context = pool.get();
+        context.init(bf, self.max_dyn_depth);
+        let result = self.deserialize_into_with_context(&mut context, output);
+        if result.is_ok() {
+            assert_eq!(context.reader.slice_after_cursor().len(), 0);
+        }
+        context.reset();
+        pool.put(context);
+        result
+    }
+
     pub fn deserialize_with_context<T: Serializer + ForyDefault>(
         &self,
         context: &mut ReadContext,
@@ -435,6 +471,30 @@ impl Fory {
         }
         context.ref_reader.resolve_callbacks();
         result
+    }
+
+    pub fn deserialize_into_with_context<T: Serializer + ForyDefault>(
+        &self,
+        context: &mut ReadContext,
+        output: &mut T,
+    ) -> Result<(), Error> {
+        let is_none = self.read_head(&mut context.reader)?;
+        if is_none {
+            return Ok(());
+        }
+        let mut bytes_to_skip = 0;
+        if context.is_compatible() {
+            let meta_offset = context.reader.read_i32()?;
+            if meta_offset != -1 {
+                bytes_to_skip = context.load_meta(meta_offset as usize)?;
+            }
+        }
+        <T as Serializer>::fory_read_into(context, false, output)?;
+        if bytes_to_skip > 0 {
+            context.reader.skip(bytes_to_skip)?;
+        }
+        context.ref_reader.resolve_callbacks();
+        Ok(())
     }
 
     /// Serializes a value of type `T` into a byte vector.
