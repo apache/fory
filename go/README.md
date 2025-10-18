@@ -170,12 +170,12 @@ fory --force -file <your file>
 
 Fory Go supports several configuration options through the functional options pattern:
 
-### Compatible Mode (Metashare)
+### Compatible Mode (Meta share mode)
 
 Compatible mode enables meta information sharing, which allows for schema evolution:
 
 ```go
-// Enable compatible mode with metashare
+// Enable compatible mode with meta share
 fory := NewForyWithOptions(WithCompatible(true))
 ```
 
