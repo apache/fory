@@ -20,11 +20,15 @@
 package org.apache.fory.util;
 
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Modifier;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.fory.Fory;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.Serializer;
+import org.apache.fory.util.record.RecordUtils;
 
 /** A helper for Graalvm native image support. */
 public class GraalvmSupport {
@@ -52,6 +56,23 @@ public class GraalvmSupport {
   public static boolean isGraalRuntime() {
     return IN_GRAALVM_NATIVE_IMAGE
         && GRAAL_IMAGE_RUNTIME.equals(System.getProperty(GRAAL_IMAGE_CODE_KEY));
+  }
+
+  /**
+   * Returns all classes registered for GraalVM native image compilation across all configurations.
+   */
+  public static Set<Class<?>> getRegisteredClasses() {
+    return TypeResolver.getAllRegisteredClasses();
+  }
+
+  /** Returns all proxy interfaces registered for GraalVM native image compilation. */
+  public static Set<Class<?>> getProxyInterfaces() {
+    return TypeResolver.getAllProxyInterfaces();
+  }
+
+  /** Clears all GraalVM native image registrations. Primarily for testing purposes. */
+  public static void clearRegistrations() {
+    TypeResolver.clearGraalvmRegistrations();
   }
 
   public static class GraalvmSerializerHolder extends Serializer {
@@ -95,5 +116,66 @@ public class GraalvmSupport {
 
   public static ForyException throwNoArgCtrException(Class<?> type) {
     throw new ForyException("Please provide a no-arg constructor for " + type);
+  }
+
+  public static boolean isRecordConstructorPublicAccessible(Class<?> type) {
+    if (!RecordUtils.isRecord(type)) {
+      return false;
+    }
+
+    try {
+      Constructor<?>[] constructors = type.getDeclaredConstructors();
+      for (Constructor<?> constructor : constructors) {
+        if (Modifier.isPublic(constructor.getModifiers())) {
+          Class<?>[] paramTypes = constructor.getParameterTypes();
+          boolean allParamsPublic = true;
+          for (Class<?> paramType : paramTypes) {
+            if (!Modifier.isPublic(paramType.getModifiers())) {
+              allParamsPublic = false;
+              break;
+            }
+          }
+          if (allParamsPublic) {
+            return true;
+          }
+        }
+      }
+    } catch (Exception e) {
+      return false;
+    }
+    return false;
+  }
+
+  /**
+   * Checks if a class is problematic for object creation and requires special handling in GraalVM.
+   *
+   * <p>A class is considered problematic if it lacks a public no-arg constructor and would
+   * typically require ReflectionFactory or unsafe allocation for instantiation.
+   *
+   * @param type the class to check
+   * @return true if the class is problematic for creation, false otherwise
+   */
+  public static boolean needReflectionRegisterForCreation(Class<?> type) {
+    if (type.isInterface()
+        || Modifier.isAbstract(type.getModifiers())
+        || type.isArray()
+        || type.isEnum()
+        || type.isAnonymousClass()
+        || type.isLocalClass()) {
+      return false;
+    }
+    Constructor<?>[] constructors = type.getDeclaredConstructors();
+    if (constructors.length == 0) {
+      return true;
+    }
+    for (Constructor<?> constructor : constructors) {
+      if (constructor.getParameterCount() == 0) {
+        return false;
+      }
+    }
+    if (RecordUtils.isRecord(type)) {
+      return !isRecordConstructorPublicAccessible(type);
+    }
+    return true;
   }
 }

@@ -1,0 +1,1 @@
+org.apache.fory.graalvm.feature.ForyGraalVMFeature

@@ -65,6 +65,7 @@ import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
 import org.apache.fory.test.bean.BeanB;
 import org.apache.fory.type.TypeUtils;
+import org.apache.fory.util.GraalvmSupport;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -538,5 +539,31 @@ public class ClassResolverTest extends ForyTestBase {
     Assert.assertEquals(
         fory.getClassResolver().getSerializer(abs2Test.getClass()).getClass(),
         AbstractCustomSerializer.class);
+  }
+
+  static class GraalvmRegistrationBean {
+    int value;
+  }
+
+  @Test
+  public void testEnsureSerializersCompiledRegistersClassesForGraalvm() {
+    Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
+    GraalvmSupport.clearRegistrations();
+    Assert.assertFalse(
+        TypeResolver.getAllRegisteredClasses().contains(GraalvmRegistrationBean.class));
+
+    fory.register(GraalvmRegistrationBean.class);
+
+    Assert.assertTrue(
+        TypeResolver.getAllRegisteredClasses().contains(GraalvmRegistrationBean.class));
+
+    GraalvmSupport.clearRegistrations();
+    Assert.assertFalse(
+        TypeResolver.getAllRegisteredClasses().contains(GraalvmRegistrationBean.class));
+
+    fory.ensureSerializersCompiled();
+
+    Assert.assertTrue(
+        TypeResolver.getAllRegisteredClasses().contains(GraalvmRegistrationBean.class));
   }
 }
