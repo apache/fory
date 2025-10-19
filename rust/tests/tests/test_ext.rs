@@ -60,13 +60,13 @@ fn test_use() {
     }
 
     impl Serializer for Item {
-        fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-            write_data(&self.f1, context, is_field)
+        fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+            write_data(&self.f1, context)
         }
 
-        fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
+        fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
             Ok(Self {
-                f1: read_data(context, is_field)?,
+                f1: read_data(context)?,
                 f2: 0,
             })
         }

@@ -121,11 +121,13 @@
 //! - During deserialization, unresolved references will be patched up by `RefReader::add_callback`
 //!   once the strong pointer becomes available.
 
+use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::type_resolver::TypeResolver;
+use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::RefFlag;
+use crate::types::TypeId;
 use std::cell::UnsafeCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -312,73 +314,70 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         true
     }
 
-    fn fory_write(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
+    fn fory_write(
+        &self,
+        context: &mut WriteContext,
+        write_ref_info: bool,
+        write_type_info: bool,
+        has_generics: bool,
+    ) -> Result<(), Error> {
         if let Some(rc) = self.upgrade() {
-            if context
-                .ref_writer
-                .try_write_rc_ref(&mut context.writer, &rc)
+            if !write_ref_info
+                || !context
+                    .ref_writer
+                    .try_write_rc_ref(&mut context.writer, &rc)
             {
-                return Ok(());
+                if write_type_info {
+                    T::fory_write_type_info(context)?;
+                }
+                T::fory_write_data_generic(&*rc, context, has_generics)?;
             }
-            T::fory_write_data(&*rc, context, is_field)?;
         } else {
+            ensure!(write_ref_info, "Value pointed by RcWeak<T> is null");
+
             context.writer.write_i8(RefFlag::Null as i8);
         }
         Ok(())
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        self.fory_write(context, is_field)
+    fn fory_write_data_generic(&self, _: &mut WriteContext, _: bool) -> Result<(), Error> {
+        panic!(
+            "RcWeak<T> should be written using `fory_write` to handle reference tracking properly"
+        );
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        T::fory_write_type_info(context, is_field)
+    fn fory_write_data(&self, _: &mut WriteContext) -> Result<(), Error> {
+        panic!(
+            "RcWeak<T> should be written using `fory_write` to handle reference tracking properly"
+        );
     }
 
-    fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
-
-        match ref_flag {
-            RefFlag::Null => Ok(RcWeak::new()),
-            RefFlag::RefValue => {
-                context.inc_depth()?;
-                let data = T::fory_read_data(context, is_field)?;
-                context.dec_depth();
-                let rc = Rc::new(data);
-                let ref_id = context.ref_reader.store_rc_ref(rc);
-                let rc = context.ref_reader.get_rc_ref::<T>(ref_id).unwrap();
-                Ok(RcWeak::from(&rc))
-            }
-            RefFlag::Ref => {
-                let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
-
-                if let Some(rc) = context.ref_reader.get_rc_ref::<T>(ref_id) {
-                    Ok(RcWeak::from(&rc))
-                } else {
-                    let result_weak = RcWeak::new();
-                    let callback_weak = result_weak.clone();
-
-                    context.ref_reader.add_callback(Box::new(move |ref_reader| {
-                        if let Some(rc) = ref_reader.get_rc_ref::<T>(ref_id) {
-                            callback_weak.update(Rc::downgrade(&rc));
-                        }
-                    }));
-
-                    Ok(result_weak)
-                }
-            }
-            _ => Err(Error::InvalidRef(
-                format!("Weak can only be Null, RefValue or Ref, got {:?}", ref_flag).into(),
-            )),
-        }
+    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        T::fory_write_type_info(context)
     }
 
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        Self::fory_read(context, is_field)
+    fn fory_read(
+        context: &mut ReadContext,
+        read_ref_info: bool,
+        read_type_info: bool,
+    ) -> Result<Self, Error> {
+        read_rc_weak::<T>(context, read_ref_info, read_type_info, None)
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
-        T::fory_read_type_info(context, is_field)
+    fn fory_read_with_type_info(
+        context: &mut ReadContext,
+        read_ref_info: bool,
+        typeinfo: Arc<TypeInfo>,
+    ) -> Result<Self, Error> {
+        read_rc_weak::<T>(context, read_ref_info, false, Some(typeinfo))
+    }
+
+    fn fory_read_data(_: &mut ReadContext) -> Result<Self, Error> {
+        Err(Error::not_allowed("RcWeak<T> should be written using `fory_read/fory_read_with_type_info` to handle reference tracking properly"))
+    }
+
+    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        T::fory_read_type_info(context)
     }
 
     fn fory_reserved_space() -> usize {
@@ -398,8 +397,69 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         }
     }
 
+    fn fory_static_type_id() -> TypeId {
+        T::fory_static_type_id()
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+fn read_rc_weak<T: Serializer + ForyDefault + 'static>(
+    context: &mut ReadContext,
+    read_ref_info: bool,
+    read_type_info: bool,
+    type_info: Option<Arc<TypeInfo>>,
+) -> Result<RcWeak<T>, Error> {
+    let ref_flag = if read_ref_info {
+        context.ref_reader.read_ref_flag(&mut context.reader)?
+    } else {
+        RefFlag::NotNullValue
+    };
+    match ref_flag {
+        RefFlag::Null => Ok(RcWeak::new()),
+        RefFlag::RefValue => {
+            context.inc_depth()?;
+            let data = if let Some(type_info) = type_info {
+                T::fory_read_with_type_info(context, false, type_info)?
+            } else {
+                if read_type_info {
+                    context.read_any_typeinfo()?;
+                }
+                T::fory_read_data(context)?
+            };
+            context.dec_depth();
+            let rc = Rc::new(data);
+            let ref_id = context.ref_reader.store_rc_ref(rc);
+            let rc = context.ref_reader.get_rc_ref::<T>(ref_id).unwrap();
+            Ok(RcWeak::from(&rc))
+        }
+        RefFlag::Ref => {
+            let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
+            if let Some(rc) = context.ref_reader.get_rc_ref::<T>(ref_id) {
+                Ok(RcWeak::from(&rc))
+            } else {
+                let result_weak = RcWeak::new();
+                let callback_weak = result_weak.clone();
+                context.ref_reader.add_callback(Box::new(move |ref_reader| {
+                    if let Some(rc) = ref_reader.get_rc_ref::<T>(ref_id) {
+                        callback_weak.update(Rc::downgrade(&rc));
+                    }
+                }));
+
+                Ok(result_weak)
+            }
+        }
+        RefFlag::NotNullValue => {
+            // let inner = if let Some(typeinfo) = type_info {
+            //     T::fory_read_with_type_info(context, false, typeinfo)?
+            // } else {
+            //     T::fory_read_data(context)?
+            // };
+            // Ok(RcWeak::from(&Rc::new(inner)))
+            Err(Error::invalid_ref("RcWeak can't hold a strong ref value"))
+        }
     }
 }
 
@@ -414,77 +474,69 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         true
     }
 
-    fn fory_write(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
+    fn fory_write(
+        &self,
+        context: &mut WriteContext,
+        write_ref_info: bool,
+        write_type_info: bool,
+        has_generics: bool,
+    ) -> Result<(), Error> {
         if let Some(arc) = self.upgrade() {
-            // IMPORTANT: If the target Arc was serialized already, just write a ref
-            if context
-                .ref_writer
-                .try_write_arc_ref(&mut context.writer, &arc)
+            if !write_ref_info
+                || !context
+                    .ref_writer
+                    .try_write_arc_ref(&mut context.writer, &arc)
             {
-                // Already seen, wrote Ref flag + id, we're done
-                return Ok(());
+                if write_type_info {
+                    T::fory_write_type_info(context)?;
+                }
+                T::fory_write_data_generic(&*arc, context, has_generics)?;
             }
-            // First time seeing this object, write RefValue and then its data
-            T::fory_write_data(&*arc, context, is_field)?;
         } else {
+            ensure!(write_ref_info, "Value pointed by ArcWeak<T> is null");
             context.writer.write_i8(RefFlag::Null as i8);
         }
         Ok(())
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        self.fory_write(context, is_field)
+    fn fory_write_data_generic(&self, _: &mut WriteContext, _: bool) -> Result<(), Error> {
+        panic!(
+            "ArcWeak<T> should be written using `fory_write` to handle reference tracking properly"
+        );
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        T::fory_write_type_info(context, is_field)
+    fn fory_write_data(&self, _: &mut WriteContext) -> Result<(), Error> {
+        panic!(
+            "ArcWeak<T> should be written using `fory_write` to handle reference tracking properly"
+        );
     }
 
-    fn fory_read(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
-        let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
-
-        match ref_flag {
-            RefFlag::Null => Ok(ArcWeak::new()),
-            RefFlag::RefValue => {
-                context.inc_depth()?;
-                let data = T::fory_read_data(context, _is_field)?;
-                context.dec_depth();
-                let arc = Arc::new(data);
-                let ref_id = context.ref_reader.store_arc_ref(arc);
-                let arc = context.ref_reader.get_arc_ref::<T>(ref_id).unwrap();
-                let weak = ArcWeak::from(&arc);
-                Ok(weak)
-            }
-            RefFlag::Ref => {
-                let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
-                let weak = ArcWeak::new();
-
-                if let Some(arc) = context.ref_reader.get_arc_ref::<T>(ref_id) {
-                    weak.update(Arc::downgrade(&arc));
-                } else {
-                    // Capture the raw pointer to the UnsafeCell so we can update it in the callback
-                    let weak_ptr = weak.inner.get();
-                    context.ref_reader.add_callback(Box::new(move |ref_reader| {
-                        if let Some(arc) = ref_reader.get_arc_ref::<T>(ref_id) {
-                            unsafe {
-                                *weak_ptr = Arc::downgrade(&arc);
-                            }
-                        }
-                    }));
-                }
-                Ok(weak)
-            }
-            _ => Err(Error::InvalidRef(
-                format!("Weak can only be Null, RefValue or Ref, got {:?}", ref_flag).into(),
-            )),
-        }
-    }
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        Self::fory_read(context, is_field)
+    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        T::fory_write_type_info(context)
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
-        T::fory_read_type_info(context, is_field)
+    fn fory_read(
+        context: &mut ReadContext,
+        read_ref_info: bool,
+        read_type_info: bool,
+    ) -> Result<Self, Error> {
+        read_arc_weak(context, read_ref_info, read_type_info, None)
+    }
+
+    fn fory_read_with_type_info(
+        context: &mut ReadContext,
+        read_ref_info: bool,
+        typeinfo: Arc<TypeInfo>,
+    ) -> Result<Self, Error> {
+        read_arc_weak::<T>(context, read_ref_info, false, Some(typeinfo))
+    }
+
+    fn fory_read_data(_: &mut ReadContext) -> Result<Self, Error> {
+        Err(Error::not_allowed("ArcWeak<T> should be written using `fory_read/fory_read_with_type_info` to handle reference tracking properly"))
+    }
+
+    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        T::fory_read_type_info(context)
     }
 
     fn fory_reserved_space() -> usize {
@@ -504,8 +556,73 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         }
     }
 
+    fn fory_static_type_id() -> TypeId {
+        T::fory_static_type_id()
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+fn read_arc_weak<T: Serializer + ForyDefault + 'static>(
+    context: &mut ReadContext,
+    read_ref_info: bool,
+    read_type_info: bool,
+    type_info: Option<Arc<TypeInfo>>,
+) -> Result<ArcWeak<T>, Error> {
+    let ref_flag = if read_ref_info {
+        context.ref_reader.read_ref_flag(&mut context.reader)?
+    } else {
+        RefFlag::NotNullValue
+    };
+    match ref_flag {
+        RefFlag::Null => Ok(ArcWeak::new()),
+        RefFlag::RefValue => {
+            context.inc_depth()?;
+            let data = if let Some(type_info) = type_info {
+                T::fory_read_with_type_info(context, false, type_info)?
+            } else {
+                if read_type_info {
+                    context.read_any_typeinfo()?;
+                }
+                T::fory_read_data(context)?
+            };
+            context.dec_depth();
+            let arc = Arc::new(data);
+            let ref_id = context.ref_reader.store_arc_ref(arc);
+            let arc = context.ref_reader.get_arc_ref::<T>(ref_id).unwrap();
+            let weak = ArcWeak::from(&arc);
+            Ok(weak)
+        }
+        RefFlag::Ref => {
+            let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
+            let weak = ArcWeak::new();
+
+            if let Some(arc) = context.ref_reader.get_arc_ref::<T>(ref_id) {
+                weak.update(Arc::downgrade(&arc));
+            } else {
+                // Capture the raw pointer to the UnsafeCell so we can update it in the callback
+                let weak_ptr = weak.inner.get();
+                context.ref_reader.add_callback(Box::new(move |ref_reader| {
+                    if let Some(arc) = ref_reader.get_arc_ref::<T>(ref_id) {
+                        unsafe {
+                            *weak_ptr = Arc::downgrade(&arc);
+                        }
+                    }
+                }));
+            }
+            Ok(weak)
+        }
+        RefFlag::NotNullValue => {
+            // let inner = if let Some(typeinfo) = type_info {
+            //     T::fory_read_with_type_info(context, false, typeinfo)?
+            // } else {
+            //     T::fory_read_data(context)?
+            // };
+            // Ok(ArcWeak::from(&Arc::new(inner)))
+            Err(Error::invalid_ref("ArcWeak can't hold a strong ref value"))
+        }
     }
 }
 

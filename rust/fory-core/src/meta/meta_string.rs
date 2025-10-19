@@ -77,7 +77,7 @@ impl MetaString {
         let mut strip_last_char = false;
         if encoding != Encoding::Utf8 {
             if bytes.is_empty() {
-                return Err(Error::EncodeError("Encoded data cannot be empty".into()));
+                return Err(Error::encode_error("Encoded data cannot be empty"));
             }
             strip_last_char = (bytes[0] & 0x80) != 0;
         }
@@ -142,13 +142,10 @@ impl MetaStringEncoder {
 
         ensure!(
             input.len() < SHORT_MAX_VALUE,
-            Error::EncodeError(
-                format!(
-                    "Meta string is too long, max:{SHORT_MAX_VALUE}, current:{}",
-                    input.len()
-                )
-                .into()
-            )
+            Error::encode_error(format!(
+                "Meta string is too long, max:{SHORT_MAX_VALUE}, current:{}",
+                input.len()
+            ))
         );
 
         if !self.is_latin(input) {
@@ -263,17 +260,14 @@ impl MetaStringEncoder {
         }
         ensure!(
             input.len() < SHORT_MAX_VALUE,
-            Error::EncodeError(
-                format!(
-                    "Meta string is too long, max:{SHORT_MAX_VALUE}, current:{}",
-                    input.len()
-                )
-                .into()
-            )
+            Error::encode_error(format!(
+                "Meta string is too long, max:{SHORT_MAX_VALUE}, current:{}",
+                input.len()
+            ))
         );
         ensure!(
             encoding == Encoding::Utf8 || self.is_latin(input),
-            Error::EncodeError("Non-ASCII characters in meta string are not allowed".into())
+            Error::encode_error("Non-ASCII characters in meta string are not allowed")
         );
 
         if input.is_empty() {
@@ -421,10 +415,9 @@ impl MetaStringEncoder {
                 '_' => Ok(27),
                 '$' => Ok(28),
                 '|' => Ok(29),
-                _ => Err(Error::EncodeError(
-                    format!("Unsupported character for LOWER_UPPER_DIGIT_SPECIAL encoding: {c}",)
-                        .into(),
-                ))?,
+                _ => Err(Error::encode_error(format!(
+                    "Unsupported character for LOWER_UPPER_DIGIT_SPECIAL encoding: {c}",
+                )))?,
             },
             6 => match c {
                 'a'..='z' => Ok(c as u8 - b'a'),
@@ -436,10 +429,9 @@ impl MetaStringEncoder {
                     } else if c == self.special_char2 {
                         Ok(63)
                     } else {
-                        Err(Error::EncodeError(
-                            format!("Invalid character value for LOWER_SPECIAL decoding: {c:?}",)
-                                .into(),
-                        ))?
+                        Err(Error::encode_error(format!(
+                            "Invalid character value for LOWER_SPECIAL decoding: {c:?}",
+                        )))?
                     }
                 }
             },
@@ -547,9 +539,9 @@ impl MetaStringDecoder {
             27 => Ok('_'),
             28 => Ok('$'),
             29 => Ok('|'),
-            _ => Err(Error::EncodeError(
-                format!("Invalid character value for LOWER_SPECIAL decoding: {char_value}",).into(),
-            ))?,
+            _ => Err(Error::encode_error(format!(
+                "Invalid character value for LOWER_SPECIAL decoding: {char_value}",
+            )))?,
         }
     }
 
@@ -560,12 +552,9 @@ impl MetaStringDecoder {
             52..=61 => Ok((b'0' + char_value - 52) as char),
             62 => Ok(self.special_char1),
             63 => Ok(self.special_char2),
-            _ => Err(Error::EncodeError(
-                format!(
-                    "Invalid character value for LOWER_UPPER_DIGIT_SPECIAL decoding: {char_value}",
-                )
-                .into(),
-            ))?,
+            _ => Err(Error::encode_error(format!(
+                "Invalid character value for LOWER_UPPER_DIGIT_SPECIAL decoding: {char_value}",
+            )))?,
         }
     }
 

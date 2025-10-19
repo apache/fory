@@ -20,7 +20,8 @@ use crate::meta::get_latin1_length;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::resolver::type_resolver::TypeResolver;
-use crate::serializer::{read_type_info, write_type_info, ForyDefault, Serializer};
+use crate::serializer::util::read_basic_type_info;
+use crate::serializer::{ForyDefault, Serializer};
 use crate::types::TypeId;
 use std::mem;
 
@@ -32,7 +33,7 @@ enum StrEncoding {
 
 impl Serializer for String {
     #[inline]
-    fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) -> Result<(), Error> {
+    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         let mut len = get_latin1_length(self);
         if len >= 0 {
             let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
@@ -54,7 +55,7 @@ impl Serializer for String {
     }
 
     #[inline]
-    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         let bitor = context.reader.read_varuint36small()?;
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
@@ -63,9 +64,10 @@ impl Serializer for String {
             1 => StrEncoding::Utf16,
             2 => StrEncoding::Utf8,
             _ => {
-                return Err(Error::EncodingError(
-                    format!("wrong encoding value: {}", encoding).into(),
-                ))
+                return Err(Error::encoding_error(format!(
+                    "wrong encoding value: {}",
+                    encoding
+                )))
             }
         };
         let s = match encoding {
@@ -86,8 +88,17 @@ impl Serializer for String {
         Ok(TypeId::STRING as u32)
     }
 
+    #[inline(always)]
     fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
         Ok(TypeId::STRING as u32)
+    }
+
+    #[inline(always)]
+    fn fory_static_type_id() -> TypeId
+    where
+        Self: Sized,
+    {
+        TypeId::STRING
     }
 
     #[inline(always)]
@@ -96,13 +107,14 @@ impl Serializer for String {
     }
 
     #[inline(always)]
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        write_type_info::<Self>(context, is_field)
+    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        context.writer.write_varuint32(TypeId::STRING as u32);
+        Ok(())
     }
 
     #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
-        read_type_info::<Self>(context, is_field)
+    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        read_basic_type_info::<Self>(context)
     }
 }
 

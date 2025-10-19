@@ -20,7 +20,8 @@ use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::collection::{
-    read_collection, read_collection_type_info, write_collection, write_collection_type_info,
+    read_collection_data, read_collection_type_info, write_collection_data,
+    write_collection_type_info,
 };
 
 use crate::serializer::{ForyDefault, Serializer};
@@ -29,20 +30,20 @@ use std::collections::{BTreeSet, HashSet};
 use std::mem;
 
 impl<T: Serializer + ForyDefault + Eq + std::hash::Hash> Serializer for HashSet<T> {
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        write_collection(self, context, is_field)
+    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+        write_collection_data(self, context, false)
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        write_collection_type_info(context, is_field, TypeId::SET as u32)
+    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        write_collection_type_info(context, TypeId::SET as u32)
     }
 
-    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
-        read_collection(context)
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        read_collection_data(context)
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
-        read_collection_type_info(context, is_field, TypeId::SET as u32)
+    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        read_collection_type_info(context, TypeId::SET as u32)
     }
 
     fn fory_reserved_space() -> usize {
@@ -55,6 +56,13 @@ impl<T: Serializer + ForyDefault + Eq + std::hash::Hash> Serializer for HashSet<
 
     fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
         Ok(TypeId::SET as u32)
+    }
+
+    fn fory_static_type_id() -> TypeId
+    where
+        Self: Sized,
+    {
+        TypeId::SET
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -69,20 +77,20 @@ impl<T> ForyDefault for HashSet<T> {
 }
 
 impl<T: Serializer + ForyDefault + Ord> Serializer for BTreeSet<T> {
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        write_collection(self, context, is_field)
+    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+        write_collection_data(self, context, false)
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        write_collection_type_info(context, is_field, TypeId::SET as u32)
+    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        write_collection_type_info(context, TypeId::SET as u32)
     }
 
-    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
-        read_collection(context)
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        read_collection_data(context)
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
-        read_collection_type_info(context, is_field, TypeId::SET as u32)
+    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        read_collection_type_info(context, TypeId::SET as u32)
     }
 
     fn fory_reserved_space() -> usize {
@@ -95,6 +103,13 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BTreeSet<T> {
 
     fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
         Ok(TypeId::SET as u32)
+    }
+
+    fn fory_static_type_id() -> TypeId
+    where
+        Self: Sized,
+    {
+        TypeId::SET
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

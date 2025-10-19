@@ -36,10 +36,10 @@ fn has_existing_default(ast: &syn::DeriveInput, trait_name: &str) -> bool {
     })
 }
 
-pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
+pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenStream {
     let name = &ast.ident;
     use crate::object::util::{clear_struct_context, set_struct_context};
-    set_struct_context(&name.to_string());
+    set_struct_context(&name.to_string(), debug_enabled);
 
     // Check if ForyDefault is already derived/implemented
     let has_existing_default = has_existing_default(ast, "ForyDefault");
@@ -65,7 +65,10 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 derive_enum::gen_actual_type_id(),
                 quote! { &[] },
                 derive_enum::gen_field_fields_info(s),
-                derive_enum::gen_read_compatible(),
+                quote! {
+                    Err(fory_core::Error::not_allowed("`fory_read_compatible` should only be invoked at struct type"
+                ))
+                },
             ),
             syn::Data::Union(_) => {
                 panic!("Union is not supported")
@@ -73,34 +76,40 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
         };
     // Serializer
     let (
-        reserved_space_ts,
-        write_type_info_ts,
-        read_type_info_ts,
-        write_data_ts,
-        read_data_ts,
         write_ts,
+        write_data_ts,
+        write_type_info_ts,
         read_ts,
+        read_with_type_info_ts,
+        read_data_ts,
+        read_type_info_ts,
+        reserved_space_ts,
+        static_type_id_ts,
     ) = match &ast.data {
         syn::Data::Struct(s) => {
             let fields = sorted_fields(&s.fields);
             (
-                write::gen_reserved_space(&fields),
-                write::gen_write_type_info(),
-                read::gen_read_type_info(),
-                write::gen_write_data(&fields),
-                read::gen_read_data(&fields),
                 write::gen_write(),
+                write::gen_write_data(&fields),
+                write::gen_write_type_info(),
                 read::gen_read(name),
+                read::gen_read_with_type_info(name),
+                read::gen_read_data(&fields),
+                read::gen_read_type_info(),
+                write::gen_reserved_space(&fields),
+                quote! { fory_core::TypeId::STRUCT },
             )
         }
         syn::Data::Enum(e) => (
-            derive_enum::gen_reserved_space(),
-            derive_enum::gen_write_type_info(),
-            derive_enum::gen_read_type_info(),
-            derive_enum::gen_write_data(e),
-            derive_enum::gen_read_data(e),
             derive_enum::gen_write(e),
+            derive_enum::gen_write_data(e),
+            derive_enum::gen_write_type_info(),
             derive_enum::gen_read(e),
+            derive_enum::gen_read_with_type_info(e),
+            derive_enum::gen_read_data(e),
+            derive_enum::gen_read_type_info(),
+            derive_enum::gen_reserved_space(),
+            quote! { fory_core::TypeId::ENUM },
         ),
         syn::Data::Union(_) => {
             panic!("Union is not supported")
@@ -111,11 +120,11 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
     let type_idx = misc::allocate_type_id();
 
     let gen = quote! {
-        use fory_core::serializer::ForyDefault as _;
+        use fory_core::ForyDefault as _;
 
         #default_impl
 
-        impl fory_core::serializer::StructSerializer for #name {
+        impl fory_core::StructSerializer for #name {
             fn fory_type_index() -> u32 {
                 #type_idx
             }
@@ -131,8 +140,13 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
             fn fory_fields_info(type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<Vec<fory_core::meta::FieldInfo>, fory_core::error::Error> {
                 #fields_info_ts
             }
+
+            fn fory_read_compatible(context: &mut fory_core::resolver::context::ReadContext, type_info: std::sync::Arc<fory_core::TypeInfo>) -> Result<Self, fory_core::error::Error> {
+                #read_compatible_ts
+            }
         }
-        impl fory_core::serializer::Serializer for #name {
+
+        impl fory_core::Serializer for #name {
             fn fory_get_type_id(type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<u32, fory_core::error::Error> {
                 type_resolver.get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
             }
@@ -145,36 +159,43 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 self
             }
 
+            fn fory_static_type_id() -> fory_core::TypeId
+            where
+                Self: Sized,
+            {
+                #static_type_id_ts
+            }
+
             fn fory_reserved_space() -> usize {
                 #reserved_space_ts
             }
 
-            fn fory_write_type_info(context: &mut fory_core::resolver::context::WriteContext, is_field: bool) -> Result<(), fory_core::error::Error> {
-                #write_type_info_ts
-            }
-
-            fn fory_read_type_info(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<(), fory_core::error::Error> {
-                #read_type_info_ts
-            }
-
-            fn fory_write_data(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) -> Result<(), fory_core::error::Error> {
-                #write_data_ts
-            }
-
-            fn fory_read_data( context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
-                #read_data_ts
-            }
-
-            fn fory_write(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) -> Result<(), fory_core::error::Error> {
+            fn fory_write(&self, context: &mut fory_core::resolver::context::WriteContext, write_ref_info: bool, write_type_info: bool, _: bool) -> Result<(), fory_core::error::Error> {
                 #write_ts
             }
 
-            fn fory_read(context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
+            fn fory_write_data(&self, context: &mut fory_core::resolver::context::WriteContext) -> Result<(), fory_core::error::Error> {
+                #write_data_ts
+            }
+
+            fn fory_write_type_info(context: &mut fory_core::resolver::context::WriteContext) -> Result<(), fory_core::error::Error> {
+                #write_type_info_ts
+            }
+
+            fn fory_read(context: &mut fory_core::resolver::context::ReadContext, read_ref_info: bool, read_type_info: bool) -> Result<Self, fory_core::error::Error> {
                 #read_ts
             }
 
-            fn fory_read_compatible(context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
-                #read_compatible_ts
+            fn fory_read_with_type_info(context: &mut fory_core::resolver::context::ReadContext, read_ref_info: bool, type_info: std::sync::Arc<fory_core::TypeInfo>) -> Result<Self, fory_core::error::Error> {
+                #read_with_type_info_ts
+            }
+
+            fn fory_read_data( context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
+                #read_data_ts
+            }
+
+            fn fory_read_type_info(context: &mut fory_core::resolver::context::ReadContext) -> Result<(), fory_core::error::Error> {
+                #read_type_info_ts
             }
         }
     };
@@ -225,12 +246,12 @@ fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
                     }
                     StructField::Forward => {
                         quote! {
-                            #ident: <#ty as fory_core::serializer::ForyDefault>::fory_default()
+                            #ident: <#ty as fory_core::ForyDefault>::fory_default()
                         }
                     }
                     _ => {
                         quote! {
-                            #ident: <#ty as fory_core::serializer::ForyDefault>::fory_default()
+                            #ident: <#ty as fory_core::ForyDefault>::fory_default()
                         }
                     }
                 }
@@ -238,7 +259,7 @@ fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
 
             if has_existing_default {
                 quote! {
-                   impl fory_core::serializer::ForyDefault for #name {
+                   impl fory_core::ForyDefault for #name {
                         fn fory_default() -> Self {
                             Self::default()
                         }
@@ -246,7 +267,7 @@ fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
                 }
             } else {
                 quote! {
-                    impl fory_core::serializer::ForyDefault for #name {
+                    impl fory_core::ForyDefault for #name {
                         fn fory_default() -> Self {
                             Self {
                                 #(#field_inits),*
@@ -274,7 +295,7 @@ fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
                 if let Some(first_variant) = e.variants.first() {
                     let variant_ident = &first_variant.ident;
                     quote! {
-                        impl fory_core::serializer::ForyDefault for #name {
+                        impl fory_core::ForyDefault for #name {
                             fn fory_default() -> Self {
                                 Self::#variant_ident
                             }
@@ -287,7 +308,7 @@ fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
                         }
                     }
                 } else {
-                    // impl fory_core::serializer::ForyDefault for #name {
+                    // impl fory_core::ForyDefault for #name {
                     //     fn fory_default() -> Self {
                     //         panic!("No unit-like variants found in enum {}", stringify!(#name));
                     //     }
@@ -296,7 +317,7 @@ fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
                 }
             } else {
                 quote! {
-                    impl fory_core::serializer::ForyDefault for #name {
+                    impl fory_core::ForyDefault for #name {
                         fn fory_default() -> Self {
                             Self::default()
                         }

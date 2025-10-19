@@ -920,6 +920,15 @@ let fory = Fory::default().max_dyn_depth(10); // Allow up to 10 levels
 
 Note: Static data types (non-dynamic types) are secure by nature and not subject to depth limits, as their structure is known at compile time.
 
+## 🧪 Troubleshooting
+
+- **Type registry errors**: An error like `TypeId ... not found in type_info registry` means the type was never registered with the current `Fory` instance. Confirm that every serializable struct or trait implementation calls `fory.register::<T>(type_id)` before serialization and that the same IDs are reused on the deserialize side.
+- **Quick error lookup**: Prefer the static constructors on `fory_core::error::Error` (`Error::type_mismatch`, `Error::invalid_data`, `Error::unknown`, etc.) rather than instantiating variants manually. This keeps diagnostics consistent and makes opt-in panics work.
+- **Panic on error for backtraces**: Toggle `FORY_PANIC_ON_ERROR=1` (or `true`) alongside `RUST_BACKTRACE=1` when running tests or binaries to panic at the exact site an error is constructed. Reset the variable afterwards to avoid aborting user-facing code paths.
+- **Struct field tracing**: Add the `#[fory_debug]` attribute alongside `#[derive(ForyObject)]` to tell the macro to emit hook invocations for that type. Once compiled with debug hooks, call `set_before_write_field_func`, `set_after_write_field_func`, `set_before_read_field_func`, or `set_after_read_field_func` (from `fory-core/src/serializer/struct_.rs`) to plug in custom callbacks, and use `reset_struct_debug_hooks()` when you want the defaults back.
+- **Lightweight logging**: Without custom hooks, enable `ENABLE_FORY_DEBUG_OUTPUT=1` to print field-level read/write events emitted by the default hook functions. This is especially useful when investigating alignment or cursor mismatches.
+- **Test-time hygiene**: Some integration tests expect `FORY_PANIC_ON_ERROR` to remain unset. Export it only for focused debugging sessions, and prefer `cargo test --features tests -p fory-tests --test <case>` when isolating failing scenarios.
+
 ## 🛠️ Development
 
 ### Building

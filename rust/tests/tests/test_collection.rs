@@ -21,7 +21,8 @@ use std::collections::{BTreeSet, BinaryHeap, HashSet};
 
 #[test]
 fn test_btreeset_roundtrip() {
-    let fory: Fory = Fory::default();
+    let mut fory: Fory = Fory::default();
+    fory.register_generic_trait::<BTreeSet<i32>>().unwrap();
 
     let mut original = BTreeSet::new();
     original.insert(1);

@@ -17,69 +17,86 @@
 
 use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::type_resolver::TypeResolver;
+use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::RefFlag;
+use crate::types::TypeId;
 use std::rc::Rc;
+use std::sync::Arc;
 
 impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
     fn fory_is_shared_ref() -> bool {
         true
     }
 
-    fn fory_write(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        if !context
-            .ref_writer
-            .try_write_rc_ref(&mut context.writer, self)
+    fn fory_write(
+        &self,
+        context: &mut WriteContext,
+        write_ref_info: bool,
+        write_type_info: bool,
+        has_generics: bool,
+    ) -> Result<(), Error> {
+        if !write_ref_info
+            || !context
+                .ref_writer
+                .try_write_rc_ref(&mut context.writer, self)
         {
-            T::fory_write_data(self.as_ref(), context, is_field)?
-        };
-        Ok(())
-    }
-
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        // When Rc is nested inside another shared ref (like Arc<Rc<T>>),
-        // the outer ref calls fory_write_data on the inner Rc.
-        // We still need to track the Rc's own references here.
-        self.fory_write(context, is_field)
-    }
-
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        T::fory_write_type_info(context, is_field)
-    }
-
-    fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
-        match ref_flag {
-            RefFlag::Null => Err(Error::InvalidRef("Rc cannot be null".into())),
-            RefFlag::Ref => {
-                let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
-                context.ref_reader.get_rc_ref::<T>(ref_id).ok_or_else(|| {
-                    Error::InvalidRef(format!("Rc reference {ref_id} not found").into())
-                })
+            if T::fory_is_shared_ref() || T::fory_is_polymorphic() {
+                let inner_write_ref = T::fory_is_shared_ref();
+                return T::fory_write(
+                    &**self,
+                    context,
+                    inner_write_ref,
+                    write_type_info,
+                    has_generics,
+                );
             }
-            RefFlag::NotNullValue => {
-                let inner = T::fory_read_data(context, is_field)?;
-                Ok(Rc::new(inner))
+            if write_type_info {
+                T::fory_write_type_info(context)?;
             }
-            RefFlag::RefValue => {
-                let ref_id = context.ref_reader.reserve_ref_id();
-                let inner = T::fory_read_data(context, is_field)?;
-                let rc = Rc::new(inner);
-                context.ref_reader.store_rc_ref_at(ref_id, rc.clone());
-                Ok(rc)
-            }
+            T::fory_write_data_generic(self, context, has_generics)
+        } else {
+            Ok(())
         }
     }
 
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        // When Rc is nested inside another shared ref, fory_read_data is called.
-        // Delegate to fory_read which handles ref tracking properly.
-        Self::fory_read(context, is_field)
+    fn fory_write_data_generic(&self, _: &mut WriteContext, _: bool) -> Result<(), Error> {
+        panic!("Rc<T> should be written using `fory_write` to handle reference tracking properly");
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
-        T::fory_read_type_info(context, is_field)
+    fn fory_write_data(&self, _: &mut WriteContext) -> Result<(), Error> {
+        panic!("Rc<T> should be written using `fory_write` to handle reference tracking properly");
+    }
+
+    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        T::fory_write_type_info(context)
+    }
+
+    fn fory_read(
+        context: &mut ReadContext,
+        read_ref_info: bool,
+        read_type_info: bool,
+    ) -> Result<Self, Error> {
+        read_rc(context, read_ref_info, read_type_info, None)
+    }
+
+    fn fory_read_with_type_info(
+        context: &mut ReadContext,
+        read_ref_info: bool,
+        typeinfo: Arc<TypeInfo>,
+    ) -> Result<Self, Error>
+    where
+        Self: Sized + ForyDefault,
+    {
+        read_rc(context, read_ref_info, false, Some(typeinfo))
+    }
+
+    fn fory_read_data(_: &mut ReadContext) -> Result<Self, Error> {
+        panic!("Rc<T> should be read using `fory_read/fory_read_with_type_info` to handle reference tracking properly");
+    }
+
+    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        T::fory_read_type_info(context)
     }
 
     fn fory_reserved_space() -> usize {
@@ -96,9 +113,66 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
         (**self).fory_type_id_dyn(type_resolver)
     }
 
+    fn fory_static_type_id() -> TypeId {
+        T::fory_static_type_id()
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+}
+
+fn read_rc<T: Serializer + ForyDefault + 'static>(
+    context: &mut ReadContext,
+    read_ref_info: bool,
+    read_type_info: bool,
+    typeinfo: Option<Arc<TypeInfo>>,
+) -> Result<Rc<T>, Error> {
+    let ref_flag = if read_ref_info {
+        context.ref_reader.read_ref_flag(&mut context.reader)?
+    } else {
+        RefFlag::NotNullValue
+    };
+    match ref_flag {
+        RefFlag::Null => Err(Error::invalid_ref("Rc cannot be null")),
+        RefFlag::Ref => {
+            let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
+            context
+                .ref_reader
+                .get_rc_ref::<T>(ref_id)
+                .ok_or_else(|| Error::invalid_ref(format!("Rc reference {ref_id} not found")))
+        }
+        RefFlag::NotNullValue => {
+            let inner = read_rc_inner::<T>(context, read_type_info, typeinfo)?;
+            Ok(Rc::new(inner))
+        }
+        RefFlag::RefValue => {
+            let ref_id = context.ref_reader.reserve_ref_id();
+            let inner = read_rc_inner::<T>(context, read_type_info, typeinfo)?;
+            let rc = Rc::new(inner);
+            context.ref_reader.store_rc_ref_at(ref_id, rc.clone());
+            Ok(rc)
+        }
+    }
+}
+
+fn read_rc_inner<T: Serializer + ForyDefault + 'static>(
+    context: &mut ReadContext,
+    read_type_info: bool,
+    typeinfo: Option<Arc<TypeInfo>>,
+) -> Result<T, Error> {
+    if let Some(typeinfo) = typeinfo {
+        let inner_read_ref = T::fory_is_shared_ref();
+        return T::fory_read_with_type_info(context, inner_read_ref, typeinfo);
+    }
+    if T::fory_is_shared_ref() || T::fory_is_polymorphic() {
+        let inner_read_ref = T::fory_is_shared_ref();
+        return T::fory_read(context, inner_read_ref, read_type_info);
+    }
+    if read_type_info {
+        T::fory_read_type_info(context)?;
+    }
+    T::fory_read_data(context)
 }
 
 impl<T: ForyDefault> ForyDefault for Rc<T> {

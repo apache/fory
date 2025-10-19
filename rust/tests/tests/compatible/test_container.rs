@@ -23,6 +23,7 @@ use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_derive::ForyObject;
 
 #[derive(ForyObject, PartialEq, Eq, Hash, Debug)]
+#[fory_debug]
 struct Item {
     id: i32,
 }

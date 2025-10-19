@@ -98,12 +98,12 @@ impl MetaStringBytes {
         }
 
         let first8: [u8; 8] = bytes[0..8].try_into().map_err(|_| {
-            Error::InvalidData(format!("expected at least 8 bytes, got {}", bytes.len()).into())
+            Error::invalid_data(format!("expected at least 8 bytes, got {}", bytes.len()))
         })?;
         let first8 = u64::from_le_bytes(first8);
 
         let second8: [u8; 8] = bytes[8..16].try_into().map_err(|_| {
-            Error::InvalidData(format!("expected at least 16 bytes, got {}", bytes.len()).into())
+            Error::invalid_data(format!("expected at least 16 bytes, got {}", bytes.len()))
         })?;
         let second8 = u64::from_le_bytes(second8);
 
@@ -267,7 +267,7 @@ impl MetaStringReaderResolver {
             self.dynamic_read
                 .get(idx)
                 .and_then(|opt| opt.clone())
-                .ok_or_else(|| Error::InvalidData("dynamic id not found".into()))
+                .ok_or_else(|| Error::invalid_data("dynamic id not found"))
         }
     }
 
@@ -293,7 +293,7 @@ impl MetaStringReaderResolver {
             self.dynamic_read
                 .get(idx)
                 .and_then(|opt| opt.clone())
-                .ok_or_else(|| Error::InvalidData("dynamic id not found".into()))
+                .ok_or_else(|| Error::invalid_data("dynamic id not found"))
         }
     }
 

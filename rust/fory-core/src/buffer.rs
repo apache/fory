@@ -375,6 +375,11 @@ impl Reader {
     }
 
     #[inline(always)]
+    pub(crate) fn move_back(&mut self, additional: usize) {
+        self.cursor -= additional;
+    }
+
+    #[inline(always)]
     pub(crate) fn ptr_at(&self, offset: usize) -> *const u8 {
         unsafe { self.bf.add(offset) }
     }
@@ -395,10 +400,10 @@ impl Reader {
     fn check_bound(&self, n: usize) -> Result<(), Error> {
         // The upper layer guarantees it is non-null
         // if self.bf.is_null() {
-        //     return Err(Error::InvalidData("buffer pointer is null".into()));
+        //     return Err(Error::invalid_data("buffer pointer is null"));
         // }
         if self.cursor + n > self.len {
-            Err(Error::BufferOutOfBound(self.cursor, n, self.len))
+            Err(Error::buffer_out_of_bound(self.cursor, n, self.len))
         } else {
             Ok(())
         }
@@ -673,7 +678,7 @@ impl Reader {
             }
             shift += 7;
             if shift >= 36 {
-                return Err(Error::EncodeError("varuint36small overflow".into()));
+                return Err(Error::encode_error("varuint36small overflow"));
             }
         }
         Ok(result)

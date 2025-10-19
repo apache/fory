@@ -86,13 +86,13 @@ impl FieldType {
         match self.type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 let generic = self.generics.first().unwrap();
-                generic.to_bytes(writer, true, false)?;
+                generic.to_bytes(writer, true, generic.nullable)?;
             }
             x if x == TypeId::MAP as u32 => {
                 let key_generic = self.generics.first().unwrap();
                 let val_generic = self.generics.get(1).unwrap();
-                key_generic.to_bytes(writer, true, false)?;
-                val_generic.to_bytes(writer, true, false)?;
+                key_generic.to_bytes(writer, true, key_generic.nullable)?;
+                val_generic.to_bytes(writer, true, val_generic.nullable)?;
             }
             _ => {}
         }
@@ -163,9 +163,9 @@ impl FieldInfo {
             0x00 => Ok(Encoding::Utf8),
             0x01 => Ok(Encoding::AllToLowerSpecial),
             0x02 => Ok(Encoding::LowerUpperDigitSpecial),
-            _ => Err(Error::EncodingError(
-                format!("Unsupported encoding of field name in type meta, value:{value}").into(),
-            ))?,
+            _ => Err(Error::encoding_error(format!(
+                "Unsupported encoding of field name in type meta, value:{value}"
+            )))?,
         }
     }
 
@@ -494,10 +494,10 @@ impl TypeMetaLayer {
             if let Some(type_info_current) =
                 type_resolver.get_type_info_by_name(&namespace.original, &type_name.original)
             {
-                Self::assign_field_ids(type_info_current, &mut sorted_field_infos);
+                Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
             }
         } else if let Some(type_info_current) = type_resolver.get_type_info_by_id(type_id) {
-            Self::assign_field_ids(type_info_current, &mut sorted_field_infos);
+            Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
         }
         // if no type found, keep all fields id as -1 to be skipped.
         Ok(TypeMetaLayer::new(

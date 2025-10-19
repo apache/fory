@@ -250,17 +250,14 @@ fn test_string_serializer() {
     ];
     for s in &test_strings {
         // make is_field=true to skip read/write type_id
-        assert_eq!(*s, String::fory_read_data(&mut context, true).unwrap());
-        assert_eq!(
-            *s,
-            String::fory_read_data(&mut context_compress, true).unwrap()
-        );
+        assert_eq!(*s, String::fory_read_data(&mut context).unwrap());
+        assert_eq!(*s, String::fory_read_data(&mut context_compress).unwrap());
     }
     let writer = Writer::default();
     let fory = Fory::default().compatible(true).xlang(true);
     let mut context = WriteContext::new_from_fory(writer, &fory);
     for s in &test_strings {
-        s.fory_write_data(&mut context, true).unwrap();
+        s.fory_write_data(&mut context).unwrap();
     }
     fs::write(&data_file_path, context.writer.dump()).unwrap();
 }
@@ -614,19 +611,15 @@ struct MyExt {
     id: i32,
 }
 impl Serializer for MyExt {
-    fn fory_write_data(
-        &self,
-        context: &mut WriteContext,
-        _is_field: bool,
-    ) -> Result<(), fory_core::error::Error> {
+    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), fory_core::error::Error> {
         // set is_field=false to write type_id like in java
-        write_data(&self.id, context, false)
+        write_data(&self.id, context)
     }
 
-    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         Ok(Self {
             // set is_field=false to write type_id like in java
-            id: read_data(context, false)?,
+            id: read_data(context)?,
         })
     }
 

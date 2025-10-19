@@ -82,9 +82,48 @@ pub enum TypeId {
     ARROW_RECORD_BATCH = 38,
     ARROW_TABLE = 39,
     UNKNOWN = 63,
-    // only used at receiver peer
-    ForyNullable = 265,
 }
+
+pub const BOOL: u32 = TypeId::BOOL as u32;
+pub const INT8: u32 = TypeId::INT8 as u32;
+pub const INT16: u32 = TypeId::INT16 as u32;
+pub const INT32: u32 = TypeId::INT32 as u32;
+pub const VAR_INT32: u32 = TypeId::VAR_INT32 as u32;
+pub const INT64: u32 = TypeId::INT64 as u32;
+pub const VAR_INT64: u32 = TypeId::VAR_INT64 as u32;
+pub const SLI_INT64: u32 = TypeId::SLI_INT64 as u32;
+pub const FLOAT16: u32 = TypeId::FLOAT16 as u32;
+pub const FLOAT32: u32 = TypeId::FLOAT32 as u32;
+pub const FLOAT64: u32 = TypeId::FLOAT64 as u32;
+pub const STRING: u32 = TypeId::STRING as u32;
+pub const ENUM: u32 = TypeId::ENUM as u32;
+pub const NAMED_ENUM: u32 = TypeId::NAMED_ENUM as u32;
+pub const STRUCT: u32 = TypeId::STRUCT as u32;
+pub const COMPATIBLE_STRUCT: u32 = TypeId::COMPATIBLE_STRUCT as u32;
+pub const NAMED_STRUCT: u32 = TypeId::NAMED_STRUCT as u32;
+pub const NAMED_COMPATIBLE_STRUCT: u32 = TypeId::NAMED_COMPATIBLE_STRUCT as u32;
+pub const EXT: u32 = TypeId::EXT as u32;
+pub const NAMED_EXT: u32 = TypeId::NAMED_EXT as u32;
+pub const LIST: u32 = TypeId::LIST as u32;
+pub const SET: u32 = TypeId::SET as u32;
+pub const MAP: u32 = TypeId::MAP as u32;
+pub const DURATION: u32 = TypeId::DURATION as u32;
+pub const TIMESTAMP: u32 = TypeId::TIMESTAMP as u32;
+pub const LOCAL_DATE: u32 = TypeId::LOCAL_DATE as u32;
+pub const DECIMAL: u32 = TypeId::DECIMAL as u32;
+pub const BINARY: u32 = TypeId::BINARY as u32;
+pub const ARRAY: u32 = TypeId::ARRAY as u32;
+pub const BOOL_ARRAY: u32 = TypeId::BOOL_ARRAY as u32;
+pub const INT8_ARRAY: u32 = TypeId::INT8_ARRAY as u32;
+pub const INT16_ARRAY: u32 = TypeId::INT16_ARRAY as u32;
+pub const INT32_ARRAY: u32 = TypeId::INT32_ARRAY as u32;
+pub const INT64_ARRAY: u32 = TypeId::INT64_ARRAY as u32;
+pub const FLOAT16_ARRAY: u32 = TypeId::FLOAT16_ARRAY as u32;
+pub const FLOAT32_ARRAY: u32 = TypeId::FLOAT32_ARRAY as u32;
+pub const FLOAT64_ARRAY: u32 = TypeId::FLOAT64_ARRAY as u32;
+pub const ARROW_RECORD_BATCH: u32 = TypeId::ARROW_RECORD_BATCH as u32;
+pub const ARROW_TABLE: u32 = TypeId::ARROW_TABLE as u32;
+pub const UNKNOWN: u32 = TypeId::UNKNOWN as u32;
 
 const MAX_UNT32: u64 = (1 << 31) - 1;
 
@@ -171,6 +210,24 @@ pub static PRIMITIVE_ARRAY_TYPE_MAP: &[(&str, u32, &str)] = &[
     ("f64", TypeId::FLOAT64_ARRAY as u32, "Vec<f64>"),
 ];
 
+#[inline(always)]
+pub fn is_primitive_type(type_id: TypeId) -> bool {
+    matches!(
+        type_id,
+        TypeId::BOOL
+            | TypeId::INT8
+            | TypeId::INT16
+            | TypeId::INT32
+            | TypeId::INT64
+            | TypeId::FLOAT32
+            | TypeId::FLOAT64
+            | TypeId::STRING
+            | TypeId::LOCAL_DATE
+            | TypeId::TIMESTAMP
+    )
+}
+
+#[inline(always)]
 pub fn is_internal_type(type_id: u32) -> bool {
     if type_id == 0 || type_id >= TypeId::UNKNOWN as u32 {
         return false;
@@ -186,6 +243,25 @@ pub fn is_internal_type(type_id: u32) -> bool {
         TypeId::NAMED_EXT as u32,
     ];
     !excluded.contains(&type_id)
+}
+
+#[inline(always)]
+pub fn need_to_write_type_for_field(type_id: TypeId) -> bool {
+    matches!(
+        type_id,
+        TypeId::STRUCT
+            | TypeId::COMPATIBLE_STRUCT
+            | TypeId::NAMED_STRUCT
+            | TypeId::NAMED_COMPATIBLE_STRUCT
+            | TypeId::EXT
+            | TypeId::NAMED_EXT
+            | TypeId::UNKNOWN
+    )
+}
+
+#[inline(always)]
+pub fn is_container_type(type_id: TypeId) -> bool {
+    type_id == TypeId::LIST || type_id == TypeId::SET || type_id == TypeId::MAP
 }
 
 pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
@@ -252,9 +328,9 @@ impl TryFrom<u8> for Language {
             4 => Ok(Language::Go),
             5 => Ok(Language::Javascript),
             6 => Ok(Language::Rust),
-            _ => Err(Error::InvalidData(
-                format!("Unsupported language code, value:{num}").into(),
-            )),
+            _ => Err(Error::invalid_data(format!(
+                "Unsupported language code, value:{num}"
+            ))),
         }
     }
 }

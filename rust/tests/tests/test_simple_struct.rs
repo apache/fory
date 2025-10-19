@@ -15,57 +15,165 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use fory_core::fory::Fory;
-use fory_derive::ForyObject;
 use std::collections::HashMap;
 
+use fory_core::fory::Fory;
+use fory_derive::ForyObject;
+
+// Test 1: Simple struct with one primitive field, non-compatible mode
 #[test]
-fn test_simple() {
-    // a single test for cargo expand and analysis: `cargo expand --test test_simple_struct 2>&1 > expanded.rs`
-    // &["f7", "last", "f2", "f5", "f3", "f6", "f1"]
-    #[derive(ForyObject, Debug)]
-    struct Animal1 {
-        f1: HashMap<i8, Vec<i8>>,
-        f2: String,
-        f3: Vec<i8>,
-        f5: String,
-        f6: Vec<i8>,
-        f7: i8,
-        last: i8,
+fn test_one_field_primitive_non_compatible() {
+    #[derive(ForyObject, Debug, PartialEq)]
+    struct Data {
+        value: i32,
     }
 
-    // &["f7", "f5", "last", "f4", "f3", "f6", "f1"]
-    #[derive(ForyObject, Debug)]
-    struct Animal2 {
-        f1: HashMap<i8, Vec<i8>>,
-        f3: Vec<i8>,
-        f4: String,
-        f5: i8,
-        f6: Vec<i16>,
-        f7: i16,
-        last: i8,
+    let mut fory = Fory::default();
+    fory.register::<Data>(100).unwrap();
+    let data = Data { value: 42 };
+    let bytes = fory.serialize(&data).unwrap();
+    let result: Data = fory.deserialize(&bytes).unwrap();
+    assert_eq!(data, result);
+}
+
+// Test 2: Simple struct with one String field, non-compatible mode
+#[test]
+fn test_one_field_string_non_compatible() {
+    #[derive(ForyObject, Debug, PartialEq)]
+    struct Data {
+        name: String,
     }
+
+    let mut fory = Fory::default();
+    fory.register::<Data>(101).unwrap();
+    let data = Data {
+        name: String::from("hello"),
+    };
+    let bytes = fory.serialize(&data).unwrap();
+    let result: Data = fory.deserialize(&bytes).unwrap();
+    assert_eq!(data, result);
+}
+
+// Test 3: Compatible mode - serialize with one field, deserialize with different type
+#[test]
+fn test_compatible_field_type_change() {
+    #[derive(ForyObject, Debug)]
+    struct Data1 {
+        value: i32,
+    }
+
+    #[derive(ForyObject, Debug)]
+    struct Data2 {
+        value: Option<i32>,
+    }
+
     let mut fory1 = Fory::default().compatible(true);
     let mut fory2 = Fory::default().compatible(true);
-    fory1.register::<Animal1>(999).unwrap();
-    fory2.register::<Animal2>(999).unwrap();
-    let animal: Animal1 = Animal1 {
-        f1: HashMap::from([(1, vec![2])]),
-        f2: String::from("hello"),
-        f3: vec![1, 2, 3],
-        f5: String::from("f5"),
-        f6: vec![42],
-        f7: 43,
-        last: 44,
-    };
+    fory1.register::<Data1>(100).unwrap();
+    fory2.register::<Data2>(100).unwrap();
 
-    let bin = fory1.serialize(&animal).unwrap();
-    let obj: Animal2 = fory2.deserialize(&bin).unwrap();
-    assert_eq!(animal.f1, obj.f1);
-    assert_eq!(animal.f3, obj.f3);
-    assert_eq!(obj.f4, String::default());
-    assert_eq!(obj.f5, i8::default());
-    assert_eq!(obj.f6, Vec::<i16>::default());
-    assert_eq!(obj.f7, i16::default());
-    assert_eq!(animal.last, obj.last);
+    let data1 = Data1 { value: 42 };
+    let bytes = fory1.serialize(&data1).unwrap();
+    let result: Data2 = fory2.deserialize(&bytes).unwrap();
+    assert_eq!(result.value.unwrap(), 42i32);
+}
+
+// Test 4: Compatible mode - serialize with field, deserialize with empty struct
+#[test]
+fn test_compatible_to_empty_struct() {
+    #[derive(ForyObject, Debug)]
+    struct DataWithField {
+        value: i32,
+        name: String,
+    }
+
+    #[derive(ForyObject, Debug)]
+    struct EmptyData {}
+
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
+    fory1.register::<DataWithField>(101).unwrap();
+    fory2.register::<EmptyData>(101).unwrap();
+
+    let data1 = DataWithField {
+        value: 42,
+        name: String::from("test"),
+    };
+    let bytes = fory1.serialize(&data1).unwrap();
+    let _result: EmptyData = fory2.deserialize(&bytes).unwrap();
+    // If we get here without panic, the test passes
+}
+
+// Test 5: Compatible mode - empty struct to struct with fields (fields get defaults)
+#[test]
+fn test_compatible_from_empty_struct() {
+    #[derive(ForyObject, Debug)]
+    struct EmptyData {}
+
+    #[derive(ForyObject, Debug)]
+    struct DataWithField {
+        value: i32,
+        name: String,
+    }
+
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
+    fory1.register::<EmptyData>(102).unwrap();
+    fory2.register::<DataWithField>(102).unwrap();
+
+    let data1 = EmptyData {};
+    let bytes = fory1.serialize(&data1).unwrap();
+    let result: DataWithField = fory2.deserialize(&bytes).unwrap();
+    assert_eq!(result.value, 0); // Default for i32
+    assert_eq!(result.name, String::default()); // Default for String
+}
+
+#[test]
+fn test_compatible_vec_to_empty_struct() {
+    #[derive(ForyObject, Debug)]
+    struct DataWithField {
+        value: Vec<i32>,
+        name: String,
+    }
+
+    #[derive(ForyObject, Debug)]
+    struct EmptyData {}
+
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
+    fory1.register::<DataWithField>(101).unwrap();
+    fory2.register::<EmptyData>(101).unwrap();
+
+    let data1 = DataWithField {
+        value: vec![32],
+        name: String::from("test"),
+    };
+    let bytes = fory1.serialize(&data1).unwrap();
+    let _result: EmptyData = fory2.deserialize(&bytes).unwrap();
+    // If we get here without panic, the test passes
+}
+
+#[test]
+fn test_compatible_map_to_empty_struct() {
+    #[derive(ForyObject, Debug)]
+    struct DataWithField {
+        value: HashMap<String, i32>,
+        name: String,
+    }
+
+    #[derive(ForyObject, Debug)]
+    struct EmptyData {}
+
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default().compatible(true);
+    fory1.register::<DataWithField>(101).unwrap();
+    fory2.register::<EmptyData>(101).unwrap();
+
+    let data1 = DataWithField {
+        value: HashMap::from([(String::from("k1"), 1i32), (String::from("k2"), 2i32)]),
+        name: String::from("test"),
+    };
+    let bytes = fory1.serialize(&data1).unwrap();
+    let _result: EmptyData = fory2.deserialize(&bytes).unwrap();
+    // If we get here without panic, the test passes
 }
