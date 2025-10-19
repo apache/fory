@@ -72,10 +72,50 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
         }
     }
 
+    fn fory_read_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
+        match ref_flag {
+            RefFlag::Null => Err(Error::InvalidRef("Rc cannot be null".into())),
+            RefFlag::Ref => {
+                let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
+                *output = context.ref_reader.get_rc_ref::<T>(ref_id).ok_or_else(|| {
+                    Error::InvalidRef(format!("Rc reference {ref_id} not found").into())
+                })?;
+                Ok(())
+            }
+            RefFlag::NotNullValue => {
+                let mut inner = T::fory_default();
+                T::fory_read_data_into(context, is_field, &mut inner)?;
+                *output = Rc::new(inner);
+                Ok(())
+            }
+            RefFlag::RefValue => {
+                let ref_id = context.ref_reader.reserve_ref_id();
+                let mut inner = T::fory_default();
+                T::fory_read_data_into(context, is_field, &mut inner)?;
+                *output = Rc::new(inner);
+                context.ref_reader.store_rc_ref_at(ref_id, output.clone());
+                Ok(())
+            }
+        }
+    }
+
     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         // When Rc is nested inside another shared ref, fory_read_data is called.
         // Delegate to fory_read which handles ref tracking properly.
         Self::fory_read(context, is_field)
+    }
+
+    fn fory_read_data_into(
+        context: &mut ReadContext,
+        is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        Self::fory_read_into(context, is_field, output)
     }
 
     fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {

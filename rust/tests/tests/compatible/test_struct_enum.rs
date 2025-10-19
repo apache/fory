@@ -412,6 +412,15 @@ fn ext() {
             })
         }
 
+        fn fory_read_data_into(
+            context: &mut ReadContext,
+            is_field: bool,
+            output: &mut Self,
+        ) -> Result<(), Error> {
+            output.id = read_data(context, is_field)?;
+            Ok(())
+        }
+
         fn fory_type_id_dyn(
             &self,
             type_resolver: &TypeResolver,
@@ -465,6 +474,15 @@ fn skip_ext() {
             Ok(Self {
                 id: read_data(context, is_field)?,
             })
+        }
+
+        fn fory_read_data_into(
+            context: &mut ReadContext,
+            is_field: bool,
+            output: &mut Self,
+        ) -> Result<(), Error> {
+            output.id = read_data(context, is_field)?;
+            Ok(())
         }
 
         fn fory_type_id_dyn(
@@ -536,6 +554,16 @@ fn compatible_ext() {
                 id: read_data(context, is_field)?,
             })
         }
+
+        fn fory_read_data_into(
+            context: &mut ReadContext,
+            is_field: bool,
+            output: &mut Self,
+        ) -> Result<(), Error> {
+            output.id = read_data(context, is_field)?;
+            Ok(())
+        }
+
         fn fory_type_id_dyn(
             &self,
             type_resolver: &TypeResolver,

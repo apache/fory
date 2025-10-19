@@ -77,6 +77,23 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
     }
 }
 
+pub fn gen_read_data_into(data_enum: &DataEnum) -> TokenStream {
+    let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
+    let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as u32).collect();
+    quote! {
+        let ordinal = context.reader.read_varuint32()?;
+        match ordinal {
+           #(
+               #variant_values => {
+                   *output = Self::#variant_idents;
+                   Ok(())
+               },
+           )*
+           _ => return Err(fory_core::error::Error::UnknownEnum("unknown enum value".into())),
+        }
+    }
+}
+
 pub fn gen_read_compatible() -> TokenStream {
     quote! {
         fory_core::serializer::enum_::read_compatible::<Self>(context)

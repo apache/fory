@@ -78,6 +78,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
         read_type_info_ts,
         write_data_ts,
         read_data_ts,
+        read_data_into_ts,
         write_ts,
         read_ts,
     ) = match &ast.data {
@@ -89,6 +90,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
                 read::gen_read_type_info(),
                 write::gen_write_data(&fields),
                 read::gen_read_data(&fields),
+                read::gen_read_data_into(&fields),
                 write::gen_write(),
                 read::gen_read(name),
             )
@@ -99,6 +101,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
             derive_enum::gen_read_type_info(),
             derive_enum::gen_write_data(e),
             derive_enum::gen_read_data(e),
+            derive_enum::gen_read_data_into(e),
             derive_enum::gen_write(e),
             derive_enum::gen_read(e),
         ),
@@ -163,6 +166,10 @@ pub fn derive_serializer(ast: &syn::DeriveInput) -> TokenStream {
 
             fn fory_read_data( context: &mut fory_core::resolver::context::ReadContext, is_field: bool) -> Result<Self, fory_core::error::Error> {
                 #read_data_ts
+            }
+
+            fn fory_read_data_into(context: &mut fory_core::resolver::context::ReadContext, is_field: bool, output: &mut Self) -> Result<(), fory_core::error::Error> {
+                #read_data_into_ts
             }
 
             fn fory_write(&self, context: &mut fory_core::resolver::context::WriteContext, is_field: bool) -> Result<(), fory_core::error::Error> {

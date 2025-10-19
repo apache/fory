@@ -73,8 +73,28 @@ impl Serializer for Box<dyn Any> {
         deserialize_any_box(context)
     }
 
+    fn fory_read_into(
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        let new_value = deserialize_any_box(context)?;
+        *output = new_value;
+        Ok(())
+    }
+
     fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
         deserialize_any_box(context)
+    }
+
+    fn fory_read_data_into(
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        let new_value = deserialize_any_box(context)?;
+        *output = new_value;
+        Ok(())
     }
 
     fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
@@ -168,8 +188,60 @@ impl Serializer for Rc<dyn Any> {
         }
     }
 
+    fn fory_read_into(
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
+
+        match ref_flag {
+            RefFlag::Null => Err(Error::InvalidRef("Rc<dyn Any> cannot be null".into())),
+            RefFlag::Ref => {
+                let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
+                *output = context
+                    .ref_reader
+                    .get_rc_ref::<dyn Any>(ref_id)
+                    .ok_or_else(|| {
+                        Error::InvalidData(
+                            format!("Rc<dyn Any> reference {} not found", ref_id).into(),
+                        )
+                    })?;
+                Ok(())
+            }
+            RefFlag::NotNullValue => {
+                context.inc_depth()?;
+                let harness = context.read_any_typeinfo()?;
+                let deserializer_fn = harness.get_read_data_fn();
+                let boxed = deserializer_fn(context, true)?;
+                context.dec_depth();
+                *output = Rc::<dyn Any>::from(boxed);
+                Ok(())
+            }
+            RefFlag::RefValue => {
+                context.inc_depth()?;
+                let harness = context.read_any_typeinfo()?;
+                let deserializer_fn = harness.get_read_data_fn();
+                let boxed = deserializer_fn(context, true)?;
+                context.dec_depth();
+                let rc: Rc<dyn Any> = Rc::from(boxed);
+                context.ref_reader.store_rc_ref(rc.clone());
+                *output = rc;
+                Ok(())
+            }
+        }
+    }
+
     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         Self::fory_read(context, is_field)
+    }
+
+    fn fory_read_data_into(
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        Self::fory_read_into(context, _is_field, output)
     }
 
     fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
@@ -263,8 +335,60 @@ impl Serializer for Arc<dyn Any> {
         }
     }
 
+    fn fory_read_into(
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        let ref_flag = context.ref_reader.read_ref_flag(&mut context.reader)?;
+
+        match ref_flag {
+            RefFlag::Null => Err(Error::InvalidRef("Arc<dyn Any> cannot be null".into())),
+            RefFlag::Ref => {
+                let ref_id = context.ref_reader.read_ref_id(&mut context.reader)?;
+                *output = context
+                    .ref_reader
+                    .get_arc_ref::<dyn Any>(ref_id)
+                    .ok_or_else(|| {
+                        Error::InvalidData(
+                            format!("Arc<dyn Any> reference {} not found", ref_id).into(),
+                        )
+                    })?;
+                Ok(())
+            }
+            RefFlag::NotNullValue => {
+                context.inc_depth()?;
+                let harness = context.read_any_typeinfo()?;
+                let deserializer_fn = harness.get_read_data_fn();
+                let boxed = deserializer_fn(context, true)?;
+                context.dec_depth();
+                *output = Arc::<dyn Any>::from(boxed);
+                Ok(())
+            }
+            RefFlag::RefValue => {
+                context.inc_depth()?;
+                let harness = context.read_any_typeinfo()?;
+                let deserializer_fn = harness.get_read_data_fn();
+                let boxed = deserializer_fn(context, true)?;
+                context.dec_depth();
+                let arc: Arc<dyn Any> = Arc::from(boxed);
+                context.ref_reader.store_arc_ref(arc.clone());
+                *output = arc;
+                Ok(())
+            }
+        }
+    }
+
     fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
         Self::fory_read(context, is_field)
+    }
+
+    fn fory_read_data_into(
+        context: &mut ReadContext,
+        _is_field: bool,
+        output: &mut Self,
+    ) -> Result<(), Error> {
+        Self::fory_read_into(context, _is_field, output)
     }
 
     fn fory_get_type_id(_type_resolver: &TypeResolver) -> Result<u32, Error> {
