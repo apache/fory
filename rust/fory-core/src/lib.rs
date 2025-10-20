@@ -190,9 +190,10 @@ pub mod util;
 pub use paste;
 
 pub use crate::buffer::{Reader, Writer};
+pub use crate::error::Error;
 pub use crate::fory::Fory;
 pub use crate::resolver::context::{ReadContext, WriteContext};
-pub use crate::resolver::type_resolver::TypeResolver;
+pub use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 pub use crate::serializer::weak::{ArcWeak, RcWeak};
-pub use crate::serializer::{ForyDefault, Serializer};
+pub use crate::serializer::{ForyDefault, Serializer, StructSerializer};
 pub use crate::types::{RefFlag, TypeId};

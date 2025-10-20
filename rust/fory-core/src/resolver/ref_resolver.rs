@@ -84,7 +84,7 @@ impl RefWriter {
 
         if let Some(&ref_id) = self.refs.get(&ptr_addr) {
             writer.write_i8(RefFlag::Ref as i8);
-            writer.write_u32(ref_id);
+            writer.write_varuint32(ref_id);
             true
         } else {
             let ref_id = self.next_ref_id;
@@ -116,7 +116,7 @@ impl RefWriter {
         if let Some(&ref_id) = self.refs.get(&ptr_addr) {
             // This object has been seen before, write a reference
             writer.write_i8(RefFlag::Ref as i8);
-            writer.write_u32(ref_id);
+            writer.write_varuint32(ref_id);
             true
         } else {
             // First time seeing this object, register it and return false
@@ -286,9 +286,9 @@ impl RefReader {
     ///
     /// The RefFlag indicating what type of reference this is
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if an invalid reference flag value is encountered
+    /// Errors if an invalid reference flag value is encountered
     pub fn read_ref_flag(&self, reader: &mut Reader) -> Result<RefFlag, Error> {
         let flag_value = reader.read_i8()?;
         Ok(match flag_value {
@@ -296,9 +296,10 @@ impl RefReader {
             -2 => RefFlag::Ref,
             -1 => RefFlag::NotNullValue,
             0 => RefFlag::RefValue,
-            _ => Err(Error::InvalidRef(
-                format!("Invalid reference flag: {}", flag_value).into(),
-            ))?,
+            _ => Err(Error::invalid_ref(format!(
+                "Invalid reference flag: {}",
+                flag_value
+            )))?,
         })
     }
 
@@ -312,7 +313,7 @@ impl RefReader {
     ///
     /// The reference ID as a u32
     pub fn read_ref_id(&self, reader: &mut Reader) -> Result<u32, Error> {
-        reader.read_u32()
+        reader.read_varuint32()
     }
 
     /// Execute all pending callbacks to resolve weak pointer references.

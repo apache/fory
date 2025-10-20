@@ -17,7 +17,6 @@
 
 use crate::ensure;
 use crate::error::Error;
-use crate::meta::{MetaString, TypeMeta};
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::{RefFlag, TypeId};
@@ -32,25 +31,23 @@ pub fn actual_type_id(type_id: u32, register_by_name: bool, _compatible: bool) -
 }
 
 #[inline(always)]
-pub fn type_def(
-    type_id: u32,
-    namespace: MetaString,
-    type_name: MetaString,
-    register_by_name: bool,
-) -> (Vec<u8>, TypeMeta) {
-    let meta = TypeMeta::from_fields(type_id, namespace, type_name, register_by_name, vec![]);
-    let bytes = meta.to_bytes().unwrap();
-    (bytes, meta)
+pub fn write<T: Serializer>(
+    this: &T,
+    context: &mut WriteContext,
+    write_ref_info: bool,
+    write_type_info: bool,
+) -> Result<(), Error> {
+    if write_ref_info {
+        context.writer.write_i8(RefFlag::NotNullValue as i8);
+    }
+    if write_type_info {
+        T::fory_write_type_info(context)?;
+    }
+    this.fory_write_data(context)
 }
 
 #[inline(always)]
-pub fn write_type_info<T: Serializer>(
-    context: &mut WriteContext,
-    is_field: bool,
-) -> Result<(), Error> {
-    if is_field {
-        return Ok(());
-    }
+pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
     let type_id = T::fory_get_type_id(context.get_type_resolver())?;
     context.writer.write_varuint32(type_id);
     let is_named_enum = type_id & 0xff == TypeId::NAMED_ENUM as u32;
@@ -62,7 +59,7 @@ pub fn write_type_info<T: Serializer>(
         let meta_index = context.push_meta(rs_type_id)? as u32;
         context.writer.write_varuint32(meta_index);
     } else {
-        let type_info = context.get_type_resolver().get_type_info(rs_type_id)?;
+        let type_info = context.get_type_resolver().get_type_info(&rs_type_id)?;
         let namespace = type_info.get_namespace().to_owned();
         let type_name = type_info.get_type_name().to_owned();
         context.write_meta_string_bytes(&namespace)?;
@@ -72,18 +69,40 @@ pub fn write_type_info<T: Serializer>(
 }
 
 #[inline(always)]
-pub fn read_type_info<T: Serializer>(
+pub fn read<T: Serializer + ForyDefault>(
     context: &mut ReadContext,
-    is_field: bool,
-) -> Result<(), Error> {
-    if is_field {
-        return Ok(());
+    read_ref_info: bool,
+    read_type_info: bool,
+) -> Result<T, Error> {
+    let ref_flag = if read_ref_info {
+        context.reader.read_i8()?
+    } else {
+        RefFlag::NotNullValue as i8
+    };
+    if ref_flag == RefFlag::Null as i8 {
+        Ok(T::fory_default())
+    } else if ref_flag == (RefFlag::NotNullValue as i8) || ref_flag == (RefFlag::RefValue as i8) {
+        if read_type_info {
+            T::fory_read_type_info(context)?;
+        }
+        T::fory_read_data(context)
+    } else if ref_flag == (RefFlag::Ref as i8) {
+        Err(Error::invalid_ref("Invalid ref, enum type is not a ref"))
+    } else {
+        Err(Error::invalid_data(format!(
+            "Unknown ref flag: {}",
+            ref_flag
+        )))
     }
+}
+
+#[inline(always)]
+pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
     let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
     let remote_type_id = context.reader.read_varuint32()?;
     ensure!(
         local_type_id == remote_type_id,
-        Error::TypeMismatch(local_type_id, remote_type_id)
+        Error::type_mismatch(local_type_id, remote_type_id)
     );
     let is_named_enum = local_type_id & 0xff == TypeId::NAMED_ENUM as u32;
     if !is_named_enum {
@@ -96,38 +115,4 @@ pub fn read_type_info<T: Serializer>(
         let _type_name_msb = context.read_meta_string_bytes()?;
     }
     Ok(())
-}
-
-#[inline(always)]
-pub fn read_compatible<T: Serializer + ForyDefault>(context: &mut ReadContext) -> Result<T, Error> {
-    T::fory_read_type_info(context, true)?;
-    T::fory_read_data(context, true)
-}
-
-#[inline(always)]
-pub fn write<T: Serializer>(
-    this: &T,
-
-    context: &mut WriteContext,
-    is_field: bool,
-) -> Result<(), Error> {
-    context.writer.write_i8(RefFlag::NotNullValue as i8);
-    T::fory_write_type_info(context, is_field)?;
-    this.fory_write_data(context, is_field)
-}
-
-#[inline(always)]
-pub fn read<T: Serializer + ForyDefault>(
-    context: &mut ReadContext,
-    is_field: bool,
-) -> Result<T, Error> {
-    let ref_flag = context.reader.read_i8()?;
-    if ref_flag == RefFlag::Null as i8 {
-        Ok(T::fory_default())
-    } else if ref_flag == (RefFlag::NotNullValue as i8) {
-        T::fory_read_type_info(context, false)?;
-        T::fory_read_data(context, is_field)
-    } else {
-        unimplemented!()
-    }
 }

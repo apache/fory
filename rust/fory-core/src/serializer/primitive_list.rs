@@ -36,14 +36,7 @@ pub fn fory_write_data<T>(this: &[T], context: &mut WriteContext) -> Result<(), 
     Ok(())
 }
 
-pub fn fory_write_type_info(
-    context: &mut WriteContext,
-    is_field: bool,
-    type_id: TypeId,
-) -> Result<(), Error> {
-    if is_field {
-        return Ok(());
-    }
+pub fn fory_write_type_info(context: &mut WriteContext, type_id: TypeId) -> Result<(), Error> {
     context.writer.write_varuint32(type_id as u32);
     Ok(())
 }
@@ -51,7 +44,7 @@ pub fn fory_write_type_info(
 pub fn fory_read_data<T>(context: &mut ReadContext) -> Result<Vec<T>, Error> {
     let size_bytes = context.reader.read_varuint32()? as usize;
     if size_bytes % std::mem::size_of::<T>() != 0 {
-        return Err(Error::InvalidData("Invalid data length".into()));
+        return Err(Error::invalid_data("Invalid data length"));
     }
     let len = size_bytes / std::mem::size_of::<T>();
     let mut vec: Vec<T> = Vec::with_capacity(len);
@@ -64,27 +57,19 @@ pub fn fory_read_data<T>(context: &mut ReadContext) -> Result<Vec<T>, Error> {
     Ok(vec)
 }
 
-pub fn fory_read_type_info(
-    context: &mut ReadContext,
-    is_field: bool,
-    type_id: TypeId,
-) -> Result<(), Error> {
-    if is_field {
-        return Ok(());
-    }
+pub fn fory_read_type_info(context: &mut ReadContext, type_id: TypeId) -> Result<(), Error> {
     let remote_type_id = context.reader.read_varuint32()?;
     if remote_type_id == TypeId::LIST as u32 {
-        return Err(Error::TypeError(
+        return Err(Error::type_error(
             "Vec<number> belongs to the `number_array` type, \
                 and Vec<Option<number>> belongs to the `list` type. \
-                You should not read data of type `list` as data of type `number_array`."
-                .into(),
+                You should not read data of type `list` as data of type `number_array`.",
         ));
     }
     let local_type_id = type_id as u32;
     ensure!(
         local_type_id == remote_type_id,
-        Error::TypeMismatch(local_type_id, remote_type_id)
+        Error::type_mismatch(local_type_id, remote_type_id)
     );
     Ok(())
 }

@@ -198,13 +198,18 @@ mod util;
 ///     city: String,
 /// }
 /// ```
-#[proc_macro_derive(ForyObject)]
+#[proc_macro_derive(ForyObject, attributes(fory_debug))]
 pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     // Check if this is being applied to a trait (which is not possible with derive macros)
     // Derive macros can only be applied to structs, enums, and unions
-    object::derive_serializer(&input)
+    let debug_enabled = input
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("fory_debug"));
+
+    object::derive_serializer(&input, debug_enabled)
 }
 
 /// Derive macro for row-based serialization.

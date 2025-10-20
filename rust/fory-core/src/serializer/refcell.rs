@@ -34,43 +34,87 @@
 //! ```
 use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
-use crate::resolver::type_resolver::TypeResolver;
+use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
+use crate::types::TypeId;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 /// `Serializer` impl for `RefCell<T>`
 ///
 /// Simply delegates to the serializer for `T`, allowing interior mutable
 /// containers to be included in serialized graphs.
 impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
-    fn fory_read(context: &mut ReadContext, is_field: bool) -> Result<Self, Error>
+    fn fory_read(
+        context: &mut ReadContext,
+        read_ref_info: bool,
+        read_type_info: bool,
+    ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
     {
-        Ok(RefCell::new(T::fory_read(context, is_field)?))
+        Ok(RefCell::new(T::fory_read(
+            context,
+            read_ref_info,
+            read_type_info,
+        )?))
     }
 
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        Ok(RefCell::new(T::fory_read_data(context, is_field)?))
+    fn fory_read_with_type_info(
+        context: &mut ReadContext,
+        read_ref_info: bool,
+        type_info: Rc<TypeInfo>,
+    ) -> Result<Self, Error>
+    where
+        Self: Sized + ForyDefault,
+    {
+        Ok(RefCell::new(T::fory_read_with_type_info(
+            context,
+            read_ref_info,
+            type_info,
+        )?))
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
-        T::fory_read_type_info(context, is_field)
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        Ok(RefCell::new(T::fory_read_data(context)?))
     }
 
-    fn fory_write(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
+    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        T::fory_read_type_info(context)
+    }
+
+    fn fory_write(
+        &self,
+        context: &mut WriteContext,
+        write_ref_info: bool,
+        write_type_info: bool,
+        has_generics: bool,
+    ) -> Result<(), Error> {
         // Don't add ref tracking for RefCell itself, just delegate to inner type
         // The inner type will handle its own ref tracking
-        T::fory_write(&*self.borrow(), context, is_field)
+        T::fory_write(
+            &*self.borrow(),
+            context,
+            write_ref_info,
+            write_type_info,
+            has_generics,
+        )
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        // When called from Rc, just delegate to inner type's data serialization
-        T::fory_write_data(&*self.borrow(), context, is_field)
+    fn fory_write_data_generic(
+        &self,
+        context: &mut WriteContext,
+        has_generics: bool,
+    ) -> Result<(), Error> {
+        T::fory_write_data_generic(&*self.borrow(), context, has_generics)
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        T::fory_write_type_info(context, is_field)
+    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+        T::fory_write_data(&*self.borrow(), context)
+    }
+
+    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        T::fory_write_type_info(context)
     }
 
     fn fory_reserved_space() -> usize {
@@ -84,6 +128,13 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
 
     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
         (*self.borrow()).fory_type_id_dyn(type_resolver)
+    }
+
+    fn fory_static_type_id() -> TypeId
+    where
+        Self: Sized,
+    {
+        T::fory_static_type_id()
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

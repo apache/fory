@@ -730,6 +730,48 @@ assert_eq!(prefs.values().get(0), "en");
 | Memory usage         | Full object graph in memory   | Only accessed fields in memory  |
 | Suitable for         | Small objects, full access    | Large objects, selective access |
 
+### 8. Thread-Safe Serialization
+
+Apache Fory™ Rust is fully thread-safe: `Fory` implements both `Send` and `Sync`, so one configured instance can be shared across threads for concurrent work. The internal read/write context pools are lazily initialized with thread-safe primitives, letting worker threads reuse buffers without coordination.
+
+```rust
+use fory::{Fory, Error};
+use fory::ForyObject;
+use std::sync::Arc;
+use std::thread;
+
+#[derive(ForyObject, Clone, Copy, Debug, PartialEq)]
+struct Item {
+    value: i32,
+}
+
+fn main() -> Result<(), Error> {
+    let mut fory = Fory::default();
+    fory.register::<Item>(1000)?;
+
+    let fory = Arc::new(fory);
+    let handles: Vec<_> = (0..8)
+        .map(|i| {
+            let shared = Arc::clone(&fory);
+            thread::spawn(move || {
+                let item = Item { value: i };
+                shared.serialize(&item)
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        let bytes = handle.join().unwrap()?;
+        let item: Item = fory.deserialize(&bytes)?;
+        assert!(item.value >= 0);
+    }
+
+    Ok(())
+}
+```
+
+**Tip:** Perform registrations (such as `fory.register::<T>(id)`) before spawning threads so every worker sees the same metadata. Once configured, wrapping the instance in `Arc` is enough to fan out serialization and deserialization tasks safely.
+
 ## 🔧 Supported Types
 
 ### Primitive Types
@@ -919,6 +961,15 @@ let fory = Fory::default().max_dyn_depth(10); // Allow up to 10 levels
 - Nested struct types in Compatible mode
 
 Note: Static data types (non-dynamic types) are secure by nature and not subject to depth limits, as their structure is known at compile time.
+
+## 🧪 Troubleshooting
+
+- **Type registry errors**: An error like `TypeId ... not found in type_info registry` means the type was never registered with the current `Fory` instance. Confirm that every serializable struct or trait implementation calls `fory.register::<T>(type_id)` before serialization and that the same IDs are reused on the deserialize side.
+- **Quick error lookup**: Prefer the static constructors on `fory_core::error::Error` (`Error::type_mismatch`, `Error::invalid_data`, `Error::unknown`, etc.) rather than instantiating variants manually. This keeps diagnostics consistent and makes opt-in panics work.
+- **Panic on error for backtraces**: Toggle `FORY_PANIC_ON_ERROR=1` (or `true`) alongside `RUST_BACKTRACE=1` when running tests or binaries to panic at the exact site an error is constructed. Reset the variable afterwards to avoid aborting user-facing code paths.
+- **Struct field tracing**: Add the `#[fory_debug]` attribute alongside `#[derive(ForyObject)]` to tell the macro to emit hook invocations for that type. Once compiled with debug hooks, call `set_before_write_field_func`, `set_after_write_field_func`, `set_before_read_field_func`, or `set_after_read_field_func` (from `fory-core/src/serializer/struct_.rs`) to plug in custom callbacks, and use `reset_struct_debug_hooks()` when you want the defaults back.
+- **Lightweight logging**: Without custom hooks, enable `ENABLE_FORY_DEBUG_OUTPUT=1` to print field-level read/write events emitted by the default hook functions. This is especially useful when investigating alignment or cursor mismatches.
+- **Test-time hygiene**: Some integration tests expect `FORY_PANIC_ON_ERROR` to remain unset. Export it only for focused debugging sessions, and prefer `cargo test --features tests -p fory-tests --test <case>` when isolating failing scenarios.
 
 ## 🛠️ Development
 

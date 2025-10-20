@@ -20,7 +20,7 @@ use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::WriteContext;
 use crate::resolver::context::{Pool, ReadContext};
-use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
+use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::IS_NULL_FLAG;
@@ -28,10 +28,7 @@ use crate::types::{
     config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_LITTLE_ENDIAN_FLAG},
     Language, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
 };
-use crate::util::get_ext_actual_type_id;
 use std::sync::OnceLock;
-
-static EMPTY_STRING: String = String::new();
 
 /// The main Fory serialization framework instance.
 ///
@@ -135,6 +132,7 @@ impl Fory {
         // Setting share_meta individually is not supported currently
         self.share_meta = compatible;
         self.compatible = compatible;
+        self.type_resolver.set_compatible(compatible);
         self
     }
 
@@ -313,29 +311,25 @@ impl Fory {
             let magic_numer = reader.read_u16()?;
             ensure!(
                 magic_numer == MAGIC_NUMBER,
-                Error::InvalidData(
-                    format!(
-                        "The fory xlang serialization must start with magic number {:X}. \
+                Error::invalid_data(format!(
+                    "The fory xlang serialization must start with magic number {:X}. \
                     Please check whether the serialization is based on the xlang protocol \
                     and the data didn't corrupt.",
-                        MAGIC_NUMBER
-                    )
-                    .into()
-                )
+                    MAGIC_NUMBER
+                ))
             )
         }
         let bitmap = reader.read_u8()?;
         let peer_is_xlang = (bitmap & IS_CROSS_LANGUAGE_FLAG) != 0;
         ensure!(
             self.xlang == peer_is_xlang,
-            Error::InvalidData("header bitmap mismatch at xlang bit".into())
+            Error::invalid_data("header bitmap mismatch at xlang bit")
         );
         let is_little_endian = (bitmap & IS_LITTLE_ENDIAN_FLAG) != 0;
         ensure!(
             is_little_endian,
-            Error::InvalidData(
+            Error::invalid_data(
                 "Big endian is not supported for now, please ensure peer machine is little endian."
-                    .into()
             )
         );
         let is_none = (bitmap & IS_NULL_FLAG) != 0;
@@ -429,7 +423,7 @@ impl Fory {
                 bytes_to_skip = context.load_meta(meta_offset as usize)?;
             }
         }
-        let result = <T as Serializer>::fory_read(context, false);
+        let result = <T as Serializer>::fory_read(context, true, true);
         if bytes_to_skip > 0 {
             context.reader.skip(bytes_to_skip)?;
         }
@@ -504,7 +498,7 @@ impl Fory {
             if context.is_compatible() {
                 context.writer.write_i32(-1);
             };
-            <T as Serializer>::fory_write(record, context, false)?;
+            <T as Serializer>::fory_write(record, context, true, true, false)?;
             if context.is_compatible() && !context.empty() {
                 context.write_meta(meta_start_offset);
             }
@@ -543,16 +537,7 @@ impl Fory {
         &mut self,
         id: u32,
     ) -> Result<(), Error> {
-        let actual_type_id = T::fory_actual_type_id(id, false, self.compatible);
-        let type_info = TypeInfo::new::<T>(
-            &self.type_resolver,
-            actual_type_id,
-            &EMPTY_STRING,
-            &EMPTY_STRING,
-            false,
-        )?;
-        self.type_resolver.register::<T>(&type_info)?;
-        Ok(())
+        self.type_resolver.register_by_id::<T>(id)
     }
 
     /// Registers a struct type with a namespace and type name for cross-language serialization.
@@ -590,16 +575,8 @@ impl Fory {
         namespace: &str,
         type_name: &str,
     ) -> Result<(), Error> {
-        let actual_type_id = T::fory_actual_type_id(0, true, self.compatible);
-        let type_info = TypeInfo::new::<T>(
-            &self.type_resolver,
-            actual_type_id,
-            namespace,
-            type_name,
-            true,
-        )?;
-        self.type_resolver.register::<T>(&type_info)?;
-        Ok(())
+        self.type_resolver
+            .register_by_namespace::<T>(namespace, type_name)
     }
 
     /// Registers a struct type with a type name (using the default namespace).
@@ -666,16 +643,7 @@ impl Fory {
         &mut self,
         id: u32,
     ) -> Result<(), Error> {
-        let actual_type_id = get_ext_actual_type_id(id, false);
-        let type_info = TypeInfo::new_with_empty_fields::<T>(
-            &self.type_resolver,
-            actual_type_id,
-            &EMPTY_STRING,
-            &EMPTY_STRING,
-            false,
-        )?;
-        self.type_resolver.register_serializer::<T>(&type_info)?;
-        Ok(())
+        self.type_resolver.register_serializer_by_id::<T>(id)
     }
 
     /// Registers a custom serializer type with a namespace and type name.
@@ -699,16 +667,8 @@ impl Fory {
         namespace: &str,
         type_name: &str,
     ) -> Result<(), Error> {
-        let actual_type_id = get_ext_actual_type_id(0, true);
-        let type_info = TypeInfo::new_with_empty_fields::<T>(
-            &self.type_resolver,
-            actual_type_id,
-            namespace,
-            type_name,
-            true,
-        )?;
-        self.type_resolver.register_serializer::<T>(&type_info)?;
-        Ok(())
+        self.type_resolver
+            .register_serializer_by_namespace::<T>(namespace, type_name)
     }
 
     /// Registers a custom serializer type with a type name (using the default namespace).
@@ -730,19 +690,21 @@ impl Fory {
     ) -> Result<(), Error> {
         self.register_serializer_by_namespace::<T>("", type_name)
     }
+
+    /// Registers a generic trait object type for serialization.
+    /// This method should be used to register collection types such as `Vec<T>`, `HashMap<K, V>`, etc.
+    /// Don't register concrete struct types with this method. Use `register()` instead.
+    pub fn register_generic_trait<T: 'static + Serializer + ForyDefault>(
+        &mut self,
+    ) -> Result<(), Error> {
+        self.type_resolver.register_generic_trait::<T>()
+    }
 }
 
-pub fn write_data<T: Serializer>(
-    this: &T,
-    context: &mut WriteContext,
-    is_field: bool,
-) -> Result<(), Error> {
-    T::fory_write_data(this, context, is_field)
+pub fn write_data<T: Serializer>(this: &T, context: &mut WriteContext) -> Result<(), Error> {
+    T::fory_write_data(this, context)
 }
 
-pub fn read_data<T: Serializer + ForyDefault>(
-    context: &mut ReadContext,
-    is_field: bool,
-) -> Result<T, Error> {
-    T::fory_read_data(context, is_field)
+pub fn read_data<T: Serializer + ForyDefault>(context: &mut ReadContext) -> Result<T, Error> {
+    T::fory_read_data(context)
 }

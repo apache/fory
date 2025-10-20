@@ -20,22 +20,26 @@ use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::{ForyDefault, Serializer};
+use crate::types::TypeId;
 
 impl<T: Serializer + ForyDefault> Serializer for Box<T> {
-    fn fory_read_data(context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-        Ok(Box::new(T::fory_read_data(context, is_field)?))
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error>
+    where
+        Self: Sized + ForyDefault,
+    {
+        Ok(Box::new(T::fory_read_data(context)?))
     }
 
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
-        T::fory_read_type_info(context, is_field)
+    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        T::fory_read_type_info(context)
     }
 
-    fn fory_write_data(&self, context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        T::fory_write_data(self.as_ref(), context, is_field)
+    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+        T::fory_write_data(self.as_ref(), context)
     }
 
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        T::fory_write_type_info(context, is_field)
+    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        T::fory_write_type_info(context)
     }
 
     fn fory_reserved_space() -> usize {
@@ -48,6 +52,10 @@ impl<T: Serializer + ForyDefault> Serializer for Box<T> {
 
     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
         (**self).fory_type_id_dyn(type_resolver)
+    }
+
+    fn fory_static_type_id() -> TypeId {
+        T::fory_static_type_id()
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

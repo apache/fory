@@ -65,7 +65,9 @@ cargo test
 # run test with specific test file and method
 cargo test -p fory-tests  --test $test_file $test_method
 # run specific test under subdirectory
- cargo test --test mod $dir$::$test_file::$test_method
+cargo test --test mod $dir$::$test_file::$test_method
+# debug specific test under subdirectory and get backtrace
+RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1 cargo test --test mod $dir$::$test_file::$test_method
 ```
 
 ### JavaScript

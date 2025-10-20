@@ -19,19 +19,20 @@ use crate::error::Error;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::resolver::type_resolver::TypeResolver;
-use crate::serializer::{read_type_info, write_type_info, ForyDefault, Serializer};
+use crate::serializer::util::read_basic_type_info;
+use crate::serializer::{ForyDefault, Serializer};
 use crate::types::TypeId;
 use std::mem;
 
 impl Serializer for bool {
     #[inline(always)]
-    fn fory_write_data(&self, context: &mut WriteContext, _is_field: bool) -> Result<(), Error> {
+    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         context.writer.write_u8(if *self { 1 } else { 0 });
         Ok(())
     }
 
     #[inline(always)]
-    fn fory_read_data(context: &mut ReadContext, _is_field: bool) -> Result<Self, Error> {
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         Ok(context.reader.read_u8()? == 1)
     }
 
@@ -49,19 +50,24 @@ impl Serializer for bool {
         Ok(TypeId::BOOL as u32)
     }
 
+    fn fory_static_type_id() -> TypeId {
+        TypeId::BOOL
+    }
+
     #[inline(always)]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 
     #[inline(always)]
-    fn fory_write_type_info(context: &mut WriteContext, is_field: bool) -> Result<(), Error> {
-        write_type_info::<Self>(context, is_field)
+    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        context.writer.write_varuint32(TypeId::BOOL as u32);
+        Ok(())
     }
 
     #[inline(always)]
-    fn fory_read_type_info(context: &mut ReadContext, is_field: bool) -> Result<(), Error> {
-        read_type_info::<Self>(context, is_field)
+    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        read_basic_type_info::<Self>(context)
     }
 }
 

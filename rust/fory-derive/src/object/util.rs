@@ -30,14 +30,17 @@ thread_local! {
     static MACRO_CONTEXT: RefCell<Option<MacroContext>> = const {RefCell::new(None)};
 }
 
+#[derive(Clone)]
 struct MacroContext {
     struct_name: String,
+    debug_enabled: bool,
 }
 
-pub(super) fn set_struct_context(name: &str) {
+pub(super) fn set_struct_context(name: &str, debug_enabled: bool) {
     MACRO_CONTEXT.with(|ctx| {
         *ctx.borrow_mut() = Some(MacroContext {
             struct_name: name.to_string(),
+            debug_enabled,
         });
     });
 }
@@ -48,8 +51,17 @@ pub(super) fn clear_struct_context() {
     });
 }
 
-fn get_struct_name() -> Option<String> {
+pub(super) fn get_struct_name() -> Option<String> {
     MACRO_CONTEXT.with(|ctx| ctx.borrow().as_ref().map(|c| c.struct_name.clone()))
+}
+
+pub(super) fn is_debug_enabled() -> bool {
+    MACRO_CONTEXT.with(|ctx| {
+        ctx.borrow()
+            .as_ref()
+            .map(|c| c.debug_enabled)
+            .unwrap_or(false)
+    })
 }
 
 pub(super) fn contains_trait_object(ty: &Type) -> bool {
@@ -100,7 +112,8 @@ pub(super) fn create_wrapper_types_arc(trait_name: &str) -> WrapperTypes {
 }
 
 pub(super) enum StructField {
-    BoxDyn(String),
+    #[allow(unused_variables)]
+    BoxDyn,
     RcDyn(String),
     ArcDyn(String),
     VecRc(String),
@@ -187,8 +200,8 @@ pub(super) fn classify_trait_object_field(ty: &Type) -> StructField {
     if is_forward_field(ty) {
         return StructField::Forward;
     }
-    if let Some((_, trait_name)) = is_box_dyn_trait(ty) {
-        return StructField::BoxDyn(trait_name);
+    if let Some((_, _)) = is_box_dyn_trait(ty) {
+        return StructField::BoxDyn;
     }
     if let Some((_, trait_name)) = is_rc_dyn_trait(ty) {
         return StructField::RcDyn(trait_name);
@@ -276,6 +289,18 @@ pub(super) fn extract_type_name(ty: &Type) -> String {
     } else {
         quote!(#ty).to_string()
     }
+}
+
+#[allow(dead_code)]
+pub(super) fn is_option(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty {
+        if let Some(seg) = type_path.path.segments.last() {
+            if seg.ident == "Option" {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
@@ -378,6 +403,10 @@ type FieldGroups = (
     FieldGroup,
 );
 
+fn extract_option_inner(s: &str) -> Option<&str> {
+    s.strip_prefix("Option<")?.strip_suffix(">")
+}
+
 const PRIMITIVE_TYPE_NAMES: [&str; 7] = ["bool", "i8", "i16", "i32", "i64", "f32", "f64"];
 
 fn get_primitive_type_id(ty: &str) -> u32 {
@@ -397,11 +426,121 @@ pub(super) fn is_primitive_type(ty: &str) -> bool {
     PRIMITIVE_TYPE_NAMES.contains(&ty)
 }
 
-fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
-    fn extract_option_inner(s: &str) -> Option<&str> {
-        s.strip_prefix("Option<")?.strip_suffix(">")
+pub(crate) fn get_type_id_by_type_ast(ty: &Type) -> u32 {
+    let ty_str: String = ty
+        .to_token_stream()
+        .to_string()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect::<String>();
+    get_type_id_by_name(&ty_str)
+}
+
+/// Get the type ID for a given type string.
+///
+/// Returns:
+/// - `type_id` for known types (primitives, internal types, collections)
+/// - `UNKNOWN` for unknown/user-defined types
+pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
+    let ty = extract_option_inner(ty).unwrap_or(ty);
+    // Check primitive types
+    if PRIMITIVE_TYPE_NAMES.contains(&ty) {
+        return get_primitive_type_id(ty);
     }
 
+    // Check internal types
+    match ty {
+        "String" => return TypeId::STRING as u32,
+        "NaiveDate" => return TypeId::LOCAL_DATE as u32,
+        "NaiveDateTime" => return TypeId::TIMESTAMP as u32,
+        "Duration" => return TypeId::DURATION as u32,
+        "Decimal" => return TypeId::DECIMAL as u32,
+        "Vec<u8>" | "bytes" => return TypeId::BINARY as u32,
+        _ => {}
+    }
+
+    // Check primitive arrays
+    match ty {
+        "Vec<bool>" => return TypeId::BOOL_ARRAY as u32,
+        "Vec<i8>" => return TypeId::INT8_ARRAY as u32,
+        "Vec<i16>" => return TypeId::INT16_ARRAY as u32,
+        "Vec<i32>" => return TypeId::INT32_ARRAY as u32,
+        "Vec<i64>" => return TypeId::INT64_ARRAY as u32,
+        "Vec<f16>" => return TypeId::FLOAT16_ARRAY as u32,
+        "Vec<f32>" => return TypeId::FLOAT32_ARRAY as u32,
+        "Vec<f64>" => return TypeId::FLOAT64_ARRAY as u32,
+        _ => {}
+    }
+
+    // Check collection types
+    if ty.starts_with("Vec<")
+        || ty.starts_with("VecDeque<")
+        || ty.starts_with("LinkedList<")
+        || ty.starts_with("BinaryHeap<")
+    {
+        return TypeId::LIST as u32;
+    }
+
+    if ty.starts_with("HashSet<") || ty.starts_with("BTreeSet<") {
+        return TypeId::SET as u32;
+    }
+
+    if ty.starts_with("HashMap<") || ty.starts_with("BTreeMap<") {
+        return TypeId::MAP as u32;
+    }
+
+    // Unknown type
+    TypeId::UNKNOWN as u32
+}
+
+fn get_primitive_type_size(type_id_num: u32) -> i32 {
+    let type_id = TypeId::try_from(type_id_num as i16).unwrap();
+    match type_id {
+        TypeId::BOOL => 1,
+        TypeId::INT8 => 1,
+        TypeId::INT16 => 2,
+        TypeId::INT32 => 4,
+        TypeId::VAR_INT32 => 4,
+        TypeId::INT64 => 8,
+        TypeId::VAR_INT64 => 8,
+        TypeId::FLOAT16 => 2,
+        TypeId::FLOAT32 => 4,
+        TypeId::FLOAT64 => 8,
+        _ => unreachable!(),
+    }
+}
+
+fn is_compress(type_id: u32) -> bool {
+    [
+        TypeId::INT32 as u32,
+        TypeId::INT64 as u32,
+        TypeId::VAR_INT32 as u32,
+        TypeId::VAR_INT64 as u32,
+    ]
+    .contains(&type_id)
+}
+
+fn is_internal_type_id(type_id: u32) -> bool {
+    [
+        TypeId::STRING as u32,
+        TypeId::LOCAL_DATE as u32,
+        TypeId::TIMESTAMP as u32,
+        TypeId::DURATION as u32,
+        TypeId::DECIMAL as u32,
+        TypeId::BINARY as u32,
+        TypeId::BOOL_ARRAY as u32,
+        TypeId::INT8_ARRAY as u32,
+        TypeId::INT16_ARRAY as u32,
+        TypeId::INT32_ARRAY as u32,
+        TypeId::INT64_ARRAY as u32,
+        TypeId::FLOAT16_ARRAY as u32,
+        TypeId::FLOAT32_ARRAY as u32,
+        TypeId::FLOAT64_ARRAY as u32,
+    ]
+    .contains(&type_id)
+}
+
+fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
     let mut primitive_fields = Vec::new();
     let mut nullable_primitive_fields = Vec::new();
     let mut internal_type_fields = Vec::new();
@@ -418,44 +557,22 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
         }
     }
 
-    fn get_other_internal_type_id(ty: &str) -> u32 {
-        match ty {
-            "String" => TypeId::STRING as u32,
-            "NaiveDate" => TypeId::LOCAL_DATE as u32,
-            "NaiveDateTime" => TypeId::TIMESTAMP as u32,
-            "Duration" => TypeId::DURATION as u32,
-            "Decimal" => TypeId::DECIMAL as u32,
-            "Vec<u8>" | "bytes" => TypeId::BINARY as u32,
-            "Vec<bool>" => TypeId::BOOL_ARRAY as u32,
-            "Vec<i8>" => TypeId::INT8_ARRAY as u32,
-            "Vec<i16>" => TypeId::INT16_ARRAY as u32,
-            "Vec<i32>" => TypeId::INT32_ARRAY as u32,
-            "Vec<i64>" => TypeId::INT64_ARRAY as u32,
-            "Vec<f16>" => TypeId::FLOAT16_ARRAY as u32,
-            "Vec<f32>" => TypeId::FLOAT32_ARRAY as u32,
-            "Vec<f64>" => TypeId::FLOAT64_ARRAY as u32,
-            _ => 0,
-        }
-    }
-
     let mut group_field = |ident: String, ty: &str| {
+        let type_id = get_type_id_by_name(ty);
+        // Categorize based on type_id
         if PRIMITIVE_TYPE_NAMES.contains(&ty) {
-            primitive_fields.push((ident, ty.to_string(), get_primitive_type_id(ty)));
-        } else if get_other_internal_type_id(ty) > 0 {
-            let internal_type_id = get_other_internal_type_id(ty);
-            internal_type_fields.push((ident, ty.to_string(), internal_type_id));
-        } else if ty.starts_with("Vec<")
-            || ty.starts_with("VecDeque<")
-            || ty.starts_with("LinkedList<")
-            || ty.starts_with("BinaryHeap<")
-        {
-            list_fields.push((ident, ty.to_string(), TypeId::LIST as u32));
-        } else if ty.starts_with("HashSet<") || ty.starts_with("BTreeSet<") {
-            set_fields.push((ident, ty.to_string(), TypeId::SET as u32));
-        } else if ty.starts_with("HashMap<") || ty.starts_with("BTreeMap<") {
-            map_fields.push((ident, ty.to_string(), TypeId::MAP as u32));
+            primitive_fields.push((ident, ty.to_string(), type_id));
+        } else if is_internal_type_id(type_id) {
+            internal_type_fields.push((ident, ty.to_string(), type_id));
+        } else if type_id == TypeId::LIST as u32 {
+            list_fields.push((ident, ty.to_string(), type_id));
+        } else if type_id == TypeId::SET as u32 {
+            set_fields.push((ident, ty.to_string(), type_id));
+        } else if type_id == TypeId::MAP as u32 {
+            map_fields.push((ident, ty.to_string(), type_id));
         } else {
-            other_fields.push((ident, ty.to_string(), TypeId::UNKNOWN as u32));
+            // User-defined type
+            other_fields.push((ident, ty.to_string(), type_id));
         }
     };
 
@@ -485,33 +602,6 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
         } else {
             group_field(ident, &ty);
         }
-    }
-
-    fn get_primitive_type_size(type_id_num: u32) -> i32 {
-        let type_id = TypeId::try_from(type_id_num as i16).unwrap();
-        match type_id {
-            TypeId::BOOL => 1,
-            TypeId::INT8 => 1,
-            TypeId::INT16 => 2,
-            TypeId::INT32 => 4,
-            TypeId::VAR_INT32 => 4,
-            TypeId::INT64 => 8,
-            TypeId::VAR_INT64 => 8,
-            TypeId::FLOAT16 => 2,
-            TypeId::FLOAT32 => 4,
-            TypeId::FLOAT64 => 8,
-            _ => unreachable!(),
-        }
-    }
-
-    fn is_compress(type_id: u32) -> bool {
-        [
-            TypeId::INT32 as u32,
-            TypeId::INT64 as u32,
-            TypeId::VAR_INT32 as u32,
-            TypeId::VAR_INT64 as u32,
-        ]
-        .contains(&type_id)
     }
 
     fn numeric_sorter(a: &(String, String, u32), b: &(String, String, u32)) -> std::cmp::Ordering {
@@ -591,4 +681,36 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
 pub(crate) fn skip_ref_flag(ty: &Type) -> bool {
     // !T::fory_is_option() && PRIMITIVE_TYPES.contains(&elem_type_id)
     PRIMITIVE_TYPE_NAMES.contains(&extract_type_name(ty).as_str())
+}
+
+/// Determine whether to skip writing type info for a struct field based on its type.
+///
+/// According to xlang_serialization_spec.md:
+/// - Primitive fields: skip type info
+/// - Nullable primitive fields (Option<primitive>): skip type info
+/// - Internal type fields (String, Date, arrays): skip type info
+/// - List/Set/Map fields: skip type info
+/// - Struct fields: WRITE type info
+/// - Ext fields: WRITE type info
+/// - Enum fields: skip type info (enum is morphic)
+///
+/// Returns true if type info should be skipped, false if it should be written.
+pub(crate) fn should_skip_type_info_for_field(ty: &Type) -> bool {
+    let type_id = get_type_id_by_type_ast(ty);
+    if [
+        TypeId::STRUCT as u32,
+        TypeId::COMPATIBLE_STRUCT as u32,
+        TypeId::NAMED_STRUCT as u32,
+        TypeId::NAMED_COMPATIBLE_STRUCT as u32,
+        TypeId::EXT as u32,
+        TypeId::NAMED_EXT as u32,
+        TypeId::UNKNOWN as u32,
+    ]
+    .contains(&type_id)
+    {
+        // Struct and Ext types need type info
+        return false;
+    }
+    // Primitive, nullable primitive, internal types, List/Set/Map skip type info
+    true
 }
