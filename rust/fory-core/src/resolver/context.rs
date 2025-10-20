@@ -19,7 +19,7 @@ use crate::buffer::{Reader, Writer};
 
 use crate::error::Error;
 use crate::fory::Fory;
-use crate::meta::{MetaString, TypeMeta};
+use crate::meta::MetaString;
 use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
 use crate::resolver::metastring_resolver::{
     MetaStringBytes, MetaStringReaderResolver, MetaStringWriterResolver,
@@ -303,14 +303,14 @@ impl ReadContext {
     }
 
     #[inline(always)]
-    pub fn get_meta(&self, type_index: usize) -> Result<&Rc<TypeMeta>, Error> {
+    pub fn get_type_info_by_index(&self, type_index: usize) -> Result<&Rc<TypeInfo>, Error> {
         self.meta_resolver.get(type_index).ok_or_else(|| {
-            Error::type_error(format!("Meta not found for type index: {}", type_index))
+            Error::type_error(format!("TypeInfo not found for type index: {}", type_index))
         })
     }
 
     #[inline(always)]
-    pub fn load_meta(&mut self, offset: usize) -> Result<usize, Error> {
+    pub fn load_type_meta(&mut self, offset: usize) -> Result<usize, Error> {
         self.meta_resolver.load(
             &self.type_resolver,
             &mut Reader::new(&self.reader.slice_after_cursor()[offset..]),
@@ -323,22 +323,14 @@ impl ReadContext {
         match fory_type_id & 0xff {
             types::NAMED_COMPATIBLE_STRUCT | types::COMPATIBLE_STRUCT => {
                 let meta_index = self.reader.read_varuint32()? as usize;
-                let remote_meta = self.get_meta(meta_index)?.clone();
-                let local_type_info = self
-                    .type_resolver
-                    .get_type_info_by_id(fory_type_id)
-                    .ok_or_else(|| Error::type_error("ID harness not found"))?;
-                // Create a new TypeInfo with remote metadata but local harness
-                // TODO: make self.get_meta return type info
-                Ok(Rc::new(local_type_info.with_remote_meta(remote_meta)))
+                let type_info = self.get_type_info_by_index(meta_index)?.clone();
+                Ok(type_info)
             }
             types::NAMED_ENUM | types::NAMED_EXT | types::NAMED_STRUCT => {
                 if self.is_share_meta() {
                     let meta_index = self.reader.read_varuint32()? as usize;
-                    self.get_meta(meta_index)?;
-                    self.type_resolver
-                        .get_type_info_by_id(fory_type_id)
-                        .ok_or_else(|| Error::type_error("ID harness not found"))
+                    let type_info = self.get_type_info_by_index(meta_index)?.clone();
+                    Ok(type_info)
                 } else {
                     let namespace = self.meta_resolver.read_metastring(&mut self.reader)?;
                     let type_name = self.meta_resolver.read_metastring(&mut self.reader)?;

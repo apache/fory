@@ -214,20 +214,78 @@ impl TypeInfo {
         &self.harness
     }
 
-    /// Create a new TypeInfo with the same properties but different type_meta.
-    /// This is used during deserialization to create a TypeInfo with remote metadata
-    /// while keeping the local harness for deserialization functions.
-    pub fn with_remote_meta(&self, remote_meta: Rc<TypeMeta>) -> TypeInfo {
+    /// Create a TypeInfo from remote TypeMeta with a stub harness
+    /// Used when the type doesn't exist locally during deserialization
+    pub fn from_remote_meta(
+        remote_meta: Rc<TypeMeta>,
+        local_harness: Option<&Harness>,
+    ) -> TypeInfo {
+        let type_id = remote_meta.get_type_id();
+        let namespace = remote_meta.get_namespace();
+        let type_name = remote_meta.get_type_name();
+        let type_def_bytes = remote_meta.to_bytes().unwrap_or_default();
+        let register_by_name = !namespace.original.is_empty() || !type_name.original.is_empty();
+
+        let harness = if let Some(h) = local_harness {
+            h.clone()
+        } else {
+            // Create a stub harness that returns errors when called
+            Harness::new(
+                stub_write_fn,
+                stub_read_fn,
+                stub_write_data_fn,
+                stub_read_data_fn,
+                stub_to_serializer_fn,
+            )
+        };
+
         TypeInfo {
-            type_def: self.type_def.clone(),
+            type_def: Rc::from(type_def_bytes),
             type_meta: remote_meta,
-            type_id: self.type_id,
-            namespace: self.namespace.clone(),
-            type_name: self.type_name.clone(),
-            register_by_name: self.register_by_name,
-            harness: self.harness.clone(),
+            type_id,
+            namespace,
+            type_name,
+            register_by_name,
+            harness,
         }
     }
+}
+
+// Stub functions for when a type doesn't exist locally
+fn stub_write_fn(
+    _: &dyn Any,
+    _: &mut WriteContext,
+    _: bool,
+    _: bool,
+    _: bool,
+) -> Result<(), Error> {
+    Err(Error::type_error(
+        "Cannot serialize unknown remote type - type not registered locally",
+    ))
+}
+
+fn stub_read_fn(_: &mut ReadContext, _: bool, _: bool) -> Result<Box<dyn Any>, Error> {
+    Err(Error::type_error(
+        "Cannot deserialize unknown remote type - type not registered locally",
+    ))
+}
+
+fn stub_write_data_fn(_: &dyn Any, _: &mut WriteContext, _: bool) -> Result<(), Error> {
+    Err(Error::type_error(
+        "Cannot serialize unknown remote type - type not registered locally",
+    ))
+}
+
+fn stub_read_data_fn(_: &mut ReadContext) -> Result<Box<dyn Any>, Error> {
+    Err(Error::type_error(
+        "Cannot deserialize unknown remote type - type not registered locally",
+    ))
+}
+
+fn stub_to_serializer_fn(_: Box<dyn Any>) -> Result<Box<dyn Serializer>, Error> {
+    Err(Error::type_error(
+        "Cannot convert unknown remote type to serializer",
+    ))
 }
 
 /// TypeResolver is a resolver for fast type/serializer dispatch.

@@ -420,7 +420,7 @@ impl Fory {
         if context.is_compatible() {
             let meta_offset = context.reader.read_i32()?;
             if meta_offset != -1 {
-                bytes_to_skip = context.load_meta(meta_offset as usize)?;
+                bytes_to_skip = context.load_type_meta(meta_offset as usize)?;
             }
         }
         let result = <T as Serializer>::fory_read(context, true, true);
