@@ -21,9 +21,7 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::MetaString;
 use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
-use crate::resolver::metastring_resolver::{
-    MetaStringBytes, MetaStringReaderResolver, MetaStringWriterResolver,
-};
+use crate::resolver::metastring_resolver::{MetaStringReaderResolver, MetaStringWriterResolver};
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types;
@@ -170,8 +168,8 @@ impl WriteContext {
                         as u32;
                     self.writer.write_varuint32(meta_index);
                 } else {
-                    namespace.write_to(&mut self.writer);
-                    type_name.write_to(&mut self.writer);
+                    self.write_meta_string_bytes(namespace)?;
+                    self.write_meta_string_bytes(type_name)?;
                 }
             }
             _ => {
@@ -190,8 +188,8 @@ impl WriteContext {
     #[inline(always)]
     pub fn reset(&mut self) {
         self.meta_resolver.reset();
+        self.meta_string_resolver.reset();
         self.ref_writer.reset();
-        self.writer.reset();
     }
 }
 
@@ -332,8 +330,8 @@ impl ReadContext {
                     let type_info = self.get_type_info_by_index(meta_index)?.clone();
                     Ok(type_info)
                 } else {
-                    let namespace = self.meta_resolver.read_metastring(&mut self.reader)?;
-                    let type_name = self.meta_resolver.read_metastring(&mut self.reader)?;
+                    let namespace = self.read_meta_string()?.to_owned();
+                    let type_name = self.read_meta_string()?.to_owned();
                     let rc_namespace = Rc::from(namespace);
                     let rc_type_name = Rc::from(type_name);
                     self.type_resolver
@@ -353,9 +351,8 @@ impl ReadContext {
         self.type_resolver.get_type_info(type_id)
     }
 
-    pub fn read_meta_string_bytes(&mut self) -> Result<&MetaStringBytes, Error> {
-        self.meta_string_resolver
-            .read_meta_string_bytes(&mut self.reader)
+    pub fn read_meta_string(&mut self) -> Result<&MetaString, Error> {
+        self.meta_string_resolver.read_meta_string(&mut self.reader)
     }
 
     #[inline(always)]
@@ -380,8 +377,8 @@ impl ReadContext {
 
     #[inline(always)]
     pub fn reset(&mut self) {
-        self.reader.reset();
         self.meta_resolver.reset();
+        self.meta_string_resolver.reset();
         self.ref_reader.reset();
     }
 }

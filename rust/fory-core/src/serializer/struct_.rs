@@ -77,8 +77,8 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Er
         if context.is_share_meta() {
             let _meta_index = context.reader.read_varuint32()?;
         } else {
-            let _namespace_msb = context.read_meta_string_bytes()?;
-            let _type_name_msb = context.read_meta_string_bytes()?;
+            let _namespace_msb = context.read_meta_string()?;
+            let _type_name_msb = context.read_meta_string()?;
         }
     } else if local_type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
         || local_type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32

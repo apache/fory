@@ -395,15 +395,6 @@ public class RustXlangTest extends ForyTestBase {
     fory.serialize(buffer, strSet);
     fory.serialize(buffer, strMap);
     fory.serialize(buffer, color);
-    //    Map<Object, Object> map = new HashMap<>();
-    //    for (int i = 0; i < list.size(); i++) {
-    //        map.put("k" + i, list.get(i));
-    //        map.put(list.get(i), list.get(i));
-    //    }
-    //    fory.serialize(buffer, map);
-
-    //    Set<Object> set = new HashSet<>(list);
-    //    fory.serialize(buffer, set);
 
     BiConsumer<MemoryBuffer, Boolean> function =
         (MemoryBuffer buf, Boolean useToString) -> {
@@ -433,9 +424,6 @@ public class RustXlangTest extends ForyTestBase {
           assertStringEquals(fory.deserialize(buf), strSet, useToString);
           assertStringEquals(fory.deserialize(buf), strMap, useToString);
           assertStringEquals(fory.deserialize(buf), color, useToString);
-          //            assertStringEquals(fory.deserialize(buf), list, useToString);
-          //            assertStringEquals(fory.deserialize(buf), map, useToString);
-          //            assertStringEquals(fory.deserialize(buf), set, useToString);
         };
     function.accept(buffer, false);
     Path dataFile = Files.createTempFile("test_cross_language_serializer", "data");
@@ -817,25 +805,25 @@ public class RustXlangTest extends ForyTestBase {
     MyStruct myStruct = new MyStruct(42);
     MyExt myExt = new MyExt(43);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
-    fory.serialize(buffer, Color.White);
-    fory.serialize(buffer, Color.White);
-    fory.serialize(buffer, Color.White);
+    for (int i = 0; i < 3; i++) {
+      fory.serialize(buffer, Color.White);
+    }
     // todo: checkVersion
     //        fory.serialize(buffer, myStruct);
-    fory.serialize(buffer, myExt);
-    fory.serialize(buffer, myExt);
-    fory.serialize(buffer, myExt);
+    for (int i = 0; i < 3; i++) {
+      fory.serialize(buffer, myExt);
+    }
     byte[] bytes = buffer.getBytes(0, buffer.writerIndex());
     Path dataFile = Files.createTempFile("test_consistent_named", "data");
     Pair<Map<String, String>, File> env_workdir = setFilePath(language, command, dataFile, bytes);
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
-    Assert.assertEquals(fory.deserialize(buffer2), Color.White);
-    Assert.assertEquals(fory.deserialize(buffer2), Color.White);
-    Assert.assertEquals(fory.deserialize(buffer2), Color.White);
-    Assert.assertEquals(fory.deserialize(buffer2), myExt);
-    Assert.assertEquals(fory.deserialize(buffer2), myExt);
-    Assert.assertEquals(fory.deserialize(buffer2), myExt);
+    for (int i = 0; i < 3; i++) {
+      Assert.assertEquals(fory.deserialize(buffer2), Color.White);
+    }
+    for (int i = 0; i < 3; i++) {
+      Assert.assertEquals(fory.deserialize(buffer2), myExt);
+    }
   }
 
   /**

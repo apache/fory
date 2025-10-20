@@ -17,7 +17,7 @@
 
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
-use crate::meta::{Encoding, MetaString, TypeMeta, NAMESPACE_DECODER};
+use crate::meta::TypeMeta;
 use crate::resolver::type_resolver::TypeInfo;
 use crate::TypeResolver;
 use std::collections::HashMap;
@@ -138,24 +138,6 @@ impl MetaReaderResolver {
             }
         }
         Ok(reader.get_cursor())
-    }
-
-    pub fn read_metastring(&self, reader: &mut Reader) -> Result<MetaString, Error> {
-        let len = reader.read_varuint32()? as usize;
-        if len == 0 {
-            return Ok(MetaString::get_empty().clone());
-        }
-        let bytes = reader.read_bytes(len)?;
-        let encoding_byte = bytes[0] & 0x07;
-        let encoding = match encoding_byte {
-            0x00 => Encoding::Utf8,
-            0x01 => Encoding::LowerSpecial,
-            0x02 => Encoding::LowerUpperDigitSpecial,
-            0x03 => Encoding::FirstToLowerSpecial,
-            0x04 => Encoding::AllToLowerSpecial,
-            _ => Encoding::Utf8,
-        };
-        NAMESPACE_DECODER.decode(bytes, encoding)
     }
 
     pub fn reset(&mut self) {
