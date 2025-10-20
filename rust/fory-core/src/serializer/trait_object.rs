@@ -24,7 +24,7 @@ use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
 use crate::RefFlag;
-use std::sync::Arc;
+use std::rc::Rc;
 
 /// Helper macro for common type resolution and downcasting pattern
 #[macro_export]
@@ -68,7 +68,6 @@ macro_rules! resolve_and_deserialize {
 /// either you use the wrapper types or use the `Rc<dyn Any>` or `Arc<dyn Any>` instead if it's not
 /// inside struct fields. For struct fields, you can use the `Rc<dyn Trait>`, `Arc<dyn Trait>` directly,
 /// fory will generate converters for `Rc<dyn Trait>` and `Arc<dyn Trait>` to convert to wrapper for
-/// serialization/ deserialization automatically.
 ///
 /// The macro generates:
 /// - `Serializer` implementation for `Box<dyn Trait>`
@@ -213,7 +212,7 @@ macro_rules! register_trait_type {
             fn fory_read_with_type_info(
                 context: &mut fory_core::ReadContext,
                 read_ref_info: bool,
-                type_info: std::sync::Arc<fory_core::TypeInfo>,
+                type_info: std::rc::Rc<fory_core::TypeInfo>,
             ) -> Result<Self, fory_core::Error>
             where
                 Self: Sized + fory_core::ForyDefault,
@@ -468,7 +467,7 @@ macro_rules! impl_smart_pointer_serializer {
                 )
             }
 
-            fn fory_read_with_type_info(context: &mut fory_core::ReadContext, read_ref_info: bool, type_info: std::sync::Arc<fory_core::TypeInfo>) -> Result<Self, fory_core::Error> {
+            fn fory_read_with_type_info(context: &mut fory_core::ReadContext, read_ref_info: bool, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::Error> {
                 $crate::read_ptr_trait_object!(
                     context,
                     read_ref_info,
@@ -650,7 +649,7 @@ impl Serializer for Box<dyn Serializer> {
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,
-        type_info: Arc<TypeInfo>,
+        type_info: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
@@ -667,7 +666,7 @@ fn read_box_seralizer(
     context: &mut ReadContext,
     read_ref_info: bool,
     read_type_info: bool,
-    type_info: Option<Arc<TypeInfo>>,
+    type_info: Option<Rc<TypeInfo>>,
 ) -> Result<Box<dyn Serializer>, Error> {
     context.inc_depth()?;
     let ref_flag = if read_ref_info {

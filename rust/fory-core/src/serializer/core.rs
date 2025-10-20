@@ -23,7 +23,7 @@ use crate::serializer::{bool, struct_};
 use crate::types::{RefFlag, TypeId};
 use crate::TypeResolver;
 use std::any::Any;
-use std::sync::Arc;
+use std::rc::Rc;
 
 pub trait ForyDefault: Sized {
     fn fory_default() -> Self;
@@ -155,7 +155,7 @@ pub trait Serializer: 'static {
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,
-        type_info: Arc<TypeInfo>,
+        type_info: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
@@ -269,7 +269,7 @@ pub trait StructSerializer: Serializer + 'static {
     // only used by struct
     fn fory_read_compatible(
         context: &mut ReadContext,
-        type_info: Arc<TypeInfo>,
+        type_info: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized;

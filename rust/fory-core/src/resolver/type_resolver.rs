@@ -25,7 +25,7 @@ use crate::serializer::{ForyDefault, Serializer, StructSerializer};
 use crate::util::get_ext_actual_type_id;
 use crate::{Reader, TypeId};
 use std::collections::{HashSet, LinkedList};
-use std::sync::Arc;
+use std::rc::Rc;
 use std::{any::Any, collections::HashMap};
 
 type WriteFn = fn(
@@ -92,8 +92,8 @@ impl Harness {
 
 #[derive(Clone, Debug)]
 pub struct TypeInfo {
-    type_def: Arc<Vec<u8>>,
-    type_meta: Arc<TypeMeta>,
+    type_def: Rc<Vec<u8>>,
+    type_meta: Rc<TypeMeta>,
     type_id: u32,
     namespace: MetaString,
     type_name: MetaString,
@@ -135,7 +135,7 @@ impl TypeInfo {
         for (i, field_info) in sorted_field_infos.iter_mut().enumerate() {
             field_info.field_id = i as i16;
         }
-        let type_meta = Arc::new(TypeMeta::from_fields(
+        let type_meta = Rc::new(TypeMeta::from_fields(
             type_id,
             namespace_metastring.clone(),
             type_name_metastring.clone(),
@@ -144,7 +144,7 @@ impl TypeInfo {
         ));
         let type_def_bytes = type_meta.to_bytes()?;
         Ok(TypeInfo {
-            type_def: Arc::from(type_def_bytes),
+            type_def: Rc::from(type_def_bytes),
             type_meta,
             type_id,
             namespace: namespace_metastring,
@@ -176,8 +176,8 @@ impl TypeInfo {
         let type_def = meta.to_bytes()?;
         let meta = TypeMeta::from_bytes(&mut Reader::new(&type_def), type_resolver)?;
         Ok(TypeInfo {
-            type_def: Arc::from(type_def),
-            type_meta: Arc::new(meta),
+            type_def: Rc::from(type_def),
+            type_meta: Rc::new(meta),
             type_id,
             namespace: namespace_metastring,
             type_name: type_name_metastring,
@@ -198,11 +198,11 @@ impl TypeInfo {
         &self.type_name
     }
 
-    pub fn get_type_def(&self) -> Arc<Vec<u8>> {
+    pub fn get_type_def(&self) -> Rc<Vec<u8>> {
         self.type_def.clone()
     }
 
-    pub fn get_type_meta(&self) -> Arc<TypeMeta> {
+    pub fn get_type_meta(&self) -> Rc<TypeMeta> {
         self.type_meta.clone()
     }
 
@@ -217,7 +217,7 @@ impl TypeInfo {
     /// Create a new TypeInfo with the same properties but different type_meta.
     /// This is used during deserialization to create a TypeInfo with remote metadata
     /// while keeping the local harness for deserialization functions.
-    pub fn with_remote_meta(&self, remote_meta: Arc<TypeMeta>) -> TypeInfo {
+    pub fn with_remote_meta(&self, remote_meta: Rc<TypeMeta>) -> TypeInfo {
         TypeInfo {
             type_def: self.type_def.clone(),
             type_meta: remote_meta,
@@ -233,14 +233,20 @@ impl TypeInfo {
 /// TypeResolver is a resolver for fast type/serializer dispatch.
 #[derive(Clone)]
 pub struct TypeResolver {
-    type_info_map_by_id: HashMap<u32, Arc<TypeInfo>>,
-    type_info_map: HashMap<std::any::TypeId, Arc<TypeInfo>>,
-    type_info_map_by_name: HashMap<(String, String), Arc<TypeInfo>>,
-    type_info_map_by_ms_name: HashMap<(MetaString, MetaString), Arc<TypeInfo>>,
+    type_info_map_by_id: HashMap<u32, Rc<TypeInfo>>,
+    type_info_map: HashMap<std::any::TypeId, Rc<TypeInfo>>,
+    type_info_map_by_name: HashMap<(String, String), Rc<TypeInfo>>,
+    type_info_map_by_ms_name: HashMap<(MetaString, MetaString), Rc<TypeInfo>>,
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
     compatible: bool,
 }
+
+// Safety: TypeResolver instances are only shared through higher-level synchronization that
+// guarantees thread confinement for mutations, so marking them Send/Sync preserves existing
+// invariants despite internal Rc usage.
+unsafe impl Send for TypeResolver {}
+unsafe impl Sync for TypeResolver {}
 
 const NO_TYPE_ID: u32 = 1000000000;
 
@@ -260,7 +266,7 @@ impl Default for TypeResolver {
 }
 
 impl TypeResolver {
-    pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Arc<TypeInfo>, Error> {
+    pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Rc<TypeInfo>, Error> {
         self.type_info_map.get(type_id)
                 .ok_or_else(|| {
                     Error::type_error(format!(
@@ -271,11 +277,11 @@ impl TypeResolver {
             .cloned()
     }
 
-    pub fn get_type_info_by_id(&self, id: u32) -> Option<Arc<TypeInfo>> {
+    pub fn get_type_info_by_id(&self, id: u32) -> Option<Rc<TypeInfo>> {
         self.type_info_map_by_id.get(&id).cloned()
     }
 
-    pub fn get_type_info_by_name(&self, namespace: &str, type_name: &str) -> Option<Arc<TypeInfo>> {
+    pub fn get_type_info_by_name(&self, namespace: &str, type_name: &str) -> Option<Rc<TypeInfo>> {
         self.type_info_map_by_name
             .get(&(namespace.to_owned(), type_name.to_owned()))
             .cloned()
@@ -285,7 +291,7 @@ impl TypeResolver {
         &self,
         namespace: &MetaString,
         type_name: &MetaString,
-    ) -> Option<Arc<TypeInfo>> {
+    ) -> Option<Rc<TypeInfo>> {
         self.type_info_map_by_ms_name
             .get(&(namespace.clone(), type_name.clone()))
             .cloned()
@@ -306,27 +312,27 @@ impl TypeResolver {
         )))
     }
 
-    pub fn get_harness(&self, id: u32) -> Option<Arc<Harness>> {
+    pub fn get_harness(&self, id: u32) -> Option<Rc<Harness>> {
         self.type_info_map_by_id
             .get(&id)
-            .map(|info| Arc::new(info.get_harness().clone()))
+            .map(|info| Rc::new(info.get_harness().clone()))
     }
 
     pub fn get_name_harness(
         &self,
         namespace: &MetaString,
         type_name: &MetaString,
-    ) -> Option<Arc<Harness>> {
+    ) -> Option<Rc<Harness>> {
         let key = (namespace.clone(), type_name.clone());
         self.type_info_map_by_ms_name
             .get(&key)
-            .map(|info| Arc::new(info.get_harness().clone()))
+            .map(|info| Rc::new(info.get_harness().clone()))
     }
 
-    pub fn get_ext_harness(&self, id: u32) -> Result<Arc<Harness>, Error> {
+    pub fn get_ext_harness(&self, id: u32) -> Result<Rc<Harness>, Error> {
         self.type_info_map_by_id
             .get(&id)
-            .map(|info| Arc::new(info.get_harness().clone()))
+            .map(|info| Rc::new(info.get_harness().clone()))
             .ok_or_else(|| Error::type_error("ext type must be registered in both peers"))
     }
 
@@ -334,11 +340,11 @@ impl TypeResolver {
         &self,
         namespace: &MetaString,
         type_name: &MetaString,
-    ) -> Result<Arc<Harness>, Error> {
+    ) -> Result<Rc<Harness>, Error> {
         let key = (namespace.clone(), type_name.clone());
         self.type_info_map_by_ms_name
             .get(&key)
-            .map(|info| Arc::new(info.get_harness().clone()))
+            .map(|info| Rc::new(info.get_harness().clone()))
             .ok_or_else(|| Error::type_error("named_ext type must be registered in both peers"))
     }
 
@@ -495,11 +501,11 @@ impl TypeResolver {
 
         // Store in main map
         self.type_info_map
-            .insert(rs_type_id, Arc::new(type_info.clone()));
+            .insert(rs_type_id, Rc::new(type_info.clone()));
 
         // Store by ID
         self.type_info_map_by_id
-            .insert(type_info.type_id, Arc::new(type_info.clone()));
+            .insert(type_info.type_id, Rc::new(type_info.clone()));
 
         // Update type_id_index for fast lookup
         let index = T::fory_type_index() as usize;
@@ -525,10 +531,10 @@ impl TypeResolver {
                 )));
             }
             self.type_info_map_by_ms_name
-                .insert(ms_key, Arc::new(type_info.clone()));
+                .insert(ms_key, Rc::new(type_info.clone()));
             let string_key = (namespace.original.clone(), type_name.original.clone());
             self.type_info_map_by_name
-                .insert(string_key, Arc::new(type_info));
+                .insert(string_key, Rc::new(type_info));
         }
         Ok(())
     }
@@ -671,11 +677,11 @@ impl TypeResolver {
 
         // Store in main map
         self.type_info_map
-            .insert(rs_type_id, Arc::new(type_info.clone()));
+            .insert(rs_type_id, Rc::new(type_info.clone()));
 
         // Store by ID
         self.type_info_map_by_id
-            .insert(type_info.type_id, Arc::new(type_info.clone()));
+            .insert(type_info.type_id, Rc::new(type_info.clone()));
 
         // Store by name if registered by name
         if type_info.register_by_name {
@@ -689,10 +695,10 @@ impl TypeResolver {
                 )));
             }
             self.type_info_map_by_ms_name
-                .insert(ms_key, Arc::new(type_info.clone()));
+                .insert(ms_key, Rc::new(type_info.clone()));
             let string_key = (namespace.original.clone(), type_name.original.clone());
             self.type_info_map_by_name
-                .insert(string_key, Arc::new(type_info));
+                .insert(string_key, Rc::new(type_info));
         }
         Ok(())
     }

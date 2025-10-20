@@ -38,7 +38,7 @@ use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::TypeId;
 use std::cell::RefCell;
-use std::sync::Arc;
+use std::rc::Rc;
 
 /// `Serializer` impl for `RefCell<T>`
 ///
@@ -63,7 +63,7 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,
-        type_info: Arc<TypeInfo>,
+        type_info: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,

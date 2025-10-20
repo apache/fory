@@ -90,7 +90,7 @@ impl Serializer for Box<dyn Any> {
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,
-        type_info: Arc<TypeInfo>,
+        type_info: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
@@ -172,7 +172,7 @@ pub fn read_box_any(
     context: &mut ReadContext,
     read_ref_info: bool,
     read_type_info: bool,
-    type_info: Option<Arc<TypeInfo>>,
+    type_info: Option<Rc<TypeInfo>>,
 ) -> Result<Box<dyn Any>, Error> {
     context.inc_depth()?;
     let ref_flag = if read_ref_info {
@@ -258,7 +258,7 @@ impl Serializer for Rc<dyn Any> {
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,
-        type_info: Arc<TypeInfo>,
+        type_info: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
@@ -321,7 +321,7 @@ pub fn read_rc_any(
     context: &mut ReadContext,
     read_ref_info: bool,
     read_type_info: bool,
-    type_info: Option<Arc<TypeInfo>>,
+    type_info: Option<Rc<TypeInfo>>,
 ) -> Result<Rc<dyn Any>, Error> {
     let ref_flag = if read_ref_info {
         context.ref_reader.read_ref_flag(&mut context.reader)?
@@ -427,7 +427,7 @@ impl Serializer for Arc<dyn Any> {
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,
-        type_info: Arc<TypeInfo>,
+        type_info: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
@@ -490,7 +490,7 @@ pub fn read_arc_any(
     context: &mut ReadContext,
     read_ref_info: bool,
     read_type_info: bool,
-    type_info: Option<Arc<TypeInfo>>,
+    type_info: Option<Rc<TypeInfo>>,
 ) -> Result<Arc<dyn Any>, Error> {
     let ref_flag = if read_ref_info {
         context.ref_reader.read_ref_flag(&mut context.reader)?

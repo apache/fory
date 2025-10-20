@@ -27,8 +27,11 @@ use crate::resolver::metastring_resolver::{
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types;
-use std::sync::{Arc, Mutex};
+use std::rc::Rc;
+use std::sync::Mutex;
 
+/// Serialization state container used on a single thread at a time.
+/// Sharing the same instance across threads simultaneously causes undefined behavior.
 pub struct WriteContext {
     // Replicated environment fields (direct access, no Arc indirection for flags)
     type_resolver: TypeResolver,
@@ -87,7 +90,7 @@ impl WriteContext {
     }
 
     #[inline(always)]
-    pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Arc<TypeInfo>, Error> {
+    pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Rc<TypeInfo>, Error> {
         self.type_resolver.get_type_info(type_id)
     }
 
@@ -138,7 +141,7 @@ impl WriteContext {
         &mut self,
         fory_type_id: u32,
         concrete_type_id: std::any::TypeId,
-    ) -> Result<Arc<TypeInfo>, Error> {
+    ) -> Result<Rc<TypeInfo>, Error> {
         if types::is_internal_type(fory_type_id) {
             self.writer.write_varuint32(fory_type_id);
             return self
@@ -192,6 +195,15 @@ impl WriteContext {
     }
 }
 
+// Safety: WriteContext is only shared across threads via higher-level pooling code that
+// ensures single-threaded access while the context is in use. Users must never hold the same
+// instance on multiple threads simultaneously; that would violate the invariants and result in
+// undefined behavior. Under that assumption, marking it Send/Sync is sound.
+unsafe impl Send for WriteContext {}
+unsafe impl Sync for WriteContext {}
+
+/// Deserialization state container used on a single thread at a time.
+/// Sharing the same instance across threads simultaneously causes undefined behavior.
 pub struct ReadContext {
     // Replicated environment fields (direct access, no Arc indirection for flags)
     type_resolver: TypeResolver,
@@ -207,6 +219,13 @@ pub struct ReadContext {
     pub ref_reader: RefReader,
     current_depth: u32,
 }
+
+// Safety: ReadContext follows the same invariants as WriteContext—external orchestrators ensure
+// single-threaded use. Concurrent access to the same instance across threads is forbidden and
+// would result in undefined behavior. With exclusive use guaranteed, the Send/Sync markers are safe
+// even though Rc is used internally.
+unsafe impl Send for ReadContext {}
+unsafe impl Sync for ReadContext {}
 
 impl ReadContext {
     pub fn new(
@@ -284,7 +303,7 @@ impl ReadContext {
     }
 
     #[inline(always)]
-    pub fn get_meta(&self, type_index: usize) -> Result<&Arc<TypeMeta>, Error> {
+    pub fn get_meta(&self, type_index: usize) -> Result<&Rc<TypeMeta>, Error> {
         self.meta_resolver.get(type_index).ok_or_else(|| {
             Error::type_error(format!("Meta not found for type index: {}", type_index))
         })
@@ -298,7 +317,7 @@ impl ReadContext {
         )
     }
 
-    pub fn read_any_typeinfo(&mut self) -> Result<Arc<TypeInfo>, Error> {
+    pub fn read_any_typeinfo(&mut self) -> Result<Rc<TypeInfo>, Error> {
         let fory_type_id = self.reader.read_varuint32()?;
         // should be compiled to jump table generation
         match fory_type_id & 0xff {
@@ -311,7 +330,7 @@ impl ReadContext {
                     .ok_or_else(|| Error::type_error("ID harness not found"))?;
                 // Create a new TypeInfo with remote metadata but local harness
                 // TODO: make self.get_meta return type info
-                Ok(Arc::new(local_type_info.with_remote_meta(remote_meta)))
+                Ok(Rc::new(local_type_info.with_remote_meta(remote_meta)))
             }
             types::NAMED_ENUM | types::NAMED_EXT | types::NAMED_STRUCT => {
                 if self.is_share_meta() {
@@ -336,7 +355,7 @@ impl ReadContext {
     }
 
     #[inline(always)]
-    pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Arc<TypeInfo>, Error> {
+    pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Rc<TypeInfo>, Error> {
         self.type_resolver.get_type_info(type_id)
     }
 

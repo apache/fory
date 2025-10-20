@@ -21,6 +21,7 @@ use crate::resolver::context::WriteContext;
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::{RefFlag, TypeId};
+use std::rc::Rc;
 
 impl<T: Serializer + ForyDefault> Serializer for Option<T> {
     #[inline(always)]
@@ -83,7 +84,7 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,
-        type_info: std::sync::Arc<crate::TypeInfo>,
+        type_info: Rc<crate::TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,

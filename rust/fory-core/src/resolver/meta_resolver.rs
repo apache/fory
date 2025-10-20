@@ -20,11 +20,11 @@ use crate::error::Error;
 use crate::meta::{Encoding, MetaString, TypeMeta, NAMESPACE_DECODER};
 use crate::TypeResolver;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::rc::Rc;
 
 #[derive(Default)]
 pub struct MetaWriterResolver {
-    type_defs: Vec<Arc<Vec<u8>>>,
+    type_defs: Vec<Rc<Vec<u8>>>,
     type_id_index_map: HashMap<std::any::TypeId, usize>,
 }
 
@@ -68,12 +68,12 @@ impl MetaWriterResolver {
 
 #[derive(Default)]
 pub struct MetaReaderResolver {
-    pub reading_type_defs: Vec<Arc<TypeMeta>>,
-    parsed_type_defs: HashMap<i64, Arc<TypeMeta>>,
+    pub reading_type_defs: Vec<Rc<TypeMeta>>,
+    parsed_type_defs: HashMap<i64, Rc<TypeMeta>>,
 }
 
 impl MetaReaderResolver {
-    pub fn get(&self, index: usize) -> Option<&Arc<TypeMeta>> {
+    pub fn get(&self, index: usize) -> Option<&Rc<TypeMeta>> {
         self.reading_type_defs.get(index)
     }
 
@@ -90,7 +90,7 @@ impl MetaReaderResolver {
                 self.reading_type_defs.push(type_meta.clone());
                 TypeMeta::skip_bytes(reader, meta_header)?;
             } else {
-                let type_meta = Arc::new(TypeMeta::from_bytes_with_header(
+                let type_meta = Rc::new(TypeMeta::from_bytes_with_header(
                     reader,
                     type_resolver,
                     meta_header,

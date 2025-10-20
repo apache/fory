@@ -472,7 +472,7 @@ pub fn gen_read_with_type_info(struct_ident: &Ident) -> TokenStream {
     // fn fory_read_with_type_info(
     //     context: &mut ReadContext,
     //     read_ref_info: bool,
-    //     type_info: Arc<TypeInfo>,
+    //     type_info: Rc<TypeInfo>,
     // ) -> Result<Self, Error>
     quote! {
         let ref_flag = if read_ref_info {

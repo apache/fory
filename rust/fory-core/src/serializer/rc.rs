@@ -22,7 +22,6 @@ use crate::serializer::{ForyDefault, Serializer};
 use crate::types::RefFlag;
 use crate::types::TypeId;
 use std::rc::Rc;
-use std::sync::Arc;
 
 impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
     fn fory_is_shared_ref() -> bool {
@@ -83,7 +82,7 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,
-        typeinfo: Arc<TypeInfo>,
+        typeinfo: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
@@ -126,7 +125,7 @@ fn read_rc<T: Serializer + ForyDefault + 'static>(
     context: &mut ReadContext,
     read_ref_info: bool,
     read_type_info: bool,
-    typeinfo: Option<Arc<TypeInfo>>,
+    typeinfo: Option<Rc<TypeInfo>>,
 ) -> Result<Rc<T>, Error> {
     let ref_flag = if read_ref_info {
         context.ref_reader.read_ref_flag(&mut context.reader)?
@@ -159,7 +158,7 @@ fn read_rc<T: Serializer + ForyDefault + 'static>(
 fn read_rc_inner<T: Serializer + ForyDefault + 'static>(
     context: &mut ReadContext,
     read_type_info: bool,
-    typeinfo: Option<Arc<TypeInfo>>,
+    typeinfo: Option<Rc<TypeInfo>>,
 ) -> Result<T, Error> {
     if let Some(typeinfo) = typeinfo {
         let inner_read_ref = T::fory_is_shared_ref();

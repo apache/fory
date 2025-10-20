@@ -367,7 +367,7 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,
-        typeinfo: Arc<TypeInfo>,
+        typeinfo: Rc<TypeInfo>,
     ) -> Result<Self, Error> {
         read_rc_weak::<T>(context, read_ref_info, false, Some(typeinfo))
     }
@@ -410,7 +410,7 @@ fn read_rc_weak<T: Serializer + ForyDefault + 'static>(
     context: &mut ReadContext,
     read_ref_info: bool,
     read_type_info: bool,
-    type_info: Option<Arc<TypeInfo>>,
+    type_info: Option<Rc<TypeInfo>>,
 ) -> Result<RcWeak<T>, Error> {
     let ref_flag = if read_ref_info {
         context.ref_reader.read_ref_flag(&mut context.reader)?
@@ -526,7 +526,7 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,
-        typeinfo: Arc<TypeInfo>,
+        typeinfo: Rc<TypeInfo>,
     ) -> Result<Self, Error> {
         read_arc_weak::<T>(context, read_ref_info, false, Some(typeinfo))
     }
@@ -569,7 +569,7 @@ fn read_arc_weak<T: Serializer + ForyDefault + 'static>(
     context: &mut ReadContext,
     read_ref_info: bool,
     read_type_info: bool,
-    type_info: Option<Arc<TypeInfo>>,
+    type_info: Option<Rc<TypeInfo>>,
 ) -> Result<ArcWeak<T>, Error> {
     let ref_flag = if read_ref_info {
         context.ref_reader.read_ref_flag(&mut context.reader)?

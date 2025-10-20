@@ -23,7 +23,7 @@ use crate::serializer::util::read_basic_type_info;
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::{need_to_write_type_for_field, TypeId, SIZE_OF_REF_AND_TYPE};
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
+use std::rc::Rc;
 
 const MAX_CHUNK_SIZE: u8 = 255;
 
@@ -380,7 +380,7 @@ macro_rules! impl_read_map_dyn_ref {
                     let track_value_ref = (header & TRACKING_VALUE_REF) != 0;
 
                     // Determine value type info (if any)
-                    let value_type_info: Option<Arc<TypeInfo>> = if !value_declared {
+                    let value_type_info: Option<Rc<TypeInfo>> = if !value_declared {
                         if val_is_polymorphic {
                             Some(context.read_any_typeinfo()?)
                         } else {
@@ -411,7 +411,7 @@ macro_rules! impl_read_map_dyn_ref {
                     let key_declared = (header & DECL_KEY_TYPE) != 0;
                     let track_key_ref = (header & TRACKING_KEY_REF) != 0;
 
-                    let key_type_info: Option<Arc<TypeInfo>> = if !key_declared {
+                    let key_type_info: Option<Rc<TypeInfo>> = if !key_declared {
                         if key_is_polymorphic {
                             Some(context.read_any_typeinfo()?)
                         } else {
@@ -443,7 +443,7 @@ macro_rules! impl_read_map_dyn_ref {
                 let track_key_ref = (header & TRACKING_KEY_REF) != 0;
                 let track_value_ref = (header & TRACKING_VALUE_REF) != 0;
 
-                let key_type_info: Option<Arc<TypeInfo>> = if !key_declared {
+                let key_type_info: Option<Rc<TypeInfo>> = if !key_declared {
                     if key_is_polymorphic {
                         Some(context.read_any_typeinfo()?)
                     } else {
@@ -453,7 +453,7 @@ macro_rules! impl_read_map_dyn_ref {
                 } else {
                     None
                 };
-                let value_type_info: Option<Arc<TypeInfo>> = if !value_declared {
+                let value_type_info: Option<Rc<TypeInfo>> = if !value_declared {
                     if val_is_polymorphic {
                         Some(context.read_any_typeinfo()?)
                     } else {
