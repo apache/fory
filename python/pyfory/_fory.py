@@ -121,6 +121,7 @@ class Fory:
         "_peer_language",
         "max_depth",
         "depth",
+        "field_nullable",
     )
 
     def __init__(
@@ -130,6 +131,7 @@ class Fory:
         strict: bool = True,
         compatible: bool = False,
         max_depth: int = 50,
+        field_nullable: bool = False,
         **kwargs,
     ):
         """
@@ -157,11 +159,14 @@ class Fory:
           you disable this option.
         :param compatible:
          Whether to enable compatible mode for cross-language serialization.
-         When enabled, type forward/backward compatibility for struct fields will be enabled.
+         When enabled, type forward/backward compatibility for dataclass fields will be enabled.
         :param max_depth:
          The maximum depth of the deserialization data.
          If the depth exceeds the maximum depth, an exception will be raised.
          The default value is 50.
+        :param field_nullable:
+         Whether dataclass fields are nullable for python native mode(xlang=False). When enabled, dataclass fields
+         are always treated as nullable whether or not they are annotated with `Optional`.
         """
         self.language = Language.XLANG if xlang else Language.PYTHON
         if kwargs.get("language") is not None:
@@ -178,6 +183,7 @@ class Fory:
             strict = kwargs.get("require_type_registration")
         self.strict = _ENABLE_TYPE_REGISTRATION_FORCIBLY or strict
         self.compatible = compatible
+        self.field_nullable = field_nullable if self.is_py else False
         from pyfory._serialization import MetaStringResolver, SerializationContext
         from pyfory._registry import TypeResolver
 

@@ -414,10 +414,12 @@ class OptionalFieldsObject:
     f5: str = ""
 
 
+@pytest.mark.parametrize("xlang", [False, True])
 @pytest.mark.parametrize("compatible", [False, True])
-def test_optional_fields(compatible):
-    fory = Fory(xlang=True, ref=True, compatible=compatible)
-    fory.register_type(OptionalFieldsObject, typename="example.OptionalFieldsObject")
+def test_optional_fields(xlang, compatible):
+    fory = Fory(xlang=xlang, ref=True, compatible=compatible, strict=False)
+    if xlang:
+        fory.register_type(OptionalFieldsObject, typename="example.OptionalFieldsObject")
 
     obj_with_none = OptionalFieldsObject(f1=None, f2=None, f3=None, f4=42, f5="test")
     result = ser_de(fory, obj_with_none)
@@ -451,11 +453,13 @@ class NestedOptionalObject:
     f3: str = ""
 
 
+@pytest.mark.parametrize("xlang", [False, True])
 @pytest.mark.parametrize("compatible", [False, True])
-def test_nested_optional_fields(compatible):
-    fory = Fory(xlang=True, ref=True, compatible=compatible)
-    fory.register_type(ComplexObject, typename="example.ComplexObject")
-    fory.register_type(NestedOptionalObject, typename="example.NestedOptionalObject")
+def test_nested_optional_fields(xlang, compatible):
+    fory = Fory(xlang=xlang, ref=True, compatible=compatible, strict=False)
+    if xlang:
+        fory.register_type(ComplexObject, typename="example.ComplexObject")
+        fory.register_type(NestedOptionalObject, typename="example.NestedOptionalObject")
 
     obj_with_none = NestedOptionalObject(f1=None, f2=None, f3="test")
     result = ser_de(fory, obj_with_none)
@@ -491,6 +495,181 @@ class OptionalV2:
 class OptionalV3:
     f1: Optional[int] = None
     f2: str = ""
+
+
+@dataclass
+class CompatibleV1:
+    f1: int = 0
+    f2: str = ""
+    f3: float = 0.0
+
+
+@dataclass
+class CompatibleV2:
+    f1: int = 0
+    f2: str = ""
+    f3: float = 0.0
+    f4: bool = False
+
+
+@dataclass
+class CompatibleV3:
+    f1: int = 0
+    f2: str = ""
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_compatible_mode_add_field(xlang):
+    """Test that adding a field with default value works in compatible mode."""
+    fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+    fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+
+    fory_v1.register_type(CompatibleV1, typename="example.Compatible")
+    fory_v2.register_type(CompatibleV2, typename="example.Compatible")
+
+    # V1 object serialized
+    v1_obj = CompatibleV1(f1=100, f2="test", f3=3.14)
+    v1_binary = fory_v1.serialize(v1_obj)
+
+    # V2 can read V1 data, new field gets default value
+    v2_result = fory_v2.deserialize(v1_binary)
+    assert v2_result.f1 == 100
+    assert v2_result.f2 == "test"
+    assert v2_result.f3 == 3.14
+    assert v2_result.f4 is False  # Default value
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_compatible_mode_remove_field(xlang):
+    """Test that removing a field works in compatible mode."""
+    fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+    fory_v3 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+
+    fory_v2.register_type(CompatibleV2, typename="example.Compatible")
+    fory_v3.register_type(CompatibleV3, typename="example.Compatible")
+
+    # V2 object with all fields
+    v2_obj = CompatibleV2(f1=200, f2="hello", f3=2.71, f4=True)
+    v2_binary = fory_v2.serialize(v2_obj)
+
+    # V3 can read V2 data, extra fields are ignored
+    v3_result = fory_v3.deserialize(v2_binary)
+    assert v3_result.f1 == 200
+    assert v3_result.f2 == "hello"
+    # f3 and f4 from V2 are ignored
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_compatible_mode_bidirectional(xlang):
+    """Test bidirectional compatible serialization."""
+    fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+    fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+
+    fory_v1.register_type(CompatibleV1, typename="example.Compatible")
+    fory_v2.register_type(CompatibleV2, typename="example.Compatible")
+
+    # V1 -> V2
+    v1_obj = CompatibleV1(f1=100, f2="test", f3=3.14)
+    v1_binary = fory_v1.serialize(v1_obj)
+    v2_result = fory_v2.deserialize(v1_binary)
+    assert v2_result.f1 == 100
+    assert v2_result.f2 == "test"
+    assert v2_result.f3 == 3.14
+    assert v2_result.f4 is False
+
+    # V2 -> V1
+    v2_obj = CompatibleV2(f1=200, f2="hello", f3=2.71, f4=True)
+    v2_binary = fory_v2.serialize(v2_obj)
+    v1_result = fory_v1.deserialize(v2_binary)
+    assert v1_result.f1 == 200
+    assert v1_result.f2 == "hello"
+    assert v1_result.f3 == 2.71
+
+
+@dataclass
+class CompatibleWithOptional:
+    f1: Optional[int] = None
+    f2: str = ""
+    f3: Optional[List[int]] = None
+
+
+@dataclass
+class CompatibleWithOptionalV2:
+    f1: Optional[int] = None
+    f2: str = ""
+    f3: Optional[List[int]] = None
+    f4: Optional[str] = None
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_compatible_mode_with_optional_fields(xlang):
+    """Test compatible mode with optional fields."""
+    fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+    fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+
+    fory_v1.register_type(CompatibleWithOptional, typename="example.CompatibleOptional")
+    fory_v2.register_type(CompatibleWithOptionalV2, typename="example.CompatibleOptional")
+
+    # V1 with None values
+    v1_obj = CompatibleWithOptional(f1=None, f2="test", f3=None)
+    v1_binary = fory_v1.serialize(v1_obj)
+    v2_result = fory_v2.deserialize(v1_binary)
+    assert v2_result.f1 is None
+    assert v2_result.f2 == "test"
+    assert v2_result.f3 is None
+    assert v2_result.f4 is None
+
+    # V1 with values
+    v1_obj2 = CompatibleWithOptional(f1=100, f2="test", f3=[1, 2, 3])
+    v1_binary2 = fory_v1.serialize(v1_obj2)
+    v2_result2 = fory_v2.deserialize(v1_binary2)
+    assert v2_result2.f1 == 100
+    assert v2_result2.f2 == "test"
+    assert v2_result2.f3 == [1, 2, 3]
+    assert v2_result2.f4 is None
+
+
+@dataclass
+class CompatibleAllTypes:
+    f_int: int = 0
+    f_str: str = ""
+    f_float: float = 0.0
+    f_bool: bool = False
+    f_list: List[int] = None
+    f_dict: Dict[str, int] = None
+
+
+@dataclass
+class CompatibleAllTypesV2:
+    f_int: int = 0
+    f_str: str = ""
+    f_float: float = 0.0
+    f_bool: bool = False
+    f_list: List[int] = None
+    f_dict: Dict[str, int] = None
+    f_new: str = "default"
+
+
+@pytest.mark.parametrize("xlang", [False, True])
+def test_compatible_mode_all_basic_types(xlang):
+    """Test compatible mode with all basic types."""
+    fory_v1 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+    fory_v2 = Fory(xlang=xlang, ref=True, compatible=True, strict=False)
+
+    fory_v1.register_type(CompatibleAllTypes, typename="example.CompatibleAllTypes")
+    fory_v2.register_type(CompatibleAllTypesV2, typename="example.CompatibleAllTypes")
+
+    v1_obj = CompatibleAllTypes(f_int=42, f_str="hello", f_float=3.14, f_bool=True, f_list=[1, 2, 3], f_dict={"a": 1, "b": 2})
+    v1_binary = fory_v1.serialize(v1_obj)
+    v2_result = fory_v2.deserialize(v1_binary)
+
+    assert v2_result.f_int == 42
+    assert v2_result.f_str == "hello"
+    assert v2_result.f_float == 3.14
+    assert v2_result.f_bool is True
+    assert v2_result.f_list == [1, 2, 3]
+    assert v2_result.f_dict == {"a": 1, "b": 2}
+    assert v2_result.f_new == "default"
 
 
 def test_optional_compatible_mode_evolution():

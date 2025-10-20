@@ -804,6 +804,7 @@ cdef class Fory:
     cdef readonly c_bool strict
     cdef readonly c_bool is_py
     cdef readonly c_bool compatible
+    cdef readonly c_bool field_nullable
     cdef readonly MapRefResolver ref_resolver
     cdef readonly TypeResolver type_resolver
     cdef readonly MetaStringResolver metastring_resolver
@@ -824,6 +825,7 @@ cdef class Fory:
             strict: bool = True,
             compatible: bool = False,
             max_depth: int = 50,
+            field_nullable: bool = False,
             **kwargs,
     ):
         """
@@ -856,6 +858,9 @@ cdef class Fory:
          The maximum depth of the deserialization data.
          If the depth exceeds the maximum depth, an exception will be raised.
          The default value is 50.
+        :param field_nullable:
+         Whether dataclass fields are nullable for python native mode(xlang=False). When enabled, dataclass fields
+         are always treated as nullable whether or not they are annotated with `Optional`.
         """
         self.language = Language.XLANG if xlang else Language.PYTHON
         if kwargs.get("language") is not None:
@@ -872,6 +877,7 @@ cdef class Fory:
         self.ref_tracking = ref
         self.ref_resolver = MapRefResolver(ref)
         self.is_py = self.language == Language.PYTHON
+        self.field_nullable = field_nullable if self.is_py else False
         self.metastring_resolver = MetaStringResolver()
         self.type_resolver = TypeResolver(self, meta_share=compatible)
         self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)

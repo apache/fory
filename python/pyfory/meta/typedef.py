@@ -59,7 +59,8 @@ class TypeDef:
         self.is_compressed = is_compressed
 
     def create_fields_serializer(self, resolver):
-        field_types = infer_field_types(self.cls)
+        field_nullable = resolver.fory.field_nullable
+        field_types = infer_field_types(self.cls, field_nullable=field_nullable)
         serializers = [field_info.field_type.create_serializer(resolver, field_types.get(field_info.name, None)) for field_info in self.fields]
         return serializers
 
@@ -252,10 +253,10 @@ def build_field_infos(type_resolver, cls):
     field_infos = []
     nullable_map = {}
     visitor = StructTypeIdVisitor(type_resolver.fory, cls)
-
+    field_nullable = type_resolver.fory.field_nullable
     for field_name in field_names:
         field_type_hint = type_hints.get(field_name, typing.Any)
-        unwrapped_type, is_nullable = unwrap_optional(field_type_hint)
+        unwrapped_type, is_nullable = unwrap_optional(field_type_hint, field_nullable=field_nullable)
         is_nullable = is_nullable or not is_primitive_type(unwrapped_type)
         nullable_map[field_name] = is_nullable
         field_type = build_field_type(type_resolver, field_name, unwrapped_type, visitor, is_nullable)
