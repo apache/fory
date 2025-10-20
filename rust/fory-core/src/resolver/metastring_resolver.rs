@@ -81,18 +81,38 @@ impl MetaStringBytes {
 
     pub(crate) fn from_metastring(meta_string: &MetaString) -> Result<Self, Error> {
         let mut bytes = meta_string.bytes.to_vec();
-        let mut hash_code = murmurhash3_x64_128(&bytes, 47).0 as i64;
-        hash_code = hash_code.abs();
-        if hash_code == 0 {
-            hash_code += 256;
+        let len = bytes.len();
+        // follow python/java implementation: small strings use quick v1/v2 based hash,
+        // large strings use murmurhash, then mask lower 8 bits for encoding
+        let encoding_val = meta_string.encoding as i64 & HEADER_MASK;
+        let hash_code: i64;
+        if len <= MetaStringReaderResolver::SMALL_STRING_THRESHOLD {
+            // compute v1 and v2 from bytes little-endian
+            let mut v1: u64 = 0;
+            let mut v2: u64 = 0;
+            for (i, b) in bytes.iter().take(8).enumerate() {
+                v1 |= (*b as u64) << (8 * i);
+            }
+            if bytes.len() > 8 {
+                for j in 0..usize::min(8, bytes.len() - 8) {
+                    v2 |= (bytes[8 + j] as u64) << (8 * j);
+                }
+            }
+            // ((v1 * 31 + v2) >> 8 << 8) | encoding
+            let tmp: u128 = (v1 as u128).wrapping_mul(31u128).wrapping_add(v2 as u128);
+            let masked = ((tmp >> 8) << 8) as u64;
+            hash_code = masked as i64 | encoding_val;
+        } else {
+            let mut hc = murmurhash3_x64_128(&bytes, 47).0 as i64;
+            hc = hc.abs();
+            if hc == 0 {
+                hc += 256;
+            }
+            hc = (hc as u64 & 0xffffffffffffff00) as i64;
+            hash_code = hc | encoding_val;
         }
-        hash_code = (hash_code as u64 & 0xffffffffffffff00) as i64;
-        let encoding = meta_string.encoding;
-        let header = encoding as i64 & HEADER_MASK;
-        hash_code |= header;
-        let header = (hash_code & HEADER_MASK) as u8;
-        let encoding = byte_to_encoding(header);
 
+        // ensure we have 16 bytes to extract first8/second8
         if bytes.len() < 16 {
             bytes.resize(16, 0);
         }
@@ -107,7 +127,13 @@ impl MetaStringBytes {
         })?;
         let second8 = u64::from_le_bytes(second8);
 
-        Ok(Self::new(bytes, hash_code, encoding, first8, second8))
+        Ok(Self::new(
+            bytes,
+            hash_code,
+            byte_to_encoding((hash_code & HEADER_MASK) as u8),
+            first8,
+            second8,
+        ))
     }
 }
 
@@ -134,20 +160,8 @@ impl MetaStringWriterResolver {
         if let Some(b) = self.meta_string_to_bytes.get(m) {
             return b.clone();
         }
-        let bytes = m.bytes.to_vec();
-        let hash_code = murmurhash3_x64_128(&bytes, 47).0 as i64;
-        let encoding = m.encoding;
-        let mut first8: u64 = 0;
-        let mut second8: u64 = 0;
-        for (i, b) in bytes.iter().take(8).enumerate() {
-            first8 |= (*b as u64) << (8 * i);
-        }
-        if bytes.len() > 8 {
-            for j in 0..usize::min(8, bytes.len() - 8) {
-                second8 |= (bytes[8 + j] as u64) << (8 * j);
-            }
-        }
-        let msb = MetaStringBytes::new(bytes, hash_code, encoding, first8, second8);
+        // create via from_metastring to keep same hash/encoding rules
+        let msb = MetaStringBytes::from_metastring(m).expect("from_metastring");
         self.meta_string_to_bytes.insert(m.clone(), msb.clone());
         msb
     }
