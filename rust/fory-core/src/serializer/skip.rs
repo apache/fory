@@ -158,8 +158,8 @@ pub fn skip_value(
                     Error::type_mismatch(type_id_num, remote_type_id)
                 );
                 let meta_index = context.reader.read_varuint32()?;
-                let type_meta = context.get_meta(meta_index as usize)?;
-                let field_infos = type_meta.get_field_infos().to_vec();
+                let type_info = context.get_type_info_by_index(meta_index as usize)?;
+                let field_infos = type_info.get_type_meta().get_field_infos().to_vec();
                 context.inc_depth()?;
                 for field_info in field_infos.iter() {
                     let read_ref_flag = util::field_requires_ref_flag(
@@ -177,8 +177,9 @@ pub fn skip_value(
                     Error::type_mismatch(type_id_num, remote_type_id)
                 );
                 let meta_index = context.reader.read_varuint32()?;
-                let type_meta = context.get_meta(meta_index as usize)?;
+                let type_info = context.get_type_info_by_index(meta_index as usize)?;
                 let type_resolver = context.get_type_resolver();
+                let type_meta = type_info.get_type_meta();
                 type_resolver
                     .get_ext_name_harness(&type_meta.get_namespace(), &type_meta.get_type_name())?
                     .get_read_data_fn()(context)?;
@@ -195,7 +196,8 @@ pub fn skip_value(
             if internal_id == COMPATIBLE_STRUCT_ID {
                 let remote_type_id = context.reader.read_varuint32()?;
                 let meta_index = context.reader.read_varuint32()?;
-                let type_meta = context.get_meta(meta_index as usize)?;
+                let type_info = context.get_type_info_by_index(meta_index as usize)?;
+                let type_meta = type_info.get_type_meta();
                 ensure!(
                     type_meta.get_type_id() == remote_type_id,
                     Error::type_mismatch(type_meta.get_type_id(), remote_type_id)
