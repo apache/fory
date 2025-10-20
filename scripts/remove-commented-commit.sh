@@ -39,5 +39,6 @@ grep -v '^\s*#' "$COMMIT_MSG_FILE" | \
 
 # Replace original file with cleaned content
 mv "$TEMP_FILE" "$COMMIT_MSG_FILE"
+#test
 
 exit 0
