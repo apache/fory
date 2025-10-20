@@ -182,7 +182,7 @@ impl WriteContext {
     }
 
     #[inline(always)]
-    pub fn write_meta_string_bytes(&mut self, ms: &MetaString) -> Result<(), Error> {
+    pub fn write_meta_string_bytes(&mut self, ms: Rc<MetaString>) -> Result<(), Error> {
         self.meta_string_resolver
             .write_meta_string_bytes(&mut self.writer, ms)
     }
@@ -334,8 +334,10 @@ impl ReadContext {
                 } else {
                     let namespace = self.meta_resolver.read_metastring(&mut self.reader)?;
                     let type_name = self.meta_resolver.read_metastring(&mut self.reader)?;
+                    let rc_namespace = Rc::from(namespace);
+                    let rc_type_name = Rc::from(type_name);
                     self.type_resolver
-                        .get_type_info_by_msname(&namespace, &type_name)
+                        .get_type_info_by_msname(rc_namespace, rc_type_name)
                         .ok_or_else(|| Error::type_error("Name harness not found"))
                 }
             }
@@ -351,7 +353,7 @@ impl ReadContext {
         self.type_resolver.get_type_info(type_id)
     }
 
-    pub fn read_meta_string_bytes(&mut self) -> Result<MetaStringBytes, Error> {
+    pub fn read_meta_string_bytes(&mut self) -> Result<&MetaStringBytes, Error> {
         self.meta_string_resolver
             .read_meta_string_bytes(&mut self.reader)
     }

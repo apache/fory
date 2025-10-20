@@ -143,14 +143,7 @@ impl MetaReaderResolver {
     pub fn read_metastring(&self, reader: &mut Reader) -> Result<MetaString, Error> {
         let len = reader.read_varuint32()? as usize;
         if len == 0 {
-            return Ok(MetaString {
-                bytes: vec![],
-                encoding: Encoding::Utf8,
-                original: String::new(),
-                strip_last_char: false,
-                special_char1: '\0',
-                special_char2: '\0',
-            });
+            return Ok(MetaString::get_empty().clone());
         }
         let bytes = reader.read_bytes(len)?;
         let encoding_byte = bytes[0] & 0x07;

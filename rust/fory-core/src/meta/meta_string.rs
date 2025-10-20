@@ -18,6 +18,7 @@
 use crate::ensure;
 use crate::error::Error;
 use crate::meta::string_util;
+use std::sync::OnceLock;
 
 // equal to "std::i16::MAX"
 const SHORT_MAX_VALUE: usize = 32767;
@@ -66,6 +67,8 @@ impl std::hash::Hash for MetaString {
     }
 }
 
+static EMPTY: OnceLock<MetaString> = OnceLock::new();
+
 impl MetaString {
     pub fn new(
         original: String,
@@ -94,6 +97,17 @@ impl MetaString {
     pub fn write_to(&self, writer: &mut crate::buffer::Writer) {
         writer.write_varuint32(self.bytes.len() as u32);
         writer.write_bytes(&self.bytes);
+    }
+
+    pub fn get_empty() -> &'static MetaString {
+        EMPTY.get_or_init(|| MetaString {
+            original: "".to_string(),
+            encoding: Encoding::default(),
+            bytes: vec![],
+            strip_last_char: false,
+            special_char1: '\0',
+            special_char2: '\0',
+        })
     }
 }
 
