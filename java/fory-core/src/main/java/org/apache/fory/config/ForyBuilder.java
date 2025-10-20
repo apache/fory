@@ -84,7 +84,7 @@ public final class ForyBuilder {
   boolean registerGuavaTypes = true;
   boolean scalaOptimizationEnabled = false;
   boolean suppressClassRegistrationWarnings = true;
-  boolean deserializeNonexistentEnumValueAsNull = false;
+  UnknownEnumValueStrategy unknownEnumValueStrategy = UnknownEnumValueStrategy.NOT_ALLOWED;
   boolean serializeEnumByName = false;
   int bufferSizeLimitBytes = 128 * 1024;
   MetaCompressor metaCompressor = new DeflaterMetaCompressor();
@@ -135,7 +135,19 @@ public final class ForyBuilder {
   /** ignore Enum Deserialize array out of bounds. */
   public ForyBuilder deserializeNonexistentEnumValueAsNull(
       boolean deserializeNonexistentEnumValueAsNull) {
-    this.deserializeNonexistentEnumValueAsNull = deserializeNonexistentEnumValueAsNull;
+    this.unknownEnumValueStrategy = UnknownEnumValueStrategy.RETURN_NULL;
+    return this;
+  }
+
+  /**
+   * Sets the strategy applied when deserialization encounters an enum value that cannot be
+   * resolved.
+   *
+   * @param action policy to apply for unknown enum values
+   * @return this builder instance for chaining
+   */
+  public ForyBuilder withUnknownEnumValueStrategy(UnknownEnumValueStrategy action) {
+    this.unknownEnumValueStrategy = action;
     return this;
   }
 

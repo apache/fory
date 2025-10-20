@@ -97,7 +97,7 @@ cargo build
 # run test
 cargo test
 # run specific test
-cargo test -p fory-tests  --test $test_file $test_method
+cargo test -p tests  --test $test_file $test_method
 # run specific test under subdirectory
 cargo test --test mod $dir$::$test_file::$test_method
 # debug specific test under subdirectory and get backtrace

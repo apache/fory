@@ -415,14 +415,14 @@ class TypeVisitor(ABC):
         pass
 
 
-def infer_field_types(type_):
+def infer_field_types(type_, field_nullable=False):
     type_hints = typing.get_type_hints(type_)
     from pyfory._struct import StructTypeVisitor
 
     visitor = StructTypeVisitor(type_)
     result = {}
     for name, hint in sorted(type_hints.items()):
-        unwrapped, _ = unwrap_optional(hint)
+        unwrapped, _ = unwrap_optional(hint, field_nullable=field_nullable)
         result[name] = infer_field(name, unwrapped, visitor)
     return result
 
@@ -435,9 +435,9 @@ def is_optional_type(type_):
     return False
 
 
-def unwrap_optional(type_):
+def unwrap_optional(type_, field_nullable=False):
     if not is_optional_type(type_):
-        return type_, False
+        return type_, False or field_nullable
     args = typing.get_args(type_) if hasattr(typing, "get_args") else getattr(type_, "__args__", ())
     non_none_types = [arg for arg in args if arg is not type(None)]
     if len(non_none_types) == 1:

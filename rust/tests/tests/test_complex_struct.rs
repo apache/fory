@@ -21,7 +21,7 @@ use fory_derive::ForyObject;
 use chrono::{DateTime, NaiveDate, NaiveDateTime};
 use std::collections::HashMap;
 
-// RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_complex_struct
+// RUSTFLAGS="-Awarnings" cargo expand -p tests --test test_complex_struct
 // #[test]
 // fn any() {
 //     #[derive(ForyObject, Debug)]

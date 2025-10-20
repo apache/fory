@@ -1124,6 +1124,11 @@ public final class Fory implements BaseFory {
     }
   }
 
+  public Object xreadNonRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder) {
+    ClassInfo classInfo = xtypeResolver.readClassInfo(buffer, classInfoHolder);
+    return xreadNonRef(buffer, classInfo);
+  }
+
   public Object xreadNullable(MemoryBuffer buffer, Serializer<Object> serializer) {
     byte headFlag = buffer.readByte();
     if (headFlag == Fory.NULL_FLAG) {

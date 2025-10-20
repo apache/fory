@@ -559,20 +559,16 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
             }
             let key_declared = (header & DECL_KEY_TYPE) != 0;
             let value_declared = (header & DECL_VALUE_TYPE) != 0;
+            let track_key_ref = (header & TRACKING_KEY_REF) != 0;
+            let track_value_ref = (header & TRACKING_VALUE_REF) != 0;
             if header & KEY_NULL != 0 {
-                if !value_declared {
-                    V::fory_read_type_info(context)?;
-                }
-                let value = V::fory_read_data(context)?;
+                let value = V::fory_read(context, track_value_ref, !value_declared)?;
                 map.insert(K::fory_default(), value);
                 len_counter += 1;
                 continue;
             }
             if header & VALUE_NULL != 0 {
-                if !key_declared {
-                    K::fory_read_type_info(context)?;
-                }
-                let key = K::fory_read_data(context)?;
+                let key = K::fory_read(context, track_key_ref, !key_declared)?;
                 map.insert(key, V::fory_default());
                 len_counter += 1;
                 continue;
@@ -592,11 +588,20 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
                     cur_len, len
                 ))
             );
-            for _ in 0..chunk_size {
-                let key = K::fory_read_data(context)?;
-                let value = V::fory_read_data(context)?;
-                map.insert(key, value);
+            if !track_key_ref && !track_value_ref {
+                for _ in 0..chunk_size {
+                    let key = K::fory_read_data(context)?;
+                    let value = V::fory_read_data(context)?;
+                    map.insert(key, value);
+                }
+            } else {
+                for _ in 0..chunk_size {
+                    let key = K::fory_read(context, track_key_ref, false)?;
+                    let value = V::fory_read(context, track_value_ref, false)?;
+                    map.insert(key, value);
+                }
             }
+            // advance the counter after processing the chunk
             len_counter += chunk_size as u32;
         }
         Ok(map)
@@ -683,20 +688,16 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
             }
             let key_declared = (header & DECL_KEY_TYPE) != 0;
             let value_declared = (header & DECL_VALUE_TYPE) != 0;
+            let track_key_ref = (header & TRACKING_KEY_REF) != 0;
+            let track_value_ref = (header & TRACKING_VALUE_REF) != 0;
             if header & KEY_NULL != 0 {
-                if !value_declared {
-                    V::fory_read_type_info(context)?;
-                }
-                let value = V::fory_read_data(context)?;
+                let value = V::fory_read(context, track_value_ref, !value_declared)?;
                 map.insert(K::fory_default(), value);
                 len_counter += 1;
                 continue;
             }
             if header & VALUE_NULL != 0 {
-                if !key_declared {
-                    K::fory_read_type_info(context)?;
-                }
-                let key = K::fory_read_data(context)?;
+                let key = K::fory_read(context, track_key_ref, !key_declared)?;
                 map.insert(key, V::fory_default());
                 len_counter += 1;
                 continue;
@@ -716,10 +717,18 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
                     cur_len, len
                 ))
             );
-            for _ in 0..chunk_size {
-                let key = K::fory_read_data(context)?;
-                let value = V::fory_read_data(context)?;
-                map.insert(key, value);
+            if !track_key_ref && !track_value_ref {
+                for _ in 0..chunk_size {
+                    let key = K::fory_read_data(context)?;
+                    let value = V::fory_read_data(context)?;
+                    map.insert(key, value);
+                }
+            } else {
+                for _ in 0..chunk_size {
+                    let key = K::fory_read(context, track_key_ref, false)?;
+                    let value = V::fory_read(context, track_value_ref, false)?;
+                    map.insert(key, value);
+                }
             }
             len_counter += chunk_size as u32;
         }

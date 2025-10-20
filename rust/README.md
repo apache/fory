@@ -969,7 +969,7 @@ Note: Static data types (non-dynamic types) are secure by nature and not subject
 - **Panic on error for backtraces**: Toggle `FORY_PANIC_ON_ERROR=1` (or `true`) alongside `RUST_BACKTRACE=1` when running tests or binaries to panic at the exact site an error is constructed. Reset the variable afterwards to avoid aborting user-facing code paths.
 - **Struct field tracing**: Add the `#[fory_debug]` attribute alongside `#[derive(ForyObject)]` to tell the macro to emit hook invocations for that type. Once compiled with debug hooks, call `set_before_write_field_func`, `set_after_write_field_func`, `set_before_read_field_func`, or `set_after_read_field_func` (from `fory-core/src/serializer/struct_.rs`) to plug in custom callbacks, and use `reset_struct_debug_hooks()` when you want the defaults back.
 - **Lightweight logging**: Without custom hooks, enable `ENABLE_FORY_DEBUG_OUTPUT=1` to print field-level read/write events emitted by the default hook functions. This is especially useful when investigating alignment or cursor mismatches.
-- **Test-time hygiene**: Some integration tests expect `FORY_PANIC_ON_ERROR` to remain unset. Export it only for focused debugging sessions, and prefer `cargo test --features tests -p fory-tests --test <case>` when isolating failing scenarios.
+- **Test-time hygiene**: Some integration tests expect `FORY_PANIC_ON_ERROR` to remain unset. Export it only for focused debugging sessions, and prefer `cargo test --features tests -p tests --test <case>` when isolating failing scenarios.
 
 ## 🛠️ Development
 
@@ -987,7 +987,7 @@ cargo build
 cargo test --features tests
 
 # Run specific test
-cargo test -p fory-tests --test test_complex_struct
+cargo test -p tests --test test_complex_struct
 ```
 
 ### Code Quality

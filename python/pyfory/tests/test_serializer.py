@@ -23,7 +23,7 @@ import os
 import pickle
 import weakref
 from enum import Enum
-from typing import Any, List, Dict
+from typing import Any, List, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -558,13 +558,13 @@ def test_pandas_range_index():
 
 @dataclass(unsafe_hash=True)
 class PyDataClass1:
-    f1: int
+    f1: Optional[int]
     f2: float
     f3: str
-    f4: bool
+    f4: Optional[bool]
     f5: Any
     f6: List
-    f7: Dict
+    f7: Optional[Dict]
 
 
 @pytest.mark.parametrize("track_ref", [False, True])
@@ -578,6 +578,52 @@ def test_py_serialize_dataclass(track_ref):
     assert ser_de(fory, obj1) == obj1
     obj2 = PyDataClass1(f1=None, f2=-2.0, f3="abc", f4=None, f5="xyz", f6=None, f7=None)
     assert ser_de(fory, obj2) == obj2
+
+
+@dataclass(unsafe_hash=True)
+class PyDataClass2:
+    f1: int
+    f2: float
+    f3: str
+    f4: bool
+    f5: Any
+    f6: List
+    f7: Dict
+
+
+@pytest.mark.parametrize("track_ref", [False, True])
+@pytest.mark.parametrize("compatible", [False, True])
+def test_py_serialize_dataclass_nullable_global(track_ref, compatible):
+    fory = Fory(
+        xlang=False,
+        ref=track_ref,
+        compatible=compatible,
+        strict=False,
+        field_nullable=True,
+    )
+    fory.register(PyDataClass2)
+    obj1 = PyDataClass2(f1=1, f2=-2.0, f3="abc", f4=True, f5="xyz", f6=[1, 2], f7={"k1": "v1"})
+    assert ser_de(fory, obj1) == obj1
+    obj2 = PyDataClass2(f1=None, f2=-2.0, f3="abc", f4=None, f5="xyz", f6=None, f7=None)
+    assert ser_de(fory, obj2) == obj2
+
+    if compatible:
+        fory2 = Fory(
+            xlang=False,
+            ref=track_ref,
+            compatible=compatible,
+            strict=False,
+            field_nullable=True,
+        )
+
+        @dataclass(unsafe_hash=True)
+        class PyDataClass3:
+            f1: int
+            f2: float
+
+        fory2.register(PyDataClass3)
+        assert fory2.deserialize(fory.serialize(obj1)) == PyDataClass3(f1=1, f2=-2.0)
+        assert fory2.deserialize(fory.serialize(obj2)) == PyDataClass3(f1=None, f2=-2.0)
 
 
 @pytest.mark.parametrize("track_ref", [False, True])

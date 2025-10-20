@@ -19,7 +19,7 @@ use fory_core::fory::Fory;
 use fory_derive::ForyObject;
 use std::collections::{HashMap, HashSet};
 
-// RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_struct
+// RUSTFLAGS="-Awarnings" cargo expand -p tests --test test_struct
 #[test]
 fn simple() {
     #[derive(ForyObject, Debug)]

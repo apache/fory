@@ -49,6 +49,8 @@ interface SerializationBinding {
 
   Object readNonRef(MemoryBuffer buffer);
 
+  Object readNonRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder);
+
   static SerializationBinding createBinding(Fory fory) {
     if (fory.isCrossLanguage()) {
       return new XlangSerializationBinding(fory);
@@ -97,6 +99,11 @@ interface SerializationBinding {
     @Override
     public Object readNonRef(MemoryBuffer buffer) {
       return fory.readNonRef(buffer);
+    }
+
+    @Override
+    public Object readNonRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder) {
+      return fory.readNonRef(buffer, classInfoHolder);
     }
 
     @Override
@@ -156,6 +163,11 @@ interface SerializationBinding {
     @Override
     public Object readNonRef(MemoryBuffer buffer) {
       return fory.xreadNonRef(buffer);
+    }
+
+    @Override
+    public Object readNonRef(MemoryBuffer buffer, ClassInfoHolder classInfoHolder) {
+      return fory.xreadNonRef(buffer, classInfoHolder);
     }
 
     @Override

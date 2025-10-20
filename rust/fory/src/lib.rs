@@ -1081,7 +1081,7 @@
 //!   events. This is useful for spotting cursor misalignment or unexpected buffer growth.
 //! - **Test-time hygiene**: Some integration tests expect `FORY_PANIC_ON_ERROR` to stay unset.
 //!   Export it only during focused debugging, and rely on targeted commands such as
-//!   `cargo test --features tests -p fory-tests --test <case>` when isolating failures.
+//!   `cargo test --features tests -p tests --test <case>` when isolating failures.
 //!
 //! ## Documentation
 //!
