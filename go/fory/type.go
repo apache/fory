@@ -113,8 +113,6 @@ const (
 	ARROW_RECORD_BATCH = 38
 	// ARROW_TABLE an arrow table object
 	ARROW_TABLE = 39
-	// UNKNOWN an unknown type
-	UNKNOWN = 63
 
 	// UINT8 Unsigned 8-bit little-endian integer
 	UINT8 = 100 // Not in mapping table, assign a higher value
@@ -437,6 +435,7 @@ func (r *typeResolver) initialize() {
 		{byteSliceType, byteSliceSerializer{}},
 		// Map basic type slices to proper array types for xlang compatibility
 		{boolSliceType, boolArraySerializer{}},
+		{int8SliceType, int8ArraySerializer{}},
 		{int16SliceType, int16ArraySerializer{}},
 		{int32SliceType, int32ArraySerializer{}},
 		{int64SliceType, int64ArraySerializer{}},
@@ -587,8 +586,16 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 		// make sure the concrete value don't miss its real typeInfo
 		value = value.Elem()
 	}
-	typeString := value.Type()
-	if info, ok := r.typesInfo[typeString]; ok {
+	type_ := value.Type()
+	if type_.Kind() == reflect.Array && (isPrimitiveType_(type_.Elem()) || type_.Elem().Kind() == reflect.Uint8) {
+		typ := reflect.SliceOf(type_.Elem())
+		return r.typesInfo[typ], nil
+	} else if (type_.Kind() == reflect.Slice || type_.Kind() == reflect.Array) && type_.Elem().Kind() != reflect.Uint8 {
+		info := r.typeIDToTypeInfo[LIST]
+		info.Serializer = NewSliceSerializer(r.fory, nil, nil)
+		return info, nil
+	}
+	if info, ok := r.typesInfo[type_]; ok {
 		if info.Serializer == nil {
 			/*
 			   Lazy initialize serializer if not created yet
@@ -610,7 +617,6 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 	if !create {
 		fmt.Errorf("type %v not registered and create=false", value.Type())
 	}
-	type_ := value.Type()
 	// Get package path and type name for registration
 	var typeName string
 	var pkgPath string
@@ -640,7 +646,7 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 	var typeID int32
 	switch {
 	case r.language == XLANG && !r.requireRegistration:
-		// Auto-assign IDs
+		// Auto-assign an invalid ID for later overwrite.
 		typeID = 0
 	default:
 		fmt.Errorf("type %v must be registered explicitly", type_)
@@ -665,12 +671,6 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 		typeID = -NAMED_STRUCT
 	} else if value.Kind() == reflect.Map {
 		typeID = MAP
-	} else if value.Kind() == reflect.Array {
-		type_ = reflect.SliceOf(type_.Elem())
-		return r.typesInfo[type_], nil
-	} else if isMultiDimensionaSlice(value) {
-		typeID = LIST
-		return r.typeIDToTypeInfo[typeID], nil
 	}
 
 	// Register the type with full metadata
@@ -683,13 +683,26 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 		internal)
 }
 
-// Check if the slice is multidimensional
-func isMultiDimensionaSlice(v reflect.Value) bool {
-	t := v.Type()
-	if t.Kind() != reflect.Slice {
-		return false
+func (r *typeResolver) getTypeInfoByType(t reflect.Type) (TypeInfo, error) {
+	v, err := valueForTypeShape(t)
+	if err != nil {
+		return TypeInfo{}, err
 	}
-	return t.Elem().Kind() == reflect.Slice
+	return r.getTypeInfo(v, true)
+}
+
+func valueForTypeShape(t reflect.Type) (reflect.Value, error) {
+	if t.Kind() == reflect.Interface {
+		return reflect.Value{}, fmt.Errorf("need a concrete value for interface type %v", t)
+	}
+	switch t.Kind() {
+	case reflect.Pointer:
+		return reflect.New(t.Elem()), nil
+	case reflect.Struct:
+		return reflect.New(t).Elem(), nil
+	default:
+		return reflect.Zero(t), nil // slice/array/map/chan/func/basic types...
+	}
 }
 
 func (r *typeResolver) registerType(
@@ -813,7 +826,6 @@ func (r *typeResolver) writeTypeInfo(buffer *ByteBuffer, typeInfo TypeInfo) erro
 
 	// Write the type ID to buffer (variable-length encoding)
 	buffer.WriteVarUint32(uint32(typeID))
-
 	// For namespaced types, write additional metadata:
 	if IsNamespacedType(TypeId(internalTypeID)) {
 		if r.metaShareEnabled() {
@@ -865,10 +877,6 @@ func (r *typeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, erro
 		return nil, fmt.Errorf("TypeDef not found for type %s", typ)
 	}
 
-	// don't create TypeDef for pointer types, we create TypeDef for its element type instead.
-	if typ.Kind() == reflect.Ptr {
-		typ = typ.Elem()
-	}
 	zero := reflect.Zero(typ)
 	typeDef, err := buildTypeDef(r.fory, zero)
 	if err != nil {
@@ -878,27 +886,13 @@ func (r *typeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, erro
 	return typeDef, nil
 }
 
-func (r *typeResolver) readSharedTypeMeta(buffer *ByteBuffer, value reflect.Value) (TypeInfo, error) {
+func (r *typeResolver) readSharedTypeMeta(buffer *ByteBuffer) (TypeInfo, error) {
 	context := r.fory.metaContext
 	index := buffer.ReadVarInt32() // shared meta index id
 	if index < 0 || index >= int32(len(context.readTypeInfos)) {
 		return TypeInfo{}, fmt.Errorf("TypeInfo not found for index %d", index)
 	}
 	info := context.readTypeInfos[index]
-	/*
-		todo: fix this logic for more elegant handle
-		There are two corner case:
-			1. value is pointer but read info not
-			2. value is not pointer but read info is pointer
-	*/
-	if value.Kind() == reflect.Ptr && IsNamespacedType(info.Serializer.TypeId()) {
-		info.Serializer = &ptrToStructSerializer{
-			type_:            value.Type().Elem(),
-			structSerializer: *info.Serializer.(*structSerializer),
-		}
-	} else if info.Type.Kind() == reflect.Ptr && value.Kind() != reflect.Ptr {
-		info.Type = info.Type.Elem()
-	}
 	return info, nil
 }
 
@@ -951,74 +945,9 @@ func (r *typeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 		}
 		return &ptrToValueSerializer{valueSerializer}, nil
 	case reflect.Slice:
-		elem := type_.Elem()
-		// Handle special slice types for xlang compatibility
-		if r.language == XLANG {
-			// Basic type slices should use array types for efficiency
-			switch elem.Kind() {
-			case reflect.Bool:
-				if type_ == boolSliceType {
-					return boolArraySerializer{}, nil
-				}
-			case reflect.Int8:
-				if type_ == int8SliceType {
-					return int8ArraySerializer{}, nil
-				}
-			case reflect.Int16:
-				if type_ == int16SliceType {
-					return int16ArraySerializer{}, nil
-				}
-			case reflect.Int32:
-				if type_ == int32SliceType {
-					return int32ArraySerializer{}, nil
-				}
-			case reflect.Int64:
-				if type_ == int64SliceType {
-					return int64ArraySerializer{}, nil
-				}
-			case reflect.Float32:
-				if type_ == float32SliceType {
-					return float32ArraySerializer{}, nil
-				}
-			case reflect.Float64:
-				if type_ == float64SliceType {
-					return float64ArraySerializer{}, nil
-				}
-			case reflect.Int, reflect.Uint:
-				// Platform-dependent types should use LIST for cross-platform compatibility
-				// We treat them as dynamic types to force LIST serialization
-				return sliceSerializer{}, nil
-			}
-		}
-		// For dynamic types or non-xlang mode, use generic slice serializer
-		if isDynamicType(elem) {
-			return sliceSerializer{}, nil
-		} else {
-			elemSerializer, err := r.getSerializerByType(type_.Elem(), false)
-			if err != nil {
-				return nil, err
-			}
-			return &sliceConcreteValueSerializer{
-				type_:          type_,
-				elemSerializer: elemSerializer,
-				referencable:   nullable(type_.Elem()),
-			}, nil
-		}
+		return NewSliceSerializer(r.fory, nil, nil), nil
 	case reflect.Array:
-		elem := type_.Elem()
-		if isDynamicType(elem) {
-			return arraySerializer{}, nil
-		} else {
-			elemSerializer, err := r.getSerializerByType(type_.Elem(), false)
-			if err != nil {
-				return nil, err
-			}
-			return &arrayConcreteValueSerializer{
-				type_:          type_,
-				elemSerializer: elemSerializer,
-				referencable:   nullable(type_.Elem()),
-			}, nil
-		}
+		return NewSliceSerializer(r.fory, nil, nil), nil
 	case reflect.Map:
 		hasKeySerializer, hasValueSerializer := !isDynamicType(type_.Key()), !isDynamicType(type_.Elem())
 		if hasKeySerializer || hasValueSerializer {
@@ -1203,7 +1132,7 @@ func (r *typeResolver) readTypeByReadTag(buffer *ByteBuffer) (reflect.Type, erro
 	return r.typeTagToSerializers[metaString].(*ptrToStructSerializer).type_, err
 }
 
-func (r *typeResolver) readTypeInfo(buffer *ByteBuffer, value reflect.Value) (TypeInfo, error) {
+func (r *typeResolver) readTypeInfo(buffer *ByteBuffer) (TypeInfo, error) {
 	// Read variable-length type ID
 	typeID := buffer.ReadVarInt32()
 	internalTypeID := typeID // Extract lower 8 bits for internal type ID
@@ -1212,7 +1141,7 @@ func (r *typeResolver) readTypeInfo(buffer *ByteBuffer, value reflect.Value) (Ty
 	}
 	if IsNamespacedType(TypeId(internalTypeID)) {
 		if r.metaShareEnabled() {
-			return r.readSharedTypeMeta(buffer, value)
+			return r.readSharedTypeMeta(buffer)
 		}
 		// Read namespace and type name metadata bytes
 		nsBytes, err := r.metaStringResolver.ReadMetaStringBytes(buffer)
@@ -1392,6 +1321,21 @@ func isPrimitiveType(typeID int16) bool {
 		INT64,
 		FLOAT,
 		DOUBLE:
+		return true
+	default:
+		return false
+	}
+}
+
+func isPrimitiveType_(type_ reflect.Type) bool {
+	switch type_.Kind() {
+	case reflect.Bool,
+		reflect.Int8,
+		reflect.Int16,
+		reflect.Int32,
+		reflect.Int64,
+		reflect.Float32,
+		reflect.Float64:
 		return true
 	default:
 		return false

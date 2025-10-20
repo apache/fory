@@ -372,22 +372,13 @@ func (f *Fory) writeValue(buffer *ByteBuffer, value reflect.Value, serializer Se
 		value = value.Elem()
 	}
 
-	// For array types, pre-convert the value
-	// so the corresponding slice serializer can be reused
-	if value.Kind() == reflect.Array {
-		length := value.Len()
-		sliceType := reflect.SliceOf(value.Type().Elem())
-		slice := reflect.MakeSlice(sliceType, length, length)
-		reflect.Copy(slice, value)
-		value = slice
-	}
-
 	if serializer != nil {
 		return serializer.Write(f, buffer, value)
 	}
 
 	// Get type information for the value
 	typeInfo, err := f.typeResolver.getTypeInfo(value, true)
+
 	if err != nil {
 		return fmt.Errorf("cannot get typeinfo for value %v: %v", value, err)
 	}
@@ -539,12 +530,11 @@ func (f *Fory) readReferencableBySerializer(buf *ByteBuffer, value reflect.Value
 
 func (f *Fory) readData(buffer *ByteBuffer, value reflect.Value, serializer Serializer) (err error) {
 	if serializer == nil {
-		typeInfo, err := f.typeResolver.readTypeInfo(buffer, value)
+		typeInfo, err := f.typeResolver.readTypeInfo(buffer)
 		if err != nil {
 			return fmt.Errorf("read typeinfo failed: %w", err)
 		}
 		serializer = typeInfo.Serializer
-
 		var concrete reflect.Value
 		var type_ reflect.Type
 		/*

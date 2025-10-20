@@ -19,6 +19,7 @@ package fory
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"time"
 )
@@ -153,8 +154,25 @@ func (s int64Serializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) er
 }
 
 func (s int64Serializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
-	value.Set(reflect.ValueOf(buf.ReadVarint64()))
-	return nil
+	n := buf.ReadVarint64()
+	switch value.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		value.SetInt(n)
+		return nil
+	case reflect.Interface:
+		var iv interface{}
+		if f.language == XLANG {
+			iv = int64(n)
+		} else if n >= int64(math.MinInt) && n <= int64(math.MaxInt) {
+			iv = int(n)
+		} else {
+			iv = int64(n)
+		}
+		value.Set(reflect.ValueOf(iv))
+		return nil
+	default:
+		return fmt.Errorf("cannot assign int64 to %v", value.Type())
+	}
 }
 
 type intSerializer struct {
@@ -220,8 +238,26 @@ func (s float64Serializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) 
 }
 
 func (s float64Serializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
-	value.Set(reflect.ValueOf(buf.ReadFloat64()))
-	return nil
+	x := buf.ReadFloat64()
+
+	switch value.Kind() {
+	case reflect.Float32, reflect.Float64:
+		value.SetFloat(x)
+		return nil
+
+	case reflect.Interface:
+		var iv interface{}
+		if f.language == XLANG {
+			iv = float64(x)
+		} else {
+			iv = float64(x)
+		}
+		value.Set(reflect.ValueOf(iv))
+		return nil
+
+	default:
+		return fmt.Errorf("cannot assign float64 to %v", value.Type())
+	}
 }
 
 type stringSerializer struct {
@@ -462,7 +498,6 @@ func (s *ptrToValueSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Val
 }
 
 func (s *ptrToValueSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
-	fmt.Printf("type_: %v\n", type_)
 	newValue := reflect.New(type_.Elem())
 	value.Set(newValue)
 	return s.valueSerializer.Read(f, buf, type_.Elem(), newValue.Elem())

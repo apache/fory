@@ -113,34 +113,27 @@ func TestXLangSerializer(t *testing.T) {
 	require.Nil(t, fory_.Serialize(buffer, set, nil))
 
 	// test primitive arrays
-	require.Nil(t, fory_.Serialize(buffer, []bool{true, false}, nil))
-	require.Nil(t, fory_.Serialize(buffer, []int16{1, fory.MaxInt16}, nil))
-	require.Nil(t, fory_.Serialize(buffer, []int32{1, fory.MaxInt32}, nil))
-	require.Nil(t, fory_.Serialize(buffer, []int64{1, fory.MaxInt64}, nil))
-	require.Nil(t, fory_.Serialize(buffer, []float32{1.0, 2.0}, nil))
-	require.Nil(t, fory_.Serialize(buffer, []float64{1.0, 2.0}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]bool{true, false}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]int16{1, fory.MaxInt16}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]int32{1, fory.MaxInt32}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]int64{1, fory.MaxInt64}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]float32{1.0, 2.0}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]float64{1.0, 2.0}, nil))
 
 	check := func(buf *fory.ByteBuffer) {
 		values := []interface{}{
 			true, false, int64(-1), int8(fory.MaxInt8), int8(fory.MinInt8), int16(fory.MaxInt16), int16(fory.MinInt16),
 			int32(fory.MaxInt32), int32(fory.MinInt32), int64(fory.MaxInt64), int64(fory.MinInt64), float32(-1),
 			float64(-1), "str", day, instant, list, dict, set,
-			[]bool{true, false}, []int16{1, fory.MaxInt16}, []int32{1, fory.MaxInt32},
-			[]int64{1, fory.MaxInt64}, []float32{1.0, 2.0}, []float64{1.0, 2.0},
+			[2]bool{true, false}, [2]int16{1, fory.MaxInt16}, [2]int32{1, fory.MaxInt32},
+			[2]int64{1, fory.MaxInt64}, [2]float32{1.0, 2.0}, [2]float64{1.0, 2.0},
 		}
 		for index, value := range values {
-			var newValue interface{}
-			require.Nil(t, fory_.Deserialize(buf, &newValue, nil))
-			switch reflect.ValueOf(value).Kind() {
-			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-				require.Equal(t, reflect.ValueOf(value).Int(),
-					reflect.ValueOf(newValue).Int(), fmt.Sprintf("index %d", index))
-			case reflect.Float32, reflect.Float64:
-				require.Equal(t, reflect.ValueOf(value).Float(),
-					reflect.ValueOf(newValue).Float(), fmt.Sprintf("index %d", index))
-			default:
-				require.Equal(t, value, newValue, fmt.Sprintf("index %d", index))
-			}
+			typ := reflect.TypeOf(value)
+			holder := reflect.New(typ)
+			require.Nil(t, fory_.Deserialize(buf, holder.Interface(), nil))
+			got := holder.Elem().Interface()
+			require.Equal(t, value, got, fmt.Sprintf("index %d", index))
 		}
 	}
 	check(buffer)
@@ -260,7 +253,6 @@ func TestSerializeComplexStruct(t *testing.T) {
 	obj.F10 = 1 / 3.0
 	obj.F11 = [2]int16{1, 2}
 	obj.F12 = []int16{-1, 4}
-
 	structRoundBack(t, fory_, obj, "test_serialize_complex_struct")
 }
 
