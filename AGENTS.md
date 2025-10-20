@@ -140,7 +140,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --features tests
 
 # run specific test
-cargo test -p fory-tests  --test $test_file $test_method
+cargo test -p tests  --test $test_file $test_method
 
 # run specific test under subdirectory
 cargo test --test mod $dir$::$test_file::$test_method
@@ -356,7 +356,7 @@ Fory serialization for every language is implemented independently to minimize t
 
 - **fory-test-core**: Core test utilities and data generators
 
-- **fory-testsuite**: Complex test suite for issues reported by users and hard to reproduce using simple test cases
+- **testsuite**: Complex test suite for issues reported by users and hard to reproduce using simple test cases
 
 - **benchmark**: Benchmark suite based on jmh
 

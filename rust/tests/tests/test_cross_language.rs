@@ -27,7 +27,7 @@ use fory_derive::ForyObject;
 use std::collections::{HashMap, HashSet};
 use std::{fs, vec};
 
-// RUSTFLAGS="-Awarnings" cargo expand -p fory-tests --test test_cross_language
+// RUSTFLAGS="-Awarnings" cargo expand -p tests --test test_cross_language
 fn get_data_file() -> String {
     std::env::var("DATA_FILE").expect("DATA_FILE not set")
 }
