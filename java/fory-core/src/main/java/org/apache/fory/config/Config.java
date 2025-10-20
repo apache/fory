@@ -62,7 +62,7 @@ public class Config implements Serializable {
   private final boolean deserializeNonexistentClass;
   private final boolean scalaOptimizationEnabled;
   private transient int configHash;
-  private final boolean deserializeNonexistentEnumValueAsNull;
+  private final UnknownEnumValueStrategy unknownEnumValueStrategy;
   private final boolean serializeEnumByName;
   private final int bufferSizeLimitBytes;
   private final int maxDepth;
@@ -103,7 +103,7 @@ public class Config implements Serializable {
     }
     asyncCompilationEnabled = builder.asyncCompilationEnabled;
     scalaOptimizationEnabled = builder.scalaOptimizationEnabled;
-    deserializeNonexistentEnumValueAsNull = builder.deserializeNonexistentEnumValueAsNull;
+    unknownEnumValueStrategy = builder.unknownEnumValueStrategy;
     serializeEnumByName = builder.serializeEnumByName;
     bufferSizeLimitBytes = builder.bufferSizeLimitBytes;
     maxDepth = builder.maxDepth;
@@ -144,7 +144,11 @@ public class Config implements Serializable {
 
   /** ignore Enum Deserialize array out of bounds return null. */
   public boolean deserializeNonexistentEnumValueAsNull() {
-    return deserializeNonexistentEnumValueAsNull;
+    return unknownEnumValueStrategy == UnknownEnumValueStrategy.RETURN_NULL;
+  }
+
+  public UnknownEnumValueStrategy getUnknownEnumValueStrategy() {
+    return unknownEnumValueStrategy;
   }
 
   /** deserialize and serialize enum by name. */

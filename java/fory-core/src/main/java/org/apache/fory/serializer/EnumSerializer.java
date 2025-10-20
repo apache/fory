@@ -115,20 +115,30 @@ public class EnumSerializer extends ImmutableSerializer<Enum> {
   }
 
   private Enum handleNonexistentEnumValue(int value) {
-    if (fory.getConfig().deserializeNonexistentEnumValueAsNull()) {
-      return null;
-    } else {
-      throw new IllegalArgumentException(
-          String.format("Enum ordinal %s not in %s", value, Arrays.toString(enumConstants)));
+    switch (fory.getConfig().getUnknownEnumValueStrategy()) {
+      case RETURN_NULL:
+        return null;
+      case RETURN_FIRST_VARIANT:
+        return enumConstants[0];
+      case RETURN_LAST_VARIANT:
+        return enumConstants[enumConstants.length - 1];
+      default:
+        throw new IllegalArgumentException(
+            String.format("Enum ordinal %s not in %s", value, Arrays.toString(enumConstants)));
     }
   }
 
   private Enum handleNonexistentEnumValue(String value) {
-    if (fory.getConfig().deserializeNonexistentEnumValueAsNull()) {
-      return null;
-    } else {
-      throw new IllegalArgumentException(
-          String.format("Enum string %s not in %s", value, Arrays.toString(enumConstants)));
+    switch (fory.getConfig().getUnknownEnumValueStrategy()) {
+      case RETURN_NULL:
+        return null;
+      case RETURN_FIRST_VARIANT:
+        return enumConstants[0];
+      case RETURN_LAST_VARIANT:
+        return enumConstants[enumConstants.length - 1];
+      default:
+        throw new IllegalArgumentException(
+            String.format("Enum string %s not in %s", value, Arrays.toString(enumConstants)));
     }
   }
 }
