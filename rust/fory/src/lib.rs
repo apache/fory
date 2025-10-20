@@ -1010,24 +1010,44 @@
 //!
 //! ## Thread Safety
 //!
-//! **Important:** `Fory` instances are **not thread-safe**. Use one instance per thread:
+//! `Fory` implements `Send` and `Sync`, so a single instance can be shared across threads
+//! (for example via `Arc<Fory>`) for concurrent serialization and deserialization. The
+//! internal context pools grow lazily and rely on thread-safe primitives, allowing multiple
+//! workers to reuse buffers without additional coordination.
 //!
 //! ```rust
-//! use std::thread_local;
-//! use std::cell::RefCell;
+//! use std::sync::Arc;
+//! use std::thread;
 //! use fory::Fory;
+//! use fory::ForyObject;
 //!
-//! thread_local! {
-//!     static FORY: RefCell<Fory> = RefCell::new(Fory::default());
+//! #[derive(ForyObject, Clone, Copy, Debug)]
+//! struct Item {
+//!     value: i32,
 //! }
 //!
-//! # fn serialize_data() -> Vec<u8> {
-//! FORY.with(|fory| {
-//!     let data = vec![1, 2, 3];
-//!     fory.borrow().serialize(&data).unwrap()
-//! })
-//! # }
+//! let mut fory = Fory::default();
+//! fory.register::<Item>(1000).unwrap();
+//! let fory = Arc::new(fory);
+//! let handles: Vec<_> = (0..8)
+//!     .map(|i| {
+//!         let shared = Arc::clone(&fory);
+//!         thread::spawn(move || {
+//!             let item = Item { value: i };
+//!             shared.serialize(&item).unwrap()
+//!         })
+//!     })
+//!     .collect();
+//!
+//! for handle in handles {
+//!     let bytes = handle.join().unwrap();
+//!     let item: Item = fory.deserialize(&bytes).unwrap();
+//!     assert!(item.value >= 0);
+//! }
 //! ```
+//!
+//! **Best practice:** Perform type registration (e.g., `fory.register::<T>(id)`) before
+//! spawning worker threads so metadata is ready, then share the configured instance.
 //!
 //! ## Examples
 //!
@@ -1037,6 +1057,31 @@
 //! - `tests/tests/test_rc_arc_trait_object.rs` - Trait object serialization
 //! - `tests/tests/test_weak.rs` - Circular reference handling
 //! - `tests/tests/test_cross_language.rs` - Cross-language compatibility
+//!
+//! ## Troubleshooting
+//!
+//! - **Type registry errors**: Errors such as `TypeId ... not found in type_info registry` mean
+//!   the type was never registered with the active `Fory` instance. Ensure every serializable
+//!   struct, enum, or trait implementation calls `register::<T>(type_id)` before use, and reuse
+//!   the same IDs when deserializing.
+//! - **Quick error lookup**: Always prefer the static constructors on
+//!   [`fory_core::error::Error`]—for example `Error::type_mismatch`, `Error::invalid_data`, or
+//!   `Error::unknown`. They keep diagnostics consistent and allow optional panic-on-error
+//!   debugging.
+//! - **Panic on error for backtraces**: Set `FORY_PANIC_ON_ERROR=1` (or `true`) together with
+//!   `RUST_BACKTRACE=1` while running tests or binaries to panic exactly where an error is
+//!   constructed. Unset the variable afterwards so production paths keep returning `Result`.
+//! - **Struct field tracing**: Add the `#[fory_debug]` attribute next to `#[derive(ForyObject)]`
+//!   when you need per-field instrumentation. Once compiled with debug hooks, call
+//!   `set_before_write_field_func`, `set_after_write_field_func`, `set_before_read_field_func`, or
+//!   `set_after_read_field_func` from `fory_core::serializer::struct_` to install custom
+//!   callbacks, and use `reset_struct_debug_hooks()` to restore defaults.
+//! - **Lightweight logging**: If custom callbacks are unnecessary, enable
+//!   `ENABLE_FORY_DEBUG_OUTPUT=1` to have the default hook handlers print field-level read/write
+//!   events. This is useful for spotting cursor misalignment or unexpected buffer growth.
+//! - **Test-time hygiene**: Some integration tests expect `FORY_PANIC_ON_ERROR` to stay unset.
+//!   Export it only during focused debugging, and rely on targeted commands such as
+//!   `cargo test --features tests -p fory-tests --test <case>` when isolating failures.
 //!
 //! ## Documentation
 //!

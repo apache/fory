@@ -730,6 +730,48 @@ assert_eq!(prefs.values().get(0), "en");
 | Memory usage         | Full object graph in memory   | Only accessed fields in memory  |
 | Suitable for         | Small objects, full access    | Large objects, selective access |
 
+### 8. Thread-Safe Serialization
+
+Apache Fory™ Rust is fully thread-safe: `Fory` implements both `Send` and `Sync`, so one configured instance can be shared across threads for concurrent work. The internal read/write context pools are lazily initialized with thread-safe primitives, letting worker threads reuse buffers without coordination.
+
+```rust
+use fory::{Fory, Error};
+use fory::ForyObject;
+use std::sync::Arc;
+use std::thread;
+
+#[derive(ForyObject, Clone, Copy, Debug, PartialEq)]
+struct Item {
+    value: i32,
+}
+
+fn main() -> Result<(), Error> {
+    let mut fory = Fory::default();
+    fory.register::<Item>(1000)?;
+
+    let fory = Arc::new(fory);
+    let handles: Vec<_> = (0..8)
+        .map(|i| {
+            let shared = Arc::clone(&fory);
+            thread::spawn(move || {
+                let item = Item { value: i };
+                shared.serialize(&item)
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        let bytes = handle.join().unwrap()?;
+        let item: Item = fory.deserialize(&bytes)?;
+        assert!(item.value >= 0);
+    }
+
+    Ok(())
+}
+```
+
+**Tip:** Perform registrations (such as `fory.register::<T>(id)`) before spawning threads so every worker sees the same metadata. Once configured, wrapping the instance in `Arc` is enough to fan out serialization and deserialization tasks safely.
+
 ## 🔧 Supported Types
 
 ### Primitive Types
