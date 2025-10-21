@@ -70,8 +70,6 @@ abstract class AbstractScalaCollectionSerializer[A, T <: Iterable[A]](fory: Fory
 
 /**
  * A Iterable adapter to wrap scala iterable into a [[java.lang.Iterable]].
- *
- *
  */
 private trait JavaIterable[A] extends java.lang.Iterable[A] {
   override def iterator(): util.Iterator[A] = new util.Iterator[A] {
@@ -87,8 +85,6 @@ private trait JavaIterable[A] extends java.lang.Iterable[A] {
 
 /**
  * A Collection adapter which wrap scala iterable into a [[java.util.Collection]].
- *
- *
  */
 private class CollectionAdapter[A, T](coll: scala.collection.Iterable[A])
   extends util.AbstractCollection[A] with JavaIterable[A] {
@@ -108,8 +104,6 @@ private class CollectionAdapter[A, T](coll: scala.collection.Iterable[A])
 
 /**
  * A List adapter which wrap scala Seq into a [[java.util.List]].
- *
- *
  */
 private class ListAdapter[A](coll: scala.collection.Seq[A])
   extends util.AbstractList[A] with JavaIterable[A] {
@@ -124,8 +118,6 @@ private class ListAdapter[A](coll: scala.collection.Seq[A])
 
 /**
  * A Collection adapter which build scala collection from elements.
- *
- *
  */
 private class JavaCollectionBuilder[A, T](val builder: mutable.Builder[A, T])
   extends util.AbstractCollection[A] {
@@ -141,8 +133,6 @@ private class JavaCollectionBuilder[A, T](val builder: mutable.Builder[A, T])
 
 /**
  * Serializer for scala iterables.
- *
- *
  */
 class ScalaCollectionSerializer[A, T <: Iterable[A]] (fory: Fory, cls: Class[T])
   extends AbstractScalaCollectionSerializer[A, T](fory, cls) {
@@ -157,8 +147,6 @@ class ScalaCollectionSerializer[A, T <: Iterable[A]] (fory: Fory, cls: Class[T])
 
 /**
  * Serializer for scala sorted set.
- *
- *
  */
 class ScalaSortedSetSerializer[A, T <: scala.collection.SortedSet[A]](fory: Fory, cls: Class[T])
   extends AbstractScalaCollectionSerializer[A, T](fory, cls) {
@@ -172,9 +160,7 @@ class ScalaSortedSetSerializer[A, T <: scala.collection.SortedSet[A]](fory: Fory
 }
 
 /**
- * Serializer for scala [[Seq]].
- *
- *
+ * Serializer for scala Seq.
  */
 class ScalaSeqSerializer[A, T <: scala.collection.Seq[A]](fory: Fory, cls: Class[T])
   extends AbstractScalaCollectionSerializer[A, T](fory, cls)  {
