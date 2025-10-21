@@ -29,6 +29,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSortedSet;
 import java.io.Serializable;
+import java.lang.reflect.Field;
 import java.util.AbstractCollection;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -662,10 +663,41 @@ public class CollectionSerializersTest extends ForyTestBase {
     return obj;
   }
 
+  public static void testCollectionFieldsObjectEqual(
+      CollectionFieldsClass got, CollectionFieldsClass obj) throws IllegalAccessException {
+    // Fields that can cause flakiness need to be compared separately
+    Set<String> special = ImmutableSet.of("hashSet", "hashSet2", "priorityQueue", "priorityQueue2");
+    // Compare fields with deterministic ordering
+    for (Field f : CollectionSerializersTest.CollectionFieldsClass.class.getDeclaredFields()) {
+      if (special.contains(f.getName())) continue;
+      f.setAccessible(true);
+      Object gv = f.get(got);
+      Object ov = f.get(obj);
+      Assert.assertEquals(String.valueOf(gv), String.valueOf(ov));
+    }
+    // Compare everything else
+    String hsGot = new TreeSet<>(got.hashSet).toString();
+    String hsObj = new TreeSet<>(obj.hashSet).toString();
+    Assert.assertEquals(hsGot, hsObj);
+    hsGot = new TreeSet<>(got.hashSet2).toString();
+    hsObj = new TreeSet<>(obj.hashSet2).toString();
+    Assert.assertEquals(hsGot, hsObj);
+    List<String> pqGot = new ArrayList<>(got.priorityQueue);
+    List<String> pqExp = new ArrayList<>(obj.priorityQueue);
+    Collections.sort(pqGot);
+    Collections.sort(pqExp);
+    Assert.assertEquals(pqGot.toString(), pqExp.toString());
+    pqGot = new ArrayList<>(got.priorityQueue2);
+    pqExp = new ArrayList<>(obj.priorityQueue2);
+    Collections.sort(pqGot);
+    Collections.sort(pqExp);
+    Assert.assertEquals(pqGot.toString(), pqExp.toString());
+  }
+
   @Test(dataProvider = "javaFory")
-  public void testCollectionFieldSerializers(Fory fory) {
+  public void testCollectionFieldSerializers(Fory fory) throws Exception {
     CollectionFieldsClass obj = createCollectionFieldsObject();
-    Assert.assertEquals(serDe(fory, obj).toString(), obj.toString());
+    testCollectionFieldsObjectEqual(serDe(fory, obj), obj);
     if (fory.getConfig().isCodeGenEnabled()) {
       Assert.assertTrue(
           fory.getClassResolver()
@@ -676,9 +708,9 @@ public class CollectionSerializersTest extends ForyTestBase {
   }
 
   @Test(dataProvider = "foryCopyConfig")
-  public void testCollectionFieldSerializersCopy(Fory fory) {
+  public void testCollectionFieldSerializersCopy(Fory fory) throws Exception {
     CollectionFieldsClass obj = createCollectionFieldsObject();
-    Assert.assertEquals(fory.copy(obj).toString(), obj.toString());
+    testCollectionFieldsObjectEqual(fory.copy(obj), obj);
   }
 
   @Data
