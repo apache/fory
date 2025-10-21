@@ -54,8 +54,19 @@ def build(v: str):
     if os.path.exists("dist"):
         shutil.rmtree("dist")
     os.mkdir("dist")
-    subprocess.check_call(f"git checkout releases-{v}", shell=True)
     branch = f"releases-{v}"
+    # Check if branch exists, if not create it
+    result = subprocess.run(
+        f"git show-ref --verify --quiet refs/heads/{branch}",
+        shell=True,
+        capture_output=True,
+    )
+    if result.returncode == 0:
+        # Branch exists, checkout
+        subprocess.check_call(f"git checkout {branch}", shell=True)
+    else:
+        # Branch doesn't exist, create it
+        subprocess.check_call(f"git checkout -b {branch}", shell=True)
     src_tar = f"apache-fory-{v}-src.tar.gz"
     _check_all_committed()
     _strip_unnecessary_license()
