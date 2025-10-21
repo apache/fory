@@ -550,20 +550,20 @@ public class ClassResolverTest extends ForyTestBase {
     Fory fory = Fory.builder().withLanguage(Language.JAVA).requireClassRegistration(true).build();
     GraalvmSupport.clearRegistrations();
     Assert.assertFalse(
-        TypeResolver.getAllRegisteredClasses().contains(GraalvmRegistrationBean.class));
+        GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
 
     fory.register(GraalvmRegistrationBean.class);
 
     Assert.assertTrue(
-        TypeResolver.getAllRegisteredClasses().contains(GraalvmRegistrationBean.class));
+        GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
 
     GraalvmSupport.clearRegistrations();
     Assert.assertFalse(
-        TypeResolver.getAllRegisteredClasses().contains(GraalvmRegistrationBean.class));
+        GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
 
     fory.ensureSerializersCompiled();
 
     Assert.assertTrue(
-        TypeResolver.getAllRegisteredClasses().contains(GraalvmRegistrationBean.class));
+        GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
   }
 }

@@ -26,9 +26,7 @@ import com.google.common.collect.HashBiMap;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Type;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -36,7 +34,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.Internal;
@@ -572,38 +569,18 @@ public abstract class TypeResolver {
     extRegistry.typeChecker = typeChecker;
   }
 
-  private static final ConcurrentMap<Integer, GraalvmClassRegistry> GRAALVM_REGISTRY =
-      new ConcurrentHashMap<>();
-
   // CHECKSTYLE.OFF:MethodName
   public static void _addGraalvmClassRegistry(int foryConfigHash, ClassResolver classResolver) {
     // CHECKSTYLE.ON:MethodName
     if (GraalvmSupport.isGraalBuildtime()) {
-      GraalvmClassRegistry registry =
-          GRAALVM_REGISTRY.computeIfAbsent(foryConfigHash, k -> new GraalvmClassRegistry());
+      GraalvmSupport.GraalvmClassRegistry registry =
+          GraalvmSupport.getGraalvmClassRegistry(foryConfigHash);
       registry.resolvers.add(classResolver);
     }
   }
 
-  static class GraalvmClassRegistry {
-    final List<ClassResolver> resolvers;
-    final Map<Class<?>, Class<? extends Serializer>> serializerClassMap;
-    final Map<Long, Class<? extends Serializer>> deserializerClassMap;
-    final Set<Class<?>> registeredClasses;
-    final Set<Class<?>> proxyInterfaces;
-
-    private GraalvmClassRegistry() {
-      resolvers = Collections.synchronizedList(new ArrayList<>());
-      serializerClassMap = new ConcurrentHashMap<>();
-      deserializerClassMap = new ConcurrentHashMap<>();
-      registeredClasses = ConcurrentHashMap.newKeySet();
-      proxyInterfaces = ConcurrentHashMap.newKeySet();
-    }
-  }
-
-  final GraalvmClassRegistry getGraalvmClassRegistry() {
-    return GRAALVM_REGISTRY.computeIfAbsent(
-        fory.getConfig().getConfigHash(), k -> new GraalvmClassRegistry());
+  final GraalvmSupport.GraalvmClassRegistry getGraalvmClassRegistry() {
+    return GraalvmSupport.getGraalvmClassRegistry(fory.getConfig().getConfigHash());
   }
 
   final Class<? extends Serializer> getGraalvmSerializerClass(Serializer serializer) {
@@ -614,8 +591,9 @@ public abstract class TypeResolver {
   }
 
   final Class<? extends Serializer> getSerializerClassFromGraalvmRegistry(Class<?> cls) {
-    GraalvmClassRegistry registry = getGraalvmClassRegistry();
-    List<ClassResolver> classResolvers = registry.resolvers;
+    GraalvmSupport.GraalvmClassRegistry registry = getGraalvmClassRegistry();
+    @SuppressWarnings("unchecked")
+    List<ClassResolver> classResolvers = (List<ClassResolver>) (List<?>) registry.resolvers;
     if (classResolvers.isEmpty()) {
       return null;
     }
@@ -643,8 +621,9 @@ public abstract class TypeResolver {
 
   private Class<? extends Serializer> getMetaSharedDeserializerClassFromGraalvmRegistry(
       Class<?> cls, ClassDef classDef) {
-    GraalvmClassRegistry registry = getGraalvmClassRegistry();
-    List<ClassResolver> classResolvers = registry.resolvers;
+    GraalvmSupport.GraalvmClassRegistry registry = getGraalvmClassRegistry();
+    @SuppressWarnings("unchecked")
+    List<ClassResolver> classResolvers = (List<ClassResolver>) (List<?>) registry.resolvers;
     if (classResolvers.isEmpty()) {
       return null;
     }
@@ -672,82 +651,6 @@ public abstract class TypeResolver {
 
   public final MetaStringResolver getMetaStringResolver() {
     return metaStringResolver;
-  }
-
-  /**
-   * Get all registered classes across all GraalVM registries for native image compilation.
-   *
-   * @return unmodifiable set of all registered classes
-   */
-  public static Set<Class<?>> getAllRegisteredClasses() {
-    Set<Class<?>> allClasses = ConcurrentHashMap.newKeySet();
-    for (GraalvmClassRegistry registry : GRAALVM_REGISTRY.values()) {
-      allClasses.addAll(registry.registeredClasses);
-    }
-    return Collections.unmodifiableSet(allClasses);
-  }
-
-  /**
-   * Get all registered proxy interfaces across all GraalVM registries for native image compilation.
-   *
-   * @return unmodifiable set of all registered proxy interfaces
-   */
-  public static Set<Class<?>> getAllProxyInterfaces() {
-    Set<Class<?>> allInterfaces = ConcurrentHashMap.newKeySet();
-    for (GraalvmClassRegistry registry : GRAALVM_REGISTRY.values()) {
-      allInterfaces.addAll(registry.proxyInterfaces);
-    }
-    return Collections.unmodifiableSet(allInterfaces);
-  }
-
-  /**
-   * Register a class in the GraalVM registry for native image compilation. This should be called
-   * from {@link org.apache.fory.Fory#register} methods.
-   *
-   * @param cls the class to register
-   * @param configHash the configuration hash for the Fory instance
-   */
-  public static void registerClassForGraalvm(Class<?> cls, int configHash) {
-    GraalvmClassRegistry registry =
-        GRAALVM_REGISTRY.computeIfAbsent(configHash, k -> new GraalvmClassRegistry());
-    registry.registeredClasses.add(cls);
-  }
-
-  /**
-   * Register a proxy interface in the GraalVM registry for native image compilation.
-   *
-   * @param proxyInterface the proxy interface to register
-   * @param configHash the configuration hash for the Fory instance
-   */
-  public static void registerProxyInterfaceForGraalvm(Class<?> proxyInterface, int configHash) {
-    if (proxyInterface == null) {
-      throw new NullPointerException("Proxy interface must not be null");
-    }
-    if (!proxyInterface.isInterface()) {
-      throw new IllegalArgumentException(
-          "Proxy type must be an interface: " + proxyInterface.getName());
-    }
-    GraalvmClassRegistry registry =
-        GRAALVM_REGISTRY.computeIfAbsent(configHash, k -> new GraalvmClassRegistry());
-    registry.proxyInterfaces.add(proxyInterface);
-  }
-
-  /**
-   * Register a proxy interface globally for GraalVM native image compilation.
-   *
-   * <p>This is a convenience wrapper over {@link #registerProxyInterfaceForGraalvm(Class, int)}
-   * with a shared registration scope.
-   */
-  public static void addProxyInterface(Class<?> proxyInterface) {
-    registerProxyInterfaceForGraalvm(proxyInterface, 0);
-  }
-
-  /** Clear all GraalVM registrations. This is primarily for testing purposes. */
-  public static void clearGraalvmRegistrations() {
-    for (GraalvmClassRegistry registry : GRAALVM_REGISTRY.values()) {
-      registry.registeredClasses.clear();
-      registry.proxyInterfaces.clear();
-    }
   }
 
   static class ExtRegistry {

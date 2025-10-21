@@ -97,6 +97,7 @@ import org.apache.fory.type.GenericType;
 import org.apache.fory.type.Generics;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
+import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 
 @SuppressWarnings({"unchecked", "rawtypes"})
@@ -166,7 +167,7 @@ public class XtypeResolver extends TypeResolver {
     ClassInfo classInfo = classInfoMap.get(type);
     if (type.isArray()) {
       buildClassInfo(type);
-      TypeResolver.registerClassForGraalvm(type, fory.getConfig().getConfigHash());
+      GraalvmSupport.registerClassForGraalvm(type, fory.getConfig().getConfigHash());
       return;
     }
     Serializer<?> serializer = null;
@@ -256,7 +257,7 @@ public class XtypeResolver extends TypeResolver {
     String qualifiedName = qualifiedName(namespace, typeName);
     qualifiedType2ClassInfo.put(qualifiedName, classInfo);
     extRegistry.registeredClasses.put(qualifiedName, type);
-    TypeResolver.registerClassForGraalvm(type, fory.getConfig().getConfigHash());
+    GraalvmSupport.registerClassForGraalvm(type, fory.getConfig().getConfigHash());
     if (serializer == null) {
       if (type.isEnum()) {
         classInfo.serializer = new EnumSerializer(fory, (Class<Enum>) type);

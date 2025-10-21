@@ -22,7 +22,6 @@ package org.apache.fory.graalvm.feature;
 import static org.junit.Assert.*;
 
 import org.apache.fory.Fory;
-import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.util.GraalvmSupport;
 import org.junit.After;
 import org.junit.Before;
@@ -115,7 +114,7 @@ public class ForyGraalVMFeatureTest {
   @Test
   public void testAddProxyInterfaceRejectsNull() {
     try {
-      TypeResolver.addProxyInterface(null);
+      GraalvmSupport.registerProxySupport(null);
       fail("Null proxy interface should throw NullPointerException");
     } catch (NullPointerException expected) {
       // expected
@@ -125,7 +124,7 @@ public class ForyGraalVMFeatureTest {
   @Test
   public void testAddProxyInterfaceRejectsNonInterface() {
     try {
-      TypeResolver.addProxyInterface(NonInterfaceProxy.class);
+      GraalvmSupport.registerProxySupport(NonInterfaceProxy.class);
       fail("Non-interface proxy type should throw IllegalArgumentException");
     } catch (IllegalArgumentException expected) {
       // expected
@@ -137,7 +136,7 @@ public class ForyGraalVMFeatureTest {
     Fory builderInstance = Fory.builder().build();
     GraalvmSupport.clearRegistrations();
     builderInstance.register(PublicNoArgConstructorClass.class);
-    TypeResolver.addProxyInterface(SampleProxyInterface.class);
+    GraalvmSupport.registerProxySupport(SampleProxyInterface.class);
 
     assertFalse(GraalvmSupport.getRegisteredClasses().isEmpty());
     assertFalse(GraalvmSupport.getProxyInterfaces().isEmpty());

@@ -24,7 +24,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import org.apache.fory.Fory;
 import org.apache.fory.config.Language;
-import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.util.GraalvmSupport;
 
 public class FeatureTestExample {
 
@@ -85,7 +85,7 @@ public class FeatureTestExample {
     fory.register(TestInvocationHandler.class);
 
     // Register proxy interface
-    TypeResolver.addProxyInterface(TestInterface.class);
+    GraalvmSupport.registerProxySupport(TestInterface.class);
 
     try {
       // Test 1: Serialize/deserialize class with private constructor
