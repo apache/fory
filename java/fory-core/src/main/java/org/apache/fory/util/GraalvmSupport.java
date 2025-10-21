@@ -271,6 +271,9 @@ public class GraalvmSupport {
    * use by TypeResolver and ClassResolver.
    */
   public static GraalvmClassRegistry getGraalvmClassRegistry(int configHash) {
+    if (!IN_GRAALVM_NATIVE_IMAGE) {
+      return new GraalvmClassRegistry();
+    }
     return GRAALVM_REGISTRY.computeIfAbsent(configHash, k -> new GraalvmClassRegistry());
   }
 
