@@ -115,6 +115,9 @@ public class GraalvmSupport {
    * @param configHash the configuration hash for the Fory instance
    */
   public static void registerClassForGraalvm(Class<?> cls, int configHash) {
+    if (!IN_GRAALVM_NATIVE_IMAGE) {
+      return;
+    }
     GraalvmClassRegistry registry =
         GRAALVM_REGISTRY.computeIfAbsent(configHash, k -> new GraalvmClassRegistry());
     registry.registeredClasses.add(cls);
@@ -127,6 +130,9 @@ public class GraalvmSupport {
    * @param configHash the configuration hash for the Fory instance
    */
   public static void registerProxyInterfaceForGraalvm(Class<?> proxyInterface, int configHash) {
+    if (!IN_GRAALVM_NATIVE_IMAGE) {
+      return;
+    }
     if (proxyInterface == null) {
       throw new NullPointerException("Proxy interface must not be null");
     }

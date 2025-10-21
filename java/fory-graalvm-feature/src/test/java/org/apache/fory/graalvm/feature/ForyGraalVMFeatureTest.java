@@ -113,21 +113,29 @@ public class ForyGraalVMFeatureTest {
 
   @Test
   public void testAddProxyInterfaceRejectsNull() {
-    try {
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      try {
+        GraalvmSupport.registerProxySupport(null);
+        fail("Null proxy interface should throw NullPointerException");
+      } catch (NullPointerException expected) {
+        // expected
+      }
+    } else {
       GraalvmSupport.registerProxySupport(null);
-      fail("Null proxy interface should throw NullPointerException");
-    } catch (NullPointerException expected) {
-      // expected
     }
   }
 
   @Test
   public void testAddProxyInterfaceRejectsNonInterface() {
-    try {
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      try {
+        GraalvmSupport.registerProxySupport(NonInterfaceProxy.class);
+        fail("Non-interface proxy type should throw IllegalArgumentException");
+      } catch (IllegalArgumentException expected) {
+        // expected
+      }
+    } else {
       GraalvmSupport.registerProxySupport(NonInterfaceProxy.class);
-      fail("Non-interface proxy type should throw IllegalArgumentException");
-    } catch (IllegalArgumentException expected) {
-      // expected
     }
   }
 
