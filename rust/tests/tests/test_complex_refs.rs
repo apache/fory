@@ -35,7 +35,7 @@ fn test_rc_shared_in_nested_vec() {
         vec![shared1.clone()],
     ];
 
-    let serialized = fory.serialize(&nested);
+    let serialized = fory.serialize(&nested).unwrap();
     let deserialized: Vec<Vec<Rc<String>>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
@@ -67,7 +67,7 @@ fn test_arc_shared_in_nested_vec() {
         vec![shared1.clone()],
     ];
 
-    let serialized = fory.serialize(&nested);
+    let serialized = fory.serialize(&nested).unwrap();
     let deserialized: Vec<Vec<Arc<String>>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
@@ -97,8 +97,8 @@ fn test_mixed_rc_arc_sharing() {
     let rc_vec = vec![shared_rc.clone(), shared_rc.clone()];
     let arc_vec = vec![shared_arc.clone(), shared_arc.clone()];
 
-    let serialized_rc = fory.serialize(&rc_vec);
-    let serialized_arc = fory.serialize(&arc_vec);
+    let serialized_rc = fory.serialize(&rc_vec).unwrap();
+    let serialized_arc = fory.serialize(&arc_vec).unwrap();
 
     let deserialized_rc: Vec<Rc<i32>> = fory.deserialize(&serialized_rc).unwrap();
     let deserialized_arc: Vec<Arc<String>> = fory.deserialize(&serialized_arc).unwrap();
@@ -125,7 +125,7 @@ fn test_deep_sharing_stress_test() {
         vec![vec![shared.clone()]],
     ];
 
-    let serialized = fory.serialize(&deep_structure);
+    let serialized = fory.serialize(&deep_structure).unwrap();
     let deserialized: Vec<Vec<Vec<Rc<String>>>> = fory.deserialize(&serialized).unwrap();
 
     // Verify structure

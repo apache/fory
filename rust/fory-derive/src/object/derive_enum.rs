@@ -21,13 +21,13 @@ use syn::DataEnum;
 
 pub fn gen_actual_type_id() -> TokenStream {
     quote! {
-       fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, mode)
+       fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
     }
 }
 
-pub fn gen_type_def(_data_enum: &DataEnum) -> TokenStream {
+pub fn gen_field_fields_info(_data_enum: &DataEnum) -> TokenStream {
     quote! {
-        fory_core::serializer::enum_::type_def(fory, type_id, namespace, type_name, register_by_name)
+        Ok(Vec::new())
     }
 }
 
@@ -37,15 +37,9 @@ pub fn gen_reserved_space() -> TokenStream {
     }
 }
 
-pub fn gen_write_type_info() -> TokenStream {
+pub fn gen_write(_data_enum: &DataEnum) -> TokenStream {
     quote! {
-        fory_core::serializer::enum_::write_type_info::<Self>(fory, context, is_field)
-    }
-}
-
-pub fn gen_read_type_info() -> TokenStream {
-    quote! {
-        fory_core::serializer::enum_::read_type_info::<Self>(fory, context, is_field)
+        fory_core::serializer::enum_::write::<Self>(self, context, write_ref_info, write_type_info)
     }
 }
 
@@ -53,13 +47,30 @@ pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
     let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
     let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as u32).collect();
     quote! {
-        match self {
+        Ok(match self {
             #(
                 Self::#variant_idents => {
                     context.writer.write_varuint32(#variant_values);
                 }
             )*
-        }
+        })
+    }
+}
+pub fn gen_write_type_info() -> TokenStream {
+    quote! {
+        fory_core::serializer::enum_::write_type_info::<Self>(context)
+    }
+}
+
+pub fn gen_read(_: &DataEnum) -> TokenStream {
+    quote! {
+        fory_core::serializer::enum_::read::<Self>(context, read_ref_info, read_type_info)
+    }
+}
+
+pub fn gen_read_with_type_info(_: &DataEnum) -> TokenStream {
+    quote! {
+        fory_core::serializer::enum_::read::<Self>(context, read_ref_info, false)
     }
 }
 
@@ -67,30 +78,18 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
     let variant_idents: Vec<_> = data_enum.variants.iter().map(|v| &v.ident).collect();
     let variant_values: Vec<_> = (0..variant_idents.len()).map(|v| v as u32).collect();
     quote! {
-        let ordinal = context.reader.read_varuint32();
+        let ordinal = context.reader.read_varuint32()?;
         match ordinal {
            #(
                #variant_values => Ok(Self::#variant_idents),
            )*
-           _ => panic!("unknown value"),
+           _ => return Err(fory_core::error::Error::unknown_enum("unknown enum value")),
         }
     }
 }
 
-pub fn gen_read_compatible() -> TokenStream {
+pub fn gen_read_type_info() -> TokenStream {
     quote! {
-        fory_core::serializer::enum_::read_compatible::<Self>(fory, context)
-    }
-}
-
-pub fn gen_write(_data_enum: &DataEnum) -> TokenStream {
-    quote! {
-        fory_core::serializer::enum_::write::<Self>(self, fory, context, is_field)
-    }
-}
-
-pub fn gen_read(_data_enum: &DataEnum) -> TokenStream {
-    quote! {
-        fory_core::serializer::enum_::read::<Self>(fory, context, is_field)
+        fory_core::serializer::enum_::read_type_info::<Self>(context)
     }
 }

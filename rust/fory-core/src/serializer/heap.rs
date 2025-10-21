@@ -16,11 +16,12 @@
 // under the License.
 
 use crate::error::Error;
-use crate::fory::Fory;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
+use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::collection::{
-    read_collection, read_collection_type_info, write_collection, write_collection_type_info,
+    read_collection_data, read_collection_type_info, write_collection_data,
+    write_collection_type_info,
 };
 
 use crate::serializer::{ForyDefault, Serializer};
@@ -29,36 +30,36 @@ use std::collections::BinaryHeap;
 use std::mem;
 
 impl<T: Serializer + ForyDefault + Ord> Serializer for BinaryHeap<T> {
-    fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        write_collection(self, fory, context, is_field);
+    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+        write_collection_data(self, context, false)
     }
 
-    fn fory_write_type_info(_fory: &Fory, context: &mut WriteContext, is_field: bool) {
-        write_collection_type_info(context, is_field, TypeId::SET as u32);
+    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
+        write_collection_type_info(context, TypeId::SET as u32)
     }
 
-    fn fory_read_data(
-        fory: &Fory,
-        context: &mut ReadContext,
-        _is_field: bool,
-    ) -> Result<Self, Error> {
-        read_collection(fory, context)
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        read_collection_data(context)
     }
 
-    fn fory_read_type_info(_fory: &Fory, context: &mut ReadContext, is_field: bool) {
-        read_collection_type_info(context, is_field, TypeId::SET as u32)
+    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
+        read_collection_type_info(context, TypeId::SET as u32)
     }
 
     fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }
 
-    fn fory_get_type_id(_fory: &Fory) -> u32 {
-        TypeId::SET as u32
+    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
+        Ok(TypeId::SET as u32)
     }
 
-    fn fory_type_id_dyn(&self, _fory: &Fory) -> u32 {
-        TypeId::SET as u32
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
+        Ok(TypeId::SET as u32)
+    }
+
+    fn fory_static_type_id() -> TypeId {
+        TypeId::SET
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

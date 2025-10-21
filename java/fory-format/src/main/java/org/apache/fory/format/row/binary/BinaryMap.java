@@ -45,8 +45,16 @@ public class BinaryMap implements MapData {
 
   public BinaryMap(Field field) {
     this.field = field;
-    this.keys = new BinaryArray(DataTypes.keyArrayFieldForMap(field));
-    this.values = new BinaryArray(DataTypes.itemArrayFieldForMap(field));
+    this.keys = newArray(DataTypes.keyArrayFieldForMap(field));
+    this.values = newArray(DataTypes.itemArrayFieldForMap(field));
+  }
+
+  protected BinaryArray newArray(Field field) {
+    return new BinaryArray(field);
+  }
+
+  protected BinaryMap newMap(Field field) {
+    return new BinaryMap(field);
   }
 
   public BinaryMap(BinaryArray keys, BinaryArray values, Field field) {
@@ -111,7 +119,7 @@ public class BinaryMap implements MapData {
   public MapData copy() {
     MemoryBuffer copyBuf = MemoryUtils.buffer(sizeInBytes);
     buf.copyTo(baseOffset, copyBuf, 0, sizeInBytes);
-    BinaryMap mapCopy = new BinaryMap(field);
+    BinaryMap mapCopy = newMap(field);
     mapCopy.pointTo(copyBuf, 0, sizeInBytes);
     return mapCopy;
   }
@@ -127,6 +135,10 @@ public class BinaryMap implements MapData {
     int pos = buffer.position();
     writeToMemory(target, Platform.BYTE_ARRAY_OFFSET + offset + pos);
     buffer.position(pos + sizeInBytes);
+  }
+
+  public byte[] toBytes() {
+    return buf.getBytes(baseOffset, sizeInBytes);
   }
 
   @Override

@@ -238,6 +238,10 @@ fn test_non_ascii_encoding() {
 
 #[test]
 fn test_non_ascii_encoding_and_non_utf8() {
+    if fory_core::error::should_panic_on_error() {
+        println!("Skipping test_non_ascii_encoding_and_non_utf8 when panic on error is enabled");
+        return;
+    }
     let encoder = &TYPE_NAME_ENCODER;
     let non_ascii_string = "こんにちは";
 

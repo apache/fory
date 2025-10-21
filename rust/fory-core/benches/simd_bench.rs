@@ -171,7 +171,7 @@ fn benchmark_read_latin1(c: &mut Criterion) {
         c.bench_function(&name_simd, |b| {
             b.iter(|| {
                 let mut reader = Reader::new(black_box(&data));
-                read_latin1_simd(black_box(&mut reader), black_box(s_ascii.len()));
+                read_latin1_simd(black_box(&mut reader), black_box(s_ascii.len())).unwrap();
             })
         });
 
@@ -179,7 +179,7 @@ fn benchmark_read_latin1(c: &mut Criterion) {
         c.bench_function(&name_scalar, |b| {
             b.iter(|| {
                 let mut reader = Reader::new(black_box(&data));
-                read_latin1_standard(black_box(&mut reader), black_box(s_ascii.len()));
+                read_latin1_standard(black_box(&mut reader), black_box(s_ascii.len())).unwrap();
             })
         });
     }
@@ -199,7 +199,7 @@ fn benchmark_read_utf8(c: &mut Criterion) {
         c.bench_function(&name_simd, |b| {
             b.iter(|| {
                 let mut reader = Reader::new(black_box(&data));
-                read_utf8_simd(black_box(&mut reader), black_box(s.len()));
+                read_utf8_simd(black_box(&mut reader), black_box(s.len())).unwrap();
             })
         });
 
@@ -207,7 +207,7 @@ fn benchmark_read_utf8(c: &mut Criterion) {
         c.bench_function(&name_scalar, |b| {
             b.iter(|| {
                 let mut reader = Reader::new(black_box(&data));
-                read_utf8_standard(black_box(&mut reader), black_box(s.len()));
+                read_utf8_standard(black_box(&mut reader), black_box(s.len())).unwrap();
             })
         });
     }
@@ -231,7 +231,7 @@ fn benchmark_read_utf16(c: &mut Criterion) {
         c.bench_function(&name_simd, |b| {
             b.iter(|| {
                 let mut reader = Reader::new(black_box(&data));
-                read_utf16_simd(black_box(&mut reader), black_box(data.len()));
+                read_utf16_simd(black_box(&mut reader), black_box(data.len())).unwrap();
             })
         });
 
@@ -239,7 +239,7 @@ fn benchmark_read_utf16(c: &mut Criterion) {
         c.bench_function(&name_scalar, |b| {
             b.iter(|| {
                 let mut reader = Reader::new(black_box(&data));
-                read_utf16_standard(black_box(&mut reader), black_box(data.len()));
+                read_utf16_standard(black_box(&mut reader), black_box(data.len())).unwrap();
             })
         });
     }

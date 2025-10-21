@@ -24,6 +24,7 @@ from pyfory.meta.typedef import (
     SMALL_NUM_FIELDS_THRESHOLD,
     REGISTER_BY_NAME_FLAG,
     FIELD_NAME_SIZE_THRESHOLD,
+    BIG_NAME_THRESHOLD,
     COMPRESS_META_FLAG,
     HAS_FIELDS_META_FLAG,
     META_SIZE_MASKS,
@@ -66,18 +67,21 @@ def encode_typedef(type_resolver, cls):
 
     buffer = Buffer.allocate(64)
 
-    # Write placeholder for header
-    buffer.write_uint8(0)
-
     # Write meta header
     header = len(field_infos)
     if len(field_infos) >= SMALL_NUM_FIELDS_THRESHOLD:
         header = SMALL_NUM_FIELDS_THRESHOLD
+        if type_resolver.is_registered_by_name(cls):
+            header |= REGISTER_BY_NAME_FLAG
+        buffer.write_uint8(header)
         buffer.write_varuint32(len(field_infos) - SMALL_NUM_FIELDS_THRESHOLD)
+    else:
+        if type_resolver.is_registered_by_name(cls):
+            header |= REGISTER_BY_NAME_FLAG
+        buffer.write_uint8(header)
 
     # Write type info
     if type_resolver.is_registered_by_name(cls):
-        header |= REGISTER_BY_NAME_FLAG
         namespace, typename = type_resolver.get_registered_name(cls)
         write_namespace(buffer, namespace)
         write_typename(buffer, typename)
@@ -87,8 +91,6 @@ def encode_typedef(type_resolver, cls):
         assert type_resolver.is_registered_by_id(cls), "Class must be registered by name or id"
         type_id = type_resolver.get_registered_id(cls)
         buffer.write_varuint32(type_id)
-    # Update header byte
-    buffer.put_uint8(0, header)
 
     # Write fields info
     write_fields_info(type_resolver, buffer, field_infos)
@@ -162,15 +164,15 @@ def write_typename(buffer: Buffer, typename: str):
 
 
 def write_meta_string(buffer: Buffer, meta_string, encoding_value: int):
-    """Write a meta string to the buffer."""
+    """Write a big meta string (namespace/typename) to the buffer using 6-bit size field."""
     # Write encoding and length combined in first byte
     length = len(meta_string.encoded_data)
 
-    if length >= FIELD_NAME_SIZE_THRESHOLD:
+    if length >= BIG_NAME_THRESHOLD:
         # Use threshold value and write additional length
-        header = (FIELD_NAME_SIZE_THRESHOLD << 2) | encoding_value
+        header = (BIG_NAME_THRESHOLD << 2) | encoding_value
         buffer.write_uint8(header)
-        buffer.write_varuint32(length - FIELD_NAME_SIZE_THRESHOLD)
+        buffer.write_varuint32(length - BIG_NAME_THRESHOLD)
     else:
         # Combine length and encoding in single byte
         header = (length << 2) | encoding_value

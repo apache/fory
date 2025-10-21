@@ -70,7 +70,7 @@
 //! Define custom traits and register implementations:
 //!
 //! ```rust,ignore
-//! use fory_core::{Fory, register_trait_type, Serializer, Mode};
+//! use fory_core::{Fory, register_trait_type, Serializer};
 //! use fory_derive::ForyObject;
 //!
 //! trait Animal: Serializer {
@@ -99,7 +99,7 @@
 //! }
 //!
 //! # fn main() {
-//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! let mut fory = Fory::default().compatible(true);
 //! fory.register::<Dog>(100);
 //! fory.register::<Cat>(101);
 //! fory.register::<Zoo>(102);
@@ -143,22 +143,21 @@
 //! ```rust
 //! use fory_core::fory::Fory;
 //! use fory_core::error::Error;
-//! use fory_core::types::Mode;
 //! use fory_core::row::{to_row, from_row};
 //! use std::collections::HashMap;
 //!
 //! // Create a Fory instance
-//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! let mut fory = Fory::default().compatible(true);
 //!
 //! // Serialize String
 //! let text = String::from("Hello, Fory!");
-//! let serialized_str = fory.serialize(&text);
+//! let serialized_str = fory.serialize(&text).unwrap();
 //! let deserialized_str: String = fory.deserialize(&serialized_str).unwrap();
 //! assert_eq!(text, deserialized_str);
 //!
 //! // Serialize Vec
 //! let vec_data = vec![1, 2, 3, 4, 5];
-//! let serialized_vec = fory.serialize(&vec_data);
+//! let serialized_vec = fory.serialize(&vec_data).unwrap();
 //! let deserialized_vec: Vec<i32> = fory.deserialize(&serialized_vec).unwrap();
 //! assert_eq!(vec_data, deserialized_vec);
 //!
@@ -166,7 +165,7 @@
 //! let mut map = HashMap::new();
 //! map.insert("key1".to_string(), 100);
 //! map.insert("key2".to_string(), 200);
-//! let serialized_map = fory.serialize(&map);
+//! let serialized_map = fory.serialize(&map).unwrap();
 //! let deserialized_map: HashMap<String, i32> = fory.deserialize(&serialized_map).unwrap();
 //! assert_eq!(map, deserialized_map);
 //! // Register types for object serialization
@@ -191,9 +190,10 @@ pub mod util;
 pub use paste;
 
 pub use crate::buffer::{Reader, Writer};
+pub use crate::error::Error;
 pub use crate::fory::Fory;
 pub use crate::resolver::context::{ReadContext, WriteContext};
-pub use crate::resolver::type_resolver::TypeResolver;
+pub use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 pub use crate::serializer::weak::{ArcWeak, RcWeak};
-pub use crate::serializer::{ForyDefault, Serializer};
-pub use crate::types::{Mode, RefFlag, TypeId};
+pub use crate::serializer::{ForyDefault, Serializer, StructSerializer};
+pub use crate::types::{RefFlag, TypeId};

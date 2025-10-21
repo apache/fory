@@ -19,7 +19,7 @@ use fory_core::error::Error;
 use fory_core::fory::Fory;
 use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::serializer::{ForyDefault, Serializer};
-use fory_core::types::Mode::Compatible;
+use fory_core::TypeResolver;
 use fory_derive::ForyObject;
 
 #[test]
@@ -60,33 +60,32 @@ fn test_use() {
     }
 
     impl Serializer for Item {
-        fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
-            write_data(&self.f1, fory, context, is_field);
+        fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+            write_data(&self.f1, context)
         }
 
-        fn fory_read_data(
-            fory: &Fory,
-            context: &mut ReadContext,
-            is_field: bool,
-        ) -> Result<Self, Error> {
+        fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
             Ok(Self {
-                f1: read_data(fory, context, is_field)?,
+                f1: read_data(context)?,
                 f2: 0,
             })
         }
 
-        fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
-            Self::fory_get_type_id(fory)
+        fn fory_type_id_dyn(
+            &self,
+            type_resolver: &TypeResolver,
+        ) -> Result<u32, fory_core::error::Error> {
+            Self::fory_get_type_id(type_resolver)
         }
 
         fn as_any(&self) -> &dyn std::any::Any {
             self
         }
     }
-    let mut fory = Fory::default().mode(Compatible).xlang(true);
+    let mut fory = Fory::default().compatible(true).xlang(true);
     let item = Item { f1: 1, f2: 2 };
-    fory.register_serializer::<Item>(100);
-    let bytes = fory.serialize(&item);
+    fory.register_serializer::<Item>(100).unwrap();
+    let bytes = fory.serialize(&item).unwrap();
     let new_item: Item = fory.deserialize(&bytes).unwrap();
     assert_eq!(new_item.f1, item.f1);
     assert_eq!(new_item.f2, 0);

@@ -32,27 +32,27 @@ impl ForySerializer {
         let mut fory = Fory::default();
 
         // Register simple types
-        fory.register::<SimpleStruct>(100);
-        fory.register::<SimpleList>(101);
-        fory.register::<SimpleMap>(102);
+        fory.register::<SimpleStruct>(100).unwrap();
+        fory.register::<SimpleList>(101).unwrap();
+        fory.register::<SimpleMap>(102).unwrap();
 
         // Register medium types
-        fory.register::<ForyAddress>(200);
-        fory.register::<Person>(201);
-        fory.register::<Company>(202);
+        fory.register::<ForyAddress>(200).unwrap();
+        fory.register::<Person>(201).unwrap();
+        fory.register::<Company>(202).unwrap();
 
         // Register complex types
-        fory.register::<ForyProduct>(300);
-        fory.register::<ForyOrderItem>(301);
-        fory.register::<ForyCustomer>(302);
-        fory.register::<ForyOrder>(303);
-        fory.register::<ECommerceData>(304);
+        fory.register::<ForyProduct>(300).unwrap();
+        fory.register::<ForyOrderItem>(301).unwrap();
+        fory.register::<ForyCustomer>(302).unwrap();
+        fory.register::<ForyOrder>(303).unwrap();
+        fory.register::<ECommerceData>(304).unwrap();
 
         // Register realworld types
-        fory.register::<ForyLogEntry>(400);
-        fory.register::<ForyUserProfile>(401);
-        fory.register::<ForyAPIMetrics>(402);
-        fory.register::<SystemData>(403);
+        fory.register::<ForyLogEntry>(400).unwrap();
+        fory.register::<ForyUserProfile>(401).unwrap();
+        fory.register::<ForyAPIMetrics>(402).unwrap();
+        fory.register::<SystemData>(403).unwrap();
 
         Self { fory }
     }
@@ -60,7 +60,7 @@ impl ForySerializer {
 
 impl Serializer<SimpleStruct> for ForySerializer {
     fn serialize(&self, data: &SimpleStruct) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data))
+        Ok(self.fory.serialize(data)?)
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<SimpleStruct, Box<dyn std::error::Error>> {
@@ -70,7 +70,7 @@ impl Serializer<SimpleStruct> for ForySerializer {
 
 impl Serializer<SimpleList> for ForySerializer {
     fn serialize(&self, data: &SimpleList) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data))
+        Ok(self.fory.serialize(data)?)
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<SimpleList, Box<dyn std::error::Error>> {
@@ -80,7 +80,7 @@ impl Serializer<SimpleList> for ForySerializer {
 
 impl Serializer<SimpleMap> for ForySerializer {
     fn serialize(&self, data: &SimpleMap) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data))
+        Ok(self.fory.serialize(data)?)
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<SimpleMap, Box<dyn std::error::Error>> {
@@ -90,7 +90,7 @@ impl Serializer<SimpleMap> for ForySerializer {
 
 impl Serializer<Person> for ForySerializer {
     fn serialize(&self, data: &Person) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data))
+        Ok(self.fory.serialize(data)?)
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<Person, Box<dyn std::error::Error>> {
@@ -100,7 +100,7 @@ impl Serializer<Person> for ForySerializer {
 
 impl Serializer<Company> for ForySerializer {
     fn serialize(&self, data: &Company) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data))
+        Ok(self.fory.serialize(data)?)
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<Company, Box<dyn std::error::Error>> {
@@ -110,7 +110,7 @@ impl Serializer<Company> for ForySerializer {
 
 impl Serializer<ECommerceData> for ForySerializer {
     fn serialize(&self, data: &ECommerceData) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data))
+        Ok(self.fory.serialize(data)?)
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<ECommerceData, Box<dyn std::error::Error>> {
@@ -120,7 +120,7 @@ impl Serializer<ECommerceData> for ForySerializer {
 
 impl Serializer<SystemData> for ForySerializer {
     fn serialize(&self, data: &SystemData) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(self.fory.serialize(data))
+        Ok(self.fory.serialize(data)?)
     }
 
     fn deserialize(&self, data: &[u8]) -> Result<SystemData, Box<dyn std::error::Error>> {

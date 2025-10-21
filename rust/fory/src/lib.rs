@@ -76,7 +76,7 @@
 //!     email: "alice@example.com".to_string(),
 //! };
 //!
-//! let bytes = fory.serialize(&user);
+//! let bytes = fory.serialize(&user)?;
 //! let decoded: User = fory.deserialize(&bytes)?;
 //! assert_eq!(user, decoded);
 //! # Ok(())
@@ -149,7 +149,7 @@
 //!     ]),
 //! };
 //!
-//! let bytes = fory.serialize(&person);
+//! let bytes = fory.serialize(&person)?;
 //! let decoded: Person = fory.deserialize(&bytes)?;
 //! assert_eq!(person, decoded);
 //! # Ok(())
@@ -190,7 +190,7 @@
 //! let shared = Rc::new(String::from("shared_value"));
 //! let data = vec![shared.clone(), shared.clone(), shared.clone()];
 //!
-//! let bytes = fory.serialize(&data);
+//! let bytes = fory.serialize(&data)?;
 //! let decoded: Vec<Rc<String>> = fory.deserialize(&bytes)?;
 //!
 //! assert_eq!(decoded.len(), 3);
@@ -212,7 +212,7 @@
 //! let shared = Arc::new(String::from("shared_value"));
 //! let data = vec![shared.clone(), shared.clone()];
 //!
-//! let bytes = fory.serialize(&data);
+//! let bytes = fory.serialize(&data)?;
 //! let decoded: Vec<Arc<String>> = fory.deserialize(&bytes)?;
 //!
 //! assert!(Arc::ptr_eq(&decoded[0], &decoded[1]));
@@ -260,7 +260,7 @@
 //!
 //! parent.borrow_mut().children.push(child1.clone());
 //!
-//! let bytes = fory.serialize(&parent);
+//! let bytes = fory.serialize(&parent)?;
 //! let decoded: Rc<RefCell<Node>> = fory.deserialize(&bytes)?;
 //!
 //! assert_eq!(decoded.borrow().children.len(), 1);
@@ -302,7 +302,7 @@
 //!
 //! parent.lock().unwrap().children.push(child.clone());
 //!
-//! let bytes = fory.serialize(&parent);
+//! let bytes = fory.serialize(&parent)?;
 //! let decoded: Arc<Mutex<Node>> = fory.deserialize(&bytes)?;
 //!
 //! assert_eq!(decoded.lock().unwrap().children.len(), 1);
@@ -334,7 +334,7 @@
 //! #### Basic Trait Object Serialization
 //!
 //! ```rust
-//! use fory::{Fory, register_trait_type, Serializer, Mode, Error};
+//! use fory::{Fory, register_trait_type, Serializer, Error};
 //! use fory::ForyObject;
 //!
 //! trait Animal: Serializer {
@@ -366,7 +366,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! let mut fory = Fory::default().compatible(true);
 //! fory.register::<Dog>(100);
 //! fory.register::<Cat>(101);
 //! fory.register::<Zoo>(102);
@@ -378,7 +378,7 @@
 //!     }),
 //! };
 //!
-//! let bytes = fory.serialize(&zoo);
+//! let bytes = fory.serialize(&zoo)?;
 //! let decoded: Zoo = fory.deserialize(&bytes)?;
 //!
 //! assert_eq!(decoded.star_animal.name(), "Buddy");
@@ -419,7 +419,7 @@
 //!     name: "Rex".to_string()
 //! });
 //!
-//! let bytes = fory.serialize(&dog);
+//! let bytes = fory.serialize(&dog)?;
 //! let decoded: Rc<dyn Any> = fory.deserialize(&bytes)?;
 //!
 //! let unwrapped = decoded.downcast_ref::<Dog>().unwrap();
@@ -448,7 +448,7 @@
 //!     name: "Whiskers".to_string()
 //! });
 //!
-//! let bytes = fory.serialize(&cat);
+//! let bytes = fory.serialize(&cat)?;
 //! let decoded: Arc<dyn Any> = fory.deserialize(&bytes)?;
 //!
 //! let unwrapped = decoded.downcast_ref::<Cat>().unwrap();
@@ -463,7 +463,7 @@
 //! automatically handles the conversion without needing wrappers:
 //!
 //! ```rust
-//! use fory::{Fory, register_trait_type, Serializer, Mode, Error};
+//! use fory::{Fory, register_trait_type, Serializer, Error};
 //! use fory::ForyObject;
 //! use std::sync::Arc;
 //! use std::rc::Rc;
@@ -493,7 +493,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! let mut fory = Fory::default().compatible(true);
 //! fory.register::<Dog>(100);
 //! fory.register::<Cat>(101);
 //! fory.register::<AnimalShelter>(102);
@@ -508,7 +508,7 @@
 //!     ],
 //! };
 //!
-//! let bytes = fory.serialize(&shelter);
+//! let bytes = fory.serialize(&shelter)?;
 //! let decoded: AnimalShelter = fory.deserialize(&bytes)?;
 //!
 //! assert_eq!(decoded.animals_rc[0].name(), "Rex");
@@ -529,7 +529,7 @@
 //! The `register_trait_type!` macro generates `AnimalRc` and `AnimalArc` wrapper types:
 //!
 //! ```rust
-//! use fory::{Fory, Mode, Error, register_trait_type, Serializer};
+//! use fory::{Fory, Error, register_trait_type, Serializer};
 //! use fory::ForyObject;
 //! use std::sync::Arc;
 //! use std::rc::Rc;
@@ -547,14 +547,14 @@
 //! register_trait_type!(Animal, Dog);
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default().mode(Mode::Compatible);
+//! let mut fory = Fory::default().compatible(true);
 //! fory.register::<Dog>(100);
 //!
 //! // For Rc<dyn Trait>
 //! let dog_rc: Rc<dyn Animal> = Rc::new(Dog { name: "Rex".to_string() });
 //! let wrapper = AnimalRc::from(dog_rc);
 //!
-//! let bytes = fory.serialize(&wrapper);
+//! let bytes = fory.serialize(&wrapper)?;
 //! let decoded: AnimalRc = fory.deserialize(&bytes)?;
 //!
 //! // Unwrap back to Rc<dyn Animal>
@@ -565,7 +565,7 @@
 //! let dog_arc: Arc<dyn Animal> = Arc::new(Dog { name: "Buddy".to_string() });
 //! let wrapper = AnimalArc::from(dog_arc);
 //!
-//! let bytes = fory.serialize(&wrapper);
+//! let bytes = fory.serialize(&wrapper)?;
 //! let decoded: AnimalArc = fory.deserialize(&bytes)?;
 //!
 //! let unwrapped: Arc<dyn Animal> = decoded.unwrap();
@@ -602,7 +602,7 @@
 //! - Nested struct types must be registered on both sides
 //!
 //! ```rust
-//! use fory::{Fory, Error, Mode};
+//! use fory::{Fory, Error};
 //! use fory::ForyObject;
 //! use std::collections::HashMap;
 //!
@@ -622,10 +622,10 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory1 = Fory::default().mode(Mode::Compatible);
+//! let mut fory1 = Fory::default().compatible(true);
 //! fory1.register::<PersonV1>(1);
 //!
-//! let mut fory2 = Fory::default().mode(Mode::Compatible);
+//! let mut fory2 = Fory::default().compatible(true);
 //! fory2.register::<PersonV2>(1);
 //!
 //! let person_v1 = PersonV1 {
@@ -634,7 +634,7 @@
 //!     address: "123 Main St".to_string(),
 //! };
 //!
-//! let bytes = fory1.serialize(&person_v1);
+//! let bytes = fory1.serialize(&person_v1)?;
 //! let person_v2: PersonV2 = fory2.deserialize(&bytes)?;
 //!
 //! assert_eq!(person_v2.name, "Alice");
@@ -682,7 +682,7 @@
 //! fory.register::<Status>(1);
 //!
 //! let status = Status::Active;
-//! let bytes = fory.serialize(&status);
+//! let bytes = fory.serialize(&status)?;
 //! let decoded: Status = fory.deserialize(&bytes)?;
 //! assert_eq!(status, decoded);
 //! # Ok(())
@@ -707,7 +707,7 @@
 //! the binary buffer.
 //!
 //! ```rust
-//! use fory::{Fory, ReadContext, WriteContext, Serializer, ForyDefault, Error};
+//! use fory::{Fory, TypeResolver, ReadContext, WriteContext, Serializer, ForyDefault, Error};
 //! use std::any::Any;
 //!
 //! #[derive(Debug, PartialEq, Default)]
@@ -717,21 +717,22 @@
 //! }
 //!
 //! impl Serializer for CustomType {
-//!     fn fory_write_data(&self, fory: &Fory, context: &mut WriteContext, is_field: bool) {
+//!     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
 //!         context.writer.write_i32(self.value);
 //!         context.writer.write_varuint32(self.name.len() as u32);
 //!         context.writer.write_utf8_string(&self.name);
+//!         Ok(())
 //!     }
 //!
-//!     fn fory_read_data(fory: &Fory, context: &mut ReadContext, is_field: bool) -> Result<Self, Error> {
-//!         let value = context.reader.read_i32();
-//!         let len = context.reader.read_varuint32() as usize;
-//!         let name = context.reader.read_utf8_string(len);
+//!     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+//!         let value = context.reader.read_i32()?;
+//!         let len = context.reader.read_varuint32()? as usize;
+//!         let name = context.reader.read_utf8_string(len)?;
 //!         Ok(Self { value, name })
 //!     }
 //!
-//!     fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
-//!         Self::fory_get_type_id(fory)
+//!     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+//!         Self::fory_get_type_id(type_resolver)
 //!     }
 //!
 //!     fn as_any(&self) -> &dyn Any {
@@ -753,7 +754,7 @@
 //!     value: 42,
 //!     name: "test".to_string(),
 //! };
-//! let bytes = fory.serialize(&custom);
+//! let bytes = fory.serialize(&custom)?;
 //! let decoded: CustomType = fory.deserialize(&bytes)?;
 //! assert_eq!(custom, decoded);
 //! # Ok(())
@@ -828,7 +829,7 @@
 //!     is_active: true,
 //! };
 //!
-//! let row_data = to_row(&profile);
+//! let row_data = to_row(&profile).unwrap();
 //! let row = from_row::<UserProfile>(&row_data);
 //!
 //! assert_eq!(row.id(), 12345);
@@ -923,9 +924,9 @@
 //! - Essential for zero-downtime deployments
 //!
 //! ```rust
-//! use fory::{Fory, Mode};
+//! use fory::Fory;
 //!
-//! let fory = Fory::default().mode(Mode::Compatible);
+//! let fory = Fory::default().compatible(true);
 //! ```
 //!
 //! ## Cross-Language Serialization
@@ -939,11 +940,11 @@
 //! **How to enable:**
 //!
 //! ```rust
-//! use fory::{Fory, Mode};
+//! use fory::Fory;
 //! use fory::ForyObject;
 //!
 //! let mut fory = Fory::default()
-//!     .mode(Mode::Compatible)
+//!     .compatible(true)
 //!     .xlang(true);
 //!
 //! #[derive(ForyObject)]
@@ -1009,24 +1010,44 @@
 //!
 //! ## Thread Safety
 //!
-//! **Important:** `Fory` instances are **not thread-safe**. Use one instance per thread:
+//! `Fory` implements `Send` and `Sync`, so a single instance can be shared across threads
+//! (for example via `Arc<Fory>`) for concurrent serialization and deserialization. The
+//! internal context pools grow lazily and rely on thread-safe primitives, allowing multiple
+//! workers to reuse buffers without additional coordination.
 //!
 //! ```rust
-//! use std::thread_local;
-//! use std::cell::RefCell;
+//! use std::sync::Arc;
+//! use std::thread;
 //! use fory::Fory;
+//! use fory::ForyObject;
 //!
-//! thread_local! {
-//!     static FORY: RefCell<Fory> = RefCell::new(Fory::default());
+//! #[derive(ForyObject, Clone, Copy, Debug)]
+//! struct Item {
+//!     value: i32,
 //! }
 //!
-//! # fn serialize_data() -> Vec<u8> {
-//! FORY.with(|fory| {
-//!     let data = vec![1, 2, 3];
-//!     fory.borrow().serialize(&data)
-//! })
-//! # }
+//! let mut fory = Fory::default();
+//! fory.register::<Item>(1000).unwrap();
+//! let fory = Arc::new(fory);
+//! let handles: Vec<_> = (0..8)
+//!     .map(|i| {
+//!         let shared = Arc::clone(&fory);
+//!         thread::spawn(move || {
+//!             let item = Item { value: i };
+//!             shared.serialize(&item).unwrap()
+//!         })
+//!     })
+//!     .collect();
+//!
+//! for handle in handles {
+//!     let bytes = handle.join().unwrap();
+//!     let item: Item = fory.deserialize(&bytes).unwrap();
+//!     assert!(item.value >= 0);
+//! }
 //! ```
+//!
+//! **Best practice:** Perform type registration (e.g., `fory.register::<T>(id)`) before
+//! spawning worker threads so metadata is ready, then share the configured instance.
 //!
 //! ## Examples
 //!
@@ -1037,6 +1058,31 @@
 //! - `tests/tests/test_weak.rs` - Circular reference handling
 //! - `tests/tests/test_cross_language.rs` - Cross-language compatibility
 //!
+//! ## Troubleshooting
+//!
+//! - **Type registry errors**: Errors such as `TypeId ... not found in type_info registry` mean
+//!   the type was never registered with the active `Fory` instance. Ensure every serializable
+//!   struct, enum, or trait implementation calls `register::<T>(type_id)` before use, and reuse
+//!   the same IDs when deserializing.
+//! - **Quick error lookup**: Always prefer the static constructors on
+//!   [`fory_core::error::Error`]—for example `Error::type_mismatch`, `Error::invalid_data`, or
+//!   `Error::unknown`. They keep diagnostics consistent and allow optional panic-on-error
+//!   debugging.
+//! - **Panic on error for backtraces**: Set `FORY_PANIC_ON_ERROR=1` (or `true`) together with
+//!   `RUST_BACKTRACE=1` while running tests or binaries to panic exactly where an error is
+//!   constructed. Unset the variable afterwards so production paths keep returning `Result`.
+//! - **Struct field tracing**: Add the `#[fory_debug]` attribute next to `#[derive(ForyObject)]`
+//!   when you need per-field instrumentation. Once compiled with debug hooks, call
+//!   `set_before_write_field_func`, `set_after_write_field_func`, `set_before_read_field_func`, or
+//!   `set_after_read_field_func` from `fory_core::serializer::struct_` to install custom
+//!   callbacks, and use `reset_struct_debug_hooks()` to restore defaults.
+//! - **Lightweight logging**: If custom callbacks are unnecessary, enable
+//!   `ENABLE_FORY_DEBUG_OUTPUT=1` to have the default hook handlers print field-level read/write
+//!   events. This is useful for spotting cursor misalignment or unexpected buffer growth.
+//! - **Test-time hygiene**: Some integration tests expect `FORY_PANIC_ON_ERROR` to stay unset.
+//!   Export it only during focused debugging, and rely on targeted commands such as
+//!   `cargo test --features tests -p tests --test <case>` when isolating failures.
+//!
 //! ## Documentation
 //!
 //! - **[Protocol Specification](https://fory.apache.org/docs/specification/fory_xlang_serialization_spec)** - Binary protocol details
@@ -1046,7 +1092,7 @@
 //! - **[GitHub Repository](https://github.com/apache/fory)** - Source code and issue tracking
 
 pub use fory_core::{
-    error::Error, fory::Fory, register_trait_type, row::from_row, row::to_row, types::Mode,
-    types::TypeId, ArcWeak, ForyDefault, RcWeak, ReadContext, Serializer, WriteContext,
+    error::Error, fory::Fory, register_trait_type, row::from_row, row::to_row, types::TypeId,
+    ArcWeak, ForyDefault, RcWeak, ReadContext, Serializer, TypeResolver, WriteContext,
 };
 pub use fory_derive::{ForyObject, ForyRow};

@@ -28,6 +28,7 @@ from pyfory.meta.typedef import (
     SMALL_NUM_FIELDS_THRESHOLD,
     REGISTER_BY_NAME_FLAG,
     FIELD_NAME_SIZE_THRESHOLD,
+    BIG_NAME_THRESHOLD,
     COMPRESS_META_FLAG,
     HAS_FIELDS_META_FLAG,
     META_SIZE_MASKS,
@@ -149,7 +150,7 @@ def read_typename(buffer: Buffer) -> str:
 
 
 def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder, encodings: List[Encoding]) -> str:
-    """Read a meta string from the buffer."""
+    """Read a big meta string (namespace/typename) from the buffer using 6-bit size field."""
     # Read encoding and length combined in first byte
     header = buffer.read_uint8()
 
@@ -161,8 +162,8 @@ def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder, encodings: List
 
     # Read length - same logic as encoder
     length = 0
-    if size_value >= FIELD_NAME_SIZE_THRESHOLD:
-        length = size_value - FIELD_NAME_SIZE_THRESHOLD + buffer.read_varuint32()
+    if size_value >= BIG_NAME_THRESHOLD:
+        length = size_value - BIG_NAME_THRESHOLD + buffer.read_varuint32()
     else:
         length = size_value
 
@@ -202,6 +203,7 @@ def read_field_info(buffer: Buffer, resolver, defined_class: str) -> FieldInfo:
     xtype_id = buffer.read_varuint32()
     field_type = FieldType.xread_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
 
-    # Read field name
-    field_name = FIELD_NAME_DECODER.decode(buffer.read_bytes(field_name_size), encoding)
+    # Read field name - it comes AFTER the type info in the encoding
+    field_name_bytes = buffer.read_bytes(field_name_size)
+    field_name = FIELD_NAME_DECODER.decode(field_name_bytes, encoding)
     return FieldInfo(field_name, field_type, defined_class)

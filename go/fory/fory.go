@@ -539,11 +539,12 @@ func (f *Fory) readReferencableBySerializer(buf *ByteBuffer, value reflect.Value
 
 func (f *Fory) readData(buffer *ByteBuffer, value reflect.Value, serializer Serializer) (err error) {
 	if serializer == nil {
-		typeInfo, err := f.typeResolver.readTypeInfo(buffer)
+		typeInfo, err := f.typeResolver.readTypeInfo(buffer, value)
 		if err != nil {
 			return fmt.Errorf("read typeinfo failed: %w", err)
 		}
 		serializer = typeInfo.Serializer
+
 		var concrete reflect.Value
 		var type_ reflect.Type
 		/*

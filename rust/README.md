@@ -305,7 +305,6 @@ Apache Fory™ supports polymorphic serialization through trait objects, enablin
 use fory::{Fory, register_trait_type};
 use fory::Serializer;
 use fory::ForyObject;
-use fory::Mode;
 
 trait Animal: Serializer {
     fn speak(&self) -> String;
@@ -336,7 +335,7 @@ struct Zoo {
     star_animal: Box<dyn Animal>,
 }
 
-let mut fory = Fory::default().mode(Mode::Compatible);
+let mut fory = Fory::default().compatible(true);
 fory.register::<Dog>(100);
 fory.register::<Cat>(101);
 fory.register::<Zoo>(102);
@@ -425,7 +424,7 @@ struct AnimalShelter {
     registry: HashMap<String, Arc<dyn Animal>>,
 }
 
-let mut fory = Fory::default().mode(Mode::Compatible);
+let mut fory = Fory::default().compatible(true);
 fory.register::<Dog>(100);
 fory.register::<Cat>(101);
 fory.register::<AnimalShelter>(102);
@@ -510,7 +509,6 @@ Apache Fory™ supports schema evolution in **Compatible mode**, allowing serial
 
 ```rust
 use fory::Fory;
-use fory::Mode;
 use fory::ForyObject;
 use std::collections::HashMap;
 
@@ -531,10 +529,10 @@ struct PersonV2 {
     metadata: HashMap<String, String>,
 }
 
-let mut fory1 = Fory::default().mode(Mode::Compatible);
+let mut fory1 = Fory::default().compatible(true);
 fory1.register::<PersonV1>(1);
 
-let mut fory2 = Fory::default().mode(Mode::Compatible);
+let mut fory2 = Fory::default().compatible(true);
 fory2.register::<PersonV2>(1);
 
 let person_v1 = PersonV1 {
@@ -618,8 +616,8 @@ impl Serializer for CustomType {
         Ok(Self { value, name })
     }
 
-    fn fory_type_id_dyn(&self, fory: &Fory) -> u32 {
-        Self::fory_get_type_id(fory)
+    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> u32 {
+        Self::fory_get_type_id(type_resolver)
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -732,6 +730,48 @@ assert_eq!(prefs.values().get(0), "en");
 | Memory usage         | Full object graph in memory   | Only accessed fields in memory  |
 | Suitable for         | Small objects, full access    | Large objects, selective access |
 
+### 8. Thread-Safe Serialization
+
+Apache Fory™ Rust is fully thread-safe: `Fory` implements both `Send` and `Sync`, so one configured instance can be shared across threads for concurrent work. The internal read/write context pools are lazily initialized with thread-safe primitives, letting worker threads reuse buffers without coordination.
+
+```rust
+use fory::{Fory, Error};
+use fory::ForyObject;
+use std::sync::Arc;
+use std::thread;
+
+#[derive(ForyObject, Clone, Copy, Debug, PartialEq)]
+struct Item {
+    value: i32,
+}
+
+fn main() -> Result<(), Error> {
+    let mut fory = Fory::default();
+    fory.register::<Item>(1000)?;
+
+    let fory = Arc::new(fory);
+    let handles: Vec<_> = (0..8)
+        .map(|i| {
+            let shared = Arc::clone(&fory);
+            thread::spawn(move || {
+                let item = Item { value: i };
+                shared.serialize(&item)
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        let bytes = handle.join().unwrap()?;
+        let item: Item = fory.deserialize(&bytes)?;
+        assert!(item.value >= 0);
+    }
+
+    Ok(())
+}
+```
+
+**Tip:** Perform registrations (such as `fory.register::<T>(id)`) before spawning threads so every worker sees the same metadata. Once configured, wrapping the instance in `Arc` is enough to fan out serialization and deserialization tasks safely.
+
 ## 🔧 Supported Types
 
 ### Primitive Types
@@ -789,11 +829,10 @@ Apache Fory™ supports seamless data exchange across multiple languages:
 
 ```rust
 use fory::Fory;
-use fory::Mode;
 
 // Enable cross-language mode
 let mut fory = Fory::default()
-    .mode(Mode::Compatible)
+    .compatible(true)
     .xlang(true);
 
 // Register types with consistent IDs across languages
@@ -887,9 +926,7 @@ let fory = Fory::default(); // SchemaConsistent by default
 Allows independent schema evolution:
 
 ```rust
-use fory::Mode;
-
-let fory = Fory::default().mode(Mode::Compatible);
+let fory = Fory::default().compatible(true);
 ```
 
 ## ⚙️ Configuration
@@ -925,6 +962,15 @@ let fory = Fory::default().max_dyn_depth(10); // Allow up to 10 levels
 
 Note: Static data types (non-dynamic types) are secure by nature and not subject to depth limits, as their structure is known at compile time.
 
+## 🧪 Troubleshooting
+
+- **Type registry errors**: An error like `TypeId ... not found in type_info registry` means the type was never registered with the current `Fory` instance. Confirm that every serializable struct or trait implementation calls `fory.register::<T>(type_id)` before serialization and that the same IDs are reused on the deserialize side.
+- **Quick error lookup**: Prefer the static constructors on `fory_core::error::Error` (`Error::type_mismatch`, `Error::invalid_data`, `Error::unknown`, etc.) rather than instantiating variants manually. This keeps diagnostics consistent and makes opt-in panics work.
+- **Panic on error for backtraces**: Toggle `FORY_PANIC_ON_ERROR=1` (or `true`) alongside `RUST_BACKTRACE=1` when running tests or binaries to panic at the exact site an error is constructed. Reset the variable afterwards to avoid aborting user-facing code paths.
+- **Struct field tracing**: Add the `#[fory_debug]` attribute alongside `#[derive(ForyObject)]` to tell the macro to emit hook invocations for that type. Once compiled with debug hooks, call `set_before_write_field_func`, `set_after_write_field_func`, `set_before_read_field_func`, or `set_after_read_field_func` (from `fory-core/src/serializer/struct_.rs`) to plug in custom callbacks, and use `reset_struct_debug_hooks()` when you want the defaults back.
+- **Lightweight logging**: Without custom hooks, enable `ENABLE_FORY_DEBUG_OUTPUT=1` to print field-level read/write events emitted by the default hook functions. This is especially useful when investigating alignment or cursor mismatches.
+- **Test-time hygiene**: Some integration tests expect `FORY_PANIC_ON_ERROR` to remain unset. Export it only for focused debugging sessions, and prefer `cargo test --features tests -p tests --test <case>` when isolating failing scenarios.
+
 ## 🛠️ Development
 
 ### Building
@@ -941,7 +987,7 @@ cargo build
 cargo test --features tests
 
 # Run specific test
-cargo test -p fory-tests --test test_complex_struct
+cargo test -p tests --test test_complex_struct
 ```
 
 ### Code Quality

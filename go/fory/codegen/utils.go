@@ -273,22 +273,28 @@ func getTypeIDValue(typeID string) int {
 }
 
 // sortFields sorts fields according to Fory protocol specification
-// This matches the reflection-based sorting exactly for cross-language compatibility
+// This matches the new field ordering specification for cross-language compatibility
 func sortFields(fields []*FieldInfo) {
 	sort.Slice(fields, func(i, j int) bool {
 		f1, f2 := fields[i], fields[j]
 
-		// Group primitives first (matching reflection's boxed group)
-		if f1.IsPrimitive && !f2.IsPrimitive {
-			return true
-		}
-		if !f1.IsPrimitive && f2.IsPrimitive {
-			return false
+		// Categorize fields into groups
+		group1 := getFieldGroup(f1)
+		group2 := getFieldGroup(f2)
+
+		// Sort by group first
+		if group1 != group2 {
+			return group1 < group2
 		}
 
-		if f1.IsPrimitive && f2.IsPrimitive {
-			// Match reflection's boxed sorting logic exactly
-			// First: handle compression types (INT32/INT64/VAR_INT32/VAR_INT64)
+		// Within same group, apply group-specific sorting
+		switch group1 {
+		case groupPrimitive:
+			// Primitive fields: larger size first, smaller later, variable size last
+			// When same size, sort by type id
+			// When same size and type id, sort by snake case field name
+
+			// Handle compression types (INT32/INT64/VAR_INT32/VAR_INT64)
 			compressI := f1.TypeID == "INT32" || f1.TypeID == "INT64" ||
 				f1.TypeID == "VAR_INT32" || f1.TypeID == "VAR_INT64"
 			compressJ := f2.TypeID == "INT32" || f2.TypeID == "INT64" ||
@@ -298,22 +304,95 @@ func sortFields(fields []*FieldInfo) {
 				return !compressI && compressJ // non-compress comes first
 			}
 
-			// Then: by size (descending)
+			// Sort by size (descending)
 			if f1.PrimitiveSize != f2.PrimitiveSize {
 				return f1.PrimitiveSize > f2.PrimitiveSize
 			}
 
-			// Finally: by name (ascending)
+			// Sort by type ID
+			if f1.TypeID != f2.TypeID {
+				return getTypeIDValue(f1.TypeID) < getTypeIDValue(f2.TypeID)
+			}
+
+			// Finally by name
+			return f1.SnakeName < f2.SnakeName
+
+		case groupOtherInternalType:
+			// Other internal type fields: sort by type id then snake case field name
+			if f1.TypeID != f2.TypeID {
+				return getTypeIDValue(f1.TypeID) < getTypeIDValue(f2.TypeID)
+			}
+			return f1.SnakeName < f2.SnakeName
+
+		case groupList, groupSet, groupMap, groupOther:
+			// List/Set/Map/Other fields: sort by snake case field name only
+			return f1.SnakeName < f2.SnakeName
+
+		default:
+			// Fallback: sort by name
 			return f1.SnakeName < f2.SnakeName
 		}
-
-		// For non-primitives: STRING comes in final group, others in others group
-		// All sorted by type ID, then by name (matching reflection)
-		if f1.TypeID != f2.TypeID {
-			return getTypeIDValue(f1.TypeID) < getTypeIDValue(f2.TypeID)
-		}
-		return f1.SnakeName < f2.SnakeName
 	})
+}
+
+// Field group constants for sorting
+const (
+	groupPrimitive         = 0 // primitive and nullable primitive fields
+	groupOtherInternalType = 1 // other internal type fields (string, timestamp, etc.)
+	groupList              = 2 // list fields
+	groupSet               = 3 // set fields
+	groupMap               = 4 // map fields
+	groupOther             = 5 // other fields
+)
+
+// getFieldGroup categorizes a field into its sorting group
+func getFieldGroup(field *FieldInfo) int {
+	typeID := field.TypeID
+
+	// Primitive fields (including nullable primitives)
+	// types: bool/int8/int16/int32/varint32/int64/varint64/sliint64/float16/float32/float64
+	if field.IsPrimitive {
+		return groupPrimitive
+	}
+
+	// List fields
+	if typeID == "LIST" {
+		return groupList
+	}
+
+	// Set fields
+	if typeID == "SET" {
+		return groupSet
+	}
+
+	// Map fields
+	if typeID == "MAP" {
+		return groupMap
+	}
+
+	// Other internal type fields
+	// These are fory internal types that are not primitives/lists/sets/maps
+	// Examples: STRING, TIMESTAMP, LOCAL_DATE, NAMED_STRUCT, etc.
+	internalTypes := map[string]bool{
+		"STRING":       true,
+		"TIMESTAMP":    true,
+		"LOCAL_DATE":   true,
+		"NAMED_STRUCT": true,
+		"STRUCT":       true,
+		"BINARY":       true,
+		"ENUM":         true,
+		"NAMED_ENUM":   true,
+		"EXT":          true,
+		"NAMED_EXT":    true,
+		"INTERFACE":    true, // for interface{} types
+	}
+
+	if internalTypes[typeID] {
+		return groupOtherInternalType
+	}
+
+	// Everything else goes to "other fields"
+	return groupOther
 }
 
 // computeStructHash computes a hash for struct schema compatibility

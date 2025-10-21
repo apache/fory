@@ -20,18 +20,15 @@ use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::WriteContext;
 use crate::resolver::context::{Pool, ReadContext};
-use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
+use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::IS_NULL_FLAG;
 use crate::types::{
     config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_LITTLE_ENDIAN_FLAG},
-    Language, Mode, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
+    Language, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
 };
-use crate::util::get_ext_actual_type_id;
-use anyhow::anyhow;
-
-static EMPTY_STRING: String = String::new();
+use std::sync::OnceLock;
 
 /// The main Fory serialization framework instance.
 ///
@@ -69,57 +66,51 @@ static EMPTY_STRING: String = String::new();
 /// Custom configuration:
 ///
 /// ```rust
-/// use fory_core::{Fory, Mode};
+/// use fory_core::Fory;
 ///
 /// let fory = Fory::default()
-///     .mode(Mode::Compatible)
+///     .compatible(true)
 ///     .compress_string(true)
 ///     .max_dyn_depth(10);
 /// ```
 pub struct Fory {
-    mode: Mode,
+    compatible: bool,
     xlang: bool,
     share_meta: bool,
     type_resolver: TypeResolver,
     compress_string: bool,
     max_dyn_depth: u32,
-    write_context_pool: Pool<WriteContext>,
-    read_context_pool: Pool<ReadContext>,
+    check_struct_version: bool,
+    // Lazy-initialized pools (thread-safe, one-time initialization)
+    write_context_pool: OnceLock<Pool<WriteContext>>,
+    read_context_pool: OnceLock<Pool<ReadContext>>,
 }
 
 impl Default for Fory {
     fn default() -> Self {
-        let write_context_constructor = || {
-            let writer = Writer::default();
-            WriteContext::new(writer)
-        };
-        let read_context_constructor = || {
-            let reader = Reader::new(&[]);
-            // when context is popped out, max_dyn_depth will be assigned a valid value
-            ReadContext::new(reader, 0)
-        };
         Fory {
-            mode: Mode::SchemaConsistent,
+            compatible: false,
             xlang: true,
             share_meta: false,
             type_resolver: TypeResolver::default(),
             compress_string: false,
             max_dyn_depth: 5,
-            write_context_pool: Pool::new(write_context_constructor),
-            read_context_pool: Pool::new(read_context_constructor),
+            check_struct_version: false,
+            write_context_pool: OnceLock::new(),
+            read_context_pool: OnceLock::new(),
         }
     }
 }
 
 impl Fory {
-    /// Sets the serialization mode for this Fory instance.
+    /// Sets the serialization compatible mode for this Fory instance.
     ///
     /// # Arguments
     ///
-    /// * `mode` - The serialization mode to use. Options are:
-    ///   - `Mode::SchemaConsistent`: Schema must be consistent between serialization and deserialization.
+    /// * `compatible` - The serialization compatible mode to use. Options are:
+    ///   - `false`: Schema must be consistent between serialization and deserialization.
     ///     No metadata is shared. This is the fastest mode.
-    ///   - `Mode::Compatible`: Supports schema evolution and type metadata sharing for better
+    ///   - true`: Supports schema evolution and type metadata sharing for better
     ///     cross-version compatibility.
     ///
     /// # Returns
@@ -128,21 +119,25 @@ impl Fory {
     ///
     /// # Note
     ///
-    /// Setting the mode also automatically configures the `share_meta` flag:
-    /// - `Mode::SchemaConsistent` → `share_meta = false`
-    /// - `Mode::Compatible` → `share_meta = true`
+    /// Setting the compatible mode also automatically configures the `share_meta` flag:
+    /// - `false` → `share_meta = false`
+    /// - true` → `share_meta = true`
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use fory_core::{Fory, Mode};
+    /// use fory_core::Fory;
     ///
-    /// let fory = Fory::default().mode(Mode::Compatible);
+    /// let fory = Fory::default().compatible(true);
     /// ```
-    pub fn mode(mut self, mode: Mode) -> Self {
+    pub fn compatible(mut self, compatible: bool) -> Self {
         // Setting share_meta individually is not supported currently
-        self.share_meta = mode != Mode::SchemaConsistent;
-        self.mode = mode;
+        self.share_meta = compatible;
+        self.compatible = compatible;
+        self.type_resolver.set_compatible(compatible);
+        if compatible {
+            self.check_struct_version = false;
+        }
         self
     }
 
@@ -176,6 +171,9 @@ impl Fory {
     /// ```
     pub fn xlang(mut self, xlang: bool) -> Self {
         self.xlang = xlang;
+        if !self.check_struct_version {
+            self.check_struct_version = !self.compatible;
+        }
         self
     }
 
@@ -209,6 +207,46 @@ impl Fory {
     /// ```
     pub fn compress_string(mut self, compress_string: bool) -> Self {
         self.compress_string = compress_string;
+        self
+    }
+
+    /// Enables or disables class version checking for schema consistency.
+    ///
+    /// # Arguments
+    ///
+    /// * `check_struct_version` - If `true`, enables class version checking to ensure
+    ///   schema consistency between serialization and deserialization. When enabled,
+    ///   a version hash computed from field types is written/read to detect schema mismatches.
+    ///   If `false`, no version checking is performed.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `false`.
+    ///
+    /// # Note
+    ///
+    /// This feature is only effective when `compatible` mode is `false`. In compatible mode,
+    /// schema evolution is supported and version checking is not needed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::default()
+    ///     .compatible(false)
+    ///     .check_struct_version(true);
+    /// ```
+    pub fn check_struct_version(mut self, check_struct_version: bool) -> Self {
+        if self.compatible && check_struct_version {
+            // ignore setting if compatible mode is on
+            return self;
+        }
+        self.check_struct_version = check_struct_version;
         self
     }
 
@@ -249,13 +287,18 @@ impl Fory {
         self
     }
 
+    /// Returns whether cross-language serialization is enabled.
+    pub fn is_xlang(&self) -> bool {
+        self.xlang
+    }
+
     /// Returns the current serialization mode.
     ///
     /// # Returns
     ///
-    /// A reference to the current `Mode` (either `SchemaConsistent` or `Compatible`).
-    pub fn get_mode(&self) -> &Mode {
-        &self.mode
+    /// `ture` if the serialization mode is compatible, `false` otherwise`.
+    pub fn is_compatible(&self) -> bool {
+        self.compatible
     }
 
     /// Returns whether string compression is enabled.
@@ -276,12 +319,22 @@ impl Fory {
         self.share_meta
     }
 
-    /// Returns a reference to the type resolver.
+    /// Returns the maximum depth for nested dynamic object serialization.
+    pub fn get_max_dyn_depth(&self) -> u32 {
+        self.max_dyn_depth
+    }
+
+    /// Returns whether class version checking is enabled.
     ///
     /// # Returns
     ///
-    /// A reference to the internal `TypeResolver` used for type registration and lookup.
-    pub fn get_type_resolver(&self) -> &TypeResolver {
+    /// `true` if class version checking is enabled, `false` otherwise.
+    pub fn is_check_struct_version(&self) -> bool {
+        self.check_struct_version
+    }
+
+    /// Returns a type resolver for type lookups.
+    pub(crate) fn get_type_resolver(&self) -> &TypeResolver {
         &self.type_resolver
     }
 
@@ -312,27 +365,27 @@ impl Fory {
 
     fn read_head(&self, reader: &mut Reader) -> Result<bool, Error> {
         if self.xlang {
-            let magic_numer = reader.read_u16();
+            let magic_numer = reader.read_u16()?;
             ensure!(
                 magic_numer == MAGIC_NUMBER,
-                anyhow!(
+                Error::invalid_data(format!(
                     "The fory xlang serialization must start with magic number {:X}. \
                     Please check whether the serialization is based on the xlang protocol \
                     and the data didn't corrupt.",
                     MAGIC_NUMBER
-                )
+                ))
             )
         }
-        let bitmap = reader.read_u8();
+        let bitmap = reader.read_u8()?;
         let peer_is_xlang = (bitmap & IS_CROSS_LANGUAGE_FLAG) != 0;
         ensure!(
             self.xlang == peer_is_xlang,
-            anyhow!("header bitmap mismatch at xlang bit")
+            Error::invalid_data("header bitmap mismatch at xlang bit")
         );
         let is_little_endian = (bitmap & IS_LITTLE_ENDIAN_FLAG) != 0;
         ensure!(
             is_little_endian,
-            anyhow!(
+            Error::invalid_data(
                 "Big endian is not supported for now, please ensure peer machine is little endian."
             )
         );
@@ -341,7 +394,7 @@ impl Fory {
             return Ok(true);
         }
         if peer_is_xlang {
-            let _peer_lang = reader.read_u8();
+            let _peer_lang = reader.read_u8()?;
         }
         Ok(false)
     }
@@ -381,14 +434,36 @@ impl Fory {
     /// let deserialized: Point = fory.deserialize(&bytes).unwrap();
     /// ```
     pub fn deserialize<T: Serializer + ForyDefault>(&self, bf: &[u8]) -> Result<T, Error> {
-        let mut context = self.read_context_pool.get();
+        let pool = self.read_context_pool.get_or_init(|| {
+            let type_resolver = self.type_resolver.clone();
+            let compatible = self.compatible;
+            let share_meta = self.share_meta;
+            let xlang = self.xlang;
+            let max_dyn_depth = self.max_dyn_depth;
+            let check_struct_version = self.check_struct_version;
+
+            let factory = move || {
+                let reader = Reader::new(&[]);
+                ReadContext::new(
+                    reader,
+                    type_resolver.clone(),
+                    compatible,
+                    share_meta,
+                    xlang,
+                    max_dyn_depth,
+                    check_struct_version,
+                )
+            };
+            Pool::new(factory)
+        });
+        let mut context = pool.get();
         context.init(bf, self.max_dyn_depth);
         let result = self.deserialize_with_context(&mut context);
         if result.is_ok() {
             assert_eq!(context.reader.slice_after_cursor().len(), 0);
         }
-        context.reset();
-        self.read_context_pool.put(context);
+        context.reader.reset();
+        pool.put(context);
         result
     }
 
@@ -401,17 +476,18 @@ impl Fory {
             return Ok(T::fory_default());
         }
         let mut bytes_to_skip = 0;
-        if self.mode == Mode::Compatible {
-            let meta_offset = context.reader.read_i32();
+        if context.is_compatible() {
+            let meta_offset = context.reader.read_i32()?;
             if meta_offset != -1 {
-                bytes_to_skip = context.load_meta(self.get_type_resolver(), meta_offset as usize);
+                bytes_to_skip = context.load_type_meta(meta_offset as usize)?;
             }
         }
-        let result = <T as Serializer>::fory_read(self, context, false);
+        let result = <T as Serializer>::fory_read(context, true, true);
         if bytes_to_skip > 0 {
-            context.reader.skip(bytes_to_skip as u32);
+            context.reader.skip(bytes_to_skip)?;
         }
         context.ref_reader.resolve_callbacks();
+        context.reset();
         result
     }
 
@@ -442,32 +518,55 @@ impl Fory {
     /// let point = Point { x: 10, y: 20 };
     /// let bytes = fory.serialize(&point);
     /// ```
-    pub fn serialize<T: Serializer>(&self, record: &T) -> Vec<u8> {
-        let mut context = self.write_context_pool.get();
-        let result = self.serialize_with_context(record, &mut context);
-        context.reset();
-        self.write_context_pool.put(context);
-        result
+    pub fn serialize<T: Serializer>(&self, record: &T) -> Result<Vec<u8>, Error> {
+        let pool = self.write_context_pool.get_or_init(|| {
+            let type_resolver = self.type_resolver.clone();
+            let compatible = self.compatible;
+            let share_meta = self.share_meta;
+            let compress_string = self.compress_string;
+            let xlang = self.xlang;
+            let check_struct_version = self.check_struct_version;
+
+            let factory = move || {
+                let writer = Writer::default();
+                WriteContext::new(
+                    writer,
+                    type_resolver.clone(),
+                    compatible,
+                    share_meta,
+                    compress_string,
+                    xlang,
+                    check_struct_version,
+                )
+            };
+            Pool::new(factory)
+        });
+        let mut context = pool.get();
+        let result = self.serialize_with_context(record, &mut context)?;
+        context.writer.reset();
+        pool.put(context);
+        Ok(result)
     }
 
     pub fn serialize_with_context<T: Serializer>(
         &self,
         record: &T,
         context: &mut WriteContext,
-    ) -> Vec<u8> {
+    ) -> Result<Vec<u8>, Error> {
         let is_none = record.fory_is_none();
         self.write_head::<T>(is_none, &mut context.writer);
         let meta_start_offset = context.writer.len();
         if !is_none {
-            if self.mode == Mode::Compatible {
+            if context.is_compatible() {
                 context.writer.write_i32(-1);
             };
-            <T as Serializer>::fory_write(record, self, context, false);
-            if self.mode == Mode::Compatible && !context.empty() {
+            <T as Serializer>::fory_write(record, context, true, true, false)?;
+            if context.is_compatible() && !context.empty() {
                 context.write_meta(meta_start_offset);
             }
         }
-        context.writer.dump()
+        context.reset();
+        Ok(context.writer.dump())
     }
 
     /// Registers a struct type with a numeric type ID for serialization.
@@ -497,11 +596,11 @@ impl Fory {
     /// let mut fory = Fory::default();
     /// fory.register::<User>(100);
     /// ```
-    pub fn register<T: 'static + StructSerializer + Serializer + ForyDefault>(&mut self, id: u32) {
-        let actual_type_id = T::fory_actual_type_id(id, false, &self.mode);
-        let type_info =
-            TypeInfo::new::<T>(self, actual_type_id, &EMPTY_STRING, &EMPTY_STRING, false);
-        self.type_resolver.register::<T>(&type_info);
+    pub fn register<T: 'static + StructSerializer + Serializer + ForyDefault>(
+        &mut self,
+        id: u32,
+    ) -> Result<(), Error> {
+        self.type_resolver.register_by_id::<T>(id)
     }
 
     /// Registers a struct type with a namespace and type name for cross-language serialization.
@@ -538,10 +637,9 @@ impl Fory {
         &mut self,
         namespace: &str,
         type_name: &str,
-    ) {
-        let actual_type_id = T::fory_actual_type_id(0, true, &self.mode);
-        let type_info = TypeInfo::new::<T>(self, actual_type_id, namespace, type_name, true);
-        self.type_resolver.register::<T>(&type_info);
+    ) -> Result<(), Error> {
+        self.type_resolver
+            .register_by_namespace::<T>(namespace, type_name)
     }
 
     /// Registers a struct type with a type name (using the default namespace).
@@ -573,8 +671,8 @@ impl Fory {
     pub fn register_by_name<T: 'static + StructSerializer + Serializer + ForyDefault>(
         &mut self,
         type_name: &str,
-    ) {
-        self.register_by_namespace::<T>("", type_name);
+    ) -> Result<(), Error> {
+        self.register_by_namespace::<T>("", type_name)
     }
 
     /// Registers a custom serializer type with a numeric type ID.
@@ -604,16 +702,11 @@ impl Fory {
     /// let mut fory = Fory::default();
     /// fory.register_serializer::<MyCustomType>(200);
     /// ```
-    pub fn register_serializer<T: Serializer + ForyDefault>(&mut self, id: u32) {
-        let actual_type_id = get_ext_actual_type_id(id, false);
-        let type_info = TypeInfo::new_with_empty_fields::<T>(
-            self,
-            actual_type_id,
-            &EMPTY_STRING,
-            &EMPTY_STRING,
-            false,
-        );
-        self.type_resolver.register_serializer::<T>(&type_info);
+    pub fn register_serializer<T: Serializer + ForyDefault>(
+        &mut self,
+        id: u32,
+    ) -> Result<(), Error> {
+        self.type_resolver.register_serializer_by_id::<T>(id)
     }
 
     /// Registers a custom serializer type with a namespace and type name.
@@ -636,11 +729,9 @@ impl Fory {
         &mut self,
         namespace: &str,
         type_name: &str,
-    ) {
-        let actual_type_id = get_ext_actual_type_id(0, true);
-        let type_info =
-            TypeInfo::new_with_empty_fields::<T>(self, actual_type_id, namespace, type_name, true);
-        self.type_resolver.register_serializer::<T>(&type_info);
+    ) -> Result<(), Error> {
+        self.type_resolver
+            .register_serializer_by_namespace::<T>(namespace, type_name)
     }
 
     /// Registers a custom serializer type with a type name (using the default namespace).
@@ -656,24 +747,27 @@ impl Fory {
     /// # Notes
     ///
     /// This is a convenience method that calls `register_serializer_by_namespace` with an empty namespace.
-    pub fn register_serializer_by_name<T: Serializer + ForyDefault>(&mut self, type_name: &str) {
-        self.register_serializer_by_namespace::<T>("", type_name);
+    pub fn register_serializer_by_name<T: Serializer + ForyDefault>(
+        &mut self,
+        type_name: &str,
+    ) -> Result<(), Error> {
+        self.register_serializer_by_namespace::<T>("", type_name)
+    }
+
+    /// Registers a generic trait object type for serialization.
+    /// This method should be used to register collection types such as `Vec<T>`, `HashMap<K, V>`, etc.
+    /// Don't register concrete struct types with this method. Use `register()` instead.
+    pub fn register_generic_trait<T: 'static + Serializer + ForyDefault>(
+        &mut self,
+    ) -> Result<(), Error> {
+        self.type_resolver.register_generic_trait::<T>()
     }
 }
 
-pub fn write_data<T: Serializer>(
-    this: &T,
-    fory: &Fory,
-    context: &mut WriteContext,
-    is_field: bool,
-) {
-    T::fory_write_data(this, fory, context, is_field);
+pub fn write_data<T: Serializer>(this: &T, context: &mut WriteContext) -> Result<(), Error> {
+    T::fory_write_data(this, context)
 }
 
-pub fn read_data<T: Serializer + ForyDefault>(
-    fory: &Fory,
-    context: &mut ReadContext,
-    is_field: bool,
-) -> Result<T, Error> {
-    T::fory_read_data(fory, context, is_field)
+pub fn read_data<T: Serializer + ForyDefault>(context: &mut ReadContext) -> Result<T, Error> {
+    T::fory_read_data(context)
 }

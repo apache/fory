@@ -28,10 +28,10 @@ struct Simple {
 #[test]
 fn test_rc_refcell_simple() {
     let mut fory = Fory::default();
-    fory.register::<Simple>(3000);
+    fory.register::<Simple>(3000).unwrap();
 
     let node = Rc::new(RefCell::new(Simple { value: 42 }));
-    let serialized = fory.serialize(&node);
+    let serialized = fory.serialize(&node).unwrap();
     let deserialized: Rc<RefCell<Simple>> = fory.deserialize(&serialized).unwrap();
     assert_eq!(deserialized.borrow().value, 42);
 }
@@ -45,15 +45,15 @@ struct Parent {
 #[test]
 fn test_rc_refcell_in_struct() {
     let mut fory = Fory::default();
-    fory.register::<Simple>(3001);
-    fory.register::<Parent>(3002);
+    fory.register::<Simple>(3001).unwrap();
+    fory.register::<Parent>(3002).unwrap();
 
     let child = Rc::new(RefCell::new(Simple { value: 99 }));
     let parent = Parent {
         value: 1,
         child: Some(child),
     };
-    let serialized = fory.serialize(&parent);
+    let serialized = fory.serialize(&parent).unwrap();
     let deserialized: Parent = fory.deserialize(&serialized).unwrap();
     assert_eq!(deserialized.value, 1);
     assert_eq!(deserialized.child.unwrap().borrow().value, 99);

@@ -462,6 +462,7 @@ func (s *ptrToValueSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Val
 }
 
 func (s *ptrToValueSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+	fmt.Printf("type_: %v\n", type_)
 	newValue := reflect.New(type_.Elem())
 	value.Set(newValue)
 	return s.valueSerializer.Read(f, buf, type_.Elem(), newValue.Elem())

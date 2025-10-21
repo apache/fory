@@ -20,6 +20,7 @@ use fory_derive::ForyObject;
 use std::any::Any;
 
 #[derive(ForyObject, Debug)]
+#[fory_debug]
 struct Container {
     value: i32,
     nested: Option<Box<dyn Any>>,
@@ -27,10 +28,12 @@ struct Container {
 
 #[test]
 fn test_max_dyn_depth_exceeded_box_dyn_any() {
-    use fory_core::types::Mode;
-    for mode in [Mode::SchemaConsistent, Mode::Compatible] {
-        let mut fory = Fory::default().max_dyn_depth(2).mode(mode);
-        fory.register::<Container>(100);
+    if fory_core::error::should_panic_on_error() {
+        return;
+    }
+    for compatible in [false, true] {
+        let mut fory = Fory::default().max_dyn_depth(2).compatible(compatible);
+        fory.register::<Container>(100).unwrap();
 
         let level3 = Container {
             value: 3,
@@ -46,7 +49,7 @@ fn test_max_dyn_depth_exceeded_box_dyn_any() {
         };
 
         let outer: Box<dyn Any> = Box::new(level1);
-        let bytes = fory.serialize(&outer);
+        let bytes = fory.serialize(&outer).unwrap();
         let result: Result<Box<dyn Any>, _> = fory.deserialize(&bytes);
         assert!(
             result.is_err(),
@@ -60,8 +63,11 @@ fn test_max_dyn_depth_exceeded_box_dyn_any() {
 
 #[test]
 fn test_max_dyn_depth_within_limit_box_dyn_any() {
+    if fory_core::error::should_panic_on_error() {
+        return;
+    }
     let mut fory = Fory::default().max_dyn_depth(3);
-    fory.register::<Container>(100);
+    fory.register::<Container>(100).unwrap();
 
     let level3 = Container {
         value: 3,
@@ -77,15 +83,18 @@ fn test_max_dyn_depth_within_limit_box_dyn_any() {
     };
 
     let outer: Box<dyn Any> = Box::new(level1);
-    let bytes = fory.serialize(&outer);
+    let bytes = fory.serialize(&outer).unwrap();
     let result: Result<Box<dyn Any>, _> = fory.deserialize(&bytes);
     assert!(result.is_ok());
 }
 
 #[test]
 fn test_max_dyn_depth_default_exceeded() {
+    if fory_core::error::should_panic_on_error() {
+        return;
+    }
     let mut fory = Fory::default();
-    fory.register::<Container>(100);
+    fory.register::<Container>(100).unwrap();
 
     let mut current = Container {
         value: 6,
@@ -100,7 +109,7 @@ fn test_max_dyn_depth_default_exceeded() {
     }
 
     let outer: Box<dyn Any> = Box::new(current);
-    let bytes = fory.serialize(&outer);
+    let bytes = fory.serialize(&outer).unwrap();
     let result: Result<Box<dyn Any>, _> = fory.deserialize(&bytes);
 
     assert!(result.is_err());
@@ -112,8 +121,11 @@ fn test_max_dyn_depth_default_exceeded() {
 
 #[test]
 fn test_max_dyn_depth_default_within_limit() {
+    if fory_core::error::should_panic_on_error() {
+        return;
+    }
     let mut fory = Fory::default();
-    fory.register::<Container>(100);
+    fory.register::<Container>(100).unwrap();
 
     let mut current = Container {
         value: 5,
@@ -128,7 +140,7 @@ fn test_max_dyn_depth_default_within_limit() {
     }
 
     let outer: Box<dyn Any> = Box::new(current);
-    let bytes = fory.serialize(&outer);
+    let bytes = fory.serialize(&outer).unwrap();
     let result: Result<Box<dyn Any>, _> = fory.deserialize(&bytes);
 
     assert!(result.is_ok());

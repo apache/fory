@@ -464,7 +464,7 @@ class MapSerializer(Serializer):
         items_iter = iter(obj.items())
         key, value = next(items_iter)
         has_next = True
-        serialize_ref = fory.serialize_ref if self.fory.is_py else fory.xserialize_ref
+        serialize_ref = fory.serialize_ref if self.fory.is_py else fory.xwrite_ref
         while has_next:
             while True:
                 if key is not None:
@@ -567,7 +567,7 @@ class MapSerializer(Serializer):
         if size != 0:
             chunk_header = buffer.read_uint8()
         key_serializer, value_serializer = self.key_serializer, self.value_serializer
-        deserialize_ref = fory.deserialize_ref if self.fory.is_py else fory.xdeserialize_ref
+        read_ref = fory.read_ref if self.fory.is_py else fory.xread_ref
         fory.inc_depth()
         while size > 0:
             while True:
@@ -589,7 +589,7 @@ class MapSerializer(Serializer):
                             else:
                                 key = self._read_obj(key_serializer, buffer)
                         else:
-                            key = deserialize_ref(buffer)
+                            key = read_ref(buffer)
                         map_[key] = None
                 else:
                     if not value_has_null:
@@ -603,7 +603,7 @@ class MapSerializer(Serializer):
                                     value = self._read_obj(value_serializer, buffer)
                                     ref_resolver.set_read_object(ref_id, value)
                         else:
-                            value = deserialize_ref(buffer)
+                            value = read_ref(buffer)
                         map_[None] = value
                     else:
                         map_[None] = None
@@ -733,15 +733,15 @@ class SliceSerializer(Serializer):
         if buffer.read_int8() == NULL_FLAG:
             start = None
         else:
-            start = self.fory.deserialize_nonref(buffer)
+            start = self.fory.read_no_ref(buffer)
         if buffer.read_int8() == NULL_FLAG:
             stop = None
         else:
-            stop = self.fory.deserialize_nonref(buffer)
+            stop = self.fory.read_no_ref(buffer)
         if buffer.read_int8() == NULL_FLAG:
             step = None
         else:
-            step = self.fory.deserialize_nonref(buffer)
+            step = self.fory.read_no_ref(buffer)
         return slice(start, stop, step)
 
     def xwrite(self, buffer, value):

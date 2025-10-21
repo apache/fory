@@ -18,8 +18,10 @@
 import datetime
 import enum
 import logging
+import os
 import typing
 
+from pyfory.lib.mmh3 import hash_buffer
 from pyfory.type import (
     TypeVisitor,
     infer_field,
@@ -31,7 +33,6 @@ from pyfory.type import (
     Float32Type,
     Float64Type,
     is_py_array_type,
-    compute_string_hash,
     is_primitive_type,
 )
 
@@ -45,6 +46,37 @@ from pyfory.type import (
 from pyfory.type import is_subclass
 
 logger = logging.getLogger(__name__)
+
+
+_TYPE_HASH_SEED = 47
+
+
+def _extract_primary_type_id(type_ids):
+    if isinstance(type_ids, (list, tuple)):
+        if not type_ids:
+            return TypeId.UNKNOWN
+        return type_ids[0]
+    return type_ids
+
+
+def _normalize_type_id(raw_type_id):
+    if not isinstance(raw_type_id, int):
+        return TypeId.UNKNOWN
+    base_type = raw_type_id & 0xFF
+    if base_type >= TypeId.BOUND:
+        return TypeId.UNKNOWN
+    if TypeId.is_namespaced_type(base_type):
+        return TypeId.UNKNOWN
+    return base_type
+
+
+def _to_snow_case(name: str) -> str:
+    chars = []
+    for index, ch in enumerate(name):
+        if ch.isupper() and index > 0:
+            chars.append("_")
+        chars.append(ch.lower())
+    return "".join(chars)
 
 
 basic_types = {
@@ -108,21 +140,22 @@ class StructFieldSerializerVisitor(TypeVisitor):
         return serializer
 
 
-def _get_hash(fory, field_names: list, type_hints: dict):
-    visitor = StructHashVisitor(fory)
-    for index, key in enumerate(field_names):
-        infer_field(key, type_hints[key], visitor, types_path=[])
-    hash_ = visitor.get_hash()
-    assert hash_ != 0
-    return hash_
-
-
 _UNKNOWN_TYPE_ID = -1
 _time_types = {datetime.date, datetime.datetime, datetime.timedelta}
 
 
-def _sort_fields(type_resolver, field_names, serializers):
+def _sort_fields(type_resolver, field_names, serializers, nullable_map=None):
+    (boxed_types, nullable_boxed_types, internal_types, collection_types, set_types, map_types, other_types) = group_fields(
+        type_resolver, field_names, serializers, nullable_map
+    )
+    all_types = boxed_types + nullable_boxed_types + internal_types + collection_types + set_types + map_types + other_types
+    return [t[2] for t in all_types], [t[1] for t in all_types]
+
+
+def group_fields(type_resolver, field_names, serializers, nullable_map=None):
+    nullable_map = nullable_map or {}
     boxed_types = []
+    nullable_boxed_types = []
     collection_types = []
     set_types = []
     map_types = []
@@ -141,8 +174,9 @@ def _sort_fields(type_resolver, field_names, serializers):
                 )
             )
     for type_id, serializer, field_name in type_ids:
+        is_nullable = nullable_map.get(field_name, False)
         if is_primitive_type(type_id):
-            container = boxed_types
+            container = nullable_boxed_types if is_nullable else boxed_types
         elif type_id == TypeId.SET:
             container = set_types
         elif is_list_type(serializer.type_):
@@ -174,71 +208,67 @@ def _sort_fields(type_resolver, field_names, serializers):
         return int(compress), -get_primitive_type_size(id_), item[2]
 
     boxed_types = sorted(boxed_types, key=numeric_sorter)
+    nullable_boxed_types = sorted(nullable_boxed_types, key=numeric_sorter)
     collection_types = sorted(collection_types, key=sorter)
     internal_types = sorted(internal_types, key=sorter)
     map_types = sorted(map_types, key=sorter)
     other_types = sorted(other_types, key=lambda item: item[2])
-    all_types = boxed_types + internal_types + collection_types + set_types + map_types + other_types
-    return [t[2] for t in all_types], [t[1] for t in all_types]
+    return (boxed_types, nullable_boxed_types, internal_types, collection_types, set_types, map_types, other_types)
 
 
-class StructHashVisitor(TypeVisitor):
-    def __init__(
-        self,
-        fory,
+def compute_struct_meta(type_resolver, field_names, serializers, nullable_map=None):
+    (boxed_types, nullable_boxed_types, internal_types, collection_types, set_types, map_types, other_types) = group_fields(
+        type_resolver, field_names, serializers, nullable_map
+    )
+
+    # Build hash string
+    hash_parts = []
+
+    # boxed_types => non-nullable
+    for field in boxed_types:
+        type_id = field[0]
+        field_name = field[2]  # already snake_case
+        nullable_flag = "0"
+        hash_parts.append(f"{field_name},{type_id},{nullable_flag};")
+
+    # All other groups => nullable
+    for group in (
+        nullable_boxed_types,
+        internal_types,
+        collection_types,
+        set_types,
+        map_types,
     ):
-        self.fory = fory
-        self._hash = 17
+        for field in group:
+            type_id = field[0]
+            field_name = field[2]
+            nullable_flag = "1"
+            hash_parts.append(f"{field_name},{type_id},{nullable_flag};")
+    for field in other_types:
+        type_id = TypeId.UNKNOWN
+        field_name = field[2]
+        nullable_flag = "1"
+        hash_parts.append(f"{field_name},{type_id},{nullable_flag};")
 
-    def visit_list(self, field_name, elem_type, types_path=None):
-        # TODO add list element type to hash.
-        xtype_id = self.fory.type_resolver.get_typeinfo(list).type_id
-        self._hash = self._compute_field_hash(self._hash, abs(xtype_id))
+    hash_str = "".join(hash_parts)
+    hash_bytes = hash_str.encode("utf-8")
 
-    def visit_set(self, field_name, elem_type, types_path=None):
-        # TODO add set element type to hash.
-        xtype_id = self.fory.type_resolver.get_typeinfo(set).type_id
-        self._hash = self._compute_field_hash(self._hash, abs(xtype_id))
+    full_hash = hash_buffer(hash_bytes, seed=47)[0]
+    type_hash_32 = full_hash & 0xFFFFFFFF
+    if full_hash & 0x80000000:
+        # If the sign bit is set, it's a negative number in 2's complement
+        # Subtract 2^32 to get the correct negative value
+        type_hash_32 = type_hash_32 - 0x100000000
+    assert type_hash_32 != 0
+    if os.environ.get("ENABLE_FORY_DEBUG_OUTPUT", "").lower() in ("1", "true"):
+        print(f'[fory-debug] struct version fingerprint="{hash_str}" version hash={type_hash_32}')
 
-    def visit_dict(self, field_name, key_type, value_type, types_path=None):
-        # TODO add map key/value type to hash.
-        xtype_id = self.fory.type_resolver.get_typeinfo(dict).type_id
-        self._hash = self._compute_field_hash(self._hash, abs(xtype_id))
+    # Flatten all groups in correct order (already sorted from group_fields)
+    all_types = boxed_types + nullable_boxed_types + internal_types + collection_types + set_types + map_types + other_types
+    sorted_field_names = [f[2] for f in all_types]
+    sorted_serializers = [f[1] for f in all_types]
 
-    def visit_customized(self, field_name, type_, types_path=None):
-        typeinfo = self.fory.type_resolver.get_typeinfo(type_, create=False)
-        hash_value = 0
-        if typeinfo is not None:
-            hash_value = typeinfo.type_id
-            if TypeId.is_namespaced_type(typeinfo.type_id):
-                namespace_str = typeinfo.decode_namespace()
-                typename_str = typeinfo.decode_typename()
-                hash_value = compute_string_hash(namespace_str + typename_str)
-        self._hash = self._compute_field_hash(self._hash, hash_value)
-
-    def visit_other(self, field_name, type_, types_path=None):
-        typeinfo = self.fory.type_resolver.get_typeinfo(type_, create=False)
-        if typeinfo is None:
-            id_ = 0
-        else:
-            serializer = typeinfo.serializer
-            id_ = typeinfo.type_id
-            assert id_ is not None, serializer
-            if TypeId.is_namespaced_type(typeinfo.type_id):
-                namespace_str = typeinfo.decode_namespace()
-                typename_str = typeinfo.decode_typename()
-                id_ = compute_string_hash(namespace_str + typename_str)
-        self._hash = self._compute_field_hash(self._hash, id_)
-
-    @staticmethod
-    def _compute_field_hash(hash_, id_):
-        new_hash = hash_ * 31 + id_
-        while new_hash >= 2**31 - 1:
-            new_hash = new_hash // 7
-        return new_hash
-
-    def get_hash(self):
-        return self._hash
+    return type_hash_32, sorted_field_names, sorted_serializers
 
 
 class StructTypeIdVisitor(TypeVisitor):

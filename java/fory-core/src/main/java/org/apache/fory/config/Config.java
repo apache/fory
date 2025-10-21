@@ -62,10 +62,13 @@ public class Config implements Serializable {
   private final boolean deserializeNonexistentClass;
   private final boolean scalaOptimizationEnabled;
   private transient int configHash;
-  private final boolean deserializeNonexistentEnumValueAsNull;
+  private final UnknownEnumValueStrategy unknownEnumValueStrategy;
   private final boolean serializeEnumByName;
   private final int bufferSizeLimitBytes;
   private final int maxDepth;
+  boolean foryDebugOutputEnabled =
+      "1".equals(System.getenv("ENABLE_FORY_DEBUG_OUTPUT"))
+          || "true".equals(System.getenv("ENABLE_FORY_DEBUG_OUTPUT"));
 
   public Config(ForyBuilder builder) {
     name = builder.name;
@@ -103,7 +106,7 @@ public class Config implements Serializable {
     }
     asyncCompilationEnabled = builder.asyncCompilationEnabled;
     scalaOptimizationEnabled = builder.scalaOptimizationEnabled;
-    deserializeNonexistentEnumValueAsNull = builder.deserializeNonexistentEnumValueAsNull;
+    unknownEnumValueStrategy = builder.unknownEnumValueStrategy;
     serializeEnumByName = builder.serializeEnumByName;
     bufferSizeLimitBytes = builder.bufferSizeLimitBytes;
     maxDepth = builder.maxDepth;
@@ -144,7 +147,11 @@ public class Config implements Serializable {
 
   /** ignore Enum Deserialize array out of bounds return null. */
   public boolean deserializeNonexistentEnumValueAsNull() {
-    return deserializeNonexistentEnumValueAsNull;
+    return unknownEnumValueStrategy == UnknownEnumValueStrategy.RETURN_NULL;
+  }
+
+  public UnknownEnumValueStrategy getUnknownEnumValueStrategy() {
+    return unknownEnumValueStrategy;
   }
 
   /** deserialize and serialize enum by name. */
@@ -288,6 +295,10 @@ public class Config implements Serializable {
   /** Whether enable scala-specific serialization optimization. */
   public boolean isScalaOptimizationEnabled() {
     return scalaOptimizationEnabled;
+  }
+
+  public boolean isForyDebugOutputEnabled() {
+    return foryDebugOutputEnabled;
   }
 
   @Override

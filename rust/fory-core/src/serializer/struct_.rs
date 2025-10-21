@@ -15,15 +15,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::fory::Fory;
-use crate::meta::{FieldInfo, MetaString, TypeMeta};
+use crate::ensure;
+use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
-use crate::serializer::{Serializer, StructSerializer};
-use crate::types::{Mode, RefFlag, TypeId};
+use crate::serializer::Serializer;
+use crate::types::{RefFlag, TypeId};
+use std::any::Any;
+use std::sync::OnceLock;
 
 #[inline(always)]
-pub fn actual_type_id(type_id: u32, register_by_name: bool, mode: &Mode) -> u32 {
-    if mode == &Mode::Compatible {
+pub fn actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) -> u32 {
+    if compatible {
         if register_by_name {
             TypeId::NAMED_COMPATIBLE_STRUCT as u32
         } else {
@@ -37,103 +39,204 @@ pub fn actual_type_id(type_id: u32, register_by_name: bool, mode: &Mode) -> u32 
 }
 
 #[inline(always)]
-pub fn type_def<T: Serializer + StructSerializer>(
-    fory: &Fory,
-    type_id: u32,
-    namespace: MetaString,
-    type_name: MetaString,
-    register_by_name: bool,
-    mut field_infos: Vec<FieldInfo>,
-) -> (Vec<u8>, TypeMeta) {
-    let sorted_field_names = T::fory_get_sorted_field_names(fory);
-    let mut sorted_field_infos: Vec<FieldInfo> = Vec::with_capacity(field_infos.len());
-    for name in sorted_field_names.iter() {
-        let mut found = false;
-        for i in 0..field_infos.len() {
-            if &field_infos[i].field_name == name {
-                // swap_remove is faster
-                sorted_field_infos.push(field_infos.swap_remove(i));
-                found = true;
-                break;
-            }
-        }
-        if !found {
-            panic!("Field {} not found in field_infos", name);
-        }
-    }
-    // assign field id in ascending order
-    for (i, field_info) in sorted_field_infos.iter_mut().enumerate() {
-        field_info.field_id = i as i16;
-    }
-    let meta = TypeMeta::from_fields(
-        type_id,
-        namespace,
-        type_name,
-        register_by_name,
-        sorted_field_infos,
-    );
-    let bytes = meta.to_bytes().unwrap();
-    (bytes, meta)
-}
-
-#[inline(always)]
-pub fn write_type_info<T: Serializer>(fory: &Fory, context: &mut WriteContext, _is_field: bool) {
-    let type_id = T::fory_get_type_id(fory);
+pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
+    let type_id = T::fory_get_type_id(context.get_type_resolver())?;
     context.writer.write_varuint32(type_id);
     let rs_type_id = std::any::TypeId::of::<T>();
 
     if type_id & 0xff == TypeId::NAMED_STRUCT as u32 {
-        if fory.is_share_meta() {
-            let meta_index = context.push_meta(fory, rs_type_id) as u32;
+        if context.is_share_meta() {
+            let meta_index = context.push_meta(rs_type_id)? as u32;
             context.writer.write_varuint32(meta_index);
         } else {
-            let type_info = fory.get_type_resolver().get_type_info(rs_type_id);
-            let namespace = type_info.get_namespace().to_owned();
-            let type_name = type_info.get_type_name().to_owned();
-            context.write_meta_string_bytes(&namespace);
-            context.write_meta_string_bytes(&type_name);
+            let type_info = context.get_type_resolver().get_type_info(&rs_type_id)?;
+            let namespace = type_info.get_namespace();
+            let type_name = type_info.get_type_name();
+            context.write_meta_string_bytes(namespace)?;
+            context.write_meta_string_bytes(type_name)?;
         }
     } else if type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
         || type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32
     {
-        let meta_index = context.push_meta(fory, rs_type_id) as u32;
+        let meta_index = context.push_meta(rs_type_id)? as u32;
         context.writer.write_varuint32(meta_index);
     }
+    Ok(())
 }
 
 #[inline(always)]
-pub fn read_type_info<T: Serializer>(fory: &Fory, context: &mut ReadContext, _is_field: bool) {
-    let remote_type_id = context.reader.read_varuint32();
-    let local_type_id = T::fory_get_type_id(fory);
-    assert_eq!(remote_type_id, local_type_id);
+pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
+    let remote_type_id = context.reader.read_varuint32()?;
+    let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
+    ensure!(
+        local_type_id == remote_type_id,
+        Error::type_mismatch(local_type_id, remote_type_id)
+    );
 
     if local_type_id & 0xff == TypeId::NAMED_STRUCT as u32 {
-        if fory.is_share_meta() {
-            let _meta_index = context.reader.read_varuint32();
+        if context.is_share_meta() {
+            let _meta_index = context.reader.read_varuint32()?;
         } else {
-            let _namespace_msb = context.read_meta_string_bytes();
-            let _type_name_msb = context.read_meta_string_bytes();
+            let _namespace_msb = context.read_meta_string()?;
+            let _type_name_msb = context.read_meta_string()?;
         }
     } else if local_type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
         || local_type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32
     {
         let _meta_index = context.reader.read_varuint32();
     }
+    Ok(())
 }
 
 #[inline(always)]
-pub fn write<T: Serializer>(this: &T, fory: &Fory, context: &mut WriteContext, _is_field: bool) {
-    match fory.get_mode() {
-        // currently same
-        Mode::SchemaConsistent => {
-            context.writer.write_i8(RefFlag::NotNullValue as i8);
-            T::fory_write_type_info(fory, context, false);
-            this.fory_write_data(fory, context, true);
-        }
-        Mode::Compatible => {
-            context.writer.write_i8(RefFlag::NotNullValue as i8);
-            T::fory_write_type_info(fory, context, false);
-            this.fory_write_data(fory, context, true);
-        }
+pub fn write<T: Serializer>(
+    this: &T,
+    context: &mut WriteContext,
+    write_ref_info: bool,
+    write_type_info: bool,
+) -> Result<(), Error> {
+    if write_ref_info {
+        context.writer.write_i8(RefFlag::NotNullValue as i8);
     }
+    if write_type_info {
+        T::fory_write_type_info(context)?;
+    }
+    this.fory_write_data(context)
+}
+
+/// Global flag to check if ENABLE_FORY_DEBUG_OUTPUT environment variable is set.
+static ENABLE_FORY_DEBUG_OUTPUT: OnceLock<bool> = OnceLock::new();
+
+/// Check if ENABLE_FORY_DEBUG_OUTPUT environment variable is set.
+#[inline]
+fn enable_debug_output() -> bool {
+    *ENABLE_FORY_DEBUG_OUTPUT.get_or_init(|| {
+        std::env::var("ENABLE_FORY_DEBUG_OUTPUT")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    })
+}
+
+pub type BeforeWriteFieldFunc =
+    fn(struct_name: &str, field_name: &str, field_value: &dyn Any, context: &mut WriteContext);
+pub type AfterWriteFieldFunc =
+    fn(struct_name: &str, field_name: &str, field_value: &dyn Any, context: &mut WriteContext);
+pub type BeforeReadFieldFunc = fn(struct_name: &str, field_name: &str, context: &mut ReadContext);
+pub type AfterReadFieldFunc =
+    fn(struct_name: &str, field_name: &str, field_value: &dyn Any, context: &mut ReadContext);
+
+fn default_before_write_field(
+    struct_name: &str,
+    field_name: &str,
+    _field_value: &dyn Any,
+    context: &mut WriteContext,
+) {
+    if enable_debug_output() {
+        println!(
+            "before_write_field:\tstruct={struct_name},\tfield={field_name},\twriter_len={}",
+            context.writer.len()
+        );
+    }
+}
+
+fn default_after_write_field(
+    struct_name: &str,
+    field_name: &str,
+    _field_value: &dyn Any,
+    context: &mut WriteContext,
+) {
+    if enable_debug_output() {
+        println!(
+            "after_write_field:\tstruct={struct_name},\tfield={field_name},\twriter_len={}",
+            context.writer.len()
+        );
+    }
+}
+
+fn default_before_read_field(struct_name: &str, field_name: &str, context: &mut ReadContext) {
+    if enable_debug_output() {
+        println!(
+            "before_read_field:\tstruct={struct_name},\tfield={field_name},\treader_cursor={}",
+            context.reader.get_cursor()
+        );
+    }
+}
+
+fn default_after_read_field(
+    struct_name: &str,
+    field_name: &str,
+    _field_value: &dyn Any,
+    context: &mut ReadContext,
+) {
+    if enable_debug_output() {
+        println!(
+            "after_read_field:\tstruct={struct_name},\tfield={field_name},\treader_cursor={}",
+            context.reader.get_cursor()
+        );
+    }
+}
+
+static mut BEFORE_WRITE_FIELD_FUNC: BeforeWriteFieldFunc = default_before_write_field;
+static mut AFTER_WRITE_FIELD_FUNC: AfterWriteFieldFunc = default_after_write_field;
+static mut BEFORE_READ_FIELD_FUNC: BeforeReadFieldFunc = default_before_read_field;
+static mut AFTER_READ_FIELD_FUNC: AfterReadFieldFunc = default_after_read_field;
+
+pub fn set_before_write_field_func(func: BeforeWriteFieldFunc) {
+    unsafe { BEFORE_WRITE_FIELD_FUNC = func }
+}
+
+pub fn set_after_write_field_func(func: AfterWriteFieldFunc) {
+    unsafe { AFTER_WRITE_FIELD_FUNC = func }
+}
+
+pub fn set_before_read_field_func(func: BeforeReadFieldFunc) {
+    unsafe { BEFORE_READ_FIELD_FUNC = func }
+}
+
+pub fn set_after_read_field_func(func: AfterReadFieldFunc) {
+    unsafe { AFTER_READ_FIELD_FUNC = func }
+}
+
+pub fn reset_struct_debug_hooks() {
+    unsafe {
+        BEFORE_WRITE_FIELD_FUNC = default_before_write_field;
+        AFTER_WRITE_FIELD_FUNC = default_after_write_field;
+        BEFORE_READ_FIELD_FUNC = default_before_read_field;
+        AFTER_READ_FIELD_FUNC = default_after_read_field;
+    }
+}
+
+/// Debug method to hook into struct serialization
+pub fn struct_before_write_field(
+    struct_name: &str,
+    field_name: &str,
+    field_value: &dyn Any,
+    context: &mut WriteContext,
+) {
+    unsafe { BEFORE_WRITE_FIELD_FUNC(struct_name, field_name, field_value, context) }
+}
+
+/// Debug method to hook into struct serialization
+pub fn struct_after_write_field(
+    struct_name: &str,
+    field_name: &str,
+    field_value: &dyn Any,
+    context: &mut WriteContext,
+) {
+    unsafe { AFTER_WRITE_FIELD_FUNC(struct_name, field_name, field_value, context) }
+}
+
+/// Debug method to hook into struct deserialization
+pub fn struct_before_read_field(struct_name: &str, field_name: &str, context: &mut ReadContext) {
+    unsafe { BEFORE_READ_FIELD_FUNC(struct_name, field_name, context) }
+}
+
+/// Debug method to hook into struct deserialization
+pub fn struct_after_read_field(
+    struct_name: &str,
+    field_name: &str,
+    field_value: &dyn Any,
+    context: &mut ReadContext,
+) {
+    unsafe { AFTER_READ_FIELD_FUNC(struct_name, field_name, field_value, context) }
 }

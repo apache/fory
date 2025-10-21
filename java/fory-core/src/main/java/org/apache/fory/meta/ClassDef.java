@@ -414,7 +414,7 @@ public class ClassDef implements Serializable {
       this.isMonomorphic = isMonomorphic;
       this.trackingRef = trackingRef;
       this.nullable = nullable;
-      this.xtypeId = xtypeId & 0xff;
+      this.xtypeId = xtypeId;
     }
 
     public boolean isMonomorphic() {
@@ -560,8 +560,7 @@ public class ClassDef implements Serializable {
         int xtypeId,
         boolean nullable,
         boolean trackingRef) {
-      assert xtypeId <= 0xff;
-      switch (xtypeId) {
+      switch (xtypeId & 0xff) {
         case Types.LIST:
         case Types.SET:
           return new CollectionFieldType(

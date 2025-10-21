@@ -22,7 +22,10 @@ package org.apache.fory.format.encoder;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.BinaryRow;
 
-/** Encoder to encode/decode object to/from row. */
+/**
+ * Encoder to encode/decode object to/from row. A RowEncoder instance is reusable but not
+ * thread-safe.
+ */
 public interface RowEncoder<T> extends Encoder<T> {
   Schema schema();
 

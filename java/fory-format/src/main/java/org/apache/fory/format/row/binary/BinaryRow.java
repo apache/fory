@@ -61,19 +61,23 @@ import org.apache.fory.util.Preconditions;
  * </ul>
  */
 public class BinaryRow extends UnsafeTrait implements Row {
-  private final Schema schema;
-  private final int numFields;
-  private final int bitmapWidthInBytes;
-  private MemoryBuffer buffer;
-  private int baseOffset;
-  private int sizeInBytes;
+  final Schema schema;
+  final int numFields;
+  final int bitmapWidthInBytes;
+  MemoryBuffer buffer;
+  int baseOffset;
+  int sizeInBytes;
 
   public BinaryRow(Schema schema) {
     this.schema = schema;
     this.numFields = schema.getFields().size();
     Preconditions.checkArgument(numFields > 0);
-    this.bitmapWidthInBytes = BitUtils.calculateBitmapWidthInBytes(numFields);
+    this.bitmapWidthInBytes = computeBitmapWidthInBytes();
     initializeExtData(numFields);
+  }
+
+  protected int computeBitmapWidthInBytes() {
+    return BitUtils.calculateBitmapWidthInBytes(numFields);
   }
 
   public void pointTo(MemoryBuffer buffer, int offset, int sizeInBytes) {
@@ -117,20 +121,24 @@ public class BinaryRow extends UnsafeTrait implements Row {
     checkArgument(index < numFields, "index (%d) should < %d", index, numFields);
   }
 
+  protected int nullBitmapOffset() {
+    return baseOffset;
+  }
+
   @Override
   public boolean isNullAt(int ordinal) {
-    return BitUtils.isSet(buffer, baseOffset, ordinal);
+    return BitUtils.isSet(buffer, nullBitmapOffset(), ordinal);
   }
 
   @Override
   public boolean anyNull() {
-    return BitUtils.anySet(buffer, baseOffset, bitmapWidthInBytes);
+    return BitUtils.anySet(buffer, nullBitmapOffset(), bitmapWidthInBytes);
   }
 
   @Override
   public void setNullAt(int ordinal) {
     assertIndexIsValid(ordinal);
-    BitUtils.set(buffer, baseOffset, ordinal);
+    BitUtils.set(buffer, nullBitmapOffset(), ordinal);
     assert DataTypes.getTypeWidth(schema.getFields().get(ordinal).getType()) > 0
         : "field[ "
             + ordinal
@@ -144,9 +152,10 @@ public class BinaryRow extends UnsafeTrait implements Row {
     buffer.putInt64(getOffset(ordinal), 0);
   }
 
+  @Override
   public void setNotNullAt(int ordinal) {
     assertIndexIsValid(ordinal);
-    BitUtils.unset(buffer, baseOffset, ordinal);
+    BitUtils.unset(buffer, nullBitmapOffset(), ordinal);
   }
 
   @Override
@@ -173,9 +182,13 @@ public class BinaryRow extends UnsafeTrait implements Row {
   public Row copy() {
     MemoryBuffer copyBuf = MemoryUtils.buffer(sizeInBytes);
     buffer.copyTo(baseOffset, copyBuf, 0, sizeInBytes);
-    BinaryRow copyRow = new BinaryRow(schema);
+    BinaryRow copyRow = rowForCopy();
     copyRow.pointTo(copyBuf, 0, sizeInBytes);
     return copyRow;
+  }
+
+  protected BinaryRow rowForCopy() {
+    return new BinaryRow(schema);
   }
 
   @Override
@@ -211,7 +224,7 @@ public class BinaryRow extends UnsafeTrait implements Row {
         if (i != 0) {
           build.append(',');
         }
-        build.append(Long.toHexString(buffer.getInt64(baseOffset + i)));
+        build.append(Long.toHexString(buffer.getInt64(nullBitmapOffset() + i)));
       }
       return build.toString();
     }

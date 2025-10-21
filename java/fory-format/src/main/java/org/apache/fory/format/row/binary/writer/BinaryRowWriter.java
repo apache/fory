@@ -21,12 +21,9 @@ package org.apache.fory.format.row.binary.writer;
 
 import static org.apache.fory.memory.BitUtils.calculateBitmapWidthInBytes;
 
-import java.math.BigDecimal;
-import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.MemoryUtils;
 
 /**
  * Writer to write data into buffer using row format, see {@link BinaryRow}.
@@ -36,51 +33,41 @@ import org.apache.fory.memory.MemoryUtils;
  * <p>Must call {@code reset(buffer)}/{@code reset(buffer, offset)} before use this writer to write
  * a new row.
  */
-public class BinaryRowWriter extends BinaryWriter {
-  private final Schema schema;
+public class BinaryRowWriter extends BaseBinaryRowWriter {
   private final int headerInBytes;
   // fixed width size: bitmap + fixed width region
   // variable-length region follows startOffset + fixedSize
   private final int fixedSize;
 
   public BinaryRowWriter(Schema schema) {
-    super(MemoryUtils.buffer(schema.getFields().size() * 32), 0);
-    super.startIndex = 0;
-    this.schema = schema;
-    this.headerInBytes = calculateBitmapWidthInBytes(schema.getFields().size());
-    this.fixedSize = headerInBytes + schema.getFields().size() * 8;
+    super(schema);
+    headerInBytes = headerBytes(schema);
+    fixedSize = fixedAreaSize();
+  }
+
+  public BinaryRowWriter(Schema schema, MemoryBuffer buffer) {
+    super(schema, buffer, 0);
+    headerInBytes = headerBytes(schema);
+    fixedSize = fixedAreaSize();
   }
 
   public BinaryRowWriter(Schema schema, BinaryWriter writer) {
-    super(writer.getBuffer(), 0);
-    writer.children.add(this);
-    // Since we must call reset before use this writer,
-    // there's no need to set `super.startIndex = writer.writerIndex();`
-    this.schema = schema;
-    this.headerInBytes = calculateBitmapWidthInBytes(schema.getFields().size());
-    this.fixedSize = headerInBytes + schema.getFields().size() * 8;
+    super(schema, writer);
+    this.headerInBytes = headerBytes(schema);
+    this.fixedSize = fixedAreaSize();
   }
 
-  public Schema getSchema() {
-    return schema;
+  private int fixedAreaSize() {
+    return headerInBytes + getSchema().getFields().size() * 8;
   }
 
-  /**
-   * Call {@code reset()} before write nested row to buffer
-   *
-   * <p>reset BinaryRowWriter(schema, writer) increase writerIndex, which increase writer's
-   * writerIndex, so we need to record writer's writerIndex before call reset, so we can call
-   * writer's {@code setOffsetAndSize(int ordinal, int absoluteOffset, int size)}. <em>Reset will
-   * change writerIndex, please use it very carefully</em>
-   */
-  public void reset() {
-    super.startIndex = buffer.writerIndex();
-    grow(fixedSize);
-    buffer._increaseWriterIndexUnsafe(fixedSize);
-    int end = startIndex + headerInBytes;
-    for (int i = startIndex; i < end; i += 8) {
-      buffer.putInt64(i, 0L);
-    }
+  static int headerBytes(Schema schema) {
+    return calculateBitmapWidthInBytes(schema.getFields().size());
+  }
+
+  @Override
+  protected int headerInBytes() {
+    return headerInBytes;
   }
 
   @Override
@@ -124,8 +111,8 @@ public class BinaryRowWriter extends BinaryWriter {
   }
 
   @Override
-  public void write(int ordinal, BigDecimal value) {
-    writeDecimal(ordinal, value, (ArrowType.Decimal) schema.getFields().get(ordinal).getType());
+  protected int fixedSize() {
+    return fixedSize;
   }
 
   @Override
@@ -134,19 +121,8 @@ public class BinaryRowWriter extends BinaryWriter {
     write(ordinal, 0L);
   }
 
-  public BinaryRow getRow() {
-    BinaryRow row = new BinaryRow(schema);
-    int size = size();
-    row.pointTo(buffer, startIndex, size);
-    return row;
-  }
-
-  public BinaryRow copyToRow() {
-    BinaryRow row = new BinaryRow(schema);
-    int size = size();
-    MemoryBuffer buffer = MemoryUtils.buffer(size);
-    this.buffer.copyTo(startIndex, buffer, 0, size);
-    row.pointTo(buffer, startIndex, size);
-    return row;
+  @Override
+  protected BinaryRow newRow() {
+    return new BinaryRow(getSchema());
   }
 }

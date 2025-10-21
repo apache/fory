@@ -25,7 +25,7 @@ fn test_hashmap_string() {
     let mut map = HashMap::new();
     map.insert("key1".to_string(), "value1".to_string());
     map.insert("key2".to_string(), "value2".to_string());
-    let bin = fory.serialize(&map);
+    let bin = fory.serialize(&map).unwrap();
     let obj: HashMap<String, String> = fory.deserialize(&bin).expect("deserialize");
     assert_eq!(map, obj);
 }
@@ -36,7 +36,7 @@ fn test_btreemap_string() {
     let mut map = BTreeMap::new();
     map.insert("key1".to_string(), "value1".to_string());
     map.insert("key2".to_string(), "value2".to_string());
-    let bin = fory.serialize(&map);
+    let bin = fory.serialize(&map).unwrap();
     let obj: BTreeMap<String, String> = fory.deserialize(&bin).expect("deserialize");
     assert_eq!(map, obj);
 }
@@ -50,7 +50,8 @@ struct MapContainer {
 #[test]
 fn test_struct_with_maps() {
     let mut fory = Fory::default();
-    fory.register_by_name::<MapContainer>("MapContainer");
+    fory.register_by_name::<MapContainer>("MapContainer")
+        .unwrap();
     let mut hash_map = HashMap::new();
     hash_map.insert("foo".to_string(), "bar".to_string());
     let mut btree_map = BTreeMap::new();
@@ -62,7 +63,7 @@ fn test_struct_with_maps() {
         btree_map,
     };
 
-    let bin = fory.serialize(&container);
+    let bin = fory.serialize(&container).unwrap();
     let obj: MapContainer = fory.deserialize(&bin).expect("deserialize");
     assert_eq!(container, obj);
 }

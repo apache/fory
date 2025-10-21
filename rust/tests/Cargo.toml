@@ -16,7 +16,7 @@
 # under the License.
 
 [package]
-name = "fory-tests"
+name = "tests"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

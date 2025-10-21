@@ -77,7 +77,7 @@ public class RustXlangTest extends ForyTestBase {
 
   @BeforeClass
   public void isRustJavaCIEnabled() {
-    String enabled = "0";
+    String enabled = System.getenv("RUST_TESTCASE_ENABLED");
     if (enabled == null || !enabled.equals("1")) {
       throw new SkipException("Skipping RustXlangTest: FORY_RUST_JAVA_CI not set to 1");
     }
@@ -123,6 +123,8 @@ public class RustXlangTest extends ForyTestBase {
     testSkipIdCustom(Language.RUST, command);
     command.set(RUST_TESTCASE_INDEX, "test_skip_name_custom");
     testSkipNameCustom(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_struct_version_check");
+    testStructVersionCheck(Language.RUST, command);
     command.set(RUST_TESTCASE_INDEX, "test_consistent_named");
     testConsistentNamed(Language.RUST, command);
   }
@@ -395,15 +397,6 @@ public class RustXlangTest extends ForyTestBase {
     fory.serialize(buffer, strSet);
     fory.serialize(buffer, strMap);
     fory.serialize(buffer, color);
-    //    Map<Object, Object> map = new HashMap<>();
-    //    for (int i = 0; i < list.size(); i++) {
-    //        map.put("k" + i, list.get(i));
-    //        map.put(list.get(i), list.get(i));
-    //    }
-    //    fory.serialize(buffer, map);
-
-    //    Set<Object> set = new HashSet<>(list);
-    //    fory.serialize(buffer, set);
 
     BiConsumer<MemoryBuffer, Boolean> function =
         (MemoryBuffer buf, Boolean useToString) -> {
@@ -433,9 +426,6 @@ public class RustXlangTest extends ForyTestBase {
           assertStringEquals(fory.deserialize(buf), strSet, useToString);
           assertStringEquals(fory.deserialize(buf), strMap, useToString);
           assertStringEquals(fory.deserialize(buf), color, useToString);
-          //            assertStringEquals(fory.deserialize(buf), list, useToString);
-          //            assertStringEquals(fory.deserialize(buf), map, useToString);
-          //            assertStringEquals(fory.deserialize(buf), set, useToString);
         };
     function.accept(buffer, false);
     Path dataFile = Files.createTempFile("test_cross_language_serializer", "data");
@@ -807,7 +797,7 @@ public class RustXlangTest extends ForyTestBase {
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
             .withCodegen(false)
-            .withClassVersionCheck(false)
+            .withClassVersionCheck(true)
             .build();
     fory.register(Color.class, "color");
     fory.register(MyStruct.class, "my_struct");
@@ -817,25 +807,63 @@ public class RustXlangTest extends ForyTestBase {
     MyStruct myStruct = new MyStruct(42);
     MyExt myExt = new MyExt(43);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
-    fory.serialize(buffer, Color.White);
-    fory.serialize(buffer, Color.White);
-    fory.serialize(buffer, Color.White);
+    for (int i = 0; i < 3; i++) {
+      fory.serialize(buffer, Color.White);
+    }
     // todo: checkVersion
     //        fory.serialize(buffer, myStruct);
-    fory.serialize(buffer, myExt);
-    fory.serialize(buffer, myExt);
-    fory.serialize(buffer, myExt);
+    for (int i = 0; i < 3; i++) {
+      fory.serialize(buffer, myExt);
+    }
     byte[] bytes = buffer.getBytes(0, buffer.writerIndex());
     Path dataFile = Files.createTempFile("test_consistent_named", "data");
     Pair<Map<String, String>, File> env_workdir = setFilePath(language, command, dataFile, bytes);
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
-    Assert.assertEquals(fory.deserialize(buffer2), Color.White);
-    Assert.assertEquals(fory.deserialize(buffer2), Color.White);
-    Assert.assertEquals(fory.deserialize(buffer2), Color.White);
-    Assert.assertEquals(fory.deserialize(buffer2), myExt);
-    Assert.assertEquals(fory.deserialize(buffer2), myExt);
-    Assert.assertEquals(fory.deserialize(buffer2), myExt);
+    for (int i = 0; i < 3; i++) {
+      Assert.assertEquals(fory.deserialize(buffer2), Color.White);
+    }
+    for (int i = 0; i < 3; i++) {
+      Assert.assertEquals(fory.deserialize(buffer2), myExt);
+    }
+  }
+
+  @Data
+  static class VersionCheckStruct {
+    int f1;
+    String f2;
+    double f3;
+  }
+
+  private void testStructVersionCheck(Language language, List<String> command)
+      throws java.io.IOException {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+            .withCodegen(false)
+            .withClassVersionCheck(true)
+            .build();
+    fory.register(VersionCheckStruct.class, 201);
+
+    VersionCheckStruct obj = new VersionCheckStruct();
+    obj.f1 = 10;
+    obj.f2 = "test";
+    obj.f3 = 3.2;
+
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+    fory.serialize(buffer, obj);
+    byte[] bytes = buffer.getBytes(0, buffer.writerIndex());
+    // Debug: print first 30 bytes
+    System.out.println(
+        "Java serialized bytes (first 30): "
+            + java.util.Arrays.toString(
+                java.util.Arrays.copyOf(bytes, Math.min(30, bytes.length))));
+    Path dataFile = Files.createTempFile("test_struct_version_check", "data");
+    Pair<Map<String, String>, File> env_workdir = setFilePath(language, command, dataFile, bytes);
+    Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
+    MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+    Assert.assertEquals(fory.deserialize(buffer2), obj);
   }
 
   /**
@@ -862,7 +890,11 @@ public class RustXlangTest extends ForyTestBase {
     if (peerLanguage == Language.RUST) {
       return Pair.of(
           ImmutableMap.of(
-              "DATA_FILE", dataFile.toAbsolutePath().toString(), "RUSTFLAGS", "-Awarnings"),
+              "DATA_FILE", dataFile.toAbsolutePath().toString(),
+              "RUSTFLAGS", "-Awarnings",
+              "RUST_BACKTRACE", "1",
+              "ENABLE_FORY_DEBUG_OUTPUT", "1",
+              "FORY_PANIC_ON_ERROR", "1"),
           new File("../../rust"));
     } else {
       return Pair.of(Collections.emptyMap(), new File("../../python"));

@@ -29,7 +29,7 @@ fn test_rc_weak_null_serialization() {
 
     let weak: RcWeak<i32> = RcWeak::new();
 
-    let serialized = fory.serialize(&weak);
+    let serialized = fory.serialize(&weak).unwrap();
     let deserialized: RcWeak<i32> = fory.deserialize(&serialized).unwrap();
 
     assert!(deserialized.upgrade().is_none());
@@ -41,7 +41,7 @@ fn test_arc_weak_null_serialization() {
 
     let weak: ArcWeak<i32> = ArcWeak::new();
 
-    let serialized = fory.serialize(&weak);
+    let serialized = fory.serialize(&weak).unwrap();
     let deserialized: ArcWeak<i32> = fory.deserialize(&serialized).unwrap();
 
     assert!(deserialized.upgrade().is_none());
@@ -61,7 +61,7 @@ fn test_rc_weak_dead_pointer_serializes_as_null() {
     assert!(weak.upgrade().is_none());
 
     // Should serialize as Null
-    let serialized = fory.serialize(&weak);
+    let serialized = fory.serialize(&weak).unwrap();
     let deserialized: RcWeak<i32> = fory.deserialize(&serialized).unwrap();
 
     assert!(deserialized.upgrade().is_none());
@@ -81,7 +81,7 @@ fn test_arc_weak_dead_pointer_serializes_as_null() {
     assert!(weak.upgrade().is_none());
 
     // Should serialize as Null
-    let serialized = fory.serialize(&weak);
+    let serialized = fory.serialize(&weak).unwrap();
     let deserialized: ArcWeak<String> = fory.deserialize(&serialized).unwrap();
 
     assert!(deserialized.upgrade().is_none());
@@ -99,7 +99,7 @@ fn test_rc_weak_in_vec_circular_reference() {
     let weak3 = weak1.clone();
 
     let weaks = vec![weak1, weak2, weak3];
-    let serialized = fory.serialize(&weaks);
+    let serialized = fory.serialize(&weaks).unwrap();
     let deserialized: Vec<RcWeak<i32>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
@@ -117,7 +117,7 @@ fn test_arc_weak_in_vec_circular_reference() {
     let weak3 = weak1.clone();
 
     let weaks = vec![weak1, weak2, weak3];
-    let serialized = fory.serialize(&weaks);
+    let serialized = fory.serialize(&weaks).unwrap();
     let deserialized: Vec<ArcWeak<String>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.len(), 3);
@@ -134,7 +134,7 @@ fn test_rc_weak_field_in_struct() {
     }
 
     let mut fory = Fory::default();
-    fory.register::<SimpleNode>(1000);
+    fory.register::<SimpleNode>(1000).unwrap();
 
     let data = Rc::new(42i32);
     let node = SimpleNode {
@@ -142,7 +142,7 @@ fn test_rc_weak_field_in_struct() {
         weak_ref: RcWeak::from(&data),
     };
 
-    let serialized = fory.serialize(&node);
+    let serialized = fory.serialize(&node).unwrap();
     let deserialized: SimpleNode = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.value, 1);
@@ -161,7 +161,7 @@ struct Node {
 fn test_node_circular_reference_with_parent_children() {
     // Register the Node type with Fory
     let mut fory = Fory::default();
-    fory.register::<Node>(2000);
+    fory.register::<Node>(2000).unwrap();
 
     // Create parent
     let parent = Rc::new(RefCell::new(Node {
@@ -192,7 +192,7 @@ fn test_node_circular_reference_with_parent_children() {
     child2.borrow_mut().parent = RcWeak::from(&parent);
 
     // --- Serialize the parent node (will include children recursively) ---
-    let serialized = fory.serialize(&parent);
+    let serialized = fory.serialize(&parent).unwrap();
 
     // --- Deserialize ---
     let deserialized: Rc<RefCell<Node>> = fory.deserialize(&serialized).unwrap();
@@ -219,7 +219,7 @@ fn test_arc_mutex_circular_reference() {
     }
 
     let mut fory = Fory::default();
-    fory.register::<Node>(6000);
+    fory.register::<Node>(6000).unwrap();
 
     let parent = Arc::new(Mutex::new(Node {
         val: 10,
@@ -242,7 +242,7 @@ fn test_arc_mutex_circular_reference() {
     parent.lock().unwrap().children.push(child1.clone());
     parent.lock().unwrap().children.push(child2.clone());
 
-    let serialized = fory.serialize(&parent);
+    let serialized = fory.serialize(&parent).unwrap();
     let deserialized: Arc<Mutex<Node>> = fory.deserialize(&serialized).unwrap();
 
     assert_eq!(deserialized.lock().unwrap().children.len(), 2);

@@ -252,7 +252,7 @@ func readFieldType(buffer *ByteBuffer) (FieldType, error) {
 			return nil, fmt.Errorf("failed to read value type: %w", err)
 		}
 		return NewMapFieldType(TypeId(typeId), keyType, valueType), nil
-	case EXT, STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
+	case UNKNOWN, EXT, STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT:
 		return NewDynamicFieldType(TypeId(typeId)), nil
 	}
 	return NewSimpleFieldType(TypeId(typeId)), nil
@@ -362,9 +362,23 @@ func (d *DynamicFieldType) getTypeInfo(fory *Fory) (TypeInfo, error) {
 // buildFieldType builds field type from reflect.Type, handling collection, map recursively
 func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 	fieldType := fieldValue.Type()
+	// Handle Interface type, we can't determine the actual type here, so leave it as dynamic type
+	if fieldType.Kind() == reflect.Interface {
+		return NewDynamicFieldType(UNKNOWN), nil
+	}
+
+	var typeId TypeId
+	typeInfo, err := fory.typeResolver.getTypeInfo(fieldValue, true)
+	if err != nil {
+		return nil, err
+	}
+	typeId = TypeId(typeInfo.TypeID)
+	if typeId < 0 {
+		typeId = -typeId // restore pointer type id
+	}
 
 	// Handle slice and array types
-	if fieldType.Kind() == reflect.Slice || fieldType.Kind() == reflect.Array {
+	if typeId == LIST || typeId == SET {
 		// Create a zero value of the element type for recursive processing
 		elemType := fieldType.Elem()
 		elemValue := reflect.Zero(elemType)
@@ -378,7 +392,7 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 	}
 
 	// Handle map types
-	if fieldType.Kind() == reflect.Map {
+	if typeId == MAP {
 		// Create zero values for key and value types
 		keyType := fieldType.Key()
 		valueType := fieldType.Elem()
@@ -398,16 +412,7 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 		return NewMapFieldType(MAP, keyFieldType, valueFieldType), nil
 	}
 
-	// For all other types, get the type ID and treat as ObjectFieldType
-	var typeId TypeId
-	typeInfo, err := fory.typeResolver.getTypeInfo(fieldValue, true)
-	if err != nil {
-		return nil, err
-	}
-	typeId = TypeId(typeInfo.TypeID)
-
-	if typeId == EXT || typeId == STRUCT || typeId == NAMED_STRUCT ||
-		typeId == COMPATIBLE_STRUCT || typeId == NAMED_COMPATIBLE_STRUCT {
+	if isUserDefinedType(typeId) {
 		return NewDynamicFieldType(typeId), nil
 	}
 

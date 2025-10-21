@@ -411,7 +411,7 @@ cdef class TypeInfo:
     when serializing the actual data.
     """
     cdef public object cls
-    cdef public int16_t type_id
+    cdef public int32_t type_id
     cdef public Serializer serializer
     cdef public MetaStringBytes namespace_bytes
     cdef public MetaStringBytes typename_bytes
@@ -804,6 +804,7 @@ cdef class Fory:
     cdef readonly c_bool strict
     cdef readonly c_bool is_py
     cdef readonly c_bool compatible
+    cdef readonly c_bool field_nullable
     cdef readonly MapRefResolver ref_resolver
     cdef readonly TypeResolver type_resolver
     cdef readonly MetaStringResolver metastring_resolver
@@ -824,6 +825,7 @@ cdef class Fory:
             strict: bool = True,
             compatible: bool = False,
             max_depth: int = 50,
+            field_nullable: bool = False,
             **kwargs,
     ):
         """
@@ -856,6 +858,9 @@ cdef class Fory:
          The maximum depth of the deserialization data.
          If the depth exceeds the maximum depth, an exception will be raised.
          The default value is 50.
+        :param field_nullable:
+         Whether dataclass fields are nullable for python native mode(xlang=False). When enabled, dataclass fields
+         are always treated as nullable whether or not they are annotated with `Optional`.
         """
         self.language = Language.XLANG if xlang else Language.PYTHON
         if kwargs.get("language") is not None:
@@ -872,6 +877,7 @@ cdef class Fory:
         self.ref_tracking = ref
         self.ref_resolver = MapRefResolver(ref)
         self.is_py = self.language == Language.PYTHON
+        self.field_nullable = field_nullable if self.is_py else False
         self.metastring_resolver = MetaStringResolver()
         self.type_resolver = TypeResolver(self, meta_share=compatible)
         self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
@@ -923,7 +929,7 @@ cdef class Fory:
         Serialize an object to bytes, alias for `serialize` method.
         """
         return self.serialize(obj, buffer, buffer_callback, unsupported_callback)
-    
+
     def loads(
         self,
         buffer: Union[Buffer, bytes],
@@ -995,7 +1001,7 @@ cdef class Fory:
         if self.language == Language.PYTHON:
             self.serialize_ref(buffer, obj)
         else:
-            self.xserialize_ref(buffer, obj)
+            self.xwrite_ref(buffer, obj)
 
         # Write type definitions at the end, similar to Java implementation
         if self.serialization_context.scoped_meta_share_enabled:
@@ -1059,11 +1065,11 @@ cdef class Fory:
         self.type_resolver.write_typeinfo(buffer, typeinfo)
         typeinfo.serializer.write(buffer, obj)
 
-    cpdef inline xserialize_ref(
+    cpdef inline xwrite_ref(
             self, Buffer buffer, obj, Serializer serializer=None):
         if serializer is None or serializer.need_to_write_ref:
             if not self.ref_resolver.write_ref_or_null(buffer, obj):
-                self.xserialize_nonref(
+                self.xwrite_no_ref(
                     buffer, obj, serializer=serializer
                 )
         else:
@@ -1071,11 +1077,11 @@ cdef class Fory:
                 buffer.write_int8(NULL_FLAG)
             else:
                 buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                self.xserialize_nonref(
+                self.xwrite_no_ref(
                     buffer, obj, serializer=serializer
                 )
 
-    cpdef inline xserialize_nonref(
+    cpdef inline xwrite_no_ref(
             self, Buffer buffer, obj, Serializer serializer=None):
         if serializer is None:
             typeinfo = self.type_resolver.get_typeinfo(type(obj))
@@ -1149,10 +1155,10 @@ cdef class Fory:
                 buffer.reader_index = current_reader_index
 
         if not is_target_x_lang:
-            return self.deserialize_ref(buffer)
-        return self.xdeserialize_ref(buffer)
+            return self.read_ref(buffer)
+        return self.xread_ref(buffer)
 
-    cpdef inline deserialize_ref(self, Buffer buffer):
+    cpdef inline read_ref(self, Buffer buffer):
         cdef MapRefResolver ref_resolver = self.ref_resolver
         cdef int32_t ref_id = ref_resolver.try_preserve_ref_id(buffer)
         if ref_id < NOT_NULL_VALUE_FLAG:
@@ -1174,7 +1180,7 @@ cdef class Fory:
         ref_resolver.set_read_object(ref_id, o)
         return o
 
-    cpdef inline deserialize_nonref(self, Buffer buffer):
+    cpdef inline read_no_ref(self, Buffer buffer):
         """Deserialize not-null and non-reference object from buffer."""
         cdef TypeInfo typeinfo = self.type_resolver.read_typeinfo(buffer)
         cls = typeinfo.cls
@@ -1191,7 +1197,7 @@ cdef class Fory:
         self.depth -= 1
         return o
 
-    cpdef inline xdeserialize_ref(self, Buffer buffer, Serializer serializer=None):
+    cpdef inline xread_ref(self, Buffer buffer, Serializer serializer=None):
         cdef MapRefResolver ref_resolver
         cdef int32_t ref_id
         if serializer is None or serializer.need_to_write_ref:
@@ -1199,7 +1205,7 @@ cdef class Fory:
             ref_id = ref_resolver.try_preserve_ref_id(buffer)
             # indicates that the object is first read.
             if ref_id >= NOT_NULL_VALUE_FLAG:
-                o = self.xdeserialize_nonref(
+                o = self.xread_no_ref(
                     buffer, serializer=serializer
                 )
                 ref_resolver.set_read_object(ref_id, o)
@@ -1209,11 +1215,11 @@ cdef class Fory:
         cdef int8_t head_flag = buffer.read_int8()
         if head_flag == NULL_FLAG:
             return None
-        return self.xdeserialize_nonref(
+        return self.xread_no_ref(
             buffer, serializer=serializer
         )
 
-    cpdef inline xdeserialize_nonref(
+    cpdef inline xread_no_ref(
             self, Buffer buffer, Serializer serializer=None):
         if serializer is None:
             serializer = self.type_resolver.read_typeinfo(buffer).serializer
@@ -2087,7 +2093,7 @@ cdef class MapSerializer(Serializer):
                         if is_py:
                             fory.serialize_ref(buffer, key)
                         else:
-                            fory.xserialize_ref(buffer, key)
+                            fory.xwrite_ref(buffer, key)
                 else:
                     if value is not None:
                         if value_serializer is not None:
@@ -2114,7 +2120,7 @@ cdef class MapSerializer(Serializer):
                             if is_py:
                                 fory.serialize_ref(buffer, value)
                             else:
-                                fory.xserialize_ref(buffer, value)
+                                fory.xwrite_ref(buffer, value)
                     else:
                         buffer.write_int8(KV_NULL)
                 has_next = PyDict_Next(obj, &pos, <PyObject **>&key_addr, <PyObject **>&value_addr)
@@ -2250,9 +2256,9 @@ cdef class MapSerializer(Serializer):
                                     key = key_serializer.xread(buffer)
                         else:
                             if is_py:
-                                key = fory.deserialize_ref(buffer)
+                                key = fory.read_ref(buffer)
                             else:
-                                key = fory.xdeserialize_ref(buffer)
+                                key = fory.xread_ref(buffer)
                         map_[key] = None
                 else:
                     if not value_has_null:
@@ -2270,9 +2276,9 @@ cdef class MapSerializer(Serializer):
                                     ref_resolver.set_read_object(ref_id, value)
                         else:
                             if is_py:
-                                value = fory.deserialize_ref(buffer)
+                                value = fory.read_ref(buffer)
                             else:
-                                value = fory.xdeserialize_ref(buffer)
+                                value = fory.xread_ref(buffer)
                         map_[None] = value
                     else:
                         map_[None] = None
@@ -2514,15 +2520,15 @@ cdef class SliceSerializer(Serializer):
         if buffer.read_int8() == NULL_FLAG:
             start = None
         else:
-            start = self.fory.deserialize_nonref(buffer)
+            start = self.fory.read_no_ref(buffer)
         if buffer.read_int8() == NULL_FLAG:
             stop = None
         else:
-            stop = self.fory.deserialize_nonref(buffer)
+            stop = self.fory.read_no_ref(buffer)
         if buffer.read_int8() == NULL_FLAG:
             step = None
         else:
-            step = self.fory.deserialize_nonref(buffer)
+            step = self.fory.read_no_ref(buffer)
         return slice(start, stop, step)
 
     cpdef xwrite(self, Buffer buffer, value):

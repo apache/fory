@@ -217,7 +217,19 @@ public class ProtocolInteroperabilityTest extends ForyTestBase {
   public void testComplexCollection(Fory fory, Fory foryJIT) {
     CollectionSerializersTest.CollectionFieldsClass o =
         CollectionSerializersTest.createCollectionFieldsObject();
-    roundCheck(fory, foryJIT, o, Object::toString);
+    roundCheck(
+        fory,
+        foryJIT,
+        o,
+        obj -> {
+          try {
+            CollectionSerializersTest.testCollectionFieldsObjectEqual(
+                (CollectionSerializersTest.CollectionFieldsClass) obj, o);
+            return "OK";
+          } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+          }
+        });
   }
 
   @Test(dataProvider = "fory")

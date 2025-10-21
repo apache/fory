@@ -699,7 +699,11 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
               fory.decDepth();
             }
           } else {
-            key = binding.readRef(buffer, keyClassInfoReadCache);
+            if (trackKeyRef) {
+              key = binding.readRef(buffer, keyClassInfoReadCache);
+            } else {
+              key = binding.readNonRef(buffer, keyClassInfoReadCache);
+            }
           }
           map.put(key, null);
         }
@@ -741,7 +745,11 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
           fory.decDepth();
         }
       } else {
-        value = binding.readRef(buffer, valueClassInfoReadCache);
+        if (trackValueRef) {
+          value = binding.readRef(buffer, valueClassInfoReadCache);
+        } else {
+          value = binding.readNonRef(buffer, valueClassInfoReadCache);
+        }
       }
       map.put(null, value);
     } else {

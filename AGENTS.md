@@ -123,6 +123,8 @@ go generate ./...
 
 - All cargo commands must be executed within the `rust` directory.
 - All changes to `rust` must pass the clippy check and tests.
+- You must set `RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1` when debuging rust tests to get backtrace.
+- You must not set `FORY_PANIC_ON_ERROR=1` when runing all rust tests to check whether all tests pass, some tests will check Error content, which will fail if error just panic.
 
 ```bash
 # Check code
@@ -138,10 +140,13 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo test --features tests
 
 # run specific test
-cargo test -p fory-tests  --test $test_file $test_method
+cargo test -p tests  --test $test_file $test_method
 
 # run specific test under subdirectory
 cargo test --test mod $dir$::$test_file::$test_method
+
+# debug specific test under subdirectory and get backtrace
+RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1 ENABLE_FORY_DEBUG_OUTPUT=1 cargo test --test mod $dir$::$test_file::$test_method
 
 # inspect generated code by fory derive macro
 cargo expand --test mod $mod$::$file$ > expanded.rs
@@ -351,7 +356,7 @@ Fory serialization for every language is implemented independently to minimize t
 
 - **fory-test-core**: Core test utilities and data generators
 
-- **fory-testsuite**: Complex test suite for issues reported by users and hard to reproduce using simple test cases
+- **testsuite**: Complex test suite for issues reported by users and hard to reproduce using simple test cases
 
 - **benchmark**: Benchmark suite based on jmh
 
