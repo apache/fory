@@ -50,10 +50,10 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), 
             context.writer.write_varuint32(meta_index);
         } else {
             let type_info = context.get_type_resolver().get_type_info(&rs_type_id)?;
-            let namespace = type_info.get_namespace().to_owned();
-            let type_name = type_info.get_type_name().to_owned();
-            context.write_meta_string_bytes(&namespace)?;
-            context.write_meta_string_bytes(&type_name)?;
+            let namespace = type_info.get_namespace();
+            let type_name = type_info.get_type_name();
+            context.write_meta_string_bytes(namespace)?;
+            context.write_meta_string_bytes(type_name)?;
         }
     } else if type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
         || type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32
@@ -77,8 +77,8 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Er
         if context.is_share_meta() {
             let _meta_index = context.reader.read_varuint32()?;
         } else {
-            let _namespace_msb = context.read_meta_string_bytes()?;
-            let _type_name_msb = context.read_meta_string_bytes()?;
+            let _namespace_msb = context.read_meta_string()?;
+            let _type_name_msb = context.read_meta_string()?;
         }
     } else if local_type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
         || local_type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32

@@ -403,7 +403,7 @@ impl Fory {
         if result.is_ok() {
             assert_eq!(context.reader.slice_after_cursor().len(), 0);
         }
-        context.reset();
+        context.reader.reset();
         pool.put(context);
         result
     }
@@ -428,6 +428,7 @@ impl Fory {
             context.reader.skip(bytes_to_skip)?;
         }
         context.ref_reader.resolve_callbacks();
+        context.reset();
         result
     }
 
@@ -481,7 +482,7 @@ impl Fory {
         });
         let mut context = pool.get();
         let result = self.serialize_with_context(record, &mut context)?;
-        context.reset();
+        context.writer.reset();
         pool.put(context);
         Ok(result)
     }
@@ -503,6 +504,7 @@ impl Fory {
                 context.write_meta(meta_start_offset);
             }
         }
+        context.reset();
         Ok(context.writer.dump())
     }
 

@@ -181,7 +181,7 @@ pub fn skip_value(
                 let type_resolver = context.get_type_resolver();
                 let type_meta = type_info.get_type_meta();
                 type_resolver
-                    .get_ext_name_harness(&type_meta.get_namespace(), &type_meta.get_type_name())?
+                    .get_ext_name_harness(type_meta.get_namespace(), type_meta.get_type_name())?
                     .get_read_data_fn()(context)?;
                 Ok(())
             } else {

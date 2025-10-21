@@ -95,8 +95,8 @@ pub struct TypeInfo {
     type_def: Rc<Vec<u8>>,
     type_meta: Rc<TypeMeta>,
     type_id: u32,
-    namespace: MetaString,
-    type_name: MetaString,
+    namespace: Rc<MetaString>,
+    type_name: Rc<MetaString>,
     register_by_name: bool,
     harness: Harness,
 }
@@ -147,8 +147,8 @@ impl TypeInfo {
             type_def: Rc::from(type_def_bytes),
             type_meta,
             type_id,
-            namespace: namespace_metastring,
-            type_name: type_name_metastring,
+            namespace: Rc::from(namespace_metastring),
+            type_name: Rc::from(type_name_metastring),
             register_by_name,
             harness,
         })
@@ -179,8 +179,8 @@ impl TypeInfo {
             type_def: Rc::from(type_def),
             type_meta: Rc::new(meta),
             type_id,
-            namespace: namespace_metastring,
-            type_name: type_name_metastring,
+            namespace: Rc::from(namespace_metastring),
+            type_name: Rc::from(type_name_metastring),
             register_by_name,
             harness,
         })
@@ -190,12 +190,12 @@ impl TypeInfo {
         self.type_id
     }
 
-    pub fn get_namespace(&self) -> &MetaString {
-        &self.namespace
+    pub fn get_namespace(&self) -> Rc<MetaString> {
+        self.namespace.clone()
     }
 
-    pub fn get_type_name(&self) -> &MetaString {
-        &self.type_name
+    pub fn get_type_name(&self) -> Rc<MetaString> {
+        self.type_name.clone()
     }
 
     pub fn get_type_def(&self) -> Rc<Vec<u8>> {
@@ -294,7 +294,7 @@ pub struct TypeResolver {
     type_info_map_by_id: HashMap<u32, Rc<TypeInfo>>,
     type_info_map: HashMap<std::any::TypeId, Rc<TypeInfo>>,
     type_info_map_by_name: HashMap<(String, String), Rc<TypeInfo>>,
-    type_info_map_by_ms_name: HashMap<(MetaString, MetaString), Rc<TypeInfo>>,
+    type_info_map_by_ms_name: HashMap<(Rc<MetaString>, Rc<MetaString>), Rc<TypeInfo>>,
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
     compatible: bool,
@@ -347,11 +347,11 @@ impl TypeResolver {
 
     pub fn get_type_info_by_msname(
         &self,
-        namespace: &MetaString,
-        type_name: &MetaString,
+        namespace: Rc<MetaString>,
+        type_name: Rc<MetaString>,
     ) -> Option<Rc<TypeInfo>> {
         self.type_info_map_by_ms_name
-            .get(&(namespace.clone(), type_name.clone()))
+            .get(&(namespace, type_name))
             .cloned()
     }
 
@@ -378,10 +378,10 @@ impl TypeResolver {
 
     pub fn get_name_harness(
         &self,
-        namespace: &MetaString,
-        type_name: &MetaString,
+        namespace: Rc<MetaString>,
+        type_name: Rc<MetaString>,
     ) -> Option<Rc<Harness>> {
-        let key = (namespace.clone(), type_name.clone());
+        let key = (namespace, type_name);
         self.type_info_map_by_ms_name
             .get(&key)
             .map(|info| Rc::new(info.get_harness().clone()))
@@ -396,10 +396,10 @@ impl TypeResolver {
 
     pub fn get_ext_name_harness(
         &self,
-        namespace: &MetaString,
-        type_name: &MetaString,
+        namespace: Rc<MetaString>,
+        type_name: Rc<MetaString>,
     ) -> Result<Rc<Harness>, Error> {
-        let key = (namespace.clone(), type_name.clone());
+        let key = (namespace, type_name);
         self.type_info_map_by_ms_name
             .get(&key)
             .map(|info| Rc::new(info.get_harness().clone()))
