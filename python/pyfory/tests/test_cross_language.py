@@ -337,6 +337,50 @@ def test_cross_language_serializer(data_file_path):
     with open(data_file_path, "wb+") as f:
         f.write(new_buf.get_bytes(0, new_buf.writer_index))
 
+@cross_language_test
+def test_cross_language_serializer_go(data_file_path):
+    with open(data_file_path, "rb") as f:
+        data_bytes = f.read()
+        buffer = pyfory.Buffer(data_bytes)
+        fory = pyfory.Fory(xlang=True, ref=True)
+        objects = []
+        assert _deserialize_and_append(fory, buffer, objects) is True
+        assert _deserialize_and_append(fory, buffer, objects) is False
+        assert _deserialize_and_append(fory, buffer, objects) == -1
+        assert _deserialize_and_append(fory, buffer, objects) == 2**7 - 1
+        assert _deserialize_and_append(fory, buffer, objects) == -(2**7)
+        assert _deserialize_and_append(fory, buffer, objects) == 2**15 - 1
+        assert _deserialize_and_append(fory, buffer, objects) == -(2**15)
+        assert _deserialize_and_append(fory, buffer, objects) == 2**31 - 1
+        assert _deserialize_and_append(fory, buffer, objects) == -(2**31)
+        x = _deserialize_and_append(fory, buffer, objects)
+        assert x == 2**63 - 1, x
+        assert _deserialize_and_append(fory, buffer, objects) == -(2**63)
+        assert _deserialize_and_append(fory, buffer, objects) == -1.0
+        assert _deserialize_and_append(fory, buffer, objects) == -1.0
+        assert _deserialize_and_append(fory, buffer, objects) == "str"
+
+        day = datetime.date(2021, 11, 23)
+        assert _deserialize_and_append(fory, buffer, objects) == day
+        instant = datetime.datetime.fromtimestamp(100)
+        assert _deserialize_and_append(fory, buffer, objects) == instant
+
+        list_ = ["a", 1, -1.0, instant, day]
+        assert _deserialize_and_append(fory, buffer, objects) == list_
+
+        dict_ = {f"k{i}": v for i, v in enumerate(list_)}
+        dict_.update({v: v for v in list_})
+        assert _deserialize_and_append(fory, buffer, objects) == dict_
+
+        set_ = set(list_)
+        assert _deserialize_and_append(fory, buffer, objects) == set_
+        new_buf = pyfory.Buffer.allocate(32)
+        for obj in objects:
+            fory.serialize(obj, buffer=new_buf)
+
+    with open(data_file_path, "wb+") as f:
+        f.write(new_buf.get_bytes(0, new_buf.writer_index))
+
 
 @cross_language_test
 def _deserialize_and_append(fory, buffer, objects: list):

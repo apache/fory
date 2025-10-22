@@ -586,15 +586,15 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 		// make sure the concrete value don't miss its real typeInfo
 		value = value.Elem()
 	}
+
 	type_ := value.Type()
-	if type_.Kind() == reflect.Array && (isPrimitiveType_(type_.Elem()) || type_.Elem().Kind() == reflect.Uint8) {
-		typ := reflect.SliceOf(type_.Elem())
-		return r.typesInfo[typ], nil
-	} else if (type_.Kind() == reflect.Slice || type_.Kind() == reflect.Array) && type_.Elem().Kind() != reflect.Uint8 {
+
+	if type_.Kind() == reflect.Slice && type_.Elem().Kind() != reflect.Uint8 {
 		info := r.typeIDToTypeInfo[LIST]
 		info.Serializer = NewSliceSerializer(r.fory, nil, nil)
 		return info, nil
 	}
+
 	if info, ok := r.typesInfo[type_]; ok {
 		if info.Serializer == nil {
 			/*
@@ -945,8 +945,6 @@ func (r *typeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 		}
 		return &ptrToValueSerializer{valueSerializer}, nil
 	case reflect.Slice:
-		return NewSliceSerializer(r.fory, nil, nil), nil
-	case reflect.Array:
 		return NewSliceSerializer(r.fory, nil, nil), nil
 	case reflect.Map:
 		hasKeySerializer, hasValueSerializer := !isDynamicType(type_.Key()), !isDynamicType(type_.Elem())

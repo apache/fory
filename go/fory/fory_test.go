@@ -102,19 +102,6 @@ func commonMap() []interface{} {
 	}
 }
 
-func commonArray() []interface{} {
-	return []interface{}{
-		[100]bool{false, true, true},
-		[100]byte{1, 2, 3},
-		[100]int8{1, 2, 3},
-		[100]int16{1, 2, 3},
-		[100]int32{1, 2, 3},
-		[100]int64{1, 2, 3},
-		[100]float32{1, 2, 3},
-		[100]float64{1, 2, 3},
-	}
-}
-
 func TestSerializePrimitives(t *testing.T) {
 	for _, referenceTracking := range []bool{false, true} {
 		fory := NewFory(referenceTracking)
@@ -202,16 +189,6 @@ func TestSerializeMap(t *testing.T) {
 			serde(t, fory, data)
 		}
 		serde(t, fory, commonMap())
-	}
-}
-
-func TestSerializeArray(t *testing.T) {
-	for _, referenceTracking := range []bool{false, true} {
-		fory := NewFory(referenceTracking)
-		for _, data := range commonArray() {
-			serde(t, fory, data)
-		}
-		serde(t, fory, commonArray())
 	}
 }
 
@@ -572,19 +549,6 @@ or array types for deserialization.
 func TestMapEachIndividually(t *testing.T) {
 	fory := NewFory(true)
 	for _, srcAny := range commonMap() {
-		srcType := reflect.TypeOf(srcAny)
-		endPtr := reflect.New(srcType)
-		data, _ := fory.Marshal(srcAny)
-		_ = fory.Unmarshal(data, endPtr.Interface())
-		endVal := endPtr.Elem()
-		endAny := endVal.Interface()
-		require.Equal(t, srcAny, endAny)
-	}
-}
-
-func TestArrayEachIndividually(t *testing.T) {
-	fory := NewFory(true)
-	for _, srcAny := range commonArray() {
 		srcType := reflect.TypeOf(srcAny)
 		endPtr := reflect.New(srcType)
 		data, _ := fory.Marshal(srcAny)

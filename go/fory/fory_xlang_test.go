@@ -112,21 +112,11 @@ func TestXLangSerializer(t *testing.T) {
 	set.Add(list...)
 	require.Nil(t, fory_.Serialize(buffer, set, nil))
 
-	// test primitive arrays
-	require.Nil(t, fory_.Serialize(buffer, [2]bool{true, false}, nil))
-	require.Nil(t, fory_.Serialize(buffer, [2]int16{1, fory.MaxInt16}, nil))
-	require.Nil(t, fory_.Serialize(buffer, [2]int32{1, fory.MaxInt32}, nil))
-	require.Nil(t, fory_.Serialize(buffer, [2]int64{1, fory.MaxInt64}, nil))
-	require.Nil(t, fory_.Serialize(buffer, [2]float32{1.0, 2.0}, nil))
-	require.Nil(t, fory_.Serialize(buffer, [2]float64{1.0, 2.0}, nil))
-
 	check := func(buf *fory.ByteBuffer) {
 		values := []interface{}{
 			true, false, int64(-1), int8(fory.MaxInt8), int8(fory.MinInt8), int16(fory.MaxInt16), int16(fory.MinInt16),
 			int32(fory.MaxInt32), int32(fory.MinInt32), int64(fory.MaxInt64), int64(fory.MinInt64), float32(-1),
 			float64(-1), "str", day, instant, list, dict, set,
-			[2]bool{true, false}, [2]int16{1, fory.MaxInt16}, [2]int32{1, fory.MaxInt32},
-			[2]int64{1, fory.MaxInt64}, [2]float32{1.0, 2.0}, [2]float64{1.0, 2.0},
 		}
 		for index, value := range values {
 			typ := reflect.TypeOf(value)
@@ -138,16 +128,16 @@ func TestXLangSerializer(t *testing.T) {
 	}
 	check(buffer)
 
-	require.Nil(t, ioutil.WriteFile("test_cross_language_serializer.data",
+	require.Nil(t, ioutil.WriteFile("test_cross_language_serializer_go.data",
 		buffer.GetByteSlice(0, buffer.WriterIndex()), 0644))
 	defer func(name string) {
 		err := os.Remove(name)
 		require.Nil(t, err)
-	}("test_cross_language_serializer.data")
+	}("test_cross_language_serializer_go.data")
 	require.True(t, executeCommand([]string{"python", "-m", pythonModule,
-		"test_cross_language_serializer", "test_cross_language_serializer.data"}))
+		"test_cross_language_serializer_go", "test_cross_language_serializer_go.data"}))
 
-	data, err := ioutil.ReadFile("test_cross_language_serializer.data")
+	data, err := ioutil.ReadFile("test_cross_language_serializer_go.data")
 	require.Nil(t, err)
 	buffer = fory.NewByteBuffer(data)
 	check(buffer)

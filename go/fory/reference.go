@@ -82,10 +82,6 @@ func (r *RefResolver) WriteRefOrNull(buffer *ByteBuffer, value reflect.Value) (r
 	// reference types such as channel/function are not handled here and will be handled by typeResolver.
 	switch kind {
 	case reflect.Ptr:
-		elemValue := value.Elem()
-		if elemValue.Kind() == reflect.Array {
-			length = elemValue.Len()
-		}
 		isNil = value.IsNil()
 	case reflect.Map:
 		isNil = value.IsNil()
