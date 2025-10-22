@@ -146,12 +146,22 @@ public class ForyGraalVMFeatureTest {
     builderInstance.register(PublicNoArgConstructorClass.class);
     GraalvmSupport.registerProxySupport(SampleProxyInterface.class);
 
-    assertFalse(GraalvmSupport.getRegisteredClasses().isEmpty());
-    assertFalse(GraalvmSupport.getProxyInterfaces().isEmpty());
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      assertFalse(GraalvmSupport.getRegisteredClasses().isEmpty());
+      assertFalse(GraalvmSupport.getProxyInterfaces().isEmpty());
 
-    GraalvmSupport.clearRegistrations();
+      GraalvmSupport.clearRegistrations();
 
-    assertTrue(GraalvmSupport.getRegisteredClasses().isEmpty());
-    assertTrue(GraalvmSupport.getProxyInterfaces().isEmpty());
+      assertTrue(GraalvmSupport.getRegisteredClasses().isEmpty());
+      assertTrue(GraalvmSupport.getProxyInterfaces().isEmpty());
+    } else {
+      assertTrue(GraalvmSupport.getRegisteredClasses().isEmpty());
+      assertTrue(GraalvmSupport.getProxyInterfaces().isEmpty());
+
+      GraalvmSupport.clearRegistrations();
+
+      assertTrue(GraalvmSupport.getRegisteredClasses().isEmpty());
+      assertTrue(GraalvmSupport.getProxyInterfaces().isEmpty());
+    }
   }
 }
