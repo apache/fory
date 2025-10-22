@@ -554,16 +554,30 @@ public class ClassResolverTest extends ForyTestBase {
 
     fory.register(GraalvmRegistrationBean.class);
 
-    Assert.assertTrue(
-        GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
+      Assert.assertTrue(
+          GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
 
-    GraalvmSupport.clearRegistrations();
-    Assert.assertFalse(
-        GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
+      GraalvmSupport.clearRegistrations();
+      Assert.assertFalse(
+          GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
 
-    fory.ensureSerializersCompiled();
+      fory.ensureSerializersCompiled();
 
-    Assert.assertTrue(
-        GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
+      Assert.assertTrue(
+          GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
+    } else {
+      Assert.assertFalse(
+          GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
+
+      GraalvmSupport.clearRegistrations();
+      Assert.assertFalse(
+          GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
+
+      fory.ensureSerializersCompiled();
+
+      Assert.assertFalse(
+          GraalvmSupport.getRegisteredClasses().contains(GraalvmRegistrationBean.class));
+    }
   }
 }
