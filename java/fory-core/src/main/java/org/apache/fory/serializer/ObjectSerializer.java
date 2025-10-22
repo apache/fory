@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.Tuple2;
@@ -86,6 +87,18 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
   }
 
   public ObjectSerializer(Fory fory, Class<T> cls, boolean resolveParent) {
+    this(fory, cls, resolveParent, null);
+  }
+
+  /**
+   * Create ObjectSerializer with field filtering capability.
+   *
+   * @param fory Fory instance
+   * @param cls Class type
+   * @param resolveParent Whether to resolve parent class
+   * @param excludedFields Set of field names to exclude from serialization (can be null)
+   */
+  public ObjectSerializer(Fory fory, Class<T> cls, boolean resolveParent, Set<String> excludedFields) {
     super(fory, cls);
     binding = SerializationBinding.createBinding(fory);
     // avoid recursive building serializers.
@@ -103,6 +116,14 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     } else {
       descriptors = typeResolver.getFieldDescriptors(cls, resolveParent);
     }
+    
+    // Filter out excluded fields if specified
+    if (excludedFields != null && !excludedFields.isEmpty()) {
+      descriptors = descriptors.stream()
+          .filter(d -> !excludedFields.contains(d.getName()))
+          .collect(Collectors.toList());
+    }
+    
     DescriptorGrouper grouper = typeResolver.createDescriptorGrouper(descriptors, false);
     descriptors = grouper.getSortedDescriptors();
     if (isRecord) {

@@ -19,6 +19,8 @@
 
 package org.apache.fory.serializer;
 
+import java.util.HashSet;
+import java.util.Set;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.FieldAccessor;
@@ -36,8 +38,15 @@ final class ObjectStreamMetaSharedSerializerAdapter<T> extends CompatibleSeriali
   /** Create adapter with default ObjectSerializer (interpreter mode). */
   public ObjectStreamMetaSharedSerializerAdapter(Fory fory, Class<T> type) {
     super(fory, type);
-    // Create ObjectSerializer without resolving parent to avoid duplicate registration
-    this.serializer = new ObjectSerializer<>(fory, type, false);
+    // For blocking queues, create ObjectSerializer with field filtering to exclude lock fields
+    Set<String> excludedFields = getExcludedFieldsForType(type);
+    if (!excludedFields.isEmpty()) {
+      // Use filtered constructor
+      this.serializer = new ObjectSerializer<>(fory, type, false, excludedFields);
+    } else {
+      // Create ObjectSerializer without resolving parent to avoid duplicate registration
+      this.serializer = new ObjectSerializer<>(fory, type, false);
+    }
   }
 
   /**
@@ -187,5 +196,33 @@ final class ObjectStreamMetaSharedSerializerAdapter<T> extends CompatibleSeriali
     for (int i = 0; i < vals.length; i++) {
       vals[i] = fory.readRef(buffer);
     }
+  }
+
+  /**
+   * Get fields that should be excluded from serialization for special types. LinkedBlockingQueue
+   * and ArrayBlockingQueue have lock fields that cause deadlock if serialized/deserialized. These
+   * fields will be re-initialized by their readObject methods.
+   *
+   * @param type Class type to check
+   * @return Set of field names to exclude, or empty set
+   */
+  private static Set<String> getExcludedFieldsForType(Class<?> type) {
+    if (type == java.util.concurrent.LinkedBlockingQueue.class) {
+      // LinkedBlockingQueue lock fields that cause deadlock
+      Set<String> excluded = new HashSet<>();
+      excluded.add("takeLock");
+      excluded.add("notEmpty");
+      excluded.add("putLock");
+      excluded.add("notFull");
+      return excluded;
+    } else if (type == java.util.concurrent.ArrayBlockingQueue.class) {
+      // ArrayBlockingQueue lock fields
+      Set<String> excluded = new HashSet<>();
+      excluded.add("lock");
+      excluded.add("notEmpty");
+      excluded.add("notFull");
+      return excluded;
+    }
+    return new HashSet<>();
   }
 }

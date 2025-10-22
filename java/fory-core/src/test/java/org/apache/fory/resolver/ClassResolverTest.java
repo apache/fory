@@ -60,6 +60,7 @@ import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
+import org.apache.fory.serializer.collection.ArrayBlockingQueueSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers;
 import org.apache.fory.serializer.collection.MapSerializers;
@@ -164,15 +165,10 @@ public class ClassResolverTest extends ForyTestBase {
     assertEquals(
         classResolver.getSerializerClass(TreeMap.class), MapSerializers.SortedMapSerializer.class);
 
-    if (ClassResolver.requireJavaSerialization(ArrayBlockingQueue.class)) {
-      assertEquals(
-          classResolver.getSerializerClass(ArrayBlockingQueue.class),
-          CollectionSerializers.JDKCompatibleCollectionSerializer.class);
-    } else {
-      assertEquals(
-          classResolver.getSerializerClass(ArrayBlockingQueue.class),
-          CollectionSerializers.DefaultJavaCollectionSerializer.class);
-    }
+    // ArrayBlockingQueue now has a dedicated high-performance serializer
+    assertEquals(
+        classResolver.getSerializerClass(ArrayBlockingQueue.class),
+        ArrayBlockingQueueSerializer.class);
     assertEquals(
         classResolver.getSerializerClass(ConcurrentHashMap.class),
         MapSerializers.ConcurrentHashMapSerializer.class);

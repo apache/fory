@@ -294,31 +294,6 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         }
       };
 
-  /** Simple class field descriptor to replace deprecated FieldResolver.ClassField. */
-  static class ClassField {
-    private final String name;
-    private final Class<?> type;
-    private final Class<?> declaringClass;
-
-    public ClassField(String name, Class<?> type, Class<?> declaringClass) {
-      this.name = name;
-      this.type = type;
-      this.declaringClass = declaringClass;
-    }
-
-    public String getName() {
-      return name;
-    }
-
-    public Class<?> getType() {
-      return type;
-    }
-
-    public Class<?> getDeclaringClass() {
-      return declaringClass;
-    }
-  }
-
   private static class SlotsInfo {
     private final Class<?> cls;
     private final ClassInfo classInfo;
@@ -340,16 +315,11 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       classInfo = fory.getClassResolver().newClassInfo(type, null, NO_CLASS_ID);
       ObjectStreamClass objectStreamClass = ObjectStreamClass.lookup(type);
       streamClassInfo = STREAM_CLASS_INFO_CACHE.get(type);
-      // Use different serializers based on Meta Shared configuration
-      // Meta Shared mode: Use ObjectStreamMetaSharedSerializerAdapter (wraps ObjectSerializer)
-      // Non-Meta Shared mode: Use CompatibleSerializer for backward compatibility
-      // Note: Use the (fory, type, fieldResolver) constructor to avoid registering this serializer
-      // as the global serializer for the type, since ObjectStreamSerializer is already registered
       if (useMetaShare) {
         this.slotsSerializer = new ObjectStreamMetaSharedSerializerAdapter<>(fory, type);
       } else {
-        this.slotsSerializer =
-            new CompatibleSerializer<>(fory, type, fory.getClassResolver().getFieldResolver(type));
+        FieldResolver fieldResolver = fory.getClassResolver().getFieldResolver(type);
+        this.slotsSerializer = new CompatibleSerializer<>(fory, type, fieldResolver);
       }
       fieldIndexMap = new ObjectIntMap<>(4, 0.4f);
       List<FieldResolver.ClassField> allFields = new ArrayList<>();
