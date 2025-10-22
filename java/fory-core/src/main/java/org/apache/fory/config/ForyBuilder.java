@@ -84,6 +84,7 @@ public final class ForyBuilder {
   boolean registerGuavaTypes = true;
   boolean scalaOptimizationEnabled = false;
   boolean suppressClassRegistrationWarnings = true;
+  boolean useMetaShareForObjectStream = false;
   UnknownEnumValueStrategy unknownEnumValueStrategy = UnknownEnumValueStrategy.NOT_ALLOWED;
   boolean serializeEnumByName = false;
   int bufferSizeLimitBytes = 128 * 1024;
@@ -332,6 +333,17 @@ public final class ForyBuilder {
    */
   public ForyBuilder withScopedMetaShare(boolean scoped) {
     scopedMetaShareEnabled = scoped;
+    return this;
+  }
+
+  /**
+   * Whether use meta share for ObjectStreamSerializer.
+   * This reduces serialization size by using ObjectSerializer instead of CompatibleSerializer
+   * for classes that implement custom writeObject/readObject methods.
+   * Only effective when metaShareEnabled is true.
+   */
+  public ForyBuilder withMetaShareForObjectStream(boolean enable) {
+    this.useMetaShareForObjectStream = enable;
     return this;
   }
 

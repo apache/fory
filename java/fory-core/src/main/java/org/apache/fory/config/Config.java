@@ -61,6 +61,7 @@ public class Config implements Serializable {
   private final boolean asyncCompilationEnabled;
   private final boolean deserializeNonexistentClass;
   private final boolean scalaOptimizationEnabled;
+  private final boolean useMetaShareForObjectStream;
   private transient int configHash;
   private final UnknownEnumValueStrategy unknownEnumValueStrategy;
   private final boolean serializeEnumByName;
@@ -106,6 +107,7 @@ public class Config implements Serializable {
     }
     asyncCompilationEnabled = builder.asyncCompilationEnabled;
     scalaOptimizationEnabled = builder.scalaOptimizationEnabled;
+    useMetaShareForObjectStream = builder.useMetaShareForObjectStream;
     unknownEnumValueStrategy = builder.unknownEnumValueStrategy;
     serializeEnumByName = builder.serializeEnumByName;
     bufferSizeLimitBytes = builder.bufferSizeLimitBytes;
@@ -297,6 +299,15 @@ public class Config implements Serializable {
     return scalaOptimizationEnabled;
   }
 
+  /**
+   * Whether use meta share for ObjectStreamSerializer.
+   * This reduces serialization size by using ObjectSerializer instead of CompatibleSerializer.
+   * Only effective when metaShareEnabled is true.
+   */
+  public boolean isMetaShareForObjectStreamEnabled() {
+    return useMetaShareForObjectStream && metaShareEnabled;
+  }
+
   public boolean isForyDebugOutputEnabled() {
     return foryDebugOutputEnabled;
   }
@@ -335,6 +346,7 @@ public class Config implements Serializable {
         && asyncCompilationEnabled == config.asyncCompilationEnabled
         && deserializeNonexistentClass == config.deserializeNonexistentClass
         && scalaOptimizationEnabled == config.scalaOptimizationEnabled
+        && useMetaShareForObjectStream == config.useMetaShareForObjectStream
         && language == config.language
         && compatibleMode == config.compatibleMode
         && Objects.equals(defaultJDKStreamSerializerType, config.defaultJDKStreamSerializerType)
@@ -372,7 +384,8 @@ public class Config implements Serializable {
         metaCompressor,
         asyncCompilationEnabled,
         deserializeNonexistentClass,
-        scalaOptimizationEnabled);
+        scalaOptimizationEnabled,
+        useMetaShareForObjectStream);
   }
 
   private static final AtomicInteger counter = new AtomicInteger(0);
