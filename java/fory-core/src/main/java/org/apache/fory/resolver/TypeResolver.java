@@ -629,7 +629,8 @@ public abstract class TypeResolver {
       return serializerClass;
     }
     if (GraalvmSupport.isGraalRuntime()) {
-      if (Functions.isLambda(cls) || ReflectionUtils.isJdkProxy(cls)) {
+      // For array types, lambda and proxy, return null to let normal serializer logic handle them
+      if (cls.isArray() || Functions.isLambda(cls) || ReflectionUtils.isJdkProxy(cls)) {
         return null;
       }
       throw new RuntimeException(String.format("Class %s is not registered", cls));
