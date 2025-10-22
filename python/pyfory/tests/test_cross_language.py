@@ -337,6 +337,7 @@ def test_cross_language_serializer(data_file_path):
     with open(data_file_path, "wb+") as f:
         f.write(new_buf.get_bytes(0, new_buf.writer_index))
 
+
 @cross_language_test
 def test_cross_language_serializer_go(data_file_path):
     with open(data_file_path, "rb") as f:
