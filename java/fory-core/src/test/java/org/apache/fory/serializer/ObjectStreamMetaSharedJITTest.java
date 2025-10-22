@@ -27,20 +27,17 @@ import java.util.Objects;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.CompatibleMode;
-import org.apache.fory.config.Config;
 import org.apache.fory.resolver.MetaContext;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 /**
- * Tests for ObjectStreamMetaSharedSerializerAdapter's readAndSetFields method
- * with both interpreter and JIT modes.
+ * Tests for ObjectStreamMetaSharedSerializerAdapter's readAndSetFields method with both interpreter
+ * and JIT modes.
  */
 public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
 
-  /**
-   * Test class with custom writeObject/readObject and various field types.
-   */
+  /** Test class with custom writeObject/readObject and various field types. */
   static class CustomSerializable implements Serializable {
     private static final long serialVersionUID = 1L;
     private int intValue;
@@ -50,7 +47,8 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
 
     public CustomSerializable() {}
 
-    public CustomSerializable(int intValue, String stringValue, boolean boolValue, double doubleValue) {
+    public CustomSerializable(
+        int intValue, String stringValue, boolean boolValue, double doubleValue) {
       this.intValue = intValue;
       this.stringValue = stringValue;
       this.boolValue = boolValue;
@@ -70,9 +68,9 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
       if (this == o) return true;
       if (!(o instanceof CustomSerializable)) return false;
       CustomSerializable that = (CustomSerializable) o;
-      return intValue == that.intValue 
-          && boolValue == that.boolValue 
-          && Double.compare(that.doubleValue, doubleValue) == 0 
+      return intValue == that.intValue
+          && boolValue == that.boolValue
+          && Double.compare(that.doubleValue, doubleValue) == 0
           && Objects.equals(stringValue, that.stringValue);
     }
 
@@ -83,35 +81,42 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
 
     @Override
     public String toString() {
-      return "CustomSerializable{intValue=" + intValue 
-          + ", stringValue='" + stringValue + '\'' 
-          + ", boolValue=" + boolValue 
-          + ", doubleValue=" + doubleValue + '}';
+      return "CustomSerializable{intValue="
+          + intValue
+          + ", stringValue='"
+          + stringValue
+          + '\''
+          + ", boolValue="
+          + boolValue
+          + ", doubleValue="
+          + doubleValue
+          + '}';
     }
   }
 
   @Test
   public void testReadAndSetFieldsWithInterpreterMode() {
     // Test with JIT disabled (interpreter mode)
-    Fory fory = Fory.builder()
-        .withMetaShare(true)
-        .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .withCodegen(false)  // Disable JIT
-        .build();
+    Fory fory =
+        Fory.builder()
+            .withMetaShare(true)
+            .withMetaShare(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .withCodegen(false) // Disable JIT
+            .build();
 
     CustomSerializable original = new CustomSerializable(42, "test", true, 3.14);
     MetaContext context = new MetaContext();
-    
+
     // Serialize
     fory.getSerializationContext().setMetaContext(context);
     byte[] bytes = fory.serialize(original);
-    
+
     // Deserialize
     fory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized = (CustomSerializable) fory.deserialize(bytes);
-    
+
     Assert.assertEquals(deserialized, original);
     Assert.assertEquals(deserialized.intValue, 42);
     Assert.assertEquals(deserialized.stringValue, "test");
@@ -122,25 +127,26 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
   @Test
   public void testReadAndSetFieldsWithJITMode() {
     // Test with JIT enabled
-    Fory fory = Fory.builder()
-        .withMetaShare(true)
-        .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .withCodegen(true)  // Enable JIT
-        .build();
+    Fory fory =
+        Fory.builder()
+            .withMetaShare(true)
+            .withMetaShare(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .withCodegen(true) // Enable JIT
+            .build();
 
     CustomSerializable original = new CustomSerializable(100, "jit-test", false, 2.718);
     MetaContext context = new MetaContext();
-    
+
     // Serialize
     fory.getSerializationContext().setMetaContext(context);
     byte[] bytes = fory.serialize(original);
-    
+
     // Deserialize
     fory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized = (CustomSerializable) fory.deserialize(bytes);
-    
+
     Assert.assertEquals(deserialized, original);
     Assert.assertEquals(deserialized.intValue, 100);
     Assert.assertEquals(deserialized.stringValue, "jit-test");
@@ -151,16 +157,17 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
   @Test
   public void testReadAndSetFieldsWithMultipleObjects() {
     // Test serializing multiple objects with meta context
-    Fory fory = Fory.builder()
-        .withMetaShare(true)
-        .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .withCodegen(true)
-        .build();
+    Fory fory =
+        Fory.builder()
+            .withMetaShare(true)
+            .withMetaShare(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .withCodegen(true)
+            .build();
 
     MetaContext context = new MetaContext();
-    
+
     CustomSerializable obj1 = new CustomSerializable(1, "first", true, 1.1);
     CustomSerializable obj2 = new CustomSerializable(2, "second", false, 2.2);
     CustomSerializable obj3 = new CustomSerializable(3, "third", true, 3.3);
@@ -168,20 +175,20 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
     // Serialize
     fory.getSerializationContext().setMetaContext(context);
     byte[] bytes1 = fory.serialize(obj1);
-    
+
     fory.getSerializationContext().setMetaContext(context);
     byte[] bytes2 = fory.serialize(obj2);
-    
+
     fory.getSerializationContext().setMetaContext(context);
     byte[] bytes3 = fory.serialize(obj3);
 
     // Deserialize
     fory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized1 = (CustomSerializable) fory.deserialize(bytes1);
-    
+
     fory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized2 = (CustomSerializable) fory.deserialize(bytes2);
-    
+
     fory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized3 = (CustomSerializable) fory.deserialize(bytes3);
 
@@ -193,25 +200,26 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
   @Test
   public void testReadAndSetFieldsWithNullValues() {
     // Test with null string value
-    Fory fory = Fory.builder()
-        .withMetaShare(true)
-        .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .withCodegen(true)
-        .build();
+    Fory fory =
+        Fory.builder()
+            .withMetaShare(true)
+            .withMetaShare(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .withCodegen(true)
+            .build();
 
     CustomSerializable original = new CustomSerializable(99, null, true, 0.0);
     MetaContext context = new MetaContext();
-    
+
     // Serialize
     fory.getSerializationContext().setMetaContext(context);
     byte[] bytes = fory.serialize(original);
-    
+
     // Deserialize
     fory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized = (CustomSerializable) fory.deserialize(bytes);
-    
+
     Assert.assertEquals(deserialized, original);
     Assert.assertEquals(deserialized.intValue, 99);
     Assert.assertNull(deserialized.stringValue);
@@ -226,29 +234,31 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
     MetaContext context = new MetaContext();
 
     // Serialize with interpreter mode
-    Fory interpreterFory = Fory.builder()
-        .withMetaShare(true)
-        .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .withCodegen(false)
-        .build();
-    
+    Fory interpreterFory =
+        Fory.builder()
+            .withMetaShare(true)
+            .withMetaShare(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .withCodegen(false)
+            .build();
+
     interpreterFory.getSerializationContext().setMetaContext(context);
     byte[] bytes = interpreterFory.serialize(original);
 
     // Deserialize with JIT mode
-    Fory jitFory = Fory.builder()
-        .withMetaShare(true)
-        .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .withCodegen(true)
-        .build();
-    
+    Fory jitFory =
+        Fory.builder()
+            .withMetaShare(true)
+            .withMetaShare(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .withCodegen(true)
+            .build();
+
     jitFory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized = (CustomSerializable) jitFory.deserialize(bytes);
-    
+
     Assert.assertEquals(deserialized, original);
   }
 }

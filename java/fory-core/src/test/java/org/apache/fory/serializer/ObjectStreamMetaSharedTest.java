@@ -31,14 +31,10 @@ import org.apache.fory.resolver.MetaContext;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/**
- * Tests for ObjectStreamSerializer with Meta Shared mode.
- */
+/** Tests for ObjectStreamSerializer with Meta Shared mode. */
 public class ObjectStreamMetaSharedTest extends ForyTestBase {
 
-  /**
-   * Simple test class with custom writeObject/readObject.
-   */
+  /** Simple test class with custom writeObject/readObject. */
   static class CustomSerializable implements Serializable {
     private static final long serialVersionUID = 1L;
     private int value;
@@ -80,23 +76,24 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
 
   @Test
   public void testBasicMetaSharedObjectStream() {
-    Fory fory = builder()
-        .withMetaShare(true)
-        .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .build();
+    Fory fory =
+        builder()
+            .withMetaShare(true)
+            .withMetaShare(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
 
     CustomSerializable obj = new CustomSerializable(10, "test");
     MetaContext context = new MetaContext();
     fory.getSerializationContext().setMetaContext(context);
-    
+
     byte[] bytes = fory.serialize(obj);
-    
+
     // Need to set context for deserialization too
     fory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized = (CustomSerializable) fory.deserialize(bytes);
-    
+
     Assert.assertEquals(deserialized, obj);
   }
 
@@ -105,42 +102,38 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
     // Test that data serialized with meta-share disabled can be read by
     // another Fory instance with the SAME configuration
     // Note: Different configurations produce different formats and cannot be mixed
-    
+
     CustomSerializable obj = new CustomSerializable(10, "test");
-    
+
     // Test 1: Old configuration (meta share disabled)
-    Fory oldFory1 = builder()
-        .withMetaShare(false)
-        .requireClassRegistration(false)
-        .build();
+    Fory oldFory1 = builder().withMetaShare(false).requireClassRegistration(false).build();
     byte[] oldBytes = oldFory1.serialize(obj);
-    
+
     // Same configuration can read the data
-    Fory oldFory2 = builder()
-        .withMetaShare(false)
-        .requireClassRegistration(false)
-        .build();
+    Fory oldFory2 = builder().withMetaShare(false).requireClassRegistration(false).build();
     CustomSerializable deserialized1 = (CustomSerializable) oldFory2.deserialize(oldBytes);
     Assert.assertEquals(deserialized1, obj);
-    
+
     // Test 2: New configuration (meta share enabled)
-    Fory newFory1 = builder()
-        .withMetaShare(true)
-        .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .build();
+    Fory newFory1 =
+        builder()
+            .withMetaShare(true)
+            .withMetaShare(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
     MetaContext context = new MetaContext();
     newFory1.getSerializationContext().setMetaContext(context);
     byte[] newBytes = newFory1.serialize(obj);
-    
+
     // Same configuration can read the data
-    Fory newFory2 = builder()
-        .withMetaShare(true)
-        .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .build();
+    Fory newFory2 =
+        builder()
+            .withMetaShare(true)
+            .withMetaShare(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
     newFory2.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized2 = (CustomSerializable) newFory2.deserialize(newBytes);
     Assert.assertEquals(deserialized2, obj);
@@ -149,22 +142,23 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
   @Test
   public void testMetaSharedModeDisabled() {
     // Test with meta share disabled for ObjectStream (default behavior)
-    Fory fory = builder()
-        .withMetaShare(true)
-        .withMetaShare(false)  // Explicitly disable
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .build();
+    Fory fory =
+        builder()
+            .withMetaShare(true)
+            .withMetaShare(false) // Explicitly disable
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
 
     CustomSerializable obj = new CustomSerializable(10, "test");
     MetaContext context = new MetaContext();
     fory.getSerializationContext().setMetaContext(context);
-    
+
     byte[] bytes = fory.serialize(obj);
-    
+
     fory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized = (CustomSerializable) fory.deserialize(bytes);
-    
+
     Assert.assertEquals(deserialized, obj);
   }
 
@@ -174,19 +168,17 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
     CustomSerializable obj = new CustomSerializable(10, "test");
 
     // Compatible mode (old)
-    Fory compatibleFory = builder()
-        .withMetaShare(false)
-        .requireClassRegistration(false)
-        .build();
+    Fory compatibleFory = builder().withMetaShare(false).requireClassRegistration(false).build();
     byte[] compatibleBytes = compatibleFory.serialize(obj);
 
     // MetaShared mode (new)
-    Fory metaSharedFory = builder()
-        .withMetaShare(true)
-        .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .build();
+    Fory metaSharedFory =
+        builder()
+            .withMetaShare(true)
+            .withMetaShare(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
 
     MetaContext context = new MetaContext();
     metaSharedFory.getSerializationContext().setMetaContext(context);
@@ -200,13 +192,13 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
     }
 
     // Verify both can deserialize correctly
-    CustomSerializable deserializedCompat = 
+    CustomSerializable deserializedCompat =
         (CustomSerializable) compatibleFory.deserialize(compatibleBytes);
-    
+
     metaSharedFory.getSerializationContext().setMetaContext(context);
-    CustomSerializable deserializedMeta = 
+    CustomSerializable deserializedMeta =
         (CustomSerializable) metaSharedFory.deserialize(metaSharedBytes);
-    
+
     Assert.assertEquals(deserializedCompat, obj);
     Assert.assertEquals(deserializedMeta, obj);
   }
@@ -214,15 +206,16 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
   @Test
   public void testMultipleObjectsSerialization() {
     // Test serializing multiple objects with meta context
-    Fory fory = builder()
-        .withMetaShare(true)
-        .withMetaShare(true)
-        .withCompatibleMode(CompatibleMode.COMPATIBLE)
-        .requireClassRegistration(false)
-        .build();
+    Fory fory =
+        builder()
+            .withMetaShare(true)
+            .withMetaShare(true)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .requireClassRegistration(false)
+            .build();
 
     MetaContext context = new MetaContext();
-    
+
     CustomSerializable obj1 = new CustomSerializable(1, "first");
     CustomSerializable obj2 = new CustomSerializable(2, "second");
     CustomSerializable obj3 = new CustomSerializable(3, "third");
@@ -230,20 +223,20 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
     // Serialize with context
     fory.getSerializationContext().setMetaContext(context);
     byte[] bytes1 = fory.serialize(obj1);
-    
+
     fory.getSerializationContext().setMetaContext(context);
     byte[] bytes2 = fory.serialize(obj2);
-    
+
     fory.getSerializationContext().setMetaContext(context);
     byte[] bytes3 = fory.serialize(obj3);
 
     // Deserialize with context
     fory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized1 = (CustomSerializable) fory.deserialize(bytes1);
-    
+
     fory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized2 = (CustomSerializable) fory.deserialize(bytes2);
-    
+
     fory.getSerializationContext().setMetaContext(context);
     CustomSerializable deserialized3 = (CustomSerializable) fory.deserialize(bytes3);
 

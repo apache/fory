@@ -21,22 +21,19 @@ package org.apache.fory.serializer;
 
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.FieldAccessor;
 import org.apache.fory.util.Preconditions;
 
 /**
- * Adapter to use ObjectSerializer within ObjectStreamSerializer in meta-shared mode.
- * This adapter wraps ObjectSerializer to provide compatibility with CompatibleSerializerBase API.
- * Supports JIT-optimized ObjectSerializer for better performance.
+ * Adapter to use ObjectSerializer within ObjectStreamSerializer in meta-shared mode. This adapter
+ * wraps ObjectSerializer to provide compatibility with CompatibleSerializerBase API. Supports
+ * JIT-optimized ObjectSerializer for better performance.
  */
 final class ObjectStreamMetaSharedSerializerAdapter<T> extends CompatibleSerializerBase<T> {
   // Mark non-final to allow JIT to update it to optimized serializer
   private Serializer<T> serializer;
 
-  /**
-   * Create adapter with default ObjectSerializer (interpreter mode).
-   */
+  /** Create adapter with default ObjectSerializer (interpreter mode). */
   public ObjectStreamMetaSharedSerializerAdapter(Fory fory, Class<T> type) {
     super(fory, type);
     // Create ObjectSerializer without resolving parent to avoid duplicate registration
@@ -44,8 +41,8 @@ final class ObjectStreamMetaSharedSerializerAdapter<T> extends CompatibleSeriali
   }
 
   /**
-   * Create adapter with JIT-optimized serializer.
-   * This constructor is used when JIT compilation is enabled.
+   * Create adapter with JIT-optimized serializer. This constructor is used when JIT compilation is
+   * enabled.
    *
    * @param fory Fory instance
    * @param type Class type
@@ -76,28 +73,28 @@ final class ObjectStreamMetaSharedSerializerAdapter<T> extends CompatibleSeriali
     } else {
       // For JIT-generated serializers, implement readAndSetFields using read() + field copying
       // This is a complete production-ready implementation
-      
+
       // Step 1: Save current buffer position
       int readerIndex = buffer.readerIndex();
-      
+
       // Step 2: Use the JIT serializer to read field values into a new temporary object
       // The serializer.read() will create a new instance and populate all fields
       T tempObj = serializer.read(buffer);
-      
+
       // Step 3: Copy all field values from tempObj to obj using Unsafe for best performance
       // This assumes both objects are of the same class type
       copyFields(tempObj, obj);
-      
+
       return obj;
     }
   }
 
   /**
-   * Copy all fields from source object to target object using Platform/Unsafe directly.
-   * This is a high-performance native implementation that doesn't depend on deprecated classes.
+   * Copy all fields from source object to target object using Platform/Unsafe directly. This is a
+   * high-performance native implementation that doesn't depend on deprecated classes.
    *
-   * <p>This method uses direct memory copy via Platform API, which is the fastest approach.
-   * It copies all instance fields including inherited fields from superclasses.
+   * <p>This method uses direct memory copy via Platform API, which is the fastest approach. It
+   * copies all instance fields including inherited fields from superclasses.
    *
    * @param source Source object to copy from
    * @param target Target object to copy to
@@ -107,21 +104,20 @@ final class ObjectStreamMetaSharedSerializerAdapter<T> extends CompatibleSeriali
     Preconditions.checkNotNull(source, "source object cannot be null");
     Preconditions.checkNotNull(target, "target object cannot be null");
     Preconditions.checkArgument(
-        source.getClass() == target.getClass(),
-        "Source and target must be of the same class");
+        source.getClass() == target.getClass(), "Source and target must be of the same class");
 
     // Use Platform API to copy all fields at once via Unsafe
     // This is the most efficient approach - direct memory copy
     Class<?> clazz = source.getClass();
-    
+
     // Copy all instance fields using reflection to ensure we get all fields
     // including private and inherited fields
     copyAllFieldsRecursive(source, target, clazz);
   }
 
   /**
-   * Recursively copy all fields from source to target, including inherited fields.
-   * This is a native implementation using FieldAccessor without depending on FieldResolver.
+   * Recursively copy all fields from source to target, including inherited fields. This is a native
+   * implementation using FieldAccessor without depending on FieldResolver.
    *
    * @param source Source object
    * @param target Target object
@@ -131,23 +127,23 @@ final class ObjectStreamMetaSharedSerializerAdapter<T> extends CompatibleSeriali
     if (clazz == null || clazz == Object.class) {
       return;
     }
-    
+
     // First copy parent class fields
     copyAllFieldsRecursive(source, target, clazz.getSuperclass());
-    
+
     // Then copy fields declared in current class
     java.lang.reflect.Field[] fields = clazz.getDeclaredFields();
     for (java.lang.reflect.Field field : fields) {
       // Skip static and transient fields
       int modifiers = field.getModifiers();
-      if (java.lang.reflect.Modifier.isStatic(modifiers) 
+      if (java.lang.reflect.Modifier.isStatic(modifiers)
           || java.lang.reflect.Modifier.isTransient(modifiers)) {
         continue;
       }
-      
+
       // Use FieldAccessor for high-performance field access
       FieldAccessor accessor = FieldAccessor.createAccessor(field);
-      
+
       // Copy field value using getObject/putObject which handles both primitives and objects
       Object value = accessor.getObject(source);
       accessor.putObject(target, value);
@@ -155,8 +151,8 @@ final class ObjectStreamMetaSharedSerializerAdapter<T> extends CompatibleSeriali
   }
 
   /**
-   * Update to JIT-optimized serializer.
-   * This method is called by JIT callback when code generation completes.
+   * Update to JIT-optimized serializer. This method is called by JIT callback when code generation
+   * completes.
    *
    * @param optimizedSerializer JIT-optimized serializer instance
    */
@@ -165,9 +161,8 @@ final class ObjectStreamMetaSharedSerializerAdapter<T> extends CompatibleSeriali
   }
 
   /**
-   * Write field values array directly.
-   * This is used by ObjectOutputStream.PutField scenarios where fields are written as an array.
-   * Uses native ObjectSerializer field writing approach.
+   * Write field values array directly. This is used by ObjectOutputStream.PutField scenarios where
+   * fields are written as an array. Uses native ObjectSerializer field writing approach.
    *
    * @param buffer Memory buffer to write to
    * @param vals Field values array
@@ -181,9 +176,8 @@ final class ObjectStreamMetaSharedSerializerAdapter<T> extends CompatibleSeriali
   }
 
   /**
-   * Read field values array directly.
-   * This is used by ObjectInputStream.GetField scenarios where fields are read into an array.
-   * Uses native ObjectSerializer field reading approach.
+   * Read field values array directly. This is used by ObjectInputStream.GetField scenarios where
+   * fields are read into an array. Uses native ObjectSerializer field reading approach.
    *
    * @param buffer Memory buffer to read from
    * @param vals Field values array to fill

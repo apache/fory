@@ -298,9 +298,8 @@ public class Config implements Serializable {
   }
 
   /**
-   * Whether use meta share for ObjectStreamSerializer.
-   * This reduces serialization size by using ObjectSerializer instead of CompatibleSerializer.
-   * Only effective when metaShareEnabled is true.
+   * Whether use meta share for ObjectStreamSerializer. This reduces serialization size by using
+   * ObjectSerializer instead of CompatibleSerializer. Only effective when metaShareEnabled is true.
    */
   public boolean isMetaShareForObjectStreamEnabled() {
     return metaShareEnabled;

@@ -42,8 +42,8 @@ public abstract class CompatibleSerializerBase<T> extends AbstractObjectSerializ
   }
 
   /**
-   * Write field values array directly.
-   * This is used by ObjectOutputStream.PutField scenarios where fields are written as an array.
+   * Write field values array directly. This is used by ObjectOutputStream.PutField scenarios where
+   * fields are written as an array.
    *
    * @param buffer Memory buffer to write to
    * @param vals Field values array
@@ -51,8 +51,8 @@ public abstract class CompatibleSerializerBase<T> extends AbstractObjectSerializ
   public abstract void writeFieldsValues(MemoryBuffer buffer, Object[] vals);
 
   /**
-   * Read field values array directly.
-   * This is used by ObjectInputStream.GetField scenarios where fields are read into an array.
+   * Read field values array directly. This is used by ObjectInputStream.GetField scenarios where
+   * fields are read into an array.
    *
    * @param buffer Memory buffer to read from
    * @param vals Field values array to fill

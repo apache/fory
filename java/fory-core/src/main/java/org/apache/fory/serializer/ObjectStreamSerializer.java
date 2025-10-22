@@ -47,8 +47,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.apache.fory.Fory;
-import org.apache.fory.builder.CodecUtils;
-import org.apache.fory.builder.Generated;
 import org.apache.fory.collection.ObjectArray;
 import org.apache.fory.collection.ObjectIntMap;
 import org.apache.fory.logging.Logger;
@@ -58,9 +56,7 @@ import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.FieldResolver;
-
 import org.apache.fory.util.ExceptionUtils;
-import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.unsafe._JDKAccess;
 
@@ -298,34 +294,32 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         }
       };
 
-/**
- * Simple class field descriptor to replace deprecated FieldResolver.ClassField.
- */
-static class ClassField {
-  private final String name;
-  private final Class<?> type;
-  private final Class<?> declaringClass;
+  /** Simple class field descriptor to replace deprecated FieldResolver.ClassField. */
+  static class ClassField {
+    private final String name;
+    private final Class<?> type;
+    private final Class<?> declaringClass;
 
-  public ClassField(String name, Class<?> type, Class<?> declaringClass) {
-    this.name = name;
-    this.type = type;
-    this.declaringClass = declaringClass;
+    public ClassField(String name, Class<?> type, Class<?> declaringClass) {
+      this.name = name;
+      this.type = type;
+      this.declaringClass = declaringClass;
+    }
+
+    public String getName() {
+      return name;
+    }
+
+    public Class<?> getType() {
+      return type;
+    }
+
+    public Class<?> getDeclaringClass() {
+      return declaringClass;
+    }
   }
 
-  public String getName() {
-    return name;
-  }
-
-  public Class<?> getType() {
-    return type;
-  }
-
-  public Class<?> getDeclaringClass() {
-    return declaringClass;
-  }
-}
-
-private static class SlotsInfo {
+  private static class SlotsInfo {
     private final Class<?> cls;
     private final ClassInfo classInfo;
     private final StreamClassInfo streamClassInfo;
@@ -348,18 +342,20 @@ private static class SlotsInfo {
       streamClassInfo = STREAM_CLASS_INFO_CACHE.get(type);
       // Use different serializers based on Meta Shared configuration
       // Meta Shared mode: Use ObjectStreamMetaSharedSerializerAdapter (wraps ObjectSerializer)
-      // Non-Meta Shared mode: Use CompatibleSerializer for backward compatibility  
+      // Non-Meta Shared mode: Use CompatibleSerializer for backward compatibility
       // Note: Use the (fory, type, fieldResolver) constructor to avoid registering this serializer
       // as the global serializer for the type, since ObjectStreamSerializer is already registered
       if (useMetaShare) {
         this.slotsSerializer = new ObjectStreamMetaSharedSerializerAdapter<>(fory, type);
       } else {
-        this.slotsSerializer = new CompatibleSerializer<>(fory, type, fory.getClassResolver().getFieldResolver(type));
+        this.slotsSerializer =
+            new CompatibleSerializer<>(fory, type, fory.getClassResolver().getFieldResolver(type));
       }
       fieldIndexMap = new ObjectIntMap<>(4, 0.4f);
       List<FieldResolver.ClassField> allFields = new ArrayList<>();
       for (ObjectStreamField serialField : objectStreamClass.getFields()) {
-        allFields.add(new FieldResolver.ClassField(serialField.getName(), serialField.getType(), cls));
+        allFields.add(
+            new FieldResolver.ClassField(serialField.getName(), serialField.getType(), cls));
       }
       if (streamClassInfo.writeObjectMethod != null || streamClassInfo.readObjectMethod != null) {
         // Create putFieldsResolver for putFields/getFields scenarios
@@ -551,7 +547,8 @@ private static class SlotsInfo {
         throw new NotActiveException("no current PutField object");
       }
       // Use writeFieldsValues method to write field values array
-      // This method is implemented differently by CompatibleSerializer and ObjectStreamMetaSharedSerializerAdapter
+      // This method is implemented differently by CompatibleSerializer and
+      // ObjectStreamMetaSharedSerializerAdapter
       slotsInfo.compatibleStreamSerializer.writeFieldsValues(buffer, curPut.vals);
       Arrays.fill(curPut.vals, null);
       putFieldsCache.add(curPut);
