@@ -360,7 +360,7 @@ impl TypeResolver {
     }
 
     #[inline(always)]
-    pub fn get_type_info_by_msname(
+    pub(crate) fn get_type_info_by_meta_string_name(
         &self,
         namespace: Rc<MetaString>,
         type_name: Rc<MetaString>,

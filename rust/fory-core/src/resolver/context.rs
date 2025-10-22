@@ -355,7 +355,7 @@ impl ReadContext {
                     let rc_namespace = Rc::from(namespace);
                     let rc_type_name = Rc::from(type_name);
                     self.type_resolver
-                        .get_type_info_by_msname(rc_namespace, rc_type_name)
+                        .get_type_info_by_meta_string_name(rc_namespace, rc_type_name)
                         .ok_or_else(|| Error::type_error("Name harness not found"))
                 }
             }
