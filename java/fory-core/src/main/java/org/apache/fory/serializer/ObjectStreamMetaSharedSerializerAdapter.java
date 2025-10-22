@@ -163,4 +163,35 @@ final class ObjectStreamMetaSharedSerializerAdapter<T> extends CompatibleSeriali
   void updateToJITSerializer(Serializer<T> optimizedSerializer) {
     this.serializer = optimizedSerializer;
   }
+
+  /**
+   * Write field values array directly.
+   * This is used by ObjectOutputStream.PutField scenarios where fields are written as an array.
+   * Uses native ObjectSerializer field writing approach.
+   *
+   * @param buffer Memory buffer to write to
+   * @param vals Field values array
+   */
+  @SuppressWarnings("unchecked")
+  public void writeFieldsValues(MemoryBuffer buffer, Object[] vals) {
+    // Write each field value using standard Fory serialization
+    for (Object val : vals) {
+      fory.writeRef(buffer, val);
+    }
+  }
+
+  /**
+   * Read field values array directly.
+   * This is used by ObjectInputStream.GetField scenarios where fields are read into an array.
+   * Uses native ObjectSerializer field reading approach.
+   *
+   * @param buffer Memory buffer to read from
+   * @param vals Field values array to fill
+   */
+  public void readFields(MemoryBuffer buffer, Object[] vals) {
+    // Read each field value using standard Fory serialization
+    for (int i = 0; i < vals.length; i++) {
+      vals[i] = fory.readRef(buffer);
+    }
+  }
 }

@@ -40,4 +40,22 @@ public abstract class CompatibleSerializerBase<T> extends AbstractObjectSerializ
     // java record object doesn't support update state.
     throw new UnsupportedOperationException();
   }
+
+  /**
+   * Write field values array directly.
+   * This is used by ObjectOutputStream.PutField scenarios where fields are written as an array.
+   *
+   * @param buffer Memory buffer to write to
+   * @param vals Field values array
+   */
+  public abstract void writeFieldsValues(MemoryBuffer buffer, Object[] vals);
+
+  /**
+   * Read field values array directly.
+   * This is used by ObjectInputStream.GetField scenarios where fields are read into an array.
+   *
+   * @param buffer Memory buffer to read from
+   * @param vals Field values array to fill
+   */
+  public abstract void readFields(MemoryBuffer buffer, Object[] vals);
 }

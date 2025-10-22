@@ -95,7 +95,7 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
     // Test with JIT disabled (interpreter mode)
     Fory fory = Fory.builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(true)
+        .withMetaShare(true)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .withCodegen(false)  // Disable JIT
@@ -124,7 +124,7 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
     // Test with JIT enabled
     Fory fory = Fory.builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(true)
+        .withMetaShare(true)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .withCodegen(true)  // Enable JIT
@@ -153,7 +153,7 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
     // Test serializing multiple objects with meta context
     Fory fory = Fory.builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(true)
+        .withMetaShare(true)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .withCodegen(true)
@@ -195,7 +195,7 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
     // Test with null string value
     Fory fory = Fory.builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(true)
+        .withMetaShare(true)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .withCodegen(true)
@@ -228,7 +228,7 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
     // Serialize with interpreter mode
     Fory interpreterFory = Fory.builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(true)
+        .withMetaShare(true)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .withCodegen(false)
@@ -240,7 +240,7 @@ public class ObjectStreamMetaSharedJITTest extends ForyTestBase {
     // Deserialize with JIT mode
     Fory jitFory = Fory.builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(true)
+        .withMetaShare(true)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .withCodegen(true)

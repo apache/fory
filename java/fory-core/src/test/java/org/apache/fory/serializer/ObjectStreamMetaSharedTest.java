@@ -82,7 +82,7 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
   public void testBasicMetaSharedObjectStream() {
     Fory fory = builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(true)
+        .withMetaShare(true)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .build();
@@ -126,7 +126,7 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
     // Test 2: New configuration (meta share enabled)
     Fory newFory1 = builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(true)
+        .withMetaShare(true)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .build();
@@ -137,7 +137,7 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
     // Same configuration can read the data
     Fory newFory2 = builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(true)
+        .withMetaShare(true)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .build();
@@ -151,7 +151,7 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
     // Test with meta share disabled for ObjectStream (default behavior)
     Fory fory = builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(false)  // Explicitly disable
+        .withMetaShare(false)  // Explicitly disable
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .build();
@@ -183,7 +183,7 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
     // MetaShared mode (new)
     Fory metaSharedFory = builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(true)
+        .withMetaShare(true)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .build();
@@ -216,7 +216,7 @@ public class ObjectStreamMetaSharedTest extends ForyTestBase {
     // Test serializing multiple objects with meta context
     Fory fory = builder()
         .withMetaShare(true)
-        .withMetaShareForObjectStream(true)
+        .withMetaShare(true)
         .withCompatibleMode(CompatibleMode.COMPATIBLE)
         .requireClassRegistration(false)
         .build();
