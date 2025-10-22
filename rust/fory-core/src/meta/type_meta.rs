@@ -545,26 +545,32 @@ pub struct TypeMeta {
 }
 
 impl TypeMeta {
+    #[inline(always)]
     pub fn get_field_infos(&self) -> &Vec<FieldInfo> {
         self.layer.get_field_infos()
     }
 
+    #[inline(always)]
     pub fn get_type_id(&self) -> u32 {
         self.layer.get_type_id()
     }
 
+    #[inline(always)]
     pub fn get_hash(&self) -> i64 {
         self.hash
     }
 
+    #[inline(always)]
     pub fn get_type_name(&self) -> Rc<MetaString> {
         self.layer.get_type_name()
     }
 
+    #[inline(always)]
     pub fn get_namespace(&self) -> Rc<MetaString> {
         self.layer.get_namespace()
     }
 
+    #[inline(always)]
     pub fn empty() -> TypeMeta {
         TypeMeta {
             hash: 0,
@@ -633,12 +639,29 @@ impl TypeMeta {
         })
     }
 
+    #[inline(always)]
     pub fn skip_bytes(reader: &mut Reader, header: i64) -> Result<(), Error> {
         let mut meta_size = header & META_SIZE_MASK;
         if meta_size == META_SIZE_MASK {
             meta_size += reader.read_varuint32()? as i64;
         }
         reader.skip(meta_size as usize)
+    }
+
+    /// Check class version consistency, similar to Java's checkClassVersion
+    #[inline(always)]
+    pub fn check_struct_version(
+        read_version: i32,
+        local_version: i32,
+        type_name: &str,
+    ) -> Result<(), Error> {
+        if read_version != local_version {
+            return Err(Error::struct_version_mismatch(format!(
+                "Read class {} version {} is not consistent with {}",
+                type_name, read_version, local_version
+            )));
+        }
+        Ok(())
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, Error> {

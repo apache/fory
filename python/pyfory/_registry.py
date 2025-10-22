@@ -72,12 +72,12 @@ from pyfory.meta.metastring import MetaStringEncoder, MetaStringDecoder
 from pyfory.meta.meta_compressor import DeflaterMetaCompressor
 from pyfory.type import (
     TypeId,
-    Int8Type,
-    Int16Type,
-    Int32Type,
-    Int64Type,
-    Float32Type,
-    Float64Type,
+    int8,
+    int16,
+    int32,
+    int64,
+    float32,
+    float64,
     load_class,
     is_struct_type,
     record_class_factory,
@@ -256,18 +256,18 @@ class TypeResolver:
         register = functools.partial(self._register_type, internal=True)
         register(None, type_id=TypeId.NA, serializer=NoneSerializer)
         register(bool, type_id=TypeId.BOOL, serializer=BooleanSerializer)
-        register(Int8Type, type_id=TypeId.INT8, serializer=ByteSerializer)
-        register(Int16Type, type_id=TypeId.INT16, serializer=Int16Serializer)
-        register(Int32Type, type_id=TypeId.INT32, serializer=Int32Serializer)
-        register(Int64Type, type_id=TypeId.INT64, serializer=Int64Serializer)
+        register(int8, type_id=TypeId.INT8, serializer=ByteSerializer)
+        register(int16, type_id=TypeId.INT16, serializer=Int16Serializer)
+        register(int32, type_id=TypeId.INT32, serializer=Int32Serializer)
+        register(int64, type_id=TypeId.INT64, serializer=Int64Serializer)
         register(int, type_id=TypeId.INT64, serializer=Int64Serializer)
         register(
-            Float32Type,
+            float32,
             type_id=TypeId.FLOAT32,
             serializer=Float32Serializer,
         )
         register(
-            Float64Type,
+            float64,
             type_id=TypeId.FLOAT64,
             serializer=Float64Serializer,
         )

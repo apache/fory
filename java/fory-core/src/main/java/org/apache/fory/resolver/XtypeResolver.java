@@ -251,7 +251,7 @@ public class XtypeResolver extends TypeResolver {
 
   private void register(
       Class<?> type, Serializer<?> serializer, String namespace, String typeName, int xtypeId) {
-    ClassInfo classInfo = newClassInfo(type, serializer, namespace, typeName, (short) xtypeId);
+    ClassInfo classInfo = newClassInfo(type, serializer, namespace, typeName, xtypeId);
     String qualifiedName = qualifiedName(namespace, typeName);
     qualifiedType2ClassInfo.put(qualifiedName, classInfo);
     extRegistry.registeredClasses.put(qualifiedName, type);
@@ -316,7 +316,7 @@ public class XtypeResolver extends TypeResolver {
     return serializer instanceof DeferedLazyObjectSerializer;
   }
 
-  private ClassInfo newClassInfo(Class<?> type, Serializer<?> serializer, short xtypeId) {
+  private ClassInfo newClassInfo(Class<?> type, Serializer<?> serializer, int xtypeId) {
     return newClassInfo(
         type,
         serializer,
@@ -326,7 +326,7 @@ public class XtypeResolver extends TypeResolver {
   }
 
   private ClassInfo newClassInfo(
-      Class<?> type, Serializer<?> serializer, String namespace, String typeName, short xtypeId) {
+      Class<?> type, Serializer<?> serializer, String namespace, String typeName, int xtypeId) {
     MetaStringBytes fullClassNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
             GENERIC_ENCODER.encode(type.getName(), MetaString.Encoding.UTF_8));

@@ -69,22 +69,27 @@ impl Harness {
         }
     }
 
+    #[inline(always)]
     pub fn get_write_fn(&self) -> WriteFn {
         self.write_fn
     }
 
+    #[inline(always)]
     pub fn get_read_fn(&self) -> ReadFn {
         self.read_fn
     }
 
+    #[inline(always)]
     pub fn get_write_data_fn(&self) -> WriteDataFn {
         self.write_data_fn
     }
 
+    #[inline(always)]
     pub fn get_read_data_fn(&self) -> ReadDataFn {
         self.read_data_fn
     }
 
+    #[inline(always)]
     pub fn get_to_serializer(&self) -> ToSerializerFn {
         self.to_serializer
     }
@@ -186,30 +191,37 @@ impl TypeInfo {
         })
     }
 
+    #[inline(always)]
     pub fn get_type_id(&self) -> u32 {
         self.type_id
     }
 
+    #[inline(always)]
     pub fn get_namespace(&self) -> Rc<MetaString> {
         self.namespace.clone()
     }
 
+    #[inline(always)]
     pub fn get_type_name(&self) -> Rc<MetaString> {
         self.type_name.clone()
     }
 
+    #[inline(always)]
     pub fn get_type_def(&self) -> Rc<Vec<u8>> {
         self.type_def.clone()
     }
 
+    #[inline(always)]
     pub fn get_type_meta(&self) -> Rc<TypeMeta> {
         self.type_meta.clone()
     }
 
+    #[inline(always)]
     pub fn is_registered_by_name(&self) -> bool {
         self.register_by_name
     }
 
+    #[inline(always)]
     pub fn get_harness(&self) -> &Harness {
         &self.harness
     }
@@ -335,16 +347,19 @@ impl TypeResolver {
             .cloned()
     }
 
+    #[inline(always)]
     pub fn get_type_info_by_id(&self, id: u32) -> Option<Rc<TypeInfo>> {
         self.type_info_map_by_id.get(&id).cloned()
     }
 
+    #[inline(always)]
     pub fn get_type_info_by_name(&self, namespace: &str, type_name: &str) -> Option<Rc<TypeInfo>> {
         self.type_info_map_by_name
             .get(&(namespace.to_owned(), type_name.to_owned()))
             .cloned()
     }
 
+    #[inline(always)]
     pub fn get_type_info_by_msname(
         &self,
         namespace: Rc<MetaString>,
@@ -356,6 +371,7 @@ impl TypeResolver {
     }
 
     /// Fast path for getting type info by numeric ID (avoids HashMap lookup by TypeId)
+    #[inline(always)]
     pub fn get_type_id(&self, type_id: &std::any::TypeId, id: u32) -> Result<u32, Error> {
         let id_usize = id as usize;
         if id_usize < self.type_id_index.len() {
@@ -370,12 +386,14 @@ impl TypeResolver {
         )))
     }
 
+    #[inline(always)]
     pub fn get_harness(&self, id: u32) -> Option<Rc<Harness>> {
         self.type_info_map_by_id
             .get(&id)
             .map(|info| Rc::new(info.get_harness().clone()))
     }
 
+    #[inline(always)]
     pub fn get_name_harness(
         &self,
         namespace: Rc<MetaString>,
@@ -387,6 +405,7 @@ impl TypeResolver {
             .map(|info| Rc::new(info.get_harness().clone()))
     }
 
+    #[inline(always)]
     pub fn get_ext_harness(&self, id: u32) -> Result<Rc<Harness>, Error> {
         self.type_info_map_by_id
             .get(&id)
@@ -394,6 +413,7 @@ impl TypeResolver {
             .ok_or_else(|| Error::type_error("ext type must be registered in both peers"))
     }
 
+    #[inline(always)]
     pub fn get_ext_name_harness(
         &self,
         namespace: Rc<MetaString>,
@@ -406,6 +426,7 @@ impl TypeResolver {
             .ok_or_else(|| Error::type_error("named_ext type must be registered in both peers"))
     }
 
+    #[inline(always)]
     pub fn get_fory_type_id(&self, rust_type_id: std::any::TypeId) -> Option<u32> {
         self.type_info_map
             .get(&rust_type_id)
@@ -484,7 +505,8 @@ impl TypeResolver {
                     T2::fory_write(v, context, write_ref_info, write_type_info, has_generics)
                 }
                 None => Err(Error::type_error(format!(
-                    "Cast type error when writing: {:?}",
+                    "Cast type to {:?} error when writing: {:?}",
+                    std::any::type_name::<T2>(),
                     T2::fory_static_type_id()
                 ))),
             }
@@ -510,7 +532,11 @@ impl TypeResolver {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => T2::fory_write_data_generic(v, context, has_generics),
-                None => todo!(),
+                None => Err(Error::type_error(format!(
+                    "Cast type to {:?} error when writing data: {:?}",
+                    std::any::type_name::<T2>(),
+                    T2::fory_static_type_id()
+                ))),
             }
         }
 
@@ -660,7 +686,8 @@ impl TypeResolver {
                     Ok(v.fory_write(context, write_ref_info, write_type_info, has_generics)?)
                 }
                 None => Err(Error::type_error(format!(
-                    "Cast type error when writing: {:?}",
+                    "Cast type to {:?} error when writing: {:?}",
+                    std::any::type_name::<T2>(),
                     T2::fory_static_type_id()
                 ))),
             }
@@ -686,7 +713,11 @@ impl TypeResolver {
             let this = this.downcast_ref::<T2>();
             match this {
                 Some(v) => T2::fory_write_data_generic(v, context, has_generics),
-                None => todo!(),
+                None => Err(Error::type_error(format!(
+                    "Cast type to {:?} error when writing data: {:?}",
+                    std::any::type_name::<T2>(),
+                    T2::fory_static_type_id()
+                ))),
             }
         }
 

@@ -357,7 +357,7 @@ macro_rules! generate_smart_pointer_wrapper {
     };
 }
 
-/// Macro to read smart pointer trait objects (Rc<dyn Trait>, Arc<dyn Trait>)
+/// Macro to read smart pointer trait objects (`Rc<dyn Trait>,` `Arc<dyn Trait>`)
 /// This macro handles ref tracking and directly constructs the trait object from concrete types
 #[macro_export]
 macro_rules! read_ptr_trait_object {
@@ -630,7 +630,9 @@ impl Serializer for Box<dyn Serializer> {
     }
 
     fn fory_write_type_info(_context: &mut WriteContext) -> Result<(), Error> {
-        panic!("Box<dyn Serializer> is polymorphic - can's write type info statically");
+        Err(Error::not_allowed(
+            "Box<dyn Serializer> is polymorphic - can's write type info statically",
+        ))
     }
 
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
@@ -658,7 +660,9 @@ impl Serializer for Box<dyn Serializer> {
     }
 
     fn fory_read_data(_context: &mut ReadContext) -> Result<Self, Error> {
-        panic!("fory_read_data should not be called directly on Box<dyn Serializer>");
+        Err(Error::not_allowed(
+            "fory_read_data should not be called directly on Box<dyn Serializer>",
+        ))
     }
 }
 

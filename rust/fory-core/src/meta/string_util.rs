@@ -522,17 +522,6 @@ pub mod buffer_rw_string {
     ))]
     use std::arch::x86_64::*;
 
-    #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
-    const SIMD_CHUNK_SIZE: usize = 64;
-    #[cfg(all(
-        any(target_arch = "x86", target_arch = "x86_64"),
-        target_feature = "sse2",
-        not(target_feature = "avx2")
-    ))]
-    const SIMD_CHUNK_SIZE: usize = 32;
-    #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
-    const SIMD_CHUNK_SIZE: usize = 32;
-
     use crate::buffer::{Reader, Writer};
     use crate::error::Error;
 
@@ -548,21 +537,39 @@ pub mod buffer_rw_string {
     #[inline]
     pub fn write_utf8_standard(writer: &mut Writer, s: &str) {
         let bytes = s.as_bytes();
-        for &b in bytes {
-            writer.write_u8(b);
-        }
+        let len = bytes.len();
+        writer.reserve(len);
+        writer.bf.extend_from_slice(bytes);
     }
 
     #[inline]
     pub fn write_utf16_standard(writer: &mut Writer, utf16: &[u16]) {
-        for unit in utf16 {
-            #[cfg(target_endian = "little")]
-            {
-                writer.write_u16(*unit);
+        #[cfg(target_endian = "little")]
+        {
+            let total_bytes = utf16.len() * 2;
+            let old_len = writer.bf.len();
+            writer.bf.reserve(total_bytes);
+            unsafe {
+                let dest = writer.bf.as_mut_ptr().add(old_len);
+                let src = utf16.as_ptr() as *const u8;
+                std::ptr::copy_nonoverlapping(src, dest, total_bytes);
+                writer.bf.set_len(old_len + total_bytes);
             }
-            #[cfg(target_endian = "big")]
-            {
-                unimplemented!()
+        }
+        #[cfg(target_endian = "big")]
+        {
+            let total_bytes = utf16.len() * 2;
+            let old_len = writer.bf.len();
+            writer.bf.reserve(total_bytes);
+            unsafe {
+                let dest = writer.bf.as_mut_ptr().add(old_len);
+                // Need to swap bytes for each u16 to little-endian
+                for (i, &unit) in utf16.iter().enumerate() {
+                    let swapped = unit.swap_bytes();
+                    let ptr = dest.add(i * 2) as *mut u16;
+                    std::ptr::write_unaligned(ptr, swapped);
+                }
+                writer.bf.set_len(old_len + total_bytes);
             }
         }
     }
@@ -577,112 +584,84 @@ pub mod buffer_rw_string {
 
     #[inline]
     pub fn read_utf8_standard(reader: &mut Reader, len: usize) -> Result<String, Error> {
-        let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
-        let result = String::from_utf8_lossy(slice).to_string();
-        reader.move_next(len);
-        Ok(result)
+        unsafe {
+            let mut vec = Vec::with_capacity(len);
+            let src = reader.bf.add(reader.cursor);
+            let dst = vec.as_mut_ptr();
+            // Use fastest possible copy - copy_nonoverlapping compiles to memcpy
+            std::ptr::copy_nonoverlapping(src, dst, len);
+            vec.set_len(len);
+            reader.move_next(len);
+            // Use from_utf8_lossy for safety - handles invalid UTF-8 gracefully
+            // If you're certain the data is valid UTF-8, use from_utf8_unchecked for more performance
+            Ok(String::from_utf8_lossy(&vec).into_owned())
+        }
     }
 
     #[inline]
     pub fn read_utf16_standard(reader: &mut Reader, len: usize) -> Result<String, Error> {
-        assert!(len % 2 == 0, "UTF-16 length must be even");
-        let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
-        let units: Vec<u16> = slice
-            .chunks(2)
-            // little endian
-            .map(|c| (c[0] as u16) | ((c[1] as u16) << 8))
-            .collect();
-        let result = String::from_utf16(&units)
-            // lossy
-            .unwrap_or_else(|_| String::from("�"));
-        reader.move_next(len);
-        Ok(result)
+        if len % 2 != 0 {
+            return Err(Error::encoding_error("UTF-16 length must be even"));
+        }
+        unsafe {
+            let slice = std::slice::from_raw_parts(reader.bf.add(reader.cursor), len);
+            let units: Vec<u16> = slice
+                .chunks_exact(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect();
+            reader.move_next(len);
+            Ok(String::from_utf16_lossy(&units))
+        }
     }
 
     #[inline]
-    fn write_bytes_simd(writer: &mut Writer, bytes: &[u8]) {
+    fn is_ascii_bytes(bytes: &[u8]) -> bool {
         let len = bytes.len();
-        let mut i = 0usize;
+        let mut i = 0;
 
-        if len == 0 {
-            return;
-        }
-
-        writer.bf.reserve(len);
-
-        #[cfg(any(
-            all(target_arch = "x86_64", target_feature = "avx2"),
-            all(target_arch = "x86_64", target_feature = "sse2"),
-            all(target_arch = "aarch64", target_feature = "neon")
-        ))]
+        #[cfg(target_arch = "x86_64")]
         unsafe {
-            #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
-            {
-                const CHUNK: usize = 64;
-                while i + CHUNK <= len {
-                    let ptr = bytes.as_ptr().add(i);
-                    let chunk1 = _mm256_loadu_si256(ptr as *const __m256i);
-                    let chunk2 = _mm256_loadu_si256(ptr.add(32) as *const __m256i);
-
-                    let current_len = writer.bf.len();
-                    writer.bf.set_len(current_len + CHUNK);
-                    let dest_ptr = writer.bf.as_mut_ptr().add(current_len);
-
-                    _mm256_storeu_si256(dest_ptr as *mut __m256i, chunk1);
-                    _mm256_storeu_si256(dest_ptr.add(32) as *mut __m256i, chunk2);
-                    i += CHUNK;
-                }
-            }
-
-            #[cfg(all(
-                target_arch = "x86_64",
-                not(target_feature = "avx2"),
-                target_feature = "sse2"
-            ))]
-            {
-                const CHUNK: usize = 32;
-                while i + CHUNK <= len {
-                    let ptr = bytes.as_ptr().add(i);
-                    let chunk1 = _mm_loadu_si128(ptr as *const __m128i);
-                    let chunk2 = _mm_loadu_si128(ptr.add(16) as *const __m128i);
-
-                    let current_len = writer.bf.len();
-                    writer.bf.set_len(current_len + CHUNK);
-                    let dest_ptr = writer.bf.as_mut_ptr().add(current_len);
-
-                    _mm_storeu_si128(dest_ptr as *mut __m128i, chunk1);
-                    _mm_storeu_si128(dest_ptr.add(16) as *mut __m128i, chunk2);
-                    i += CHUNK;
-                }
-            }
-
-            #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
-            {
-                const CHUNK: usize = 32;
-                while i + CHUNK <= len {
-                    let ptr = bytes.as_ptr().add(i);
-                    let chunk1 = vld1q_u8(ptr);
-                    let chunk2 = vld1q_u8(ptr.add(16));
-
-                    let current_len = writer.bf.len();
-                    writer.bf.set_len(current_len + CHUNK);
-                    let dest_ptr = writer.bf.as_mut_ptr().add(current_len);
-
-                    vst1q_u8(dest_ptr, chunk1);
-                    vst1q_u8(dest_ptr.add(16), chunk2);
-                    i += CHUNK;
+            if is_x86_feature_detected!("avx2") && len >= 32 {
+                while i + 32 <= len {
+                    let chunk = _mm256_loadu_si256(bytes.as_ptr().add(i) as *const __m256i);
+                    let mask = _mm256_movemask_epi8(chunk);
+                    if mask != 0 {
+                        return false;
+                    }
+                    i += 32;
                 }
             }
         }
 
-        const MEDIUM_CHUNK: usize = 16;
-        while i + MEDIUM_CHUNK <= len {
-            writer.bf.extend_from_slice(&bytes[i..i + MEDIUM_CHUNK]);
-            i += MEDIUM_CHUNK;
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        unsafe {
+            if is_x86_feature_detected!("sse2") && len >= 16 {
+                while i + 16 <= len {
+                    let chunk = _mm_loadu_si128(bytes.as_ptr().add(i) as *const __m128i);
+                    let mask = _mm_movemask_epi8(chunk);
+                    if mask != 0 {
+                        return false;
+                    }
+                    i += 16;
+                }
+            }
         }
-        if i < len {
-            writer.bf.extend_from_slice(&bytes[i..]);
+
+        #[cfg(target_arch = "aarch64")]
+        unsafe {
+            if std::arch::is_aarch64_feature_detected!("neon") && len >= 16 {
+                while i + 16 <= len {
+                    let chunk = vld1q_u8(bytes.as_ptr().add(i));
+                    if vmaxvq_u8(chunk) >= 0x80 {
+                        return false;
+                    }
+                    i += 16;
+                }
+            }
         }
+
+        // Scalar fallback
+        bytes[i..].iter().all(|&b| b < 0x80)
     }
 
     #[inline]
@@ -690,82 +669,28 @@ pub mod buffer_rw_string {
         if s.is_empty() {
             return;
         }
-        let mut buf: Vec<u8> = Vec::with_capacity(s.len());
-        for c in s.chars() {
-            let v = c as u32;
-            assert!(v <= 0xFF, "Non-Latin1 character found");
-            buf.push(v as u8);
-        }
-        write_bytes_simd(writer, &buf);
-    }
 
-    #[inline]
-    pub fn write_utf8_simd(writer: &mut Writer, s: &str) {
         let bytes = s.as_bytes();
-        write_bytes_simd(writer, bytes);
-    }
 
-    pub fn write_utf16_simd(writer: &mut Writer, utf16: &[u16]) {
-        if utf16.is_empty() {
-            return;
-        }
-
-        #[cfg(target_endian = "big")]
-        {
-            unimplemented!("Big-endian UTF-16 writing is not implemented");
-        }
-
-        #[cfg(target_endian = "little")]
-        unsafe {
-            let total_bytes = utf16.len() * 2;
-            let old_len = writer.bf.len();
-            writer.bf.reserve(total_bytes);
-            let dest = writer.bf.as_mut_ptr().add(old_len);
-            let src = utf16.as_ptr() as *const u8;
-
-            let mut i = 0usize;
-
-            #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
-            {
-                const CHUNK: usize = 32;
-                while i + CHUNK <= total_bytes {
-                    let chunk = _mm256_loadu_si256(src.add(i) as *const __m256i);
-                    _mm256_storeu_si256(dest.add(i) as *mut __m256i, chunk);
-                    i += CHUNK;
-                }
+        // CRITICAL OPTIMIZATION: For ASCII strings, UTF-8 bytes == Latin1 bytes
+        // Check if all ASCII using SIMD
+        if is_ascii_bytes(bytes) {
+            // Zero-copy fast path: direct write
+            let len = bytes.len();
+            writer.bf.reserve(len);
+            writer.bf.extend_from_slice(bytes);
+        } else {
+            // Non-ASCII: Must iterate chars to extract Latin1 byte values
+            // Example: 'À' in Rust String is UTF-8 [0xC3, 0x80] but Latin1 is [0xC0]
+            let mut buf: Vec<u8> = Vec::with_capacity(s.len());
+            for c in s.chars() {
+                let v = c as u32;
+                assert!(v <= 0xFF, "Non-Latin1 character found");
+                buf.push(v as u8);
             }
-
-            #[cfg(all(
-                any(target_arch = "x86", target_arch = "x86_64"),
-                target_feature = "sse2",
-                not(target_feature = "avx2")
-            ))]
-            {
-                const CHUNK: usize = 16;
-                while i + CHUNK <= total_bytes {
-                    let chunk = _mm_loadu_si128(src.add(i) as *const __m128i);
-                    _mm_storeu_si128(dest.add(i) as *mut __m128i, chunk);
-                    i += CHUNK;
-                }
-            }
-
-            #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
-            {
-                const CHUNK: usize = 16;
-                while i + CHUNK <= total_bytes {
-                    let chunk = vld1q_u8(src.add(i));
-                    vst1q_u8(dest.add(i), chunk);
-                    i += CHUNK;
-                }
-            }
-
-            // fallback for remaining bytes
-            if i < total_bytes {
-                std::ptr::copy_nonoverlapping(src.add(i), dest.add(i), total_bytes - i);
-            }
-
-            // set length only after all writes
-            writer.bf.set_len(old_len + total_bytes);
+            let len = buf.len();
+            writer.bf.reserve(len);
+            writer.bf.extend_from_slice(&buf);
         }
     }
 
@@ -776,12 +701,15 @@ pub mod buffer_rw_string {
         }
         let src = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
 
-        let mut out: Vec<u8> = Vec::with_capacity(len + len / 4);
+        // Pessimistic allocation: Latin1 0x80-0xFF expands to 2 bytes in UTF-8
+        let mut out: Vec<u8> = Vec::with_capacity(len * 2);
 
         unsafe {
+            let out_ptr = out.as_mut_ptr();
+            let mut out_len = 0usize;
             let mut i = 0usize;
 
-            // ---- AVX2 fast-path (32 bytes) ----
+            // ---- AVX2 fast-path: process 32 ASCII bytes at once ----
             #[cfg(target_arch = "x86_64")]
             {
                 if std::arch::is_x86_feature_detected!("avx2") {
@@ -791,19 +719,20 @@ pub mod buffer_rw_string {
                         let chunk = _mm256_loadu_si256(ptr);
                         let mask = _mm256_movemask_epi8(chunk);
                         if mask == 0 {
-                            let mut buf32: [u8; 32] = std::mem::zeroed();
-                            _mm256_storeu_si256(buf32.as_mut_ptr() as *mut __m256i, chunk);
-                            out.extend_from_slice(&buf32);
+                            // All ASCII: direct copy (no conversion needed)
+                            _mm256_storeu_si256(out_ptr.add(out_len) as *mut __m256i, chunk);
+                            out_len += 32;
                             i += 32;
                             continue;
                         } else {
+                            // Contains Latin1 bytes, break to scalar
                             break;
                         }
                     }
                 }
             }
 
-            // ---- SSE2 fast-path (16 bytes) ----
+            // ---- SSE2 fast-path: process 16 ASCII bytes at once ----
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             {
                 if std::arch::is_x86_feature_detected!("sse2") {
@@ -813,9 +742,9 @@ pub mod buffer_rw_string {
                         let chunk = _mm_loadu_si128(ptr);
                         let mask = _mm_movemask_epi8(chunk);
                         if mask == 0 {
-                            let mut buf16: [u8; 16] = std::mem::zeroed();
-                            _mm_storeu_si128(buf16.as_mut_ptr() as *mut __m128i, chunk);
-                            out.extend_from_slice(&buf16);
+                            // All ASCII: direct copy
+                            _mm_storeu_si128(out_ptr.add(out_len) as *mut __m128i, chunk);
+                            out_len += 16;
                             i += 16;
                             continue;
                         } else {
@@ -825,7 +754,7 @@ pub mod buffer_rw_string {
                 }
             }
 
-            // ---- NEON fast-path (16 bytes) ----
+            // ---- NEON fast-path: process 16 ASCII bytes at once ----
             #[cfg(target_arch = "aarch64")]
             {
                 if std::arch::is_aarch64_feature_detected!("neon") {
@@ -833,15 +762,11 @@ pub mod buffer_rw_string {
                     while i + 16 <= len {
                         let ptr = src.as_ptr().add(i);
                         let v = vld1q_u8(ptr);
-                        let cmp = vcgeq_u8(v, vdupq_n_u8(128));
-
-                        let mut mask_arr: [u8; 16] = std::mem::zeroed();
-                        vst1q_u8(mask_arr.as_mut_ptr(), cmp);
-
-                        if mask_arr.iter().all(|&x| x == 0) {
-                            let mut buf16: [u8; 16] = std::mem::zeroed();
-                            vst1q_u8(buf16.as_mut_ptr(), v);
-                            out.extend_from_slice(&buf16);
+                        // Check if any byte >= 0x80
+                        if vmaxvq_u8(v) < 0x80 {
+                            // All ASCII: direct copy
+                            vst1q_u8(out_ptr.add(out_len), v);
+                            out_len += 16;
                             i += 16;
                             continue;
                         } else {
@@ -851,182 +776,28 @@ pub mod buffer_rw_string {
                 }
             }
 
-            // ---- scalar fallback for remaining bytes ----
+            // ---- Scalar fallback: convert Latin1 -> UTF-8 ----
+            // ASCII (0x00-0x7F): copy as-is
+            // Latin1 (0x80-0xFF): encode as 2-byte UTF-8
             while i < len {
                 let b = *src.get_unchecked(i);
                 if b < 0x80 {
-                    out.push(b);
+                    *out_ptr.add(out_len) = b;
+                    out_len += 1;
                 } else {
-                    out.push(0xC0 | (b >> 6));
-                    out.push(0x80 | (b & 0x3F));
+                    // Latin1 byte 0x80-0xFF -> UTF-8 encoding
+                    // Example: 0xC0 (À) -> [0xC3, 0x80]
+                    *out_ptr.add(out_len) = 0xC0 | (b >> 6);
+                    *out_ptr.add(out_len + 1) = 0x80 | (b & 0x3F);
+                    out_len += 2;
                 }
                 i += 1;
             }
+
+            out.set_len(out_len);
         }
         reader.move_next(len);
         Ok(unsafe { String::from_utf8_unchecked(out) })
-    }
-
-    #[inline]
-    pub fn read_utf8_simd(reader: &mut Reader, len: usize) -> Result<String, Error> {
-        if len == 0 {
-            return Ok(String::new());
-        }
-
-        let src = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
-        let mut result = String::with_capacity(len);
-
-        unsafe {
-            let mut i = 0usize;
-
-            #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
-            {
-                const CHUNK: usize = 32;
-                while i + CHUNK <= len {
-                    let chunk = _mm256_loadu_si256(src.as_ptr().add(i) as *const __m256i);
-                    let mut buf = [0u8; CHUNK];
-                    _mm256_storeu_si256(buf.as_mut_ptr() as *mut __m256i, chunk);
-                    result.push_str(std::str::from_utf8_unchecked(&buf));
-                    i += CHUNK;
-                }
-            }
-
-            #[cfg(all(
-                any(target_arch = "x86", target_arch = "x86_64"),
-                target_feature = "sse2",
-                not(target_feature = "avx2")
-            ))]
-            {
-                const CHUNK: usize = 16;
-                while i + CHUNK <= len {
-                    let chunk = _mm_loadu_si128(src.as_ptr().add(i) as *const __m128i);
-                    let mut buf = [0u8; CHUNK];
-                    _mm_storeu_si128(buf.as_mut_ptr() as *mut __m128i, chunk);
-                    result.push_str(std::str::from_utf8_unchecked(&buf));
-                    i += CHUNK;
-                }
-            }
-
-            #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
-            {
-                const CHUNK: usize = 16;
-                while i + CHUNK <= len {
-                    let chunk = vld1q_u8(src.as_ptr().add(i));
-                    let mut buf = [0u8; CHUNK];
-                    vst1q_u8(buf.as_mut_ptr(), chunk);
-                    result.push_str(std::str::from_utf8_unchecked(&buf));
-                    i += CHUNK;
-                }
-            }
-
-            if i < len {
-                result.push_str(std::str::from_utf8_unchecked(&src[i..len]));
-            }
-        }
-
-        reader.move_next(len);
-        Ok(result)
-    }
-
-    #[inline]
-    pub fn read_utf16_simd(reader: &mut Reader, len: usize) -> Result<String, Error> {
-        assert_eq!(len % 2, 0, "UTF-16 length must be even");
-        unsafe fn simd_impl(bytes: &[u8]) -> String {
-            let len = bytes.len();
-            let unit_len = len / 2;
-            let mut units: Vec<u16> = vec![0u16; unit_len];
-
-            let dest_u8 = units.as_mut_ptr() as *mut u8;
-            let src_u8 = bytes.as_ptr();
-            let mut i = 0usize;
-
-            #[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
-            {
-                while i + SIMD_CHUNK_SIZE <= len {
-                    let c1 = _mm256_loadu_si256(src_u8.add(i) as *const __m256i);
-                    let c2 = _mm256_loadu_si256(src_u8.add(i + 32) as *const __m256i);
-                    _mm256_storeu_si256(dest_u8.add(i) as *mut __m256i, c1);
-                    _mm256_storeu_si256(dest_u8.add(i + 32) as *mut __m256i, c2);
-                    i += SIMD_CHUNK_SIZE;
-                }
-                while i + 32 <= len {
-                    let c = _mm256_loadu_si256(src_u8.add(i) as *const __m256i);
-                    _mm256_storeu_si256(dest_u8.add(i) as *mut __m256i, c);
-                    i += 32;
-                }
-            }
-
-            #[cfg(all(
-                any(target_arch = "x86", target_arch = "x86_64"),
-                target_feature = "sse2",
-                not(target_feature = "avx2")
-            ))]
-            {
-                while i + SIMD_CHUNK_SIZE <= len {
-                    let c1 = _mm_loadu_si128(src_u8.add(i) as *const __m128i);
-                    let c2 = _mm_loadu_si128(src_u8.add(i + 16) as *const __m128i);
-                    _mm_storeu_si128(dest_u8.add(i) as *mut __m128i, c1);
-                    _mm_storeu_si128(dest_u8.add(i + 16) as *mut __m128i, c2);
-                    i += SIMD_CHUNK_SIZE;
-                }
-                while i + 16 <= len {
-                    let c = _mm_loadu_si128(src_u8.add(i) as *const __m128i);
-                    _mm_storeu_si128(dest_u8.add(i) as *mut __m128i, c);
-                    i += 16;
-                }
-            }
-
-            #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
-            {
-                while i + SIMD_CHUNK_SIZE <= len {
-                    let c1 = vld1q_u8(src_u8.add(i));
-                    let c2 = vld1q_u8(src_u8.add(i + 16));
-                    vst1q_u8(dest_u8.add(i), c1);
-                    vst1q_u8(dest_u8.add(i + 16), c2);
-                    i += SIMD_CHUNK_SIZE;
-                }
-                while i + 16 <= len {
-                    let c = vld1q_u8(src_u8.add(i));
-                    vst1q_u8(dest_u8.add(i), c);
-                    i += 16;
-                }
-            }
-
-            if i < len {
-                std::ptr::copy_nonoverlapping(src_u8.add(i), dest_u8.add(i), len - i);
-            }
-
-            String::from_utf16(&units).unwrap_or_else(|_| String::new())
-        }
-
-        let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
-        #[cfg(target_arch = "x86_64")]
-        {
-            if std::arch::is_x86_feature_detected!("avx2") {
-                let s = unsafe { simd_impl(slice) };
-                reader.move_next(len);
-                return Ok(s);
-            }
-        }
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        {
-            if std::arch::is_x86_feature_detected!("sse2") {
-                let s = unsafe { simd_impl(slice) };
-                reader.move_next(len);
-                return Ok(s);
-            }
-        }
-        #[cfg(target_arch = "aarch64")]
-        {
-            if std::arch::is_aarch64_feature_detected!("neon") {
-                let s = unsafe { simd_impl(slice) };
-                reader.move_next(len);
-                return Ok(s);
-            }
-        }
-
-        // ---- fallback ----
-        read_utf16_standard(reader, len)
     }
 
     #[cfg(test)]
@@ -1082,14 +853,6 @@ pub mod buffer_rw_string {
                 write_utf8_standard(&mut writer, s);
                 let bytes = &*writer.dump();
                 let mut reader = Reader::new(bytes);
-                assert_eq!(read_utf8_simd(&mut reader, bytes_len).unwrap(), s);
-                assert_eq!(read_utf8_simd(&mut reader, bytes_len).unwrap(), s);
-
-                let mut writer = Writer::default();
-                write_utf8_simd(&mut writer, s);
-                write_utf8_simd(&mut writer, s);
-                let bytes = &*writer.dump();
-                let mut reader = Reader::new(bytes);
                 assert_eq!(read_utf8_standard(&mut reader, bytes_len).unwrap(), s);
                 assert_eq!(read_utf8_standard(&mut reader, bytes_len).unwrap(), s);
             }
@@ -1111,14 +874,10 @@ pub mod buffer_rw_string {
                 let mut writer = Writer::default();
                 write_utf16_standard(&mut writer, &utf16);
                 write_utf16_standard(&mut writer, &utf16);
-                let bytes = &*writer.dump();
-                let mut reader = Reader::new(bytes);
-                assert_eq!(read_utf16_simd(&mut reader, bytes_len).unwrap(), s);
-                assert_eq!(read_utf16_simd(&mut reader, bytes_len).unwrap(), s);
 
                 let mut writer = Writer::default();
-                write_utf16_simd(&mut writer, &utf16);
-                write_utf16_simd(&mut writer, &utf16);
+                write_utf16_standard(&mut writer, &utf16);
+                write_utf16_standard(&mut writer, &utf16);
                 let bytes = &*writer.dump();
                 let mut reader = Reader::new(bytes);
                 assert_eq!(read_utf16_standard(&mut reader, bytes_len).unwrap(), s);

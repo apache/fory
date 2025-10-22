@@ -163,17 +163,16 @@ public final class NonexistentClassSerializers {
         Collection<Descriptor> descriptors =
             MetaSharedSerializer.consolidateFields(
                 resolver, NonexistentClass.NonexistentSkip.class, classDef);
-        DescriptorGrouper descriptorGrouper =
+        DescriptorGrouper grouper =
             fory.getClassResolver().createDescriptorGrouper(descriptors, false);
         Tuple3<
                 Tuple2<ObjectSerializer.FinalTypeField[], boolean[]>,
                 ObjectSerializer.GenericTypeField[],
                 ObjectSerializer.GenericTypeField[]>
-            tuple = AbstractObjectSerializer.buildFieldInfos(fory, descriptorGrouper);
-        descriptors = descriptorGrouper.getSortedDescriptors();
+            tuple = AbstractObjectSerializer.buildFieldInfos(fory, grouper);
         int classVersionHash = 0;
         if (fory.checkClassVersion()) {
-          classVersionHash = ObjectSerializer.computeStructHash(fory, descriptors);
+          classVersionHash = ObjectSerializer.computeStructHash(fory, grouper);
         }
         fieldsInfo =
             new ClassFieldsInfo(tuple.f0.f0, tuple.f0.f1, tuple.f1, tuple.f2, classVersionHash);

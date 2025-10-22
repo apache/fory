@@ -79,6 +79,7 @@ impl RefWriter {
     ///
     /// * `true` if a reference was written
     /// * `false` if this is the first occurrence of the object
+    #[inline]
     pub fn try_write_rc_ref<T: ?Sized>(&mut self, writer: &mut Writer, rc: &Rc<T>) -> bool {
         let ptr_addr = Rc::as_ptr(rc) as *const () as usize;
 
@@ -110,6 +111,7 @@ impl RefWriter {
     ///
     /// * `true` if a reference was written
     /// * `false` if this is the first occurrence of the object
+    #[inline]
     pub fn try_write_arc_ref<T: ?Sized>(&mut self, writer: &mut Writer, arc: &Arc<T>) -> bool {
         let ptr_addr = Arc::as_ptr(arc) as *const () as usize;
 
@@ -131,6 +133,7 @@ impl RefWriter {
     /// Clear all stored references.
     ///
     /// This is useful for reusing the RefWriter for multiple serialization operations.
+    #[inline(always)]
     pub fn reset(&mut self) {
         self.refs.clear();
         self.next_ref_id = 0;
@@ -181,6 +184,7 @@ impl RefReader {
     /// Reserve a reference ID slot without storing anything yet.
     ///
     /// Returns the reserved reference ID that will be used when storing the object later.
+    #[inline(always)]
     pub fn reserve_ref_id(&mut self) -> u32 {
         let ref_id = self.refs.len() as u32;
         self.refs.push(Box::new(()));
@@ -193,6 +197,7 @@ impl RefReader {
     ///
     /// * `ref_id` - The reference ID that was reserved
     /// * `rc` - The Rc to store
+    #[inline(always)]
     pub fn store_rc_ref_at<T: 'static + ?Sized>(&mut self, ref_id: u32, rc: Rc<T>) {
         self.refs[ref_id as usize] = Box::new(rc);
     }
@@ -206,6 +211,7 @@ impl RefReader {
     /// # Returns
     ///
     /// The reference ID that can be used to retrieve this object later
+    #[inline(always)]
     pub fn store_rc_ref<T: 'static + ?Sized>(&mut self, rc: Rc<T>) -> u32 {
         let ref_id = self.refs.len() as u32;
         self.refs.push(Box::new(rc));
@@ -231,6 +237,7 @@ impl RefReader {
     /// # Returns
     ///
     /// The reference ID that can be used to retrieve this object later
+    #[inline(always)]
     pub fn store_arc_ref<T: 'static + ?Sized>(&mut self, arc: Arc<T>) -> u32 {
         let ref_id = self.refs.len() as u32;
         self.refs.push(Box::new(arc));
@@ -247,6 +254,7 @@ impl RefReader {
     ///
     /// * `Some(Rc<T>)` if the reference ID is valid and the type matches
     /// * `None` if the reference ID is invalid or the type doesn't match
+    #[inline(always)]
     pub fn get_rc_ref<T: 'static + ?Sized>(&self, ref_id: u32) -> Option<Rc<T>> {
         let any_box = self.refs.get(ref_id as usize)?;
         any_box.downcast_ref::<Rc<T>>().cloned()
@@ -262,6 +270,7 @@ impl RefReader {
     ///
     /// * `Some(Arc<T>)` if the reference ID is valid and the type matches
     /// * `None` if the reference ID is invalid or the type doesn't match
+    #[inline(always)]
     pub fn get_arc_ref<T: 'static + ?Sized>(&self, ref_id: u32) -> Option<Arc<T>> {
         let any_box = self.refs.get(ref_id as usize)?;
         any_box.downcast_ref::<Arc<T>>().cloned()
@@ -272,6 +281,7 @@ impl RefReader {
     /// # Arguments
     ///
     /// * `callback` - A closure that takes a reference to the RefReader
+    #[inline(always)]
     pub fn add_callback(&mut self, callback: UpdateCallback) {
         self.callbacks.push(callback);
     }
@@ -289,6 +299,7 @@ impl RefReader {
     /// # Errors
     ///
     /// Errors if an invalid reference flag value is encountered
+    #[inline(always)]
     pub fn read_ref_flag(&self, reader: &mut Reader) -> Result<RefFlag, Error> {
         let flag_value = reader.read_i8()?;
         Ok(match flag_value {
@@ -312,6 +323,7 @@ impl RefReader {
     /// # Returns
     ///
     /// The reference ID as a u32
+    #[inline(always)]
     pub fn read_ref_id(&self, reader: &mut Reader) -> Result<u32, Error> {
         reader.read_varuint32()
     }
@@ -320,6 +332,7 @@ impl RefReader {
     ///
     /// This should be called after deserialization completes to update any weak pointers
     /// that referenced objects which were not yet available during deserialization.
+    #[inline(always)]
     pub fn resolve_callbacks(&mut self) {
         let callbacks = std::mem::take(&mut self.callbacks);
         for callback in callbacks {
@@ -330,6 +343,7 @@ impl RefReader {
     /// Clear all stored references and callbacks.
     ///
     /// This is useful for reusing the RefReader for multiple deserialization operations.
+    #[inline(always)]
     pub fn reset(&mut self) {
         self.resolve_callbacks();
         self.refs.clear();

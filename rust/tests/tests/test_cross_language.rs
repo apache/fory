@@ -739,3 +739,35 @@ fn test_consistent_named() {
     // // fory.serialize_with_context(&my_struct, &mut context);
     fs::write(&data_file_path, context.writer.dump()).unwrap();
 }
+
+#[derive(ForyObject, Debug, PartialEq)]
+#[fory_debug]
+struct VersionCheckStruct {
+    f1: i32,
+    f2: Option<String>,
+    f3: f64,
+}
+
+#[test]
+#[ignore]
+fn test_struct_version_check() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+    let mut fory = Fory::default()
+        .compatible(false)
+        .xlang(true)
+        .check_struct_version(true);
+    fory.register::<VersionCheckStruct>(201).unwrap();
+
+    let local_obj = VersionCheckStruct {
+        f1: 10,
+        f2: Some("test".to_string()),
+        f3: 3.2,
+    };
+    let remote_obj: VersionCheckStruct = fory.deserialize(&bytes).unwrap();
+    assert_eq!(remote_obj, local_obj);
+    let new_bytes = fory.serialize(&remote_obj).unwrap();
+    let new_local_obj: VersionCheckStruct = fory.deserialize(&new_bytes).unwrap();
+    assert_eq!(new_local_obj, local_obj);
+    fs::write(&data_file_path, new_bytes).unwrap();
+}

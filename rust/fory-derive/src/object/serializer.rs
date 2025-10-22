@@ -125,10 +125,12 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
         #default_impl
 
         impl fory_core::StructSerializer for #name {
+            #[inline(always)]
             fn fory_type_index() -> u32 {
                 #type_idx
             }
 
+            #[inline(always)]
             fn fory_actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) -> u32 {
                 #actual_type_id_ts
             }
@@ -141,24 +143,29 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
                 #fields_info_ts
             }
 
+            #[inline]
             fn fory_read_compatible(context: &mut fory_core::resolver::context::ReadContext, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::error::Error> {
                 #read_compatible_ts
             }
         }
 
         impl fory_core::Serializer for #name {
+            #[inline(always)]
             fn fory_get_type_id(type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<u32, fory_core::error::Error> {
                 type_resolver.get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
             }
 
+            #[inline(always)]
             fn fory_type_id_dyn(&self, type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<u32, fory_core::error::Error> {
                 Self::fory_get_type_id(type_resolver)
             }
 
+            #[inline(always)]
             fn as_any(&self) -> &dyn std::any::Any {
                 self
             }
 
+            #[inline(always)]
             fn fory_static_type_id() -> fory_core::TypeId
             where
                 Self: Sized,
@@ -166,34 +173,42 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
                 #static_type_id_ts
             }
 
+            #[inline(always)]
             fn fory_reserved_space() -> usize {
                 #reserved_space_ts
             }
 
+            #[inline(always)]
             fn fory_write(&self, context: &mut fory_core::resolver::context::WriteContext, write_ref_info: bool, write_type_info: bool, _: bool) -> Result<(), fory_core::error::Error> {
                 #write_ts
             }
 
+            #[inline]
             fn fory_write_data(&self, context: &mut fory_core::resolver::context::WriteContext) -> Result<(), fory_core::error::Error> {
                 #write_data_ts
             }
 
+            #[inline(always)]
             fn fory_write_type_info(context: &mut fory_core::resolver::context::WriteContext) -> Result<(), fory_core::error::Error> {
                 #write_type_info_ts
             }
 
+            #[inline(always)]
             fn fory_read(context: &mut fory_core::resolver::context::ReadContext, read_ref_info: bool, read_type_info: bool) -> Result<Self, fory_core::error::Error> {
                 #read_ts
             }
 
+            #[inline(always)]
             fn fory_read_with_type_info(context: &mut fory_core::resolver::context::ReadContext, read_ref_info: bool, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::error::Error> {
                 #read_with_type_info_ts
             }
 
+            #[inline]
             fn fory_read_data( context: &mut fory_core::resolver::context::ReadContext) -> Result<Self, fory_core::error::Error> {
                 #read_data_ts
             }
 
+            #[inline(always)]
             fn fory_read_type_info(context: &mut fory_core::resolver::context::ReadContext) -> Result<(), fory_core::error::Error> {
                 #read_type_info_ts
             }

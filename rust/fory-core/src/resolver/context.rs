@@ -37,6 +37,7 @@ pub struct WriteContext {
     share_meta: bool,
     compress_string: bool,
     xlang: bool,
+    check_struct_version: bool,
 
     // Context-specific fields
     pub writer: Writer,
@@ -53,6 +54,7 @@ impl WriteContext {
         share_meta: bool,
         compress_string: bool,
         xlang: bool,
+        check_struct_version: bool,
     ) -> WriteContext {
         WriteContext {
             type_resolver,
@@ -60,6 +62,7 @@ impl WriteContext {
             share_meta,
             compress_string,
             xlang,
+            check_struct_version,
             writer,
             meta_resolver: MetaWriterResolver::default(),
             meta_string_resolver: MetaStringWriterResolver::default(),
@@ -74,6 +77,7 @@ impl WriteContext {
             share_meta: fory.is_share_meta(),
             compress_string: fory.is_compress_string(),
             xlang: fory.is_xlang(),
+            check_struct_version: fory.is_check_struct_version(),
             writer,
             meta_resolver: MetaWriterResolver::default(),
             meta_string_resolver: MetaStringWriterResolver::default(),
@@ -114,6 +118,12 @@ impl WriteContext {
     #[inline(always)]
     pub fn is_xlang(&self) -> bool {
         self.xlang
+    }
+
+    /// Check if class version checking is enabled
+    #[inline(always)]
+    pub fn is_check_struct_version(&self) -> bool {
+        self.check_struct_version
     }
 
     #[inline(always)]
@@ -209,6 +219,7 @@ pub struct ReadContext {
     share_meta: bool,
     xlang: bool,
     max_dyn_depth: u32,
+    check_struct_version: bool,
 
     // Context-specific fields
     pub reader: Reader,
@@ -233,6 +244,7 @@ impl ReadContext {
         share_meta: bool,
         xlang: bool,
         max_dyn_depth: u32,
+        check_struct_version: bool,
     ) -> ReadContext {
         ReadContext {
             type_resolver,
@@ -240,6 +252,7 @@ impl ReadContext {
             share_meta,
             xlang,
             max_dyn_depth,
+            check_struct_version,
             reader,
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
@@ -255,6 +268,7 @@ impl ReadContext {
             share_meta: fory.is_share_meta(),
             xlang: fory.is_xlang(),
             max_dyn_depth: fory.get_max_dyn_depth(),
+            check_struct_version: fory.is_check_struct_version(),
             reader,
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
@@ -285,6 +299,12 @@ impl ReadContext {
     #[inline(always)]
     pub fn is_xlang(&self) -> bool {
         self.xlang
+    }
+
+    /// Check if class version checking is enabled
+    #[inline(always)]
+    pub fn is_check_struct_version(&self) -> bool {
+        self.check_struct_version
     }
 
     /// Get maximum dynamic depth
@@ -351,6 +371,7 @@ impl ReadContext {
         self.type_resolver.get_type_info(type_id)
     }
 
+    #[inline(always)]
     pub fn read_meta_string(&mut self) -> Result<&MetaString, Error> {
         self.meta_string_resolver.read_meta_string(&mut self.reader)
     }

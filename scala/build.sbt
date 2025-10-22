@@ -21,7 +21,7 @@ val scala213Version = "2.13.15"
 ThisBuild / apacheSonatypeProjectProfile := "fory"
 version := foryVersion
 scalaVersion := scala213Version
-crossScalaVersions := Seq(scala213Version, "3.3.4")
+crossScalaVersions := Seq(scala213Version, "3.3.1")
 
 lazy val root = Project(id = "fory-scala", base = file("."))
   .settings(

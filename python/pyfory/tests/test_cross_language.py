@@ -429,21 +429,21 @@ class ComplexObject1:
     f1: Any = None
     f2: str = None
     f3: List[str] = None
-    f4: Dict[pyfory.Int8Type, pyfory.Int32Type] = None
-    f5: pyfory.Int8Type = None
-    f6: pyfory.Int16Type = None
-    f7: pyfory.Int32Type = None
-    f8: pyfory.Int64Type = None
-    f9: pyfory.Float32Type = None
-    f10: pyfory.Float64Type = None
+    f4: Dict[pyfory.int8, pyfory.int32] = None
+    f5: pyfory.int8 = None
+    f6: pyfory.int16 = None
+    f7: pyfory.int32 = None
+    f8: pyfory.int64 = None
+    f9: pyfory.float32 = None
+    f10: pyfory.float64 = None
     f11: pyfory.Int16ArrayType = None
-    f12: List[pyfory.Int16Type] = None
+    f12: List[pyfory.int16] = None
 
 
 @dataclass
 class ComplexObject2:
     f1: Any
-    f2: Dict[pyfory.Int8Type, pyfory.Int32Type]
+    f2: Dict[pyfory.int8, pyfory.int32]
 
 
 def test_serialize_simple_struct_local():
@@ -542,9 +542,14 @@ def test_struct_hash(data_file_path):
     fory = pyfory.Fory(xlang=True, ref=True)
     fory.register_type(ComplexObject1, typename="ComplexObject1")
     serializer = fory.type_resolver.get_serializer(ComplexObject1)._replace()
-    from pyfory._struct import _get_hash
+    from pyfory._struct import compute_struct_meta
 
-    v = _get_hash(fory, serializer._field_names, serializer._type_hints)
+    v = compute_struct_meta(
+        fory.type_resolver,
+        serializer._field_names,
+        serializer._serializers,
+        serializer._nullable_fields,
+    )[0]
     assert read_hash == v, (read_hash, v)
 
 
@@ -696,7 +701,7 @@ def test_cross_language_meta_share(data_file_path):
     @dataclass
     class ComplexObject2:
         f1: Any
-        f2: Dict[pyfory.Int8Type, pyfory.Int32Type]
+        f2: Dict[pyfory.int8, pyfory.int32]
 
     fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
 
@@ -735,22 +740,22 @@ def test_cross_language_meta_share_complex(data_file_path):
     @dataclass
     class ComplexObject2:
         f1: Any
-        f2: Dict[pyfory.Int8Type, pyfory.Int32Type]
+        f2: Dict[pyfory.int8, pyfory.int32]
 
     @dataclass
     class ComplexObject1:
         f1: Any
         f2: str
         f3: List[str]
-        f4: Dict[pyfory.Int8Type, pyfory.Int32Type]
-        f5: pyfory.Int8Type
-        f6: pyfory.Int16Type
-        f7: pyfory.Int32Type
-        f8: pyfory.Int64Type
-        f9: pyfory.Float32Type
-        f10: pyfory.Float64Type
+        f4: Dict[pyfory.int8, pyfory.int32]
+        f5: pyfory.int8
+        f6: pyfory.int16
+        f7: pyfory.int32
+        f8: pyfory.int64
+        f9: pyfory.float32
+        f10: pyfory.float64
         f11: pyfory.Int16ArrayType
-        f12: List[pyfory.Int16Type]
+        f12: List[pyfory.int16]
 
     fory.register_type(ComplexObject1, namespace="test", typename="ComplexObject1")
     fory.register_type(ComplexObject2, namespace="test", typename="ComplexObject2")
@@ -793,7 +798,7 @@ def test_schema_evolution(data_file_path):
     @dataclass
     class CompatTestV1:
         name: str
-        age: pyfory.Int32Type  # Use specific fory type to match Java Integer
+        age: pyfory.int32  # Use specific fory type to match Java Integer
 
     fory.register_type(CompatTestV1, namespace="test", typename="CompatTest")
 
@@ -833,7 +838,7 @@ def test_backward_compatibility(data_file_path):
     @dataclass
     class CompatTestV1:
         name: str
-        age: pyfory.Int32Type
+        age: pyfory.int32
 
     fory.register_type(CompatTestV1, namespace="test", typename="CompatTest")
 
@@ -868,7 +873,7 @@ def test_field_reordering_compatibility(data_file_path):
     # Version 3 class with reordered fields matching Java CompatTestV3
     @dataclass
     class CompatTestV3:
-        age: pyfory.Int32Type  # Reordered (was second in V1)
+        age: pyfory.int32  # Reordered (was second in V1)
         name: str  # Reordered (was first in V1)
         email: str
         active: bool  # New field
@@ -907,12 +912,12 @@ def test_cross_version_compatibility(data_file_path):
     @dataclass
     class CompatTestV1:
         name: str
-        age: pyfory.Int32Type
+        age: pyfory.int32
 
     @dataclass
     class CompatTestV2:
         name: str
-        age: pyfory.Int32Type
+        age: pyfory.int32
         email: str = "default@example.com"
 
     @dataclass

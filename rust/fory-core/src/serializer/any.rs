@@ -99,9 +99,9 @@ impl Serializer for Box<dyn Any> {
     }
 
     fn fory_read_data(_: &mut ReadContext) -> Result<Self, Error> {
-        panic!(
-            "fory_read_data should not be called directly on polymorphic Rc<dyn Any> trait object"
-        );
+        Err(Error::not_allowed(
+            "fory_read_data should not be called directly on polymorphic Rc<dyn Any> trait object",
+        ))
     }
 
     fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
@@ -267,10 +267,10 @@ impl Serializer for Rc<dyn Any> {
     }
 
     fn fory_read_data(_: &mut ReadContext) -> Result<Self, Error> {
-        panic!(
+        Err(Error::not_allowed(format!(
             "fory_read_data should not be called directly on polymorphic Rc<dyn {}> trait object",
             stringify!($trait_name)
-        );
+        )))
     }
 
     fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
@@ -436,10 +436,10 @@ impl Serializer for Arc<dyn Any> {
     }
 
     fn fory_read_data(_: &mut ReadContext) -> Result<Self, Error> {
-        panic!(
+        Err(Error::not_allowed(format!(
             "fory_read_data should not be called directly on polymorphic Rc<dyn {}> trait object",
             stringify!($trait_name)
-        );
+        )))
     }
 
     fn fory_get_type_id(_type_resolver: &TypeResolver) -> Result<u32, Error> {

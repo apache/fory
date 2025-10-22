@@ -462,7 +462,7 @@ f = pyfory.Fory(xlang=True, ref=True)
 @dataclass
 class Person:
     name: str
-    age: pyfory.Int32Type
+    age: pyfory.int32
 
 f.register(Person, typename="example.Person")
 

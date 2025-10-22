@@ -23,7 +23,9 @@ use fory_core::types::{TypeId, PRIMITIVE_ARRAY_TYPE_MAP};
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, ToTokens};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
+use std::sync::OnceLock;
 use syn::{Field, GenericArgument, PathArguments, Type};
 
 thread_local! {
@@ -53,6 +55,19 @@ pub(super) fn clear_struct_context() {
 
 pub(super) fn get_struct_name() -> Option<String> {
     MACRO_CONTEXT.with(|ctx| ctx.borrow().as_ref().map(|c| c.struct_name.clone()))
+}
+
+/// Global flag to check if ENABLE_FORY_DEBUG_OUTPUT environment variable is set.
+static ENABLE_FORY_DEBUG_OUTPUT: OnceLock<bool> = OnceLock::new();
+
+/// Check if ENABLE_FORY_DEBUG_OUTPUT environment variable is set.
+#[inline]
+fn enable_debug_output() -> bool {
+    *ENABLE_FORY_DEBUG_OUTPUT.get_or_init(|| {
+        std::env::var("ENABLE_FORY_DEBUG_OUTPUT")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+    })
 }
 
 pub(super) fn is_debug_enabled() -> bool {
@@ -540,6 +555,8 @@ fn is_internal_type_id(type_id: u32) -> bool {
     .contains(&type_id)
 }
 
+/// Group fields into serialization categories while normalizing field names to snake_case.
+/// The returned groups preserve the ordering rules required by the serialization layout.
 fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
     let mut primitive_fields = Vec::new();
     let mut nullable_primitive_fields = Vec::new();
@@ -552,7 +569,8 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
     // First handle Forward fields separately to avoid borrow checker issues
     for field in fields {
         if is_forward_field(&field.ty) {
-            let ident = field.ident.as_ref().unwrap().to_string();
+            let raw_ident = field.ident.as_ref().unwrap().to_string();
+            let ident = to_snake_case(&raw_ident);
             other_fields.push((ident, "Forward".to_string(), TypeId::UNKNOWN as u32));
         }
     }
@@ -577,7 +595,8 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
     };
 
     for field in fields {
-        let ident = field.ident.as_ref().unwrap().to_string();
+        let raw_ident = field.ident.as_ref().unwrap().to_string();
+        let ident = to_snake_case(&raw_ident);
 
         // Skip if already handled as Forward field
         if is_forward_field(&field.ty) {
@@ -678,6 +697,90 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
     }
 }
 
+fn to_snake_case(name: &str) -> String {
+    if name
+        .chars()
+        .all(|c| c.is_lowercase() || c.is_ascii_digit() || c == '_')
+    {
+        return name.to_string();
+    }
+
+    let mut result = String::with_capacity(name.len() * 2);
+    let mut chars = name.chars().peekable();
+    let mut prev: Option<char> = None;
+
+    while let Some(ch) = chars.next() {
+        if ch == '_' {
+            result.push('_');
+            prev = Some(ch);
+            continue;
+        }
+
+        if ch.is_uppercase() {
+            if let Some(prev_ch) = prev {
+                let need_underscore = (prev_ch.is_lowercase() || prev_ch.is_ascii_digit())
+                    || (prev_ch.is_uppercase()
+                        && chars
+                            .peek()
+                            .map(|next| next.is_lowercase())
+                            .unwrap_or(false));
+                if need_underscore && !result.ends_with('_') {
+                    result.push('_');
+                }
+            }
+            result.push(ch.to_ascii_lowercase());
+        } else {
+            result.push(ch);
+        }
+        prev = Some(ch);
+    }
+
+    result
+}
+
+pub(crate) fn compute_struct_version_hash(fields: &[&Field]) -> i32 {
+    let mut field_info_map: HashMap<String, (u32, bool)> = HashMap::with_capacity(fields.len());
+    for field in fields {
+        let name = field.ident.as_ref().unwrap().to_string();
+        let type_id = get_type_id_by_type_ast(&field.ty);
+        let nullable = is_option(&field.ty);
+        field_info_map.insert(name, (type_id, nullable));
+    }
+
+    let mut fingerprint = String::new();
+    for name in get_sorted_field_names(fields).iter() {
+        let (type_id, nullable) = field_info_map
+            .get(name)
+            .expect("Field metadata missing during struct hash computation");
+        fingerprint.push_str(&to_snake_case(name));
+        fingerprint.push(',');
+        let effective_type_id = if *type_id == TypeId::UNKNOWN as u32 {
+            TypeId::UNKNOWN as u32
+        } else {
+            *type_id
+        };
+        fingerprint.push_str(&effective_type_id.to_string());
+        fingerprint.push(',');
+        fingerprint.push_str(if *nullable { "1;" } else { "0;" });
+    }
+
+    let seed: u64 = 47;
+    let (hash, _) = fory_core::meta::murmurhash3_x64_128(fingerprint.as_bytes(), seed);
+    let version = (hash & 0xFFFF_FFFF) as u32;
+    let version = version as i32;
+
+    if enable_debug_output() {
+        if let Some(struct_name) = get_struct_name() {
+            println!(
+                "[fory-debug] struct {struct_name} version fingerprint=\"{fingerprint}\" hash={version}"
+            );
+        } else {
+            println!("[fory-debug] struct version fingerprint=\"{fingerprint}\" hash={version}");
+        }
+    }
+    version
+}
+
 pub(crate) fn skip_ref_flag(ty: &Type) -> bool {
     // !T::fory_is_option() && PRIMITIVE_TYPES.contains(&elem_type_id)
     PRIMITIVE_TYPE_NAMES.contains(&extract_type_name(ty).as_str())
@@ -713,4 +816,99 @@ pub(crate) fn should_skip_type_info_for_field(ty: &Type) -> bool {
     }
     // Primitive, nullable primitive, internal types, List/Set/Map skip type info
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syn::parse_quote;
+
+    #[test]
+    fn to_snake_case_handles_common_patterns() {
+        assert_eq!(to_snake_case("lowercase"), "lowercase");
+        assert_eq!(to_snake_case("camelCase"), "camel_case");
+        assert_eq!(to_snake_case("HTTPRequest"), "http_request");
+        assert_eq!(to_snake_case("withNumbers123"), "with_numbers123");
+        assert_eq!(to_snake_case("snake_case"), "snake_case");
+    }
+
+    #[test]
+    fn group_fields_normalizes_names_and_preserves_ordering() {
+        let fields: Vec<syn::Field> = vec![
+            parse_quote!(pub camelCase: i32),
+            parse_quote!(pub optionalValue: Option<i64>),
+            parse_quote!(pub simpleString: String),
+            parse_quote!(pub listItems: Vec<String>),
+            parse_quote!(pub setItems: HashSet<i32>),
+            parse_quote!(pub mapValues: HashMap<String, i32>),
+            parse_quote!(pub customType: CustomType),
+        ];
+        let field_refs: Vec<&syn::Field> = fields.iter().collect();
+
+        let (
+            primitive_fields,
+            nullable_primitive_fields,
+            internal_type_fields,
+            list_fields,
+            set_fields,
+            map_fields,
+            other_fields,
+        ) = group_fields_by_type(&field_refs);
+
+        let primitive_names: Vec<&str> = primitive_fields
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect();
+        assert_eq!(primitive_names, vec!["camel_case"]);
+
+        let nullable_names: Vec<&str> = nullable_primitive_fields
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect();
+        assert_eq!(nullable_names, vec!["optional_value"]);
+
+        let internal_names: Vec<&str> = internal_type_fields
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect();
+        assert_eq!(internal_names, vec!["simple_string"]);
+
+        let list_names: Vec<&str> = list_fields
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect();
+        assert_eq!(list_names, vec!["list_items"]);
+
+        let set_names: Vec<&str> = set_fields
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect();
+        assert_eq!(set_names, vec!["set_items"]);
+
+        let map_names: Vec<&str> = map_fields
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect();
+        assert_eq!(map_names, vec!["map_values"]);
+
+        let other_names: Vec<&str> = other_fields
+            .iter()
+            .map(|(name, _, _)| name.as_str())
+            .collect();
+        assert_eq!(other_names, vec!["custom_type"]);
+
+        let sorted_names = get_sorted_field_names(&field_refs);
+        assert_eq!(
+            sorted_names,
+            vec![
+                "camel_case".to_string(),
+                "optional_value".to_string(),
+                "simple_string".to_string(),
+                "list_items".to_string(),
+                "set_items".to_string(),
+                "map_values".to_string(),
+                "custom_type".to_string(),
+            ]
+        );
+    }
 }

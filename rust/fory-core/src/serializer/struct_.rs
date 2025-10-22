@@ -113,7 +113,7 @@ fn enable_debug_output() -> bool {
     *ENABLE_FORY_DEBUG_OUTPUT.get_or_init(|| {
         std::env::var("ENABLE_FORY_DEBUG_OUTPUT")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(true)
+            .unwrap_or(false)
     })
 }
 

@@ -78,6 +78,16 @@
           <argLine>--add-modules=jdk.incubator.vector</argLine>
         </configuration>
       </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <configuration>
+          <additionalOptions>
+            <additionalOption>--add-modules=jdk.incubator.vector</additionalOption>
+          </additionalOptions>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
 </project>

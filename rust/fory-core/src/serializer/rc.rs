@@ -60,11 +60,15 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
     }
 
     fn fory_write_data_generic(&self, _: &mut WriteContext, _: bool) -> Result<(), Error> {
-        panic!("Rc<T> should be written using `fory_write` to handle reference tracking properly");
+        Err(Error::not_allowed(
+            "Rc<T> should be written using `fory_write` to handle reference tracking properly",
+        ))
     }
 
     fn fory_write_data(&self, _: &mut WriteContext) -> Result<(), Error> {
-        panic!("Rc<T> should be written using `fory_write` to handle reference tracking properly");
+        Err(Error::not_allowed(
+            "Rc<T> should be written using `fory_write` to handle reference tracking properly",
+        ))
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
@@ -91,7 +95,7 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
     }
 
     fn fory_read_data(_: &mut ReadContext) -> Result<Self, Error> {
-        panic!("Rc<T> should be read using `fory_read/fory_read_with_type_info` to handle reference tracking properly");
+        Err(Error::not_allowed("Rc<T> should be read using `fory_read/fory_read_with_type_info` to handle reference tracking properly"))
     }
 
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {

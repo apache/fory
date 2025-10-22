@@ -20,9 +20,9 @@ use quote::{format_ident, quote};
 use syn::{Field, Type};
 
 use super::util::{
-    classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
-    extract_type_name, get_struct_name, is_debug_enabled, is_primitive_type,
-    should_skip_type_info_for_field, skip_ref_flag, StructField,
+    classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
+    create_wrapper_types_rc, extract_type_name, get_struct_name, is_debug_enabled,
+    is_primitive_type, should_skip_type_info_for_field, skip_ref_flag, StructField,
 };
 
 fn create_private_field_name(field: &Field) -> Ident {
@@ -244,6 +244,7 @@ fn get_fields_loop_ts(fields: &[&Field]) -> TokenStream {
 }
 
 pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
+    let version_hash = compute_struct_version_hash(fields);
     let sorted_read = if fields.is_empty() {
         quote! {}
     } else {
@@ -260,6 +261,12 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
         }
     });
     quote! {
+        // Read and check version hash when class version checking is enabled
+        if context.is_check_struct_version() {
+            let read_version = context.reader.read_i32()?;
+            let type_name = std::any::type_name::<Self>();
+            fory_core::meta::TypeMeta::check_struct_version(read_version, #version_hash, type_name)?;
+        }
         #sorted_read
         Ok(Self {
             #(#field_idents),*

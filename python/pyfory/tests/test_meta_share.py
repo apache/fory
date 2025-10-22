@@ -64,29 +64,29 @@ class NestedStructClassInconsistent:
 @dataclasses.dataclass
 class ListFieldsClass:
     name: str
-    int_list: List[pyfory.Int32Type]
+    int_list: List[pyfory.int32]
     str_list: List[str]
 
 
 @dataclasses.dataclass
 class ListFieldsClassInconsistent:
     name: str
-    int_list: List[str]  # Changed from Int32Type to str
-    str_list: List[pyfory.Int32Type]  # Changed from str to Int32Type
+    int_list: List[str]  # Changed from int32 to str
+    str_list: List[pyfory.int32]  # Changed from str to int32
 
 
 @dataclasses.dataclass
 class DictFieldsClass:
     name: str
-    int_dict: Dict[str, pyfory.Int32Type]
+    int_dict: Dict[str, pyfory.int32]
     str_dict: Dict[str, str]
 
 
 @dataclasses.dataclass
 class DictFieldsClassInconsistent:
     name: str
-    int_dict: Dict[str, str]  # Changed from Int32Type to str
-    str_dict: Dict[str, pyfory.Int32Type]  # Changed from str to Int32Type
+    int_dict: Dict[str, str]  # Changed from int32 to str
+    str_dict: Dict[str, pyfory.int32]  # Changed from str to int32
 
 
 class TestMetaShareMode:

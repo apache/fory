@@ -333,6 +333,7 @@ impl MetaStringReaderResolver {
         Ok(mb_ref)
     }
 
+    #[inline(always)]
     fn read_bytes_as_u64(reader: &mut Reader, len: usize) -> Result<u64, Error> {
         let mut v = 0;
         let slice = reader.read_bytes(len)?;
@@ -342,6 +343,7 @@ impl MetaStringReaderResolver {
         Ok(v)
     }
 
+    #[inline(always)]
     pub fn reset(&mut self) {
         if self.dynamic_read_id != 0 {
             for i in 0..self.dynamic_read_id {
@@ -351,6 +353,7 @@ impl MetaStringReaderResolver {
         }
     }
 
+    #[inline(always)]
     pub fn read_meta_string(&mut self, reader: &mut Reader) -> Result<&MetaString, Error> {
         let ptr = {
             let mb_ref = self.read_meta_string_bytes(reader)?;

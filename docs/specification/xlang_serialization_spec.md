@@ -815,27 +815,41 @@ nullable primitive field value:
 +-----------+---------------+
 | null flag |  field value  |
 +-----------+---------------+
-field value of final type with ref tracking:
+other interal types supported by fory
 | var bytes | var objects |
 +-----------+-------------+
-| ref meta  | value data  |
+| null flag | value data  |
 +-----------+-------------+
-field value of final type without ref tracking:
+list field type:
 | one byte  | var objects |
 +-----------+-------------+
-| null flag | field value |
+| ref meta  | value data  |
+set field type:
+| one byte  | var objects |
 +-----------+-------------+
-field value of non-final type with ref tracking:
-| one byte  | var bytes | var objects |
+| ref meta  | value data  |
+map field type:
+| one byte  | var objects |
++-----------+-------------+
+| ref meta  | value data  |
 +-----------+-------------+-------------+
-| ref meta  | type meta  | value data  |
-+-----------+-------------+-------------+
-field value of non-final type without ref tracking:
+other types such as enum/struct/ext
 | one byte  | var bytes | var objects |
 +-----------+------------+------------+
-| null flag | type meta | value data |
+| ref  flag | type meta | value data |
 +-----------+------------+------------+
 ```
+
+Type hash algorithm:
+
+- Sort fields by fields sort algorithm
+- Start with string `""`
+- Iterate every field, append string by:
+  - `snow_case(field_name),`. For camelcase name, convert it to snow_case first.
+  - `$type_id,`, for other fields, use type id `TypeId::UNKNOWN` instead.
+  - `$nullable;`, `1` if nullable, `0` otherwise.
+- Then convert string to utf8 bytes
+- Compute murmurhash3_x64_128, and use first 32 bits
 
 #### Schema evolution
 

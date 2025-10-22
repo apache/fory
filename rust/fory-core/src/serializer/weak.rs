@@ -341,15 +341,15 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
     }
 
     fn fory_write_data_generic(&self, _: &mut WriteContext, _: bool) -> Result<(), Error> {
-        panic!(
-            "RcWeak<T> should be written using `fory_write` to handle reference tracking properly"
-        );
+        Err(Error::not_allowed(
+            "RcWeak<T> should be written using `fory_write` to handle reference tracking properly",
+        ))
     }
 
     fn fory_write_data(&self, _: &mut WriteContext) -> Result<(), Error> {
-        panic!(
-            "RcWeak<T> should be written using `fory_write` to handle reference tracking properly"
-        );
+        Err(Error::not_allowed(
+            "RcWeak<T> should be written using `fory_write` to handle reference tracking properly",
+        ))
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
@@ -500,15 +500,15 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
     }
 
     fn fory_write_data_generic(&self, _: &mut WriteContext, _: bool) -> Result<(), Error> {
-        panic!(
-            "ArcWeak<T> should be written using `fory_write` to handle reference tracking properly"
-        );
+        Err(Error::not_allowed(
+            "ArcWeak<T> should be written using `fory_write` to handle reference tracking properly",
+        ))
     }
 
     fn fory_write_data(&self, _: &mut WriteContext) -> Result<(), Error> {
-        panic!(
-            "ArcWeak<T> should be written using `fory_write` to handle reference tracking properly"
-        );
+        Err(Error::not_allowed(
+            "ArcWeak<T> should be written using `fory_write` to handle reference tracking properly",
+        ))
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {

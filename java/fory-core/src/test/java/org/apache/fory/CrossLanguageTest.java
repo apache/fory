@@ -72,6 +72,7 @@ import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.TestUtils;
 import org.apache.fory.type.Descriptor;
+import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.util.DateTimeUtils;
 import org.apache.fory.util.MurmurHash3;
 import org.testng.Assert;
@@ -475,12 +476,13 @@ public class CrossLanguageTest extends ForyTestBase {
     fory.serialize(new ComplexObject1()); // trigger serializer update
     ObjectSerializer serializer = (ObjectSerializer) fory.getSerializer(ComplexObject1.class);
     Method method =
-        ObjectSerializer.class.getDeclaredMethod("computeStructHash", Fory.class, Collection.class);
+        ObjectSerializer.class.getDeclaredMethod(
+            "computeStructHash", Fory.class, DescriptorGrouper.class);
     method.setAccessible(true);
     TypeResolver resolver = fory._getTypeResolver();
     Collection<Descriptor> descriptors = resolver.getFieldDescriptors(ComplexObject1.class, false);
-    descriptors = resolver.createDescriptorGrouper(descriptors, false).getSortedDescriptors();
-    Integer hash = (Integer) method.invoke(serializer, fory, descriptors);
+    DescriptorGrouper grouper = resolver.createDescriptorGrouper(descriptors, false);
+    Integer hash = (Integer) method.invoke(serializer, fory, grouper);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(4);
     buffer.writeInt32(hash);
     roundBytes("test_struct_hash", buffer.getBytes(0, 4));

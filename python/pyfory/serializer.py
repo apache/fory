@@ -356,7 +356,7 @@ _ENABLE_FORY_PYTHON_JIT = os.environ.get("ENABLE_FORY_PYTHON_JIT", "True").lower
 )
 
 
-from pyfory._struct import _get_hash, _sort_fields, StructFieldSerializerVisitor
+from pyfory._struct import compute_struct_meta, StructFieldSerializerVisitor
 
 
 class DataClassSerializer(Serializer):
@@ -396,8 +396,9 @@ class DataClassSerializer(Serializer):
                     unwrapped_type, _ = unwrap_optional(self._type_hints[key])
                     serializer = infer_field(key, unwrapped_type, visitor, types_path=[])
                     self._serializers[index] = serializer
-            self._field_names, self._serializers = _sort_fields(fory.type_resolver, self._field_names, self._serializers, self._nullable_fields)
-            self._hash = 0  # Will be computed on first xwrite/xread
+            self._hash, self._field_names, self._serializers = compute_struct_meta(
+                fory.type_resolver, self._field_names, self._serializers, self._nullable_fields
+            )
             self._generated_xwrite_method = self._gen_xwrite_method()
             self._generated_xread_method = self._gen_xread_method()
             if _ENABLE_FORY_PYTHON_JIT:
@@ -423,8 +424,9 @@ class DataClassSerializer(Serializer):
             # In compatible mode, maintain stable field ordering (don't sort)
             # In non-compatible mode, sort fields for consistent serialization
             if not fory.compatible:
-                self._field_names, self._serializers = _sort_fields(fory.type_resolver, self._field_names, self._serializers, self._nullable_fields)
-            self._hash = 0  # Will be computed on first write/read
+                self._hash, self._field_names, self._serializers = compute_struct_meta(
+                    fory.type_resolver, self._field_names, self._serializers, self._nullable_fields
+                )
             self._generated_write_method = self._gen_write_method()
             self._generated_read_method = self._gen_read_method()
             if _ENABLE_FORY_PYTHON_JIT:
@@ -453,16 +455,10 @@ class DataClassSerializer(Serializer):
 
         return {field_name: unwrap_optional(hint)[0] for field_name, hint in self._type_hints.items()}
 
-    def _ensure_hash_computed(self):
-        """Lazily compute and cache the hash if not already computed."""
-        if self._hash == 0:
-            self._hash = _get_hash(self.fory, self._field_names, self._unwrapped_hints)
-        return self._hash
-
     def _write_header(self, buffer):
         """Write serialization header (hash or field count based on compatible mode)."""
         if not self.fory.compatible:
-            buffer.write_int32(self._ensure_hash_computed())
+            buffer.write_int32(self._hash)
         else:
             buffer.write_varuint32(len(self._field_names))
 
@@ -477,7 +473,7 @@ class DataClassSerializer(Serializer):
         """
         if not self.fory.compatible:
             hash_ = buffer.read_int32()
-            expected_hash = self._ensure_hash_computed()
+            expected_hash = self._hash
             if hash_ != expected_hash:
                 raise TypeNotCompatibleError(f"Hash {hash_} is not consistent with {expected_hash} for type {self.type_}")
             return len(self._field_names)
@@ -602,7 +598,6 @@ class DataClassSerializer(Serializer):
         ]
 
         # Write hash only in non-compatible mode; in compatible mode, write field count
-        self._ensure_hash_computed()
         if not self.fory.compatible:
             stmts.append(f"{buffer}.write_int32({self._hash})")
         else:
@@ -672,7 +667,6 @@ class DataClassSerializer(Serializer):
         ]
 
         # Read hash only in non-compatible mode; in compatible mode, read field count
-        self._ensure_hash_computed()
         if not self.fory.compatible:
             stmts.extend(
                 [
@@ -764,7 +758,6 @@ class DataClassSerializer(Serializer):
             f'"""xwrite method for {self.type_}"""',
         ]
         if not self.fory.compatible:
-            self._ensure_hash_computed()
             stmts.append(f"{buffer}.write_int32({self._hash})")
         if not self._has_slots:
             stmts.append(f"{value_dict} = {value}.__dict__")
@@ -823,7 +816,6 @@ class DataClassSerializer(Serializer):
             f'"""xread method for {self.type_}"""',
         ]
         if not self.fory.compatible:
-            self._ensure_hash_computed()
             stmts.extend(
                 [
                     f"read_hash = {buffer}.read_int32()",
@@ -924,7 +916,6 @@ class DataClassSerializer(Serializer):
         """Write dataclass instance to buffer in cross-language format."""
         if not self._xlang:
             raise TypeError("xwrite can only be called when DataClassSerializer is in xlang mode")
-        self._ensure_hash_computed()
         if not self.fory.compatible:
             buffer.write_int32(self._hash)
         for index, field_name in enumerate(self._field_names):
@@ -940,7 +931,6 @@ class DataClassSerializer(Serializer):
         """Read dataclass instance from buffer in cross-language format."""
         if not self._xlang:
             raise TypeError("xread can only be called when DataClassSerializer is in xlang mode")
-        self._ensure_hash_computed()
         if not self.fory.compatible:
             hash_ = buffer.read_int32()
             if hash_ != self._hash:

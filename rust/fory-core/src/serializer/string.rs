@@ -32,8 +32,16 @@ enum StrEncoding {
 }
 
 impl Serializer for String {
-    #[inline]
+    #[inline(always)]
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+        if !context.is_xlang() {
+            // Fast path: non-xlang mode always uses UTF-8 without encoding header
+            context.writer.write_varuint32(self.len() as u32);
+            context.writer.write_utf8_string(self);
+            return Ok(());
+        }
+
+        // xlang mode: use encoding header for optimal format selection
         let mut len = get_latin1_length(self);
         if len >= 0 {
             let bitor = (len as u64) << 2 | StrEncoding::Latin1 as u64;
@@ -54,8 +62,15 @@ impl Serializer for String {
         Ok(())
     }
 
-    #[inline]
+    #[inline(always)]
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        if !context.is_xlang() {
+            // Fast path: non-xlang mode always uses UTF-8 without encoding header
+            let len = context.reader.read_varuint32()? as usize;
+            return context.reader.read_utf8_string(len);
+        }
+
+        // xlang mode: read encoding header and decode accordingly
         let bitor = context.reader.read_varuint36small()?;
         let len = bitor >> 2;
         let encoding = bitor & 0b11;
@@ -78,7 +93,7 @@ impl Serializer for String {
         Ok(s)
     }
 
-    #[inline]
+    #[inline(always)]
     fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }

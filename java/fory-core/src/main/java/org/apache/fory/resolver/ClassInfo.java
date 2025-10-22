@@ -58,7 +58,7 @@ public class ClassInfo {
       boolean isDynamicGeneratedClass,
       Serializer<?> serializer,
       short classId,
-      short xtypeId) {
+      int xtypeId) {
     this.cls = cls;
     this.fullNameBytes = fullNameBytes;
     this.namespaceBytes = namespaceBytes;

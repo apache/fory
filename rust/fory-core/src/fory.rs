@@ -80,6 +80,7 @@ pub struct Fory {
     type_resolver: TypeResolver,
     compress_string: bool,
     max_dyn_depth: u32,
+    check_struct_version: bool,
     // Lazy-initialized pools (thread-safe, one-time initialization)
     write_context_pool: OnceLock<Pool<WriteContext>>,
     read_context_pool: OnceLock<Pool<ReadContext>>,
@@ -89,11 +90,12 @@ impl Default for Fory {
     fn default() -> Self {
         Fory {
             compatible: false,
-            xlang: true,
+            xlang: false,
             share_meta: false,
             type_resolver: TypeResolver::default(),
             compress_string: false,
             max_dyn_depth: 5,
+            check_struct_version: false,
             write_context_pool: OnceLock::new(),
             read_context_pool: OnceLock::new(),
         }
@@ -133,6 +135,9 @@ impl Fory {
         self.share_meta = compatible;
         self.compatible = compatible;
         self.type_resolver.set_compatible(compatible);
+        if compatible {
+            self.check_struct_version = false;
+        }
         self
     }
 
@@ -151,7 +156,7 @@ impl Fory {
     ///
     /// # Default
     ///
-    /// The default value is `true`.
+    /// The default value is `false`.
     ///
     /// # Examples
     ///
@@ -161,11 +166,15 @@ impl Fory {
     /// // For cross-language use (default)
     /// let fory = Fory::default().xlang(true);
     ///
-    /// // For Rust-only optimization
+    /// // For Rust-only optimization, this mode is faster and more compact since it avoids
+    /// // cross-language metadata and type system costs.
     /// let fory = Fory::default().xlang(false);
     /// ```
     pub fn xlang(mut self, xlang: bool) -> Self {
         self.xlang = xlang;
+        if !self.check_struct_version {
+            self.check_struct_version = !self.compatible;
+        }
         self
     }
 
@@ -199,6 +208,46 @@ impl Fory {
     /// ```
     pub fn compress_string(mut self, compress_string: bool) -> Self {
         self.compress_string = compress_string;
+        self
+    }
+
+    /// Enables or disables class version checking for schema consistency.
+    ///
+    /// # Arguments
+    ///
+    /// * `check_struct_version` - If `true`, enables class version checking to ensure
+    ///   schema consistency between serialization and deserialization. When enabled,
+    ///   a version hash computed from field types is written/read to detect schema mismatches.
+    ///   If `false`, no version checking is performed.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `false`.
+    ///
+    /// # Note
+    ///
+    /// This feature is only effective when `compatible` mode is `false`. In compatible mode,
+    /// schema evolution is supported and version checking is not needed.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::default()
+    ///     .compatible(false)
+    ///     .check_struct_version(true);
+    /// ```
+    pub fn check_struct_version(mut self, check_struct_version: bool) -> Self {
+        if self.compatible && check_struct_version {
+            // ignore setting if compatible mode is on
+            return self;
+        }
+        self.check_struct_version = check_struct_version;
         self
     }
 
@@ -276,6 +325,15 @@ impl Fory {
         self.max_dyn_depth
     }
 
+    /// Returns whether class version checking is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` if class version checking is enabled, `false` otherwise.
+    pub fn is_check_struct_version(&self) -> bool {
+        self.check_struct_version
+    }
+
     /// Returns a type resolver for type lookups.
     pub(crate) fn get_type_resolver(&self) -> &TypeResolver {
         &self.type_resolver
@@ -306,6 +364,7 @@ impl Fory {
         }
     }
 
+    #[inline(always)]
     fn read_head(&self, reader: &mut Reader) -> Result<bool, Error> {
         if self.xlang {
             let magic_numer = reader.read_u16()?;
@@ -383,6 +442,7 @@ impl Fory {
             let share_meta = self.share_meta;
             let xlang = self.xlang;
             let max_dyn_depth = self.max_dyn_depth;
+            let check_struct_version = self.check_struct_version;
 
             let factory = move || {
                 let reader = Reader::new(&[]);
@@ -393,6 +453,7 @@ impl Fory {
                     share_meta,
                     xlang,
                     max_dyn_depth,
+                    check_struct_version,
                 )
             };
             Pool::new(factory)
@@ -466,6 +527,7 @@ impl Fory {
             let share_meta = self.share_meta;
             let compress_string = self.compress_string;
             let xlang = self.xlang;
+            let check_struct_version = self.check_struct_version;
 
             let factory = move || {
                 let writer = Writer::default();
@@ -476,6 +538,7 @@ impl Fory {
                     share_meta,
                     compress_string,
                     xlang,
+                    check_struct_version,
                 )
             };
             Pool::new(factory)

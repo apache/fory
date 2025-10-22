@@ -173,6 +173,12 @@ pub enum Error {
     /// Do not construct this variant directly; use [`Error::unknown`] instead.
     #[error("{0}")]
     Unknown(Cow<'static, str>),
+
+    /// Struct version mismatch between local and remote schemas.
+    ///
+    /// Do not construct this variant directly; use [`Error::struct_version_mismatch`] instead.
+    #[error("{0}")]
+    StructVersionMismatch(Cow<'static, str>),
 }
 
 impl Error {
@@ -399,6 +405,27 @@ impl Error {
     #[track_caller]
     pub fn not_allowed<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::NotAllowed(s.into());
+        if should_panic_on_error() {
+            panic!("FORY_PANIC_ON_ERROR: {}", err);
+        }
+        err
+    }
+
+    /// Creates a new [`Error::StructVersionMismatch`] from a string or static message.
+    ///
+    /// If `FORY_PANIC_ON_ERROR` environment variable is set, this will panic with the error message.
+    ///
+    /// # Example
+    /// ```
+    /// use fory_core::error::Error;
+    ///
+    /// let err = Error::struct_version_mismatch("Version mismatch");
+    /// let err = Error::struct_version_mismatch(format!("Class {} version mismatch", "Foo"));
+    /// ```
+    #[inline(always)]
+    #[track_caller]
+    pub fn struct_version_mismatch<S: Into<Cow<'static, str>>>(s: S) -> Self {
+        let err = Error::StructVersionMismatch(s.into());
         if should_panic_on_error() {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }

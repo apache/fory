@@ -66,6 +66,9 @@ public class Config implements Serializable {
   private final boolean serializeEnumByName;
   private final int bufferSizeLimitBytes;
   private final int maxDepth;
+  boolean foryDebugOutputEnabled =
+      "1".equals(System.getenv("ENABLE_FORY_DEBUG_OUTPUT"))
+          || "true".equals(System.getenv("ENABLE_FORY_DEBUG_OUTPUT"));
 
   public Config(ForyBuilder builder) {
     name = builder.name;
@@ -292,6 +295,10 @@ public class Config implements Serializable {
   /** Whether enable scala-specific serialization optimization. */
   public boolean isScalaOptimizationEnabled() {
     return scalaOptimizationEnabled;
+  }
+
+  public boolean isForyDebugOutputEnabled() {
+    return foryDebugOutputEnabled;
   }
 
   @Override
