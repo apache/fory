@@ -332,6 +332,11 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       // Choose serializer based on configuration
       if (useMetaShare) {
         // Use ObjectSerializer adapter for meta-shared mode (no field metadata written)
+        // Note: JIT is not fully supported for Meta Shared mode in ObjectStream because:
+        // 1. ObjectStream requires readAndSetFields() which is only in ObjectSerializer
+        // 2. Current JIT-generated code uses read() which creates new instances
+        // 3. Future optimization can generate JIT code with readAndSetFields() support
+        // For now, use interpreter mode ObjectSerializer for correctness and stability
         this.slotsSerializer = new ObjectStreamMetaSharedSerializerAdapter<>(fory, type);
       } else {
         // Use CompatibleSerializer for backward compatibility
@@ -375,6 +380,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         }
         if (useMetaShare) {
           // Use ObjectSerializer adapter for meta-shared putFields/readFields scenario
+          // Using interpreter mode for stability (see comment above about JIT limitation)
           metaSharedStreamSerializer = new ObjectStreamMetaSharedSerializerAdapter<>(fory, cls);
         } else {
           compatibleStreamSerializer = new CompatibleSerializer(fory, cls, putFieldsResolver);
