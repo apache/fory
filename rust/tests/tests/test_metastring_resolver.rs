@@ -16,7 +16,7 @@
 // under the License.
 
 use fory_core::meta::NAMESPACE_ENCODER;
-use fory_core::resolver::metastring_resolver::{
+use fory_core::resolver::meta_string_resolver::{
     MetaStringReaderResolver, MetaStringWriterResolver,
 };
 use fory_core::{Reader, Writer};

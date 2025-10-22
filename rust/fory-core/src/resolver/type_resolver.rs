@@ -115,9 +115,9 @@ impl TypeInfo {
         register_by_name: bool,
         harness: Harness,
     ) -> Result<TypeInfo, Error> {
-        let namespace_metastring =
+        let namespace_meta_string =
             NAMESPACE_ENCODER.encode_with_encodings(namespace, NAMESPACE_ENCODINGS)?;
-        let type_name_metastring =
+        let type_name_meta_string =
             TYPE_NAME_ENCODER.encode_with_encodings(type_name, TYPE_NAME_ENCODINGS)?;
         let mut fields_info = T::fory_fields_info(type_resolver)?;
         let sorted_field_names = T::fory_get_sorted_field_names();
@@ -142,8 +142,8 @@ impl TypeInfo {
         }
         let type_meta = Rc::new(TypeMeta::from_fields(
             type_id,
-            namespace_metastring.clone(),
-            type_name_metastring.clone(),
+            namespace_meta_string.clone(),
+            type_name_meta_string.clone(),
             register_by_name,
             sorted_field_infos,
         ));
@@ -152,8 +152,8 @@ impl TypeInfo {
             type_def: Rc::from(type_def_bytes),
             type_meta,
             type_id,
-            namespace: Rc::from(namespace_metastring),
-            type_name: Rc::from(type_name_metastring),
+            namespace: Rc::from(namespace_meta_string),
+            type_name: Rc::from(type_name_meta_string),
             register_by_name,
             harness,
         })
@@ -167,14 +167,14 @@ impl TypeInfo {
         register_by_name: bool,
         harness: Harness,
     ) -> Result<TypeInfo, Error> {
-        let namespace_metastring =
+        let namespace_meta_string =
             NAMESPACE_ENCODER.encode_with_encodings(namespace, NAMESPACE_ENCODINGS)?;
-        let type_name_metastring =
+        let type_name_meta_string =
             TYPE_NAME_ENCODER.encode_with_encodings(type_name, TYPE_NAME_ENCODINGS)?;
         let meta = TypeMeta::from_fields(
             type_id,
-            namespace_metastring.clone(),
-            type_name_metastring.clone(),
+            namespace_meta_string.clone(),
+            type_name_meta_string.clone(),
             register_by_name,
             vec![],
         );
@@ -184,8 +184,8 @@ impl TypeInfo {
             type_def: Rc::from(type_def),
             type_meta: Rc::new(meta),
             type_id,
-            namespace: Rc::from(namespace_metastring),
-            type_name: Rc::from(type_name_metastring),
+            namespace: Rc::from(namespace_meta_string),
+            type_name: Rc::from(type_name_meta_string),
             register_by_name,
             harness,
         })

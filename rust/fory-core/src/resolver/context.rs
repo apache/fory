@@ -21,7 +21,7 @@ use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::MetaString;
 use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
-use crate::resolver::metastring_resolver::{MetaStringReaderResolver, MetaStringWriterResolver};
+use crate::resolver::meta_string_resolver::{MetaStringReaderResolver, MetaStringWriterResolver};
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types;
