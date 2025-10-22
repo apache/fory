@@ -55,6 +55,7 @@ import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
@@ -749,10 +750,20 @@ public class CollectionSerializers {
       super(fory, cls, false);
       // Collection which defined `writeReplace` may use this serializer, so check replace/resolve
       // is necessary.
-      Class<? extends Serializer> serializerType =
-          ClassResolver.useReplaceResolveSerializer(cls)
-              ? ReplaceResolveSerializer.class
-              : fory.getDefaultJDKStreamSerializerType();
+      Class<? extends Serializer> serializerType;
+      if (ClassResolver.useReplaceResolveSerializer(cls)) {
+        serializerType = ReplaceResolveSerializer.class;
+      } else {
+        // LinkedBlockingQueue and ArrayBlockingQueue have special readObject implementations
+        // that acquire locks during deserialization, which can cause deadlocks with
+        // ObjectStreamSerializer. Use JavaSerializer (full JDK serialization) instead.
+        if (cls == java.util.concurrent.LinkedBlockingQueue.class
+            || cls == java.util.concurrent.ArrayBlockingQueue.class) {
+          serializerType = JavaSerializer.class;
+        } else {
+          serializerType = fory.getDefaultJDKStreamSerializerType();
+        }
+      }
       serializer = Serializers.newSerializer(fory, cls, serializerType);
     }
 
