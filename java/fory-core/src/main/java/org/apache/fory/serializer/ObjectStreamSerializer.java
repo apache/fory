@@ -49,6 +49,7 @@ import java.util.function.Consumer;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.ObjectArray;
 import org.apache.fory.collection.ObjectIntMap;
+import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -311,7 +312,12 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
     public SlotsInfo(Fory fory, Class<?> type) {
       this.cls = type;
-      this.useMetaShare = fory.getConfig().isMetaShareForObjectStreamEnabled();
+      // Use Meta Shared serialization only when both conditions are met:
+      // 1. Compatible mode is NOT set (i.e., SCHEMA_CONSISTENT)
+      // 2. Meta share is enabled
+      // In compatible mode, we MUST use CompatibleSerializer to support schema evolution
+      this.useMetaShare = fory.getConfig().getCompatibleMode() != CompatibleMode.COMPATIBLE
+          && fory.getConfig().isMetaShareEnabled();
       classInfo = fory.getClassResolver().newClassInfo(type, null, NO_CLASS_ID);
       ObjectStreamClass objectStreamClass = ObjectStreamClass.lookup(type);
       streamClassInfo = STREAM_CLASS_INFO_CACHE.get(type);
