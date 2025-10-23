@@ -129,7 +129,7 @@ public class GraalvmSupport {
    * @param proxyInterface the proxy interface to register
    * @param configHash the configuration hash for the Fory instance
    */
-  public static void registerProxyInterfaceForGraalvm(Class<?> proxyInterface, int configHash) {
+  public static void registerProxyInterface(Class<?> proxyInterface, int configHash) {
     if (!IN_GRAALVM_NATIVE_IMAGE) {
       return;
     }
@@ -151,7 +151,7 @@ public class GraalvmSupport {
    * @param proxyInterface the proxy interface to register
    */
   public static void registerProxySupport(Class<?> proxyInterface) {
-    registerProxyInterfaceForGraalvm(proxyInterface, 0);
+    registerProxyInterface(proxyInterface, 0);
   }
 
   /** Clear all GraalVM registrations. This is primarily for testing purposes. */
