@@ -72,7 +72,12 @@ pub fn small_ms() {
         let binding = writer.dump();
         let mut reader = Reader::new(binding.as_slice());
         let read_data: Vec<_> = (0..60)
-            .map(|_| meta_string_reader.read_meta_string(&mut reader).unwrap().clone())
+            .map(|_| {
+                meta_string_reader
+                    .read_meta_string(&mut reader)
+                    .unwrap()
+                    .clone()
+            })
             .collect();
         for i in 0..60 {
             assert_eq!(*data[i], read_data[i]);
@@ -111,7 +116,12 @@ pub fn big_ms() {
         let binding = writer.dump();
         let mut reader = Reader::new(binding.as_slice());
         let read_data: Vec<_> = (0..60)
-            .map(|_| meta_string_reader.read_meta_string(&mut reader).unwrap().clone())
+            .map(|_| {
+                meta_string_reader
+                    .read_meta_string(&mut reader)
+                    .unwrap()
+                    .clone()
+            })
             .collect();
         for i in 0..60 {
             assert_eq!(*data[i], read_data[i]);
