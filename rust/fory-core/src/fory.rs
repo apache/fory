@@ -20,7 +20,7 @@ use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::WriteContext;
 use crate::resolver::context::{Pool, ReadContext};
-use crate::resolver::type_resolver::TypeResolver;
+use crate::resolver::type_resolver::{TypeResolver, SharedTypeResolver};
 use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::IS_NULL_FLAG;
@@ -77,7 +77,7 @@ pub struct Fory {
     compatible: bool,
     xlang: bool,
     share_meta: bool,
-    type_resolver: TypeResolver,
+    type_resolver: SharedTypeResolver,
     compress_string: bool,
     max_dyn_depth: u32,
     check_struct_version: bool,
@@ -92,7 +92,7 @@ impl Default for Fory {
             compatible: false,
             xlang: false,
             share_meta: false,
-            type_resolver: TypeResolver::default(),
+            type_resolver: SharedTypeResolver::new(TypeResolver::default()),
             compress_string: false,
             max_dyn_depth: 5,
             check_struct_version: false,
@@ -335,7 +335,7 @@ impl Fory {
     }
 
     /// Returns a type resolver for type lookups.
-    pub(crate) fn get_type_resolver(&self) -> &TypeResolver {
+    pub(crate) fn get_type_resolver(&self) -> &SharedTypeResolver {
         &self.type_resolver
     }
 
@@ -561,8 +561,9 @@ impl Fory {
     /// let bytes = fory.serialize(&point);
     /// ```
     pub fn serialize<T: Serializer>(&self, record: &T) -> Result<Vec<u8>, Error> {
+        self.type_resolver.finalize_registration()?;
         let pool = self.write_context_pool.get_or_init(|| {
-            let type_resolver = self.type_resolver.clone();
+            let type_resolver = self.type_resolver.build();
             let compatible = self.compatible;
             let share_meta = self.share_meta;
             let compress_string = self.compress_string;
@@ -671,8 +672,9 @@ impl Fory {
     /// let deserialized: Point = fory.deserialize(&bytes).unwrap();
     /// ```
     pub fn deserialize<T: Serializer + ForyDefault>(&self, bf: &[u8]) -> Result<T, Error> {
+        self.type_resolver.finalize_registration()?;
         let pool = self.read_context_pool.get_or_init(|| {
-            let type_resolver = self.type_resolver.clone();
+            let type_resolver = self.type_resolver.build();
             let compatible = self.compatible;
             let share_meta = self.share_meta;
             let xlang = self.xlang;

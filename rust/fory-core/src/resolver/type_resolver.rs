@@ -27,6 +27,8 @@ use crate::{Reader, TypeId};
 use std::collections::{HashSet, LinkedList};
 use std::rc::Rc;
 use std::{any::Any, collections::HashMap};
+use std::cell::UnsafeCell;
+use std::sync::{Arc, Once};
 
 type WriteFn = fn(
     &dyn Any,
@@ -310,6 +312,9 @@ pub struct TypeResolver {
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
     compatible: bool,
+    // only for registry
+    actual_type_id_map: HashMap<std::any::TypeId, u32>,
+    registry: HashMap<std::any::TypeId, Arc<dyn Fn(&mut Self) -> Result<(), Error>>>,
 }
 
 // Safety: TypeResolver instances are only shared through higher-level synchronization that
@@ -329,6 +334,8 @@ impl Default for TypeResolver {
             type_info_map_by_ms_name: HashMap::new(),
             type_id_index: Vec::new(),
             compatible: false,
+            actual_type_id_map: HashMap::new(),
+            registry: HashMap::new(),
         };
         registry.register_builtin_types().unwrap();
         registry
@@ -467,7 +474,17 @@ impl TypeResolver {
         &mut self,
         id: u32,
     ) -> Result<(), Error> {
-        self.register::<T>(id, &EMPTY_STRING, &EMPTY_STRING)
+        let type_id = std::any::TypeId::of::<T>();
+        let actual_type_id = T::fory_actual_type_id(id, false, self.compatible);
+        self.actual_type_id_map.insert(
+            type_id,
+            actual_type_id
+        );
+        self.registry.insert(
+            type_id,
+            Arc::new(move |s: &mut Self| s.register::<T>(id, &EMPTY_STRING, &EMPTY_STRING)),
+        );
+        Ok(())
     }
 
     pub fn register_by_namespace<T: 'static + StructSerializer + Serializer + ForyDefault>(
@@ -475,7 +492,19 @@ impl TypeResolver {
         namespace: &str,
         type_name: &str,
     ) -> Result<(), Error> {
-        self.register::<T>(0, namespace, type_name)
+        let type_id = std::any::TypeId::of::<T>();
+        let actual_type_id = T::fory_actual_type_id(0, true, self.compatible);
+        self.actual_type_id_map.insert(
+            type_id,
+            actual_type_id,
+        );
+        let namespace = namespace.to_string();
+        let type_name = type_name.to_string();
+        self.registry.insert(
+            type_id,
+            Arc::new(move |s: &mut Self| s.register::<T>(0, &namespace, &type_name)),
+        );
+        Ok(())
     }
 
     fn register<T: StructSerializer + Serializer + ForyDefault>(
@@ -634,7 +663,16 @@ impl TypeResolver {
                 "register_serializer can only be used for ext and named_ext types",
             ));
         }
-        self.register_serializer::<T>(id, actual_type_id, &EMPTY_STRING, &EMPTY_STRING)
+        let type_id = std::any::TypeId::of::<T>();
+        self.actual_type_id_map.insert(
+            type_id,
+            actual_type_id,
+        );
+        self.registry.insert(
+            type_id,
+            Arc::new(move |s: &mut Self| s.register_serializer::<T>(id, actual_type_id, &EMPTY_STRING, &EMPTY_STRING)),
+        );
+        Ok(())
     }
 
     pub fn register_serializer_by_namespace<T: Serializer + ForyDefault>(
@@ -649,7 +687,18 @@ impl TypeResolver {
                 "register_serializer can only be used for ext and named_ext types",
             ));
         }
-        self.register_serializer::<T>(0, actual_type_id, namespace, type_name)
+        let type_id = std::any::TypeId::of::<T>();
+        self.actual_type_id_map.insert(
+            type_id,
+            actual_type_id,
+        );
+        let namespace = namespace.to_string();
+        let type_name = type_name.to_string();
+        self.registry.insert(
+            type_id,
+            Arc::new(move |s: &mut Self| s.register_serializer::<T>(0, actual_type_id, &namespace, &type_name)),
+        );
+        Ok(())
     }
 
     fn register_internal_serializer<T: Serializer + ForyDefault>(
@@ -815,5 +864,107 @@ impl TypeResolver {
 
     pub(crate) fn set_compatible(&mut self, compatible: bool) {
         self.compatible = compatible;
+    }
+
+    pub fn get_actual_type_id<T: 'static + Serializer + ForyDefault>(&self) -> Result<u32, Error> {
+        let rs_type_id = std::any::TypeId::of::<T>();
+        if let Some(type_id) = self.actual_type_id_map.get(&rs_type_id) {
+            Ok(*type_id)
+        } else {
+            T::fory_get_type_id(self)
+        }
+    }
+}
+
+pub struct SharedTypeResolver {
+    inner: Arc<SharedTypeResolverInner>,
+}
+
+struct SharedTypeResolverInner {
+    cell: UnsafeCell<TypeResolver>,
+    once: Once,
+}
+
+unsafe impl Sync for SharedTypeResolverInner {}
+unsafe impl Send for SharedTypeResolverInner {}
+
+impl SharedTypeResolver {
+    pub fn new(resolver: TypeResolver) -> Self {
+        Self {
+            inner: Arc::new(SharedTypeResolverInner {
+                cell: UnsafeCell::new(resolver),
+                once: Once::new(),
+            }),
+        }
+    }
+
+    pub fn finalize_registration(&self) -> Result<(), Error> {
+        use std::cell::Cell;
+        let result_cell: Cell<Option<Result<(), Error>>> = Cell::new(Some(Ok(())));
+        self.inner.once.call_once(|| {
+            let resolver_mut: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+            let funcs: Vec<_> = resolver_mut.registry.values().cloned().collect();
+
+            for func in funcs {
+                let r = func(resolver_mut);
+                if r.is_err() {
+                    result_cell.set(Some(r));
+                    return;
+                }
+            }
+            result_cell.set(Some(Ok(())));
+        });
+
+        result_cell.into_inner().unwrap()
+    }
+
+    pub fn build(&self) -> TypeResolver {
+        let resolver_ref: &TypeResolver = unsafe { &*self.inner.cell.get() };
+        resolver_ref.clone()
+    }
+
+
+
+    pub fn register_by_id<T: StructSerializer + Serializer + ForyDefault>(
+        &mut self,
+        id: u32,
+    ) -> Result<(), Error> {
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        resolver.register_by_id::<T>(id)
+    }
+    pub fn register_by_namespace<T: StructSerializer + Serializer + ForyDefault>(
+        &self,
+        namespace: &str,
+        type_name: &str,
+    ) -> Result<(), Error> {
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        resolver.register_by_namespace::<T>(namespace, type_name)
+    }
+
+    pub fn register_serializer_by_id<T: Serializer + ForyDefault>(
+        &mut self,
+        id: u32,
+    ) -> Result<(), Error> {
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        resolver.register_serializer_by_id::<T>(id)
+    }
+
+    pub fn register_serializer_by_namespace<T: Serializer + ForyDefault>(
+        &mut self,
+        namespace: &str,
+        type_name: &str,
+    ) -> Result<(), Error> {
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        resolver.register_serializer_by_namespace::<T>(namespace, type_name)
+    }
+
+    pub fn register_generic_trait<T: Serializer + ForyDefault>(&mut self) -> Result<(), Error> {
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        resolver.register_generic_trait::<T>()
+    }
+
+    pub(crate) fn set_compatible(&mut self, compatible: bool) {
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        resolver.set_compatible(compatible);
     }
 }

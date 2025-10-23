@@ -394,7 +394,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
         ts
     } else {
         quote! {
-            <#ty as fory_core::serializer::Serializer>::fory_get_type_id(type_resolver)?
+            type_resolver.get_actual_type_id::<#ty>()?
         }
     };
 

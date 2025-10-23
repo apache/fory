@@ -70,9 +70,10 @@ impl WriteContext {
         }
     }
 
-    pub fn new_from_fory(writer: Writer, fory: &Fory) -> WriteContext {
-        WriteContext {
-            type_resolver: fory.get_type_resolver().clone(),
+    pub fn new_from_fory(writer: Writer, fory: &Fory) -> Result<WriteContext, Error> {
+        fory.get_type_resolver().finalize_registration()?;
+        Ok(WriteContext {
+            type_resolver: fory.get_type_resolver().build(),
             compatible: fory.is_compatible(),
             share_meta: fory.is_share_meta(),
             compress_string: fory.is_compress_string(),
@@ -82,7 +83,7 @@ impl WriteContext {
             meta_resolver: MetaWriterResolver::default(),
             meta_string_resolver: MetaStringWriterResolver::default(),
             ref_writer: RefWriter::new(),
-        }
+        })
     }
 
     /// Get type resolver
@@ -261,9 +262,10 @@ impl ReadContext {
         }
     }
 
-    pub fn new_from_fory(reader: Reader, fory: &Fory) -> ReadContext {
-        ReadContext {
-            type_resolver: fory.get_type_resolver().clone(),
+    pub fn new_from_fory(reader: Reader, fory: &Fory) -> Result<ReadContext, Error> {
+        fory.get_type_resolver().finalize_registration()?;
+        Ok(ReadContext {
+            type_resolver: fory.get_type_resolver().build(),
             compatible: fory.is_compatible(),
             share_meta: fory.is_share_meta(),
             xlang: fory.is_xlang(),
@@ -274,7 +276,7 @@ impl ReadContext {
             meta_string_resolver: MetaStringReaderResolver::default(),
             ref_reader: RefReader::new(),
             current_depth: 0,
-        }
+        })
     }
 
     /// Get type resolver
