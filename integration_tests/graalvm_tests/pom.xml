@@ -35,7 +35,6 @@
     <maven.compiler.target>17</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <native.maven.plugin.version>0.9.28</native.maven.plugin.version>
-    <junit.jupiter.version>5.8.1</junit.jupiter.version>
     <mainClass>org.apache.fory.graalvm.Main</mainClass>
     <imageName>main</imageName>
   </properties>
@@ -65,9 +64,8 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>junit</groupId>
-      <artifactId>junit</artifactId>
-      <version>4.13.1</version>
+      <groupId>org.testng</groupId>
+      <artifactId>testng</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

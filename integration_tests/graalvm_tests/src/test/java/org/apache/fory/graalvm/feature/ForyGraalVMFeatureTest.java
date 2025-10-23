@@ -19,13 +19,13 @@
 
 package org.apache.fory.graalvm.feature;
 
-import static org.junit.Assert.*;
+import static org.testng.Assert.*;
 
 import org.apache.fory.Fory;
 import org.apache.fory.util.GraalvmSupport;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 public class ForyGraalVMFeatureTest {
 
@@ -58,13 +58,13 @@ public class ForyGraalVMFeatureTest {
     VALUE
   }
 
-  @Before
+  @BeforeMethod
   public void setUp() {
     GraalvmSupport.clearRegistrations();
     feature = new ForyGraalVMFeature();
   }
 
-  @After
+  @AfterMethod
   public void tearDown() {
     GraalvmSupport.clearRegistrations();
   }
@@ -80,35 +80,35 @@ public class ForyGraalVMFeatureTest {
   @Test
   public void testObjectCreatorsProblematicDetection() {
     assertTrue(
-        "Class without no-arg constructor should be problematic",
         GraalvmSupport.needReflectionRegisterForCreation(
-            PrivateParameterizedConstructorClass.class));
+            PrivateParameterizedConstructorClass.class),
+        "Class without no-arg constructor should be problematic");
 
     assertFalse(
-        "Public no-arg constructor should not be problematic",
-        GraalvmSupport.needReflectionRegisterForCreation(PublicNoArgConstructorClass.class));
+        GraalvmSupport.needReflectionRegisterForCreation(PublicNoArgConstructorClass.class),
+        "Public no-arg constructor should not be problematic");
 
     assertFalse(
-        "Protected no-arg constructor should not be problematic",
-        GraalvmSupport.needReflectionRegisterForCreation(ProtectedNoArgConstructorClass.class));
+        GraalvmSupport.needReflectionRegisterForCreation(ProtectedNoArgConstructorClass.class),
+        "Protected no-arg constructor should not be problematic");
 
     assertFalse(
-        "Enums should not be considered problematic",
-        GraalvmSupport.needReflectionRegisterForCreation(SampleEnum.class));
+        GraalvmSupport.needReflectionRegisterForCreation(SampleEnum.class),
+        "Enums should not be considered problematic");
   }
 
   @Test
   public void testForyStaticMethods() {
     // Test that Fory static methods are accessible
-    assertNotNull("Registered classes should not be null", GraalvmSupport.getRegisteredClasses());
+    assertNotNull(GraalvmSupport.getRegisteredClasses(), "Registered classes should not be null");
 
-    assertNotNull("Proxy interfaces should not be null", GraalvmSupport.getProxyInterfaces());
+    assertNotNull(GraalvmSupport.getProxyInterfaces(), "Proxy interfaces should not be null");
   }
 
   @Test
   public void testFeatureInstantiation() {
-    assertNotNull("Feature should be instantiated", feature);
-    assertNotNull("Feature description should not be null", feature.getDescription());
+    assertNotNull(feature, "Feature should be instantiated");
+    assertNotNull(feature.getDescription(), "Feature description should not be null");
   }
 
   @Test
