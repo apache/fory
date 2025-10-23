@@ -71,9 +71,9 @@ impl WriteContext {
     }
 
     pub fn new_from_fory(writer: Writer, fory: &Fory) -> Result<WriteContext, Error> {
-        fory.get_type_resolver().finalize_registration()?;
+        fory.finalize_registration()?;
         Ok(WriteContext {
-            type_resolver: fory.get_type_resolver().build(),
+            type_resolver: fory.build_type_resolver(),
             compatible: fory.is_compatible(),
             share_meta: fory.is_share_meta(),
             compress_string: fory.is_compress_string(),
@@ -263,9 +263,9 @@ impl ReadContext {
     }
 
     pub fn new_from_fory(reader: Reader, fory: &Fory) -> Result<ReadContext, Error> {
-        fory.get_type_resolver().finalize_registration()?;
+        fory.finalize_registration()?;
         Ok(ReadContext {
-            type_resolver: fory.get_type_resolver().build(),
+            type_resolver: fory.build_type_resolver(),
             compatible: fory.is_compatible(),
             share_meta: fory.is_share_meta(),
             xlang: fory.is_xlang(),

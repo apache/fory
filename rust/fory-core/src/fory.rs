@@ -28,7 +28,8 @@ use crate::types::{
     config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_LITTLE_ENDIAN_FLAG},
     Language, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
 };
-use std::sync::OnceLock;
+use std::cell::UnsafeCell;
+use std::sync::{Once, OnceLock};
 
 /// The main Fory serialization framework instance.
 ///
@@ -77,7 +78,9 @@ pub struct Fory {
     compatible: bool,
     xlang: bool,
     share_meta: bool,
-    type_resolver: SharedTypeResolver,
+    type_resolver: UnsafeCell<TypeResolver>,
+    finalize_once: Once,
+    finalize_result: UnsafeCell<Option<Result<(), Error>>>,
     compress_string: bool,
     max_dyn_depth: u32,
     check_struct_version: bool,
@@ -86,13 +89,18 @@ pub struct Fory {
     read_context_pool: OnceLock<Pool<Box<ReadContext>>>,
 }
 
+unsafe impl Sync for Fory {}
+unsafe impl Send for Fory {}
+
 impl Default for Fory {
     fn default() -> Self {
         Fory {
             compatible: false,
             xlang: false,
             share_meta: false,
-            type_resolver: SharedTypeResolver::new(TypeResolver::default()),
+            type_resolver: UnsafeCell::new(TypeResolver::default()),
+            finalize_once: Once::new(),
+            finalize_result: UnsafeCell::new(None),
             compress_string: false,
             max_dyn_depth: 5,
             check_struct_version: false,
@@ -134,7 +142,7 @@ impl Fory {
         // Setting share_meta individually is not supported currently
         self.share_meta = compatible;
         self.compatible = compatible;
-        self.type_resolver.set_compatible(compatible);
+        self.type_resolver.get_mut().set_compatible(compatible);
         if compatible {
             self.check_struct_version = false;
         }
@@ -334,11 +342,6 @@ impl Fory {
         self.check_struct_version
     }
 
-    /// Returns a type resolver for type lookups.
-    pub(crate) fn get_type_resolver(&self) -> &SharedTypeResolver {
-        &self.type_resolver
-    }
-
     /// Registers a struct type with a numeric type ID for serialization.
     ///
     /// # Type Parameters
@@ -370,7 +373,8 @@ impl Fory {
         &mut self,
         id: u32,
     ) -> Result<(), Error> {
-        self.type_resolver.register_by_id::<T>(id)
+        let resolver_ref: &mut TypeResolver = unsafe { &mut *self.type_resolver.get() };
+        resolver_ref.register_by_id::<T>(id)
     }
 
     /// Registers a struct type with a namespace and type name for cross-language serialization.
@@ -408,8 +412,8 @@ impl Fory {
         namespace: &str,
         type_name: &str,
     ) -> Result<(), Error> {
-        self.type_resolver
-            .register_by_namespace::<T>(namespace, type_name)
+        let resolver_ref: &mut TypeResolver = unsafe { &mut *self.type_resolver.get() };
+        resolver_ref.register_by_namespace::<T>(namespace, type_name)
     }
 
     /// Registers a struct type with a type name (using the default namespace).
@@ -476,7 +480,8 @@ impl Fory {
         &mut self,
         id: u32,
     ) -> Result<(), Error> {
-        self.type_resolver.register_serializer_by_id::<T>(id)
+        let resolver_ref: &mut TypeResolver = unsafe { &mut *self.type_resolver.get() };
+        resolver_ref.register_serializer_by_id::<T>(id)
     }
 
     /// Registers a custom serializer type with a namespace and type name.
@@ -500,8 +505,8 @@ impl Fory {
         namespace: &str,
         type_name: &str,
     ) -> Result<(), Error> {
-        self.type_resolver
-            .register_serializer_by_namespace::<T>(namespace, type_name)
+        let resolver_ref: &mut TypeResolver = unsafe { &mut *self.type_resolver.get() };
+        resolver_ref.register_serializer_by_namespace::<T>(namespace, type_name)
     }
 
     /// Registers a custom serializer type with a type name (using the default namespace).
@@ -530,7 +535,8 @@ impl Fory {
     pub fn register_generic_trait<T: 'static + Serializer + ForyDefault>(
         &mut self,
     ) -> Result<(), Error> {
-        self.type_resolver.register_generic_trait::<T>()
+        let resolver_ref: &mut TypeResolver = unsafe { &mut *self.type_resolver.get() };
+        resolver_ref.register_generic_trait::<T>()
     }
 
     /// Serializes a value of type `T` into a byte vector.
@@ -561,9 +567,9 @@ impl Fory {
     /// let bytes = fory.serialize(&point);
     /// ```
     pub fn serialize<T: Serializer>(&self, record: &T) -> Result<Vec<u8>, Error> {
-        self.type_resolver.finalize_registration()?;
+        self.finalize_registration()?;
         let pool = self.write_context_pool.get_or_init(|| {
-            let type_resolver = self.type_resolver.build();
+            let type_resolver = self.build_type_resolver();
             let compatible = self.compatible;
             let share_meta = self.share_meta;
             let compress_string = self.compress_string;
@@ -672,9 +678,9 @@ impl Fory {
     /// let deserialized: Point = fory.deserialize(&bytes).unwrap();
     /// ```
     pub fn deserialize<T: Serializer + ForyDefault>(&self, bf: &[u8]) -> Result<T, Error> {
-        self.type_resolver.finalize_registration()?;
+        self.finalize_registration()?;
         let pool = self.read_context_pool.get_or_init(|| {
-            let type_resolver = self.type_resolver.build();
+            let type_resolver = self.build_type_resolver();
             let compatible = self.compatible;
             let share_meta = self.share_meta;
             let xlang = self.xlang;
@@ -765,5 +771,35 @@ impl Fory {
             let _peer_lang = reader.read_u8()?;
         }
         Ok(false)
+    }
+
+    pub fn finalize_registration(&self) -> Result<(), Error> {
+        self.finalize_once.call_once(|| {
+            let resolver_mut = unsafe { &mut *self.type_resolver.get() };
+            let funcs: Vec<_> = resolver_mut.get_registry().values().cloned().collect();
+
+            let mut final_result = Ok(());
+
+            for func in funcs {
+                if let Err(e) = func(resolver_mut) {
+                    final_result = Err(e);
+                    break;
+                }
+            }
+            unsafe {
+                *self.finalize_result.get() = Some(final_result);
+            }
+        });
+        unsafe {
+            match (*self.finalize_result.get()).as_ref() {
+                Some(result) => result.clone(),
+                None => unreachable!(),
+            }
+        }
+    }
+
+    pub fn build_type_resolver(&self) -> TypeResolver {
+        let resolver_ref: &TypeResolver = unsafe { &*self.type_resolver.get() };
+        resolver_ref.clone()
     }
 }

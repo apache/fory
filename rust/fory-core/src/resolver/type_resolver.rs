@@ -343,6 +343,11 @@ impl Default for TypeResolver {
 }
 
 impl TypeResolver {
+    pub fn get_registry(
+        &self,
+    ) -> &HashMap<std::any::TypeId, Arc<dyn Fn(&mut Self) -> Result<(), Error>>> {
+        &self.registry
+    }
     pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Rc<TypeInfo>, Error> {
         self.type_info_map.get(type_id)
                 .ok_or_else(|| {
@@ -899,12 +904,14 @@ impl SharedTypeResolver {
                     break;
                 }
             }
-            unsafe { *self.finalize_result.get() = Some(final_result); }
+            unsafe {
+                *self.finalize_result.get() = Some(final_result);
+            }
         });
         unsafe {
             match (*self.finalize_result.get()).as_ref() {
                 Some(result) => result.clone(),
-                None => unreachable!()
+                None => unreachable!(),
             }
         }
     }
