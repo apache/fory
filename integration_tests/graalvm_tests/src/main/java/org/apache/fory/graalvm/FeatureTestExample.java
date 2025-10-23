@@ -23,6 +23,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import org.apache.fory.Fory;
+import org.apache.fory.builder.Generated;
 import org.apache.fory.config.Language;
 import org.apache.fory.util.GraalvmSupport;
 
@@ -92,6 +93,14 @@ public class FeatureTestExample {
       PrivateConstructorClass original = new PrivateConstructorClass("test-value");
       byte[] serialized = fory.serialize(original);
       PrivateConstructorClass deserialized = (PrivateConstructorClass) fory.deserialize(serialized);
+
+      // Assert that the serializer is generated
+      if (!(fory.getClassResolver().getSerializer(PrivateConstructorClass.class)
+          instanceof Generated)) {
+        throw new RuntimeException(
+            "Expected Generated serializer for PrivateConstructorClass but got: "
+                + fory.getClassResolver().getSerializer(PrivateConstructorClass.class).getClass());
+      }
 
       if (!"test-value".equals(deserialized.getValue())) {
         throw new RuntimeException("Private constructor class test failed");
