@@ -297,8 +297,6 @@ public class Config implements Serializable {
     return scalaOptimizationEnabled;
   }
 
-
-
   public boolean isForyDebugOutputEnabled() {
     return foryDebugOutputEnabled;
   }

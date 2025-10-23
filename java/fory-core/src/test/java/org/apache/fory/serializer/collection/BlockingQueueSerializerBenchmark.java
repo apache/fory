@@ -27,22 +27,21 @@ import org.apache.fory.config.Language;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/**
- * Performance and correctness test for blocking queue serializers.
- */
+/** Performance and correctness test for blocking queue serializers. */
 public class BlockingQueueSerializerBenchmark extends ForyTestBase {
 
   @Test
   public void testLinkedBlockingQueuePerformance() {
-    Fory fory = Fory.builder()
-        .withLanguage(Language.JAVA)
-        .withRefTracking(true)
-        .requireClassRegistration(false)
-        .build();
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(true)
+            .requireClassRegistration(false)
+            .build();
 
     // Test with different queue sizes
     int[] sizes = {10, 100, 1000};
-    
+
     for (int size : sizes) {
       LinkedBlockingQueue<Integer> queue = new LinkedBlockingQueue<>(size * 2);
       for (int i = 0; i < size; i++) {
@@ -54,17 +53,18 @@ public class BlockingQueueSerializerBenchmark extends ForyTestBase {
       long serializeTime = System.nanoTime() - startTime;
 
       startTime = System.nanoTime();
-      LinkedBlockingQueue<Integer> deserialized = 
+      LinkedBlockingQueue<Integer> deserialized =
           (LinkedBlockingQueue<Integer>) fory.deserialize(bytes);
       long deserializeTime = System.nanoTime() - startTime;
 
-      System.out.printf("LinkedBlockingQueue size=%d: serialize=%d μs, deserialize=%d μs, bytes=%d%n",
+      System.out.printf(
+          "LinkedBlockingQueue size=%d: serialize=%d μs, deserialize=%d μs, bytes=%d%n",
           size, serializeTime / 1000, deserializeTime / 1000, bytes.length);
 
       // Verify correctness
       Assert.assertEquals(deserialized.size(), queue.size());
       Assert.assertEquals(deserialized.remainingCapacity(), queue.remainingCapacity());
-      
+
       Object[] originalElements = queue.toArray();
       Object[] deserializedElements = deserialized.toArray();
       Assert.assertEquals(deserializedElements, originalElements);
@@ -73,15 +73,16 @@ public class BlockingQueueSerializerBenchmark extends ForyTestBase {
 
   @Test
   public void testArrayBlockingQueuePerformance() {
-    Fory fory = Fory.builder()
-        .withLanguage(Language.JAVA)
-        .withRefTracking(true)
-        .requireClassRegistration(false)
-        .build();
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(true)
+            .requireClassRegistration(false)
+            .build();
 
     // Test with different queue sizes
     int[] sizes = {10, 100, 1000};
-    
+
     for (int size : sizes) {
       ArrayBlockingQueue<String> queue = new ArrayBlockingQueue<>(size * 2);
       for (int i = 0; i < size; i++) {
@@ -93,17 +94,18 @@ public class BlockingQueueSerializerBenchmark extends ForyTestBase {
       long serializeTime = System.nanoTime() - startTime;
 
       startTime = System.nanoTime();
-      ArrayBlockingQueue<String> deserialized = 
+      ArrayBlockingQueue<String> deserialized =
           (ArrayBlockingQueue<String>) fory.deserialize(bytes);
       long deserializeTime = System.nanoTime() - startTime;
 
-      System.out.printf("ArrayBlockingQueue size=%d: serialize=%d μs, deserialize=%d μs, bytes=%d%n",
+      System.out.printf(
+          "ArrayBlockingQueue size=%d: serialize=%d μs, deserialize=%d μs, bytes=%d%n",
           size, serializeTime / 1000, deserializeTime / 1000, bytes.length);
 
       // Verify correctness
       Assert.assertEquals(deserialized.size(), queue.size());
       Assert.assertEquals(deserialized.remainingCapacity(), queue.remainingCapacity());
-      
+
       Object[] originalElements = queue.toArray();
       Object[] deserializedElements = deserialized.toArray();
       Assert.assertEquals(deserializedElements, originalElements);
@@ -112,11 +114,12 @@ public class BlockingQueueSerializerBenchmark extends ForyTestBase {
 
   @Test
   public void testLinkedBlockingQueueConcurrentOperations() throws InterruptedException {
-    Fory fory = Fory.builder()
-        .withLanguage(Language.JAVA)
-        .withRefTracking(true)
-        .requireClassRegistration(false)
-        .build();
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(true)
+            .requireClassRegistration(false)
+            .build();
 
     LinkedBlockingQueue<Integer> queue = new LinkedBlockingQueue<>(100);
     for (int i = 0; i < 50; i++) {
@@ -124,29 +127,33 @@ public class BlockingQueueSerializerBenchmark extends ForyTestBase {
     }
 
     byte[] bytes = fory.serialize(queue);
-    LinkedBlockingQueue<Integer> deserialized = 
+    LinkedBlockingQueue<Integer> deserialized =
         (LinkedBlockingQueue<Integer>) fory.deserialize(bytes);
 
     // Verify the deserialized queue works correctly with concurrent operations
-    Thread producer = new Thread(() -> {
-      try {
-        for (int i = 50; i < 100; i++) {
-          deserialized.put(i);
-        }
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-    });
+    Thread producer =
+        new Thread(
+            () -> {
+              try {
+                for (int i = 50; i < 100; i++) {
+                  deserialized.put(i);
+                }
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            });
 
-    Thread consumer = new Thread(() -> {
-      try {
-        for (int i = 0; i < 100; i++) {
-          deserialized.take();
-        }
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-      }
-    });
+    Thread consumer =
+        new Thread(
+            () -> {
+              try {
+                for (int i = 0; i < 100; i++) {
+                  deserialized.take();
+                }
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+            });
 
     producer.start();
     consumer.start();

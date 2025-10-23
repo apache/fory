@@ -316,8 +316,9 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       // 1. Compatible mode is NOT set (i.e., SCHEMA_CONSISTENT)
       // 2. Meta share is enabled
       // In compatible mode, we MUST use CompatibleSerializer to support schema evolution
-      this.useMetaShare = fory.getConfig().getCompatibleMode() != CompatibleMode.COMPATIBLE
-          && fory.getConfig().isMetaShareEnabled();
+      this.useMetaShare =
+          fory.getConfig().getCompatibleMode() != CompatibleMode.COMPATIBLE
+              && fory.getConfig().isMetaShareEnabled();
       classInfo = fory.getClassResolver().newClassInfo(type, null, NO_CLASS_ID);
       ObjectStreamClass objectStreamClass = ObjectStreamClass.lookup(type);
       streamClassInfo = STREAM_CLASS_INFO_CACHE.get(type);

@@ -26,15 +26,16 @@ import org.apache.fory.memory.MemoryBuffer;
 /**
  * High-performance serializer for {@link LinkedBlockingQueue}.
  *
- * <p>This serializer avoids the deadlock issue that occurs with ObjectStreamSerializer
- * when serializing LinkedBlockingQueue. The LinkedBlockingQueue.readObject() method
- * internally calls add(), which requires acquiring locks. If locks are serialized/deserialized,
- * they may be in an incorrect state causing deadlock.
+ * <p>This serializer avoids the deadlock issue that occurs with ObjectStreamSerializer when
+ * serializing LinkedBlockingQueue. The LinkedBlockingQueue.readObject() method internally calls
+ * add(), which requires acquiring locks. If locks are serialized/deserialized, they may be in an
+ * incorrect state causing deadlock.
  *
- * <p>This serializer only serializes the queue's capacity and elements, and reconstructs
- * the queue with fresh locks during deserialization, avoiding the lock state issue entirely.
+ * <p>This serializer only serializes the queue's capacity and elements, and reconstructs the queue
+ * with fresh locks during deserialization, avoiding the lock state issue entirely.
  *
  * <p>Performance characteristics:
+ *
  * <ul>
  *   <li>Serialization: O(n) where n is the number of elements
  *   <li>Deserialization: O(n) with optimized element addition
@@ -45,7 +46,8 @@ import org.apache.fory.memory.MemoryBuffer;
  * @param <T> Element type in the queue
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
-public final class LinkedBlockingQueueSerializer<T> extends CollectionSerializer<LinkedBlockingQueue<T>> {
+public final class LinkedBlockingQueueSerializer<T>
+    extends CollectionSerializer<LinkedBlockingQueue<T>> {
 
   public LinkedBlockingQueueSerializer(Fory fory, Class<LinkedBlockingQueue<T>> cls) {
     super(fory, cls, true);
@@ -58,13 +60,13 @@ public final class LinkedBlockingQueueSerializer<T> extends CollectionSerializer
     int size = queue.size();
     int remainingCapacity = queue.remainingCapacity();
     int capacity = size + remainingCapacity;
-    
+
     // Write capacity (use var encoding for space efficiency)
     buffer.writeVarUint32Small7(capacity);
-    
+
     // Write number of elements
     buffer.writeVarUint32Small7(size);
-    
+
     // Write elements
     // We convert to array to avoid ConcurrentModificationException
     // and to ensure consistent snapshot of queue state
@@ -78,24 +80,24 @@ public final class LinkedBlockingQueueSerializer<T> extends CollectionSerializer
   public LinkedBlockingQueue<T> read(MemoryBuffer buffer) {
     // Read capacity
     int capacity = buffer.readVarUint32Small7();
-    
+
     // Read number of elements
     int numElements = buffer.readVarUint32Small7();
-    
+
     // Create new queue with specified capacity
     // This ensures fresh locks are created
     LinkedBlockingQueue<T> queue = new LinkedBlockingQueue<>(capacity);
-    
+
     // Register for reference tracking before reading elements
     fory.getRefResolver().reference(queue);
-    
+
     // Read and add elements
     // Using add() is safe here because we created a fresh queue with new locks
     for (int i = 0; i < numElements; i++) {
       T element = (T) fory.readRef(buffer);
       queue.add(element);
     }
-    
+
     return queue;
   }
 
@@ -105,11 +107,11 @@ public final class LinkedBlockingQueueSerializer<T> extends CollectionSerializer
     int size = originQueue.size();
     int capacity = size + originQueue.remainingCapacity();
     LinkedBlockingQueue<T> newQueue = new LinkedBlockingQueue<>(capacity);
-    
+
     if (needToCopyRef) {
       fory.reference(originQueue, newQueue);
     }
-    
+
     // Copy elements
     // Convert to array to get consistent snapshot
     Object[] elements = originQueue.toArray();
@@ -117,7 +119,7 @@ public final class LinkedBlockingQueueSerializer<T> extends CollectionSerializer
       T copiedElement = element != null ? (T) fory.copy(element) : null;
       newQueue.add(copiedElement);
     }
-    
+
     return newQueue;
   }
 

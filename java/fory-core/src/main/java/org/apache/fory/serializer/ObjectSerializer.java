@@ -98,7 +98,8 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
    * @param resolveParent Whether to resolve parent class
    * @param excludedFields Set of field names to exclude from serialization (can be null)
    */
-  public ObjectSerializer(Fory fory, Class<T> cls, boolean resolveParent, Set<String> excludedFields) {
+  public ObjectSerializer(
+      Fory fory, Class<T> cls, boolean resolveParent, Set<String> excludedFields) {
     super(fory, cls);
     binding = SerializationBinding.createBinding(fory);
     // avoid recursive building serializers.
@@ -116,14 +117,15 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     } else {
       descriptors = typeResolver.getFieldDescriptors(cls, resolveParent);
     }
-    
+
     // Filter out excluded fields if specified
     if (excludedFields != null && !excludedFields.isEmpty()) {
-      descriptors = descriptors.stream()
-          .filter(d -> !excludedFields.contains(d.getName()))
-          .collect(Collectors.toList());
+      descriptors =
+          descriptors.stream()
+              .filter(d -> !excludedFields.contains(d.getName()))
+              .collect(Collectors.toList());
     }
-    
+
     DescriptorGrouper grouper = typeResolver.createDescriptorGrouper(descriptors, false);
     descriptors = grouper.getSortedDescriptors();
     if (isRecord) {
