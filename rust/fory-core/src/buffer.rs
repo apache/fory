@@ -16,7 +16,7 @@
 // under the License.
 
 use crate::error::Error;
-use crate::meta::buffer_rw_string::{read_latin1_simd, write_latin1_simd};
+use crate::meta::buffer_rw_string::read_latin1_simd;
 use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
 use std::slice;
 
@@ -24,22 +24,24 @@ use std::slice;
 /// For buffers smaller than this, direct copy is faster than SIMD setup overhead.
 const SIMD_THRESHOLD: usize = 128;
 
-#[derive(Default)]
-pub struct Writer {
-    pub(crate) bf: Vec<u8>,
+pub struct Writer<'a> {
+    pub(crate) bf: &'a mut Vec<u8>,
     reserved: usize,
 }
-
-impl Writer {
+impl<'a> Writer<'a> {
     #[inline(always)]
-    pub fn reset(&mut self) {
-        // keep capacity and reset len to 0
-        self.bf.clear();
+    pub fn from_buffer(bf: &'a mut Vec<u8>) -> Writer<'a> {
+        Writer { bf, reserved: 0 }
     }
 
     #[inline(always)]
     pub fn dump(&self) -> Vec<u8> {
         self.bf.clone()
+    }
+
+    #[inline(always)]
+    pub fn reset(&mut self) {
+        self.bf.clear();
     }
 
     #[inline(always)]
@@ -325,48 +327,11 @@ impl Writer {
     }
 
     #[inline(always)]
-    pub fn write_latin1_string(&mut self, s: &str) {
-        if s.len() < SIMD_THRESHOLD {
-            // Fast path for small buffers
-            let bytes = s.as_bytes();
-            // CRITICAL: Only safe if ASCII (UTF-8 == Latin1 for ASCII)
-            let is_ascii = bytes.iter().all(|&b| b < 0x80);
-            if is_ascii {
-                self.bf.reserve(s.len());
-                self.bf.extend_from_slice(bytes);
-            } else {
-                // Non-ASCII: must iterate chars to extract Latin1 byte values
-                self.bf.reserve(s.len());
-                for c in s.chars() {
-                    let v = c as u32;
-                    assert!(v <= 0xFF, "Non-Latin1 character found");
-                    self.bf.push(v as u8);
-                }
-            }
-            return;
-        }
-        write_latin1_simd(self, s);
-    }
-
-    #[inline(always)]
     pub fn write_utf8_string(&mut self, s: &str) {
         let bytes = s.as_bytes();
         let len = bytes.len();
         self.bf.reserve(len);
         self.bf.extend_from_slice(bytes);
-    }
-
-    #[inline(always)]
-    pub fn write_utf16_bytes(&mut self, bytes: &[u16]) {
-        let total_bytes = bytes.len() * 2;
-        let old_len = self.bf.len();
-        self.bf.reserve(total_bytes);
-        unsafe {
-            let dest = self.bf.as_mut_ptr().add(old_len);
-            let src = bytes.as_ptr() as *const u8;
-            std::ptr::copy_nonoverlapping(src, dest, total_bytes);
-            self.bf.set_len(old_len + total_bytes);
-        }
     }
 }
 

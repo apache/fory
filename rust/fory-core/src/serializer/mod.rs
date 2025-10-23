@@ -41,4 +41,4 @@ pub mod weak;
 
 mod core;
 pub use any::{read_box_any, write_box_any};
-pub use core::{ForyDefault, Serializer, StructSerializer};
+pub use core::{read_data, write_data, ForyDefault, Serializer, StructSerializer};

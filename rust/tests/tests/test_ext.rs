@@ -46,7 +46,7 @@ fn test_duplicate_impl() {
 
 #[test]
 fn test_use() {
-    use fory_core::fory::{read_data, write_data};
+    use fory_core::{read_data, write_data};
     #[derive(Debug, PartialEq)]
     struct Item {
         f1: i32,

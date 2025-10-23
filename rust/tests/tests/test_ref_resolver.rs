@@ -26,7 +26,8 @@ use std::sync::Arc;
 #[test]
 fn test_rc_ref_tracking() {
     let mut ref_writer = RefWriter::new();
-    let mut writer = Writer::default();
+    let mut buffer = vec![];
+    let mut writer = Writer::from_buffer(&mut buffer);
 
     let rc1 = Rc::new(42i32);
     let rc2 = rc1.clone();
@@ -41,7 +42,8 @@ fn test_rc_ref_tracking() {
 #[test]
 fn test_arc_ref_tracking() {
     let mut ref_writer = RefWriter::new();
-    let mut writer = Writer::default();
+    let mut buffer = vec![];
+    let mut writer = Writer::from_buffer(&mut buffer);
 
     let arc1 = Arc::new(42i32);
     let arc2 = arc1.clone();
@@ -80,7 +82,8 @@ fn test_arc_storage_and_retrieval() {
 #[test]
 fn test_ref_writer_clear() {
     let mut ref_writer = RefWriter::new();
-    let mut writer = Writer::default();
+    let mut buffer = vec![];
+    let mut writer = Writer::from_buffer(&mut buffer);
 
     let rc = Rc::new(42i32);
 
@@ -114,7 +117,8 @@ fn test_ref_reader_clear() {
 fn test_ref_writer_ref_reader_separation() {
     let mut ref_writer = RefWriter::new();
     let mut ref_reader = RefReader::new();
-    let mut writer = Writer::default();
+    let mut buffer = vec![];
+    let mut writer = Writer::from_buffer(&mut buffer);
 
     let rc1 = Rc::new(42i32);
     let rc2 = rc1.clone();

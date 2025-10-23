@@ -18,7 +18,7 @@
 use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
-use crate::serializer::{bool, Serializer};
+use crate::serializer::Serializer;
 use crate::types::TypeId;
 
 const NO_REF_FLAG_TYPE_IDS: [u32; 7] = [

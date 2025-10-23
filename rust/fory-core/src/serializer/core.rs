@@ -1432,3 +1432,21 @@ pub trait StructSerializer: Serializer + 'static {
     where
         Self: Sized;
 }
+
+/// Serializes an object implementing `Serializer` to the write context.
+///
+/// This is a convenience wrapper around `T::fory_write_data` that delegates to the type's
+/// serialization implementation.
+#[inline(always)]
+pub fn write_data<T: Serializer>(this: &T, context: &mut WriteContext) -> Result<(), Error> {
+    T::fory_write_data(this, context)
+}
+
+/// Deserializes an object implementing `Serializer` from the read context.
+///
+/// This is a convenience wrapper around `T::fory_read_data` that delegates to the type's
+/// deserialization implementation. Requires `ForyDefault` for instance creation.
+#[inline(always)]
+pub fn read_data<T: Serializer + ForyDefault>(context: &mut ReadContext) -> Result<T, Error> {
+    T::fory_read_data(context)
+}

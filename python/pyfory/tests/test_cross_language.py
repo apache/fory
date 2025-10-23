@@ -211,7 +211,7 @@ def test_record_batch(data_file_path):
         # debug_print(f"batch[0] {batch[0]}")
 
         encoder = pyfory.create_row_encoder(create_foo_schema())
-        writer = pyfory.ArrowWriter(create_foo_schema())
+        writer = pyfory.format.ArrowWriter(create_foo_schema())
         num_rows = 128
         for i in range(num_rows):
             foo = create_foo()
@@ -481,7 +481,7 @@ class ComplexObject1:
     f8: pyfory.int64 = None
     f9: pyfory.float32 = None
     f10: pyfory.float64 = None
-    f11: pyfory.Int16ArrayType = None
+    f11: pyfory.int16_array = None
     f12: List[pyfory.int16] = None
 
 
@@ -799,7 +799,7 @@ def test_cross_language_meta_share_complex(data_file_path):
         f8: pyfory.int64
         f9: pyfory.float32
         f10: pyfory.float64
-        f11: pyfory.Int16ArrayType
+        f11: pyfory.int16_array
         f12: List[pyfory.int16]
 
     fory.register_type(ComplexObject1, namespace="test", typename="ComplexObject1")

@@ -16,21 +16,22 @@
 // under the License.
 
 use crate::buffer::{Reader, Writer};
+use std::mem;
 
 use crate::error::Error;
 use crate::fory::Fory;
 use crate::meta::MetaString;
 use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
-use crate::resolver::metastring_resolver::{MetaStringReaderResolver, MetaStringWriterResolver};
+use crate::resolver::meta_string_resolver::{MetaStringReaderResolver, MetaStringWriterResolver};
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types;
+use crate::util::Spinlock;
 use std::rc::Rc;
-use std::sync::Mutex;
 
 /// Serialization state container used on a single thread at a time.
 /// Sharing the same instance across threads simultaneously causes undefined behavior.
-pub struct WriteContext {
+pub struct WriteContext<'a> {
     // Replicated environment fields (direct access, no Arc indirection for flags)
     type_resolver: TypeResolver,
     compatible: bool,
@@ -40,22 +41,22 @@ pub struct WriteContext {
     check_struct_version: bool,
 
     // Context-specific fields
-    pub writer: Writer,
+    default_writer: Option<Writer<'a>>,
+    pub writer: Writer<'a>,
     meta_resolver: MetaWriterResolver,
     meta_string_resolver: MetaStringWriterResolver,
     pub ref_writer: RefWriter,
 }
 
-impl WriteContext {
+impl<'a> WriteContext<'a> {
     pub fn new(
-        writer: Writer,
         type_resolver: TypeResolver,
         compatible: bool,
         share_meta: bool,
         compress_string: bool,
         xlang: bool,
         check_struct_version: bool,
-    ) -> WriteContext {
+    ) -> WriteContext<'a> {
         WriteContext {
             type_resolver,
             compatible,
@@ -63,22 +64,46 @@ impl WriteContext {
             compress_string,
             xlang,
             check_struct_version,
-            writer,
+            default_writer: None,
+            writer: Writer::from_buffer(Self::get_leak_buffer()),
             meta_resolver: MetaWriterResolver::default(),
             meta_string_resolver: MetaStringWriterResolver::default(),
             ref_writer: RefWriter::new(),
         }
     }
 
-    pub fn new_from_fory(writer: Writer, fory: &Fory) -> WriteContext {
+    #[inline(always)]
+    fn get_leak_buffer() -> &'static mut Vec<u8> {
+        Box::leak(Box::new(vec![]))
+    }
+
+    #[inline(always)]
+    pub fn attach_writer(&mut self, writer: Writer<'a>) {
+        let old = mem::replace(&mut self.writer, writer);
+        self.default_writer = Some(old);
+    }
+
+    #[inline(always)]
+    pub fn detach_writer(&mut self) {
+        let default = mem::take(&mut self.default_writer);
+        self.writer = default.unwrap();
+    }
+
+    /// Test method to create WriteContext from Fory instance
+    /// Will be removed in future releases, do not use it in production code
+    pub fn new_from_fory(fory: &Fory) -> WriteContext<'a> {
         WriteContext {
-            type_resolver: fory.get_type_resolver().clone(),
+            default_writer: None,
+            writer: Writer::from_buffer(Self::get_leak_buffer()),
+            type_resolver: fory
+                .get_type_resolver()
+                .build_final_type_resolver()
+                .unwrap(),
             compatible: fory.is_compatible(),
             share_meta: fory.is_share_meta(),
             compress_string: fory.is_compress_string(),
             xlang: fory.is_xlang(),
             check_struct_version: fory.is_check_struct_version(),
-            writer,
             meta_resolver: MetaWriterResolver::default(),
             meta_string_resolver: MetaStringWriterResolver::default(),
             ref_writer: RefWriter::new(),
@@ -138,10 +163,9 @@ impl WriteContext {
 
     #[inline(always)]
     pub fn write_meta(&mut self, offset: usize) {
-        self.writer.set_bytes(
-            offset,
-            &((self.writer.len() - offset - 4) as u32).to_le_bytes(),
-        );
+        let len = self.writer.len();
+        self.writer
+            .set_bytes(offset, &((len - offset - 4) as u32).to_le_bytes());
         self.meta_resolver.to_bytes(&mut self.writer);
     }
 
@@ -203,12 +227,20 @@ impl WriteContext {
     }
 }
 
+impl<'a> Drop for WriteContext<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            drop(Box::from_raw(self.writer.bf));
+        }
+    }
+}
+
 // Safety: WriteContext is only shared across threads via higher-level pooling code that
 // ensures single-threaded access while the context is in use. Users must never hold the same
 // instance on multiple threads simultaneously; that would violate the invariants and result in
 // undefined behavior. Under that assumption, marking it Send/Sync is sound.
-unsafe impl Send for WriteContext {}
-unsafe impl Sync for WriteContext {}
+unsafe impl<'a> Send for WriteContext<'a> {}
+unsafe impl<'a> Sync for WriteContext<'a> {}
 
 /// Deserialization state container used on a single thread at a time.
 /// Sharing the same instance across threads simultaneously causes undefined behavior.
@@ -261,9 +293,14 @@ impl ReadContext {
         }
     }
 
+    /// Test method to create ReadContext from Fory instance
+    /// Will be removed in future releases, do not use it in production code
     pub fn new_from_fory(reader: Reader, fory: &Fory) -> ReadContext {
         ReadContext {
-            type_resolver: fory.get_type_resolver().clone(),
+            type_resolver: fory
+                .get_type_resolver()
+                .build_final_type_resolver()
+                .unwrap(),
             compatible: fory.is_compatible(),
             share_meta: fory.is_share_meta(),
             xlang: fory.is_xlang(),
@@ -355,7 +392,7 @@ impl ReadContext {
                     let rc_namespace = Rc::from(namespace);
                     let rc_type_name = Rc::from(type_name);
                     self.type_resolver
-                        .get_type_info_by_msname(rc_namespace, rc_type_name)
+                        .get_type_info_by_meta_string_name(rc_namespace, rc_type_name)
                         .ok_or_else(|| Error::type_error("Name harness not found"))
                 }
             }
@@ -405,7 +442,7 @@ impl ReadContext {
 }
 
 pub struct Pool<T> {
-    items: Mutex<Vec<T>>,
+    items: Spinlock<Vec<T>>,
     factory: Box<dyn Fn() -> T + Send + Sync>,
 }
 
@@ -415,26 +452,19 @@ impl<T> Pool<T> {
         F: Fn() -> T + Send + Sync + 'static,
     {
         Pool {
-            items: Mutex::new(vec![]),
+            items: Spinlock::new(vec![]),
             factory: Box::new(factory),
         }
     }
 
     #[inline(always)]
     pub fn get(&self) -> T {
-        let item = self
-            .items
-            .lock()
-            .unwrap()
-            .pop()
-            .unwrap_or_else(|| (self.factory)());
-        // println!("Object address: {:p}", &item);
-        item
+        self.items.lock().pop().unwrap_or_else(|| (self.factory)())
     }
 
     // put back manually
     #[inline(always)]
     pub fn put(&self, item: T) {
-        self.items.lock().unwrap().push(item);
+        self.items.lock().push(item);
     }
 }

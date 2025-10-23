@@ -41,7 +41,8 @@ fn test_varint32() {
         i32::MAX,
     ];
     for &data in &test_data {
-        let mut writer = Writer::default();
+        let mut buffer = vec![];
+        let mut writer = Writer::from_buffer(&mut buffer);
         writer.write_varint32(data);
         let binding = writer.dump();
         let mut reader = Reader::new(binding.as_slice());
@@ -49,7 +50,8 @@ fn test_varint32() {
         assert_eq!(res, data);
     }
     for &data in &test_data {
-        let mut writer = Writer::default();
+        let mut buffer = vec![];
+        let mut writer = Writer::from_buffer(&mut buffer);
         writer.write_varuint32(data as u32);
         let binding = writer.dump();
         let mut reader = Reader::new(binding.as_slice());
@@ -84,7 +86,8 @@ fn test_varuint36_small() {
     ];
 
     for &data in &test_data {
-        let mut writer = Writer::default();
+        let mut buffer = vec![];
+        let mut writer = Writer::from_buffer(&mut buffer);
         writer.write_varuint36_small(data);
         let buf = writer.dump();
 

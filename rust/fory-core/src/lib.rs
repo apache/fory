@@ -195,5 +195,5 @@ pub use crate::fory::Fory;
 pub use crate::resolver::context::{ReadContext, WriteContext};
 pub use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 pub use crate::serializer::weak::{ArcWeak, RcWeak};
-pub use crate::serializer::{ForyDefault, Serializer, StructSerializer};
+pub use crate::serializer::{read_data, write_data, ForyDefault, Serializer, StructSerializer};
 pub use crate::types::{RefFlag, TypeId};

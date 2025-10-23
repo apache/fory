@@ -389,14 +389,14 @@ Fory python has two implementations for the protocol:
 
 Code structure:
 
-- `python/pyfory/_serialization.pyx`: Core serialization logic and entry point for cython mode based on `xlang serialization format`
+- `python/pyfory/serialization.pyx`: Core serialization logic and entry point for cython mode based on `xlang serialization format`
 - `python/pyfory/_fory.py`: Serialization entry point for pure python mode based on `xlang serialization format`
 - `python/pyfory/_registry.py`: Type registry, resolution and serializer dispatch for pure python mode, which is also used by cython mode. Cython mode use a cache to reduce invocations to this module.
 - `python/pyfory/serializer.py`: Serializers for non-internal types
 - `python/pyfory/includes`: Cython headers for `c++` functions and classes.
 - `python/pyfory/resolver.py`: resolving shared/circular references when ref tracking is enabled in pure python mode
 - `python/pyfory/format`: Fory row format encoding and decoding, arrow columnar format interoperation
-- `python/pyfory/_util.pyx`: Buffer for reading/writing data, string utilities. Used by `_serialization.pyx` and `python/pyfory/format` at the same time.
+- `python/pyfory/_util.pyx`: Buffer for reading/writing data, string utilities. Used by `serialization.pyx` and `python/pyfory/format` at the same time.
 
 #### Go
 

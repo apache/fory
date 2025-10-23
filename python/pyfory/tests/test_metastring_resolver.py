@@ -16,7 +16,7 @@
 # under the License.
 
 from pyfory import Buffer
-from pyfory._serialization import MetaStringResolver, MetaStringBytes
+from pyfory.serialization import MetaStringResolver, MetaStringBytes
 from pyfory.meta.metastring import MetaStringEncoder
 
 

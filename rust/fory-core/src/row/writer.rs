@@ -24,18 +24,18 @@ pub struct WriteCallbackInfo {
     data_start: usize,
 }
 
-struct FieldWriterHelper<'a> {
-    pub writer: &'a mut Writer,
+struct FieldWriterHelper<'a, 'b> {
+    pub writer: &'a mut Writer<'b>,
     base_offset: usize,
     get_field_offset: Box<dyn Fn(usize) -> usize>,
 }
 
-impl<'a> FieldWriterHelper<'a> {
+impl<'b: 'a, 'a> FieldWriterHelper<'a, 'b> {
     fn new(
-        writer: &'a mut Writer,
+        writer: &'a mut Writer<'b>,
         base_offset: usize,
         get_field_offset: Box<dyn Fn(usize) -> usize>,
-    ) -> FieldWriterHelper<'a> {
+    ) -> FieldWriterHelper<'a, 'b> {
         FieldWriterHelper {
             writer,
             base_offset,
@@ -63,15 +63,15 @@ impl<'a> FieldWriterHelper<'a> {
     }
 }
 
-pub struct StructWriter<'a> {
-    field_writer_helper: FieldWriterHelper<'a>,
+pub struct StructWriter<'a, 'b> {
+    field_writer_helper: FieldWriterHelper<'a, 'b>,
 }
 
-impl StructWriter<'_> {
+impl<'a, 'b> StructWriter<'a, 'b> {
     fn get_fixed_size(bit_map_width_in_bytes: usize, num_fields: usize) -> usize {
         bit_map_width_in_bytes + num_fields * 8
     }
-    pub fn new(num_fields: usize, writer: &mut Writer) -> StructWriter<'_> {
+    pub fn new(num_fields: usize, writer: &'a mut Writer<'b>) -> StructWriter<'a, 'b> {
         let base_offset = writer.len();
         let bit_map_width_in_bytes = calculate_bitmap_width_in_bytes(num_fields);
 
@@ -88,7 +88,7 @@ impl StructWriter<'_> {
         struct_writer
     }
 
-    pub fn get_writer(&mut self) -> &mut Writer {
+    pub fn get_writer(&mut self) -> &mut Writer<'b> {
         self.field_writer_helper.writer
     }
 
@@ -101,16 +101,19 @@ impl StructWriter<'_> {
     }
 }
 
-pub struct ArrayWriter<'a> {
-    field_writer_helper: FieldWriterHelper<'a>,
+pub struct ArrayWriter<'a, 'b> {
+    field_writer_helper: FieldWriterHelper<'a, 'b>,
 }
 
-impl ArrayWriter<'_> {
+impl<'a, 'b> ArrayWriter<'a, 'b> {
     fn get_fixed_size(bit_map_width_in_bytes: usize, num_fields: usize) -> usize {
         8 + bit_map_width_in_bytes + num_fields * 8
     }
 
-    pub fn new(num_fields: usize, writer: &mut Writer) -> Result<ArrayWriter<'_>, Error> {
+    pub fn new(
+        num_fields: usize,
+        writer: &'a mut Writer<'b>,
+    ) -> Result<ArrayWriter<'a, 'b>, Error> {
         let base_offset = writer.len();
         let bit_map_width_in_bytes = calculate_bitmap_width_in_bytes(num_fields);
         let array_writer = ArrayWriter {
@@ -130,7 +133,7 @@ impl ArrayWriter<'_> {
         Ok(array_writer)
     }
 
-    pub fn get_writer(&mut self) -> &mut Writer {
+    pub fn get_writer(&mut self) -> &mut Writer<'b> {
         self.field_writer_helper.writer
     }
 
@@ -143,18 +146,18 @@ impl ArrayWriter<'_> {
     }
 }
 
-pub struct MapWriter<'a> {
+pub struct MapWriter<'a, 'b> {
     base_offset: usize,
-    writer: &'a mut Writer,
+    writer: &'a mut Writer<'b>,
 }
 
-impl MapWriter<'_> {
+impl<'a, 'b> MapWriter<'a, 'b> {
     fn get_fixed_size(&self) -> usize {
         // key_byte_size
         8
     }
 
-    pub fn new(writer: &mut Writer) -> MapWriter<'_> {
+    pub fn new(writer: &'a mut Writer<'b>) -> MapWriter<'a, 'b> {
         let base_offset = writer.len();
         let array_writer = MapWriter {
             writer,
@@ -166,7 +169,7 @@ impl MapWriter<'_> {
         array_writer
     }
 
-    pub fn get_writer(&mut self) -> &mut Writer {
+    pub fn get_writer(&mut self) -> &mut Writer<'b> {
         self.writer
     }
 
@@ -182,7 +185,8 @@ impl MapWriter<'_> {
 }
 
 pub fn to_row<'a, T: Row<'a>>(v: &T) -> Result<Vec<u8>, Error> {
-    let mut writer = Writer::default();
+    let mut buffer = vec![];
+    let mut writer = Writer::from_buffer(&mut buffer);
     T::write(v, &mut writer)?;
-    Ok(writer.dump())
+    Ok(buffer)
 }

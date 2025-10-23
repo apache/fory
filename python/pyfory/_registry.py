@@ -101,7 +101,7 @@ namespace_decoder = MetaStringDecoder(".", "_")
 typename_decoder = MetaStringDecoder("$", "_")
 
 if ENABLE_FORY_CYTHON_SERIALIZATION:
-    from pyfory._serialization import TypeInfo
+    from pyfory.serialization import TypeInfo
 else:
 
     class TypeInfo:

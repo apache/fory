@@ -30,6 +30,7 @@ from pyfory.resolver import (
 )
 from pyfory.util import is_little_endian, set_bit, get_bit, clear_bit
 from pyfory.type import TypeId
+from pyfory.policy import DeserializationPolicy, DEFAULT_POLICY
 
 try:
     import numpy as np
@@ -103,6 +104,44 @@ class BufferObject(ABC):
 
 
 class Fory:
+    """
+    High-performance cross-language serialization framework.
+
+    Fory provides blazingly-fast serialization for Python objects with support for
+    both Python-native mode and cross-language mode. It handles complex object graphs,
+    reference tracking, and circular references automatically.
+
+    In Python-native mode (xlang=False), Fory can serialize all Python objects
+    including dataclasses, classes with custom serialization methods, and local
+    functions/classes, making it a drop-in replacement for pickle.
+
+    In cross-language mode (xlang=True), Fory serializes objects in a format that
+    can be deserialized by other Fory-supported languages (Java, Go, Rust, C++, etc).
+
+    Examples:
+        >>> import pyfory
+        >>> from dataclasses import dataclass
+        >>>
+        >>> @dataclass
+        >>> class Person:
+        ...     name: str
+        ...     age: pyfory.int32
+        >>>
+        >>> # Python-native mode
+        >>> fory = pyfory.Fory()
+        >>> fory.register(Person)
+        >>> data = fory.serialize(Person("Alice", 30))
+        >>> person = fory.deserialize(data)
+        >>>
+        >>> # Cross-language mode
+        >>> fory_xlang = pyfory.Fory(xlang=True)
+        >>> fory_xlang.register(Person)
+        >>> data = fory_xlang.serialize(Person("Bob", 25))
+
+    See Also:
+        ThreadSafeFory: Thread-safe wrapper for concurrent usage
+    """
+
     __slots__ = (
         "language",
         "is_py",
@@ -122,6 +161,7 @@ class Fory:
         "max_depth",
         "depth",
         "field_nullable",
+        "policy",
     )
 
     def __init__(
@@ -131,42 +171,54 @@ class Fory:
         strict: bool = True,
         compatible: bool = False,
         max_depth: int = 50,
+        policy: DeserializationPolicy = None,
         field_nullable: bool = False,
         **kwargs,
     ):
         """
-        :param xlang:
-         Whether to enable cross-language serialization. When set to False, enables Python-native
-         serialization supporting all serializable Python objects including dataclasses,
-         structs, classes with __getstate__/__setstate__/__reduce__/__reduce_ex__, local
-         functions/classes, and classes defined in IPython. With ref=True and strict=False,
-         Fury can serve as a drop-in replacement for pickle and cloudpickle.
-         When set to True, serializes objects in cross-language format that can
-         be deserialized by other Fury-supported languages, but Python-specific features
-         like functions/classes/methods and custom __reduce__ methods are not supported.
-        :param ref:
-         Whether to enable reference tracking for shared and circular references.
-         When enabled, duplicate objects will be stored only once and circular references
-         are supported. Disabled by default for better performance.
-        :param strict:
-         Whether to require registering types for serialization, enabled by default.
-         If disabled, unknown insecure types can be deserialized, which can be
-         insecure and cause remote code execution attack if the types
-         `__new__`/`__init__`/`__eq__`/`__hash__` method contain malicious code, or you
-         are deserializing local functions/methods/classes.
-          Do not disable strict mode if you can't ensure your environment are
-          *indeed secure*. We are not responsible for security risks if
-          you disable this option.
-        :param compatible:
-         Whether to enable compatible mode for cross-language serialization.
-         When enabled, type forward/backward compatibility for dataclass fields will be enabled.
-        :param max_depth:
-         The maximum depth of the deserialization data.
-         If the depth exceeds the maximum depth, an exception will be raised.
-         The default value is 50.
-        :param field_nullable:
-         Whether dataclass fields are nullable for python native mode(xlang=False). When enabled, dataclass fields
-         are always treated as nullable whether or not they are annotated with `Optional`.
+        Initialize a Fory serialization instance.
+
+        Args:
+            xlang: Enable cross-language serialization mode. When False (default), uses
+                Python-native mode supporting all Python objects (dataclasses, __reduce__,
+                local functions/classes). With ref=True and strict=False, serves as a
+                drop-in replacement for pickle. When True, uses cross-language format
+                compatible with other Fory languages (Java, Go, Rust, etc), but Python-
+                specific features like functions and __reduce__ methods are not supported.
+
+            ref: Enable reference tracking for shared and circular references. When enabled,
+                duplicate objects are stored once and circular references are supported.
+                Disabled by default for better performance.
+
+            strict: Require type registration before serialization (default: True). When
+                disabled, unknown types can be deserialized, which may be insecure if
+                malicious code exists in __new__/__init__/__eq__/__hash__ methods.
+                **WARNING**: Only disable in trusted environments. When disabling strict
+                mode, you should provide a custom `policy` parameter to control which types
+                are allowed. We are not responsible for security risks when this option
+                is disabled without proper policy controls.
+
+            compatible: Enable schema evolution for cross-language serialization. When
+                enabled, supports forward/backward compatibility for dataclass field
+                additions and removals.
+
+            max_depth: Maximum nesting depth for deserialization (default: 50). Raises
+                an exception if exceeded to prevent malicious deeply-nested data attacks.
+
+            policy: Custom deserialization policy for security checks. When provided,
+                it controls which types can be deserialized, overriding the default policy.
+                **Strongly recommended** when strict=False to maintain security controls.
+
+            field_nullable: Treat all dataclass fields as nullable in Python-native mode
+                (xlang=False), regardless of Optional annotation. Ignored in cross-language
+                mode.
+
+        Example:
+            >>> # Python-native mode with reference tracking
+            >>> fory = Fory(ref=True)
+            >>>
+            >>> # Cross-language mode with schema evolution
+            >>> fory = Fory(xlang=True, compatible=True)
         """
         self.language = Language.XLANG if xlang else Language.PYTHON
         if kwargs.get("language") is not None:
@@ -182,9 +234,10 @@ class Fory:
         if kwargs.get("require_type_registration") is not None:
             strict = kwargs.get("require_type_registration")
         self.strict = _ENABLE_TYPE_REGISTRATION_FORCIBLY or strict
+        self.policy = policy or DEFAULT_POLICY
         self.compatible = compatible
         self.field_nullable = field_nullable if self.is_py else False
-        from pyfory._serialization import MetaStringResolver, SerializationContext
+        from pyfory.serialization import MetaStringResolver, SerializationContext
         from pyfory._registry import TypeResolver
 
         self.metastring_resolver = MetaStringResolver()
@@ -210,6 +263,40 @@ class Fory:
         typename: str = None,
         serializer=None,
     ):
+        """
+        Register a type for serialization.
+
+        This is an alias for `register_type()`. Type registration enables Fory to
+        efficiently serialize and deserialize objects by pre-computing serialization
+        metadata.
+
+        For cross-language serialization, types can be matched between languages using:
+        1. **type_id** (recommended): Numeric ID matching - faster and more compact
+        2. **namespace + typename**: String-based matching - more flexible but larger overhead
+
+        Args:
+            cls: The Python type to register
+            type_id: Optional unique numeric ID for cross-language type matching.
+                Using type_id provides better performance and smaller serialized size
+                compared to namespace/typename matching.
+            namespace: Optional namespace for cross-language type matching by name.
+                Used when type_id is not specified.
+            typename: Optional type name for cross-language type matching by name.
+                Defaults to class name if not specified. Used with namespace.
+            serializer: Optional custom serializer instance for this type
+
+        Example:
+            >>> # Register with type_id (recommended for performance)
+            >>> fory = Fory(xlang=True)
+            >>> fory.register(Person, type_id=100)
+            >>>
+            >>> # Register with namespace and typename (more flexible)
+            >>> fory.register(Person, namespace="com.example", typename="Person")
+            >>>
+            >>> # Python-native mode (no cross-language matching needed)
+            >>> fory = Fory()
+            >>> fory.register(Person)
+        """
         self.register_type(
             cls,
             type_id=type_id,
@@ -228,6 +315,39 @@ class Fory:
         typename: str = None,
         serializer=None,
     ):
+        """
+        Register a type for serialization.
+
+        Type registration enables Fory to efficiently serialize and deserialize objects
+        by pre-computing serialization metadata.
+
+        For cross-language serialization, types can be matched between languages using:
+        1. **type_id** (recommended): Numeric ID matching - faster and more compact
+        2. **namespace + typename**: String-based matching - more flexible but larger overhead
+
+        Args:
+            cls: The Python type to register
+            type_id: Optional unique numeric ID for cross-language type matching.
+                Using type_id provides better performance and smaller serialized size
+                compared to namespace/typename matching.
+            namespace: Optional namespace for cross-language type matching by name.
+                Used when type_id is not specified.
+            typename: Optional type name for cross-language type matching by name.
+                Defaults to class name if not specified. Used with namespace.
+            serializer: Optional custom serializer instance for this type
+
+        Example:
+            >>> # Register with type_id (recommended for performance)
+            >>> fory = Fory(xlang=True)
+            >>> fory.register_type(Person, type_id=100)
+            >>>
+            >>> # Register with namespace and typename (more flexible)
+            >>> fory.register_type(Person, namespace="com.example", typename="Person")
+            >>>
+            >>> # Python-native mode (no cross-language matching needed)
+            >>> fory = Fory()
+            >>> fory.register_type(Person)
+        """
         return self.type_resolver.register_type(
             cls,
             type_id=type_id,
@@ -237,6 +357,20 @@ class Fory:
         )
 
     def register_serializer(self, cls: type, serializer):
+        """
+        Register a custom serializer for a type.
+
+        Allows you to provide a custom serializer implementation for a specific type,
+        overriding Fory's default serialization behavior.
+
+        Args:
+            cls: The Python type to associate with the serializer
+            serializer: Custom serializer instance implementing the Serializer protocol
+
+        Example:
+            >>> fory = Fory()
+            >>> fory.register_serializer(MyClass, MyCustomSerializer())
+        """
         self.type_resolver.register_serializer(cls, serializer)
 
     def dumps(
@@ -269,6 +403,28 @@ class Fory:
         buffer_callback=None,
         unsupported_callback=None,
     ) -> Union[Buffer, bytes]:
+        """
+        Serialize a Python object to bytes.
+
+        Converts the object into Fory's binary format. The serialization process
+        automatically handles reference tracking (if enabled), type information,
+        and nested objects.
+
+        Args:
+            obj: The object to serialize
+            buffer: Optional pre-allocated buffer to write to. If None, uses internal buffer
+            buffer_callback: Optional callback for out-of-band buffer serialization
+            unsupported_callback: Optional callback for handling unsupported types
+
+        Returns:
+            Serialized bytes if buffer is None, otherwise returns the provided buffer
+
+        Example:
+            >>> fory = Fory()
+            >>> data = fory.serialize({"key": "value", "num": 42})
+            >>> print(type(data))
+            <class 'bytes'>
+        """
         try:
             return self._serialize(
                 obj,
@@ -286,6 +442,8 @@ class Fory:
         buffer_callback=None,
         unsupported_callback=None,
     ) -> Union[Buffer, bytes]:
+        assert self.depth == 0, "Nested serialization should use write_ref/write_no_ref/xwrite_ref/xwrite_no_ref."
+        self.depth += 1
         self._buffer_callback = buffer_callback
         self._unsupported_callback = unsupported_callback
         if buffer is None:
@@ -326,7 +484,7 @@ class Fory:
             buffer.write_int32(-1)  # Reserve 4 bytes for type definitions offset
 
         if self.language == Language.PYTHON:
-            self.serialize_ref(buffer, obj)
+            self.write_ref(buffer, obj)
         else:
             self.xwrite_ref(buffer, obj)
 
@@ -338,14 +496,12 @@ class Fory:
                 current_pos = buffer.writer_index
                 buffer.put_int32(type_defs_offset_pos, current_pos - type_defs_offset_pos - 4)
                 self.type_resolver.write_type_defs(buffer)
-
-        self.reset_write()
         if buffer is not self.buffer:
             return buffer
         else:
             return buffer.to_bytes(0, buffer.writer_index)
 
-    def serialize_ref(self, buffer, obj, typeinfo=None):
+    def write_ref(self, buffer, obj, typeinfo=None):
         cls = type(obj)
         if cls is str:
             buffer.write_int16(NOT_NULL_STRING_FLAG)
@@ -366,7 +522,7 @@ class Fory:
         self.type_resolver.write_typeinfo(buffer, typeinfo)
         typeinfo.serializer.write(buffer, obj)
 
-    def serialize_nonref(self, buffer, obj):
+    def write_no_ref(self, buffer, obj):
         cls = type(obj)
         if cls is str:
             buffer.write_varuint32(STRING_TYPE_ID)
@@ -411,6 +567,28 @@ class Fory:
         buffers: Iterable = None,
         unsupported_objects: Iterable = None,
     ):
+        """
+        Deserialize bytes back to a Python object.
+
+        Reconstructs an object from Fory's binary format. The deserialization process
+        automatically handles reference resolution (if enabled), type instantiation,
+        and nested objects.
+
+        Args:
+            buffer: Serialized bytes or Buffer to deserialize from
+            buffers: Optional iterable of buffers for out-of-band deserialization
+            unsupported_objects: Optional iterable of objects for unsupported type handling
+
+        Returns:
+            The deserialized Python object
+
+        Example:
+            >>> fory = Fory()
+            >>> data = fory.serialize({"key": "value"})
+            >>> obj = fory.deserialize(data)
+            >>> print(obj)
+            {'key': 'value'}
+        """
         try:
             return self._deserialize(buffer, buffers, unsupported_objects)
         finally:
@@ -422,6 +600,8 @@ class Fory:
         buffers: Iterable = None,
         unsupported_objects: Iterable = None,
     ):
+        assert self.depth == 0, "Nested deserialization should use read_ref/read_no_ref/xread_ref/xread_no_ref."
+        self.depth += 1
         if isinstance(buffer, bytes):
             buffer = Buffer(buffer)
         if unsupported_objects is not None:
@@ -560,6 +740,13 @@ class Fory:
         return self.read_ref(buffer)
 
     def reset_write(self):
+        """
+        Reset write state after serialization.
+
+        Clears internal write buffers, reference tracking state, and type resolution
+        caches. This method is automatically called after each serialization.
+        """
+        self.depth = 0
         self.ref_resolver.reset_write()
         self.type_resolver.reset_write()
         self.serialization_context.reset_write()
@@ -568,6 +755,12 @@ class Fory:
         self._unsupported_callback = None
 
     def reset_read(self):
+        """
+        Reset read state after deserialization.
+
+        Clears internal read buffers, reference tracking state, and type resolution
+        caches. This method is automatically called after each deserialization.
+        """
         self.depth = 0
         self.ref_resolver.reset_read()
         self.type_resolver.reset_read()
@@ -577,6 +770,13 @@ class Fory:
         self._unsupported_objects = None
 
     def reset(self):
+        """
+        Reset both write and read state.
+
+        Clears all internal state including buffers, reference tracking, and type
+        resolution caches. Use this to ensure a clean state before reusing a Fory
+        instance.
+        """
         self.reset_write()
         self.reset_read()
 
@@ -665,10 +865,10 @@ class ThreadSafeFory:
 
     def _get_fory_class(self):
         try:
-            from pyfory._serialization import ENABLE_FORY_CYTHON_SERIALIZATION
+            from pyfory.serialization import ENABLE_FORY_CYTHON_SERIALIZATION
 
             if ENABLE_FORY_CYTHON_SERIALIZATION:
-                from pyfory._serialization import Fory as CythonFory
+                from pyfory.serialization import Fory as CythonFory
 
                 return CythonFory
         except ImportError:

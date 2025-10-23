@@ -15,8 +15,32 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod context;
-pub mod meta_resolver;
-pub mod meta_string_resolver;
-pub mod ref_resolver;
-pub mod type_resolver;
+use fory_core::fory::Fory;
+use fory_derive::ForyObject;
+
+#[test]
+fn test_nested_struct_register_order() {
+    #[derive(ForyObject, Debug, PartialEq)]
+    struct Data1 {
+        value: i32,
+        data2: Data2,
+    }
+
+    #[derive(ForyObject, Debug, PartialEq)]
+    struct Data2 {
+        value: i32,
+    }
+
+    let mut fory = Fory::default();
+    // outer struct registered first. building fields info should be executed lazily,
+    // otherwise the inner struct won't be found.
+    fory.register::<Data1>(100).unwrap();
+    fory.register::<Data2>(101).unwrap();
+    let data = Data1 {
+        value: 42,
+        data2: Data2 { value: 24 },
+    };
+    let bytes = fory.serialize(&data).unwrap();
+    let result: Data1 = fory.deserialize(&bytes).unwrap();
+    assert_eq!(data, result);
+}

@@ -16,11 +16,11 @@
 # under the License.
 
 import pyarrow as pa
-from pyfory.serializer import CrossLanguageCompatibleSerializer, BufferObject
+from pyfory.serializer import XlangCompatibleSerializer, BufferObject
 from pyfory.buffer import Buffer
 
 
-class ArrowRecordBatchSerializer(CrossLanguageCompatibleSerializer):
+class ArrowRecordBatchSerializer(XlangCompatibleSerializer):
     def write(self, buffer, value: pa.RecordBatch):
         self.fory.write_buffer_object(buffer, ArrowRecordBatchBufferObject(value))
 
@@ -69,7 +69,7 @@ class ArrowRecordBatchBufferObject(BufferObject):
         stream_writer.close()
 
 
-class ArrowTableSerializer(CrossLanguageCompatibleSerializer):
+class ArrowTableSerializer(XlangCompatibleSerializer):
     def write(self, buffer, value: pa.Table):
         self.fory.write_buffer_object(buffer, ArrowTableBufferObject(value))
 

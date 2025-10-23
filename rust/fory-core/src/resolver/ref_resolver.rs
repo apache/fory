@@ -38,7 +38,8 @@ use std::sync::Arc;
 /// use std::rc::Rc;
 ///
 /// let mut ref_writer = RefWriter::new();
-/// let mut writer = Writer::default();
+/// let mut buffer = vec![];
+/// let mut writer = Writer::from_buffer(&mut buffer);
 /// let rc = Rc::new(42);
 ///
 /// // First encounter - returns false, indicating object should be serialized

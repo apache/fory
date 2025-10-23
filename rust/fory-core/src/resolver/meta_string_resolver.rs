@@ -72,12 +72,12 @@ impl MetaStringBytes {
         }
     }
 
-    pub fn to_metastring(&self) -> Result<MetaString, Error> {
+    pub fn to_meta_string(&self) -> Result<MetaString, Error> {
         let ms = NAMESPACE_DECODER.decode(&self.bytes, self.encoding)?;
         Ok(ms)
     }
 
-    pub(crate) fn from_metastring(meta_string: &MetaString) -> Result<Self, Error> {
+    pub(crate) fn from_meta_string(meta_string: &MetaString) -> Result<Self, Error> {
         let bytes = meta_string.bytes.to_vec();
         let mut hash_code = murmurhash3_x64_128(&bytes, 47).0 as i64;
         hash_code = hash_code.abs();
@@ -92,7 +92,7 @@ impl MetaStringBytes {
     }
 
     pub fn get_empty() -> &'static MetaStringBytes {
-        EMPTY.get_or_init(|| MetaStringBytes::from_metastring(MetaString::get_empty()).unwrap())
+        EMPTY.get_or_init(|| MetaStringBytes::from_meta_string(MetaString::get_empty()).unwrap())
     }
 }
 
@@ -128,7 +128,7 @@ impl MetaStringWriterResolver {
             let entry = self.meta_string_to_bytes.entry(ms.clone());
             match entry {
                 Entry::Occupied(o) => o.into_mut(),
-                Entry::Vacant(v) => v.insert(MetaStringBytes::from_metastring(&ms)?),
+                Entry::Vacant(v) => v.insert(MetaStringBytes::from_meta_string(&ms)?),
             }
         };
 
@@ -364,7 +364,7 @@ impl MetaStringReaderResolver {
             .entry(ptr)
             .or_insert_with(|| {
                 let mb_ref = unsafe { &*ptr };
-                mb_ref.to_metastring().unwrap()
+                mb_ref.to_meta_string().unwrap()
             });
 
         Ok(ms_ref)

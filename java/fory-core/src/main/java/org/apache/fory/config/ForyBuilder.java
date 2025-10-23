@@ -422,6 +422,7 @@ public final class ForyBuilder {
       stringRefIgnored = true;
       longEncoding = LongEncoding.PVL;
       compressInt = true;
+      compressString = true;
     }
     if (ENABLE_CLASS_REGISTRATION_FORCIBLY) {
       if (!requireClassRegistration) {

@@ -133,7 +133,7 @@ print(result)  # Person(name='Bob', age=25, ...)
 - **For circular references**: Set `ref=True` to enable reference tracking
 - **For functions/classes**: Set `strict=False` to allow deserialization of dynamic types
 
-**⚠️ Security Warning**: When `strict=False`, Fory will deserialize arbitrary types, which can pose security risks if data comes from untrusted sources. Only use `strict=False` in controlled environments where you trust the data source completely.
+**⚠️ Security Warning**: When `strict=False`, Fory will deserialize arbitrary types, which can pose security risks if data comes from untrusted sources. Only use `strict=False` in controlled environments where you trust the data source completely. If you do need to use `strict=False`, please configure a `DeserializationPolicy` when creating fory using `policy=your_policy` to controlling deserialization behavior.
 
 #### Common Usage
 
@@ -1140,6 +1140,67 @@ else:
     for idx, model_class in enumerate([UserModel, ProductModel, OrderModel]):
         fory.register(model_class, type_id=100 + idx)
 ```
+
+### DeserializationPolicy
+
+When `strict=False` is necessary (e.g., deserializing functions/lambdas), use `DeserializationPolicy` to implement fine-grained security controls during deserialization. This provides protection similar to `pickle.Unpickler.find_class()` but with more comprehensive hooks.
+
+**Why use DeserializationPolicy?**
+
+- Block dangerous classes/modules (e.g., `subprocess.Popen`)
+- Intercept and validate `__reduce__` callables before invocation
+- Sanitize sensitive data during `__setstate__`
+- Replace or reject deserialized objects based on custom rules
+
+**Example: Blocking Dangerous Classes**
+
+```python
+import pyfory
+from pyfory import DeserializationPolicy
+
+dangerous_modules = {'subprocess', 'os', '__builtin__'}
+
+class SafeDeserializationPolicy(DeserializationPolicy):
+    """Block potentially dangerous classes during deserialization."""
+
+    def validate_class(self, cls, is_local, **kwargs):
+        # Block dangerous modules
+        if cls.__module__ in dangerous_modules:
+            raise ValueError(f"Blocked dangerous class: {cls.__module__}.{cls.__name__}")
+        return None
+
+    def intercept_reduce_call(self, callable_obj, args, **kwargs):
+        # Block specific callable invocations during __reduce__
+        if getattr(callable_obj, '__name__', "") == 'Popen':
+            raise ValueError("Blocked attempt to invoke subprocess.Popen")
+        return None
+
+    def intercept_setstate(self, obj, state, **kwargs):
+        # Sanitize sensitive data
+        if isinstance(state, dict) and 'password' in state:
+            state['password'] = '***REDACTED***'
+        return None
+
+# Create Fory with custom security policy
+policy = SafeDeserializationPolicy()
+fory = pyfory.Fory(xlang=False, ref=True, strict=False, policy=policy)
+
+# Now deserialization is protected by your custom policy
+data = fory.serialize(my_object)
+result = fory.deserialize(data)  # Policy hooks will be invoked
+```
+
+**Available Policy Hooks:**
+
+- `validate_class(cls, is_local)` - Validate/block class types during deserialization
+- `validate_module(module, is_local)` - Validate/block module imports
+- `validate_function(func, is_local)` - Validate/block function references
+- `intercept_reduce_call(callable_obj, args)` - Intercept `__reduce__` invocations
+- `inspect_reduced_object(obj)` - Inspect/replace objects created via `__reduce__`
+- `intercept_setstate(obj, state)` - Sanitize state before `__setstate__`
+- `authorize_instantiation(cls, args, kwargs)` - Control class instantiation
+
+**See also:** `pyfory/policy.py` contains detailed documentation and examples for each hook.
 
 ## 🐛 Troubleshooting
 

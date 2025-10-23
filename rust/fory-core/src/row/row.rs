@@ -160,7 +160,7 @@ impl<'a, T: Row<'a>> ArrayGetter<'a, T> {
 impl<'a, T: Row<'a>> Row<'a> for Vec<T> {
     type ReadResult = ArrayGetter<'a, T>;
 
-    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
+    fn write<'b>(v: &Self, writer: &mut Writer<'b>) -> Result<(), Error> {
         let mut array_writer = ArrayWriter::new(v.len(), writer)?;
         for (idx, item) in v.iter().enumerate() {
             let callback_info = array_writer.write_start(idx);
@@ -221,7 +221,7 @@ impl<'a, T1: Row<'a> + Ord, T2: Row<'a> + Ord> MapGetter<'a, T1, T2> {
 impl<'a, T1: Row<'a> + Ord, T2: Row<'a> + Ord> Row<'a> for BTreeMap<T1, T2> {
     type ReadResult = MapGetter<'a, T1, T2>;
 
-    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
+    fn write<'b>(v: &Self, writer: &mut Writer<'b>) -> Result<(), Error> {
         let mut map_writer = MapWriter::new(writer);
         {
             let callback_info = map_writer.write_start(0);

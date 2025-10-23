@@ -85,7 +85,7 @@ class Serializer(ABC):
         return False
 
 
-class CrossLanguageCompatibleSerializer(Serializer):
+class XlangCompatibleSerializer(Serializer):
     def __init__(self, fory, type_):
         super().__init__(fory, type_)
 
@@ -96,7 +96,7 @@ class CrossLanguageCompatibleSerializer(Serializer):
         return self.read(buffer)
 
 
-class BooleanSerializer(CrossLanguageCompatibleSerializer):
+class BooleanSerializer(XlangCompatibleSerializer):
     def write(self, buffer, value):
         buffer.write_bool(value)
 
@@ -104,7 +104,7 @@ class BooleanSerializer(CrossLanguageCompatibleSerializer):
         return buffer.read_bool()
 
 
-class ByteSerializer(CrossLanguageCompatibleSerializer):
+class ByteSerializer(XlangCompatibleSerializer):
     def write(self, buffer, value):
         buffer.write_int8(value)
 
@@ -112,7 +112,7 @@ class ByteSerializer(CrossLanguageCompatibleSerializer):
         return buffer.read_int8()
 
 
-class Int16Serializer(CrossLanguageCompatibleSerializer):
+class Int16Serializer(XlangCompatibleSerializer):
     def write(self, buffer, value):
         buffer.write_int16(value)
 
@@ -120,7 +120,7 @@ class Int16Serializer(CrossLanguageCompatibleSerializer):
         return buffer.read_int16()
 
 
-class Int32Serializer(CrossLanguageCompatibleSerializer):
+class Int32Serializer(XlangCompatibleSerializer):
     def write(self, buffer, value):
         buffer.write_varint32(value)
 
@@ -142,7 +142,7 @@ class Int64Serializer(Serializer):
         return buffer.read_varint64()
 
 
-class Float32Serializer(CrossLanguageCompatibleSerializer):
+class Float32Serializer(XlangCompatibleSerializer):
     def write(self, buffer, value):
         buffer.write_float(value)
 
@@ -150,7 +150,7 @@ class Float32Serializer(CrossLanguageCompatibleSerializer):
         return buffer.read_float()
 
 
-class Float64Serializer(CrossLanguageCompatibleSerializer):
+class Float64Serializer(XlangCompatibleSerializer):
     def write(self, buffer, value):
         buffer.write_double(value)
 
@@ -158,7 +158,7 @@ class Float64Serializer(CrossLanguageCompatibleSerializer):
         return buffer.read_double()
 
 
-class StringSerializer(CrossLanguageCompatibleSerializer):
+class StringSerializer(XlangCompatibleSerializer):
     def __init__(self, fory, type_):
         super().__init__(fory, type_)
         self.need_to_write_ref = False
@@ -173,7 +173,7 @@ class StringSerializer(CrossLanguageCompatibleSerializer):
 _base_date = datetime.date(1970, 1, 1)
 
 
-class DateSerializer(CrossLanguageCompatibleSerializer):
+class DateSerializer(XlangCompatibleSerializer):
     def write(self, buffer, value: datetime.date):
         if not isinstance(value, datetime.date):
             raise TypeError("{} should be {} instead of {}".format(value, datetime.date, type(value)))
@@ -185,7 +185,7 @@ class DateSerializer(CrossLanguageCompatibleSerializer):
         return _base_date + datetime.timedelta(days=days)
 
 
-class TimestampSerializer(CrossLanguageCompatibleSerializer):
+class TimestampSerializer(XlangCompatibleSerializer):
     __win_platform = platform.system() == "Windows"
 
     def _get_timestamp(self, value: datetime.datetime):
@@ -464,7 +464,7 @@ class MapSerializer(Serializer):
         items_iter = iter(obj.items())
         key, value = next(items_iter)
         has_next = True
-        serialize_ref = fory.serialize_ref if self.fory.is_py else fory.xwrite_ref
+        write_ref = fory.write_ref if self.fory.is_py else fory.xwrite_ref
         while has_next:
             while True:
                 if key is not None:
@@ -480,7 +480,7 @@ class MapSerializer(Serializer):
                             self._write_obj(key_serializer, buffer, key)
                     else:
                         buffer.write_int8(VALUE_HAS_NULL | TRACKING_KEY_REF)
-                        serialize_ref(buffer, key)
+                        write_ref(buffer, key)
                 else:
                     if value is not None:
                         if value_serializer is not None:
@@ -495,7 +495,7 @@ class MapSerializer(Serializer):
                                 value_serializer.write(buffer, value)
                         else:
                             buffer.write_int8(KEY_HAS_NULL | TRACKING_VALUE_REF)
-                            serialize_ref(buffer, value)
+                            write_ref(buffer, value)
                     else:
                         buffer.write_int8(KV_NULL)
                 try:
@@ -707,7 +707,7 @@ class SliceSerializer(Serializer):
                 buffer.write_int8(NULL_FLAG)
             else:
                 buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                self.fory.serialize_nonref(buffer, start)
+                self.fory.write_no_ref(buffer, start)
         if type(stop) is int:
             # TODO support varint128
             buffer.write_int16(NOT_NULL_INT64_FLAG)
@@ -717,7 +717,7 @@ class SliceSerializer(Serializer):
                 buffer.write_int8(NULL_FLAG)
             else:
                 buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                self.fory.serialize_nonref(buffer, stop)
+                self.fory.write_no_ref(buffer, stop)
         if type(step) is int:
             # TODO support varint128
             buffer.write_int16(NOT_NULL_INT64_FLAG)
@@ -727,7 +727,7 @@ class SliceSerializer(Serializer):
                 buffer.write_int8(NULL_FLAG)
             else:
                 buffer.write_int8(NOT_NULL_VALUE_FLAG)
-                self.fory.serialize_nonref(buffer, step)
+                self.fory.write_no_ref(buffer, step)
 
     def read(self, buffer):
         if buffer.read_int8() == NULL_FLAG:

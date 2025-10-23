@@ -368,7 +368,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
         (!PRIMITIVE_TYPE_NAMES.contains(&node.name.as_str()), node)
     };
 
-    // Vec<Option<primitive>> rule stays as is
+    // `Vec<Option<primitive>>` rule stays as is
     if let Some(ts) = try_vec_of_option_primitive(base_node) {
         return ts;
     }
@@ -790,7 +790,7 @@ pub(crate) fn skip_ref_flag(ty: &Type) -> bool {
 ///
 /// According to xlang_serialization_spec.md:
 /// - Primitive fields: skip type info
-/// - Nullable primitive fields (Option<primitive>): skip type info
+/// - Nullable primitive fields (`Option<primitive>`): skip type info
 /// - Internal type fields (String, Date, arrays): skip type info
 /// - List/Set/Map fields: skip type info
 /// - Struct fields: WRITE type info

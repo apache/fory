@@ -51,11 +51,11 @@ pyx_library(
 )
 
 pyx_library(
-    name = "_serialization",
+    name = "serialization",
     srcs = glob([
         "python/pyfory/includes/*.pxd",
         "python/pyfory/_util.pxd",
-        "python/pyfory/_serialization.pyx",
+        "python/pyfory/serialization.pyx",
         "python/pyfory/__init__.py",
     ]),
     cc_kwargs = dict(
@@ -96,7 +96,7 @@ genrule(
         ":python/pyfory/_util.so",
         ":python/pyfory/lib/mmh3/mmh3.so",
         ":python/pyfory/format/_format.so",
-        ":python/pyfory/_serialization.so",
+        ":python/pyfory/serialization.so",
     ],
     outs = [
         "cp_fory_py_generated.out",
@@ -111,12 +111,12 @@ genrule(
             cp -f $(location python/pyfory/_util.so) "$$WORK_DIR/python/pyfory/_util.pyd"
             cp -f $(location python/pyfory/lib/mmh3/mmh3.so) "$$WORK_DIR/python/pyfory/lib/mmh3/mmh3.pyd"
             cp -f $(location python/pyfory/format/_format.so) "$$WORK_DIR/python/pyfory/format/_format.pyd"
-            cp -f $(location python/pyfory/_serialization.so) "$$WORK_DIR/python/pyfory/_serialization.pyd"
+            cp -f $(location python/pyfory/serialization.so) "$$WORK_DIR/python/pyfory/serialization.pyd"
         else
             cp -f $(location python/pyfory/_util.so) "$$WORK_DIR/python/pyfory"
             cp -f $(location python/pyfory/lib/mmh3/mmh3.so) "$$WORK_DIR/python/pyfory/lib/mmh3"
             cp -f $(location python/pyfory/format/_format.so) "$$WORK_DIR/python/pyfory/format"
-            cp -f $(location python/pyfory/_serialization.so) "$$WORK_DIR/python/pyfory"
+            cp -f $(location python/pyfory/serialization.so) "$$WORK_DIR/python/pyfory"
         fi
         echo $$(date) > $@
     """,
