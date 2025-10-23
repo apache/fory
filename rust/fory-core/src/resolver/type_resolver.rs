@@ -877,32 +877,28 @@ impl TypeResolver {
 }
 
 pub struct SharedTypeResolver {
-    inner: Arc<SharedTypeResolverInner>,
-}
-
-struct SharedTypeResolverInner {
-    cell: UnsafeCell<TypeResolver>,
+    inner: Arc<UnsafeCell<TypeResolver>>,
     once: Once,
 }
 
-unsafe impl Sync for SharedTypeResolverInner {}
-unsafe impl Send for SharedTypeResolverInner {}
+unsafe impl Sync for SharedTypeResolver {}
+unsafe impl Send for SharedTypeResolver {}
 
 impl SharedTypeResolver {
     pub fn new(resolver: TypeResolver) -> Self {
         Self {
-            inner: Arc::new(SharedTypeResolverInner {
-                cell: UnsafeCell::new(resolver),
-                once: Once::new(),
-            }),
+            inner: Arc::new(
+                UnsafeCell::new(resolver),
+            ),
+            once: Once::new(),
         }
     }
 
     pub fn finalize_registration(&self) -> Result<(), Error> {
         use std::cell::Cell;
         let result_cell: Cell<Option<Result<(), Error>>> = Cell::new(Some(Ok(())));
-        self.inner.once.call_once(|| {
-            let resolver_mut: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        self.once.call_once(|| {
+            let resolver_mut: &mut TypeResolver = unsafe { &mut *self.inner.get() };
             let funcs: Vec<_> = resolver_mut.registry.values().cloned().collect();
 
             for func in funcs {
@@ -919,7 +915,7 @@ impl SharedTypeResolver {
     }
 
     pub fn build(&self) -> TypeResolver {
-        let resolver_ref: &TypeResolver = unsafe { &*self.inner.cell.get() };
+        let resolver_ref: &TypeResolver = unsafe { &*self.inner.get() };
         resolver_ref.clone()
     }
 
@@ -929,7 +925,7 @@ impl SharedTypeResolver {
         &mut self,
         id: u32,
     ) -> Result<(), Error> {
-        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.get() };
         resolver.register_by_id::<T>(id)
     }
     pub fn register_by_namespace<T: StructSerializer + Serializer + ForyDefault>(
@@ -937,7 +933,7 @@ impl SharedTypeResolver {
         namespace: &str,
         type_name: &str,
     ) -> Result<(), Error> {
-        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.get() };
         resolver.register_by_namespace::<T>(namespace, type_name)
     }
 
@@ -945,7 +941,7 @@ impl SharedTypeResolver {
         &mut self,
         id: u32,
     ) -> Result<(), Error> {
-        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.get() };
         resolver.register_serializer_by_id::<T>(id)
     }
 
@@ -954,17 +950,17 @@ impl SharedTypeResolver {
         namespace: &str,
         type_name: &str,
     ) -> Result<(), Error> {
-        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.get() };
         resolver.register_serializer_by_namespace::<T>(namespace, type_name)
     }
 
     pub fn register_generic_trait<T: Serializer + ForyDefault>(&mut self) -> Result<(), Error> {
-        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.get() };
         resolver.register_generic_trait::<T>()
     }
 
     pub(crate) fn set_compatible(&mut self, compatible: bool) {
-        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.cell.get() };
+        let resolver: &mut TypeResolver = unsafe { &mut *self.inner.get() };
         resolver.set_compatible(compatible);
     }
 }
