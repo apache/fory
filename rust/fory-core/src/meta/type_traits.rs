@@ -86,7 +86,6 @@
 //! - Trait objects (`dyn Trait`) are always polymorphic
 //! - Generic structs depend on their type parameters
 
-use std::any::TypeId;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;

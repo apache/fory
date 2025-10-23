@@ -29,17 +29,6 @@
 //! 3. **Performance**: Minimal overhead for acyclic graphs
 //! 4. **Extensibility**: Support future optimizations like reference counting analysis
 //!
-//! ## Current Status
-//!
-//! **Phase 4 (Week 11-12)**: Basic infrastructure reserved
-//! - Type definitions and interfaces
-//! - Placeholder implementations
-//! - Documentation and examples
-//!
-//! **Future Phases**: Full implementation
-//! - Cycle detection algorithm
-//! - Reference graph traversal
-//! - Memory optimization strategies
 //!
 //! ## Usage Example (Future)
 //!
@@ -73,7 +62,6 @@
 //! before writing reference data.
 
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
 use std::ptr;
 
 /// Reference tracker for circular reference detection and graph management.

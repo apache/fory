@@ -32,6 +32,7 @@ mod option;
 mod primitive_list;
 mod rc;
 mod refcell;
+mod rwlock;
 mod set;
 pub mod skip;
 mod string;
