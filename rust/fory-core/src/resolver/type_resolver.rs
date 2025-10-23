@@ -869,8 +869,9 @@ impl TypeResolver {
 }
 
 pub struct SharedTypeResolver {
-    inner: Arc<UnsafeCell<TypeResolver>>,
+    inner: UnsafeCell<TypeResolver>,
     once: Once,
+    finalize_result: UnsafeCell<Option<Result<(), Error>>>,
 }
 
 unsafe impl Sync for SharedTypeResolver {}
@@ -879,29 +880,33 @@ unsafe impl Send for SharedTypeResolver {}
 impl SharedTypeResolver {
     pub fn new(resolver: TypeResolver) -> Self {
         Self {
-            inner: Arc::new(UnsafeCell::new(resolver)),
+            inner: UnsafeCell::new(resolver),
             once: Once::new(),
+            finalize_result: UnsafeCell::new(None),
         }
     }
 
     pub fn finalize_registration(&self) -> Result<(), Error> {
-        use std::cell::Cell;
-        let result_cell: Cell<Option<Result<(), Error>>> = Cell::new(Some(Ok(())));
         self.once.call_once(|| {
-            let resolver_mut: &mut TypeResolver = unsafe { &mut *self.inner.get() };
+            let resolver_mut = unsafe { &mut *self.inner.get() };
             let funcs: Vec<_> = resolver_mut.registry.values().cloned().collect();
 
+            let mut final_result = Ok(());
+
             for func in funcs {
-                let r = func(resolver_mut);
-                if r.is_err() {
-                    result_cell.set(Some(r));
-                    return;
+                if let Err(e) = func(resolver_mut) {
+                    final_result = Err(e);
+                    break;
                 }
             }
-            result_cell.set(Some(Ok(())));
+            unsafe { *self.finalize_result.get() = Some(final_result); }
         });
-
-        result_cell.into_inner().unwrap()
+        unsafe {
+            match (*self.finalize_result.get()).as_ref() {
+                Some(result) => result.clone(),
+                None => unreachable!()
+            }
+        }
     }
 
     pub fn build(&self) -> TypeResolver {

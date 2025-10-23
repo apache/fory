@@ -95,7 +95,7 @@ pub fn should_panic_on_error() -> bool {
 /// with the error message, allowing you to see the exact call stack in your debugger or
 /// panic output. Use `RUST_BACKTRACE=1` together with `FORY_PANIC_ON_ERROR` to get a full
 /// stack trace showing exactly where the error was created.
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 #[non_exhaustive]
 pub enum Error {
     /// Type mismatch between local and remote type IDs.
@@ -109,10 +109,6 @@ pub enum Error {
     /// Do not construct this variant directly; use [`Error::buffer_out_of_bound`] instead.
     #[error("Buffer out of bound: {0} + {1} > {2}")]
     BufferOutOfBound(usize, usize, usize),
-
-    /// IO error from underlying operations.
-    #[error("IO error: {0}")]
-    Io(#[from] io::Error),
 
     /// Error during data encoding.
     ///
