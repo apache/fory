@@ -36,21 +36,21 @@ def ser_de(fory, obj):
 
 @dataclass
 class SimpleObject:
-    f1: Dict[pyfory.Int32Type, pyfory.Float64Type] = None
+    f1: Dict[pyfory.int32, pyfory.float64] = None
 
 
 @dataclass
 class ComplexObject:
     f1: Any = None
     f2: Any = None
-    f3: pyfory.Int8Type = 0
-    f4: pyfory.Int16Type = 0
-    f5: pyfory.Int32Type = 0
-    f6: pyfory.Int64Type = 0
-    f7: pyfory.Float32Type = 0
-    f8: pyfory.Float64Type = 0
-    f9: List[pyfory.Int16Type] = None
-    f10: Dict[pyfory.Int32Type, pyfory.Float64Type] = None
+    f3: pyfory.int8 = 0
+    f4: pyfory.int16 = 0
+    f5: pyfory.int32 = 0
+    f6: pyfory.int64 = 0
+    f7: pyfory.float32 = 0
+    f8: pyfory.float64 = 0
+    f9: List[pyfory.int16] = None
+    f10: Dict[pyfory.int32, pyfory.float64] = None
 
 
 def test_struct():
@@ -88,12 +88,12 @@ def test_struct():
 @dataclass
 class SuperClass1:
     f1: Any = None
-    f2: pyfory.Int8Type = 0
+    f2: pyfory.int8 = 0
 
 
 @dataclass
 class ChildClass1(SuperClass1):
-    f3: Dict[str, pyfory.Float64Type] = None
+    f3: Dict[str, pyfory.float64] = None
 
 
 def test_strict():
@@ -141,20 +141,20 @@ class DataClassObject:
 def test_sort_fields():
     @dataclass
     class TestClass:
-        f1: pyfory.Int32Type
-        f2: List[pyfory.Int16Type]
-        f3: Dict[str, pyfory.Float64Type]
+        f1: pyfory.int32
+        f2: List[pyfory.int16]
+        f3: Dict[str, pyfory.float64]
         f4: str
-        f5: pyfory.Float32Type
+        f5: pyfory.float32
         f6: bytes
         f7: bool
         f8: Any
-        f9: Dict[pyfory.Int32Type, pyfory.Float64Type]
+        f9: Dict[pyfory.int32, pyfory.float64]
         f10: List[str]
-        f11: pyfory.Int8Type
-        f12: pyfory.Int64Type
-        f13: pyfory.Float64Type
-        f14: Set[pyfory.Int32Type]
+        f11: pyfory.int8
+        f12: pyfory.int64
+        f13: pyfory.float64
+        f14: Set[pyfory.int32]
         f15: datetime.datetime
 
     fory = Fory(xlang=True, ref=True)

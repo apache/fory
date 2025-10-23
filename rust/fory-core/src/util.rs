@@ -17,7 +17,10 @@
 
 use crate::types::TypeId;
 use chrono::NaiveDate;
-use std::ptr;
+use std::cell::UnsafeCell;
+use std::ops::{Deref, DerefMut};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::{ptr, thread};
 
 pub const EPOCH: NaiveDate = match NaiveDate::from_ymd_opt(1970, 1, 1) {
     None => {
@@ -128,4 +131,68 @@ pub fn get_ext_actual_type_id(type_id: u32, register_by_name: bool) -> u32 {
         } else {
             TypeId::EXT as u32
         }
+}
+
+pub struct Spinlock<T> {
+    data: UnsafeCell<T>,
+    flag: AtomicBool,
+}
+
+unsafe impl<T: Send> Send for Spinlock<T> {}
+unsafe impl<T: Sync> Sync for Spinlock<T> {}
+
+impl<T> Spinlock<T> {
+    pub fn new(data: T) -> Self {
+        Spinlock {
+            data: UnsafeCell::new(data),
+            flag: AtomicBool::new(false),
+        }
+    }
+
+    pub fn lock(&self) -> SpinlockGuard<'_, T> {
+        let mut spins = 0;
+        while self
+            .flag
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            // Spin for a few iterations
+            if spins < 10 {
+                std::hint::spin_loop();
+                spins += 1;
+            } else {
+                // Then yield to the scheduler
+                thread::yield_now();
+                spins = 0; // reset spin counter
+            }
+        }
+        SpinlockGuard { lock: self }
+    }
+
+    fn unlock(&self) {
+        self.flag.store(false, Ordering::Release);
+    }
+}
+
+pub struct SpinlockGuard<'a, T> {
+    lock: &'a Spinlock<T>,
+}
+
+impl<'a, T> Drop for SpinlockGuard<'a, T> {
+    fn drop(&mut self) {
+        self.lock.unlock();
+    }
+}
+
+impl<'a, T> Deref for SpinlockGuard<'a, T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.lock.data.get() }
+    }
+}
+
+impl<'a, T> DerefMut for SpinlockGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.lock.data.get() }
+    }
 }

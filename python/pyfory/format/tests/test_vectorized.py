@@ -37,7 +37,7 @@ def test_vectorized():
         ],
         metadata={"cls": fory.get_qualified_classname(cls)},
     )
-    writer = fory.ArrowWriter(schema)
+    writer = fory.format.ArrowWriter(schema)
     encoder = fory.create_row_encoder(schema)
     num_rows = 10
     data = [[] for _ in range(len(field_names))]
@@ -73,7 +73,7 @@ def test_vectorized_map():
         metadata={"cls": fory.get_qualified_classname(cls)},
     )
     print(schema)
-    writer = fory.ArrowWriter(schema)
+    writer = fory.format.ArrowWriter(schema)
     encoder = fory.create_row_encoder(schema)
     num_rows = 5
     data = []

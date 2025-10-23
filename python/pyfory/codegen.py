@@ -110,16 +110,16 @@ def compile_function(
     from pyfory import ENABLE_FORY_CYTHON_SERIALIZATION
 
     if ENABLE_FORY_CYTHON_SERIALIZATION:
-        from pyfory import _serialization
+        from pyfory import serialization
 
-        context["write_nullable_pybool"] = _serialization.write_nullable_pybool
-        context["read_nullable_pybool"] = _serialization.read_nullable_pybool
-        context["write_nullable_pyint64"] = _serialization.write_nullable_pyint64
-        context["read_nullable_pyint64"] = _serialization.read_nullable_pyint64
-        context["write_nullable_pyfloat64"] = _serialization.write_nullable_pyfloat64
-        context["read_nullable_pyfloat64"] = _serialization.read_nullable_pyfloat64
-        context["write_nullable_pystr"] = _serialization.write_nullable_pystr
-        context["read_nullable_pystr"] = _serialization.read_nullable_pystr
+        context["write_nullable_pybool"] = serialization.write_nullable_pybool
+        context["read_nullable_pybool"] = serialization.read_nullable_pybool
+        context["write_nullable_pyint64"] = serialization.write_nullable_pyint64
+        context["read_nullable_pyint64"] = serialization.read_nullable_pyint64
+        context["write_nullable_pyfloat64"] = serialization.write_nullable_pyfloat64
+        context["read_nullable_pyfloat64"] = serialization.read_nullable_pyfloat64
+        context["write_nullable_pystr"] = serialization.write_nullable_pystr
+        context["read_nullable_pystr"] = serialization.read_nullable_pystr
     stmts = [f"{ident(statement)}" for statement in stmts]
     # Sanitize the function name to ensure it is valid Python syntax
     sanitized_function_name = _sanitize_function_name(function_name)

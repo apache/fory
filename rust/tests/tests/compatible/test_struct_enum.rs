@@ -18,10 +18,10 @@
 use chrono::{NaiveDate, NaiveDateTime};
 use fory_core::buffer::{Reader, Writer};
 use fory_core::error::Error;
-use fory_core::fory::{read_data, write_data, Fory};
 use fory_core::resolver::context::{ReadContext, WriteContext};
 use fory_core::serializer::{ForyDefault, Serializer};
 use fory_core::TypeResolver;
+use fory_core::{read_data, write_data, Fory};
 use fory_derive::ForyObject;
 use std::collections::{HashMap, HashSet};
 
@@ -97,24 +97,26 @@ fn basic() {
         let writer = Writer::default();
         let mut write_context = WriteContext::new_from_fory(writer, &fory);
         let person = Person::default();
-        fory.serialize_with_context(&person, &mut write_context)
+        let bytes1 = fory
+            .serialize_with_context(&person, &mut write_context)
             .unwrap();
-        fory.serialize_with_context(&person, &mut write_context)
+        let bytes2 = fory
+            .serialize_with_context(&person, &mut write_context)
             .unwrap();
-        let bytes = write_context.writer.dump();
-        let reader = Reader::new(bytes.as_slice());
-        let mut read_context = ReadContext::new_from_fory(reader, &fory);
+        let reader1 = Reader::new(bytes1.as_slice());
+        let mut read_context1 = ReadContext::new_from_fory(reader1, &fory);
         assert_eq!(
             person,
-            fory.deserialize_with_context::<Person>(&mut read_context)
+            fory.deserialize_with_context::<Person>(&mut read_context1)
                 .unwrap()
         );
+        let reader2 = Reader::new(bytes2.as_slice());
+        let mut read_context2 = ReadContext::new_from_fory(reader2, &fory);
         assert_eq!(
             person,
-            fory.deserialize_with_context::<Person>(&mut read_context)
+            fory.deserialize_with_context::<Person>(&mut read_context2)
                 .unwrap()
         );
-        assert_eq!(read_context.reader.slice_after_cursor().len(), 0);
     }
 }
 

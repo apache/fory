@@ -33,6 +33,7 @@ const MAX_PARSED_NUM_TYPE_DEFS: usize = 8192;
 
 #[allow(dead_code)]
 impl MetaWriterResolver {
+    #[inline(always)]
     pub fn push(
         &mut self,
         type_id: std::any::TypeId,
@@ -50,6 +51,7 @@ impl MetaWriterResolver {
         }
     }
 
+    #[inline(always)]
     pub fn to_bytes(&self, writer: &mut Writer) {
         writer.write_varuint32(self.type_defs.len() as u32);
         for item in &self.type_defs {
@@ -57,10 +59,12 @@ impl MetaWriterResolver {
         }
     }
 
+    #[inline(always)]
     pub fn empty(&mut self) -> bool {
         self.type_defs.is_empty()
     }
 
+    #[inline(always)]
     pub fn reset(&mut self) {
         self.type_defs.clear();
         self.type_id_index_map.clear();
@@ -74,6 +78,7 @@ pub struct MetaReaderResolver {
 }
 
 impl MetaReaderResolver {
+    #[inline(always)]
     pub fn get(&self, index: usize) -> Option<&Rc<TypeInfo>> {
         self.reading_type_infos.get(index)
     }
@@ -140,6 +145,7 @@ impl MetaReaderResolver {
         Ok(reader.get_cursor())
     }
 
+    #[inline(always)]
     pub fn reset(&mut self) {
         self.reading_type_infos.clear();
     }

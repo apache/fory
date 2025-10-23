@@ -379,4 +379,104 @@ public class StringEncodingUtils {
     dst[dp + 2] = (byte) (0x80 | ((uc >> 6) & 0x3f));
     dst[dp + 3] = (byte) (0x80 | (uc & 0x3f));
   }
+
+  /**
+   * Fast scan to check if UTF-8 data fits in Latin1 encoding (all code points <= 0xFF). This is a
+   * read-only pass optimized for cache locality.
+   */
+  public static boolean isUTF8WithinLatin1(byte[] src, int offset, int length) {
+    final int end = offset + length;
+
+    while (offset < end) {
+      int b0 = src[offset++] & 0xFF;
+
+      if (b0 < 0x80) {
+        // 1-byte UTF-8 (ASCII) - always Latin1
+        continue;
+      } else if ((b0 >> 5) == 0b110 && (b0 & 0x1e) != 0) {
+        // 2-byte UTF-8
+        if (offset >= end) {
+          return false; // Malformed
+        }
+        int b1 = src[offset++] & 0xFF;
+        if ((b1 & 0xc0) != 0x80) {
+          return false; // Malformed
+        }
+        int codePoint = ((b0 & 0x1F) << 6) | (b1 & 0x3F);
+        if (codePoint > 0xFF) {
+          return false; // Beyond Latin1
+        }
+      } else {
+        // 3-byte or 4-byte UTF-8 - definitely not Latin1
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  /** Fast UTF-8 to Latin1 conversion. Assumes scanUTF8IsLatin1 already validated the input. */
+  public static int convertUTF8ToLatin1(byte[] src, int offset, int length, byte[] dst) {
+    final int end = offset + length;
+    int dstPos = 0;
+
+    while (offset < end) {
+      // Vectorized ASCII fast path
+      if (offset + 8 <= end
+          && (Platform.getLong(src, Platform.BYTE_ARRAY_OFFSET + offset) & 0x8080808080808080L)
+              == 0) {
+        // 8 ASCII bytes - direct copy
+        dst[dstPos] = src[offset];
+        dst[dstPos + 1] = src[offset + 1];
+        dst[dstPos + 2] = src[offset + 2];
+        dst[dstPos + 3] = src[offset + 3];
+        dst[dstPos + 4] = src[offset + 4];
+        dst[dstPos + 5] = src[offset + 5];
+        dst[dstPos + 6] = src[offset + 6];
+        dst[dstPos + 7] = src[offset + 7];
+        dstPos += 8;
+        offset += 8;
+        continue;
+      }
+
+      int b0 = src[offset++] & 0xFF;
+
+      if (b0 < 0x80) {
+        // 1-byte UTF-8 (ASCII)
+        dst[dstPos++] = (byte) b0;
+      } else {
+        // 2-byte UTF-8 (already validated to be Latin1)
+        int b1 = src[offset++] & 0xFF;
+        int codePoint = ((b0 & 0x1F) << 6) | (b1 & 0x3F);
+        dst[dstPos++] = (byte) codePoint;
+      }
+    }
+
+    return dstPos;
+  }
+
+  /**
+   * Vectorized ASCII check - processes 8 bytes at a time. Returns true if all bytes are ASCII (high
+   * bit not set).
+   */
+  public static boolean isUTF8WithinAscii(byte[] bytes, int offset, int length) {
+    final int end = offset + length;
+    int vectorizedEnd = offset + ((length >> 3) << 3);
+
+    // Check 8 bytes at a time
+    for (int i = offset; i < vectorizedEnd; i += 8) {
+      if ((Platform.getLong(bytes, Platform.BYTE_ARRAY_OFFSET + i) & 0x8080808080808080L) != 0) {
+        return false;
+      }
+    }
+
+    // Check remaining bytes
+    for (int i = vectorizedEnd; i < end; i++) {
+      if (bytes[i] < 0) {
+        return false;
+      }
+    }
+
+    return true;
+  }
 }

@@ -108,6 +108,7 @@ public final class StringSerializer extends ImmutableSerializer<String> {
 
   private final boolean compressString;
   private final boolean writeNumUtf16BytesForUtf8Encoding;
+  private final boolean xlang;
   private byte[] byteArray = new byte[DEFAULT_BUFFER_SIZE];
   private int smoothByteArrayLength = DEFAULT_BUFFER_SIZE;
   private char[] charArray = new char[16];
@@ -117,6 +118,10 @@ public final class StringSerializer extends ImmutableSerializer<String> {
   public StringSerializer(Fory fory) {
     super(fory, String.class, fory.trackingRef() && !fory.isStringRefIgnored());
     compressString = fory.compressString();
+    xlang = fory.isCrossLanguage();
+    if (xlang) {
+      Preconditions.checkArgument(compressString, "compress string muse be enabled for xlang mode");
+    }
     writeNumUtf16BytesForUtf8Encoding = fory.getConfig().writeNumUtf16BytesForUtf8Encoding();
   }
 
@@ -225,6 +230,9 @@ public final class StringSerializer extends ImmutableSerializer<String> {
       if (writeNumUtf16BytesForUtf8Encoding) {
         data = readBytesUTF8PerfOptimized(buffer, numBytes);
       } else {
+        if (xlang) {
+          return readBytesUTF8ForXlang(buffer, numBytes);
+        }
         data = readBytesUTF8(buffer, numBytes);
       }
       return newBytesStringZeroCopy(UTF16, data);
@@ -232,6 +240,65 @@ public final class StringSerializer extends ImmutableSerializer<String> {
       return newBytesStringZeroCopy(coder, readBytesUnCompressedUTF16(buffer, numBytes));
     } else {
       throw new RuntimeException("Unknown coder type " + coder);
+    }
+  }
+
+  // the utf8 data may can be encoded with latin1, so the read need to check whether it can be
+  // encoded by latin1, if true, the coder should be latin1 instead of utf16
+  String readBytesUTF8ForXlang(MemoryBuffer buffer, int numBytes) {
+    buffer.checkReadableBytes(numBytes);
+    byte[] srcArray = buffer.getHeapMemory();
+
+    if (srcArray != null) {
+      int srcIndex = buffer._unsafeHeapReaderIndex();
+
+      // Fast path: vectorized ASCII check (8 bytes at a time)
+      if (StringEncodingUtils.isUTF8WithinAscii(srcArray, srcIndex, numBytes)) {
+        byte[] result = new byte[numBytes];
+        System.arraycopy(srcArray, srcIndex, result, 0, numBytes);
+        buffer._increaseReaderIndexUnsafe(numBytes);
+        return newBytesStringZeroCopy(LATIN1, result);
+      }
+
+      // Two-pass approach: scan first, then convert
+      boolean isLatin1 = StringEncodingUtils.isUTF8WithinLatin1(srcArray, srcIndex, numBytes);
+      buffer._increaseReaderIndexUnsafe(numBytes);
+
+      if (isLatin1) {
+        byte[] latin1Buffer = getByteArray(numBytes);
+        int latin1Len =
+            StringEncodingUtils.convertUTF8ToLatin1(srcArray, srcIndex, numBytes, latin1Buffer);
+        return newBytesStringZeroCopy(LATIN1, Arrays.copyOf(latin1Buffer, latin1Len));
+      } else {
+        byte[] utf16Buffer = getByteArray(numBytes << 1);
+        int utf16Len =
+            StringEncodingUtils.convertUTF8ToUTF16(srcArray, srcIndex, numBytes, utf16Buffer);
+        return newBytesStringZeroCopy(UTF16, Arrays.copyOf(utf16Buffer, utf16Len));
+      }
+    } else {
+      // Off-heap path
+      byte[] srcBytes = getByteArray2(numBytes);
+      buffer.readBytes(srcBytes, 0, numBytes);
+
+      // Fast path: vectorized ASCII check
+      if (StringEncodingUtils.isUTF8WithinAscii(srcBytes, 0, numBytes)) {
+        // Must copy to exact size since srcBytes is a reusable buffer
+        return newBytesStringZeroCopy(LATIN1, Arrays.copyOf(srcBytes, numBytes));
+      }
+
+      // Two-pass approach: scan first, then convert
+      boolean isLatin1 = StringEncodingUtils.isUTF8WithinLatin1(srcBytes, 0, numBytes);
+
+      if (isLatin1) {
+        byte[] latin1Buffer = getByteArray(numBytes);
+        int latin1Len =
+            StringEncodingUtils.convertUTF8ToLatin1(srcBytes, 0, numBytes, latin1Buffer);
+        return newBytesStringZeroCopy(LATIN1, Arrays.copyOf(latin1Buffer, latin1Len));
+      } else {
+        byte[] utf16Buffer = getByteArray(numBytes << 1);
+        int utf16Len = StringEncodingUtils.convertUTF8ToUTF16(srcBytes, 0, numBytes, utf16Buffer);
+        return newBytesStringZeroCopy(UTF16, Arrays.copyOf(utf16Buffer, utf16Len));
+      }
     }
   }
 

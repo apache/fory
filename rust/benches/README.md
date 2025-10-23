@@ -1,7 +1,7 @@
 ## How to generate flamegraph
 
 ```bash
-cargo flamegraph --bin fory_profiler -- --operation deserialize --serializer fory
+cargo flamegraph --bin fory_profiler -- --operation deserialize --serializer fory -t e-commerce-data
 ```
 
 detailed command:

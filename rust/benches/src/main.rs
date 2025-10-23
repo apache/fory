@@ -17,6 +17,9 @@
 
 use clap::{Parser, ValueEnum};
 use fory_benchmarks::models::complex::ECommerceData;
+use fory_benchmarks::models::medium::{Company, Person};
+use fory_benchmarks::models::realworld::SystemData;
+use fory_benchmarks::models::simple::{SimpleList, SimpleMap, SimpleStruct};
 use fory_benchmarks::models::TestDataGenerator;
 use fory_benchmarks::serializers::fory::ForySerializer;
 use fory_benchmarks::serializers::protobuf::ProtobufSerializer;
@@ -33,6 +36,17 @@ pub enum Operation {
 pub enum SerializerType {
     Protobuf,
     Fory,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum DataType {
+    SimpleStruct,
+    SimpleList,
+    SimpleMap,
+    Person,
+    Company,
+    ECommerceData,
+    SystemData,
 }
 
 #[derive(Parser)]
@@ -54,6 +68,10 @@ struct Cli {
     /// Data size to use (small, medium, large)
     #[arg(short, long, default_value = "large")]
     data_size: String,
+
+    /// Data type to profile
+    #[arg(short = 't', long, value_enum, default_value = "e-commerce-data")]
+    data_type: DataType,
 }
 
 fn profile<T, S>(num_iterations: usize, data: &T, serializer: &S, operation: Operation)
@@ -117,38 +135,79 @@ where
     println!("Profiling complete! Ran {} iterations", num_iterations);
 }
 
+fn profile_with_serializer<T>(
+    num_iterations: usize,
+    data: &T,
+    serializer_type: SerializerType,
+    operation: Operation,
+) where
+    T: Clone,
+    ProtobufSerializer: Serializer<T>,
+    ForySerializer: Serializer<T>,
+{
+    match serializer_type {
+        SerializerType::Protobuf => {
+            let serializer = ProtobufSerializer::new();
+            profile(num_iterations, data, &serializer, operation);
+        }
+        SerializerType::Fory => {
+            let serializer = ForySerializer::new();
+            profile(num_iterations, data, &serializer, operation);
+        }
+    }
+}
+
+fn generate_data<T: TestDataGenerator>(data_size: &str) -> T::Data {
+    match data_size {
+        "small" => T::generate_small(),
+        "medium" => T::generate_medium(),
+        "large" => T::generate_large(),
+        _ => {
+            eprintln!("Invalid data size: {}. Using 'large' instead.", data_size);
+            T::generate_large()
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
     println!("Starting profiling...");
     println!("Operation: {:?}", cli.operation);
     println!("Serializer: {:?}", cli.serializer);
+    println!("Data type: {:?}", cli.data_type);
     println!("Iterations: {}", cli.iterations);
     println!("Data size: {}", cli.data_size);
 
-    // Generate data based on size parameter
-    let data = match cli.data_size.as_str() {
-        "small" => ECommerceData::generate_small(),
-        "medium" => ECommerceData::generate_medium(),
-        "large" => ECommerceData::generate_large(),
-        _ => {
-            eprintln!(
-                "Invalid data size: {}. Using 'large' instead.",
-                cli.data_size
-            );
-            ECommerceData::generate_large()
+    // Generate data and profile based on data type
+    match cli.data_type {
+        DataType::SimpleStruct => {
+            let data = generate_data::<SimpleStruct>(&cli.data_size);
+            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
         }
-    };
-
-    // Create serializer based on type
-    match cli.serializer {
-        SerializerType::Protobuf => {
-            let serializer = ProtobufSerializer::new();
-            profile(cli.iterations, &data, &serializer, cli.operation);
+        DataType::SimpleList => {
+            let data = generate_data::<SimpleList>(&cli.data_size);
+            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
         }
-        SerializerType::Fory => {
-            let serializer = ForySerializer::new();
-            profile(cli.iterations, &data, &serializer, cli.operation);
+        DataType::SimpleMap => {
+            let data = generate_data::<SimpleMap>(&cli.data_size);
+            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
+        }
+        DataType::Person => {
+            let data = generate_data::<Person>(&cli.data_size);
+            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
+        }
+        DataType::Company => {
+            let data = generate_data::<Company>(&cli.data_size);
+            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
+        }
+        DataType::ECommerceData => {
+            let data = generate_data::<ECommerceData>(&cli.data_size);
+            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
+        }
+        DataType::SystemData => {
+            let data = generate_data::<SystemData>(&cli.data_size);
+            profile_with_serializer(cli.iterations, &data, cli.serializer, cli.operation);
         }
     }
 

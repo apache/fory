@@ -26,8 +26,8 @@ use crate::resolver::ref_resolver::{RefReader, RefWriter};
 use crate::resolver::serialization_context::SerializationContext;
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types;
+use crate::util::Spinlock;
 use std::rc::Rc;
-use std::sync::Mutex;
 
 /// Serialization state container used on a single thread at a time.
 /// Sharing the same instance across threads simultaneously causes undefined behavior.
@@ -420,6 +420,7 @@ impl ReadContext {
         self.type_resolver.get_type_info(type_id)
     }
 
+    #[inline(always)]
     pub fn read_meta_string(&mut self) -> Result<&MetaString, Error> {
         self.meta_string_resolver.read_meta_string(&mut self.reader)
     }
@@ -453,7 +454,7 @@ impl ReadContext {
 }
 
 pub struct Pool<T> {
-    items: Mutex<Vec<T>>,
+    items: Spinlock<Vec<T>>,
     factory: Box<dyn Fn() -> T + Send + Sync>,
 }
 
@@ -463,26 +464,19 @@ impl<T> Pool<T> {
         F: Fn() -> T + Send + Sync + 'static,
     {
         Pool {
-            items: Mutex::new(vec![]),
+            items: Spinlock::new(vec![]),
             factory: Box::new(factory),
         }
     }
 
     #[inline(always)]
     pub fn get(&self) -> T {
-        let item = self
-            .items
-            .lock()
-            .unwrap()
-            .pop()
-            .unwrap_or_else(|| (self.factory)());
-        // println!("Object address: {:p}", &item);
-        item
+        self.items.lock().pop().unwrap_or_else(|| (self.factory)())
     }
 
     // put back manually
     #[inline(always)]
     pub fn put(&self, item: T) {
-        self.items.lock().unwrap().push(item);
+        self.items.lock().push(item);
     }
 }

@@ -155,10 +155,9 @@ fn debug_hooks_trigger_for_struct() {
     fory_compat.register::<DebugSample>(4001).unwrap();
     let writer = Writer::default();
     let mut write_ctx = WriteContext::new_from_fory(writer, &fory_compat);
-    fory_compat
+    let compat_bytes = fory_compat
         .serialize_with_context(&sample, &mut write_ctx)
         .unwrap();
-    let compat_bytes = write_ctx.writer.dump();
     let reader = Reader::new(compat_bytes.as_slice());
     let mut read_ctx = ReadContext::new_from_fory(reader, &fory_compat);
     let _: DebugSample = fory_compat.deserialize_with_context(&mut read_ctx).unwrap();

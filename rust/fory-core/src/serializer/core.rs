@@ -246,6 +246,7 @@ pub trait Serializer: 'static {
     /// [`fory_write_data`]: Serializer::fory_write_data
     /// [`fory_write_type_info`]: Serializer::fory_write_type_info
     /// [`fory_write_data_generic`]: Serializer::fory_write_data_generic
+    #[inline(always)]
     fn fory_write(
         &self,
         context: &mut WriteContext,
@@ -304,6 +305,7 @@ pub trait Serializer: 'static {
     /// - Focus on implementing [`fory_write_data`] for custom types
     ///
     /// [`fory_write_data`]: Serializer::fory_write_data
+    #[inline(always)]
     #[allow(unused_variables)]
     fn fory_write_data_generic(
         &self,
@@ -574,6 +576,7 @@ pub trait Serializer: 'static {
     /// [`fory_read_data`]: Serializer::fory_read_data
     /// [`fory_read_type_info`]: Serializer::fory_read_type_info
     /// [`fory_write`]: Serializer::fory_write
+    #[inline(always)]
     fn fory_read(
         context: &mut ReadContext,
         read_ref_info: bool,
@@ -658,6 +661,7 @@ pub trait Serializer: 'static {
     /// - User types with custom serialization rarely need to override this
     ///
     /// [`fory_read`]: Serializer::fory_read
+    #[inline(always)]
     #[allow(unused_variables)]
     fn fory_read_with_type_info(
         context: &mut ReadContext,
@@ -1363,6 +1367,7 @@ pub trait StructSerializer: Serializer + 'static {
     /// - Default delegates to `struct_::actual_type_id`
     /// - Handles type ID transformations for compatibility
     /// - **Do not override** for user types with custom serialization (EXT types)
+    #[inline(always)]
     fn fory_actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) -> u32 {
         struct_::actual_type_id(type_id, register_by_name, compatible)
     }
@@ -1426,4 +1431,22 @@ pub trait StructSerializer: Serializer + 'static {
     ) -> Result<Self, Error>
     where
         Self: Sized;
+}
+
+/// Serializes an object implementing `Serializer` to the write context.
+///
+/// This is a convenience wrapper around `T::fory_write_data` that delegates to the type's
+/// serialization implementation.
+#[inline(always)]
+pub fn write_data<T: Serializer>(this: &T, context: &mut WriteContext) -> Result<(), Error> {
+    T::fory_write_data(this, context)
+}
+
+/// Deserializes an object implementing `Serializer` from the read context.
+///
+/// This is a convenience wrapper around `T::fory_read_data` that delegates to the type's
+/// deserialization implementation. Requires `ForyDefault` for instance creation.
+#[inline(always)]
+pub fn read_data<T: Serializer + ForyDefault>(context: &mut ReadContext) -> Result<T, Error> {
+    T::fory_read_data(context)
 }

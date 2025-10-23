@@ -232,22 +232,22 @@ __NAMESPACED_TYPES__ = {
     TypeId.NAMED_STRUCT,
     TypeId.NAMED_COMPATIBLE_STRUCT,
 }
-Int8Type = TypeVar("Int8Type", bound=int)
-Int16Type = TypeVar("Int16Type", bound=int)
-Int32Type = TypeVar("Int32Type", bound=int)
-Int64Type = TypeVar("Int64Type", bound=int)
-Float32Type = TypeVar("Float32Type", bound=float)
-Float64Type = TypeVar("Float64Type", bound=float)
+int8 = TypeVar("int8", bound=int)
+int16 = TypeVar("int16", bound=int)
+int32 = TypeVar("int32", bound=int)
+int64 = TypeVar("int64", bound=int)
+float32 = TypeVar("float32", bound=float)
+float64 = TypeVar("float64", bound=float)
 
 _primitive_types = {
     int,
     float,
-    Int8Type,
-    Int16Type,
-    Int32Type,
-    Int64Type,
-    Float32Type,
-    Float64Type,
+    int8,
+    int16,
+    int32,
+    int64,
+    float32,
+    float64,
 }
 
 _primitive_types_ids = {
@@ -291,11 +291,11 @@ def get_primitive_type_size(type_id) -> int:
 
 # Int8ArrayType = TypeVar("Int8ArrayType", bound=array.ArrayType)
 BoolArrayType = TypeVar("BoolArrayType")
-Int16ArrayType = TypeVar("Int16ArrayType", bound=array.ArrayType)
-Int32ArrayType = TypeVar("Int32ArrayType", bound=array.ArrayType)
-Int64ArrayType = TypeVar("Int64ArrayType", bound=array.ArrayType)
-Float32ArrayType = TypeVar("Float32ArrayType", bound=array.ArrayType)
-Float64ArrayType = TypeVar("Float64ArrayType", bound=array.ArrayType)
+int16_array = TypeVar("int16_array", bound=array.ArrayType)
+int32_array = TypeVar("int32_array", bound=array.ArrayType)
+int64_array = TypeVar("int64_array", bound=array.ArrayType)
+float32_array = TypeVar("float32_array", bound=array.ArrayType)
+float64_array = TypeVar("float64_array", bound=array.ArrayType)
 BoolNDArrayType = TypeVar("BoolNDArrayType", bound=ndarray)
 Int16NDArrayType = TypeVar("Int16NDArrayType", bound=ndarray)
 Int32NDArrayType = TypeVar("Int32NDArrayType", bound=ndarray)
@@ -306,11 +306,11 @@ Float64NDArrayType = TypeVar("Float64NDArrayType", bound=ndarray)
 
 _py_array_types = {
     # Int8ArrayType,
-    Int16ArrayType,
-    Int32ArrayType,
-    Int64ArrayType,
-    Float32ArrayType,
-    Float64ArrayType,
+    int16_array,
+    int32_array,
+    int64_array,
+    float32_array,
+    float64_array,
 }
 _np_array_types = {
     BoolNDArrayType,

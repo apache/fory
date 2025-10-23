@@ -27,53 +27,55 @@ use crate::types::TypeId;
 macro_rules! impl_num_serializer {
     ($ty:ty, $writer:expr, $reader:expr, $field_type:expr) => {
         impl Serializer for $ty {
-            #[inline]
+            #[inline(always)]
             fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
                 $writer(&mut context.writer, *self);
                 Ok(())
             }
 
-            #[inline]
+            #[inline(always)]
             fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
                 $reader(&mut context.reader)
             }
 
-            #[inline]
+            #[inline(always)]
             fn fory_reserved_space() -> usize {
                 std::mem::size_of::<$ty>()
             }
 
-            #[inline]
+            #[inline(always)]
             fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
                 Ok($field_type as u32)
             }
 
+            #[inline(always)]
             fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
                 Ok($field_type as u32)
             }
 
+            #[inline(always)]
             fn fory_static_type_id() -> TypeId {
                 $field_type
             }
 
-            #[inline]
+            #[inline(always)]
             fn as_any(&self) -> &dyn std::any::Any {
                 self
             }
 
-            #[inline]
+            #[inline(always)]
             fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
                 context.writer.write_varuint32($field_type as u32);
                 Ok(())
             }
 
-            #[inline]
+            #[inline(always)]
             fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
                 read_basic_type_info::<Self>(context)
             }
         }
         impl ForyDefault for $ty {
-            #[inline]
+            #[inline(always)]
             fn fory_default() -> Self {
                 0 as $ty
             }
