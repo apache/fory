@@ -20,7 +20,7 @@ use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::WriteContext;
 use crate::resolver::context::{Pool, ReadContext};
-use crate::resolver::type_resolver::{TypeResolver, SharedTypeResolver};
+use crate::resolver::type_resolver::{SharedTypeResolver, TypeResolver};
 use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::IS_NULL_FLAG;

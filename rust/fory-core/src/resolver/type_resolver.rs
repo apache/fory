@@ -24,11 +24,11 @@ use crate::meta::{
 use crate::serializer::{ForyDefault, Serializer, StructSerializer};
 use crate::util::get_ext_actual_type_id;
 use crate::{Reader, TypeId};
+use std::cell::UnsafeCell;
 use std::collections::{HashSet, LinkedList};
 use std::rc::Rc;
-use std::{any::Any, collections::HashMap};
-use std::cell::UnsafeCell;
 use std::sync::{Arc, Once};
+use std::{any::Any, collections::HashMap};
 
 type WriteFn = fn(
     &dyn Any,
@@ -476,10 +476,7 @@ impl TypeResolver {
     ) -> Result<(), Error> {
         let type_id = std::any::TypeId::of::<T>();
         let actual_type_id = T::fory_actual_type_id(id, false, self.compatible);
-        self.actual_type_id_map.insert(
-            type_id,
-            actual_type_id
-        );
+        self.actual_type_id_map.insert(type_id, actual_type_id);
         self.registry.insert(
             type_id,
             Arc::new(move |s: &mut Self| s.register::<T>(id, &EMPTY_STRING, &EMPTY_STRING)),
@@ -494,10 +491,7 @@ impl TypeResolver {
     ) -> Result<(), Error> {
         let type_id = std::any::TypeId::of::<T>();
         let actual_type_id = T::fory_actual_type_id(0, true, self.compatible);
-        self.actual_type_id_map.insert(
-            type_id,
-            actual_type_id,
-        );
+        self.actual_type_id_map.insert(type_id, actual_type_id);
         let namespace = namespace.to_string();
         let type_name = type_name.to_string();
         self.registry.insert(
@@ -664,13 +658,12 @@ impl TypeResolver {
             ));
         }
         let type_id = std::any::TypeId::of::<T>();
-        self.actual_type_id_map.insert(
-            type_id,
-            actual_type_id,
-        );
+        self.actual_type_id_map.insert(type_id, actual_type_id);
         self.registry.insert(
             type_id,
-            Arc::new(move |s: &mut Self| s.register_serializer::<T>(id, actual_type_id, &EMPTY_STRING, &EMPTY_STRING)),
+            Arc::new(move |s: &mut Self| {
+                s.register_serializer::<T>(id, actual_type_id, &EMPTY_STRING, &EMPTY_STRING)
+            }),
         );
         Ok(())
     }
@@ -688,15 +681,14 @@ impl TypeResolver {
             ));
         }
         let type_id = std::any::TypeId::of::<T>();
-        self.actual_type_id_map.insert(
-            type_id,
-            actual_type_id,
-        );
+        self.actual_type_id_map.insert(type_id, actual_type_id);
         let namespace = namespace.to_string();
         let type_name = type_name.to_string();
         self.registry.insert(
             type_id,
-            Arc::new(move |s: &mut Self| s.register_serializer::<T>(0, actual_type_id, &namespace, &type_name)),
+            Arc::new(move |s: &mut Self| {
+                s.register_serializer::<T>(0, actual_type_id, &namespace, &type_name)
+            }),
         );
         Ok(())
     }
@@ -887,9 +879,7 @@ unsafe impl Send for SharedTypeResolver {}
 impl SharedTypeResolver {
     pub fn new(resolver: TypeResolver) -> Self {
         Self {
-            inner: Arc::new(
-                UnsafeCell::new(resolver),
-            ),
+            inner: Arc::new(UnsafeCell::new(resolver)),
             once: Once::new(),
         }
     }
@@ -918,8 +908,6 @@ impl SharedTypeResolver {
         let resolver_ref: &TypeResolver = unsafe { &*self.inner.get() };
         resolver_ref.clone()
     }
-
-
 
     pub fn register_by_id<T: StructSerializer + Serializer + ForyDefault>(
         &mut self,
