@@ -19,11 +19,10 @@
 
 package org.apache.fory.io;
 
-import org.testng.Assert;
-import org.testng.annotations.Test;
-
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import org.testng.Assert;
+import org.testng.annotations.Test;
 
 public class ForyInputStreamTest {
 
