@@ -29,7 +29,7 @@ public class ForyInputStreamTest {
 
   @Test
   public void testFillBufferIndexOutOfBoundsException() throws IOException {
-    try (ForyInputStream in = new ForyInputStream(new ByteArrayInputStream(new byte[0])) ) {
+    try (ForyInputStream in = new ForyInputStream(new ByteArrayInputStream(new byte[0]))) {
       try {
         in.fillBuffer(1);
         Assert.fail("Expected IndexOutOfBoundsException to be thrown");
@@ -41,7 +41,7 @@ public class ForyInputStreamTest {
 
   @Test
   public void testReadToIndexOutOfBoundsException() throws IOException {
-    try (ForyInputStream in = new ForyInputStream(new ByteArrayInputStream(new byte[0])) ) {
+    try (ForyInputStream in = new ForyInputStream(new ByteArrayInputStream(new byte[0]))) {
       try {
         in.readTo(new byte[10], 0, 10);
         Assert.fail("Expected IndexOutOfBoundsException to be thrown");
