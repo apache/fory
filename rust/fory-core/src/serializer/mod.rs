@@ -20,6 +20,7 @@ mod arc;
 mod bool;
 mod box_;
 pub mod collection;
+pub mod context_aware;
 mod datetime;
 pub mod enum_;
 mod heap;
@@ -41,4 +42,5 @@ pub mod weak;
 
 mod core;
 pub use any::{read_box_any, write_box_any};
+pub use context_aware::{ContextAwareSerializer, MetadataFlags};
 pub use core::{ForyDefault, Serializer, StructSerializer};

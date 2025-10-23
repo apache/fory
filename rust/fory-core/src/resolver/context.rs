@@ -23,6 +23,7 @@ use crate::meta::MetaString;
 use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
 use crate::resolver::metastring_resolver::{MetaStringReaderResolver, MetaStringWriterResolver};
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
+use crate::resolver::serialization_context::SerializationContext;
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types;
 use std::rc::Rc;
@@ -44,6 +45,9 @@ pub struct WriteContext {
     meta_resolver: MetaWriterResolver,
     meta_string_resolver: MetaStringWriterResolver,
     pub ref_writer: RefWriter,
+    
+    // Serialization context stack for context-aware optimization
+    context_stack: Vec<SerializationContext>,
 }
 
 impl WriteContext {
@@ -67,6 +71,7 @@ impl WriteContext {
             meta_resolver: MetaWriterResolver::default(),
             meta_string_resolver: MetaStringWriterResolver::default(),
             ref_writer: RefWriter::new(),
+            context_stack: vec![SerializationContext::TopLevel],
         }
     }
 
@@ -82,6 +87,48 @@ impl WriteContext {
             meta_resolver: MetaWriterResolver::default(),
             meta_string_resolver: MetaStringWriterResolver::default(),
             ref_writer: RefWriter::new(),
+            context_stack: vec![SerializationContext::TopLevel],
+        }
+    }
+
+    /// Get the current serialization context.
+    ///
+    /// This is used by serializers to make context-aware decisions about
+    /// what metadata to emit (type info, reference tracking, etc.).
+    #[inline(always)]
+    pub fn current_context(&self) -> SerializationContext {
+        self.context_stack
+            .last()
+            .copied()
+            .unwrap_or(SerializationContext::TopLevel)
+    }
+
+    /// Push a new serialization context onto the stack.
+    ///
+    /// This should be called before serializing nested structures like
+    /// Vec elements or HashMap keys/values.
+    ///
+    /// # Example
+    /// ```ignore
+    /// context.push_context(SerializationContext::VecElement);
+    /// for elem in vec {
+    ///     elem.fory_write(context, ...)?;
+    /// }
+    /// context.pop_context();
+    /// ```
+    #[inline(always)]
+    pub fn push_context(&mut self, ctx: SerializationContext) {
+        self.context_stack.push(ctx);
+    }
+
+    /// Pop the current serialization context from the stack.
+    ///
+    /// This should be called after finishing serialization of a nested structure.
+    /// If the stack only has one element (TopLevel), it will not be popped.
+    #[inline(always)]
+    pub fn pop_context(&mut self) {
+        if self.context_stack.len() > 1 {
+            self.context_stack.pop();
         }
     }
 
@@ -200,6 +247,8 @@ impl WriteContext {
         self.meta_resolver.reset();
         self.meta_string_resolver.reset();
         self.ref_writer.reset();
+        self.context_stack.clear();
+        self.context_stack.push(SerializationContext::TopLevel);
     }
 }
 
