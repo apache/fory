@@ -360,9 +360,7 @@ func (f *Fory) writeReferencableBySerializer(buffer *ByteBuffer, value reflect.V
 	}
 }
 
-func (f *Fory) writeNonReferencableBySerializer(
-	buffer *ByteBuffer, value reflect.Value, serializer Serializer) error {
-	buffer.WriteInt8(NotNullValueFlag)
+func (f *Fory) writeNonReferencableBySerializer(buffer *ByteBuffer, value reflect.Value, serializer Serializer) error {
 	return f.writeValue(buffer, value, serializer)
 }
 

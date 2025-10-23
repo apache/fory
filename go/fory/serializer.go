@@ -504,24 +504,19 @@ func (s *ptrToValueSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type
 }
 
 func writeBySerializer(f *Fory, buf *ByteBuffer, value reflect.Value, serializer Serializer, referencable bool) error {
-	if referencable && (serializer == nil || serializer.NeedWriteRef()) {
+	if referencable {
 		return f.writeReferencableBySerializer(buf, value, serializer)
-	} else {
-		return f.writeNonReferencableBySerializer(buf, value, serializer)
 	}
+
+	return f.writeNonReferencableBySerializer(buf, value, serializer)
 }
 
 func readBySerializer(f *Fory, buf *ByteBuffer, value reflect.Value, serializer Serializer, referencable bool) error {
 	if referencable {
 		return f.readReferencableBySerializer(buf, value, serializer)
-	} else {
-		if flag := buf.ReadInt8(); flag != NotNullValueFlag {
-			return fmt.Errorf("data incisistency: should be a byte value `%d` here but got `%d`",
-				NotNullValueFlag, flag)
-		} else {
-			return f.readData(buf, value, serializer)
-		}
 	}
+	// Field is not referencable, read directly without NotNullValueFlag
+	return f.readData(buf, value, serializer)
 }
 
 // TODO(chaokunyang) support custom serialization

@@ -67,7 +67,7 @@ func newRefResolver(refTracking bool) *RefResolver {
 // Note that for slice and substring, if the start addr or length are different, we take two objects as
 // different references.
 func (r *RefResolver) WriteRefOrNull(buffer *ByteBuffer, value reflect.Value) (refWritten bool, err error) {
-	if !r.refTracking {
+	if !r.refTracking || value.Kind() == reflect.String {
 		if isNil(value) {
 			buffer.WriteInt8(NullFlag)
 			return true, nil

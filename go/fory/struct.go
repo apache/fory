@@ -21,8 +21,11 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/spaolacci/murmur3"
 )
 
 type structSerializer struct {
@@ -173,6 +176,7 @@ func createStructFieldInfos(f *Fory, type_ reflect.Type) (structFieldsInfo, erro
 		}
 		// We set mapInStruct to true directly to avoid reflection from type checks.
 		// This only applies to maps within structs.
+		originalFieldType := field.Type // Preserve original type for nullable calculation
 		if field.Type.Kind() == reflect.Interface {
 			field.Type = reflect.ValueOf(field.Type).Elem().Type()
 		}
@@ -193,7 +197,7 @@ func createStructFieldInfos(f *Fory, type_ reflect.Type) (structFieldsInfo, erro
 			field:        field,
 			fieldIndex:   i,
 			type_:        field.Type,
-			referencable: nullable(field.Type),
+			referencable: nullable(originalFieldType), // Use original type for nullable calculation
 			serializer:   fieldSerializer,
 		}
 		fields = append(fields, &f)
@@ -496,55 +500,50 @@ func (s *ptrToStructSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Typ
 }
 
 func computeStructHash(fieldsInfo structFieldsInfo, typeResolver *typeResolver) (int32, error) {
-	var hash int32 = 17
-	for _, f := range fieldsInfo {
-		if newHash, err := computeFieldHash(hash, f, typeResolver); err != nil {
-			return 0, err
+	var sb strings.Builder
+
+	// Iterate every field, append string by the specification
+	for _, fieldInfo := range fieldsInfo {
+		// 1. snake_case(field_name),
+		snakeCaseName := SnakeCase(fieldInfo.name)
+		sb.WriteString(snakeCaseName)
+		sb.WriteString(",")
+
+		// 2. $type_id, (for other fields, use type id UNKNOWN instead)
+		var typeId TypeId
+		serializer := fieldInfo.serializer
+		if serializer == nil {
+			typeId = UNKNOWN
 		} else {
-			hash = newHash
+			typeId = serializer.TypeId()
+			// For struct fields declared with concrete slice types,
+			// use typeID = LIST uniformly for hash calculation to align cross-language behavior
+			if fieldInfo.type_.Kind() == reflect.Slice {
+				typeId = LIST
+			}
 		}
+		sb.WriteString(fmt.Sprintf("%d", typeId))
+		sb.WriteString(",")
+
+		// 3. $nullable; (1 if nullable, 0 otherwise)
+		nullableFlag := "0"
+		if fieldInfo.referencable {
+			nullableFlag = "1"
+		}
+		sb.WriteString(nullableFlag)
+		sb.WriteString(";")
 	}
+
+	// Convert string to utf8 bytes
+	hashString := sb.String()
+	data := []byte(hashString)
+
+	// Compute murmurhash3_x64_128, and use first 32 bits
+	h1, _ := murmur3.Sum128WithSeed(data, 47)
+	hash := int32(h1 & 0xFFFFFFFF)
+
 	if hash == 0 {
 		panic(fmt.Errorf("hash for type %v is 0", fieldsInfo))
 	}
 	return hash, nil
-}
-
-func computeFieldHash(hash int32, fieldInfo *fieldInfo, typeResolver *typeResolver) (int32, error) {
-	serializer := fieldInfo.serializer
-	var id int32
-	switch s := serializer.(type) {
-	case *structSerializer:
-		id = computeStringHash(s.typeTag + s.type_.Name())
-
-	case *ptrToStructSerializer:
-		id = computeStringHash(s.typeTag + s.type_.Elem().Name())
-
-	default:
-		if s == nil {
-			id = 0
-		} else {
-			tid := s.TypeId()
-			/*
-			   For struct fields declared with concrete slice types,
-			   use typeID = LIST uniformly for hash calculation to align cross-language behavior,
-			   while using the concrete slice type serializer for array and slice serialization.
-			   These two approaches do not conflict.
-			*/
-			if fieldInfo.type_.Kind() == reflect.Slice {
-				tid = LIST
-			}
-			if tid < 0 {
-				id = -int32(tid)
-			} else {
-				id = int32(tid)
-			}
-		}
-	}
-
-	newHash := int64(hash)*31 + int64(id)
-	for newHash >= MaxInt32 {
-		newHash /= 7
-	}
-	return int32(newHash), nil
 }
