@@ -323,6 +323,10 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         e);
   }
 
+  /**
+   * Information about a class's stream methods (writeObject, readObject, readObjectNoData) and
+   * their optimized MethodHandle equivalents for fast invocation.
+   */
   private static class StreamClassInfo {
     private final Method writeObjectMethod;
     private final Method readObjectMethod;
@@ -648,8 +652,6 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
      *     href="https://docs.oracle.com/en/java/javase/18/docs/specs/serialization/input.html#the-objectinputstream.getfield-class">ObjectInputStream.GetField</a>
      * @see ConcurrentHashMap
      */
-    // See `defaultReadObject` in ConcurrentHashMap#readObject skip fields written by
-    // `writeFields()`.
     private class PutFieldImpl extends PutField {
       private final Object[] vals;
 
@@ -929,6 +931,10 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
     private static final Object NO_VALUE_STUB = new Object();
 
+    /**
+     * Implementation of ObjectInputStream.GetField for reading fields that may not exist in the
+     * current class version.
+     */
     private static class GetFieldImpl extends GetField {
       private final SlotInfo slotsInfo;
       private final Object[] vals;
