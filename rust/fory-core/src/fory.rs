@@ -336,6 +336,7 @@ impl Fory {
     }
 
     /// Returns a type resolver for type lookups.
+    #[allow(dead_code)]
     pub(crate) fn get_type_resolver(&self) -> &TypeResolver {
         &self.type_resolver
     }
@@ -890,6 +891,7 @@ impl Fory {
         &self,
         context: &mut ReadContext,
     ) -> Result<T, Error> {
+        println!("{:?}", context.reader.slice_after_cursor());
         let is_none = self.read_head(&mut context.reader)?;
         if is_none {
             return Ok(T::fory_default());
