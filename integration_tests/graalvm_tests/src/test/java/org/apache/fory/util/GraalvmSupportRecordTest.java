@@ -66,10 +66,11 @@ public class GraalvmSupportRecordTest {
   }
 
   @Test
-  public void testObjectCreators_IsProblematicForCreation_WithRegularClass() {
+  public void testObjectCreators_ReflectiveInstantiationFlag_WithRegularClass() {
     boolean result = GraalvmSupport.needReflectionRegisterForCreation(RegularClass.class);
     Assert.assertFalse(
-        result, "RegularClass with no-arg constructor should not be problematic for creation");
+        result,
+        "RegularClass with no-arg constructor does not require reflective instantiation registration");
   }
 
   @Test
@@ -109,3 +110,4 @@ public class GraalvmSupportRecordTest {
     Assert.assertFalse(GraalvmSupport.isRecordConstructorPublicAccessible(String.class));
   }
 }
+

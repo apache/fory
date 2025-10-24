@@ -234,13 +234,13 @@ public class GraalvmSupport {
   }
 
   /**
-   * Checks if a class is problematic for object creation and requires special handling in GraalVM.
+   * Checks whether a class requires reflective instantiation handling in GraalVM.
    *
-   * <p>A class is considered problematic if it lacks a public no-arg constructor and would
-   * typically require ReflectionFactory or unsafe allocation for instantiation.
+   * <p>Returns true when the class does not expose an accessible no-arg constructor and therefore
+   * needs reflective registration for instantiation during native image builds.
    *
    * @param type the class to check
-   * @return true if the class is problematic for creation, false otherwise
+   * @return true if reflective instantiation handling is required, false otherwise
    */
   public static boolean needReflectionRegisterForCreation(Class<?> type) {
     if (type.isInterface()

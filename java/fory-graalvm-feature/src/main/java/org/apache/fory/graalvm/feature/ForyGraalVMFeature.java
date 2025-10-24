@@ -33,7 +33,8 @@ import org.graalvm.nativeimage.hosted.RuntimeReflection;
  * to ensure Fory serialization works correctly at runtime. It handles:
  *
  * <ul>
- *   <li>Registering problematic classes for unsafe allocation
+ *   <li>Registering classes that require reflective instantiation (no accessible no-arg
+ *       constructor)
  *   <li>Registering field reflection access for serialization
  *   <li>Registering proxy interfaces for dynamic proxy creation
  * </ul>
@@ -68,7 +69,7 @@ public class ForyGraalVMFeature implements Feature {
   }
 
   public String getDescription() {
-    return "Fory GraalVM Feature: Registers classes for serialization, proxying, and unsafe allocation.";
+    return "Fory GraalVM Feature: Registers classes for serialization and proxy support.";
   }
 
   private void handleForyClass(Class<?> clazz) {

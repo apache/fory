@@ -73,28 +73,28 @@ public class ForyGraalVMFeatureTest {
   public void testGetDescription() {
     String description = feature.getDescription();
     assertEquals(
-        "Fory GraalVM Feature: Registers classes for serialization, proxying, and unsafe allocation.",
+        "Fory GraalVM Feature: Registers classes for serialization and proxy support.",
         description);
   }
 
   @Test
-  public void testObjectCreatorsProblematicDetection() {
+  public void testObjectCreatorsDetection() {
     assertTrue(
         GraalvmSupport.needReflectionRegisterForCreation(
             PrivateParameterizedConstructorClass.class),
-        "Class without no-arg constructor should be problematic");
+        "Class without no-arg constructor requires reflective instantiation registration");
 
     assertFalse(
         GraalvmSupport.needReflectionRegisterForCreation(PublicNoArgConstructorClass.class),
-        "Public no-arg constructor should not be problematic");
+        "Public no-arg constructor does not require reflective instantiation registration");
 
     assertFalse(
         GraalvmSupport.needReflectionRegisterForCreation(ProtectedNoArgConstructorClass.class),
-        "Protected no-arg constructor should not be problematic");
+        "Protected no-arg constructor does not require reflective instantiation registration");
 
     assertFalse(
         GraalvmSupport.needReflectionRegisterForCreation(SampleEnum.class),
-        "Enums should not be considered problematic");
+        "Enums do not require reflective instantiation registration");
   }
 
   @Test
@@ -165,3 +165,4 @@ public class ForyGraalVMFeatureTest {
     }
   }
 }
+
