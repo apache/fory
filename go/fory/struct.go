@@ -185,19 +185,11 @@ func createStructFieldInfos(f *Fory, type_ reflect.Type) (structFieldsInfo, erro
 			var _ error
 			fieldSerializer, _ = f.typeResolver.getSerializerByType(field.Type, true)
 			if field.Type.Kind() == reflect.Array {
-				// When a struct field is an array type,
-				// retrieve its corresponding slice serializer and populate it into fieldInfo for reuse.
 				elemType := field.Type.Elem()
 				sliceType := reflect.SliceOf(elemType)
 				fieldSerializer = f.typeResolver.typeToSerializers[sliceType]
 			} else if field.Type.Kind() == reflect.Slice {
-				// If the field is a concrete slice type, dynamically create a valid serializer
-				// so it has the potential and capability to use readSameTypes function.
-				if field.Type.Elem().Kind() != reflect.Interface {
-					fieldSerializer = sliceSerializer{
-						elemInfo: f.typeResolver.typesInfo[field.Type.Elem()],
-					}
-				}
+				fieldSerializer = NewSliceSerializer(f, nil, nil)
 			}
 		}
 		f := fieldInfo{
@@ -342,11 +334,6 @@ func typesCompatible(actual, expected reflect.Type) bool {
 			return elementTypesCompatible(actual.Key(), expected.Key()) && elementTypesCompatible(actual.Elem(), expected.Elem())
 		}
 	}
-	// we can safely treat slice and array as same
-	if (actual.Kind() == reflect.Array && expected.Kind() == reflect.Slice) ||
-		(actual.Kind() == reflect.Slice && expected.Kind() == reflect.Array) {
-		return true
-	}
 	return false
 }
 
@@ -393,7 +380,7 @@ func sortFields(
 		switch {
 		case isPrimitiveType(t.typeID):
 			boxed = append(boxed, t)
-		case isListType(t.typeID), isPrimitiveArrayType(t.typeID):
+		case isListType(t.typeID):
 			collection = append(collection, t)
 		case isSetType(t.typeID):
 			setFields = append(setFields, t)
@@ -420,7 +407,7 @@ func sortFields(
 		}
 		return ai.name < aj.name
 	})
-	sortByTypeIDThenName := func(s []triple) {
+	sortTuple := func(s []triple) {
 		sort.Slice(s, func(i, j int) bool {
 			if s[i].typeID != s[j].typeID {
 				return s[i].typeID < s[j].typeID
@@ -428,7 +415,7 @@ func sortFields(
 			return s[i].name < s[j].name
 		})
 	}
-	sortTuple := func(s []triple) {
+	sortByTypeIDThenName := func(s []triple) {
 		sort.Slice(s, func(i, j int) bool {
 			return s[i].name < s[j].name
 		})

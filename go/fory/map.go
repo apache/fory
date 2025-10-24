@@ -397,7 +397,7 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 		valDeclType := (chunkHeader & VALUE_DECL_TYPE) != 0
 		chunkSize := int(buf.ReadUint8())
 		if !keyDeclType {
-			ti, err := resolver.readTypeInfo(buf, value)
+			ti, err := resolver.readTypeInfo(buf)
 			if err != nil {
 				return err
 			}
@@ -405,7 +405,7 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 			keyType = ti.Type
 		}
 		if !valDeclType {
-			ti, err := resolver.readTypeInfo(buf, value)
+			ti, err := resolver.readTypeInfo(buf)
 			if err != nil {
 				return err
 			}

@@ -66,7 +66,7 @@ func commonSlice() []interface{} {
 	return []interface{}{
 		(&[100]bool{})[:],
 		(&[100]byte{})[:],
-		// (&[100]int8{})[:],
+		(&[100]int8{})[:],
 		(&[100]int16{})[:],
 		(&[100]int32{})[:],
 		(&[100]int64{})[:],
@@ -99,20 +99,6 @@ func commonMap() []interface{} {
 		map[interface{}]interface{}{"k1": "v1", "k2": "v2", "str": "", "": ""},
 		map[string]interface{}{"k1": "v1", "k2": "v2", "str": "", "": ""},
 		map[interface{}]string{"k1": "v1", "k2": "v2", "str": "", "": ""},
-	}
-}
-
-func commonArray() []interface{} {
-	return []interface{}{
-		[100]bool{false, true, true},
-		[100]byte{1, 2, 3},
-		// [100]int8{1, 2, 3},
-		[100]int16{1, 2, 3},
-		[100]int32{1, 2, 3},
-		[100]int64{1, 2, 3},
-		[100]float32{1, 2, 3},
-		[100]float64{1, 2, 3},
-		[100]string{"str1", "str1"},
 	}
 }
 
@@ -162,7 +148,7 @@ func TestSerializeSlice(t *testing.T) {
 	for _, referenceTracking := range []bool{false, true} {
 		fory := NewFory(referenceTracking)
 		serde(t, fory, []byte{0, 1, MaxUint8})
-		// serde(t, fory, []int8{MinInt8, -1, 0, 1, MaxInt8})
+		serde(t, fory, []int8{MinInt8, -1, 0, 1, MaxInt8})
 		serde(t, fory, []int16{MinInt16, -1, 0, 1, MaxInt16})
 		serde(t, fory, []int32{MinInt32, -1, 0, 1, MaxInt32})
 		serde(t, fory, []int64{MinInt64, -1, 0, 1, MaxInt64})
@@ -203,16 +189,6 @@ func TestSerializeMap(t *testing.T) {
 			serde(t, fory, data)
 		}
 		serde(t, fory, commonMap())
-	}
-}
-
-func TestSerializeArray(t *testing.T) {
-	for _, referenceTracking := range []bool{false, true} {
-		fory := NewFory(referenceTracking)
-		for _, data := range commonArray() {
-			serde(t, fory, data)
-		}
-		serde(t, fory, commonArray())
 	}
 }
 
@@ -573,19 +549,6 @@ or array types for deserialization.
 func TestMapEachIndividually(t *testing.T) {
 	fory := NewFory(true)
 	for _, srcAny := range commonMap() {
-		srcType := reflect.TypeOf(srcAny)
-		endPtr := reflect.New(srcType)
-		data, _ := fory.Marshal(srcAny)
-		_ = fory.Unmarshal(data, endPtr.Interface())
-		endVal := endPtr.Elem()
-		endAny := endVal.Interface()
-		require.Equal(t, srcAny, endAny)
-	}
-}
-
-func TestArrayEachIndividually(t *testing.T) {
-	fory := NewFory(true)
-	for _, srcAny := range commonArray() {
 		srcType := reflect.TypeOf(srcAny)
 		endPtr := reflect.New(srcType)
 		data, _ := fory.Marshal(srcAny)
