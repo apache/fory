@@ -682,7 +682,10 @@ fn test_consistent_named() {
         assert_eq!(fory.deserialize_from::<Color>(&mut reader).unwrap(), color);
     }
     for _ in 0..3 {
-        assert_eq!(fory.deserialize_from::<MyStruct>(&mut reader).unwrap(), my_struct);
+        assert_eq!(
+            fory.deserialize_from::<MyStruct>(&mut reader).unwrap(),
+            my_struct
+        );
     }
     for _ in 0..3 {
         assert_eq!(fory.deserialize_from::<MyExt>(&mut reader).unwrap(), my_ext);
