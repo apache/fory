@@ -199,17 +199,13 @@
               <execution>
                 <id>java-agent</id>
                 <goals>
-                  <goal>exec</goal>
+                  <goal>java</goal>
                 </goals>
                 <phase>test</phase>
                 <configuration>
-                  <executable>java</executable>
-                  <workingDirectory>${project.build.directory}</workingDirectory>
-                  <arguments>
-                    <argument>-classpath</argument>
-                    <classpath/>
-                    <argument>${mainClass}</argument>
-                  </arguments>
+                  <mainClass>${mainClass}</mainClass>
+                  <includeProjectDependencies>true</includeProjectDependencies>
+                  <includePluginDependencies>false</includePluginDependencies>
                 </configuration>
               </execution>
             </executions>

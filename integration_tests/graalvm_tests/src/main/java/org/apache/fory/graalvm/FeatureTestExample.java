@@ -80,7 +80,7 @@ public class FeatureTestExample {
     System.out.println("Testing Fory GraalVM Feature...");
 
     Fory fory =
-        Fory.builder().withLanguage(Language.JAVA).withRefTracking(true).withCodegen(false).build();
+        Fory.builder().withLanguage(Language.JAVA).withRefTracking(true).withCodegen(true).build();
 
     fory.register(PrivateConstructorClass.class);
     fory.register(TestInvocationHandler.class);
