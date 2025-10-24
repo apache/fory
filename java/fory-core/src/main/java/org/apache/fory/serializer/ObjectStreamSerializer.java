@@ -80,10 +80,60 @@ import org.apache.fory.util.unsafe._JDKAccess;
 public class ObjectStreamSerializer extends AbstractObjectSerializer {
   private static final Logger LOG = LoggerFactory.getLogger(ObjectStreamSerializer.class);
 
-  private final SlotsInfo[] slotsInfos;
+  private final SlotInfo[] slotsInfos;
+
+  /**
+   * Interface for slot information used in ObjectStreamSerializer. This allows both full SlotsInfo
+   * and minimal MinimalSlotsInfo implementations.
+   */
+  private interface SlotInfo {
+    Class<?> getCls();
+
+    StreamClassInfo getStreamClassInfo();
+
+    CompatibleSerializerBase getSlotsSerializer();
+
+    ForyObjectOutputStream getObjectOutputStream();
+
+    ForyObjectInputStream getObjectInputStream();
+
+    ObjectArray getFieldPool();
+
+    ObjectIntMap<String> getFieldIndexMap();
+
+    FieldResolver getPutFieldsResolver();
+
+    CompatibleSerializer getCompatibleStreamSerializer();
+  }
+
+  /**
+   * Safe wrapper for ObjectStreamClass.lookup that handles GraalVM native image limitations. In
+   * GraalVM native image, ObjectStreamClass.lookup may fail for certain classes like Throwable due
+   * to missing SerializationConstructorAccessor. This method catches such exceptions and returns
+   * null, allowing the serializer to use alternative approaches like Unsafe.allocateInstance.
+   */
+  private static ObjectStreamClass safeObjectStreamClassLookup(Class<?> type) {
+    if (GraalvmSupport.isGraalRuntime()) {
+      try {
+        return ObjectStreamClass.lookup(type);
+      } catch (Exception e) {
+        // In GraalVM native image, ObjectStreamClass.lookup may fail for certain classes
+        // due to missing SerializationConstructorAccessor. We catch this and return null
+        // to allow fallback to Unsafe-based object creation.
+        LOG.debug(
+            "ObjectStreamClass.lookup failed for {} in GraalVM native image: {}",
+            type.getName(),
+            e.getMessage());
+        return null;
+      }
+    } else {
+      // In regular JVM, use normal lookup
+      return ObjectStreamClass.lookup(type);
+    }
+  }
 
   public ObjectStreamSerializer(Fory fory, Class<?> type) {
-    super(fory, type);
+    super(fory, type, createObjectCreatorForGraalVM(type));
     if (!Serializable.class.isAssignableFrom(type)) {
       throw new IllegalArgumentException(
           String.format("Class %s should implement %s.", type, Serializable.class));
@@ -96,18 +146,46 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         Externalizable.class.getName());
     // stream serializer may be data serializer of ReplaceResolver serializer.
     fory.getClassResolver().setSerializerIfAbsent(type, this);
-    List<SlotsInfo> slotsInfoList = new ArrayList<>();
+    List<SlotInfo> slotsInfoList = new ArrayList<>();
     Class<?> end = type;
     // locate closest non-serializable superclass
     while (end != null && Serializable.class.isAssignableFrom(end)) {
       end = end.getSuperclass();
     }
     while (type != end) {
-      slotsInfoList.add(new SlotsInfo(fory, type));
+      try {
+        slotsInfoList.add(new SlotsInfo(fory, type));
+      } catch (Exception e) {
+        if (GraalvmSupport.isGraalRuntime()) {
+          LOG.warn(
+              "Failed to create SlotsInfo for {} in GraalVM native image, "
+                  + "using minimal serialization support: {}",
+              type.getName(),
+              e.getMessage());
+          // Create a minimal SlotsInfo that can work with Unsafe
+          slotsInfoList.add(new MinimalSlotsInfo(fory, type));
+        } else {
+          throw e;
+        }
+      }
       type = type.getSuperclass();
     }
     Collections.reverse(slotsInfoList);
-    slotsInfos = slotsInfoList.toArray(new SlotsInfo[0]);
+    slotsInfos = slotsInfoList.toArray(new SlotInfo[0]);
+  }
+
+  /**
+   * Creates an appropriate ObjectCreator for GraalVM native image environment. In GraalVM, we
+   * prefer UnsafeObjectCreator to avoid serialization constructor issues.
+   */
+  private static <T> ObjectCreator<T> createObjectCreatorForGraalVM(Class<T> type) {
+    if (GraalvmSupport.isGraalRuntime()) {
+      // In GraalVM native image, use Unsafe to avoid serialization constructor issues
+      return new ObjectCreators.UnsafeObjectCreator<>(type);
+    } else {
+      // In regular JVM, use the standard object creator
+      return ObjectCreators.getObjectCreator(type);
+    }
   }
 
   @Override
@@ -117,13 +195,13 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       for (SlotsInfo slotsInfo : slotsInfos) {
         // create a classinfo to avoid null class bytes when class id is a
         // replacement id.
-        classResolver.writeClassInternal(buffer, slotsInfo.classInfo.getCls());
-        StreamClassInfo streamClassInfo = slotsInfo.streamClassInfo;
+        classResolver.writeClassInternal(buffer, slotsInfo.getCls());
+        StreamClassInfo streamClassInfo = slotsInfo.getStreamClassInfo();
         Method writeObjectMethod = streamClassInfo.writeObjectMethod;
         if (writeObjectMethod == null) {
-          slotsInfo.slotsSerializer.write(buffer, value);
+          slotsInfo.getSlotsSerializer().write(buffer, value);
         } else {
-          ForyObjectOutputStream objectOutputStream = slotsInfo.objectOutputStream;
+          ForyObjectOutputStream objectOutputStream = slotsInfo.getObjectOutputStream();
           Object oldObject = objectOutputStream.targetObject;
           MemoryBuffer oldBuffer = objectOutputStream.buffer;
           ForyObjectOutputStream.PutFieldImpl oldPutField = objectOutputStream.curPut;
@@ -161,9 +239,9 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       TreeMap<Integer, ObjectInputValidation> callbacks = new TreeMap<>(Collections.reverseOrder());
       for (int i = 0; i < numClasses; i++) {
         Class<?> currentClass = classResolver.readClassInternal(buffer);
-        SlotsInfo slotsInfo = slotsInfos[slotIndex++];
-        StreamClassInfo streamClassInfo = slotsInfo.streamClassInfo;
-        while (currentClass != slotsInfo.cls) {
+        SlotInfo slotsInfo = slotsInfos[slotIndex++];
+        StreamClassInfo streamClassInfo = slotsInfo.getStreamClassInfo();
+        while (currentClass != slotsInfo.getCls()) {
           // the receiver's version extends classes that are not extended by the sender's version.
           Method readObjectNoData = streamClassInfo.readObjectNoData;
           if (readObjectNoData != null) {
@@ -177,14 +255,14 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         }
         Method readObjectMethod = streamClassInfo.readObjectMethod;
         if (readObjectMethod == null) {
-          slotsInfo.slotsSerializer.readAndSetFields(buffer, obj);
+          slotsInfo.getSlotsSerializer().readAndSetFields(buffer, obj);
         } else {
-          ForyObjectInputStream objectInputStream = slotsInfo.objectInputStream;
+          ForyObjectInputStream objectInputStream = slotsInfo.getObjectInputStream();
           MemoryBuffer oldBuffer = objectInputStream.buffer;
           Object oldObject = objectInputStream.targetObject;
           ForyObjectInputStream.GetFieldImpl oldGetField = objectInputStream.getField;
           ForyObjectInputStream.GetFieldImpl getField =
-              (ForyObjectInputStream.GetFieldImpl) slotsInfo.getFieldPool.popOrNull();
+              (ForyObjectInputStream.GetFieldImpl) slotsInfo.getFieldPool().popOrNull();
           if (getField == null) {
             getField = new ForyObjectInputStream.GetFieldImpl(slotsInfo);
           }
@@ -205,7 +283,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
             objectInputStream.buffer = oldBuffer;
             objectInputStream.targetObject = oldObject;
             objectInputStream.getField = oldGetField;
-            slotsInfo.getFieldPool.add(getField);
+            slotsInfo.getFieldPool().add(getField);
             objectInputStream.callbacks = null;
             Arrays.fill(getField.vals, ForyObjectInputStream.NO_VALUE_STUB);
           }
@@ -249,7 +327,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
     private StreamClassInfo(Class<?> type) {
       // ObjectStreamClass.lookup has cache inside, invocation cost won't be big.
-      ObjectStreamClass objectStreamClass = ObjectStreamClass.lookup(type);
+      ObjectStreamClass objectStreamClass = safeObjectStreamClassLookup(type);
       // In JDK17, set private jdk method accessible will fail by default, use ObjectStreamClass
       // instead, since it set accessible.
       writeObjectMethod =
@@ -290,7 +368,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         }
       };
 
-  private static class SlotsInfo {
+  private static class SlotsInfo implements SlotInfo {
     private final Class<?> cls;
     private final ClassInfo classInfo;
     private final StreamClassInfo streamClassInfo;
@@ -306,7 +384,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     public SlotsInfo(Fory fory, Class<?> type) {
       this.cls = type;
       classInfo = fory.getClassResolver().newClassInfo(type, null, NO_CLASS_ID);
-      ObjectStreamClass objectStreamClass = ObjectStreamClass.lookup(type);
+      ObjectStreamClass objectStreamClass = safeObjectStreamClassLookup(type);
       streamClassInfo = STREAM_CLASS_INFO_CACHE.get(type);
       // `putFields/writeFields` will convert to fields value to be written by
       // `CompatibleSerializer`,
@@ -383,8 +461,139 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     }
 
     @Override
+    public Class<?> getCls() {
+      return cls;
+    }
+
+    @Override
+    public StreamClassInfo getStreamClassInfo() {
+      return streamClassInfo;
+    }
+
+    @Override
+    public CompatibleSerializerBase getSlotsSerializer() {
+      return slotsSerializer;
+    }
+
+    @Override
+    public ForyObjectOutputStream getObjectOutputStream() {
+      return objectOutputStream;
+    }
+
+    @Override
+    public ForyObjectInputStream getObjectInputStream() {
+      return objectInputStream;
+    }
+
+    @Override
+    public ObjectArray getFieldPool() {
+      return getFieldPool;
+    }
+
+    @Override
+    public ObjectIntMap<String> getFieldIndexMap() {
+      return fieldIndexMap;
+    }
+
+    @Override
+    public FieldResolver getPutFieldsResolver() {
+      return putFieldsResolver;
+    }
+
+    @Override
+    public CompatibleSerializer getCompatibleStreamSerializer() {
+      return compatibleStreamSerializer;
+    }
+
+    @Override
     public String toString() {
       return "SlotsInfo{" + "cls=" + cls + '}';
+    }
+  }
+
+  /**
+   * Minimal SlotsInfo implementation for GraalVM native image when ObjectStreamClass.lookup fails.
+   * This provides basic serialization support using Unsafe-based object creation.
+   */
+  private static class MinimalSlotsInfo implements SlotInfo {
+    private final Class<?> cls;
+    private final ClassInfo classInfo;
+    private final StreamClassInfo streamClassInfo;
+    private CompatibleSerializerBase slotsSerializer;
+    private final ObjectIntMap<String> fieldIndexMap;
+    private final FieldResolver putFieldsResolver;
+    private final CompatibleSerializer compatibleStreamSerializer;
+    private final ForyObjectOutputStream objectOutputStream;
+    private final ForyObjectInputStream objectInputStream;
+    private final ObjectArray getFieldPool;
+
+    public MinimalSlotsInfo(Fory fory, Class<?> type) {
+      // Initialize with minimal required fields
+      this.cls = type;
+      this.classInfo = fory.getClassResolver().newClassInfo(type, null, NO_CLASS_ID);
+      this.streamClassInfo = null; // Skip problematic ObjectStreamClass lookup
+
+      // Create a basic CompatibleSerializer for field handling
+      FieldResolver fieldResolver = FieldResolver.of(fory, type, false, true);
+      this.slotsSerializer = new CompatibleSerializer(fory, type, fieldResolver);
+
+      // Initialize other fields with safe defaults
+      this.fieldIndexMap = new ObjectIntMap<>(4, 0.4f);
+      this.putFieldsResolver = null;
+      this.compatibleStreamSerializer = null;
+      this.objectOutputStream = null;
+      this.objectInputStream = null;
+      this.getFieldPool = new ObjectArray();
+    }
+
+    @Override
+    public Class<?> getCls() {
+      return cls;
+    }
+
+    @Override
+    public StreamClassInfo getStreamClassInfo() {
+      return streamClassInfo;
+    }
+
+    @Override
+    public CompatibleSerializerBase getSlotsSerializer() {
+      return slotsSerializer;
+    }
+
+    @Override
+    public ForyObjectOutputStream getObjectOutputStream() {
+      return objectOutputStream;
+    }
+
+    @Override
+    public ForyObjectInputStream getObjectInputStream() {
+      return objectInputStream;
+    }
+
+    @Override
+    public ObjectArray getFieldPool() {
+      return getFieldPool;
+    }
+
+    @Override
+    public ObjectIntMap<String> getFieldIndexMap() {
+      return fieldIndexMap;
+    }
+
+    @Override
+    public FieldResolver getPutFieldsResolver() {
+      return putFieldsResolver;
+    }
+
+    @Override
+    public CompatibleSerializer getCompatibleStreamSerializer() {
+      return compatibleStreamSerializer;
+    }
+
+    @Override
+    public String toString() {
+      return "MinimalSlotsInfo{" + "cls=" + cls + '}';
     }
   }
 
@@ -398,15 +607,15 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
   private static class ForyObjectOutputStream extends ObjectOutputStream {
     private final Fory fory;
     private final boolean compressInt;
-    private final SlotsInfo slotsInfo;
+    private final SlotInfo slotsInfo;
     private MemoryBuffer buffer;
     private Object targetObject;
     private boolean fieldsWritten;
 
-    protected ForyObjectOutputStream(SlotsInfo slotsInfo) throws IOException {
+    protected ForyObjectOutputStream(SlotInfo slotsInfo) throws IOException {
       super();
       this.slotsInfo = slotsInfo;
-      this.fory = slotsInfo.slotsSerializer.fory;
+      this.fory = slotsInfo.getSlotsSerializer().fory;
       this.compressInt = fory.compressInt();
     }
 
@@ -438,11 +647,12 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       }
 
       private void putValue(String name, Object val) {
-        int index = slotsInfo.fieldIndexMap.get(name, -1);
+        int index = slotsInfo.getFieldIndexMap().get(name, -1);
         if (index == -1) {
           throw new IllegalArgumentException(
               String.format(
-                  "Field name %s not exist in class %s", name, slotsInfo.slotsSerializer.type));
+                  "Field name %s not exist in class %s",
+                  name, slotsInfo.getSlotsSerializer().type));
         }
         vals[index] = val;
       }
@@ -683,15 +893,15 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
   private static class ForyObjectInputStream extends ObjectInputStream {
     private final Fory fory;
     private final boolean compressInt;
-    private final SlotsInfo slotsInfo;
+    private final SlotInfo slotsInfo;
     private MemoryBuffer buffer;
     private Object targetObject;
     private GetFieldImpl getField;
     private boolean fieldsRead;
     private TreeMap<Integer, ObjectInputValidation> callbacks;
 
-    protected ForyObjectInputStream(SlotsInfo slotsInfo) throws IOException {
-      this.fory = slotsInfo.slotsSerializer.fory;
+    protected ForyObjectInputStream(SlotInfo slotsInfo) throws IOException {
+      this.fory = slotsInfo.getSlotsSerializer().fory;
       this.compressInt = fory.compressInt();
       this.slotsInfo = slotsInfo;
     }
@@ -709,18 +919,18 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     private static final Object NO_VALUE_STUB = new Object();
 
     private static class GetFieldImpl extends GetField {
-      private final SlotsInfo slotsInfo;
+      private final SlotInfo slotsInfo;
       private final Object[] vals;
 
-      GetFieldImpl(SlotsInfo slotsInfo) {
+      GetFieldImpl(SlotInfo slotsInfo) {
         this.slotsInfo = slotsInfo;
-        vals = new Object[slotsInfo.putFieldsResolver.getNumFields()];
+        vals = new Object[slotsInfo.getPutFieldsResolver().getNumFields()];
         Arrays.fill(vals, NO_VALUE_STUB);
       }
 
       @Override
       public ObjectStreamClass getObjectStreamClass() {
-        return ObjectStreamClass.lookup(slotsInfo.cls);
+        return safeObjectStreamClassLookup(slotsInfo.getCls());
       }
 
       @Override
