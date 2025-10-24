@@ -316,14 +316,14 @@ public class RustXlangTest extends ForyTestBase {
           "Hello, 世界",
         };
     for (String s : testStrings) {
-      serializer.writeJavaString(buffer, s);
+      fory.serialize(buffer, s);
     }
     Pair<Map<String, String>, File> env_workdir =
         setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     buffer = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     for (String expected : testStrings) {
-      String actual = serializer.readJavaString(buffer);
+      String actual = (String) fory.deserialize(buffer);
       Assert.assertEquals(actual, expected);
     }
   }
