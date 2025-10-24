@@ -174,16 +174,17 @@ impl<T> Spinlock<T> {
     }
 }
 
+#[allow(clippy::needless_lifetimes)]
 pub struct SpinlockGuard<'a, T> {
     lock: &'a Spinlock<T>,
 }
-
+#[allow(clippy::needless_lifetimes)]
 impl<'a, T> Drop for SpinlockGuard<'a, T> {
     fn drop(&mut self) {
         self.lock.unlock();
     }
 }
-
+#[allow(clippy::needless_lifetimes)]
 impl<'a, T> Deref for SpinlockGuard<'a, T> {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -191,6 +192,7 @@ impl<'a, T> Deref for SpinlockGuard<'a, T> {
     }
 }
 
+#[allow(clippy::needless_lifetimes)]
 impl<'a, T> DerefMut for SpinlockGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.lock.data.get() }

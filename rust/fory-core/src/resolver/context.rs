@@ -30,6 +30,7 @@ use std::rc::Rc;
 
 /// Serialization state container used on a single thread at a time.
 /// Sharing the same instance across threads simultaneously causes undefined behavior.
+#[allow(clippy::needless_lifetimes)]
 pub struct WriteContext<'a> {
     // Replicated environment fields (direct access, no Arc indirection for flags)
     type_resolver: TypeResolver,
@@ -47,6 +48,7 @@ pub struct WriteContext<'a> {
     pub ref_writer: RefWriter,
 }
 
+#[allow(clippy::needless_lifetimes)]
 impl<'a> WriteContext<'a> {
     pub fn new(
         type_resolver: TypeResolver,
@@ -205,6 +207,7 @@ impl<'a> WriteContext<'a> {
     }
 }
 
+#[allow(clippy::needless_lifetimes)]
 impl<'a> Drop for WriteContext<'a> {
     fn drop(&mut self) {
         unsafe {
@@ -217,7 +220,9 @@ impl<'a> Drop for WriteContext<'a> {
 // ensures single-threaded access while the context is in use. Users must never hold the same
 // instance on multiple threads simultaneously; that would violate the invariants and result in
 // undefined behavior. Under that assumption, marking it Send/Sync is sound.
+#[allow(clippy::needless_lifetimes)]
 unsafe impl<'a> Send for WriteContext<'a> {}
+#[allow(clippy::needless_lifetimes)]
 unsafe impl<'a> Sync for WriteContext<'a> {}
 
 /// Deserialization state container used on a single thread at a time.
@@ -243,7 +248,9 @@ pub struct ReadContext<'a> {
 // single-threaded use. Concurrent access to the same instance across threads is forbidden and
 // would result in undefined behavior. With exclusive use guaranteed, the Send/Sync markers are safe
 // even though Rc is used internally.
+#[allow(clippy::needless_lifetimes)]
 unsafe impl<'a> Send for ReadContext<'a> {}
+#[allow(clippy::needless_lifetimes)]
 unsafe impl<'a> Sync for ReadContext<'a> {}
 
 impl<'a> ReadContext<'a> {

@@ -333,11 +333,13 @@ impl<'a> Writer<'a> {
 }
 
 #[derive(Default)]
+#[allow(clippy::needless_lifetimes)]
 pub struct Reader<'a> {
     pub(crate) bf: &'a [u8],
     pub(crate) cursor: usize,
 }
 
+#[allow(clippy::needless_lifetimes)]
 impl<'a> Reader<'a> {
     #[inline(always)]
     pub fn new(bf: &[u8]) -> Reader<'_> {
@@ -743,5 +745,7 @@ impl<'a> Reader<'a> {
     }
 }
 
+#[allow(clippy::needless_lifetimes)]
 unsafe impl<'a> Send for Reader<'a> {}
+#[allow(clippy::needless_lifetimes)]
 unsafe impl<'a> Sync for Reader<'a> {}
