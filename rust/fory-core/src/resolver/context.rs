@@ -89,27 +89,6 @@ impl<'a> WriteContext<'a> {
         self.writer = default.unwrap();
     }
 
-    /// Test method to create WriteContext from Fory instance
-    /// Will be removed in future releases, do not use it in production code
-    pub fn new_from_fory(fory: &Fory) -> WriteContext<'a> {
-        WriteContext {
-            default_writer: None,
-            writer: Writer::from_buffer(Self::get_leak_buffer()),
-            type_resolver: fory
-                .get_type_resolver()
-                .build_final_type_resolver()
-                .unwrap(),
-            compatible: fory.is_compatible(),
-            share_meta: fory.is_share_meta(),
-            compress_string: fory.is_compress_string(),
-            xlang: fory.is_xlang(),
-            check_struct_version: fory.is_check_struct_version(),
-            meta_resolver: MetaWriterResolver::default(),
-            meta_string_resolver: MetaStringWriterResolver::default(),
-            ref_writer: RefWriter::new(),
-        }
-    }
-
     /// Get type resolver
     #[inline(always)]
     pub fn get_type_resolver(&self) -> &TypeResolver {
@@ -284,27 +263,6 @@ impl<'a> ReadContext<'a> {
             xlang,
             max_dyn_depth,
             check_struct_version,
-            reader: Reader::default(),
-            meta_resolver: MetaReaderResolver::default(),
-            meta_string_resolver: MetaStringReaderResolver::default(),
-            ref_reader: RefReader::new(),
-            current_depth: 0,
-        }
-    }
-
-    /// Test method to create ReadContext from Fory instance
-    /// Will be removed in future releases, do not use it in production code
-    pub fn new_from_fory(fory: &Fory) -> ReadContext<'a> {
-        ReadContext {
-            type_resolver: fory
-                .get_type_resolver()
-                .build_final_type_resolver()
-                .unwrap(),
-            compatible: fory.is_compatible(),
-            share_meta: fory.is_share_meta(),
-            xlang: fory.is_xlang(),
-            max_dyn_depth: fory.get_max_dyn_depth(),
-            check_struct_version: fory.is_check_struct_version(),
             reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
