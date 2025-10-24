@@ -180,7 +180,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-javadoc-plugin</artifactId>
-          <version>3.1.0</version>
+          <version>3.6.3</version>
           <executions>
             <execution>
               <id>attach-javadocs</id>
@@ -191,6 +191,7 @@
           </executions>
           <configuration>
             <doclint>none</doclint>
+            <quiet>true</quiet>
             <bottom>
               Copyright © 2023-2025, The Apache Software Foundation. Apache Fory™, Fory™, and Apache
               are either registered trademarks or trademarks of the Apache Software Foundation.
