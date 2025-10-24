@@ -110,4 +110,3 @@ public class GraalvmSupportRecordTest {
     Assert.assertFalse(GraalvmSupport.isRecordConstructorPublicAccessible(String.class));
   }
 }
-
