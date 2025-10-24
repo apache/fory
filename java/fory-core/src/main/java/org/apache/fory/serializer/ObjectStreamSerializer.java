@@ -55,6 +55,8 @@ import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
+import org.apache.fory.reflect.ObjectCreator;
+import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.FieldResolver;
@@ -113,14 +115,14 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
    * null, allowing the serializer to use alternative approaches like Unsafe.allocateInstance.
    */
   private static ObjectStreamClass safeObjectStreamClassLookup(Class<?> type) {
-    if (GraalvmSupport.isGraalRuntime()) {
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
       try {
         return ObjectStreamClass.lookup(type);
       } catch (Exception e) {
         // In GraalVM native image, ObjectStreamClass.lookup may fail for certain classes
         // due to missing SerializationConstructorAccessor. We catch this and return null
         // to allow fallback to Unsafe-based object creation.
-        LOG.debug(
+        LOG.warn(
             "ObjectStreamClass.lookup failed for {} in GraalVM native image: {}",
             type.getName(),
             e.getMessage());
@@ -156,7 +158,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       try {
         slotsInfoList.add(new SlotsInfo(fory, type));
       } catch (Exception e) {
-        if (GraalvmSupport.isGraalRuntime()) {
+        if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
           LOG.warn(
               "Failed to create SlotsInfo for {} in GraalVM native image, "
                   + "using minimal serialization support: {}",
@@ -179,7 +181,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
    * prefer UnsafeObjectCreator to avoid serialization constructor issues.
    */
   private static <T> ObjectCreator<T> createObjectCreatorForGraalVM(Class<T> type) {
-    if (GraalvmSupport.isGraalRuntime()) {
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
       // In GraalVM native image, use Unsafe to avoid serialization constructor issues
       return new ObjectCreators.UnsafeObjectCreator<>(type);
     } else {
@@ -192,7 +194,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
   public void write(MemoryBuffer buffer, Object value) {
     buffer.writeInt16((short) slotsInfos.length);
     try {
-      for (SlotsInfo slotsInfo : slotsInfos) {
+      for (SlotInfo slotsInfo : slotsInfos) {
         // create a classinfo to avoid null class bytes when class id is a
         // replacement id.
         classResolver.writeClassInternal(buffer, slotsInfo.getCls());
@@ -643,7 +645,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       private final Object[] vals;
 
       PutFieldImpl() {
-        vals = new Object[slotsInfo.putFieldsResolver.getNumFields()];
+        vals = new Object[slotsInfo.getPutFieldsResolver().getNumFields()];
       }
 
       private void putValue(String name, Object val) {
@@ -705,7 +707,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       @Deprecated
       @Override
       public void write(ObjectOutput out) throws IOException {
-        Class cls = slotsInfo.slotsSerializer.type;
+        Class cls = slotsInfo.getSlotsSerializer().getType();
         throwUnsupportedEncodingException(cls);
       }
     }
@@ -734,7 +736,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       if (curPut == null) {
         throw new NotActiveException("no current PutField object");
       }
-      slotsInfo.compatibleStreamSerializer.writeFieldsValues(buffer, curPut.vals);
+      slotsInfo.getCompatibleStreamSerializer().writeFieldsValues(buffer, curPut.vals);
       Arrays.fill(curPut.vals, null);
       putFieldsCache.add(curPut);
       this.curPut = null;
@@ -746,13 +748,13 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       if (fieldsWritten) {
         throw new NotActiveException("not in writeObject invocation or fields already written");
       }
-      slotsInfo.slotsSerializer.write(buffer, targetObject);
+      slotsInfo.getSlotsSerializer().write(buffer, targetObject);
       fieldsWritten = true;
     }
 
     @Override
     public void reset() throws IOException {
-      Class cls = slotsInfo.slotsSerializer.getType();
+      Class cls = slotsInfo.getSlotsSerializer().getType();
       // Fory won't invoke this method, throw exception if the user invokes it.
       throwUnsupportedEncodingException(cls);
     }
@@ -869,7 +871,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
     @Override
     public void useProtocolVersion(int version) throws IOException {
-      Class cls = slotsInfo.cls;
+      Class cls = slotsInfo.getCls();
       throwUnsupportedEncodingException(cls);
     }
 
@@ -935,7 +937,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
       @Override
       public boolean defaulted(String name) throws IOException {
-        int index = slotsInfo.fieldIndexMap.get(name, -1);
+        int index = slotsInfo.getFieldIndexMap().get(name, -1);
         checkFieldExists(name, index);
         return vals[index] == NO_VALUE_STUB;
       }
@@ -1022,7 +1024,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       }
 
       private Object getFieldValue(String name) {
-        int index = slotsInfo.fieldIndexMap.get(name, -1);
+        int index = slotsInfo.getFieldIndexMap().get(name, -1);
         checkFieldExists(name, index);
         return vals[index];
       }
@@ -1031,7 +1033,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         if (index == -1) {
           throw new IllegalArgumentException(
               String.format(
-                  "Field name %s not exist in class %s", name, slotsInfo.slotsSerializer.type));
+                  "Field name %s not exist in class %s", name, slotsInfo.getSlotsSerializer().getType()));
         }
       }
     }
@@ -1043,7 +1045,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       if (fieldsRead) {
         throw new NotActiveException("not in readObject invocation or fields already read");
       }
-      slotsInfo.compatibleStreamSerializer.readFields(buffer, getField.vals);
+      slotsInfo.getCompatibleStreamSerializer().readFields(buffer, getField.vals);
       fieldsRead = true;
       return getField;
     }
@@ -1053,7 +1055,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       if (fieldsRead) {
         throw new NotActiveException("not in readObject invocation or fields already read");
       }
-      slotsInfo.slotsSerializer.readAndSetFields(buffer, targetObject);
+      slotsInfo.getSlotsSerializer().readAndSetFields(buffer, targetObject);
       fieldsRead = true;
     }
 
