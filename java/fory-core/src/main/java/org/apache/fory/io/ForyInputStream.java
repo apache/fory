@@ -57,16 +57,16 @@ public class ForyInputStream extends InputStream implements ForyStreamReader {
       heapMemory = growBuffer(minFillSize, buffer);
     }
     try {
-      int read;
+      int read = 0;
       int len = heapMemory.length - offset;
-      read = stream.read(heapMemory, offset, len);
-      while (read < minFillSize) {
+      do {
         int newRead = stream.read(heapMemory, offset + read, len - read);
         if (newRead < 0) {
           throw new IndexOutOfBoundsException("No enough data in the stream " + stream);
         }
         read += newRead;
-      }
+      } while (read < minFillSize);
+
       buffer.increaseSize(read);
       return read;
     } catch (IOException e) {
@@ -101,14 +101,14 @@ public class ForyInputStream extends InputStream implements ForyStreamReader {
       len -= remaining;
       dstIndex += remaining;
       try {
-        int read = stream.read(dst, dstIndex, len);
-        while (read < len) {
+        int read = 0;
+        do {
           int newRead = stream.read(dst, dstIndex + read, len - read);
           if (newRead < 0) {
             throw new IndexOutOfBoundsException("No enough data in the stream " + stream);
           }
           read += newRead;
-        }
+        } while (read < len);
       } catch (IOException e) {
         throw new RuntimeException(e);
       }
