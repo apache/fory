@@ -88,6 +88,10 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
    * Interface for slot information used in ObjectStreamSerializer. This allows both full SlotsInfo
    * and minimal MinimalSlotsInfo implementations.
    */
+  /**
+   * Interface for slot information used in ObjectStreamSerializer. This allows both full SlotsInfo
+   * and minimal MinimalSlotsInfo implementations.
+   */
   private interface SlotInfo {
     Class<?> getCls();
 
@@ -370,6 +374,11 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         }
       };
 
+  /**
+   * Full implementation of SlotInfo for handling object stream serialization. This class manages
+   * all the details of serializing and deserializing a single class in the class hierarchy using
+   * Java's ObjectInputStream/ObjectOutputStream protocol.
+   */
   private static class SlotsInfo implements SlotInfo {
     private final Class<?> cls;
     private final ClassInfo classInfo;
@@ -1033,7 +1042,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
         if (index == -1) {
           throw new IllegalArgumentException(
               String.format(
-                  "Field name %s not exist in class %s", name, slotsInfo.getSlotsSerializer().getType()));
+                  "Field name %s not exist in class %s",
+                  name, slotsInfo.getSlotsSerializer().getType()));
         }
       }
     }
