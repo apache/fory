@@ -810,8 +810,9 @@ public class RustXlangTest extends ForyTestBase {
     for (int i = 0; i < 3; i++) {
       fory.serialize(buffer, Color.White);
     }
-    // todo: checkVersion
-    //        fory.serialize(buffer, myStruct);
+    for (int i = 0; i < 3; i++) {
+      fory.serialize(buffer, myStruct);
+    }
     for (int i = 0; i < 3; i++) {
       fory.serialize(buffer, myExt);
     }

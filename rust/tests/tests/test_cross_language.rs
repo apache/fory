@@ -671,7 +671,7 @@ fn test_consistent_named() {
     fory.register_serializer_by_name::<MyExt>("my_ext").unwrap();
 
     let color = Color::White;
-    let _my_struct = MyStruct { id: 42 };
+    let my_struct = MyStruct { id: 42 };
     let my_ext = MyExt { id: 43 };
 
     let data_file_path = get_data_file();
@@ -682,19 +682,21 @@ fn test_consistent_named() {
         assert_eq!(fory.deserialize_from::<Color>(&mut reader).unwrap(), color);
     }
     for _ in 0..3 {
+        assert_eq!(fory.deserialize_from::<MyStruct>(&mut reader).unwrap(), my_struct);
+    }
+    for _ in 0..3 {
         assert_eq!(fory.deserialize_from::<MyExt>(&mut reader).unwrap(), my_ext);
     }
-    // assert_eq!(fory.deserialize_with_context::<MyStruct>(&mut context).unwrap(), my_struct);
-
     let mut buf = Vec::new();
     for _ in 0..3 {
         fory.serialize_to(&color, &mut buf).unwrap();
     }
     for _ in 0..3 {
+        fory.serialize_to(&my_struct, &mut buf).unwrap();
+    }
+    for _ in 0..3 {
         fory.serialize_to(&my_ext, &mut buf).unwrap();
     }
-    // // todo: checkVersion
-    // // fory.serialize_with_context(&my_struct, &mut context);
     fs::write(&data_file_path, buf).unwrap();
 }
 
