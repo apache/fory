@@ -19,4 +19,6 @@ pub mod context;
 pub mod meta_resolver;
 pub mod meta_string_resolver;
 pub mod ref_resolver;
+pub mod ref_tracker;
+pub mod serialization_context;
 pub mod type_resolver;

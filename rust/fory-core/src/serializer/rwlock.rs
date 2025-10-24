@@ -15,32 +15,34 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Serialization support for `Mutex<T>`.
+//! Serialization support for `RwLock<T>`.
 //!
-//! This module implements [`Serializer`] and [`ForyDefault`] for [`std::sync::Mutex<T>`].
-//! It allows thread-safe mutable containers to be part of serialized graphs.
+//! This module implements [`Serializer`] and [`ForyDefault`] for [`std::sync::RwLock<T>`].
+//! It allows thread-safe read-write lock containers to be part of serialized graphs.
 //!
-//! Unlike [`std::rc::Rc`] and [`std::sync::Arc`], `Mutex` does not do reference counting, so this wrapper relies
+//! Unlike [`std::rc::Rc`] and [`std::sync::Arc`], `RwLock` does not do reference counting, so this wrapper relies
 //! on the serialization of the contained `T` only.
 //!
-//! This is commonly used together with `Arc<Mutex<T>>` in threaded graph structures.
+//! This is commonly used together with `Arc<RwLock<T>>` in multi-threaded applications
+//! where reads are more frequent than writes.
 //!
 //! # Example
 //! ```rust
-//! use std::sync::Mutex;
+//! use std::sync::RwLock;
 //! use fory_core::{Serializer, ForyDefault};
 //!
-//! let mutex = Mutex::new(42);
+//! let rwlock = RwLock::new(42);
 //! // Can be serialized by the Fory framework
 //! ```
 //!
 //! # Caveats
 //!
-//! - Serialization locks the mutex while reading/writing the inner value.
-//! - If another thread holds the lock during serialization, this may block indefinitely.
-//!   You should serialize in a quiescent state with no concurrent mutation.
-//! - A poisoned mutex (from a panicked holder) will cause `.lock().unwrap()` to panic
+//! - Serialization locks the RwLock for reading while accessing the inner value.
+//! - If a write lock is held during serialization, this will block until the write completes.
+//! - You should serialize in a quiescent state with no concurrent writes for best performance.
+//! - A poisoned RwLock (from a panicked holder) will cause `.read().unwrap()` to panic
 //!   during serialization — it is assumed this is a programmer error.
+
 use crate::error::Error;
 use crate::meta::type_traits::TypeCharacteristics;
 use crate::resolver::context::{ReadContext, WriteContext};
@@ -48,13 +50,13 @@ use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::TypeId;
 use std::rc::Rc;
-use std::sync::Mutex;
+use std::sync::RwLock;
 
-/// `Serializer` impl for `Mutex<T>`
+/// `Serializer` impl for `RwLock<T>`
 ///
-/// Simply delegates to the serializer for `T`, allowing thread-safe interior mutable
+/// Simply delegates to the serializer for `T`, allowing thread-safe read-write lock
 /// containers to be included in serialized graphs.
-impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
+impl<T: Serializer + ForyDefault> Serializer for RwLock<T> {
     fn fory_write(
         &self,
         context: &mut WriteContext,
@@ -62,9 +64,9 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
         write_type_info: bool,
         has_generics: bool,
     ) -> Result<(), Error> {
-        // Don't add ref tracking for Mutex itself, just delegate to inner type
+        // Don't add ref tracking for RwLock itself, just delegate to inner type
         // The inner type will handle its own ref tracking
-        let guard = self.lock().unwrap();
+        let guard = self.read().unwrap();
         T::fory_write(
             &*guard,
             context,
@@ -79,12 +81,12 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
         context: &mut WriteContext,
         has_generics: bool,
     ) -> Result<(), Error> {
-        T::fory_write_data_generic(&*self.lock().unwrap(), context, has_generics)
+        T::fory_write_data_generic(&*self.read().unwrap(), context, has_generics)
     }
 
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         // When called from Rc/Arc, just delegate to inner type's data serialization
-        let guard = self.lock().unwrap();
+        let guard = self.read().unwrap();
         T::fory_write_data(&*guard, context)
     }
 
@@ -93,7 +95,7 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     }
 
     fn fory_reserved_space() -> usize {
-        // Mutex is transparent, delegate to inner type
+        // RwLock is transparent, delegate to inner type
         T::fory_reserved_space()
     }
 
@@ -105,7 +107,7 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     where
         Self: Sized + ForyDefault,
     {
-        Ok(Mutex::new(T::fory_read(
+        Ok(RwLock::new(T::fory_read(
             context,
             read_ref_info,
             read_type_info,
@@ -120,7 +122,7 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     where
         Self: Sized + ForyDefault,
     {
-        Ok(Mutex::new(T::fory_read_with_type_info(
+        Ok(RwLock::new(T::fory_read_with_type_info(
             context,
             read_ref_info,
             type_info,
@@ -128,7 +130,7 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     }
 
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        Ok(Mutex::new(T::fory_read_data(context)?))
+        Ok(RwLock::new(T::fory_read_data(context)?))
     }
 
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
@@ -140,7 +142,7 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     }
 
     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
-        let guard = self.lock().unwrap();
+        let guard = self.read().unwrap();
         (*guard).fory_type_id_dyn(type_resolver)
     }
 
@@ -153,38 +155,90 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     }
 }
 
-impl<T: ForyDefault> ForyDefault for Mutex<T> {
+impl<T: ForyDefault> ForyDefault for RwLock<T> {
     fn fory_default() -> Self {
-        Mutex::new(T::fory_default())
+        RwLock::new(T::fory_default())
     }
 }
 
 // ============================================================================
-// TypeCharacteristics Implementation for Mutex<T>
+// TypeCharacteristics Implementation for RwLock<T>
 // ============================================================================
 
-/// Mutex<T> inherits type characteristics from T.
+/// RwLock<T> inherits type characteristics from T.
 ///
-/// Since Mutex is a transparent wrapper for thread-safe interior mutability,
+/// Since RwLock is a transparent wrapper for thread-safe read-write locking,
 /// it preserves the morphic/polymorphic nature of the contained type.
 ///
 /// # Examples
 ///
 /// ```rust,ignore
-/// use std::sync::Mutex;
+/// use std::sync::RwLock;
 /// use fory_core::meta::type_traits::TypeCharacteristics;
 ///
-/// // Mutex<i32> is morphic because i32 is morphic
-/// assert!(Mutex::<i32>::is_morphic());
-///
-/// // Mutex<dyn Trait> would be polymorphic if the inner type is
+/// // RwLock<Vec<i32>> is morphic because Vec<i32> is morphic
+/// assert!(RwLock::<Vec<i32>>::is_morphic());
 /// ```
-impl<T: TypeCharacteristics> TypeCharacteristics for Mutex<T> {
+impl<T: TypeCharacteristics> TypeCharacteristics for RwLock<T> {
     fn is_morphic() -> bool {
         T::is_morphic()
     }
 
     fn is_polymorphic() -> bool {
         T::is_polymorphic()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fory::Fory;
+
+    #[test]
+    fn test_rwlock_basic_serialization() {
+        let fory = Fory::default();
+        let rwlock = RwLock::new(42i32);
+
+        let serialized = fory.serialize(&rwlock).unwrap();
+        let deserialized: RwLock<i32> = fory.deserialize(&serialized).unwrap();
+
+        assert_eq!(*deserialized.read().unwrap(), 42);
+    }
+
+    #[test]
+    fn test_rwlock_string_serialization() {
+        let fory = Fory::default();
+        let rwlock = RwLock::new(String::from("Hello, RwLock!"));
+
+        let serialized = fory.serialize(&rwlock).unwrap();
+        let deserialized: RwLock<String> = fory.deserialize(&serialized).unwrap();
+
+        assert_eq!(*deserialized.read().unwrap(), "Hello, RwLock!");
+    }
+
+    #[test]
+    fn test_rwlock_vec_serialization() {
+        let fory = Fory::default();
+        let rwlock = RwLock::new(vec![1, 2, 3, 4, 5]);
+
+        let serialized = fory.serialize(&rwlock).unwrap();
+        let deserialized: RwLock<Vec<i32>> = fory.deserialize(&serialized).unwrap();
+
+        assert_eq!(*deserialized.read().unwrap(), vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_rwlock_type_characteristics() {
+        // RwLock<i32> should be morphic
+        assert!(RwLock::<i32>::is_morphic());
+        assert!(!RwLock::<i32>::is_polymorphic());
+
+        // RwLock<String> should be morphic
+        assert!(RwLock::<String>::is_morphic());
+        assert!(!RwLock::<String>::is_polymorphic());
+
+        // RwLock<Vec<i32>> should be morphic
+        assert!(RwLock::<Vec<i32>>::is_morphic());
+        assert!(!RwLock::<Vec<i32>>::is_polymorphic());
     }
 }

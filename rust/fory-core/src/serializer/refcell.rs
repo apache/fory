@@ -33,6 +33,7 @@
 //! // Can be serialized by the Fory framework
 //! ```
 use crate::error::Error;
+use crate::meta::type_traits::TypeCharacteristics;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
@@ -145,5 +146,33 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
 impl<T: ForyDefault> ForyDefault for RefCell<T> {
     fn fory_default() -> Self {
         RefCell::new(T::fory_default())
+    }
+}
+
+// ============================================================================
+// TypeCharacteristics Implementation for RefCell<T>
+// ============================================================================
+
+/// RefCell<T> inherits type characteristics from T.
+///
+/// Since RefCell is a transparent wrapper for interior mutability,
+/// it preserves the morphic/polymorphic nature of the contained type.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// use std::cell::RefCell;
+/// use fory_core::meta::type_traits::TypeCharacteristics;
+///
+/// // RefCell<String> is morphic because String is morphic
+/// assert!(RefCell::<String>::is_morphic());
+/// ```
+impl<T: TypeCharacteristics> TypeCharacteristics for RefCell<T> {
+    fn is_morphic() -> bool {
+        T::is_morphic()
+    }
+
+    fn is_polymorphic() -> bool {
+        T::is_polymorphic()
     }
 }

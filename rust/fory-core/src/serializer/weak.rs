@@ -123,6 +123,7 @@
 
 use crate::ensure;
 use crate::error::Error;
+use crate::meta::type_traits::TypeCharacteristics;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
@@ -629,5 +630,33 @@ fn read_arc_weak<T: Serializer + ForyDefault + 'static>(
 impl<T: ForyDefault> ForyDefault for ArcWeak<T> {
     fn fory_default() -> Self {
         ArcWeak::new()
+    }
+}
+
+// ============================================================================
+// TypeCharacteristics implementations for Weak pointers
+// ============================================================================
+
+/// RcWeak<T> is morphic if T is morphic.
+/// Weak pointers inherit the type characteristics of their target type.
+impl<T: TypeCharacteristics> TypeCharacteristics for RcWeak<T> {
+    fn is_morphic() -> bool {
+        T::is_morphic()
+    }
+
+    fn is_polymorphic() -> bool {
+        T::is_polymorphic()
+    }
+}
+
+/// ArcWeak<T> is morphic if T is morphic.
+/// Weak pointers inherit the type characteristics of their target type.
+impl<T: TypeCharacteristics> TypeCharacteristics for ArcWeak<T> {
+    fn is_morphic() -> bool {
+        T::is_morphic()
+    }
+
+    fn is_polymorphic() -> bool {
+        T::is_polymorphic()
     }
 }
