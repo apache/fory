@@ -281,6 +281,8 @@
           <docencoding>UTF-8</docencoding>
           <charset>UTF-8</charset>
           <detectJavaApiLink>false</detectJavaApiLink>
+          <detectLinks>false</detectLinks>
+          <detectOfflineLinks>false</detectOfflineLinks>
           <bottom>
             Copyright © 2023-2025, The Apache Software Foundation. Apache Fory™, Fory™, and Apache
             are either registered trademarks or trademarks of the Apache Software Foundation.

@@ -115,14 +115,14 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
   /**
    * Safe wrapper for ObjectStreamClass.lookup that handles GraalVM native image limitations. In
    * GraalVM native image, ObjectStreamClass.lookup may fail for certain classes like Throwable due
-   * to missing SerializationConstructorAccessor. This method catches such exceptions and returns
-   * null, allowing the serializer to use alternative approaches like Unsafe.allocateInstance.
+   * to missing SerializationConstructorAccessor. This method catches such errors and returns null,
+   * allowing the serializer to use alternative approaches like Unsafe.allocateInstance.
    */
   private static ObjectStreamClass safeObjectStreamClassLookup(Class<?> type) {
     if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
       try {
         return ObjectStreamClass.lookup(type);
-      } catch (Exception e) {
+      } catch (Throwable e) {
         // In GraalVM native image, ObjectStreamClass.lookup may fail for certain classes
         // due to missing SerializationConstructorAccessor. We catch this and return null
         // to allow fallback to Unsafe-based object creation.
@@ -438,8 +438,15 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       }
       fieldIndexMap = new ObjectIntMap<>(4, 0.4f);
       List<ClassField> allFields = new ArrayList<>();
-      for (ObjectStreamField serialField : objectStreamClass.getFields()) {
-        allFields.add(new ClassField(serialField.getName(), serialField.getType(), cls));
+      if (objectStreamClass != null) {
+        for (ObjectStreamField serialField : objectStreamClass.getFields()) {
+          allFields.add(new ClassField(serialField.getName(), serialField.getType(), cls));
+        }
+      } else {
+        // Fallback to field resolver when ObjectStreamClass is not available in GraalVM
+        for (FieldResolver.FieldInfo fieldInfo : fieldResolver.getAllFieldsList()) {
+          allFields.add(new ClassField(fieldInfo.getName(), fieldInfo.getField().getType(), cls));
+        }
       }
       if (streamClassInfo.writeObjectMethod != null || streamClassInfo.readObjectMethod != null) {
         putFieldsResolver = new FieldResolver(fory, cls, true, allFields, new HashSet<>());
