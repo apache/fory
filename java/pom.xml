@@ -67,6 +67,9 @@
   <properties>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <maven.javadoc.failOnError>false</maven.javadoc.failOnError>
     <guava.version>32.1.2-jre</guava.version>
     <janino.version>3.1.12</janino.version>
     <commons_codec.version>1.13</commons_codec.version>
@@ -180,26 +183,6 @@
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
-          <artifactId>maven-javadoc-plugin</artifactId>
-          <version>3.6.3</version>
-          <executions>
-            <execution>
-              <id>attach-javadocs</id>
-              <goals>
-                <goal>jar</goal>
-              </goals>
-            </execution>
-          </executions>
-          <configuration>
-            <doclint>none</doclint>
-            <bottom>
-              Copyright © 2023-2025, The Apache Software Foundation. Apache Fory™, Fory™, and Apache
-              are either registered trademarks or trademarks of the Apache Software Foundation.
-            </bottom>
-          </configuration>
-        </plugin>
-        <plugin>
-          <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-shade-plugin</artifactId>
           <version>3.6.0</version>
         </plugin>
@@ -278,6 +261,30 @@
               <style>GOOGLE</style>
             </googleJavaFormat>
           </java>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>3.6.3</version>
+        <executions>
+          <execution>
+            <id>attach-javadocs</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <doclint>none</doclint>
+          <encoding>UTF-8</encoding>
+          <docencoding>UTF-8</docencoding>
+          <charset>UTF-8</charset>
+          <detectJavaApiLink>false</detectJavaApiLink>
+          <bottom>
+            Copyright © 2023-2025, The Apache Software Foundation. Apache Fory™, Fory™, and Apache
+            are either registered trademarks or trademarks of the Apache Software Foundation.
+          </bottom>
         </configuration>
       </plugin>
     </plugins>
