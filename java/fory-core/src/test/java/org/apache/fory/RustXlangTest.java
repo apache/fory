@@ -45,6 +45,7 @@ import org.apache.fory.test.TestUtils;
 import org.apache.fory.util.MurmurHash3;
 import org.testng.Assert;
 import org.testng.SkipException;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 /** Tests in this class need fory rust installed. */
@@ -73,7 +74,7 @@ public class RustXlangTest extends ForyTestBase {
 
   private static final int RUST_TESTCASE_INDEX = 4;
 
-  //  @BeforeClass
+  @BeforeClass
   public void isRustJavaCIEnabled() {
     String enabled = System.getenv("RUST_TESTCASE_ENABLED");
     if (enabled == null || !enabled.equals("1")) {
