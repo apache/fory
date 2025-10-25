@@ -35,7 +35,6 @@
     <maven.compiler.target>17</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <native.maven.plugin.version>0.9.28</native.maven.plugin.version>
-    <junit.jupiter.version>5.8.1</junit.jupiter.version>
     <mainClass>org.apache.fory.graalvm.Main</mainClass>
     <imageName>main</imageName>
   </properties>
@@ -58,6 +57,16 @@
       <groupId>org.apache.fory</groupId>
       <artifactId>fory-core</artifactId>
       <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.fory</groupId>
+      <artifactId>fory-graalvm-feature</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.testng</groupId>
+      <artifactId>testng</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 
@@ -149,19 +158,13 @@
             <version>${native.maven.plugin.version}</version>
             <extensions>true</extensions>
             <executions>
+              <!-- Build native image (no fork) to align with CI behavior -->
               <execution>
                 <id>build-native</id>
                 <goals>
-                  <goal>build</goal>
+                  <goal>compile-no-fork</goal>
                 </goals>
                 <phase>package</phase>
-              </execution>
-              <execution>
-                <id>test-native</id>
-                <goals>
-                  <goal>test</goal>
-                </goals>
-                <phase>test</phase>
               </execution>
             </executions>
             <configuration>
@@ -184,17 +187,13 @@
               <execution>
                 <id>java-agent</id>
                 <goals>
-                  <goal>exec</goal>
+                  <goal>java</goal>
                 </goals>
                 <phase>test</phase>
                 <configuration>
-                  <executable>java</executable>
-                  <workingDirectory>${project.build.directory}</workingDirectory>
-                  <arguments>
-                    <argument>-classpath</argument>
-                    <classpath/>
-                    <argument>${mainClass}</argument>
-                  </arguments>
+                  <mainClass>${mainClass}</mainClass>
+                  <includeProjectDependencies>true</includeProjectDependencies>
+                  <includePluginDependencies>false</includePluginDependencies>
                 </configuration>
               </execution>
             </executions>

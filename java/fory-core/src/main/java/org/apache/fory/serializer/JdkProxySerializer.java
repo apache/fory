@@ -28,6 +28,7 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 
 /** Serializer for jdk {@link Proxy}. */
@@ -62,7 +63,11 @@ public class JdkProxySerializer extends Serializer {
   public JdkProxySerializer(Fory fory, Class cls) {
     super(fory, cls);
     if (cls != ReplaceStub.class) {
-      Preconditions.checkArgument(ReflectionUtils.isJdkProxy(cls), "Require a jdk proxy class");
+      // Skip proxy class validation in GraalVM native image runtime to avoid issues with proxy
+      // detection
+      if (!GraalvmSupport.isGraalRuntime()) {
+        Preconditions.checkArgument(ReflectionUtils.isJdkProxy(cls), "Require a jdk proxy class");
+      }
     }
   }
 

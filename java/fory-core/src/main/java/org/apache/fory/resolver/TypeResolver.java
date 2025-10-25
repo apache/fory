@@ -26,9 +26,7 @@ import com.google.common.collect.HashBiMap;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Type;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -36,7 +34,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.Internal;
@@ -572,34 +569,18 @@ public abstract class TypeResolver {
     extRegistry.typeChecker = typeChecker;
   }
 
-  private static final ConcurrentMap<Integer, GraalvmClassRegistry> GRAALVM_REGISTRY =
-      new ConcurrentHashMap<>();
-
   // CHECKSTYLE.OFF:MethodName
   public static void _addGraalvmClassRegistry(int foryConfigHash, ClassResolver classResolver) {
     // CHECKSTYLE.ON:MethodName
     if (GraalvmSupport.isGraalBuildtime()) {
-      GraalvmClassRegistry registry =
-          GRAALVM_REGISTRY.computeIfAbsent(foryConfigHash, k -> new GraalvmClassRegistry());
+      GraalvmSupport.GraalvmClassRegistry registry =
+          GraalvmSupport.getGraalvmClassRegistry(foryConfigHash);
       registry.resolvers.add(classResolver);
     }
   }
 
-  static class GraalvmClassRegistry {
-    final List<ClassResolver> resolvers;
-    final Map<Class<?>, Class<? extends Serializer>> serializerClassMap;
-    final Map<Long, Class<? extends Serializer>> deserializerClassMap;
-
-    private GraalvmClassRegistry() {
-      resolvers = Collections.synchronizedList(new ArrayList<>());
-      serializerClassMap = new ConcurrentHashMap<>();
-      deserializerClassMap = new ConcurrentHashMap<>();
-    }
-  }
-
-  final GraalvmClassRegistry getGraalvmClassRegistry() {
-    return GRAALVM_REGISTRY.computeIfAbsent(
-        fory.getConfig().getConfigHash(), k -> new GraalvmClassRegistry());
+  final GraalvmSupport.GraalvmClassRegistry getGraalvmClassRegistry() {
+    return GraalvmSupport.getGraalvmClassRegistry(fory.getConfig().getConfigHash());
   }
 
   final Class<? extends Serializer> getGraalvmSerializerClass(Serializer serializer) {
@@ -610,8 +591,9 @@ public abstract class TypeResolver {
   }
 
   final Class<? extends Serializer> getSerializerClassFromGraalvmRegistry(Class<?> cls) {
-    GraalvmClassRegistry registry = getGraalvmClassRegistry();
-    List<ClassResolver> classResolvers = registry.resolvers;
+    GraalvmSupport.GraalvmClassRegistry registry = getGraalvmClassRegistry();
+    @SuppressWarnings("unchecked")
+    List<ClassResolver> classResolvers = (List<ClassResolver>) (List<?>) registry.resolvers;
     if (classResolvers.isEmpty()) {
       return null;
     }
@@ -639,8 +621,9 @@ public abstract class TypeResolver {
 
   private Class<? extends Serializer> getMetaSharedDeserializerClassFromGraalvmRegistry(
       Class<?> cls, ClassDef classDef) {
-    GraalvmClassRegistry registry = getGraalvmClassRegistry();
-    List<ClassResolver> classResolvers = registry.resolvers;
+    GraalvmSupport.GraalvmClassRegistry registry = getGraalvmClassRegistry();
+    @SuppressWarnings("unchecked")
+    List<ClassResolver> classResolvers = (List<ClassResolver>) (List<?>) registry.resolvers;
     if (classResolvers.isEmpty()) {
       return null;
     }
