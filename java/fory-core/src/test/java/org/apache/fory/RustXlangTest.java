@@ -140,7 +140,6 @@ public class RustXlangTest extends ForyTestBase {
   public void testBufferVar() throws IOException {
     String caseName = "test_buffer_var";
     List<String> command = setTestCase(caseName);
-    ;
     Path dataFile = Files.createTempFile(caseName, "data");
     MemoryBuffer buffer = MemoryUtils.buffer(100);
     int[] varInt32Values = {
