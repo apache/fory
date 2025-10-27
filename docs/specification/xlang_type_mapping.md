@@ -21,7 +21,7 @@ license: |
 
 Note:
 
-- For type definition, see [Type Systems in Spec](../specification/xlang_serialization_spec.md#type-systems)
+- For type definition, see [Type Systems in Spec](xlang_serialization_spec.md#type-systems)
 - `int16_t[n]/vector<T>` indicates `int16_t[n]/vector<int16_t>`
 - The cross-language serialization is not stable, do not use it in your production environment.
 

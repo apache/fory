@@ -848,7 +848,7 @@ fory.register::<MyStruct>(100);
 fory.register_by_namespace::<MyStruct>("com.example", "MyStruct");
 ```
 
-See [xlang_type_mapping.md](https://fory.apache.org/docs/specification/fory_xlang_serialization_spec) for type mapping across languages.
+See [xlang_type_mapping.md](https://fory.apache.org/docs/specification/xlang_type_mapping) for type mapping across languages.
 
 ## ⚡ Performance
 

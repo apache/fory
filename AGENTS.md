@@ -463,7 +463,7 @@ Fory rust provides macro-based serialization and deserialization. Fory rust cons
 ### Cross-Language Considerations
 
 - **Protocol Compatibility**: Ensure serialization compatibility across languages
-- **Type Mapping**: Understand type mapping between languages (see `docs/guide/xlang_type_mapping.md`)
+- **Type Mapping**: Understand type mapping between languages (see `docs/specification/xlang_type_mapping.md`)
 - **Endianness**: Handle byte order correctly for cross-platform compatibility
 - **Version Compatibility**: Maintain backward compatibility when possible
 
