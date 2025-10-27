@@ -33,21 +33,28 @@ import org.apache.fory.serializer.Serializers;
 public interface BaseFory {
 
   /**
-   * Register class and allocate an auto-grown ID for this class. Note that the registration order
-   * is important. If registration order is inconsistent, the allocated ID will be different, and
-   * the deserialization will failed.
+   * Register class and allocate an auto-grown ID for this class.
+   *
+   * <p><b>NOTE</b>: The registration order is important. If registration order is inconsistent, the
+   * allocated ID will be different, and the deserialization will failed !!!
    *
    * @param cls class to register.
    */
   void register(Class<?> cls);
 
-  /** register class with given id. */
+  /**
+   * register class with given id.
+   *
+   * <p><b>NOTE</b>: The registration id is important. If registration id is inconsistent, and the
+   * deserialization will failed !!!
+   */
   void register(Class<?> cls, int id);
 
   /**
-   * Register class and allocate an auto-grown ID for this class. Note that the registration order
-   * is important. If registration order is inconsistent, the allocated ID will be different, and
-   * the deserialization will failed.
+   * Register class and allocate an auto-grown ID for this class.
+   *
+   * <p><b>NOTE</b>: The registration order is important. If registration order is inconsistent, the
+   * allocated ID will be different, and the deserialization will failed !!!
    *
    * @param cls class to register.
    * @param createSerializer whether to create serializer, if true and codegen enabled, this will
@@ -79,9 +86,10 @@ public interface BaseFory {
   void register(Class<?> cls, String namespace, String typeName);
 
   /**
-   * Register class and allocate an auto-grown ID for this class. Note that the registration order
-   * is important. If registration order is inconsistent, the allocated ID will be different, and
-   * the deserialization will failed.
+   * Register class and allocate an auto-grown ID for this class.
+   *
+   * <p><b>NOTE</b>: The registration order is important. If registration order is inconsistent, the
+   * allocated ID will be different, and the deserialization will failed !!!
    *
    * @param className full class name to register.
    */
@@ -98,8 +106,10 @@ public interface BaseFory {
 
   /**
    * Register a Serializer for a class, and allocate an auto-grown ID for this class if it's not
-   * registered yet. Note that the registration order is important. If registration order is
-   * inconsistent, the allocated ID will be different, and the deserialization will failed.
+   * registered yet.
+   *
+   * <p><b>NOTE</b>: The registration order is important. If registration order is inconsistent, the
+   * allocated ID will be different, and the deserialization will failed !!!
    *
    * @param type class needed to be serialized/deserialized.
    * @param serializerClass serializer class can be created with {@link Serializers#newSerializer}.
@@ -109,16 +119,19 @@ public interface BaseFory {
 
   /**
    * Register a Serializer for a class, and allocate an auto-grown ID for this class if it's not
-   * registered yet. Note that the registration order is important. If registration order is
-   * inconsistent, the allocated ID will be different, and the deserialization will failed.
+   * registered yet.
+   *
+   * <p><b>NOTE</b>: The registration order is important. If registration order is inconsistent, the
+   * allocated ID will be different, and the deserialization will failed !!!
    */
   void registerSerializer(Class<?> type, Serializer<?> serializer);
 
   /**
    * Register a Serializer created by serializerCreator when fory created. And allocate an
-   * auto-grown ID for this class if it's not registered yet. Note that the registration order is
-   * important. If registration order is inconsistent, the allocated ID will be different, and the
-   * deserialization will failed.
+   * auto-grown ID for this class if it's not registered yet.
+   *
+   * <p><b>NOTE</b>: The registration order is important. If registration order is inconsistent, the
+   * allocated ID will be different, and the deserialization will failed !!!
    *
    * @param type class needed to be serialized/deserialized.
    * @param serializerCreator serializer creator with param {@link Fory}
