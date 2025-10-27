@@ -209,6 +209,7 @@ public class Example {
         .build();
       // Registering types can reduce class name serialization overhead, but not mandatory.
       // If class registration enabled, all custom types must be registered.
+      // NOTE: The registration order is important. If registration order is inconsistent, the allocated ID will be different, and the deserialization will failed !!!
       fory.register(SomeClass.class);
       byte[] bytes = fory.serialize(object);
       System.out.println(fory.deserialize(bytes));
@@ -219,6 +220,7 @@ public class Example {
         .buildThreadSafeFory();
       // Registering types can reduce class name serialization overhead, but not mandatory.
       // If class registration enabled, all custom types must be registered.
+      // NOTE: The registration order is important. If registration order is inconsistent, the allocated ID will be different, and the deserialization will failed !!!
       fory.register(SomeClass.class);
       byte[] bytes = fory.serialize(object);
       System.out.println(fory.deserialize(bytes));
