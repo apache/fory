@@ -744,31 +744,30 @@ fn test_struct_version_check() {
 /// 4. Rust-serialized data can be correctly deserialized in Java
 #[test]
 #[ignore]
+#[allow(clippy::approx_constant)]
 fn test_reference_alignment() {
     let data_file_path = get_data_file();
 
     // Read data serialized by Java
     let bytes = fs::read(&data_file_path).unwrap();
-    let mut fory = Fory::default().xlang(true).compatible(true);
-
-    let reader = Reader::new(bytes.as_slice());
-    let mut context = ReadContext::new_from_fory(reader, &fory);
+    let fory = Fory::default().xlang(true).compatible(true);
+    let mut reader = Reader::new(bytes.as_slice());
 
     // Deserialize values in the same order as Java wrote them
     // 1. Primitive int (no RefFlag)
-    let v1: i32 = fory.deserialize_with_context(&mut context).unwrap();
+    let v1: i32 = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(v1, 42, "i32 value mismatch");
 
     // 2. Boxed Integer (with RefFlag for null handling)
-    let v2: Option<i32> = fory.deserialize_with_context(&mut context).unwrap();
+    let v2: Option<i32> = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(v2, Some(100), "Option<i32> value mismatch");
 
     // 3. String (reference type, with RefFlag)
-    let v3: String = fory.deserialize_with_context(&mut context).unwrap();
+    let v3: String = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(v3, "hello", "String value mismatch");
 
     // 4. List<String> (reference type, with RefFlag)
-    let v4: Vec<String> = fory.deserialize_with_context(&mut context).unwrap();
+    let v4: Vec<String> = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(
         v4,
         vec!["a".to_string(), "b".to_string()],
@@ -776,37 +775,33 @@ fn test_reference_alignment() {
     );
 
     // 5. Map<String, Integer> (reference type, with RefFlag)
-    let v5: HashMap<String, i32> = fory.deserialize_with_context(&mut context).unwrap();
+    let v5: HashMap<String, i32> = fory.deserialize_from(&mut reader).unwrap();
     let mut expected_map = HashMap::new();
     expected_map.insert("key1".to_string(), 10);
     expected_map.insert("key2".to_string(), 20);
     assert_eq!(v5, expected_map, "HashMap value mismatch");
 
     // 6. Double (primitive, no RefFlag)
-    let v6: f64 = fory.deserialize_with_context(&mut context).unwrap();
+    let v6: f64 = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(v6, 3.14, "f64 value mismatch");
 
     // 7. Boolean (primitive, no RefFlag)
-    let v7: bool = fory.deserialize_with_context(&mut context).unwrap();
-    assert_eq!(v7, true, "bool value mismatch");
+    let v7: bool = fory.deserialize_from(&mut reader).unwrap();
+    assert!(v7, "bool value mismatch");
 
     // Now serialize data back to Java
-    let writer = Writer::default();
-    let mut context = WriteContext::new_from_fory(writer, &fory);
+    let mut buf = Vec::new();
 
     // Serialize in the same order
-    fory.serialize_with_context(&42i32, &mut context).unwrap();
-    fory.serialize_with_context(&Some(100i32), &mut context)
+    fory.serialize_to(&42i32, &mut buf).unwrap();
+    fory.serialize_to(&Some(100i32), &mut buf).unwrap();
+    fory.serialize_to(&"hello".to_string(), &mut buf).unwrap();
+    fory.serialize_to(&vec!["a".to_string(), "b".to_string()], &mut buf)
         .unwrap();
-    fory.serialize_with_context(&"hello".to_string(), &mut context)
-        .unwrap();
-    fory.serialize_with_context(&vec!["a".to_string(), "b".to_string()], &mut context)
-        .unwrap();
-    fory.serialize_with_context(&expected_map, &mut context)
-        .unwrap();
-    fory.serialize_with_context(&3.14f64, &mut context).unwrap();
-    fory.serialize_with_context(&true, &mut context).unwrap();
+    fory.serialize_to(&expected_map, &mut buf).unwrap();
+    fory.serialize_to(&3.14f64, &mut buf).unwrap();
+    fory.serialize_to(&true, &mut buf).unwrap();
 
     // Write back to file for Java to verify
-    fs::write(&data_file_path, context.writer.dump()).unwrap();
+    fs::write(&data_file_path, buf).unwrap();
 }
