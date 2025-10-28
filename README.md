@@ -138,13 +138,13 @@ Release version:
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-core</artifactId>
-  <version>0.12.3</version>
+  <version>0.13.0</version>
 </dependency>
 <!-- row/arrow format support -->
 <!-- <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-format</artifactId>
-  <version>0.12.3</version>
+  <version>0.13.0</version>
 </dependency> -->
 ```
 
@@ -153,13 +153,13 @@ Release version:
 Scala2:
 
 ```sbt
-libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.12.3"
+libraryDependencies += "org.apache.fory" % "fory-scala_2.13" % "0.13.0"
 ```
 
 Scala3:
 
 ```sbt
-libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.12.3"
+libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.13.0"
 ```
 
 ### Kotlin
@@ -168,7 +168,7 @@ libraryDependencies += "org.apache.fory" % "fory-scala_3" % "0.12.3"
 <dependency>
   <groupId>org.apache.fory</groupId>
   <artifactId>fory-kotlin</artifactId>
-  <version>0.12.3</version>
+  <version>0.13.0</version>
 </dependency>
 ```
 

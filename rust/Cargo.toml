@@ -31,7 +31,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.13.0"
+version = "0.14.0"
 rust-version = "1.70"
 description = "Apache Fory: Blazingly fast multi-language serialization framework with trait objects and reference support."
 license = "Apache-2.0"
