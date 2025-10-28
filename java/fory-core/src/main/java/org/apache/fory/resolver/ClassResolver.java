@@ -218,6 +218,9 @@ public class ClassResolver extends TypeResolver {
   private short innerEndClassId;
   private final ShimDispatcher shimDispatcher;
 
+  // customized ClassId serialization mechanism
+  private ClassInfoSerializer classInfoSerializer;
+
   public ClassResolver(Fory fory) {
     super(fory);
     this.fory = fory;
@@ -1361,23 +1364,25 @@ public class ClassResolver extends TypeResolver {
   /** Write classname for java serialization. */
   @Override
   public void writeClassInfo(MemoryBuffer buffer, ClassInfo classInfo) {
-    if (metaContextShareEnabled) {
-      // FIXME(chaokunyang) Register class but not register serializer can't be used with
-      //  meta share mode, because no class def are sent to peer.
-      writeClassInfoWithMetaShare(buffer, classInfo);
-    } else {
-      if (classInfo.classId == NO_CLASS_ID) { // no class id provided.
-        // use classname
-        // if it's null, it's a bug.
-        assert classInfo.namespaceBytes != null;
-        metaStringResolver.writeMetaStringBytesWithFlag(buffer, classInfo.namespaceBytes);
-        assert classInfo.typeNameBytes != null;
-        metaStringResolver.writeMetaStringBytes(buffer, classInfo.typeNameBytes);
+      if (classInfoSerializer != null) {
+          classInfoSerializer.writeClassInfo(this, buffer, classInfo);
+      } else if (metaContextShareEnabled) {
+          // FIXME(chaokunyang) Register class but not register serializer can't be used with
+          //  meta share mode, because no class def are sent to peer.
+          writeClassInfoWithMetaShare(buffer, classInfo);
       } else {
-        // use classId
-        buffer.writeVarUint32(classInfo.classId << 1);
+          if (classInfo.classId == NO_CLASS_ID) { // no class id provided.
+              // use classname
+              // if it's null, it's a bug.
+              assert classInfo.namespaceBytes != null;
+              metaStringResolver.writeMetaStringBytesWithFlag(buffer, classInfo.namespaceBytes);
+              assert classInfo.typeNameBytes != null;
+              metaStringResolver.writeMetaStringBytes(buffer, classInfo.typeNameBytes);
+          } else {
+              // use classId
+              buffer.writeVarUint32(classInfo.classId << 1);
+          }
       }
-    }
   }
 
   public void writeClassInfoWithMetaShare(MemoryBuffer buffer, ClassInfo classInfo) {
@@ -1483,21 +1488,25 @@ public class ClassResolver extends TypeResolver {
   }
 
   public void writeClassInternal(MemoryBuffer buffer, ClassInfo classInfo) {
-    short classId = classInfo.classId;
-    if (classId == REPLACE_STUB_ID) {
-      // clear class id to avoid replaced class written as
-      // ReplaceResolveSerializer.ReplaceStub
-      classInfo.classId = NO_CLASS_ID;
-    }
-    if (classInfo.classId != NO_CLASS_ID) {
-      buffer.writeVarUint32(classInfo.classId << 1);
-    } else {
-      // let the lowermost bit of next byte be set, so the deserialization can know
-      // whether need to read class by name in advance
-      metaStringResolver.writeMetaStringBytesWithFlag(buffer, classInfo.namespaceBytes);
-      metaStringResolver.writeMetaStringBytes(buffer, classInfo.typeNameBytes);
-    }
-    classInfo.classId = classId;
+      short classId = classInfo.classId;
+      if(classInfoSerializer != null) {
+          classInfoSerializer.writeClassInfo(this, buffer, classInfo);
+      } else {
+          if (classId == REPLACE_STUB_ID) {
+              // clear class id to avoid replaced class written as
+              // ReplaceResolveSerializer.ReplaceStub
+              classInfo.classId = NO_CLASS_ID;
+          }
+          if (classInfo.classId != NO_CLASS_ID) {
+              buffer.writeVarUint32(classInfo.classId << 1);
+          } else {
+              // let the lowermost bit of next byte be set, so the deserialization can know
+              // whether need to read class by name in advance
+              metaStringResolver.writeMetaStringBytesWithFlag(buffer, classInfo.namespaceBytes);
+              metaStringResolver.writeMetaStringBytes(buffer, classInfo.typeNameBytes);
+          }
+      }
+        classInfo.classId = classId;
   }
 
   /**
@@ -1506,16 +1515,21 @@ public class ClassResolver extends TypeResolver {
    * #readClassInfo(MemoryBuffer, ClassInfoHolder)} should be invoked.
    */
   public Class<?> readClassInternal(MemoryBuffer buffer) {
-    int header = buffer.readVarUint32Small14();
     final ClassInfo classInfo;
-    if ((header & 0b1) != 0) {
-      // let the lowermost bit of next byte be set, so the deserialization can know
-      // whether need to read class by name in advance
-      MetaStringBytes packageBytes = metaStringResolver.readMetaStringBytesWithFlag(buffer, header);
-      MetaStringBytes simpleClassNameBytes = metaStringResolver.readMetaStringBytes(buffer);
-      classInfo = loadBytesToClassInfo(packageBytes, simpleClassNameBytes);
+
+    if(classInfoSerializer != null) {
+        classInfo = classInfoSerializer.readClassInfo(this, buffer);
     } else {
-      classInfo = registeredId2ClassInfo[(short) (header >> 1)];
+        int header = buffer.readVarUint32Small14();
+        if ((header & 0b1) != 0) {
+            // let the lowermost bit of next byte be set, so the deserialization can know
+            // whether need to read class by name in advance
+            MetaStringBytes packageBytes = metaStringResolver.readMetaStringBytesWithFlag(buffer, header);
+            MetaStringBytes simpleClassNameBytes = metaStringResolver.readMetaStringBytes(buffer);
+            classInfo = loadBytesToClassInfo(packageBytes, simpleClassNameBytes);
+        } else {
+            classInfo = registeredId2ClassInfo[(short) (header >> 1)];
+        }
     }
     final Class<?> cls = classInfo.cls;
     currentReadClass = cls;
@@ -1530,16 +1544,24 @@ public class ClassResolver extends TypeResolver {
     if (metaContextShareEnabled) {
       return readSharedClassMeta(buffer, fory.getSerializationContext().getMetaContext());
     }
-    int header = buffer.readVarUint32Small14();
-    ClassInfo classInfo;
-    if ((header & 0b1) != 0) {
-      classInfo = readClassInfoFromBytes(buffer, classInfoCache, header);
-      classInfoCache = classInfo;
-    } else {
-      classInfo = getOrUpdateClassInfo((short) (header >> 1));
+    else {
+      ClassInfo classInfo;
+      if(classInfoSerializer != null) {
+        classInfo = classInfoSerializer.readClassInfo(this, buffer);
+        classInfoCache = classInfo;
+      } else {
+        int header = buffer.readVarUint32Small14();
+        if ((header & 0b1) != 0) {
+          classInfo = readClassInfoFromBytes(buffer, classInfoCache, header);
+          classInfoCache = classInfo;
+        } else {
+          classInfo = getOrUpdateClassInfo((short) (header >> 1));
+        }
+      }
+
+      currentReadClass = classInfo.cls;
+      return classInfo;
     }
-    currentReadClass = classInfo.cls;
-    return classInfo;
   }
 
   /**
@@ -1549,7 +1571,9 @@ public class ClassResolver extends TypeResolver {
   @CodegenInvoke
   @Override
   public ClassInfo readClassInfo(MemoryBuffer buffer, ClassInfo classInfoCache) {
-    if (metaContextShareEnabled) {
+    if(classInfoSerializer != null) {
+      return classInfoSerializer.readClassInfo(this, buffer);
+    } else if (metaContextShareEnabled) {
       return readSharedClassMeta(buffer, fory.getSerializationContext().getMetaContext());
     }
     int header = buffer.readVarUint32Small14();
