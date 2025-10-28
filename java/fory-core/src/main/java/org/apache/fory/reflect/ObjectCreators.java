@@ -82,11 +82,11 @@ public class ObjectCreators {
       return new RecordObjectCreator<>(type);
     }
     Constructor<T> noArgConstructor = ReflectionUtils.getNoArgConstructor(type);
-    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE && Platform.JAVA_VERSION >= 25) {
+    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
       if (noArgConstructor != null) {
         return new DeclaredNoArgCtrObjectCreator<>(type);
       } else {
-        return new ParentNoArgCtrObjectCreator<>(type);
+        return new UnsafeObjectCreator<>(type);
       }
     }
     if (noArgConstructor == null) {

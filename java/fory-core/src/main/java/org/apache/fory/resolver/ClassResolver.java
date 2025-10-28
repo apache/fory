@@ -431,6 +431,7 @@ public class ClassResolver extends TypeResolver {
     registeredId2ClassInfo[id] = classInfo;
     extRegistry.registeredClasses.put(cls.getName(), cls);
     extRegistry.classIdGenerator++;
+    GraalvmSupport.registerClassForGraalvm(cls, fory.getConfig().getConfigHash());
   }
 
   public void register(String className, int classId) {
@@ -476,6 +477,7 @@ public class ClassResolver extends TypeResolver {
     compositeNameBytes2ClassInfo.put(
         new TypeNameBytes(nsBytes.hashCode, nameBytes.hashCode), classInfo);
     extRegistry.registeredClasses.put(fullname, cls);
+    GraalvmSupport.registerClassForGraalvm(cls, fory.getConfig().getConfigHash());
   }
 
   private void checkRegistration(Class<?> cls, short classId, String name) {
@@ -1792,10 +1794,13 @@ public class ClassResolver extends TypeResolver {
     try {
       fory.getJITContext().lock();
       Serializers.newSerializer(fory, LambdaSerializer.STUB_LAMBDA_CLASS, LambdaSerializer.class);
-      Serializers.newSerializer(
-          fory, JdkProxySerializer.SUBT_PROXY.getClass(), JdkProxySerializer.class);
+      if (!GraalvmSupport.isGraalRuntime()) {
+        Serializers.newSerializer(
+            fory, JdkProxySerializer.SUBT_PROXY.getClass(), JdkProxySerializer.class);
+      }
       classInfoMap.forEach(
           (cls, classInfo) -> {
+            GraalvmSupport.registerClassForGraalvm(cls, fory.getConfig().getConfigHash());
             if (classInfo.serializer == null) {
               if (isSerializable(classInfo.cls)) {
                 createSerializer0(cls);
