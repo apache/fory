@@ -127,6 +127,8 @@ public class RustXlangTest extends ForyTestBase {
     testStructVersionCheck(Language.RUST, command);
     command.set(RUST_TESTCASE_INDEX, "test_consistent_named");
     testConsistentNamed(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, "test_reference_alignment");
+    testReferenceAlignment(Language.RUST, command);
   }
 
   private void testBuffer(Language language, List<String> command) throws IOException {
@@ -940,5 +942,80 @@ public class RustXlangTest extends ForyTestBase {
     } else {
       Assert.assertEquals(actual, expected);
     }
+  }
+
+  /**
+   * Test reference type alignment between Java and Rust in xlang mode.
+   *
+   * <p>This test verifies that:
+   * <ul>
+   *   <li>Primitive types (int, double, boolean) don't write RefFlag
+   *   <li>Reference types (String, List, Map) write RefFlag in xlang mode
+   *   <li>Rust-serialized data can be correctly deserialized in Java
+   *   <li>Java-serialized data can be correctly deserialized in Rust
+   * </ul>
+   */
+  private void testReferenceAlignment(Language language, List<String> command)
+      throws IOException {
+    Fory fory = Fory.builder()
+        .withLanguage(Language.XLANG)
+        .withCompatibleMode(CompatibleMode.COMPATIBLE)
+        .build();
+
+    // Serialize test data from Java
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
+
+    // 1. Primitive int (no RefFlag)
+    fory.serialize(buffer, 42);
+
+    // 2. Boxed Integer (with RefFlag for null handling)
+    fory.serialize(buffer, Integer.valueOf(100));
+
+    // 3. String (reference type, with RefFlag)
+    fory.serialize(buffer, "hello");
+
+    // 4. List<String> (reference type, with RefFlag)
+    fory.serialize(buffer, Arrays.asList("a", "b"));
+
+    // 5. Map<String, Integer> (reference type, with RefFlag)
+    Map<String, Integer> map = new HashMap<>();
+    map.put("key1", 10);
+    map.put("key2", 20);
+    fory.serialize(buffer, map);
+
+    // 6. Double (primitive, no RefFlag)
+    fory.serialize(buffer, 3.14);
+
+    // 7. Boolean (primitive, no RefFlag)
+    fory.serialize(buffer, true);
+
+    byte[] bytes = buffer.getBytes(0, buffer.writerIndex());
+    LOG.info("Java serialized {} bytes for reference alignment test", bytes.length);
+
+    // Send to Rust for verification
+    Path dataFile = Files.createTempFile("test_reference_alignment", "data");
+    Pair<Map<String, String>, File> env_workdir = setFilePath(language, command, dataFile, bytes);
+    Assert.assertTrue(
+        executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()),
+        "Rust test failed");
+
+    // Read back Rust's serialization and verify
+    MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+
+    Assert.assertEquals(fory.deserialize(buffer2), 42, "i32 value mismatch");
+    Assert.assertEquals(fory.deserialize(buffer2), Integer.valueOf(100), "Option<i32> value mismatch");
+    Assert.assertEquals(fory.deserialize(buffer2), "hello", "String value mismatch");
+    Assert.assertEquals(
+        fory.deserialize(buffer2), Arrays.asList("a", "b"), "Vec<String> value mismatch");
+
+    @SuppressWarnings("unchecked")
+    Map<String, Integer> deserializedMap = (Map<String, Integer>) fory.deserialize(buffer2);
+    Assert.assertEquals(deserializedMap.get("key1"), Integer.valueOf(10), "HashMap key1 mismatch");
+    Assert.assertEquals(deserializedMap.get("key2"), Integer.valueOf(20), "HashMap key2 mismatch");
+
+    Assert.assertEquals(fory.deserialize(buffer2), 3.14, "f64 value mismatch");
+    Assert.assertEquals(fory.deserialize(buffer2), true, "bool value mismatch");
+
+    LOG.info("Reference alignment test passed!");
   }
 }

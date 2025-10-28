@@ -638,6 +638,14 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         read_basic_type_info::<Self>(context)
     }
+
+    fn fory_is_xlang_ref_type() -> bool
+    where
+        Self: Sized,
+    {
+        // HashMap<K,V> corresponds to Java Map<K,V>, which is a reference type
+        true
+    }
 }
 
 impl<K, V> ForyDefault for HashMap<K, V> {
@@ -765,6 +773,14 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
 
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         read_basic_type_info::<Self>(context)
+    }
+
+    fn fory_is_xlang_ref_type() -> bool
+    where
+        Self: Sized,
+    {
+        // BTreeMap<K,V> corresponds to Java Map<K,V>, which is a reference type
+        true
     }
 }
 

@@ -258,8 +258,21 @@ pub trait Serializer: 'static {
         Self: Sized,
     {
         if write_ref_info {
-            // skip check option/pointer, the Serializer for such types will override `fory_write`.
-            context.writer.write_i8(RefFlag::NotNullValue as i8);
+            // In xlang mode, determine RefFlag based on type characteristics
+            let should_write_ref = if context.is_xlang() {
+                Self::fory_is_xlang_ref_type()
+            } else {
+                // In non-xlang mode, use original logic
+                true
+            };
+            
+            if should_write_ref {
+                // This is a reference type in xlang context - write RefValue
+                context.writer.write_i8(RefFlag::RefValue as i8);
+            } else {
+                // This is a value type - write NotNullValue
+                context.writer.write_i8(RefFlag::NotNullValue as i8);
+            }
         }
         if write_type_info {
             // Serializer for dynamic types should override `fory_write` to write actual typeinfo.
@@ -1215,6 +1228,70 @@ pub trait Serializer: 'static {
         Self: Sized,
     {
         std::mem::size_of::<Self>()
+    }
+
+    /// Indicate whether this type should be treated as a reference type in cross-language (xlang) serialization.
+    ///
+    /// In cross-language scenarios, type systems differ between languages. For example:
+    /// - In Java: `String`, `List`, `Map` are reference types (need RefFlag)
+    /// - In Rust: `String`, `Vec`, `HashMap` are value types (by default, no RefFlag)
+    ///
+    /// This method bridges the gap by allowing Rust types to declare their cross-language reference semantics.
+    ///
+    /// # Returns
+    ///
+    /// - `true` if this type should be treated as a reference type in xlang mode
+    ///   (will write RefFlag during serialization)
+    /// - `false` if this type should be treated as a value type in xlang mode
+    ///   (will not write RefFlag, default)
+    ///
+    /// # Type Mapping Guidelines
+    ///
+    /// | Rust Type | Java Type | Should Return |
+    /// |-----------|-----------|---------------|
+    /// | `i32`, `f64`, `bool` | `int`, `double`, `boolean` | `false` |
+    /// | `Option<i32>` | `Integer` | `false` (Option handles null) |
+    /// | `String` | `String` | `true` |
+    /// | `Vec<T>` | `List<T>` | `true` |
+    /// | `HashMap<K,V>` | `Map<K,V>` | `true` |
+    /// | User struct | Java object | `true` |
+    ///
+    /// # Default Implementation
+    ///
+    /// Returns `false` for all types. Override for types that correspond to reference types in other languages.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// // String should be treated as reference type in Java
+    /// impl Serializer for String {
+    ///     fn fory_is_xlang_ref_type() -> bool {
+    ///         true
+    ///     }
+    /// }
+    ///
+    /// // i32 is primitive in Java (int)
+    /// impl Serializer for i32 {
+    ///     fn fory_is_xlang_ref_type() -> bool {
+    ///         false  // default
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// # Implementation Notes
+    ///
+    /// - Only affects behavior when `context.is_xlang()` is true
+    /// - Used in [`fory_write`] to determine RefFlag behavior
+    /// - Fory implements this for all built-in types
+    /// - User types should override this for proper xlang interop
+    ///
+    /// [`fory_write`]: Serializer::fory_write
+    #[inline(always)]
+    fn fory_is_xlang_ref_type() -> bool
+    where
+        Self: Sized,
+    {
+        false
     }
 
     /// **[USER IMPLEMENTATION REQUIRED]** Downcast to `&dyn Any` for dynamic type checking.

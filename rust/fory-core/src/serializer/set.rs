@@ -68,6 +68,14 @@ impl<T: Serializer + ForyDefault + Eq + std::hash::Hash> Serializer for HashSet<
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
+
+    fn fory_is_xlang_ref_type() -> bool
+    where
+        Self: Sized,
+    {
+        // HashSet<T> corresponds to Java Set<T>, which is a reference type
+        true
+    }
 }
 
 impl<T> ForyDefault for HashSet<T> {
@@ -114,6 +122,14 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BTreeSet<T> {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn fory_is_xlang_ref_type() -> bool
+    where
+        Self: Sized,
+    {
+        // BTreeSet<T> corresponds to Java Set<T>, which is a reference type
+        true
     }
 }
 
