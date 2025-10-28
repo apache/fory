@@ -121,14 +121,6 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
-
-    fn fory_is_xlang_ref_type() -> bool
-    where
-        Self: Sized,
-    {
-        // Vec<T> corresponds to Java List<T>, which is a reference type
-        true
-    }
 }
 
 impl<T> ForyDefault for Vec<T> {
@@ -181,14 +173,6 @@ impl<T: Serializer + ForyDefault> Serializer for VecDeque<T> {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
-
-    fn fory_is_xlang_ref_type() -> bool
-    where
-        Self: Sized,
-    {
-        // VecDeque<T> corresponds to Java List<T>, which is a reference type
-        true
-    }
 }
 
 impl<T> ForyDefault for VecDeque<T> {
@@ -240,14 +224,6 @@ impl<T: Serializer + ForyDefault> Serializer for LinkedList<T> {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-
-    fn fory_is_xlang_ref_type() -> bool
-    where
-        Self: Sized,
-    {
-        // LinkedList<T> corresponds to Java List<T>, which is a reference type
-        true
     }
 }
 

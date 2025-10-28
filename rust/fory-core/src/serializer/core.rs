@@ -258,21 +258,8 @@ pub trait Serializer: 'static {
         Self: Sized,
     {
         if write_ref_info {
-            // In xlang mode, determine RefFlag based on type characteristics
-            let should_write_ref = if context.is_xlang() {
-                Self::fory_is_xlang_ref_type()
-            } else {
-                // In non-xlang mode, use original logic
-                true
-            };
-
-            if should_write_ref {
-                // This is a reference type in xlang context - write RefValue
-                context.writer.write_i8(RefFlag::RefValue as i8);
-            } else {
-                // This is a value type - write NotNullValue
-                context.writer.write_i8(RefFlag::NotNullValue as i8);
-            }
+            // skip check option/pointer, the Serializer for such types will override `fory_write`.
+            context.writer.write_i8(RefFlag::NotNullValue as i8);
         }
         if write_type_info {
             // Serializer for dynamic types should override `fory_write` to write actual typeinfo.
@@ -1286,38 +1273,6 @@ pub trait Serializer: 'static {
     /// - User types should override this for proper xlang interop
     ///
     /// [`fory_write`]: Serializer::fory_write
-    #[inline(always)]
-    fn fory_is_xlang_ref_type() -> bool
-    where
-        Self: Sized,
-    {
-        false
-    }
-
-    /// **[USER IMPLEMENTATION REQUIRED]** Downcast to `&dyn Any` for dynamic type checking.
-    ///
-    /// This method enables runtime type checking and downcasting, required for
-    /// Fory's type system integration.
-    ///
-    /// # Returns
-    ///
-    /// A reference to this instance as `&dyn Any`.
-    ///
-    /// # Implementation Pattern
-    ///
-    /// Always implement this by returning `self`:
-    ///
-    /// ```rust,ignore
-    /// fn as_any(&self) -> &dyn Any {
-    ///     self
-    /// }
-    /// ```
-    ///
-    /// # Implementation Notes
-    ///
-    /// - Required for all types implementing `Serializer`
-    /// - Enables `downcast_ref::<T>()` on serialized values
-    /// - Used by Fory's polymorphic deserialization
     fn as_any(&self) -> &dyn Any;
 }
 

@@ -19,7 +19,6 @@ use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
-use crate::serializer::util::read_basic_type_info;
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::{need_to_write_type_for_field, TypeId, SIZE_OF_REF_AND_TYPE};
 use std::collections::{BTreeMap, HashMap};
@@ -629,23 +628,6 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
-
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_varuint32(TypeId::MAP as u32);
-        Ok(())
-    }
-
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        read_basic_type_info::<Self>(context)
-    }
-
-    fn fory_is_xlang_ref_type() -> bool
-    where
-        Self: Sized,
-    {
-        // HashMap<K,V> corresponds to Java Map<K,V>, which is a reference type
-        true
-    }
 }
 
 impl<K, V> ForyDefault for HashMap<K, V> {
@@ -764,23 +746,6 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-
-    fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_varuint32(TypeId::MAP as u32);
-        Ok(())
-    }
-
-    fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        read_basic_type_info::<Self>(context)
-    }
-
-    fn fory_is_xlang_ref_type() -> bool
-    where
-        Self: Sized,
-    {
-        // BTreeMap<K,V> corresponds to Java Map<K,V>, which is a reference type
-        true
     }
 }
 

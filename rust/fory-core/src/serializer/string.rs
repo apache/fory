@@ -98,15 +98,6 @@ impl Serializer for String {
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         read_basic_type_info::<Self>(context)
     }
-
-    #[inline(always)]
-    fn fory_is_xlang_ref_type() -> bool
-    where
-        Self: Sized,
-    {
-        // String is a reference type in Java, should write RefFlag in xlang mode
-        true
-    }
 }
 
 impl ForyDefault for String {
