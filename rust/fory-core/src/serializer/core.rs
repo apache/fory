@@ -265,7 +265,7 @@ pub trait Serializer: 'static {
                 // In non-xlang mode, use original logic
                 true
             };
-            
+
             if should_write_ref {
                 // This is a reference type in xlang context - write RefValue
                 context.writer.write_i8(RefFlag::RefValue as i8);
