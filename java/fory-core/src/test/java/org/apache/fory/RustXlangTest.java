@@ -95,8 +95,7 @@ public class RustXlangTest extends ForyTestBase {
     }
   }
 
-  @Test
-  List<String> setTestCase(String name) {
+  private List<String> setTestCase(String name) {
     List<String> command = rustBaseCommand;
     command.set(RUST_TESTCASE_INDEX, name);
     return command;
