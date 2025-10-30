@@ -309,16 +309,30 @@ fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
             if !has_default_variant {
                 if let Some(first_variant) = e.variants.first() {
                     let variant_ident = &first_variant.ident;
+                    let field_defaults = match &first_variant.fields {
+                        syn::Fields::Unit => quote! {},
+                        syn::Fields::Unnamed(fields) => {
+                            let defaults =
+                                (0..fields.unnamed.len()).map(|_| quote! { Default::default() });
+                            quote! { (#(#defaults),*) }
+                        }
+                        syn::Fields::Named(fields) => {
+                            let field_idents = fields.named.iter().map(|f| &f.ident);
+                            let defaults =
+                                fields.named.iter().map(|_| quote! { Default::default() });
+                            quote! { { #(#field_idents: #defaults),* } }
+                        }
+                    };
                     quote! {
                         impl fory_core::ForyDefault for #name {
                             fn fory_default() -> Self {
-                                Self::#variant_ident
+                                Self::#variant_ident #field_defaults
                             }
                         }
 
                         impl std::default::Default for #name {
                             fn default() -> Self {
-                                Self::#variant_ident
+                                Self::#variant_ident #field_defaults
                             }
                         }
                     }
