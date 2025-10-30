@@ -300,6 +300,7 @@ BoolNDArrayType = TypeVar("BoolNDArrayType", bound=ndarray)
 Int16NDArrayType = TypeVar("Int16NDArrayType", bound=ndarray)
 Int32NDArrayType = TypeVar("Int32NDArrayType", bound=ndarray)
 Int64NDArrayType = TypeVar("Int64NDArrayType", bound=ndarray)
+Float16NDArrayType = TypeVar("Float16NDArrayType", bound=ndarray)
 Float32NDArrayType = TypeVar("Float32NDArrayType", bound=ndarray)
 Float64NDArrayType = TypeVar("Float64NDArrayType", bound=ndarray)
 
@@ -317,6 +318,7 @@ _np_array_types = {
     Int16NDArrayType,
     Int32NDArrayType,
     Int64NDArrayType,
+    Float16NDArrayType,
     Float32NDArrayType,
     Float64NDArrayType,
 }

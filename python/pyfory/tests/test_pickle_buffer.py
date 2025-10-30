@@ -259,6 +259,7 @@ def test_numpy_array_different_dtypes_out_of_band():
     fory = Fory(xlang=False, ref=False, strict=False)
 
     arrays = {
+        "float16": np.arange(100).reshape(10, 10).astype(np.float16),
         "float32": np.arange(100).reshape(10, 10).astype(np.float32),
         "float64": np.arange(100).reshape(10, 10).astype(np.float64),
         "int8": np.arange(100).reshape(10, 10).astype(np.int8),

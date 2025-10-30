@@ -112,6 +112,7 @@ from pyfory.type import (
     Int16NDArrayType,
     Int32NDArrayType,
     Int64NDArrayType,
+    Float16NDArrayType,
     Float32NDArrayType,
     Float64NDArrayType,
     TypeId,
@@ -978,6 +979,7 @@ if np:
             np.dtype(np.int16): (2, "h", Int16NDArrayType, TypeId.INT16_ARRAY),
             np.dtype(np.int32): (4, "i", Int32NDArrayType, TypeId.INT32_ARRAY),
             np.dtype(np.int64): (8, "l", Int64NDArrayType, TypeId.INT64_ARRAY),
+            np.dtype(np.float16): (2, "e", Float16NDArrayType, TypeId.FLOAT16_ARRAY),
             np.dtype(np.float32): (4, "f", Float32NDArrayType, TypeId.FLOAT32_ARRAY),
             np.dtype(np.float64): (8, "d", Float64NDArrayType, TypeId.FLOAT64_ARRAY),
         }
@@ -987,6 +989,7 @@ if np:
             np.dtype(np.int16): (2, "h", Int16NDArrayType, TypeId.INT16_ARRAY),
             np.dtype(np.int32): (4, "l", Int32NDArrayType, TypeId.INT32_ARRAY),
             np.dtype(np.int64): (8, "q", Int64NDArrayType, TypeId.INT64_ARRAY),
+            np.dtype(np.float16): (2, "e", Float16NDArrayType, TypeId.FLOAT16_ARRAY),
             np.dtype(np.float32): (4, "f", Float32NDArrayType, TypeId.FLOAT32_ARRAY),
             np.dtype(np.float64): (8, "d", Float64NDArrayType, TypeId.FLOAT64_ARRAY),
         }
@@ -1014,7 +1017,7 @@ class Numpy1DArraySerializer(Serializer):
         assert view.itemsize == self.itemsize
         nbytes = len(value) * self.itemsize
         buffer.write_varuint32(nbytes)
-        if self.dtype == np.dtype("bool") or not view.c_contiguous:
+        if self.dtype == np.dtype("bool") or self.dtype == np.dtype("float16") or not view.c_contiguous:
             buffer.write_bytes(value.tobytes())
         else:
             buffer.write_buffer(value)
@@ -1037,7 +1040,7 @@ class NDArraySerializer(Serializer):
         nbytes = len(value) * itemsize
         buffer.write_varuint32(type_id)
         buffer.write_varuint32(nbytes)
-        if value.dtype == np.dtype("bool") or not view.c_contiguous:
+        if value.dtype == np.dtype("bool") or value.dtype == np.dtype("float16") or not view.c_contiguous:
             buffer.write_bytes(value.tobytes())
         else:
             buffer.write_buffer(value)
