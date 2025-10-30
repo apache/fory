@@ -659,7 +659,8 @@ impl TypeMeta {
     ) -> Result<(), Error> {
         if read_version != local_version {
             return Err(Error::struct_version_mismatch(format!(
-                "Read class {} version {} is not consistent with {}",
+                "Read class {} version {} is not consistent with {}, please align struct field types and names, 
+                or use compatible mode of Fory by Fory#compatible(true)",
                 type_name, read_version, local_version
             )));
         }

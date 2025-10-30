@@ -18,7 +18,7 @@
 use crate::error::Error;
 use crate::meta::buffer_rw_string::read_latin1_simd;
 use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
-use std::slice;
+use std::cmp::max;
 
 /// Threshold for using SIMD optimizations in string operations.
 /// For buffers smaller than this, direct copy is faster than SIMD setup overhead.
@@ -26,12 +26,11 @@ const SIMD_THRESHOLD: usize = 128;
 
 pub struct Writer<'a> {
     pub(crate) bf: &'a mut Vec<u8>,
-    reserved: usize,
 }
 impl<'a> Writer<'a> {
     #[inline(always)]
     pub fn from_buffer(bf: &'a mut Vec<u8>) -> Writer<'a> {
-        Writer { bf, reserved: 0 }
+        Writer { bf }
     }
 
     #[inline(always)]
@@ -56,9 +55,8 @@ impl<'a> Writer<'a> {
 
     #[inline(always)]
     pub fn reserve(&mut self, additional: usize) {
-        self.reserved += additional;
-        if self.bf.capacity() < self.reserved {
-            self.bf.reserve(self.reserved);
+        if self.bf.capacity() - self.len() < additional {
+            self.bf.reserve(max(additional * 2, self.bf.capacity()));
         }
     }
 
@@ -77,7 +75,6 @@ impl<'a> Writer<'a> {
 
     #[inline(always)]
     pub fn write_bytes(&mut self, v: &[u8]) -> usize {
-        self.reserve(v.len());
         self.bf.extend_from_slice(v);
         v.len()
     }
@@ -335,34 +332,18 @@ impl<'a> Writer<'a> {
     }
 }
 
-pub struct Reader {
-    pub(crate) bf: *const u8,
-    len: usize,
+#[derive(Default)]
+#[allow(clippy::needless_lifetimes)]
+pub struct Reader<'a> {
+    pub(crate) bf: &'a [u8],
     pub(crate) cursor: usize,
 }
 
-impl Reader {
+#[allow(clippy::needless_lifetimes)]
+impl<'a> Reader<'a> {
     #[inline(always)]
-    pub fn new(bf: &[u8]) -> Reader {
-        Reader {
-            bf: bf.as_ptr(),
-            len: bf.len(),
-            cursor: 0,
-        }
-    }
-
-    #[inline(always)]
-    pub fn init(&mut self, bf: &[u8]) {
-        self.bf = bf.as_ptr();
-        self.len = bf.len();
-        self.cursor = 0;
-    }
-
-    #[inline(always)]
-    pub fn reset(&mut self) {
-        self.bf = std::ptr::null();
-        self.len = 0;
-        self.cursor = 0;
+    pub fn new(bf: &[u8]) -> Reader<'_> {
+        Reader { bf, cursor: 0 }
     }
 
     #[inline(always)]
@@ -376,15 +357,21 @@ impl Reader {
     }
 
     #[inline(always)]
-    pub(crate) fn ptr_at(&self, offset: usize) -> *const u8 {
-        unsafe { self.bf.add(offset) }
+    pub fn sub_slice(&self, start: usize, end: usize) -> Result<&[u8], Error> {
+        if start >= self.bf.len() || end > self.bf.len() || end < start {
+            Err(Error::buffer_out_of_bound(
+                start,
+                self.bf.len(),
+                self.bf.len(),
+            ))
+        } else {
+            Ok(&self.bf[start..end])
+        }
     }
 
     #[inline(always)]
     pub fn slice_after_cursor(&self) -> &[u8] {
-        let remaining = self.len - self.cursor;
-        let ptr = unsafe { self.bf.add(self.cursor) };
-        unsafe { std::slice::from_raw_parts(ptr, remaining) }
+        &self.bf[self.cursor..]
     }
 
     #[inline(always)]
@@ -393,13 +380,25 @@ impl Reader {
     }
 
     #[inline(always)]
+    fn value_at(&self, index: usize) -> Result<u8, Error> {
+        match self.bf.get(index) {
+            None => Err(Error::buffer_out_of_bound(
+                index,
+                self.bf.len(),
+                self.bf.len(),
+            )),
+            Some(v) => Ok(*v),
+        }
+    }
+
+    #[inline(always)]
     fn check_bound(&self, n: usize) -> Result<(), Error> {
         // The upper layer guarantees it is non-null
         // if self.bf.is_null() {
         //     return Err(Error::invalid_data("buffer pointer is null"));
         // }
-        if self.cursor + n > self.len {
-            Err(Error::buffer_out_of_bound(self.cursor, n, self.len))
+        if self.cursor + n > self.bf.len() {
+            Err(Error::buffer_out_of_bound(self.cursor, n, self.bf.len()))
         } else {
             Ok(())
         }
@@ -411,11 +410,16 @@ impl Reader {
     }
 
     #[inline(always)]
-    pub fn read_u8(&mut self) -> Result<u8, Error> {
-        self.check_bound(1)?;
-        let ptr = self.ptr_at(self.cursor);
+    pub fn read_u8_uncheck(&mut self) -> u8 {
+        let result = unsafe { self.bf.get_unchecked(self.cursor) };
         self.move_next(1);
-        let result = unsafe { *ptr };
+        *result
+    }
+
+    #[inline(always)]
+    pub fn read_u8(&mut self) -> Result<u8, Error> {
+        let result = self.value_at(self.cursor)?;
+        self.move_next(1);
         Ok(result)
     }
 
@@ -426,7 +430,6 @@ impl Reader {
 
     #[inline(always)]
     pub fn read_u16(&mut self) -> Result<u16, Error> {
-        self.check_bound(2)?;
         let slice = self.slice_after_cursor();
         let result = LittleEndian::read_u16(slice);
         self.move_next(2);
@@ -440,7 +443,6 @@ impl Reader {
 
     #[inline(always)]
     pub fn read_u32(&mut self) -> Result<u32, Error> {
-        self.check_bound(4)?;
         let slice = self.slice_after_cursor();
         let result = LittleEndian::read_u32(slice);
         self.move_next(4);
@@ -454,7 +456,6 @@ impl Reader {
 
     #[inline(always)]
     pub fn read_u64(&mut self) -> Result<u64, Error> {
-        self.check_bound(8)?;
         let slice = self.slice_after_cursor();
         let result = LittleEndian::read_u64(slice);
         self.move_next(8);
@@ -468,7 +469,6 @@ impl Reader {
 
     #[inline(always)]
     pub fn read_f32(&mut self) -> Result<f32, Error> {
-        self.check_bound(4)?;
         let slice = self.slice_after_cursor();
         let result = LittleEndian::read_f32(slice);
         self.move_next(4);
@@ -477,7 +477,6 @@ impl Reader {
 
     #[inline(always)]
     pub fn read_f64(&mut self) -> Result<f64, Error> {
-        self.check_bound(8)?;
         let slice = self.slice_after_cursor();
         let result = LittleEndian::read_f64(slice);
         self.move_next(8);
@@ -486,40 +485,34 @@ impl Reader {
 
     #[inline(always)]
     pub fn read_varuint32(&mut self) -> Result<u32, Error> {
-        self.check_bound(1)?;
-        let slice = self.slice_after_cursor();
-        let b0 = slice[0] as u32;
+        let b0 = self.value_at(self.cursor)? as u32;
         if b0 < 0x80 {
             self.move_next(1);
             return Ok(b0);
         }
 
-        self.check_bound(2)?;
-        let b1 = slice[1] as u32;
+        let b1 = self.value_at(self.cursor + 1)? as u32;
         let mut encoded = (b0 & 0x7F) | ((b1 & 0x7F) << 7);
         if b1 < 0x80 {
             self.move_next(2);
             return Ok(encoded);
         }
 
-        self.check_bound(3)?;
-        let b2 = slice[2] as u32;
+        let b2 = self.value_at(self.cursor + 2)? as u32;
         encoded |= (b2 & 0x7F) << 14;
         if b2 < 0x80 {
             self.move_next(3);
             return Ok(encoded);
         }
 
-        self.check_bound(4)?;
-        let b3 = slice[3] as u32;
+        let b3 = self.value_at(self.cursor + 3)? as u32;
         encoded |= (b3 & 0x7F) << 21;
         if b3 < 0x80 {
             self.move_next(4);
             return Ok(encoded);
         }
 
-        self.check_bound(5)?;
-        let b4 = slice[4] as u32;
+        let b4 = self.value_at(self.cursor + 4)? as u32;
         encoded |= b4 << 28;
         self.move_next(5);
         Ok(encoded)
@@ -533,72 +526,62 @@ impl Reader {
 
     #[inline(always)]
     pub fn read_varuint64(&mut self) -> Result<u64, Error> {
-        self.check_bound(1)?;
-        let slice = self.slice_after_cursor();
-        let b0 = slice[0] as u64;
+        let b0 = self.value_at(self.cursor)? as u64;
         if b0 < 0x80 {
             self.move_next(1);
             return Ok(b0);
         }
 
-        self.check_bound(2)?;
-        let b1 = slice[1] as u64;
+        let b1 = self.value_at(self.cursor + 1)? as u64;
         let mut var64 = (b0 & 0x7F) | ((b1 & 0x7F) << 7);
         if b1 < 0x80 {
             self.move_next(2);
             return Ok(var64);
         }
 
-        self.check_bound(3)?;
-        let b2 = slice[2] as u64;
+        let b2 = self.value_at(self.cursor + 2)? as u64;
         var64 |= (b2 & 0x7F) << 14;
         if b2 < 0x80 {
             self.move_next(3);
             return Ok(var64);
         }
 
-        self.check_bound(4)?;
-        let b3 = slice[3] as u64;
+        let b3 = self.value_at(self.cursor + 3)? as u64;
         var64 |= (b3 & 0x7F) << 21;
         if b3 < 0x80 {
             self.move_next(4);
             return Ok(var64);
         }
 
-        self.check_bound(5)?;
-        let b4 = slice[4] as u64;
+        let b4 = self.value_at(self.cursor + 4)? as u64;
         var64 |= (b4 & 0x7F) << 28;
         if b4 < 0x80 {
             self.move_next(5);
             return Ok(var64);
         }
 
-        self.check_bound(6)?;
-        let b5 = slice[5] as u64;
+        let b5 = self.value_at(self.cursor + 5)? as u64;
         var64 |= (b5 & 0x7F) << 35;
         if b5 < 0x80 {
             self.move_next(6);
             return Ok(var64);
         }
 
-        self.check_bound(7)?;
-        let b6 = slice[6] as u64;
+        let b6 = self.value_at(self.cursor + 6)? as u64;
         var64 |= (b6 & 0x7F) << 42;
         if b6 < 0x80 {
             self.move_next(7);
             return Ok(var64);
         }
 
-        self.check_bound(8)?;
-        let b7 = slice[7] as u64;
+        let b7 = self.value_at(self.cursor + 7)? as u64;
         var64 |= (b7 & 0x7F) << 49;
         if b7 < 0x80 {
             self.move_next(8);
             return Ok(var64);
         }
 
-        self.check_bound(9)?;
-        let b8 = slice[8] as u64;
+        let b8 = self.value_at(self.cursor + 8)? as u64;
         var64 |= (b8 & 0xFF) << 56;
         self.move_next(9);
         Ok(var64)
@@ -616,7 +599,7 @@ impl Reader {
         if len < SIMD_THRESHOLD {
             // Fast path for small buffers
             unsafe {
-                let src = std::slice::from_raw_parts(self.bf.add(self.cursor), len);
+                let src = self.sub_slice(self.cursor, self.cursor + len)?;
 
                 // Check if all bytes are ASCII (< 0x80)
                 let is_ascii = src.iter().all(|&b| b < 0x80);
@@ -664,7 +647,7 @@ impl Reader {
         // don't use simd for memory copy, copy_non_overlapping is faster
         unsafe {
             let mut vec = Vec::with_capacity(len);
-            let src = self.bf.add(self.cursor);
+            let src = self.bf.as_ptr().add(self.cursor);
             let dst = vec.as_mut_ptr();
             // Use fastest possible copy - copy_nonoverlapping compiles to memcpy
             std::ptr::copy_nonoverlapping(src, dst, len);
@@ -678,15 +661,13 @@ impl Reader {
     #[inline(always)]
     pub fn read_utf16_string(&mut self, len: usize) -> Result<String, Error> {
         self.check_bound(len)?;
-        unsafe {
-            let slice = std::slice::from_raw_parts(self.bf.add(self.cursor), len);
-            let units: Vec<u16> = slice
-                .chunks_exact(2)
-                .map(|c| u16::from_le_bytes([c[0], c[1]]))
-                .collect();
-            self.move_next(len);
-            Ok(String::from_utf16_lossy(&units))
-        }
+        let slice = self.sub_slice(self.cursor, self.cursor + len)?;
+        let units: Vec<u16> = slice
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        self.move_next(len);
+        Ok(String::from_utf16_lossy(&units))
     }
 
     #[inline(always)]
@@ -722,13 +703,8 @@ impl Reader {
 
         let mut result = 0u64;
         let mut shift = 0;
-        while self.cursor < self.len {
-            let b = {
-                // read_u8 but no need to check bound
-                let ptr = self.ptr_at(self.cursor);
-                self.move_next(1);
-                unsafe { *ptr }
-            };
+        while self.cursor < self.bf.len() {
+            let b = self.read_u8_uncheck();
             result |= ((b & 0x7F) as u64) << shift;
             if (b & 0x80) == 0 {
                 break;
@@ -749,20 +725,11 @@ impl Reader {
     }
 
     #[inline(always)]
-    pub fn get_slice(&self) -> Result<&[u8], Error> {
-        if self.bf.is_null() || self.len == 0 {
-            Ok(&[])
-        } else {
-            Ok(unsafe { slice::from_raw_parts(self.bf, self.len) })
-        }
-    }
-
-    #[inline(always)]
     pub fn read_bytes(&mut self, len: usize) -> Result<&[u8], Error> {
         self.check_bound(len)?;
-        let s = unsafe { slice::from_raw_parts(self.bf.add(self.cursor), len) };
+        let result = &self.bf[self.cursor..self.cursor + len];
         self.move_next(len);
-        Ok(s)
+        Ok(result)
     }
 
     #[inline(always)]
@@ -773,14 +740,12 @@ impl Reader {
         }
     }
 
-    #[inline(always)]
-    pub fn aligned<T>(&self) -> bool {
-        if self.bf.is_null() {
-            return false;
-        }
-        unsafe { (self.bf.add(self.cursor) as usize) % align_of::<T>() == 0 }
+    pub fn set_cursor(&mut self, cursor: usize) {
+        self.cursor = cursor;
     }
 }
 
-unsafe impl Send for Reader {}
-unsafe impl Sync for Reader {}
+#[allow(clippy::needless_lifetimes)]
+unsafe impl<'a> Send for Reader<'a> {}
+#[allow(clippy::needless_lifetimes)]
+unsafe impl<'a> Sync for Reader<'a> {}

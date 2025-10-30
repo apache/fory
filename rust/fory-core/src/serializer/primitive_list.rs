@@ -24,7 +24,6 @@ use crate::types::TypeId;
 pub fn fory_write_data<T>(this: &[T], context: &mut WriteContext) -> Result<(), Error> {
     let len_bytes = std::mem::size_of_val(this);
     context.writer.write_varuint32(len_bytes as u32);
-    context.writer.reserve(len_bytes);
 
     if !this.is_empty() {
         unsafe {

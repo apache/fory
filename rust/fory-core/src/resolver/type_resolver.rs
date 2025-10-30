@@ -43,7 +43,7 @@ type WriteDataFn = fn(&dyn Any, &mut WriteContext, has_generics: bool) -> Result
 type ReadDataFn = fn(&mut ReadContext) -> Result<Box<dyn Any>, Error>;
 type ToSerializerFn = fn(Box<dyn Any>) -> Result<Box<dyn Serializer>, Error>;
 type GetSortedFieldInfosFn = fn(&TypeResolver) -> Result<Vec<FieldInfo>, Error>;
-static EMPTY_STRING: String = String::new();
+const EMPTY_STRING: String = String::new();
 
 #[derive(Clone, Debug)]
 pub struct Harness {

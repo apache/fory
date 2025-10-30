@@ -33,6 +33,7 @@ cdef class Buffer:
     copy the data."""
     cdef:
         shared_ptr[CBuffer] c_buffer
+        CBuffer* c_buffer_ptr
         uint8_t* _c_address
         int32_t _c_size
         # hold python buffer reference count

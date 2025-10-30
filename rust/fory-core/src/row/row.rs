@@ -143,6 +143,7 @@ pub struct ArrayGetter<'a, T> {
     _marker: PhantomData<T>,
 }
 
+#[allow(clippy::needless_lifetimes)]
 impl<'a, T: Row<'a>> ArrayGetter<'a, T> {
     pub fn size(&self) -> usize {
         self.array_data.num_elements()
@@ -157,6 +158,7 @@ impl<'a, T: Row<'a>> ArrayGetter<'a, T> {
     }
 }
 
+#[allow(clippy::needless_lifetimes)]
 impl<'a, T: Row<'a>> Row<'a> for Vec<T> {
     type ReadResult = ArrayGetter<'a, T>;
 
@@ -218,6 +220,7 @@ impl<'a, T1: Row<'a> + Ord, T2: Row<'a> + Ord> MapGetter<'a, T1, T2> {
     }
 }
 
+#[allow(clippy::needless_lifetimes)]
 impl<'a, T1: Row<'a> + Ord, T2: Row<'a> + Ord> Row<'a> for BTreeMap<T1, T2> {
     type ReadResult = MapGetter<'a, T1, T2>;
 

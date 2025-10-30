@@ -561,8 +561,6 @@ pub mod buffer_rw_string {
     #[inline]
     pub fn write_utf8_standard(writer: &mut Writer, s: &str) {
         let bytes = s.as_bytes();
-        let len = bytes.len();
-        writer.reserve(len);
         writer.bf.extend_from_slice(bytes);
     }
 
@@ -600,7 +598,7 @@ pub mod buffer_rw_string {
 
     #[inline]
     pub fn read_latin1_standard(reader: &mut Reader, len: usize) -> Result<String, Error> {
-        let slice = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
+        let slice = reader.sub_slice(reader.get_cursor(), reader.get_cursor() + len)?;
         let result: String = slice.iter().map(|&b| b as char).collect();
         reader.move_next(len);
         Ok(result)
@@ -610,7 +608,7 @@ pub mod buffer_rw_string {
     pub fn read_utf8_standard(reader: &mut Reader, len: usize) -> Result<String, Error> {
         unsafe {
             let mut vec = Vec::with_capacity(len);
-            let src = reader.bf.add(reader.cursor);
+            let src = reader.bf.as_ptr().add(reader.cursor);
             let dst = vec.as_mut_ptr();
             // Use fastest possible copy - copy_nonoverlapping compiles to memcpy
             std::ptr::copy_nonoverlapping(src, dst, len);
@@ -628,7 +626,7 @@ pub mod buffer_rw_string {
             return Err(Error::encoding_error("UTF-16 length must be even"));
         }
         unsafe {
-            let slice = std::slice::from_raw_parts(reader.bf.add(reader.cursor), len);
+            let slice = std::slice::from_raw_parts(reader.bf.as_ptr().add(reader.cursor), len);
             let units: Vec<u16> = slice
                 .chunks_exact(2)
                 .map(|c| u16::from_le_bytes([c[0], c[1]]))
@@ -723,7 +721,7 @@ pub mod buffer_rw_string {
         if len == 0 {
             return Ok(String::new());
         }
-        let src = unsafe { std::slice::from_raw_parts(reader.bf.add(reader.cursor), len) };
+        let src = reader.sub_slice(reader.get_cursor(), reader.get_cursor() + len)?;
 
         // Pessimistic allocation: Latin1 0x80-0xFF expands to 2 bytes in UTF-8
         let mut out: Vec<u8> = Vec::with_capacity(len * 2);

@@ -56,7 +56,7 @@
 //! ### Basic Example
 //!
 //! ```rust
-//! use fory::{Fory, Error};
+//! use fory::{Fory, Error, Reader};
 //! use fory::ForyObject;
 //!
 //! #[derive(ForyObject, Debug, PartialEq)]
@@ -68,7 +68,7 @@
 //!
 //! # fn main() -> Result<(), Error> {
 //! let mut fory = Fory::default();
-//! fory.register::<User>(1);
+//! fory.register::<User>(1)?;
 //!
 //! let user = User {
 //!     name: "Alice".to_string(),
@@ -76,8 +76,16 @@
 //!     email: "alice@example.com".to_string(),
 //! };
 //!
+//! // Serialize and deserialize
 //! let bytes = fory.serialize(&user)?;
 //! let decoded: User = fory.deserialize(&bytes)?;
+//! assert_eq!(user, decoded);
+//!
+//! // Serialize to specified buffer and deserialize from it
+//! let mut buf: Vec<u8> = vec![];
+//! fory.serialize_to(&user, &mut buf)?;
+//! let mut reader = Reader::new(&buf);
+//! let decoded: User = fory.deserialize_from(&mut reader)?;
 //! assert_eq!(user, decoded);
 //! # Ok(())
 //! # }
@@ -1093,6 +1101,7 @@
 
 pub use fory_core::{
     error::Error, fory::Fory, register_trait_type, row::from_row, row::to_row, types::TypeId,
-    ArcWeak, ForyDefault, RcWeak, ReadContext, Serializer, TypeResolver, WriteContext,
+    ArcWeak, ForyDefault, RcWeak, ReadContext, Reader, Serializer, TypeResolver, WriteContext,
+    Writer,
 };
 pub use fory_derive::{ForyObject, ForyRow};

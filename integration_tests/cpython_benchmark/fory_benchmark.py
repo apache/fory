@@ -15,15 +15,75 @@
 # specific language governing permissions and limitations
 # under the License.
 
+"""Apache Fory™ vs Pickle CPython Benchmark Suite
+
+Microbenchmark comparing Apache Fory™ and Pickle serialization performance in CPython.
+
+Usage:
+    python fory_benchmark.py [OPTIONS]
+
+Benchmark Options:
+    --benchmarks BENCHMARK_LIST
+        Comma-separated list of benchmarks to run. Default: all
+        Available: dict, large_dict, dict_group, tuple, large_tuple,
+                   large_float_tuple, large_boolean_tuple, list, large_list, complex
+
+    --serializers SERIALIZER_LIST
+        Comma-separated list of serializers to benchmark. Default: all
+        Available: fory, pickle
+        Example: --serializers fory,pickle
+
+    --no-ref
+        Disable reference tracking for Fory (enabled by default)
+
+    --warmup N
+        Number of warmup iterations (default: 3)
+
+    --iterations N
+        Number of benchmark iterations (default: 20)
+
+    --repeat N
+        Number of times to repeat each iteration (default: 5)
+
+    --number N
+        Number of times to call function per measurement (inner loop, default: 100)
+
+    --help
+        Show help message and exit
+
+Examples:
+    # Run all benchmarks with both Fory and Pickle
+    python fory_benchmark.py
+
+    # Run specific benchmarks with both serializers
+    python fory_benchmark.py --benchmarks dict,large_dict,complex
+
+    # Compare only Fory performance
+    python fory_benchmark.py --serializers fory
+
+    # Compare only Pickle performance
+    python fory_benchmark.py --serializers pickle
+
+    # Run without reference tracking for Fory
+    python fory_benchmark.py --no-ref
+
+    # Run with more iterations for better accuracy
+    python fory_benchmark.py --iterations 50 --repeat 10
+
+    # Debug with pure Python mode
+    python fory_benchmark.py --disable-cython --benchmarks dict
+"""
+
 import argparse
 from dataclasses import dataclass
 import datetime
-import os
+import pickle
 import random
+import statistics
 import sys
+import timeit
 from typing import Any, Dict, List
 import pyfory
-import pyperf
 
 
 # The benchmark case is rewritten from pyperformance bm_pickle
@@ -117,21 +177,21 @@ class ComplexObject1:
     f1: Any = None
     f2: str = None
     f3: List[str] = None
-    f4: Dict[pyfory.Int8Type, pyfory.Int32Type] = None
-    f5: pyfory.Int8Type = None
-    f6: pyfory.Int16Type = None
-    f7: pyfory.Int32Type = None
-    f8: pyfory.Int64Type = None
-    f9: pyfory.Float32Type = None
-    f10: pyfory.Float64Type = None
-    f11: pyfory.Int16ArrayType = None
-    f12: List[pyfory.Int16Type] = None
+    f4: Dict[pyfory.int8, pyfory.int32] = None
+    f5: pyfory.int8 = None
+    f6: pyfory.int16 = None
+    f7: pyfory.int32 = None
+    f8: pyfory.int64 = None
+    f9: pyfory.float32 = None
+    f10: pyfory.float64 = None
+    f11: pyfory.int16_array = None
+    f12: List[pyfory.int16] = None
 
 
 @dataclass
 class ComplexObject2:
     f1: Any
-    f2: Dict[pyfory.Int8Type, pyfory.Int32Type]
+    f2: Dict[pyfory.int8, pyfory.int32]
 
 
 COMPLEX_OBJECT = ComplexObject1(
@@ -148,88 +208,260 @@ COMPLEX_OBJECT = ComplexObject1(
     f11=[-1, 4],
 )
 
+# Global fory instances
+fory_with_ref = pyfory.Fory(ref=True)
+fory_without_ref = pyfory.Fory(ref=False)
 
-def fory_object(xlang, ref, obj):
-    fory = pyfory.Fory(xlang=xlang, ref=ref)
+# Register all custom types on both instances
+for fory_instance in (fory_with_ref, fory_without_ref):
+    fory_instance.register_type(ComplexObject1)
+    fory_instance.register_type(ComplexObject2)
+
+
+def fory_object(ref, obj):
+    fory = fory_with_ref if ref else fory_without_ref
     binary = fory.serialize(obj)
     fory.deserialize(binary)
 
 
-def fory_data_class(xlang, ref, obj, register_callable):
-    fory = pyfory.Fory(xlang=xlang, ref=ref)
-    register_callable(fory)
+def fory_data_class(ref, obj):
+    fory = fory_with_ref if ref else fory_without_ref
     binary = fory.serialize(obj)
     fory.deserialize(binary)
+
+
+def pickle_object(obj):
+    binary = pickle.dumps(obj)
+    pickle.loads(binary)
+
+
+def pickle_data_class(obj):
+    binary = pickle.dumps(obj)
+    pickle.loads(binary)
 
 
 def benchmark_args():
-    parser = argparse.ArgumentParser(description="Fory Benchmark")
-    parser.add_argument("--xlang", action="store_true", default=False)
-    parser.add_argument("--no-ref", action="store_true", default=False)
-    parser.add_argument("--disable-cython", action="store_true", default=False)
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser(description="Fory vs Pickle Benchmark")
+    parser.add_argument(
+        "--no-ref",
+        action="store_true",
+        default=False,
+        help="Disable reference tracking for Fory",
+    )
+    parser.add_argument(
+        "--disable-cython",
+        action="store_true",
+        default=False,
+        help="Use pure Python mode for Fory",
+    )
+    parser.add_argument(
+        "--benchmarks",
+        type=str,
+        default="all",
+        help="Comma-separated list of benchmarks to run. Available: dict, large_dict, "
+        "dict_group, tuple, large_tuple, large_float_tuple, large_boolean_tuple, "
+        "list, large_list, complex. Default: all",
+    )
+    parser.add_argument(
+        "--serializers",
+        type=str,
+        default="all",
+        help="Comma-separated list of serializers to benchmark. Available: fory, pickle. Default: all",
+    )
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=3,
+        help="Number of warmup iterations (default: 3)",
+    )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=20,
+        help="Number of benchmark iterations (default: 20)",
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=5,
+        help="Number of times to repeat each iteration (default: 5)",
+    )
+    parser.add_argument(
+        "--number",
+        type=int,
+        default=100,
+        help="Number of times to call function per measurement (inner loop, default: 10000)",
+    )
+    return parser.parse_args()
 
-    if "--help" in sys.argv:
-        parser.print_help()
-        return None
-    args, unknown_args = parser.parse_known_args()
-    sys.argv = sys.argv[:1] + unknown_args
-    return args
+
+def run_benchmark(func, *args, warmup=3, iterations=20, repeat=5, number=10000):
+    """Run a benchmark and return timing statistics
+
+    Args:
+        func: Function to benchmark
+        *args: Arguments to pass to func
+        warmup: Number of warmup iterations
+        iterations: Number of measurement iterations
+        repeat: Number of times to repeat each measurement
+        number: Number of times to call func per measurement (inner loop)
+
+    Returns:
+        (mean_time_per_call, stdev_time_per_call)
+    """
+    # Warmup
+    for _ in range(warmup):
+        for _ in range(number):
+            func(*args)
+
+    # Benchmark - run func 'number' times per measurement
+    times = []
+    for _ in range(iterations):
+        timer = timeit.Timer(lambda: func(*args))
+        iteration_times = timer.repeat(repeat=repeat, number=number)
+        # Convert total time to time per call
+        times.extend([t / number for t in iteration_times])
+
+    mean = statistics.mean(times)
+    stdev = statistics.stdev(times) if len(times) > 1 else 0
+    return mean, stdev
+
+
+def format_time(seconds):
+    """Format time in human-readable units"""
+    if seconds < 1e-6:
+        return f"{seconds * 1e9:.2f} ns"
+    elif seconds < 1e-3:
+        return f"{seconds * 1e6:.2f} us"
+    elif seconds < 1:
+        return f"{seconds * 1e3:.2f} ms"
+    else:
+        return f"{seconds:.2f} s"
 
 
 def micro_benchmark():
     args = benchmark_args()
-    runner = pyperf.Runner()
-    if args and args.disable_cython:
-        os.environ["ENABLE_FORY_CYTHON_SERIALIZATION"] = "0"
-        sys.argv += ["--inherit-environ", "ENABLE_FORY_CYTHON_SERIALIZATION"]
-    runner.parse_args()
-    xlang = args.xlang
-    runner.bench_func("fory_dict", fory_object, xlang, not args.no_ref, DICT)
-    runner.bench_func(
-        "fory_large_dict", fory_object, xlang, not args.no_ref, LARGE_DICT
-    )
-    runner.bench_func(
-        "fory_dict_group", fory_object, xlang, not args.no_ref, DICT_GROUP
-    )
-    runner.bench_func("fory_tuple", fory_object, xlang, not args.no_ref, TUPLE)
-    runner.bench_func(
-        "fory_large_tuple", fory_object, xlang, not args.no_ref, LARGE_TUPLE
-    )
-    runner.bench_func(
-        "fory_large_float_tuple",
-        fory_object,
-        xlang,
-        not args.no_ref,
-        LARGE_FLOAT_TUPLE,
-    )
-    runner.bench_func(
-        "fory_large_boolean_tuple",
-        fory_object,
-        xlang,
-        not args.no_ref,
-        LARGE_BOOLEAN_TUPLE,
-    )
-    runner.bench_func("fory_list", fory_object, xlang, not args.no_ref, LIST)
-    runner.bench_func(
-        "fory_large_list", fory_object, xlang, not args.no_ref, LARGE_LIST
-    )
+    ref = not args.no_ref
 
-    def register_complex(fory):
-        if args.xlang:
-            fory.register_type(ComplexObject1, typename="example.ComplexObject1")
-            fory.register_type(ComplexObject2, typename="example.ComplexObject2")
-        else:
-            fory.register_type(ComplexObject1)
-            fory.register_type(ComplexObject2)
+    # Define benchmark data and functions
+    benchmark_data = {
+        "dict": (DICT, fory_object, pickle_object),
+        "large_dict": (LARGE_DICT, fory_object, pickle_object),
+        "dict_group": (DICT_GROUP, fory_object, pickle_object),
+        "tuple": (TUPLE, fory_object, pickle_object),
+        "large_tuple": (LARGE_TUPLE, fory_object, pickle_object),
+        "large_float_tuple": (LARGE_FLOAT_TUPLE, fory_object, pickle_object),
+        "large_boolean_tuple": (LARGE_BOOLEAN_TUPLE, fory_object, pickle_object),
+        "list": (LIST, fory_object, pickle_object),
+        "large_list": (LARGE_LIST, fory_object, pickle_object),
+        "complex": (COMPLEX_OBJECT, fory_data_class, pickle_data_class),
+    }
 
-    runner.bench_func(
-        "fory_complex",
-        fory_data_class,
-        xlang,
-        not args.no_ref,
-        COMPLEX_OBJECT,
-        register_complex,
+    # Determine which benchmarks to run
+    if args.benchmarks == "all":
+        selected_benchmarks = list(benchmark_data.keys())
+    else:
+        selected_benchmarks = [b.strip() for b in args.benchmarks.split(",")]
+        # Validate benchmark names
+        invalid = [b for b in selected_benchmarks if b not in benchmark_data]
+        if invalid:
+            print(f"Error: Invalid benchmark names: {', '.join(invalid)}")
+            print(f"Available benchmarks: {', '.join(benchmark_data.keys())}")
+            sys.exit(1)
+
+    # Determine which serializers to run
+    available_serializers = {"fory", "pickle"}
+    if args.serializers == "all":
+        selected_serializers = ["fory", "pickle"]
+    else:
+        selected_serializers = [s.strip() for s in args.serializers.split(",")]
+        # Validate serializer names
+        invalid = [s for s in selected_serializers if s not in available_serializers]
+        if invalid:
+            print(f"Error: Invalid serializer names: {', '.join(invalid)}")
+            print(f"Available serializers: {', '.join(available_serializers)}")
+            sys.exit(1)
+
+    print(
+        f"\nBenchmarking {len(selected_benchmarks)} benchmark(s) with {len(selected_serializers)} serializer(s)"
     )
+    print(
+        f"Warmup: {args.warmup}, Iterations: {args.iterations}, Repeat: {args.repeat}, Inner loop: {args.number}"
+    )
+    print(f"Fory reference tracking: {'enabled' if ref else 'disabled'}")
+    print("=" * 80)
+
+    # Run selected benchmarks with selected serializers
+    results = []
+    for benchmark_name in selected_benchmarks:
+        data, fory_func, pickle_func = benchmark_data[benchmark_name]
+
+        if "fory" in selected_serializers:
+            print(f"\nRunning fory_{benchmark_name}...", end=" ", flush=True)
+            mean, stdev = run_benchmark(
+                fory_func,
+                ref,
+                data,
+                warmup=args.warmup,
+                iterations=args.iterations,
+                repeat=args.repeat,
+                number=args.number,
+            )
+            results.append(("fory", benchmark_name, mean, stdev))
+            print(f"{format_time(mean)} ± {format_time(stdev)}")
+
+        if "pickle" in selected_serializers:
+            print(f"Running pickle_{benchmark_name}...", end=" ", flush=True)
+            mean, stdev = run_benchmark(
+                pickle_func,
+                data,
+                warmup=args.warmup,
+                iterations=args.iterations,
+                repeat=args.repeat,
+                number=args.number,
+            )
+            results.append(("pickle", benchmark_name, mean, stdev))
+            print(f"{format_time(mean)} ± {format_time(stdev)}")
+
+    # Print summary
+    print("\n" + "=" * 80)
+    print("SUMMARY")
+    print("=" * 80)
+    print(f"{'Serializer':<15} {'Benchmark':<25} {'Mean':<20} {'Std Dev':<20}")
+    print("-" * 80)
+    for serializer, benchmark, mean, stdev in results:
+        print(
+            f"{serializer:<15} {benchmark:<25} {format_time(mean):<20} {format_time(stdev):<20}"
+        )
+
+    # Calculate speedup if both serializers were tested
+    if "fory" in selected_serializers and "pickle" in selected_serializers:
+        print("\n" + "=" * 80)
+        print("SPEEDUP (Fory vs Pickle)")
+        print("=" * 80)
+        print(f"{'Benchmark':<25} {'Fory':<20} {'Pickle':<20} {'Speedup':<20}")
+        print("-" * 80)
+
+        for benchmark_name in selected_benchmarks:
+            fory_result = next(
+                (r for r in results if r[0] == "fory" and r[1] == benchmark_name), None
+            )
+            pickle_result = next(
+                (r for r in results if r[0] == "pickle" and r[1] == benchmark_name),
+                None,
+            )
+
+            if fory_result and pickle_result:
+                fory_mean = fory_result[2]
+                pickle_mean = pickle_result[2]
+                speedup = pickle_mean / fory_mean
+                speedup_str = (
+                    f"{speedup:.2f}x" if speedup >= 1 else f"{1 / speedup:.2f}x slower"
+                )
+                print(
+                    f"{benchmark_name:<25} {format_time(fory_mean):<20} {format_time(pickle_mean):<20} {speedup_str:<20}"
+                )
 
 
 if __name__ == "__main__":

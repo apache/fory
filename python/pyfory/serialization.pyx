@@ -378,7 +378,7 @@ cdef class MetaStringResolver:
         self._c_dynamic_id_to_enum_string_vec.push_back(enum_str_ptr)
         return <MetaStringBytes> enum_str_ptr
 
-    def get_metastr_bytes(self, metastr):
+    cpdef inline get_metastr_bytes(self, metastr):
         metastr_bytes = self._metastr_to_metastr_bytes.get(metastr)
         if metastr_bytes is not None:
             return metastr_bytes
@@ -551,6 +551,9 @@ cdef class TypeResolver:
         if type_id > 0 and (self.fory.language == Language.PYTHON or not IsNamespacedType(type_id)):
             self._c_registered_id_to_type_info[type_id] = <PyObject *> typeinfo
         self._c_types_info[<uintptr_t> <PyObject *> typeinfo.cls] = <PyObject *> typeinfo
+        # Resize if load factor >= 0.4 (using integer arithmetic: size/capacity >= 4/10)
+        if self._c_types_info.size() * 10 >= self._c_types_info.bucket_count() * 5:
+            self._c_types_info.rehash(self._c_types_info.size() * 2)
         if typeinfo.typename_bytes is not None:
             self._load_bytes_to_typeinfo(type_id, typeinfo.namespace_bytes, typeinfo.typename_bytes)
 
@@ -588,16 +591,16 @@ cdef class TypeResolver:
             self._populate_typeinfo(type_info)
             return type_info
 
-    def is_registered_by_name(self, cls):
+    cpdef inline is_registered_by_name(self, cls):
         return self._resolver.is_registered_by_name(cls)
 
-    def is_registered_by_id(self, cls):
+    cpdef inline is_registered_by_id(self, cls):
         return self._resolver.is_registered_by_id(cls)
 
-    def get_registered_name(self, cls):
+    cpdef inline get_registered_name(self, cls):
         return self._resolver.get_registered_name(cls)
 
-    def get_registered_id(self, cls):
+    cpdef inline get_registered_id(self, cls):
         return self._resolver.get_registered_id(cls)
 
     cdef inline TypeInfo _load_bytes_to_typeinfo(
@@ -612,7 +615,7 @@ cdef class TypeResolver:
             ns_metabytes.hashcode, type_metabytes.hashcode)] = typeinfo_ptr
         return typeinfo
 
-    cpdef write_typeinfo(self, Buffer buffer, TypeInfo typeinfo):
+    cpdef inline write_typeinfo(self, Buffer buffer, TypeInfo typeinfo):
         if typeinfo.dynamic_type:
             return
         cdef:
@@ -660,31 +663,31 @@ cdef class TypeResolver:
         typeinfo = <TypeInfo> typeinfo_ptr
         return typeinfo
 
-    def get_typeinfo_by_name(self, namespace, typename):
+    cpdef inline get_typeinfo_by_name(self, namespace, typename):
         return self._resolver.get_typeinfo_by_name(namespace=namespace, typename=typename)
 
-    cpdef _set_typeinfo(self, typeinfo):
+    cpdef inline _set_typeinfo(self, typeinfo):
         self._resolver._set_typeinfo(typeinfo)
 
-    def get_meta_compressor(self):
+    cpdef inline get_meta_compressor(self):
         return self._resolver.get_meta_compressor()
 
-    cpdef write_shared_type_meta(self, Buffer buffer, TypeInfo typeinfo):
+    cpdef inline write_shared_type_meta(self, Buffer buffer, TypeInfo typeinfo):
         """Write shared type meta information."""
         meta_context = self.serialization_context.meta_context
         meta_context.write_shared_typeinfo(buffer, typeinfo)
 
-    cpdef TypeInfo read_shared_type_meta(self, Buffer buffer):
+    cpdef inline TypeInfo read_shared_type_meta(self, Buffer buffer):
         """Read shared type meta information."""
         meta_context = self.serialization_context.meta_context
         typeinfo = meta_context.read_shared_typeinfo(buffer)
         return typeinfo
 
-    cpdef write_type_defs(self, Buffer buffer):
+    cpdef inline write_type_defs(self, Buffer buffer):
         """Write all type definitions that need to be sent."""
         self._resolver.write_type_defs(buffer)
 
-    cpdef read_type_defs(self, Buffer buffer):
+    cpdef inline read_type_defs(self, Buffer buffer):
         """Read all type definitions from the buffer."""
         self._resolver.read_type_defs(buffer)
 
@@ -824,7 +827,7 @@ cdef class SerializationContext:
             self.meta_context = None
         self.fory = fory
 
-    def add(self, key, obj):
+    cpdef inline add(self, key, obj):
         self.objects[id(key)] = obj
 
     def __contains__(self, key):
@@ -836,17 +839,17 @@ cdef class SerializationContext:
     def get(self, key):
         return self.objects.get(id(key))
 
-    cpdef reset(self):
+    cpdef inline reset(self):
         if len(self.objects) > 0:
             self.objects.clear()
 
-    cpdef reset_write(self):
+    cpdef inline reset_write(self):
         if len(self.objects) > 0:
             self.objects.clear()
         if self.scoped_meta_share_enabled and self.meta_context is not None:
             self.meta_context.reset_write()
 
-    cpdef reset_read(self):
+    cpdef inline reset_read(self):
         if len(self.objects) > 0:
             self.objects.clear()
         if self.scoped_meta_share_enabled and self.meta_context is not None:
@@ -1778,6 +1781,7 @@ cdef class StringSerializer(XlangCompatibleSerializer):
 
 
 cdef _base_date = datetime.date(1970, 1, 1)
+cdef int _base_date_ordinal = _base_date.toordinal()  # Precompute for faster date deserialization
 
 
 @cython.final
@@ -1794,7 +1798,7 @@ cdef class DateSerializer(XlangCompatibleSerializer):
 
     cpdef inline read(self, Buffer buffer):
         days = buffer.read_int32()
-        return _base_date + datetime.timedelta(days=days)
+        return datetime.date.fromordinal(_base_date_ordinal + days)
 
 
 @cython.final
@@ -1869,7 +1873,7 @@ cdef class CollectionSerializer(Serializer):
             self.elem_tracking_ref = <int8_t> (elem_serializer.need_to_write_ref)
         self.is_py = fory.is_py
 
-    cdef pair[int8_t, int64_t] write_header(self, Buffer buffer, value):
+    cdef inline pair[int8_t, int64_t] write_header(self, Buffer buffer, value):
         cdef int8_t collect_flag = COLL_DEFAULT_FLAG
         elem_type = self.elem_type
         cdef TypeInfo elem_typeinfo = self.elem_typeinfo

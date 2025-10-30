@@ -19,7 +19,6 @@ use crate::buffer::{Reader, Writer};
 use std::mem;
 
 use crate::error::Error;
-use crate::fory::Fory;
 use crate::meta::MetaString;
 use crate::resolver::meta_resolver::{MetaReaderResolver, MetaWriterResolver};
 use crate::resolver::meta_string_resolver::{MetaStringReaderResolver, MetaStringWriterResolver};
@@ -31,6 +30,7 @@ use std::rc::Rc;
 
 /// Serialization state container used on a single thread at a time.
 /// Sharing the same instance across threads simultaneously causes undefined behavior.
+#[allow(clippy::needless_lifetimes)]
 pub struct WriteContext<'a> {
     // Replicated environment fields (direct access, no Arc indirection for flags)
     type_resolver: TypeResolver,
@@ -48,6 +48,7 @@ pub struct WriteContext<'a> {
     pub ref_writer: RefWriter,
 }
 
+#[allow(clippy::needless_lifetimes)]
 impl<'a> WriteContext<'a> {
     pub fn new(
         type_resolver: TypeResolver,
@@ -87,27 +88,6 @@ impl<'a> WriteContext<'a> {
     pub fn detach_writer(&mut self) {
         let default = mem::take(&mut self.default_writer);
         self.writer = default.unwrap();
-    }
-
-    /// Test method to create WriteContext from Fory instance
-    /// Will be removed in future releases, do not use it in production code
-    pub fn new_from_fory(fory: &Fory) -> WriteContext<'a> {
-        WriteContext {
-            default_writer: None,
-            writer: Writer::from_buffer(Self::get_leak_buffer()),
-            type_resolver: fory
-                .get_type_resolver()
-                .build_final_type_resolver()
-                .unwrap(),
-            compatible: fory.is_compatible(),
-            share_meta: fory.is_share_meta(),
-            compress_string: fory.is_compress_string(),
-            xlang: fory.is_xlang(),
-            check_struct_version: fory.is_check_struct_version(),
-            meta_resolver: MetaWriterResolver::default(),
-            meta_string_resolver: MetaStringWriterResolver::default(),
-            ref_writer: RefWriter::new(),
-        }
     }
 
     /// Get type resolver
@@ -227,6 +207,7 @@ impl<'a> WriteContext<'a> {
     }
 }
 
+#[allow(clippy::needless_lifetimes)]
 impl<'a> Drop for WriteContext<'a> {
     fn drop(&mut self) {
         unsafe {
@@ -239,12 +220,14 @@ impl<'a> Drop for WriteContext<'a> {
 // ensures single-threaded access while the context is in use. Users must never hold the same
 // instance on multiple threads simultaneously; that would violate the invariants and result in
 // undefined behavior. Under that assumption, marking it Send/Sync is sound.
+#[allow(clippy::needless_lifetimes)]
 unsafe impl<'a> Send for WriteContext<'a> {}
+#[allow(clippy::needless_lifetimes)]
 unsafe impl<'a> Sync for WriteContext<'a> {}
 
 /// Deserialization state container used on a single thread at a time.
 /// Sharing the same instance across threads simultaneously causes undefined behavior.
-pub struct ReadContext {
+pub struct ReadContext<'a> {
     // Replicated environment fields (direct access, no Arc indirection for flags)
     type_resolver: TypeResolver,
     compatible: bool,
@@ -254,7 +237,7 @@ pub struct ReadContext {
     check_struct_version: bool,
 
     // Context-specific fields
-    pub reader: Reader,
+    pub reader: Reader<'a>,
     pub meta_resolver: MetaReaderResolver,
     meta_string_resolver: MetaStringReaderResolver,
     pub ref_reader: RefReader,
@@ -265,19 +248,20 @@ pub struct ReadContext {
 // single-threaded use. Concurrent access to the same instance across threads is forbidden and
 // would result in undefined behavior. With exclusive use guaranteed, the Send/Sync markers are safe
 // even though Rc is used internally.
-unsafe impl Send for ReadContext {}
-unsafe impl Sync for ReadContext {}
+#[allow(clippy::needless_lifetimes)]
+unsafe impl<'a> Send for ReadContext<'a> {}
+#[allow(clippy::needless_lifetimes)]
+unsafe impl<'a> Sync for ReadContext<'a> {}
 
-impl ReadContext {
+impl<'a> ReadContext<'a> {
     pub fn new(
-        reader: Reader,
         type_resolver: TypeResolver,
         compatible: bool,
         share_meta: bool,
         xlang: bool,
         max_dyn_depth: u32,
         check_struct_version: bool,
-    ) -> ReadContext {
+    ) -> ReadContext<'a> {
         ReadContext {
             type_resolver,
             compatible,
@@ -285,28 +269,7 @@ impl ReadContext {
             xlang,
             max_dyn_depth,
             check_struct_version,
-            reader,
-            meta_resolver: MetaReaderResolver::default(),
-            meta_string_resolver: MetaStringReaderResolver::default(),
-            ref_reader: RefReader::new(),
-            current_depth: 0,
-        }
-    }
-
-    /// Test method to create ReadContext from Fory instance
-    /// Will be removed in future releases, do not use it in production code
-    pub fn new_from_fory(reader: Reader, fory: &Fory) -> ReadContext {
-        ReadContext {
-            type_resolver: fory
-                .get_type_resolver()
-                .build_final_type_resolver()
-                .unwrap(),
-            compatible: fory.is_compatible(),
-            share_meta: fory.is_share_meta(),
-            xlang: fory.is_xlang(),
-            max_dyn_depth: fory.get_max_dyn_depth(),
-            check_struct_version: fory.is_check_struct_version(),
-            reader,
+            reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
             ref_reader: RefReader::new(),
@@ -351,10 +314,19 @@ impl ReadContext {
     }
 
     #[inline(always)]
-    pub fn init(&mut self, bytes: &[u8], max_dyn_depth: u32) {
-        self.reader.init(bytes);
+    pub fn init(&mut self, max_dyn_depth: u32) {
         self.max_dyn_depth = max_dyn_depth;
         self.current_depth = 0;
+    }
+
+    #[inline(always)]
+    pub fn attach_reader(&mut self, reader: Reader<'a>) {
+        self.reader = reader;
+    }
+
+    #[inline(always)]
+    pub fn detach_reader(&mut self) -> Reader<'_> {
+        mem::take(&mut self.reader)
     }
 
     #[inline(always)]
@@ -458,13 +430,21 @@ impl<T> Pool<T> {
     }
 
     #[inline(always)]
-    pub fn get(&self) -> T {
+    pub fn borrow_mut<Result>(&self, handler: impl FnOnce(&mut T) -> Result) -> Result {
+        let mut obj = self.get();
+        let result = handler(&mut obj);
+        self.put(obj);
+        result
+    }
+
+    #[inline(always)]
+    fn get(&self) -> T {
         self.items.lock().pop().unwrap_or_else(|| (self.factory)())
     }
 
     // put back manually
     #[inline(always)]
-    pub fn put(&self, item: T) {
+    fn put(&self, item: T) {
         self.items.lock().push(item);
     }
 }

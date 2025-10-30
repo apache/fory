@@ -347,6 +347,20 @@ bool utf16HasSurrogatePairs_BaseLine(const std::u16string &str) {
   return false;
 }
 
+// Generate test strings of various sizes for threshold benchmarking
+const std::vector<std::u16string> test_utf16_strings_small_16 =
+    generateUTF16String(num_tests, 16);
+const std::vector<std::u16string> test_utf16_strings_small_32 =
+    generateUTF16String(num_tests, 32);
+const std::vector<std::u16string> test_utf16_strings_small_64 =
+    generateUTF16String(num_tests, 64);
+const std::vector<std::u16string> test_utf16_strings_medium_128 =
+    generateUTF16String(num_tests, 128);
+const std::vector<std::u16string> test_utf16_strings_medium_256 =
+    generateUTF16String(num_tests, 256);
+const std::vector<std::u16string> test_utf16_strings_large_512 =
+    generateUTF16String(num_tests, 512);
+
 // Benchmark function for checking if a UTF-16 string contains surrogate pairs
 static void BM_Utf16HasSurrogatePairs_BaseLine(benchmark::State &state) {
   for (auto _ : state) {
@@ -371,6 +385,142 @@ static void BM_Utf16HasSurrogatePairs_FORY(benchmark::State &state) {
 }
 
 BENCHMARK(BM_Utf16HasSurrogatePairs_FORY);
+
+// Benchmarks for different string sizes to determine optimal threshold
+static void BM_Utf16HasSurrogatePairs_BaseLine_Size16(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_small_16) {
+      bool result = utf16HasSurrogatePairs_BaseLine(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_BaseLine_Size16);
+
+static void BM_Utf16HasSurrogatePairs_FORY_Size16(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_small_16) {
+      bool result = fory::utf16HasSurrogatePairs(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_FORY_Size16);
+
+static void BM_Utf16HasSurrogatePairs_BaseLine_Size32(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_small_32) {
+      bool result = utf16HasSurrogatePairs_BaseLine(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_BaseLine_Size32);
+
+static void BM_Utf16HasSurrogatePairs_FORY_Size32(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_small_32) {
+      bool result = fory::utf16HasSurrogatePairs(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_FORY_Size32);
+
+static void BM_Utf16HasSurrogatePairs_BaseLine_Size64(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_small_64) {
+      bool result = utf16HasSurrogatePairs_BaseLine(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_BaseLine_Size64);
+
+static void BM_Utf16HasSurrogatePairs_FORY_Size64(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_small_64) {
+      bool result = fory::utf16HasSurrogatePairs(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_FORY_Size64);
+
+static void
+BM_Utf16HasSurrogatePairs_BaseLine_Size128(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_medium_128) {
+      bool result = utf16HasSurrogatePairs_BaseLine(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_BaseLine_Size128);
+
+static void BM_Utf16HasSurrogatePairs_FORY_Size128(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_medium_128) {
+      bool result = fory::utf16HasSurrogatePairs(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_FORY_Size128);
+
+static void
+BM_Utf16HasSurrogatePairs_BaseLine_Size256(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_medium_256) {
+      bool result = utf16HasSurrogatePairs_BaseLine(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_BaseLine_Size256);
+
+static void BM_Utf16HasSurrogatePairs_FORY_Size256(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_medium_256) {
+      bool result = fory::utf16HasSurrogatePairs(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_FORY_Size256);
+
+static void
+BM_Utf16HasSurrogatePairs_BaseLine_Size512(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_large_512) {
+      bool result = utf16HasSurrogatePairs_BaseLine(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_BaseLine_Size512);
+
+static void BM_Utf16HasSurrogatePairs_FORY_Size512(benchmark::State &state) {
+  for (auto _ : state) {
+    for (const std::u16string &str : test_utf16_strings_large_512) {
+      bool result = fory::utf16HasSurrogatePairs(str);
+      benchmark::DoNotOptimize(result);
+    }
+  }
+}
+
+BENCHMARK(BM_Utf16HasSurrogatePairs_FORY_Size512);
 
 /*
  * TEST Utf16ToUtf8

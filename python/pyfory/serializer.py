@@ -1247,25 +1247,25 @@ class ReduceSerializer(XlangCompatibleSerializer):
         # Handle different __reduce__ return formats
         if isinstance(reduce_result, str):
             # Case 1: Just a global name (simple case)
-            reduce_data = ("global", reduce_result)
+            reduce_data = (0, reduce_result)
         elif isinstance(reduce_result, tuple):
             if len(reduce_result) == 2:
                 # Case 2: (callable, args)
                 callable_obj, args = reduce_result
-                reduce_data = ("callable", callable_obj, args)
+                reduce_data = (1, callable_obj, args)
             elif len(reduce_result) == 3:
                 # Case 3: (callable, args, state)
                 callable_obj, args, state = reduce_result
-                reduce_data = ("callable", callable_obj, args, state)
+                reduce_data = (1, callable_obj, args, state)
             elif len(reduce_result) == 4:
                 # Case 4: (callable, args, state, listitems)
                 callable_obj, args, state, listitems = reduce_result
-                reduce_data = ("callable", callable_obj, args, state, listitems)
+                reduce_data = (1, callable_obj, args, state, listitems)
             elif len(reduce_result) == 5:
                 # Case 5: (callable, args, state, listitems, dictitems)
                 callable_obj, args, state, listitems, dictitems = reduce_result
                 reduce_data = (
-                    "callable",
+                    1,
                     callable_obj,
                     args,
                     state,
@@ -1289,7 +1289,7 @@ class ReduceSerializer(XlangCompatibleSerializer):
         for i in range(reduce_data_num_items):
             reduce_data[i] = fory.read_ref(buffer)
 
-        if reduce_data[0] == "global":
+        if reduce_data[0] == 0:
             # Case 1: Global name
             global_name = reduce_data[1]
             # Import and return the global object
@@ -1306,7 +1306,7 @@ class ReduceSerializer(XlangCompatibleSerializer):
                     return getattr(builtins, global_name)
                 except AttributeError:
                     raise ValueError(f"Cannot resolve global name: {global_name}")
-        elif reduce_data[0] == "callable":
+        elif reduce_data[0] == 1:
             # Case 2-5: Callable with args and optional state/items
             callable_obj = reduce_data[1]
             args = reduce_data[2] or ()
@@ -1342,7 +1342,7 @@ class ReduceSerializer(XlangCompatibleSerializer):
                 obj = result
             return obj
         else:
-            raise ValueError(f"Invalid reduce data format: {reduce_data[0]}")
+            raise ValueError(f"Invalid reduce data format flag: {reduce_data[0]}")
 
 
 __skip_class_attr_names__ = ("__module__", "__qualname__", "__dict__", "__weakref__")

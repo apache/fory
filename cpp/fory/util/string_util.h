@@ -133,23 +133,11 @@ inline bool isLatin1(const uint16_t *data, size_t length) {
                           length % VECTOR_SIZE);
 }
 inline bool utf16HasSurrogatePairs(const uint16_t *data, size_t length) {
-  constexpr size_t VECTOR_SIZE = 16;
-  const auto *ptr = reinterpret_cast<const __m256i *>(data);
-  const auto *end = ptr + length / VECTOR_SIZE;
-  const __m256i lower_bound = _mm256_set1_epi16(0xD800);
-  const __m256i higher_bound = _mm256_set1_epi16(0xDFFF);
-
-  for (; ptr < end; ++ptr) {
-    __m256i vec = _mm256_loadu_si256(ptr);
-    __m256i mask1 = _mm256_cmpgt_epi16(vec, lower_bound);
-    __m256i mask2 = _mm256_cmpgt_epi16(higher_bound, vec);
-    __m256i result = _mm256_and_si256(mask1, mask2);
-    if (!_mm256_testz_si256(result, result))
-      return true;
-  }
-
-  return hasSurrogatePairFallback(data + (length / VECTOR_SIZE) * VECTOR_SIZE,
-                                  length % VECTOR_SIZE);
+  // Direct fallback implementation - SIMD versions were consistently slower
+  // due to early-exit characteristics: surrogate pairs are rare and when
+  // present, often appear early in strings, making SIMD setup overhead
+  // outweigh any vectorization benefits.
+  return hasSurrogatePairFallback(data, length);
 }
 
 #elif defined(FORY_HAS_NEON)
@@ -182,18 +170,11 @@ inline bool isLatin1(const uint16_t *data, size_t length) {
 }
 
 inline bool utf16HasSurrogatePairs(const uint16_t *data, size_t length) {
-  size_t i = 0;
-  uint16x8_t lower_bound = vdupq_n_u16(0xD800);
-  uint16x8_t higher_bound = vdupq_n_u16(0xDFFF);
-  for (; i + 7 < length; i += 8) {
-    uint16x8_t chunk = vld1q_u16(data + i);
-    uint16x8_t mask1 = vcgeq_u16(chunk, lower_bound);
-    uint16x8_t mask2 = vcleq_u16(chunk, higher_bound);
-    if (vmaxvq_u16(mask1 & mask2)) {
-      return true; // Detected a high surrogate
-    }
-  }
-  return hasSurrogatePairFallback(data + i, length - i);
+  // Direct fallback implementation - SIMD versions were consistently slower
+  // due to early-exit characteristics: surrogate pairs are rare and when
+  // present, often appear early in strings, making SIMD setup overhead
+  // outweigh any vectorization benefits.
+  return hasSurrogatePairFallback(data, length);
 }
 #elif defined(FORY_HAS_SSE2)
 inline bool isAscii(const char *data, size_t length) {
@@ -227,19 +208,11 @@ inline bool isLatin1(const uint16_t *data, size_t length) {
 }
 
 inline bool utf16HasSurrogatePairs(const uint16_t *data, size_t length) {
-  size_t i = 0;
-  __m128i lower_bound = _mm_set1_epi16(0xd7ff);
-  __m128i higher_bound = _mm_set1_epi16(0xe000);
-  for (; i + 7 < length; i += 8) {
-    __m128i chunk =
-        _mm_loadu_si128(reinterpret_cast<const __m128i *>(data + i));
-    __m128i cmp1 = _mm_cmpgt_epi16(chunk, lower_bound);
-    __m128i cmp2 = _mm_cmpgt_epi16(higher_bound, chunk);
-    if (_mm_movemask_epi8(_mm_and_si128(cmp1, cmp2)) != 0) {
-      return true; // Detected a surrogate
-    }
-  }
-  return hasSurrogatePairFallback(data + i, length - i);
+  // Direct fallback implementation - SIMD versions were consistently slower
+  // due to early-exit characteristics: surrogate pairs are rare and when
+  // present, often appear early in strings, making SIMD setup overhead
+  // outweigh any vectorization benefits.
+  return hasSurrogatePairFallback(data, length);
 }
 #else
 inline bool isAscii(const char *data, size_t length) {
@@ -266,10 +239,14 @@ inline bool isLatin1(const std::u16string &str) {
 }
 
 inline bool utf16HasSurrogatePairs(const std::u16string &str) {
-  // Get the data pointer
-  const std::uint16_t *data =
-      reinterpret_cast<const std::uint16_t *>(str.data());
-  return utf16HasSurrogatePairs(data, str.size());
+  // Inline implementation for best performance
+  for (size_t i = 0; i < str.size(); ++i) {
+    auto c = str[i];
+    if (c >= 0xD800 && c <= 0xDFFF) {
+      return true;
+    }
+  }
+  return false;
 }
 
 } // namespace fory

@@ -26,43 +26,43 @@ python benchmark_report.py --log-file cargo_bench.log --output-dir=report_output
 **company**
 
 <p align="center">
-<img src="../../docs/benchmarks/rust/company.png" width="90%">
+<img src="company.png" width="90%">
 </p>
 
 **ecommerce_data**
 
 <p align="center">
-<img src="../../docs/benchmarks/rust/ecommerce_data.png" width="90%">
+<img src="ecommerce_data.png" width="90%">
 </p>
 
 **person**
 
 <p align="center">
-<img src="../../docs/benchmarks/rust/person.png" width="90%">
+<img src="person.png" width="90%">
 </p>
 
 **simple_list**
 
 <p align="center">
-<img src="../../docs/benchmarks/rust/simple_list.png" width="90%">
+<img src="simple_list.png" width="90%">
 </p>
 
 **simple_map**
 
 <p align="center">
-<img src="../../docs/benchmarks/rust/simple_map.png" width="90%">
+<img src="simple_map.png" width="90%">
 </p>
 
 **simple_struct**
 
 <p align="center">
-<img src="../../docs/benchmarks/rust/simple_struct.png" width="90%">
+<img src="simple_struct.png" width="90%">
 </p>
 
 **system_data**
 
 <p align="center">
-<img src="../../docs/benchmarks/rust/system_data.png" width="90%">
+<img src="system_data.png" width="90%">
 </p>
 
 ### Serialize Results
@@ -116,69 +116,3 @@ python benchmark_report.py --log-file cargo_bench.log --output-dir=report_output
 | system_data    | small  | deserialize | 644,870    | 421,106    | 549,209      | fory    |
 | system_data    | medium | deserialize | 14,322     | 9,205      | 10,565       | fory    |
 | system_data    | large  | deserialize | 961        | 634        | 706          | fory    |
-
-### Serialized data size
-
-| data type       | data size | fory    | protobuf |
-| --------------- | --------- | ------- | -------- |
-| simple-struct   | small     | 21      | 19       |
-| simple-struct   | medium    | 70      | 66       |
-| simple-struct   | large     | 220     | 216      |
-| simple-list     | small     | 36      | 16       |
-| simple-list     | medium    | 802     | 543      |
-| simple-list     | large     | 14512   | 12876    |
-| simple-map      | small     | 33      | 36       |
-| simple-map      | medium    | 795     | 1182     |
-| simple-map      | large     | 17893   | 21746    |
-| person          | small     | 122     | 118      |
-| person          | medium    | 873     | 948      |
-| person          | large     | 7531    | 7865     |
-| company         | small     | 191     | 182      |
-| company         | medium    | 9118    | 9950     |
-| company         | large     | 748105  | 782485   |
-| e-commerce-data | small     | 750     | 737      |
-| e-commerce-data | medium    | 53275   | 58025    |
-| e-commerce-data | large     | 1079358 | 1166878  |
-| system-data     | small     | 311     | 315      |
-| system-data     | medium    | 24301   | 26161    |
-| system-data     | large     | 450031  | 479988   |
-
-## How to generate flamegraph
-
-```bash
-cargo flamegraph --bin fory_profiler -- --operation deserialize --serializer fory -t e-commerce-data
-```
-
-detailed command:
-
-```bash
-cd benches
-rm -rf cargo-flamegraph.trace
-export CARGO_PROFILE_RELEASE_DEBUG=true &&
-cargo flamegraph \
-  --inverted \
-  --deterministic \
-  --palette rust \
-  --min-width 0.05 \
-  --bin fory_profiler -- \
-  --operation deserialize \
-  --serializer fory
-```
-
-## How to run benchmarks
-
-```bash
-cargo bench
-```
-
-To run only a specific benchmark group, you can use a command like
-
-```bash
-cargo bench --bench serialization_bench -- simple_struct
-```
-
-## How to print serialized data size
-
-```bash
-cargo run --bin fory_profiler -- --print-all-serialized-sizes
-```

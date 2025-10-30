@@ -16,7 +16,6 @@
 // under the License.
 
 use std::borrow::Cow;
-use std::io;
 use std::sync::OnceLock;
 
 use thiserror::Error;
@@ -109,10 +108,6 @@ pub enum Error {
     /// Do not construct this variant directly; use [`Error::buffer_out_of_bound`] instead.
     #[error("Buffer out of bound: {0} + {1} > {2}")]
     BufferOutOfBound(usize, usize, usize),
-
-    /// IO error from underlying operations.
-    #[error("IO error: {0}")]
-    Io(#[from] io::Error),
 
     /// Error during data encoding.
     ///

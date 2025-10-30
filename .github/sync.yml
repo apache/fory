@@ -17,7 +17,7 @@
 
 apache/fory-site@main:
   - source: docs/guide/
-    dest: docs/guide/
+    dest: docs/docs/guide/
   - source: docs/specification/
     dest: docs/specification/
   - source: docs/benchmarks/
