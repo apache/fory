@@ -50,3 +50,41 @@ fn basic() {
     let new_tokens = fory.deserialize::<Vec<Token>>(&bin).unwrap();
     assert_eq!(tokens, new_tokens);
 }
+
+#[test]
+fn named_enum() {
+    #[derive(ForyObject, Debug, PartialEq)]
+    enum Token1 {
+        Assign { target: String, value: i32 },
+    }
+
+    #[derive(ForyObject, Debug, PartialEq)]
+    enum Token2 {
+        Assign { value: i32, target: String },
+    }
+
+    let mut fory1 = Fory::default().xlang(false);
+    fory1.register::<Token1>(1000).unwrap();
+
+    let mut fory2 = Fory::default().xlang(false);
+    fory2.register::<Token2>(1000).unwrap();
+
+    let token = Token1::Assign {
+        target: "bar".to_string(),
+        value: 42,
+    };
+    let bin = fory1.serialize(&token).unwrap();
+    let new_token = fory2.deserialize::<Token2>(&bin).unwrap();
+
+    let Token1::Assign {
+        target: target1,
+        value: value1,
+    } = token;
+    let Token2::Assign {
+        target: target2,
+        value: value2,
+    } = new_token;
+    assert_eq!(target1, target2);
+    assert_eq!(value1, value2);
+    assert_eq!(value1, value1);
+}

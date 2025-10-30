@@ -410,14 +410,21 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
                     }
                 }
                 Fields::Named(fields_named) => {
-                    let field_idents: Vec<_> = fields_named
-                        .named
+                    let mut sorted_fields: Vec<_> = fields_named.named.iter().collect();
+                    sorted_fields.sort_by(|a, b| {
+                        a.ident
+                            .as_ref()
+                            .unwrap()
+                            .to_string()
+                            .cmp(&b.ident.as_ref().unwrap().to_string())
+                    });
+
+                    let field_idents: Vec<_> = sorted_fields
                         .iter()
                         .map(|f| f.ident.as_ref().unwrap())
                         .collect();
 
-                    let read_fields: Vec<_> = fields_named
-                        .named
+                    let read_fields: Vec<_> = sorted_fields
                         .iter()
                         .zip(field_idents.iter())
                         .map(|(f, ident)| gen_read_field(f, ident))
