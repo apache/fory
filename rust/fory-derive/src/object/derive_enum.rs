@@ -391,19 +391,15 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
                     }
                 }
                 Fields::Unnamed(fields_unnamed) => {
-                    let field_idents: Vec<_> = (0..fields_unnamed.unnamed.len())
+                    let field_idents: Vec<Ident> = (0..fields_unnamed.unnamed.len())
                         .map(|i| Ident::new(&temp_var_name(i), proc_macro2::Span::call_site()))
                         .collect();
 
                     let read_fields: Vec<TokenStream> = fields_unnamed
                         .unnamed
                         .iter()
-                        .enumerate()
-                        .map(|(i, f)| {
-                            let ident =
-                                Ident::new(&temp_var_name(i), proc_macro2::Span::call_site());
-                            gen_read_field(f, &ident)
-                        })
+                        .zip(field_idents.iter())
+                        .map(|(f, ident)| gen_read_field(f, ident))
                         .collect();
 
                     quote! {
@@ -414,19 +410,17 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
                     }
                 }
                 Fields::Named(fields_named) => {
-                    let read_fields: Vec<_> = fields_named
-                        .named
-                        .iter()
-                        .map(|f| {
-                            let ident = f.ident.as_ref().unwrap();
-                            gen_read_field(f, ident)
-                        })
-                        .collect();
-
                     let field_idents: Vec<_> = fields_named
                         .named
                         .iter()
                         .map(|f| f.ident.as_ref().unwrap())
+                        .collect();
+
+                    let read_fields: Vec<_> = fields_named
+                        .named
+                        .iter()
+                        .zip(field_idents.iter())
+                        .map(|(f, ident)| gen_read_field(f, ident))
                         .collect();
 
                     quote! {
