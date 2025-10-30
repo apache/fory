@@ -26,6 +26,10 @@ use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use syn::{DataEnum, Field, Fields};
 
+fn temp_var_name(i: usize) -> String {
+    format!("f{}", i)
+}
+
 pub fn gen_actual_type_id() -> TokenStream {
     quote! {
        fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
@@ -244,7 +248,7 @@ pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
                 }
                 Fields::Unnamed(fields_unnamed) => {
                     let field_idents: Vec<_> = (0..fields_unnamed.unnamed.len())
-                        .map(|i| Ident::new(&format!("f{}", i), proc_macro2::Span::call_site()))
+                        .map(|i| Ident::new(&temp_var_name(i), proc_macro2::Span::call_site()))
                         .collect();
 
                     let write_fields: Vec<_> = fields_unnamed
@@ -388,7 +392,7 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
                 }
                 Fields::Unnamed(fields_unnamed) => {
                     let field_idents: Vec<_> = (0..fields_unnamed.unnamed.len())
-                        .map(|i| Ident::new(&format!("f{}", i), proc_macro2::Span::call_site()))
+                        .map(|i| Ident::new(&temp_var_name(i), proc_macro2::Span::call_site()))
                         .collect();
 
                     let read_fields: Vec<TokenStream> = fields_unnamed
@@ -397,7 +401,7 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
                         .enumerate()
                         .map(|(i, f)| {
                             let ident =
-                                Ident::new(&format!("f{}", i), proc_macro2::Span::call_site());
+                                Ident::new(&temp_var_name(i), proc_macro2::Span::call_site());
                             gen_read_field(f, &ident)
                         })
                         .collect();
