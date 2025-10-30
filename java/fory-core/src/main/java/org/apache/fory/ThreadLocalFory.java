@@ -51,6 +51,7 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
   private final Map<LoaderBinding, Object> allFory;
 
   private ClassLoader classLoader;
+  private final Object callbackLock = new Object();
 
   public ThreadLocalFory(Function<ClassLoader, Fory> foryFactory) {
     factoryCallback = f -> {};
@@ -59,7 +60,9 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
         ThreadLocal.withInitial(
             () -> {
               LoaderBinding binding = new LoaderBinding(foryFactory);
-              binding.setBindingCallback(factoryCallback);
+              synchronized (callbackLock) {
+                binding.setBindingCallback(factoryCallback);
+              }
               ClassLoader cl =
                   classLoader == null
                       ? Thread.currentThread().getContextClassLoader()
@@ -78,10 +81,12 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
   @Internal
   @Override
   public void registerCallback(Consumer<Fory> callback) {
-    factoryCallback = factoryCallback.andThen(callback);
-    for (LoaderBinding binding : allFory.keySet()) {
-      binding.visitAllFory(callback);
-      binding.setBindingCallback(factoryCallback);
+    synchronized (callbackLock) {
+      factoryCallback = factoryCallback.andThen(callback);
+      for (LoaderBinding binding : allFory.keySet()) {
+        binding.visitAllFory(callback);
+        binding.setBindingCallback(factoryCallback);
+      }
     }
   }
 

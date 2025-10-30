@@ -373,4 +373,86 @@ public class ThreadSafeForyTest extends ForyTestBase {
           return null;
         });
   }
+
+  @Test
+  public void testRegisterClassAfterInitialization() throws InterruptedException {
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    AtomicReference<Throwable> ex = new AtomicReference<>();
+
+    try {
+      ThreadSafeFory fory = Fory.builder().requireClassRegistration(true).buildThreadLocalFory();
+
+      fory.register(BeanB.class);
+
+      BeanB bean = BeanB.createBeanB(2);
+      byte[] bytes = fory.serialize(bean);
+
+      executor.execute(
+          () -> {
+            try {
+              Object deserialized = fory.deserialize(bytes);
+              Assert.assertEquals(deserialized, bean);
+            } catch (Throwable t) {
+              ex.set(t);
+            }
+          });
+
+      executor.shutdown();
+      assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+
+      if (ex.get() != null) {
+        throw new AssertionError("error", ex.get());
+      }
+    } finally {
+      if (!executor.isTerminated()) {
+        executor.shutdownNow();
+      }
+    }
+  }
+
+  @Test
+  public void testConcurrentRegisterAndDeserialize() throws InterruptedException {
+    ExecutorService executor = Executors.newFixedThreadPool(4);
+    ConcurrentHashMap<String, Throwable> errors = new ConcurrentHashMap<>();
+
+    try {
+      ThreadSafeFory fory = Fory.builder().requireClassRegistration(true).buildThreadLocalFory();
+
+      fory.register(BeanA.class);
+      fory.register(BeanB.class);
+      BeanA beanA = BeanA.createBeanA(2);
+      byte[] bytesA = fory.serialize(beanA);
+      BeanB beanB = BeanB.createBeanB(2);
+      byte[] bytesB = fory.serialize(beanB);
+
+      for (int i = 0; i < 4; i++) {
+        final int threadId = i;
+        executor.execute(
+            () -> {
+              try {
+                if (threadId % 2 == 0) {
+                  Object deserialized = fory.deserialize(bytesA);
+                  Assert.assertEquals(deserialized, beanA);
+                } else {
+                  Object deserialized = fory.deserialize(bytesB);
+                  Assert.assertEquals(deserialized, beanB);
+                }
+              } catch (Exception e) {
+                errors.put("thread-" + threadId, e);
+              }
+            });
+      }
+
+      executor.shutdown();
+      assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS));
+
+      if (!errors.isEmpty()) {
+        throw new AssertionError("error：" + errors);
+      }
+    } finally {
+      if (!executor.isTerminated()) {
+        executor.shutdownNow();
+      }
+    }
+  }
 }
