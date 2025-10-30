@@ -455,4 +455,55 @@ public class ThreadSafeForyTest extends ForyTestBase {
       }
     }
   }
+
+  @Test
+  public void testConcurrentRegisterInThreadPoolFory() throws InterruptedException {
+    ExecutorService executor = Executors.newFixedThreadPool(8);
+    ConcurrentHashMap<String, Throwable> errors = new ConcurrentHashMap<>();
+
+    try {
+      ThreadSafeFory fory =
+          Fory.builder().requireClassRegistration(true).buildThreadSafeForyPool(2, 4);
+
+      fory.register(BeanA.class);
+      fory.register(BeanB.class);
+      BeanA beanA = BeanA.createBeanA(2);
+      BeanB beanB = BeanB.createBeanB(2);
+      byte[] bytesA = fory.serialize(beanA);
+      byte[] bytesB = fory.serialize(beanB);
+
+      for (int i = 0; i < 32; i++) {
+        final int threadId = i;
+        executor.execute(
+            () -> {
+              try {
+                if (threadId % 4 == 0) {
+                  fory.register(BeanA.class);
+                } else if (threadId % 4 == 1) {
+                  fory.register(BeanB.class);
+                } else if (threadId % 4 == 2) {
+                  Object deserialized = fory.deserialize(bytesA);
+                  Assert.assertEquals(deserialized, beanA);
+                } else {
+                  Object deserialized = fory.deserialize(bytesB);
+                  Assert.assertEquals(deserialized, beanB);
+                }
+              } catch (Exception e) {
+                errors.put("thread-" + threadId, e);
+              }
+            });
+      }
+
+      executor.shutdown();
+      assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS));
+
+      if (!errors.isEmpty()) {
+        throw new AssertionError("error：" + errors);
+      }
+    } finally {
+      if (!executor.isTerminated()) {
+        executor.shutdownNow();
+      }
+    }
+  }
 }
