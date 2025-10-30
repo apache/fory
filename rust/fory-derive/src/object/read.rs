@@ -101,7 +101,7 @@ fn assign_value(fields: &[&Field]) -> Vec<TokenStream> {
         .collect()
 }
 
-fn gen_read_field(field: &Field, private_ident: &Ident) -> TokenStream {
+pub fn gen_read_field(field: &Field, private_ident: &Ident) -> TokenStream {
     let ty = &field.ty;
     let base = match classify_trait_object_field(ty) {
         StructField::BoxDyn => {

@@ -15,9 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use proc_macro2::TokenStream;
+use crate::object::read::gen_read_field;
+use crate::object::util::{
+    classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
+    get_struct_name, get_type_id_by_type_ast, is_debug_enabled, should_skip_type_info_for_field,
+    skip_ref_flag, StructField,
+};
+use fory_core::TypeId;
+use proc_macro2::{Ident, TokenStream};
 use quote::quote;
-use syn::{DataEnum, Fields};
+use syn::{DataEnum, Field, Fields};
 
 pub fn gen_actual_type_id() -> TokenStream {
     quote! {
@@ -40,6 +47,147 @@ pub fn gen_reserved_space() -> TokenStream {
 pub fn gen_write(_data_enum: &DataEnum) -> TokenStream {
     quote! {
         fory_core::serializer::enum_::write::<Self>(self, context, write_ref_info, write_type_info)
+    }
+}
+
+// borrowed from object/write.rs
+fn gen_write_field(field: &Field, ident: &Ident) -> TokenStream {
+    let ty = &field.ty;
+    let base = match classify_trait_object_field(ty) {
+        StructField::BoxDyn => {
+            quote! {
+                <#ty as fory_core::Serializer>::fory_write(&#ident, context, true, true, false)?;
+            }
+        }
+        StructField::RcDyn(trait_name) => {
+            let types = create_wrapper_types_rc(&trait_name);
+            let wrapper_ty = types.wrapper_ty;
+            let trait_ident = types.trait_ident;
+            quote! {
+                let wrapper = #wrapper_ty::from(#ident.clone() as std::rc::Rc<dyn #trait_ident>);
+                <#wrapper_ty as fory_core::Serializer>::fory_write(&wrapper, context, true, true, false)?;
+            }
+        }
+        StructField::ArcDyn(trait_name) => {
+            let types = create_wrapper_types_arc(&trait_name);
+            let wrapper_ty = types.wrapper_ty;
+            let trait_ident = types.trait_ident;
+            quote! {
+                let wrapper = #wrapper_ty::from(#ident.clone() as std::sync::Arc<dyn #trait_ident>);
+                <#wrapper_ty as fory_core::Serializer>::fory_write(&wrapper, context, true, true, false)?;
+            }
+        }
+        StructField::VecRc(trait_name) => {
+            let types = create_wrapper_types_rc(&trait_name);
+            let wrapper_ty = types.wrapper_ty;
+            let trait_ident = types.trait_ident;
+            quote! {
+                let wrapper_vec: Vec<#wrapper_ty> = #ident.iter()
+                    .map(|item| #wrapper_ty::from(item.clone() as std::rc::Rc<dyn #trait_ident>))
+                    .collect();
+                <Vec<#wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_vec, context, true, false, true)?;
+            }
+        }
+        StructField::VecArc(trait_name) => {
+            let types = create_wrapper_types_arc(&trait_name);
+            let wrapper_ty = types.wrapper_ty;
+            let trait_ident = types.trait_ident;
+            quote! {
+                let wrapper_vec: Vec<#wrapper_ty> = #ident.iter()
+                    .map(|item| #wrapper_ty::from(item.clone() as std::sync::Arc<dyn #trait_ident>))
+                    .collect();
+                <Vec<#wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_vec, context, true, false, true)?;
+            }
+        }
+        StructField::HashMapRc(key_ty, trait_name) => {
+            let types = create_wrapper_types_rc(&trait_name);
+            let wrapper_ty = types.wrapper_ty;
+            let trait_ident = types.trait_ident;
+            quote! {
+                let wrapper_map: std::collections::HashMap<#key_ty, #wrapper_ty> = #ident.iter()
+                    .map(|(k, v)| (k.clone(), #wrapper_ty::from(v.clone() as std::rc::Rc<dyn #trait_ident>)))
+                    .collect();
+                <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_map, context, true, false, true)?;
+            }
+        }
+        StructField::HashMapArc(key_ty, trait_name) => {
+            let types = create_wrapper_types_arc(&trait_name);
+            let wrapper_ty = types.wrapper_ty;
+            let trait_ident = types.trait_ident;
+            quote! {
+                let wrapper_map: std::collections::HashMap<#key_ty, #wrapper_ty> = #ident.iter()
+                    .map(|(k, v)| (k.clone(), #wrapper_ty::from(v.clone() as std::sync::Arc<dyn #trait_ident>)))
+                    .collect();
+                <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_map, context, true, false, true)?;
+            }
+        }
+        StructField::Forward => {
+            quote! {
+                <#ty as fory_core::Serializer>::fory_write(&#ident, context, true, true, false)?;
+            }
+        }
+        _ => {
+            let skip_ref_flag = skip_ref_flag(ty);
+            let skip_type_info = should_skip_type_info_for_field(ty);
+            let type_id = get_type_id_by_type_ast(ty);
+            if type_id == TypeId::LIST as u32
+                || type_id == TypeId::SET as u32
+                || type_id == TypeId::MAP as u32
+            {
+                quote! {
+                    <#ty as fory_core::Serializer>::fory_write(&#ident, context, true, false, true)?;
+                }
+            } else {
+                // Known types (primitives, strings, collections) - skip type info at compile time
+                // For custom types that we can't determine at compile time (like enums),
+                // we need to check at runtime whether to skip type info
+                if skip_type_info {
+                    if skip_ref_flag {
+                        quote! {
+                            <#ty as fory_core::Serializer>::fory_write_data(&#ident, context)?;
+                        }
+                    } else {
+                        quote! {
+                            <#ty as fory_core::Serializer>::fory_write(&#ident, context, true, false, false)?;
+                        }
+                    }
+                } else if skip_ref_flag {
+                    quote! {
+                        let is_enum = <#ty as fory_core::Serializer>::fory_static_type_id() == fory_core::types::TypeId::ENUM;
+                        <#ty as fory_core::Serializer>::fory_write(&#ident, context, false, !is_enum, false)?;
+                    }
+                } else {
+                    quote! {
+                        let is_enum = <#ty as fory_core::Serializer>::fory_static_type_id() == fory_core::types::TypeId::ENUM;
+                        <#ty as fory_core::Serializer>::fory_write(&#ident, context, true, !is_enum, false)?;
+                    }
+                }
+            }
+        }
+    };
+
+    if is_debug_enabled() {
+        let struct_name = get_struct_name().expect("struct context not set");
+        let struct_name_lit = syn::LitStr::new(&struct_name, proc_macro2::Span::call_site());
+        let field_name = field.ident.as_ref().unwrap().to_string();
+        let field_name_lit = syn::LitStr::new(&field_name, proc_macro2::Span::call_site());
+        quote! {
+            fory_core::serializer::struct_::struct_before_write_field(
+                #struct_name_lit,
+                #field_name_lit,
+                (&self.#ident) as &dyn std::any::Any,
+                context,
+            );
+            #base
+            fory_core::serializer::struct_::struct_after_write_field(
+                #struct_name_lit,
+                #field_name_lit,
+                (&self.#ident) as &dyn std::any::Any,
+                context,
+            );
+        }
+    } else {
+        base
     }
 }
 
@@ -78,80 +226,72 @@ pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
         })
         .collect();
 
-    let normal_variant_branches: Vec<TokenStream> = data_enum.variants.iter().enumerate().map(|(idx, v)| {
-        let ident = &v.ident;
-        let tag_value = idx as u32;
+    let rust_variant_branches: Vec<TokenStream> = data_enum
+        .variants
+        .iter()
+        .enumerate()
+        .map(|(idx, v)| {
+            let ident = &v.ident;
+            let tag_value = idx as u32;
 
-        match &v.fields {
-            Fields::Unit => {
-                quote! {
-                    Self::#ident => {
-                        context.writer.write_varuint32(#tag_value);
-                    }
-                }
-            }
-            Fields::Unnamed(fields_unnamed) => {
-                let field_idents: Vec<_> = (0..fields_unnamed.unnamed.len())
-                    .map(|i| syn::Ident::new(&format!("f{}", i), proc_macro2::Span::call_site()))
-                    .collect();
-
-                let write_fields: Vec<_> = fields_unnamed.unnamed.iter().zip(field_idents.iter()).map(|(f, ident)| {
-                    let ty = &f.ty;
+            match &v.fields {
+                Fields::Unit => {
                     quote! {
-                        if <#ty>::fory_is_option() {
-                            if #ident.fory_is_none() {
-                                context.writer.write_i8(fory_core::types::RefFlag::Null as i8);
-                            } else {
-                                context.writer.write_i8(fory_core::types::RefFlag::NotNullValue as i8);
-                                <#ty>::fory_write_data(#ident, context)?;
-                            }
-                        } else {
-                            <#ty>::fory_write_data(#ident, context)?;
+                        Self::#ident => {
+                            context.writer.write_varuint32(#tag_value);
                         }
                     }
-                }).collect();
-
-                quote! {
-                    Self::#ident( #(#field_idents),* ) => {
-                        context.writer.write_varuint32(#tag_value);
-                        #(#write_fields)*
-                    }
                 }
-            }
-            Fields::Named(fields_named) => {
-                let mut sorted_fields: Vec<_> = fields_named.named.iter().collect();
-                sorted_fields.sort_by(|a, b| a.ident.as_ref().unwrap().to_string()
-                    .cmp(&b.ident.as_ref().unwrap().to_string()));
+                Fields::Unnamed(fields_unnamed) => {
+                    let field_idents: Vec<_> = (0..fields_unnamed.unnamed.len())
+                        .map(|i| Ident::new(&format!("f{}", i), proc_macro2::Span::call_site()))
+                        .collect();
 
-                let field_idents: Vec<_> = sorted_fields.iter()
-                    .map(|f| f.ident.as_ref().unwrap())
-                    .collect();
+                    let write_fields: Vec<_> = fields_unnamed
+                        .unnamed
+                        .iter()
+                        .zip(field_idents.iter())
+                        .map(|(f, ident)| gen_write_field(f, ident))
+                        .collect();
 
-                let write_fields: Vec<_> = sorted_fields.iter().zip(field_idents.iter()).map(|(f, ident)| {
-                    let ty = &f.ty;
                     quote! {
-                        if <#ty>::fory_is_option() {
-                            if #ident.fory_is_none() {
-                                context.writer.write_i8(fory_core::types::RefFlag::Null as i8);
-                            } else {
-                                context.writer.write_i8(fory_core::types::RefFlag::NotNullValue as i8);
-                                <#ty>::fory_write_data(#ident, context)?;
-                            }
-                        } else {
-                            <#ty>::fory_write_data(#ident, context)?;
+                        Self::#ident( #(#field_idents),* ) => {
+                            context.writer.write_varuint32(#tag_value);
+                            #(#write_fields)*
                         }
                     }
-                }).collect();
+                }
+                Fields::Named(fields_named) => {
+                    let mut sorted_fields: Vec<_> = fields_named.named.iter().collect();
+                    sorted_fields.sort_by(|a, b| {
+                        a.ident
+                            .as_ref()
+                            .unwrap()
+                            .to_string()
+                            .cmp(&b.ident.as_ref().unwrap().to_string())
+                    });
 
-                quote! {
-                    Self::#ident { #(#field_idents),* } => {
-                        context.writer.write_varuint32(#tag_value) ;
-                        #(#write_fields)*
+                    let field_idents: Vec<_> = sorted_fields
+                        .iter()
+                        .map(|f| f.ident.as_ref().unwrap())
+                        .collect();
+
+                    let write_fields: Vec<_> = sorted_fields
+                        .iter()
+                        .zip(field_idents.iter())
+                        .map(|(f, ident)| gen_write_field(f, ident))
+                        .collect();
+
+                    quote! {
+                        Self::#ident { #(#field_idents),* } => {
+                            context.writer.write_varuint32(#tag_value) ;
+                            #(#write_fields)*
+                        }
                     }
                 }
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     quote! {
         if context.is_xlang() {
@@ -161,7 +301,7 @@ pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
             Ok(())
         } else {
             match self {
-                #(#normal_variant_branches)*
+                #(#rust_variant_branches)*
             }
             Ok(())
         }
@@ -232,80 +372,69 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
         })
         .collect();
 
-    let rust_variant_branches: Vec<TokenStream> = data_enum.variants.iter().enumerate().map(|(idx, v)| {
-        let ident = &v.ident;
-        let tag_value = idx as u32;
+    let rust_variant_branches: Vec<TokenStream> = data_enum
+        .variants
+        .iter()
+        .enumerate()
+        .map(|(idx, v)| {
+            let ident = &v.ident;
+            let tag_value = idx as u32;
 
-        match &v.fields {
-            Fields::Unit => {
-                quote! {
-                    #tag_value => Ok(Self::#ident),
-                }
-            }
-            Fields::Unnamed(fields_unnamed) => {
-                let read_fields: Vec<TokenStream> = fields_unnamed.unnamed.iter().enumerate().map(|(i, f)| {
-                    let ty = &f.ty;
-                    let var_name = syn::Ident::new(&format!("f{}", i), proc_macro2::Span::call_site());
+            match &v.fields {
+                Fields::Unit => {
                     quote! {
-                        let #var_name = if <#ty>::fory_is_option() {
-                            let ref_flag = context.reader.read_i8()?;
-                            if ref_flag == fory_core::types::RefFlag::Null as i8 {
-                                Default::default()
-                            } else if ref_flag == fory_core::types::RefFlag::NotNullValue as i8 {
-                                <#ty>::fory_read_data(context)?
-                            } else {
-                                Err(fory_core::error::Error::invalid_data("invalid ref flag"))?
-                            }
-                        } else {
-                            <#ty>::fory_read_data(context)?
-                        };
-                    }
-                }).collect();
-
-                let field_idents: Vec<_> = (0..fields_unnamed.unnamed.len())
-                    .map(|i| syn::Ident::new(&format!("f{}", i), proc_macro2::Span::call_site()))
-                    .collect();
-
-                quote! {
-                    #tag_value => {
-                        #(#read_fields;)*
-                        Ok(Self::#ident( #(#field_idents),* ))
+                        #tag_value => Ok(Self::#ident),
                     }
                 }
-            }
-            Fields::Named(fields_named) => {
-                let read_fields: Vec<_> = fields_named.named.iter().map(|f| {
-                    let ty = &f.ty;
-                    let ident = f.ident.as_ref().unwrap();
+                Fields::Unnamed(fields_unnamed) => {
+                    let field_idents: Vec<_> = (0..fields_unnamed.unnamed.len())
+                        .map(|i| Ident::new(&format!("f{}", i), proc_macro2::Span::call_site()))
+                        .collect();
+
+                    let read_fields: Vec<TokenStream> = fields_unnamed
+                        .unnamed
+                        .iter()
+                        .enumerate()
+                        .map(|(i, f)| {
+                            let ident =
+                                Ident::new(&format!("f{}", i), proc_macro2::Span::call_site());
+                            gen_read_field(f, &ident)
+                        })
+                        .collect();
+
                     quote! {
-                        let #ident = if <#ty>::fory_is_option() {
-                            let ref_flag = context.reader.read_i8()?;
-                            if ref_flag == fory_core::types::RefFlag::Null as i8 {
-                                Default::default()
-                            } else if ref_flag == fory_core::types::RefFlag::NotNullValue as i8 {
-                                <#ty>::fory_read_data(context)?
-                            } else {
-                                Err(fory_core::error::Error::invalid_data("invalid ref flag"))?
-                            }
-                        } else {
-                            <#ty>::fory_read_data(context)?
-                        };
+                        #tag_value => {
+                            #(#read_fields;)*
+                            Ok(Self::#ident( #(#field_idents),* ))
+                        }
                     }
-                }).collect();
+                }
+                Fields::Named(fields_named) => {
+                    let read_fields: Vec<_> = fields_named
+                        .named
+                        .iter()
+                        .map(|f| {
+                            let ident = f.ident.as_ref().unwrap();
+                            gen_read_field(f, ident)
+                        })
+                        .collect();
 
-                let field_idents: Vec<_> = fields_named.named.iter()
-                    .map(|f| f.ident.as_ref().unwrap())
-                    .collect();
+                    let field_idents: Vec<_> = fields_named
+                        .named
+                        .iter()
+                        .map(|f| f.ident.as_ref().unwrap())
+                        .collect();
 
-                quote! {
-                    #tag_value => {
-                        #(#read_fields;)*
-                        Ok(Self::#ident { #(#field_idents),* })
+                    quote! {
+                        #tag_value => {
+                            #(#read_fields;)*
+                            Ok(Self::#ident { #(#field_idents),* })
+                        }
                     }
                 }
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     quote! {
         if context.is_xlang() {
