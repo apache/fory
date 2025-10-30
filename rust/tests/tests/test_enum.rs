@@ -19,6 +19,7 @@
 
 use fory_core::Fory;
 use fory_derive::ForyObject;
+use std::collections::HashMap;
 
 #[test]
 fn basic() {
@@ -30,10 +31,20 @@ fn basic() {
         Assign { target: String, value: i32 },
         Other(Option<i64>),
         Child(Box<Token>),
+        Map(HashMap<String, Token>),
     }
 
     let mut fory = Fory::default().xlang(false);
     fory.register::<Token>(1000).unwrap();
+
+    let mut map = HashMap::new();
+    map.insert("one".to_string(), Token::Number(1));
+    map.insert("plus".to_string(), Token::Plus);
+    map.insert(
+        "nested".to_string(),
+        Token::Child(Box::new(Token::Ident("deep".to_string()))),
+    );
+
     let tokens = vec![
         Token::Plus,
         Token::Number(1),
@@ -45,6 +56,7 @@ fn basic() {
         Token::Other(Some(42)),
         Token::Other(None),
         Token::Child(Box::from(Token::Child(Box::from(Token::Other(None))))),
+        Token::Map(map),
     ];
     let bin = fory.serialize(&tokens).unwrap();
     let new_tokens = fory.deserialize::<Vec<Token>>(&bin).unwrap();
@@ -86,5 +98,4 @@ fn named_enum() {
     } = new_token;
     assert_eq!(target1, target2);
     assert_eq!(value1, value2);
-    assert_eq!(value1, value1);
 }
