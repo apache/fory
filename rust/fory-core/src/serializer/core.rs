@@ -1217,30 +1217,62 @@ pub trait Serializer: 'static {
         std::mem::size_of::<Self>()
     }
 
-    /// **[USER IMPLEMENTATION REQUIRED]** Downcast to `&dyn Any` for dynamic type checking.
+    /// Indicate whether this type should be treated as a reference type in cross-language (xlang) serialization.
     ///
-    /// This method enables runtime type checking and downcasting, required for
-    /// Fory's type system integration.
+    /// In cross-language scenarios, type systems differ between languages. For example:
+    /// - In Java: `String`, `List`, `Map` are reference types (need RefFlag)
+    /// - In Rust: `String`, `Vec`, `HashMap` are value types (by default, no RefFlag)
+    ///
+    /// This method bridges the gap by allowing Rust types to declare their cross-language reference semantics.
     ///
     /// # Returns
     ///
-    /// A reference to this instance as `&dyn Any`.
+    /// - `true` if this type should be treated as a reference type in xlang mode
+    ///   (will write RefFlag during serialization)
+    /// - `false` if this type should be treated as a value type in xlang mode
+    ///   (will not write RefFlag, default)
     ///
-    /// # Implementation Pattern
+    /// # Type Mapping Guidelines
     ///
-    /// Always implement this by returning `self`:
+    /// | Rust Type | Java Type | Should Return |
+    /// |-----------|-----------|---------------|
+    /// | `i32`, `f64`, `bool` | `int`, `double`, `boolean` | `false` |
+    /// | `Option<i32>` | `Integer` | `false` (Option handles null) |
+    /// | `String` | `String` | `true` |
+    /// | `Vec<T>` | `List<T>` | `true` |
+    /// | `HashMap<K,V>` | `Map<K,V>` | `true` |
+    /// | User struct | Java object | `true` |
+    ///
+    /// # Default Implementation
+    ///
+    /// Returns `false` for all types. Override for types that correspond to reference types in other languages.
+    ///
+    /// # Examples
     ///
     /// ```rust,ignore
-    /// fn as_any(&self) -> &dyn Any {
-    ///     self
+    /// // String should be treated as reference type in Java
+    /// impl Serializer for String {
+    ///     fn fory_is_xlang_ref_type() -> bool {
+    ///         true
+    ///     }
+    /// }
+    ///
+    /// // i32 is primitive in Java (int)
+    /// impl Serializer for i32 {
+    ///     fn fory_is_xlang_ref_type() -> bool {
+    ///         false  // default
+    ///     }
     /// }
     /// ```
     ///
     /// # Implementation Notes
     ///
-    /// - Required for all types implementing `Serializer`
-    /// - Enables `downcast_ref::<T>()` on serialized values
-    /// - Used by Fory's polymorphic deserialization
+    /// - Only affects behavior when `context.is_xlang()` is true
+    /// - Used in [`fory_write`] to determine RefFlag behavior
+    /// - Fory implements this for all built-in types
+    /// - User types should override this for proper xlang interop
+    ///
+    /// [`fory_write`]: Serializer::fory_write
     fn as_any(&self) -> &dyn Any;
 }
 
