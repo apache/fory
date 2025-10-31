@@ -373,4 +373,40 @@ public class ThreadSafeForyTest extends ForyTestBase {
           return null;
         });
   }
+
+  @Test
+  public void testGetDepth() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    Assert.assertEquals(fory.getDepth(), -1);
+    BeanA beanA = BeanA.createBeanA(2);
+    byte[] bytes = fory.serialize(beanA);
+    Assert.assertEquals(fory.getDepth(), -1);
+    fory.deserialize(bytes);
+    Assert.assertEquals(fory.getDepth(), -1);
+  }
+
+  @Test
+  public void testRegisterAfterSerializeThrowsException() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    fory.register(BeanA.class);
+
+    ThreadSafeFory threadSafeFory =
+        Fory.builder().requireClassRegistration(false).buildThreadSafeForyPool(1, 2);
+
+    BeanA beanA = BeanA.createBeanA(2);
+    BeanB beanB = BeanB.createBeanB(2);
+
+    byte[] bytes1 = threadSafeFory.serialize(beanA);
+
+    BeanA deserialized1 = (BeanA) threadSafeFory.deserialize(bytes1);
+    Assert.assertEquals(deserialized1, beanA);
+
+    byte[] bytes2 = threadSafeFory.serialize(beanB);
+
+    BeanB deserialized2 = (BeanB) threadSafeFory.deserialize(bytes2);
+    Assert.assertEquals(deserialized2, beanB);
+
+    Integer depth = threadSafeFory.execute(Fory::getDepth);
+    Assert.assertEquals(depth.intValue(), -1);
+  }
 }

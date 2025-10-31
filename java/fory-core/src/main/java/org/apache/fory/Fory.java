@@ -1602,10 +1602,6 @@ public final class Fory implements BaseFory {
             method));
   }
 
-  public boolean hasSerializedOrDeserialized() {
-    return depth >= 0;
-  }
-
   @Override
   public void ensureSerializersCompiled() {
     classResolver.ensureSerializersCompiled();

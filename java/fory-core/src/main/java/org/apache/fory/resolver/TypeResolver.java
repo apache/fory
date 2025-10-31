@@ -115,7 +115,7 @@ public abstract class TypeResolver {
     if (fory.getDepth() >= 0) {
       throw new IllegalStateException(
           "Cannot register class/serializer after serialization/deserialization has started. "
-              + "Please register all classes before using Fory.");
+              + "Please register all classes before invoking `serialize/deserialize` methods of Fory.");
     }
   }
 
