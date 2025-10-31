@@ -1606,10 +1606,6 @@ public final class Fory implements BaseFory {
     return depth >= 0;
   }
 
-  public int getDepth() {
-    return depth;
-  }
-
   @Override
   public void ensureSerializersCompiled() {
     classResolver.ensureSerializersCompiled();
