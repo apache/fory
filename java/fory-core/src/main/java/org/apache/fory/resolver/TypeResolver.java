@@ -111,6 +111,14 @@ public abstract class TypeResolver {
     metaStringResolver = fory.getMetaStringResolver();
   }
 
+  protected final void checkRegisterAllowed() {
+    if (fory.getDepth() >= 0) {
+      throw new IllegalStateException(
+          "Cannot register class/serializer after serialization/deserialization has started. "
+              + "Please register all classes before using Fory.");
+    }
+  }
+
   public abstract void register(Class<?> type);
 
   public abstract void register(Class<?> type, int id);
