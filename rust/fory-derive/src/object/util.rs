@@ -768,7 +768,12 @@ pub(crate) fn get_sorted_field_names(fields: &[&Field]) -> Vec<String> {
 }
 
 pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
-    let sorted_names = get_sorted_field_names(fields);
+    let filterd_fields: Vec<&Field> = fields
+        .iter()
+        .filter(|field| !is_skip_field(field))
+        .copied()
+        .collect();
+    let sorted_names = get_sorted_field_names(&filterd_fields);
     let names = sorted_names.iter().map(|name| {
         quote! { #name }
     });
@@ -896,6 +901,43 @@ pub(crate) fn should_skip_type_info_for_field(ty: &Type) -> bool {
     }
     // Primitive, nullable primitive, internal types, List/Set/Map skip type info
     true
+}
+
+pub(crate) fn is_skip_field(field: &syn::Field) -> bool {
+    field.attrs.iter().any(|attr| {
+        attr.path().is_ident("fory") && {
+            let mut skip = false;
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("skip") {
+                    skip = true;
+                }
+                Ok(())
+            });
+            skip
+        }
+    })
+}
+
+pub(crate) fn is_skip_enum_variant(variant: &syn::Variant) -> bool {
+    variant.attrs.iter().any(|attr| {
+        attr.path().is_ident("fory") && {
+            let mut skip = false;
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("skip") {
+                    skip = true;
+                }
+                Ok(())
+            });
+            skip
+        }
+    })
+}
+
+pub(crate) fn is_default_value_variant(variant: &syn::Variant) -> bool {
+    variant
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("default"))
 }
 
 #[cfg(test)]

@@ -198,7 +198,7 @@ mod util;
 ///     city: String,
 /// }
 /// ```
-#[proc_macro_derive(ForyObject, attributes(fory_debug))]
+#[proc_macro_derive(ForyObject, attributes(fory_debug, fory))]
 pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 

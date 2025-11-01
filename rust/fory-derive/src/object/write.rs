@@ -18,7 +18,7 @@
 use super::util::{
     classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
     create_wrapper_types_rc, get_struct_name, get_type_id_by_type_ast, is_debug_enabled,
-    should_skip_type_info_for_field, skip_ref_flag, StructField,
+    is_skip_field, should_skip_type_info_for_field, skip_ref_flag, StructField,
 };
 use fory_core::types::TypeId;
 use proc_macro2::{Ident, TokenStream};
@@ -249,6 +249,7 @@ pub fn gen_write_field(field: &Field, ident: &Ident, use_self: bool) -> TokenStr
 pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
     let write_fields_ts: Vec<_> = fields
         .iter()
+        .filter(|field| !is_skip_field(field))
         .map(|field| {
             let ident = field.ident.as_ref().unwrap();
             gen_write_field(field, ident, true)
