@@ -31,6 +31,7 @@ public class ForyJitCompilerThreadFactory implements ThreadFactory {
   public Thread newThread(Runnable task) {
     Thread thread = backingThreadFactory.newThread(task);
     thread.setName("fory-jit-compiler-" + threadNumber.incrementAndGet());
+    thread.setDaemon(true);
     return thread;
   }
 }
