@@ -51,6 +51,7 @@ import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.ObjectArray;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.config.CompatibleMode;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -109,6 +110,14 @@ public abstract class TypeResolver {
     metaContextShareEnabled = fory.getConfig().isMetaShareEnabled();
     extRegistry = new ExtRegistry();
     metaStringResolver = fory.getMetaStringResolver();
+  }
+
+  protected final void checkRegisterAllowed() {
+    if (fory.getDepth() >= 0) {
+      throw new ForyException(
+          "Cannot register class/serializer after serialization/deserialization has started. "
+              + "Please register all classes before invoking `serialize/deserialize` methods of Fory.");
+    }
   }
 
   public abstract void register(Class<?> type);

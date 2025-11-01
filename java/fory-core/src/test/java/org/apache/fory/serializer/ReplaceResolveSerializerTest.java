@@ -79,19 +79,20 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
             .build();
-    CustomReplaceClass1 o1 = new CustomReplaceClass1("abc");
     fory.registerSerializer(CustomReplaceClass1.class, ReplaceResolveSerializer.class);
     fory.registerSerializer(CustomReplaceClass1.Replaced.class, ReplaceResolveSerializer.class);
+    ImmutableList<Integer> list1 = ImmutableList.of(1, 2, 3, 4);
+    fory.registerSerializer(list1.getClass(), new ReplaceResolveSerializer(fory, list1.getClass()));
+    ImmutableMap<String, Integer> map1 = ImmutableMap.of("k1", 1, "k2", 2);
+    fory.registerSerializer(map1.getClass(), new ReplaceResolveSerializer(fory, map1.getClass()));
+
+    CustomReplaceClass1 o1 = new CustomReplaceClass1("abc");
     serDeCheck(fory, o1);
     assertTrue(
         fory.getClassResolver().getSerializer(o1.getClass()) instanceof ReplaceResolveSerializer);
 
-    ImmutableList<Integer> list1 = ImmutableList.of(1, 2, 3, 4);
-    fory.registerSerializer(list1.getClass(), new ReplaceResolveSerializer(fory, list1.getClass()));
     serDeCheck(fory, list1);
 
-    ImmutableMap<String, Integer> map1 = ImmutableMap.of("k1", 1, "k2", 2);
-    fory.registerSerializer(map1.getClass(), new ReplaceResolveSerializer(fory, map1.getClass()));
     serDeCheck(fory, map1);
     assertTrue(
         fory.getClassResolver().getSerializer(list1.getClass())
@@ -162,7 +163,6 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
           new CustomReplaceClass2(false, 2), new CustomReplaceClass2(true, 2),
         }) {
       assertEquals(jdkDeserialize(jdkSerialize(o)), o);
-      fory.registerSerializer(o.getClass(), ReplaceResolveSerializer.class);
       serDeCheck(fory, o);
     }
     CustomReplaceClass2 o = new CustomReplaceClass2(false, 6);
@@ -340,7 +340,6 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
           new Subclass1(false, 2, 10), new Subclass1(true, 2, 11),
         }) {
       assertEquals(jdkDeserialize(jdkSerialize(o)), o);
-      fory.registerSerializer(o.getClass(), ReplaceResolveSerializer.class);
       serDeCheck(fory, o);
     }
     Subclass1 o = new Subclass1(false, 6, 12);
@@ -397,7 +396,6 @@ public class ReplaceResolveSerializerTest extends ForyTestBase {
           new Subclass2(false, 2, 10), new Subclass2(true, 2, 11),
         }) {
       assertEquals(jdkDeserialize(jdkSerialize(o)), o);
-      fory.registerSerializer(o.getClass(), ReplaceResolveSerializer.class);
       serDeCheck(fory, o);
     }
     Subclass2 o = new Subclass2(false, 6, 12);

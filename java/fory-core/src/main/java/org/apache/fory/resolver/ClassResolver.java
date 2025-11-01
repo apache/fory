@@ -408,6 +408,7 @@ public class ClassResolver extends TypeResolver {
    * In the future this limitation may be relaxed.
    */
   public void register(Class<?> cls, int classId) {
+    checkRegisterAllowed();
     // class id must be less than Integer.MAX_VALUE/2 since we use bit 0 as class id flag.
     Preconditions.checkArgument(classId >= 0 && classId < Short.MAX_VALUE);
     short id = (short) classId;
@@ -453,6 +454,7 @@ public class ClassResolver extends TypeResolver {
    */
   @Override
   public void register(Class<?> cls, String namespace, String name) {
+    checkRegisterAllowed();
     Preconditions.checkArgument(!Functions.isLambda(cls));
     Preconditions.checkArgument(!ReflectionUtils.isJdkProxy(cls));
     Preconditions.checkArgument(!cls.isArray());
@@ -668,6 +670,7 @@ public class ClassResolver extends TypeResolver {
    * @param <T> type of class
    */
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
+    checkRegisterAllowed();
     registerSerializer(type, Serializers.newSerializer(fory, type, serializerClass));
   }
 
@@ -678,6 +681,7 @@ public class ClassResolver extends TypeResolver {
    * @param serializer serializer for object of {@code type}
    */
   public void registerSerializer(Class<?> type, Serializer<?> serializer) {
+    checkRegisterAllowed();
     if (!serializer.getClass().getPackage().getName().startsWith("org.apache.fory")) {
       SerializationUtils.validate(type, serializer.getClass());
     }

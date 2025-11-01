@@ -156,7 +156,6 @@ public class ResolverValidateSerializerTest {
   @Test
   public void testListAndMapSerializerRegistration() {
     Fory fory = Fory.builder().withRefTracking(true).requireClassRegistration(false).build();
-    // List invalid
     assertThrows(
         IllegalArgumentException.class,
         () -> fory.registerSerializer(InvalidList.class, InvalidList.InvalidListSerializer.class));
@@ -173,8 +172,6 @@ public class ResolverValidateSerializerTest {
     // List valid
     fory.register(ValidList.class);
     fory.registerSerializer(ValidList.class, new ValidList.ValidListSerializer(fory));
-    Object listResult = fory.deserialize(fory.serialize(new ValidList()));
-    assertTrue(listResult instanceof ValidList);
     // Map invalid
     assertThrows(
         IllegalArgumentException.class,
@@ -189,6 +186,8 @@ public class ResolverValidateSerializerTest {
     // Map valid
     fory.register(ValidMap.class);
     fory.registerSerializer(ValidMap.class, new ValidMap.ValidMapSerializer(fory));
+    Object listResult = fory.deserialize(fory.serialize(new ValidList()));
+    assertTrue(listResult instanceof ValidList);
     Object mapResult = fory.deserialize(fory.serialize(new ValidMap()));
     assertTrue(mapResult instanceof ValidMap);
   }

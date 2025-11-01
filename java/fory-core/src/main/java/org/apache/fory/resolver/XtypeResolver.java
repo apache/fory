@@ -160,6 +160,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void register(Class<?> type, int userTypeId) {
+    checkRegisterAllowed();
     // ClassInfo[] has length of max type id. If the type id is too big, Fory will waste many
     // memory. We can relax this limit in the future.
     Preconditions.checkArgument(userTypeId < MAX_TYPE_ID, "Too big type id %s", userTypeId);
@@ -209,6 +210,7 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public void register(Class<?> type, String namespace, String typeName) {
+    checkRegisterAllowed();
     Preconditions.checkArgument(
         !typeName.contains("."),
         "Typename %s should not contains `.`, please put it into namespace",
@@ -339,10 +341,12 @@ public class XtypeResolver extends TypeResolver {
   }
 
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
+    checkRegisterAllowed();
     registerSerializer(type, Serializers.newSerializer(fory, type, serializerClass));
   }
 
   public void registerSerializer(Class<?> type, Serializer<?> serializer) {
+    checkRegisterAllowed();
     ClassInfo classInfo = checkClassRegistration(type);
     if (!serializer.getClass().getPackage().getName().startsWith("org.apache.fory")) {
       SerializationUtils.validate(type, serializer.getClass());

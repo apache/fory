@@ -100,14 +100,15 @@ public class ClassResolverTest extends ForyTestBase {
         IllegalArgumentException.class, () -> classResolver.register(C1.class, "ns", "C1"));
     Assert.assertThrows(
         IllegalArgumentException.class, () -> classResolver.register(C1.class, 200));
+    classResolver.register(C2.class, "", "C2");
+    classResolver.register(Foo.class, "ns", "Foo");
+
     Assert.assertTrue(fory.serialize(C1.class).length < 12);
     serDeCheck(fory, C1.class);
 
-    classResolver.register(C2.class, "", "C2");
     Assert.assertTrue(fory.serialize(C2.class).length < 12);
     serDeCheck(fory, C2.class);
 
-    classResolver.register(Foo.class, "ns", "Foo");
     Foo foo = new Foo();
     foo.f1 = 10;
     serDeCheck(fory, foo);

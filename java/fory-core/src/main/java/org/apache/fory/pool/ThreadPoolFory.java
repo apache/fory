@@ -44,6 +44,7 @@ public class ThreadPoolFory extends AbstractThreadSafeFory {
 
   private final ForyPooledObjectFactory foryPooledObjectFactory;
   private Consumer<Fory> factoryCallback = f -> {};
+  private final Object callbackLock = new Object();
 
   public ThreadPoolFory(
       Function<ClassLoader, Fory> foryFactory,
@@ -64,10 +65,12 @@ public class ThreadPoolFory extends AbstractThreadSafeFory {
   @Internal
   @Override
   public void registerCallback(Consumer<Fory> callback) {
-    factoryCallback = factoryCallback.andThen(callback);
-    for (ClassLoaderForyPooled foryPooled :
-        foryPooledObjectFactory.classLoaderForyPooledCache.asMap().values()) {
-      foryPooled.allFory.keySet().forEach(callback);
+    synchronized (callbackLock) {
+      factoryCallback = factoryCallback.andThen(callback);
+      for (ClassLoaderForyPooled foryPooled :
+          foryPooledObjectFactory.classLoaderForyPooledCache.asMap().values()) {
+        foryPooled.allFory.keySet().forEach(callback);
+      }
     }
   }
 

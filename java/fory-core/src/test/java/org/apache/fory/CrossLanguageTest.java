@@ -781,13 +781,13 @@ public class CrossLanguageTest extends ForyTestBase {
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
     Fory fory2 = builder.build();
-    assertEquals("str", serDe(fory1, fory2, "str"));
-    assertEquals("str", serDeObject(fory1, fory2, new StringBuilder("str")).toString());
-    assertEquals("str", serDeObject(fory1, fory2, new StringBuffer("str")).toString());
     fory1.register(EnumSerializerTest.EnumFoo.class);
     fory2.register(EnumSerializerTest.EnumFoo.class);
     fory1.register(EnumSerializerTest.EnumSubClass.class);
     fory2.register(EnumSerializerTest.EnumSubClass.class);
+    assertEquals("str", serDe(fory1, fory2, "str"));
+    assertEquals("str", serDeObject(fory1, fory2, new StringBuilder("str")).toString());
+    assertEquals("str", serDeObject(fory1, fory2, new StringBuffer("str")).toString());
     assertEquals(EnumSerializerTest.EnumFoo.A, serDe(fory1, fory2, EnumSerializerTest.EnumFoo.A));
     assertEquals(EnumSerializerTest.EnumFoo.B, serDe(fory1, fory2, EnumSerializerTest.EnumFoo.B));
     assertEquals(
