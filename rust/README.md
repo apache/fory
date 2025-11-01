@@ -589,7 +589,40 @@ let decoded: Status = fory.deserialize(&bytes)?;
 assert_eq!(status, decoded);
 ```
 
-### 6. Custom Serializers
+### 6. Tuple Support
+
+Apache Fory™ supports tuples up to 22 elements out of the box with efficient serialization in both compatible and non-compatible modes.
+
+**Features:**
+
+- Automatic serialization for tuples from 1 to 22 elements
+- Heterogeneous type support (each element can be a different type)
+- Schema evolution in Compatible mode (handles missing/extra elements)
+
+**Serialization modes:**
+
+1. **Non-compatible mode**: Serializes elements sequentially without collection headers for minimal overhead
+2. **Compatible mode**: Uses collection protocol with type metadata for schema evolution
+
+```rust
+use fory::{Fory, Error};
+
+let mut fory = Fory::default();
+
+// Tuple with heterogeneous types
+let data: (i32, String, bool, Vec<i32>) = (
+    42,
+    "hello".to_string(),
+    true,
+    vec![1, 2, 3],
+);
+
+let bytes = fory.serialize(&data)?;
+let decoded: (i32, String, bool, Vec<i32>) = fory.deserialize(&bytes)?;
+assert_eq!(data, decoded);
+```
+
+### 7. Custom Serializers
 
 For types that don't support `#[derive(ForyObject)]`, implement the `Serializer` trait manually. This is useful for:
 

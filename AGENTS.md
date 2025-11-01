@@ -125,8 +125,6 @@ go generate ./...
 - All changes to `rust` must pass the clippy check and tests.
 - You must set `RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1` when debuging rust tests to get backtrace.
 - You must not set `FORY_PANIC_ON_ERROR=1` when runing all rust tests to check whether all tests pass, some tests will check Error content, which will fail if error just panic.
-- When making changes to enum discriminant values in Rust, always run `cargo clean` to ensure no stale build artifacts
-  remain.
 
 ```bash
 # Check code

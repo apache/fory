@@ -410,10 +410,16 @@ impl<'a> Reader<'a> {
     }
 
     #[inline(always)]
-    pub fn read_u8_uncheck(&mut self) -> u8 {
+    fn read_u8_uncheck(&mut self) -> u8 {
         let result = unsafe { self.bf.get_unchecked(self.cursor) };
         self.move_next(1);
         *result
+    }
+
+    #[inline(always)]
+    pub fn peek_u8(&mut self) -> Result<u8, Error> {
+        let result = self.value_at(self.cursor)?;
+        Ok(result)
     }
 
     #[inline(always)]

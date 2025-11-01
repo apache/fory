@@ -279,7 +279,18 @@ pub(super) fn try_vec_of_option_primitive(node: &TypeNode) -> Option<TokenStream
 
 impl fmt::Display for TypeNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.generics.is_empty() {
+        if self.name == "Tuple" {
+            // Format as Rust tuple syntax: (T1, T2, T3)
+            write!(
+                f,
+                "({})",
+                self.generics
+                    .iter()
+                    .map(|g| g.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else if self.generics.is_empty() {
             write!(f, "{}", self.name)
         } else {
             write!(
@@ -301,6 +312,8 @@ pub(super) fn extract_type_name(ty: &Type) -> String {
         type_path.path.segments.last().unwrap().ident.to_string()
     } else if matches!(ty, Type::TraitObject(_)) {
         "TraitObject".to_string()
+    } else if matches!(ty, Type::Tuple(_)) {
+        "Tuple".to_string()
     } else {
         quote!(#ty).to_string()
     }
@@ -323,6 +336,14 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
     if matches!(ty, Type::TraitObject(_)) {
         return TypeNode {
             name: "TraitObject".to_string(),
+            generics: vec![],
+        };
+    }
+
+    // Handle tuples - make child generics empty
+    if let Type::Tuple(_tuple) = ty {
+        return TypeNode {
+            name: "Tuple".to_string(),
             generics: vec![],
         };
     }
@@ -353,11 +374,40 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
 }
 
 pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
+    // Special handling for tuples: always use FieldType { LIST, nullable: true, generics: vec![UNKNOWN] }
+    if node.name == "Tuple" {
+        return quote! {
+            fory_core::meta::FieldType::new(
+                fory_core::types::TypeId::LIST as u32,
+                true,
+                vec![fory_core::meta::FieldType {
+                    type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                    nullable: true,
+                    generics: vec![],
+                }]
+            )
+        };
+    }
+
     // If Option, unwrap it before generating children
     let (nullable, base_node) = if node.name == "Option" {
         if let Some(inner) = node.generics.first() {
             if inner.name == "Option" {
                 return quote! { compile_error!("Nested adjacent Option is not allowed!"); };
+            }
+            // Special handling for Option<Tuple>
+            if inner.name == "Tuple" {
+                return quote! {
+                    fory_core::meta::FieldType::new(
+                        fory_core::types::TypeId::LIST as u32,
+                        true,
+                        vec![fory_core::meta::FieldType {
+                            type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                            nullable: true,
+                            generics: vec![],
+                        }]
+                    )
+                };
             }
             // Unwrap Option and propagate parsing
             (true, inner)
@@ -390,6 +440,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     // Build the syn::Type from the DISPLAY of base_node, not the original node if Option
     let ty: syn::Type = syn::parse_str(&base_node.to_string()).unwrap();
 
+    // Get type ID
     let get_type_id = if let Some(ts) = primitive_vec {
         ts
     } else {
@@ -399,11 +450,22 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     };
 
     quote! {
-        fory_core::meta::FieldType::new(
-            #get_type_id,
-            #nullable,
-            vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>
-        )
+        {
+            let type_id = #get_type_id;
+            let mut generics = vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>;
+            // For tuples and sets, if no generic info is available, add UNKNOWN element
+            // This handles type aliases to tuples where we can't detect the tuple at macro time
+            if (type_id == fory_core::types::TypeId::LIST as u32
+                || type_id == fory_core::types::TypeId::SET as u32)
+                && generics.is_empty() {
+                generics.push(fory_core::meta::FieldType::new(
+                    fory_core::types::TypeId::UNKNOWN as u32,
+                    true,
+                    vec![]
+                ));
+            }
+            fory_core::meta::FieldType::new(type_id, #nullable, generics)
+        }
     }
 }
 
@@ -511,6 +573,11 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
 
     if ty.starts_with("HashMap<") || ty.starts_with("BTreeMap<") {
         return TypeId::MAP as u32;
+    }
+
+    // Check tuple types (represented as "Tuple" by extract_type_name or starts with '(')
+    if ty == "Tuple" || ty.starts_with('(') {
+        return TypeId::LIST as u32;
     }
 
     // Unknown type

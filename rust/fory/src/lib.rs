@@ -697,7 +697,48 @@
 //! # }
 //! ```
 //!
-//! ### 6. Custom Serializers
+//! ### 6. Tuple Support
+//!
+//! **What it does:** Supports tuples up to 22 elements with automatic heterogeneous type
+//! handling and schema evolution in compatible mode.
+//!
+//! **Why it matters:** Tuples provide lightweight aggregation without defining full structs,
+//! useful for temporary groupings, function return values, and ad-hoc data structures.
+//!
+//! **Technical approach:** Each tuple size (1-22) has a specialized `Serializer` implementation.
+//! In non-compatible mode, elements are serialized sequentially without overhead. In compatible
+//! mode, the tuple is serialized as a heterogeneous collection with type metadata for each element.
+//!
+//! **Features:**
+//!
+//! - Automatic serialization for tuples from 1 to 22 elements
+//! - Heterogeneous type support (each element can be a different type)
+//! - Schema evolution in Compatible mode (handles missing/extra elements)
+//! - Default values for missing elements during deserialization
+//!
+//! ```rust
+//! use fory::Fory;
+//! use fory::Error;
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default();
+//!
+//! // Tuple with heterogeneous types
+//! let data: (i32, String, bool, Vec<i32>) = (
+//!     42,
+//!     "hello".to_string(),
+//!     true,
+//!     vec![1, 2, 3],
+//! );
+//!
+//! let bytes = fory.serialize(&data)?;
+//! let decoded: (i32, String, bool, Vec<i32>) = fory.deserialize(&bytes)?;
+//! assert_eq!(data, decoded);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### 7. Custom Serializers
 //!
 //! **What it does:** Allows manual implementation of the `Serializer` trait for types
 //! that don't support `#[derive(ForyObject)]`.

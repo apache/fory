@@ -20,6 +20,7 @@ use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::Serializer;
 use crate::types::TypeId;
+use crate::types::{is_user_type, ENUM, NAMED_ENUM};
 
 const NO_REF_FLAG_TYPE_IDS: [u32; 11] = [
     TypeId::BOOL as u32,
@@ -52,13 +53,24 @@ pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> 
 /// - For enums (ENUM/NAMED_ENUM), we should skip writing type info
 /// - For structs and ext types, we should write type info
 #[inline]
-pub fn should_skip_type_info_at_runtime(type_id: u32) -> bool {
-    let internal_type_id = (type_id & 0xff) as i8;
-    internal_type_id == TypeId::ENUM as i8 || internal_type_id == TypeId::NAMED_ENUM as i8
+pub fn field_need_read_type_info(type_id: u32) -> bool {
+    let internal_type_id = type_id & 0xff;
+    if internal_type_id == ENUM || internal_type_id == NAMED_ENUM {
+        return false;
+    }
+    is_user_type(internal_type_id)
+}
+
+pub fn field_need_write_type_info<T: Serializer>() -> bool {
+    let static_type_id = T::fory_static_type_id() as u32;
+    if static_type_id == ENUM || static_type_id == NAMED_ENUM {
+        return false;
+    }
+    is_user_type(static_type_id)
 }
 
 #[inline]
-pub fn field_requires_ref_flag(type_id: u32, nullable: bool) -> bool {
+pub fn field_need_write_ref_into(type_id: u32, nullable: bool) -> bool {
     if nullable {
         return true;
     }

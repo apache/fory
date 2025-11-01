@@ -75,20 +75,14 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	fieldAccess := fmt.Sprintf("v.%s", field.GoName)
 
 	// Handle special named types first
+	// According to new spec, time types are "other internal types" and need WriteReferencable
 	if named, ok := field.Type.(*types.Named); ok {
 		typeStr := named.String()
 		switch typeStr {
-		case "time.Time":
-			fmt.Fprintf(buf, "\tbuf.WriteInt64(fory.GetUnixMicro(%s))\n", fieldAccess)
-			return nil
-		case "github.com/apache/fory/go/fory.Date":
-			fmt.Fprintf(buf, "\t// Handle zero date specially\n")
-			fmt.Fprintf(buf, "\tif %s.Year == 0 && %s.Month == 0 && %s.Day == 0 {\n", fieldAccess, fieldAccess, fieldAccess)
-			fmt.Fprintf(buf, "\t\tbuf.WriteInt32(int32(-2147483648)) // Special marker for zero date\n")
-			fmt.Fprintf(buf, "\t} else {\n")
-			fmt.Fprintf(buf, "\t\tdiff := time.Date(%s.Year, %s.Month, %s.Day, 0, 0, 0, 0, time.Local).Sub(time.Date(1970, 1, 1, 0, 0, 0, 0, time.Local))\n", fieldAccess, fieldAccess, fieldAccess)
-			fmt.Fprintf(buf, "\t\tbuf.WriteInt32(int32(diff.Hours() / 24))\n")
-			fmt.Fprintf(buf, "\t}\n")
+		case "time.Time", "github.com/apache/fory/go/fory.Date":
+			// These types are "other internal types" in the new spec
+			// They use: | null flag | value data | format
+			fmt.Fprintf(buf, "\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
 			return nil
 		}
 	}
@@ -101,42 +95,34 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	}
 
 	// Handle basic types
+	// Note: primitive serializers write values directly without NotNullValueFlag
 	if basic, ok := field.Type.Underlying().(*types.Basic); ok {
 		switch basic.Kind() {
 		case types.Bool:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteBool(%s)\n", fieldAccess)
 		case types.Int8:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(%s)\n", fieldAccess)
+			fmt.Fprintf(buf, "\tbuf.WriteByte_(byte(%s))\n", fieldAccess)
 		case types.Int16:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteInt16(%s)\n", fieldAccess)
 		case types.Int32:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteVarint32(%s)\n", fieldAccess)
 		case types.Int, types.Int64:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteVarint64(%s)\n", fieldAccess)
 		case types.Uint8:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteByte_(%s)\n", fieldAccess)
 		case types.Uint16:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteInt16(int16(%s))\n", fieldAccess)
 		case types.Uint32:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteInt32(int32(%s))\n", fieldAccess)
 		case types.Uint, types.Uint64:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteInt64(int64(%s))\n", fieldAccess)
 		case types.Float32:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteFloat32(%s)\n", fieldAccess)
 		case types.Float64:
-			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tbuf.WriteFloat64(%s)\n", fieldAccess)
 		case types.String:
+			// String is referencable but NeedWriteRef()=false
+			// In struct serialization, it writes NotNullValueFlag then value
 			fmt.Fprintf(buf, "\tbuf.WriteInt8(-1) // NotNullValueFlag\n")
 			fmt.Fprintf(buf, "\tfory.WriteString(buf, %s)\n", fieldAccess)
 		default:
@@ -461,8 +447,8 @@ func generateMapKeyWrite(buf *bytes.Buffer, keyType types.Type, varName string) 
 			// intSerializer uses WriteInt64, not WriteVarint64
 			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt64(int64(%s))\n", varName)
 		case types.String:
-			// stringSerializer is referencable, need to use WriteReferencable
-			fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", varName)
+			// stringSerializer.NeedWriteRef() = false, write directly
+			fmt.Fprintf(buf, "\t\t\t\tfory.WriteString(buf, %s)\n", varName)
 		default:
 			return fmt.Errorf("unsupported map key type: %v", keyType)
 		}
@@ -483,8 +469,8 @@ func generateMapValueWrite(buf *bytes.Buffer, valueType types.Type, varName stri
 			// intSerializer uses WriteInt64, not WriteVarint64
 			fmt.Fprintf(buf, "\t\t\t\tbuf.WriteInt64(int64(%s))\n", varName)
 		case types.String:
-			// stringSerializer is referencable, need to use WriteReferencable
-			fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", varName)
+			// stringSerializer.NeedWriteRef() = false, write directly
+			fmt.Fprintf(buf, "\t\t\t\tfory.WriteString(buf, %s)\n", varName)
 		default:
 			return fmt.Errorf("unsupported map value type: %v", valueType)
 		}
