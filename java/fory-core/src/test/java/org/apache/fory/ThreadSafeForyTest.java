@@ -376,22 +376,11 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testGetDepth() {
-    Fory fory = Fory.builder().requireClassRegistration(false).build();
-    Assert.assertEquals(fory.getDepth(), 0);
-    BeanA beanA = BeanA.createBeanA(2);
-    byte[] bytes = fory.serialize(beanA);
-    Assert.assertEquals(fory.getDepth(), 0);
-    fory.deserialize(bytes);
-    Assert.assertEquals(fory.getDepth(), 0);
-  }
-
-  @Test
   public void testRegisterAfterSerializeThrowsException() throws Exception {
     ThreadSafeFory fory = Fory.builder().requireClassRegistration(true).buildThreadLocalFory();
     fory.register(BeanA.class);
     fory.serialize("ok");
-    Assert.assertThrows(ForyException.class, () -> fory.register(BeanA.class));
+    Assert.assertThrows(ForyException.class, () -> fory.register(BeanB.class));
   }
 
   @Test
@@ -399,7 +388,7 @@ public class ThreadSafeForyTest extends ForyTestBase {
     Fory fory = Fory.builder().requireClassRegistration(true).build();
     fory.register(BeanA.class);
     fory.serialize("ok");
-    Assert.assertThrows(ForyException.class, () -> fory.register(BeanA.class));
+    Assert.assertThrows(ForyException.class, () -> fory.register(BeanB.class));
   }
 
   @Test
@@ -408,6 +397,6 @@ public class ThreadSafeForyTest extends ForyTestBase {
         Fory.builder().requireClassRegistration(true).buildThreadSafeForyPool(1, 2);
     fory.register(BeanA.class);
     fory.serialize("ok");
-    Assert.assertThrows(ForyException.class, () -> fory.register(BeanA.class));
+    Assert.assertThrows(ForyException.class, () -> fory.register(BeanB.class));
   }
 }

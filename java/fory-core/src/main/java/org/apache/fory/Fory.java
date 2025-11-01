@@ -803,16 +803,11 @@ public final class Fory implements BaseFory {
       assert !peerOutOfBandEnabled : "Out of band buffers not passed in when deserializing";
       return deserializeJavaObject(buffer, type);
     }
-    int prevDepth = this.depth;
-    if (crossLanguage) {
-      this.depth = 0;
-    }
     generics.pushGenericType(classResolver.buildGenericType(type));
     try {
       return (T) deserialize(buffer, null);
     } finally {
       generics.popGenericType();
-      this.depth = prevDepth;
     }
   }
 
