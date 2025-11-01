@@ -248,5 +248,8 @@ fn test_in_macro() {
     let (key, value) = key_value.clone().to_key_value();
     assert_eq!(key, "test_key");
     assert_eq!(value.count, 100);
-    assert_eq!(value.last_seen_event_time, key_value.last_seen_event_time.naive_utc());
+    assert_eq!(
+        value.last_seen_event_time,
+        key_value.last_seen_event_time.naive_utc()
+    );
 }
