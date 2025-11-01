@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.Data;
 import org.apache.fory.config.Language;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.serializer.Serializer;
@@ -386,27 +387,50 @@ public class ThreadSafeForyTest extends ForyTestBase {
   }
 
   @Test
-  public void testRegisterAfterSerializeThrowsException() {
-    Fory fory = Fory.builder().requireClassRegistration(false).build();
+  public void testRegisterAfterSerializeThrowsException() throws Exception {
+
+    ThreadSafeFory fory = Fory.builder().requireClassRegistration(true).buildThreadLocalFory();
+
+    java.util.concurrent.CountDownLatch writeStarted = new java.util.concurrent.CountDownLatch(1);
+    java.util.concurrent.CountDownLatch allowFinish = new java.util.concurrent.CountDownLatch(1);
+
+    fory.registerSerializer(
+        Foo.class,
+        (Fory f) ->
+            new Serializer<Foo>(f, Foo.class) {
+              @Override
+              public void write(MemoryBuffer buffer, Foo value) {
+                writeStarted.countDown();
+                try {
+                  allowFinish.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                }
+                buffer.writeInt32(value.f1);
+              }
+
+              @Override
+              public Foo read(MemoryBuffer buffer) {
+                Foo foo = new Foo();
+                foo.f1 = buffer.readInt32();
+                return foo;
+              }
+            });
+
     fory.register(BeanA.class);
 
-    ThreadSafeFory threadSafeFory =
-        Fory.builder().requireClassRegistration(false).buildThreadSafeForyPool(1, 2);
+    Thread t =
+        new Thread(
+            () -> {
+              fory.serialize(new Foo());
+            });
+    t.start();
 
-    BeanA beanA = BeanA.createBeanA(2);
-    BeanB beanB = BeanB.createBeanB(2);
+    Assert.assertTrue(writeStarted.await(5, TimeUnit.SECONDS));
 
-    byte[] bytes1 = threadSafeFory.serialize(beanA);
+    Assert.assertThrows(ForyException.class, () -> fory.register(BeanA.class));
 
-    BeanA deserialized1 = (BeanA) threadSafeFory.deserialize(bytes1);
-    Assert.assertEquals(deserialized1, beanA);
-
-    byte[] bytes2 = threadSafeFory.serialize(beanB);
-
-    BeanB deserialized2 = (BeanB) threadSafeFory.deserialize(bytes2);
-    Assert.assertEquals(deserialized2, beanB);
-
-    Integer depth = threadSafeFory.execute(Fory::getDepth);
-    Assert.assertEquals(depth.intValue(), -1);
+    allowFinish.countDown();
+    t.join();
   }
 }

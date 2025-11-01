@@ -177,6 +177,9 @@ public final class Fory implements BaseFory {
 
   @Override
   public void register(Class<?> cls) {
+    if (depth >= 0) {
+      throw new ForyException("Cannot register class during serialization/deserialization");
+    }
     _getTypeResolver().register(cls);
   }
 
@@ -320,6 +323,7 @@ public final class Fory implements BaseFory {
       if (depth > 0) {
         throwDepthSerializationException();
       }
+      depth = 0;
       if (!crossLanguage) {
         write(buffer, obj);
       } else {
@@ -842,6 +846,7 @@ public final class Fory implements BaseFory {
       if (depth > 0) {
         throwDepthDeserializationException();
       }
+      depth = 0;
       if (crossLanguage) {
         short magicNumber = buffer.readInt16();
         assert magicNumber == MAGIC_NUMBER
@@ -1660,6 +1665,14 @@ public final class Fory implements BaseFory {
 
   public void setDepth(int depth) {
     this.depth = depth;
+  }
+
+  public void beforeSerialize() {
+    this.depth = 0;
+  }
+
+  public void afterSerialize() {
+    this.depth = -1;
   }
 
   public void incDepth(int diff) {

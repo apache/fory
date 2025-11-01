@@ -60,9 +60,7 @@ public class ThreadLocalFory extends AbstractThreadSafeFory {
         ThreadLocal.withInitial(
             () -> {
               LoaderBinding binding = new LoaderBinding(foryFactory);
-              synchronized (callbackLock) {
-                binding.setBindingCallback(factoryCallback);
-              }
+              binding.setBindingCallback(factoryCallback);
               ClassLoader cl =
                   classLoader == null
                       ? Thread.currentThread().getContextClassLoader()

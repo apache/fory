@@ -98,7 +98,6 @@ public class ClassLoaderForyPooled {
 
   public void returnFory(Fory fory) {
     Objects.requireNonNull(fory);
-    fory.reset();
     idleCacheQueue.offer(fory);
   }
 
