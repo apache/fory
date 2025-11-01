@@ -803,11 +803,16 @@ public final class Fory implements BaseFory {
       assert !peerOutOfBandEnabled : "Out of band buffers not passed in when deserializing";
       return deserializeJavaObject(buffer, type);
     }
+    int prevDepth = this.depth;
+    if (crossLanguage) {
+      this.depth = 0;
+    }
     generics.pushGenericType(classResolver.buildGenericType(type));
     try {
       return (T) deserialize(buffer, null);
     } finally {
       generics.popGenericType();
+      this.depth = prevDepth;
     }
   }
 
@@ -1573,7 +1578,7 @@ public final class Fory implements BaseFory {
     metaStringResolver.resetWrite();
     serializationContext.resetWrite();
     bufferCallback = null;
-    depth = -1;
+    depth = 0;
   }
 
   public void resetRead() {
@@ -1583,7 +1588,7 @@ public final class Fory implements BaseFory {
     serializationContext.resetRead();
     peerOutOfBandEnabled = false;
     classDefEndOffset = -1;
-    depth = -1;
+    depth = 0;
   }
 
   public void resetCopy() {
@@ -1665,14 +1670,6 @@ public final class Fory implements BaseFory {
 
   public void setDepth(int depth) {
     this.depth = depth;
-  }
-
-  public void beforeSerialize() {
-    this.depth = 0;
-  }
-
-  public void afterSerialize() {
-    this.depth = -1;
   }
 
   public void incDepth(int diff) {

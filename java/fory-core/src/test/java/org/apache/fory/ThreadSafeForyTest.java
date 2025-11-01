@@ -378,59 +378,36 @@ public class ThreadSafeForyTest extends ForyTestBase {
   @Test
   public void testGetDepth() {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
-    Assert.assertEquals(fory.getDepth(), -1);
+    Assert.assertEquals(fory.getDepth(), 0);
     BeanA beanA = BeanA.createBeanA(2);
     byte[] bytes = fory.serialize(beanA);
-    Assert.assertEquals(fory.getDepth(), -1);
+    Assert.assertEquals(fory.getDepth(), 0);
     fory.deserialize(bytes);
-    Assert.assertEquals(fory.getDepth(), -1);
+    Assert.assertEquals(fory.getDepth(), 0);
   }
 
   @Test
   public void testRegisterAfterSerializeThrowsException() throws Exception {
-
     ThreadSafeFory fory = Fory.builder().requireClassRegistration(true).buildThreadLocalFory();
-
-    java.util.concurrent.CountDownLatch writeStarted = new java.util.concurrent.CountDownLatch(1);
-    java.util.concurrent.CountDownLatch allowFinish = new java.util.concurrent.CountDownLatch(1);
-
-    fory.registerSerializer(
-        Foo.class,
-        (Fory f) ->
-            new Serializer<Foo>(f, Foo.class) {
-              @Override
-              public void write(MemoryBuffer buffer, Foo value) {
-                writeStarted.countDown();
-                try {
-                  allowFinish.await(5, TimeUnit.SECONDS);
-                } catch (InterruptedException e) {
-                  Thread.currentThread().interrupt();
-                }
-                buffer.writeInt32(value.f1);
-              }
-
-              @Override
-              public Foo read(MemoryBuffer buffer) {
-                Foo foo = new Foo();
-                foo.f1 = buffer.readInt32();
-                return foo;
-              }
-            });
-
     fory.register(BeanA.class);
-
-    Thread t =
-        new Thread(
-            () -> {
-              fory.serialize(new Foo());
-            });
-    t.start();
-
-    Assert.assertTrue(writeStarted.await(5, TimeUnit.SECONDS));
-
+    fory.serialize("ok");
     Assert.assertThrows(ForyException.class, () -> fory.register(BeanA.class));
+  }
 
-    allowFinish.countDown();
-    t.join();
+  @Test
+  public void testRegisterAfterSerializeThrowsExceptionWithFory() {
+    Fory fory = Fory.builder().requireClassRegistration(true).build();
+    fory.register(BeanA.class);
+    fory.serialize("ok");
+    Assert.assertThrows(ForyException.class, () -> fory.register(BeanA.class));
+  }
+
+  @Test
+  public void testRegisterAfterSerializeThrowsExceptionWithForyPool() {
+    ThreadSafeFory fory =
+        Fory.builder().requireClassRegistration(true).buildThreadSafeForyPool(1, 2);
+    fory.register(BeanA.class);
+    fory.serialize("ok");
+    Assert.assertThrows(ForyException.class, () -> fory.register(BeanA.class));
   }
 }
