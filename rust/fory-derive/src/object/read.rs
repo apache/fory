@@ -357,10 +357,15 @@ fn gen_read_compatible_match_arm_body(field: &Field, var_name: &Ident) -> TokenS
             }
         }
         StructField::None => {
-            let _base_ty = match &ty {
-                Type::Path(type_path) => &type_path.path.segments.first().unwrap().ident,
-                _ => panic!("Unsupported type: {:?}", ty),
+            let mut current_ty = ty;
+            while let Type::Group(group) = current_ty {
+                current_ty = &*group.elem;
+            }
+            let path = match current_ty {
+                Type::Path(type_path) => &type_path.path,
+                _ => panic!("Unsupported type: {:?}", current_ty),
             };
+            let _base_ty = path.segments.first().map(|seg| &seg.ident).unwrap();
             let skip_type_info = should_skip_type_info_for_field(ty);
             let dec_by_option = need_declared_by_option(field);
             if skip_type_info {
