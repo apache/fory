@@ -17,7 +17,7 @@
 
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
-use syn::{Field, Type};
+use syn::Field;
 
 use super::util::{
     classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
