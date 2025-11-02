@@ -417,6 +417,7 @@ impl TypeMetaLayer {
                 TypeId::U16 => 2,
                 TypeId::U32 => 4,
                 TypeId::U64 => 8,
+                TypeId::USIZE => 8,
                 _ => unreachable!(),
             }
         }

@@ -32,6 +32,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.Data;
 import org.apache.fory.config.Language;
+import org.apache.fory.exception.ForyException;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.serializer.Serializer;
@@ -372,5 +373,30 @@ public class ThreadSafeForyTest extends ForyTestBase {
               fory.getClassResolver().getSerializer(Foo.class).getClass(), FooSerializer.class);
           return null;
         });
+  }
+
+  @Test
+  public void testRegisterAfterSerializeThrowsException() throws Exception {
+    ThreadSafeFory fory = Fory.builder().requireClassRegistration(true).buildThreadLocalFory();
+    fory.register(BeanA.class);
+    fory.serialize("ok");
+    Assert.assertThrows(ForyException.class, () -> fory.register(BeanB.class));
+  }
+
+  @Test
+  public void testRegisterAfterSerializeThrowsExceptionWithFory() {
+    Fory fory = Fory.builder().requireClassRegistration(true).build();
+    fory.register(BeanA.class);
+    fory.serialize("ok");
+    Assert.assertThrows(ForyException.class, () -> fory.register(BeanB.class));
+  }
+
+  @Test
+  public void testRegisterAfterSerializeThrowsExceptionWithForyPool() {
+    ThreadSafeFory fory =
+        Fory.builder().requireClassRegistration(true).buildThreadSafeForyPool(1, 2);
+    fory.register(BeanA.class);
+    fory.serialize("ok");
+    Assert.assertThrows(ForyException.class, () -> fory.register(BeanB.class));
   }
 }

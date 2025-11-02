@@ -17,8 +17,8 @@
 
 use super::util::{
     classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
-    create_wrapper_types_rc, get_struct_name, get_type_id_by_type_ast, is_debug_enabled,
-    should_skip_type_info_for_field, skip_ref_flag, StructField,
+    create_wrapper_types_rc, get_filtered_fields_iter, get_struct_name, get_type_id_by_type_ast,
+    is_debug_enabled, should_skip_type_info_for_field, skip_ref_flag, StructField,
 };
 use fory_core::types::TypeId;
 use proc_macro2::{Ident, TokenStream};
@@ -208,12 +208,12 @@ pub fn gen_write_field(field: &Field, ident: &Ident, use_self: bool) -> TokenStr
                     }
                 } else if skip_ref_flag {
                     quote! {
-                        let need_type_info = fory_core::serializer::util::field_need_write_type_info::<#ty>();
+                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
                         <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, false, need_type_info, false)?;
                     }
                 } else {
                     quote! {
-                        let need_type_info = fory_core::serializer::util::field_need_write_type_info::<#ty>();
+                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
                         <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, need_type_info, false)?;
                     }
                 }
@@ -247,8 +247,7 @@ pub fn gen_write_field(field: &Field, ident: &Ident, use_self: bool) -> TokenStr
 }
 
 pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
-    let write_fields_ts: Vec<_> = fields
-        .iter()
+    let write_fields_ts: Vec<_> = get_filtered_fields_iter(fields)
         .map(|field| {
             let ident = field.ident.as_ref().unwrap();
             gen_write_field(field, ident, true)

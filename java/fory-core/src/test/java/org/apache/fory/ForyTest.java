@@ -189,17 +189,18 @@ public class ForyTest extends ForyTestBase {
   }
 
   public void assertSerializationToBuffer(Fory fory1, Fory fory2, MemoryBuffer buffer) {
-    assertEquals(true, serDeCheckIndex(fory1, fory2, buffer, true));
-    assertEquals(Byte.MAX_VALUE, serDeCheckIndex(fory1, fory2, buffer, Byte.MAX_VALUE));
-    assertEquals(Short.MAX_VALUE, serDeCheckIndex(fory1, fory2, buffer, Short.MAX_VALUE));
-    assertEquals("str", serDeCheckIndex(fory1, fory2, buffer, "str"));
-    assertEquals("str", serDeCheckIndex(fory1, fory2, buffer, new StringBuilder("str")).toString());
     if (fory1.isCrossLanguage()) {
       fory1.register(EnumSerializerTest.EnumFoo.class);
       fory2.register(EnumSerializerTest.EnumFoo.class);
       fory1.register(EnumSerializerTest.EnumSubClass.class);
       fory2.register(EnumSerializerTest.EnumSubClass.class);
     }
+
+    assertEquals(true, serDeCheckIndex(fory1, fory2, buffer, true));
+    assertEquals(Byte.MAX_VALUE, serDeCheckIndex(fory1, fory2, buffer, Byte.MAX_VALUE));
+    assertEquals(Short.MAX_VALUE, serDeCheckIndex(fory1, fory2, buffer, Short.MAX_VALUE));
+    assertEquals("str", serDeCheckIndex(fory1, fory2, buffer, "str"));
+    assertEquals("str", serDeCheckIndex(fory1, fory2, buffer, new StringBuilder("str")).toString());
     assertEquals(
         EnumSerializerTest.EnumFoo.A,
         serDeCheckIndex(fory1, fory2, buffer, EnumSerializerTest.EnumFoo.A));

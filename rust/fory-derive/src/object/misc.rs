@@ -21,8 +21,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use syn::Field;
 
 use super::util::{
-    classify_trait_object_field, generic_tree_to_tokens, get_sort_fields_ts, parse_generic_tree,
-    StructField,
+    classify_trait_object_field, generic_tree_to_tokens, get_filtered_fields_iter,
+    get_sort_fields_ts, parse_generic_tree, StructField,
 };
 
 // Global type ID counter that auto-grows from 0 at macro processing time
@@ -72,7 +72,7 @@ pub fn gen_get_sorted_field_names(fields: &[&Field]) -> TokenStream {
 }
 
 pub fn gen_field_fields_info(fields: &[&Field]) -> TokenStream {
-    let field_infos = fields.iter().map(|field| {
+    let field_infos = get_filtered_fields_iter(fields).map(|field| {
         let ty = &field.ty;
         let name = format!("{}", field.ident.as_ref().expect("should be field name"));
         match classify_trait_object_field(ty) {

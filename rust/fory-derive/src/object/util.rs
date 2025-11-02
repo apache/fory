@@ -484,8 +484,8 @@ fn extract_option_inner(s: &str) -> Option<&str> {
     s.strip_prefix("Option<")?.strip_suffix(">")
 }
 
-const PRIMITIVE_TYPE_NAMES: [&str; 11] = [
-    "bool", "i8", "i16", "i32", "i64", "f32", "f64", "u8", "u16", "u32", "u64",
+const PRIMITIVE_TYPE_NAMES: [&str; 12] = [
+    "bool", "i8", "i16", "i32", "i64", "f32", "f64", "u8", "u16", "u32", "u64", "usize",
 ];
 
 fn get_primitive_type_id(ty: &str) -> u32 {
@@ -501,6 +501,7 @@ fn get_primitive_type_id(ty: &str) -> u32 {
         "u16" => TypeId::U16 as u32,
         "u32" => TypeId::U32 as u32,
         "u64" => TypeId::U64 as u32,
+        "usize" => TypeId::USIZE as u32,
         _ => unreachable!("Unknown primitive type: {}", ty),
     }
 }
@@ -555,6 +556,7 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
         "Vec<u16>" => return TypeId::U16_ARRAY as u32,
         "Vec<u32>" => return TypeId::U32_ARRAY as u32,
         "Vec<u64>" => return TypeId::U64_ARRAY as u32,
+        "Vec<usize>" => return TypeId::USIZE_ARRAY as u32,
         _ => {}
     }
 
@@ -601,6 +603,7 @@ fn get_primitive_type_size(type_id_num: u32) -> i32 {
         TypeId::U16 => 2,
         TypeId::U32 => 4,
         TypeId::U64 => 8,
+        TypeId::USIZE => 8,
         _ => unreachable!(),
     }
 }
@@ -767,8 +770,14 @@ pub(crate) fn get_sorted_field_names(fields: &[&Field]) -> Vec<String> {
     all_fields.into_iter().map(|(name, _, _)| name).collect()
 }
 
+pub(crate) fn get_filtered_fields_iter<'a>(
+    fields: &'a [&'a Field],
+) -> impl Iterator<Item = &'a Field> {
+    fields.iter().filter(|field| !is_skip_field(field)).copied()
+}
 pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
-    let sorted_names = get_sorted_field_names(fields);
+    let filterd_fields: Vec<&Field> = get_filtered_fields_iter(fields).collect();
+    let sorted_names = get_sorted_field_names(&filterd_fields);
     let names = sorted_names.iter().map(|name| {
         quote! { #name }
     });
@@ -896,6 +905,43 @@ pub(crate) fn should_skip_type_info_for_field(ty: &Type) -> bool {
     }
     // Primitive, nullable primitive, internal types, List/Set/Map skip type info
     true
+}
+
+pub(crate) fn is_skip_field(field: &syn::Field) -> bool {
+    field.attrs.iter().any(|attr| {
+        attr.path().is_ident("fory") && {
+            let mut skip = false;
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("skip") {
+                    skip = true;
+                }
+                Ok(())
+            });
+            skip
+        }
+    })
+}
+
+pub(crate) fn is_skip_enum_variant(variant: &syn::Variant) -> bool {
+    variant.attrs.iter().any(|attr| {
+        attr.path().is_ident("fory") && {
+            let mut skip = false;
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("skip") {
+                    skip = true;
+                }
+                Ok(())
+            });
+            skip
+        }
+    })
+}
+
+pub(crate) fn is_default_value_variant(variant: &syn::Variant) -> bool {
+    variant
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("default"))
 }
 
 #[cfg(test)]

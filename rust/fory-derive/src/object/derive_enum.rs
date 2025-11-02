@@ -15,6 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use super::util::{is_default_value_variant, is_skip_enum_variant};
 use crate::object::read::gen_read_field;
 
 use crate::object::write::gen_write_field;
@@ -51,13 +52,21 @@ pub fn gen_write(_data_enum: &DataEnum) -> TokenStream {
 }
 
 pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
+    let default_variant_value = data_enum
+        .variants
+        .iter()
+        .position(is_default_value_variant)
+        .unwrap_or(0) as u32;
     let xlang_variant_branches: Vec<TokenStream> = data_enum
         .variants
         .iter()
         .enumerate()
         .map(|(idx, v)| {
             let ident = &v.ident;
-            let tag_value = idx as u32;
+            let mut tag_value = idx as u32;
+            if is_skip_enum_variant(v) {
+                tag_value = default_variant_value;
+            }
 
             match &v.fields {
                 Fields::Unit => {
@@ -91,7 +100,10 @@ pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
         .enumerate()
         .map(|(idx, v)| {
             let ident = &v.ident;
-            let tag_value = idx as u32;
+            let mut tag_value = idx as u32;
+            if is_skip_enum_variant(v) {
+                tag_value = default_variant_value;
+            }
 
             match &v.fields {
                 Fields::Unit => {
@@ -186,13 +198,21 @@ pub fn gen_read_with_type_info(_: &DataEnum) -> TokenStream {
 }
 
 pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
+    let default_variant_value = data_enum
+        .variants
+        .iter()
+        .position(is_default_value_variant)
+        .unwrap_or(0) as u32;
     let xlang_variant_branches: Vec<TokenStream> = data_enum
         .variants
         .iter()
         .enumerate()
         .map(|(idx, v)| {
             let ident = &v.ident;
-            let tag_value = idx as u32;
+            let mut tag_value = idx as u32;
+            if is_skip_enum_variant(v) {
+                tag_value = default_variant_value;
+            }
 
             match &v.fields {
                 Fields::Unit => {
@@ -237,7 +257,10 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
         .enumerate()
         .map(|(idx, v)| {
             let ident = &v.ident;
-            let tag_value = idx as u32;
+            let mut tag_value = idx as u32;
+            if is_skip_enum_variant(v) {
+                tag_value = default_variant_value;
+            }
 
             match &v.fields {
                 Fields::Unit => {

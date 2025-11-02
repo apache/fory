@@ -92,3 +92,9 @@ impl_unsigned_num_serializer!(u8, Writer::write_u8, Reader::read_u8, TypeId::U8)
 impl_unsigned_num_serializer!(u16, Writer::write_u16, Reader::read_u16, TypeId::U16);
 impl_unsigned_num_serializer!(u32, Writer::write_u32, Reader::read_u32, TypeId::U32);
 impl_unsigned_num_serializer!(u64, Writer::write_u64, Reader::read_u64, TypeId::U64);
+impl_unsigned_num_serializer!(
+    usize,
+    Writer::write_usize,
+    Reader::read_usize,
+    TypeId::USIZE
+);
