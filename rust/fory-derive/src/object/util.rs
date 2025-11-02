@@ -484,8 +484,8 @@ fn extract_option_inner(s: &str) -> Option<&str> {
     s.strip_prefix("Option<")?.strip_suffix(">")
 }
 
-const PRIMITIVE_TYPE_NAMES: [&str; 11] = [
-    "bool", "i8", "i16", "i32", "i64", "f32", "f64", "u8", "u16", "u32", "u64",
+const PRIMITIVE_TYPE_NAMES: [&str; 12] = [
+    "bool", "i8", "i16", "i32", "i64", "f32", "f64", "u8", "u16", "u32", "u64", "usize",
 ];
 
 fn get_primitive_type_id(ty: &str) -> u32 {
@@ -501,6 +501,7 @@ fn get_primitive_type_id(ty: &str) -> u32 {
         "u16" => TypeId::U16 as u32,
         "u32" => TypeId::U32 as u32,
         "u64" => TypeId::U64 as u32,
+        "usize" => TypeId::USIZE as u32,
         _ => unreachable!("Unknown primitive type: {}", ty),
     }
 }
@@ -555,6 +556,7 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
         "Vec<u16>" => return TypeId::U16_ARRAY as u32,
         "Vec<u32>" => return TypeId::U32_ARRAY as u32,
         "Vec<u64>" => return TypeId::U64_ARRAY as u32,
+        "Vec<usize>" => return TypeId::USIZE_ARRAY as u32,
         _ => {}
     }
 
@@ -601,6 +603,7 @@ fn get_primitive_type_size(type_id_num: u32) -> i32 {
         TypeId::U16 => 2,
         TypeId::U32 => 4,
         TypeId::U64 => 8,
+        TypeId::USIZE => 8,
         _ => unreachable!(),
     }
 }

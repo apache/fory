@@ -22,7 +22,7 @@ use crate::serializer::Serializer;
 use crate::types::TypeId;
 use crate::types::{is_user_type, ENUM, NAMED_ENUM};
 
-const NO_REF_FLAG_TYPE_IDS: [u32; 11] = [
+const NO_REF_FLAG_TYPE_IDS: [u32; 12] = [
     TypeId::BOOL as u32,
     TypeId::INT8 as u32,
     TypeId::INT16 as u32,
@@ -34,6 +34,7 @@ const NO_REF_FLAG_TYPE_IDS: [u32; 11] = [
     TypeId::U16 as u32,
     TypeId::U32 as u32,
     TypeId::U64 as u32,
+    TypeId::USIZE as u32,
 ];
 
 #[inline(always)]

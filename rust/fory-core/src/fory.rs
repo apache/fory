@@ -298,7 +298,7 @@ impl Fory {
     ///
     /// # Returns
     ///
-    /// `ture` if the serialization mode is compatible, `false` otherwise`.
+    /// `true` if the serialization mode is compatible, `false` otherwise`.
     pub fn is_compatible(&self) -> bool {
         self.compatible
     }
