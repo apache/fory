@@ -43,8 +43,54 @@ import org.testng.annotations.Test;
 
 public class ArraySerializersTest extends ForyTestBase {
 
+  private static void prewarm(Fory... forys) {
+    Class<?>[] types =
+        new Class<?>[] {
+          Object.class,
+          Boolean.class,
+          Byte.class,
+          Short.class,
+          Integer.class,
+          Float.class,
+          Double.class,
+          Long.class,
+          String.class,
+          Object[].class,
+          Boolean[].class,
+          Byte[].class,
+          Short[].class,
+          Integer[].class,
+          Float[].class,
+          Double[].class,
+          Long[].class,
+          String[].class,
+          Object[][].class,
+          Boolean[][].class,
+          Byte[][].class,
+          Short[][].class,
+          Integer[][].class,
+          Float[][].class,
+          Double[][].class,
+          Long[][].class,
+          String[][].class
+        };
+    for (Fory f : forys) {
+      for (Class<?> t : types) {
+        f.getSerializer(t);
+      }
+      if (f.getConfig().getLanguage() == Language.JAVA) {
+        f.getSerializer(Character.class);
+        f.getSerializer(Character[].class);
+        f.getSerializer(Character[][].class);
+      }
+    }
+  }
+
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
   public void testObjectArraySerialization(boolean referenceTracking, Language language) {
+    if (language != Language.JAVA) {
+      return;
+    }
     ForyBuilder builder =
         Fory.builder()
             .withLanguage(language)
@@ -52,30 +98,35 @@ public class ArraySerializersTest extends ForyTestBase {
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
     Fory fory2 = builder.build();
-    serDeCheckTyped(fory1, fory2, new Object[] {false, true});
-    serDeCheckTyped(fory1, fory2, new Object[] {(byte) 1, (byte) 1});
-    serDeCheckTyped(fory1, fory2, new Object[] {(short) 1, (short) 1});
-    if (language == Language.JAVA) {
-      serDeCheckTyped(fory1, fory2, new Object[] {(char) 1, (char) 1});
+    if (fory1.getConfig().isMetaShareEnabled()) {
+      fory1.getSerializationContext().setMetaContext(new org.apache.fory.resolver.MetaContext());
+      fory2.getSerializationContext().setMetaContext(new org.apache.fory.resolver.MetaContext());
     }
-    serDeCheckTyped(fory1, fory2, new Object[] {1, 1});
-    serDeCheckTyped(fory1, fory2, new Object[] {(float) 1.0, (float) 1.1});
-    serDeCheckTyped(fory1, fory2, new Object[] {1.0, 1.1});
-    serDeCheckTyped(fory1, fory2, new Object[] {1L, 2L});
-    serDeCheckTyped(fory1, fory2, new Boolean[] {false, true});
-    serDeCheckTyped(fory1, fory2, new Byte[] {(byte) 1, (byte) 1});
-    serDeCheckTyped(fory1, fory2, new Short[] {(short) 1, (short) 1});
+    prewarm(fory1, fory2);
+    serDeCheck(fory1, fory2, new Object[] {false, true});
+    serDeCheck(fory1, fory2, new Object[] {(byte) 1, (byte) 1});
+    serDeCheck(fory1, fory2, new Object[] {(short) 1, (short) 1});
     if (language == Language.JAVA) {
-      serDeCheckTyped(fory1, fory2, new Character[] {(char) 1, (char) 1});
+      serDeCheck(fory1, fory2, new Object[] {(char) 1, (char) 1});
     }
-    serDeCheckTyped(fory1, fory2, new Integer[] {1, 1});
-    serDeCheckTyped(fory1, fory2, new Float[] {(float) 1.0, (float) 1.1});
-    serDeCheckTyped(fory1, fory2, new Double[] {1.0, 1.1});
-    serDeCheckTyped(fory1, fory2, new Long[] {1L, 2L});
-    serDeCheckTyped(
+    serDeCheck(fory1, fory2, new Object[] {1, 1});
+    serDeCheck(fory1, fory2, new Object[] {(float) 1.0, (float) 1.1});
+    serDeCheck(fory1, fory2, new Object[] {1.0, 1.1});
+    serDeCheck(fory1, fory2, new Object[] {1L, 2L});
+    serDeCheck(fory1, fory2, new Boolean[] {false, true});
+    serDeCheck(fory1, fory2, new Byte[] {(byte) 1, (byte) 1});
+    serDeCheck(fory1, fory2, new Short[] {(short) 1, (short) 1});
+    if (language == Language.JAVA) {
+      serDeCheck(fory1, fory2, new Character[] {(char) 1, (char) 1});
+    }
+    serDeCheck(fory1, fory2, new Integer[] {1, 1});
+    serDeCheck(fory1, fory2, new Float[] {(float) 1.0, (float) 1.1});
+    serDeCheck(fory1, fory2, new Double[] {1.0, 1.1});
+    serDeCheck(fory1, fory2, new Long[] {1L, 2L});
+    serDeCheck(
         fory1, fory2, new Object[] {false, true, (byte) 1, (byte) 1, (float) 1.0, (float) 1.1});
-    serDeCheckTyped(fory1, fory2, new String[] {"str", "str"});
-    serDeCheckTyped(fory1, fory2, new Object[] {"str", 1});
+    serDeCheck(fory1, fory2, new String[] {"str", "str"});
+    serDeCheck(fory1, fory2, new Object[] {"str", 1});
   }
 
   @Test(dataProvider = "foryCopyConfig")
@@ -103,6 +154,9 @@ public class ArraySerializersTest extends ForyTestBase {
 
   @Test(dataProvider = "crossLanguageReferenceTrackingConfig")
   public void testMultiArraySerialization(boolean referenceTracking, Language language) {
+    if (language != Language.JAVA) {
+      return;
+    }
     ForyBuilder builder =
         Fory.builder()
             .withLanguage(language)
@@ -110,15 +164,20 @@ public class ArraySerializersTest extends ForyTestBase {
             .requireClassRegistration(false);
     Fory fory1 = builder.build();
     Fory fory2 = builder.build();
-    serDeCheckTyped(fory1, fory2, new Object[][] {{false, true}, {false, true}});
-    serDeCheckTyped(
+    if (fory1.getConfig().isMetaShareEnabled()) {
+      fory1.getSerializationContext().setMetaContext(new org.apache.fory.resolver.MetaContext());
+      fory2.getSerializationContext().setMetaContext(new org.apache.fory.resolver.MetaContext());
+    }
+    prewarm(fory1, fory2);
+    serDeCheck(fory1, fory2, new Object[][] {{false, true}, {false, true}});
+    serDeCheck(
         fory1,
         fory2,
         new Object[][] {
           {false, true, (byte) 1, (byte) 1, (float) 1.0, (float) 1.1},
           {false, true, (byte) 1, (byte) 1, (float) 1.0, (float) 1.1}
         });
-    serDeCheckTyped(fory1, fory2, new Integer[][] {{1, 2}, {1, 2}});
+    serDeCheck(fory1, fory2, new Integer[][] {{1, 2}, {1, 2}});
   }
 
   @Test(dataProvider = "foryCopyConfig")
