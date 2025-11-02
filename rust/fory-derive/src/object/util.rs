@@ -767,12 +767,13 @@ pub(crate) fn get_sorted_field_names(fields: &[&Field]) -> Vec<String> {
     all_fields.into_iter().map(|(name, _, _)| name).collect()
 }
 
+pub(crate) fn get_filtered_fields_iter<'a>(
+    fields: &'a [&'a Field],
+) -> impl Iterator<Item = &'a Field> {
+    fields.iter().filter(|field| !is_skip_field(field)).copied()
+}
 pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
-    let filterd_fields: Vec<&Field> = fields
-        .iter()
-        .filter(|field| !is_skip_field(field))
-        .copied()
-        .collect();
+    let filterd_fields: Vec<&Field> = get_filtered_fields_iter(fields).collect();
     let sorted_names = get_sorted_field_names(&filterd_fields);
     let names = sorted_names.iter().map(|name| {
         quote! { #name }
