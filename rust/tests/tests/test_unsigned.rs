@@ -42,6 +42,16 @@ fn test_unsigned_arrays() {
 }
 
 #[test]
+fn test_unsigned_arrays_when_xlang() {
+    let fory = Fory::default().xlang(true);
+    assert!(fory.serialize(&vec![u8::MAX]).is_err());
+    assert!(fory.serialize(&vec![u16::MAX]).is_err());
+    assert!(fory.serialize(&vec![u32::MAX]).is_err());
+    assert!(fory.serialize(&vec![u64::MAX]).is_err());
+    assert!(fory.serialize(&vec![usize::MAX]).is_err());
+}
+
+#[test]
 fn test_unsigned_struct_non_compatible() {
     #[derive(ForyObject, Debug, PartialEq)]
     struct UnsignedData {
