@@ -177,9 +177,6 @@ public final class Fory implements BaseFory {
 
   @Override
   public void register(Class<?> cls) {
-    if (depth >= 0) {
-      throw new ForyException("Cannot register class during serialization/deserialization");
-    }
     _getTypeResolver().register(cls);
   }
 

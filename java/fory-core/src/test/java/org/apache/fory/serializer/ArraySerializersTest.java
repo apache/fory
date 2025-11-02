@@ -43,7 +43,7 @@ import org.testng.annotations.Test;
 
 public class ArraySerializersTest extends ForyTestBase {
 
-  private static void prewarm(Fory... forys) {
+  private static void registerTypes(Fory... forys) {
     Class<?>[] types =
         new Class<?>[] {
           Object.class,
@@ -102,7 +102,7 @@ public class ArraySerializersTest extends ForyTestBase {
       fory1.getSerializationContext().setMetaContext(new org.apache.fory.resolver.MetaContext());
       fory2.getSerializationContext().setMetaContext(new org.apache.fory.resolver.MetaContext());
     }
-    prewarm(fory1, fory2);
+    registerTypes(fory1, fory2);
     serDeCheck(fory1, fory2, new Object[] {false, true});
     serDeCheck(fory1, fory2, new Object[] {(byte) 1, (byte) 1});
     serDeCheck(fory1, fory2, new Object[] {(short) 1, (short) 1});
@@ -168,7 +168,7 @@ public class ArraySerializersTest extends ForyTestBase {
       fory1.getSerializationContext().setMetaContext(new org.apache.fory.resolver.MetaContext());
       fory2.getSerializationContext().setMetaContext(new org.apache.fory.resolver.MetaContext());
     }
-    prewarm(fory1, fory2);
+    registerTypes(fory1, fory2);
     serDeCheck(fory1, fory2, new Object[][] {{false, true}, {false, true}});
     serDeCheck(
         fory1,
