@@ -31,6 +31,29 @@ jobs:
       - name: Bump version
         # Pass the tag name from the push (e.g. "v0.12.1b1"); deploy.sh will strip leading "v".
         run: ./ci/deploy.sh bump_py_version "${{ github.ref_name }}"
+      - name: Cache Bazel binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/bin/bazel
+            ~/.local/bin/bazel
+          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
+          restore-keys: |
+            bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+      - name: Cache Bazel repository cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bazel/_bazel_*/*/external
+          key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
+          restore-keys: |
+            bazel-repo-${{ runner.os }}-${{ runner.arch }}-
+      - name: Cache Bazel build outputs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bazel
+          key: bazel-build-release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'BUILD', 'WORKSPACE') }}
+          restore-keys: |
+            bazel-build-release-${{ runner.os }}-${{ runner.arch }}-
       - name: Install bazel
         run: ./ci/run_ci.sh install_bazel
       - name: Build and test wheels
