@@ -50,30 +50,45 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
     };
 
     // StructSerializer
-    let (actual_type_id_ts, get_sorted_field_names_ts, fields_info_ts, read_compatible_ts) =
-        match &ast.data {
-            syn::Data::Struct(s) => {
-                let fields = sorted_fields(&s.fields);
-                (
-                    misc::gen_actual_type_id(),
-                    misc::gen_get_sorted_field_names(&fields),
-                    misc::gen_field_fields_info(&fields),
-                    read::gen_read_compatible(&fields),
-                )
-            }
-            syn::Data::Enum(s) => (
+    let (
+        actual_type_id_ts,
+        get_sorted_field_names_ts,
+        fields_info_ts,
+        variants_fields_info_ts,
+        read_compatible_ts,
+        enum_variant_meta_types,
+    ) = match &ast.data {
+        syn::Data::Struct(s) => {
+            let fields = sorted_fields(&s.fields);
+            (
+                misc::gen_actual_type_id(),
+                misc::gen_get_sorted_field_names(&fields),
+                misc::gen_field_fields_info(&fields),
+                quote! { Ok(Vec::new()) }, // No variants for structs
+                read::gen_read_compatible(&fields),
+                vec![], // No variant meta types for structs
+            )
+        }
+        syn::Data::Enum(s) => {
+            // Generate variant meta types for named variants
+            let variant_meta_types =
+                derive_enum::gen_all_variant_meta_types_with_enum_name(name, s);
+            (
                 derive_enum::gen_actual_type_id(),
                 quote! { &[] },
                 derive_enum::gen_field_fields_info(s),
+                derive_enum::gen_variants_fields_info(name, s),
                 quote! {
                     Err(fory_core::Error::not_allowed("`fory_read_compatible` should only be invoked at struct type"
                 ))
                 },
-            ),
-            syn::Data::Union(_) => {
-                panic!("Union is not supported")
-            }
-        };
+                variant_meta_types,
+            )
+        }
+        syn::Data::Union(_) => {
+            panic!("Union is not supported")
+        }
+    };
     // Serializer
     let (
         write_ts,
@@ -122,6 +137,9 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
     let gen = quote! {
         use fory_core::ForyDefault as _;
 
+        // Generate variant meta types for enums (must be at module scope)
+        #(#enum_variant_meta_types)*
+
         #default_impl
 
         impl fory_core::StructSerializer for #name {
@@ -143,6 +161,10 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
                 #fields_info_ts
             }
 
+            fn fory_variants_fields_info(type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<Vec<(String, std::any::TypeId, Vec<fory_core::meta::FieldInfo>)>, fory_core::error::Error> {
+                #variants_fields_info_ts
+            }
+
             #[inline]
             fn fory_read_compatible(context: &mut fory_core::resolver::context::ReadContext, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::error::Error> {
                 #read_compatible_ts
@@ -153,6 +175,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
             #[inline(always)]
             fn fory_get_type_id(type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<u32, fory_core::error::Error> {
                 type_resolver.get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
+                    .map_err(fory_core::error::Error::enhance_type_error::<Self>)
             }
 
             #[inline(always)]
@@ -309,16 +332,30 @@ fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
             if !has_default_variant {
                 if let Some(first_variant) = e.variants.first() {
                     let variant_ident = &first_variant.ident;
+                    let field_defaults = match &first_variant.fields {
+                        syn::Fields::Unit => quote! {},
+                        syn::Fields::Unnamed(fields) => {
+                            let defaults =
+                                (0..fields.unnamed.len()).map(|_| quote! { Default::default() });
+                            quote! { (#(#defaults),*) }
+                        }
+                        syn::Fields::Named(fields) => {
+                            let field_idents = fields.named.iter().map(|f| &f.ident);
+                            let defaults =
+                                fields.named.iter().map(|_| quote! { Default::default() });
+                            quote! { { #(#field_idents: #defaults),* } }
+                        }
+                    };
                     quote! {
                         impl fory_core::ForyDefault for #name {
                             fn fory_default() -> Self {
-                                Self::#variant_ident
+                                Self::#variant_ident #field_defaults
                             }
                         }
 
                         impl std::default::Default for #name {
                             fn default() -> Self {
-                                Self::#variant_ident
+                                Self::#variant_ident #field_defaults
                             }
                         }
                     }

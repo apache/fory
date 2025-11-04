@@ -86,14 +86,20 @@ impl FieldType {
         writer.write_varuint32(header);
         match self.type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
-                let generic = self.generics.first().unwrap();
-                generic.to_bytes(writer, true, generic.nullable)?;
+                if let Some(generic) = self.generics.first() {
+                    generic.to_bytes(writer, true, generic.nullable)?;
+                } else {
+                    let generic = FieldType::new(TypeId::UNKNOWN as u32, true, vec![]);
+                    generic.to_bytes(writer, true, generic.nullable)?;
+                }
             }
             x if x == TypeId::MAP as u32 => {
-                let key_generic = self.generics.first().unwrap();
-                let val_generic = self.generics.get(1).unwrap();
-                key_generic.to_bytes(writer, true, key_generic.nullable)?;
-                val_generic.to_bytes(writer, true, val_generic.nullable)?;
+                if let (Some(key_generic), Some(val_generic)) =
+                    (self.generics.first(), self.generics.get(1))
+                {
+                    key_generic.to_bytes(writer, true, key_generic.nullable)?;
+                    val_generic.to_bytes(writer, true, val_generic.nullable)?;
+                }
             }
             _ => {}
         }
@@ -227,6 +233,50 @@ impl FieldInfo {
         writer.write_bytes(name_encoded);
         Ok(buffer)
     }
+}
+
+/// Sorts field infos according to the provided sorted field names and assigns field IDs.
+///
+/// This function takes a vector of field infos and a slice of sorted field names,
+/// then reorders the field infos to match the sorted order and assigns sequential
+/// field IDs starting from 0.
+///
+/// # Arguments
+///
+/// * `fields_info` - A mutable vector of FieldInfo to be sorted and assigned IDs
+/// * `sorted_field_names` - A slice of field names in the desired sorted order
+///
+/// # Errors
+///
+/// Returns an error if a field name in `sorted_field_names` is not found in `fields_info`
+pub fn sort_fields(
+    fields_info: &mut Vec<FieldInfo>,
+    sorted_field_names: &[&str],
+) -> Result<(), Error> {
+    let mut sorted_field_infos: Vec<FieldInfo> = Vec::with_capacity(fields_info.len());
+    for name in sorted_field_names.iter() {
+        let mut found = false;
+        for i in 0..fields_info.len() {
+            if &fields_info[i].field_name == name {
+                // swap_remove is faster
+                sorted_field_infos.push(fields_info.swap_remove(i));
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            return Err(Error::type_error(format!(
+                "Field {} not found in fields_info",
+                name
+            )));
+        }
+    }
+    // assign field id in ascending order
+    for (i, field_info) in sorted_field_infos.iter_mut().enumerate() {
+        field_info.field_id = i as i16;
+    }
+    *fields_info = sorted_field_infos;
+    Ok(())
 }
 
 impl PartialEq for FieldType {
@@ -407,6 +457,11 @@ impl TypeMetaLayer {
                 TypeId::FLOAT16 => 2,
                 TypeId::FLOAT32 => 4,
                 TypeId::FLOAT64 => 8,
+                TypeId::U8 => 1,
+                TypeId::U16 => 2,
+                TypeId::U32 => 4,
+                TypeId::U64 => 8,
+                TypeId::USIZE => 8,
                 _ => unreachable!(),
             }
         }
@@ -593,6 +648,7 @@ impl TypeMeta {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn from_bytes(
         reader: &mut Reader,
         type_resolver: &TypeResolver,

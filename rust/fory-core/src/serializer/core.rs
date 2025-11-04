@@ -142,7 +142,7 @@ pub trait ForyDefault: Sized {
 /// - [`fory_static_type_id`]: Static type ID (defaults to TypeId::EXT for user types)
 /// - [`fory_get_type_id`]: Get registered type ID from TypeResolver
 /// - [`fory_concrete_type_id`]: Get Rust's std::any::TypeId
-/// - [`fory_is_option`]: Check if type is Option<T>
+/// - [`fory_is_option`]: Check if type is `Option<T>`
 /// - [`fory_is_none`]: Check if instance is None (for Option types)
 /// - [`fory_is_polymorphic`]: Check if type supports polymorphism
 /// - [`fory_is_shared_ref`]: Check if type is Rc/Arc
@@ -1052,6 +1052,14 @@ pub trait Serializer: 'static {
         false
     }
 
+    #[inline(always)]
+    fn fory_is_wrapper_type() -> bool
+    where
+        Self: Sized,
+    {
+        Self::fory_is_shared_ref()
+    }
+
     /// Get the static Fory type ID for this type.
     ///
     /// Type IDs are Fory's internal type identification system, separate from
@@ -1118,9 +1126,10 @@ pub trait Serializer: 'static {
     where
         Self: Sized,
     {
-        Ok(type_resolver
-            .get_type_info(&std::any::TypeId::of::<Self>())?
-            .get_type_id())
+        match type_resolver.get_type_info(&std::any::TypeId::of::<Self>()) {
+            Ok(info) => Ok(info.get_type_id()),
+            Err(e) => Err(Error::enhance_type_error::<Self>(e)),
+        }
     }
 
     /// **[USER IMPLEMENTATION REQUIRED]** Get the runtime type ID for this instance.
@@ -1327,6 +1336,13 @@ pub trait StructSerializer: Serializer + 'static {
     /// - **Do not implement** for user types with custom serialization (EXT types)
     #[allow(unused_variables)]
     fn fory_fields_info(type_resolver: &TypeResolver) -> Result<Vec<FieldInfo>, Error> {
+        Ok(Vec::default())
+    }
+
+    #[allow(unused_variables)]
+    fn fory_variants_fields_info(
+        type_resolver: &TypeResolver,
+    ) -> Result<Vec<(String, std::any::TypeId, Vec<FieldInfo>)>, Error> {
         Ok(Vec::default())
     }
 

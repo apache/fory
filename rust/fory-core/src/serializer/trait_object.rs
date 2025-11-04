@@ -159,21 +159,25 @@ macro_rules! register_trait_type {
 
         // 4. Serializer implementation for Box<dyn Trait> (existing functionality)
         impl fory_core::Serializer for Box<dyn $trait_name> {
+            #[inline(always)]
             fn fory_write(&self, context: &mut fory_core::WriteContext, write_ref_info: bool, write_type_info: bool, has_generics: bool) -> Result<(), fory_core::Error> {
                 let any_ref = <dyn $trait_name as fory_core::Serializer>::as_any(&**self);
                 fory_core::serializer::write_box_any(any_ref, context, write_ref_info, write_type_info, has_generics)
             }
 
+            #[inline(always)]
             fn fory_write_data(&self, context: &mut fory_core::WriteContext) -> Result<(), fory_core::Error> {
                 let any_ref = <dyn $trait_name as fory_core::Serializer>::as_any(&**self);
                 fory_core::serializer::write_box_any(any_ref, context, false, false, false)
             }
 
+            #[inline(always)]
             fn fory_write_data_generic(&self, context: &mut fory_core::WriteContext, has_generics: bool) -> Result<(), fory_core::Error> {
                 let any_ref = <dyn $trait_name as fory_core::Serializer>::as_any(&**self);
                 fory_core::serializer::write_box_any(any_ref, context, false, false, has_generics)
             }
 
+            #[inline(always)]
             fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<u32, fory_core::Error> {
                 let any_ref = <dyn $trait_name as fory_core::Serializer>::as_any(&**self);
                 let concrete_type_id = any_ref.type_id();
@@ -182,6 +186,7 @@ macro_rules! register_trait_type {
                     .ok_or_else(|| fory_core::Error::type_error("Type not registered for trait object"))
             }
 
+            #[inline(always)]
             fn fory_is_polymorphic() -> bool {
                 true
             }
@@ -241,18 +246,22 @@ macro_rules! register_trait_type {
                 $crate::not_allowed!("fory_get_type_id should not be called directly on polymorphic Box<dyn {}> trait object", stringify!($trait_name))
             }
 
+            #[inline(always)]
             fn fory_static_type_id() -> fory_core::TypeId {
                 fory_core::TypeId::UNKNOWN
             }
 
+            #[inline(always)]
             fn fory_reserved_space() -> usize {
                 $crate::types::SIZE_OF_REF_AND_TYPE
             }
 
+            #[inline(always)]
             fn fory_concrete_type_id(&self) -> std::any::TypeId {
                 <dyn $trait_name as fory_core::Serializer>::as_any(&**self).type_id()
             }
 
+            #[inline(always)]
             fn as_any(&self) -> &dyn std::any::Any {
                 <dyn $trait_name as fory_core::Serializer>::as_any(&**self)
             }
@@ -486,30 +495,37 @@ macro_rules! impl_smart_pointer_serializer {
                 $crate::not_allowed!("fory_read_data should not be called directly on polymorphic {}<dyn {}> trait object", stringify!($ptr_path), stringify!($trait_name))
             }
 
+            #[inline(always)]
             fn fory_get_type_id(_type_resolver: &fory_core::TypeResolver) -> Result<u32, fory_core::Error> {
                 Ok(fory_core::TypeId::STRUCT as u32)
             }
 
+            #[inline(always)]
             fn fory_static_type_id() -> fory_core::TypeId {
                 fory_core::TypeId::UNKNOWN
             }
 
+            #[inline(always)]
             fn fory_write_type_info(_context: &mut fory_core::WriteContext) -> Result<(), fory_core::Error> {
                 Ok(())
             }
 
+            #[inline(always)]
             fn fory_read_type_info(_context: &mut fory_core::ReadContext) -> Result<(), fory_core::Error>  {
                 Ok(())
             }
 
+            #[inline(always)]
             fn fory_is_polymorphic() -> bool {
                 true
             }
 
+            #[inline(always)]
             fn fory_is_shared_ref() -> bool {
                 true
             }
 
+            #[inline(always)]
             fn fory_type_id_dyn(&self, type_resolver: &fory_core::TypeResolver) -> Result<u32, fory_core::Error> {
                 let any_obj = <dyn $trait_name as fory_core::Serializer>::as_any(&*self.0);
                 let concrete_type_id = any_obj.type_id();
@@ -518,10 +534,12 @@ macro_rules! impl_smart_pointer_serializer {
                     .ok_or_else(|| fory_core::Error::type_error("Type not registered for trait object"))
             }
 
+            #[inline(always)]
             fn fory_concrete_type_id(&self) -> std::any::TypeId {
                 <dyn $trait_name as fory_core::Serializer>::as_any(&*self.0).type_id()
             }
 
+            #[inline(always)]
             fn as_any(&self) -> &dyn std::any::Any {
                 <dyn $trait_name as fory_core::Serializer>::as_any(&*self.0)
             }
@@ -583,6 +601,7 @@ impl ForyDefault for Box<dyn Serializer> {
 }
 
 impl Serializer for Box<dyn Serializer> {
+    #[inline(always)]
     fn fory_concrete_type_id(&self) -> std::any::TypeId {
         (**self).fory_concrete_type_id()
     }
@@ -605,10 +624,12 @@ impl Serializer for Box<dyn Serializer> {
         self.fory_write_data_generic(context, has_generics)
     }
 
+    #[inline(always)]
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         self.fory_write_data_generic(context, false)
     }
 
+    #[inline(always)]
     fn fory_write_data_generic(
         &self,
         context: &mut WriteContext,
@@ -617,14 +638,17 @@ impl Serializer for Box<dyn Serializer> {
         (**self).fory_write_data_generic(context, has_generics)
     }
 
+    #[inline(always)]
     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
         (**self).fory_type_id_dyn(type_resolver)
     }
 
+    #[inline(always)]
     fn as_any(&self) -> &dyn std::any::Any {
         (**self).as_any()
     }
 
+    #[inline(always)]
     fn fory_is_polymorphic() -> bool {
         true
     }
@@ -635,11 +659,13 @@ impl Serializer for Box<dyn Serializer> {
         ))
     }
 
+    #[inline(always)]
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         context.read_any_typeinfo()?;
         Ok(())
     }
 
+    #[inline(always)]
     fn fory_read(
         context: &mut ReadContext,
         read_ref_info: bool,
@@ -648,6 +674,7 @@ impl Serializer for Box<dyn Serializer> {
         read_box_seralizer(context, read_ref_info, read_type_info, None)
     }
 
+    #[inline(always)]
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,

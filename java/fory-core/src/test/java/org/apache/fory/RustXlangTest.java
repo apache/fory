@@ -41,7 +41,6 @@ import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.serializer.Serializer;
-import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.test.TestUtils;
 import org.apache.fory.util.MurmurHash3;
 import org.testng.Assert;
@@ -77,7 +76,7 @@ public class RustXlangTest extends ForyTestBase {
 
   @BeforeClass
   public void isRustJavaCIEnabled() {
-    String enabled = System.getenv("RUST_TESTCASE_ENABLED");
+    String enabled = System.getenv("FORY_RUST_JAVA_CI");
     if (enabled == null || !enabled.equals("1")) {
       throw new SkipException("Skipping RustXlangTest: FORY_RUST_JAVA_CI not set to 1");
     }
@@ -96,40 +95,16 @@ public class RustXlangTest extends ForyTestBase {
     }
   }
 
-  @Test
-  public void testRust() throws Exception {
+  private List<String> setTestCase(String name) {
     List<String> command = rustBaseCommand;
-    command.set(RUST_TESTCASE_INDEX, "test_buffer");
-    testBuffer(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_buffer_var");
-    testBufferVar(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_murmurhash3");
-    testMurmurHash3(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_string_serializer");
-    testStringSerializer(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_cross_language_serializer");
-    testCrossLanguageSerializer(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_simple_struct");
-    testSimpleStruct(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_simple_named_struct");
-    testSimpleNamedStruct(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_list");
-    testList(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_map");
-    testMap(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_integer");
-    testInteger(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_skip_id_custom");
-    testSkipIdCustom(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_skip_name_custom");
-    testSkipNameCustom(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_struct_version_check");
-    testStructVersionCheck(Language.RUST, command);
-    command.set(RUST_TESTCASE_INDEX, "test_consistent_named");
-    testConsistentNamed(Language.RUST, command);
+    command.set(RUST_TESTCASE_INDEX, name);
+    return command;
   }
 
-  private void testBuffer(Language language, List<String> command) throws IOException {
+  @Test
+  public void testBuffer() throws IOException {
+    String caseName = "test_buffer";
+    List<String> command = setTestCase(caseName);
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     buffer.writeBoolean(true);
     buffer.writeByte(Byte.MAX_VALUE);
@@ -143,9 +118,9 @@ public class RustXlangTest extends ForyTestBase {
     buffer.writeInt32(bytes.length);
     buffer.writeBytes(bytes);
 
-    Path dataFile = Files.createTempFile("test_buffer", "data");
+    Path dataFile = Files.createTempFile(caseName, "data");
     Pair<Map<String, String>, File> env_workdir =
-        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+        setFilePath(dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
 
     buffer = MemoryUtils.wrap(Files.readAllBytes(dataFile));
@@ -160,8 +135,11 @@ public class RustXlangTest extends ForyTestBase {
     Assert.assertTrue(Arrays.equals(buffer.readBytes(buffer.readInt32()), bytes));
   }
 
-  private void testBufferVar(Language language, List<String> command) throws IOException {
-    Path dataFile = Files.createTempFile("test_buffer_var", "data");
+  @Test
+  public void testBufferVar() throws IOException {
+    String caseName = "test_buffer_var";
+    List<String> command = setTestCase(caseName);
+    Path dataFile = Files.createTempFile(caseName, "data");
     MemoryBuffer buffer = MemoryUtils.buffer(100);
     int[] varInt32Values = {
       Integer.MIN_VALUE,
@@ -252,7 +230,7 @@ public class RustXlangTest extends ForyTestBase {
     }
 
     Pair<Map<String, String>, File> env_workdir =
-        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+        setFilePath(dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
 
     buffer = MemoryUtils.wrap(Files.readAllBytes(dataFile));
@@ -274,7 +252,10 @@ public class RustXlangTest extends ForyTestBase {
     }
   }
 
-  private void testMurmurHash3(Language language, List<String> command) throws IOException {
+  @Test
+  public void testMurmurHash3() throws IOException {
+    String caseName = "test_murmurhash3";
+    List<String> command = setTestCase(caseName);
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     byte[] hash1 = Hashing.murmur3_128(47).hashBytes(new byte[] {1, 2, 8}).asBytes();
     buffer.writeBytes(hash1);
@@ -284,9 +265,9 @@ public class RustXlangTest extends ForyTestBase {
             .asBytes();
     buffer.writeBytes(hash2);
 
-    Path dataFile = Files.createTempFile("test_murmurhash3", "data");
+    Path dataFile = Files.createTempFile(caseName, "data");
     Pair<Map<String, String>, File> env_workdir =
-        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+        setFilePath(dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
 
     long[] longs = MurmurHash3.murmurhash3_x64_128(new byte[] {1, 2, 8}, 0, 3, 47);
@@ -298,10 +279,9 @@ public class RustXlangTest extends ForyTestBase {
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
   }
 
-  private void _testStringSerializer(
-      Fory fory, Path dataFile, Language language, List<String> command) throws IOException {
+  private void _testStringSerializer(Fory fory, Path dataFile, List<String> command)
+      throws IOException {
     MemoryBuffer buffer = MemoryUtils.buffer(100);
-    StringSerializer serializer = new StringSerializer(fory);
     String[] testStrings =
         new String[] {
           // Latin1
@@ -319,7 +299,7 @@ public class RustXlangTest extends ForyTestBase {
       fory.serialize(buffer, s);
     }
     Pair<Map<String, String>, File> env_workdir =
-        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+        setFilePath(dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     buffer = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     for (String expected : testStrings) {
@@ -328,14 +308,17 @@ public class RustXlangTest extends ForyTestBase {
     }
   }
 
-  private void testStringSerializer(Language language, List<String> command) throws Exception {
-    Path dataFile = Files.createTempFile("test_string_serializer", "data");
+  @Test
+  public void testStringSerializer() throws Exception {
+    String caseName = "test_string_serializer";
+    List<String> command = setTestCase(caseName);
+    Path dataFile = Files.createTempFile(caseName, "data");
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
             .build();
-    _testStringSerializer(fory, dataFile, language, command);
+    _testStringSerializer(fory, dataFile, command);
     Fory foryCompress =
         Fory.builder()
             .withLanguage(Language.XLANG)
@@ -343,7 +326,7 @@ public class RustXlangTest extends ForyTestBase {
             .withStringCompressed(true)
             .withWriteNumUtf16BytesForUtf8Encoding(false)
             .build();
-    _testStringSerializer(foryCompress, dataFile, language, command);
+    _testStringSerializer(foryCompress, dataFile, command);
   }
 
   enum Color {
@@ -353,8 +336,10 @@ public class RustXlangTest extends ForyTestBase {
     White,
   }
 
-  private void testCrossLanguageSerializer(Language language, List<String> command)
-      throws Exception {
+  @Test
+  public void testCrossLanguageSerializer() throws Exception {
+    String caseName = "test_cross_language_serializer";
+    List<String> command = setTestCase(caseName);
     List<String> strList = Arrays.asList("hello", "world");
     Set<String> strSet = new HashSet<>(strList);
     Map<String, String> strMap = new HashMap();
@@ -428,9 +413,9 @@ public class RustXlangTest extends ForyTestBase {
           assertStringEquals(fory.deserialize(buf), color, useToString);
         };
     function.accept(buffer, false);
-    Path dataFile = Files.createTempFile("test_cross_language_serializer", "data");
+    Path dataFile = Files.createTempFile(caseName, "data");
     Pair<Map<String, String>, File> env_workdir =
-        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+        setFilePath(dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     function.accept(buffer2, true);
@@ -454,8 +439,10 @@ public class RustXlangTest extends ForyTestBase {
     Integer last;
   }
 
-  private void testSimpleStruct(Language language, List<String> command)
-      throws java.io.IOException {
+  @Test
+  public void testSimpleStruct() throws java.io.IOException {
+    String caseName = "test_simple_struct";
+    List<String> command = setTestCase(caseName);
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
@@ -485,16 +472,18 @@ public class RustXlangTest extends ForyTestBase {
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     fory.serialize(buffer, obj);
 
-    Path dataFile = Files.createTempFile("test_simple_struct", "data");
+    Path dataFile = Files.createTempFile(caseName, "data");
     Pair<Map<String, String>, File> env_workdir =
-        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+        setFilePath(dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     Assert.assertEquals(fory.deserialize(buffer2), obj);
   }
 
-  private void testSimpleNamedStruct(Language language, List<String> command)
-      throws java.io.IOException {
+  @Test
+  public void testSimpleNamedStruct() throws java.io.IOException {
+    String caseName = "test_named_simple_struct";
+    List<String> command = setTestCase(caseName);
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
@@ -524,15 +513,18 @@ public class RustXlangTest extends ForyTestBase {
     MemoryBuffer buffer = MemoryUtils.buffer(32);
     fory.serialize(buffer, obj);
 
-    Path dataFile = Files.createTempFile("test_named_simple_struct", "data");
+    Path dataFile = Files.createTempFile(caseName, "data");
     Pair<Map<String, String>, File> env_workdir =
-        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+        setFilePath(dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     Assert.assertEquals(fory.deserialize(buffer2), obj);
   }
 
-  private void testList(Language language, List<String> command) throws java.io.IOException {
+  @Test
+  public void testList() throws java.io.IOException {
+    String caseName = "test_list";
+    List<String> command = setTestCase(caseName);
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
@@ -556,9 +548,9 @@ public class RustXlangTest extends ForyTestBase {
     fory.serialize(buffer, itemList);
     fory.serialize(buffer, itemList2);
 
-    Path dataFile = Files.createTempFile("test_list", "data");
+    Path dataFile = Files.createTempFile(caseName, "data");
     Pair<Map<String, String>, File> env_workdir =
-        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+        setFilePath(dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     Assert.assertEquals(fory.deserialize(buffer2), strList);
@@ -567,7 +559,10 @@ public class RustXlangTest extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), itemList2);
   }
 
-  private void testMap(Language language, List<String> command) throws java.io.IOException {
+  @Test
+  public void testMap() throws java.io.IOException {
+    String caseName = "test_map";
+    List<String> command = setTestCase(caseName);
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
@@ -594,9 +589,9 @@ public class RustXlangTest extends ForyTestBase {
     itemMap.put("k4", item3);
     fory.serialize(buffer, strMap);
     fory.serialize(buffer, itemMap);
-    Path dataFile = Files.createTempFile("test_map", "data");
+    Path dataFile = Files.createTempFile(caseName, "data");
     Pair<Map<String, String>, File> env_workdir =
-        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+        setFilePath(dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     Assert.assertEquals(fory.deserialize(buffer2), strMap);
@@ -612,7 +607,10 @@ public class RustXlangTest extends ForyTestBase {
     Integer f6;
   }
 
-  private void testInteger(Language language, List<String> command) throws java.io.IOException {
+  @Test
+  public void testInteger() throws java.io.IOException {
+    String caseName = "test_integer";
+    List<String> command = setTestCase(caseName);
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
@@ -641,9 +639,9 @@ public class RustXlangTest extends ForyTestBase {
     fory.serialize(buffer, f5);
     fory.serialize(buffer, f6);
 
-    Path dataFile = Files.createTempFile("test_integer", "data");
+    Path dataFile = Files.createTempFile(caseName, "data");
     Pair<Map<String, String>, File> env_workdir =
-        setFilePath(language, command, dataFile, buffer.getBytes(0, buffer.writerIndex()));
+        setFilePath(dataFile, buffer.getBytes(0, buffer.writerIndex()));
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
 
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
@@ -662,6 +660,7 @@ public class RustXlangTest extends ForyTestBase {
     Assert.assertNull(fory.deserialize(buffer2));
   }
 
+  @Data
   static class MyStruct {
     int id;
 
@@ -721,8 +720,7 @@ public class RustXlangTest extends ForyTestBase {
   @Data
   static class EmptyWrapper {}
 
-  private void _testSkipCustom(
-      Fory fory1, Fory fory2, Language language, List<String> command, String caseName)
+  private void _testSkipCustom(Fory fory1, Fory fory2, List<String> command, String caseName)
       throws IOException {
     MyWrapper wrapper = new MyWrapper();
     wrapper.color = Color.White;
@@ -732,16 +730,17 @@ public class RustXlangTest extends ForyTestBase {
     wrapper.my_struct = myStruct;
     byte[] serialize = fory1.serialize(wrapper);
     Path dataFile = Files.createTempFile(caseName, "data");
-    Pair<Map<String, String>, File> env_workdir =
-        setFilePath(language, command, dataFile, serialize);
+    Pair<Map<String, String>, File> env_workdir = setFilePath(dataFile, serialize);
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     EmptyWrapper newWrapper = (EmptyWrapper) fory2.deserialize(buffer2);
     Assert.assertEquals(newWrapper, new EmptyWrapper());
   }
 
-  private void testSkipIdCustom(Language language, List<String> command)
-      throws java.io.IOException {
+  @Test
+  public void testSkipIdCustom() throws java.io.IOException {
+    String caseName = "test_skip_id_custom";
+    List<String> command = setTestCase(caseName);
     Fory fory1 =
         Fory.builder()
             .withLanguage(Language.XLANG)
@@ -762,11 +761,13 @@ public class RustXlangTest extends ForyTestBase {
     fory2.register(MyExt.class, 103);
     fory2.registerSerializer(MyExt.class, MyExtSerializer.class);
     fory2.register(EmptyWrapper.class, 104);
-    _testSkipCustom(fory1, fory2, language, command, "test_skip_id_custom");
+    _testSkipCustom(fory1, fory2, command, caseName);
   }
 
-  private void testSkipNameCustom(Language language, List<String> command)
-      throws java.io.IOException {
+  @Test
+  public void testSkipNameCustom() throws java.io.IOException {
+    String caseName = "test_skip_name_custom";
+    List<String> command = setTestCase(caseName);
     Fory fory1 =
         Fory.builder()
             .withLanguage(Language.XLANG)
@@ -787,11 +788,13 @@ public class RustXlangTest extends ForyTestBase {
     fory2.register(MyExt.class, "my_ext");
     fory2.registerSerializer(MyExt.class, MyExtSerializer.class);
     fory2.register(EmptyWrapper.class, "my_wrapper");
-    _testSkipCustom(fory1, fory2, language, command, "test_skip_name_custom");
+    _testSkipCustom(fory1, fory2, command, caseName);
   }
 
-  private void testConsistentNamed(Language language, List<String> command)
-      throws java.io.IOException {
+  @Test
+  public void testConsistentNamed() throws java.io.IOException {
+    String caseName = "test_consistent_named";
+    List<String> command = setTestCase(caseName);
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
@@ -817,12 +820,15 @@ public class RustXlangTest extends ForyTestBase {
       fory.serialize(buffer, myExt);
     }
     byte[] bytes = buffer.getBytes(0, buffer.writerIndex());
-    Path dataFile = Files.createTempFile("test_consistent_named", "data");
-    Pair<Map<String, String>, File> env_workdir = setFilePath(language, command, dataFile, bytes);
+    Path dataFile = Files.createTempFile(caseName, "data");
+    Pair<Map<String, String>, File> env_workdir = setFilePath(dataFile, bytes);
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     for (int i = 0; i < 3; i++) {
       Assert.assertEquals(fory.deserialize(buffer2), Color.White);
+    }
+    for (int i = 0; i < 3; i++) {
+      Assert.assertEquals(fory.deserialize(buffer2), myStruct);
     }
     for (int i = 0; i < 3; i++) {
       Assert.assertEquals(fory.deserialize(buffer2), myExt);
@@ -836,8 +842,10 @@ public class RustXlangTest extends ForyTestBase {
     double f3;
   }
 
-  private void testStructVersionCheck(Language language, List<String> command)
-      throws java.io.IOException {
+  @Test
+  public void testStructVersionCheck() throws java.io.IOException {
+    String caseName = "test_struct_version_check";
+    List<String> command = setTestCase(caseName);
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
@@ -860,8 +868,8 @@ public class RustXlangTest extends ForyTestBase {
         "Java serialized bytes (first 30): "
             + java.util.Arrays.toString(
                 java.util.Arrays.copyOf(bytes, Math.min(30, bytes.length))));
-    Path dataFile = Files.createTempFile("test_struct_version_check", "data");
-    Pair<Map<String, String>, File> env_workdir = setFilePath(language, command, dataFile, bytes);
+    Path dataFile = Files.createTempFile(caseName, "data");
+    Pair<Map<String, String>, File> env_workdir = setFilePath(dataFile, bytes);
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
     MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
     Assert.assertEquals(fory.deserialize(buffer2), obj);
@@ -882,24 +890,19 @@ public class RustXlangTest extends ForyTestBase {
     return TestUtils.executeCommand(command, waitTimeoutSeconds, mergedEnv, workDir);
   }
 
-  private static Pair<Map<String, String>, File> setFilePath(
-      Language peerLanguage, List<String> command, Path dataFile, byte[] data) throws IOException {
+  private static Pair<Map<String, String>, File> setFilePath(Path dataFile, byte[] data)
+      throws IOException {
     Files.deleteIfExists(dataFile);
     Files.write(dataFile, data);
     dataFile.toFile().deleteOnExit();
-
-    if (peerLanguage == Language.RUST) {
-      return Pair.of(
-          ImmutableMap.of(
-              "DATA_FILE", dataFile.toAbsolutePath().toString(),
-              "RUSTFLAGS", "-Awarnings",
-              "RUST_BACKTRACE", "1",
-              "ENABLE_FORY_DEBUG_OUTPUT", "1",
-              "FORY_PANIC_ON_ERROR", "1"),
-          new File("../../rust"));
-    } else {
-      return Pair.of(Collections.emptyMap(), new File("../../python"));
-    }
+    return Pair.of(
+        ImmutableMap.of(
+            "DATA_FILE", dataFile.toAbsolutePath().toString(),
+            "RUSTFLAGS", "-Awarnings",
+            "RUST_BACKTRACE", "1",
+            "ENABLE_FORY_DEBUG_OUTPUT", "1",
+            "FORY_PANIC_ON_ERROR", "1"),
+        new File("../../rust"));
   }
 
   private Object xserDe(Fory fory, Object obj) {

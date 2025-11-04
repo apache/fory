@@ -102,6 +102,9 @@ class BufferObject(ABC):
                 For non-contiguous data, a copy may be created to ensure contiguity.
         """
 
+    def raw(self):
+        return memoryview(self.getbuffer())
+
 
 class Fory:
     """

@@ -20,6 +20,12 @@ name = "fory-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
+description = "Apache Fory: Blazingly fast multi-language serialization framework with trait objects and reference support."
+license-file = "../../LICENSE"
+readme = "../README.md"
+repository = "https://github.com/apache/fory"
+keywords = ["serialization", "serde", "trait-object", "zero-copy", "schema-evolution"]
+categories = ["encoding"]
 
 [dependencies]
 proc-macro2 = { default-features = false, version = "1.0" }

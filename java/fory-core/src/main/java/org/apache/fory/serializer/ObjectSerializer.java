@@ -105,7 +105,6 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     }
     DescriptorGrouper grouper = typeResolver.createDescriptorGrouper(descriptors, false);
     descriptors = grouper.getSortedDescriptors();
-    System.out.println(descriptors.stream().map(Descriptor::getName).collect(Collectors.toList()));
     if (isRecord) {
       List<String> fieldNames =
           descriptors.stream().map(Descriptor::getName).collect(Collectors.toList());

@@ -451,6 +451,32 @@ impl Error {
         }
         err
     }
+
+    /// Enhances a [`Error::TypeError`] with additional type name information.
+    ///
+    /// If the error is a `TypeError`, appends the type name to the message.
+    /// Otherwise, returns the error unchanged.
+    ///
+    /// # Example
+    /// ```
+    /// use fory_core::error::Error;
+    ///
+    /// let err = Error::type_error("Type not registered");
+    /// let enhanced = Error::enhance_type_error::<String>(err);
+    /// // Result: "Type not registered (type: alloc::string::String)"
+    /// ```
+    #[inline(always)]
+    pub fn enhance_type_error<T: ?Sized + 'static>(err: Error) -> Error {
+        if let Error::TypeError(s) = err {
+            let mut msg = s.to_string();
+            msg.push_str(" (type: ");
+            msg.push_str(std::any::type_name::<T>());
+            msg.push(')');
+            Error::type_error(msg)
+        } else {
+            err
+        }
+    }
 }
 
 /// Ensures a condition is true; otherwise returns an [`enum@Error`].

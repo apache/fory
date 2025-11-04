@@ -32,7 +32,7 @@ pub enum Operation {
     Deserialize,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
 pub enum SerializerType {
     Protobuf,
     Fory,
@@ -54,11 +54,11 @@ pub enum DataType {
 #[command(about = "A profiler for Fory and Protobuf serialization performance")]
 struct Cli {
     /// The operation to perform
-    #[arg(short, long, value_enum)]
+    #[arg(short, long, value_enum, default_value_t = Operation::Serialize)]
     operation: Operation,
 
     /// The serializer to use
-    #[arg(short, long, value_enum)]
+    #[arg(short, long, value_enum, default_value_t = SerializerType::Fory)]
     serializer: SerializerType,
 
     /// Number of iterations to run
@@ -72,6 +72,10 @@ struct Cli {
     /// Data type to profile
     #[arg(short = 't', long, value_enum, default_value = "e-commerce-data")]
     data_type: DataType,
+
+    /// Print serialized sizes for all data types and serializers, then exit
+    #[arg(long)]
+    print_all_serialized_sizes: bool,
 }
 
 fn profile<T, S>(num_iterations: usize, data: &T, serializer: &S, operation: Operation)
@@ -169,8 +173,75 @@ fn generate_data<T: TestDataGenerator>(data_size: &str) -> T::Data {
     }
 }
 
+fn print_sizes_for_type<T>(type_label: &str, data_sizes: &[&str])
+where
+    T: TestDataGenerator,
+    T::Data: Clone,
+    ProtobufSerializer: Serializer<T::Data>,
+    ForySerializer: Serializer<T::Data>,
+{
+    for data_size in data_sizes {
+        let data = generate_data::<T>(data_size);
+        let mut results = Vec::new();
+        for serializer_type in SerializerType::value_variants() {
+            let serializer_kind = *serializer_type;
+            let result = match serializer_kind {
+                SerializerType::Protobuf => ProtobufSerializer::new().serialize(&data),
+                SerializerType::Fory => ForySerializer::new().serialize(&data),
+            };
+            results.push((serializer_kind, result));
+        }
+
+        let fory_size = results
+            .iter()
+            .find(|(kind, _)| *kind == SerializerType::Fory)
+            .and_then(|(_, result)| result.as_ref().ok().map(|bytes| bytes.len()))
+            .map(|size| size.to_string())
+            .unwrap_or_else(|| "error".to_string());
+
+        let protobuf_size = results
+            .iter()
+            .find(|(kind, _)| *kind == SerializerType::Protobuf)
+            .and_then(|(_, result)| result.as_ref().ok().map(|bytes| bytes.len()))
+            .map(|size| size.to_string())
+            .unwrap_or_else(|| "error".to_string());
+
+        println!(
+            "| {:<11} | {:<9} | {:>6} | {:>8} |",
+            type_label, data_size, fory_size, protobuf_size
+        );
+    }
+}
+
+fn print_all_serialized_sizes() {
+    const DATA_SIZES: [&str; 3] = ["small", "medium", "large"];
+    println!("| data type   | data size |   fory | protobuf |");
+    println!("|-------------|-----------|--------|----------|");
+    for data_type in DataType::value_variants() {
+        match data_type {
+            DataType::SimpleStruct => {
+                print_sizes_for_type::<SimpleStruct>("simple-struct", &DATA_SIZES)
+            }
+            DataType::SimpleList => print_sizes_for_type::<SimpleList>("simple-list", &DATA_SIZES),
+            DataType::SimpleMap => print_sizes_for_type::<SimpleMap>("simple-map", &DATA_SIZES),
+            DataType::Person => print_sizes_for_type::<Person>("person", &DATA_SIZES),
+            DataType::Company => print_sizes_for_type::<Company>("company", &DATA_SIZES),
+            DataType::ECommerceData => {
+                print_sizes_for_type::<ECommerceData>("e-commerce-data", &DATA_SIZES)
+            }
+            DataType::SystemData => print_sizes_for_type::<SystemData>("system-data", &DATA_SIZES),
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
+
+    if cli.print_all_serialized_sizes {
+        println!("Serialized sizes (bytes) for all data types and serializers");
+        print_all_serialized_sizes();
+        return;
+    }
 
     println!("Starting profiling...");
     println!("Operation: {:?}", cli.operation);

@@ -106,6 +106,14 @@
 //! - Field accessor methods that return references to the underlying data
 //! - Efficient serialization without object allocation
 //!
+//! ## Attributes
+//!
+//! - **`#[fory(debug)]` / `#[fory(debug = true)]`**: Enables per-field debug instrumentation
+//!   for the annotated struct, allowing you to install custom hooks via
+//!   `fory_core::serializer::struct_`.
+//! - **`#[fory(skip)]`**: Marks an individual field (or enum variant) to be ignored by the
+//!   generated serializer, retaining compatibility with previous releases.
+//!
 //! ## Field Types
 //!
 //! Both macros support a wide range of field types:
@@ -168,7 +176,7 @@
 
 use fory_row::derive_row;
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{parse_macro_input, spanned::Spanned, Attribute, DeriveInput, LitBool};
 
 mod fory_row;
 mod object;
@@ -198,16 +206,16 @@ mod util;
 ///     city: String,
 /// }
 /// ```
-#[proc_macro_derive(ForyObject, attributes(fory_debug))]
+#[proc_macro_derive(ForyObject, attributes(fory))]
 pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     // Check if this is being applied to a trait (which is not possible with derive macros)
     // Derive macros can only be applied to structs, enums, and unions
-    let debug_enabled = input
-        .attrs
-        .iter()
-        .any(|attr| attr.path().is_ident("fory_debug"));
+    let debug_enabled = match parse_debug_flag(&input.attrs) {
+        Ok(flag) => flag,
+        Err(err) => return err.into_compile_error().into(),
+    };
 
     object::derive_serializer(&input, debug_enabled)
 }
@@ -235,4 +243,36 @@ pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStr
 pub fn proc_macro_derive_fory_row(input: proc_macro::TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     derive_row(&input)
+}
+
+fn parse_debug_flag(attrs: &[Attribute]) -> syn::Result<bool> {
+    let mut debug_flag: Option<bool> = None;
+
+    for attr in attrs {
+        if attr.path().is_ident("fory") {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("debug") {
+                    let value = if meta.input.is_empty() {
+                        true
+                    } else {
+                        let lit: LitBool = meta.value()?.parse()?;
+                        lit.value
+                    };
+                    debug_flag = match debug_flag {
+                        Some(existing) if existing != value => {
+                            return Err(syn::Error::new(
+                                meta.path.span(),
+                                "conflicting `debug` attribute values",
+                            ));
+                        }
+                        Some(_) => debug_flag,
+                        None => Some(value),
+                    };
+                }
+                Ok(())
+            })?;
+        }
+    }
+
+    Ok(debug_flag.unwrap_or(false))
 }

@@ -301,6 +301,19 @@ public class TimeSerializers {
       int nanos = buffer.readInt32();
       return Duration.ofSeconds(seconds, nanos);
     }
+
+    @Override
+    public void xwrite(MemoryBuffer buffer, Duration value) {
+      buffer.writeVarInt64(value.getSeconds());
+      buffer.writeInt32(value.getNano());
+    }
+
+    @Override
+    public Duration xread(MemoryBuffer buffer) {
+      long seconds = buffer.readVarInt64();
+      int nanos = buffer.readInt32();
+      return Duration.ofSeconds(seconds, nanos);
+    }
   }
 
   public static class LocalDateTimeSerializer extends ImmutableTimeSerializer<LocalDateTime> {

@@ -168,20 +168,7 @@ assert!(Rc::ptr_eq(&decoded[0], &decoded[1]));
 assert!(Rc::ptr_eq(&decoded[1], &decoded[2]));
 ```
 
-For thread-safe shared references, use `Arc<T>`:
-
-```rust
-use std::sync::Arc;
-
-let shared = Arc::new(String::from("shared_value"));
-let data = vec![shared.clone(), shared.clone(), shared.clone()];
-
-let bytes = fory.serialize(&data);
-let decoded: Vec<Arc<String>> = fory.deserialize(&bytes)?;
-
-// Reference identity is preserved with Arc too
-assert!(Arc::ptr_eq(&decoded[0], &decoded[1]));
-```
+For thread-safe shared references, use `Arc<T>`.
 
 #### Circular References with Weak Pointers
 
@@ -559,37 +546,126 @@ assert_eq!(person_v2.phone, None);
 
 ### 5. Enum Support
 
-Apache Fory™ supports enums without data payloads (C-style enums). Each variant is assigned an ordinal value (0, 1, 2, ...) during serialization.
+Apache Fory™ supports three types of enum variants with full schema evolution in Compatible mode:
+
+**Variant Types:**
+
+- **Unit**: C-style enums (`Status::Active`)
+- **Unnamed**: Tuple-like variants (`Message::Pair(String, i32)`)
+- **Named**: Struct-like variants (`Event::Click { x: i32, y: i32 }`)
 
 **Features:**
 
-- Efficient varint encoding for ordinals
-- Schema evolution support in Compatible mode
-- Type-safe variant matching
+- Efficient varint encoding for variant ordinals
+- Schema evolution support (add/remove variants, add/remove fields)
 - Default variant support with `#[default]`
+- Automatic type mismatch handling
 
 ```rust
-use fory::ForyObject;
+use fory::{Fory, ForyObject};
 
 #[derive(Default, ForyObject, Debug, PartialEq)]
-enum Status {
+enum Value {
     #[default]
-    Pending,
-    Active,
-    Inactive,
-    Deleted,
+    Null,
+    Bool(bool),
+    Number(f64),
+    Text(String),
+    Object { name: String, value: i32 },
 }
 
 let mut fory = Fory::default();
-fory.register::<Status>(1);
+fory.register::<Value>(1)?;
 
-let status = Status::Active;
-let bytes = fory.serialize(&status);
-let decoded: Status = fory.deserialize(&bytes)?;
-assert_eq!(status, decoded);
+let value = Value::Object { name: "score".to_string(), value: 100 };
+let bytes = fory.serialize(&value)?;
+let decoded: Value = fory.deserialize(&bytes)?;
+assert_eq!(value, decoded);
 ```
 
-### 6. Custom Serializers
+#### Schema Evolution
+
+Compatible mode enables robust schema evolution with variant type encoding (2 bits):
+
+- `0b0` = Unit, `0b1` = Unnamed, `0b10` = Named
+
+```rust
+use fory::{Fory, ForyObject};
+
+// Old version
+#[derive(ForyObject)]
+enum OldEvent {
+    Click { x: i32, y: i32 },
+    Scroll { delta: f64 },
+}
+
+// New version - added field and variant
+#[derive(Default, ForyObject)]
+enum NewEvent {
+    #[default]
+    Unknown,
+    Click { x: i32, y: i32, timestamp: u64 },  // Added field
+    Scroll { delta: f64 },
+    KeyPress(String),  // New variant
+}
+
+let mut fory = Fory::builder().compatible().build();
+
+// Serialize with old schema
+let old_bytes = fory.serialize(&OldEvent::Click { x: 100, y: 200 })?;
+
+// Deserialize with new schema - timestamp gets default value (0)
+let new_event: NewEvent = fory.deserialize(&old_bytes)?;
+assert!(matches!(new_event, NewEvent::Click { x: 100, y: 200, timestamp: 0 }));
+```
+
+**Evolution capabilities:**
+
+- **Unknown variants** → Falls back to default variant
+- **Named variant fields** → Add/remove fields (missing fields use defaults)
+- **Unnamed variant elements** → Add/remove elements (extras skipped, missing use defaults)
+- **Variant type mismatches** → Automatically uses default value for current variant
+
+**Best practices:**
+
+- Always mark a default variant with `#[default]`
+- Named variants provide better evolution than unnamed
+- Use compatible mode for cross-version communication
+
+### 6. Tuple Support
+
+Apache Fory™ supports tuples up to 22 elements out of the box with efficient serialization in both compatible and non-compatible modes.
+
+**Features:**
+
+- Automatic serialization for tuples from 1 to 22 elements
+- Heterogeneous type support (each element can be a different type)
+- Schema evolution in Compatible mode (handles missing/extra elements)
+
+**Serialization modes:**
+
+1. **Non-compatible mode**: Serializes elements sequentially without collection headers for minimal overhead
+2. **Compatible mode**: Uses collection protocol with type metadata for schema evolution
+
+```rust
+use fory::{Fory, Error};
+
+let mut fory = Fory::default();
+
+// Tuple with heterogeneous types
+let data: (i32, String, bool, Vec<i32>) = (
+    42,
+    "hello".to_string(),
+    true,
+    vec![1, 2, 3],
+);
+
+let bytes = fory.serialize(&data)?;
+let decoded: (i32, String, bool, Vec<i32>) = fory.deserialize(&bytes)?;
+assert_eq!(data, decoded);
+```
+
+### 7. Custom Serializers
 
 For types that don't support `#[derive(ForyObject)]`, implement the `Serializer` trait manually. This is useful for:
 
@@ -848,7 +924,7 @@ fory.register::<MyStruct>(100);
 fory.register_by_namespace::<MyStruct>("com.example", "MyStruct");
 ```
 
-See [xlang_type_mapping.md](https://fory.apache.org/docs/specification/fory_xlang_serialization_spec) for type mapping across languages.
+See [xlang_type_mapping.md](https://fory.apache.org/docs/specification/xlang_type_mapping) for type mapping across languages.
 
 ## ⚡ Performance
 
@@ -973,7 +1049,7 @@ Note: Static data types (non-dynamic types) are secure by nature and not subject
 - **Type registry errors**: An error like `TypeId ... not found in type_info registry` means the type was never registered with the current `Fory` instance. Confirm that every serializable struct or trait implementation calls `fory.register::<T>(type_id)` before serialization and that the same IDs are reused on the deserialize side.
 - **Quick error lookup**: Prefer the static constructors on `fory_core::error::Error` (`Error::type_mismatch`, `Error::invalid_data`, `Error::unknown`, etc.) rather than instantiating variants manually. This keeps diagnostics consistent and makes opt-in panics work.
 - **Panic on error for backtraces**: Toggle `FORY_PANIC_ON_ERROR=1` (or `true`) alongside `RUST_BACKTRACE=1` when running tests or binaries to panic at the exact site an error is constructed. Reset the variable afterwards to avoid aborting user-facing code paths.
-- **Struct field tracing**: Add the `#[fory_debug]` attribute alongside `#[derive(ForyObject)]` to tell the macro to emit hook invocations for that type. Once compiled with debug hooks, call `set_before_write_field_func`, `set_after_write_field_func`, `set_before_read_field_func`, or `set_after_read_field_func` (from `fory-core/src/serializer/struct_.rs`) to plug in custom callbacks, and use `reset_struct_debug_hooks()` when you want the defaults back.
+- **Struct field tracing**: Add the `#[fory(debug)]` attribute (or `#[fory(debug = true)]`) alongside `#[derive(ForyObject)]` to tell the macro to emit hook invocations for that type. Once compiled with debug hooks, call `set_before_write_field_func`, `set_after_write_field_func`, `set_before_read_field_func`, or `set_after_read_field_func` (from `fory-core/src/serializer/struct_.rs`) to plug in custom callbacks, and use `reset_struct_debug_hooks()` when you want the defaults back.
 - **Lightweight logging**: Without custom hooks, enable `ENABLE_FORY_DEBUG_OUTPUT=1` to print field-level read/write events emitted by the default hook functions. This is especially useful when investigating alignment or cursor mismatches.
 - **Test-time hygiene**: Some integration tests expect `FORY_PANIC_ON_ERROR` to remain unset. Export it only for focused debugging sessions, and prefer `cargo test --features tests -p tests --test <case>` when isolating failing scenarios.
 

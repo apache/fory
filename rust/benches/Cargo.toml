@@ -41,6 +41,11 @@ prost-types = "0.12"
 rand = "0.8"
 criterion = "0.5"
 clap = { version = "4.0", features = ["derive"] }
+pprof = { version = "=0.14.0", features = ["flamegraph", "criterion"], optional = true }
+
+[features]
+default = []
+profiling = ["pprof"]
 
 [build-dependencies]
 prost-build = "0.12"

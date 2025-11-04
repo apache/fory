@@ -124,6 +124,7 @@ go generate ./...
 - All cargo commands must be executed within the `rust` directory.
 - All changes to `rust` must pass the clippy check and tests.
 - You must set `RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1` when debuging rust tests to get backtrace.
+- You must add `-- --nocapture` to cargo test command when debuging tests.
 - You must not set `FORY_PANIC_ON_ERROR=1` when runing all rust tests to check whether all tests pass, some tests will check Error content, which will fail if error just panic.
 
 ```bash
@@ -146,7 +147,7 @@ cargo test -p tests  --test $test_file $test_method
 cargo test --test mod $dir$::$test_file::$test_method
 
 # debug specific test under subdirectory and get backtrace
-RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1 ENABLE_FORY_DEBUG_OUTPUT=1 cargo test --test mod $dir$::$test_file::$test_method
+RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1 ENABLE_FORY_DEBUG_OUTPUT=1 cargo test --test mod $dir$::$test_file::$test_method -- --nocapture
 
 # inspect generated code by fory derive macro
 cargo expand --test mod $mod$::$file$ > expanded.rs
@@ -463,7 +464,7 @@ Fory rust provides macro-based serialization and deserialization. Fory rust cons
 ### Cross-Language Considerations
 
 - **Protocol Compatibility**: Ensure serialization compatibility across languages
-- **Type Mapping**: Understand type mapping between languages (see `docs/guide/xlang_type_mapping.md`)
+- **Type Mapping**: Understand type mapping between languages (see `docs/specification/xlang_type_mapping.md`)
 - **Endianness**: Handle byte order correctly for cross-platform compatibility
 - **Version Compatibility**: Maintain backward compatibility when possible
 

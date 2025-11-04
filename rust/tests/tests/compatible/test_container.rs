@@ -21,7 +21,7 @@ use fory_core::fory::Fory;
 use fory_derive::ForyObject;
 
 #[derive(ForyObject, PartialEq, Eq, Hash, Debug)]
-#[fory_debug]
+#[fory(debug)]
 struct Item {
     id: i32,
 }

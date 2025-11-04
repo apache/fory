@@ -704,7 +704,7 @@ fn test_consistent_named() {
 }
 
 #[derive(ForyObject, Debug, PartialEq)]
-#[fory_debug]
+#[fory(debug)]
 struct VersionCheckStruct {
     f1: i32,
     f2: Option<String>,

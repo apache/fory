@@ -25,5 +25,6 @@ pub use meta_string::{
 };
 pub use string_util::{buffer_rw_string, get_latin1_length, is_latin, murmurhash3_x64_128};
 pub use type_meta::{
-    FieldInfo, FieldType, TypeMeta, TypeMetaLayer, NAMESPACE_ENCODINGS, TYPE_NAME_ENCODINGS,
+    sort_fields, FieldInfo, FieldType, TypeMeta, TypeMetaLayer, NAMESPACE_ENCODINGS,
+    TYPE_NAME_ENCODINGS,
 };

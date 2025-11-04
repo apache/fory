@@ -151,7 +151,7 @@ types.
 
 ### Type mapping
 
-See [Type mapping](../guide/xlang_type_mapping.md)
+See [Type mapping](xlang_type_mapping.md)
 
 ## Spec overview
 
@@ -596,6 +596,26 @@ Which encoding to choose:
 - For JDK9+: fory use `coder` in `String` object for encoding, `latin`/`utf-16` will be used for encoding.
 - If the string is encoded by `utf-8`, then fory will use `utf-8` to decode the data. Cross-language string
   serialization of fory uses `utf-8` by default.
+
+### duration
+
+Duration is an absolute length of time, independent of any calendar/timezone, as a count of seconds and nanoseconds.
+
+Format:
+
+```
+| signed varint64: seconds | signed int32: nanoseconds |
+```
+
+- `seconds`: Number of seconds in the duration, encoded as a signed varint64. Can be positive or negative.
+- `nanoseconds`: Nanosecond adjustment to the duration, encoded as a signed int32. Value range is [0, 999,999,999] for positive durations, and [-999,999,999, 0] for negative durations.
+
+Notes:
+
+- The duration is stored as two separate fields to maintain precision and avoid overflow issues.
+- Seconds are encoded using varint64 for compact representation of common duration values.
+- Nanoseconds are stored as a fixed int32 since the range is limited.
+- The sign of the duration is determined by the seconds field. When seconds is 0, the sign is determined by nanoseconds.
 
 ### collection/list
 

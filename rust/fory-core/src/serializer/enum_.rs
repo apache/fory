@@ -17,9 +17,11 @@
 
 use crate::ensure;
 use crate::error::Error;
+use crate::meta::FieldInfo;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::{RefFlag, TypeId};
+use crate::TypeResolver;
 
 #[inline(always)]
 pub fn actual_type_id(type_id: u32, register_by_name: bool, _compatible: bool) -> u32 {
@@ -115,4 +117,15 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Er
         let _type_name_msb = context.read_meta_string()?;
     }
     Ok(())
+}
+
+pub trait NamedEnumVariantMetaTrait: 'static {
+    fn fory_get_sorted_field_names() -> &'static [&'static str] {
+        &[]
+    }
+
+    #[allow(unused_variables)]
+    fn fory_fields_info(type_resolver: &TypeResolver) -> Result<Vec<FieldInfo>, Error> {
+        Ok(Vec::default())
+    }
 }

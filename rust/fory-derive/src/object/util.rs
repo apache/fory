@@ -279,7 +279,18 @@ pub(super) fn try_vec_of_option_primitive(node: &TypeNode) -> Option<TokenStream
 
 impl fmt::Display for TypeNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.generics.is_empty() {
+        if self.name == "Tuple" {
+            // Format as Rust tuple syntax: (T1, T2, T3)
+            write!(
+                f,
+                "({})",
+                self.generics
+                    .iter()
+                    .map(|g| g.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        } else if self.generics.is_empty() {
             write!(f, "{}", self.name)
         } else {
             write!(
@@ -301,6 +312,10 @@ pub(super) fn extract_type_name(ty: &Type) -> String {
         type_path.path.segments.last().unwrap().ident.to_string()
     } else if matches!(ty, Type::TraitObject(_)) {
         "TraitObject".to_string()
+    } else if matches!(ty, Type::Tuple(_)) {
+        "Tuple".to_string()
+    } else if matches!(ty, Type::Array(_)) {
+        "Array".to_string()
     } else {
         quote!(#ty).to_string()
     }
@@ -324,6 +339,23 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
         return TypeNode {
             name: "TraitObject".to_string(),
             generics: vec![],
+        };
+    }
+
+    // Handle tuples - make child generics empty
+    if let Type::Tuple(_tuple) = ty {
+        return TypeNode {
+            name: "Tuple".to_string(),
+            generics: vec![],
+        };
+    }
+
+    // Handle arrays - extract element type
+    if let Type::Array(array) = ty {
+        let elem_node = parse_generic_tree(&array.elem);
+        return TypeNode {
+            name: "Array".to_string(),
+            generics: vec![elem_node],
         };
     }
 
@@ -353,11 +385,86 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
 }
 
 pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
+    // Special handling for tuples: always use FieldType { LIST, nullable: true, generics: vec![UNKNOWN] }
+    if node.name == "Tuple" {
+        return quote! {
+            fory_core::meta::FieldType::new(
+                fory_core::types::TypeId::LIST as u32,
+                true,
+                vec![fory_core::meta::FieldType {
+                    type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                    nullable: true,
+                    generics: vec![],
+                }]
+            )
+        };
+    }
+
+    // Special handling for arrays: treat them as lists with element type generic
+    if node.name == "Array" {
+        if let Some(elem_node) = node.generics.first() {
+            let elem_token = generic_tree_to_tokens(elem_node);
+            // Check if element is primitive to determine the correct type ID
+            let is_primitive_elem = PRIMITIVE_TYPE_NAMES.contains(&elem_node.name.as_str());
+            if is_primitive_elem {
+                // For primitive arrays, use primitive array type ID
+                let type_id_token = match elem_node.name.as_str() {
+                    "bool" => quote! { fory_core::types::TypeId::BOOL_ARRAY as u32 },
+                    "i8" => quote! { fory_core::types::TypeId::INT8_ARRAY as u32 },
+                    "i16" => quote! { fory_core::types::TypeId::INT16_ARRAY as u32 },
+                    "i32" => quote! { fory_core::types::TypeId::INT32_ARRAY as u32 },
+                    "i64" => quote! { fory_core::types::TypeId::INT64_ARRAY as u32 },
+                    "f32" => quote! { fory_core::types::TypeId::FLOAT32_ARRAY as u32 },
+                    "f64" => quote! { fory_core::types::TypeId::FLOAT64_ARRAY as u32 },
+                    "u8" => quote! { fory_core::types::TypeId::U8 as u32 },
+                    "u16" => quote! { fory_core::types::TypeId::U16_ARRAY as u32 },
+                    "u32" => quote! { fory_core::types::TypeId::U32_ARRAY as u32 },
+                    "u64" => quote! { fory_core::types::TypeId::U64_ARRAY as u32 },
+                    "usize" => quote! { fory_core::types::TypeId::USIZE_ARRAY as u32 },
+                    _ => quote! { fory_core::types::TypeId::LIST as u32 },
+                };
+                return quote! {
+                    fory_core::meta::FieldType::new(
+                        #type_id_token,
+                        false,
+                        vec![]
+                    )
+                };
+            } else {
+                // For non-primitive arrays, use LIST type ID with element type as generic
+                return quote! {
+                    fory_core::meta::FieldType::new(
+                        fory_core::types::TypeId::LIST as u32,
+                        false,
+                        vec![#elem_token]
+                    )
+                };
+            }
+        } else {
+            // Array without element type info - shouldn't happen
+            return quote! { compile_error!("Array missing element type"); };
+        }
+    }
+
     // If Option, unwrap it before generating children
     let (nullable, base_node) = if node.name == "Option" {
         if let Some(inner) = node.generics.first() {
             if inner.name == "Option" {
                 return quote! { compile_error!("Nested adjacent Option is not allowed!"); };
+            }
+            // Special handling for Option<Tuple>
+            if inner.name == "Tuple" {
+                return quote! {
+                    fory_core::meta::FieldType::new(
+                        fory_core::types::TypeId::LIST as u32,
+                        true,
+                        vec![fory_core::meta::FieldType {
+                            type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                            nullable: true,
+                            generics: vec![],
+                        }]
+                    )
+                };
             }
             // Unwrap Option and propagate parsing
             (true, inner)
@@ -390,6 +497,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     // Build the syn::Type from the DISPLAY of base_node, not the original node if Option
     let ty: syn::Type = syn::parse_str(&base_node.to_string()).unwrap();
 
+    // Get type ID
     let get_type_id = if let Some(ts) = primitive_vec {
         ts
     } else {
@@ -399,11 +507,22 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     };
 
     quote! {
-        fory_core::meta::FieldType::new(
-            #get_type_id,
-            #nullable,
-            vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>
-        )
+        {
+            let type_id = #get_type_id;
+            let mut generics = vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>;
+            // For tuples and sets, if no generic info is available, add UNKNOWN element
+            // This handles type aliases to tuples where we can't detect the tuple at macro time
+            if (type_id == fory_core::types::TypeId::LIST as u32
+                || type_id == fory_core::types::TypeId::SET as u32)
+                && generics.is_empty() {
+                generics.push(fory_core::meta::FieldType::new(
+                    fory_core::types::TypeId::UNKNOWN as u32,
+                    true,
+                    vec![]
+                ));
+            }
+            fory_core::meta::FieldType::new(type_id, #nullable, generics)
+        }
     }
 }
 
@@ -422,7 +541,9 @@ fn extract_option_inner(s: &str) -> Option<&str> {
     s.strip_prefix("Option<")?.strip_suffix(">")
 }
 
-const PRIMITIVE_TYPE_NAMES: [&str; 7] = ["bool", "i8", "i16", "i32", "i64", "f32", "f64"];
+const PRIMITIVE_TYPE_NAMES: [&str; 12] = [
+    "bool", "i8", "i16", "i32", "i64", "f32", "f64", "u8", "u16", "u32", "u64", "usize",
+];
 
 fn get_primitive_type_id(ty: &str) -> u32 {
     match ty {
@@ -433,6 +554,11 @@ fn get_primitive_type_id(ty: &str) -> u32 {
         "i64" => TypeId::INT64 as u32,
         "f32" => TypeId::FLOAT32 as u32,
         "f64" => TypeId::FLOAT64 as u32,
+        "u8" => TypeId::U8 as u32,
+        "u16" => TypeId::U16 as u32,
+        "u32" => TypeId::U32 as u32,
+        "u64" => TypeId::U64 as u32,
+        "usize" => TypeId::USIZE as u32,
         _ => unreachable!("Unknown primitive type: {}", ty),
     }
 }
@@ -474,7 +600,7 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
         _ => {}
     }
 
-    // Check primitive arrays
+    // Check primitive arrays (Vec)
     match ty {
         "Vec<bool>" => return TypeId::BOOL_ARRAY as u32,
         "Vec<i8>" => return TypeId::INT8_ARRAY as u32,
@@ -484,7 +610,37 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
         "Vec<f16>" => return TypeId::FLOAT16_ARRAY as u32,
         "Vec<f32>" => return TypeId::FLOAT32_ARRAY as u32,
         "Vec<f64>" => return TypeId::FLOAT64_ARRAY as u32,
+        "Vec<u16>" => return TypeId::U16_ARRAY as u32,
+        "Vec<u32>" => return TypeId::U32_ARRAY as u32,
+        "Vec<u64>" => return TypeId::U64_ARRAY as u32,
+        "Vec<usize>" => return TypeId::USIZE_ARRAY as u32,
         _ => {}
+    }
+
+    // Check primitive arrays (fixed-size arrays [T; N])
+    // These will be serialized similarly to Vec but with fixed size
+    if ty.starts_with('[') && ty.contains(';') {
+        // Extract the element type from [T; N]
+        if let Some(elem_ty) = ty.strip_prefix('[').and_then(|s| s.split(';').next()) {
+            match elem_ty {
+                "bool" => return TypeId::BOOL_ARRAY as u32,
+                "i8" => return TypeId::INT8_ARRAY as u32,
+                "i16" => return TypeId::INT16_ARRAY as u32,
+                "i32" => return TypeId::INT32_ARRAY as u32,
+                "i64" => return TypeId::INT64_ARRAY as u32,
+                "f16" => return TypeId::FLOAT16_ARRAY as u32,
+                "f32" => return TypeId::FLOAT32_ARRAY as u32,
+                "f64" => return TypeId::FLOAT64_ARRAY as u32,
+                "u16" => return TypeId::U16_ARRAY as u32,
+                "u32" => return TypeId::U32_ARRAY as u32,
+                "u64" => return TypeId::U64_ARRAY as u32,
+                "usize" => return TypeId::USIZE_ARRAY as u32,
+                _ => {
+                    // Non-primitive array elements, treat as LIST
+                    return TypeId::LIST as u32;
+                }
+            }
+        }
     }
 
     // Check collection types
@@ -504,6 +660,11 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
         return TypeId::MAP as u32;
     }
 
+    // Check tuple types (represented as "Tuple" by extract_type_name or starts with '(')
+    if ty == "Tuple" || ty.starts_with('(') {
+        return TypeId::LIST as u32;
+    }
+
     // Unknown type
     TypeId::UNKNOWN as u32
 }
@@ -521,6 +682,11 @@ fn get_primitive_type_size(type_id_num: u32) -> i32 {
         TypeId::FLOAT16 => 2,
         TypeId::FLOAT32 => 4,
         TypeId::FLOAT64 => 8,
+        TypeId::U8 => 1,
+        TypeId::U16 => 2,
+        TypeId::U32 => 4,
+        TypeId::U64 => 8,
+        TypeId::USIZE => 8,
         _ => unreachable!(),
     }
 }
@@ -687,8 +853,14 @@ pub(crate) fn get_sorted_field_names(fields: &[&Field]) -> Vec<String> {
     all_fields.into_iter().map(|(name, _, _)| name).collect()
 }
 
+pub(crate) fn get_filtered_fields_iter<'a>(
+    fields: &'a [&'a Field],
+) -> impl Iterator<Item = &'a Field> {
+    fields.iter().filter(|field| !is_skip_field(field)).copied()
+}
 pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
-    let sorted_names = get_sorted_field_names(fields);
+    let filterd_fields: Vec<&Field> = get_filtered_fields_iter(fields).collect();
+    let sorted_names = get_sorted_field_names(&filterd_fields);
     let names = sorted_names.iter().map(|name| {
         quote! { #name }
     });
@@ -816,6 +988,43 @@ pub(crate) fn should_skip_type_info_for_field(ty: &Type) -> bool {
     }
     // Primitive, nullable primitive, internal types, List/Set/Map skip type info
     true
+}
+
+pub(crate) fn is_skip_field(field: &syn::Field) -> bool {
+    field.attrs.iter().any(|attr| {
+        attr.path().is_ident("fory") && {
+            let mut skip = false;
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("skip") {
+                    skip = true;
+                }
+                Ok(())
+            });
+            skip
+        }
+    })
+}
+
+pub(crate) fn is_skip_enum_variant(variant: &syn::Variant) -> bool {
+    variant.attrs.iter().any(|attr| {
+        attr.path().is_ident("fory") && {
+            let mut skip = false;
+            let _ = attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("skip") {
+                    skip = true;
+                }
+                Ok(())
+            });
+            skip
+        }
+    })
+}
+
+pub(crate) fn is_default_value_variant(variant: &syn::Variant) -> bool {
+    variant
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("default"))
 }
 
 #[cfg(test)]

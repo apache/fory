@@ -31,11 +31,13 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.13.0"
+version = "0.14.0"
 rust-version = "1.70"
+description = "Apache Fory: Blazingly fast multi-language serialization framework with trait objects and reference support."
 license = "Apache-2.0"
+license-file = "../LICENSE"
 readme = "README.md"
 repository = "https://github.com/apache/fory"
 edition = "2021"
-keywords = ["fory", "data", "serialization"]
+keywords = ["serialization", "serde", "trait-object", "zero-copy", "schema-evolution"]
 categories = ["encoding"]

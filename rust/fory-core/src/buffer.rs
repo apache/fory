@@ -130,6 +130,11 @@ impl<'a> Writer<'a> {
     }
 
     #[inline(always)]
+    pub fn write_usize(&mut self, value: usize) {
+        self.bf.write_u64::<LittleEndian>(value as u64).unwrap();
+    }
+
+    #[inline(always)]
     pub fn write_varint32(&mut self, value: i32) {
         let zigzag = ((value as i64) << 1) ^ ((value as i64) >> 31);
         self._write_varuint32(zigzag as u32)
@@ -410,10 +415,16 @@ impl<'a> Reader<'a> {
     }
 
     #[inline(always)]
-    pub fn read_u8_uncheck(&mut self) -> u8 {
+    fn read_u8_uncheck(&mut self) -> u8 {
         let result = unsafe { self.bf.get_unchecked(self.cursor) };
         self.move_next(1);
         *result
+    }
+
+    #[inline(always)]
+    pub fn peek_u8(&mut self) -> Result<u8, Error> {
+        let result = self.value_at(self.cursor)?;
+        Ok(result)
     }
 
     #[inline(always)]
@@ -460,6 +471,14 @@ impl<'a> Reader<'a> {
         let result = LittleEndian::read_u64(slice);
         self.move_next(8);
         Ok(result)
+    }
+
+    #[inline(always)]
+    pub fn read_usize(&mut self) -> Result<usize, Error> {
+        let slice = self.slice_after_cursor();
+        let result = LittleEndian::read_u64(slice);
+        self.move_next(8);
+        Ok(result as usize)
     }
 
     #[inline(always)]

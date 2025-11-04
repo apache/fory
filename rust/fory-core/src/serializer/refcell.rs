@@ -45,6 +45,7 @@ use std::rc::Rc;
 /// Simply delegates to the serializer for `T`, allowing interior mutable
 /// containers to be included in serialized graphs.
 impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
+    #[inline(always)]
     fn fory_read(
         context: &mut ReadContext,
         read_ref_info: bool,
@@ -60,6 +61,7 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
         )?))
     }
 
+    #[inline(always)]
     fn fory_read_with_type_info(
         context: &mut ReadContext,
         read_ref_info: bool,
@@ -75,14 +77,17 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
         )?))
     }
 
+    #[inline(always)]
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         Ok(RefCell::new(T::fory_read_data(context)?))
     }
 
+    #[inline(always)]
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         T::fory_read_type_info(context)
     }
 
+    #[inline(always)]
     fn fory_write(
         &self,
         context: &mut WriteContext,
@@ -101,6 +106,7 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
         )
     }
 
+    #[inline(always)]
     fn fory_write_data_generic(
         &self,
         context: &mut WriteContext,
@@ -109,27 +115,33 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
         T::fory_write_data_generic(&*self.borrow(), context, has_generics)
     }
 
+    #[inline(always)]
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         T::fory_write_data(&*self.borrow(), context)
     }
 
+    #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
         T::fory_write_type_info(context)
     }
 
+    #[inline(always)]
     fn fory_reserved_space() -> usize {
         // RefCell is transparent, delegate to inner type
         T::fory_reserved_space()
     }
 
+    #[inline(always)]
     fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error> {
         T::fory_get_type_id(type_resolver)
     }
 
+    #[inline(always)]
     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
         (*self.borrow()).fory_type_id_dyn(type_resolver)
     }
 
+    #[inline(always)]
     fn fory_static_type_id() -> TypeId
     where
         Self: Sized,
@@ -137,6 +149,15 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
         T::fory_static_type_id()
     }
 
+    #[inline(always)]
+    fn fory_is_wrapper_type() -> bool
+    where
+        Self: Sized,
+    {
+        true
+    }
+
+    #[inline(always)]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
