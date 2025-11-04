@@ -53,9 +53,9 @@ jobs:
             ~/.cache/bazel/_bazel_*/*/external
             ~/Library/Caches/bazel/_bazel_*/*/external
             C:\users\runneradmin\_bazel_runneradmin\*/external
-          key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
+          key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
           restore-keys: |
-            bazel-repo-${{ runner.os }}-${{ runner.arch }}-
+            bazel-repo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-
       - name: Cache Bazel build outputs
         uses: actions/cache@v4
         with:

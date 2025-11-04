@@ -49,9 +49,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/bazel/_bazel_*/*/external
-          key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
+          key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-py38-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
           restore-keys: |
-            bazel-repo-${{ runner.os }}-${{ runner.arch }}-
+            bazel-repo-${{ runner.os }}-${{ runner.arch }}-py38-
       - name: Cache Bazel build outputs
         uses: actions/cache@v4
         with:
