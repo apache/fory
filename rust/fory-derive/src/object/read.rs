@@ -21,8 +21,9 @@ use syn::Field;
 
 use super::util::{
     classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
-    create_wrapper_types_rc, extract_type_name, get_struct_name, is_debug_enabled,
-    is_primitive_type, is_skip_field, should_skip_type_info_for_field, skip_ref_flag, StructField,
+    create_wrapper_types_rc, extract_type_name, get_primitive_reader_method, get_struct_name,
+    is_debug_enabled, is_direct_primitive_numeric_type, is_primitive_type, is_skip_field,
+    should_skip_type_info_for_field, skip_ref_flag, StructField,
 };
 
 pub(crate) fn create_private_field_name(field: &Field) -> Ident {
@@ -185,7 +186,16 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident) -> TokenStream {
         _ => {
             let skip_ref_flag = skip_ref_flag(ty);
             let skip_type_info = should_skip_type_info_for_field(ty);
-            if skip_type_info {
+
+            // Check if this is a direct primitive numeric type that can use direct reader calls
+            if is_direct_primitive_numeric_type(ty) {
+                let type_name = extract_type_name(ty);
+                let reader_method = get_primitive_reader_method(&type_name);
+                let reader_ident = syn::Ident::new(reader_method, proc_macro2::Span::call_site());
+                quote! {
+                    let #private_ident = context.reader.#reader_ident()?;
+                }
+            } else if skip_type_info {
                 // Known types (primitives, strings, collections) - skip type info at compile time
                 if skip_ref_flag {
                     quote! {

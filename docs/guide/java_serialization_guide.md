@@ -47,6 +47,7 @@ public class Example {
       .build();
     // Registering types can reduce class name serialization overhead, but not mandatory.
     // If class registration enabled, all custom types must be registered.
+    // Registration order must be consistent if id is not specified
     fory.register(SomeClass.class);
     byte[] bytes = fory.serialize(object);
     System.out.println(fory.deserialize(bytes));

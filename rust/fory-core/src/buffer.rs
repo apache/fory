@@ -80,6 +80,11 @@ impl<'a> Writer<'a> {
     }
 
     #[inline(always)]
+    pub fn write_bool(&mut self, value: bool) {
+        self.bf.write_u8(if value { 1 } else { 0 }).unwrap();
+    }
+
+    #[inline(always)]
     pub fn write_u8(&mut self, value: u8) {
         self.bf.write_u8(value).unwrap();
     }

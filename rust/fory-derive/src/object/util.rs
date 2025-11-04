@@ -567,6 +567,59 @@ pub(super) fn is_primitive_type(ty: &str) -> bool {
     PRIMITIVE_TYPE_NAMES.contains(&ty)
 }
 
+/// Mapping of primitive type names to their writer and reader method names
+/// Order: (type_name, writer_method, reader_method)
+static PRIMITIVE_IO_METHODS: &[(&str, &str, &str)] = &[
+    ("bool", "write_bool", "read_bool"),
+    ("i8", "write_i8", "read_i8"),
+    ("i16", "write_i16", "read_i16"),
+    ("i32", "write_varint32", "read_varint32"),
+    ("i64", "write_varint64", "read_varint64"),
+    ("f32", "write_f32", "read_f32"),
+    ("f64", "write_f64", "read_f64"),
+    ("u8", "write_u8", "read_u8"),
+    ("u16", "write_u16", "read_u16"),
+    ("u32", "write_u32", "read_u32"),
+    ("u64", "write_u64", "read_u64"),
+    ("usize", "write_usize", "read_usize"),
+];
+
+/// Check if a type is a direct primitive numeric type (not wrapped in Option, Vec, etc.)
+pub(super) fn is_direct_primitive_numeric_type(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty {
+        if let Some(seg) = type_path.path.segments.last() {
+            // Check if it's a simple type path without generics
+            if matches!(seg.arguments, PathArguments::None) {
+                let type_name = seg.ident.to_string();
+                return PRIMITIVE_IO_METHODS
+                    .iter()
+                    .any(|(name, _, _)| *name == type_name.as_str());
+            }
+        }
+    }
+    false
+}
+
+/// Get the writer method name for a primitive numeric type
+/// Panics if type_name is not a primitive type
+pub(super) fn get_primitive_writer_method(type_name: &str) -> &'static str {
+    PRIMITIVE_IO_METHODS
+        .iter()
+        .find(|(name, _, _)| *name == type_name)
+        .map(|(_, writer, _)| *writer)
+        .unwrap_or_else(|| panic!("type_name '{}' must be a primitive type", type_name))
+}
+
+/// Get the reader method name for a primitive numeric type
+/// Panics if type_name is not a primitive type
+pub(super) fn get_primitive_reader_method(type_name: &str) -> &'static str {
+    PRIMITIVE_IO_METHODS
+        .iter()
+        .find(|(name, _, _)| *name == type_name)
+        .map(|(_, _, reader)| *reader)
+        .unwrap_or_else(|| panic!("type_name '{}' must be a primitive type", type_name))
+}
+
 pub(crate) fn get_type_id_by_type_ast(ty: &Type) -> u32 {
     let ty_str: String = ty
         .to_token_stream()
