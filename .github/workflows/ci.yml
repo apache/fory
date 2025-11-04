@@ -418,6 +418,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: ./ci/run_ci.sh install_bazel_windows
+      - name: Clean Bazel cache (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo "Cleaning Bazel cache to ensure fresh build..."
+          bazel clean --expunge || true
       - name: Run Python CI
         shell: bash
         run: python ./ci/run_ci.py python
