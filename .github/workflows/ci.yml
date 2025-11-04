@@ -75,6 +75,7 @@ jobs:
           key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
           restore-keys: |
             bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+          enableCrossOsArchive: false
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
@@ -82,11 +83,13 @@ jobs:
           key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-py38-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
           restore-keys: |
             bazel-repo-${{ runner.os }}-${{ runner.arch }}-py38-
+          enableCrossOsArchive: false
       - name: Cache Bazel build outputs
         uses: actions/cache@v4
         with:
           path: ~/.cache/bazel
           key: bazel-build-java-${{ runner.os }}-${{ runner.arch }}-${{ matrix.java-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
+          enableCrossOsArchive: false
       - name: Install bazel
         run: python ./ci/run_ci.py cpp --install-deps-only
       - name: Install python dependencies
@@ -139,6 +142,7 @@ jobs:
           key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
           restore-keys: |
             bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+          enableCrossOsArchive: false
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
@@ -146,11 +150,13 @@ jobs:
           key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-py38-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
           restore-keys: |
             bazel-repo-${{ runner.os }}-${{ runner.arch }}-py38-
+          enableCrossOsArchive: false
       - name: Cache Bazel build outputs
         uses: actions/cache@v4
         with:
           path: ~/.cache/bazel
           key: bazel-build-openj9-${{ runner.os }}-${{ runner.arch }}-${{ matrix.java-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
+          enableCrossOsArchive: false
       - name: Install bazel
         run: python ./ci/run_ci.py cpp --install-deps-only
       - name: Install pyfory for xlang tests
@@ -379,6 +385,7 @@ jobs:
           key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
           restore-keys: |
             bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+          enableCrossOsArchive: false
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
@@ -389,6 +396,7 @@ jobs:
           key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
           restore-keys: |
             bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-
+          enableCrossOsArchive: false
       - name: Cache Bazel build outputs
         uses: actions/cache@v4
         with:
@@ -397,6 +405,7 @@ jobs:
             ~/Library/Caches/bazel
             C:\users\runneradmin\_bazel_runneradmin
           key: bazel-build-cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE') }}
+          enableCrossOsArchive: false
       - name: Run C++ CI with Bazel
         run: python ./ci/run_ci.py cpp
   python:
@@ -423,6 +432,7 @@ jobs:
           key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
           restore-keys: |
             bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+          enableCrossOsArchive: false
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
@@ -433,6 +443,7 @@ jobs:
           key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
           restore-keys: |
             bazel-repo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-
+          enableCrossOsArchive: false
       - name: Cache Bazel build outputs
         uses: actions/cache@v4
         with:
@@ -441,6 +452,7 @@ jobs:
             ~/Library/Caches/bazel
             C:\users\runneradmin\_bazel_runneradmin
           key: bazel-build-python-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
+          enableCrossOsArchive: false
       - name: Install bazel (Unix)
         if: runner.os != 'Windows'
         shell: bash
@@ -481,6 +493,7 @@ jobs:
           key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
           restore-keys: |
             bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+          enableCrossOsArchive: false
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
@@ -488,11 +501,13 @@ jobs:
           key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-py38-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
           restore-keys: |
             bazel-repo-${{ runner.os }}-${{ runner.arch }}-py38-
+          enableCrossOsArchive: false
       - name: Cache Bazel build outputs
         uses: actions/cache@v4
         with:
           path: ~/.cache/bazel
           key: bazel-build-go-${{ runner.os }}-${{ runner.arch }}-${{ matrix.go-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
+          enableCrossOsArchive: false
       - name: Install bazel
         run: python ./ci/run_ci.py cpp --install-deps-only
       - name: Install python dependencies
