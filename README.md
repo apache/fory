@@ -222,6 +222,7 @@ public class Example {
       // replace `build` with `buildThreadSafeFory` for Thread-Safe Usage
       .build();
     // Register your classes (required when class registration is enabled)
+    // NOTE: The registration order is important. If registration order is inconsistent, the allocated ID will be different, and the deserialization will failed !!!
     fory.register(Person.class);
     // Serialize
     Person person = new Person();
