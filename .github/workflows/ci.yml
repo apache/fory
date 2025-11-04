@@ -385,7 +385,6 @@ jobs:
           key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
           restore-keys: |
             bazel-binary-${{ runner.os }}-${{ runner.arch }}-
-          enableCrossOsArchive: false
       - name: Cache Bazel repository cache
         uses: actions/cache@v4
         with:
@@ -396,7 +395,6 @@ jobs:
           key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
           restore-keys: |
             bazel-repo-${{ runner.os }}-${{ runner.arch }}-py311-
-          enableCrossOsArchive: false
       - name: Cache Bazel build outputs
         uses: actions/cache@v4
         with:
@@ -405,7 +403,6 @@ jobs:
             ~/Library/Caches/bazel
             C:\users\runneradmin\_bazel_runneradmin
           key: bazel-build-cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE') }}
-          enableCrossOsArchive: false
       - name: Run C++ CI with Bazel
         run: python ./ci/run_ci.py cpp
   python:
@@ -422,37 +419,59 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-      - name: Cache Bazel binary
+      - name: Cache Bazel binary (Unix)
+        if: runner.os != 'Windows'
         uses: actions/cache@v4
         with:
           path: |
             ~/bin/bazel
             ~/.local/bin/bazel
-            C:\bazel\bazel.exe
           key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
           restore-keys: |
             bazel-binary-${{ runner.os }}-${{ runner.arch }}-
           enableCrossOsArchive: false
-      - name: Cache Bazel repository cache
+      - name: Cache Bazel binary (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: C:\bazel\bazel.exe
+          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
+          restore-keys: |
+            bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+      - name: Cache Bazel repository cache (Unix)
+        if: runner.os != 'Windows'
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/bazel/_bazel_*/*/external
             ~/Library/Caches/bazel/_bazel_*/*/external
-            C:\users\runneradmin\_bazel_runneradmin\*/external
           key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
           restore-keys: |
             bazel-repo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-
           enableCrossOsArchive: false
-      - name: Cache Bazel build outputs
+      - name: Cache Bazel repository cache (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: C:\users\runneradmin\_bazel_runneradmin\*/external
+          key: bazel-repo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('WORKSPACE', '.bazelrc', 'bazel/**') }}
+          restore-keys: |
+            bazel-repo-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-
+      - name: Cache Bazel build outputs (Unix)
+        if: runner.os != 'Windows'
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/bazel
             ~/Library/Caches/bazel
-            C:\users\runneradmin\_bazel_runneradmin
           key: bazel-build-python-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
           enableCrossOsArchive: false
+      - name: Cache Bazel build outputs (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: C:\users\runneradmin\_bazel_runneradmin
+          key: bazel-build-python-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
       - name: Install bazel (Unix)
         if: runner.os != 'Windows'
         shell: bash
