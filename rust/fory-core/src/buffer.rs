@@ -17,7 +17,7 @@
 
 use crate::error::Error;
 use crate::meta::buffer_rw_string::read_latin1_simd;
-use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
+use byteorder::{ByteOrder, LittleEndian};
 use std::cmp::max;
 
 /// Threshold for using SIMD optimizations in string operations.
@@ -81,62 +81,102 @@ impl<'a> Writer<'a> {
 
     #[inline(always)]
     pub fn write_bool(&mut self, value: bool) {
-        self.bf.write_u8(if value { 1 } else { 0 }).unwrap();
+        self.bf.push(if value { 1 } else { 0 });
     }
 
     #[inline(always)]
     pub fn write_u8(&mut self, value: u8) {
-        self.bf.write_u8(value).unwrap();
+        self.bf.push(value);
     }
 
     #[inline(always)]
     pub fn write_i8(&mut self, value: i8) {
-        self.bf.write_i8(value).unwrap();
+        self.bf.push(value as u8);
     }
 
     #[inline(always)]
     pub fn write_u16(&mut self, value: u16) {
-        self.bf.write_u16::<LittleEndian>(value).unwrap();
+        #[cfg(target_endian = "little")]
+        {
+            let bytes = unsafe { &*(&value as *const u16 as *const [u8; 2]) };
+            self.bf.extend_from_slice(bytes);
+        }
+        #[cfg(target_endian = "big")]
+        {
+            self.bf.extend_from_slice(&value.to_le_bytes());
+        }
     }
 
     #[inline(always)]
     pub fn write_i16(&mut self, value: i16) {
-        self.bf.write_i16::<LittleEndian>(value).unwrap();
+        self.write_u16(value as u16);
     }
 
     #[inline(always)]
     pub fn write_u32(&mut self, value: u32) {
-        self.bf.write_u32::<LittleEndian>(value).unwrap();
+        #[cfg(target_endian = "little")]
+        {
+            let bytes = unsafe { &*(&value as *const u32 as *const [u8; 4]) };
+            self.bf.extend_from_slice(bytes);
+        }
+        #[cfg(target_endian = "big")]
+        {
+            self.bf.extend_from_slice(&value.to_le_bytes());
+        }
     }
 
     #[inline(always)]
     pub fn write_i32(&mut self, value: i32) {
-        self.bf.write_i32::<LittleEndian>(value).unwrap();
+        self.write_u32(value as u32);
     }
 
     #[inline(always)]
     pub fn write_f32(&mut self, value: f32) {
-        self.bf.write_f32::<LittleEndian>(value).unwrap();
+        #[cfg(target_endian = "little")]
+        {
+            let bytes = unsafe { &*(&value as *const f32 as *const [u8; 4]) };
+            self.bf.extend_from_slice(bytes);
+        }
+        #[cfg(target_endian = "big")]
+        {
+            self.bf.extend_from_slice(&value.to_bits().to_le_bytes());
+        }
     }
 
     #[inline(always)]
     pub fn write_i64(&mut self, value: i64) {
-        self.bf.write_i64::<LittleEndian>(value).unwrap();
+        self.write_u64(value as u64);
     }
 
     #[inline(always)]
     pub fn write_f64(&mut self, value: f64) {
-        self.bf.write_f64::<LittleEndian>(value).unwrap();
+        #[cfg(target_endian = "little")]
+        {
+            let bytes = unsafe { &*(&value as *const f64 as *const [u8; 8]) };
+            self.bf.extend_from_slice(bytes);
+        }
+        #[cfg(target_endian = "big")]
+        {
+            self.bf.extend_from_slice(&value.to_bits().to_le_bytes());
+        }
     }
 
     #[inline(always)]
     pub fn write_u64(&mut self, value: u64) {
-        self.bf.write_u64::<LittleEndian>(value).unwrap();
+        #[cfg(target_endian = "little")]
+        {
+            let bytes = unsafe { &*(&value as *const u64 as *const [u8; 8]) };
+            self.bf.extend_from_slice(bytes);
+        }
+        #[cfg(target_endian = "big")]
+        {
+            self.bf.extend_from_slice(&value.to_le_bytes());
+        }
     }
 
     #[inline(always)]
     pub fn write_usize(&mut self, value: usize) {
-        self.bf.write_u64::<LittleEndian>(value as u64).unwrap();
+        self.write_u64(value as u64);
     }
 
     #[inline(always)]
@@ -153,7 +193,7 @@ impl<'a> Writer<'a> {
     #[inline(always)]
     fn _write_varuint32(&mut self, value: u32) {
         if value < 0x80 {
-            self.write_u8(value as u8);
+            self.bf.push(value as u8);
         } else if value < 0x4000 {
             // 2 bytes
             let u1 = ((value as u8) & 0x7F) | 0x80;
@@ -165,7 +205,7 @@ impl<'a> Writer<'a> {
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
             let u3 = (value >> 14) as u8;
             self.write_u16(((u2 as u16) << 8) | u1 as u16);
-            self.write_u8(u3);
+            self.bf.push(u3);
         } else if value < 0x10000000 {
             // 4 bytes
             let u1 = ((value as u8) & 0x7F) | 0x80;
@@ -185,7 +225,7 @@ impl<'a> Writer<'a> {
             self.write_u32(
                 ((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32,
             );
-            self.write_u8(u5);
+            self.bf.push(u5);
         }
     }
 
@@ -203,7 +243,7 @@ impl<'a> Writer<'a> {
     #[inline(always)]
     fn _write_varuint64(&mut self, value: u64) {
         if value < 0x80 {
-            self.write_u8(value as u8);
+            self.bf.push(value as u8);
         } else if value < 0x4000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (value >> 7) as u8;
@@ -213,7 +253,7 @@ impl<'a> Writer<'a> {
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
             let u3 = (value >> 14) as u8;
             self.write_u16(((u2 as u16) << 8) | u1 as u16);
-            self.write_u8(u3);
+            self.bf.push(u3);
         } else if value < 0x10000000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
@@ -231,7 +271,7 @@ impl<'a> Writer<'a> {
             self.write_u32(
                 ((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32,
             );
-            self.write_u8(u5);
+            self.bf.push(u5);
         } else if value < 0x40000000000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
@@ -255,7 +295,7 @@ impl<'a> Writer<'a> {
                 ((u4 as u32) << 24) | ((u3 as u32) << 16) | ((u2 as u32) << 8) | u1 as u32,
             );
             self.write_u16(((u6 as u16) << 8) | u5 as u16);
-            self.write_u8(u7);
+            self.bf.push(u7);
         } else if value < 0x100000000000000 {
             let u1 = ((value as u8) & 0x7F) | 0x80;
             let u2 = (((value >> 7) as u8) & 0x7F) | 0x80;
@@ -295,7 +335,7 @@ impl<'a> Writer<'a> {
                     | (u2 as u64) << 8
                     | (u1 as u64),
             );
-            self.write_u8(u9);
+            self.bf.push(u9);
         }
     }
 
@@ -303,7 +343,7 @@ impl<'a> Writer<'a> {
     pub fn write_varuint36_small(&mut self, value: u64) {
         assert!(value < (1u64 << 36), "value too large for 36-bit varint");
         if value < 0x80 {
-            self.write_u8(value as u8);
+            self.bf.push(value as u8);
         } else if value < 0x4000 {
             let b0 = ((value & 0x7F) as u8) | 0x80;
             let b1 = (value >> 7) as u8;
@@ -448,7 +488,7 @@ impl<'a> Reader<'a> {
     pub fn read_u16(&mut self) -> Result<u16, Error> {
         let slice = self.slice_after_cursor();
         let result = LittleEndian::read_u16(slice);
-        self.move_next(2);
+        self.cursor += 2;
         Ok(result)
     }
 
@@ -461,7 +501,7 @@ impl<'a> Reader<'a> {
     pub fn read_u32(&mut self) -> Result<u32, Error> {
         let slice = self.slice_after_cursor();
         let result = LittleEndian::read_u32(slice);
-        self.move_next(4);
+        self.cursor += 4;
         Ok(result)
     }
 
@@ -474,16 +514,13 @@ impl<'a> Reader<'a> {
     pub fn read_u64(&mut self) -> Result<u64, Error> {
         let slice = self.slice_after_cursor();
         let result = LittleEndian::read_u64(slice);
-        self.move_next(8);
+        self.cursor += 8;
         Ok(result)
     }
 
     #[inline(always)]
     pub fn read_usize(&mut self) -> Result<usize, Error> {
-        let slice = self.slice_after_cursor();
-        let result = LittleEndian::read_u64(slice);
-        self.move_next(8);
-        Ok(result as usize)
+        Ok(self.read_u64()? as usize)
     }
 
     #[inline(always)]
@@ -495,7 +532,7 @@ impl<'a> Reader<'a> {
     pub fn read_f32(&mut self) -> Result<f32, Error> {
         let slice = self.slice_after_cursor();
         let result = LittleEndian::read_f32(slice);
-        self.move_next(4);
+        self.cursor += 4;
         Ok(result)
     }
 
@@ -503,7 +540,7 @@ impl<'a> Reader<'a> {
     pub fn read_f64(&mut self) -> Result<f64, Error> {
         let slice = self.slice_after_cursor();
         let result = LittleEndian::read_f64(slice);
-        self.move_next(8);
+        self.cursor += 8;
         Ok(result)
     }
 

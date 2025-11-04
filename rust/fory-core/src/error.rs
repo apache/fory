@@ -15,22 +15,30 @@
 // specific language governing permissions and limitations
 // under the License.
 
+//! # PERFORMANCE CRITICAL MODULE
+//!
+//! **WARNING**: This module is highly performance-sensitive. Changes to error
+//! constructor attributes (`#[inline]`, `#[cold]`, `#[track_caller]`) can
+//! impact serialization/deserialization performance throughout the entire codebase.
+//!
+//! ## Why This Module Is Performance Critical
+//!
+//! Error constructors are called in **every** buffer read/write operation and type check.
+//! Even though these functions are rarely executed (error paths), their mere presence and
+//! inlining behavior affects how LLVM optimizes the **hot paths** (successful operations).
+
 use std::borrow::Cow;
-use std::sync::OnceLock;
 
 use thiserror::Error;
 
-/// Global flag to check if FORY_PANIC_ON_ERROR environment variable is set.
-static PANIC_ON_ERROR: OnceLock<bool> = OnceLock::new();
+/// Global flag to check if FORY_PANIC_ON_ERROR environment variable is set at compile time.
+/// Set FORY_PANIC_ON_ERROR=1 at compile time to enable panic on error.
+pub const PANIC_ON_ERROR: bool = option_env!("FORY_PANIC_ON_ERROR").is_some();
 
 /// Check if FORY_PANIC_ON_ERROR environment variable is set.
-#[inline]
-pub fn should_panic_on_error() -> bool {
-    *PANIC_ON_ERROR.get_or_init(|| {
-        std::env::var("FORY_PANIC_ON_ERROR")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
-    })
+#[inline(always)]
+pub const fn should_panic_on_error() -> bool {
+    PANIC_ON_ERROR
 }
 
 /// Error type for Fory serialization and deserialization operations.
@@ -188,10 +196,11 @@ impl Error {
     /// let err = Error::type_mismatch(1, 2);
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn type_mismatch(type_a: u32, type_b: u32) -> Self {
         let err = Error::TypeMismatch(type_a, type_b);
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -208,10 +217,11 @@ impl Error {
     /// let err = Error::buffer_out_of_bound(10, 20, 25);
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn buffer_out_of_bound(offset: usize, length: usize, capacity: usize) -> Self {
         let err = Error::BufferOutOfBound(offset, length, capacity);
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -229,10 +239,11 @@ impl Error {
     /// let err = Error::encode_error(format!("Failed to encode field {}", "name"));
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn encode_error<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::EncodeError(s.into());
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -250,10 +261,11 @@ impl Error {
     /// let err = Error::invalid_data(format!("Invalid data at position {}", 42));
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn invalid_data<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::InvalidData(s.into());
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -271,10 +283,11 @@ impl Error {
     /// let err = Error::invalid_ref(format!("Invalid ref id {}", 123));
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn invalid_ref<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::InvalidRef(s.into());
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -292,10 +305,11 @@ impl Error {
     /// let err = Error::unknown_enum(format!("Unknown variant {}", 5));
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn unknown_enum<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::UnknownEnum(s.into());
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -313,10 +327,11 @@ impl Error {
     /// let err = Error::type_error(format!("Expected type {}", "String"));
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn type_error<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::TypeError(s.into());
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -334,10 +349,11 @@ impl Error {
     /// let err = Error::encoding_error(format!("Failed to encode as {}", "UTF-8"));
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn encoding_error<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::EncodingError(s.into());
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -355,10 +371,11 @@ impl Error {
     /// let err = Error::depth_exceed(format!("Depth {} exceeds max {}", 100, 64));
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn depth_exceed<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::DepthExceed(s.into());
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -376,10 +393,11 @@ impl Error {
     /// let err = Error::unsupported(format!("Type {} not supported", "MyType"));
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn unsupported<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::Uunsupported(s.into());
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -397,10 +415,11 @@ impl Error {
     /// let err = Error::not_allowed(format!("Cannot perform {}", "delete"));
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn not_allowed<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::NotAllowed(s.into());
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -418,10 +437,11 @@ impl Error {
     /// let err = Error::struct_version_mismatch(format!("Class {} version mismatch", "Foo"));
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn struct_version_mismatch<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::StructVersionMismatch(s.into());
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -443,10 +463,11 @@ impl Error {
     /// let err = Error::unknown(format!("ID:{} not found", 1));
     /// ```
     #[inline(always)]
+    #[cold]
     #[track_caller]
     pub fn unknown<S: Into<Cow<'static, str>>>(s: S) -> Self {
         let err = Error::Unknown(s.into());
-        if should_panic_on_error() {
+        if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
         err
@@ -465,7 +486,7 @@ impl Error {
     /// let enhanced = Error::enhance_type_error::<String>(err);
     /// // Result: "Type not registered (type: alloc::string::String)"
     /// ```
-    #[inline(always)]
+    #[inline(never)]
     pub fn enhance_type_error<T: ?Sized + 'static>(err: Error) -> Error {
         if let Error::TypeError(s) = err {
             let mut msg = s.to_string();
