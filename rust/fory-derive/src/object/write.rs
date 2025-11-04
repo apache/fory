@@ -17,8 +17,9 @@
 
 use super::util::{
     classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
-    create_wrapper_types_rc, get_filtered_fields_iter, get_struct_name, get_type_id_by_type_ast,
-    is_debug_enabled, should_skip_type_info_for_field, skip_ref_flag, StructField,
+    create_wrapper_types_rc, extract_type_name, get_filtered_fields_iter,
+    get_primitive_writer_method, get_struct_name, get_type_id_by_type_ast, is_debug_enabled,
+    is_direct_primitive_numeric_type, should_skip_type_info_for_field, skip_ref_flag, StructField,
 };
 use fory_core::types::TypeId;
 use proc_macro2::{Ident, TokenStream};
@@ -185,7 +186,24 @@ pub fn gen_write_field(field: &Field, ident: &Ident, use_self: bool) -> TokenStr
             let skip_ref_flag = skip_ref_flag(ty);
             let skip_type_info = should_skip_type_info_for_field(ty);
             let type_id = get_type_id_by_type_ast(ty);
-            if type_id == TypeId::LIST as u32
+
+            // Check if this is a direct primitive numeric type that can use direct writer calls
+            if is_direct_primitive_numeric_type(ty) {
+                let type_name = extract_type_name(ty);
+                let writer_method = get_primitive_writer_method(&type_name);
+                let writer_ident = syn::Ident::new(writer_method, proc_macro2::Span::call_site());
+                // For primitives:
+                // - use_self=true: #value_ts is `self.field`, which is T (copy happens automatically)
+                // - use_self=false: #value_ts is `field` from pattern match on &self, which is &T
+                let value_expr = if use_self {
+                    quote! { #value_ts }
+                } else {
+                    quote! { *#value_ts }
+                };
+                quote! {
+                    context.writer.#writer_ident(#value_expr);
+                }
+            } else if type_id == TypeId::LIST as u32
                 || type_id == TypeId::SET as u32
                 || type_id == TypeId::MAP as u32
             {
