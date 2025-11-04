@@ -51,9 +51,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/bazel
-          key: bazel-build-release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'BUILD', 'WORKSPACE') }}
-          restore-keys: |
-            bazel-build-release-${{ runner.os }}-${{ runner.arch }}-
+          key: bazel-build-release-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
       - name: Install bazel
         run: ./ci/run_ci.sh install_bazel
       - name: Build and test wheels

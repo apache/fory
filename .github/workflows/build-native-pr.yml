@@ -62,10 +62,7 @@ jobs:
             ~/.cache/bazel
             ~/Library/Caches/bazel
             C:\users\runneradmin\_bazel_runneradmin
-          key: bazel-build-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'BUILD', 'WORKSPACE') }}
-          restore-keys: |
-            bazel-build-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-
-            bazel-build-${{ runner.os }}-${{ runner.arch }}-
+          key: bazel-build-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
       - name: Install bazel
         if: runner.os != 'Windows'
         run: ./ci/run_ci.sh install_bazel

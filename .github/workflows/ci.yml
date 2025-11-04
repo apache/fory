@@ -85,10 +85,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/bazel
-          key: bazel-build-java-${{ runner.os }}-${{ runner.arch }}-${{ matrix.java-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'BUILD', 'WORKSPACE') }}
-          restore-keys: |
-            bazel-build-java-${{ runner.os }}-${{ runner.arch }}-${{ matrix.java-version }}-
-            bazel-build-java-${{ runner.os }}-${{ runner.arch }}-
+          key: bazel-build-java-${{ runner.os }}-${{ runner.arch }}-${{ matrix.java-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
       - name: Install bazel
         run: python ./ci/run_ci.py cpp --install-deps-only
       - name: Install python dependencies
@@ -151,10 +148,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/bazel
-          key: bazel-build-openj9-${{ runner.os }}-${{ runner.arch }}-${{ matrix.java-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'BUILD', 'WORKSPACE') }}
-          restore-keys: |
-            bazel-build-openj9-${{ runner.os }}-${{ runner.arch }}-${{ matrix.java-version }}-
-            bazel-build-openj9-${{ runner.os }}-${{ runner.arch }}-
+          key: bazel-build-openj9-${{ runner.os }}-${{ runner.arch }}-${{ matrix.java-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
       - name: Install bazel
         run: python ./ci/run_ci.py cpp --install-deps-only
       - name: Install pyfory for xlang tests
@@ -400,8 +394,6 @@ jobs:
             ~/Library/Caches/bazel
             C:\users\runneradmin\_bazel_runneradmin
           key: bazel-build-cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE') }}
-          restore-keys: |
-            bazel-build-cpp-${{ runner.os }}-${{ runner.arch }}-
       - name: Run C++ CI with Bazel
         run: python ./ci/run_ci.py cpp
   python:
@@ -444,10 +436,7 @@ jobs:
             ~/.cache/bazel
             ~/Library/Caches/bazel
             C:\users\runneradmin\_bazel_runneradmin
-          key: bazel-build-python-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'BUILD', 'WORKSPACE') }}
-          restore-keys: |
-            bazel-build-python-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-
-            bazel-build-python-${{ runner.os }}-${{ runner.arch }}-
+          key: bazel-build-python-${{ runner.os }}-${{ runner.arch }}-${{ matrix.python-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
       - name: Install bazel (Unix)
         if: runner.os != 'Windows'
         shell: bash
@@ -498,10 +487,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/bazel
-          key: bazel-build-go-${{ runner.os }}-${{ runner.arch }}-${{ matrix.go-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'BUILD', 'WORKSPACE') }}
-          restore-keys: |
-            bazel-build-go-${{ runner.os }}-${{ runner.arch }}-${{ matrix.go-version }}-
-            bazel-build-go-${{ runner.os }}-${{ runner.arch }}-
+          key: bazel-build-go-${{ runner.os }}-${{ runner.arch }}-${{ matrix.go-version }}-${{ hashFiles('cpp/**', 'python/**/*.pyx', 'python/**/*.pxd', 'BUILD', 'WORKSPACE') }}
       - name: Install bazel
         run: python ./ci/run_ci.py cpp --install-deps-only
       - name: Install python dependencies
