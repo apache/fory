@@ -587,9 +587,9 @@ public class XtypeResolver extends TypeResolver {
     registerDefaultTypes(Types.INT8, Byte.class, byte.class);
     registerDefaultTypes(Types.INT16, Short.class, short.class);
     if(this.fory.compressInt()) {
-        registerDefaultTypes(Types.INT32, Integer.class, int.class, AtomicInteger.class);
-    } else {
         registerDefaultTypes(Types.VAR_INT32, Integer.class, int.class, AtomicInteger.class);
+    } else {
+        registerDefaultTypes(Types.INT32, Integer.class, int.class, AtomicInteger.class);
     }
     registerDefaultTypes(Types.INT64, Long.class, long.class, AtomicLong.class);
     registerDefaultTypes(Types.FLOAT32, Float.class, float.class);

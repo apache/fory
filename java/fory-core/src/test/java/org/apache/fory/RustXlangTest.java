@@ -74,7 +74,7 @@ public class RustXlangTest extends ForyTestBase {
 
   private static final int RUST_TESTCASE_INDEX = 4;
 
-  @BeforeClass
+//  @BeforeClass
   public void isRustJavaCIEnabled() {
     String enabled = System.getenv("FORY_RUST_JAVA_CI");
     if (enabled == null || !enabled.equals("1")) {
@@ -335,6 +335,18 @@ public class RustXlangTest extends ForyTestBase {
     Blue,
     White,
   }
+
+    @Test
+    public void testCrossLanguageSe1324rializer() {
+      int a = 10;
+        Fory build = Fory.builder()
+                .withLanguage(Language.XLANG)
+                .withCompatibleMode(CompatibleMode.COMPATIBLE)
+                .build();
+        byte[] serialize = build.serialize(a);
+        int b  = (int) build.deserialize(serialize);
+        Assert.assertEquals(a, b);
+    }
 
   @Test
   public void testCrossLanguageSerializer() throws Exception {
