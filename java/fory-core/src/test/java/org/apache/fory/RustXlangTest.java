@@ -77,7 +77,6 @@ public class RustXlangTest extends ForyTestBase {
   @BeforeClass
   public void isRustJavaCIEnabled() {
     String enabled = System.getenv("FORY_RUST_JAVA_CI");
-    enabled = null;
     if (enabled == null || !enabled.equals("1")) {
       throw new SkipException("Skipping RustXlangTest: FORY_RUST_JAVA_CI not set to 1");
     }
