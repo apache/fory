@@ -29,6 +29,7 @@ fn test_unsigned_numbers() {
     test_roundtrip(&fory, u32::MAX);
     test_roundtrip(&fory, u64::MAX);
     test_roundtrip(&fory, usize::MAX);
+    test_roundtrip(&fory, u128::MAX);
 }
 
 #[test]
@@ -39,6 +40,7 @@ fn test_unsigned_arrays() {
     test_roundtrip(&fory, vec![0u32, 1000, 1000000, u32::MAX]);
     test_roundtrip(&fory, vec![0u64, 1000000, 1000000000000, u64::MAX]);
     test_roundtrip(&fory, vec![0usize, 1000000, 1000000000000, usize::MAX]);
+    test_roundtrip(&fory, vec![0u128, 1000000000000, u128::MAX]);
 }
 
 #[test]
@@ -49,6 +51,7 @@ fn test_unsigned_arrays_when_xlang() {
     assert!(fory.serialize(&vec![u32::MAX]).is_err());
     assert!(fory.serialize(&vec![u64::MAX]).is_err());
     assert!(fory.serialize(&vec![usize::MAX]).is_err());
+    assert!(fory.serialize(&vec![u128::MAX]).is_err());
 }
 
 #[test]
@@ -60,11 +63,13 @@ fn test_unsigned_struct_non_compatible() {
         c: u32,
         d: u64,
         e: usize,
+        f: u128,
         vec_u8: Vec<u8>,
         vec_u16: Vec<u16>,
         vec_u32: Vec<u32>,
         vec_u64: Vec<u64>,
         vec_usize: Vec<usize>,
+        vec_u128: Vec<u128>,
     }
 
     let mut fory = Fory::default();
@@ -76,11 +81,13 @@ fn test_unsigned_struct_non_compatible() {
         c: u32::MAX,
         d: u64::MAX,
         e: usize::MAX,
+        f: u128::MAX,
         vec_u8: vec![0, 1, 10, u8::MAX],
         vec_u16: vec![0, 100, 1000, u16::MAX],
         vec_u32: vec![0, 1000, 1000000, u32::MAX],
         vec_u64: vec![0, 1000000, 1000000000000, u64::MAX],
         vec_usize: vec![0, 1000000, 1000000000000, usize::MAX],
+        vec_u128: vec![0u128, 1000000000000, u128::MAX],
     };
 
     let bytes = fory.serialize(&data).unwrap();
@@ -97,11 +104,13 @@ fn test_unsigned_struct_compatible() {
         c: u32,
         d: u64,
         e: usize,
+        f: u128,
         vec_u8: Vec<u8>,
         vec_u16: Vec<u16>,
         vec_u32: Vec<u32>,
         vec_u64: Vec<u64>,
         vec_usize: Vec<usize>,
+        vec_u128: Vec<u128>,
     }
 
     let mut fory = Fory::default().compatible(true);
@@ -113,11 +122,13 @@ fn test_unsigned_struct_compatible() {
         c: u32::MAX,
         d: u64::MAX,
         e: usize::MAX,
+        f: u128::MAX,
         vec_u8: vec![0, 1, 10, u8::MAX],
         vec_u16: vec![0, 100, 1000, u16::MAX],
         vec_u32: vec![0, 1000, 1000000, u32::MAX],
         vec_u64: vec![0, 1000000, 1000000000000, u64::MAX],
         vec_usize: vec![0, 1000000, 1000000000000, usize::MAX],
+        vec_u128: vec![0u128, 1000000000000, u128::MAX],
     };
 
     let bytes = fory.serialize(&data).unwrap();
@@ -195,6 +206,7 @@ fn test_unsigned_edge_cases() {
     test_roundtrip(&fory, 0u32);
     test_roundtrip(&fory, 0u64);
     test_roundtrip(&fory, 0usize);
+    test_roundtrip(&fory, 0u128);
 
     // Test maximum values
     test_roundtrip(&fory, u8::MAX);
@@ -202,6 +214,7 @@ fn test_unsigned_edge_cases() {
     test_roundtrip(&fory, u32::MAX);
     test_roundtrip(&fory, u64::MAX);
     test_roundtrip(&fory, usize::MAX);
+    test_roundtrip(&fory, u128::MAX);
 
     // Test empty arrays
     test_roundtrip(&fory, Vec::<u8>::new());
@@ -209,6 +222,7 @@ fn test_unsigned_edge_cases() {
     test_roundtrip(&fory, Vec::<u32>::new());
     test_roundtrip(&fory, Vec::<u64>::new());
     test_roundtrip(&fory, Vec::<usize>::new());
+    test_roundtrip(&fory, Vec::<u128>::new());
 }
 
 #[test]
@@ -220,6 +234,7 @@ fn test_unsigned_with_option_non_compatible() {
         opt_u32: Option<u32>,
         opt_u64: Option<u64>,
         opt_usize: Option<usize>,
+        opt_u128: Option<u128>,
     }
 
     let mut fory = Fory::default();
@@ -232,6 +247,7 @@ fn test_unsigned_with_option_non_compatible() {
         opt_u32: Some(u32::MAX),
         opt_u64: Some(u64::MAX),
         opt_usize: Some(usize::MAX),
+        opt_u128: Some(u128::MAX),
     };
 
     let bytes = fory.serialize(&data_some).unwrap();
@@ -245,6 +261,7 @@ fn test_unsigned_with_option_non_compatible() {
         opt_u32: None,
         opt_u64: None,
         opt_usize: None,
+        opt_u128: None,
     };
 
     let bytes = fory.serialize(&data_none).unwrap();
@@ -261,6 +278,7 @@ fn test_unsigned_with_option_compatible() {
         opt_u32: Option<u32>,
         opt_u64: Option<u64>,
         opt_usize: Option<usize>,
+        opt_u128: Option<u128>,
     }
 
     let mut fory = Fory::default().compatible(true);
@@ -273,6 +291,7 @@ fn test_unsigned_with_option_compatible() {
         opt_u32: Some(u32::MAX),
         opt_u64: Some(u64::MAX),
         opt_usize: Some(usize::MAX),
+        opt_u128: Some(u128::MAX),
     };
 
     let bytes = fory.serialize(&data_some).unwrap();
@@ -286,6 +305,7 @@ fn test_unsigned_with_option_compatible() {
         opt_u32: None,
         opt_u64: None,
         opt_usize: None,
+        opt_u128: None,
     };
 
     let bytes = fory.serialize(&data_none).unwrap();
@@ -310,6 +330,7 @@ fn test_unsigned_mixed_fields_compatible() {
         new_u64: u64,
         new_opt_u32: Option<u32>,
         new_usize: usize,
+        new_u128: u128,
     }
 
     let mut fory1 = Fory::default().compatible(true);
@@ -330,7 +351,8 @@ fn test_unsigned_mixed_fields_compatible() {
     assert_eq!(result.vec_u32, vec![1000, 2000, 3000]);
     assert_eq!(result.new_u64, 0); // Default value
     assert_eq!(result.new_opt_u32, None); // Default value
-    assert_eq!(result.new_usize, 0)
+    assert_eq!(result.new_usize, 0); // Default value
+    assert_eq!(result.new_u128, 0); // Default value
 }
 
 #[test]
@@ -343,6 +365,7 @@ fn test_unsigned_with_smart_pointers() {
     test_box_any(&fory, u32::MAX);
     test_box_any(&fory, u64::MAX);
     test_box_any(&fory, usize::MAX);
+    test_box_any(&fory, u128::MAX);
 
     // Test Rc<dyn Any> with unsigned types
     test_rc_any(&fory, u8::MAX);
@@ -350,6 +373,7 @@ fn test_unsigned_with_smart_pointers() {
     test_rc_any(&fory, u32::MAX);
     test_rc_any(&fory, u64::MAX);
     test_rc_any(&fory, usize::MAX);
+    test_rc_any(&fory, u128::MAX);
 
     // Test Arc<dyn Any> with unsigned types
     test_arc_any(&fory, u8::MAX);
@@ -357,6 +381,7 @@ fn test_unsigned_with_smart_pointers() {
     test_arc_any(&fory, u32::MAX);
     test_arc_any(&fory, u64::MAX);
     test_arc_any(&fory, usize::MAX);
+    test_arc_any(&fory, u128::MAX);
 
     // Test Box<dyn Any> with unsigned arrays
     test_box_any(&fory, vec![0u8, 127, u8::MAX]);
@@ -364,6 +389,7 @@ fn test_unsigned_with_smart_pointers() {
     test_box_any(&fory, vec![0u32, 1000000, u32::MAX]);
     test_box_any(&fory, vec![0u64, 1000000000000, u64::MAX]);
     test_box_any(&fory, vec![0usize, 1000000000000, usize::MAX]);
+    test_box_any(&fory, vec![0u128, 1000000000000, u128::MAX]);
 
     // Test Rc<dyn Any> with unsigned arrays
     test_rc_any(&fory, vec![0u8, 127, u8::MAX]);
@@ -371,6 +397,7 @@ fn test_unsigned_with_smart_pointers() {
     test_rc_any(&fory, vec![1000u32, 2000, 3000, u32::MAX]);
     test_rc_any(&fory, vec![0u64, 1000000000000, u64::MAX]);
     test_rc_any(&fory, vec![0usize, 1000000000000, usize::MAX]);
+    test_rc_any(&fory, vec![0u128, 1000000000000, u128::MAX]);
 
     // Test Arc<dyn Any> with unsigned arrays
     test_arc_any(&fory, vec![0u8, 127, u8::MAX]);
@@ -378,4 +405,5 @@ fn test_unsigned_with_smart_pointers() {
     test_arc_any(&fory, vec![999u32, 888, 777, u32::MAX]);
     test_arc_any(&fory, vec![123u64, 456789, 987654321, u64::MAX]);
     test_arc_any(&fory, vec![123usize, 456789, 987654321, usize::MAX]);
+    test_arc_any(&fory, vec![0u128, 1000000000000, u128::MAX]);
 }

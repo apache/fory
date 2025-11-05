@@ -553,6 +553,7 @@ impl TypeResolver {
         self.register_internal_serializer::<u32>(TypeId::U32)?;
         self.register_internal_serializer::<u64>(TypeId::U64)?;
         self.register_internal_serializer::<usize>(TypeId::USIZE)?;
+        self.register_internal_serializer::<u128>(TypeId::U128)?;
         self.register_internal_serializer::<String>(TypeId::STRING)?;
         self.register_internal_serializer::<NaiveDateTime>(TypeId::TIMESTAMP)?;
         self.register_internal_serializer::<NaiveDate>(TypeId::LOCAL_DATE)?;
@@ -569,6 +570,7 @@ impl TypeResolver {
         self.register_internal_serializer::<Vec<u32>>(TypeId::U32_ARRAY)?;
         self.register_internal_serializer::<Vec<u64>>(TypeId::U64_ARRAY)?;
         self.register_internal_serializer::<Vec<usize>>(TypeId::USIZE_ARRAY)?;
+        self.register_internal_serializer::<Vec<u128>>(TypeId::U128_ARRAY)?;
         self.register_generic_trait::<Vec<String>>()?;
         self.register_generic_trait::<LinkedList<i32>>()?;
         self.register_generic_trait::<LinkedList<String>>()?;

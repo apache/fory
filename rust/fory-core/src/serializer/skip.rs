@@ -424,6 +424,9 @@ fn skip_value(
         types::USIZE => {
             <usize as Serializer>::fory_read_data(context)?;
         }
+        types::U128 => {
+            <u128 as Serializer>::fory_read_data(context)?;
+        }
         types::U16_ARRAY => {
             <Vec<u16> as Serializer>::fory_read_data(context)?;
         }
@@ -435,6 +438,9 @@ fn skip_value(
         }
         types::USIZE_ARRAY => {
             <Vec<usize> as Serializer>::fory_read_data(context)?;
+        }
+        types::U128_ARRAY => {
+            <Vec<u128> as Serializer>::fory_read_data(context)?;
         }
 
         // Container types

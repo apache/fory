@@ -408,6 +408,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
                     "u32" => quote! { fory_core::types::TypeId::U32_ARRAY as u32 },
                     "u64" => quote! { fory_core::types::TypeId::U64_ARRAY as u32 },
                     "usize" => quote! { fory_core::types::TypeId::USIZE_ARRAY as u32 },
+                    "u128" => quote! { fory_core::types::TypeId::U128_ARRAY as u32 },
                     _ => quote! { fory_core::types::TypeId::LIST as u32 },
                 };
                 return quote! {
@@ -528,8 +529,8 @@ fn extract_option_inner(s: &str) -> Option<&str> {
     s.strip_prefix("Option<")?.strip_suffix(">")
 }
 
-const PRIMITIVE_TYPE_NAMES: [&str; 12] = [
-    "bool", "i8", "i16", "i32", "i64", "f32", "f64", "u8", "u16", "u32", "u64", "usize",
+const PRIMITIVE_TYPE_NAMES: [&str; 13] = [
+    "bool", "i8", "i16", "i32", "i64", "f32", "f64", "u8", "u16", "u32", "u64", "usize", "u128",
 ];
 
 fn get_primitive_type_id(ty: &str) -> u32 {
@@ -546,6 +547,7 @@ fn get_primitive_type_id(ty: &str) -> u32 {
         "u32" => TypeId::U32 as u32,
         "u64" => TypeId::U64 as u32,
         "usize" => TypeId::USIZE as u32,
+        "u128" => TypeId::U128 as u32,
         _ => unreachable!("Unknown primitive type: {}", ty),
     }
 }
@@ -569,6 +571,7 @@ static PRIMITIVE_IO_METHODS: &[(&str, &str, &str)] = &[
     ("u32", "write_u32", "read_u32"),
     ("u64", "write_u64", "read_u64"),
     ("usize", "write_usize", "read_usize"),
+    ("u128", "write_u128", "read_u128"),
 ];
 
 /// Check if a type is a direct primitive numeric type (not wrapped in Option, Vec, etc.)
@@ -654,6 +657,7 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
         "Vec<u32>" => return TypeId::U32_ARRAY as u32,
         "Vec<u64>" => return TypeId::U64_ARRAY as u32,
         "Vec<usize>" => return TypeId::USIZE_ARRAY as u32,
+        "Vec<u128>" => return TypeId::U128_ARRAY as u32,
         _ => {}
     }
 
@@ -675,6 +679,7 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
                 "u32" => return TypeId::U32_ARRAY as u32,
                 "u64" => return TypeId::U64_ARRAY as u32,
                 "usize" => return TypeId::USIZE_ARRAY as u32,
+                "u128" => return TypeId::U128_ARRAY as u32,
                 _ => {
                     // Non-primitive array elements, treat as LIST
                     return TypeId::LIST as u32;
@@ -727,6 +732,7 @@ fn get_primitive_type_size(type_id_num: u32) -> i32 {
         TypeId::U32 => 4,
         TypeId::U64 => 8,
         TypeId::USIZE => 8,
+        TypeId::U128 => 16,
         _ => unreachable!(),
     }
 }
@@ -757,6 +763,11 @@ fn is_internal_type_id(type_id: u32) -> bool {
         TypeId::FLOAT16_ARRAY as u32,
         TypeId::FLOAT32_ARRAY as u32,
         TypeId::FLOAT64_ARRAY as u32,
+        TypeId::U16_ARRAY as u32,
+        TypeId::U32_ARRAY as u32,
+        TypeId::U64_ARRAY as u32,
+        TypeId::USIZE_ARRAY as u32,
+        TypeId::U128_ARRAY as u32,
     ]
     .contains(&type_id)
 }
