@@ -222,6 +222,7 @@ public class Types {
       case INT8:
       case INT16:
       case INT32:
+      case VAR_INT32:
       case INT64:
       case FLOAT32:
       case FLOAT64:
