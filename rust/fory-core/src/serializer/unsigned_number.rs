@@ -17,8 +17,7 @@
 
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
-use crate::resolver::context::WriteContext;
+use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
 use crate::serializer::{ForyDefault, Serializer};
@@ -44,7 +43,7 @@ macro_rules! impl_unsigned_num_serializer {
             }
 
             #[inline(always)]
-            fn fory_reserved_space() -> usize {
+            fn fory_reserved_space(_: &TypeResolver) -> usize {
                 std::mem::size_of::<$ty>()
             }
 
@@ -59,7 +58,7 @@ macro_rules! impl_unsigned_num_serializer {
             }
 
             #[inline(always)]
-            fn fory_static_type_id() -> TypeId {
+            fn fory_static_type_id(_: &TypeResolver) -> TypeId {
                 $field_type
             }
 

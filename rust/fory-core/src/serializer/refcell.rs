@@ -126,9 +126,9 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
     }
 
     #[inline(always)]
-    fn fory_reserved_space() -> usize {
+    fn fory_reserved_space(type_resolver: &TypeResolver) -> usize {
         // RefCell is transparent, delegate to inner type
-        T::fory_reserved_space()
+        T::fory_reserved_space(type_resolver)
     }
 
     #[inline(always)]
@@ -142,11 +142,11 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
     }
 
     #[inline(always)]
-    fn fory_static_type_id() -> TypeId
+    fn fory_static_type_id(type_resolver: &TypeResolver) -> TypeId
     where
         Self: Sized,
     {
-        T::fory_static_type_id()
+        T::fory_static_type_id(type_resolver)
     }
 
     #[inline(always)]

@@ -53,8 +53,9 @@ where
     if length == 0 {
         return Ok(());
     }
-    let reserved_space = (K::fory_reserved_space() + SIZE_OF_REF_AND_TYPE) * length
-        + (V::fory_reserved_space() + SIZE_OF_REF_AND_TYPE) * length;
+    let reserved_space =
+        (K::fory_reserved_space(context.get_type_resolver()) + SIZE_OF_REF_AND_TYPE) * length
+            + (V::fory_reserved_space(context.get_type_resolver()) + SIZE_OF_REF_AND_TYPE) * length;
     context.writer.reserve(reserved_space);
 
     if K::fory_is_polymorphic()
@@ -67,8 +68,8 @@ where
     let mut header_offset = 0;
     let mut pair_counter: u8 = 0;
     let mut need_write_header = true;
-    let key_static_type_id = K::fory_static_type_id();
-    let val_static_type_id = V::fory_static_type_id();
+    let key_static_type_id = K::fory_static_type_id(context.get_type_resolver());
+    let val_static_type_id = V::fory_static_type_id(context.get_type_resolver());
     let is_key_declared = has_generics && !need_to_write_type_for_field(key_static_type_id);
     let is_val_declared = has_generics && !need_to_write_type_for_field(val_static_type_id);
     for (key, value) in iter {
@@ -160,8 +161,8 @@ where
     let mut header_offset = 0;
     let mut pair_counter: u8 = 0;
     let mut need_write_header = true;
-    let key_static_type_id = K::fory_static_type_id();
-    let val_static_type_id = V::fory_static_type_id();
+    let key_static_type_id = K::fory_static_type_id(context.get_type_resolver());
+    let val_static_type_id = V::fory_static_type_id(context.get_type_resolver());
     let is_key_declared = has_generics && !need_to_write_type_for_field(key_static_type_id);
     let is_val_declared = has_generics && !need_to_write_type_for_field(val_static_type_id);
     let key_is_polymorphic = K::fory_is_polymorphic();
@@ -198,7 +199,7 @@ where
                     context.writer.write_u8(chunk_header);
                     if key_is_polymorphic {
                         context.write_any_typeinfo(
-                            K::fory_static_type_id() as u32,
+                            K::fory_static_type_id(context.get_type_resolver()) as u32,
                             key.fory_concrete_type_id(),
                         )?;
                     } else {
@@ -224,7 +225,7 @@ where
                     context.writer.write_u8(chunk_header);
                     if val_is_polymorphic {
                         context.write_any_typeinfo(
-                            V::fory_static_type_id() as u32,
+                            V::fory_static_type_id(context.get_type_resolver()) as u32,
                             value.fory_concrete_type_id(),
                         )?;
                     } else {
@@ -282,7 +283,7 @@ where
                 // Write type info for key
                 if key_is_polymorphic {
                     context.write_any_typeinfo(
-                        K::fory_static_type_id() as u32,
+                        K::fory_static_type_id(context.get_type_resolver()) as u32,
                         key.fory_concrete_type_id(),
                     )?;
                 } else {
@@ -300,7 +301,7 @@ where
                 // Write type info for value
                 if val_is_polymorphic {
                     context.write_any_typeinfo(
-                        V::fory_static_type_id() as u32,
+                        V::fory_static_type_id(context.get_type_resolver()) as u32,
                         value.fory_concrete_type_id(),
                     )?;
                 } else {
@@ -607,7 +608,7 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
         Ok(map)
     }
 
-    fn fory_reserved_space() -> usize {
+    fn fory_reserved_space(_: &TypeResolver) -> usize {
         size_of::<i32>()
     }
 
@@ -619,7 +620,7 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
         Ok(TypeId::MAP as u32)
     }
 
-    fn fory_static_type_id() -> TypeId
+    fn fory_static_type_id(_: &TypeResolver) -> TypeId
     where
         Self: Sized,
     {
@@ -735,7 +736,7 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
         Ok(map)
     }
 
-    fn fory_reserved_space() -> usize {
+    fn fory_reserved_space(_: &TypeResolver) -> usize {
         size_of::<i32>()
     }
 
@@ -747,7 +748,7 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
         Ok(TypeId::MAP as u32)
     }
 
-    fn fory_static_type_id() -> TypeId
+    fn fory_static_type_id(_: &TypeResolver) -> TypeId
     where
         Self: Sized,
     {

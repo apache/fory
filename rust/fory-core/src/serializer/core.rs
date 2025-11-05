@@ -494,7 +494,7 @@ pub trait Serializer: 'static {
     /// ```rust,ignore
     /// fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
     ///     let rs_type_id = std::any::TypeId::of::<Self>();
-    ///     context.write_any_typeinfo(Self::fory_static_type_id() as u32, rs_type_id)?;
+    ///     context.write_any_typeinfo(Self::fory_static_type_id(context.get_type_resolver()) as u32, rs_type_id)?;
     ///     Ok(())
     /// }
     /// ```
@@ -523,7 +523,10 @@ pub trait Serializer: 'static {
     {
         // Serializer for internal types should overwrite this method for faster performance.
         let rs_type_id = std::any::TypeId::of::<Self>();
-        context.write_any_typeinfo(Self::fory_static_type_id() as u32, rs_type_id)?;
+        context.write_any_typeinfo(
+            Self::fory_static_type_id(context.get_type_resolver()) as u32,
+            rs_type_id,
+        )?;
         Ok(())
     }
 
@@ -1065,6 +1068,9 @@ pub trait Serializer: 'static {
     /// Type IDs are Fory's internal type identification system, separate from
     /// Rust's `std::any::TypeId`. They're used for cross-language serialization
     /// and protocol compatibility.
+    /// # Parameters
+    ///
+    /// * `type_resolver` - Provide is_compress_int.
     ///
     /// # Returns
     ///
@@ -1087,7 +1093,7 @@ pub trait Serializer: 'static {
     /// - User types with custom serialization should use the default
     /// - This is a compile-time constant
     #[inline(always)]
-    fn fory_static_type_id() -> TypeId
+    fn fory_static_type_id(_: &TypeResolver) -> TypeId
     where
         Self: Sized,
     {
@@ -1192,6 +1198,10 @@ pub trait Serializer: 'static {
     /// before serializing this type. Accurate hints improve performance by reducing
     /// buffer reallocations.
     ///
+    /// # Parameters
+    ///
+    /// * `type_resolver` - Provide is_compress_int.
+    ///
     /// # Returns
     ///
     /// - Estimated maximum size in bytes for this type
@@ -1202,7 +1212,7 @@ pub trait Serializer: 'static {
     /// Return a conservative upper bound:
     ///
     /// ```rust,ignore
-    /// fn fory_reserved_space() -> usize {
+    /// fn fory_reserved_space(_: &TypeResolver) -> usize {
     ///     std::mem::size_of::<Self>() + overhead
     /// }
     /// ```
@@ -1219,7 +1229,7 @@ pub trait Serializer: 'static {
     /// - User types with custom serialization can override for performance
     /// - Overestimation wastes memory; underestimation requires reallocation
     #[inline(always)]
-    fn fory_reserved_space() -> usize
+    fn fory_reserved_space(_: &TypeResolver) -> usize
     where
         Self: Sized,
     {

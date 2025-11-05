@@ -16,8 +16,7 @@
 // under the License.
 
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
-use crate::resolver::context::WriteContext;
+use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
 use crate::serializer::{ForyDefault, Serializer};
@@ -61,7 +60,7 @@ impl Serializer for String {
     }
 
     #[inline(always)]
-    fn fory_reserved_space() -> usize {
+    fn fory_reserved_space(_: &TypeResolver) -> usize {
         mem::size_of::<i32>()
     }
 
@@ -76,7 +75,7 @@ impl Serializer for String {
     }
 
     #[inline(always)]
-    fn fory_static_type_id() -> TypeId
+    fn fory_static_type_id(_: &TypeResolver) -> TypeId
     where
         Self: Sized,
     {

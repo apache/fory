@@ -319,7 +319,7 @@ fn build_struct_type_infos<T: StructSerializer>(
     let mut result = vec![(std::any::TypeId::of::<T>(), main_type_info)];
 
     // Handle enum variants in compatible mode
-    if type_resolver.compatible && T::fory_static_type_id() == TypeId::ENUM {
+    if type_resolver.compatible && T::fory_static_type_id(type_resolver) == TypeId::ENUM {
         // Fields are already sorted with IDs assigned by the macro
         let variants_info = T::fory_variants_fields_info(type_resolver)?;
         for (idx, (variant_name, variant_type_id, fields_info)) in
@@ -415,6 +415,7 @@ pub struct TypeResolver {
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
     compatible: bool,
+    compress_int: bool,
 }
 
 // Safety: TypeResolver instances are only shared through higher-level synchronization that
@@ -435,6 +436,7 @@ impl Default for TypeResolver {
             type_id_index: Vec::new(),
             partial_type_infos: HashMap::new(),
             compatible: false,
+            compress_int: true,
         };
         registry.register_builtin_types().unwrap();
         registry
@@ -442,6 +444,11 @@ impl Default for TypeResolver {
 }
 
 impl TypeResolver {
+    #[inline(always)]
+    pub fn is_compress_int(&self) -> bool {
+        self.compress_int
+    }
+
     pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Rc<TypeInfo>, Error> {
         self.type_info_map
             .get(type_id)
@@ -544,7 +551,11 @@ impl TypeResolver {
         self.register_internal_serializer::<bool>(TypeId::BOOL)?;
         self.register_internal_serializer::<i8>(TypeId::INT8)?;
         self.register_internal_serializer::<i16>(TypeId::INT16)?;
-        self.register_internal_serializer::<i32>(TypeId::INT32)?;
+        if self.compress_int {
+            self.register_internal_serializer::<i32>(TypeId::VAR_INT32)?;
+        } else {
+            self.register_internal_serializer::<i32>(TypeId::INT32)?;
+        }
         self.register_internal_serializer::<i64>(TypeId::INT64)?;
         self.register_internal_serializer::<f32>(TypeId::FLOAT32)?;
         self.register_internal_serializer::<f64>(TypeId::FLOAT64)?;
@@ -627,7 +638,7 @@ impl TypeResolver {
                 None => Err(Error::type_error(format!(
                     "Cast type to {:?} error when writing: {:?}",
                     std::any::type_name::<T2>(),
-                    T2::fory_static_type_id()
+                    T2::fory_static_type_id(context.get_type_resolver())
                 ))),
             }
         }
@@ -655,7 +666,7 @@ impl TypeResolver {
                 None => Err(Error::type_error(format!(
                     "Cast type to {:?} error when writing data: {:?}",
                     std::any::type_name::<T2>(),
-                    T2::fory_static_type_id()
+                    T2::fory_static_type_id(context.get_type_resolver())
                 ))),
             }
         }
@@ -749,7 +760,7 @@ impl TypeResolver {
         id: u32,
     ) -> Result<(), Error> {
         let actual_type_id = get_ext_actual_type_id(id, false);
-        let static_type_id = T::fory_static_type_id();
+        let static_type_id = T::fory_static_type_id(self);
         if static_type_id != TypeId::EXT && static_type_id != TypeId::NAMED_EXT {
             return Err(Error::not_allowed(
                 "register_serializer can only be used for ext and named_ext types",
@@ -764,7 +775,7 @@ impl TypeResolver {
         type_name: &str,
     ) -> Result<(), Error> {
         let actual_type_id = get_ext_actual_type_id(0, true);
-        let static_type_id = T::fory_static_type_id();
+        let static_type_id = T::fory_static_type_id(self);
         if static_type_id != TypeId::EXT && static_type_id != TypeId::NAMED_EXT {
             return Err(Error::not_allowed(
                 "register_serializer can only be used for ext and named_ext types",
@@ -809,7 +820,7 @@ impl TypeResolver {
                 None => Err(Error::type_error(format!(
                     "Cast type to {:?} error when writing: {:?}",
                     std::any::type_name::<T2>(),
-                    T2::fory_static_type_id()
+                    T2::fory_static_type_id(context.get_type_resolver())
                 ))),
             }
         }
@@ -837,7 +848,7 @@ impl TypeResolver {
                 None => Err(Error::type_error(format!(
                     "Cast type to {:?} error when writing data: {:?}",
                     std::any::type_name::<T2>(),
-                    T2::fory_static_type_id()
+                    T2::fory_static_type_id(context.get_type_resolver())
                 ))),
             }
         }
@@ -931,7 +942,7 @@ impl TypeResolver {
                 rs_type_id
             )));
         }
-        let type_id = T::fory_static_type_id();
+        let type_id = T::fory_static_type_id(self);
         if type_id != TypeId::LIST && type_id != TypeId::MAP && type_id != TypeId::SET {
             return Err(Error::not_allowed(format!(
                 "register_generic_trait can only be used for generic trait types: List, Map, Set, but got type {}",
@@ -943,6 +954,10 @@ impl TypeResolver {
 
     pub(crate) fn set_compatible(&mut self, compatible: bool) {
         self.compatible = compatible;
+    }
+
+    pub(crate) fn set_compress_int(&mut self, compress_int: bool) {
+        self.compress_int = compress_int;
     }
 
     /// Builds the final TypeResolver by completing all partial type infos created during registration.
@@ -1006,6 +1021,7 @@ impl TypeResolver {
             partial_type_infos: HashMap::new(),
             type_id_index,
             compatible: self.compatible,
+            compress_int: self.compress_int,
         })
     }
 
@@ -1038,6 +1054,7 @@ impl TypeResolver {
             partial_type_infos: HashMap::new(),
             type_id_index: self.type_id_index.clone(),
             compatible: self.compatible,
+            compress_int: self.compress_int,
         }
     }
 }

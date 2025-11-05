@@ -16,8 +16,7 @@
 // under the License.
 
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
-use crate::resolver::context::WriteContext;
+use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
 use crate::serializer::ForyDefault;
@@ -49,7 +48,7 @@ impl Serializer for NaiveDateTime {
     }
 
     #[inline(always)]
-    fn fory_reserved_space() -> usize {
+    fn fory_reserved_space(_: &TypeResolver) -> usize {
         mem::size_of::<u64>()
     }
 
@@ -64,7 +63,7 @@ impl Serializer for NaiveDateTime {
     }
 
     #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
+    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
         TypeId::TIMESTAMP
     }
 
@@ -103,7 +102,7 @@ impl Serializer for NaiveDate {
     }
 
     #[inline(always)]
-    fn fory_reserved_space() -> usize {
+    fn fory_reserved_space(_: &TypeResolver) -> usize {
         mem::size_of::<i32>()
     }
 
@@ -118,7 +117,7 @@ impl Serializer for NaiveDate {
     }
 
     #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
+    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
         TypeId::LOCAL_DATE
     }
 
@@ -171,7 +170,7 @@ impl Serializer for Duration {
     }
 
     #[inline(always)]
-    fn fory_reserved_space() -> usize {
+    fn fory_reserved_space(_: &TypeResolver) -> usize {
         9 + mem::size_of::<i32>() // max varint64 is 9 bytes + 4 bytes for i32
     }
 
@@ -186,7 +185,7 @@ impl Serializer for Duration {
     }
 
     #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
+    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
         TypeId::DURATION
     }
 

@@ -247,12 +247,12 @@ macro_rules! register_trait_type {
             }
 
             #[inline(always)]
-            fn fory_static_type_id() -> fory_core::TypeId {
+            fn fory_static_type_id(_: &fory_core::TypeResolver) -> fory_core::TypeId {
                 fory_core::TypeId::UNKNOWN
             }
 
             #[inline(always)]
-            fn fory_reserved_space() -> usize {
+            fn fory_reserved_space(_: &fory_core::TypeResolver) -> usize {
                 $crate::types::SIZE_OF_REF_AND_TYPE
             }
 
@@ -501,7 +501,7 @@ macro_rules! impl_smart_pointer_serializer {
             }
 
             #[inline(always)]
-            fn fory_static_type_id() -> fory_core::TypeId {
+            fn fory_static_type_id(_: &fory_core::TypeResolver) -> fory_core::TypeId {
                 fory_core::TypeId::UNKNOWN
             }
 

@@ -16,8 +16,7 @@
 // under the License.
 
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
-use crate::resolver::context::WriteContext;
+use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::collection::{
     read_collection_data, read_collection_type_info, write_collection_data,
@@ -46,7 +45,7 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BinaryHeap<T> {
         read_collection_type_info(context, TypeId::SET as u32)
     }
 
-    fn fory_reserved_space() -> usize {
+    fn fory_reserved_space(_: &TypeResolver) -> usize {
         mem::size_of::<i32>()
     }
 
@@ -58,7 +57,7 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BinaryHeap<T> {
         Ok(TypeId::SET as u32)
     }
 
-    fn fory_static_type_id() -> TypeId {
+    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
         TypeId::SET
     }
 

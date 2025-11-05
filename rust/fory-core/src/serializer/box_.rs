@@ -16,8 +16,7 @@
 // under the License.
 
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
-use crate::resolver::context::WriteContext;
+use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::TypeId;
@@ -47,8 +46,8 @@ impl<T: Serializer + ForyDefault> Serializer for Box<T> {
     }
 
     #[inline(always)]
-    fn fory_reserved_space() -> usize {
-        T::fory_reserved_space()
+    fn fory_reserved_space(type_resolver: &TypeResolver) -> usize {
+        T::fory_reserved_space(type_resolver)
     }
 
     #[inline(always)]
@@ -62,8 +61,8 @@ impl<T: Serializer + ForyDefault> Serializer for Box<T> {
     }
 
     #[inline(always)]
-    fn fory_static_type_id() -> TypeId {
-        T::fory_static_type_id()
+    fn fory_static_type_id(type_resolver: &TypeResolver) -> TypeId {
+        T::fory_static_type_id(type_resolver)
     }
 
     fn fory_is_wrapper_type() -> bool

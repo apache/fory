@@ -18,8 +18,7 @@
 use crate::buffer::{Reader, Writer};
 use crate::ensure;
 use crate::error::Error;
-use crate::resolver::context::WriteContext;
-use crate::resolver::context::{Pool, ReadContext};
+use crate::resolver::context::{Pool, ReadContext, WriteContext};
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
@@ -79,6 +78,7 @@ pub struct Fory {
     xlang: bool,
     share_meta: bool,
     type_resolver: TypeResolver,
+    compress_int: bool,
     compress_string: bool,
     max_dyn_depth: u32,
     check_struct_version: bool,
@@ -94,6 +94,7 @@ impl Default for Fory {
             xlang: false,
             share_meta: false,
             type_resolver: TypeResolver::default(),
+            compress_int: true,
             compress_string: false,
             max_dyn_depth: 5,
             check_struct_version: false,
@@ -176,6 +177,40 @@ impl Fory {
         if !self.check_struct_version {
             self.check_struct_version = !self.compatible;
         }
+        self
+    }
+
+    /// Enables or disables integer compression.
+    ///
+    /// # Arguments
+    ///
+    /// * `compress_int` - If `true`, enables compact integer encoding to reduce serialized
+    ///   payload size by using variable-length integer encoding. If `false`, integers are
+    ///   serialized using fixed-width representation.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` for method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `false`.
+    ///
+    /// # Trade-offs
+    ///
+    /// - **Enabled**: Smaller payload size, slightly higher CPU overhead
+    /// - **Disabled**: Larger payload size, faster serialization/deserialization
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::default().compress_int(true);
+    /// ```
+    pub fn compress_int(mut self, compress_int: bool) -> Self {
+        self.compress_int = compress_int;
+        self.type_resolver.set_compress_int(compress_int);
         self
     }
 
@@ -523,7 +558,6 @@ impl Fory {
             let type_resolver = self.type_resolver.build_final_type_resolver()?;
             let compatible = self.compatible;
             let share_meta = self.share_meta;
-            let compress_string = self.compress_string;
             let xlang = self.xlang;
             let check_struct_version = self.check_struct_version;
 
@@ -532,7 +566,6 @@ impl Fory {
                     type_resolver.clone(),
                     compatible,
                     share_meta,
-                    compress_string,
                     xlang,
                     check_struct_version,
                 ))
@@ -552,7 +585,7 @@ impl Fory {
         context: &mut WriteContext,
     ) -> Result<(), Error> {
         let is_none = record.fory_is_none();
-        self.write_head::<T>(is_none, &mut context.writer);
+        self.write_head::<T>(is_none, context);
         let meta_start_offset = context.writer.len();
         if !is_none {
             if context.is_compatible() {
@@ -763,11 +796,13 @@ impl Fory {
 
     /// Writes the serialization header to the writer.
     #[inline(always)]
-    pub fn write_head<T: Serializer>(&self, is_none: bool, writer: &mut Writer) {
+    pub fn write_head<T: Serializer>(&self, is_none: bool, context: &mut WriteContext) {
         const HEAD_SIZE: usize = 10;
-        writer.reserve(T::fory_reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
+        context.writer.reserve(
+            T::fory_reserved_space(context.get_type_resolver()) + SIZE_OF_REF_AND_TYPE + HEAD_SIZE,
+        );
         if self.xlang {
-            writer.write_u16(MAGIC_NUMBER);
+            context.writer.write_u16(MAGIC_NUMBER);
         }
         #[cfg(target_endian = "big")]
         let mut bitmap = 0;
@@ -779,12 +814,12 @@ impl Fory {
         if is_none {
             bitmap |= IS_NULL_FLAG;
         }
-        writer.write_u8(bitmap);
+        context.writer.write_u8(bitmap);
         if is_none {
             return;
         }
         if self.xlang {
-            writer.write_u8(Language::Rust as u8);
+            context.writer.write_u8(Language::Rust as u8);
         }
     }
 

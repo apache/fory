@@ -39,52 +39,52 @@ pub fn gen_reserved_space(fields: &[&Field]) -> TokenStream {
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <#wrapper_ty as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <#wrapper_ty as fory_core::Serializer>::fory_reserved_space(type_resolver) + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::ArcDyn(trait_name) => {
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <#wrapper_ty as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <#wrapper_ty as fory_core::Serializer>::fory_reserved_space(type_resolver) + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::VecRc(trait_name) => {
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <Vec<#wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <Vec<#wrapper_ty> as fory_core::Serializer>::fory_reserved_space(type_resolver) + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::VecArc(trait_name) => {
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <Vec<#wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <Vec<#wrapper_ty> as fory_core::Serializer>::fory_reserved_space(type_resolver) + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::HashMapRc(key_ty, trait_name) => {
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_reserved_space(type_resolver) + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::HashMapArc(key_ty, trait_name) => {
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 quote! {
-                    <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_reserved_space(type_resolver) + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
             StructField::Forward => {
                 quote! {
-                    <#ty as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <#ty as fory_core::Serializer>::fory_reserved_space(type_resolver) + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
             _ => {
                 quote! {
-                    <#ty as fory_core::Serializer>::fory_reserved_space() + fory_core::types::SIZE_OF_REF_AND_TYPE
+                    <#ty as fory_core::Serializer>::fory_reserved_space(type_resolver) + fory_core::types::SIZE_OF_REF_AND_TYPE
                 }
             }
         }
@@ -226,12 +226,12 @@ pub fn gen_write_field(field: &Field, ident: &Ident, use_self: bool) -> TokenStr
                     }
                 } else if skip_ref_flag {
                     quote! {
-                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
+                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id(context.get_type_resolver()));
                         <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, false, need_type_info, false)?;
                     }
                 } else {
                     quote! {
-                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
+                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id(context.get_type_resolver()));
                         <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, need_type_info, false)?;
                     }
                 }

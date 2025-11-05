@@ -16,6 +16,7 @@
 // under the License.
 
 use fory_core::fory::Fory;
+use fory_core::TypeResolver;
 use fory_derive::ForyObject;
 use std::rc::Rc;
 
@@ -222,9 +223,16 @@ fn test_homogeneous_tuple_unsigned() {
 fn test_tuple_type_id() {
     use fory_core::serializer::Serializer;
     use fory_core::types::TypeId;
-    assert_eq!(<(i32, i32)>::fory_static_type_id(), TypeId::LIST);
-    assert_eq!(<(i32, String)>::fory_static_type_id(), TypeId::LIST);
-    assert_eq!(<(i32,)>::fory_static_type_id(), TypeId::LIST);
+    let type_resolver = TypeResolver::default();
+    assert_eq!(
+        <(i32, i32)>::fory_static_type_id(&type_resolver),
+        TypeId::LIST
+    );
+    assert_eq!(
+        <(i32, String)>::fory_static_type_id(&type_resolver),
+        TypeId::LIST
+    );
+    assert_eq!(<(i32,)>::fory_static_type_id(&type_resolver), TypeId::LIST);
 }
 
 // Test tuples in xlang mode

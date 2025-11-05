@@ -129,7 +129,7 @@ impl Serializer for Box<dyn Any> {
         false
     }
 
-    fn fory_static_type_id() -> TypeId {
+    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
         TypeId::UNKNOWN
     }
 
@@ -298,7 +298,7 @@ impl Serializer for Rc<dyn Any> {
         true
     }
 
-    fn fory_static_type_id() -> TypeId {
+    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
         TypeId::UNKNOWN
     }
 
@@ -467,7 +467,7 @@ impl Serializer for Arc<dyn Any> {
         true
     }
 
-    fn fory_static_type_id() -> TypeId {
+    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
         TypeId::UNKNOWN
     }
 

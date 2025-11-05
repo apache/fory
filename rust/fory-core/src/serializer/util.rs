@@ -22,7 +22,7 @@ use crate::serializer::Serializer;
 use crate::types::TypeId;
 use crate::types::{
     is_user_type, BOOL, ENUM, FLOAT32, FLOAT64, INT16, INT32, INT64, INT8, NAMED_ENUM, U16, U32,
-    U64, U8, USIZE,
+    U64, U8, USIZE, VAR_INT32,
 };
 
 #[inline(always)]
@@ -70,7 +70,18 @@ pub const fn field_need_write_ref_into(type_id: u32, nullable: bool) -> bool {
     let internal_type_id = type_id & 0xff;
     !matches!(
         internal_type_id,
-        BOOL | INT8 | INT16 | INT32 | INT64 | FLOAT32 | FLOAT64 | U8 | U16 | U32 | U64 | USIZE
+        BOOL | INT8
+            | INT16
+            | INT32
+            | VAR_INT32
+            | INT64
+            | FLOAT32
+            | FLOAT64
+            | U8
+            | U16
+            | U32
+            | U64
+            | USIZE
     )
 }
 
@@ -83,7 +94,10 @@ pub fn write_dyn_data_generic<T: Serializer>(
     let any_value = value.as_any();
     let concrete_type_id = any_value.type_id();
     let serializer_fn = context
-        .write_any_typeinfo(T::fory_static_type_id() as u32, concrete_type_id)?
+        .write_any_typeinfo(
+            T::fory_static_type_id(context.get_type_resolver()) as u32,
+            concrete_type_id,
+        )?
         .get_harness()
         .get_write_data_fn();
     serializer_fn(any_value, context, has_generics)
