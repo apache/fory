@@ -96,9 +96,9 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(type_resolver: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         // Mutex is transparent, delegate to inner type
-        T::fory_reserved_space(type_resolver)
+        T::fory_reserved_space()
     }
 
     #[inline(always)]
@@ -155,8 +155,8 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(type_resolver: &TypeResolver) -> TypeId {
-        T::fory_static_type_id(type_resolver)
+    fn fory_static_type_id() -> TypeId {
+        T::fory_static_type_id()
     }
 
     #[inline(always)]

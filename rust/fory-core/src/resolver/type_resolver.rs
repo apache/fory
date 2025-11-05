@@ -319,7 +319,7 @@ fn build_struct_type_infos<T: StructSerializer>(
     let mut result = vec![(std::any::TypeId::of::<T>(), main_type_info)];
 
     // Handle enum variants in compatible mode
-    if type_resolver.compatible && T::fory_static_type_id(type_resolver) == TypeId::ENUM {
+    if type_resolver.compatible && T::fory_static_type_id() == TypeId::ENUM {
         // Fields are already sorted with IDs assigned by the macro
         let variants_info = T::fory_variants_fields_info(type_resolver)?;
         for (idx, (variant_name, variant_type_id, fields_info)) in
@@ -638,7 +638,7 @@ impl TypeResolver {
                 None => Err(Error::type_error(format!(
                     "Cast type to {:?} error when writing: {:?}",
                     std::any::type_name::<T2>(),
-                    T2::fory_static_type_id(context.get_type_resolver())
+                    T2::fory_static_type_id()
                 ))),
             }
         }
@@ -666,7 +666,7 @@ impl TypeResolver {
                 None => Err(Error::type_error(format!(
                     "Cast type to {:?} error when writing data: {:?}",
                     std::any::type_name::<T2>(),
-                    T2::fory_static_type_id(context.get_type_resolver())
+                    T2::fory_static_type_id()
                 ))),
             }
         }
@@ -760,7 +760,7 @@ impl TypeResolver {
         id: u32,
     ) -> Result<(), Error> {
         let actual_type_id = get_ext_actual_type_id(id, false);
-        let static_type_id = T::fory_static_type_id(self);
+        let static_type_id = T::fory_static_type_id();
         if static_type_id != TypeId::EXT && static_type_id != TypeId::NAMED_EXT {
             return Err(Error::not_allowed(
                 "register_serializer can only be used for ext and named_ext types",
@@ -775,7 +775,7 @@ impl TypeResolver {
         type_name: &str,
     ) -> Result<(), Error> {
         let actual_type_id = get_ext_actual_type_id(0, true);
-        let static_type_id = T::fory_static_type_id(self);
+        let static_type_id = T::fory_static_type_id();
         if static_type_id != TypeId::EXT && static_type_id != TypeId::NAMED_EXT {
             return Err(Error::not_allowed(
                 "register_serializer can only be used for ext and named_ext types",
@@ -820,7 +820,7 @@ impl TypeResolver {
                 None => Err(Error::type_error(format!(
                     "Cast type to {:?} error when writing: {:?}",
                     std::any::type_name::<T2>(),
-                    T2::fory_static_type_id(context.get_type_resolver())
+                    T2::fory_static_type_id()
                 ))),
             }
         }
@@ -848,7 +848,7 @@ impl TypeResolver {
                 None => Err(Error::type_error(format!(
                     "Cast type to {:?} error when writing data: {:?}",
                     std::any::type_name::<T2>(),
-                    T2::fory_static_type_id(context.get_type_resolver())
+                    T2::fory_static_type_id()
                 ))),
             }
         }
@@ -942,7 +942,7 @@ impl TypeResolver {
                 rs_type_id
             )));
         }
-        let type_id = T::fory_static_type_id(self);
+        let type_id = T::fory_static_type_id();
         if type_id != TypeId::LIST && type_id != TypeId::MAP && type_id != TypeId::SET {
             return Err(Error::not_allowed(format!(
                 "register_generic_trait can only be used for generic trait types: List, Map, Set, but got type {}",

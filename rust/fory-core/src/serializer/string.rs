@@ -60,7 +60,7 @@ impl Serializer for String {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }
 
@@ -75,7 +75,7 @@ impl Serializer for String {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(_: &TypeResolver) -> TypeId
+    fn fory_static_type_id() -> TypeId
     where
         Self: Sized,
     {

@@ -189,7 +189,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
             }
 
             #[inline(always)]
-            fn fory_static_type_id(type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> fory_core::TypeId
+            fn fory_static_type_id() -> fory_core::TypeId
             where
                 Self: Sized,
             {
@@ -197,7 +197,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
             }
 
             #[inline(always)]
-            fn fory_reserved_space(type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> usize {
+            fn fory_reserved_space() -> usize {
                 #reserved_space_ts
             }
 

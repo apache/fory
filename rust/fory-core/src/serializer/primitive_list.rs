@@ -25,7 +25,7 @@ use crate::types::TypeId;
 pub fn fory_write_data<T: Serializer>(this: &[T], context: &mut WriteContext) -> Result<(), Error> {
     if context.is_xlang()
         && matches!(
-            T::fory_static_type_id(context.get_type_resolver()),
+            T::fory_static_type_id(),
             TypeId::U8 | TypeId::U16 | TypeId::U32 | TypeId::U64 | TypeId::USIZE
         )
     {

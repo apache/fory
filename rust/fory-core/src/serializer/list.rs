@@ -30,16 +30,15 @@ use super::collection::{
 };
 
 #[inline(always)]
-pub(super) fn get_primitive_type_id<T: Serializer>(type_resolver: &TypeResolver) -> TypeId {
+pub(super) fn get_primitive_type_id<T: Serializer>() -> TypeId {
     if T::fory_is_wrapper_type() {
         return TypeId::UNKNOWN;
     }
-    match T::fory_static_type_id(type_resolver) {
+    match T::fory_static_type_id() {
         TypeId::BOOL => TypeId::BOOL_ARRAY,
         TypeId::INT8 => TypeId::INT8_ARRAY,
         TypeId::INT16 => TypeId::INT16_ARRAY,
         TypeId::INT32 => TypeId::INT32_ARRAY,
-        TypeId::VAR_INT32 => TypeId::INT32_ARRAY,
         TypeId::INT64 => TypeId::INT64_ARRAY,
         TypeId::FLOAT32 => TypeId::FLOAT32_ARRAY,
         TypeId::FLOAT64 => TypeId::FLOAT64_ARRAY,
@@ -52,17 +51,16 @@ pub(super) fn get_primitive_type_id<T: Serializer>(type_resolver: &TypeResolver)
 }
 
 #[inline(always)]
-pub(super) fn is_primitive_type<T: Serializer>(type_resolver: &TypeResolver) -> bool {
+pub(super) fn is_primitive_type<T: Serializer>() -> bool {
     if T::fory_is_wrapper_type() {
         return false;
     }
     matches!(
-        T::fory_static_type_id(type_resolver),
+        T::fory_static_type_id(),
         TypeId::BOOL
             | TypeId::INT8
             | TypeId::INT16
             | TypeId::INT32
-            | TypeId::VAR_INT32
             | TypeId::INT64
             | TypeId::FLOAT32
             | TypeId::FLOAT64
@@ -77,7 +75,7 @@ pub(super) fn is_primitive_type<T: Serializer>(type_resolver: &TypeResolver) -> 
 impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
     #[inline(always)]
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        if is_primitive_type::<T>(context.get_type_resolver()) {
+        if is_primitive_type::<T>() {
             primitive_list::fory_write_data(self, context)
         } else {
             write_collection_data(self, context, false)
@@ -90,7 +88,7 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
         context: &mut WriteContext,
         has_generics: bool,
     ) -> Result<(), Error> {
-        if is_primitive_type::<T>(context.get_type_resolver()) {
+        if is_primitive_type::<T>() {
             primitive_list::fory_write_data(self, context)
         } else {
             write_collection_data(self, context, has_generics)
@@ -99,7 +97,7 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        let id = get_primitive_type_id::<T>(context.get_type_resolver());
+        let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
             primitive_list::fory_write_type_info(context, id)
         } else {
@@ -109,7 +107,7 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
 
     #[inline(always)]
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        if is_primitive_type::<T>(context.get_type_resolver()) {
+        if is_primitive_type::<T>() {
             primitive_list::fory_read_data(context)
         } else {
             read_collection_data(context)
@@ -118,7 +116,7 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
 
     #[inline(always)]
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        let id = get_primitive_type_id::<T>(context.get_type_resolver());
+        let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
             primitive_list::fory_read_type_info(context, id)
         } else {
@@ -127,8 +125,8 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(type_resolver: &TypeResolver) -> usize {
-        if is_primitive_type::<T>(type_resolver) {
+    fn fory_reserved_space() -> usize {
+        if is_primitive_type::<T>() {
             primitive_list::fory_reserved_space::<T>()
         } else {
             // size of the vec
@@ -137,8 +135,8 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error> {
-        let id = get_primitive_type_id::<T>(type_resolver);
+    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
+        let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
             Ok(id as u32)
         } else {
@@ -147,8 +145,8 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
-        let id = get_primitive_type_id::<T>(type_resolver);
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
+        let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
             Ok(id as u32)
         } else {
@@ -157,11 +155,11 @@ impl<T: Serializer + ForyDefault> Serializer for Vec<T> {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(type_resolver: &TypeResolver) -> TypeId
+    fn fory_static_type_id() -> TypeId
     where
         Self: Sized,
     {
-        let id = get_primitive_type_id::<T>(type_resolver);
+        let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
             id
         } else {
@@ -213,7 +211,7 @@ impl<T: Serializer + ForyDefault> Serializer for VecDeque<T> {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<u32>()
     }
 
@@ -228,7 +226,7 @@ impl<T: Serializer + ForyDefault> Serializer for VecDeque<T> {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
+    fn fory_static_type_id() -> TypeId {
         TypeId::LIST
     }
 
@@ -276,7 +274,7 @@ impl<T: Serializer + ForyDefault> Serializer for LinkedList<T> {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<u32>()
     }
 
@@ -291,7 +289,7 @@ impl<T: Serializer + ForyDefault> Serializer for LinkedList<T> {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
+    fn fory_static_type_id() -> TypeId {
         TypeId::LIST
     }
 

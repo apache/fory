@@ -102,7 +102,7 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
         T::fory_read_type_info(context)
     }
 
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         // Rc is a shared ref, so we just need space for the ref tracking
         // We don't recursively compute inner type's space to avoid infinite recursion
         4
@@ -116,8 +116,8 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for Rc<T> {
         (**self).fory_type_id_dyn(type_resolver)
     }
 
-    fn fory_static_type_id(type_resolver: &TypeResolver) -> TypeId {
-        T::fory_static_type_id(type_resolver)
+    fn fory_static_type_id() -> TypeId {
+        T::fory_static_type_id()
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

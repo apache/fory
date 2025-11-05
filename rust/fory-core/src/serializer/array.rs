@@ -198,7 +198,7 @@ where
 impl<T: Serializer + ForyDefault, const N: usize> Serializer for [T; N] {
     #[inline(always)]
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-        if is_primitive_type::<T>(context.get_type_resolver()) {
+        if is_primitive_type::<T>() {
             primitive_list::fory_write_data(self.as_slice(), context)
         } else {
             write_collection_data(self.iter(), context, false)
@@ -211,7 +211,7 @@ impl<T: Serializer + ForyDefault, const N: usize> Serializer for [T; N] {
         context: &mut WriteContext,
         has_generics: bool,
     ) -> Result<(), Error> {
-        if is_primitive_type::<T>(context.get_type_resolver()) {
+        if is_primitive_type::<T>() {
             primitive_list::fory_write_data(self.as_slice(), context)
         } else {
             write_collection_data(self.iter(), context, has_generics)
@@ -220,7 +220,7 @@ impl<T: Serializer + ForyDefault, const N: usize> Serializer for [T; N] {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        let id = get_primitive_type_id::<T>(context.get_type_resolver());
+        let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
             primitive_list::fory_write_type_info(context, id)
         } else {
@@ -230,7 +230,7 @@ impl<T: Serializer + ForyDefault, const N: usize> Serializer for [T; N] {
 
     #[inline(always)]
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        if is_primitive_type::<T>(context.get_type_resolver()) {
+        if is_primitive_type::<T>() {
             // Read primitive array data directly without intermediate Vec allocation
             read_primitive_array(context)
         } else {
@@ -241,7 +241,7 @@ impl<T: Serializer + ForyDefault, const N: usize> Serializer for [T; N] {
 
     #[inline(always)]
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
-        let id = get_primitive_type_id::<T>(context.get_type_resolver());
+        let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
             primitive_list::fory_read_type_info(context, id)
         } else {
@@ -250,8 +250,8 @@ impl<T: Serializer + ForyDefault, const N: usize> Serializer for [T; N] {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(type_resolver: &TypeResolver) -> usize {
-        if is_primitive_type::<T>(type_resolver) {
+    fn fory_reserved_space() -> usize {
+        if is_primitive_type::<T>() {
             primitive_list::fory_reserved_space::<T>()
         } else {
             // size of the array length
@@ -260,11 +260,11 @@ impl<T: Serializer + ForyDefault, const N: usize> Serializer for [T; N] {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(type_resolver: &TypeResolver) -> TypeId
+    fn fory_static_type_id() -> TypeId
     where
         Self: Sized,
     {
-        let id = get_primitive_type_id::<T>(type_resolver);
+        let id = get_primitive_type_id::<T>();
         if id != TypeId::UNKNOWN {
             id
         } else {
@@ -273,13 +273,13 @@ impl<T: Serializer + ForyDefault, const N: usize> Serializer for [T; N] {
     }
 
     #[inline(always)]
-    fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error> {
-        Ok(Self::fory_static_type_id(type_resolver) as u32)
+    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
+        Ok(Self::fory_static_type_id() as u32)
     }
 
     #[inline(always)]
-    fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
-        Self::fory_get_type_id(type_resolver)
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
+        Ok(Self::fory_static_type_id() as u32)
     }
 
     #[inline(always)]

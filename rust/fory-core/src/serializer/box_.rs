@@ -46,8 +46,8 @@ impl<T: Serializer + ForyDefault> Serializer for Box<T> {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(type_resolver: &TypeResolver) -> usize {
-        T::fory_reserved_space(type_resolver)
+    fn fory_reserved_space() -> usize {
+        T::fory_reserved_space()
     }
 
     #[inline(always)]
@@ -61,8 +61,8 @@ impl<T: Serializer + ForyDefault> Serializer for Box<T> {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(type_resolver: &TypeResolver) -> TypeId {
-        T::fory_static_type_id(type_resolver)
+    fn fory_static_type_id() -> TypeId {
+        T::fory_static_type_id()
     }
 
     fn fory_is_wrapper_type() -> bool

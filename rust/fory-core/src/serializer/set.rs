@@ -45,7 +45,7 @@ impl<T: Serializer + ForyDefault + Eq + std::hash::Hash> Serializer for HashSet<
         read_collection_type_info(context, TypeId::SET as u32)
     }
 
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }
 
@@ -57,7 +57,7 @@ impl<T: Serializer + ForyDefault + Eq + std::hash::Hash> Serializer for HashSet<
         Ok(TypeId::SET as u32)
     }
 
-    fn fory_static_type_id(_: &TypeResolver) -> TypeId
+    fn fory_static_type_id() -> TypeId
     where
         Self: Sized,
     {
@@ -92,7 +92,7 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BTreeSet<T> {
         read_collection_type_info(context, TypeId::SET as u32)
     }
 
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }
 
@@ -104,7 +104,7 @@ impl<T: Serializer + ForyDefault + Ord> Serializer for BTreeSet<T> {
         Ok(TypeId::SET as u32)
     }
 
-    fn fory_static_type_id(_: &TypeResolver) -> TypeId
+    fn fory_static_type_id() -> TypeId
     where
         Self: Sized,
     {

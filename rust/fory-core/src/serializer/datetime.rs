@@ -48,7 +48,7 @@ impl Serializer for NaiveDateTime {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<u64>()
     }
 
@@ -63,7 +63,7 @@ impl Serializer for NaiveDateTime {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
+    fn fory_static_type_id() -> TypeId {
         TypeId::TIMESTAMP
     }
 
@@ -102,7 +102,7 @@ impl Serializer for NaiveDate {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<i32>()
     }
 
@@ -117,7 +117,7 @@ impl Serializer for NaiveDate {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
+    fn fory_static_type_id() -> TypeId {
         TypeId::LOCAL_DATE
     }
 
@@ -170,7 +170,7 @@ impl Serializer for Duration {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         9 + mem::size_of::<i32>() // max varint64 is 9 bytes + 4 bytes for i32
     }
 
@@ -185,7 +185,7 @@ impl Serializer for Duration {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
+    fn fory_static_type_id() -> TypeId {
         TypeId::DURATION
     }
 

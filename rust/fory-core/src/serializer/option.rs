@@ -119,7 +119,7 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         std::mem::size_of::<T>()
     }
 
@@ -147,8 +147,8 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(type_resolver: &TypeResolver) -> TypeId {
-        T::fory_static_type_id(type_resolver)
+    fn fory_static_type_id() -> TypeId {
+        T::fory_static_type_id()
     }
 
     fn fory_is_wrapper_type() -> bool

@@ -209,7 +209,7 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident) -> TokenStream {
             } else {
                 // Custom types (struct/enum/ext) - need runtime check for enums
                 quote! {
-                    let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id(context.get_type_resolver()));
+                    let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
                     let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, need_type_info)?;
                 }
             }

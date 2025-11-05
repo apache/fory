@@ -380,7 +380,7 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         T::fory_read_type_info(context)
     }
 
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         // RcWeak is a shared ref, return a const to avoid infinite recursion
         4
     }
@@ -397,8 +397,8 @@ impl<T: Serializer + ForyDefault + 'static> Serializer for RcWeak<T> {
         }
     }
 
-    fn fory_static_type_id(type_resolver: &TypeResolver) -> TypeId {
-        T::fory_static_type_id(type_resolver)
+    fn fory_static_type_id() -> TypeId {
+        T::fory_static_type_id()
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -539,7 +539,7 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         T::fory_read_type_info(context)
     }
 
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         // ArcWeak is a shared ref, return a const to avoid infinite recursion
         4
     }
@@ -556,8 +556,8 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for ArcWeak
         }
     }
 
-    fn fory_static_type_id(type_resolver: &TypeResolver) -> TypeId {
-        T::fory_static_type_id(type_resolver)
+    fn fory_static_type_id() -> TypeId {
+        T::fory_static_type_id()
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

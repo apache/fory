@@ -61,7 +61,7 @@ where
     }
     let mut header = IS_SAME_TYPE;
     let mut has_null = false;
-    let elem_static_type_id = T::fory_static_type_id(context.get_type_resolver());
+    let elem_static_type_id = T::fory_static_type_id();
     let is_elem_declared = has_generics && !need_to_write_type_for_field(elem_static_type_id);
     if T::fory_is_option() {
         // iter.clone() is zero-copy
@@ -111,7 +111,7 @@ where
     I: IntoIterator<Item = &'a T>,
     I::IntoIter: ExactSizeIterator + Clone,
 {
-    let elem_static_type_id = T::fory_static_type_id(context.get_type_resolver());
+    let elem_static_type_id = T::fory_static_type_id();
     let is_elem_declared = has_generics && !need_to_write_type_for_field(elem_static_type_id);
     let elem_is_polymorphic = T::fory_is_polymorphic();
     let elem_is_shared_ref = T::fory_is_shared_ref();
@@ -164,10 +164,7 @@ where
                     "Unable to determine concrete type for polymorphic collection elements",
                 )
             })?;
-            context.write_any_typeinfo(
-                T::fory_static_type_id(context.get_type_resolver()) as u32,
-                type_id,
-            )?;
+            context.write_any_typeinfo(T::fory_static_type_id() as u32, type_id)?;
         } else {
             T::fory_write_type_info(context)?;
         }

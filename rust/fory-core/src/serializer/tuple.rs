@@ -28,9 +28,7 @@ use std::mem;
 /// This handles the different serialization strategies for various element types.
 #[inline(always)]
 fn write_tuple_element<T: Serializer>(elem: &T, context: &mut WriteContext) -> Result<(), Error> {
-    if T::fory_is_option()
-        || T::fory_is_shared_ref()
-        || T::fory_static_type_id(context.get_type_resolver()) == TypeId::UNKNOWN
+    if T::fory_is_option() || T::fory_is_shared_ref() || T::fory_static_type_id() == TypeId::UNKNOWN
     {
         // For Option, shared references, or unknown static types, use full write with ref tracking
         elem.fory_write(context, true, false, false)
@@ -46,9 +44,7 @@ fn read_tuple_element<T: Serializer + ForyDefault>(
     context: &mut ReadContext,
     _has_generics: bool,
 ) -> Result<T, Error> {
-    if T::fory_is_option()
-        || T::fory_is_shared_ref()
-        || T::fory_static_type_id(context.get_type_resolver()) == TypeId::UNKNOWN
+    if T::fory_is_option() || T::fory_is_shared_ref() || T::fory_static_type_id() == TypeId::UNKNOWN
     {
         // For Option, shared references, or unknown static types, use full read with ref tracking
         T::fory_read(context, true, false)
@@ -111,7 +107,7 @@ impl<T0: Serializer + ForyDefault> Serializer for (T0,) {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         mem::size_of::<u32>()
     }
 
@@ -126,7 +122,7 @@ impl<T0: Serializer + ForyDefault> Serializer for (T0,) {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(_: &TypeResolver) -> TypeId {
+    fn fory_static_type_id() -> TypeId {
         TypeId::LIST
     }
 
@@ -379,7 +375,7 @@ macro_rules! impl_tuple_serializer {
             }
 
             #[inline(always)]
-            fn fory_reserved_space(_: &TypeResolver) -> usize {
+            fn fory_reserved_space() -> usize {
                 mem::size_of::<u32>() // Size for length
             }
 
@@ -394,7 +390,7 @@ macro_rules! impl_tuple_serializer {
             }
 
             #[inline(always)]
-            fn fory_static_type_id(_: &TypeResolver) -> TypeId {
+            fn fory_static_type_id() -> TypeId {
                 TypeId::LIST
             }
 

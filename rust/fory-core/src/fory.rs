@@ -798,9 +798,9 @@ impl Fory {
     #[inline(always)]
     pub fn write_head<T: Serializer>(&self, is_none: bool, context: &mut WriteContext) {
         const HEAD_SIZE: usize = 10;
-        context.writer.reserve(
-            T::fory_reserved_space(context.get_type_resolver()) + SIZE_OF_REF_AND_TYPE + HEAD_SIZE,
-        );
+        context
+            .writer
+            .reserve(T::fory_reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
         if self.xlang {
             context.writer.write_u16(MAGIC_NUMBER);
         }

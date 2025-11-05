@@ -43,7 +43,7 @@ macro_rules! impl_unsigned_num_serializer {
             }
 
             #[inline(always)]
-            fn fory_reserved_space(_: &TypeResolver) -> usize {
+            fn fory_reserved_space() -> usize {
                 std::mem::size_of::<$ty>()
             }
 
@@ -58,7 +58,7 @@ macro_rules! impl_unsigned_num_serializer {
             }
 
             #[inline(always)]
-            fn fory_static_type_id(_: &TypeResolver) -> TypeId {
+            fn fory_static_type_id() -> TypeId {
                 $field_type
             }
 

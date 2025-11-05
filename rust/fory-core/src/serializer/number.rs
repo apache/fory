@@ -38,7 +38,7 @@ macro_rules! impl_num_serializer {
             }
 
             #[inline(always)]
-            fn fory_reserved_space(_: &TypeResolver) -> usize {
+            fn fory_reserved_space() -> usize {
                 std::mem::size_of::<$ty>()
             }
 
@@ -53,7 +53,7 @@ macro_rules! impl_num_serializer {
             }
 
             #[inline(always)]
-            fn fory_static_type_id(_: &TypeResolver) -> TypeId {
+            fn fory_static_type_id() -> TypeId {
                 $field_type
             }
 
@@ -114,7 +114,7 @@ impl Serializer for i32 {
     }
 
     #[inline(always)]
-    fn fory_reserved_space(_: &TypeResolver) -> usize {
+    fn fory_reserved_space() -> usize {
         std::mem::size_of::<i32>()
     }
 
@@ -133,12 +133,8 @@ impl Serializer for i32 {
     }
 
     #[inline(always)]
-    fn fory_static_type_id(type_resolver: &TypeResolver) -> TypeId {
-        if type_resolver.is_compress_int() {
-            TypeId::VAR_INT32
-        } else {
-            TypeId::INT32
-        }
+    fn fory_static_type_id() -> TypeId {
+        TypeId::INT32
     }
 
     #[inline(always)]
@@ -148,7 +144,7 @@ impl Serializer for i32 {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        let type_id = Self::fory_static_type_id(context.get_type_resolver()) as u32;
+        let type_id = Self::fory_get_type_id(context.get_type_resolver())?;
         context.writer.write_varuint32(type_id);
         Ok(())
     }
