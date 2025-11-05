@@ -5,7 +5,6 @@ _Generated on 2025-10-26 18:36:41_
 How to generate performance report:
 
 ```bash
-cd rust/benches
 cargo bench 2>&1 | tee cargo_bench.log
 python benchmark_report.py --log-file cargo_bench.log --output-dir=report_output
 ```
