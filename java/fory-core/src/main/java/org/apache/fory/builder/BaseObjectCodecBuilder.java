@@ -376,17 +376,17 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     if (needWriteRef(typeRef)) {
       return new If(
           not(writeRefOrNull(buffer, inputObject)),
-          serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod));
+          serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, false));
     } else {
       // if typeToken is not final, ref tracking of subclass will be ignored too.
       if (typeRef.isPrimitive()) {
-        return serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod);
+        return serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, false);
       }
       Expression action =
           new ListExpression(
               new Invoke(
                   buffer, "writeByte", new Literal(Fory.NOT_NULL_VALUE_FLAG, PRIMITIVE_BYTE_TYPE)),
-              serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod));
+              serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, false));
       return new If(
           eqNull(inputObject),
           new Invoke(buffer, "writeByte", new Literal(Fory.NULL_FLAG, PRIMITIVE_BYTE_TYPE)),
@@ -395,8 +395,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   protected Expression serializeForNullable(
-      Expression inputObject, Expression buffer, TypeRef<?> typeRef, boolean nullable) {
-    return serializeForNullable(inputObject, buffer, typeRef, null, false, nullable);
+      Expression inputObject, Expression buffer, TypeRef<?> typeRef, boolean nullable, boolean finalField) {
+    return serializeForNullable(inputObject, buffer, typeRef, null, false, nullable, finalField);
   }
 
   protected Expression serializeForNullable(
@@ -405,27 +405,28 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       TypeRef<?> typeRef,
       Expression serializer,
       boolean generateNewMethod,
-      boolean nullable) {
+      boolean nullable,
+      boolean finalField) {
     if (needWriteRef(typeRef)) {
       return new If(
           not(writeRefOrNull(buffer, inputObject)),
-          serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod));
+          serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, finalField));
     } else {
       // if typeToken is not final, ref tracking of subclass will be ignored too.
       if (typeRef.isPrimitive()) {
-        return serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod);
+        return serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, finalField);
       }
       if (nullable) {
         Expression action =
             new ListExpression(
                 new Invoke(buffer, "writeByte", Literal.ofByte(Fory.NOT_NULL_VALUE_FLAG)),
-                serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod));
+                serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, finalField));
         return new If(
             eqNull(inputObject),
             new Invoke(buffer, "writeByte", Literal.ofByte(Fory.NULL_FLAG)),
             action);
       } else {
-        return serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod);
+        return serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, finalField);
       }
     }
   }
@@ -437,7 +438,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   protected Expression serializeForNotNull(
       Expression inputObject, Expression buffer, TypeRef<?> typeRef) {
     boolean genNewMethod = useCollectionSerialization(typeRef) || useMapSerialization(typeRef);
-    return serializeForNotNull(inputObject, buffer, typeRef, null, genNewMethod);
+    return serializeForNotNull(inputObject, buffer, typeRef, null, genNewMethod, false);
   }
 
   /**
@@ -446,13 +447,13 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
    */
   private Expression serializeForNotNull(
       Expression inputObject, Expression buffer, TypeRef<?> typeRef, boolean generateNewMethod) {
-    return serializeForNotNull(inputObject, buffer, typeRef, null, generateNewMethod);
+    return serializeForNotNull(inputObject, buffer, typeRef, null, generateNewMethod, false);
   }
 
   private Expression serializeForNotNull(
       Expression inputObject, Expression buffer, TypeRef<?> typeRef, Expression serializer) {
     boolean genNewMethod = useCollectionSerialization(typeRef) || useMapSerialization(typeRef);
-    return serializeForNotNull(inputObject, buffer, typeRef, serializer, genNewMethod);
+    return serializeForNotNull(inputObject, buffer, typeRef, serializer, genNewMethod, false);
   }
 
   private Expression serializeForNotNull(
@@ -460,7 +461,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Expression buffer,
       TypeRef<?> typeRef,
       Expression serializer,
-      boolean generateNewMethod) {
+      boolean generateNewMethod,
+      boolean finalField) {
     Class<?> clz = getRawType(typeRef);
     if (isPrimitive(clz) || isBoxed(clz)) {
       // for primitive, inline call here to avoid java boxing, rather call corresponding serializer.
@@ -499,7 +501,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       } else if (useMapSerialization(typeRef)) {
         action = serializeForMap(buffer, inputObject, typeRef, serializer, generateNewMethod);
       } else {
-        action = serializeForNotNullObject(inputObject, buffer, typeRef, serializer);
+        action = serializeForNotNullObject(inputObject, buffer, typeRef, serializer, finalField);
       }
       return action;
     }
@@ -533,13 +535,13 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   protected Expression serializeForNotNullObject(
-      Expression inputObject, Expression buffer, TypeRef<?> typeRef, Expression serializer) {
+      Expression inputObject, Expression buffer, TypeRef<?> typeRef, Expression serializer, boolean finalField) {
     Class<?> clz = getRawType(typeRef);
     if (serializer != null) {
       return new Invoke(serializer, writeMethodName, buffer, inputObject);
     }
     if (isMonomorphic(clz)) {
-      serializer = getOrCreateSerializer(clz);
+      serializer = getOrCreateSerializer(clz, finalField);
       return new Invoke(serializer, writeMethodName, buffer, inputObject);
     } else {
       return writeForNotNullNonFinalObject(inputObject, buffer, typeRef);
@@ -594,17 +596,26 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     return writeClassAction;
   }
 
+    protected Expression getOrCreateSerializer(Class<?> cls) {
+      return getOrCreateSerializer(cls, false);
+    }
+
   /**
    * Returns a serializer expression which will be used to call write/read method to avoid virtual
    * methods calls in most situations.
    */
-  protected Expression getOrCreateSerializer(Class<?> cls) {
+  protected Expression getOrCreateSerializer(Class<?> cls, boolean finalField) {
     // Not need to check cls final, take collection writeSameTypeElements as an example.
     // Preconditions.checkArgument(isMonomorphic(cls), cls);
     Reference serializerRef = serializerMap.get(cls);
     if (serializerRef == null) {
       // potential recursive call for seq codec generation is handled in `getSerializerClass`.
-      Class<? extends Serializer> serializerClass = typeResolver(r -> r.getSerializerClass(cls));
+      Class<? extends Serializer> serializerClass;
+      if (finalField) {
+          serializerClass =  typeResolver(r -> r.getSerializerClassFinalField(cls));
+      } else {
+         serializerClass =  typeResolver(r -> r.getSerializerClass(cls));
+      }
       Preconditions.checkNotNull(serializerClass, "Unsupported for class " + cls);
       if (!ReflectionUtils.isPublic(serializerClass)) {
         // TODO(chaokunyang) add jdk17+ unexported class check.
@@ -640,7 +651,6 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
           && !MapLikeSerializer.class.isAssignableFrom(serializerClass)) {
         serializerClass = MapLikeSerializer.class;
       }
-      TypeRef<? extends Serializer> serializerTypeRef = TypeRef.of(serializerClass);
       Expression fieldTypeExpr = getClassExpr(cls);
       // Don't invoke `Serializer.newSerializer` here, since it(ex. ObjectSerializer) may set itself
       // as global serializer, which overwrite serializer updates in jit callback.
@@ -656,7 +666,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             false, ctx.type(Serializer.class), name, cast(newSerializerExpr, SERIALIZER_TYPE));
         serializerRef = new Reference(name, SERIALIZER_TYPE, false);
       } else {
-        ctx.addField(
+          TypeRef<? extends Serializer> serializerTypeRef = TypeRef.of(serializerClass);
+          ctx.addField(
             true, ctx.type(serializerClass), name, cast(newSerializerExpr, serializerTypeRef));
         serializerRef = fieldRef(name, serializerTypeRef);
       }
@@ -1115,13 +1126,13 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         write =
             new If(
                 not(writeRefOrNull(buffer, elem)),
-                serializeForNotNull(elem, buffer, elementType, elemSerializer, generateNewMethod));
+                serializeForNotNull(elem, buffer, elementType, elemSerializer, generateNewMethod, false));
       } else {
         write =
             new If(
                 hasNull,
                 serializeFor(elem, buffer, elementType, elemSerializer, generateNewMethod),
-                serializeForNotNull(elem, buffer, elementType, elemSerializer, generateNewMethod));
+                serializeForNotNull(elem, buffer, elementType, elemSerializer, generateNewMethod, false));
       }
     }
     return new ListExpression(elem, write);

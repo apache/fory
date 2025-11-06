@@ -53,15 +53,15 @@ public class ReplaceResolveSerializer extends Serializer {
    */
   public static class ReplaceStub {}
 
-  private static final byte ORIGINAL = 0;
-  private static final byte REPLACED_NEW_TYPE = 1;
-  private static final byte REPLACED_SAME_TYPE = 2;
+  protected static final byte ORIGINAL = 0;
+  protected static final byte REPLACED_NEW_TYPE = 1;
+  protected static final byte REPLACED_SAME_TYPE = 2;
 
   // Extract Method Info to cache for graalvm build time lambda generation and avoid
   // generate function repeatedly too.
-  private static class ReplaceResolveInfo {
-    private final Method writeReplaceMethod;
-    private final Method readResolveMethod;
+  protected static class ReplaceResolveInfo {
+    protected final Method writeReplaceMethod;
+    protected final Method readResolveMethod;
     private final Function writeReplaceFunc;
     private final Function readResolveFunc;
 
@@ -162,10 +162,10 @@ public class ReplaceResolveSerializer extends Serializer {
         }
       };
 
-  private static class MethodInfoCache {
-    private final ReplaceResolveInfo info;
+  protected static class MethodInfoCache {
+    protected final ReplaceResolveInfo info;
 
-    private Serializer objectSerializer;
+    protected Serializer objectSerializer;
 
     public MethodInfoCache(ReplaceResolveInfo info) {
       this.info = info;
@@ -210,13 +210,17 @@ public class ReplaceResolveSerializer extends Serializer {
     return serializer;
   }
 
-  private final RefResolver refResolver;
-  private final ClassResolver classResolver;
-  private final MethodInfoCache jdkMethodInfoWriteCache;
-  private final ClassInfo writeClassInfo;
-  private final Map<Class<?>, MethodInfoCache> classClassInfoHolderMap = new HashMap<>();
+  protected final RefResolver refResolver;
+  protected final ClassResolver classResolver;
+  protected final MethodInfoCache jdkMethodInfoWriteCache;
+  protected final ClassInfo writeClassInfo;
+  protected final Map<Class<?>, MethodInfoCache> classClassInfoHolderMap = new HashMap<>();
 
-  public ReplaceResolveSerializer(Fory fory, Class type) {
+    public ReplaceResolveSerializer(Fory fory, Class type) {
+        this(fory, type, false);
+    }
+
+  public ReplaceResolveSerializer(Fory fory, Class type, boolean isFinalField) {
     super(fory, type);
     refResolver = fory.getRefResolver();
     classResolver = fory.getClassResolver();
@@ -228,8 +232,12 @@ public class ReplaceResolveSerializer extends Serializer {
     if (type != ReplaceStub.class) {
       jdkMethodInfoWriteCache = newJDKMethodInfoCache(type, fory);
       classClassInfoHolderMap.put(type, jdkMethodInfoWriteCache);
-      // FIXME new classinfo may miss serializer update in async compilation mode.
-      writeClassInfo = classResolver.newClassInfo(type, this, ClassResolver.NO_CLASS_ID);
+        if (isFinalField) {
+            writeClassInfo = null;
+        } else {
+            // FIXME new classinfo may miss serializer update in async compilation mode.
+            writeClassInfo = classResolver.newClassInfo(type, this, ClassResolver.NO_CLASS_ID);
+        }
     } else {
       jdkMethodInfoWriteCache = null;
       writeClassInfo = null;
@@ -280,7 +288,7 @@ public class ReplaceResolveSerializer extends Serializer {
     }
   }
 
-  private void writeObject(MemoryBuffer buffer, Object value, MethodInfoCache jdkMethodInfoCache) {
+  protected void writeObject(MemoryBuffer buffer, Object value, MethodInfoCache jdkMethodInfoCache) {
     classResolver.writeClassInternal(buffer, writeClassInfo);
     jdkMethodInfoCache.objectSerializer.write(buffer, value);
   }
@@ -319,7 +327,7 @@ public class ReplaceResolveSerializer extends Serializer {
     }
   }
 
-  private Object readObject(MemoryBuffer buffer) {
+  protected Object readObject(MemoryBuffer buffer) {
     Class cls = classResolver.readClassInternal(buffer);
     MethodInfoCache jdkMethodInfoCache = getMethodInfoCache(cls);
     Object o = jdkMethodInfoCache.objectSerializer.read(buffer);
