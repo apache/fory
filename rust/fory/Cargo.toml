@@ -29,5 +29,5 @@ categories.workspace = true
 description = "Apache Fory: Blazingly fast multi-language serialization framework with trait objects and reference support."
 
 [dependencies]
-fory-core = { path = "../fory-core", version = "0.14.0"}
-fory-derive = { path = "../fory-derive", version = "0.14.0"}
+fory-core = { path = "../fory-core", version = "0.13.1"}
+fory-derive = { path = "../fory-derive", version = "0.13.1"}
