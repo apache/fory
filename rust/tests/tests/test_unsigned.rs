@@ -46,12 +46,28 @@ fn test_unsigned_arrays() {
 #[test]
 fn test_unsigned_arrays_when_xlang() {
     let fory = Fory::default().xlang(true);
-    assert!(fory.serialize(&vec![u8::MAX]).is_err());
+    assert!(fory.serialize(&vec![u8::MAX]).is_ok());
     assert!(fory.serialize(&vec![u16::MAX]).is_err());
     assert!(fory.serialize(&vec![u32::MAX]).is_err());
     assert!(fory.serialize(&vec![u64::MAX]).is_err());
     assert!(fory.serialize(&vec![usize::MAX]).is_err());
     assert!(fory.serialize(&vec![u128::MAX]).is_err());
+}
+
+#[test]
+fn test_binary_when_xlang() {
+    let mut fory = Fory::default().xlang(true);
+    #[derive(ForyObject, Debug, PartialEq)]
+    struct UnsignedData {
+        binary: Vec<u8>,
+    }
+    fory.register::<UnsignedData>(100).unwrap();
+    let binary = vec![0u8, 1, 2, u8::MAX];
+    test_roundtrip(&fory, binary.clone());
+    let data = UnsignedData { binary };
+    let bytes = fory.serialize(&data).unwrap();
+    let result: UnsignedData = fory.deserialize(&bytes).unwrap();
+    assert_eq!(data, result);
 }
 
 #[test]
