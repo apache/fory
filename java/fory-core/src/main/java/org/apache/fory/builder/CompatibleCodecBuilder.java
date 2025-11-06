@@ -345,7 +345,7 @@ public class CompatibleCodecBuilder extends BaseObjectCodecBuilder {
     boolean nullable = descriptor.isNullable();
     Expression fieldValue = getFieldValue(bean, descriptor);
     walkPath.removeLast();
-    return serializeForNullable(fieldValue, buffer, descriptor.getTypeRef(), nullable);
+    return serializeForNullable(fieldValue, buffer, descriptor.getTypeRef(), nullable, false);
   }
 
   @Override

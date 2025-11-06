@@ -209,7 +209,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
             walkPath.add(d.getDeclaringClass() + d.getName());
             boolean nullable = d.isNullable();
             Expression fieldExpr =
-                serializeForNullable(fieldValue, buffer, d.getTypeRef(), nullable);
+                serializeForNullable(fieldValue, buffer, d.getTypeRef(), nullable, d.isFinalField());
             walkPath.removeLast();
             groupExpressions.add(fieldExpr);
           }

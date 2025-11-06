@@ -474,6 +474,8 @@ public abstract class TypeResolver {
 
   public abstract Class<? extends Serializer> getSerializerClass(Class<?> cls);
 
+  public abstract Class<? extends Serializer> getSerializerClassFinalField(Class<?> cls);
+
   public abstract Class<? extends Serializer> getSerializerClass(Class<?> cls, boolean codegen);
 
   public final boolean isCollection(Class<?> cls) {
