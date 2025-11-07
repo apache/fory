@@ -867,7 +867,8 @@ public class ClassResolver extends TypeResolver {
     return getSerializerClass(cls, codegen, false);
   }
 
-  public Class<? extends Serializer> getSerializerClass(Class<?> cls, boolean codegen, boolean finalField) {
+  public Class<? extends Serializer> getSerializerClass(
+      Class<?> cls, boolean codegen, boolean finalField) {
     if (!cls.isEnum() && (ReflectionUtils.isAbstract(cls) || cls.isInterface())) {
       throw new UnsupportedOperationException(
           String.format("Class %s doesn't support serialization.", cls));

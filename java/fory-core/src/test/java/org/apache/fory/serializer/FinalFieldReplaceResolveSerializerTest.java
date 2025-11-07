@@ -36,8 +36,7 @@ import org.apache.fory.config.Language;
 import org.testng.annotations.Test;
 
 /**
- * Test class for FieldReplaceResolveSerializer.
- * This serializer is used for final fields that have
+ * Test class for FieldReplaceResolveSerializer. This serializer is used for final fields that have
  * writeReplace/readResolve methods.
  */
 public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
@@ -330,9 +329,9 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   }
 
   /**
-   * Verify that FieldReplaceResolveSerializer does NOT write class names.
-   * This is the key optimization for final fields - since the type is known at compile time,
-   * we don't need to write class information.
+   * Verify that FieldReplaceResolveSerializer does NOT write class names. This is the key
+   * optimization for final fields - since the type is known at compile time, we don't need to write
+   * class information.
    */
   @Test
   public void testNoClassNameWrittenForFinalField() {
@@ -362,7 +361,8 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             bytesFinal.length, bytesNonFinal.length));
 
     // Verify deserialization still works correctly
-    ContainerWithFinalImmutableList deserialized = (ContainerWithFinalImmutableList) fory.deserialize(bytesFinal);
+    ContainerWithFinalImmutableList deserialized =
+        (ContainerWithFinalImmutableList) fory.deserialize(bytesFinal);
     assertEquals(deserialized.getFinalList(), ImmutableList.of(1, 2, 3));
   }
 
@@ -374,8 +374,8 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   }
 
   /**
-   * Verify that the writeClassInfo field is null for FieldReplaceResolveSerializer.
-   * This is what prevents class names from being written.
+   * Verify that the writeClassInfo field is null for FieldReplaceResolveSerializer. This is what
+   * prevents class names from being written.
    */
   @Test
   public void testWriteClassInfoIsNull() throws Exception {
@@ -419,8 +419,8 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   }
 
   /**
-   * Test that verifies the overridden writeObject method in FieldReplaceResolveSerializer
-   * does NOT call classResolver.writeClassInternal().
+   * Test that verifies the overridden writeObject method in FieldReplaceResolveSerializer does NOT
+   * call classResolver.writeClassInternal().
    */
   @Test
   public void testWriteObjectSkipsClassNameWrite() {
@@ -438,7 +438,8 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     byte[] bytes = fory.serialize(container);
 
     // Verify it can be deserialized correctly
-    ContainerWithFinalImmutableList deserialized = (ContainerWithFinalImmutableList) fory.deserialize(bytes);
+    ContainerWithFinalImmutableList deserialized =
+        (ContainerWithFinalImmutableList) fory.deserialize(bytes);
     assertEquals(deserialized.getFinalList(), ImmutableList.of(1, 2, 3, 4, 5));
 
     // The key point: FieldReplaceResolveSerializer.writeObject() directly calls
