@@ -380,13 +380,15 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     } else {
       // if typeToken is not final, ref tracking of subclass will be ignored too.
       if (typeRef.isPrimitive()) {
-        return serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, false);
+        return serializeForNotNull(
+            inputObject, buffer, typeRef, serializer, generateNewMethod, false);
       }
       Expression action =
           new ListExpression(
               new Invoke(
                   buffer, "writeByte", new Literal(Fory.NOT_NULL_VALUE_FLAG, PRIMITIVE_BYTE_TYPE)),
-              serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, false));
+              serializeForNotNull(
+                  inputObject, buffer, typeRef, serializer, generateNewMethod, false));
       return new If(
           eqNull(inputObject),
           new Invoke(buffer, "writeByte", new Literal(Fory.NULL_FLAG, PRIMITIVE_BYTE_TYPE)),
@@ -395,7 +397,11 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   protected Expression serializeForNullable(
-      Expression inputObject, Expression buffer, TypeRef<?> typeRef, boolean nullable, boolean finalField) {
+      Expression inputObject,
+      Expression buffer,
+      TypeRef<?> typeRef,
+      boolean nullable,
+      boolean finalField) {
     return serializeForNullable(inputObject, buffer, typeRef, null, false, nullable, finalField);
   }
 
@@ -410,23 +416,27 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     if (needWriteRef(typeRef)) {
       return new If(
           not(writeRefOrNull(buffer, inputObject)),
-          serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, finalField));
+          serializeForNotNull(
+              inputObject, buffer, typeRef, serializer, generateNewMethod, finalField));
     } else {
       // if typeToken is not final, ref tracking of subclass will be ignored too.
       if (typeRef.isPrimitive()) {
-        return serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, finalField);
+        return serializeForNotNull(
+            inputObject, buffer, typeRef, serializer, generateNewMethod, finalField);
       }
       if (nullable) {
         Expression action =
             new ListExpression(
                 new Invoke(buffer, "writeByte", Literal.ofByte(Fory.NOT_NULL_VALUE_FLAG)),
-                serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, finalField));
+                serializeForNotNull(
+                    inputObject, buffer, typeRef, serializer, generateNewMethod, finalField));
         return new If(
             eqNull(inputObject),
             new Invoke(buffer, "writeByte", Literal.ofByte(Fory.NULL_FLAG)),
             action);
       } else {
-        return serializeForNotNull(inputObject, buffer, typeRef, serializer, generateNewMethod, finalField);
+        return serializeForNotNull(
+            inputObject, buffer, typeRef, serializer, generateNewMethod, finalField);
       }
     }
   }
@@ -535,7 +545,11 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   protected Expression serializeForNotNullObject(
-      Expression inputObject, Expression buffer, TypeRef<?> typeRef, Expression serializer, boolean finalField) {
+      Expression inputObject,
+      Expression buffer,
+      TypeRef<?> typeRef,
+      Expression serializer,
+      boolean finalField) {
     Class<?> clz = getRawType(typeRef);
     if (serializer != null) {
       return new Invoke(serializer, writeMethodName, buffer, inputObject);
@@ -596,9 +610,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     return writeClassAction;
   }
 
-    protected Expression getOrCreateSerializer(Class<?> cls) {
-      return getOrCreateSerializer(cls, false);
-    }
+  protected Expression getOrCreateSerializer(Class<?> cls) {
+    return getOrCreateSerializer(cls, false);
+  }
 
   /**
    * Returns a serializer expression which will be used to call write/read method to avoid virtual
@@ -612,9 +626,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       // potential recursive call for seq codec generation is handled in `getSerializerClass`.
       Class<? extends Serializer> serializerClass;
       if (finalField) {
-          serializerClass =  typeResolver(r -> r.getSerializerClassFinalField(cls));
+        serializerClass = typeResolver(r -> r.getSerializerClassFinalField(cls));
       } else {
-         serializerClass =  typeResolver(r -> r.getSerializerClass(cls));
+        serializerClass = typeResolver(r -> r.getSerializerClass(cls));
       }
       Preconditions.checkNotNull(serializerClass, "Unsupported for class " + cls);
       if (!ReflectionUtils.isPublic(serializerClass)) {
@@ -666,8 +680,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             false, ctx.type(Serializer.class), name, cast(newSerializerExpr, SERIALIZER_TYPE));
         serializerRef = new Reference(name, SERIALIZER_TYPE, false);
       } else {
-          TypeRef<? extends Serializer> serializerTypeRef = TypeRef.of(serializerClass);
-          ctx.addField(
+        TypeRef<? extends Serializer> serializerTypeRef = TypeRef.of(serializerClass);
+        ctx.addField(
             true, ctx.type(serializerClass), name, cast(newSerializerExpr, serializerTypeRef));
         serializerRef = fieldRef(name, serializerTypeRef);
       }
@@ -1126,13 +1140,15 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         write =
             new If(
                 not(writeRefOrNull(buffer, elem)),
-                serializeForNotNull(elem, buffer, elementType, elemSerializer, generateNewMethod, false));
+                serializeForNotNull(
+                    elem, buffer, elementType, elemSerializer, generateNewMethod, false));
       } else {
         write =
             new If(
                 hasNull,
                 serializeFor(elem, buffer, elementType, elemSerializer, generateNewMethod),
-                serializeForNotNull(elem, buffer, elementType, elemSerializer, generateNewMethod, false));
+                serializeForNotNull(
+                    elem, buffer, elementType, elemSerializer, generateNewMethod, false));
       }
     }
     return new ListExpression(elem, write);

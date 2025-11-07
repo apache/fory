@@ -23,10 +23,9 @@ import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
 
 /**
- * Serializer for class which
- * 1) has jdk `writeReplace`/`readResolve` method defined,
- * 2) is a final field of a class.
- * //TODO do we ned to write the flag REPLACED_NEW_TYPE/REPLACED_SAME_TYPE even for the final field?
+ * Serializer for class which 1) has jdk `writeReplace`/`readResolve` method defined, 2) is a final
+ * field of a class. //TODO do we ned to write the flag REPLACED_NEW_TYPE/REPLACED_SAME_TYPE even
+ * for the final field?
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class FinalFieldReplaceResolveSerializer extends ReplaceResolveSerializer {
@@ -36,7 +35,8 @@ public class FinalFieldReplaceResolveSerializer extends ReplaceResolveSerializer
   }
 
   @Override
-  protected void writeObject(MemoryBuffer buffer, Object value, MethodInfoCache jdkMethodInfoCache) {
+  protected void writeObject(
+      MemoryBuffer buffer, Object value, MethodInfoCache jdkMethodInfoCache) {
     jdkMethodInfoCache.objectSerializer.write(buffer, value);
   }
 
