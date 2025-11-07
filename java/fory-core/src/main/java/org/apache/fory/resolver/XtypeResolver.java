@@ -966,12 +966,12 @@ public class XtypeResolver extends TypeResolver {
   }
 
   @Override
-  public Class<? extends Serializer> getSerializerClassFinalField(Class<?> cls) {
+  public Class<? extends Serializer> getSerializerClass(Class<?> cls, boolean codegen) {
     return getSerializer(cls).getClass();
   }
 
   @Override
-  public Class<? extends Serializer> getSerializerClass(Class<?> cls, boolean codegen) {
+  public Class<? extends Serializer> getSerializerClassFinalField(Class<?> cls) {
     return getSerializer(cls).getClass();
   }
 

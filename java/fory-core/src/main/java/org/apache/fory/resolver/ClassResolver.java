@@ -849,17 +849,17 @@ public class ClassResolver extends TypeResolver {
   }
 
   @Override
-  public Class<? extends Serializer> getSerializerClass(Class<?> cls) {
-    boolean codegen =
-        supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
-    return getSerializerClass(cls, codegen, false);
-  }
-
-  @Override
   public Class<? extends Serializer> getSerializerClassFinalField(Class<?> cls) {
     boolean codegen =
         supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
     return getSerializerClass(cls, codegen, true);
+  }
+
+  @Override
+  public Class<? extends Serializer> getSerializerClass(Class<?> cls) {
+    boolean codegen =
+        supportCodegenForJavaSerialization(cls) && fory.getConfig().isCodeGenEnabled();
+    return getSerializerClass(cls, codegen, false);
   }
 
   @Override
