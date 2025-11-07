@@ -518,8 +518,6 @@ Cross-language mode has additional overhead compared to Java-only mode:
 
 ### Implement a customized serializer
 
-````
-
 In some cases, you may want to implement a serializer for your type, especially some class customize serialization by
 JDK `writeObject/writeReplace/readObject/readResolve`, which is very inefficient. For example, if you don't want
 following `Foo#writeObject` got invoked, you can take following `FooSerializer` as an example:
@@ -1631,6 +1629,62 @@ public class StructMappingExample {
 }
 ```
 
+### Logging
+
+#### ForyLogger
+
+By default Fory uses a custom logger `ForyLogger` for internal needs.
+It builds resulting logged data into single string and sends it directly to `System.out`.
+The result line layout is similar to (in Log4j notation):
+
+```
+%d{yyyy-MM-dd hh:mm:ss} %p  %C:%L [%t] - %m%n
+```
+
+The layout can't be changed.
+
+Example output:
+
+```
+2025-11-07 08:49:59 INFO  CompileUnit:55 [main] - Generate code for org.apache.fory.builder.SerializedLambdaForyCodec_0 took 35 ms.
+2025-11-07 08:50:00 INFO  JaninoUtils:121 [main] - Compile [SerializedLambdaForyCodec_0] take 144 ms
+```
+
+#### Slf4jLogger
+
+If more sophisticated logger is required, configure Fory to use Slf4j via `LoggerFactory.useSlf4jLogging()`.
+For example enabling Slf4j before creating Fory:
+
+```java
+public static final ThreadSafeFory FORY;
+
+static {
+  LoggerFactory.useSlf4jLogging(true);
+  FORY = Fory.builder()
+    .buildThreadSafeFory();
+}
+```
+
+**Note:** Enabling Slf4j via `useSlf4jLogging` will be ignored when the application runs in a GraalVM native image.
+
+#### Suppress Fory logs
+
+Both `ForyLogger` and `Slf4jLogger` allow controling log outpul level or suppressing logs entirely.
+Configure logger level via `LoggerFactory.setLogLevel()`, for example:
+
+```java
+static {
+  // to log only WARN and high
+  LoggerFactory.setLogLevel(LogLevel.WARN_LEVEL);
+
+  // to disable at all
+  LoggerFactory.disableLogging();
+}
+```
+
+**Note:** Selected logging level is applied before Slfj4 implementation's logger level. So if you set `WARN_LEVEL` (as in
+the example above) then you will not see INFO messages from Fory even if INFO is enabled in Logback.
+
 ## Migration
 
 ### JDK migration
@@ -1746,4 +1800,3 @@ deserialization instead of `Fory#deserializeJavaObjectAndClass`/`Fory#deserializ
 If you serialize an object by invoking `Fory#serializeJavaObjectAndClass`, you should
 invoke `Fory#deserializeJavaObjectAndClass` for deserialization instead
 of `Fory#deserializeJavaObject`/`Fory#deserialize`.
-````
