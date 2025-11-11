@@ -120,6 +120,7 @@ import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.serializer.collection.CollectionFlags;
 import org.apache.fory.serializer.collection.CollectionLikeSerializer;
 import org.apache.fory.serializer.collection.MapLikeSerializer;
+import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.GraalvmSupport;
@@ -394,6 +395,139 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     }
   }
 
+  /**
+   * Serialize a field value with field-specific context. This method serves as an interception
+   * point for field-level serialization, allowing field-specific behavior (like handling final
+   * fields) without propagating boolean flags through method signatures.
+   *
+   * @param fieldValue the field value expression to serialize
+   * @param buffer the buffer to write to
+   * @param descriptor the field descriptor containing metadata
+   * @return expression for serializing the field
+   */
+  protected Expression serializeField(
+      Expression fieldValue, Expression buffer, Descriptor descriptor) {
+    TypeRef<?> typeRef = descriptor.getTypeRef();
+    boolean nullable = descriptor.isNullable();
+
+    if (needWriteRef(typeRef)) {
+      return new If(
+          not(writeRefOrNull(buffer, fieldValue)),
+          serializeForNotNullWithDescriptor(fieldValue, buffer, typeRef, null, false, descriptor));
+    } else {
+      // if typeToken is not final, ref tracking of subclass will be ignored too.
+      if (typeRef.isPrimitive()) {
+        return serializeForNotNullWithDescriptor(
+            fieldValue, buffer, typeRef, null, false, descriptor);
+      }
+      if (nullable) {
+        Expression action =
+            new ListExpression(
+                new Invoke(buffer, "writeByte", Literal.ofByte(Fory.NOT_NULL_VALUE_FLAG)),
+                serializeForNotNullWithDescriptor(
+                    fieldValue, buffer, typeRef, null, false, descriptor));
+        return new If(
+            eqNull(fieldValue),
+            new Invoke(buffer, "writeByte", Literal.ofByte(Fory.NULL_FLAG)),
+            action);
+      } else {
+        return serializeForNotNullWithDescriptor(
+            fieldValue, buffer, typeRef, null, false, descriptor);
+      }
+    }
+  }
+
+  /**
+   * Serialize a non-null value with descriptor context. This is similar to serializeForNotNull but
+   * uses descriptor context instead of a boolean finalField parameter.
+   */
+  private Expression serializeForNotNullWithDescriptor(
+      Expression inputObject,
+      Expression buffer,
+      TypeRef<?> typeRef,
+      Expression serializer,
+      boolean generateNewMethod,
+      Descriptor descriptor) {
+    Class<?> clz = getRawType(typeRef);
+    if (isPrimitive(clz) || isBoxed(clz)) {
+      return serializePrimitive(inputObject, buffer, clz);
+    } else {
+      if (clz == String.class) {
+        return fory.getStringSerializer().writeStringExpr(stringSerializerRef, buffer, inputObject);
+      }
+      Expression action;
+      if (useCollectionSerialization(typeRef)) {
+        action =
+            serializeForCollection(buffer, inputObject, typeRef, serializer, generateNewMethod);
+      } else if (useMapSerialization(typeRef)) {
+        action = serializeForMap(buffer, inputObject, typeRef, serializer, generateNewMethod);
+      } else {
+        action =
+            serializeForNotNullObjectWithDescriptor(
+                inputObject, buffer, typeRef, serializer, descriptor);
+      }
+      return action;
+    }
+  }
+
+  private Expression serializePrimitive(Expression inputObject, Expression buffer, Class<?> clz) {
+    // for primitive, inline call here to avoid java boxing, rather call corresponding serializer.
+    if (clz == byte.class || clz == Byte.class) {
+      return new Invoke(buffer, "writeByte", inputObject);
+    } else if (clz == boolean.class || clz == Boolean.class) {
+      return new Invoke(buffer, "writeBoolean", inputObject);
+    } else if (clz == char.class || clz == Character.class) {
+      return new Invoke(buffer, "writeChar", inputObject);
+    } else if (clz == short.class || clz == Short.class) {
+      return new Invoke(buffer, "writeInt16", inputObject);
+    } else if (clz == int.class || clz == Integer.class) {
+      String func = fory.compressInt() ? "writeVarInt32" : "writeInt32";
+      return new Invoke(buffer, func, inputObject);
+    } else if (clz == long.class || clz == Long.class) {
+      return LongSerializer.writeInt64(buffer, inputObject, fory.longEncoding(), true);
+    } else if (clz == float.class || clz == Float.class) {
+      return new Invoke(buffer, "writeFloat32", inputObject);
+    } else if (clz == double.class || clz == Double.class) {
+      return new Invoke(buffer, "writeFloat64", inputObject);
+    } else {
+      throw new IllegalStateException("impossible");
+    }
+  }
+
+  /**
+   * Serialize an object using descriptor context to determine the appropriate serializer. This
+   * replaces serializeForNotNullObject's finalField parameter.
+   */
+  private Expression serializeForNotNullObjectWithDescriptor(
+      Expression inputObject,
+      Expression buffer,
+      TypeRef<?> typeRef,
+      Expression serializer,
+      Descriptor descriptor) {
+    Class<?> clz = getRawType(typeRef);
+    if (serializer != null) {
+      return new Invoke(serializer, writeMethodName, buffer, inputObject);
+    }
+    if (isMonomorphic(clz)) {
+      // Use descriptor to get the appropriate serializer
+      serializer = getSerializerForDescriptor(clz, descriptor);
+      return new Invoke(serializer, writeMethodName, buffer, inputObject);
+    } else {
+      return writeForNotNullNonFinalObject(inputObject, buffer, typeRef);
+    }
+  }
+
+  /**
+   * Get or create a serializer based on descriptor context. This method replaces
+   * getOrCreateSerializer(cls, finalField) by extracting the finalField information from the
+   * descriptor instead of passing it as a parameter.
+   */
+  private Expression getSerializerForDescriptor(Class<?> cls, Descriptor descriptor) {
+    // Determine if this is a final field from the descriptor
+    boolean isFinalField = descriptor != null && descriptor.isFinalField();
+    return getOrCreateSerializer(cls, isFinalField);
+  }
+
   protected Expression serializeForNullable(
       Expression inputObject, Expression buffer, TypeRef<?> typeRef, boolean nullable) {
     return serializeForNullable(inputObject, buffer, typeRef, null, false, nullable);
@@ -463,27 +597,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       boolean generateNewMethod) {
     Class<?> clz = getRawType(typeRef);
     if (isPrimitive(clz) || isBoxed(clz)) {
-      // for primitive, inline call here to avoid java boxing, rather call corresponding serializer.
-      if (clz == byte.class || clz == Byte.class) {
-        return new Invoke(buffer, "writeByte", inputObject);
-      } else if (clz == boolean.class || clz == Boolean.class) {
-        return new Invoke(buffer, "writeBoolean", inputObject);
-      } else if (clz == char.class || clz == Character.class) {
-        return new Invoke(buffer, "writeChar", inputObject);
-      } else if (clz == short.class || clz == Short.class) {
-        return new Invoke(buffer, "writeInt16", inputObject);
-      } else if (clz == int.class || clz == Integer.class) {
-        String func = fory.compressInt() ? "writeVarInt32" : "writeInt32";
-        return new Invoke(buffer, func, inputObject);
-      } else if (clz == long.class || clz == Long.class) {
-        return LongSerializer.writeInt64(buffer, inputObject, fory.longEncoding(), true);
-      } else if (clz == float.class || clz == Float.class) {
-        return new Invoke(buffer, "writeFloat32", inputObject);
-      } else if (clz == double.class || clz == Double.class) {
-        return new Invoke(buffer, "writeFloat64", inputObject);
-      } else {
-        throw new IllegalStateException("impossible");
-      }
+      return serializePrimitive(inputObject, buffer, clz);
     } else {
       if (clz == String.class) {
         return fory.getStringSerializer().writeStringExpr(stringSerializerRef, buffer, inputObject);
@@ -599,12 +713,21 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
    * methods calls in most situations.
    */
   protected Expression getOrCreateSerializer(Class<?> cls) {
+    return getOrCreateSerializer(cls, false);
+  }
+
+  private Expression getOrCreateSerializer(Class<?> cls, boolean finalField) {
     // Not need to check cls final, take collection writeSameTypeElements as an example.
     // Preconditions.checkArgument(isMonomorphic(cls), cls);
     Reference serializerRef = serializerMap.get(cls);
     if (serializerRef == null) {
       // potential recursive call for seq codec generation is handled in `getSerializerClass`.
-      Class<? extends Serializer> serializerClass = typeResolver(r -> r.getSerializerClass(cls));
+      Class<? extends Serializer> serializerClass;
+      if (finalField) {
+        serializerClass = typeResolver(r -> r.getSerializerClassFinalField(cls));
+      } else {
+        serializerClass = typeResolver(r -> r.getSerializerClass(cls));
+      }
       Preconditions.checkNotNull(serializerClass, "Unsupported for class " + cls);
       if (!ReflectionUtils.isPublic(serializerClass)) {
         // TODO(chaokunyang) add jdk17+ unexported class check.
@@ -640,7 +763,6 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
           && !MapLikeSerializer.class.isAssignableFrom(serializerClass)) {
         serializerClass = MapLikeSerializer.class;
       }
-      TypeRef<? extends Serializer> serializerTypeRef = TypeRef.of(serializerClass);
       Expression fieldTypeExpr = getClassExpr(cls);
       // Don't invoke `Serializer.newSerializer` here, since it(ex. ObjectSerializer) may set itself
       // as global serializer, which overwrite serializer updates in jit callback.
@@ -656,6 +778,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             false, ctx.type(Serializer.class), name, cast(newSerializerExpr, SERIALIZER_TYPE));
         serializerRef = new Reference(name, SERIALIZER_TYPE, false);
       } else {
+        TypeRef<? extends Serializer> serializerTypeRef = TypeRef.of(serializerClass);
         ctx.addField(
             true, ctx.type(serializerClass), name, cast(newSerializerExpr, serializerTypeRef));
         serializerRef = fieldRef(name, serializerTypeRef);
@@ -1631,26 +1754,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Expression buffer, TypeRef<?> typeRef, Expression serializer, InvokeHint invokeHint) {
     Class<?> cls = getRawType(typeRef);
     if (isPrimitive(cls) || isBoxed(cls)) {
-      // for primitive, inline call here to avoid java boxing, rather call corresponding serializer.
-      if (cls == byte.class || cls == Byte.class) {
-        return new Invoke(buffer, "readByte", PRIMITIVE_BYTE_TYPE);
-      } else if (cls == boolean.class || cls == Boolean.class) {
-        return new Invoke(buffer, "readBoolean", PRIMITIVE_BOOLEAN_TYPE);
-      } else if (cls == char.class || cls == Character.class) {
-        return readChar(buffer);
-      } else if (cls == short.class || cls == Short.class) {
-        return readInt16(buffer);
-      } else if (cls == int.class || cls == Integer.class) {
-        return fory.compressInt() ? readVarInt32(buffer) : readInt32(buffer);
-      } else if (cls == long.class || cls == Long.class) {
-        return LongSerializer.readInt64(buffer, fory.longEncoding());
-      } else if (cls == float.class || cls == Float.class) {
-        return readFloat32(buffer);
-      } else if (cls == double.class || cls == Double.class) {
-        return readFloat64(buffer);
-      } else {
-        throw new IllegalStateException("impossible");
-      }
+      return deserializePrimitive(buffer, cls);
     } else {
       if (cls == String.class) {
         return fory.getStringSerializer().readStringExpr(stringSerializerRef, buffer);
@@ -1674,6 +1778,100 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         }
       }
       return obj;
+    }
+  }
+
+  /**
+   * Deserialize a field value with field-specific context. This method serves as an interception
+   * point for field-level deserialization, allowing field-specific behavior (like handling final
+   * fields) without propagating boolean flags through method signatures.
+   *
+   * @param buffer the buffer to read from
+   * @param descriptor the field descriptor containing metadata
+   * @param callback callback function to process the deserialized value
+   * @return expression for deserializing the field
+   */
+  protected Expression deserializeField(
+      Expression buffer, Descriptor descriptor, Function<Expression, Expression> callback) {
+    TypeRef<?> typeRef = descriptor.getTypeRef();
+    boolean nullable = descriptor.isNullable();
+
+    if (typeResolver(r -> r.needToWriteRef(typeRef))) {
+      return readRef(
+          buffer,
+          callback,
+          () -> deserializeForNotNullWithDescriptor(buffer, typeRef, null, descriptor));
+    } else {
+      if (typeRef.isPrimitive()) {
+        Expression value = deserializeForNotNullWithDescriptor(buffer, typeRef, null, descriptor);
+        // Should put value expr ahead to avoid generated code in wrong scope.
+        return new ListExpression(value, callback.apply(value));
+      }
+      return readNullable(
+          buffer,
+          typeRef,
+          callback,
+          () -> deserializeForNotNullWithDescriptor(buffer, typeRef, null, descriptor),
+          nullable);
+    }
+  }
+
+  /**
+   * Deserialize a non-null value with descriptor context. This is similar to deserializeForNotNull
+   * but uses descriptor context to get the appropriate serializer for final fields.
+   */
+  private Expression deserializeForNotNullWithDescriptor(
+      Expression buffer, TypeRef<?> typeRef, Expression serializer, Descriptor descriptor) {
+    Class<?> cls = getRawType(typeRef);
+    if (isPrimitive(cls) || isBoxed(cls)) {
+      return deserializePrimitive(buffer, cls);
+    } else {
+      if (cls == String.class) {
+        return fory.getStringSerializer().readStringExpr(stringSerializerRef, buffer);
+      }
+      Expression obj;
+      if (useCollectionSerialization(typeRef)) {
+        obj = deserializeForCollection(buffer, typeRef, serializer, null);
+      } else if (useMapSerialization(typeRef)) {
+        obj = deserializeForMap(buffer, typeRef, serializer, null);
+      } else {
+        if (serializer != null) {
+          return read(serializer, buffer, OBJECT_TYPE);
+        }
+        if (isMonomorphic(cls)) {
+          // Use descriptor to get the appropriate serializer
+          serializer = getSerializerForDescriptor(cls, descriptor);
+          Class<?> returnType =
+              ReflectionUtils.getReturnType(getRawType(serializer.type()), readMethodName);
+          obj = read(serializer, buffer, TypeRef.of(returnType));
+        } else {
+          obj = readForNotNullNonFinal(buffer, typeRef, serializer);
+        }
+      }
+      return obj;
+    }
+  }
+
+  private Expression deserializePrimitive(Expression buffer, Class<?> cls) {
+    // for primitive, inline call here to avoid java boxing
+    if (cls == byte.class || cls == Byte.class) {
+      return new Invoke(buffer, "readByte", PRIMITIVE_BYTE_TYPE);
+    } else if (cls == boolean.class || cls == Boolean.class) {
+      return new Invoke(buffer, "readBoolean", PRIMITIVE_BOOLEAN_TYPE);
+    } else if (cls == char.class || cls == Character.class) {
+      return readChar(buffer);
+    } else if (cls == short.class || cls == Short.class) {
+      return readInt16(buffer);
+    } else if (cls == int.class || cls == Integer.class) {
+      return fory.compressInt() ? readVarInt32(buffer) : readInt32(buffer);
+    } else if (cls == long.class || cls == Long.class) {
+      return LongSerializer.readInt64(buffer, fory.longEncoding());
+    } else if (cls == float.class || cls == Float.class) {
+      return readFloat32(buffer);
+    } else if (cls == double.class || cls == Double.class) {
+      return readFloat64(buffer);
+    } else {
+      throw new IllegalStateException("impossible");
     }
   }
 
