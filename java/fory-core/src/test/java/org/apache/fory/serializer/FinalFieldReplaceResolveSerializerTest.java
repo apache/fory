@@ -32,6 +32,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.testng.annotations.Test;
 
@@ -445,5 +446,54 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     // The key point: FieldReplaceResolveSerializer.writeObject() directly calls
     // jdkMethodInfoCache.objectSerializer.write(buffer, value)
     // without calling classResolver.writeClassInternal(buffer, writeClassInfo)
+  }
+
+  /**
+   * Test that final fields with writeReplace/readResolve work correctly with
+   * CompatibleMode.COMPATIBLE which uses MetaSharedSerializer instead of ObjectSerializer.
+   */
+  @Test(dataProvider = "referenceTrackingConfig")
+  public void testFinalFieldReplaceWithCompatibleMode(boolean referenceTracking) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.JAVA)
+            .requireClassRegistration(false)
+            .withRefTracking(referenceTracking)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .build();
+
+    // Test CustomReplaceClass1 with final field
+    CustomReplaceClass1 o1 = new CustomReplaceClass1("test_compatible");
+    ContainerWithFinalReplaceField container = new ContainerWithFinalReplaceField(o1);
+    serDeCheck(fory, container);
+    ContainerWithFinalReplaceField deserialized = serDe(fory, container);
+    assertEquals(deserialized.getFinalField().getName(), "test_compatible");
+
+    // Test ImmutableList with final field
+    ImmutableList<Integer> list1 = ImmutableList.of(10, 20, 30);
+    ContainerWithFinalImmutableList containerList = new ContainerWithFinalImmutableList(list1);
+    serDeCheck(fory, containerList);
+    ContainerWithFinalImmutableList deserializedList = serDe(fory, containerList);
+    assertEquals(deserializedList.getFinalList(), list1);
+
+    // Test ImmutableMap with final field
+    ImmutableMap<String, Integer> map1 = ImmutableMap.of("a", 100, "b", 200);
+    ContainerWithFinalImmutableMap containerMap = new ContainerWithFinalImmutableMap(map1);
+    serDeCheck(fory, containerMap);
+    ContainerWithFinalImmutableMap deserializedMap = serDe(fory, containerMap);
+    assertEquals(deserializedMap.getFinalMap(), map1);
+
+    // Test complex container with multiple final fields
+    ComplexContainerWithMultipleFinalFields complexContainer =
+        new ComplexContainerWithMultipleFinalFields(
+            new CustomReplaceClass1("complex"),
+            ImmutableList.of("x", "y", "z"),
+            new CustomReplaceClass2(true, 5),
+            ImmutableMap.of("key1", 111, "key2", 222));
+    serDeCheck(fory, complexContainer);
+    ComplexContainerWithMultipleFinalFields deserializedComplex = serDe(fory, complexContainer);
+    assertEquals(deserializedComplex.getField1().getName(), "complex");
+    assertEquals(deserializedComplex.getField2(), ImmutableList.of("x", "y", "z"));
+    assertEquals(deserializedComplex.getField4(), ImmutableMap.of("key1", 111, "key2", 222));
   }
 }
