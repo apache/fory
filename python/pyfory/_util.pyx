@@ -27,7 +27,7 @@ from libcpp.memory cimport shared_ptr, make_shared
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
 from pyfory.includes.libutil cimport(
-    CBuffer, AllocateBuffer, GetBit, SetBit, ClearBit, SetBitTo, CStatus, StatusCode, utf16HasSurrogatePairs
+    CBuffer, AllocateBuffer, GetBit, SetBit, ClearBit, SetBitTo, CError, CErrorCode, CResultVoidError, utf16HasSurrogatePairs
 )
 import os
 
@@ -265,9 +265,9 @@ cdef class Buffer:
 
     cpdef inline int64_t read_bytes_as_int64(self, int32_t length):
         cdef int64_t result = 0
-        cdef CStatus status = self.c_buffer_ptr.GetBytesAsInt64(self.reader_index, length,  &result)
-        if status.code() != StatusCode.OK:
-            raise ValueError(status.message())
+        cdef CResultVoidError res = self.c_buffer_ptr.GetBytesAsInt64(self.reader_index, length,  &result)
+        if not res.ok():
+            raise ValueError(res.error().message())
         self.reader_index += length
         return result
 

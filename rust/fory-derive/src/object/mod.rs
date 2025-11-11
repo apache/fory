@@ -17,7 +17,7 @@
 
 mod derive_enum;
 mod misc;
-mod read;
+pub(crate) mod read;
 mod serializer;
 pub(crate) mod util;
 mod write;

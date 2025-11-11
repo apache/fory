@@ -80,23 +80,14 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	fieldAccess := fmt.Sprintf("v.%s", field.GoName)
 
 	// Handle special named types first
+	// According to new spec, time types are "other internal types" and use ReadReferencable
 	if named, ok := field.Type.(*types.Named); ok {
 		typeStr := named.String()
 		switch typeStr {
-		case "time.Time":
-			fmt.Fprintf(buf, "\tusec := buf.ReadInt64()\n")
-			fmt.Fprintf(buf, "\t%s = fory.CreateTimeFromUnixMicro(usec)\n", fieldAccess)
-			return nil
-		case "github.com/apache/fory/go/fory.Date":
-			fmt.Fprintf(buf, "\tdays := buf.ReadInt32()\n")
-			fmt.Fprintf(buf, "\t// Handle zero date marker\n")
-			fmt.Fprintf(buf, "\tif days == int32(-2147483648) {\n")
-			fmt.Fprintf(buf, "\t\t%s = fory.Date{Year: 0, Month: 0, Day: 0}\n", fieldAccess)
-			fmt.Fprintf(buf, "\t} else {\n")
-			fmt.Fprintf(buf, "\t\tdiff := time.Duration(days) * 24 * time.Hour\n")
-			fmt.Fprintf(buf, "\t\tt := time.Date(1970, 1, 1, 0, 0, 0, 0, time.Local).Add(diff)\n")
-			fmt.Fprintf(buf, "\t\t%s = fory.Date{Year: t.Year(), Month: t.Month(), Day: t.Day()}\n", fieldAccess)
-			fmt.Fprintf(buf, "\t}\n")
+		case "time.Time", "github.com/apache/fory/go/fory.Date":
+			// These types are "other internal types" in the new spec
+			// They use: | null flag | value data | format
+			fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", fieldAccess)
 			return nil
 		}
 	}
@@ -109,26 +100,18 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	}
 
 	// Handle basic types
+	// Note: primitive serializers read values directly without NotNullValueFlag check
 	if basic, ok := field.Type.Underlying().(*types.Basic); ok {
 		switch basic.Kind() {
 		case types.Bool:
-			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
-			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for field %s, got %%d\", flag)\n", field.GoName)
-			fmt.Fprintf(buf, "\t}\n")
 			fmt.Fprintf(buf, "\t%s = buf.ReadBool()\n", fieldAccess)
 		case types.Int8:
-			fmt.Fprintf(buf, "\t%s = buf.ReadInt8()\n", fieldAccess)
+			fmt.Fprintf(buf, "\t%s = int8(buf.ReadByte_())\n", fieldAccess)
 		case types.Int16:
 			fmt.Fprintf(buf, "\t%s = buf.ReadInt16()\n", fieldAccess)
 		case types.Int32:
-			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
-			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for field %s, got %%d\", flag)\n", field.GoName)
-			fmt.Fprintf(buf, "\t}\n")
 			fmt.Fprintf(buf, "\t%s = buf.ReadVarint32()\n", fieldAccess)
 		case types.Int, types.Int64:
-			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
-			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for field %s, got %%d\", flag)\n", field.GoName)
-			fmt.Fprintf(buf, "\t}\n")
 			fmt.Fprintf(buf, "\t%s = buf.ReadVarint64()\n", fieldAccess)
 		case types.Uint8:
 			fmt.Fprintf(buf, "\t%s = buf.ReadByte_()\n", fieldAccess)
@@ -141,13 +124,12 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		case types.Float32:
 			fmt.Fprintf(buf, "\t%s = buf.ReadFloat32()\n", fieldAccess)
 		case types.Float64:
-			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
-			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for field %s, got %%d\", flag)\n", field.GoName)
-			fmt.Fprintf(buf, "\t}\n")
 			fmt.Fprintf(buf, "\t%s = buf.ReadFloat64()\n", fieldAccess)
 		case types.String:
+			// String is referencable but NeedWriteRef()=false
+			// In struct deserialization, it reads NotNullValueFlag then value
 			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(); flag != -1 {\n")
-			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for field %s, got %%d\", flag)\n", field.GoName)
+			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected NotNullValueFlag for string field %s, got %%d\", flag)\n", field.GoName)
 			fmt.Fprintf(buf, "\t}\n")
 			fmt.Fprintf(buf, "\t%s = fory.ReadString(buf)\n", fieldAccess)
 		default:
@@ -634,8 +616,8 @@ func generateMapKeyRead(buf *bytes.Buffer, keyType types.Type, varName string) e
 			// intSerializer uses ReadInt64, not ReadVarint64
 			fmt.Fprintf(buf, "\t\t\t\t\t%s = int(buf.ReadInt64())\n", varName)
 		case types.String:
-			// stringSerializer is referencable, need to use ReadReferencable
-			fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", varName)
+			// stringSerializer.NeedWriteRef() = false, read directly
+			fmt.Fprintf(buf, "\t\t\t\t\t%s = fory.ReadString(buf)\n", varName)
 		default:
 			return fmt.Errorf("unsupported map key type: %v", keyType)
 		}
@@ -656,8 +638,8 @@ func generateMapValueRead(buf *bytes.Buffer, valueType types.Type, varName strin
 			// intSerializer uses ReadInt64, not ReadVarint64
 			fmt.Fprintf(buf, "\t\t\t\t\t%s = int(buf.ReadInt64())\n", varName)
 		case types.String:
-			// stringSerializer is referencable, need to use ReadReferencable
-			fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", varName)
+			// stringSerializer.NeedWriteRef() = false, read directly
+			fmt.Fprintf(buf, "\t\t\t\t\t%s = fory.ReadString(buf)\n", varName)
 		default:
 			return fmt.Errorf("unsupported map value type: %v", valueType)
 		}

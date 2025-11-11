@@ -337,6 +337,11 @@ impl<'a> ReadContext<'a> {
     }
 
     #[inline(always)]
+    pub fn get_meta(&self, type_index: usize) -> Result<&Rc<TypeInfo>, Error> {
+        self.get_type_info_by_index(type_index)
+    }
+
+    #[inline(always)]
     pub fn load_type_meta(&mut self, offset: usize) -> Result<usize, Error> {
         self.meta_resolver.load(
             &self.type_resolver,

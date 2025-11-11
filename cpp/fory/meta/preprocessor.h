@@ -25,6 +25,9 @@
 // passed to the macros are fully expanded before they are concatenated.
 #define FORY_PP_CONCAT(a, b) FORY_PP_CONCAT_IMPL(a, b)
 
+#define FORY_PP_STRINGIFY_IMPL(...) #__VA_ARGS__
+#define FORY_PP_STRINGIFY(...) FORY_PP_STRINGIFY_IMPL(__VA_ARGS__)
+
 #define FORY_PP_NARG_IMPL(...) FORY_PP_NARG_CALC(__VA_ARGS__)
 #define FORY_PP_NARG(...) FORY_PP_NARG_IMPL(__VA_ARGS__, FORY_PP_NARG_REV())
 

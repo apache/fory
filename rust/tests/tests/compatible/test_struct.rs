@@ -142,7 +142,7 @@ fn nonexistent_struct() {
 #[test]
 fn option() {
     #[derive(ForyObject, Debug, PartialEq)]
-    #[fory_debug]
+    #[fory(debug)]
     struct Animal {
         f1: Option<String>,
         f2: Option<String>,
@@ -286,7 +286,7 @@ fn nullable_container() {
 #[test]
 fn inner_nullable() {
     #[derive(ForyObject, Debug)]
-    #[fory_debug]
+    #[fory(debug)]
     pub struct Item1 {
         f1: Vec<Option<String>>,
         f2: HashSet<Option<i8>>,
@@ -295,7 +295,7 @@ fn inner_nullable() {
     }
 
     #[derive(ForyObject, Debug)]
-    #[fory_debug]
+    #[fory(debug)]
     pub struct Item2 {
         f1: Vec<String>,
         f2: HashSet<i8>,
@@ -325,7 +325,7 @@ fn inner_nullable() {
 #[test]
 fn nullable_struct() {
     #[derive(ForyObject, Debug, PartialEq)]
-    #[fory_debug]
+    #[fory(debug)]
     pub struct Item {
         name: String,
         data: Vec<Option<String>>,
@@ -333,7 +333,7 @@ fn nullable_struct() {
     }
 
     #[derive(ForyObject, Debug)]
-    #[fory_debug]
+    #[fory(debug)]
     pub struct Person1 {
         f1: Item,
         f2: Option<Item>,
@@ -342,7 +342,7 @@ fn nullable_struct() {
     }
 
     #[derive(ForyObject, Debug)]
-    #[fory_debug]
+    #[fory(debug)]
     pub struct Person2 {
         f1: Option<Item>,
         f2: Item,
@@ -397,7 +397,7 @@ fn enum_without_payload() {
         Blue,
     }
     #[derive(ForyObject, Debug, PartialEq)]
-    #[fory_debug]
+    #[fory(debug)]
     struct Person1 {
         f1: Color1,
         f2: Color1,
@@ -410,7 +410,7 @@ fn enum_without_payload() {
         last: i8,
     }
     #[derive(ForyObject, Debug, PartialEq)]
-    #[fory_debug]
+    #[fory(debug)]
     struct Person2 {
         // same
         f1: Color1,
@@ -466,7 +466,7 @@ fn named_enum() {
         White,
     }
     #[derive(ForyObject, Debug, PartialEq)]
-    #[fory_debug]
+    #[fory(debug)]
     struct Item1 {
         f1: Color,
         f2: Color,
@@ -481,7 +481,7 @@ fn named_enum() {
         last: i8,
     }
     #[derive(ForyObject, Debug, PartialEq)]
-    #[fory_debug]
+    #[fory(debug)]
     struct Item2 {
         f1: Color,
         f2: Option<Color>,

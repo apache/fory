@@ -21,9 +21,11 @@ import (
 	"fmt"
 	"go/types"
 	"sort"
+	"strings"
 	"unicode"
 
 	"github.com/apache/fory/go/fory"
+	"github.com/spaolacci/murmur3"
 )
 
 // FieldInfo contains metadata about a struct field
@@ -396,83 +398,141 @@ func getFieldGroup(field *FieldInfo) int {
 }
 
 // computeStructHash computes a hash for struct schema compatibility
-// This implementation aligns with the reflection-based hash calculation
+// This implementation follows the new xlang serialization spec:
+// 1. Sort fields by fields sort algorithm (already done in s.Fields)
+// 2. Build string: snake_case(field_name),$type_id,$nullable;
+// 3. For "other fields", use TypeId::UNKNOWN
+// 4. Convert to UTF8 bytes
+// 5. Compute murmurhash3_x64_128, use first 32 bits
 func computeStructHash(s *StructInfo) int32 {
-	// Use the same iterative algorithm as reflection
-	var hash int32 = 17
+	var hashString strings.Builder
 
-	// Process fields in the same order as reflection
+	// Iterate through sorted fields
 	for _, field := range s.Fields {
-		id := getFieldHashID(field)
+		// Append snake_case field name
+		hashString.WriteString(field.SnakeName)
+		hashString.WriteString(",")
 
-		// Same algorithm as reflection: hash = hash * 31 + id
-		newHash := int64(hash)*31 + int64(id)
+		// Append type_id
+		typeID := getTypeIDForHash(field)
+		hashString.WriteString(fmt.Sprintf("%d", typeID))
+		hashString.WriteString(",")
 
-		// Same overflow handling as reflection
-		const MaxInt32 = 2147483647
-		for newHash >= MaxInt32 {
-			newHash /= 7
+		// Append nullable (1 if nullable, 0 otherwise)
+		// nullable is determined by field type (matching reflection's nullable() function)
+		nullable := 0
+		if isNullableType(field.Type) {
+			nullable = 1
 		}
-		hash = int32(newHash)
+		hashString.WriteString(fmt.Sprintf("%d", nullable))
+		hashString.WriteString(";")
 	}
 
+	// Convert to UTF8 bytes
+	hashBytes := []byte(hashString.String())
+
+	// Compute murmurhash3_x64_128 with seed 47, and use first 32 bits
+	// This matches the reflection implementation
+	h1, _ := murmur3.Sum128WithSeed(hashBytes, 47)
+	hash := int32(h1 & 0xFFFFFFFF)
+
 	if hash == 0 {
-		// Same panic condition as reflection
 		panic(fmt.Errorf("hash for type %v is 0", s.Name))
 	}
 
 	return hash
 }
 
-// getFieldHashID computes the field ID for hash calculation, matching reflection logic exactly
-func getFieldHashID(field *FieldInfo) int32 {
-	// Map Go types to Fory TypeIds (exactly matching reflection)
-	var tid int16
+// isNullableType checks if a type is nullable (referencable)
+// This matches the reflection implementation's nullable() function
+func isNullableType(t types.Type) bool {
+	// Check pointer, slice, map, interface directly
+	switch t.(type) {
+	case *types.Pointer, *types.Slice, *types.Map, *types.Interface, *types.Array:
+		return true
+	}
 
+	// Check basic types (String is nullable)
+	if basic, ok := t.Underlying().(*types.Basic); ok {
+		return basic.Kind() == types.String
+	}
+
+	// For named types (e.g., time.Time, fory.Date), check underlying type
+	// Struct types are not nullable unless they're pointers
+	return false
+}
+
+// getTypeIDForHash returns the TypeId for hash calculation according to new spec
+// For "other fields" (groupOther), returns UNKNOWN (63)
+func getTypeIDForHash(field *FieldInfo) int16 {
+	// Determine field group
+	group := getFieldGroup(field)
+
+	// For "other fields", use UNKNOWN
+	if group == groupOther {
+		return fory.UNKNOWN
+	}
+
+	// For struct fields declared with concrete slice types,
+	// use typeID = LIST uniformly for hash calculation to align cross-language behavior
+	// This matches the reflection implementation
+	if field.TypeID == "LIST" {
+		return fory.LIST
+	}
+
+	// Map field TypeID string to Fory TypeId value
 	switch field.TypeID {
 	case "BOOL":
-		tid = fory.BOOL
+		return fory.BOOL
 	case "INT8":
-		tid = fory.INT8
+		return fory.INT8
 	case "INT16":
-		tid = fory.INT16
+		return fory.INT16
 	case "INT32":
-		tid = fory.INT32
+		return fory.INT32
 	case "INT64":
-		tid = fory.INT64
+		return fory.INT64
 	case "UINT8":
-		tid = fory.UINT8
+		return fory.UINT8
 	case "UINT16":
-		tid = fory.UINT16
+		return fory.UINT16
 	case "UINT32":
-		tid = fory.UINT32
+		return fory.UINT32
 	case "UINT64":
-		tid = fory.UINT64
+		return fory.UINT64
 	case "FLOAT32":
-		tid = fory.FLOAT
+		return fory.FLOAT
 	case "FLOAT64":
-		tid = fory.DOUBLE
+		return fory.DOUBLE
 	case "STRING":
-		tid = fory.STRING
+		return fory.STRING
 	case "TIMESTAMP":
-		tid = fory.TIMESTAMP
+		return fory.TIMESTAMP
 	case "LOCAL_DATE":
-		tid = fory.LOCAL_DATE
+		return fory.LOCAL_DATE
 	case "NAMED_STRUCT":
-		tid = fory.NAMED_STRUCT
-	case "LIST":
-		tid = fory.LIST
+		return fory.NAMED_STRUCT
+	case "STRUCT":
+		return fory.STRUCT
+	case "SET":
+		return fory.SET
 	case "MAP":
-		tid = fory.MAP
+		return fory.MAP
+	case "BINARY":
+		return fory.BINARY
+	case "ENUM":
+		return fory.ENUM
+	case "NAMED_ENUM":
+		return fory.NAMED_ENUM
+	case "EXT":
+		return fory.EXT
+	case "NAMED_EXT":
+		return fory.NAMED_EXT
+	case "INTERFACE":
+		return fory.UNKNOWN // interface{} treated as UNKNOWN
 	default:
-		tid = 0 // Unknown type
+		return fory.UNKNOWN
 	}
-
-	// Same logic as reflection: handle negative TypeIds
-	if tid < 0 {
-		return -int32(tid)
-	}
-	return int32(tid)
 }
 
 // getStructNames extracts struct names from StructInfo slice

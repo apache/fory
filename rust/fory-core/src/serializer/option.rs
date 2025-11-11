@@ -152,6 +152,13 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
         T::fory_static_type_id()
     }
 
+    fn fory_is_wrapper_type() -> bool
+    where
+        Self: Sized,
+    {
+        true
+    }
+
     #[inline(always)]
     fn as_any(&self) -> &dyn std::any::Any {
         self

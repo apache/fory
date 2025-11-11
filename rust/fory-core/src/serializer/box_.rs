@@ -23,6 +23,7 @@ use crate::serializer::{ForyDefault, Serializer};
 use crate::types::TypeId;
 
 impl<T: Serializer + ForyDefault> Serializer for Box<T> {
+    #[inline(always)]
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
@@ -30,34 +31,49 @@ impl<T: Serializer + ForyDefault> Serializer for Box<T> {
         Ok(Box::new(T::fory_read_data(context)?))
     }
 
+    #[inline(always)]
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
         T::fory_read_type_info(context)
     }
 
+    #[inline(always)]
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         T::fory_write_data(self.as_ref(), context)
     }
 
+    #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
         T::fory_write_type_info(context)
     }
 
+    #[inline(always)]
     fn fory_reserved_space() -> usize {
         T::fory_reserved_space()
     }
 
+    #[inline(always)]
     fn fory_get_type_id(type_resolver: &TypeResolver) -> Result<u32, Error> {
         T::fory_get_type_id(type_resolver)
     }
 
+    #[inline(always)]
     fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
         (**self).fory_type_id_dyn(type_resolver)
     }
 
+    #[inline(always)]
     fn fory_static_type_id() -> TypeId {
         T::fory_static_type_id()
     }
 
+    fn fory_is_wrapper_type() -> bool
+    where
+        Self: Sized,
+    {
+        true
+    }
+
+    #[inline(always)]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

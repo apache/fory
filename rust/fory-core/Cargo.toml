@@ -21,7 +21,6 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 description = "Apache Fory: Blazingly fast multi-language serialization framework with trait objects and reference support."
-license = "Apache-2.0"
 license-file = "../../LICENSE"
 readme = "../README.md"
 repository = "https://github.com/apache/fory"

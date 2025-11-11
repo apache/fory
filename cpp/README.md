@@ -2,6 +2,10 @@
 
 Apache Fory™ is a blazingly-fast multi-language serialization framework powered by just-in-time compilation and zero-copy.
 
+## Environment
+
+- Bazel version: 6.3.2
+
 ## Build Apache Fory™ C++
 
 ```bash
@@ -9,11 +13,9 @@ Apache Fory™ is a blazingly-fast multi-language serialization framework powere
 bazel build //:all
 # Run all tests
 bazel test //:all
+# Run serialization tests
+bazel test //cpp/fory/serialization:all
 ```
-
-## Environment
-
-- Bazel version: 6.3.2
 
 ## Benchmark
 

@@ -77,12 +77,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
 
   @Test(dataProvider = "javaFory")
   public void testJDKCompatibleCommon(Fory fory) {
-    WriteObjectTestClass o = new WriteObjectTestClass(new char[] {'a', 'b'});
     fory.registerSerializer(
         WriteObjectTestClass.class, new ObjectStreamSerializer(fory, WriteObjectTestClass.class));
-    serDeCheckSerializer(fory, o, "ObjectStreamSerializer");
     fory.registerSerializer(
         StringBuilder.class, new ObjectStreamSerializer(fory, StringBuilder.class));
+
+    WriteObjectTestClass o = new WriteObjectTestClass(new char[] {'a', 'b'});
+    serDeCheckSerializer(fory, o, "ObjectStreamSerializer");
     assertSame(
         fory.getClassResolver().getSerializerClass(StringBuilder.class),
         ObjectStreamSerializer.class);
@@ -157,6 +158,15 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   public void testJDKCompatiblePutFields(Fory fory) {
     fory.registerSerializer(
         StringBuffer.class, new ObjectStreamSerializer(fory, StringBuffer.class));
+    fory.registerSerializer(BigInteger.class, new ObjectStreamSerializer(fory, BigInteger.class));
+    fory.registerSerializer(InetAddress.class, new ObjectStreamSerializer(fory, InetAddress.class));
+    fory.registerSerializer(
+        Inet4Address.class, new ObjectStreamSerializer(fory, Inet4Address.class));
+    fory.registerSerializer(
+        WriteObjectTestClass2.class, new ObjectStreamSerializer(fory, WriteObjectTestClass2.class));
+    fory.registerSerializer(
+        WriteObjectTestClass3.class, new ObjectStreamSerializer(fory, WriteObjectTestClass3.class));
+
     assertSame(
         fory.getClassResolver().getSerializerClass(StringBuffer.class),
         ObjectStreamSerializer.class);
@@ -164,21 +174,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     StringBuffer newStringBuffer = (StringBuffer) serDe(fory, new StringBuffer("abc"));
     assertEquals(newStringBuffer.toString(), "abc");
     BigInteger bigInteger = BigInteger.valueOf(1000);
-    fory.registerSerializer(BigInteger.class, new ObjectStreamSerializer(fory, BigInteger.class));
     serDeCheck(fory, bigInteger);
-    fory.registerSerializer(InetAddress.class, new ObjectStreamSerializer(fory, InetAddress.class));
-    fory.registerSerializer(
-        Inet4Address.class, new ObjectStreamSerializer(fory, Inet4Address.class));
     InetAddress inetAddress = InetAddress.getLoopbackAddress();
     serDeCheck(fory, inetAddress);
     WriteObjectTestClass2 testClassObj2 = new WriteObjectTestClass2(new char[] {'a', 'b'}, "abc");
-    fory.registerSerializer(
-        WriteObjectTestClass2.class, new ObjectStreamSerializer(fory, WriteObjectTestClass2.class));
     serDeCheck(fory, testClassObj2);
     // test defaultReadObject compatible with putFields.
     WriteObjectTestClass3 testClassObj3 = new WriteObjectTestClass3(new char[] {'a', 'b'}, "abc");
-    fory.registerSerializer(
-        WriteObjectTestClass3.class, new ObjectStreamSerializer(fory, WriteObjectTestClass3.class));
     serDeCheck(fory, testClassObj3);
   }
 
@@ -210,6 +212,12 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   @Test(dataProvider = "javaFory")
   public void testJDKCompatibleMap(Fory fory) {
     ImmutableMap<String, Integer> mapData = ImmutableMap.of("k1", 1, "k2", 2);
+    fory.registerSerializer(
+        ConcurrentHashMap.class, new ObjectStreamSerializer(fory, ConcurrentHashMap.class));
+    Map<String, Integer> hashMap = new HashMap<>(mapData);
+    fory.registerSerializer(
+        hashMap.getClass(), new ObjectStreamSerializer(fory, hashMap.getClass()));
+
     {
       ObjectStreamSerializer serializer = new ObjectStreamSerializer(fory, ConcurrentHashMap.class);
       MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
@@ -225,8 +233,6 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
       fory.reset();
     }
     {
-      fory.registerSerializer(
-          ConcurrentHashMap.class, new ObjectStreamSerializer(fory, ConcurrentHashMap.class));
       serDeCheck(fory, new ConcurrentHashMap<>(mapData));
       assertSame(
           fory.getClassResolver().getSerializer(ConcurrentHashMap.class).getClass(),
@@ -234,9 +240,7 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
     }
     {
       // ImmutableMap use writeReplace, which needs special handling.
-      Map<String, Integer> map = new HashMap<>(mapData);
-      fory.registerSerializer(map.getClass(), new ObjectStreamSerializer(fory, map.getClass()));
-      serDeCheck(fory, map);
+      serDeCheck(fory, hashMap);
     }
   }
 
@@ -264,11 +268,12 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
   @Test(dataProvider = "javaFory")
   public void testJDKCompatibleList(Fory fory) {
     fory.registerSerializer(ArrayList.class, new ObjectStreamSerializer(fory, ArrayList.class));
+    fory.registerSerializer(LinkedList.class, new ObjectStreamSerializer(fory, LinkedList.class));
+    fory.registerSerializer(Vector.class, new ObjectStreamSerializer(fory, Vector.class));
+
     List<String> list = new ArrayList<>(ImmutableList.of("a", "b", "c", "d"));
     serDeCheck(fory, list);
-    fory.registerSerializer(LinkedList.class, new ObjectStreamSerializer(fory, LinkedList.class));
     serDeCheck(fory, new LinkedList<>(list));
-    fory.registerSerializer(Vector.class, new ObjectStreamSerializer(fory, Vector.class));
     serDeCheck(fory, new Vector<>(list));
   }
 
@@ -292,6 +297,8 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
             .withRefTracking(true)
             .withCodegen(enableCodegen)
             .build();
+    fory.registerSerializer(
+        ConcurrentHashMap.class, new ObjectStreamSerializer(fory, ConcurrentHashMap.class));
     {
       ObjectStreamSerializer serializer = new ObjectStreamSerializer(fory, ConcurrentHashMap.class);
       MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
@@ -416,12 +423,13 @@ public class ObjectStreamSerializerTest extends ForyTestBase {
 
   @Test(dataProvider = "javaFory")
   public void testWriteObjectReplace(Fory fory) throws MalformedURLException {
+    fory.registerSerializer(
+        WriteObjectTestClass4.class, new ObjectStreamSerializer(fory, WriteObjectTestClass4.class));
+
     Assert.assertEquals(
         serDeCheckSerializer(fory, new URL("http://test"), "ReplaceResolve"),
         new URL("http://test"));
     WriteObjectTestClass4 testClassObj4 = new WriteObjectTestClass4(new char[] {'a', 'b'});
-    fory.registerSerializer(
-        WriteObjectTestClass4.class, new ObjectStreamSerializer(fory, WriteObjectTestClass4.class));
     serDeCheckSerializer(fory, testClassObj4, "ObjectStreamSerializer");
   }
 

@@ -154,6 +154,7 @@ public final class Fory implements BaseFory {
     jitContext = new JITContext(this);
     generics = new Generics(this);
     metaStringResolver = new MetaStringResolver();
+    depth = -1;
     classResolver = new ClassResolver(this);
     if (crossLanguage) {
       xtypeResolver = new XtypeResolver(this);
@@ -316,9 +317,10 @@ public final class Fory implements BaseFory {
     buffer.writeByte(bitmap);
     try {
       jitContext.lock();
-      if (depth != 0) {
+      if (depth > 0) {
         throwDepthSerializationException();
       }
+      depth = 0;
       if (!crossLanguage) {
         write(buffer, obj);
       } else {
@@ -838,9 +840,10 @@ public final class Fory implements BaseFory {
   public Object deserialize(MemoryBuffer buffer, Iterable<MemoryBuffer> outOfBandBuffers) {
     try {
       jitContext.lock();
-      if (depth != 0) {
+      if (depth > 0) {
         throwDepthDeserializationException();
       }
+      depth = 0;
       if (crossLanguage) {
         short magicNumber = buffer.readInt16();
         assert magicNumber == MAGIC_NUMBER
@@ -1152,7 +1155,7 @@ public final class Fory implements BaseFory {
   public void serializeJavaObject(MemoryBuffer buffer, Object obj) {
     try {
       jitContext.lock();
-      if (depth != 0) {
+      if (depth > 0) {
         throwDepthSerializationException();
       }
       if (config.isMetaShareEnabled()) {
@@ -1201,7 +1204,7 @@ public final class Fory implements BaseFory {
   public <T> T deserializeJavaObject(MemoryBuffer buffer, Class<T> cls) {
     try {
       jitContext.lock();
-      if (depth != 0) {
+      if (depth > 0) {
         throwDepthDeserializationException();
       }
       if (shareMeta) {
@@ -1286,7 +1289,7 @@ public final class Fory implements BaseFory {
   public void serializeJavaObjectAndClass(MemoryBuffer buffer, Object obj) {
     try {
       jitContext.lock();
-      if (depth != 0) {
+      if (depth > 0) {
         throwDepthSerializationException();
       }
       write(buffer, obj);
@@ -1324,7 +1327,7 @@ public final class Fory implements BaseFory {
   public Object deserializeJavaObjectAndClass(MemoryBuffer buffer) {
     try {
       jitContext.lock();
-      if (depth != 0) {
+      if (depth > 0) {
         throwDepthDeserializationException();
       }
       if (shareMeta) {
@@ -1556,13 +1559,8 @@ public final class Fory implements BaseFory {
   }
 
   public void reset() {
-    refResolver.reset();
-    classResolver.reset();
-    metaStringResolver.reset();
-    serializationContext.reset();
-    peerOutOfBandEnabled = false;
-    bufferCallback = null;
-    depth = 0;
+    resetWrite();
+    resetRead();
     resetCopy();
   }
 
@@ -1581,8 +1579,8 @@ public final class Fory implements BaseFory {
     metaStringResolver.resetRead();
     serializationContext.resetRead();
     peerOutOfBandEnabled = false;
-    depth = 0;
     classDefEndOffset = -1;
+    depth = 0;
   }
 
   public void resetCopy() {

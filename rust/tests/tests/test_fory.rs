@@ -195,3 +195,94 @@ fn test_serialize_to_detailed() {
         assert_eq!(*point, deserialized);
     }
 }
+
+use chrono::{DateTime, NaiveDateTime, Utc};
+
+macro_rules! impl_value {
+    ($record:ident, $value:ident, { $($field:ident : $ty:ty = $expr:expr),* $(,)? }) => {
+        #[derive(ForyObject)]
+        pub struct $value {
+            $(pub $field: $ty,)*
+        }
+
+        impl $record {
+            pub fn to_key_value(self) -> (String, $value) {
+                let Self {
+                    feature_key,
+                    $($field,)*
+                } = self;
+
+                let value = $value {
+                    $($field: $expr,)*
+                };
+
+                (feature_key, value)
+            }
+        }
+    };
+}
+
+#[derive(Debug, Clone)]
+pub struct KeyValue {
+    feature_key: String,
+    count: u64,
+    last_seen_event_time: DateTime<Utc>,
+}
+
+impl_value!(
+    KeyValue,
+    Value,
+    {
+        count: u64 = count,
+        last_seen_event_time: NaiveDateTime = last_seen_event_time.naive_utc(),
+    }
+);
+
+#[test]
+fn test_in_macro() {
+    let key_value = KeyValue {
+        feature_key: "test_key".to_string(),
+        count: 100,
+        last_seen_event_time: Utc::now(),
+    };
+    let (key, value) = key_value.clone().to_key_value();
+    assert_eq!(key, "test_key");
+    assert_eq!(value.count, 100);
+    assert_eq!(
+        value.last_seen_event_time,
+        key_value.last_seen_event_time.naive_utc()
+    );
+}
+
+#[test]
+fn test_unregistered_type_error_message() {
+    #[derive(ForyObject)]
+    struct Inner {
+        v: i32,
+    }
+
+    #[derive(ForyObject)]
+    struct Outer {
+        v: i32,
+        inner: Inner,
+    }
+
+    let mut fory = Fory::default();
+    // Register only the outer type; inner type is intentionally not registered
+    fory.register::<Outer>(200).unwrap();
+    let obj = Outer {
+        v: 1,
+        inner: Inner { v: 2 },
+    };
+    let err = fory
+        .serialize(&obj)
+        .expect_err("expected serialization to fail due to missing inner registration");
+    let err_str = format!("{}", err);
+    // The error should include the concrete Rust type name of the inner type (the generic T)
+    let inner_name = std::any::type_name::<Inner>();
+    assert!(
+        err_str.contains(inner_name),
+        "error did not contain inner type name; err='{}'",
+        err_str
+    );
+}

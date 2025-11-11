@@ -81,7 +81,21 @@ pub enum TypeId {
     FLOAT64_ARRAY = 37,
     ARROW_RECORD_BATCH = 38,
     ARROW_TABLE = 39,
-    UNKNOWN = 63,
+    U8 = 64,
+    U16 = 65,
+    U32 = 66,
+    U64 = 67,
+    USIZE = 68,
+    U128 = 69,
+    VAR_U32 = 70,
+    VAR_U64 = 71,
+    SLI_U64 = 72,
+    U16_ARRAY = 73,
+    U32_ARRAY = 74,
+    U64_ARRAY = 75,
+    USIZE_ARRAY = 76,
+    U128_ARRAY = 77,
+    UNKNOWN = 78,
 }
 
 pub const BOOL: u32 = TypeId::BOOL as u32;
@@ -123,6 +137,20 @@ pub const FLOAT32_ARRAY: u32 = TypeId::FLOAT32_ARRAY as u32;
 pub const FLOAT64_ARRAY: u32 = TypeId::FLOAT64_ARRAY as u32;
 pub const ARROW_RECORD_BATCH: u32 = TypeId::ARROW_RECORD_BATCH as u32;
 pub const ARROW_TABLE: u32 = TypeId::ARROW_TABLE as u32;
+pub const U8: u32 = TypeId::U8 as u32;
+pub const U16: u32 = TypeId::U16 as u32;
+pub const U32: u32 = TypeId::U32 as u32;
+pub const U64: u32 = TypeId::U64 as u32;
+pub const USIZE: u32 = TypeId::USIZE as u32;
+pub const U128: u32 = TypeId::U128 as u32;
+pub const VAR_U32: u32 = TypeId::VAR_U32 as u32;
+pub const VAR_U64: u32 = TypeId::VAR_U64 as u32;
+pub const SLI_U64: u32 = TypeId::SLI_U64 as u32;
+pub const U16_ARRAY: u32 = TypeId::U16_ARRAY as u32;
+pub const U32_ARRAY: u32 = TypeId::U32_ARRAY as u32;
+pub const U64_ARRAY: u32 = TypeId::U64_ARRAY as u32;
+pub const USIZE_ARRAY: u32 = TypeId::USIZE_ARRAY as u32;
+pub const U128_ARRAY: u32 = TypeId::U128_ARRAY as u32;
 pub const UNKNOWN: u32 = TypeId::UNKNOWN as u32;
 
 const MAX_UNT32: u64 = (1 << 31) - 1;
@@ -140,7 +168,7 @@ pub fn compute_string_hash(s: &str) -> u32 {
     hash as u32
 }
 
-pub static BASIC_TYPES: [TypeId; 18] = [
+pub static BASIC_TYPES: [TypeId; 29] = [
     TypeId::BOOL,
     TypeId::INT8,
     TypeId::INT16,
@@ -159,9 +187,20 @@ pub static BASIC_TYPES: [TypeId; 18] = [
     TypeId::INT64_ARRAY,
     TypeId::FLOAT32_ARRAY,
     TypeId::FLOAT64_ARRAY,
+    TypeId::U8,
+    TypeId::U16,
+    TypeId::U32,
+    TypeId::U64,
+    TypeId::USIZE,
+    TypeId::U128,
+    TypeId::U16_ARRAY,
+    TypeId::U32_ARRAY,
+    TypeId::U64_ARRAY,
+    TypeId::USIZE_ARRAY,
+    TypeId::U128_ARRAY,
 ];
 
-pub static PRIMITIVE_TYPES: [u32; 7] = [
+pub static PRIMITIVE_TYPES: [u32; 13] = [
     TypeId::BOOL as u32,
     TypeId::INT8 as u32,
     TypeId::INT16 as u32,
@@ -169,9 +208,15 @@ pub static PRIMITIVE_TYPES: [u32; 7] = [
     TypeId::INT64 as u32,
     TypeId::FLOAT32 as u32,
     TypeId::FLOAT64 as u32,
+    TypeId::U8 as u32,
+    TypeId::U16 as u32,
+    TypeId::U32 as u32,
+    TypeId::U64 as u32,
+    TypeId::USIZE as u32,
+    TypeId::U128 as u32,
 ];
 
-pub static PRIMITIVE_ARRAY_TYPES: [u32; 8] = [
+pub static PRIMITIVE_ARRAY_TYPES: [u32; 13] = [
     TypeId::BOOL_ARRAY as u32,
     TypeId::BINARY as u32,
     TypeId::INT8_ARRAY as u32,
@@ -180,9 +225,14 @@ pub static PRIMITIVE_ARRAY_TYPES: [u32; 8] = [
     TypeId::INT64_ARRAY as u32,
     TypeId::FLOAT32_ARRAY as u32,
     TypeId::FLOAT64_ARRAY as u32,
+    TypeId::U16_ARRAY as u32,
+    TypeId::U32_ARRAY as u32,
+    TypeId::U64_ARRAY as u32,
+    TypeId::USIZE_ARRAY as u32,
+    TypeId::U128_ARRAY as u32,
 ];
 
-pub static BASIC_TYPE_NAMES: [&str; 10] = [
+pub static BASIC_TYPE_NAMES: [&str; 16] = [
     "bool",
     "i8",
     "i16",
@@ -193,6 +243,12 @@ pub static BASIC_TYPE_NAMES: [&str; 10] = [
     "String",
     "NaiveDate",
     "NaiveDateTime",
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "usize",
+    "u128",
 ];
 
 pub static CONTAINER_TYPES: [TypeId; 3] = [TypeId::LIST, TypeId::SET, TypeId::MAP];
@@ -200,7 +256,7 @@ pub static CONTAINER_TYPES: [TypeId; 3] = [TypeId::LIST, TypeId::SET, TypeId::MA
 pub static CONTAINER_TYPE_NAMES: [&str; 3] = ["Vec", "HashSet", "HashMap"];
 
 pub static PRIMITIVE_ARRAY_TYPE_MAP: &[(&str, u32, &str)] = &[
-    // ("_binary", TypeId::BINARY as u32),
+    ("u8", TypeId::BINARY as u32, "Vec<u8>"),
     ("bool", TypeId::BOOL_ARRAY as u32, "Vec<bool>"),
     ("i8", TypeId::INT8_ARRAY as u32, "Vec<i8>"),
     ("i16", TypeId::INT16_ARRAY as u32, "Vec<i16>"),
@@ -208,10 +264,16 @@ pub static PRIMITIVE_ARRAY_TYPE_MAP: &[(&str, u32, &str)] = &[
     ("i64", TypeId::INT64_ARRAY as u32, "Vec<i64>"),
     ("f32", TypeId::FLOAT32_ARRAY as u32, "Vec<f32>"),
     ("f64", TypeId::FLOAT64_ARRAY as u32, "Vec<f64>"),
+    ("u16", TypeId::U16_ARRAY as u32, "Vec<u16>"),
+    ("u32", TypeId::U32_ARRAY as u32, "Vec<u32>"),
+    ("u64", TypeId::U64_ARRAY as u32, "Vec<u64>"),
+    ("usize", TypeId::USIZE_ARRAY as u32, "Vec<usize>"),
+    ("u128", TypeId::U128_ARRAY as u32, "Vec<u128>"),
 ];
 
+/// Keep as const fn for compile time evaluation or constant folding
 #[inline(always)]
-pub fn is_primitive_type(type_id: TypeId) -> bool {
+pub const fn is_primitive_type_id(type_id: TypeId) -> bool {
     matches!(
         type_id,
         TypeId::BOOL
@@ -221,32 +283,36 @@ pub fn is_primitive_type(type_id: TypeId) -> bool {
             | TypeId::INT64
             | TypeId::FLOAT32
             | TypeId::FLOAT64
-            | TypeId::STRING
-            | TypeId::LOCAL_DATE
-            | TypeId::TIMESTAMP
+            | TypeId::U8
+            | TypeId::U16
+            | TypeId::U32
+            | TypeId::U64
+            | TypeId::USIZE
+            | TypeId::U128
     )
 }
 
+/// Keep as const fn for compile time evaluation or constant folding
 #[inline(always)]
-pub fn is_internal_type(type_id: u32) -> bool {
+pub const fn is_internal_type(type_id: u32) -> bool {
     if type_id == 0 || type_id >= TypeId::UNKNOWN as u32 {
         return false;
     }
-    let excluded = [
-        TypeId::ENUM as u32,
-        TypeId::NAMED_ENUM as u32,
-        TypeId::STRUCT as u32,
-        TypeId::COMPATIBLE_STRUCT as u32,
-        TypeId::NAMED_STRUCT as u32,
-        TypeId::NAMED_COMPATIBLE_STRUCT as u32,
-        TypeId::EXT as u32,
-        TypeId::NAMED_EXT as u32,
-    ];
-    !excluded.contains(&type_id)
+    !matches!(
+        type_id,
+        ENUM | NAMED_ENUM
+            | STRUCT
+            | COMPATIBLE_STRUCT
+            | NAMED_STRUCT
+            | NAMED_COMPATIBLE_STRUCT
+            | EXT
+            | NAMED_EXT
+    )
 }
 
+/// Keep as const fn for compile time evaluation or constant folding
 #[inline(always)]
-pub fn need_to_write_type_for_field(type_id: TypeId) -> bool {
+pub(crate) const fn need_to_write_type_for_field(type_id: TypeId) -> bool {
     matches!(
         type_id,
         TypeId::STRUCT
@@ -259,9 +325,19 @@ pub fn need_to_write_type_for_field(type_id: TypeId) -> bool {
     )
 }
 
+/// Keep as const fn for compile time evaluation or constant folding
 #[inline(always)]
-pub fn is_container_type(type_id: TypeId) -> bool {
-    type_id == TypeId::LIST || type_id == TypeId::SET || type_id == TypeId::MAP
+pub(crate) const fn is_user_type(type_id: u32) -> bool {
+    matches!(
+        type_id,
+        ENUM | NAMED_ENUM
+            | STRUCT
+            | COMPATIBLE_STRUCT
+            | NAMED_STRUCT
+            | NAMED_COMPATIBLE_STRUCT
+            | EXT
+            | NAMED_EXT
+    )
 }
 
 pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
@@ -271,22 +347,6 @@ pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
     }
     new_hash as u32
 }
-
-// pub fn compute_struct_hash(props: Vec<(&str, FieldType)>) -> u32 {
-//     let mut hash = 17;
-//     props.iter().for_each(|prop| {
-//         let (_name, ty) = prop;
-//         hash = match ty {
-//             FieldType::ARRAY | FieldType::MAP => compute_field_hash(hash, *ty as i16),
-//             _ => hash,
-//         };
-//         let is_basic_type = BASIC_TYPES.contains(ty);
-//         if is_basic_type {
-//             hash = compute_field_hash(hash, *ty as i16);
-//         }
-//     });
-//     hash
-// }
 
 pub mod config_flags {
     pub const IS_NULL_FLAG: u8 = 1 << 0;

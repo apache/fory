@@ -27,7 +27,7 @@ const TRACKING_REF: u8 = 0b1;
 pub const HAS_NULL: u8 = 0b10;
 
 // Whether collection elements type is declare type.
-const DECL_ELEMENT_TYPE: u8 = 0b100;
+pub const DECL_ELEMENT_TYPE: u8 = 0b100;
 
 //  Whether collection elements type same.
 pub const IS_SAME_TYPE: u8 = 0b1000;

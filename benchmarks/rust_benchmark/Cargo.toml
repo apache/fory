@@ -29,18 +29,34 @@ name = "serialization_bench"
 path = "benches/serialization_bench.rs"
 harness = false
 
+[[bench]]
+name = "buffer_write_bench"
+path = "benches/buffer_write_bench.rs"
+harness = false
+
+[[bench]]
+name = "buffer_read_bench"
+path = "benches/buffer_read_bench.rs"
+harness = false
+
 [dependencies]
-fory = { path = "../fory" }
-fory-core = { path = "../fory-core" }
-fory-derive = { path = "../fory-derive" }
+fory = { path = "../../rust/fory" }
+fory-core = { path = "../../rust/fory-core" }
+fory-derive = { path = "../../rust/fory-derive" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 prost = "0.12"
 prost-types = "0.12"
+byteorder = "1.5"
 rand = "0.8"
 criterion = "0.5"
 clap = { version = "4.0", features = ["derive"] }
+pprof = { version = "=0.14.0", features = ["flamegraph", "criterion"], optional = true }
+
+[features]
+default = []
+profiling = ["pprof"]
 
 [build-dependencies]
 prost-build = "0.12"

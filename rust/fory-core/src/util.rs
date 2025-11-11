@@ -198,3 +198,7 @@ impl<'a, T> DerefMut for SpinlockGuard<'a, T> {
         unsafe { &mut *self.lock.data.get() }
     }
 }
+
+/// Global flag to check if ENABLE_FORY_DEBUG_OUTPUT environment variable is set at compile time.
+/// Set ENABLE_FORY_DEBUG_OUTPUT=1 at compile time to enable debug output.
+pub const ENABLE_FORY_DEBUG_OUTPUT: bool = option_env!("ENABLE_FORY_DEBUG_OUTPUT").is_some();

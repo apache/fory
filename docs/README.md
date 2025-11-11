@@ -12,6 +12,16 @@
 - For Java Object Graph Format, see [java serialization spec](specification/java_serialization_spec.md) doc.
 - For Row Format, see [row format spec](specification/row_format_spec.md) doc.
 
+## Benchmarks
+
+- Benchmark source code:
+  - Java: [Java Benchmarks Source](../java/benchmark)
+  - Python: [Python Benchmarks Source](../benchmarks/cpython_benchmark)
+  - Rust: [Rust Benchmarks Source](../benchmarks/rust_benchmark/)
+- Benchmark result:
+  - Java: [Java Benchmarks](benchmarks/)
+  - Rust: [Rust Benchmarks](benchmarks/rust_benchmark).
+
 ## Development
 
 - For cpp debug, see [cpp debug](cpp_debug.md) doc.

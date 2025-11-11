@@ -20,17 +20,8 @@ from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
 
-cdef extern from "fory/util/buffer.h" namespace "fory" nogil:
-    cdef cppclass CStatus" fory::Status":
-        c_string ToString() const
-
-        c_string CodeAsString() const
-
-        c_string message() const
-
-        StatusCode code() const
-
-    cdef enum class StatusCode(char):
+cdef extern from "fory/util/error.h" namespace "fory" nogil:
+    ctypedef enum class CErrorCode "fory::ErrorCode"(char):
         OK = 0,
         OutOfMemory = 1,
         OutOfBound = 2,
@@ -38,9 +29,33 @@ cdef extern from "fory/util/buffer.h" namespace "fory" nogil:
         TypeError = 4,
         Invalid = 5,
         IOError = 6,
-        UnknownError = 7
+        UnknownError = 7,
+        EncodeError = 8,
+        InvalidData = 9,
+        InvalidRef = 10,
+        UnknownEnum = 11,
+        EncodingError = 12,
+        DepthExceed = 13,
+        Unsupported = 14,
+        NotAllowed = 15,
+        StructVersionMismatch = 16,
+        TypeMismatch = 17,
+        BufferOutOfBound = 18
 
-    cdef cppclass CBuffer" fory::Buffer":
+    cdef cppclass CError "fory::Error":
+        CErrorCode code() const
+        const c_string& message() const
+        c_string to_string() const
+        c_string code_as_string() const
+
+cdef extern from "fory/util/result.h" namespace "fory" nogil:
+    cdef cppclass CResultVoidError "fory::Result<void, fory::Error>":
+        c_bool has_value() const
+        c_bool ok() const
+        CError& error()
+
+cdef extern from "fory/util/buffer.h" namespace "fory" nogil:
+    cdef cppclass CBuffer "fory::Buffer":
         CBuffer(uint8_t* data, uint32_t size, c_bool own_data=True)
 
         inline uint8_t* data()
@@ -84,7 +99,7 @@ cdef extern from "fory/util/buffer.h" namespace "fory" nogil:
 
         inline double GetDouble(uint32_t offset)
 
-        inline CStatus GetBytesAsInt64(uint32_t offset, uint32_t length, int64_t* target)
+        inline CResultVoidError GetBytesAsInt64(uint32_t offset, uint32_t length, int64_t* target)
 
         inline uint32_t PutVarUint32(uint32_t offset, int32_t value)
 

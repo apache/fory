@@ -51,6 +51,10 @@ mvn -T16 test -Dtest=org.apache.fory.TestClass#testMethod
 ### C++ Development
 
 - All commands must be executed within the `cpp` directory.
+- Fory c++ use c++ 17, you must not use features from higher version of C++.
+- Whnen you updated the code, use `clang-format` to update the code
+- When invoking a method that returns `Result`, always use `FORY_TRY` unless in a control flow context.
+- private methods should be put last in class def, before private fields.
 
 ```bash
 # Prepare for build
@@ -62,8 +66,14 @@ bazel build //...
 # Run tests
 bazel test $(bazel query //...)
 
+# Run serialization tests
+bazel test $(bazel query //cpp/fory/serialization/...)
+
 # Run specific test
 bazel test //fory/util:buffer_test
+
+# format c++ code
+clang-format -i $file
 ```
 
 ### Python Development
@@ -124,6 +134,7 @@ go generate ./...
 - All cargo commands must be executed within the `rust` directory.
 - All changes to `rust` must pass the clippy check and tests.
 - You must set `RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1` when debuging rust tests to get backtrace.
+- You must add `-- --nocapture` to cargo test command when debuging tests.
 - You must not set `FORY_PANIC_ON_ERROR=1` when runing all rust tests to check whether all tests pass, some tests will check Error content, which will fail if error just panic.
 
 ```bash
@@ -146,7 +157,7 @@ cargo test -p tests  --test $test_file $test_method
 cargo test --test mod $dir$::$test_file::$test_method
 
 # debug specific test under subdirectory and get backtrace
-RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1 ENABLE_FORY_DEBUG_OUTPUT=1 cargo test --test mod $dir$::$test_file::$test_method
+RUST_BACKTRACE=1 FORY_PANIC_ON_ERROR=1 ENABLE_FORY_DEBUG_OUTPUT=1 cargo test --test mod $dir$::$test_file::$test_method -- --nocapture
 
 # inspect generated code by fory derive macro
 cargo expand --test mod $mod$::$file$ > expanded.rs
@@ -161,6 +172,7 @@ cargo fmt --check
 cargo doc --lib --no-deps --all-features
 
 # Run benchmarks
+cd $project_dir/benchmarks/rust_benchmark
 cargo bench
 ```
 

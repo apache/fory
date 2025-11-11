@@ -654,50 +654,150 @@
 //!
 //! ### 5. Enum Support
 //!
-//! **What it does:** Supports C-style enums (enums without data payloads) with efficient
-//! varint encoding.
+//! **What it does:** Comprehensive enum support with three variant types (unit, unnamed, named)
+//! and full schema evolution in Compatible mode.
 //!
-//! **Why it matters:** Enums are common for state machines, status codes, and type
-//! discriminators. Efficient encoding and schema evolution support are essential.
+//! **Why it matters:** Enums are essential for state machines, status codes, type discriminators,
+//! and domain modeling. Supporting all variant types with schema evolution enables flexible API
+//! evolution without breaking compatibility.
 //!
-//! **Technical approach:** Each variant is assigned an ordinal value (0, 1, 2, ...)
-//! during serialization. Ordinals are encoded using variable-length integers for
-//! space efficiency.
+//! **Technical approach:** Each variant is assigned an ordinal value (0, 1, 2, ...). In compatible
+//! mode, variants are encoded with both a tag (ordinal) and a type marker (2 bits: 0b0=Unit,
+//! 0b1=Unnamed, 0b10=Named). Named variants generate meta types for field-level evolution.
+//!
+//! **Variant Types:**
+//!
+//! - **Unit**: C-style enums (`Status::Active`)
+//! - **Unnamed**: Tuple-like variants (`Message::Pair(String, i32)`)
+//! - **Named**: Struct-like variants (`Event::Click { x: i32, y: i32 }`)
 //!
 //! **Features:**
 //!
-//! - Efficient varint encoding for ordinals
-//! - Schema evolution support in Compatible mode
-//! - Type-safe variant matching
+//! - Efficient varint encoding for variant ordinals
+//! - Schema evolution support (add/remove variants, add/remove fields)
 //! - Default variant support with `#[default]`
+//! - Automatic type mismatch handling
 //!
 //! ```rust
 //! use fory::Fory;
 //! use fory::Error;
 //! use fory::ForyObject;
 //!
-//! #[derive(ForyObject, Debug, PartialEq, Default)]
-//! enum Status {
+//! #[derive(Default, ForyObject, Debug, PartialEq)]
+//! enum Value {
 //!     #[default]
-//!     Pending,
-//!     Active,
-//!     Inactive,
-//!     Deleted,
+//!     Null,
+//!     Bool(bool),
+//!     Number(f64),
+//!     Text(String),
+//!     Object { name: String, value: i32 },
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
 //! let mut fory = Fory::default();
-//! fory.register::<Status>(1);
+//! fory.register::<Value>(1)?;
 //!
-//! let status = Status::Active;
-//! let bytes = fory.serialize(&status)?;
-//! let decoded: Status = fory.deserialize(&bytes)?;
-//! assert_eq!(status, decoded);
+//! let value = Value::Object { name: "score".to_string(), value: 100 };
+//! let bytes = fory.serialize(&value)?;
+//! let decoded: Value = fory.deserialize(&bytes)?;
+//! assert_eq!(value, decoded);
 //! # Ok(())
 //! # }
 //! ```
 //!
-//! ### 6. Custom Serializers
+//! **Schema Evolution:**
+//!
+//! Compatible mode enables robust schema evolution with variant type encoding:
+//!
+//! ```rust
+//! use fory::Fory;
+//! use fory::Error;
+//! use fory::ForyObject;
+//!
+//! // Old version with 2 fields
+//! #[derive(ForyObject, Debug)]
+//! enum OldEvent {
+//!     Click { x: i32, y: i32 },
+//! }
+//!
+//! // New version with 3 fields - added timestamp
+//! #[derive(ForyObject, Debug)]
+//! enum NewEvent {
+//!     Click { x: i32, y: i32, timestamp: u64 },
+//! }
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory_old = Fory::default().compatible(true);
+//! fory_old.register::<OldEvent>(5)?;
+//!
+//! let mut fory_new = Fory::default().compatible(true);
+//! fory_new.register::<NewEvent>(5)?;
+//!
+//! // Serialize with old schema (2 fields)
+//! let old_bytes = fory_old.serialize(&OldEvent::Click { x: 100, y: 200 })?;
+//!
+//! // Deserialize with new schema (3 fields) - timestamp gets default value (0)
+//! let new_event: NewEvent = fory_new.deserialize(&old_bytes)?;
+//! match new_event {
+//!     NewEvent::Click { x, y, timestamp } => {
+//!         assert_eq!(x, 100);
+//!         assert_eq!(y, 200);
+//!         assert_eq!(timestamp, 0); // Default value for missing field
+//!     }
+//! }
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! **Evolution capabilities:**
+//!
+//! - Unknown variants fall back to default variant
+//! - Named variant fields: add/remove fields (missing fields use defaults)
+//! - Unnamed variant elements: add/remove elements (extras skipped, missing use defaults)
+//! - Variant type mismatches automatically use default value of current variant
+//!
+//! ### 6. Tuple Support
+//!
+//! **What it does:** Supports tuples up to 22 elements with automatic heterogeneous type
+//! handling and schema evolution in compatible mode.
+//!
+//! **Why it matters:** Tuples provide lightweight aggregation without defining full structs,
+//! useful for temporary groupings, function return values, and ad-hoc data structures.
+//!
+//! **Technical approach:** Each tuple size (1-22) has a specialized `Serializer` implementation.
+//! In non-compatible mode, elements are serialized sequentially without overhead. In compatible
+//! mode, the tuple is serialized as a heterogeneous collection with type metadata for each element.
+//!
+//! **Features:**
+//!
+//! - Automatic serialization for tuples from 1 to 22 elements
+//! - Heterogeneous type support (each element can be a different type)
+//! - Schema evolution in Compatible mode (handles missing/extra elements)
+//! - Default values for missing elements during deserialization
+//!
+//! ```rust
+//! use fory::Fory;
+//! use fory::Error;
+//!
+//! # fn main() -> Result<(), Error> {
+//! let mut fory = Fory::default();
+//!
+//! // Tuple with heterogeneous types
+//! let data: (i32, String, bool, Vec<i32>) = (
+//!     42,
+//!     "hello".to_string(),
+//!     true,
+//!     vec![1, 2, 3],
+//! );
+//!
+//! let bytes = fory.serialize(&data)?;
+//! let decoded: (i32, String, bool, Vec<i32>) = fory.deserialize(&bytes)?;
+//! assert_eq!(data, decoded);
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ### 7. Custom Serializers
 //!
 //! **What it does:** Allows manual implementation of the `Serializer` trait for types
 //! that don't support `#[derive(ForyObject)]`.
@@ -1079,9 +1179,10 @@
 //! - **Panic on error for backtraces**: Set `FORY_PANIC_ON_ERROR=1` (or `true`) together with
 //!   `RUST_BACKTRACE=1` while running tests or binaries to panic exactly where an error is
 //!   constructed. Unset the variable afterwards so production paths keep returning `Result`.
-//! - **Struct field tracing**: Add the `#[fory_debug]` attribute next to `#[derive(ForyObject)]`
-//!   when you need per-field instrumentation. Once compiled with debug hooks, call
-//!   `set_before_write_field_func`, `set_after_write_field_func`, `set_before_read_field_func`, or
+//! - **Struct field tracing**: Add the `#[fory(debug)]` attribute (or `#[fory(debug = true)]`)
+//!   next to `#[derive(ForyObject)]` when you need per-field instrumentation. Once compiled with
+//!   debug hooks, call `set_before_write_field_func`, `set_after_write_field_func`,
+//!   `set_before_read_field_func`, or
 //!   `set_after_read_field_func` from `fory_core::serializer::struct_` to install custom
 //!   callbacks, and use `reset_struct_debug_hooks()` to restore defaults.
 //! - **Lightweight logging**: If custom callbacks are unnecessary, enable

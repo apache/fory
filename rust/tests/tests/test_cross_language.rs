@@ -308,6 +308,7 @@ fn test_cross_language_serializer() {
     assert_de!(fory, reader, NaiveDate, day);
     assert_de!(fory, reader, NaiveDateTime, instant);
     assert_de!(fory, reader, Vec<bool>, [true, false]);
+    assert_de!(fory, reader, Vec<u8>, [1, i8::MAX as u8]);
     assert_de!(fory, reader, Vec<i16>, [1, i16::MAX]);
     assert_de!(fory, reader, Vec<i32>, [1, i32::MAX]);
     assert_de!(fory, reader, Vec<i64>, [1, i64::MAX]);
@@ -336,6 +337,8 @@ fn test_cross_language_serializer() {
     fory.serialize_to(&day, &mut buf).unwrap();
     fory.serialize_to(&instant, &mut buf).unwrap();
     fory.serialize_to(&vec![true, false], &mut buf).unwrap();
+    fory.serialize_to(&vec![1, i8::MAX as u8], &mut buf)
+        .unwrap();
     fory.serialize_to(&vec![1, i16::MAX], &mut buf).unwrap();
     fory.serialize_to(&vec![1, i32::MAX], &mut buf).unwrap();
     fory.serialize_to(&vec![1, i64::MAX], &mut buf).unwrap();
@@ -704,7 +707,7 @@ fn test_consistent_named() {
 }
 
 #[derive(ForyObject, Debug, PartialEq)]
-#[fory_debug]
+#[fory(debug)]
 struct VersionCheckStruct {
     f1: i32,
     f2: Option<String>,

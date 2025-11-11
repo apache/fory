@@ -26,7 +26,7 @@ use fory_core::serializer::struct_::{
 };
 
 #[derive(fory_derive::ForyObject)]
-#[fory_debug]
+#[fory(debug)]
 struct DebugSample {
     a: i32,
     b: String,

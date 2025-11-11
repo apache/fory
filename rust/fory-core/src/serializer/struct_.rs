@@ -20,8 +20,8 @@ use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::Serializer;
 use crate::types::{RefFlag, TypeId};
+use crate::util::ENABLE_FORY_DEBUG_OUTPUT;
 use std::any::Any;
-use std::sync::OnceLock;
 
 #[inline(always)]
 pub fn actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) -> u32 {
@@ -104,19 +104,6 @@ pub fn write<T: Serializer>(
     this.fory_write_data(context)
 }
 
-/// Global flag to check if ENABLE_FORY_DEBUG_OUTPUT environment variable is set.
-static ENABLE_FORY_DEBUG_OUTPUT: OnceLock<bool> = OnceLock::new();
-
-/// Check if ENABLE_FORY_DEBUG_OUTPUT environment variable is set.
-#[inline]
-fn enable_debug_output() -> bool {
-    *ENABLE_FORY_DEBUG_OUTPUT.get_or_init(|| {
-        std::env::var("ENABLE_FORY_DEBUG_OUTPUT")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
-    })
-}
-
 pub type BeforeWriteFieldFunc =
     fn(struct_name: &str, field_name: &str, field_value: &dyn Any, context: &mut WriteContext);
 pub type AfterWriteFieldFunc =
@@ -131,7 +118,7 @@ fn default_before_write_field(
     _field_value: &dyn Any,
     context: &mut WriteContext,
 ) {
-    if enable_debug_output() {
+    if ENABLE_FORY_DEBUG_OUTPUT {
         println!(
             "before_write_field:\tstruct={struct_name},\tfield={field_name},\twriter_len={}",
             context.writer.len()
@@ -145,7 +132,7 @@ fn default_after_write_field(
     _field_value: &dyn Any,
     context: &mut WriteContext,
 ) {
-    if enable_debug_output() {
+    if ENABLE_FORY_DEBUG_OUTPUT {
         println!(
             "after_write_field:\tstruct={struct_name},\tfield={field_name},\twriter_len={}",
             context.writer.len()
@@ -154,7 +141,7 @@ fn default_after_write_field(
 }
 
 fn default_before_read_field(struct_name: &str, field_name: &str, context: &mut ReadContext) {
-    if enable_debug_output() {
+    if ENABLE_FORY_DEBUG_OUTPUT {
         println!(
             "before_read_field:\tstruct={struct_name},\tfield={field_name},\treader_cursor={}",
             context.reader.get_cursor()
@@ -168,7 +155,7 @@ fn default_after_read_field(
     _field_value: &dyn Any,
     context: &mut ReadContext,
 ) {
-    if enable_debug_output() {
+    if ENABLE_FORY_DEBUG_OUTPUT {
         println!(
             "after_read_field:\tstruct={struct_name},\tfield={field_name},\treader_cursor={}",
             context.reader.get_cursor()

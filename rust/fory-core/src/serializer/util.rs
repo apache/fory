@@ -20,16 +20,10 @@ use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::Serializer;
 use crate::types::TypeId;
-
-const NO_REF_FLAG_TYPE_IDS: [u32; 7] = [
-    TypeId::BOOL as u32,
-    TypeId::INT8 as u32,
-    TypeId::INT16 as u32,
-    TypeId::INT32 as u32,
-    TypeId::INT64 as u32,
-    TypeId::FLOAT32 as u32,
-    TypeId::FLOAT64 as u32,
-];
+use crate::types::{
+    is_user_type, BOOL, ENUM, FLOAT32, FLOAT64, INT16, INT32, INT64, INT8, NAMED_ENUM, U128, U16,
+    U32, U64, U8, USIZE,
+};
 
 #[inline(always)]
 pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
@@ -47,19 +41,48 @@ pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> 
 /// According to xlang_serialization_spec.md:
 /// - For enums (ENUM/NAMED_ENUM), we should skip writing type info
 /// - For structs and ext types, we should write type info
+///
+/// Keep as const fn for compile time evaluation or constant folding
 #[inline]
-pub fn should_skip_type_info_at_runtime(type_id: u32) -> bool {
-    let internal_type_id = (type_id & 0xff) as i8;
-    internal_type_id == TypeId::ENUM as i8 || internal_type_id == TypeId::NAMED_ENUM as i8
+pub const fn field_need_read_type_info(type_id: u32) -> bool {
+    let internal_type_id = type_id & 0xff;
+    if internal_type_id == ENUM || internal_type_id == NAMED_ENUM {
+        return false;
+    }
+    is_user_type(internal_type_id)
 }
 
+/// Keep as const fn for compile time evaluation or constant folding
+pub const fn field_need_write_type_info(static_type_id: TypeId) -> bool {
+    let static_type_id = static_type_id as u32;
+    if static_type_id == ENUM || static_type_id == NAMED_ENUM {
+        return false;
+    }
+    is_user_type(static_type_id)
+}
+
+/// Keep as const fn for compile time evaluation or constant folding
 #[inline]
-pub fn field_requires_ref_flag(type_id: u32, nullable: bool) -> bool {
+pub const fn field_need_write_ref_into(type_id: u32, nullable: bool) -> bool {
     if nullable {
         return true;
     }
     let internal_type_id = type_id & 0xff;
-    !NO_REF_FLAG_TYPE_IDS.contains(&internal_type_id)
+    !matches!(
+        internal_type_id,
+        BOOL | INT8
+            | INT16
+            | INT32
+            | INT64
+            | FLOAT32
+            | FLOAT64
+            | U8
+            | U16
+            | U32
+            | U64
+            | USIZE
+            | U128
+    )
 }
 
 #[inline(always)]

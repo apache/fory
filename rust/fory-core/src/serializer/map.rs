@@ -29,10 +29,10 @@ const MAX_CHUNK_SIZE: u8 = 255;
 
 const TRACKING_KEY_REF: u8 = 0b1;
 pub const KEY_NULL: u8 = 0b10;
-const DECL_KEY_TYPE: u8 = 0b100;
+pub const DECL_KEY_TYPE: u8 = 0b100;
 const TRACKING_VALUE_REF: u8 = 0b1000;
 pub const VALUE_NULL: u8 = 0b10000;
-const DECL_VALUE_TYPE: u8 = 0b100000;
+pub const DECL_VALUE_TYPE: u8 = 0b100000;
 
 fn write_chunk_size(context: &mut WriteContext, header_offset: usize, size: u8) {
     context.writer.set_bytes(header_offset + 1, &[size]);

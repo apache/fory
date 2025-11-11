@@ -15,8 +15,26 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use criterion::{criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, Criterion};
 use fory_benchmarks::run_serialization_benchmarks;
 
-criterion_group!(benches, run_serialization_benchmarks);
+#[cfg(feature = "profiling")]
+use pprof::criterion::{Output, PProfProfiler};
+
+fn config() -> Criterion {
+    #[cfg(feature = "profiling")]
+    {
+        Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)))
+    }
+    #[cfg(not(feature = "profiling"))]
+    {
+        Criterion::default()
+    }
+}
+
+criterion_group! {
+    name = benches;
+    config = config();
+    targets = run_serialization_benchmarks
+}
 criterion_main!(benches);

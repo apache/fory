@@ -98,6 +98,53 @@ TEST(StringUtilTest, TestisLatin1) {
   }
 }
 
+TEST(StringUtilTest, ToSnakeCaseHandlesCommonPatterns) {
+  constexpr std::string_view simple_name{"DisplayName"};
+  constexpr size_t simple_len = snake_case_length(simple_name);
+  constexpr auto simple_pair = to_snake_case<simple_len>(simple_name);
+  const std::string_view simple_view(simple_pair.first.data(),
+                                     simple_pair.second);
+  constexpr std::string_view simple_expected{"display_name"};
+  EXPECT_EQ(simple_view, simple_expected);
+  EXPECT_EQ(simple_pair.second, simple_expected.size());
+
+  constexpr std::string_view acronym_name{"HTTPRequest"};
+  constexpr size_t acronym_len = snake_case_length(acronym_name);
+  constexpr auto acronym_pair = to_snake_case<acronym_len>(acronym_name);
+  const std::string_view acronym_view(acronym_pair.first.data(),
+                                      acronym_pair.second);
+  constexpr std::string_view acronym_expected{"http_request"};
+  EXPECT_EQ(acronym_view, acronym_expected);
+  EXPECT_EQ(acronym_pair.second, acronym_expected.size());
+}
+
+TEST(StringUtilTest, ToSnakeCaseHandlesDelimitersAndDigits) {
+  constexpr std::string_view hyphen_name{"User-ID"};
+  constexpr size_t hyphen_len = snake_case_length(hyphen_name);
+  constexpr auto hyphen_pair = to_snake_case<hyphen_len>(hyphen_name);
+  const std::string_view hyphen_view(hyphen_pair.first.data(),
+                                     hyphen_pair.second);
+  constexpr std::string_view hyphen_expected{"user_id"};
+  EXPECT_EQ(hyphen_view, hyphen_expected);
+  EXPECT_EQ(hyphen_pair.second, hyphen_expected.size());
+
+  constexpr std::string_view digit_name{"Field1Value"};
+  constexpr size_t digit_len = snake_case_length(digit_name);
+  constexpr auto digit_pair = to_snake_case<digit_len>(digit_name);
+  const std::string_view digit_view(digit_pair.first.data(), digit_pair.second);
+  constexpr std::string_view digit_expected{"field1_value"};
+  EXPECT_EQ(digit_view, digit_expected);
+  EXPECT_EQ(digit_pair.second, digit_expected.size());
+
+  constexpr std::string_view snake_name{"already_snake"};
+  constexpr size_t snake_len = snake_case_length(snake_name);
+  constexpr auto snake_pair = to_snake_case<snake_len>(snake_name);
+  const std::string_view snake_view(snake_pair.first.data(), snake_pair.second);
+  constexpr std::string_view snake_expected{"already_snake"};
+  EXPECT_EQ(snake_view, snake_expected);
+  EXPECT_EQ(snake_pair.second, snake_expected.size());
+}
+
 // Generate random UTF-16 string ensuring valid surrogate pairs
 std::u16string generateRandomUTF16String(size_t length) {
   std::u16string str;

@@ -27,6 +27,15 @@ cc_test(
 )
 
 cc_test(
+    name = "enum_info_test",
+    srcs = ["enum_info_test.cc"],
+    deps = [
+        ":fory_meta",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
     name = "type_traits_test",
     srcs = ["type_traits_test.cc"],
     deps = [

@@ -20,8 +20,11 @@
 #pragma once
 
 #include "platform.h"
+#include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
+#include <utility>
 
 namespace fory {
 
@@ -94,6 +97,85 @@ static inline bool hasSurrogatePairFallback(const uint16_t *data, size_t size) {
     }
   }
   return false;
+}
+
+namespace detail {
+
+constexpr bool is_upper_ascii(char c) { return c >= 'A' && c <= 'Z'; }
+
+constexpr bool is_lower_ascii(char c) { return c >= 'a' && c <= 'z'; }
+
+constexpr bool is_digit_ascii(char c) { return c >= '0' && c <= '9'; }
+
+constexpr char to_lower_ascii(char c) {
+  return is_upper_ascii(c) ? static_cast<char>(c - 'A' + 'a') : c;
+}
+
+constexpr bool needs_snake_separator(std::string_view name, size_t index) {
+  if (index == 0)
+    return false;
+  char curr = name[index];
+  if (!is_upper_ascii(curr))
+    return false;
+
+  char prev = name[index - 1];
+  if (is_lower_ascii(prev) || is_digit_ascii(prev))
+    return true;
+
+  if (is_upper_ascii(prev) && index + 1 < name.size()) {
+    char next = name[index + 1];
+    if (is_lower_ascii(next))
+      return true;
+  }
+  return false;
+}
+
+constexpr size_t snake_case_length(std::string_view name) {
+  size_t length = 0;
+  for (size_t i = 0; i < name.size(); ++i) {
+    char c = name[i];
+    if (c == '_' || c == '-') {
+      ++length;
+      continue;
+    }
+    if (needs_snake_separator(name, i)) {
+      ++length;
+    }
+    ++length;
+  }
+  return length;
+}
+
+template <size_t MaxLength>
+constexpr std::pair<std::array<char, MaxLength + 1>, size_t>
+to_snake_case(std::string_view name) {
+  std::array<char, MaxLength + 1> buffer{};
+  size_t pos = 0;
+  for (size_t i = 0; i < name.size(); ++i) {
+    char c = name[i];
+    if (c == '_' || c == '-') {
+      buffer[pos++] = '_';
+      continue;
+    }
+    if (needs_snake_separator(name, i)) {
+      buffer[pos++] = '_';
+    }
+    buffer[pos++] = is_upper_ascii(c) ? to_lower_ascii(c) : c;
+  }
+  buffer[pos] = '\0';
+  return {buffer, pos};
+}
+
+} // namespace detail
+
+template <size_t MaxLength>
+constexpr std::pair<std::array<char, MaxLength + 1>, size_t>
+to_snake_case(std::string_view name) {
+  return detail::to_snake_case<MaxLength>(name);
+}
+
+constexpr size_t snake_case_length(std::string_view name) {
+  return detail::snake_case_length(name);
 }
 #if defined(FORY_HAS_IMMINTRIN)
 

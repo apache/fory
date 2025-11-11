@@ -21,10 +21,10 @@ use std::collections::HashMap;
 
 #[test]
 fn test_simple() {
-    // a single test for cargo expand and analysis: `cargo expand --test test_simple_struct 2>&1 > expanded.rs`
+    // a single test for cargo expand and analysis: `cargo expand --test test_one_struct 2>&1 > expanded.rs`
     // &["f7", "last", "f2", "f5", "f3", "f6", "f1"]
     #[derive(ForyObject, Debug)]
-    #[fory_debug]
+    #[fory(debug)]
     struct Animal1 {
         f1: HashMap<i8, Vec<i8>>,
         f2: String,
