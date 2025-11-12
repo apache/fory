@@ -747,12 +747,13 @@ public class CollectionSerializers {
 
     public JDKCompatibleCollectionSerializer(Fory fory, Class<T> cls) {
       super(fory, cls, false);
-      // Collection which defined `writeReplace` may use this serializer, so check replace/resolve
-      // is necessary.
-      Class<? extends Serializer> serializerType =
-          ClassResolver.useReplaceResolveSerializer(cls)
-              ? ReplaceResolveSerializer.class
-              : fory.getDefaultJDKStreamSerializerType();
+      // Collection which defined `writeReplace` may use this serializer
+      Class<? extends Serializer> serializerType;
+      if (ClassResolver.useReplaceResolveSerializer(cls)) {
+        serializerType = ReplaceResolveSerializer.class;
+      } else {
+        serializerType = fory.getDefaultJDKStreamSerializerType();
+      }
       serializer = Serializers.newSerializer(fory, cls, serializerType);
     }
 
@@ -881,5 +882,12 @@ public class CollectionSerializers {
     resolver.registerSerializer(
         ConcurrentHashMap.KeySetView.class,
         new ConcurrentHashMapKeySetViewSerializer(fory, ConcurrentHashMap.KeySetView.class));
+    // Register high-performance serializers for blocking queues
+    resolver.registerSerializer(
+        java.util.concurrent.LinkedBlockingQueue.class,
+        new LinkedBlockingQueueSerializer(fory, java.util.concurrent.LinkedBlockingQueue.class));
+    resolver.registerSerializer(
+        java.util.concurrent.ArrayBlockingQueue.class,
+        new ArrayBlockingQueueSerializer(fory, java.util.concurrent.ArrayBlockingQueue.class));
   }
 }

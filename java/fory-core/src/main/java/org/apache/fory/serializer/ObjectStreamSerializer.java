@@ -47,10 +47,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import org.apache.fory.Fory;
-import org.apache.fory.builder.CodecUtils;
-import org.apache.fory.builder.Generated;
 import org.apache.fory.collection.ObjectArray;
 import org.apache.fory.collection.ObjectIntMap;
+import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -58,9 +57,7 @@ import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.FieldResolver;
-import org.apache.fory.resolver.FieldResolver.ClassField;
 import org.apache.fory.util.ExceptionUtils;
-import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.unsafe._JDKAccess;
 
@@ -79,6 +76,10 @@ import org.apache.fory.util.unsafe._JDKAccess;
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class ObjectStreamSerializer extends AbstractObjectSerializer {
   private static final Logger LOG = LoggerFactory.getLogger(ObjectStreamSerializer.class);
+
+  // Version constants for serialization format
+  private static final byte COMPATIBLE_VERSION = 0;
+  private static final byte META_SHARED_VERSION = 1;
 
   private final SlotsInfo[] slotsInfos;
 
@@ -112,6 +113,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
   @Override
   public void write(MemoryBuffer buffer, Object value) {
+    // Serializer type is determined by configuration when Fory instance is created
+    // No version byte needed - write/read must use same configuration
     buffer.writeInt16((short) slotsInfos.length);
     try {
       for (SlotsInfo slotsInfo : slotsInfos) {
@@ -153,6 +156,8 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
   @Override
   public Object read(MemoryBuffer buffer) {
+    // Serializer type is determined by configuration when Fory instance is created
+    // No version byte to read - write/read must use same configuration
     Object obj = objectCreator.newInstance();
     fory.getRefResolver().reference(obj);
     int numClasses = buffer.readInt16();
@@ -298,66 +303,60 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
     private CompatibleSerializerBase slotsSerializer;
     private final ObjectIntMap<String> fieldIndexMap;
     private final FieldResolver putFieldsResolver;
-    private final CompatibleSerializer compatibleStreamSerializer;
+    private CompatibleSerializerBase compatibleStreamSerializer;
+    private CompatibleSerializerBase metaSharedStreamSerializer;
     private final ForyObjectOutputStream objectOutputStream;
     private final ForyObjectInputStream objectInputStream;
     private final ObjectArray getFieldPool;
+    private final boolean useMetaShare;
 
     public SlotsInfo(Fory fory, Class<?> type) {
       this.cls = type;
+      // Use Meta Shared serialization only when both conditions are met:
+      // 1. Compatible mode is NOT set (i.e., SCHEMA_CONSISTENT)
+      // 2. Meta share is enabled
+      // In compatible mode, we MUST use CompatibleSerializer to support schema evolution
+      this.useMetaShare =
+          fory.getConfig().getCompatibleMode() != CompatibleMode.COMPATIBLE
+              && fory.getConfig().isMetaShareEnabled();
       classInfo = fory.getClassResolver().newClassInfo(type, null, NO_CLASS_ID);
       ObjectStreamClass objectStreamClass = ObjectStreamClass.lookup(type);
       streamClassInfo = STREAM_CLASS_INFO_CACHE.get(type);
-      // `putFields/writeFields` will convert to fields value to be written by
-      // `CompatibleSerializer`,
-      // since `put` values may not exist in current class, which means container generic type are
-      // unavailable.
-      // (`serialPersistentFields` field can't provide generics.)
-      // So we need to mark all container fields type to `Object` to avoid reader deserialize data
-      // using field generic types.
-      Class<? extends Serializer> sc = CompatibleSerializer.class;
-      FieldResolver fieldResolver = FieldResolver.of(fory, type, false, true);
-      if (fory.getConfig().isCodeGenEnabled()
-          && CodegenSerializer.supportCodegenForJavaSerialization(cls)) {
-        sc =
-            fory.getJITContext()
-                .registerSerializerJITCallback(
-                    () -> CompatibleSerializer.class,
-                    () ->
-                        CodecUtils.loadOrGenCompatibleCodecClass(
-                            cls,
-                            fory,
-                            fieldResolver,
-                            Generated.GeneratedCompatibleSerializer.class),
-                    c ->
-                        this.slotsSerializer =
-                            (CompatibleSerializerBase) Serializers.newSerializer(fory, type, c));
-      }
-      if (GraalvmSupport.isGraalBuildtime()) {
-        // trigger serializer constructor method handle generate.
-        Serializers.newSerializer(fory, type, sc);
-      }
-      if (sc == CompatibleSerializer.class || GraalvmSupport.isGraalBuildtime()) {
-        // skip init generated serializer at graalvm build time
-        this.slotsSerializer = new CompatibleSerializer(fory, type, fieldResolver);
+      if (useMetaShare) {
+        this.slotsSerializer = new ObjectStreamMetaSharedSerializerAdapter<>(fory, type);
       } else {
-        this.slotsSerializer = (CompatibleSerializerBase) Serializers.newSerializer(fory, type, sc);
+        FieldResolver fieldResolver = fory.getClassResolver().getFieldResolver(type);
+        this.slotsSerializer = new CompatibleSerializer<>(fory, type, fieldResolver);
       }
       fieldIndexMap = new ObjectIntMap<>(4, 0.4f);
-      List<ClassField> allFields = new ArrayList<>();
+      List<FieldResolver.ClassField> allFields = new ArrayList<>();
       for (ObjectStreamField serialField : objectStreamClass.getFields()) {
-        allFields.add(new ClassField(serialField.getName(), serialField.getType(), cls));
+        allFields.add(
+            new FieldResolver.ClassField(serialField.getName(), serialField.getType(), cls));
       }
       if (streamClassInfo.writeObjectMethod != null || streamClassInfo.readObjectMethod != null) {
+        // Create putFieldsResolver for putFields/getFields scenarios
+        // This resolver marks container fields as Object to handle generics properly
         putFieldsResolver = new FieldResolver(fory, cls, true, allFields, new HashSet<>());
         AtomicInteger idx = new AtomicInteger(0);
         for (FieldResolver.FieldInfo fieldInfo : putFieldsResolver.getAllFieldsList()) {
           fieldIndexMap.put(fieldInfo.getName(), idx.getAndIncrement());
         }
-        compatibleStreamSerializer = new CompatibleSerializer(fory, cls, putFieldsResolver);
+        // For putFields/getFields support, we need a CompatibleSerializer with FieldResolver
+        // This is required to properly encode/decode field types in writeFieldsValues/readFields
+        if (useMetaShare) {
+          // In Meta Shared mode, create a separate CompatibleSerializer for putFields/getFields
+          compatibleStreamSerializer = new CompatibleSerializer<>(fory, cls, putFieldsResolver);
+          metaSharedStreamSerializer = (CompatibleSerializerBase) this.slotsSerializer;
+        } else {
+          // In non-Meta Shared mode, reuse the slots serializer for putFields
+          compatibleStreamSerializer = new CompatibleSerializer<>(fory, cls, putFieldsResolver);
+          metaSharedStreamSerializer = null;
+        }
       } else {
         putFieldsResolver = null;
         compatibleStreamSerializer = null;
+        metaSharedStreamSerializer = null;
       }
       if (streamClassInfo.writeObjectMethod != null) {
         try {
@@ -434,7 +433,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       private final Object[] vals;
 
       PutFieldImpl() {
-        vals = new Object[slotsInfo.putFieldsResolver.getNumFields()];
+        vals = new Object[slotsInfo.putFieldsResolver.getAllFieldsList().size()];
       }
 
       private void putValue(String name, Object val) {
@@ -524,6 +523,9 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       if (curPut == null) {
         throw new NotActiveException("no current PutField object");
       }
+      // Use writeFieldsValues method to write field values array
+      // This method is implemented differently by CompatibleSerializer and
+      // ObjectStreamMetaSharedSerializerAdapter
       slotsInfo.compatibleStreamSerializer.writeFieldsValues(buffer, curPut.vals);
       Arrays.fill(curPut.vals, null);
       putFieldsCache.add(curPut);
@@ -714,7 +716,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
 
       GetFieldImpl(SlotsInfo slotsInfo) {
         this.slotsInfo = slotsInfo;
-        vals = new Object[slotsInfo.putFieldsResolver.getNumFields()];
+        vals = new Object[slotsInfo.putFieldsResolver.getAllFieldsList().size()];
         Arrays.fill(vals, NO_VALUE_STUB);
       }
 
@@ -833,6 +835,7 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       if (fieldsRead) {
         throw new NotActiveException("not in readObject invocation or fields already read");
       }
+      // Use readFields method to read field values array
       slotsInfo.compatibleStreamSerializer.readFields(buffer, getField.vals);
       fieldsRead = true;
       return getField;
