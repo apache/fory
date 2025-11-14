@@ -113,12 +113,12 @@ func TestXLangSerializer(t *testing.T) {
 	require.Nil(t, fory_.Serialize(buffer, set, nil))
 
 	// test primitive arrays
-	require.Nil(t, fory_.Serialize(buffer, []bool{true, false}, nil))
-	require.Nil(t, fory_.Serialize(buffer, []int16{1, fory.MaxInt16}, nil))
-	require.Nil(t, fory_.Serialize(buffer, []int32{1, fory.MaxInt32}, nil))
-	require.Nil(t, fory_.Serialize(buffer, []int64{1, fory.MaxInt64}, nil))
-	require.Nil(t, fory_.Serialize(buffer, []float32{1.0, 2.0}, nil))
-	require.Nil(t, fory_.Serialize(buffer, []float64{1.0, 2.0}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]bool{true, false}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]int16{1, fory.MaxInt16}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]int32{1, fory.MaxInt32}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]int64{1, fory.MaxInt64}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]float32{1.0, 2.0}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]float64{1.0, 2.0}, nil))
 
 	check := func(buf *fory.ByteBuffer) {
 		values := []interface{}{
@@ -260,7 +260,6 @@ func TestSerializeComplexStruct(t *testing.T) {
 	obj.F10 = 1 / 3.0
 	obj.F11 = [2]int16{1, 2}
 	obj.F12 = []int16{-1, 4}
-
 	structRoundBack(t, fory_, obj, "test_serialize_complex_struct")
 }
 

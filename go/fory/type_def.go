@@ -283,7 +283,7 @@ func (c *CollectionFieldType) getTypeInfo(f *Fory) (TypeInfo, error) {
 	if err != nil {
 		return TypeInfo{}, err
 	}
-	sliceSerializer := &sliceSerializer{elemInfo: elemInfo, declaredType: elemInfo.Type}
+	sliceSerializer := NewSliceSerializer(f, elemInfo.Serializer, elemInfo.Type)
 	return TypeInfo{Type: collectionType, Serializer: sliceSerializer}, nil
 }
 
