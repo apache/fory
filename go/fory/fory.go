@@ -376,7 +376,6 @@ func (f *Fory) writeValue(buffer *ByteBuffer, value reflect.Value, serializer Se
 
 	// Get type information for the value
 	typeInfo, err := f.typeResolver.getTypeInfo(value, true)
-
 	if err != nil {
 		return fmt.Errorf("cannot get typeinfo for value %v: %v", value, err)
 	}
@@ -398,7 +397,6 @@ func (f *Fory) writeValue(buffer *ByteBuffer, value reflect.Value, serializer Se
 	} else {
 		serializer = typeInfo.Serializer
 	}
-	// Serialize the actual value using the serializer
 	return serializer.Write(f, buffer, value)
 }
 
@@ -528,11 +526,12 @@ func (f *Fory) readReferencableBySerializer(buf *ByteBuffer, value reflect.Value
 
 func (f *Fory) readData(buffer *ByteBuffer, value reflect.Value, serializer Serializer) (err error) {
 	if serializer == nil {
-		typeInfo, err := f.typeResolver.readTypeInfo(buffer)
+		typeInfo, err := f.typeResolver.readTypeInfo(buffer, value)
 		if err != nil {
 			return fmt.Errorf("read typeinfo failed: %w", err)
 		}
 		serializer = typeInfo.Serializer
+
 		var concrete reflect.Value
 		var type_ reflect.Type
 		/*
@@ -542,7 +541,7 @@ func (f *Fory) readData(buffer *ByteBuffer, value reflect.Value, serializer Seri
 		   2. Deserialization into a user-defined concrete type.
 		*/
 		switch {
-		case value.Kind() == reflect.Interface,
+		case value.Kind() == reflect.Interface && typeInfo.Type.Kind() != reflect.Slice,
 			!value.CanSet():
 			concrete = reflect.New(typeInfo.Type).Elem()
 			type_ = typeInfo.Type

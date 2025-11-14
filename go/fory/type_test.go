@@ -18,9 +18,10 @@
 package fory
 
 import (
-	"github.com/stretchr/testify/require"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestTypeResolver(t *testing.T) {

@@ -19,9 +19,10 @@ package fory
 
 import (
 	"bytes"
-	"github.com/apache/fory/go/fory"
 	"strings"
 	"testing"
+
+	"github.com/apache/fory/go/fory"
 
 	"github.com/apache/fory/go/fory/meta"
 )

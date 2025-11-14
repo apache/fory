@@ -113,6 +113,8 @@ const (
 	ARROW_RECORD_BATCH = 38
 	// ARROW_TABLE an arrow table object
 	ARROW_TABLE = 39
+	// UNKNOWN an unknown type
+	UNKNOWN = 63
 
 	// UINT8 Unsigned 8-bit little-endian integer
 	UINT8 = 100 // Not in mapping table, assign a higher value
@@ -434,13 +436,13 @@ func (r *typeResolver) initialize() {
 		{stringSliceType, stringSliceSerializer{}},
 		{byteSliceType, byteSliceSerializer{}},
 		// Map basic type slices to proper array types for xlang compatibility
-		{boolSliceType, boolArraySerializer{}},
-		{int8SliceType, int8ArraySerializer{}},
-		{int16SliceType, int16ArraySerializer{}},
-		{int32SliceType, int32ArraySerializer{}},
-		{int64SliceType, int64ArraySerializer{}},
-		{float32SliceType, float32ArraySerializer{}},
-		{float64SliceType, float64ArraySerializer{}},
+		{boolSliceType, boolSliceSerializer{}},
+		{int8SliceType, int8SliceSerializer{}},
+		{int16SliceType, int16SliceSerializer{}},
+		{int32SliceType, int32SliceSerializer{}},
+		{int64SliceType, int64SliceSerializer{}},
+		{float32SliceType, float32SliceSerializer{}},
+		{float64SliceType, float64SliceSerializer{}},
 		{interfaceSliceType, sliceSerializer{}},
 		{interfaceMapType, mapSerializer{}},
 		{boolType, boolSerializer{}},
@@ -586,10 +588,14 @@ func (r *typeResolver) getTypeInfo(value reflect.Value, create bool) (TypeInfo, 
 		// make sure the concrete value don't miss its real typeInfo
 		value = value.Elem()
 	}
-
 	type_ := value.Type()
 
-	if type_.Kind() == reflect.Slice && type_.Elem().Kind() != reflect.Uint8 {
+	if type_.Kind() == reflect.Array && (isPrimitiveType_(type_.Elem()) || type_.Elem().Kind() == reflect.Uint8) {
+		sliceType := reflect.SliceOf(type_.Elem())
+		info := r.typesInfo[sliceType]
+		return info, nil
+	}
+	if type_.Kind() == reflect.Array || (type_.Kind() == reflect.Slice && type_.Elem().Kind() != reflect.Uint8) {
 		info := r.typeIDToTypeInfo[LIST]
 		info.Serializer = NewSliceSerializer(r.fory, nil, nil)
 		return info, nil
@@ -826,6 +832,7 @@ func (r *typeResolver) writeTypeInfo(buffer *ByteBuffer, typeInfo TypeInfo) erro
 
 	// Write the type ID to buffer (variable-length encoding)
 	buffer.WriteVarUint32(uint32(typeID))
+
 	// For namespaced types, write additional metadata:
 	if IsNamespacedType(TypeId(internalTypeID)) {
 		if r.metaShareEnabled() {
@@ -877,6 +884,10 @@ func (r *typeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, erro
 		return nil, fmt.Errorf("TypeDef not found for type %s", typ)
 	}
 
+	// don't create TypeDef for pointer types, we create TypeDef for its element type instead.
+	if typ.Kind() == reflect.Ptr {
+		typ = typ.Elem()
+	}
 	zero := reflect.Zero(typ)
 	typeDef, err := buildTypeDef(r.fory, zero)
 	if err != nil {
@@ -886,13 +897,27 @@ func (r *typeResolver) getTypeDef(typ reflect.Type, create bool) (*TypeDef, erro
 	return typeDef, nil
 }
 
-func (r *typeResolver) readSharedTypeMeta(buffer *ByteBuffer) (TypeInfo, error) {
+func (r *typeResolver) readSharedTypeMeta(buffer *ByteBuffer, value reflect.Value) (TypeInfo, error) {
 	context := r.fory.metaContext
 	index := buffer.ReadVarInt32() // shared meta index id
 	if index < 0 || index >= int32(len(context.readTypeInfos)) {
 		return TypeInfo{}, fmt.Errorf("TypeInfo not found for index %d", index)
 	}
 	info := context.readTypeInfos[index]
+	/*
+		todo: fix this logic for more elegant handle
+		There are two corner case:
+			1. value is pointer but read info not
+			2. value is not pointer but read info is pointer
+	*/
+	if value.Kind() == reflect.Ptr && IsNamespacedType(info.Serializer.TypeId()) {
+		info.Serializer = &ptrToStructSerializer{
+			type_:            value.Type().Elem(),
+			structSerializer: *info.Serializer.(*structSerializer),
+		}
+	} else if info.Type.Kind() == reflect.Ptr && value.Kind() != reflect.Ptr {
+		info.Type = info.Type.Elem()
+	}
 	return info, nil
 }
 
@@ -945,6 +970,15 @@ func (r *typeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 		}
 		return &ptrToValueSerializer{valueSerializer}, nil
 	case reflect.Slice:
+		if type_.Elem().Kind() == reflect.Uint8 {
+			return r.typesInfo[type_].Serializer, nil
+		}
+		return NewSliceSerializer(r.fory, nil, nil), nil
+	case reflect.Array:
+		if isPrimitiveType_(type_.Elem()) || type_.Elem().Kind() == reflect.Uint8 {
+			sliceType := reflect.SliceOf(type_.Elem())
+			return r.typesInfo[sliceType].Serializer, nil
+		}
 		return NewSliceSerializer(r.fory, nil, nil), nil
 	case reflect.Map:
 		hasKeySerializer, hasValueSerializer := !isDynamicType(type_.Key()), !isDynamicType(type_.Elem())
@@ -1130,7 +1164,7 @@ func (r *typeResolver) readTypeByReadTag(buffer *ByteBuffer) (reflect.Type, erro
 	return r.typeTagToSerializers[metaString].(*ptrToStructSerializer).type_, err
 }
 
-func (r *typeResolver) readTypeInfo(buffer *ByteBuffer) (TypeInfo, error) {
+func (r *typeResolver) readTypeInfo(buffer *ByteBuffer, value reflect.Value) (TypeInfo, error) {
 	// Read variable-length type ID
 	typeID := buffer.ReadVarInt32()
 	internalTypeID := typeID // Extract lower 8 bits for internal type ID
@@ -1139,7 +1173,7 @@ func (r *typeResolver) readTypeInfo(buffer *ByteBuffer) (TypeInfo, error) {
 	}
 	if IsNamespacedType(TypeId(internalTypeID)) {
 		if r.metaShareEnabled() {
-			return r.readSharedTypeMeta(buffer)
+			return r.readSharedTypeMeta(buffer, value)
 		}
 		// Read namespace and type name metadata bytes
 		nsBytes, err := r.metaStringResolver.ReadMetaStringBytes(buffer)

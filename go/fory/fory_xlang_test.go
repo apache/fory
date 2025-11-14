@@ -112,32 +112,49 @@ func TestXLangSerializer(t *testing.T) {
 	set.Add(list...)
 	require.Nil(t, fory_.Serialize(buffer, set, nil))
 
+	// test primitive arrays
+	require.Nil(t, fory_.Serialize(buffer, [2]bool{true, false}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]int16{1, fory.MaxInt16}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]int32{1, fory.MaxInt32}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]int64{1, fory.MaxInt64}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]float32{1.0, 2.0}, nil))
+	require.Nil(t, fory_.Serialize(buffer, [2]float64{1.0, 2.0}, nil))
+
 	check := func(buf *fory.ByteBuffer) {
 		values := []interface{}{
 			true, false, int64(-1), int8(fory.MaxInt8), int8(fory.MinInt8), int16(fory.MaxInt16), int16(fory.MinInt16),
 			int32(fory.MaxInt32), int32(fory.MinInt32), int64(fory.MaxInt64), int64(fory.MinInt64), float32(-1),
 			float64(-1), "str", day, instant, list, dict, set,
+			[]bool{true, false}, []int16{1, fory.MaxInt16}, []int32{1, fory.MaxInt32},
+			[]int64{1, fory.MaxInt64}, []float32{1.0, 2.0}, []float64{1.0, 2.0},
 		}
 		for index, value := range values {
-			typ := reflect.TypeOf(value)
-			holder := reflect.New(typ)
-			require.Nil(t, fory_.Deserialize(buf, holder.Interface(), nil))
-			got := holder.Elem().Interface()
-			require.Equal(t, value, got, fmt.Sprintf("index %d", index))
+			var newValue interface{}
+			require.Nil(t, fory_.Deserialize(buf, &newValue, nil))
+			switch reflect.ValueOf(value).Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				require.Equal(t, reflect.ValueOf(value).Int(),
+					reflect.ValueOf(newValue).Int(), fmt.Sprintf("index %d", index))
+			case reflect.Float32, reflect.Float64:
+				require.Equal(t, reflect.ValueOf(value).Float(),
+					reflect.ValueOf(newValue).Float(), fmt.Sprintf("index %d", index))
+			default:
+				require.Equal(t, value, newValue, fmt.Sprintf("index %d", index))
+			}
 		}
 	}
 	check(buffer)
 
-	require.Nil(t, ioutil.WriteFile("test_cross_language_serializer_go.data",
+	require.Nil(t, ioutil.WriteFile("test_cross_language_serializer.data",
 		buffer.GetByteSlice(0, buffer.WriterIndex()), 0644))
 	defer func(name string) {
 		err := os.Remove(name)
 		require.Nil(t, err)
-	}("test_cross_language_serializer_go.data")
+	}("test_cross_language_serializer.data")
 	require.True(t, executeCommand([]string{"python", "-m", pythonModule,
-		"test_cross_language_serializer_go", "test_cross_language_serializer_go.data"}))
+		"test_cross_language_serializer", "test_cross_language_serializer.data"}))
 
-	data, err := ioutil.ReadFile("test_cross_language_serializer_go.data")
+	data, err := ioutil.ReadFile("test_cross_language_serializer.data")
 	require.Nil(t, err)
 	buffer = fory.NewByteBuffer(data)
 	check(buffer)
