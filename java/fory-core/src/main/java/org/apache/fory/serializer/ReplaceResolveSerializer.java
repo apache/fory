@@ -359,7 +359,7 @@ public class ReplaceResolveSerializer extends Serializer {
     return newObj;
   }
 
-  private MethodInfoCache getMethodInfoCache(Class<?> cls) {
+  protected MethodInfoCache getMethodInfoCache(Class<?> cls) {
     MethodInfoCache jdkMethodInfoCache = classClassInfoHolderMap.get(cls);
     if (jdkMethodInfoCache == null) {
       jdkMethodInfoCache = newJDKMethodInfoCache(cls, fory);

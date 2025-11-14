@@ -69,6 +69,7 @@ import static org.apache.fory.type.TypeUtils.isBoxed;
 import static org.apache.fory.type.TypeUtils.isPrimitive;
 import static org.apache.fory.util.Preconditions.checkArgument;
 
+import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -113,8 +114,10 @@ import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.EnumSerializer;
+import org.apache.fory.serializer.FinalFieldReplaceResolveSerializer;
 import org.apache.fory.serializer.ObjectSerializer;
 import org.apache.fory.serializer.PrimitiveSerializers.LongSerializer;
+import org.apache.fory.serializer.ReplaceResolveSerializer;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.StringSerializer;
 import org.apache.fory.serializer.collection.CollectionFlags;
@@ -722,11 +725,13 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     Reference serializerRef = serializerMap.get(cls);
     if (serializerRef == null) {
       // potential recursive call for seq codec generation is handled in `getSerializerClass`.
-      Class<? extends Serializer> serializerClass;
-      if (finalField) {
-        serializerClass = typeResolver(r -> r.getSerializerClassFinalField(cls));
-      } else {
-        serializerClass = typeResolver(r -> r.getSerializerClass(cls));
+      Class<? extends Serializer> serializerClass = typeResolver(r -> r.getSerializerClass(cls));
+      if (!fory.isCompatible()
+          && !fory.isShareMeta()
+          && finalField
+          && (serializerClass.equals(ReplaceResolveSerializer.class))) {
+        serializerClass = FinalFieldReplaceResolveSerializer.class;
+        typeResolver.registerSerializer(cls, new FinalFieldReplaceResolveSerializer(fory, cls));
       }
       Preconditions.checkNotNull(serializerClass, "Unsupported for class " + cls);
       if (!ReflectionUtils.isPublic(serializerClass)) {

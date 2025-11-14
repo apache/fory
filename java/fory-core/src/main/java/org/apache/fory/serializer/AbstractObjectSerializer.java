@@ -28,6 +28,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
+
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.collection.Tuple2;
@@ -937,7 +938,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   }
 
   static Tuple3<Tuple2<FinalTypeField[], boolean[]>, GenericTypeField[], GenericTypeField[]>
-      buildFieldInfos(Fory fory, DescriptorGrouper grouper) {
+  buildFieldInfos(Fory fory, DescriptorGrouper grouper) {
     // When a type is both Collection/Map and final, add it to collection/map fields to keep
     // consistent with jit.
     Collection<Descriptor> primitives = grouper.getPrimitiveDescriptors();
@@ -955,7 +956,14 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     // TODO(chaokunyang) Support Pojo<T> generics besides Map/Collection subclass
     //  when it's supported in BaseObjectCodecBuilder.
     for (Descriptor d : finals) {
-      finalFields[cnt++] = new FinalTypeField(fory, d);
+      FinalTypeField typeField = new FinalTypeField(fory, d);
+      // overwrite replace resolve serializer for final field
+      if (!fory.isShareMeta()
+          && !fory.isCompatible()
+          && typeField.classInfo.getSerializer() instanceof ReplaceResolveSerializer){
+        typeField.classInfo.setSerializer(new FinalFieldReplaceResolveSerializer(fory, typeField.classInfo.getCls()));
+      }
+      finalFields[cnt++] = typeField;
     }
     boolean[] isFinal = new boolean[finalFields.length];
     for (int i = 0; i < isFinal.length; i++) {

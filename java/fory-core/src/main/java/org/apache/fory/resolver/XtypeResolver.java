@@ -974,11 +974,6 @@ public class XtypeResolver extends TypeResolver {
     return getSerializer(cls).getClass();
   }
 
-  @Override
-  public Class<? extends Serializer> getSerializerClassFinalField(Class<?> cls) {
-    return getSerializer(cls).getClass();
-  }
-
   private boolean isEnum(int internalTypeId) {
     return internalTypeId == Types.ENUM || internalTypeId == Types.NAMED_ENUM;
   }

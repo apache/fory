@@ -42,41 +42,12 @@ public class FinalFieldReplaceResolveSerializer extends ReplaceResolveSerializer
 
   @Override
   protected Object readObject(MemoryBuffer buffer) {
-    MethodInfoCache jdkMethodInfoCache = getMethodInfoCache();
+    MethodInfoCache jdkMethodInfoCache = getMethodInfoCache(type);
     Object o = jdkMethodInfoCache.objectSerializer.read(buffer);
     ReplaceResolveInfo replaceResolveInfo = jdkMethodInfoCache.info;
     if (replaceResolveInfo.readResolveMethod == null) {
       return o;
     }
     return replaceResolveInfo.readResolve(o);
-  }
-
-  @Override
-  public Object copy(Object originObj) {
-    ReplaceResolveInfo replaceResolveInfo = jdkMethodInfoWriteCache.info;
-    if (replaceResolveInfo.writeReplaceMethod == null) {
-      return jdkMethodInfoWriteCache.objectSerializer.copy(originObj);
-    }
-    Object newObj = originObj;
-    newObj = replaceResolveInfo.writeReplace(newObj);
-    if (needToCopyRef) {
-      fory.reference(originObj, newObj);
-    }
-    MethodInfoCache jdkMethodInfoCache = getMethodInfoCache();
-    newObj = jdkMethodInfoCache.objectSerializer.copy(newObj);
-    replaceResolveInfo = jdkMethodInfoCache.info;
-    if (replaceResolveInfo.readResolveMethod != null) {
-      newObj = replaceResolveInfo.readResolve(newObj);
-    }
-    return newObj;
-  }
-
-  private ReplaceResolveSerializer.MethodInfoCache getMethodInfoCache() {
-    ReplaceResolveSerializer.MethodInfoCache jdkMethodInfoCache = classClassInfoHolderMap.get(type);
-    if (jdkMethodInfoCache == null) {
-      jdkMethodInfoCache = newJDKMethodInfoCache(type, fory);
-      classClassInfoHolderMap.put(type, jdkMethodInfoCache);
-    }
-    return jdkMethodInfoCache;
   }
 }

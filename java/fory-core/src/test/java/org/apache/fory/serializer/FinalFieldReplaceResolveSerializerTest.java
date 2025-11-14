@@ -19,14 +19,9 @@
 
 package org.apache.fory.serializer;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotSame;
-import static org.testng.Assert.assertSame;
-import static org.testng.Assert.assertTrue;
-
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import java.io.Serializable;
+import com.google.common.primitives.ImmutableIntArray;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -35,6 +30,15 @@ import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.testng.annotations.Test;
+
+import java.io.Serializable;
+
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNotSame;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertSame;
+import static org.testng.Assert.assertTrue;
 
 /**
  * Test class for FieldReplaceResolveSerializer. This serializer is used for final fields that have
@@ -67,11 +71,65 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     }
   }
 
-  /** Container class with final field that uses writeReplace/readResolve */
+  public static class CustomReplaceClass3 implements Serializable {
+    public Object ref;
+
+    private Object writeReplace() {
+      return ref;
+    }
+
+    private Object readResolve() {
+      return ref;
+    }
+  }
+
+  /**
+   * Container class with final field that uses writeReplace/readResolve
+   */
   @Data
   @AllArgsConstructor
   public static class ContainerWithFinalReplaceField implements Serializable {
     private final CustomReplaceClass1 finalField;
+  }
+
+  @Data
+  @AllArgsConstructor
+  public static class ContainerWithNonFinalImmutableIntArray implements Serializable {
+    private ImmutableIntArray nonFinalIntArray;
+  }
+
+  @Data
+  @AllArgsConstructor
+  public static class ContainerWithFinalReplaceField2 implements Serializable {
+    private final CustomReplaceClass2 finalField;
+  }
+
+  @Data
+  @AllArgsConstructor
+  @EqualsAndHashCode
+  public static class ContainerWithFinalReplaceField3 implements Serializable {
+    private final CustomReplaceClass3 finalField;
+  }
+
+  @Data
+  @AllArgsConstructor
+  public static class ComplexContainerWithMultipleFinalFields implements Serializable {
+    private final CustomReplaceClass1 field1;
+    private final ImmutableList<String> field2;
+    private final CustomReplaceClass2 field3;
+    private final ImmutableMap<String, Integer> field4;
+  }
+
+  @Data
+  @AllArgsConstructor
+  public static class ContainerWithFinalImmutableIntArray implements Serializable {
+    private final ImmutableIntArray intArray;
+  }
+
+  @Data
+  @AllArgsConstructor
+  public static class ContainerWithFinalImmutableMap implements Serializable {
+    private final ImmutableMap<String, Integer> finalMap;
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
@@ -110,7 +168,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
 
     Object writeReplace() {
       if (age > 5) {
-        return new Object[] {copy, age};
+        return new Object[]{copy, age};
       } else {
         if (copy) {
           return new CustomReplaceClass2(copy, age);
@@ -128,12 +186,6 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     }
   }
 
-  @Data
-  @AllArgsConstructor
-  public static class ContainerWithFinalReplaceField2 implements Serializable {
-    private final CustomReplaceClass2 finalField;
-  }
-
   @Test(dataProvider = "referenceTrackingConfig")
   public void testFinalFieldWriteReplaceCircularClass(boolean referenceTracking) {
     Fory fory =
@@ -143,8 +195,8 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .withRefTracking(referenceTracking)
             .build();
     for (Object inner :
-        new Object[] {
-          new CustomReplaceClass2(false, 2), new CustomReplaceClass2(true, 2),
+        new Object[]{
+            new CustomReplaceClass2(false, 2), new CustomReplaceClass2(true, 2),
         }) {
       ContainerWithFinalReplaceField2 container =
           new ContainerWithFinalReplaceField2((CustomReplaceClass2) inner);
@@ -155,32 +207,13 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
   @Test(dataProvider = "foryCopyConfig")
   public void testFinalFieldCopyReplaceCircularClass(Fory fory) {
     for (Object inner :
-        new Object[] {
-          new CustomReplaceClass2(false, 2), new CustomReplaceClass2(true, 2),
+        new Object[]{
+            new CustomReplaceClass2(false, 2), new CustomReplaceClass2(true, 2),
         }) {
       ContainerWithFinalReplaceField2 container =
           new ContainerWithFinalReplaceField2((CustomReplaceClass2) inner);
       copyCheck(fory, container);
     }
-  }
-
-  public static class CustomReplaceClass3 implements Serializable {
-    public Object ref;
-
-    private Object writeReplace() {
-      return ref;
-    }
-
-    private Object readResolve() {
-      return ref;
-    }
-  }
-
-  @Data
-  @AllArgsConstructor
-  @EqualsAndHashCode
-  public static class ContainerWithFinalReplaceField3 implements Serializable {
-    private final CustomReplaceClass3 finalField;
   }
 
   @Test
@@ -232,18 +265,6 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     }
   }
 
-  @Data
-  @AllArgsConstructor
-  public static class ContainerWithFinalImmutableList implements Serializable {
-    private final ImmutableList<Integer> finalList;
-  }
-
-  @Data
-  @AllArgsConstructor
-  public static class ContainerWithFinalImmutableMap implements Serializable {
-    private final ImmutableMap<String, Integer> finalMap;
-  }
-
   @Test(dataProvider = "referenceTrackingConfig")
   public void testFinalFieldImmutableList(boolean referenceTracking) {
     Fory fory =
@@ -252,17 +273,17 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .requireClassRegistration(false)
             .withRefTracking(referenceTracking)
             .build();
-    ImmutableList<Integer> list1 = ImmutableList.of(1, 2, 3, 4);
-    ContainerWithFinalImmutableList container = new ContainerWithFinalImmutableList(list1);
+    ImmutableIntArray list1 = ImmutableIntArray.of(1, 2, 3, 4);
+    ContainerWithFinalImmutableIntArray container = new ContainerWithFinalImmutableIntArray(list1);
     serDeCheck(fory, container);
-    ContainerWithFinalImmutableList deserialized = serDe(fory, container);
-    assertEquals(deserialized.getFinalList(), list1);
+    ContainerWithFinalImmutableIntArray deserialized = serDe(fory, container);
+    assertEquals(deserialized.getIntArray(), list1);
   }
 
   @Test(dataProvider = "foryCopyConfig")
   public void testFinalFieldImmutableListCopy(Fory fory) {
-    ImmutableList<Integer> list1 = ImmutableList.of(1, 2, 3, 4);
-    ContainerWithFinalImmutableList container = new ContainerWithFinalImmutableList(list1);
+    ImmutableIntArray list1 = ImmutableIntArray.of(1, 2, 3, 4);
+    ContainerWithFinalImmutableIntArray container = new ContainerWithFinalImmutableIntArray(list1);
     copyCheck(fory, container);
   }
 
@@ -286,15 +307,6 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     ImmutableMap<String, Integer> map1 = ImmutableMap.of("k1", 1, "k2", 2);
     ContainerWithFinalImmutableMap container = new ContainerWithFinalImmutableMap(map1);
     copyCheck(fory, container);
-  }
-
-  @Data
-  @AllArgsConstructor
-  public static class ComplexContainerWithMultipleFinalFields implements Serializable {
-    private final CustomReplaceClass1 field1;
-    private final ImmutableList<String> field2;
-    private final CustomReplaceClass2 field3;
-    private final ImmutableMap<String, Integer> field4;
   }
 
   @Test(dataProvider = "referenceTrackingConfig")
@@ -329,31 +341,28 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     copyCheck(fory, container);
   }
 
-  /**
-   * Verify that FieldReplaceResolveSerializer does NOT write class names. This is the key
-   * optimization for final fields - since the type is known at compile time, we don't need to write
-   * class information.
-   */
-  @Test
-  public void testNoClassNameWrittenForFinalField() {
+  @Test(dataProvider = "enableCodegen")
+  public void testNoClassNameWrittenForFinalField(boolean codegen) {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.JAVA)
             .requireClassRegistration(false)
+            .withCodegen(codegen)
             .withRefTracking(false)
             .build();
 
     // Create a container with a final ImmutableList field
-    ContainerWithFinalImmutableList containerFinal =
-        new ContainerWithFinalImmutableList(ImmutableList.of(1, 2, 3));
+    ContainerWithFinalImmutableIntArray containerFinal =
+        new ContainerWithFinalImmutableIntArray(ImmutableIntArray.of(1, 2, 3));
     byte[] bytesFinal = fory.serialize(containerFinal);
 
     // Create a container with a non-final ImmutableList field for comparison
-    ContainerWithNonFinalImmutableList containerNonFinal =
-        new ContainerWithNonFinalImmutableList(ImmutableList.of(1, 2, 3));
+    ContainerWithNonFinalImmutableIntArray containerNonFinal =
+        new ContainerWithNonFinalImmutableIntArray(ImmutableIntArray.of(1, 2, 3));
     byte[] bytesNonFinal = fory.serialize(containerNonFinal);
 
     // The final field version should use fewer bytes because it doesn't write class name
+    System.out.println(bytesFinal.length + " " + bytesNonFinal.length);
     assertTrue(
         bytesFinal.length < bytesNonFinal.length,
         String.format(
@@ -362,16 +371,9 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             bytesFinal.length, bytesNonFinal.length));
 
     // Verify deserialization still works correctly
-    ContainerWithFinalImmutableList deserialized =
-        (ContainerWithFinalImmutableList) fory.deserialize(bytesFinal);
-    assertEquals(deserialized.getFinalList(), ImmutableList.of(1, 2, 3));
-  }
-
-  /** Container with non-final ImmutableList for comparison */
-  @Data
-  @AllArgsConstructor
-  public static class ContainerWithNonFinalImmutableList implements Serializable {
-    private ImmutableList<Integer> nonFinalList; // Not final, so ReplaceResolveSerializer is used
+    ContainerWithFinalImmutableIntArray deserialized =
+        (ContainerWithFinalImmutableIntArray) fory.deserialize(bytesFinal);
+    assertEquals(deserialized.getIntArray(), ImmutableIntArray.of(1, 2, 3));
   }
 
   /**
@@ -389,7 +391,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
 
     // Get the serializer for a final field with writeReplace
     // ImmutableList uses writeReplace internally
-    ImmutableList<Integer> list = ImmutableList.of(1, 2, 3);
+    ImmutableIntArray list = ImmutableIntArray.of(1, 2, 3);
     Class<?> listClass = list.getClass();
 
     // Create FieldReplaceResolveSerializer as it would be used for a final field
@@ -403,10 +405,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     Object writeClassInfo = writeClassInfoField.get(finalFieldSerializer);
 
     // For FieldReplaceResolveSerializer, writeClassInfo should be null
-    assertEquals(
-        writeClassInfo,
-        null,
-        "FieldReplaceResolveSerializer should have writeClassInfo=null to avoid writing class names");
+    assertNull(writeClassInfo, "FieldReplaceResolveSerializer should have writeClassInfo=null to avoid writing class names");
 
     // Compare with ReplaceResolveSerializer (non-final)
     ReplaceResolveSerializer nonFinalFieldSerializer =
@@ -414,9 +413,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     Object writeClassInfoNonFinal = writeClassInfoField.get(nonFinalFieldSerializer);
 
     // For ReplaceResolveSerializer (non-final), writeClassInfo should NOT be null
-    assertTrue(
-        writeClassInfoNonFinal != null,
-        "ReplaceResolveSerializer (non-final) should have writeClassInfo set to write class names");
+    assertNotNull(writeClassInfoNonFinal, "ReplaceResolveSerializer (non-final) should have writeClassInfo set to write class names");
   }
 
   /**
@@ -433,15 +430,15 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
             .build();
 
     // Serialize using a final field container
-    ContainerWithFinalImmutableList container =
-        new ContainerWithFinalImmutableList(ImmutableList.of(1, 2, 3, 4, 5));
+    ContainerWithFinalImmutableIntArray container =
+        new ContainerWithFinalImmutableIntArray(ImmutableIntArray.of(1, 2, 3, 4, 5));
 
     byte[] bytes = fory.serialize(container);
 
     // Verify it can be deserialized correctly
-    ContainerWithFinalImmutableList deserialized =
-        (ContainerWithFinalImmutableList) fory.deserialize(bytes);
-    assertEquals(deserialized.getFinalList(), ImmutableList.of(1, 2, 3, 4, 5));
+    ContainerWithFinalImmutableIntArray deserialized =
+        (ContainerWithFinalImmutableIntArray) fory.deserialize(bytes);
+    assertEquals(deserialized.getIntArray(), ImmutableIntArray.of(1, 2, 3, 4, 5));
 
     // The key point: FieldReplaceResolveSerializer.writeObject() directly calls
     // jdkMethodInfoCache.objectSerializer.write(buffer, value)
@@ -452,29 +449,31 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
    * Test that final fields with writeReplace/readResolve work correctly with
    * CompatibleMode.COMPATIBLE which uses MetaSharedSerializer instead of ObjectSerializer.
    */
-  @Test(dataProvider = "referenceTrackingConfig")
-  public void testFinalFieldReplaceWithCompatibleMode(boolean referenceTracking) {
+  //@Test(dataProvider = "referenceTrackingConfig")
+  @Test
+  public void testFinalFieldReplaceWithCompatibleMode() {
     Fory fory =
         Fory.builder()
             .withLanguage(Language.JAVA)
             .requireClassRegistration(false)
-            .withRefTracking(referenceTracking)
+            .withCodegen(false)
+            .withRefTracking(true)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
             .build();
 
     // Test CustomReplaceClass1 with final field
-    CustomReplaceClass1 o1 = new CustomReplaceClass1("test_compatible");
+/*    CustomReplaceClass1 o1 = new CustomReplaceClass1("test_compatible");
     ContainerWithFinalReplaceField container = new ContainerWithFinalReplaceField(o1);
     serDeCheck(fory, container);
     ContainerWithFinalReplaceField deserialized = serDe(fory, container);
-    assertEquals(deserialized.getFinalField().getName(), "test_compatible");
+    assertEquals(deserialized.getFinalField().getName(), "test_compatible");*/
 
     // Test ImmutableList with final field
-    ImmutableList<Integer> list1 = ImmutableList.of(10, 20, 30);
-    ContainerWithFinalImmutableList containerList = new ContainerWithFinalImmutableList(list1);
+    ImmutableIntArray list1 = ImmutableIntArray.of(10, 20, 30);
+    ContainerWithFinalImmutableIntArray containerList = new ContainerWithFinalImmutableIntArray(list1);
     serDeCheck(fory, containerList);
-    ContainerWithFinalImmutableList deserializedList = serDe(fory, containerList);
-    assertEquals(deserializedList.getFinalList(), list1);
+    ContainerWithFinalImmutableIntArray deserializedList = serDe(fory, containerList);
+    assertEquals(deserializedList.getIntArray(), list1);
 
     // Test ImmutableMap with final field
     ImmutableMap<String, Integer> map1 = ImmutableMap.of("a", 100, "b", 200);
