@@ -97,3 +97,4 @@ impl_unsigned_num_serializer!(
     Reader::read_usize,
     TypeId::USIZE
 );
+impl_unsigned_num_serializer!(u128, Writer::write_u128, Reader::read_u128, TypeId::U128);

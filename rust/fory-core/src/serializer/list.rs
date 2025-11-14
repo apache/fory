@@ -42,10 +42,12 @@ pub(super) fn get_primitive_type_id<T: Serializer>() -> TypeId {
         TypeId::INT64 => TypeId::INT64_ARRAY,
         TypeId::FLOAT32 => TypeId::FLOAT32_ARRAY,
         TypeId::FLOAT64 => TypeId::FLOAT64_ARRAY,
+        TypeId::U8 => TypeId::BINARY,
         TypeId::U16 => TypeId::U16_ARRAY,
         TypeId::U32 => TypeId::U32_ARRAY,
         TypeId::U64 => TypeId::U64_ARRAY,
         TypeId::USIZE => TypeId::USIZE_ARRAY,
+        TypeId::U128 => TypeId::U128_ARRAY,
         _ => TypeId::UNKNOWN,
     }
 }
@@ -68,7 +70,8 @@ pub(super) fn is_primitive_type<T: Serializer>() -> bool {
             | TypeId::U16
             | TypeId::U32
             | TypeId::U64
-            | TypeId::USIZE,
+            | TypeId::USIZE
+            | TypeId::U128,
     )
 }
 

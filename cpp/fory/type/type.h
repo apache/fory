@@ -17,6 +17,8 @@
  * under the License.
  */
 
+#pragma once
+
 #include <cstdint> // For fixed-width integer types
 
 namespace fory {
@@ -103,9 +105,27 @@ enum class TypeId : int32_t {
   ARROW_RECORD_BATCH = 38,
   // an arrow table object.
   ARROW_TABLE = 39,
+  // Unknown/polymorphic type marker.
+  UNKNOWN = 64,
   // Bound value, typically used as a sentinel value.
   BOUND = 64
 };
+
+inline bool IsUserType(int32_t type_id) {
+  switch (static_cast<TypeId>(type_id)) {
+  case TypeId::ENUM:
+  case TypeId::NAMED_ENUM:
+  case TypeId::STRUCT:
+  case TypeId::COMPATIBLE_STRUCT:
+  case TypeId::NAMED_STRUCT:
+  case TypeId::NAMED_COMPATIBLE_STRUCT:
+  case TypeId::EXT:
+  case TypeId::NAMED_EXT:
+    return true;
+  default:
+    return false;
+  }
+}
 
 inline bool IsNamespacedType(int32_t type_id) {
   switch (static_cast<TypeId>(type_id)) {
@@ -130,5 +150,24 @@ inline bool IsTypeShareMeta(int32_t type_id) {
   default:
     return false;
   }
+}
+
+/// Check if type_id represents an internal (built-in) type.
+/// Internal types are all types except user-defined types (ENUM, STRUCT, EXT).
+/// Keep as constexpr for compile time evaluation or constant folding.
+inline constexpr bool is_internal_type(uint32_t type_id) {
+  if (type_id == 0 || type_id >= static_cast<uint32_t>(TypeId::BOUND)) {
+    return false;
+  }
+  // Internal types are all types that are NOT user types
+  uint32_t tid_low = type_id & 0xff;
+  return tid_low != static_cast<uint32_t>(TypeId::ENUM) &&
+         tid_low != static_cast<uint32_t>(TypeId::NAMED_ENUM) &&
+         tid_low != static_cast<uint32_t>(TypeId::STRUCT) &&
+         tid_low != static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT) &&
+         tid_low != static_cast<uint32_t>(TypeId::NAMED_STRUCT) &&
+         tid_low != static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT) &&
+         tid_low != static_cast<uint32_t>(TypeId::EXT) &&
+         tid_low != static_cast<uint32_t>(TypeId::NAMED_EXT);
 }
 } // namespace fory

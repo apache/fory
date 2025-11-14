@@ -23,6 +23,12 @@
 #include "platform.h"
 #include "string_util.h"
 
+#if defined(__GNUC__) && !defined(_MSC_VER)
+#define FORY_TARGET_AVX2_ATTR __attribute__((target("avx2")))
+#else
+#define FORY_TARGET_AVX2_ATTR
+#endif
+
 namespace fory {
 
 std::u16string utf8ToUtf16SIMD(const std::string &utf8, bool is_little_endian) {
@@ -150,7 +156,8 @@ std::u16string utf8ToUtf16SIMD(const std::string &utf8, bool is_little_endian) {
 
 #if defined(FORY_HAS_IMMINTRIN)
 
-std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
+FORY_TARGET_AVX2_ATTR std::string utf16ToUtf8(const std::u16string &utf16,
+                                              bool is_little_endian) {
   std::string utf8;
   utf8.reserve(utf16.size() *
                3); // Reserve enough space to avoid frequent reallocations
@@ -512,3 +519,5 @@ std::u16string utf8ToUtf16(const std::string &utf8, bool is_little_endian) {
 #endif
 
 } // namespace fory
+
+#undef FORY_TARGET_AVX2_ATTR

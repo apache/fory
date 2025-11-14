@@ -26,7 +26,7 @@ namespace fory {
 
 Buffer::Buffer() {
   data_ = nullptr;
-  size_ = -1;
+  size_ = 0;
   own_data_ = false;
   writer_index_ = 0;
   reader_index_ = 0;
@@ -39,7 +39,7 @@ Buffer::Buffer(Buffer &&buffer) noexcept {
   writer_index_ = buffer.writer_index_;
   reader_index_ = buffer.reader_index_;
   buffer.data_ = nullptr;
-  buffer.size_ = -1;
+  buffer.size_ = 0;
   buffer.own_data_ = false;
 }
 
@@ -54,7 +54,7 @@ Buffer &Buffer::operator=(Buffer &&buffer) noexcept {
   writer_index_ = buffer.writer_index_;
   reader_index_ = buffer.reader_index_;
   buffer.data_ = nullptr;
-  buffer.size_ = -1;
+  buffer.size_ = 0;
   buffer.own_data_ = false;
   return *this;
 }

@@ -39,9 +39,9 @@ std::string FormatTimePoint(system_clock::time_point tp) {
   std::chrono::milliseconds ms =
       std::chrono::duration_cast<std::chrono::milliseconds>(
           tp.time_since_epoch());
+  const int ms_value = static_cast<int>(ms.count() % 1000);
   std::snprintf(datetime_str + written_size,
-                sizeof(datetime_str) - written_size, "%03ld",
-                ms.count() % 1000);
+                sizeof(datetime_str) - written_size, "%03d", ms_value);
   return datetime_str;
 }
 

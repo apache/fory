@@ -180,6 +180,19 @@ impl<'a> Writer<'a> {
     }
 
     #[inline(always)]
+    pub fn write_u128(&mut self, value: u128) {
+        #[cfg(target_endian = "little")]
+        {
+            let bytes = unsafe { &*(&value as *const u128 as *const [u8; 16]) };
+            self.bf.extend_from_slice(bytes);
+        }
+        #[cfg(target_endian = "big")]
+        {
+            self.bf.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+
+    #[inline(always)]
     pub fn write_varint32(&mut self, value: i32) {
         let zigzag = ((value as i64) << 1) ^ ((value as i64) >> 31);
         self._write_varuint32(zigzag as u32)
@@ -521,6 +534,14 @@ impl<'a> Reader<'a> {
     #[inline(always)]
     pub fn read_usize(&mut self) -> Result<usize, Error> {
         Ok(self.read_u64()? as usize)
+    }
+
+    #[inline(always)]
+    pub fn read_u128(&mut self) -> Result<u128, Error> {
+        let slice = self.slice_after_cursor();
+        let result = LittleEndian::read_u128(slice);
+        self.cursor += 16;
+        Ok(result)
     }
 
     #[inline(always)]

@@ -1073,7 +1073,7 @@ pub trait Serializer: 'static {
     ///
     /// # Type ID Categories
     ///
-    /// - **Primitives**: `I8`, `I16`, `I32`, `I64`, `U8`, `U16`, `U32`, `U64`, `F32`, `F64`, `BOOL`
+    /// - **Primitives**: `BOOL`, `I8`, `I16`, `I32`, `I64`, `U8`, `U16`, `U32`, `U64`, `USIZE`, `U128`, `F32`, `F64`
     /// - **Strings**: `STRING`
     /// - **Collections**: `LIST`, `MAP`, `SET`
     /// - **Structs**: `STRUCT`

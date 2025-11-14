@@ -386,6 +386,7 @@ public class RustXlangTest extends ForyTestBase {
     Instant instant = Instant.ofEpochSecond(100);
     fory.serialize(buffer, instant);
     fory.serialize(buffer, new boolean[] {true, false});
+    fory.serialize(buffer, new byte[] {1, Byte.MAX_VALUE});
     fory.serialize(buffer, new short[] {1, Short.MAX_VALUE});
     fory.serialize(buffer, new int[] {1, Integer.MAX_VALUE});
     fory.serialize(buffer, new long[] {1, Long.MAX_VALUE});
@@ -415,6 +416,7 @@ public class RustXlangTest extends ForyTestBase {
           assertStringEquals(fory.deserialize(buf), day, useToString);
           assertStringEquals(fory.deserialize(buf), instant, useToString);
           assertStringEquals(fory.deserialize(buf), new boolean[] {true, false}, false);
+          assertStringEquals(fory.deserialize(buf), new byte[] {1, Byte.MAX_VALUE}, false);
           assertStringEquals(fory.deserialize(buf), new short[] {1, Short.MAX_VALUE}, false);
           assertStringEquals(fory.deserialize(buf), new int[] {1, Integer.MAX_VALUE}, false);
           assertStringEquals(fory.deserialize(buf), new long[] {1, Long.MAX_VALUE}, false);

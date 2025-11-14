@@ -26,7 +26,7 @@
 #include "fory/row/type.h"
 #include "fory/util/bit_util.h"
 #include "fory/util/buffer.h"
-#include "fory/util/status.h"
+#include "fory/util/result.h"
 
 namespace fory {
 

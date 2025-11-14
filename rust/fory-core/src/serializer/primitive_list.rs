@@ -26,7 +26,7 @@ pub fn fory_write_data<T: Serializer>(this: &[T], context: &mut WriteContext) ->
     if context.is_xlang()
         && matches!(
             T::fory_static_type_id(),
-            TypeId::U8 | TypeId::U16 | TypeId::U32 | TypeId::U64 | TypeId::USIZE
+            TypeId::U16 | TypeId::U32 | TypeId::U64 | TypeId::USIZE | TypeId::U128
         )
     {
         return Err(Error::not_allowed(
