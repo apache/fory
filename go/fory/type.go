@@ -702,7 +702,7 @@ func valueForTypeShape(t reflect.Type) (reflect.Value, error) {
 		return reflect.Value{}, fmt.Errorf("need a concrete value for interface type %v", t)
 	}
 	switch t.Kind() {
-	case reflect.Pointer:
+	case reflect.Ptr:
 		return reflect.New(t.Elem()), nil
 	case reflect.Struct:
 		return reflect.New(t).Elem(), nil
