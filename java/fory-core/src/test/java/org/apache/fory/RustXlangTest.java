@@ -141,7 +141,7 @@ public class RustXlangTest extends ForyTestBase {
     List<String> command = setTestCase(caseName);
     Path dataFile = Files.createTempFile(caseName, "data");
     MemoryBuffer buffer = MemoryUtils.buffer(100);
-    int[] varInt32Values = {
+    int[] int32Values = {
       Integer.MIN_VALUE,
       Integer.MIN_VALUE + 1,
       -1000000,
@@ -161,11 +161,14 @@ public class RustXlangTest extends ForyTestBase {
       Integer.MAX_VALUE - 1,
       Integer.MAX_VALUE
     };
-    for (int value : varInt32Values) {
+    for (int value : int32Values) {
+      buffer.writeInt32(value);
+    }
+    for (int value : int32Values) {
       buffer.writeVarInt32(value);
     }
 
-    int[] varUint32Values = {
+    int[] uint32Values = {
       0,
       1,
       127,
@@ -179,11 +182,11 @@ public class RustXlangTest extends ForyTestBase {
       Integer.MAX_VALUE - 1,
       Integer.MAX_VALUE
     };
-    for (int value : varUint32Values) {
+    for (int value : uint32Values) {
       buffer.writeVarUint32(value);
     }
 
-    long[] varUint64Values = {
+    long[] uint64Values = {
       0L,
       1L,
       127L,
@@ -204,11 +207,11 @@ public class RustXlangTest extends ForyTestBase {
       72057594037927936L,
       Long.MAX_VALUE,
     };
-    for (long value : varUint64Values) {
+    for (long value : uint64Values) {
       buffer.writeVarUint64(value);
     }
 
-    long[] varInt64Values = {
+    long[] int64Values = {
       Long.MIN_VALUE,
       Long.MIN_VALUE + 1,
       -1000000000000L,
@@ -225,7 +228,13 @@ public class RustXlangTest extends ForyTestBase {
       Long.MAX_VALUE - 1,
       Long.MAX_VALUE
     };
-    for (long value : varInt64Values) {
+    for (long value : int64Values) {
+      buffer.writeInt64(value);
+    }
+    for (long value : int64Values) {
+      buffer.writeSliInt64(value);
+    }
+    for (long value : int64Values) {
       buffer.writeVarInt64(value);
     }
 
@@ -234,19 +243,31 @@ public class RustXlangTest extends ForyTestBase {
     Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
 
     buffer = MemoryUtils.wrap(Files.readAllBytes(dataFile));
-    for (int expected : varInt32Values) {
+    for (int expected : int32Values) {
+      int actual = buffer.readInt32();
+      Assert.assertEquals(actual, expected);
+    }
+    for (int expected : int32Values) {
       int actual = buffer.readVarInt32();
       Assert.assertEquals(actual, expected);
     }
-    for (int expected : varUint32Values) {
+    for (int expected : uint32Values) {
       int actual = buffer.readVarUint32();
       Assert.assertEquals(actual, expected);
     }
-    for (long expected : varUint64Values) {
+    for (long expected : uint64Values) {
       long actual = buffer.readVarUint64();
       Assert.assertEquals(actual, expected);
     }
-    for (long expected : varInt64Values) {
+    for (long expected : int64Values) {
+      long actual = buffer.readInt64();
+      Assert.assertEquals(actual, expected);
+    }
+    for (long expected : int64Values) {
+      long actual = buffer.readSliInt64();
+      Assert.assertEquals(actual, expected);
+    }
+    for (long expected : int64Values) {
       long actual = buffer.readVarInt64();
       Assert.assertEquals(actual, expected);
     }
