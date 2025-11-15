@@ -29,7 +29,7 @@ use crate::types::{
     Language, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
 };
 use std::mem;
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 
 /// The main Fory serialization framework instance.
 ///
@@ -87,16 +87,69 @@ pub struct Fory {
     read_context_pool: OnceLock<Result<Pool<Box<ReadContext<'static>>>, Error>>,
 }
 
+/// Configuration options for the `Fory` serialization framework.
+///
+/// `Config` allows customizing the behavior of a `Fory` instance, including
+/// compatibility mode, cross-language support, string compression, dynamic
+/// object depth limits, and version checking for structs.
+///
+/// # Examples
+///
+/// Basic usage:
+///
+/// ```rust
+/// use fory_core::fory::{Config, set_default_config, get_default_config};
+///
+/// // Retrieve the current default configuration
+/// let old_cfg = get_default_config();
+///
+/// // Create a new configuration with compatibility mode enabled
+/// let new_cfg = Config {
+///     compatible: true,
+///     ..old_cfg
+/// };
+///
+/// // Set the new configuration as the default
+/// set_default_config(new_cfg);
+/// ```
+#[derive(Clone)]
+pub struct Config {
+    pub compatible: bool,
+    pub xlang: bool,
+    pub compress_string: bool,
+    pub max_dyn_depth: u32,
+    pub check_struct_version: bool,
+}
+
+static DEFAULT_CONFIG: RwLock<Config> = RwLock::new(Config {
+    compatible: false,
+    xlang: false,
+    compress_string: false,
+    max_dyn_depth: 5,
+    check_struct_version: false,
+});
+
+pub fn set_default_config(cfg: Config) {
+    let mut default_cfg = DEFAULT_CONFIG.write().unwrap();
+    *default_cfg = cfg;
+}
+
+pub fn get_default_config() -> Config {
+    let default_cfg = DEFAULT_CONFIG.read().unwrap().clone();
+    default_cfg
+}
+
 impl Default for Fory {
     fn default() -> Self {
+        let cfg = DEFAULT_CONFIG.read().unwrap();
         Fory {
-            compatible: false,
-            xlang: false,
-            share_meta: false,
+            compatible: cfg.compatible,
+            xlang: cfg.xlang,
+            share_meta: cfg.compatible,
             type_resolver: TypeResolver::default(),
-            compress_string: false,
-            max_dyn_depth: 5,
-            check_struct_version: false,
+            compress_string: cfg.compress_string,
+            max_dyn_depth: cfg.max_dyn_depth,
+            check_struct_version: cfg.check_struct_version,
             write_context_pool: OnceLock::new(),
             read_context_pool: OnceLock::new(),
         }
