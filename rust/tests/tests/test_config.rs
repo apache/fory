@@ -6,6 +6,7 @@ use fory_core::{
 #[test]
 fn test_config() {
     let default_cfg = get_default_config();
+    assert_eq!(default_cfg.compatible, false);
     let compatible = true;
     let new_cfg = Config {
         compatible,
