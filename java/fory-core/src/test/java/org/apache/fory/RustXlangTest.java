@@ -337,19 +337,6 @@ public class RustXlangTest extends ForyTestBase {
   }
 
   @Test
-  public void testCrossLanguageSe1324rializer() {
-    int a = 10;
-    Fory build =
-        Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .build();
-    byte[] serialize = build.serialize(a);
-    int b = (int) build.deserialize(serialize);
-    Assert.assertEquals(a, b);
-  }
-
-  @Test
   public void testCrossLanguageSerializer() throws Exception {
     String caseName = "test_cross_language_serializer";
     List<String> command = setTestCase(caseName);
