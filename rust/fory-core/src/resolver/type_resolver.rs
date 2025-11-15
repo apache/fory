@@ -457,6 +457,20 @@ impl TypeResolver {
         self.compress_int
     }
 
+    pub(crate) fn set_compress_int(&mut self, compress_int: bool) {
+        if self.compress_int_opt.is_some() {
+            if compress_int != self.compress_int {
+                panic!(
+                    "{}",
+                    Error::not_allowed(format!("type with compress_int={} has already been registered, cannot set compress_int={}", self.compress_int, compress_int))
+                );
+            }
+        } else {
+            self.compress_int_opt = Some(compress_int);
+            self.compress_int = compress_int;
+        }
+    }
+
     pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Rc<TypeInfo>, Error> {
         self.type_info_map
             .get(type_id)

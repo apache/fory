@@ -15,18 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::panic::{catch_unwind, AssertUnwindSafe};
+
 use fory_core::{Fory, Reader};
 use fory_derive::ForyObject;
 
 #[test]
 pub fn test_i32() {
     #[derive(ForyObject, Debug, PartialEq)]
+    #[fory(compress_int = false)]
     struct Item {
         f1: i32,
         f2: [i32; 1],
     }
     #[derive(ForyObject, Debug, PartialEq)]
-    #[fory(compress_int)]
     struct ItemCompressed {
         f1: i32,
         f2: [i32; 1],
@@ -46,8 +48,10 @@ pub fn test_i32() {
         let mut fory = Fory::default();
         if compress_int {
             fory.register::<ItemCompressed>(100).unwrap();
+            assert!(fory.is_compress_int());
         } else {
             fory.register::<Item>(100).unwrap();
+            assert!(!fory.is_compress_int());
         };
         let mut buf = Vec::new();
         fory.serialize_to(&f1, &mut buf).unwrap();
@@ -103,4 +107,40 @@ fn test_inconsistent_with_enum() {
     let mut fory = Fory::default();
     fory.register::<Item1>(100).unwrap();
     assert!(fory.register::<Item2>(101).is_err());
+}
+
+#[test]
+pub fn test_i32_no_struct() {
+    let f1: i32 = 13;
+    // `primitive_array` is not related to compression; just for testing.
+    let primitive_array: [i32; 1] = [100];
+    for compress_int in [true, false] {
+        // Without a struct, the `compress_int` of the fory object will not be obtained from the struct’s `compress_int`.
+        // In this case, users can manually set it using Fory#compress_int(bool)
+        let fory = Fory::default().compress_int(compress_int);
+        assert_eq!(fory.is_compress_int(), compress_int);
+        let mut buf = Vec::new();
+        fory.serialize_to(&f1, &mut buf).unwrap();
+        fory.serialize_to(&primitive_array, &mut buf).unwrap();
+
+        let mut reader = Reader::new(buf.as_slice());
+        let new_f1: i32 = fory.deserialize_from(&mut reader).unwrap();
+        assert_eq!(f1, new_f1);
+        let new_primitive_array: [i32; 1] = fory.deserialize_from(&mut reader).unwrap();
+        assert_eq!(primitive_array, new_primitive_array);
+    }
+}
+
+#[test]
+pub fn test_i32_conflict() {
+    #[derive(ForyObject)]
+    #[fory(compress_int = true)]
+    struct Item1 {}
+
+    let mut fory = Fory::default();
+    fory.register::<Item1>(100).unwrap();
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        fory.compress_int(false);
+    }));
+    assert!(result.is_err());
 }

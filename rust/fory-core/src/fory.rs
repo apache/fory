@@ -178,6 +178,49 @@ impl Fory {
         self
     }
 
+    /// Enables or disables int32 compression for the `Fory` instance.
+    ///
+    /// Int32 compression uses a variable-length encoding to reduce the size of serialized 32-bit integers.
+    ///
+    /// # Arguments
+    ///
+    /// * `compress_int` - If `true`, int32 values will be encoded in a compact, variable-length format,
+    ///   reducing the serialized payload size. If `false`, int32 values will be serialized using a fixed-width
+    ///   32-bit representation.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` to allow method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `true`.
+    ///
+    /// # Trade-offs
+    ///
+    /// - **Enabled** (`true`): Produces smaller payloads at the cost of slightly higher CPU usage during
+    ///   serialization and deserialization.
+    /// - **Disabled** (`false`): Produces larger payloads but with faster serialization/deserialization.
+    ///
+    /// # Error cases
+    ///
+    /// If a struct has already been registered with `Fory` and it has a conflicting `compress_int`
+    /// setting, calling this method with a different value will panic.
+    /// See the test case [`test_i32_conflict`](crate::tests::test_compress::test_i32_conflict)
+    /// for an example of this situation.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::default().compress_int(true);
+    /// ```
+    pub fn compress_int(mut self, compress_int: bool) -> Self {
+        self.type_resolver.set_compress_int(compress_int);
+        self
+    }
+
     /// Enables or disables meta string compression.
     ///
     /// # Arguments
@@ -309,6 +352,15 @@ impl Fory {
     /// `true` if meta string compression is enabled, `false` otherwise.
     pub fn is_compress_string(&self) -> bool {
         self.compress_string
+    }
+
+    /// Returns whether int32 compression is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` if i32 compression is enabled, `false` otherwise.
+    pub fn is_compress_int(&self) -> bool {
+        self.type_resolver.is_compress_int()
     }
 
     /// Returns whether metadata sharing is enabled.
