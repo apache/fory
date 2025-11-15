@@ -168,7 +168,7 @@ pub fn compute_string_hash(s: &str) -> u32 {
     hash as u32
 }
 
-pub static BASIC_TYPES: [TypeId; 29] = [
+pub static BASIC_TYPES: [TypeId; 30] = [
     TypeId::BOOL,
     TypeId::INT8,
     TypeId::INT16,

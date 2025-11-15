@@ -217,7 +217,12 @@ pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStr
         Err(err) => return err.into_compile_error().into(),
     };
 
-    object::derive_serializer(&input, debug_enabled)
+    let compress_int_enabled = match parse_compress_int_flag(&input.attrs) {
+        Ok(flag) => flag,
+        Err(err) => return err.into_compile_error().into(),
+    };
+
+    object::derive_serializer(&input, debug_enabled, compress_int_enabled)
 }
 
 /// Derive macro for row-based serialization.
@@ -275,4 +280,36 @@ fn parse_debug_flag(attrs: &[Attribute]) -> syn::Result<bool> {
     }
 
     Ok(debug_flag.unwrap_or(false))
+}
+
+fn parse_compress_int_flag(attrs: &[Attribute]) -> syn::Result<bool> {
+    let mut compress_int_flag: Option<bool> = None;
+
+    for attr in attrs {
+        if attr.path().is_ident("fory") {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("compress_int") {
+                    let value = if meta.input.is_empty() {
+                        true
+                    } else {
+                        let lit: LitBool = meta.value()?.parse()?;
+                        lit.value
+                    };
+                    compress_int_flag = match compress_int_flag {
+                        Some(existing) if existing != value => {
+                            return Err(syn::Error::new(
+                                meta.path.span(),
+                                "conflicting `compress_int` attribute values",
+                            ));
+                        }
+                        Some(_) => compress_int_flag,
+                        None => Some(value),
+                    };
+                }
+                Ok(())
+            })?;
+        }
+    }
+
+    Ok(compress_int_flag.unwrap_or(false))
 }

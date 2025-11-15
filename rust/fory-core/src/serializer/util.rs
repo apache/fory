@@ -22,7 +22,7 @@ use crate::serializer::Serializer;
 use crate::types::TypeId;
 use crate::types::{
     is_user_type, BOOL, ENUM, FLOAT32, FLOAT64, INT16, INT32, INT64, INT8, NAMED_ENUM, U128, U16,
-    U32, U64, U8, USIZE, VAR_INT32
+    U32, U64, U8, USIZE, VAR_INT32,
 };
 
 #[inline(always)]

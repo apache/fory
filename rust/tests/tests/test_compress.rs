@@ -25,6 +25,12 @@ pub fn test_i32() {
         f1: i32,
         f2: [i32; 1],
     }
+    #[derive(ForyObject, Debug, PartialEq)]
+    #[fory(compress_int)]
+    struct ItemCompressed {
+        f1: i32,
+        f2: [i32; 1],
+    }
     let f1: i32 = 13;
     // `primitive_array` is not related to compression; just for testing.
     let primitive_array: [i32; 1] = [100];
@@ -32,20 +38,37 @@ pub fn test_i32() {
         f1,
         f2: primitive_array,
     };
+    let item_compressed = ItemCompressed {
+        f1,
+        f2: primitive_array,
+    };
     for compress_int in [true, false] {
-        let mut fory = Fory::default().compress_int(compress_int);
-        fory.register::<Item>(100).unwrap();
+        let mut fory = Fory::default();
+        if compress_int {
+            fory.register::<ItemCompressed>(100).unwrap();
+        } else {
+            fory.register::<Item>(100).unwrap();
+        };
         let mut buf = Vec::new();
         fory.serialize_to(&f1, &mut buf).unwrap();
         fory.serialize_to(&primitive_array, &mut buf).unwrap();
-        fory.serialize_to(&item, &mut buf).unwrap();
+        if compress_int {
+            fory.serialize_to(&item_compressed, &mut buf).unwrap();
+        } else {
+            fory.serialize_to(&item, &mut buf).unwrap();
+        }
 
         let mut reader = Reader::new(buf.as_slice());
         let new_f1: i32 = fory.deserialize_from(&mut reader).unwrap();
-        let new_primitive_array: [i32; 1] = fory.deserialize_from(&mut reader).unwrap();
-        let new_item: Item = fory.deserialize_from(&mut reader).unwrap();
         assert_eq!(f1, new_f1);
+        let new_primitive_array: [i32; 1] = fory.deserialize_from(&mut reader).unwrap();
         assert_eq!(primitive_array, new_primitive_array);
-        assert_eq!(item, new_item);
+        if compress_int {
+            let new_item: ItemCompressed = fory.deserialize_from(&mut reader).unwrap();
+            assert_eq!(item_compressed, new_item);
+        } else {
+            let new_item: Item = fory.deserialize_from(&mut reader).unwrap();
+            assert_eq!(item, new_item);
+        }
     }
 }

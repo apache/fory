@@ -36,13 +36,15 @@ thread_local! {
 struct MacroContext {
     struct_name: String,
     debug_enabled: bool,
+    compress_int_enabled: bool,
 }
 
-pub(super) fn set_struct_context(name: &str, debug_enabled: bool) {
+pub(super) fn set_struct_context(name: &str, debug_enabled: bool, compress_int_enabled: bool) {
     MACRO_CONTEXT.with(|ctx| {
         *ctx.borrow_mut() = Some(MacroContext {
             struct_name: name.to_string(),
             debug_enabled,
+            compress_int_enabled,
         });
     });
 }
@@ -62,6 +64,15 @@ pub(super) fn is_debug_enabled() -> bool {
         ctx.borrow()
             .as_ref()
             .map(|c| c.debug_enabled)
+            .unwrap_or(false)
+    })
+}
+
+pub(super) fn is_compress_int_enabled() -> bool {
+    MACRO_CONTEXT.with(|ctx: &RefCell<Option<MacroContext>>| {
+        ctx.borrow()
+            .as_ref()
+            .map(|c| c.compress_int_enabled)
             .unwrap_or(false)
     })
 }
@@ -538,7 +549,13 @@ fn get_primitive_type_id(ty: &str) -> u32 {
         "bool" => TypeId::BOOL as u32,
         "i8" => TypeId::INT8 as u32,
         "i16" => TypeId::INT16 as u32,
-        "i32" => TypeId::INT32 as u32,
+        "i32" => {
+            (if is_compress_int_enabled() {
+                TypeId::INT32
+            } else {
+                TypeId::VAR_INT32
+            }) as u32
+        }
         "i64" => TypeId::INT64 as u32,
         "f32" => TypeId::FLOAT32 as u32,
         "f64" => TypeId::FLOAT64 as u32,
