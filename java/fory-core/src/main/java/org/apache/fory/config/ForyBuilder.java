@@ -421,7 +421,7 @@ public final class ForyBuilder {
     if (language != Language.JAVA) {
       stringRefIgnored = true;
       longEncoding = LongEncoding.PVL;
-//      compressInt = true;
+      // compressInt = true;
       compressString = true;
     }
     if (ENABLE_CLASS_REGISTRATION_FORCIBLY) {
