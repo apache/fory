@@ -190,8 +190,6 @@ pub fn gen_write_field(field: &Field, ident: &Ident, use_self: bool) -> TokenStr
             // Check if this is a direct primitive numeric type that can use direct writer calls
             if is_direct_primitive_numeric_type(ty) {
                 let type_name = extract_type_name(ty);
-                let writer_method = get_primitive_writer_method(&type_name);
-                let writer_ident = syn::Ident::new(writer_method, proc_macro2::Span::call_site());
                 // For primitives:
                 // - use_self=true: #value_ts is `self.field`, which is T (copy happens automatically)
                 // - use_self=false: #value_ts is `field` from pattern match on &self, which is &T
@@ -200,8 +198,21 @@ pub fn gen_write_field(field: &Field, ident: &Ident, use_self: bool) -> TokenStr
                 } else {
                     quote! { *#value_ts }
                 };
-                quote! {
-                    context.writer.#writer_ident(#value_expr);
+                if type_name == "i32" {
+                    quote! {
+                        if context.get_type_resolver().is_compress_int() {
+                            context.writer.write_varint32(#value_expr);
+                        } else {
+                            context.writer.write_i32(#value_expr);
+                        }
+                    }
+                } else {
+                    let writer_method = get_primitive_writer_method(&type_name);
+                    let writer_ident: Ident =
+                        syn::Ident::new(writer_method, proc_macro2::Span::call_site());
+                    quote! {
+                        context.writer.#writer_ident(#value_expr);
+                    }
                 }
             } else if type_id == TypeId::LIST as u32
                 || type_id == TypeId::SET as u32

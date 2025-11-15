@@ -361,7 +361,7 @@ fn skip_value(
         types::INT16 => {
             <i16 as Serializer>::fory_read_data(context)?;
         }
-        types::INT32 => {
+        types::INT32 | types::VAR_INT32 => {
             <i32 as Serializer>::fory_read_data(context)?;
         }
         types::INT64 => {

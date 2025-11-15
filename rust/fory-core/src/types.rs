@@ -168,11 +168,12 @@ pub fn compute_string_hash(s: &str) -> u32 {
     hash as u32
 }
 
-pub static BASIC_TYPES: [TypeId; 29] = [
+pub static BASIC_TYPES: [TypeId; 30] = [
     TypeId::BOOL,
     TypeId::INT8,
     TypeId::INT16,
     TypeId::INT32,
+    TypeId::VAR_INT32,
     TypeId::INT64,
     TypeId::FLOAT32,
     TypeId::FLOAT64,
@@ -280,6 +281,7 @@ pub const fn is_primitive_type_id(type_id: TypeId) -> bool {
             | TypeId::INT8
             | TypeId::INT16
             | TypeId::INT32
+            | TypeId::VAR_INT32
             | TypeId::INT64
             | TypeId::FLOAT32
             | TypeId::FLOAT64

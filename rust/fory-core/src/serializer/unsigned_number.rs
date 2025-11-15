@@ -17,8 +17,7 @@
 
 use crate::buffer::{Reader, Writer};
 use crate::error::Error;
-use crate::resolver::context::ReadContext;
-use crate::resolver::context::WriteContext;
+use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::util::read_basic_type_info;
 use crate::serializer::{ForyDefault, Serializer};

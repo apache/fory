@@ -415,6 +415,8 @@ pub struct TypeResolver {
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
     compatible: bool,
+    compress_int: bool,
+    compress_int_opt: Option<bool>,
 }
 
 // Safety: TypeResolver instances are only shared through higher-level synchronization that
@@ -435,6 +437,8 @@ impl Default for TypeResolver {
             type_id_index: Vec::new(),
             partial_type_infos: HashMap::new(),
             compatible: false,
+            compress_int: true,
+            compress_int_opt: None,
         };
         registry.register_builtin_types().unwrap();
         registry
@@ -442,6 +446,31 @@ impl Default for TypeResolver {
 }
 
 impl TypeResolver {
+    #[inline(always)]
+    pub(crate) fn is_compress_int(&self) -> bool {
+        if self.compress_int_opt.is_none() {
+            panic!(
+                "{}",
+                Error::not_allowed("cannot get is_compress_int at the moment")
+            );
+        }
+        self.compress_int
+    }
+
+    pub(crate) fn set_compress_int(&mut self, compress_int: bool) {
+        if self.compress_int_opt.is_some() {
+            if compress_int != self.compress_int {
+                panic!(
+                    "{}",
+                    Error::not_allowed(format!("type with compress_int={} has already been registered, cannot set compress_int={}", self.compress_int, compress_int))
+                );
+            }
+        } else {
+            self.compress_int_opt = Some(compress_int);
+            self.compress_int = compress_int;
+        }
+    }
+
     pub fn get_type_info(&self, type_id: &std::any::TypeId) -> Result<Rc<TypeInfo>, Error> {
         self.type_info_map
             .get(type_id)
@@ -540,11 +569,20 @@ impl TypeResolver {
             .map(|info| info.get_type_id())
     }
 
+    fn register_var_types(&mut self) -> Result<(), Error> {
+        if self.compress_int {
+            self.register_internal_serializer::<i32>(TypeId::VAR_INT32)?;
+        } else {
+            self.register_internal_serializer::<i32>(TypeId::INT32)?;
+        }
+        Ok(())
+    }
+
     fn register_builtin_types(&mut self) -> Result<(), Error> {
         self.register_internal_serializer::<bool>(TypeId::BOOL)?;
         self.register_internal_serializer::<i8>(TypeId::INT8)?;
         self.register_internal_serializer::<i16>(TypeId::INT16)?;
-        self.register_internal_serializer::<i32>(TypeId::INT32)?;
+
         self.register_internal_serializer::<i64>(TypeId::INT64)?;
         self.register_internal_serializer::<f32>(TypeId::FLOAT32)?;
         self.register_internal_serializer::<f64>(TypeId::FLOAT64)?;
@@ -610,6 +648,15 @@ impl TypeResolver {
         if !register_by_name && id == 0 {
             return Err(Error::not_allowed(
                 "Either id must be non-zero for ID registration, or type_name must be non-empty for name registration",
+            ));
+        }
+        let type_is_compress_int = T::fory_is_compress_int();
+        if self.compress_int_opt.is_none() {
+            self.compress_int_opt = Some(type_is_compress_int);
+            self.compress_int = type_is_compress_int;
+        } else if self.compress_int != type_is_compress_int {
+            return Err(Error::not_allowed(
+                "inconsistent compress_int setting among registered types",
             ));
         }
         let actual_type_id = T::fory_actual_type_id(id, register_by_name, self.compatible);
@@ -999,8 +1046,12 @@ impl TypeResolver {
                 }
             }
         }
-
-        Ok(TypeResolver {
+        let (final_compress_int, final_compress_int_opt) = if self.compress_int_opt.is_some() {
+            (self.compress_int, self.compress_int_opt)
+        } else {
+            (true, Some(true))
+        };
+        let mut final_type_resolver = TypeResolver {
             type_info_map_by_id,
             type_info_map,
             type_info_map_by_name,
@@ -1008,7 +1059,11 @@ impl TypeResolver {
             partial_type_infos: HashMap::new(),
             type_id_index,
             compatible: self.compatible,
-        })
+            compress_int: final_compress_int,
+            compress_int_opt: final_compress_int_opt,
+        };
+        final_type_resolver.register_var_types()?;
+        Ok(final_type_resolver)
     }
 
     /// Clones the TypeResolver including any partial type infos.
@@ -1040,6 +1095,8 @@ impl TypeResolver {
             partial_type_infos: HashMap::new(),
             type_id_index: self.type_id_index.clone(),
             compatible: self.compatible,
+            compress_int: self.compress_int,
+            compress_int_opt: self.compress_int_opt,
         }
     }
 }
