@@ -23,6 +23,9 @@ use std::cmp::max;
 /// Threshold for using SIMD optimizations in string operations.
 /// For buffers smaller than this, direct copy is faster than SIMD setup overhead.
 const SIMD_THRESHOLD: usize = 128;
+const HALF_MAX_INT: i64 = i32::MAX as i64 / 2;
+const HALF_MIN_INT: i64 = i32::MIN as i64 / 2;
+const SLI_BIG_LONG_FLAG: u8 = 0b1;
 
 pub struct Writer<'a> {
     pub(crate) bf: &'a mut Vec<u8>,
@@ -170,6 +173,17 @@ impl<'a> Writer<'a> {
         }
         #[cfg(target_endian = "big")]
         {
+            self.bf.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+
+    #[inline(always)]
+    pub fn write_sliint64(&mut self, value: i64) {
+        if value >= HALF_MIN_INT && value <= HALF_MAX_INT {
+            let v = (value as i32) << 1;
+            self.bf.extend_from_slice(&v.to_le_bytes());
+        } else {
+            self.bf.push(SLI_BIG_LONG_FLAG);
             self.bf.extend_from_slice(&value.to_le_bytes());
         }
     }
@@ -547,6 +561,19 @@ impl<'a> Reader<'a> {
     #[inline(always)]
     pub fn read_i64(&mut self) -> Result<i64, Error> {
         Ok(self.read_u64()? as i64)
+    }
+
+    #[inline(always)]
+    pub fn read_sliint64(&mut self) -> Result<i64, Error> {
+        let i = LittleEndian::read_i32(&self.bf[self.cursor..self.cursor + 4]);
+        if (i & 0b1) != 0b1 {
+            self.cursor += 4;
+            Ok((i >> 1) as i64)
+        } else {
+            let val = LittleEndian::read_i64(&self.bf[self.cursor + 1..self.cursor + 9]);
+            self.cursor += 9;
+            Ok(val)
+        }
     }
 
     #[inline(always)]
