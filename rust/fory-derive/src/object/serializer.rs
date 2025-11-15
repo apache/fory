@@ -173,6 +173,11 @@ pub fn derive_serializer(
             fn fory_read_compatible(context: &mut fory_core::resolver::context::ReadContext, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::error::Error> {
                 #read_compatible_ts
             }
+
+            #[inline(always)]
+            fn fory_is_compress_int() -> bool {
+                #compress_int_enabled
+            }
         }
 
         impl fory_core::Serializer for #name {

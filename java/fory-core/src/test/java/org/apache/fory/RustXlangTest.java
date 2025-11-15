@@ -877,6 +877,51 @@ public class RustXlangTest extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), obj);
   }
 
+    @Data
+    static class IntWrapper {
+        int f1;
+        IntWrapper(int f1) {
+            this.f1 = f1;
+        }
+    }
+
+    @Test
+    public void testCompressInt() throws java.io.IOException {
+        String caseName = "test_compress_int";
+        List<String> command = setTestCase(caseName);
+        Fory fory =
+                Fory.builder()
+                        .withLanguage(Language.XLANG)
+                        .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+                        .withCodegen(false)
+                        .withClassVersionCheck(true)
+                        .withIntCompressed(false)
+                        .build();
+        Fory foryCompressed =
+                Fory.builder()
+                        .withLanguage(Language.XLANG)
+                        .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+                        .withCodegen(false)
+                        .withClassVersionCheck(true)
+                        .withIntCompressed(true)
+                        .build();
+        fory.register(IntWrapper.class, 100);
+        foryCompressed.register(IntWrapper.class, 101);
+
+        IntWrapper item = new IntWrapper(42);
+        IntWrapper itemCompressed = new IntWrapper(43);
+
+        MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
+        fory.serialize(buffer, item);
+        foryCompressed.serialize(buffer, itemCompressed);
+        Path dataFile = Files.createTempFile(caseName, "data");
+        Pair<Map<String, String>, File> env_workdir = setFilePath(dataFile, buffer.getBytes(0, buffer.writerIndex()));
+        Assert.assertTrue(executeCommand(command, 30, env_workdir.getLeft(), env_workdir.getRight()));
+        MemoryBuffer buffer2 = MemoryUtils.wrap(Files.readAllBytes(dataFile));
+        Assert.assertEquals(fory.deserialize(buffer2), item);
+        Assert.assertEquals(foryCompressed.deserialize(buffer2), itemCompressed);
+    }
+
   /**
    * Execute an external command.
    *

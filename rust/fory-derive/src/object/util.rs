@@ -551,9 +551,9 @@ fn get_primitive_type_id(ty: &str) -> u32 {
         "i16" => TypeId::INT16 as u32,
         "i32" => {
             (if is_compress_int_enabled() {
-                TypeId::INT32
-            } else {
                 TypeId::VAR_INT32
+            } else {
+                TypeId::INT32
             }) as u32
         }
         "i64" => TypeId::INT64 as u32,
@@ -579,7 +579,7 @@ static PRIMITIVE_IO_METHODS: &[(&str, &str, &str)] = &[
     ("bool", "write_bool", "read_bool"),
     ("i8", "write_i8", "read_i8"),
     ("i16", "write_i16", "read_i16"),
-    ("i32", "write_varint32", "read_varint32"),
+    // ("i32", "write_varint32", "read_varint32"),
     ("i64", "write_varint64", "read_varint64"),
     ("f32", "write_f32", "read_f32"),
     ("f64", "write_f64", "read_f64"),

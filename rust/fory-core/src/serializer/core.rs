@@ -1447,6 +1447,22 @@ pub trait StructSerializer: Serializer + 'static {
     ) -> Result<Self, Error>
     where
         Self: Sized;
+
+    /// Returns whether this type uses integer compression.
+    ///
+    /// This method indicates whether the type applies `i32` compression, i.e., whether it
+    /// serializes integers using variable-length encoding (varint32) to reduce payload size.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if integer compression (varint32) is enabled for this type; `false` otherwise.
+    ///
+    /// # Implementation Notes
+    ///
+    /// - **Do not implement** for user types with custom serialization (EXT types)
+    fn fory_is_compress_int() -> bool {
+        unreachable!()
+    }
 }
 
 /// Serializes an object implementing `Serializer` to the write context.

@@ -190,10 +190,21 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident) -> TokenStream {
             // Check if this is a direct primitive numeric type that can use direct reader calls
             if is_direct_primitive_numeric_type(ty) {
                 let type_name = extract_type_name(ty);
-                let reader_method = get_primitive_reader_method(&type_name);
-                let reader_ident = syn::Ident::new(reader_method, proc_macro2::Span::call_site());
-                quote! {
-                    let #private_ident = context.reader.#reader_ident()?;
+                if type_name == "i32" {
+                    quote! {
+                        let #private_ident = if context.get_type_resolver().is_compress_int() {
+                            context.reader.read_varint32()?;
+                        } else {
+                            context.reader.read_i32()?;
+                        }
+                    }
+                } else {
+                    let reader_method = get_primitive_reader_method(&type_name);
+                    let reader_ident =
+                        syn::Ident::new(reader_method, proc_macro2::Span::call_site());
+                    quote! {
+                        let #private_ident = context.reader.#reader_ident()?;
+                    }
                 }
             } else if skip_type_info {
                 // Known types (primitives, strings, collections) - skip type info at compile time

@@ -737,3 +737,42 @@ fn test_struct_version_check() {
     assert_eq!(new_local_obj, local_obj);
     fs::write(&data_file_path, new_bytes).unwrap();
 }
+
+#[test]
+#[ignore]
+fn test_compress_int() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+    let mut reader = Reader::new(bytes.as_slice());
+    #[derive(ForyObject, PartialEq, Debug)]
+    #[fory(compress_int = false, debug = false)]
+    struct Item {
+        f1: i32,
+    }
+    #[derive(ForyObject, PartialEq, Debug)]
+    #[fory(compress_int = true, debug)]
+    struct ItemCompressed {
+        f1: i32,
+    }
+    let mut fory = Fory::default().xlang(true).check_struct_version(true);
+    fory.register::<Item>(100).unwrap();
+    let mut fory_compressed = Fory::default().xlang(true).check_struct_version(true);
+    fory_compressed.register::<ItemCompressed>(101).unwrap();
+
+    let item = Item { f1: 42 };
+    let item_compressed = ItemCompressed { f1: 43 };
+    assert_eq!(fory.deserialize_from::<Item>(&mut reader).unwrap(), item);
+    assert_eq!(
+        fory_compressed
+            .deserialize_from::<ItemCompressed>(&mut reader)
+            .unwrap(),
+        item_compressed
+    );
+
+    let mut buf: Vec<u8> = Vec::new();
+    fory.serialize_to(&item, &mut buf).unwrap();
+    fory_compressed
+        .serialize_to(&item_compressed, &mut buf)
+        .unwrap();
+    fs::write(&data_file_path, buf).unwrap();
+}

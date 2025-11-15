@@ -72,3 +72,35 @@ pub fn test_i32() {
         }
     }
 }
+
+#[test]
+fn test_inconsistent() {
+    #[derive(ForyObject)]
+    #[fory(compress_int = true)]
+    struct Item1 {}
+
+    #[derive(ForyObject)]
+    #[fory(compress_int = false)]
+    struct Item2 {}
+
+    let mut fory = Fory::default();
+    fory.register::<Item1>(100).unwrap();
+    assert!(fory.register::<Item2>(101).is_err());
+}
+
+#[test]
+fn test_inconsistent_with_enum() {
+    #[derive(ForyObject)]
+    #[fory(compress_int = true)]
+    struct Item1 {}
+
+    #[derive(ForyObject)]
+    #[fory(compress_int = false)]
+    enum Item2 {
+        Red,
+    }
+
+    let mut fory = Fory::default();
+    fory.register::<Item1>(100).unwrap();
+    assert!(fory.register::<Item2>(101).is_err());
+}

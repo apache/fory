@@ -78,7 +78,6 @@ pub struct Fory {
     xlang: bool,
     share_meta: bool,
     type_resolver: TypeResolver,
-    compress_int: bool,
     compress_string: bool,
     max_dyn_depth: u32,
     check_struct_version: bool,
@@ -94,7 +93,6 @@ impl Default for Fory {
             xlang: false,
             share_meta: false,
             type_resolver: TypeResolver::default(),
-            compress_int: true,
             compress_string: false,
             max_dyn_depth: 5,
             check_struct_version: false,
@@ -177,40 +175,6 @@ impl Fory {
         if !self.check_struct_version {
             self.check_struct_version = !self.compatible;
         }
-        self
-    }
-
-    /// Enables or disables integer compression.
-    ///
-    /// # Arguments
-    ///
-    /// * `compress_int` - If `true`, enables compact integer encoding to reduce serialized
-    ///   payload size by using variable-length integer encoding. If `false`, integers are
-    ///   serialized using fixed-width representation.
-    ///
-    /// # Returns
-    ///
-    /// Returns `self` for method chaining.
-    ///
-    /// # Default
-    ///
-    /// The default value is `false`.
-    ///
-    /// # Trade-offs
-    ///
-    /// - **Enabled**: Smaller payload size, slightly higher CPU overhead
-    /// - **Disabled**: Larger payload size, faster serialization/deserialization
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use fory_core::Fory;
-    ///
-    /// let fory = Fory::default().compress_int(true);
-    /// ```
-    pub fn compress_int(mut self, compress_int: bool) -> Self {
-        self.compress_int = compress_int;
-        self.type_resolver.set_compress_int(compress_int);
         self
     }
 
