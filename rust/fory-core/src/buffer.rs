@@ -179,7 +179,7 @@ impl<'a> Writer<'a> {
 
     #[inline(always)]
     pub fn write_sliint64(&mut self, value: i64) {
-        if value >= HALF_MIN_INT && value <= HALF_MAX_INT {
+        if (HALF_MIN_INT..=HALF_MAX_INT).contains(&value) {
             let v = (value as i32) << 1;
             self.bf.extend_from_slice(&v.to_le_bytes());
         } else {
