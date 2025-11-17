@@ -399,6 +399,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
     byte[] bytesFinal = fory.serialize(containerFinal);
     byte[] bytesFinal2 = fory.serialize(containerFinal);
     assertEquals(bytesFinal, bytesFinal2);
+    assertEquals(bytesFinal.length, 108);
 
     // Create a container with a non-final ImmutableList field for comparison
     ContainerWithNonFinalImmutableIntArray containerNonFinal =

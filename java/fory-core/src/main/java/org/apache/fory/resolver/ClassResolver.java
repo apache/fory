@@ -38,7 +38,6 @@ import java.io.Serializable;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
-import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -854,6 +853,19 @@ public class ClassResolver extends TypeResolver {
     return getOrUpdateClassInfo(cls).serializer;
   }
 
+  @Internal
+  @CodegenInvoke
+  @Override
+  public Serializer<?> getRawSerializerFinalField(Class<?> cls) {
+    Preconditions.checkNotNull(cls);
+    Serializer<?> serializer = extRegistry.finalFieldSerializerCache.get(cls);
+    if (serializer == null) {
+      serializer = new FinalFieldReplaceResolveSerializer(fory, cls);
+      extRegistry.finalFieldSerializerCache.put(cls, serializer);
+    }
+    return serializer;
+  }
+
   @Override
   public Class<? extends Serializer> getSerializerClass(Class<?> cls) {
     boolean codegen =
@@ -899,11 +911,7 @@ public class ClassResolver extends TypeResolver {
         return Serializers.CharsetSerializer.class;
       } else if (ReflectionUtils.isJdkProxy(cls)) {
         if (JavaSerializer.getWriteReplaceMethod(cls) != null) {
-          if (!fory.isCompatible() && !fory.isShareMeta() && Modifier.isFinal(cls.getModifiers())) {
-            return FinalFieldReplaceResolveSerializer.class;
-          } else {
-            return ReplaceResolveSerializer.class;
-          }
+          return ReplaceResolveSerializer.class;
         } else {
           return JdkProxySerializer.class;
         }
@@ -975,11 +983,7 @@ public class ClassResolver extends TypeResolver {
         LOG.warn("Class {} isn't supported for cross-language serialization.", cls);
       }
       if (useReplaceResolveSerializer(cls)) {
-        if (!fory.isCompatible() && !fory.isShareMeta() && Modifier.isFinal(cls.getModifiers())) {
-          return FinalFieldReplaceResolveSerializer.class;
-        } else {
-          return ReplaceResolveSerializer.class;
-        }
+        return ReplaceResolveSerializer.class;
       }
       if (Externalizable.class.isAssignableFrom(cls)) {
         return ExternalizableSerializer.class;
