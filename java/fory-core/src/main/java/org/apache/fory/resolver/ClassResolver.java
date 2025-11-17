@@ -38,6 +38,7 @@ import java.io.Serializable;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.Type;
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -110,6 +111,7 @@ import org.apache.fory.serializer.CodegenSerializer.LazyInitBeanSerializer;
 import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.EnumSerializer;
 import org.apache.fory.serializer.ExternalizableSerializer;
+import org.apache.fory.serializer.FinalFieldReplaceResolveSerializer;
 import org.apache.fory.serializer.ForyCopyableSerializer;
 import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.JdkProxySerializer;
@@ -790,7 +792,7 @@ public class ClassResolver extends TypeResolver {
   }
 
   /** Add serializer for specified class. */
-  private void addSerializer(Class<?> type, Serializer<?> serializer) {
+  public void addSerializer(Class<?> type, Serializer<?> serializer) {
     Preconditions.checkNotNull(serializer);
     // 1. Try to get ClassInfo from `registeredId2ClassInfo` and
     // `classInfoMap` or create a new `ClassInfo`.
@@ -801,7 +803,8 @@ public class ClassResolver extends TypeResolver {
     if (registered) {
       classInfo = registeredId2ClassInfo[classId];
     } else {
-      if (serializer instanceof ReplaceResolveSerializer) {
+      if (serializer instanceof ReplaceResolveSerializer
+          && !(serializer instanceof FinalFieldReplaceResolveSerializer)) {
         classId = REPLACE_STUB_ID;
       } else {
         classId = NO_CLASS_ID;
@@ -896,7 +899,13 @@ public class ClassResolver extends TypeResolver {
         return Serializers.CharsetSerializer.class;
       } else if (ReflectionUtils.isJdkProxy(cls)) {
         if (JavaSerializer.getWriteReplaceMethod(cls) != null) {
-          return ReplaceResolveSerializer.class;
+          if (!fory.isCompatible()
+              && !fory.isShareMeta()
+              && Modifier.isFinal(cls.getModifiers())) {
+            return FinalFieldReplaceResolveSerializer.class;
+          } else {
+            return ReplaceResolveSerializer.class;
+          }
         } else {
           return JdkProxySerializer.class;
         }
@@ -968,7 +977,13 @@ public class ClassResolver extends TypeResolver {
         LOG.warn("Class {} isn't supported for cross-language serialization.", cls);
       }
       if (useReplaceResolveSerializer(cls)) {
-        return ReplaceResolveSerializer.class;
+        if (!fory.isCompatible()
+            && !fory.isShareMeta()
+            && Modifier.isFinal(cls.getModifiers())) {
+          return FinalFieldReplaceResolveSerializer.class;
+        } else {
+          return ReplaceResolveSerializer.class;
+        }
       }
       if (Externalizable.class.isAssignableFrom(cls)) {
         return ExternalizableSerializer.class;
