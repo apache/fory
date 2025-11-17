@@ -955,15 +955,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     // TODO(chaokunyang) Support Pojo<T> generics besides Map/Collection subclass
     //  when it's supported in BaseObjectCodecBuilder.
     for (Descriptor d : finals) {
-      FinalTypeField typeField = new FinalTypeField(fory, d);
-      // overwrite replace resolve serializer for final field
-      if (!fory.isShareMeta()
-          && !fory.isCompatible()
-          && typeField.classInfo.getSerializer() instanceof ReplaceResolveSerializer) {
-        typeField.classInfo.setSerializer(
-            new FinalFieldReplaceResolveSerializer(fory, typeField.classInfo.getCls()));
-      }
-      finalFields[cnt++] = typeField;
+      finalFields[cnt++] = new FinalTypeField(fory, d);
     }
     boolean[] isFinal = new boolean[finalFields.length];
     for (int i = 0; i < isFinal.length; i++) {
@@ -1043,6 +1035,12 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         classInfo = null;
       } else {
         classInfo = SerializationUtils.getClassInfo(fory, typeRef.getRawType());
+        if (!fory.isShareMeta()
+            && !fory.isCompatible()
+            && classInfo.getSerializer() instanceof ReplaceResolveSerializer) {
+          // overwrite replace resolve serializer for final field
+          classInfo.setSerializer(new FinalFieldReplaceResolveSerializer(fory, classInfo.getCls()));
+        }
       }
     }
   }
