@@ -899,9 +899,7 @@ public class ClassResolver extends TypeResolver {
         return Serializers.CharsetSerializer.class;
       } else if (ReflectionUtils.isJdkProxy(cls)) {
         if (JavaSerializer.getWriteReplaceMethod(cls) != null) {
-          if (!fory.isCompatible()
-              && !fory.isShareMeta()
-              && Modifier.isFinal(cls.getModifiers())) {
+          if (!fory.isCompatible() && !fory.isShareMeta() && Modifier.isFinal(cls.getModifiers())) {
             return FinalFieldReplaceResolveSerializer.class;
           } else {
             return ReplaceResolveSerializer.class;
@@ -977,9 +975,7 @@ public class ClassResolver extends TypeResolver {
         LOG.warn("Class {} isn't supported for cross-language serialization.", cls);
       }
       if (useReplaceResolveSerializer(cls)) {
-        if (!fory.isCompatible()
-            && !fory.isShareMeta()
-            && Modifier.isFinal(cls.getModifiers())) {
+        if (!fory.isCompatible() && !fory.isShareMeta() && Modifier.isFinal(cls.getModifiers())) {
           return FinalFieldReplaceResolveSerializer.class;
         } else {
           return ReplaceResolveSerializer.class;
