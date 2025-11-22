@@ -902,6 +902,7 @@ cdef class Fory:
     cdef readonly c_bool compatible
     cdef readonly c_bool field_nullable
     cdef readonly object policy
+    cdef readonly c_bool compress_int
     cdef readonly MapRefResolver ref_resolver
     cdef readonly TypeResolver type_resolver
     cdef readonly MetaStringResolver metastring_resolver
@@ -964,6 +965,12 @@ cdef class Fory:
                 (xlang=False), regardless of Optional annotation. Ignored in cross-language
                 mode.
 
+            compress_int: Enable integer compression using varint encoding (default: True).
+                When enabled, integers are encoded using variable-length encoding
+                for more efficient serialization of small integers. This reduces
+                the serialized size but may have minor performance impact on
+                serialization/deserialization.
+
         Example:
             >>> # Python-native mode with reference tracking
             >>> fory = Fory(ref=True)
@@ -982,6 +989,10 @@ cdef class Fory:
             self.strict = True
         else:
             self.strict = False
+        if kwargs.get("compress_int") is not None:
+            self.compress_int = kwargs.get("compress_int")
+        else:
+            self.compress_int = True
         self.policy = policy or DEFAULT_POLICY
         self.compatible = compatible
         self.ref_tracking = ref
@@ -1719,10 +1730,16 @@ cdef class Int16Serializer(XlangCompatibleSerializer):
 @cython.final
 cdef class Int32Serializer(XlangCompatibleSerializer):
     cpdef inline write(self, Buffer buffer, value):
-        buffer.write_varint32(value)
+        if self.fory.compress_int:
+            buffer.write_varint32(value)
+        else:
+            buffer.write_int32(value)
 
     cpdef inline read(self, Buffer buffer):
-        return buffer.read_varint32()
+        if self.fory.compress_int:
+            return buffer.read_varint32()
+        else:
+            return buffer.read_int32()
 
 
 @cython.final

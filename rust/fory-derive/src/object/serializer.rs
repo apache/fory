@@ -36,10 +36,14 @@ fn has_existing_default(ast: &syn::DeriveInput, trait_name: &str) -> bool {
     })
 }
 
-pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenStream {
+pub fn derive_serializer(
+    ast: &syn::DeriveInput,
+    debug_enabled: bool,
+    compress_int_enabled: bool,
+) -> TokenStream {
     let name = &ast.ident;
     use crate::object::util::{clear_struct_context, set_struct_context};
-    set_struct_context(&name.to_string(), debug_enabled);
+    set_struct_context(&name.to_string(), debug_enabled, compress_int_enabled);
 
     // Check if ForyDefault is already derived/implemented
     let has_existing_default = has_existing_default(ast, "ForyDefault");
@@ -168,6 +172,11 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
             #[inline]
             fn fory_read_compatible(context: &mut fory_core::resolver::context::ReadContext, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::error::Error> {
                 #read_compatible_ts
+            }
+
+            #[inline(always)]
+            fn fory_is_compress_int() -> bool {
+                #compress_int_enabled
             }
         }
 

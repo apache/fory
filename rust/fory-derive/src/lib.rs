@@ -212,12 +212,11 @@ pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStr
 
     // Check if this is being applied to a trait (which is not possible with derive macros)
     // Derive macros can only be applied to structs, enums, and unions
-    let debug_enabled = match parse_debug_flag(&input.attrs) {
-        Ok(flag) => flag,
+    let (debug_enabled, compress_int_enabled) = match parse_attributes(&input.attrs) {
+        Ok(result) => result,
         Err(err) => return err.into_compile_error().into(),
     };
-
-    object::derive_serializer(&input, debug_enabled)
+    object::derive_serializer(&input, debug_enabled, compress_int_enabled)
 }
 
 /// Derive macro for row-based serialization.
@@ -245,9 +244,9 @@ pub fn proc_macro_derive_fory_row(input: proc_macro::TokenStream) -> TokenStream
     derive_row(&input)
 }
 
-fn parse_debug_flag(attrs: &[Attribute]) -> syn::Result<bool> {
+fn parse_attributes(attrs: &[Attribute]) -> syn::Result<(bool, bool)> {
     let mut debug_flag: Option<bool> = None;
-
+    let mut compress_int_flag: Option<bool> = None;
     for attr in attrs {
         if attr.path().is_ident("fory") {
             attr.parse_nested_meta(|meta| {
@@ -268,11 +267,34 @@ fn parse_debug_flag(attrs: &[Attribute]) -> syn::Result<bool> {
                         Some(_) => debug_flag,
                         None => Some(value),
                     };
+                    Ok(())
+                } else if meta.path.is_ident("compress_int") {
+                    let value = if meta.input.is_empty() {
+                        true
+                    } else {
+                        let lit: LitBool = meta.value()?.parse()?;
+                        lit.value
+                    };
+                    compress_int_flag = match compress_int_flag {
+                        Some(existing) if existing != value => {
+                            return Err(syn::Error::new(
+                                meta.path.span(),
+                                "conflicting `compress_int` attribute values",
+                            ));
+                        }
+                        Some(_) => compress_int_flag,
+                        None => Some(value),
+                    };
+                    Ok(())
+                } else {
+                    let ident = meta.path.get_ident().unwrap().to_string();
+                    Err(meta.error(format!("unsupported property {ident}")))
                 }
-                Ok(())
             })?;
         }
     }
-
-    Ok(debug_flag.unwrap_or(false))
+    Ok((
+        debug_flag.unwrap_or(false),
+        compress_int_flag.unwrap_or(true),
+    ))
 }

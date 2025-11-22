@@ -36,7 +36,6 @@ pub struct WriteContext<'a> {
     type_resolver: TypeResolver,
     compatible: bool,
     share_meta: bool,
-    compress_string: bool,
     xlang: bool,
     check_struct_version: bool,
 
@@ -54,7 +53,6 @@ impl<'a> WriteContext<'a> {
         type_resolver: TypeResolver,
         compatible: bool,
         share_meta: bool,
-        compress_string: bool,
         xlang: bool,
         check_struct_version: bool,
     ) -> WriteContext<'a> {
@@ -62,7 +60,6 @@ impl<'a> WriteContext<'a> {
             type_resolver,
             compatible,
             share_meta,
-            compress_string,
             xlang,
             check_struct_version,
             default_writer: None,
@@ -111,12 +108,6 @@ impl<'a> WriteContext<'a> {
     #[inline(always)]
     pub fn is_share_meta(&self) -> bool {
         self.share_meta
-    }
-
-    /// Check if string compression is enabled
-    #[inline(always)]
-    pub fn is_compress_string(&self) -> bool {
-        self.compress_string
     }
 
     /// Check if cross-language mode is enabled

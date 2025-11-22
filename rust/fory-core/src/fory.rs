@@ -18,8 +18,7 @@
 use crate::buffer::{Reader, Writer};
 use crate::ensure;
 use crate::error::Error;
-use crate::resolver::context::WriteContext;
-use crate::resolver::context::{Pool, ReadContext};
+use crate::resolver::context::{Pool, ReadContext, WriteContext};
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
@@ -179,6 +178,49 @@ impl Fory {
         self
     }
 
+    /// Enables or disables int32 compression for the `Fory` instance.
+    ///
+    /// Int32 compression uses a variable-length encoding to reduce the size of serialized 32-bit integers.
+    ///
+    /// # Arguments
+    ///
+    /// * `compress_int` - If `true`, int32 values will be encoded in a compact, variable-length format,
+    ///   reducing the serialized payload size. If `false`, int32 values will be serialized using a fixed-width
+    ///   32-bit representation.
+    ///
+    /// # Returns
+    ///
+    /// Returns `self` to allow method chaining.
+    ///
+    /// # Default
+    ///
+    /// The default value is `true`.
+    ///
+    /// # Trade-offs
+    ///
+    /// - **Enabled** (`true`): Produces smaller payloads at the cost of slightly higher CPU usage during
+    ///   serialization and deserialization.
+    /// - **Disabled** (`false`): Produces larger payloads but with faster serialization/deserialization.
+    ///
+    /// # Error cases
+    ///
+    /// If a struct has already been registered with `Fory` and it has a conflicting `compress_int`
+    /// setting, calling this method with a different value will panic.
+    /// See the test case [`test_i32_conflict`](crate::tests::test_compress::test_i32_conflict)
+    /// for an example of this situation.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use fory_core::Fory;
+    ///
+    /// let fory = Fory::default().compress_int(true);
+    /// ```
+    pub fn compress_int(mut self, compress_int: bool) -> Self {
+        self.type_resolver.set_compress_int(compress_int);
+        self
+    }
+
     /// Enables or disables meta string compression.
     ///
     /// # Arguments
@@ -310,6 +352,15 @@ impl Fory {
     /// `true` if meta string compression is enabled, `false` otherwise.
     pub fn is_compress_string(&self) -> bool {
         self.compress_string
+    }
+
+    /// Returns whether int32 compression is enabled.
+    ///
+    /// # Returns
+    ///
+    /// `true` if i32 compression is enabled, `false` otherwise.
+    pub fn is_compress_int(&self) -> bool {
+        self.type_resolver.is_compress_int()
     }
 
     /// Returns whether metadata sharing is enabled.
@@ -523,7 +574,6 @@ impl Fory {
             let type_resolver = self.type_resolver.build_final_type_resolver()?;
             let compatible = self.compatible;
             let share_meta = self.share_meta;
-            let compress_string = self.compress_string;
             let xlang = self.xlang;
             let check_struct_version = self.check_struct_version;
 
@@ -532,7 +582,6 @@ impl Fory {
                     type_resolver.clone(),
                     compatible,
                     share_meta,
-                    compress_string,
                     xlang,
                     check_struct_version,
                 ))
@@ -552,7 +601,7 @@ impl Fory {
         context: &mut WriteContext,
     ) -> Result<(), Error> {
         let is_none = record.fory_is_none();
-        self.write_head::<T>(is_none, &mut context.writer);
+        self.write_head::<T>(is_none, context);
         let meta_start_offset = context.writer.len();
         if !is_none {
             if context.is_compatible() {
@@ -763,11 +812,13 @@ impl Fory {
 
     /// Writes the serialization header to the writer.
     #[inline(always)]
-    pub fn write_head<T: Serializer>(&self, is_none: bool, writer: &mut Writer) {
+    pub fn write_head<T: Serializer>(&self, is_none: bool, context: &mut WriteContext) {
         const HEAD_SIZE: usize = 10;
-        writer.reserve(T::fory_reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
+        context
+            .writer
+            .reserve(T::fory_reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
         if self.xlang {
-            writer.write_u16(MAGIC_NUMBER);
+            context.writer.write_u16(MAGIC_NUMBER);
         }
         #[cfg(target_endian = "big")]
         let mut bitmap = 0;
@@ -779,12 +830,12 @@ impl Fory {
         if is_none {
             bitmap |= IS_NULL_FLAG;
         }
-        writer.write_u8(bitmap);
+        context.writer.write_u8(bitmap);
         if is_none {
             return;
         }
         if self.xlang {
-            writer.write_u8(Language::Rust as u8);
+            context.writer.write_u8(Language::Rust as u8);
         }
     }
 

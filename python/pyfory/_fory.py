@@ -165,6 +165,7 @@ class Fory:
         "depth",
         "field_nullable",
         "policy",
+        "compress_int",
     )
 
     def __init__(
@@ -216,6 +217,12 @@ class Fory:
                 (xlang=False), regardless of Optional annotation. Ignored in cross-language
                 mode.
 
+            compress_int: Enable integer compression using varint encoding (default: True).
+                When enabled, integers are encoded using variable-length encoding
+                for more efficient serialization of small integers. This reduces
+                the serialized size but may have minor performance impact on
+                serialization/deserialization.
+
         Example:
             >>> # Python-native mode with reference tracking
             >>> fory = Fory(ref=True)
@@ -237,6 +244,10 @@ class Fory:
         if kwargs.get("require_type_registration") is not None:
             strict = kwargs.get("require_type_registration")
         self.strict = _ENABLE_TYPE_REGISTRATION_FORCIBLY or strict
+        if kwargs.get("compress_int") is not None:
+            self.compress_int = kwargs.get("compress_int")
+        else:
+            self.compress_int = True
         self.policy = policy or DEFAULT_POLICY
         self.compatible = compatible
         self.field_nullable = field_nullable if self.is_py else False

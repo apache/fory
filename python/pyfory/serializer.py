@@ -346,7 +346,10 @@ class DataClassSerializer(Serializer):
         elif isinstance(serializer, Int16Serializer):
             return f"{buffer}.write_int16({field_value})"
         elif isinstance(serializer, Int32Serializer):
-            return f"{buffer}.write_varint32({field_value})"
+            if self.fory.compress_int:
+                return f"{buffer}.write_varint32({field_value})"
+            else:
+                return f"{buffer}.write_int32({field_value})"
         elif isinstance(serializer, Int64Serializer):
             return f"{buffer}.write_varint64({field_value})"
         elif isinstance(serializer, Float32Serializer):
@@ -367,7 +370,10 @@ class DataClassSerializer(Serializer):
         elif isinstance(serializer, Int16Serializer):
             return f"{field_value} = {buffer}.read_int16()"
         elif isinstance(serializer, Int32Serializer):
-            return f"{field_value} = {buffer}.read_varint32()"
+            if self.fory.compress_int:
+                return f"{field_value} = {buffer}.read_varint32()"
+            else:
+                return f"{field_value} = {buffer}.read_int32()"
         elif isinstance(serializer, Int64Serializer):
             return f"{field_value} = {buffer}.read_varint64()"
         elif isinstance(serializer, Float32Serializer):
@@ -388,7 +394,10 @@ class DataClassSerializer(Serializer):
         elif isinstance(serializer, Int16Serializer):
             buffer.write_int16(field_value)
         elif isinstance(serializer, Int32Serializer):
-            buffer.write_varint32(field_value)
+            if self.fory.compress_int:
+                buffer.write_varint32(field_value)
+            else:
+                buffer.write_int32(field_value)
         elif isinstance(serializer, Int64Serializer):
             buffer.write_varint64(field_value)
         elif isinstance(serializer, Float32Serializer):
@@ -409,7 +418,10 @@ class DataClassSerializer(Serializer):
         elif isinstance(serializer, Int16Serializer):
             return buffer.read_int16()
         elif isinstance(serializer, Int32Serializer):
-            return buffer.read_varint32()
+            if self.fory.compress_int:
+                return buffer.read_varint32()
+            else:
+                return buffer.read_int32()
         elif isinstance(serializer, Int64Serializer):
             return buffer.read_varint64()
         elif isinstance(serializer, Float32Serializer):

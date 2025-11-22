@@ -122,10 +122,16 @@ class Int16Serializer(XlangCompatibleSerializer):
 
 class Int32Serializer(XlangCompatibleSerializer):
     def write(self, buffer, value):
-        buffer.write_varint32(value)
+        if self.fory.compress_int:
+            buffer.write_varint32(value)
+        else:
+            buffer.write_int32(value)
 
     def read(self, buffer):
-        return buffer.read_varint32()
+        if self.fory.compress_int:
+            return buffer.read_varint32()
+        else:
+            return buffer.read_int32()
 
 
 class Int64Serializer(Serializer):

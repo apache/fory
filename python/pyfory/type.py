@@ -255,6 +255,7 @@ _primitive_types_ids = {
     TypeId.INT8,
     TypeId.INT16,
     TypeId.INT32,
+    TypeId.VAR_INT32,
     TypeId.INT64,
     TypeId.FLOAT16,
     TypeId.FLOAT32,
