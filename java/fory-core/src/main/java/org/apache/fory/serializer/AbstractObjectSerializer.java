@@ -1035,6 +1035,12 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         classInfo = null;
       } else {
         classInfo = SerializationUtils.getClassInfo(fory, typeRef.getRawType());
+        if (!fory.isShareMeta()
+            && !fory.isCompatible()
+            && classInfo.getSerializer() instanceof ReplaceResolveSerializer) {
+          // overwrite replace resolve serializer for final field
+          classInfo.setSerializer(new FinalFieldReplaceResolveSerializer(fory, classInfo.getCls()));
+        }
       }
     }
   }

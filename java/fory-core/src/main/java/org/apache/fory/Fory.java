@@ -1712,6 +1712,10 @@ public final class Fory implements BaseFory {
     return config.getCompatibleMode() == CompatibleMode.COMPATIBLE;
   }
 
+  public boolean isShareMeta() {
+    return shareMeta;
+  }
+
   public boolean trackingRef() {
     return refTracking;
   }
