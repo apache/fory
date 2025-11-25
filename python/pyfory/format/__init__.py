@@ -28,8 +28,10 @@ try:
     from pyfory.format._format import (  # noqa: F401 # pylint: disable=unused-import
         create_row_encoder,
         RowData,
-        ArrowWriter,
     )  # noqa: E402
+    from pyfory.format.columnar import (  # noqa: F401 # pylint: disable=unused-import
+        ArrowWriter,
+    )
     from pyfory.format.infer import (  # noqa: F401 # pylint: disable=unused-import
         get_cls_by_schema,
         remove_schema,

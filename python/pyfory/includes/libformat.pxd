@@ -183,18 +183,3 @@ cdef extern from "fory/row/writer.h" namespace "fory" nogil:
         int size()
 
         shared_ptr[CArrayData] CopyToArrayData()
-
-
-cdef extern from "fory/columnar/arrow_writer.h" namespace\
-        "fory::columnar" nogil:
-    cdef cppclass CArrowWriter" fory::columnar::ArrowWriter":
-        @staticmethod
-        CStatus Make(shared_ptr[CSchema] schema,
-                     CMemoryPool *pool,
-                     shared_ptr[CArrowWriter] *writer)
-
-        CStatus Write(const shared_ptr[CRow] &row)
-
-        CStatus Finish(shared_ptr[CRecordBatch] *record_batch)
-
-        void Reset()
