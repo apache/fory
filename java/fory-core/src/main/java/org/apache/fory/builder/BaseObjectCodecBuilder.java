@@ -1761,7 +1761,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     TypeRef<?> typeRef = descriptor.getTypeRef();
     boolean nullable = descriptor.isNullable();
 
-    if (typeResolver(r -> r.needToWriteRef(typeRef))) {
+    if (needWriteRef(typeRef)) {
       return readRef(buffer, callback, () -> deserializeForNotNullForField(buffer, typeRef, null));
     } else {
       if (typeRef.isPrimitive()) {
