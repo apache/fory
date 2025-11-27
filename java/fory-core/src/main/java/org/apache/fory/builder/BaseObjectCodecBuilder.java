@@ -1764,7 +1764,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     if (needWriteRef(typeRef)) {
       return readRef(buffer, callback, () -> deserializeForNotNullForField(buffer, typeRef, null));
     } else {
-      if (typeRef.isPrimitive()) {
+      if (!nullable) {
         Expression value = deserializeForNotNullForField(buffer, typeRef, null);
         // Should put value expr ahead to avoid generated code in wrong scope.
         return new ListExpression(value, callback.apply(value));
@@ -1774,7 +1774,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
           typeRef,
           callback,
           () -> deserializeForNotNullForField(buffer, typeRef, null),
-          nullable);
+          true);
     }
   }
 
