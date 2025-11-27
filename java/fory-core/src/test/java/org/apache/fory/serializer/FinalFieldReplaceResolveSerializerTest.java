@@ -374,7 +374,7 @@ public class FinalFieldReplaceResolveSerializerTest extends ForyTestBase {
 
     // Compare with ReplaceResolveSerializer (non-final)
     ReplaceResolveSerializer nonFinalFieldSerializer =
-        new ReplaceResolveSerializer(fory, listClass, false);
+        new ReplaceResolveSerializer(fory, listClass, false, true);
     Object writeClassInfoNonFinal = writeClassInfoField.get(nonFinalFieldSerializer);
 
     // For ReplaceResolveSerializer (non-final), writeClassInfo should NOT be null

@@ -217,18 +217,22 @@ public class ReplaceResolveSerializer extends Serializer {
   protected final Map<Class<?>, MethodInfoCache> classClassInfoHolderMap = new HashMap<>();
 
   public ReplaceResolveSerializer(Fory fory, Class type) {
-    this(fory, type, false);
+    this(fory, type, false, true);
   }
 
-  public ReplaceResolveSerializer(Fory fory, Class type, boolean isFinalField) {
+  public ReplaceResolveSerializer(
+      Fory fory, Class type, boolean isFinalField, boolean setSerializer) {
     super(fory, type);
     refResolver = fory.getRefResolver();
     classResolver = fory.getClassResolver();
-    // `setSerializer` before `newJDKMethodInfoCache` since it query classinfo from `classResolver`,
-    // which create serializer in turn.
-    // ReplaceResolveSerializer is used as data serializer for ImmutableList/Map,
-    // which serializer is already set.
-    classResolver.setSerializerIfAbsent(type, this);
+    if (setSerializer) {
+      // `setSerializer` before `newJDKMethodInfoCache` since it query classinfo from
+      // `classResolver`,
+      // which create serializer in turn.
+      // ReplaceResolveSerializer is used as data serializer for ImmutableList/Map,
+      // which serializer is already set.
+      classResolver.setSerializerIfAbsent(type, this);
+    }
     if (type != ReplaceStub.class) {
       jdkMethodInfoWriteCache = newJDKMethodInfoCache(type, fory);
       classClassInfoHolderMap.put(type, jdkMethodInfoWriteCache);

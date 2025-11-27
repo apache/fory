@@ -31,7 +31,7 @@ import org.apache.fory.memory.MemoryBuffer;
 public class FinalFieldReplaceResolveSerializer extends ReplaceResolveSerializer {
 
   public FinalFieldReplaceResolveSerializer(Fory fory, Class type) {
-    super(fory, type, true);
+    super(fory, type, true, false);
   }
 
   @Override
