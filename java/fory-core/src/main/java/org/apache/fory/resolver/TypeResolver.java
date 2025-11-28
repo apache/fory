@@ -436,8 +436,6 @@ public abstract class TypeResolver {
 
   public abstract Serializer<?> getRawSerializer(Class<?> cls);
 
-  public abstract Serializer<?> getRawSerializerFinalField(Class<?> cls);
-
   public abstract <T> void setSerializer(Class<T> cls, Serializer<T> serializer);
 
   public abstract <T> void setSerializerIfAbsent(Class<T> cls, Serializer<T> serializer);
@@ -710,8 +708,5 @@ public abstract class TypeResolver {
     final Map<List<ClassLoader>, CodeGenerator> codeGeneratorMap = new HashMap<>();
     final Set<ClassInfo> registeredClassInfos = new HashSet<>();
     boolean ensureSerializersCompiled;
-
-    final IdentityMap<Class<?>, Serializer<?>> finalFieldSerializerCache =
-        new IdentityMap<>(8, foryMapLoadFactor);
   }
 }

@@ -148,6 +148,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       TypeRef.of(CollectionLikeSerializer.class);
   private static final TypeRef<?> MAP_SERIALIZER_TYPE = TypeRef.of(MapLikeSerializer.class);
   private static final TypeRef<?> GENERIC_TYPE = TypeRef.of(GenericType.class);
+  private static final TypeRef<?> FINAL_FIELD_SERIALIZER_TYPE =
+      TypeRef.of(FinalFieldReplaceResolveSerializer.class);
 
   protected final Fory fory;
   protected final Reference refResolverRef;
@@ -737,12 +739,17 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         serializerClass = MapLikeSerializer.class;
       }
       Expression fieldTypeExpr = getClassExpr(cls);
-      String method =
-          finalClassAsFieldCondition ? "getRawSerializerFinalField" : "getRawSerializer";
       // Don't invoke `Serializer.newSerializer` here, since it(ex. ObjectSerializer) may set itself
       // as global serializer, which overwrite serializer updates in jit callback.
-      Expression newSerializerExpr =
-          inlineInvoke(typeResolverRef, method, SERIALIZER_TYPE, fieldTypeExpr);
+      Expression newSerializerExpr;
+      if (finalClassAsFieldCondition) {
+        // Create serializer directly via static factory method
+        newSerializerExpr =
+            new Expression.NewInstance(FINAL_FIELD_SERIALIZER_TYPE, foryRef, fieldTypeExpr);
+      } else {
+        newSerializerExpr =
+            inlineInvoke(typeResolverRef, "getRawSerializer", SERIALIZER_TYPE, fieldTypeExpr);
+      }
       String name = ctx.newName(StringUtils.uncapitalize(serializerClass.getSimpleName()));
       // It's ok it jit already finished and this method return false, in such cases
       // `serializerClass` is already jit generated class.

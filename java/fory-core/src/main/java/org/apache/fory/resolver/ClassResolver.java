@@ -853,19 +853,6 @@ public class ClassResolver extends TypeResolver {
     return getOrUpdateClassInfo(cls).serializer;
   }
 
-  @Internal
-  @CodegenInvoke
-  @Override
-  public Serializer<?> getRawSerializerFinalField(Class<?> cls) {
-    Preconditions.checkNotNull(cls);
-    Serializer<?> serializer = extRegistry.finalFieldSerializerCache.get(cls);
-    if (serializer == null) {
-      serializer = new FinalFieldReplaceResolveSerializer(fory, cls);
-      extRegistry.finalFieldSerializerCache.put(cls, serializer);
-    }
-    return serializer;
-  }
-
   @Override
   public Class<? extends Serializer> getSerializerClass(Class<?> cls) {
     boolean codegen =

@@ -712,11 +712,6 @@ public class XtypeResolver extends TypeResolver {
   }
 
   @Override
-  public Serializer<?> getRawSerializerFinalField(Class<?> cls) {
-    return getRawSerializer(cls);
-  }
-
-  @Override
   public <T> void setSerializer(Class<T> cls, Serializer<T> serializer) {
     getClassInfo(cls).serializer = serializer;
   }
