@@ -20,17 +20,21 @@
 package org.apache.fory.serializer;
 
 import org.apache.fory.Fory;
+import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.memory.MemoryBuffer;
 
 /**
- * Serializer for class which 1) has jdk `writeReplace`/`readResolve` method defined, 2) is a final
- * field of a class. //TODO do we ned to write the flag REPLACED_NEW_TYPE/REPLACED_SAME_TYPE even
- * for the final field?
+ * Serializer for class which: - has jdk `writeReplace`/`readResolve` method defined, - is a final
+ * class. Main advantage of this serializer is that it does not write class name to the payload.
+ * NOTE: this serializer is used only with {@link CompatibleMode#SCHEMA_CONSISTENT} mode.
  */
 @SuppressWarnings({"unchecked", "rawtypes"})
 public class FinalFieldReplaceResolveSerializer extends ReplaceResolveSerializer {
 
   public FinalFieldReplaceResolveSerializer(Fory fory, Class type) {
+    // the serializer does not write class info
+    // and does not set itself for the provided class
+    // see checks in ReplaceResolveSerializer constructor
     super(fory, type, true, false);
   }
 
