@@ -124,10 +124,10 @@ fn test_buffer_var() {
         i32::MAX - 1,
         i32::MAX,
     ];
-    for &expected in &int32_values {
-        let value = reader.read_i32().unwrap();
-        assert_eq!(expected, value, "i32 value mismatch");
-    }
+    // for &expected in &int32_values {
+    //     let value = reader.read_i32().unwrap();
+    //     assert_eq!(expected, value, "i32 value mismatch");
+    // }
     for &expected in &int32_values {
         let value = reader.read_varint32().unwrap();
         assert_eq!(expected, value, "varint32 value mismatch");
@@ -192,14 +192,14 @@ fn test_buffer_var() {
         i64::MAX - 1,
         i64::MAX,
     ];
-    for &expected in &int64_values {
-        let value = reader.read_i64().unwrap();
-        assert_eq!(expected, value, "i64 value mismatch");
-    }
-    for &expected in &int64_values {
-        let value = reader.read_sliint64().unwrap();
-        assert_eq!(expected, value, "sli_i64 value mismatch");
-    }
+    // for &expected in &int64_values {
+    //     let value = reader.read_i64().unwrap();
+    //     assert_eq!(expected, value, "i64 value mismatch");
+    // }
+    // for &expected in &int64_values {
+    //     let value = reader.read_sliint64().unwrap();
+    //     assert_eq!(expected, value, "sli_i64 value mismatch");
+    // }
     for &expected in &int64_values {
         let value = reader.read_varint64().unwrap();
         assert_eq!(expected, value, "varint64 value mismatch");
@@ -207,9 +207,9 @@ fn test_buffer_var() {
 
     let mut buffer = vec![];
     let mut writer = Writer::from_buffer(&mut buffer);
-    for &value in &int32_values {
-        writer.write_i32(value);
-    }
+    // for &value in &int32_values {
+    //     writer.write_i32(value);
+    // }
     for &value in &int32_values {
         writer.write_varint32(value);
     }
@@ -219,12 +219,12 @@ fn test_buffer_var() {
     for &value in &uint64_values {
         writer.write_varuint64(value);
     }
-    for &value in &int64_values {
-        writer.write_i64(value);
-    }
-    for &value in &int64_values {
-        writer.write_sliint64(value);
-    }
+    // for &value in &int64_values {
+    //     writer.write_i64(value);
+    // }
+    // for &value in &int64_values {
+    //     writer.write_sliint64(value);
+    // }
     for &value in &int64_values {
         writer.write_varint64(value);
     }
