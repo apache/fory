@@ -1476,12 +1476,14 @@ class ModuleSerializer(Serializer):
         buffer.write_string(value.__name__)
 
     def read(self, buffer):
-        mod = buffer.read_string()
-        mod = importlib.import_module(mod)
-        result = self.fory.policy.validate_module(mod.__name__)
+        mod_name = buffer.read_string()
+        result = self.fory.policy.validate_module(mod_name)
         if result is not None:
-            mod = result
-        return mod
+            if isinstance(result, types.ModuleType):
+                return result
+            assert isinstance(result, str), f"validate_module must return module, str, or None, got {type(result)}"
+            mod_name = result
+        return importlib.import_module(mod_name)
 
 
 class MappingProxySerializer(Serializer):

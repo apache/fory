@@ -259,3 +259,35 @@ def test_policy_with_nested_reduce():
 
     with pytest.raises(ValueError, match="Inner is blocked"):
         fory.deserialize(data)
+
+
+def test_validate_module():
+    """Test validate_module policy hook for module deserialization."""
+    import json
+    import collections
+
+    # Test 1: Return module object directly
+    class ReturnModulePolicy(DeserializationPolicy):
+        def validate_module(self, module_name, **kwargs):
+            return collections
+
+    fory1 = Fory(ref=True, strict=False, policy=ReturnModulePolicy())
+    data = fory1.serialize(json)
+    assert fory1.deserialize(data) is collections
+
+    # Test 2: Return string to redirect import
+    class RedirectPolicy(DeserializationPolicy):
+        def validate_module(self, module_name, **kwargs):
+            return "collections" if module_name == "json" else None
+
+    fory2 = Fory(ref=True, strict=False, policy=RedirectPolicy())
+    assert fory2.deserialize(fory2.serialize(json)).__name__ == "collections"
+
+    # Test 3: Raise to block module
+    class BlockPolicy(DeserializationPolicy):
+        def validate_module(self, module_name, **kwargs):
+            raise ValueError(f"Module {module_name} blocked")
+
+    fory3 = Fory(ref=True, strict=False, policy=BlockPolicy())
+    with pytest.raises(ValueError, match="blocked"):
+        fory3.deserialize(fory3.serialize(json))
