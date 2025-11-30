@@ -110,6 +110,7 @@ import org.apache.fory.serializer.CodegenSerializer.LazyInitBeanSerializer;
 import org.apache.fory.serializer.CompatibleSerializer;
 import org.apache.fory.serializer.EnumSerializer;
 import org.apache.fory.serializer.ExternalizableSerializer;
+import org.apache.fory.serializer.FinalFieldReplaceResolveSerializer;
 import org.apache.fory.serializer.ForyCopyableSerializer;
 import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.JdkProxySerializer;
@@ -789,8 +790,8 @@ public class ClassResolver extends TypeResolver {
     }
   }
 
-  /** Ass serializer for specified class. */
-  private void addSerializer(Class<?> type, Serializer<?> serializer) {
+  /** Add serializer for specified class. */
+  public void addSerializer(Class<?> type, Serializer<?> serializer) {
     Preconditions.checkNotNull(serializer);
     // 1. Try to get ClassInfo from `registeredId2ClassInfo` and
     // `classInfoMap` or create a new `ClassInfo`.
@@ -801,7 +802,8 @@ public class ClassResolver extends TypeResolver {
     if (registered) {
       classInfo = registeredId2ClassInfo[classId];
     } else {
-      if (serializer instanceof ReplaceResolveSerializer) {
+      if (serializer instanceof ReplaceResolveSerializer
+          && !(serializer instanceof FinalFieldReplaceResolveSerializer)) {
         classId = REPLACE_STUB_ID;
       } else {
         classId = NO_CLASS_ID;
