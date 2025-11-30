@@ -284,6 +284,9 @@ case $1 in
     java24)
       jdk17_plus_tests
     ;;
+    java25)
+      jdk17_plus_tests
+    ;;
     kotlin)
       kotlin_tests
     ;;

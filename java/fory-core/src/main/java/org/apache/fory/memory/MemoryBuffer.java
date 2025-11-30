@@ -63,6 +63,7 @@ public final class MemoryBuffer {
   public static final int BUFFER_GROW_STEP_THRESHOLD = 100 * 1024 * 1024;
   private static final Unsafe UNSAFE = Platform.UNSAFE;
   private static final boolean LITTLE_ENDIAN = (ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN);
+  private static final boolean UNALIGNED = Platform.unaligned();
 
   // Global allocator instance that can be customized
   private static volatile MemoryAllocator globalAllocator = new DefaultMemoryAllocator();
@@ -439,6 +440,9 @@ public final class MemoryBuffer {
   public char getChar(int index) {
     final long pos = address + index;
     checkPosition(index, pos, 2);
+    if (!UNALIGNED) {
+      return Unaligned.getCharL(heapMemory, pos);
+    }
     char c = UNSAFE.getChar(heapMemory, pos);
     return LITTLE_ENDIAN ? c : Character.reverseBytes(c);
   }
@@ -446,6 +450,10 @@ public final class MemoryBuffer {
   public void putChar(int index, char value) {
     final long pos = address + index;
     checkPosition(index, pos, 2);
+    if (!UNALIGNED) {
+      Unaligned.putCharL(heapMemory, pos, value);
+      return;
+    }
     if (!LITTLE_ENDIAN) {
       value = Character.reverseBytes(value);
     }
@@ -455,6 +463,9 @@ public final class MemoryBuffer {
   public short getInt16(int index) {
     final long pos = address + index;
     checkPosition(index, pos, 2);
+    if (!UNALIGNED) {
+      return Unaligned.getShortL(heapMemory, pos);
+    }
     short v = UNSAFE.getShort(heapMemory, pos);
     return LITTLE_ENDIAN ? v : Short.reverseBytes(v);
   }
@@ -462,6 +473,10 @@ public final class MemoryBuffer {
   public void putInt16(int index, short value) {
     final long pos = address + index;
     checkPosition(index, pos, 2);
+    if (!UNALIGNED) {
+      Unaligned.putShortL(heapMemory, pos, value);
+      return;
+    }
     if (!LITTLE_ENDIAN) {
       value = Short.reverseBytes(value);
     }
@@ -471,6 +486,9 @@ public final class MemoryBuffer {
   public int getInt32(int index) {
     final long pos = address + index;
     checkPosition(index, pos, 4);
+    if (!UNALIGNED) {
+      return Unaligned.getIntL(heapMemory, pos);
+    }
     int v = UNSAFE.getInt(heapMemory, pos);
     return LITTLE_ENDIAN ? v : Integer.reverseBytes(v);
   }
@@ -478,6 +496,10 @@ public final class MemoryBuffer {
   public void putInt32(int index, int value) {
     final long pos = address + index;
     checkPosition(index, pos, 4);
+    if (!UNALIGNED) {
+      Unaligned.putIntL(heapMemory, pos, value);
+      return;
+    }
     if (!LITTLE_ENDIAN) {
       value = Integer.reverseBytes(value);
     }
@@ -487,22 +509,34 @@ public final class MemoryBuffer {
   // CHECKSTYLE.OFF:MethodName
   private int _unsafeGetInt32(int index) {
     // CHECKSTYLE.ON:MethodName
-    int v = UNSAFE.getInt(heapMemory, address + index);
+    final long pos = address + index;
+    if (!UNALIGNED) {
+      return Unaligned.getIntL(heapMemory, pos);
+    }
+    int v = UNSAFE.getInt(heapMemory, pos);
     return LITTLE_ENDIAN ? v : Integer.reverseBytes(v);
   }
 
   // CHECKSTYLE.OFF:MethodName
   public void _unsafePutInt32(int index, int value) {
     // CHECKSTYLE.ON:MethodName
+    final long pos = address + index;
+    if (!UNALIGNED) {
+      Unaligned.putIntL(heapMemory, pos, value);
+      return;
+    }
     if (!LITTLE_ENDIAN) {
       value = Integer.reverseBytes(value);
     }
-    UNSAFE.putInt(heapMemory, address + index, value);
+    UNSAFE.putInt(heapMemory, pos, value);
   }
 
   public long getInt64(int index) {
     final long pos = address + index;
     checkPosition(index, pos, 8);
+    if (!UNALIGNED) {
+      return Unaligned.getLongL(heapMemory, pos);
+    }
     long v = UNSAFE.getLong(heapMemory, pos);
     return LITTLE_ENDIAN ? v : Long.reverseBytes(v);
   }
@@ -510,6 +544,10 @@ public final class MemoryBuffer {
   public void putInt64(int index, long value) {
     final long pos = address + index;
     checkPosition(index, pos, 8);
+    if (!UNALIGNED) {
+      Unaligned.putLongL(heapMemory, pos, value);
+      return;
+    }
     if (!LITTLE_ENDIAN) {
       value = Long.reverseBytes(value);
     }
@@ -519,25 +557,39 @@ public final class MemoryBuffer {
   // CHECKSTYLE.OFF:MethodName
   long _unsafeGetInt64(int index) {
     // CHECKSTYLE.ON:MethodName
-    long v = UNSAFE.getLong(heapMemory, address + index);
+    final long pos = address + index;
+    if (!UNALIGNED) {
+      return Unaligned.getLongL(heapMemory, pos);
+    }
+    long v = UNSAFE.getLong(heapMemory, pos);
     return LITTLE_ENDIAN ? v : Long.reverseBytes(v);
   }
 
   // CHECKSTYLE.OFF:MethodName
   private void _unsafePutInt64(int index, long value) {
     // CHECKSTYLE.ON:MethodName
+    final long pos = address + index;
+    if (!UNALIGNED) {
+      Unaligned.putLongL(heapMemory, pos, value);
+      return;
+    }
     if (!LITTLE_ENDIAN) {
       value = Long.reverseBytes(value);
     }
-    UNSAFE.putLong(heapMemory, address + index, value);
+    UNSAFE.putLong(heapMemory, pos, value);
   }
 
   public float getFloat32(int index) {
     final long pos = address + index;
-    checkPosition(index, pos, 8);
-    int v = UNSAFE.getInt(heapMemory, pos);
-    if (!LITTLE_ENDIAN) {
-      v = Integer.reverseBytes(v);
+    checkPosition(index, pos, 4);
+    int v;
+    if (!UNALIGNED) {
+      v = Unaligned.getIntL(heapMemory, pos);
+    } else {
+      v = UNSAFE.getInt(heapMemory, pos);
+      if (!LITTLE_ENDIAN) {
+        v = Integer.reverseBytes(v);
+      }
     }
     return Float.intBitsToFloat(v);
   }
@@ -546,6 +598,10 @@ public final class MemoryBuffer {
     final long pos = address + index;
     checkPosition(index, pos, 4);
     int v = Float.floatToRawIntBits(value);
+    if (!UNALIGNED) {
+      Unaligned.putIntL(heapMemory, pos, v);
+      return;
+    }
     if (!LITTLE_ENDIAN) {
       v = Integer.reverseBytes(v);
     }
@@ -555,9 +611,14 @@ public final class MemoryBuffer {
   public double getFloat64(int index) {
     final long pos = address + index;
     checkPosition(index, pos, 8);
-    long v = UNSAFE.getLong(heapMemory, pos);
-    if (!LITTLE_ENDIAN) {
-      v = Long.reverseBytes(v);
+    long v;
+    if (!UNALIGNED) {
+      v = Unaligned.getLongL(heapMemory, pos);
+    } else {
+      v = UNSAFE.getLong(heapMemory, pos);
+      if (!LITTLE_ENDIAN) {
+        v = Long.reverseBytes(v);
+      }
     }
     return Double.longBitsToDouble(v);
   }
@@ -566,6 +627,10 @@ public final class MemoryBuffer {
     final long pos = address + index;
     checkPosition(index, pos, 8);
     long v = Double.doubleToRawLongBits(value);
+    if (!UNALIGNED) {
+      Unaligned.putLongL(heapMemory, pos, v);
+      return;
+    }
     if (!LITTLE_ENDIAN) {
       v = Long.reverseBytes(v);
     }
@@ -675,10 +740,14 @@ public final class MemoryBuffer {
     final int newIdx = writerIdx + 2;
     ensure(newIdx);
     final long pos = address + writerIdx;
-    if (!LITTLE_ENDIAN) {
-      value = Character.reverseBytes(value);
+    if (!UNALIGNED) {
+      Unaligned.putCharL(heapMemory, pos, value);
+    } else {
+      if (!LITTLE_ENDIAN) {
+        value = Character.reverseBytes(value);
+      }
+      UNSAFE.putChar(heapMemory, pos, value);
     }
-    UNSAFE.putChar(heapMemory, pos, value);
     writerIndex = newIdx;
   }
 
@@ -686,10 +755,15 @@ public final class MemoryBuffer {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + 2;
     ensure(newIdx);
-    if (!LITTLE_ENDIAN) {
-      value = Short.reverseBytes(value);
+    final long pos = address + writerIdx;
+    if (!UNALIGNED) {
+      Unaligned.putShortL(heapMemory, pos, value);
+    } else {
+      if (!LITTLE_ENDIAN) {
+        value = Short.reverseBytes(value);
+      }
+      UNSAFE.putShort(heapMemory, pos, value);
     }
-    UNSAFE.putShort(heapMemory, address + writerIdx, value);
     writerIndex = newIdx;
   }
 
@@ -697,10 +771,15 @@ public final class MemoryBuffer {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + 4;
     ensure(newIdx);
-    if (!LITTLE_ENDIAN) {
-      value = Integer.reverseBytes(value);
+    final long pos = address + writerIdx;
+    if (!UNALIGNED) {
+      Unaligned.putIntL(heapMemory, pos, value);
+    } else {
+      if (!LITTLE_ENDIAN) {
+        value = Integer.reverseBytes(value);
+      }
+      UNSAFE.putInt(heapMemory, pos, value);
     }
-    UNSAFE.putInt(heapMemory, address + writerIdx, value);
     writerIndex = newIdx;
   }
 
@@ -708,10 +787,15 @@ public final class MemoryBuffer {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + 8;
     ensure(newIdx);
-    if (!LITTLE_ENDIAN) {
-      value = Long.reverseBytes(value);
+    final long pos = address + writerIdx;
+    if (!UNALIGNED) {
+      Unaligned.putLongL(heapMemory, pos, value);
+    } else {
+      if (!LITTLE_ENDIAN) {
+        value = Long.reverseBytes(value);
+      }
+      UNSAFE.putLong(heapMemory, pos, value);
     }
-    UNSAFE.putLong(heapMemory, address + writerIdx, value);
     writerIndex = newIdx;
   }
 
@@ -719,11 +803,16 @@ public final class MemoryBuffer {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + 4;
     ensure(newIdx);
+    final long pos = address + writerIdx;
     int v = Float.floatToRawIntBits(value);
-    if (!LITTLE_ENDIAN) {
-      v = Integer.reverseBytes(v);
+    if (!UNALIGNED) {
+      Unaligned.putIntL(heapMemory, pos, v);
+    } else {
+      if (!LITTLE_ENDIAN) {
+        v = Integer.reverseBytes(v);
+      }
+      UNSAFE.putInt(heapMemory, pos, v);
     }
-    UNSAFE.putInt(heapMemory, address + writerIdx, v);
     writerIndex = newIdx;
   }
 
@@ -731,11 +820,16 @@ public final class MemoryBuffer {
     final int writerIdx = writerIndex;
     final int newIdx = writerIdx + 8;
     ensure(newIdx);
+    final long pos = address + writerIdx;
     long v = Double.doubleToRawLongBits(value);
-    if (!LITTLE_ENDIAN) {
-      v = Long.reverseBytes(v);
+    if (!UNALIGNED) {
+      Unaligned.putLongL(heapMemory, pos, v);
+    } else {
+      if (!LITTLE_ENDIAN) {
+        v = Long.reverseBytes(v);
+      }
+      UNSAFE.putLong(heapMemory, pos, v);
     }
-    UNSAFE.putLong(heapMemory, address + writerIdx, v);
     writerIndex = newIdx;
   }
 
@@ -1357,7 +1451,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(2 - remaining);
     }
     readerIndex = readerIdx + 2;
-    char c = UNSAFE.getChar(heapMemory, address + readerIdx);
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Unaligned.getCharL(heapMemory, pos);
+    }
+    char c = UNSAFE.getChar(heapMemory, pos);
     return LITTLE_ENDIAN ? c : Character.reverseBytes(c);
   }
 
@@ -1369,7 +1467,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(2 - remaining);
     }
     readerIndex = readerIdx + 2;
-    short v = UNSAFE.getShort(heapMemory, address + readerIdx);
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Unaligned.getShortL(heapMemory, pos);
+    }
+    short v = UNSAFE.getShort(heapMemory, pos);
     return LITTLE_ENDIAN ? v : Short.reverseBytes(v);
   }
 
@@ -1385,7 +1487,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(2 - remaining);
     }
     readerIndex = readerIdx + 2;
-    return UNSAFE.getShort(heapMemory, address + readerIdx);
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Unaligned.getShortL(heapMemory, pos);
+    }
+    return UNSAFE.getShort(heapMemory, pos);
   }
 
   // Reduce method body for better inline in the caller.
@@ -1400,7 +1506,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(2 - remaining);
     }
     readerIndex = readerIdx + 2;
-    return Short.reverseBytes(UNSAFE.getShort(heapMemory, address + readerIdx));
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Unaligned.getShortB(heapMemory, pos);
+    }
+    return Short.reverseBytes(UNSAFE.getShort(heapMemory, pos));
   }
 
   public int readInt32() {
@@ -1411,7 +1521,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(4 - remaining);
     }
     readerIndex = readerIdx + 4;
-    int v = UNSAFE.getInt(heapMemory, address + readerIdx);
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Unaligned.getIntL(heapMemory, pos);
+    }
+    int v = UNSAFE.getInt(heapMemory, pos);
     return LITTLE_ENDIAN ? v : Integer.reverseBytes(v);
   }
 
@@ -1427,7 +1541,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(4 - remaining);
     }
     readerIndex = readerIdx + 4;
-    return UNSAFE.getInt(heapMemory, address + readerIdx);
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Unaligned.getIntL(heapMemory, pos);
+    }
+    return UNSAFE.getInt(heapMemory, pos);
   }
 
   // Reduce method body for better inline in the caller.
@@ -1442,7 +1560,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(4 - remaining);
     }
     readerIndex = readerIdx + 4;
-    return Integer.reverseBytes(UNSAFE.getInt(heapMemory, address + readerIdx));
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Unaligned.getIntB(heapMemory, pos);
+    }
+    return Integer.reverseBytes(UNSAFE.getInt(heapMemory, pos));
   }
 
   public long readInt64() {
@@ -1453,7 +1575,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(8 - remaining);
     }
     readerIndex = readerIdx + 8;
-    long v = UNSAFE.getLong(heapMemory, address + readerIdx);
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Unaligned.getLongL(heapMemory, pos);
+    }
+    long v = UNSAFE.getLong(heapMemory, pos);
     return LITTLE_ENDIAN ? v : Long.reverseBytes(v);
   }
 
@@ -1469,7 +1595,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(8 - remaining);
     }
     readerIndex = readerIdx + 8;
-    return UNSAFE.getLong(heapMemory, address + readerIdx);
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Unaligned.getLongL(heapMemory, pos);
+    }
+    return UNSAFE.getLong(heapMemory, pos);
   }
 
   // Reduce method body for better inline in the caller.
@@ -1484,7 +1614,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(8 - remaining);
     }
     readerIndex = readerIdx + 8;
-    return Long.reverseBytes(UNSAFE.getLong(heapMemory, address + readerIdx));
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Unaligned.getLongB(heapMemory, pos);
+    }
+    return Long.reverseBytes(UNSAFE.getLong(heapMemory, pos));
   }
 
   /** Read fory SLI(Small Long as Int) encoded long. */
@@ -1507,7 +1641,13 @@ public final class MemoryBuffer {
     if (diff < 4) {
       streamReader.fillBuffer(4 - diff);
     }
-    int i = UNSAFE.getInt(heapMemory, address + readIdx);
+    final long pos = address + readIdx;
+    int i;
+    if (!UNALIGNED) {
+      i = Unaligned.getIntL(heapMemory, pos);
+    } else {
+      i = UNSAFE.getInt(heapMemory, pos);
+    }
     if ((i & 0b1) != 0b1) {
       readerIndex = readIdx + 4;
       return i >> 1;
@@ -1517,7 +1657,10 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(9 - diff);
     }
     readerIndex = readIdx + 9;
-    return UNSAFE.getLong(heapMemory, address + readIdx + 1);
+    if (!UNALIGNED) {
+      return Unaligned.getLongL(heapMemory, pos + 1);
+    }
+    return UNSAFE.getLong(heapMemory, pos + 1);
   }
 
   @CodegenInvoke
@@ -1530,7 +1673,13 @@ public final class MemoryBuffer {
     if (diff < 4) {
       streamReader.fillBuffer(4 - diff);
     }
-    int i = Integer.reverseBytes(UNSAFE.getInt(heapMemory, address + readIdx));
+    final long pos = address + readIdx;
+    int i;
+    if (!UNALIGNED) {
+      i = Unaligned.getIntB(heapMemory, pos);
+    } else {
+      i = Integer.reverseBytes(UNSAFE.getInt(heapMemory, pos));
+    }
     if ((i & 0b1) != 0b1) {
       readerIndex = readIdx + 4;
       return i >> 1;
@@ -1540,7 +1689,10 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(9 - diff);
     }
     readerIndex = readIdx + 9;
-    return Long.reverseBytes(UNSAFE.getLong(heapMemory, address + readIdx + 1));
+    if (!UNALIGNED) {
+      return Unaligned.getLongB(heapMemory, pos + 1);
+    }
+    return Long.reverseBytes(UNSAFE.getLong(heapMemory, pos + 1));
   }
 
   public float readFloat32() {
@@ -1552,9 +1704,15 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(4 - remaining);
     }
     readerIndex = readerIdx + 4;
-    int v = UNSAFE.getInt(heapMemory, address + readerIdx);
-    if (!LITTLE_ENDIAN) {
-      v = Integer.reverseBytes(v);
+    final long pos = address + readerIdx;
+    int v;
+    if (!UNALIGNED) {
+      v = Unaligned.getIntL(heapMemory, pos);
+    } else {
+      v = UNSAFE.getInt(heapMemory, pos);
+      if (!LITTLE_ENDIAN) {
+        v = Integer.reverseBytes(v);
+      }
     }
     return Float.intBitsToFloat(v);
   }
@@ -1571,7 +1729,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(4 - remaining);
     }
     readerIndex = readerIdx + 4;
-    return Float.intBitsToFloat(UNSAFE.getInt(heapMemory, address + readerIdx));
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Float.intBitsToFloat(Unaligned.getIntL(heapMemory, pos));
+    }
+    return Float.intBitsToFloat(UNSAFE.getInt(heapMemory, pos));
   }
 
   // Reduce method body for better inline in the caller.
@@ -1586,8 +1748,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(4 - remaining);
     }
     readerIndex = readerIdx + 4;
-    return Float.intBitsToFloat(
-        Integer.reverseBytes(UNSAFE.getInt(heapMemory, address + readerIdx)));
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Float.intBitsToFloat(Unaligned.getIntB(heapMemory, pos));
+    }
+    return Float.intBitsToFloat(Integer.reverseBytes(UNSAFE.getInt(heapMemory, pos)));
   }
 
   public double readFloat64() {
@@ -1599,9 +1764,15 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(8 - remaining);
     }
     readerIndex = readerIdx + 8;
-    long v = UNSAFE.getLong(heapMemory, address + readerIdx);
-    if (!LITTLE_ENDIAN) {
-      v = Long.reverseBytes(v);
+    final long pos = address + readerIdx;
+    long v;
+    if (!UNALIGNED) {
+      v = Unaligned.getLongL(heapMemory, pos);
+    } else {
+      v = UNSAFE.getLong(heapMemory, pos);
+      if (!LITTLE_ENDIAN) {
+        v = Long.reverseBytes(v);
+      }
     }
     return Double.longBitsToDouble(v);
   }
@@ -1618,7 +1789,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(8 - remaining);
     }
     readerIndex = readerIdx + 8;
-    return Double.longBitsToDouble(UNSAFE.getLong(heapMemory, address + readerIdx));
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Double.longBitsToDouble(Unaligned.getLongL(heapMemory, pos));
+    }
+    return Double.longBitsToDouble(UNSAFE.getLong(heapMemory, pos));
   }
 
   // Reduce method body for better inline in the caller.
@@ -1633,8 +1808,11 @@ public final class MemoryBuffer {
       streamReader.fillBuffer(8 - remaining);
     }
     readerIndex = readerIdx + 8;
-    return Double.longBitsToDouble(
-        Long.reverseBytes(UNSAFE.getLong(heapMemory, address + readerIdx)));
+    final long pos = address + readerIdx;
+    if (!UNALIGNED) {
+      return Double.longBitsToDouble(Unaligned.getLongB(heapMemory, pos));
+    }
+    return Double.longBitsToDouble(Long.reverseBytes(UNSAFE.getLong(heapMemory, pos)));
   }
 
   /** Reads the 1-5 byte int part of a varint. */
@@ -1660,7 +1838,13 @@ public final class MemoryBuffer {
     } else {
       long address = this.address;
       // | 1bit + 7bits | 1bit + 7bits | 1bit + 7bits | 1bit + 7bits |
-      int fourByteValue = UNSAFE.getInt(heapMemory, address + readIdx);
+      long pos = address + readIdx;
+      int fourByteValue;
+      if (!UNALIGNED) {
+        fourByteValue = Unaligned.getIntL(heapMemory, pos);
+      } else {
+        fourByteValue = UNSAFE.getInt(heapMemory, pos);
+      }
       // Duplicate and manual inline for performance.
       // noinspection Duplicates
       readIdx++;
@@ -1702,7 +1886,13 @@ public final class MemoryBuffer {
       result = (int) readVarUint36Slow();
     } else {
       long address = this.address;
-      int fourByteValue = Integer.reverseBytes(UNSAFE.getInt(heapMemory, address + readIdx));
+      long pos = address + readIdx;
+      int fourByteValue;
+      if (!UNALIGNED) {
+        fourByteValue = Unaligned.getIntB(heapMemory, pos);
+      } else {
+        fourByteValue = Integer.reverseBytes(UNSAFE.getInt(heapMemory, pos));
+      }
       // Duplicate and manual inline for performance.
       // noinspection Duplicates
       readIdx++;

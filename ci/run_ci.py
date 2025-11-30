@@ -160,6 +160,7 @@ def parse_args():
             "17",
             "21",
             "24",
+            "25",
             "windows_java21",
             "integration_tests",
             "graalvm",

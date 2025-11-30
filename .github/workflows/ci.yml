@@ -91,6 +91,58 @@ jobs:
           name: surefire-reports-${{ matrix.java-version }}
           path: "**/target/surefire-reports/**"
 
+  java_arm64:
+    name: ARM64 Java CI
+    runs-on: ubuntu-24.04-arm
+    env:
+      MY_VAR: "PATH"
+    strategy:
+      matrix:
+        java-version: ["24"]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up JDK ${{ matrix.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: "temurin"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-${{ runner.arch }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-maven-
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: 'pip'
+      - name: Cache Bazel binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/bin/bazel
+            ~/.local/bin/bazel
+          key: bazel-binary-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
+          restore-keys: |
+            bazel-binary-v2-${{ runner.os }}-${{ runner.arch }}-
+          enableCrossOsArchive: false
+      - name: Install bazel
+        run: python ./ci/run_ci.py cpp --install-deps-only
+      - name: Install python dependencies
+        run: pip install pyarrow Cython wheel pytest setuptools -U
+      - name: Install pyfory for xlang tests
+        run: pip install -e python/
+      - name: Run CI with Maven
+        run: python ./ci/run_ci.py java --version ${{ matrix.java-version }}
+      - name: Upload Test Report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: surefire-reports-arm64-${{ matrix.java-version }}
+          path: "**/target/surefire-reports/**"
+
   openj9:
     name: Openj9 Java CI
     runs-on: ubuntu-latest
