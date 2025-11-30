@@ -113,6 +113,129 @@ public final class Platform {
     return unaligned;
   }
 
+  public static short getShortB(Object o, long offset) {
+    if (!unaligned) {
+      return Unaligned.getShortB(o, offset);
+    }
+    return Short.reverseBytes(UNSAFE.getShort(o, offset));
+  }
+
+  public static short getShortL(Object o, long offset) {
+    if (!unaligned) {
+      return Unaligned.getShortL(o, offset);
+    }
+    short v = UNSAFE.getShort(o, offset);
+    return IS_LITTLE_ENDIAN ? v : Short.reverseBytes(v);
+  }
+
+  public static void putShortB(Object o, long offset, short value) {
+    if (!unaligned) {
+      Unaligned.putShortB(o, offset, value);
+    } else {
+      UNSAFE.putShort(o, offset, Short.reverseBytes(value));
+    }
+  }
+
+  public static void putShortL(Object o, long offset, short value) {
+    if (!unaligned) {
+      Unaligned.putShortL(o, offset, value);
+    } else {
+      UNSAFE.putShort(o, offset, IS_LITTLE_ENDIAN ? value : Short.reverseBytes(value));
+    }
+  }
+
+  public static char getCharB(Object o, long offset) {
+    if (!unaligned) {
+      return Unaligned.getCharB(o, offset);
+    }
+    return Character.reverseBytes(UNSAFE.getChar(o, offset));
+  }
+
+  public static char getCharL(Object o, long offset) {
+    if (!unaligned) {
+      return Unaligned.getCharL(o, offset);
+    }
+    char v = UNSAFE.getChar(o, offset);
+    return IS_LITTLE_ENDIAN ? v : Character.reverseBytes(v);
+  }
+
+  public static void putCharB(Object o, long offset, char value) {
+    if (!unaligned) {
+      Unaligned.putCharB(o, offset, value);
+    } else {
+      UNSAFE.putChar(o, offset, Character.reverseBytes(value));
+    }
+  }
+
+  public static void putCharL(Object o, long offset, char value) {
+    if (!unaligned) {
+      Unaligned.putCharL(o, offset, value);
+    } else {
+      UNSAFE.putChar(o, offset, IS_LITTLE_ENDIAN ? value : Character.reverseBytes(value));
+    }
+  }
+
+  public static int getIntB(Object o, long offset) {
+    if (!unaligned) {
+      return Unaligned.getIntB(o, offset);
+    }
+    return Integer.reverseBytes(UNSAFE.getInt(o, offset));
+  }
+
+  public static int getIntL(Object o, long offset) {
+    if (!unaligned) {
+      return Unaligned.getIntL(o, offset);
+    }
+    int v = UNSAFE.getInt(o, offset);
+    return IS_LITTLE_ENDIAN ? v : Integer.reverseBytes(v);
+  }
+
+  public static void putIntB(Object o, long offset, int value) {
+    if (!unaligned) {
+      Unaligned.putIntB(o, offset, value);
+    } else {
+      UNSAFE.putInt(o, offset, Integer.reverseBytes(value));
+    }
+  }
+
+  public static void putIntL(Object o, long offset, int value) {
+    if (!unaligned) {
+      Unaligned.putIntL(o, offset, value);
+    } else {
+      UNSAFE.putInt(o, offset, IS_LITTLE_ENDIAN ? value : Integer.reverseBytes(value));
+    }
+  }
+
+  public static long getLongB(Object o, long offset) {
+    if (!unaligned) {
+      return Unaligned.getLongB(o, offset);
+    }
+    return Long.reverseBytes(UNSAFE.getLong(o, offset));
+  }
+
+  public static long getLongL(Object o, long offset) {
+    if (!unaligned) {
+      return Unaligned.getLongL(o, offset);
+    }
+    return UNSAFE.getLong(o, offset);
+  }
+
+  public static void putLongB(Object o, long offset, long value) {
+    if (!unaligned) {
+      Unaligned.putLongB(o, offset, value);
+    } else {
+      UNSAFE.putLong(o, offset, Long.reverseBytes(value));
+    }
+  }
+
+  public static void putLongL(Object o, long offset, long value) {
+    if (!unaligned) {
+      Unaligned.putLongL(o, offset, value);
+    } else {
+      UNSAFE.putLong(o, offset, value);
+    }
+  }
+
   public static long objectFieldOffset(Field f) {
     return UNSAFE.objectFieldOffset(f);
   }

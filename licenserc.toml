@@ -51,6 +51,7 @@ excludes = [
     "java/fory-core/src/main/java/org/apache/fory/util/MurmurHash3.java",
     "java/fory-core/src/main/java/org/apache/fory/util/concurrency/DirectExecutorService.java",
     "java/fory-core/src/main/java/org/apache/fory/memory/Platform.java",
+    "java/fory-core/src/main/java/org/apache/fory/memory/Unaligned.java",
     "java/fory-core/src/main/java/org/apache/fory/util/Preconditions.java",
     "java/fory-core/src/test/java/org/apache/fory/type/GenericsTest.java",
     "java/fory-format/src/main/java/org/apache/fory/format/vectorized/ArrowWriter.java",
