@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+
 	"github.com/apache/fory/go/fory/meta"
 	"github.com/spaolacci/murmur3"
 )

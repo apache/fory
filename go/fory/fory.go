@@ -370,16 +370,6 @@ func (f *Fory) writeValue(buffer *ByteBuffer, value reflect.Value, serializer Se
 		value = value.Elem()
 	}
 
-	// For array types, pre-convert the value
-	// so the corresponding slice serializer can be reused
-	if value.Kind() == reflect.Array {
-		length := value.Len()
-		sliceType := reflect.SliceOf(value.Type().Elem())
-		slice := reflect.MakeSlice(sliceType, length, length)
-		reflect.Copy(slice, value)
-		value = slice
-	}
-
 	if serializer != nil {
 		return serializer.Write(f, buffer, value)
 	}
@@ -407,7 +397,6 @@ func (f *Fory) writeValue(buffer *ByteBuffer, value reflect.Value, serializer Se
 	} else {
 		serializer = typeInfo.Serializer
 	}
-	// Serialize the actual value using the serializer
 	return serializer.Write(f, buffer, value)
 }
 
@@ -552,7 +541,7 @@ func (f *Fory) readData(buffer *ByteBuffer, value reflect.Value, serializer Seri
 		   2. Deserialization into a user-defined concrete type.
 		*/
 		switch {
-		case value.Kind() == reflect.Interface,
+		case value.Kind() == reflect.Interface && typeInfo.Type.Kind() != reflect.Slice,
 			!value.CanSet():
 			concrete = reflect.New(typeInfo.Type).Elem()
 			type_ = typeInfo.Type
