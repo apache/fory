@@ -100,6 +100,17 @@ def record_class_factory(cls_name, field_names):
     def __reduce__(self):
         return self.__class__, tuple(self)
 
+    def as_dict(self):
+        """Convert record to a dictionary."""
+        result = {}
+        for name in self.__slots__:
+            value = getattr(self, name, None)
+            # Recursively convert nested records
+            if hasattr(value, "as_dict"):
+                value = value.as_dict()
+            result[name] = value
+        return result
+
     cls_attrs = dict(
         __slots__=field_names,
         __init__=__init__,
@@ -109,6 +120,7 @@ def record_class_factory(cls_name, field_names):
         __str__=__str__,
         __repr__=__repr__,
         __reduce__=__reduce__,
+        as_dict=as_dict,
     )
 
     cls_ = type(cls_name, (object,), cls_attrs)
@@ -212,10 +224,6 @@ class TypeId:
     FLOAT32_ARRAY = 36
     # one dimensional float64 array.
     FLOAT64_ARRAY = 37
-    # an arrow [record batch](https://arrow.apache.org/docs/cpp/tables.html#record-batches) object.
-    ARROW_RECORD_BATCH = 38
-    # an arrow [table](https://arrow.apache.org/docs/cpp/tables.html#tables) object.
-    ARROW_TABLE = 39
     UNKNOWN = 63
 
     # BOUND id remains at 64

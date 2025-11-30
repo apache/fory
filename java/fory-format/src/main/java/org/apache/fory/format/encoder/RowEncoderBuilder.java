@@ -32,8 +32,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.SortedMap;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.Fory;
 import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.codegen.CodeGenerator;
@@ -50,6 +48,8 @@ import org.apache.fory.format.row.binary.BinaryMap;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.BinaryUtils;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -198,21 +198,21 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
       bean = customEncode(bean, beanType);
     }
 
-    int numFields = schema.getFields().size();
+    int numFields = schema.numFields();
     Expression.ListExpression expressions = new Expression.ListExpression();
     // schema field's name must correspond to descriptor's name.
     for (int i = 0; i < numFields; i++) {
-      Field field = schema.getFields().get(i);
-      Descriptor d = getDescriptorByFieldName(field.getName());
+      Field field = schema.field(i);
+      Descriptor d = getDescriptorByFieldName(field.name());
       Preconditions.checkNotNull(d);
       TypeRef<?> fieldType = d.getTypeRef();
       Expression fieldValue = getFieldValue(bean, d);
       Literal ordinal = Literal.ofInt(i);
-      Expression.StaticInvoke arrowField =
+      Expression.StaticInvoke foryField =
           new Expression.StaticInvoke(
-              DataTypes.class, "fieldOfSchema", ARROW_FIELD_TYPE, false, schemaExpr, ordinal);
+              DataTypes.class, "fieldOfSchema", FORY_FIELD_TYPE, false, schemaExpr, ordinal);
       Expression fieldExpr =
-          serializeFor(ordinal, fieldValue, writer, fieldType, field, arrowField, new HashSet<>());
+          serializeFor(ordinal, fieldValue, writer, fieldType, field, foryField, new HashSet<>());
       expressions.add(fieldExpr);
     }
     expressions.add(
@@ -236,14 +236,14 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
     if (generatedBeanImpl != null) {
       bean = new Expression.Reference("new " + generatedBeanImplName + "(row)");
     } else {
-      int numFields = schema.getFields().size();
+      int numFields = schema.numFields();
       List<String> fieldNames = new ArrayList<>(numFields);
       Expression[] values = new Expression[numFields];
       Descriptor[] descriptors = new Descriptor[numFields];
       // schema field's name must correspond to descriptor's name.
       for (int i = 0; i < numFields; i++) {
         Literal ordinal = Literal.ofInt(i);
-        Descriptor d = getDescriptorByFieldName(schema.getFields().get(i).getName());
+        Descriptor d = getDescriptorByFieldName(schema.field(i).name());
         fieldNames.add(d.getName());
         descriptors[i] = d;
         TypeRef<?> fieldType = d.getTypeRef();
@@ -300,10 +300,10 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
 
   private void addDecoderMethods() {
     Reference row = new Reference(ROOT_ROW_NAME, binaryRowTypeToken, false);
-    int numFields = schema.getFields().size();
+    int numFields = schema.numFields();
     for (int i = 0; i < numFields; i++) {
       Literal ordinal = Literal.ofInt(i);
-      Descriptor d = getDescriptorByFieldName(schema.getFields().get(i).getName());
+      Descriptor d = getDescriptorByFieldName(schema.field(i).name());
       TypeRef<?> fieldType = d.getTypeRef();
       Class<?> rawFieldType = fieldType.getRawType();
       TypeRef<?> columnAccessType = fieldType;
@@ -352,10 +352,10 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
           .put(MethodType.methodType(m.getReturnType(), m.getParameterTypes()), m);
     }
 
-    int numFields = schema.getFields().size();
+    int numFields = schema.numFields();
     for (int i = 0; i < numFields; i++) {
       Literal ordinal = Literal.ofInt(i);
-      Descriptor d = getDescriptorByFieldName(schema.getFields().get(i).getName());
+      Descriptor d = getDescriptorByFieldName(schema.field(i).name());
       TypeRef<?> fieldType = d.getTypeRef();
       Class<?> rawFieldType = fieldType.getRawType();
 
@@ -435,7 +435,7 @@ class RowEncoderBuilder extends BaseBinaryEncoderBuilder {
   }
 
   private String decodeMethodName(int i) {
-    return "decode" + i + "_" + schema.getFields().get(i).getName();
+    return "decode" + i + "_" + schema.field(i).name();
   }
 
   @Override

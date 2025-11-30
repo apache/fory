@@ -23,13 +23,16 @@ cc_library(
         "smart_ptr_serializers.h",
         "struct_serializer.h",
         "temporal_serializers.h",
+        "type_info.h",
         "type_resolver.h",
     ],
     strip_include_prefix = "/cpp",
     deps = [
         "//cpp/fory/meta:fory_meta",
+        "//cpp/fory/thirdparty:libmmh3",
         "//cpp/fory/type:fory_type",
         "//cpp/fory/util:fory_util",
+        "@abseil-cpp//absl/container:flat_hash_map",
     ],
     visibility = ["//visibility:public"],
 )
@@ -39,8 +42,8 @@ cc_test(
     srcs = ["serialization_test.cc"],
     deps = [
         ":fory_serialization",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -49,8 +52,8 @@ cc_test(
     srcs = ["struct_test.cc"],
     deps = [
         ":fory_serialization",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -59,8 +62,8 @@ cc_test(
     srcs = ["struct_compatible_test.cc"],
     deps = [
         ":fory_serialization",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -69,8 +72,8 @@ cc_test(
     srcs = ["smart_ptr_serializer_test.cc"],
     deps = [
         ":fory_serialization",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -79,16 +82,18 @@ cc_test(
     srcs = ["map_serializer_test.cc"],
     deps = [
         ":fory_serialization",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
+
 
 cc_binary(
     name = "xlang_test_main",
     srcs = ["xlang_test_main.cc"],
     deps = [
         ":fory_serialization",
+        "//cpp/fory/thirdparty:libmmh3",
     ],
     visibility = ["//visibility:public"],
 )

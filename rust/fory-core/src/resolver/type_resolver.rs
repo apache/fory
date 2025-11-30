@@ -199,6 +199,20 @@ impl TypeInfo {
         &self.harness
     }
 
+    /// Creates a deep clone with new Rc instances.
+    /// This is safe for concurrent use from multiple threads.
+    pub fn deep_clone(&self) -> TypeInfo {
+        TypeInfo {
+            type_def: Rc::new((*self.type_def).clone()),
+            type_meta: Rc::new(self.type_meta.deep_clone()),
+            type_id: self.type_id,
+            namespace: Rc::new((*self.namespace).clone()),
+            type_name: Rc::new((*self.type_name).clone()),
+            register_by_name: self.register_by_name,
+            harness: self.harness.clone(),
+        }
+    }
+
     /// Create a TypeInfo from remote TypeMeta with a stub harness
     /// Used when the type doesn't exist locally during deserialization
     pub fn from_remote_meta(
@@ -1026,17 +1040,66 @@ impl TypeResolver {
     ///
     /// # Returns
     ///
-    /// A shallow clone of the TypeResolver with all internal maps cloned.
+    /// A deep clone of the TypeResolver with all internal Rc instances recreated.
+    /// This ensures thread safety when cloning from multiple threads simultaneously.
     ///
     /// # See Also
     ///
     /// - [`build_final_type_resolver`](Self::build_final_type_resolver) - Builds a complete resolver
     pub(crate) fn clone(&self) -> TypeResolver {
+        // Build a mapping from old Rc<TypeInfo> pointers to new Rc<TypeInfo>
+        // to ensure we reuse the same new Rc for the same original TypeInfo
+        let mut type_info_mapping: HashMap<*const TypeInfo, Rc<TypeInfo>> = HashMap::new();
+
+        // Helper closure to get or create deep-cloned TypeInfo wrapped in new Rc
+        let mut get_or_clone_type_info = |rc: &Rc<TypeInfo>| -> Rc<TypeInfo> {
+            let ptr = Rc::as_ptr(rc);
+            if let Some(new_rc) = type_info_mapping.get(&ptr) {
+                new_rc.clone()
+            } else {
+                let new_rc = Rc::new(rc.deep_clone());
+                type_info_mapping.insert(ptr, new_rc.clone());
+                new_rc
+            }
+        };
+
+        // Clone all maps with deep-cloned TypeInfo in new Rc wrappers
+        let type_info_map_by_id: HashMap<u32, Rc<TypeInfo>> = self
+            .type_info_map_by_id
+            .iter()
+            .map(|(k, v)| (*k, get_or_clone_type_info(v)))
+            .collect();
+
+        let type_info_map: HashMap<std::any::TypeId, Rc<TypeInfo>> = self
+            .type_info_map
+            .iter()
+            .map(|(k, v)| (*k, get_or_clone_type_info(v)))
+            .collect();
+
+        let type_info_map_by_name: HashMap<(String, String), Rc<TypeInfo>> = self
+            .type_info_map_by_name
+            .iter()
+            .map(|(k, v)| (k.clone(), get_or_clone_type_info(v)))
+            .collect();
+
+        // Deep clone the MetaString keys as well
+        let type_info_map_by_meta_string_name: HashMap<
+            (Rc<MetaString>, Rc<MetaString>),
+            Rc<TypeInfo>,
+        > = self
+            .type_info_map_by_meta_string_name
+            .iter()
+            .map(|(k, v)| {
+                let new_key = (Rc::new((*k.0).clone()), Rc::new((*k.1).clone()));
+                (new_key, get_or_clone_type_info(v))
+            })
+            .collect();
+
         TypeResolver {
-            type_info_map_by_id: self.type_info_map_by_id.clone(),
-            type_info_map: self.type_info_map.clone(),
-            type_info_map_by_name: self.type_info_map_by_name.clone(),
-            type_info_map_by_meta_string_name: self.type_info_map_by_meta_string_name.clone(),
+            type_info_map_by_id,
+            type_info_map,
+            type_info_map_by_name,
+            type_info_map_by_meta_string_name,
             partial_type_infos: HashMap::new(),
             type_id_index: self.type_id_index.clone(),
             compatible: self.compatible,

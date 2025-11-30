@@ -19,7 +19,7 @@
 
 package org.apache.fory.format.row.binary;
 
-import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.fory.format.type.Field;
 
 public class CompactBinaryMap extends BinaryMap {
   public CompactBinaryMap(final Field field) {

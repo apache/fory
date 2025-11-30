@@ -19,17 +19,17 @@ from libcpp.memory cimport make_shared
 from libc.stdint cimport *
 from cython.operator cimport dereference as deref
 from datetime import timedelta
-from pyfory.includes.libformat cimport CGetter, CArrayData, CMapData, CRow
+from pyfory.includes.libformat cimport (
+    CGetter, CArrayData, CMapData, CRow, CTypeId,
+    CSchema, CListType, CMapType, fory_schema
+)
 from pyfory._util cimport Buffer
 from libcpp.memory cimport shared_ptr
+from libcpp.vector cimport vector
 from datetime import datetime, date
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
 from cpython cimport *
-from pyarrow.lib cimport Schema, DataType, ListType, MapType, Field
-
-import pyarrow as pa
-from pyarrow import types
 
 cdef dict reader_map = {}
 
@@ -145,23 +145,27 @@ cdef class ArrayData(Getter):
 
     cpdef RowData get_struct(self, int i):
         cdef DataType data_type = self.type_.value_type
-        # assert_type(i, data_type, StructType)
         if self.is_null_at(i):
             return None
-        return RowData.wrap(self.data.get().GetStruct(i), pa.schema(data_type))
+        # Create schema from struct type fields
+        cdef Schema struct_schema = _struct_type_to_schema(data_type)
+        return RowData.wrap(self.data.get().GetStruct(i), struct_schema)
 
     cpdef ArrayData get_array_data(self, int i):
         cdef DataType data_type = self.type_.value_type
         if self.is_null_at(i):
             return None
-        return ArrayData.wrap(self.data.get().GetArray(i), data_type)
+        # data_type should be a ListType
+        cdef ListType list_type = <ListType>data_type
+        return ArrayData.wrap(self.data.get().GetArray(i), list_type)
 
     cpdef MapData get_map_data(self, int i):
         cdef DataType data_type = self.type_.value_type
         if self.is_null_at(i):
             return None
         cdef shared_ptr[CMapData] v = self.data.get().GetMap(i)
-        return MapData.wrap(v, data_type)
+        cdef MapType map_type = <MapType>data_type
+        return MapData.wrap(v, map_type)
 
     def __getitem__(self, i):
         if i > self.num_elements or i < 0:
@@ -170,10 +174,11 @@ cdef class ArrayData(Getter):
         return self.get(i)
 
     def get(self, int i):
-        key = id(self.type_.value_type)
+        cdef DataType value_type = self.type_.value_type
+        key = id(value_type)
         reader = reader_map.get(key)
         if reader is None:
-            reader = get_reader(self.type_.value_type, type(self))
+            reader = get_reader(value_type, type(self))
             reader_map[key] = reader
         if self.is_null_at(i):
             return None
@@ -189,7 +194,8 @@ cdef class ArrayData(Getter):
             int length = self.num_elements
             int i
             str result = "["
-        getter = get_reader(self.type_.value_type, type(self))
+        cdef DataType value_type = self.type_.value_type
+        getter = get_reader(value_type, type(self))
         for i in range(length):
             if i != 0:
                 result += ','
@@ -231,27 +237,38 @@ cdef class MapData:
         return self.data.get().size_bytes()
 
     def keys_array(self):
-        array_type = pa.list_(self.map_type.key_type)
+        cdef ListType array_type = list_(self.map_type.key_type)
         return ArrayData.wrap(self.data.get().keys_array(), array_type)
 
     def values_array(self):
-        array_type = pa.list_(self.map_type.item_type)
+        cdef ListType array_type = list_(self.map_type.item_type)
         return ArrayData.wrap(self.data.get().values_array(), array_type)
 
-    cdef keys_array_(self, DataType array_type):
+    cdef keys_array_(self, ListType array_type):
         return ArrayData.wrap(self.data.get().keys_array(), array_type)
 
-    cdef values_array_(self, DataType array_type):
+    cdef values_array_(self, ListType array_type):
         return ArrayData.wrap(self.data.get().values_array(), array_type)
 
     def __str__(self):
         return 'Map{' + str(self.keys_array()) + ', ' + str(self.values_array()) + '}'
 
 
+cdef Schema _struct_type_to_schema(DataType struct_type):
+    """Convert a struct type to a schema."""
+    cdef vector[shared_ptr[CField]] c_fields
+    cdef int num = struct_type.num_fields
+    for i in range(num):
+        c_fields.push_back((<Field>struct_type.field(i)).c_field)
+    cdef Schema schema = Schema.__new__(Schema)
+    schema.c_schema = fory_schema(c_fields)
+    return schema
+
+
 cdef class RowData(Getter):
     cdef:
         shared_ptr[CRow] data
-        Schema schema
+        Schema schema_
         Buffer _buf  # hold buffer reference
 
     def __init__(self, schema, buffer, offset=0, size_in_bytes=None):
@@ -262,19 +279,23 @@ cdef class RowData(Getter):
         self._buf = buffer
         cdef:
             Buffer buf = <Buffer>buffer
-            shared_ptr[CRow] row = make_shared[CRow]((<Schema>schema).sp_schema)
+            shared_ptr[CRow] row = make_shared[CRow]((<Schema>schema).c_schema)
         deref(row).PointTo(buf.c_buffer, offset, size_in_bytes)
         self.data = row
         self.getter = row.get()
-        self.schema = schema
+        self.schema_ = schema
 
     @staticmethod
     cdef RowData wrap(shared_ptr[CRow] data, Schema schema):
         cdef RowData row_data = RowData.__new__(RowData)
         row_data.data = data
         row_data.getter = data.get()
-        row_data.schema = schema
+        row_data.schema_ = schema
         return row_data
+
+    @property
+    def schema(self):
+        return self.schema_
 
     @property
     def num_fields(self) -> int:
@@ -296,27 +317,29 @@ cdef class RowData(Getter):
     cpdef RowData get_struct(self, int i):
         if self.is_null_at(i):
             return None
-        cdef DataType data_type = self.schema.field(i).type
-        # assert_type(i, self.schema.field(i).type, StructType)
-        return RowData.wrap(self.data.get().GetStruct(i), pa.schema(data_type))
+        cdef DataType data_type = self.schema_.field(i).type
+        cdef Schema struct_schema = _struct_type_to_schema(data_type)
+        return RowData.wrap(self.data.get().GetStruct(i), struct_schema)
 
     cpdef ArrayData get_array_data(self, int i):
         if self.is_null_at(i):
             return None
-        cdef DataType data_type = self.schema.field(i).type
-        return ArrayData.wrap(self.data.get().GetArray(i), data_type)
+        cdef DataType data_type = self.schema_.field(i).type
+        cdef ListType list_type = <ListType>data_type
+        return ArrayData.wrap(self.data.get().GetArray(i), list_type)
 
     cpdef MapData get_map_data(self, int i):
         if self.is_null_at(i):
             return None
-        cdef DataType data_type = self.schema.field(i).type
+        cdef DataType data_type = self.schema_.field(i).type
         cdef shared_ptr[CMapData] v = self.data.get().GetMap(i)
-        return MapData.wrap(v, data_type)
+        cdef MapType map_type = <MapType>data_type
+        return MapData.wrap(v, map_type)
 
     def __getitem__(self, i):
         if not isinstance(i, int):
             assert type(i) is str
-            i = self.schema.names.index(i)
+            i = self.schema_.names.index(i)
         if i > self.num_fields or i < 0:
             raise IndexError("num_fields is {}, but index is {}"
                              .format(self.num_fields, i))
@@ -326,13 +349,13 @@ cdef class RowData(Getter):
         return self.__getitem__(item)
 
     def get(self, i):
-        key = id(self.schema)
+        key = id(self.schema_)
         readers = reader_map.get(key)
         if readers is None:
             readers = []
-            for field_index in range(len(self.schema)):
+            for field_index in range(self.schema_.num_fields):
                 readers.append(get_reader(
-                    self.schema.field(field_index).type, type(self)))
+                    self.schema_.field(field_index).type, type(self)))
             reader_map[key] = readers
 
         if self.is_null_at(i):
@@ -341,20 +364,20 @@ cdef class RowData(Getter):
             return readers[i](self, i)
 
     def __dealloc__(self):
-        reader_map.pop(id(self.schema), None)
+        reader_map.pop(id(self.schema_), None)
 
     def __str__(self) -> str:
         cdef:
-            Field field
-            int num_fields = len(self.schema)
+            Field field_
+            int num_fields = self.schema_.num_fields
             int i
             str result = "{"
         for i in range(num_fields):
             if i != 0:
                 result += ','
-            field = self.schema.field(i)
-            getter = get_reader(field.type, type(self))
-            result += field.name
+            field_ = self.schema_.field(i)
+            getter = get_reader(field_.type, type(self))
+            result += field_.name
             result += '='
             if self.is_null_at(i):
                 result += "null"
@@ -371,32 +394,34 @@ def assert_type(i, data_type, type_cls):
 
 
 def get_reader(data_type, type_):
-    if types.is_boolean(data_type):
+    """Get the appropriate reader method based on the Fory data type."""
+    cdef CTypeId type_id = (<DataType>data_type).id
+    if type_id == CTypeId.BOOL:
         return type_.get_boolean
-    elif types.is_int8(data_type):
+    elif type_id == CTypeId.INT8:
         return type_.get_int8
-    elif types.is_int16(data_type):
+    elif type_id == CTypeId.INT16:
         return type_.get_int16
-    elif types.is_int32(data_type):
+    elif type_id == CTypeId.INT32:
         return type_.get_int32
-    elif types.is_int64(data_type):
+    elif type_id == CTypeId.INT64:
         return type_.get_int64
-    elif types.is_float32(data_type):
+    elif type_id == CTypeId.FLOAT32:
         return type_.get_float
-    elif types.is_float64(data_type):
+    elif type_id == CTypeId.FLOAT64:
         return type_.get_double
-    elif types.is_date32(data_type):
+    elif type_id == CTypeId.LOCAL_DATE:
         return type_.get_date
-    elif types.is_timestamp(data_type):
+    elif type_id == CTypeId.TIMESTAMP:
         return type_.get_datetime
-    elif types.is_binary(data_type):
+    elif type_id == CTypeId.BINARY:
         return type_.get_binary
-    elif types.is_string(data_type):
+    elif type_id == CTypeId.STRING:
         return type_.get_str
-    elif types.is_struct(data_type):
+    elif type_id == CTypeId.STRUCT:
         return type_.get_struct
-    elif types.is_list(data_type):
+    elif type_id == CTypeId.LIST:
         return type_.get_array_data
-    elif types.is_map(data_type):
+    elif type_id == CTypeId.MAP:
         return type_.get_map_data
     raise TypeError("Unsupported type: " + str(data_type))

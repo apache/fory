@@ -20,9 +20,9 @@
 package org.apache.fory.format.row.binary.writer;
 
 import java.math.BigDecimal;
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.BinaryRow;
+import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 
@@ -38,13 +38,13 @@ public abstract class BaseBinaryRowWriter extends BinaryWriter {
   private final Schema schema;
 
   public BaseBinaryRowWriter(Schema schema) {
-    super(MemoryUtils.buffer(schema.getFields().size() * 32), 0);
+    super(MemoryUtils.buffer(schema.numFields() * 32), 0);
     super.startIndex = 0;
     this.schema = schema;
   }
 
   protected BaseBinaryRowWriter(Schema schema, int bitMapOffset) {
-    super(MemoryUtils.buffer(schema.getFields().size() * 32), bitMapOffset);
+    super(MemoryUtils.buffer(schema.numFields() * 32), bitMapOffset);
     super.startIndex = 0;
     this.schema = schema;
   }
@@ -104,7 +104,7 @@ public abstract class BaseBinaryRowWriter extends BinaryWriter {
 
   @Override
   public void write(int ordinal, BigDecimal value) {
-    writeDecimal(ordinal, value, (ArrowType.Decimal) schema.getFields().get(ordinal).getType());
+    writeDecimal(ordinal, value, (DataTypes.DecimalType) schema.field(ordinal).type());
   }
 
   @Override

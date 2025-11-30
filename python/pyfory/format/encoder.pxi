@@ -19,17 +19,16 @@ from libcpp.memory cimport shared_ptr, dynamic_pointer_cast
 from datetime import datetime, date
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
+from libcpp.vector cimport vector
 import cython
-import pyarrow as pa
 from cpython cimport *
-from pyfory.includes.libformat cimport CWriter, CRowWriter, CArrayWriter, CBuffer
+from pyfory.includes.libformat cimport (
+    CWriter, CRowWriter, CArrayWriter, CBuffer, CTypeId,
+    CSchema, CField, CListType, CMapType, fory_schema, fory_list
+)
 from pyfory.includes.libutil cimport AllocateBuffer
-from pyarrow.lib cimport Schema, DataType, ListType, MapType, Field
-from pyarrow.lib cimport CSchema, CDataType, CListType
-from pyarrow import types
 
 cimport pyfory.includes.libformat as libformat
-cimport pyarrow.lib as libpa
 
 
 def create_row_encoder(Schema schema):
@@ -48,10 +47,9 @@ cdef class Encoder:
 
 cdef class RowEncoder(Encoder):
     cdef:
-        readonly Schema schema
+        readonly Schema schema_
         int initial_buffer_size
-        shared_ptr[CSchema] sp_schema
-        CSchema* c_schema
+        shared_ptr[CSchema] c_schema
         CWriter* parent_writer
         CRowWriter* row_writer
         list encoders
@@ -64,24 +62,27 @@ cdef class RowEncoder(Encoder):
     @staticmethod
     cdef create(Schema schema, CWriter* parent_writer=NULL, initial_buffer_size=16):
         cdef RowEncoder encoder = RowEncoder.__new__(RowEncoder)
-        encoder.schema = schema
-        encoder.sp_schema = schema.sp_schema
-        encoder.c_schema = schema.schema
+        encoder.schema_ = schema
+        encoder.c_schema = schema.c_schema
         encoder.initial_buffer_size = initial_buffer_size
         encoder.parent_writer = parent_writer
 
         if parent_writer == NULL:
-            encoder.row_writer = new CRowWriter(encoder.sp_schema)
+            encoder.row_writer = new CRowWriter(encoder.c_schema)
         else:
-            encoder.row_writer = new CRowWriter(encoder.sp_schema, parent_writer)
+            encoder.row_writer = new CRowWriter(encoder.c_schema, parent_writer)
 
         encoder.encoders = []
         cdef:
-            Field field
-        for i in range(len(schema)):
-            field = schema.field(i)
-            encoder.encoders.append(create_converter(field, encoder.row_writer))
+            Field field_
+        for i in range(schema.num_fields):
+            field_ = schema.field(i)
+            encoder.encoders.append(create_converter(field_, encoder.row_writer))
         return encoder
+
+    @property
+    def schema(self):
+        return self.schema_
 
     # Special methods of extension types must be declared with def, not cdef.
     def __dealloc__(self):
@@ -103,8 +104,8 @@ cdef class RowEncoder(Encoder):
 
     cdef RowData write_row(self, value):
         cdef:
-            Field field
-            int num_fields = len(self.schema)
+            Field field_
+            int num_fields = self.schema_.num_fields
             int i
         # we don't use __dict__, because if user implements __getattr__/__setattr__
         # or use descriptor, the key in __dict__ may be not same as in schema's
@@ -112,8 +113,8 @@ cdef class RowEncoder(Encoder):
         # We don't support Mapping subclass, because isinstance cost too much time.
         if type(value) is not dict:
             for i in range(num_fields):
-                field = self.schema.field(i)
-                field_value = getattr(value, field.name, None)
+                field_ = self.schema_.field(i)
+                field_value = getattr(value, field_.name, None)
                 if field_value is None:
                     self.row_writer.SetNullAt(i)
                 else:
@@ -121,26 +122,26 @@ cdef class RowEncoder(Encoder):
                     (<Encoder>self.encoders[i]).write(i, field_value)
         else:
             for i in range(num_fields):
-                field = self.schema.field(i)
-                field_value = value.get(field.name)
+                field_ = self.schema_.field(i)
+                field_value = value.get(field_.name)
                 if field_value is None:
                     self.row_writer.SetNullAt(i)
                 else:
                     self.row_writer.SetNotNullAt(i)
                     (<Encoder>self.encoders[i]).write(i, field_value)
         cdef shared_ptr[libformat.CRow] row = self.row_writer.ToRow()
-        return RowData.wrap(row, self.schema)
+        return RowData.wrap(row, self.schema_)
 
     cdef decode(self, RowData row):
         cdef:
-            int num_fields = len(self.schema)
+            int num_fields = self.schema_.num_fields
             int i
         from pyfory.format import get_cls_by_schema
-        cls = get_cls_by_schema(self.schema)
+        cls = get_cls_by_schema(self.schema_)
         obj = cls.__new__(cls)
         for i in range(num_fields):
-            field = self.schema.field(i)
-            field_name = field.name
+            field_ = self.schema_.field(i)
+            field_name = field_.name
             if not row.is_null_at(i):
                 setattr(obj, field_name, (<Encoder>self.encoders[i]).read(row, i))
             else:
@@ -173,28 +174,19 @@ cdef class ArrayWriter(Encoder):
         raise TypeError("Do not call ArrayWriter's constructor directly, use "
                         "factory function instead.")
 
-    # All constructor arguments will be passed as Python objects,
-    # This implies that non-convertible C types such as pointers or
-    # C++ objects cannot be passed into the constructor from Cython code.
-    # use a factory function instead.
-    # special_methods#initialisation-methods-cinit-and-init
-    # extension_types#existing-pointers-instantiation
     @staticmethod
     cdef ArrayWriter create(ListType list_type, CWriter* parent_writer):
         cdef:
             ArrayWriter encoder = ArrayWriter.__new__(ArrayWriter)
-            shared_ptr[CDataType] c_type = libpa.pyarrow_unwrap_data_type(list_type)
-        cdef:
-            shared_ptr[CListType] c_list_type = \
-                dynamic_pointer_cast[CListType, CDataType](c_type)
+        cdef shared_ptr[CListType] c_list_type = \
+            dynamic_pointer_cast[CListType, libformat.CDataType](list_type.c_type)
 
         encoder.parent_writer = parent_writer
         encoder.list_type = list_type
-        libpa.pyarrow_unwrap_array(list_type)
-        encoder.array_writer = new CArrayWriter(
-            c_list_type, parent_writer)
-        encoder.elem_encoder =\
-            create_converter(list_type.value_field, encoder.array_writer)
+        encoder.array_writer = new CArrayWriter(c_list_type, parent_writer)
+        # Create encoder for value type
+        cdef Field value_field = list_type.value_field
+        encoder.elem_encoder = create_converter(value_field, encoder.array_writer)
         return encoder
 
     def __dealloc__(self):
@@ -260,10 +252,11 @@ cdef class MapWriter(Encoder):
         cdef MapWriter encoder = MapWriter.__new__(MapWriter)
         encoder.map_type = map_type
         encoder.parent_writer = parent_writer
-        encoder.keys_encoder = ArrayWriter.create(
-            pa.list_(map_type.key_type), parent_writer)
-        encoder.values_encoder = ArrayWriter.create(
-            pa.list_(map_type.item_type), parent_writer)
+        # Create list types for keys and values
+        cdef ListType keys_list_type = list_(map_type.key_type)
+        cdef ListType values_list_type = list_(map_type.item_type)
+        encoder.keys_encoder = ArrayWriter.create(keys_list_type, parent_writer)
+        encoder.values_encoder = ArrayWriter.create(values_list_type, parent_writer)
         return encoder
 
     cdef void write_map(self, value):
@@ -437,45 +430,51 @@ cdef class StrWriter(Encoder):
         return data.get_str(i)
 
 
-cdef create_converter(Field field, CWriter* writer):
-    import pyarrow as pa
+cdef create_converter(Field field_, CWriter* writer):
+    """Create an encoder for the given field type."""
     cdef:
         RowEncoder row_encoder
         ArrayWriter array_encoder
         MapWriter map_encoder
-        DataType data_type = field.type
+        DataType data_type = field_.type
+        CTypeId type_id = data_type.id
+        ListType list_type
+        MapType map_type
 
-    if types.is_boolean(data_type):
+    if type_id == CTypeId.BOOL:
         return create_atomic_encoder(BooleanWriter, writer)
-    elif types.is_int8(data_type):
+    elif type_id == CTypeId.INT8:
         return create_atomic_encoder(Int8Writer, writer)
-    elif types.is_int16(data_type):
+    elif type_id == CTypeId.INT16:
         return create_atomic_encoder(Int16Writer, writer)
-    elif types.is_int32(data_type):
+    elif type_id == CTypeId.INT32:
         return create_atomic_encoder(Int32Writer, writer)
-    elif types.is_int64(data_type):
+    elif type_id == CTypeId.INT64:
         return create_atomic_encoder(Int64Writer, writer)
-    elif types.is_float32(data_type):
+    elif type_id == CTypeId.FLOAT32:
         return create_atomic_encoder(FloatWriter, writer)
-    elif types.is_float64(data_type):
+    elif type_id == CTypeId.FLOAT64:
         return create_atomic_encoder(DoubleWriter, writer)
-    elif types.is_date32(data_type):
+    elif type_id == CTypeId.LOCAL_DATE:
         return create_atomic_encoder(DateWriter, writer)
-    elif types.is_timestamp(data_type):
+    elif type_id == CTypeId.TIMESTAMP:
         return create_atomic_encoder(TimestampWriter, writer)
-    elif types.is_binary(data_type):
+    elif type_id == CTypeId.BINARY:
         return create_atomic_encoder(BinaryWriter, writer)
-    elif types.is_string(data_type):
+    elif type_id == CTypeId.STRING:
         return create_atomic_encoder(StrWriter, writer)
-    elif types.is_struct(data_type):
-        row_encoder = RowEncoder.create(pa.schema(
-            list(data_type), metadata=field.metadata), writer)
+    elif type_id == CTypeId.STRUCT:
+        # Create schema from struct type fields
+        struct_schema = _struct_type_to_schema(data_type)
+        row_encoder = RowEncoder.create(struct_schema, writer)
         return row_encoder
-    elif types.is_list(data_type):
-        array_encoder = ArrayWriter.create(data_type, writer)
+    elif type_id == CTypeId.LIST:
+        list_type = <ListType>data_type
+        array_encoder = ArrayWriter.create(list_type, writer)
         return array_encoder
-    elif types.is_map(data_type):
-        map_encoder = MapWriter.create(data_type, writer)
+    elif type_id == CTypeId.MAP:
+        map_type = <MapType>data_type
+        map_encoder = MapWriter.create(map_type, writer)
         return map_encoder
     raise TypeError("Unsupported type: " + str(data_type))
 

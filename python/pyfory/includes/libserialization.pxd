@@ -60,8 +60,6 @@ cdef extern from "fory/type/type.h" namespace "fory" nogil:
         FLOAT16_ARRAY = 35
         FLOAT32_ARRAY = 36
         FLOAT64_ARRAY = 37
-        ARROW_RECORD_BATCH = 38
-        ARROW_TABLE = 39
         BOUND = 64
 
     cdef c_bool IsNamespacedType(int32_t type_id)

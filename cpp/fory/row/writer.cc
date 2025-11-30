@@ -18,10 +18,12 @@
  */
 
 #include "fory/row/writer.h"
+#include <cassert>
 #include <iostream>
 #include <memory>
 
 namespace fory {
+namespace row {
 
 Writer::Writer(int bytes_before_bitmap)
     : bytes_before_bitmap_(bytes_before_bitmap) {}
@@ -102,8 +104,7 @@ void Writer::WriteDirectly(uint32_t offset, int64_t value) {
   buffer_->UnsafePut(offset, value);
 }
 
-RowWriter::RowWriter(const std::shared_ptr<arrow::Schema> &schema)
-    : Writer(0), schema_(schema) {
+RowWriter::RowWriter(const SchemaPtr &schema) : Writer(0), schema_(schema) {
   starting_offset_ = 0;
   AllocateBuffer(schema->num_fields() * 8, &buffer_);
   header_in_bytes_ =
@@ -111,8 +112,7 @@ RowWriter::RowWriter(const std::shared_ptr<arrow::Schema> &schema)
   fixed_size_ = header_in_bytes_ + schema->num_fields() * 8;
 }
 
-RowWriter::RowWriter(const std::shared_ptr<arrow::Schema> &schema,
-                     Writer *parent_writer)
+RowWriter::RowWriter(const SchemaPtr &schema, Writer *parent_writer)
     : Writer(parent_writer, 0), schema_(schema) {
   // Since we must call reset before use this writer,
   // there's no need to set starting_offset_ here.
@@ -175,8 +175,7 @@ std::shared_ptr<Row> RowWriter::ToRow() {
   return row;
 }
 
-ArrayWriter::ArrayWriter(std::shared_ptr<arrow::ListType> type)
-    : Writer(8), type_(std::move(type)) {
+ArrayWriter::ArrayWriter(ListTypePtr type) : Writer(8), type_(std::move(type)) {
   AllocateBuffer(64, &buffer_);
   starting_offset_ = 0;
   int width = get_byte_width(type_->value_type());
@@ -188,7 +187,7 @@ ArrayWriter::ArrayWriter(std::shared_ptr<arrow::ListType> type)
   }
 }
 
-ArrayWriter::ArrayWriter(std::shared_ptr<arrow::ListType> type, Writer *writer)
+ArrayWriter::ArrayWriter(ListTypePtr type, Writer *writer)
     : Writer(writer, 8), type_(std::move(type)) {
   starting_offset_ = 0;
   int width = get_byte_width(type_->value_type());
@@ -265,4 +264,5 @@ std::shared_ptr<ArrayData> ArrayWriter::CopyToArrayData() {
   return array_data;
 }
 
+} // namespace row
 } // namespace fory

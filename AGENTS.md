@@ -57,23 +57,32 @@ mvn -T16 test -Dtest=org.apache.fory.TestClass#testMethod
 - private methods should be put last in class def, before private fields.
 
 ```bash
-# Prepare for build
-pip install pyarrow==15.0.0
-
 # Build C++ library
-bazel build //...
+bazel build //cpp/...
+
+# Build Cython extensions (replace X.Y with your Python version, e.g., 3.10)
+bazel build //:cp_fory_so --@rules_python//python/config_settings:python_version=X.Y
 
 # Run tests
-bazel test $(bazel query //...)
+bazel test $(bazel query //cpp/...)
 
 # Run serialization tests
 bazel test $(bazel query //cpp/fory/serialization/...)
 
 # Run specific test
-bazel test //fory/util:buffer_test
+bazel test //cpp/fory/util:buffer_test
 
 # format c++ code
 clang-format -i $file
+```
+
+Run C++ xlang tests:
+
+```bash
+cd java
+mvn -T16 install -DskipTests
+cd fory-core
+FORY_CPP_JAVA_CI=1 mvn -T16 test -Dtest=org.apache.fory.CPPXlangTest
 ```
 
 ### Python Development
@@ -96,9 +105,9 @@ ruff check --fix .
 # Install
 pip install -v -e .
 
-# Build native extension when cython code changed
-bazel build //:cp_fory_so --config=x86_64 # For x86_64
-bazel build //:cp_fory_so --copt=-fsigned-char # For arm64 and aarch64
+# Build native extension when cython code changed (replace X.Y with your Python version)
+bazel build //:cp_fory_so --@rules_python//python/config_settings:python_version=X.Y --config=x86_64 # For x86_64
+bazel build //:cp_fory_so --@rules_python//python/config_settings:python_version=X.Y --copt=-fsigned-char # For arm64 and aarch64
 
 # Run tests without cython
 ENABLE_FORY_CYTHON_SERIALIZATION=0 pytest -v -s .
@@ -374,17 +383,17 @@ Fory serialization for every language is implemented independently to minimize t
 
 #### Bazel
 
-`bazel` dir provide build support for fory c++ and cython:
+`bazel` dir provides build support for fory C++ and Cython:
 
-- `bazel/arrow`: build rules to get arrow shared libraries based on bazel template
-- `grpc-cython-copts.patch/grpc-python.patch`: patch for grpc to add `pyx_library` for cython.
+- `bazel/cython_library.bzl`: `pyx_library` rule for building Cython extensions
+
+Dependencies are managed via `MODULE.bazel` using bzlmod (Bazel 8+).
 
 #### C++
 
 - `cpp/fory/row`: Row format data structures
 - `cpp/fory/meta`: Compile-time reflection utilities for extract struct fields information.
 - `cpp/fory/encoder`: Row format encoder and decoder
-- `cpp/fory/columnar`: Interoperation between fory row format and apache arrow columnar format
 - `cpp/fory/util`: Common utilities
   - `cpp/fory/util/buffer.h`: Buffer for reading and writing data
   - `cpp/fory/util/bit_util.h`: utilities for bit manipulation
@@ -539,6 +548,38 @@ Fory rust provides macro-based serialization and deserialization. Fory rust cons
 - **`lint.yml`**: Code formatting and linting
 - **`pr-lint.yml`**: PR-specific checks
 
+### Fixing GitHub CI Errors
+
+Use the GitHub CLI (`gh`) to inspect and fix CI failures:
+
+```bash
+# List all checks for a PR and their status
+gh pr checks <PR_NUMBER> --repo apache/fory
+
+# View failed job logs (get job ID from pr checks output)
+gh run view <RUN_ID> --repo apache/fory --job <JOB_ID> --log-failed
+
+# View full job logs
+gh run view <RUN_ID> --repo apache/fory --job <JOB_ID> --log
+
+# Example workflow for fixing CI errors:
+# 1. List checks to find failing jobs
+gh pr checks 2942 --repo apache/fory
+
+# 2. Get the failed job logs (RUN_ID and JOB_ID from step 1)
+gh run view 19735911308 --repo apache/fory --job 56547673283 --log-failed
+
+# 3. Fix the issues based on error messages
+# 4. Commit and push fixes
+```
+
+Common CI failures and fixes:
+
+- **Code Style Check**: Run formatters (`clang-format`, `prettier`, `spotless:apply`, etc.)
+- **Markdown Lint**: Run `prettier --write <file>` for markdown files
+- **C++ Build Errors**: Check for missing dependencies or header includes
+- **Test Failures**: Run tests locally to reproduce and fix
+
 ## Commit Message Format
 
 Use conventional commits with language scope:
@@ -551,5 +592,5 @@ refactor(java): unify serialization exceptions hierarchy
 perf(cpp): optimize buffer allocation in encoder
 test(integration): add cross-language reference cycle tests
 ci: update build matrix for latest JDK versions
-chore(deps): update arrow dependency to 15.0.0
+chore(deps): update guava dependency to 32.0.0
 ```

@@ -27,12 +27,12 @@ import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.TreeSet;
 import lombok.Data;
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Ignore;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.TypeRef;
@@ -384,7 +384,7 @@ public class ImplementInterfaceTest {
 
   static class ListLazyElemInnerCodec implements CustomCodec<ListLazyElemInner, Integer> {
     @Override
-    public Field getField(final String fieldName) {
+    public Field getForyField(final String fieldName) {
       return DataTypes.field(fieldName, DataTypes.int32());
     }
 
@@ -483,7 +483,7 @@ public class ImplementInterfaceTest {
   public void testIgnoredMethods() {
     final IgnoredMethods bean1 = new IgnoredMethodsImpl(2112);
     final RowEncoder<IgnoredMethods> encoder = Encoders.bean(IgnoredMethods.class);
-    Assert.assertEquals(encoder.schema().getFields().size(), 1);
+    Assert.assertEquals(encoder.schema().numFields(), 1);
     final BinaryRow row = encoder.toRow(bean1);
     final MemoryBuffer buffer = MemoryUtils.wrap(row.toBytes());
     row.pointTo(buffer, 0, buffer.size());

@@ -43,8 +43,9 @@
 namespace fory {
 namespace serialization {
 
-// Forward declaration
+// Forward declarations
 class Fory;
+class ThreadSafeFory;
 
 /// Builder class for creating Fory instances with custom configuration.
 ///
@@ -53,12 +54,15 @@ class Fory;
 ///
 /// Example:
 /// ```cpp
+/// // Single-threaded Fory (fastest, not thread-safe)
 /// auto fory = Fory::builder()
-///     .compatible(true)
 ///     .xlang(true)
-///     .check_struct_version(false)
-///     .max_depth(128)
 ///     .build();
+///
+/// // Thread-safe Fory (uses context pools)
+/// auto fory = Fory::builder()
+///     .xlang(true)
+///     .build_thread_safe();
 /// ```
 class ForyBuilder {
 public:
@@ -83,9 +87,15 @@ public:
     return *this;
   }
 
-  /// Set maximum allowed nesting depth.
-  ForyBuilder &max_depth(uint32_t depth) {
-    config_.max_depth = depth;
+  /// Set maximum allowed nesting depth for dynamically-typed objects.
+  ///
+  /// This limits the maximum depth for nested polymorphic object serialization
+  /// (e.g., shared_ptr<Base>, unique_ptr<Base>). This prevents stack overflow
+  /// from deeply nested structures in dynamic serialization scenarios.
+  ///
+  /// Default value is 5.
+  ForyBuilder &max_dyn_depth(uint32_t depth) {
+    config_.max_dyn_depth = depth;
     return *this;
   }
 
@@ -101,132 +111,305 @@ public:
     return *this;
   }
 
-  /// Build the final Fory instance.
+  /// Build a single-threaded Fory instance (fastest, not thread-safe).
   Fory build();
+
+  /// Build a thread-safe Fory instance (uses context pools).
+  ThreadSafeFory build_thread_safe();
 
 private:
   Config config_;
   std::shared_ptr<TypeResolver> type_resolver_;
 
+  /// Helper to get or create type resolver and finalize it
+  std::shared_ptr<TypeResolver> get_finalized_resolver();
+
   friend class Fory;
+  friend class ThreadSafeFory;
 };
 
-/// Main Fory serialization class.
+// ============================================================================
+// RAII Guards for Context Management
+// ============================================================================
+
+/// RAII guard for WriteContext - resets on destruction.
+class WriteContextGuard {
+public:
+  explicit WriteContextGuard(WriteContext &ctx) : ctx_(ctx) {}
+  ~WriteContextGuard() { ctx_.reset(); }
+
+  WriteContextGuard(const WriteContextGuard &) = delete;
+  WriteContextGuard &operator=(const WriteContextGuard &) = delete;
+
+private:
+  WriteContext &ctx_;
+};
+
+/// RAII guard for ReadContext - resets and detaches on destruction.
+class ReadContextGuard {
+public:
+  explicit ReadContextGuard(ReadContext &ctx) : ctx_(ctx) {}
+  ~ReadContextGuard() {
+    ctx_.reset();
+    ctx_.detach();
+  }
+
+  ReadContextGuard(const ReadContextGuard &) = delete;
+  ReadContextGuard &operator=(const ReadContextGuard &) = delete;
+
+private:
+  ReadContext &ctx_;
+};
+
+// ============================================================================
+// BaseFory - Common base class for Fory implementations
+// ============================================================================
+
+/// Base class for Fory serialization implementations.
 ///
-/// This class provides serialization and deserialization functionality
-/// for C++ objects. Create instances using the builder pattern via
-/// Fory::builder().
+/// This class provides common functionality shared between single-threaded
+/// and thread-safe Fory implementations, including configuration access
+/// and type registration methods.
+///
+/// Users should not instantiate this class directly. Use Fory for
+/// single-threaded scenarios or ThreadSafeFory for multi-threaded scenarios.
+class BaseFory {
+public:
+  virtual ~BaseFory() = default;
+
+  // ==========================================================================
+  // Configuration Access
+  // ==========================================================================
+
+  /// Get reference to the serialization configuration.
+  ///
+  /// The configuration contains settings like xlang mode, compatible mode,
+  /// reference tracking, etc.
+  ///
+  /// @return Const reference to the Config object.
+  const Config &config() const { return config_; }
+
+  /// Access the underlying type resolver.
+  ///
+  /// The type resolver manages type registration and lookup for serialization.
+  /// Use this for advanced type manipulation or to check registered types.
+  ///
+  /// @return Reference to the TypeResolver.
+  TypeResolver &type_resolver() { return *type_resolver_; }
+
+  /// Access the underlying type resolver (const version).
+  ///
+  /// @return Const reference to the TypeResolver.
+  const TypeResolver &type_resolver() const { return *type_resolver_; }
+
+  // ==========================================================================
+  // Type Registration Methods
+  // ==========================================================================
+
+  /// Register a struct type with a numeric type ID.
+  ///
+  /// Use this method to register types for cross-language serialization
+  /// where types are identified by numeric IDs. The type ID must be unique
+  /// across all registered types and match the ID used in other languages.
+  ///
+  /// @tparam T The struct type to register (must be defined with FORY_STRUCT).
+  /// @param type_id Unique numeric identifier for this type.
+  /// @return Success or error if registration fails.
+  ///
+  /// Example:
+  /// ```cpp
+  /// struct MyStruct { int32_t value; };
+  /// FORY_STRUCT(MyStruct, value);
+  ///
+  /// fory.register_struct<MyStruct>(1);
+  /// ```
+  template <typename T> Result<void, Error> register_struct(uint32_t type_id) {
+    return type_resolver_->template register_by_id<T>(type_id);
+  }
+
+  /// Register a struct type with namespace and type name.
+  ///
+  /// Use this method for named type registration, which provides more
+  /// flexibility for schema evolution and cross-language compatibility.
+  ///
+  /// @tparam T The struct type to register (must be defined with FORY_STRUCT).
+  /// @param ns Namespace for the type (can be empty string).
+  /// @param type_name Name of the type within the namespace.
+  /// @return Success or error if registration fails.
+  ///
+  /// Example:
+  /// ```cpp
+  /// fory.register_struct<MyStruct>("com.example", "MyStruct");
+  /// ```
+  template <typename T>
+  Result<void, Error> register_struct(const std::string &ns,
+                                      const std::string &type_name) {
+    return type_resolver_->template register_by_name<T>(ns, type_name);
+  }
+
+  /// Register a struct type with type name only (no namespace).
+  ///
+  /// Convenience method for registering types without a namespace.
+  ///
+  /// @tparam T The struct type to register (must be defined with FORY_STRUCT).
+  /// @param type_name Name of the type.
+  /// @return Success or error if registration fails.
+  ///
+  /// Example:
+  /// ```cpp
+  /// fory.register_struct<MyStruct>("MyStruct");
+  /// ```
+  template <typename T>
+  Result<void, Error> register_struct(const std::string &type_name) {
+    return type_resolver_->template register_by_name<T>("", type_name);
+  }
+
+  /// Register an extension type with a numeric type ID.
+  ///
+  /// Extension types allow custom serialization logic for types that
+  /// don't fit the standard struct serialization pattern.
+  ///
+  /// @tparam T The extension type to register.
+  /// @param type_id Unique numeric identifier for this type.
+  /// @return Success or error if registration fails.
+  template <typename T>
+  Result<void, Error> register_extension_type(uint32_t type_id) {
+    return type_resolver_->template register_ext_type_by_id<T>(type_id);
+  }
+
+  /// Register an extension type with namespace and type name.
+  ///
+  /// @tparam T The extension type to register.
+  /// @param ns Namespace for the type (can be empty string).
+  /// @param type_name Name of the type within the namespace.
+  /// @return Success or error if registration fails.
+  template <typename T>
+  Result<void, Error> register_extension_type(const std::string &ns,
+                                              const std::string &type_name) {
+    return type_resolver_->template register_ext_type_by_name<T>(ns, type_name);
+  }
+
+  /// Register an extension type with type name only (no namespace).
+  ///
+  /// @tparam T The extension type to register.
+  /// @param type_name Name of the type.
+  /// @return Success or error if registration fails.
+  template <typename T>
+  Result<void, Error> register_extension_type(const std::string &type_name) {
+    return type_resolver_->template register_ext_type_by_name<T>("", type_name);
+  }
+
+protected:
+  /// Protected constructor - only derived classes can instantiate.
+  explicit BaseFory(const Config &config,
+                    std::shared_ptr<TypeResolver> resolver)
+      : config_(config), type_resolver_(std::move(resolver)) {}
+
+  // Non-copyable
+  BaseFory(const BaseFory &) = delete;
+  BaseFory &operator=(const BaseFory &) = delete;
+
+  // Non-movable (to ensure stable 'this' pointer for pool lambdas)
+  BaseFory(BaseFory &&) = delete;
+  BaseFory &operator=(BaseFory &&) = delete;
+
+  Config config_;
+  std::shared_ptr<TypeResolver> type_resolver_;
+};
+
+// ============================================================================
+// Fory - Single-threaded serialization (fastest)
+// ============================================================================
+
+/// Single-threaded Fory serialization class.
+///
+/// This class provides the fastest serialization by holding WriteContext and
+/// ReadContext directly without pool overhead. NOT thread-safe - use one
+/// instance per thread or use ThreadSafeFory for multi-threaded scenarios.
 ///
 /// Example:
 /// ```cpp
-/// // Create Fory instance
 /// auto fory = Fory::builder().xlang(true).build();
+/// fory.register_struct<MyStruct>(1);
 ///
-/// // Serialize
 /// MyStruct obj{...};
-/// auto bytes_result = fory.serialize(obj);
-/// if (bytes_result.ok()) {
-///   std::vector<uint8_t> bytes = bytes_result.value();
-/// }
-///
-/// // Deserialize
-/// auto obj_result = fory.deserialize<MyStruct>(bytes.data(), bytes.size());
-/// if (obj_result.ok()) {
-///   MyStruct obj = obj_result.value();
-/// }
+/// auto result = fory.serialize(obj);
 /// ```
-class Fory {
+class Fory : public BaseFory {
 public:
-  /// Create a builder for configuring Fory instance.
   static ForyBuilder builder() { return ForyBuilder(); }
 
-  // ============================================================================
-  // Serialization Methods
-  // ============================================================================
-
-  /// Serialize an object to a byte vector.
+  /// Serialize an object to a new byte vector.
   ///
-  /// @param obj Object to serialize (const reference).
-  /// @return Vector of bytes on success, error on failure.
+  /// @tparam T The type of object to serialize.
+  /// @param obj The object to serialize.
+  /// @return Vector containing serialized bytes, or error.
   template <typename T>
   Result<std::vector<uint8_t>, Error> serialize(const T &obj) {
-    // Acquire WriteContext (with owned buffer) from pool
-    auto ctx_handle = write_ctx_pool_.acquire();
-    WriteContext &ctx = *ctx_handle;
-    // RAII guard to ensure context is properly cleaned up
-    struct ContextGuard {
-      WriteContext &ctx;
-      ~ContextGuard() { ctx.reset(); }
-    } guard{ctx};
+    if (FORY_PREDICT_FALSE(!finalized_)) {
+      ensure_finalized();
+    }
+    WriteContextGuard guard(write_ctx_);
+    Buffer &buffer = write_ctx_.buffer();
 
-    // Serialize to the context's buffer
-    FORY_RETURN_NOT_OK(serialize_to_impl(obj, ctx, ctx.buffer()));
+    FORY_RETURN_NOT_OK(serialize_impl(obj, buffer));
 
-    // Copy buffer data to vector
-    std::vector<uint8_t> result(ctx.buffer().writer_index());
-    std::memcpy(result.data(), ctx.buffer().data(),
-                ctx.buffer().writer_index());
+    std::vector<uint8_t> result(buffer.writer_index());
+    std::memcpy(result.data(), buffer.data(), buffer.writer_index());
     return result;
   }
 
-  /// Serialize an object to an existing buffer.
+  /// Serialize an object to an existing Buffer (fastest path).
   ///
-  /// @param obj Object to serialize (const reference).
-  /// @param buffer Output buffer to write to.
-  /// @return Number of bytes written on success, error on failure.
+  /// @tparam T The type of object to serialize.
+  /// @param obj The object to serialize.
+  /// @param buffer The buffer to write to.
+  /// @return Number of bytes written, or error.
   template <typename T>
-  Result<size_t, Error> serialize_to(const T &obj, Buffer &buffer) {
-    // Acquire WriteContext from pool
-    auto ctx_handle = write_ctx_pool_.acquire();
-    WriteContext &ctx = *ctx_handle;
-    // RAII guard to ensure context is properly cleaned up
-    struct ContextGuard {
-      WriteContext &ctx;
-      ~ContextGuard() { ctx.reset(); }
-    } guard{ctx};
-
-    // Serialize using the provided buffer (not the context's buffer)
-    return serialize_to_impl(obj, ctx, buffer);
+  FORY_ALWAYS_INLINE Result<size_t, Error> serialize_to(const T &obj,
+                                                        Buffer &buffer) {
+    if (FORY_PREDICT_FALSE(!finalized_)) {
+      ensure_finalized();
+    }
+    return serialize_impl(obj, buffer);
   }
 
-  /// Serialize an object to a byte vector (in-place).
+  /// Serialize an object to an existing byte vector (zero-copy).
   ///
-  /// @param obj Object to serialize (const reference).
-  /// @param output Output vector to write to (will be resized as needed).
-  /// @return Number of bytes written on success, error on failure.
+  /// This method appends serialized data directly to the output vector,
+  /// avoiding any intermediate copies. The vector will be resized to
+  /// fit the serialized data.
+  ///
+  /// @tparam T The type of object to serialize.
+  /// @param obj The object to serialize.
+  /// @param output The vector to append to.
+  /// @return Number of bytes written, or error.
   template <typename T>
   Result<size_t, Error> serialize_to(const T &obj,
                                      std::vector<uint8_t> &output) {
-    // Acquire WriteContext (with owned buffer) from pool
-    auto ctx_handle = write_ctx_pool_.acquire();
-    WriteContext &ctx = *ctx_handle;
-    // RAII guard to ensure context is properly cleaned up
-    struct ContextGuard {
-      WriteContext &ctx;
-      ~ContextGuard() { ctx.reset(); }
-    } guard{ctx};
+    // Wrap the output vector in a Buffer for zero-copy serialization
+    // writer_index starts at output.size() for appending
+    Buffer buffer(output);
 
-    // Serialize to the context's buffer
-    FORY_TRY(bytes_written, serialize_to_impl(obj, ctx, ctx.buffer()));
+    // Forward to Buffer version
+    auto result = serialize_to(obj, buffer);
 
-    // Resize output vector and copy data
-    output.resize(ctx.buffer().writer_index());
-    std::memcpy(output.data(), ctx.buffer().data(),
-                ctx.buffer().writer_index());
-    return bytes_written;
+    // Resize vector to actual written size
+    output.resize(buffer.writer_index());
+    return result;
   }
-
-  // ============================================================================
-  // Deserialization Methods
-  // ============================================================================
 
   /// Deserialize an object from a byte array.
   ///
-  /// @param data Pointer to serialized data. Must not be nullptr.
-  /// @param size Size of data in bytes.
-  /// @return Deserialized object on success, error on failure.
+  /// @tparam T The type of object to deserialize.
+  /// @param data Pointer to serialized data.
+  /// @param size Size of serialized data in bytes.
+  /// @return Deserialized object, or error.
   template <typename T>
   Result<T, Error> deserialize(const uint8_t *data, size_t size) {
+    if (FORY_PREDICT_FALSE(!finalized_)) {
+      ensure_finalized();
+    }
     if (data == nullptr) {
       return Unexpected(Error::invalid("Data pointer is null"));
     }
@@ -237,180 +420,258 @@ public:
     Buffer buffer(const_cast<uint8_t *>(data), static_cast<uint32_t>(size),
                   false);
 
-    // Read and validate header
     FORY_TRY(header, read_header(buffer));
-
-    // Check for null object
     if (header.is_null) {
       return Unexpected(Error::invalid_data("Cannot deserialize null object"));
     }
-
-    // Check endianness compatibility
     if (header.is_little_endian != is_little_endian_system()) {
       return Unexpected(
           Error::unsupported("Cross-endian deserialization not yet supported"));
     }
 
-    return deserialize_from<T>(buffer);
-  }
-
-  /// Core deserialization method that takes an explicit ReadContext.
-  ///
-  /// @param ctx ReadContext to use for deserialization.
-  /// @param buffer Input buffer to read from (should be attached to ctx).
-  /// @return Deserialized object on success, error on failure.
-  template <typename T>
-  Result<T, Error> deserialize_from(ReadContext &ctx, Buffer &buffer) {
-    // Load TypeMetas at the beginning in compatible mode
-    if (ctx.is_compatible()) {
-      auto meta_offset_result = buffer.ReadInt32();
-      FORY_RETURN_IF_ERROR(meta_offset_result);
-      int32_t meta_offset = meta_offset_result.value();
-      if (meta_offset != -1) {
-        FORY_RETURN_NOT_OK(ctx.load_type_meta(meta_offset));
-      }
-    }
-
-    auto result = Serializer<T>::read(ctx, true, true);
-
-    if (result.ok()) {
-      ctx.ref_reader().resolve_callbacks();
-    }
-    return result;
-  }
-
-  /// Deserialize an object from an existing buffer.
-  ///
-  /// @param buffer Input buffer to read from.
-  /// @return Deserialized object on success, error on failure.
-  template <typename T> Result<T, Error> deserialize_from(Buffer &buffer) {
-    auto ctx_handle = read_ctx_pool_.acquire();
-    ReadContext &ctx = *ctx_handle;
-    ctx.attach(buffer);
-    struct ReadContextCleanup {
-      ReadContext &ctx;
-      ~ReadContextCleanup() {
-        ctx.reset();
-        ctx.detach();
-      }
-    } cleanup{ctx};
-
-    return deserialize_from<T>(ctx, buffer);
+    read_ctx_.attach(buffer);
+    ReadContextGuard guard(read_ctx_);
+    return deserialize_impl<T>(buffer);
   }
 
   /// Deserialize an object from a byte vector.
   ///
+  /// @tparam T The type of object to deserialize.
   /// @param data Vector containing serialized data.
-  /// @return Deserialized object on success, error on failure.
+  /// @return Deserialized object, or error.
   template <typename T>
-  Result<T, Error> deserialize_from(const std::vector<uint8_t> &data) {
+  Result<T, Error> deserialize(const std::vector<uint8_t> &data) {
     return deserialize<T>(data.data(), data.size());
   }
 
-  /// Get reference to configuration.
-  const Config &config() const { return config_; }
+  /// Deserialize an object from a Buffer, updating the buffer's reader_index.
+  ///
+  /// This overload reads from the current reader_index position and updates
+  /// the reader_index after deserialization, allowing multiple objects to
+  /// be read from the same buffer sequentially.
+  ///
+  /// @tparam T The type of object to deserialize.
+  /// @param buffer Buffer to read from. Its reader_index will be updated.
+  /// @return Deserialized object, or error.
+  template <typename T> Result<T, Error> deserialize(Buffer &buffer) {
+    if (FORY_PREDICT_FALSE(!finalized_)) {
+      ensure_finalized();
+    }
+    if (buffer.reader_index() >= buffer.writer_index()) {
+      return Unexpected(Error::invalid("No data to read in buffer"));
+    }
 
-  /// Access the underlying type resolver.
-  TypeResolver &type_resolver() { return *type_resolver_; }
-  const TypeResolver &type_resolver() const { return *type_resolver_; }
+    FORY_TRY(header, read_header(buffer));
+    if (header.is_null) {
+      return Unexpected(Error::invalid_data("Cannot deserialize null object"));
+    }
+    if (header.is_little_endian != is_little_endian_system()) {
+      return Unexpected(
+          Error::unsupported("Cross-endian deserialization not yet supported"));
+    }
+
+    read_ctx_.attach(buffer);
+    ReadContextGuard guard(read_ctx_);
+    return deserialize_impl<T>(buffer);
+  }
 
   // ==========================================================================
-  // Type Registration Helpers
+  // Advanced Access
   // ==========================================================================
 
-  /// Register a struct type with a numeric identifier.
-  template <typename T> Result<void, Error> register_struct(uint32_t type_id) {
-    return type_resolver_->template register_by_id<T>(type_id);
-  }
+  /// Access the internal WriteContext (for advanced use).
+  ///
+  /// Use this for direct manipulation of the serialization context.
+  /// Most users should use the serialize() methods instead.
+  WriteContext &write_context() { return write_ctx_; }
 
-  /// Register a struct type with an explicit namespace and name.
-  template <typename T>
-  Result<void, Error> register_struct(const std::string &ns,
-                                      const std::string &type_name) {
-    return type_resolver_->template register_by_name<T>(ns, type_name);
-  }
-
-  /// Register a struct type using only a type name (default namespace).
-  template <typename T>
-  Result<void, Error> register_struct(const std::string &type_name) {
-    return type_resolver_->template register_by_name<T>("", type_name);
-  }
-
-  /// Register an external serializer type with a numeric identifier.
-  template <typename T>
-  Result<void, Error> register_extension_type(uint32_t type_id) {
-    return type_resolver_->template register_ext_type_by_id<T>(type_id);
-  }
-
-  /// Register an external serializer with namespace and name.
-  template <typename T>
-  Result<void, Error> register_extension_type(const std::string &ns,
-                                              const std::string &type_name) {
-    return type_resolver_->template register_ext_type_by_name<T>(ns, type_name);
-  }
-
-  /// Register an external serializer using a type name (default namespace).
-  template <typename T>
-  Result<void, Error> register_extension_type(const std::string &type_name) {
-    return type_resolver_->template register_ext_type_by_name<T>("", type_name);
-  }
+  /// Access the internal ReadContext (for advanced use).
+  ///
+  /// Use this for direct manipulation of the deserialization context.
+  /// Most users should use the deserialize() methods instead.
+  ReadContext &read_context() { return read_ctx_; }
 
 private:
-  /// Core serialization implementation that takes WriteContext and Buffer.
-  /// All other serialization methods forward to this one.
-  ///
-  /// @param obj Object to serialize (const reference).
-  /// @param ctx WriteContext to use for serialization.
-  /// @param buffer Output buffer to write to (should be attached to ctx).
-  /// @return Number of bytes written on success, error on failure.
+  /// Constructor for ForyBuilder - resolver will be finalized lazily.
+  explicit Fory(const Config &config, std::shared_ptr<TypeResolver> resolver)
+      : BaseFory(config, std::move(resolver)), finalized_(false),
+        precomputed_header_(compute_header(config.xlang)),
+        header_length_(config.xlang ? 4 : 3),
+        write_ctx_(config_, type_resolver_),
+        read_ctx_(config_, type_resolver_) {}
+
+  /// Constructor for ThreadSafeFory pool - resolver is already finalized.
+  struct PreFinalized {};
+  explicit Fory(const Config &config, std::shared_ptr<TypeResolver> resolver,
+                PreFinalized)
+      : BaseFory(config, std::move(resolver)), finalized_(true),
+        precomputed_header_(compute_header(config.xlang)),
+        header_length_(config.xlang ? 4 : 3),
+        write_ctx_(config_, type_resolver_),
+        read_ctx_(config_, type_resolver_) {}
+
+  /// Finalize the type resolver on first use.
+  void ensure_finalized() {
+    if (!finalized_) {
+      auto final_result = type_resolver_->build_final_type_resolver();
+      FORY_CHECK(final_result.ok())
+          << "Failed to build finalized TypeResolver: "
+          << final_result.error().to_string();
+      type_resolver_ = std::move(final_result).value();
+      finalized_ = true;
+    }
+  }
+
+  /// Compute the precomputed header value.
+  static uint32_t compute_header(bool xlang) {
+    uint32_t header = 0;
+    // Magic number (2 bytes, little endian)
+    header |= (MAGIC_NUMBER & 0xFFFF);
+    // Flags byte at position 2
+    uint8_t flags = 0;
+    if (is_little_endian_system()) {
+      flags |= (1 << 1); // bit 1: endian flag
+    }
+    if (xlang) {
+      flags |= (1 << 2); // bit 2: xlang flag
+    }
+    header |= (static_cast<uint32_t>(flags) << 16);
+    // Language byte at position 3 (only used if xlang)
+    header |= (static_cast<uint32_t>(Language::CPP) << 24);
+    return header;
+  }
+
+  /// Core serialization implementation.
   template <typename T>
-  Result<size_t, Error> serialize_to_impl(const T &obj, WriteContext &ctx,
-                                          Buffer &buffer) {
+  Result<size_t, Error> serialize_impl(const T &obj, Buffer &buffer) {
     size_t start_pos = buffer.writer_index();
 
-    // Write Fory header
-    write_header(buffer, false, config_.xlang, is_little_endian_system(), false,
-                 Language::CPP);
+    // Write precomputed header (4 bytes), then adjust index if not xlang
+    buffer.Grow(4);
+    buffer.UnsafePut<uint32_t>(buffer.writer_index(), precomputed_header_);
+    buffer.IncreaseWriterIndex(header_length_);
 
     // Reserve space for meta offset in compatible mode
     size_t meta_start_offset = 0;
-    if (ctx.is_compatible()) {
+    if (write_ctx_.is_compatible()) {
       meta_start_offset = buffer.writer_index();
       buffer.WriteInt32(-1); // Placeholder for meta offset (fixed 4 bytes)
     }
 
-    FORY_RETURN_NOT_OK(Serializer<T>::write(obj, ctx, true, true));
+    // Top-level serialization: YES ref flags, yes type info
+    FORY_RETURN_NOT_OK(Serializer<T>::write(obj, write_ctx_, true, true));
 
     // Write collected TypeMetas at the end in compatible mode
-    if (ctx.is_compatible() && !ctx.meta_empty()) {
-      ctx.write_meta(meta_start_offset);
+    if (write_ctx_.is_compatible() && !write_ctx_.meta_empty()) {
+      write_ctx_.write_meta(meta_start_offset);
     }
 
     return buffer.writer_index() - start_pos;
   }
 
-  /// Private constructor - use builder() instead!
-  explicit Fory(const Config &config, std::shared_ptr<TypeResolver> resolver)
-      : config_(config), type_resolver_(std::move(resolver)),
-        finalized_resolver_(), finalized_once_flag_(),
-        write_ctx_pool_([this]() {
-          return std::make_unique<WriteContext>(config_,
-                                                get_finalized_resolver());
-        }),
-        read_ctx_pool_([this]() {
-          return std::make_unique<ReadContext>(config_,
-                                               get_finalized_resolver());
+  /// Core deserialization implementation.
+  template <typename T> Result<T, Error> deserialize_impl(Buffer &buffer) {
+    // Load TypeMetas at the beginning in compatible mode
+    size_t bytes_to_skip = 0;
+    if (read_ctx_.is_compatible()) {
+      auto meta_offset_result = buffer.ReadInt32();
+      FORY_RETURN_IF_ERROR(meta_offset_result);
+      int32_t meta_offset = meta_offset_result.value();
+      if (meta_offset != -1) {
+        FORY_TRY(meta_size, read_ctx_.load_type_meta(meta_offset));
+        bytes_to_skip = meta_size;
+      }
+    }
+
+    // Top-level deserialization: YES ref flags, yes type info
+    auto result = Serializer<T>::read(read_ctx_, true, true);
+
+    if (result.ok()) {
+      read_ctx_.ref_reader().resolve_callbacks();
+      if (bytes_to_skip > 0) {
+        buffer.IncreaseReaderIndex(static_cast<uint32_t>(bytes_to_skip));
+      }
+    }
+    return result;
+  }
+
+  bool finalized_;
+  uint32_t precomputed_header_;
+  uint8_t header_length_;
+  WriteContext write_ctx_;
+  ReadContext read_ctx_;
+
+  friend class ForyBuilder;
+  friend class ThreadSafeFory;
+};
+
+// ============================================================================
+// ThreadSafeFory - Thread-safe serialization with Fory pool
+// ============================================================================
+
+/// Thread-safe Fory serialization class.
+///
+/// This class uses a pool of Fory instances to provide thread-safe
+/// serialization. Each thread acquires a Fory instance from the pool,
+/// uses it for serialization/deserialization, and returns it when done.
+///
+/// Slightly slower than single-threaded Fory due to pool overhead, but
+/// safe to use from multiple threads concurrently.
+///
+/// Example:
+/// ```cpp
+/// auto fory = Fory::builder().xlang(true).build_thread_safe();
+/// fory.register_struct<MyStruct>(1);
+///
+/// // Can be used from multiple threads safely
+/// std::thread t1([&]() {
+///   auto result = fory.serialize(obj1);
+/// });
+/// std::thread t2([&]() {
+///   auto result = fory.serialize(obj2);
+/// });
+/// ```
+class ThreadSafeFory : public BaseFory {
+public:
+  template <typename T>
+  Result<std::vector<uint8_t>, Error> serialize(const T &obj) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->serialize(obj);
+  }
+
+  template <typename T>
+  Result<size_t, Error> serialize_to(const T &obj, Buffer &buffer) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->serialize_to(obj, buffer);
+  }
+
+  template <typename T>
+  Result<size_t, Error> serialize_to(const T &obj,
+                                     std::vector<uint8_t> &output) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->serialize_to(obj, output);
+  }
+
+  template <typename T>
+  Result<T, Error> deserialize(const uint8_t *data, size_t size) {
+    auto fory_handle = fory_pool_.acquire();
+    return fory_handle->template deserialize<T>(data, size);
+  }
+
+  template <typename T>
+  Result<T, Error> deserialize(const std::vector<uint8_t> &data) {
+    return deserialize<T>(data.data(), data.size());
+  }
+
+private:
+  explicit ThreadSafeFory(const Config &config,
+                          std::shared_ptr<TypeResolver> resolver)
+      : BaseFory(config, std::move(resolver)), finalized_resolver_(),
+        finalized_once_flag_(), fory_pool_([this]() {
+          return std::unique_ptr<Fory>(new Fory(
+              config_, get_finalized_resolver(), Fory::PreFinalized{}));
         }) {}
 
-  Config config_;
-  std::shared_ptr<TypeResolver> type_resolver_;
-  mutable std::shared_ptr<TypeResolver> finalized_resolver_;
-  mutable std::once_flag finalized_once_flag_;
-  util::Pool<WriteContext> write_ctx_pool_;
-  util::Pool<ReadContext> read_ctx_pool_;
-
-  /// Get or build finalized resolver (lazy, thread-safe, one-time
-  /// initialization). This mirrors Rust's OnceLock pattern.
   std::shared_ptr<TypeResolver> get_finalized_resolver() const {
     std::call_once(finalized_once_flag_, [this]() {
       auto final_result = type_resolver_->build_final_type_resolver();
@@ -422,6 +683,10 @@ private:
     return finalized_resolver_->clone();
   }
 
+  mutable std::shared_ptr<TypeResolver> finalized_resolver_;
+  mutable std::once_flag finalized_once_flag_;
+  util::Pool<Fory> fory_pool_;
+
   friend class ForyBuilder;
 };
 
@@ -429,15 +694,33 @@ private:
 // ForyBuilder Implementation
 // ============================================================================
 
+inline std::shared_ptr<TypeResolver> ForyBuilder::get_finalized_resolver() {
+  if (!type_resolver_) {
+    type_resolver_ = std::make_shared<TypeResolver>();
+  }
+  type_resolver_->apply_config(config_);
+  auto final_result = type_resolver_->build_final_type_resolver();
+  FORY_CHECK(final_result.ok()) << "Failed to build finalized TypeResolver: "
+                                << final_result.error().to_string();
+  return std::move(final_result).value();
+}
+
 inline Fory ForyBuilder::build() {
   if (!type_resolver_) {
     type_resolver_ = std::make_shared<TypeResolver>();
   }
   type_resolver_->apply_config(config_);
-
-  // Don't build final resolver yet - it will be built lazily on first use
-  // This matches Rust's OnceLock pattern
+  // Don't finalize yet - allow type registration, finalize on first use
   return Fory(config_, type_resolver_);
+}
+
+inline ThreadSafeFory ForyBuilder::build_thread_safe() {
+  if (!type_resolver_) {
+    type_resolver_ = std::make_shared<TypeResolver>();
+  }
+  type_resolver_->apply_config(config_);
+  // ThreadSafeFory builds finalized resolver lazily
+  return ThreadSafeFory(config_, type_resolver_);
 }
 
 } // namespace serialization

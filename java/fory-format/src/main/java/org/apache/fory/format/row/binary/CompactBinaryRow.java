@@ -19,10 +19,10 @@
 
 package org.apache.fory.format.row.binary;
 
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
 
 /**
@@ -53,13 +53,13 @@ public class CompactBinaryRow extends BinaryRow {
     super(schema);
     this.fixedOffsets = fixedOffsets;
     bitmapOffset = fixedOffsets[fixedOffsets.length - 1];
-    allFieldsNotNullable = CompactBinaryRowWriter.allNotNullable(schema.getFields());
+    allFieldsNotNullable = CompactBinaryRowWriter.allNotNullable(schema.fields());
   }
 
   @Override
   protected int computeBitmapWidthInBytes() {
     // cannot use field due to initialization order
-    if (CompactBinaryRowWriter.allNotNullable(schema.getFields())) {
+    if (CompactBinaryRowWriter.allNotNullable(schema.fields())) {
       return 0;
     }
     return CompactBinaryRowWriter.headerBytes(schema);

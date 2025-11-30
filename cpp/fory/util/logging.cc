@@ -104,6 +104,9 @@ ForyLog::~ForyLog() {
   if (severity_ == ForyLogLevel::FORY_FATAL) {
     Stream() << "\n*** StackTrace Information ***\n" << ::fory::GetCallTrace();
     Stream() << std::endl;
+    Stream().flush();
+    std::cerr.flush();
+    std::cout.flush();
     std::_Exit(EXIT_FAILURE);
   }
   Stream() << "\n" << std::endl;

@@ -17,69 +17,76 @@
 
 import datetime
 import pyfory
-import pytest
 
 from dataclasses import dataclass
-from pyfory.format.infer import infer_schema, infer_field, ArrowTypeVisitor
-from pyfory.tests.record import foo_schema
-from pyfory.util import lazy_import
+from pyfory.format.infer import infer_schema, infer_field, ForyTypeVisitor
+from pyfory.format import (
+    TypeId,
+)
 from typing import List, Dict
-
-
-pa = lazy_import("pyarrow")
-
-
-@dataclass
-class Foo:
-    f1: "pa.int32"
-    f2: str
-    f3: List[str]
-    f4: Dict[str, "pa.int32"]
-    f5: List["pa.int32"]
-    f6: "pa.int32"
-    f7: "Bar"
 
 
 @dataclass
 class Bar:
-    f1: "pa.int32"
+    f1: int
     f2: str
 
 
+@dataclass
+class Foo:
+    f1: int
+    f2: str
+    f3: List[str]
+    f4: Dict[str, int]
+    f5: List[int]
+    f6: int
+    f7: Bar
+
+
 def _infer_field(field_name, type_, types_path=None):
-    return infer_field(field_name, type_, ArrowTypeVisitor(), types_path=types_path)
+    return infer_field(field_name, type_, ForyTypeVisitor(), types_path=types_path)
 
 
 def test_infer_field():
-    assert _infer_field("", pa.int8).type == pa.int8()
-    assert _infer_field("", pa.int16).type == pa.int16()
-    assert _infer_field("", pa.int32).type == pa.int32()
-    assert _infer_field("", pa.int64).type == pa.int64()
-    assert _infer_field("", pa.float32).type == pa.float32()
-    assert _infer_field("", pa.float64).type == pa.float64()
-    assert _infer_field("", str).type == pa.utf8()
-    assert _infer_field("", bytes).type == pa.binary()
-    assert _infer_field("", List[Dict[str, str]]).type == pa.list_(pa.map_(pa.utf8(), pa.utf8()))
-    assert _infer_field("", List[Dict[str, Dict[str, List[pa.int32]]]]).type == pa.list_(pa.map_(pa.utf8(), pa.map_(pa.utf8(), pa.list_(pa.int32()))))
-    with pytest.raises(TypeError):
-        _infer_field("", pa.int8())
-        _infer_field("", pa.utf8())
+    assert _infer_field("", int).type.id == TypeId.INT64
+    assert _infer_field("", float).type.id == TypeId.FLOAT64
+    assert _infer_field("", str).type.id == TypeId.STRING
+    assert _infer_field("", bytes).type.id == TypeId.BINARY
+    assert _infer_field("", List[str]).type.id == TypeId.LIST
+    assert _infer_field("", Dict[str, str]).type.id == TypeId.MAP
+    assert _infer_field("", List[Dict[str, str]]).type.id == TypeId.LIST
 
-        class X:
-            pass
+    # Custom class is treated as a struct
+    class X:
+        pass
 
-        _infer_field("", X)
+    result = _infer_field("", X)
+    assert result.type.id == TypeId.STRUCT
 
 
 def test_infer_class_schema():
     schema = infer_schema(Foo)
-    assert schema == foo_schema(), f"schema {schema}\n====\n,foo_schema {foo_schema()}"
+    assert schema.num_fields == 7
+    assert schema.field(0).name == "f1"
+    assert schema.field(0).type.id == TypeId.INT64
+    assert schema.field(1).name == "f2"
+    assert schema.field(1).type.id == TypeId.STRING
+    assert schema.field(2).name == "f3"
+    assert schema.field(2).type.id == TypeId.LIST
+    assert schema.field(3).name == "f4"
+    assert schema.field(3).type.id == TypeId.MAP
+    assert schema.field(4).name == "f5"
+    assert schema.field(4).type.id == TypeId.LIST
+    assert schema.field(5).name == "f6"
+    assert schema.field(5).type.id == TypeId.INT64
+    assert schema.field(6).name == "f7"
+    assert schema.field(6).type.id == TypeId.STRUCT
 
 
 def test_type_id():
-    assert pyfory.format.infer.get_type_id(str) == pa.string().id
-    assert pyfory.format.infer.get_type_id(datetime.date) == pa.date32().id
-    assert pyfory.format.infer.get_type_id(datetime.datetime) == pa.timestamp("us").id
+    assert pyfory.format.infer.get_type_id(str) == TypeId.STRING
+    assert pyfory.format.infer.get_type_id(datetime.date) == TypeId.LOCAL_DATE
+    assert pyfory.format.infer.get_type_id(datetime.datetime) == TypeId.TIMESTAMP
 
 
 if __name__ == "__main__":

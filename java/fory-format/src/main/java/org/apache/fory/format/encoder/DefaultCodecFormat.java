@@ -21,14 +21,14 @@ package org.apache.fory.format.encoder;
 
 import java.util.Collection;
 import java.util.Map;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
 

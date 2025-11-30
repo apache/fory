@@ -19,8 +19,6 @@
 
 package org.apache.fory.format.encoder;
 
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Invoke;
 import org.apache.fory.codegen.Expression.ListExpression;
@@ -30,6 +28,10 @@ import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
+import org.apache.fory.format.type.DataType;
+import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
 
@@ -93,8 +95,8 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
     final Expression result =
         super.serializeForArrayByWriter(
             inputObject, arrayWriter, typeRef, fieldIfKnown, arrowField);
-    if (fieldIfKnown == null
-        || CompactBinaryRowWriter.fixedWidthFor(itemType(fieldIfKnown)) == -1) {
+    Field itemField = (fieldIfKnown != null) ? itemType(fieldIfKnown) : null;
+    if (itemField == null || CompactBinaryRowWriter.fixedWidthFor(itemField) == -1) {
       return result;
     }
     return new ListExpression(
@@ -106,7 +108,15 @@ class CompactRowEncoderBuilder extends RowEncoderBuilder {
   }
 
   private static Field itemType(final Field fieldIfKnown) {
-    return fieldIfKnown.getChildren().get(0);
+    DataType type = fieldIfKnown.type();
+    if (type instanceof DataTypes.ListType) {
+      return ((DataTypes.ListType) type).valueField();
+    } else if (type instanceof DataTypes.MapType) {
+      // For maps, we can't determine fixed width for the value type directly
+      // Return null to indicate variable width should be assumed
+      return null;
+    }
+    return null;
   }
 
   @Override

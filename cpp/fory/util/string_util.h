@@ -89,6 +89,98 @@ inline void utf16SurrogatePairToUtf8(uint16_t high, uint16_t low, char *&utf8) {
   *utf8++ = static_cast<char>((code_point & 0x3F) | 0x80);
 }
 
+// Convert Latin1 encoded bytes to UTF-8 string.
+// Latin1 (ISO-8859-1) maps bytes 0-127 to ASCII and bytes 128-255 to
+// Unicode code points U+0080 to U+00FF.
+inline std::string latin1ToUtf8(const uint8_t *data, size_t length) {
+  if (length == 0) {
+    return std::string();
+  }
+
+  // Fast path: if all bytes are ASCII, direct copy
+  if (isAsciiFallback(reinterpret_cast<const char *>(data), length)) {
+    return std::string(reinterpret_cast<const char *>(data), length);
+  }
+
+  // Calculate exact output size to avoid reallocation
+  // ASCII bytes (< 128) need 1 byte, non-ASCII need 2 bytes in UTF-8
+  size_t utf8_len = 0;
+  for (size_t i = 0; i < length; ++i) {
+    utf8_len += (data[i] < 128) ? 1 : 2;
+  }
+
+  std::string result;
+  result.resize(utf8_len);
+  char *out = &result[0];
+
+  for (size_t i = 0; i < length; ++i) {
+    uint8_t byte = data[i];
+    if (byte < 128) {
+      *out++ = static_cast<char>(byte);
+    } else {
+      // Latin1 byte 128-255 maps to U+0080 to U+00FF
+      // UTF-8 encoding: 110xxxxx 10xxxxxx
+      *out++ = static_cast<char>(0xC0 | (byte >> 6));
+      *out++ = static_cast<char>(0x80 | (byte & 0x3F));
+    }
+  }
+
+  return result;
+}
+
+// Convert UTF-16 code units to UTF-8 string.
+// Handles surrogate pairs for characters outside BMP.
+inline std::string utf16ToUtf8(const uint16_t *data, size_t char_count) {
+  if (char_count == 0) {
+    return std::string();
+  }
+
+  // Calculate exact output size
+  // BMP chars < 0x80: 1 byte, < 0x800: 2 bytes, else: 3 bytes
+  // Surrogate pairs: 4 bytes
+  size_t utf8_len = 0;
+  for (size_t i = 0; i < char_count; ++i) {
+    uint16_t ch = data[i];
+    if (ch >= 0xD800 && ch <= 0xDBFF && i + 1 < char_count) {
+      uint16_t low = data[i + 1];
+      if (low >= 0xDC00 && low <= 0xDFFF) {
+        utf8_len += 4; // surrogate pair
+        ++i;
+        continue;
+      }
+    }
+    if (ch < 0x80) {
+      utf8_len += 1;
+    } else if (ch < 0x800) {
+      utf8_len += 2;
+    } else {
+      utf8_len += 3;
+    }
+  }
+
+  std::string result;
+  result.resize(utf8_len);
+  char *out = &result[0];
+
+  for (size_t i = 0; i < char_count; ++i) {
+    uint16_t ch = data[i];
+
+    // Check for surrogate pair
+    if (ch >= 0xD800 && ch <= 0xDBFF && i + 1 < char_count) {
+      uint16_t low = data[i + 1];
+      if (low >= 0xDC00 && low <= 0xDFFF) {
+        utf16SurrogatePairToUtf8(ch, low, out);
+        ++i;
+        continue;
+      }
+    }
+
+    utf16ToUtf8(ch, out);
+  }
+
+  return result;
+}
+
 static inline bool hasSurrogatePairFallback(const uint16_t *data, size_t size) {
   for (size_t i = 0; i < size; ++i) {
     auto c = data[i];

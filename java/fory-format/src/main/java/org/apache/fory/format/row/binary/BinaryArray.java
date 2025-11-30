@@ -28,9 +28,9 @@ import static org.apache.fory.format.type.DataTypes.PRIMITIVE_LONG_ARRAY_FIELD;
 import static org.apache.fory.format.type.DataTypes.PRIMITIVE_SHORT_ARRAY_FIELD;
 
 import java.math.BigDecimal;
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.ArrayData;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.BitUtils;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
@@ -66,7 +66,8 @@ public class BinaryArray extends UnsafeTrait implements ArrayData {
   }
 
   private static int elementSize(Field field) {
-    int width = DataTypes.getTypeWidth(field.getChildren().get(0).getType());
+    DataTypes.ListType listType = (DataTypes.ListType) field.type();
+    int width = DataTypes.getTypeWidth(listType.valueType());
     // variable-length element type
     if (width < 0) {
       return 8;
@@ -158,17 +159,20 @@ public class BinaryArray extends UnsafeTrait implements ArrayData {
 
   @Override
   public BinaryRow getStruct(int ordinal) {
-    return getStruct(ordinal, field.getChildren().get(0), 0);
+    DataTypes.ListType listType = (DataTypes.ListType) field.type();
+    return getStruct(ordinal, listType.valueField(), 0);
   }
 
   @Override
   public BinaryArray getArray(int ordinal) {
-    return getArray(ordinal, field.getChildren().get(0));
+    DataTypes.ListType listType = (DataTypes.ListType) field.type();
+    return getArray(ordinal, listType.valueField());
   }
 
   @Override
   public BinaryMap getMap(int ordinal) {
-    return getMap(ordinal, field.getChildren().get(0));
+    DataTypes.ListType listType = (DataTypes.ListType) field.type();
+    return getMap(ordinal, listType.valueField());
   }
 
   @Override
@@ -233,7 +237,8 @@ public class BinaryArray extends UnsafeTrait implements ArrayData {
 
   @Override
   public String toString() {
-    Field valueField = this.field.getChildren().get(0);
+    DataTypes.ListType listType = (DataTypes.ListType) field.type();
+    Field valueField = listType.valueField();
     StringBuilder builder = new StringBuilder("[");
     for (int i = 0; i < numElements; i++) {
       if (i != 0) {
@@ -319,19 +324,19 @@ public class BinaryArray extends UnsafeTrait implements ArrayData {
     BinaryArray arr = array;
     while (depth < numDimensions) {
       arrs[depth] = arr;
-      int numElements = arr.numElements();
-      dimensions[depth] = numElements;
+      int numElems = arr.numElements();
+      dimensions[depth] = numElems;
       if (depth == numDimensions - 1) {
         break;
       }
       boolean allNull = true;
-      if (startFromLefts[depth] == numElements) {
+      if (startFromLefts[depth] == numElems) {
         // this node's subtree has all be traversed, but no node has depth count to numDimensions-1.
         startFromLefts[depth] = 0;
         depth--;
         continue;
       }
-      for (int i = startFromLefts[depth]; i < numElements; i++) {
+      for (int i = startFromLefts[depth]; i < numElems; i++) {
         if (!arr.isNullAt(i)) {
           arr = arr.getArray(i);
           allNull = false;

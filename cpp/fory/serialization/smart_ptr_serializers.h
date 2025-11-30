@@ -39,6 +39,14 @@ template <typename T> struct Serializer<std::optional<T>> {
   // Use the inner type's type_id
   static constexpr TypeId type_id = Serializer<T>::type_id;
 
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    return Serializer<T>::write_type_info(ctx);
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    return Serializer<T>::read_type_info(ctx);
+  }
+
   static Result<void, Error> write(const std::optional<T> &opt,
                                    WriteContext &ctx, bool write_ref,
                                    bool write_type) {
@@ -180,6 +188,27 @@ template <typename T> struct SharedPtrTypeIdHelper<T, true> {
 template <typename T> struct Serializer<std::shared_ptr<T>> {
   static constexpr TypeId type_id =
       SharedPtrTypeIdHelper<T, std::is_polymorphic_v<T>>::value;
+
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    if constexpr (std::is_polymorphic_v<T>) {
+      // For polymorphic types, type info must be written dynamically
+      ctx.write_varuint32(static_cast<uint32_t>(TypeId::UNKNOWN));
+      return Result<void, Error>();
+    } else {
+      return Serializer<T>::write_type_info(ctx);
+    }
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    if constexpr (std::is_polymorphic_v<T>) {
+      // For polymorphic types, type info is read dynamically
+      FORY_TRY(type_info, ctx.read_any_typeinfo());
+      (void)type_info; // Type checking is done at value read time
+      return Result<void, Error>();
+    } else {
+      return Serializer<T>::read_type_info(ctx);
+    }
+  }
 
   static Result<void, Error> write(const std::shared_ptr<T> &ptr,
                                    WriteContext &ctx, bool write_ref,
@@ -346,6 +375,11 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
             "Cannot deserialize polymorphic std::shared_ptr<T> "
             "without type info (read_type=false)"));
       }
+
+      // Check and increase dynamic depth for polymorphic deserialization
+      FORY_RETURN_NOT_OK(ctx.increase_dyn_depth());
+      DynDepthGuard dyn_depth_guard(ctx);
+
       // Read type info from stream to get the concrete type
       FORY_TRY(type_info, ctx.read_any_typeinfo());
 
@@ -429,6 +463,10 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
 
     // For polymorphic types, use the harness to deserialize the concrete type
     if constexpr (is_polymorphic) {
+      // Check and increase dynamic depth for polymorphic deserialization
+      FORY_RETURN_NOT_OK(ctx.increase_dyn_depth());
+      DynDepthGuard dyn_depth_guard(ctx);
+
       // The type_info contains information about the CONCRETE type, not T
       // Use the harness to deserialize it
       if (!type_info.harness.read_data_fn) {
@@ -618,6 +656,11 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
             "Cannot deserialize polymorphic std::unique_ptr<T> "
             "without type info (read_type=false)"));
       }
+
+      // Check and increase dynamic depth for polymorphic deserialization
+      FORY_RETURN_NOT_OK(ctx.increase_dyn_depth());
+      DynDepthGuard dyn_depth_guard(ctx);
+
       // Read type info from stream to get the concrete type
       FORY_TRY(type_info, ctx.read_any_typeinfo());
 
@@ -674,6 +717,10 @@ template <typename T> struct Serializer<std::unique_ptr<T>> {
 
     // For polymorphic types, use the harness to deserialize the concrete type
     if constexpr (is_polymorphic) {
+      // Check and increase dynamic depth for polymorphic deserialization
+      FORY_RETURN_NOT_OK(ctx.increase_dyn_depth());
+      DynDepthGuard dyn_depth_guard(ctx);
+
       if (!type_info.harness.read_data_fn) {
         return Unexpected(Error::type_error(
             "No harness read function for polymorphic type deserialization"));

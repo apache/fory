@@ -25,6 +25,7 @@
 #include "fory/row/writer.h"
 
 namespace fory {
+namespace row {
 
 namespace test2 {
 
@@ -129,4 +130,5 @@ TEST(RowEncoder, SimpleArray) {
 }
 
 } // namespace test2
+} // namespace row
 } // namespace fory

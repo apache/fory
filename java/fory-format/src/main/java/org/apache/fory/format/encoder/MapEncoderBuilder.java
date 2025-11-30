@@ -24,7 +24,6 @@ import static org.apache.fory.type.TypeUtils.PRIMITIVE_INT_TYPE;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
 import java.util.Map;
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.Fory;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CodegenContext;
@@ -32,6 +31,7 @@ import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.ExpressionUtils;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
+import org.apache.fory.format.type.Field;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -160,11 +160,11 @@ public class MapEncoderBuilder extends BaseBinaryEncoderBuilder {
     Expression.Reference valArrayWriter =
         new Expression.Reference(ROOT_VALUE_WRITER_NAME, arrayWriterType(), false);
 
-    Expression.Reference fieldExpr = new Expression.Reference(FIELD_NAME, ARROW_FIELD_TYPE, false);
+    Expression.Reference fieldExpr = new Expression.Reference(FIELD_NAME, FORY_FIELD_TYPE, false);
     Expression.Reference keyFieldExpr =
-        new Expression.Reference(KEY_FIELD_NAME, ARROW_FIELD_TYPE, false);
+        new Expression.Reference(KEY_FIELD_NAME, FORY_FIELD_TYPE, false);
     Expression.Reference valFieldExpr =
-        new Expression.Reference(VALUE_FIELD_NAME, ARROW_FIELD_TYPE, false);
+        new Expression.Reference(VALUE_FIELD_NAME, FORY_FIELD_TYPE, false);
 
     @SuppressWarnings("unchecked")
     TypeRef<?> supertype = ((TypeRef<? extends Map<?, ?>>) mapToken).getSupertype(Map.class);

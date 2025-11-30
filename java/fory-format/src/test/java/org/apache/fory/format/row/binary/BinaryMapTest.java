@@ -21,11 +21,11 @@ package org.apache.fory.format.row.binary;
 
 import java.util.Collections;
 import java.util.List;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.testng.annotations.Test;

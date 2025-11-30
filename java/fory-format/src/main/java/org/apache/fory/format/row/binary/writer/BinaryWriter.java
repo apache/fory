@@ -23,13 +23,10 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.arrow.memory.ArrowBuf;
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.util.DecimalUtility;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
 import org.apache.fory.format.row.binary.BinaryRow;
-import org.apache.fory.format.vectorized.ArrowUtils;
+import org.apache.fory.format.type.DataTypes;
 import org.apache.fory.memory.BitUtils;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.util.DecimalUtils;
@@ -216,25 +213,44 @@ public abstract class BinaryWriter {
     }
   }
 
-  protected final void writeDecimal(int ordinal, BigDecimal value, ArrowType.Decimal type) {
+  protected final void writeDecimal(int ordinal, BigDecimal value, DataTypes.DecimalType type) {
     if (value != null) {
-      DecimalUtility.checkPrecisionAndScale(value, type.getPrecision(), type.getScale());
+      checkPrecisionAndScale(value, type.precision(), type.scale());
       grow(DecimalUtils.DECIMAL_BYTE_LENGTH);
-      ArrowBuf arrowBuf = ArrowUtils.buffer(DecimalUtils.DECIMAL_BYTE_LENGTH);
-      DecimalUtility.writeBigDecimalToArrowBuf(
-          value, arrowBuf, 0, DecimalUtils.DECIMAL_BYTE_LENGTH);
-      buffer.copyFromUnsafe(
-          bufferWriteIndexFor(ordinal),
-          null,
-          arrowBuf.memoryAddress(),
-          DecimalUtils.DECIMAL_BYTE_LENGTH);
-      arrowBuf.getReferenceManager().release();
+      writeBigDecimalToBuffer(
+          value, bufferWriteIndexFor(ordinal), DecimalUtils.DECIMAL_BYTE_LENGTH);
       setOffsetAndSize(ordinal, writerIndex(), DecimalUtils.DECIMAL_BYTE_LENGTH);
       if (copyShouldIncreaseWriterIndex(ordinal)) {
         increaseWriterIndex(DecimalUtils.DECIMAL_BYTE_LENGTH);
       }
     } else {
       setNullAt(ordinal);
+    }
+  }
+
+  private static void checkPrecisionAndScale(BigDecimal value, int precision, int scale) {
+    if (value.precision() > precision) {
+      throw new IllegalArgumentException(
+          "Decimal precision " + value.precision() + " exceeds max precision " + precision);
+    }
+    if (value.scale() > scale) {
+      throw new IllegalArgumentException(
+          "Decimal scale " + value.scale() + " exceeds max scale " + scale);
+    }
+  }
+
+  private void writeBigDecimalToBuffer(BigDecimal value, int offset, int byteWidth) {
+    byte[] bytes = value.unscaledValue().toByteArray();
+    // Decimal is stored in little-endian format with sign extension
+    byte signByte = (byte) (bytes[0] < 0 ? -1 : 0);
+    // Write in little-endian format (reverse order)
+    int srcIdx = bytes.length - 1;
+    for (int i = 0; i < byteWidth; i++) {
+      if (srcIdx >= 0) {
+        buffer.putByte(offset + i, bytes[srcIdx--]);
+      } else {
+        buffer.putByte(offset + i, signByte);
+      }
     }
   }
 

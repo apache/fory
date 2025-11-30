@@ -20,7 +20,9 @@
 package org.apache.fory.format.row;
 
 import java.math.BigDecimal;
-import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.fory.format.type.DataType;
+import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.MemoryBuffer;
 
 /**
@@ -64,6 +66,64 @@ public interface Getters {
   MapData getMap(int ordinal);
 
   default Object get(int ordinal, Field field) {
-    return field.getType().accept(new ToStringValueVisitor(this)).apply(ordinal);
+    if (isNullAt(ordinal)) {
+      return null;
+    }
+    DataType type = field.type();
+    int typeId = type.typeId();
+
+    if (typeId == DataTypes.TYPE_BOOL) {
+      return getBoolean(ordinal);
+    } else if (typeId == DataTypes.TYPE_INT8) {
+      return getByte(ordinal);
+    } else if (typeId == DataTypes.TYPE_INT16) {
+      return getInt16(ordinal);
+    } else if (typeId == DataTypes.TYPE_INT32) {
+      return getInt32(ordinal);
+    } else if (typeId == DataTypes.TYPE_INT64) {
+      return getInt64(ordinal);
+    } else if (typeId == DataTypes.TYPE_FLOAT32) {
+      return getFloat32(ordinal);
+    } else if (typeId == DataTypes.TYPE_FLOAT64) {
+      return getFloat64(ordinal);
+    } else if (typeId == DataTypes.TYPE_DECIMAL) {
+      return getDecimal(ordinal);
+    } else if (typeId == DataTypes.TYPE_LOCAL_DATE) {
+      return getDate(ordinal);
+    } else if (typeId == DataTypes.TYPE_TIMESTAMP) {
+      return getTimestamp(ordinal);
+    } else if (typeId == DataTypes.TYPE_STRING) {
+      return getString(ordinal);
+    } else if (typeId == DataTypes.TYPE_BINARY) {
+      return binaryToString(getBinary(ordinal));
+    } else if (typeId == DataTypes.TYPE_STRUCT) {
+      return getStruct(ordinal);
+    } else if (typeId == DataTypes.TYPE_LIST) {
+      return getArray(ordinal);
+    } else if (typeId == DataTypes.TYPE_MAP) {
+      return getMap(ordinal);
+    } else {
+      throw new UnsupportedOperationException("Unsupported type: " + type);
+    }
+  }
+
+  private static String binaryToString(byte[] bytes) {
+    if (bytes == null) {
+      return null;
+    }
+    final int clampedLen = Math.min(bytes.length, 256);
+    final StringBuilder result = new StringBuilder(clampedLen * 2 + 5);
+    result.append("0x");
+    for (int i = 0; i < clampedLen; i++) {
+      final String hexStr = Integer.toHexString(bytes[i] & 0xff);
+      if (hexStr.length() == 1) {
+        result.append('0');
+      }
+      result.append(hexStr);
+    }
+    if (bytes.length > clampedLen) {
+      result.append("...");
+    }
+    return result.toString();
   }
 }

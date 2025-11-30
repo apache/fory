@@ -1,0 +1,61 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+module(
+    name = "fory",
+    version = "0.14.0",
+)
+
+# Platforms (needed for platform-specific build configurations)
+bazel_dep(name = "platforms", version = "0.0.11")
+
+# Bazel Skylib
+bazel_dep(name = "bazel_skylib", version = "1.7.1")
+
+# Rules CC (C++ rules)
+bazel_dep(name = "rules_cc", version = "0.1.1")
+
+# Rules Python - standard Python rules
+bazel_dep(name = "rules_python", version = "1.4.1")
+
+# Configure Python toolchain to use version from BAZEL_PYTHON_VERSION env var
+# This allows building extensions with the correct Python version headers
+python = use_extension("@rules_python//python/extensions:python.bzl", "python")
+python.toolchain(python_version = "3.8")
+python.toolchain(python_version = "3.9")
+python.toolchain(python_version = "3.10")
+python.toolchain(python_version = "3.11")
+python.toolchain(python_version = "3.12")
+python.toolchain(python_version = "3.13")
+use_repo(python, "python_versions")
+
+# Cython from BCR with official rules
+bazel_dep(name = "cython", version = "3.1.3")
+
+# Google Test
+bazel_dep(name = "googletest", version = "1.15.2")
+
+# Abseil C++
+bazel_dep(name = "abseil-cpp", version = "20240722.0")
+
+# Hedron's Compile Commands Extractor for Bazel
+bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
+git_override(
+    module_name = "hedron_compile_commands",
+    remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
+    commit = "0e990032f3c5a866e72615cf67e5ce22186dcb97",
+)

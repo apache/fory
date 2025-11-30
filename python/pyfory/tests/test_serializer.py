@@ -41,7 +41,6 @@ from pyfory.serializer import (
     PyArraySerializer,
     Numpy1DArraySerializer,
 )
-from pyfory.tests.core import require_pyarrow
 from pyfory.type import TypeId
 from pyfory.util import lazy_import
 
@@ -337,45 +336,6 @@ def test_pickle():
     buf.reader_index = buf.reader_index + 4
     assert unpickler.load() == "abcd"
     print(f"reader_index {buf.reader_index}")
-
-
-@require_pyarrow
-def test_serialize_arrow():
-    record_batch = create_record_batch(10000)
-    table = pa.Table.from_batches([record_batch, record_batch])
-    fory = Fory(xlang=True, ref=True)
-    serialized_data = Buffer.allocate(32)
-    fory.serialize(record_batch, buffer=serialized_data)
-    fory.serialize(table, buffer=serialized_data)
-    new_batch = fory.deserialize(serialized_data)
-    new_table = fory.deserialize(serialized_data)
-    assert new_batch == record_batch
-    assert new_table == table
-
-
-@require_pyarrow
-def test_serialize_arrow_zero_copy():
-    record_batch = create_record_batch(10000)
-    table = pa.Table.from_batches([record_batch, record_batch])
-    buffer_objects = []
-    fory = Fory(xlang=True, ref=True)
-    serialized_data = Buffer.allocate(32)
-    fory.serialize(record_batch, buffer=serialized_data, buffer_callback=buffer_objects.append)
-    fory.serialize(table, buffer=serialized_data, buffer_callback=buffer_objects.append)
-    buffers = [o.getbuffer() for o in buffer_objects]
-    new_batch = fory.deserialize(serialized_data, buffers=buffers[:1])
-    new_table = fory.deserialize(serialized_data, buffers=buffers[1:])
-    buffer_objects.clear()
-    assert new_batch == record_batch
-    assert new_table == table
-
-
-def create_record_batch(size):
-    data = [
-        pa.array([bool(i % 2) for i in range(size)]),
-        pa.array([f"test{i}" for i in range(size)]),
-    ]
-    return pa.RecordBatch.from_arrays(data, ["boolean", "varchar"])
 
 
 @dataclass

@@ -9,11 +9,3 @@ cc_library(
     linkstatic=True,
     visibility = ["//visibility:public"],
 )
-
-cc_library(
-    name = "simdutf",
-    srcs = ["simdutf.cpp"],
-    hdrs = ["simdutf.h"],
-    includes = ["."],
-    visibility = ["//visibility:public"],
-)

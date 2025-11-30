@@ -22,6 +22,7 @@
 #include "fory/meta/preprocessor.h"
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <string_view>
 #include <type_traits>
@@ -170,6 +171,8 @@ struct EnumMetadata<Enum, std::enable_if_t<EnumInfo<Enum>::defined>> {
   static_assert(true)
 
 /// Register an enum's enumerators to enable compile-time metadata queries.
+/// TypeIndex uses the fallback (type_fallback_hash based on PRETTY_FUNCTION)
+/// which provides unique type identification without namespace issues.
 ///
 /// Usage examples:
 /// ```cpp

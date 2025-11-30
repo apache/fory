@@ -20,9 +20,9 @@
 package org.apache.fory.format.row.binary;
 
 import java.nio.ByteBuffer;
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.MapData;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;

@@ -135,7 +135,6 @@ public class ClassUtils {
     Path path = Paths.get(pkg.replace(".", "/") + "/" + cls.getSimpleName() + ".java");
     try {
       Files.deleteIfExists(path);
-      System.out.println(path.toAbsolutePath());
       path.getParent().toFile().mkdirs();
       Files.write(path, code.getBytes());
       // Use JavaCompiler because janino doesn't support generics.
@@ -168,7 +167,6 @@ public class ClassUtils {
     Path path = Paths.get(pkg.replace(".", "/") + "/" + className + ".java");
     try {
       Files.deleteIfExists(path);
-      System.out.println(path.toAbsolutePath());
       path.getParent().toFile().mkdirs();
       Files.write(path, code.getBytes());
       // Use JavaCompiler because janino doesn't support generics.

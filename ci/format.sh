@@ -153,6 +153,29 @@ format_java() {
     fi
 }
 
+format_cpp() {
+    echo "$(date)" "clang-format C++ files...."
+    if command -v clang-format >/dev/null; then
+      git ls-files -- '*.cc' '*.h' "${GIT_LS_EXCLUDES[@]}" | xargs -P 5 clang-format -i
+      echo "$(date)" "C++ formatting done!"
+    else
+      echo "ERROR: clang-format is not installed!"
+      exit 1
+    fi
+}
+
+format_python() {
+    echo "$(date)" "Ruff format Python files...."
+    if command -v ruff >/dev/null; then
+      git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs -P 10 ruff format
+      git ls-files -- '*.py' "${GIT_LS_EXCLUDES[@]}" | xargs ruff check --fix
+      echo "$(date)" "Python formatting done!"
+    else
+      echo "ERROR: ruff is not installed! Install with: pip install ruff"
+      exit 1
+    fi
+}
+
 # Format all files, and print the diff to stdout for travis.
 format_all() {
     format_all_scripts "${@}"
@@ -250,6 +273,10 @@ elif [ "${1-}" == '--all' ]; then
     if [ -n "${FORMAT_SH_PRINT_DIFF-}" ]; then git --no-pager diff; fi
 elif [ "${1-}" == '--java' ]; then
     format_java
+elif [ "${1-}" == '--cpp' ]; then
+    format_cpp
+elif [ "${1-}" == '--python' ]; then
+    format_python
 else
     # Add the origin remote if it doesn't exist
     if ! git remote -v | grep -q origin; then

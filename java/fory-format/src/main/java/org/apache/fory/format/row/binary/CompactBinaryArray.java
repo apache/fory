@@ -19,12 +19,12 @@
 
 package org.apache.fory.format.row.binary;
 
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.writer.BinaryWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
 
 public class CompactBinaryArray extends BinaryArray {
@@ -35,9 +35,10 @@ public class CompactBinaryArray extends BinaryArray {
 
   public CompactBinaryArray(final Field field) {
     super(field, CompactBinaryArrayWriter.elementWidth(field));
-    elementField = field.getChildren().get(0);
+    DataTypes.ListType listType = (DataTypes.ListType) field.type();
+    elementField = listType.valueField();
     fixedWidth = CompactBinaryRowWriter.fixedWidthFor(elementField);
-    elementNullable = elementField.isNullable();
+    elementNullable = elementField.nullable();
   }
 
   @Override

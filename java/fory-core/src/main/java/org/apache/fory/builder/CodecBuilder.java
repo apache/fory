@@ -118,8 +118,11 @@ public abstract class CodecBuilder {
     ctx.reserveName(ROOT_OBJECT_NAME);
     // Don't import other packages to avoid class conflicts.
     // For example user class named as `Date`/`List`/`MemoryBuffer`
+    // Skip Java reserved words since they can't be used as variable names anyway
+    // (e.g., Kotlin allows field names like "new" which are valid at bytecode level)
     ReflectionUtils.getFields(beanType.getRawType(), true).stream()
         .map(Field::getName)
+        .filter(name -> !CodegenContext.JAVA_RESERVED_WORDS.contains(name))
         .collect(Collectors.toSet())
         .forEach(ctx::reserveName);
   }

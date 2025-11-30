@@ -36,7 +36,6 @@ java/**/generated
 javascript/**/dist/
 javascript/**/node_modules/
 javascript/**/build
-MODULE.bazel
 MODULE.bazel.lock
 .DS_Store
 **/.DS_Store
@@ -81,3 +80,4 @@ dist/
 **/.pytest_cache
 .venv
 **/.idea
+examples/cpp/cmake_example/build

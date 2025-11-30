@@ -23,9 +23,28 @@ use crate::serializer::util::write_dyn_data_generic;
 use crate::serializer::{ForyDefault, Serializer};
 use crate::types::RefFlag;
 use crate::types::TypeId;
+use crate::types::{LIST, MAP, SET};
 use std::any::Any;
 use std::rc::Rc;
 use std::sync::Arc;
+
+/// Check if the type info represents a generic container type (LIST, SET, MAP).
+/// These types cannot be deserialized polymorphically via `Box<dyn Any>` because
+/// different generic instantiations (e.g., `Vec<A>`, `Vec<B>`) share the same type ID.
+#[inline]
+fn check_generic_container_type(type_info: &TypeInfo) -> Result<(), Error> {
+    let type_id = type_info.get_type_id();
+    if type_id == LIST || type_id == SET || type_id == MAP {
+        return Err(Error::type_error(
+            "Cannot deserialize generic container types (Vec, HashSet, HashMap) polymorphically \
+            via Box/Rc/Arc/Weak<dyn Any>. The serialization protocol does not preserve the element type \
+            information needed to distinguish between different generic instantiations \
+            (e.g., Vec<StructA> vs Vec<StructB>). Consider wrapping the container in a \
+            named struct type instead.",
+        ));
+    }
+    Ok(())
+}
 
 /// Helper function to deserialize to `Box<dyn Any>`
 pub fn deserialize_any_box(context: &mut ReadContext) -> Result<Box<dyn Any>, Error> {
@@ -35,6 +54,8 @@ pub fn deserialize_any_box(context: &mut ReadContext) -> Result<Box<dyn Any>, Er
         return Err(Error::invalid_ref("Expected NotNullValue for Box<dyn Any>"));
     }
     let typeinfo = context.read_any_typeinfo()?;
+    // Check for generic container types which cannot be deserialized polymorphically
+    check_generic_container_type(&typeinfo)?;
     let deserializer_fn = typeinfo.get_harness().get_read_data_fn();
     let result = deserializer_fn(context);
     context.dec_depth();
@@ -194,6 +215,8 @@ pub fn read_box_any(
         );
         context.read_any_typeinfo()?
     };
+    // Check for generic container types which cannot be deserialized polymorphically
+    check_generic_container_type(&typeinfo)?;
     let deserializer_fn = typeinfo.get_harness().get_read_data_fn();
     let result = deserializer_fn(context);
     context.dec_depth();
@@ -346,6 +369,8 @@ pub fn read_rc_any(
             } else {
                 type_info.ok_or_else(|| Error::type_error("No type info found for read"))?
             };
+            // Check for generic container types which cannot be deserialized polymorphically
+            check_generic_container_type(&typeinfo)?;
             let read_data_fn = typeinfo.get_harness().get_read_data_fn();
             let boxed = read_data_fn(context)?;
             context.dec_depth();
@@ -358,6 +383,8 @@ pub fn read_rc_any(
             } else {
                 type_info.ok_or_else(|| Error::type_error("No type info found for read"))?
             };
+            // Check for generic container types which cannot be deserialized polymorphically
+            check_generic_container_type(&typeinfo)?;
             let read_data_fn = typeinfo.get_harness().get_read_data_fn();
             let boxed = read_data_fn(context)?;
             context.dec_depth();
@@ -516,6 +543,8 @@ pub fn read_arc_any(
                 type_info
                     .ok_or_else(|| Error::type_error("No type info found for read Arc<dyn Any>"))?
             };
+            // Check for generic container types which cannot be deserialized polymorphically
+            check_generic_container_type(&typeinfo)?;
             let read_data_fn = typeinfo.get_harness().get_read_data_fn();
             let boxed = read_data_fn(context)?;
             context.dec_depth();
@@ -529,6 +558,8 @@ pub fn read_arc_any(
                 type_info
                     .ok_or_else(|| Error::type_error("No type info found for read Arc<dyn Any>"))?
             };
+            // Check for generic container types which cannot be deserialized polymorphically
+            check_generic_container_type(&typeinfo)?;
             let read_data_fn = typeinfo.get_harness().get_read_data_fn();
             let boxed = read_data_fn(context)?;
             context.dec_depth();

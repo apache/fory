@@ -16,10 +16,10 @@
 // under the License.
 
 use crate::buffer::{Reader, Writer};
+use crate::config::Config;
 use crate::ensure;
 use crate::error::Error;
-use crate::resolver::context::WriteContext;
-use crate::resolver::context::{Pool, ReadContext};
+use crate::resolver::context::{ContextCache, ReadContext, WriteContext};
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::ForyDefault;
 use crate::serializer::{Serializer, StructSerializer};
@@ -28,8 +28,23 @@ use crate::types::{
     config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_LITTLE_ENDIAN_FLAG},
     Language, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
 };
+use std::cell::UnsafeCell;
 use std::mem;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
+
+/// Global counter to assign unique IDs to each Fory instance.
+static FORY_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+thread_local! {
+    /// Thread-local storage for WriteContext instances with fast path caching.
+    static WRITE_CONTEXTS: UnsafeCell<ContextCache<WriteContext<'static>>> =
+        UnsafeCell::new(ContextCache::new());
+
+    /// Thread-local storage for ReadContext instances with fast path caching.
+    static READ_CONTEXTS: UnsafeCell<ContextCache<ReadContext<'static>>> =
+        UnsafeCell::new(ContextCache::new());
+}
 
 /// The main Fory serialization framework instance.
 ///
@@ -75,30 +90,22 @@ use std::sync::OnceLock;
 ///     .max_dyn_depth(10);
 /// ```
 pub struct Fory {
-    compatible: bool,
-    xlang: bool,
-    share_meta: bool,
+    /// Unique identifier for this Fory instance, used as key in thread-local context maps.
+    id: u64,
+    /// Configuration for serialization behavior.
+    config: Config,
     type_resolver: TypeResolver,
-    compress_string: bool,
-    max_dyn_depth: u32,
-    check_struct_version: bool,
-    // Lazy-initialized pools (thread-safe, one-time initialization)
-    write_context_pool: OnceLock<Result<Pool<Box<WriteContext<'static>>>, Error>>,
-    read_context_pool: OnceLock<Result<Pool<Box<ReadContext<'static>>>, Error>>,
+    /// Lazy-initialized final type resolver (thread-safe, one-time initialization).
+    final_type_resolver: OnceLock<Result<TypeResolver, Error>>,
 }
 
 impl Default for Fory {
     fn default() -> Self {
         Fory {
-            compatible: false,
-            xlang: false,
-            share_meta: false,
+            id: FORY_ID_COUNTER.fetch_add(1, Ordering::Relaxed),
+            config: Config::default(),
             type_resolver: TypeResolver::default(),
-            compress_string: false,
-            max_dyn_depth: 5,
-            check_struct_version: false,
-            write_context_pool: OnceLock::new(),
-            read_context_pool: OnceLock::new(),
+            final_type_resolver: OnceLock::new(),
         }
     }
 }
@@ -133,11 +140,11 @@ impl Fory {
     /// ```
     pub fn compatible(mut self, compatible: bool) -> Self {
         // Setting share_meta individually is not supported currently
-        self.share_meta = compatible;
-        self.compatible = compatible;
+        self.config.share_meta = compatible;
+        self.config.compatible = compatible;
         self.type_resolver.set_compatible(compatible);
         if compatible {
-            self.check_struct_version = false;
+            self.config.check_struct_version = false;
         }
         self
     }
@@ -172,9 +179,9 @@ impl Fory {
     /// let fory = Fory::default().xlang(false);
     /// ```
     pub fn xlang(mut self, xlang: bool) -> Self {
-        self.xlang = xlang;
-        if !self.check_struct_version {
-            self.check_struct_version = !self.compatible;
+        self.config.xlang = xlang;
+        if !self.config.check_struct_version {
+            self.config.check_struct_version = !self.config.compatible;
         }
         self
     }
@@ -208,7 +215,7 @@ impl Fory {
     /// let fory = Fory::default().compress_string(true);
     /// ```
     pub fn compress_string(mut self, compress_string: bool) -> Self {
-        self.compress_string = compress_string;
+        self.config.compress_string = compress_string;
         self
     }
 
@@ -244,11 +251,11 @@ impl Fory {
     ///     .check_struct_version(true);
     /// ```
     pub fn check_struct_version(mut self, check_struct_version: bool) -> Self {
-        if self.compatible && check_struct_version {
+        if self.config.compatible && check_struct_version {
             // ignore setting if compatible mode is on
             return self;
         }
-        self.check_struct_version = check_struct_version;
+        self.config.check_struct_version = check_struct_version;
         self
     }
 
@@ -285,13 +292,13 @@ impl Fory {
     /// let fory = Fory::default().max_dyn_depth(3);
     /// ```
     pub fn max_dyn_depth(mut self, max_dyn_depth: u32) -> Self {
-        self.max_dyn_depth = max_dyn_depth;
+        self.config.max_dyn_depth = max_dyn_depth;
         self
     }
 
     /// Returns whether cross-language serialization is enabled.
     pub fn is_xlang(&self) -> bool {
-        self.xlang
+        self.config.xlang
     }
 
     /// Returns the current serialization mode.
@@ -300,7 +307,7 @@ impl Fory {
     ///
     /// `true` if the serialization mode is compatible, `false` otherwise`.
     pub fn is_compatible(&self) -> bool {
-        self.compatible
+        self.config.compatible
     }
 
     /// Returns whether string compression is enabled.
@@ -309,7 +316,7 @@ impl Fory {
     ///
     /// `true` if meta string compression is enabled, `false` otherwise.
     pub fn is_compress_string(&self) -> bool {
-        self.compress_string
+        self.config.compress_string
     }
 
     /// Returns whether metadata sharing is enabled.
@@ -318,12 +325,12 @@ impl Fory {
     ///
     /// `true` if metadata sharing is enabled (automatically set based on mode), `false` otherwise.
     pub fn is_share_meta(&self) -> bool {
-        self.share_meta
+        self.config.share_meta
     }
 
     /// Returns the maximum depth for nested dynamic object serialization.
     pub fn get_max_dyn_depth(&self) -> u32 {
-        self.max_dyn_depth
+        self.config.max_dyn_depth
     }
 
     /// Returns whether class version checking is enabled.
@@ -332,7 +339,12 @@ impl Fory {
     ///
     /// `true` if class version checking is enabled, `false` otherwise.
     pub fn is_check_struct_version(&self) -> bool {
-        self.check_struct_version
+        self.config.check_struct_version
+    }
+
+    /// Returns a reference to the configuration.
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     /// Serializes a value of type `T` into a byte vector.
@@ -363,8 +375,7 @@ impl Fory {
     /// let bytes = fory.serialize(&point);
     /// ```
     pub fn serialize<T: Serializer>(&self, record: &T) -> Result<Vec<u8>, Error> {
-        let pool = self.get_writer_pool()?;
-        pool.borrow_mut(
+        self.with_write_context(
             |context| match self.serialize_with_context(record, context) {
                 Ok(_) => {
                     let result = context.writer.dump();
@@ -499,10 +510,10 @@ impl Fory {
         record: &T,
         buf: &mut Vec<u8>,
     ) -> Result<usize, Error> {
-        let pool = self.get_writer_pool()?;
         let start = buf.len();
-        pool.borrow_mut(|context| {
-            // Context go from pool would be 'static. but context hold the buffer through `writer` field, so we should make buffer live longer.
+        self.with_write_context(|context| {
+            // Context from thread-local would be 'static. but context hold the buffer through `writer` field,
+            // so we should make buffer live longer.
             // After serializing, `detach_writer` will be called, the writer in context will be set to dangling pointer.
             // So it's safe to make buf live to the end of this method.
             let outlive_buffer = unsafe { mem::transmute::<&mut Vec<u8>, &mut Vec<u8>>(buf) };
@@ -517,36 +528,56 @@ impl Fory {
         })
     }
 
+    /// Gets the final type resolver, building it lazily on first access.
     #[inline(always)]
-    fn get_writer_pool(&self) -> Result<&Pool<Box<WriteContext<'static>>>, Error> {
-        let pool_result = self.write_context_pool.get_or_init(|| {
-            let type_resolver = self.type_resolver.build_final_type_resolver()?;
-            let compatible = self.compatible;
-            let share_meta = self.share_meta;
-            let compress_string = self.compress_string;
-            let xlang = self.xlang;
-            let check_struct_version = self.check_struct_version;
-
-            let factory = move || {
-                Box::new(WriteContext::new(
-                    type_resolver.clone(),
-                    compatible,
-                    share_meta,
-                    compress_string,
-                    xlang,
-                    check_struct_version,
-                ))
-            };
-            Ok(Pool::new(factory))
-        });
-        pool_result
+    fn get_final_type_resolver(&self) -> Result<&TypeResolver, Error> {
+        let result = self
+            .final_type_resolver
+            .get_or_init(|| self.type_resolver.build_final_type_resolver());
+        result
             .as_ref()
             .map_err(|e| Error::type_error(format!("Failed to build type resolver: {}", e)))
+    }
+
+    /// Executes a closure with mutable access to a WriteContext for this Fory instance.
+    /// The context is stored in thread-local storage, eliminating all lock contention.
+    /// Uses fast path caching for O(1) access when using the same Fory instance repeatedly.
+    #[inline(always)]
+    fn with_write_context<R>(
+        &self,
+        f: impl FnOnce(&mut WriteContext) -> Result<R, Error>,
+    ) -> Result<R, Error> {
+        // SAFETY: Thread-local storage is only accessed from the current thread.
+        // We use UnsafeCell to avoid RefCell's runtime borrow checking overhead.
+        // The closure `f` does not recursively call with_write_context, so there's no aliasing.
+        WRITE_CONTEXTS.with(|cache| {
+            let cache = unsafe { &mut *cache.get() };
+            let id = self.id;
+            let config = self.config.clone();
+
+            let context = cache.get_or_insert_result(id, || {
+                // Only fetch type resolver when creating a new context
+                let type_resolver = self.get_final_type_resolver()?;
+                Ok(Box::new(WriteContext::new(type_resolver.clone(), config)))
+            })?;
+            f(context)
+        })
     }
 
     /// Serializes a value of type `T` into a byte vector.
     #[inline(always)]
     fn serialize_with_context<T: Serializer>(
+        &self,
+        record: &T,
+        context: &mut WriteContext,
+    ) -> Result<(), Error> {
+        let result = self.serialize_with_context_inner::<T>(record, context);
+        context.reset();
+        result
+    }
+
+    #[inline(always)]
+    fn serialize_with_context_inner<T: Serializer>(
         &self,
         record: &T,
         context: &mut WriteContext,
@@ -563,7 +594,6 @@ impl Fory {
                 context.write_meta(meta_start_offset);
             }
         }
-        context.reset();
         Ok(())
     }
 
@@ -766,14 +796,14 @@ impl Fory {
     pub fn write_head<T: Serializer>(&self, is_none: bool, writer: &mut Writer) {
         const HEAD_SIZE: usize = 10;
         writer.reserve(T::fory_reserved_space() + SIZE_OF_REF_AND_TYPE + HEAD_SIZE);
-        if self.xlang {
+        if self.config.xlang {
             writer.write_u16(MAGIC_NUMBER);
         }
         #[cfg(target_endian = "big")]
         let mut bitmap = 0;
         #[cfg(target_endian = "little")]
         let mut bitmap = IS_LITTLE_ENDIAN_FLAG;
-        if self.xlang {
+        if self.config.xlang {
             bitmap |= IS_CROSS_LANGUAGE_FLAG;
         }
         if is_none {
@@ -783,7 +813,7 @@ impl Fory {
         if is_none {
             return;
         }
-        if self.xlang {
+        if self.config.xlang {
             writer.write_u8(Language::Rust as u8);
         }
     }
@@ -823,9 +853,7 @@ impl Fory {
     /// let deserialized: Point = fory.deserialize(&bytes).unwrap();
     /// ```
     pub fn deserialize<T: Serializer + ForyDefault>(&self, bf: &[u8]) -> Result<T, Error> {
-        let pool = self.get_read_pool()?;
-        pool.borrow_mut(|context| {
-            context.init(self.max_dyn_depth);
+        self.with_read_context(|context| {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(bf) };
             context.attach_reader(Reader::new(outlive_buffer));
             let result = self.deserialize_with_context(context);
@@ -885,9 +913,7 @@ impl Fory {
         &self,
         reader: &mut Reader,
     ) -> Result<T, Error> {
-        let pool = self.get_read_pool()?;
-        pool.borrow_mut(|context| {
-            context.init(self.max_dyn_depth);
+        self.with_read_context(|context| {
             let outlive_buffer = unsafe { mem::transmute::<&[u8], &[u8]>(reader.bf) };
             let mut new_reader = Reader::new(outlive_buffer);
             new_reader.set_cursor(reader.cursor);
@@ -899,35 +925,43 @@ impl Fory {
         })
     }
 
+    /// Executes a closure with mutable access to a ReadContext for this Fory instance.
+    /// The context is stored in thread-local storage, eliminating all lock contention.
+    /// Uses fast path caching for O(1) access when using the same Fory instance repeatedly.
     #[inline(always)]
-    fn get_read_pool(&self) -> Result<&Pool<Box<ReadContext<'static>>>, Error> {
-        let pool_result = self.read_context_pool.get_or_init(|| {
-            let type_resolver = self.type_resolver.build_final_type_resolver()?;
-            let compatible = self.compatible;
-            let share_meta = self.share_meta;
-            let xlang = self.xlang;
-            let max_dyn_depth = self.max_dyn_depth;
-            let check_struct_version = self.check_struct_version;
+    fn with_read_context<R>(
+        &self,
+        f: impl FnOnce(&mut ReadContext) -> Result<R, Error>,
+    ) -> Result<R, Error> {
+        // SAFETY: Thread-local storage is only accessed from the current thread.
+        // We use UnsafeCell to avoid RefCell's runtime borrow checking overhead.
+        // The closure `f` does not recursively call with_read_context, so there's no aliasing.
+        READ_CONTEXTS.with(|cache| {
+            let cache = unsafe { &mut *cache.get() };
+            let id = self.id;
+            let config = self.config.clone();
 
-            let factory = move || {
-                Box::new(ReadContext::new(
-                    type_resolver.clone(),
-                    compatible,
-                    share_meta,
-                    xlang,
-                    max_dyn_depth,
-                    check_struct_version,
-                ))
-            };
-            Ok(Pool::new(factory))
-        });
-        pool_result
-            .as_ref()
-            .map_err(|e| Error::type_error(format!("Failed to build type resolver: {}", e)))
+            let context = cache.get_or_insert_result(id, || {
+                // Only fetch type resolver when creating a new context
+                let type_resolver = self.get_final_type_resolver()?;
+                Ok(Box::new(ReadContext::new(type_resolver.clone(), config)))
+            })?;
+            f(context)
+        })
     }
 
     #[inline(always)]
     fn deserialize_with_context<T: Serializer + ForyDefault>(
+        &self,
+        context: &mut ReadContext,
+    ) -> Result<T, Error> {
+        let result = self.deserialize_with_context_inner::<T>(context);
+        context.reset();
+        result
+    }
+
+    #[inline(always)]
+    fn deserialize_with_context_inner<T: Serializer + ForyDefault>(
         &self,
         context: &mut ReadContext,
     ) -> Result<T, Error> {
@@ -947,13 +981,12 @@ impl Fory {
             context.reader.skip(bytes_to_skip)?;
         }
         context.ref_reader.resolve_callbacks();
-        context.reset();
         result
     }
 
     #[inline(always)]
     fn read_head(&self, reader: &mut Reader) -> Result<bool, Error> {
-        if self.xlang {
+        if self.config.xlang {
             let magic_numer = reader.read_u16()?;
             ensure!(
                 magic_numer == MAGIC_NUMBER,
@@ -968,7 +1001,7 @@ impl Fory {
         let bitmap = reader.read_u8()?;
         let peer_is_xlang = (bitmap & IS_CROSS_LANGUAGE_FLAG) != 0;
         ensure!(
-            self.xlang == peer_is_xlang,
+            self.config.xlang == peer_is_xlang,
             Error::invalid_data("header bitmap mismatch at xlang bit")
         );
         let is_little_endian = (bitmap & IS_LITTLE_ENDIAN_FLAG) != 0;

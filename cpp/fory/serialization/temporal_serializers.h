@@ -63,7 +63,7 @@ template <> struct Serializer<Duration> {
                                    bool write_ref, bool write_type) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
     return write_data(duration, ctx);
   }
@@ -88,10 +88,10 @@ template <> struct Serializer<Duration> {
       return Duration(0);
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     return read_data(ctx);
@@ -118,7 +118,7 @@ template <> struct Serializer<Timestamp> {
                                    bool write_type) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
     return write_data(timestamp, ctx);
   }
@@ -143,10 +143,10 @@ template <> struct Serializer<Timestamp> {
       return Timestamp(Duration(0));
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     return read_data(ctx);
@@ -172,7 +172,7 @@ template <> struct Serializer<LocalDate> {
                                    bool write_ref, bool write_type) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
     return write_data(date, ctx);
   }
@@ -196,10 +196,10 @@ template <> struct Serializer<LocalDate> {
       return LocalDate();
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     return read_data(ctx);

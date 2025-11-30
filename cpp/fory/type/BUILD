@@ -2,7 +2,7 @@ load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
 
 cc_library(
     name = "fory_type",
-    srcs = glob(["*.cc"], exclude=["*test.cc"]),
+    srcs = glob(["*.cc"], exclude=["*test.cc"], allow_empty = True),
     hdrs = glob(["*.h"]),
     copts = select({
         "@platforms//cpu:x86_64": ["-mavx2"],

@@ -19,11 +19,11 @@
 
 package org.apache.fory.format.encoder;
 
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.exception.ClassNotCompatibleException;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.writer.BaseBinaryRowWriter;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 

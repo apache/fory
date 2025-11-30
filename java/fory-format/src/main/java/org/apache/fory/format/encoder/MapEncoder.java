@@ -19,9 +19,9 @@
 
 package org.apache.fory.format.encoder;
 
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryMap;
+import org.apache.fory.format.type.Field;
 
 /** Encoder to encode/decode object in the map container by toMap/fromMap row. */
 public interface MapEncoder<T> extends Encoder<T> {

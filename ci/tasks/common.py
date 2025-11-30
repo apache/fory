@@ -24,7 +24,9 @@ import importlib
 
 # Constants
 PYARROW_VERSION = "15.0.0"
-PROJECT_ROOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../")
+PROJECT_ROOT_DIR = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../")
+)
 
 # Configure logging
 logging.basicConfig(
@@ -121,9 +123,15 @@ def cd_project_subdir(subdir):
 
 
 def bazel(cmd: str):
-    """Execute a bazel command."""
-    bazel_cmd = "bazel" if is_windows() else "~/bin/bazel"
-    return exec_cmd(f"{bazel_cmd} {cmd}")
+    """Execute a bazel command from the project root directory."""
+    # Ensure we're in the project root directory where MODULE.bazel is located
+    original_dir = os.getcwd()
+    os.chdir(PROJECT_ROOT_DIR)
+    try:
+        bazel_cmd = "bazel" if is_windows() else "~/bin/bazel"
+        return exec_cmd(f"{bazel_cmd} {cmd}")
+    finally:
+        os.chdir(original_dir)
 
 
 def update_shell_profile():
@@ -144,6 +152,8 @@ def update_shell_profile():
 
 def install_bazel():
     """Download and install bazel."""
+    required_version = get_bazel_version()
+
     # Check if bazel is already cached (from GitHub Actions cache)
     if not is_windows():
         home_bin = os.path.expanduser("~/bin")
@@ -157,11 +167,23 @@ def install_bazel():
             if os.path.exists(path) and os.access(path, os.X_OK):
                 logging.info(f"Bazel already exists at {path}, verifying...")
                 try:
-                    # Verify it works
+                    # Verify it works and has the correct version
                     result = exec_cmd(f"{path} --version")
-                    logging.info(f"Cached Bazel binary is valid: {result.strip()}")
-                    logging.info("Skipping Bazel download, using cached binary")
-                    return
+                    installed_version = result.strip().replace("bazel ", "")
+                    if installed_version == required_version:
+                        logging.info(f"Cached Bazel binary is valid: {result.strip()}")
+                        logging.info("Skipping Bazel download, using cached binary")
+                        return
+                    else:
+                        logging.warning(
+                            f"Cached Bazel version {installed_version} does not match "
+                            f"required version {required_version}"
+                        )
+                        logging.info("Re-downloading Bazel with correct version...")
+                        try:
+                            os.remove(path)
+                        except Exception:
+                            pass
                 except Exception as e:
                     logging.warning(f"Cached Bazel binary at {path} is invalid: {e}")
                     logging.info("Re-downloading Bazel...")
@@ -214,7 +236,8 @@ def install_bazel():
     psutil = importlib.import_module("psutil")
     total_mem = psutil.virtual_memory().total
     limit_jobs = int(total_mem / 1024 / 1024 / 1024 / 3)
-    with open(".bazelrc", "a") as file:
+    bazelrc_path = os.path.join(PROJECT_ROOT_DIR, ".bazelrc")
+    with open(bazelrc_path, "a") as file:
         file.write(f"\nbuild --jobs={limit_jobs}")
 
 

@@ -156,12 +156,6 @@ public class Types {
   /** One dimensional float64 array. */
   public static final int FLOAT64_ARRAY = 37;
 
-  /** An (arrow record batch) object. */
-  public static final int ARROW_RECORD_BATCH = 38;
-
-  /** An (arrow table) object. */
-  public static final int ARROW_TABLE = 39;
-
   public static final int UNKNOWN = 63;
 
   // Helper methods

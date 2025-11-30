@@ -45,7 +45,12 @@ class BinaryDistribution(Distribution):
     def __init__(self, attrs=None):
         super().__init__(attrs=attrs)
         if BAZEL_BUILD_EXT:
+            import sys
+
+            python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
             bazel_args = ["bazel", "build", "-s"]
+            # Pass Python version to select the correct toolchain for C extension headers
+            bazel_args += [f"--@rules_python//python/config_settings:python_version={python_version}"]
             arch = platform.machine().lower()
             if arch in ("x86_64", "amd64"):
                 bazel_args += ["--config=x86_64"]

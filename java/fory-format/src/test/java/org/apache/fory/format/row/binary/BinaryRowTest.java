@@ -22,11 +22,11 @@ package org.apache.fory.format.row.binary;
 import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
 import org.apache.fory.format.row.binary.writer.BinaryRowWriter;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -132,14 +132,14 @@ public class BinaryRowTest {
     List<Field> fields =
         Arrays.asList(
             DataTypes.primitiveArrayField("f_int_array_" + i++, DataTypes.int32()),
-            DataTypes.field("f_byte_" + i++, false, DataTypes.int8()),
-            DataTypes.field("f_short_" + i++, false, DataTypes.int16()),
-            DataTypes.field("f_int_" + i++, false, DataTypes.int32()),
-            DataTypes.field("f_long_" + i++, false, DataTypes.int64()),
-            DataTypes.field("f_float_" + i++, false, DataTypes.float32()),
-            DataTypes.field("f_double_" + i++, false, DataTypes.float64()),
-            DataTypes.field("f_boolean_" + i++, false, DataTypes.bool()),
-            DataTypes.field("f_date_" + i++, true, DataTypes.date32()),
+            DataTypes.field("f_byte_" + i++, DataTypes.int8(), false),
+            DataTypes.field("f_short_" + i++, DataTypes.int16(), false),
+            DataTypes.field("f_int_" + i++, DataTypes.int32(), false),
+            DataTypes.field("f_long_" + i++, DataTypes.int64(), false),
+            DataTypes.field("f_float_" + i++, DataTypes.float32(), false),
+            DataTypes.field("f_double_" + i++, DataTypes.float64(), false),
+            DataTypes.field("f_boolean_" + i++, DataTypes.bool(), false),
+            DataTypes.field("f_date_" + i++, DataTypes.date32(), true),
             DataTypes.field("f_timestamp_" + i++, DataTypes.timestamp()),
             DataTypes.field("f_binary", DataTypes.binary()),
             DataTypes.field("f_string_" + i++, DataTypes.utf8()),
@@ -222,13 +222,13 @@ public class BinaryRowTest {
     int i = 0;
     List<Field> fields =
         Arrays.asList(
-            DataTypes.field("f_byte_" + i++, false, DataTypes.int8()),
-            DataTypes.field("f_short_" + i++, false, DataTypes.int16()),
-            DataTypes.field("f_int_" + i++, false, DataTypes.int32()),
-            DataTypes.field("f_long_" + i++, false, DataTypes.int64()),
-            DataTypes.field("f_float_" + i++, false, DataTypes.float32()),
-            DataTypes.field("f_double_" + i++, false, DataTypes.float64()),
-            DataTypes.field("f_boolean_" + i++, false, DataTypes.bool()),
+            DataTypes.field("f_byte_" + i++, DataTypes.int8(), false),
+            DataTypes.field("f_short_" + i++, DataTypes.int16(), false),
+            DataTypes.field("f_int_" + i++, DataTypes.int32(), false),
+            DataTypes.field("f_long_" + i++, DataTypes.int64(), false),
+            DataTypes.field("f_float_" + i++, DataTypes.float32(), false),
+            DataTypes.field("f_double_" + i++, DataTypes.float64(), false),
+            DataTypes.field("f_boolean_" + i++, DataTypes.bool(), false),
             DataTypes.field("f_string_" + i++, DataTypes.utf8()));
     Schema schema = new Schema(fields);
 

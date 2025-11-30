@@ -39,6 +39,11 @@ name = "buffer_read_bench"
 path = "benches/buffer_read_bench.rs"
 harness = false
 
+[[bench]]
+name = "threaded_bench"
+path = "benches/threaded_bench.rs"
+harness = false
+
 [dependencies]
 fory = { path = "../../rust/fory" }
 fory-core = { path = "../../rust/fory-core" }

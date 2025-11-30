@@ -24,6 +24,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "fory/util/bit_util.h"
 #include "fory/util/error.h"
@@ -39,10 +40,21 @@ public:
   Buffer();
 
   Buffer(uint8_t *data, uint32_t size, bool own_data = true)
-      : data_(data), size_(size), own_data_(own_data) {
+      : data_(data), size_(size), own_data_(own_data),
+        wrapped_vector_(nullptr) {
     writer_index_ = 0;
     reader_index_ = 0;
   }
+
+  /// Wrap an existing vector for zero-copy serialization.
+  /// The buffer will append to the vector starting from its current size.
+  /// After serialization, the vector is resized to writer_index().
+  ///
+  /// @param vec The vector to wrap (must outlive this Buffer).
+  explicit Buffer(std::vector<uint8_t> &vec)
+      : data_(vec.data()), size_(static_cast<uint32_t>(vec.size())),
+        own_data_(false), writer_index_(static_cast<uint32_t>(vec.size())),
+        reader_index_(0), wrapped_vector_(&vec) {}
 
   Buffer(Buffer &&buffer) noexcept;
 
@@ -51,39 +63,39 @@ public:
   virtual ~Buffer();
 
   /// \brief Return a pointer to the buffer's data
-  inline uint8_t *data() const { return data_; }
+  FORY_ALWAYS_INLINE uint8_t *data() const { return data_; }
 
   /// \brief Return the buffer's size in bytes
-  inline uint32_t size() const { return size_; }
+  FORY_ALWAYS_INLINE uint32_t size() const { return size_; }
 
-  inline bool own_data() const { return own_data_; }
+  FORY_ALWAYS_INLINE bool own_data() const { return own_data_; }
 
-  inline uint32_t writer_index() { return writer_index_; }
+  FORY_ALWAYS_INLINE uint32_t writer_index() { return writer_index_; }
 
-  inline uint32_t reader_index() { return reader_index_; }
+  FORY_ALWAYS_INLINE uint32_t reader_index() { return reader_index_; }
 
-  inline void WriterIndex(uint32_t writer_index) {
+  FORY_ALWAYS_INLINE void WriterIndex(uint32_t writer_index) {
     FORY_CHECK(writer_index < std::numeric_limits<int>::max())
         << "Buffer overflow writer_index" << writer_index_
         << " target writer_index " << writer_index;
     writer_index_ = writer_index;
   }
 
-  inline void IncreaseWriterIndex(uint32_t diff) {
+  FORY_ALWAYS_INLINE void IncreaseWriterIndex(uint32_t diff) {
     int64_t writer_index = writer_index_ + diff;
     FORY_CHECK(writer_index < std::numeric_limits<int>::max())
         << "Buffer overflow writer_index" << writer_index_ << " diff " << diff;
     writer_index_ = writer_index;
   }
 
-  inline void ReaderIndex(uint32_t reader_index) {
+  FORY_ALWAYS_INLINE void ReaderIndex(uint32_t reader_index) {
     FORY_CHECK(reader_index < std::numeric_limits<int>::max())
         << "Buffer overflow reader_index" << reader_index_
         << " target reader_index " << reader_index;
     reader_index_ = reader_index;
   }
 
-  inline void IncreaseReaderIndex(uint32_t diff) {
+  FORY_ALWAYS_INLINE void IncreaseReaderIndex(uint32_t diff) {
     int64_t reader_index = reader_index_ + diff;
     FORY_CHECK(reader_index < std::numeric_limits<int>::max())
         << "Buffer overflow reader_index" << reader_index_ << " diff " << diff;
@@ -91,52 +103,80 @@ public:
   }
 
   // Unsafe methods don't check bound
-  template <typename T> inline void UnsafePut(uint32_t offset, T value) {
+  template <typename T>
+  FORY_ALWAYS_INLINE void UnsafePut(uint32_t offset, T value) {
     reinterpret_cast<T *>(data_ + offset)[0] = value;
   }
 
-  template <typename T,
-            typename = meta::EnableIfIsOneOf<T, int8_t, uint8_t, bool>>
-  inline void UnsafePutByte(uint32_t offset, T value) {
+  template <typename T> FORY_ALWAYS_INLINE T UnsafeGet(uint32_t offset) {
+    return reinterpret_cast<const T *>(data_ + offset)[0];
+  }
+
+  template <typename T, typename = std::enable_if_t<std::disjunction_v<
+                            std::is_same<T, int8_t>, std::is_same<T, uint8_t>,
+                            std::is_same<T, bool>>>>
+  FORY_ALWAYS_INLINE T UnsafeGetByteAs(uint32_t offset) {
+    return data_[offset];
+  }
+
+  template <typename T, typename = std::enable_if_t<std::disjunction_v<
+                            std::is_same<T, int8_t>, std::is_same<T, uint8_t>,
+                            std::is_same<T, bool>>>>
+  FORY_ALWAYS_INLINE void UnsafePutByte(uint32_t offset, T value) {
     data_[offset] = value;
   }
 
-  inline void UnsafePut(uint32_t offset, const void *data,
-                        const uint32_t length) {
+  FORY_ALWAYS_INLINE void UnsafePut(uint32_t offset, const void *data,
+                                    const uint32_t length) {
     memcpy(data_ + offset, data, (size_t)length);
   }
 
-  template <typename T> inline T Get(uint32_t relative_offset) {
+  template <typename T> FORY_ALWAYS_INLINE T Get(uint32_t relative_offset) {
     FORY_CHECK(relative_offset < size_) << "Out of range " << relative_offset
                                         << " should be less than " << size_;
     T value = reinterpret_cast<const T *>(data_ + relative_offset)[0];
     return value;
   }
 
-  template <typename T,
-            typename = meta::EnableIfIsOneOf<T, int8_t, uint8_t, bool>>
-  inline T GetByteAs(uint32_t relative_offset) {
+  template <typename T, typename = std::enable_if_t<std::disjunction_v<
+                            std::is_same<T, int8_t>, std::is_same<T, uint8_t>,
+                            std::is_same<T, bool>>>>
+  FORY_ALWAYS_INLINE T GetByteAs(uint32_t relative_offset) {
     FORY_CHECK(relative_offset < size_) << "Out of range " << relative_offset
                                         << " should be less than " << size_;
     return data_[relative_offset];
   }
 
-  inline bool GetBool(uint32_t offset) { return GetByteAs<bool>(offset); }
+  FORY_ALWAYS_INLINE bool GetBool(uint32_t offset) {
+    return GetByteAs<bool>(offset);
+  }
 
-  inline int8_t GetInt8(uint32_t offset) { return GetByteAs<int8_t>(offset); }
+  FORY_ALWAYS_INLINE int8_t GetInt8(uint32_t offset) {
+    return GetByteAs<int8_t>(offset);
+  }
 
-  inline int16_t GetInt16(uint32_t offset) { return Get<int16_t>(offset); }
+  FORY_ALWAYS_INLINE int16_t GetInt16(uint32_t offset) {
+    return Get<int16_t>(offset);
+  }
 
-  inline int32_t GetInt32(uint32_t offset) { return Get<int32_t>(offset); }
+  FORY_ALWAYS_INLINE int32_t GetInt32(uint32_t offset) {
+    return Get<int32_t>(offset);
+  }
 
-  inline int64_t GetInt64(uint32_t offset) { return Get<int64_t>(offset); }
+  FORY_ALWAYS_INLINE int64_t GetInt64(uint32_t offset) {
+    return Get<int64_t>(offset);
+  }
 
-  inline float GetFloat(uint32_t offset) { return Get<float>(offset); }
+  FORY_ALWAYS_INLINE float GetFloat(uint32_t offset) {
+    return Get<float>(offset);
+  }
 
-  inline double GetDouble(uint32_t offset) { return Get<double>(offset); }
+  FORY_ALWAYS_INLINE double GetDouble(uint32_t offset) {
+    return Get<double>(offset);
+  }
 
-  inline Result<void, Error> GetBytesAsInt64(uint32_t offset, uint32_t length,
-                                             int64_t *target) {
+  FORY_ALWAYS_INLINE Result<void, Error>
+  GetBytesAsInt64(uint32_t offset, uint32_t length, int64_t *target) {
     if (length == 0) {
       *target = 0;
       return Result<void, Error>();
@@ -158,41 +198,90 @@ public:
     return Result<void, Error>();
   }
 
-  inline uint32_t PutVarUint32(uint32_t offset, int32_t value) {
-    if (value >> 7 == 0) {
-      data_[offset] = (int8_t)value;
+  /// Put unsigned varint32 at offset using optimized bulk writes.
+  /// Returns number of bytes written (1-5).
+  /// Uses bit manipulation to build encoded value, then single memory write.
+  FORY_ALWAYS_INLINE uint32_t PutVarUint32(uint32_t offset, uint32_t value) {
+    if (value < 0x80) {
+      data_[offset] = static_cast<uint8_t>(value);
       return 1;
     }
-    if (value >> 14 == 0) {
-      data_[offset++] = (int8_t)((value & 0x7F) | 0x80);
-      data_[offset++] = (int8_t)(value >> 7);
+    // Build encoded value: place data bits with continuation bits interleaved
+    // byte0: bits 0-6 + continuation at bit 7
+    // byte1: bits 7-13 + continuation at bit 15 (in uint16/32/64)
+    // etc.
+    uint64_t encoded = (value & 0x7F) | 0x80;
+    encoded |= (static_cast<uint64_t>(value & 0x3F80) << 1);
+    if (value < 0x4000) {
+      *reinterpret_cast<uint16_t *>(data_ + offset) =
+          static_cast<uint16_t>(encoded);
       return 2;
     }
-    if (value >> 21 == 0) {
-      data_[offset++] = (int8_t)((value & 0x7F) | 0x80);
-      data_[offset++] = (int8_t)(value >> 7 | 0x80);
-      data_[offset++] = (int8_t)(value >> 14);
+    encoded |= (static_cast<uint64_t>(value & 0x1FC000) << 2) | 0x8000;
+    if (value < 0x200000) {
+      *reinterpret_cast<uint32_t *>(data_ + offset) =
+          static_cast<uint32_t>(encoded);
       return 3;
     }
-    if (value >> 28 == 0) {
-      data_[offset++] = (int8_t)((value & 0x7F) | 0x80);
-      data_[offset++] = (int8_t)(value >> 7 | 0x80);
-      data_[offset++] = (int8_t)(value >> 14 | 0x80);
-      data_[offset++] = (int8_t)(value >> 21);
+    encoded |= (static_cast<uint64_t>(value & 0xFE00000) << 3) | 0x800000;
+    if (value < 0x10000000) {
+      *reinterpret_cast<uint32_t *>(data_ + offset) =
+          static_cast<uint32_t>(encoded);
       return 4;
     }
-    data_[offset++] = (int8_t)((value & 0x7F) | 0x80);
-    data_[offset++] = (int8_t)(value >> 7 | 0x80);
-    data_[offset++] = (int8_t)(value >> 14 | 0x80);
-    data_[offset++] = (int8_t)(value >> 21 | 0x80);
-    data_[offset++] = (int8_t)(value >> 28);
+    encoded |= (static_cast<uint64_t>(value >> 28) << 32) | 0x80000000;
+    *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
     return 5;
   }
 
-  inline int32_t GetVarUint32(uint32_t offset, uint32_t *readBytesLength) {
+  /// Get unsigned varint32 from offset using optimized bulk read.
+  /// Fast path: bulk read 4 bytes + bit extraction when enough bytes available.
+  /// Slow path: byte-by-byte for buffer edge cases.
+  FORY_ALWAYS_INLINE uint32_t GetVarUint32(uint32_t offset,
+                                           uint32_t *readBytesLength) {
+    // Fast path: need at least 5 bytes for safe bulk read (4 bytes + potential
+    // 5th)
+    if (FORY_PREDICT_TRUE(size_ - offset >= 5)) {
+      uint32_t bulk = *reinterpret_cast<uint32_t *>(data_ + offset);
+
+      uint32_t result = bulk & 0x7F;
+      if ((bulk & 0x80) == 0) {
+        *readBytesLength = 1;
+        return result;
+      }
+      // Extract bits 7-13 from bulk (at positions 8-14 after shift)
+      result |= (bulk >> 1) & 0x3F80;
+      if ((bulk & 0x8000) == 0) {
+        *readBytesLength = 2;
+        return result;
+      }
+      // Extract bits 14-20 from bulk (at positions 16-22 after shift)
+      result |= (bulk >> 2) & 0x1FC000;
+      if ((bulk & 0x800000) == 0) {
+        *readBytesLength = 3;
+        return result;
+      }
+      // Extract bits 21-27 from bulk (at positions 24-30 after shift)
+      result |= (bulk >> 3) & 0xFE00000;
+      if ((bulk & 0x80000000) == 0) {
+        *readBytesLength = 4;
+        return result;
+      }
+      // 5th byte for bits 28-31 (only 4 bits used for uint32, but mask with
+      // 0x7F per varint spec)
+      result |= static_cast<uint32_t>(data_[offset + 4] & 0x7F) << 28;
+      *readBytesLength = 5;
+      return result;
+    }
+    // Slow path: byte-by-byte read
+    return GetVarUint32Slow(offset, readBytesLength);
+  }
+
+  /// Slow path for GetVarUint32 when not enough bytes for bulk read.
+  uint32_t GetVarUint32Slow(uint32_t offset, uint32_t *readBytesLength) {
     uint32_t position = offset;
     int b = data_[position++];
-    int result = b & 0x7F;
+    uint32_t result = b & 0x7F;
     if ((b & 0x80) != 0) {
       b = data_[position++];
       result |= (b & 0x7F) << 7;
@@ -213,40 +302,143 @@ public:
     return result;
   }
 
-  /// Put unsigned varint64 at offset. Returns number of bytes written (1-9).
+  /// Put unsigned varint64 at offset using optimized bulk writes.
+  /// Returns number of bytes written (1-9).
   /// Uses PVL (Progressive Variable-length Long) encoding per xlang spec.
-  inline uint32_t PutVarUint64(uint32_t offset, uint64_t value) {
-    uint32_t position = offset;
-    while (value >= 0x80) {
-      data_[position++] = static_cast<uint8_t>((value & 0x7F) | 0x80);
-      value >>= 7;
+  FORY_ALWAYS_INLINE uint32_t PutVarUint64(uint32_t offset, uint64_t value) {
+    if (value < 0x80) {
+      data_[offset] = static_cast<uint8_t>(value);
+      return 1;
     }
-    data_[position++] = static_cast<uint8_t>(value);
-    return position - offset;
+    // Build encoded value with continuation bits interleaved
+    uint64_t encoded = (value & 0x7F) | 0x80;
+    encoded |= ((value & 0x3F80) << 1);
+    if (value < 0x4000) {
+      *reinterpret_cast<uint16_t *>(data_ + offset) =
+          static_cast<uint16_t>(encoded);
+      return 2;
+    }
+    encoded |= ((value & 0x1FC000) << 2) | 0x8000;
+    if (value < 0x200000) {
+      *reinterpret_cast<uint32_t *>(data_ + offset) =
+          static_cast<uint32_t>(encoded);
+      return 3;
+    }
+    encoded |= ((value & 0xFE00000) << 3) | 0x800000;
+    if (value < 0x10000000) {
+      *reinterpret_cast<uint32_t *>(data_ + offset) =
+          static_cast<uint32_t>(encoded);
+      return 4;
+    }
+    encoded |= ((value & 0x7F0000000ULL) << 4) | 0x80000000;
+    if (value < 0x800000000ULL) {
+      *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+      return 5;
+    }
+    encoded |= ((value & 0x3F800000000ULL) << 5) | 0x8000000000ULL;
+    if (value < 0x40000000000ULL) {
+      *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+      return 6;
+    }
+    encoded |= ((value & 0x1FC0000000000ULL) << 6) | 0x800000000000ULL;
+    if (value < 0x2000000000000ULL) {
+      *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+      return 7;
+    }
+    encoded |= ((value & 0xFE000000000000ULL) << 7) | 0x80000000000000ULL;
+    if (value < 0x100000000000000ULL) {
+      *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+      return 8;
+    }
+    // 9 bytes: write 8 bytes + 1 byte for bits 56-63
+    encoded |= 0x8000000000000000ULL;
+    *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+    data_[offset + 8] = static_cast<uint8_t>(value >> 56);
+    return 9;
   }
 
-  /// Get unsigned varint64 from offset. Writes number of bytes read to
-  /// readBytesLength. Uses PVL (Progressive Variable-length Long) encoding per
-  /// xlang spec.
-  inline uint64_t GetVarUint64(uint32_t offset, uint32_t *readBytesLength) {
+  /// Get unsigned varint64 from offset using optimized bulk read.
+  /// Fast path: bulk read 8 bytes + bit extraction when enough bytes available.
+  /// Slow path: byte-by-byte for buffer edge cases.
+  /// Uses PVL (Progressive Variable-length Long) encoding per xlang spec.
+  FORY_ALWAYS_INLINE uint64_t GetVarUint64(uint32_t offset,
+                                           uint32_t *readBytesLength) {
+    // Fast path: need at least 9 bytes for safe bulk read
+    if (FORY_PREDICT_TRUE(size_ - offset >= 9)) {
+      uint64_t bulk = *reinterpret_cast<uint64_t *>(data_ + offset);
+
+      uint64_t result = bulk & 0x7F;
+      if ((bulk & 0x80) == 0) {
+        *readBytesLength = 1;
+        return result;
+      }
+      result |= (bulk >> 1) & 0x3F80;
+      if ((bulk & 0x8000) == 0) {
+        *readBytesLength = 2;
+        return result;
+      }
+      result |= (bulk >> 2) & 0x1FC000;
+      if ((bulk & 0x800000) == 0) {
+        *readBytesLength = 3;
+        return result;
+      }
+      result |= (bulk >> 3) & 0xFE00000;
+      if ((bulk & 0x80000000) == 0) {
+        *readBytesLength = 4;
+        return result;
+      }
+      result |= (bulk >> 4) & 0x7F0000000ULL;
+      if ((bulk & 0x8000000000ULL) == 0) {
+        *readBytesLength = 5;
+        return result;
+      }
+      result |= (bulk >> 5) & 0x3F800000000ULL;
+      if ((bulk & 0x800000000000ULL) == 0) {
+        *readBytesLength = 6;
+        return result;
+      }
+      result |= (bulk >> 6) & 0x1FC0000000000ULL;
+      if ((bulk & 0x80000000000000ULL) == 0) {
+        *readBytesLength = 7;
+        return result;
+      }
+      result |= (bulk >> 7) & 0xFE000000000000ULL;
+      if ((bulk & 0x8000000000000000ULL) == 0) {
+        *readBytesLength = 8;
+        return result;
+      }
+      // 9th byte for bits 56-63
+      result |= static_cast<uint64_t>(data_[offset + 8]) << 56;
+      *readBytesLength = 9;
+      return result;
+    }
+    // Slow path: byte-by-byte read
+    return GetVarUint64Slow(offset, readBytesLength);
+  }
+
+  /// Slow path for GetVarUint64 when not enough bytes for bulk read.
+  uint64_t GetVarUint64Slow(uint32_t offset, uint32_t *readBytesLength) {
     uint32_t position = offset;
     uint64_t result = 0;
     int shift = 0;
-    while (true) {
+    for (int i = 0; i < 8; ++i) {
       uint8_t b = data_[position++];
       result |= static_cast<uint64_t>(b & 0x7F) << shift;
       if ((b & 0x80) == 0) {
-        break;
+        *readBytesLength = position - offset;
+        return result;
       }
       shift += 7;
     }
+    uint8_t last = data_[position++];
+    result |= static_cast<uint64_t>(last) << 56;
     *readBytesLength = position - offset;
     return result;
   }
 
   /// Write uint8_t value to buffer at current writer index.
   /// Automatically grows buffer and advances writer index.
-  inline void WriteUint8(uint8_t value) {
+  FORY_ALWAYS_INLINE void WriteUint8(uint8_t value) {
     Grow(1);
     UnsafePutByte(writer_index_, value);
     IncreaseWriterIndex(1);
@@ -254,7 +446,7 @@ public:
 
   /// Write int8_t value to buffer at current writer index.
   /// Automatically grows buffer and advances writer index.
-  inline void WriteInt8(int8_t value) {
+  FORY_ALWAYS_INLINE void WriteInt8(int8_t value) {
     Grow(1);
     UnsafePutByte(writer_index_, static_cast<uint8_t>(value));
     IncreaseWriterIndex(1);
@@ -262,89 +454,218 @@ public:
 
   /// Write uint16_t value as fixed 2 bytes to buffer at current writer index.
   /// Automatically grows buffer and advances writer index.
-  inline void WriteUint16(uint16_t value) {
+  FORY_ALWAYS_INLINE void WriteUint16(uint16_t value) {
     Grow(2);
     UnsafePut<uint16_t>(writer_index_, value);
     IncreaseWriterIndex(2);
   }
 
+  /// Write int16_t value as fixed 2 bytes to buffer at current writer index.
+  /// Automatically grows buffer and advances writer index.
+  FORY_ALWAYS_INLINE void WriteInt16(int16_t value) {
+    Grow(2);
+    UnsafePut<int16_t>(writer_index_, value);
+    IncreaseWriterIndex(2);
+  }
+
   /// Write int32_t value as fixed 4 bytes to buffer at current writer index.
   /// Automatically grows buffer and advances writer index.
-  inline void WriteInt32(int32_t value) {
+  FORY_ALWAYS_INLINE void WriteInt32(int32_t value) {
     Grow(4);
     UnsafePut<int32_t>(writer_index_, value);
     IncreaseWriterIndex(4);
   }
 
+  /// Write int64_t value as fixed 8 bytes to buffer at current writer index.
+  /// Automatically grows buffer and advances writer index.
+  FORY_ALWAYS_INLINE void WriteInt64(int64_t value) {
+    Grow(8);
+    UnsafePut<int64_t>(writer_index_, value);
+    IncreaseWriterIndex(8);
+  }
+
+  /// Write float value as fixed 4 bytes to buffer at current writer index.
+  /// Automatically grows buffer and advances writer index.
+  FORY_ALWAYS_INLINE void WriteFloat(float value) {
+    Grow(4);
+    UnsafePut<float>(writer_index_, value);
+    IncreaseWriterIndex(4);
+  }
+
+  /// Write double value as fixed 8 bytes to buffer at current writer index.
+  /// Automatically grows buffer and advances writer index.
+  FORY_ALWAYS_INLINE void WriteDouble(double value) {
+    Grow(8);
+    UnsafePut<double>(writer_index_, value);
+    IncreaseWriterIndex(8);
+  }
+
   /// Write uint32_t value as varint to buffer at current writer index.
   /// Automatically grows buffer and advances writer index.
-  inline void WriteVarUint32(uint32_t value) {
-    Grow(5); // Max 5 bytes for varint32
+  FORY_ALWAYS_INLINE void WriteVarUint32(uint32_t value) {
+    Grow(8); // bulk write may write 8 bytes for varint32
     uint32_t len = PutVarUint32(writer_index_, value);
     IncreaseWriterIndex(len);
   }
 
-  /// Write int32_t value as varint to buffer at current writer index.
-  /// Automatically grows buffer and advances writer index.
-  inline void WriteVarInt32(int32_t value) {
-    Grow(5); // Max 5 bytes for varint32
-    uint32_t len = PutVarUint32(writer_index_, value);
-    IncreaseWriterIndex(len);
+  /// Write int32_t value as varint (zigzag encoded) to buffer at current
+  /// writer index. Automatically grows buffer and advances writer index.
+  FORY_ALWAYS_INLINE void WriteVarInt32(int32_t value) {
+    uint32_t zigzag = (static_cast<uint32_t>(value) << 1) ^
+                      static_cast<uint32_t>(value >> 31);
+    WriteVarUint32(zigzag);
   }
 
   /// Write uint64_t value as varint to buffer at current writer index.
   /// Automatically grows buffer and advances writer index.
-  inline void WriteVarUint64(uint64_t value) {
+  FORY_ALWAYS_INLINE void WriteVarUint64(uint64_t value) {
     Grow(9); // Max 9 bytes for varint64
     uint32_t len = PutVarUint64(writer_index_, value);
     IncreaseWriterIndex(len);
   }
 
+  /// Write int64_t value as varint (zigzag encoded) to buffer at current
+  /// writer index. Automatically grows buffer and advances writer index.
+  FORY_ALWAYS_INLINE void WriteVarInt64(int64_t value) {
+    uint64_t zigzag = (static_cast<uint64_t>(value) << 1) ^
+                      static_cast<uint64_t>(value >> 63);
+    WriteVarUint64(zigzag);
+  }
+
+  /// Write uint64_t value as varuint36small to buffer at current writer index.
+  /// This is the special variable-length encoding used for string headers
+  /// in xlang protocol. Optimized for small values (< 0x80).
+  /// Automatically grows buffer and advances writer index.
+  FORY_ALWAYS_INLINE void WriteVarUint36Small(uint64_t value) {
+    Grow(8); // Need 8 bytes for safe bulk write
+    uint32_t offset = writer_index_;
+    if (value < 0x80) {
+      data_[offset] = static_cast<uint8_t>(value);
+      IncreaseWriterIndex(1);
+      return;
+    }
+    // Build encoded value with continuation bits interleaved
+    uint64_t encoded = (value & 0x7F) | 0x80;
+    encoded |= ((value & 0x3F80) << 1);
+    if (value < 0x4000) {
+      *reinterpret_cast<uint16_t *>(data_ + offset) =
+          static_cast<uint16_t>(encoded);
+      IncreaseWriterIndex(2);
+      return;
+    }
+    encoded |= ((value & 0x1FC000) << 2) | 0x8000;
+    if (value < 0x200000) {
+      *reinterpret_cast<uint32_t *>(data_ + offset) =
+          static_cast<uint32_t>(encoded);
+      IncreaseWriterIndex(3);
+      return;
+    }
+    encoded |= ((value & 0xFE00000) << 3) | 0x800000;
+    if (value < 0x10000000) {
+      *reinterpret_cast<uint32_t *>(data_ + offset) =
+          static_cast<uint32_t>(encoded);
+      IncreaseWriterIndex(4);
+      return;
+    }
+    // 5 bytes: bits 28-35 (up to 36 bits total)
+    encoded |= ((value & 0xFF0000000ULL) << 4) | 0x80000000;
+    *reinterpret_cast<uint64_t *>(data_ + offset) = encoded;
+    IncreaseWriterIndex(5);
+  }
+
   /// Write raw bytes to buffer at current writer index.
   /// Automatically grows buffer and advances writer index.
-  inline void WriteBytes(const void *data, uint32_t length) {
+  FORY_ALWAYS_INLINE void WriteBytes(const void *data, uint32_t length) {
     Grow(length);
     UnsafePut(writer_index_, data, length);
     IncreaseWriterIndex(length);
   }
 
+  // ===========================================================================
+  // Safe read methods with bounds checking
+  // ===========================================================================
+
   /// Read uint8_t value from buffer at current reader index.
   /// Advances reader index and checks bounds.
-  inline Result<uint8_t, Error> ReadUint8() {
-    if (reader_index_ + 1 > size_) {
+  FORY_ALWAYS_INLINE Result<uint8_t, Error> ReadUint8() {
+    if (FORY_PREDICT_FALSE(reader_index_ + 1 > size_)) {
       return Unexpected(Error::buffer_out_of_bound(reader_index_, 1, size_));
     }
-    uint8_t value = GetByteAs<uint8_t>(reader_index_);
-    IncreaseReaderIndex(1);
+    uint8_t value = data_[reader_index_];
+    reader_index_ += 1;
     return value;
   }
 
   /// Read int8_t value from buffer at current reader index.
   /// Advances reader index and checks bounds.
-  inline Result<int8_t, Error> ReadInt8() {
-    if (reader_index_ + 1 > size_) {
+  FORY_ALWAYS_INLINE Result<int8_t, Error> ReadInt8() {
+    if (FORY_PREDICT_FALSE(reader_index_ + 1 > size_)) {
       return Unexpected(Error::buffer_out_of_bound(reader_index_, 1, size_));
     }
-    int8_t value = GetByteAs<int8_t>(reader_index_);
-    IncreaseReaderIndex(1);
+    int8_t value = static_cast<int8_t>(data_[reader_index_]);
+    reader_index_ += 1;
+    return value;
+  }
+
+  /// Read int16_t value as fixed 2 bytes from buffer at current reader index.
+  /// Advances reader index and checks bounds.
+  FORY_ALWAYS_INLINE Result<int16_t, Error> ReadInt16() {
+    if (FORY_PREDICT_FALSE(reader_index_ + 2 > size_)) {
+      return Unexpected(Error::buffer_out_of_bound(reader_index_, 2, size_));
+    }
+    int16_t value = reinterpret_cast<const int16_t *>(data_ + reader_index_)[0];
+    reader_index_ += 2;
     return value;
   }
 
   /// Read int32_t value as fixed 4 bytes from buffer at current reader index.
   /// Advances reader index and checks bounds.
-  inline Result<int32_t, Error> ReadInt32() {
-    if (reader_index_ + 4 > size_) {
+  FORY_ALWAYS_INLINE Result<int32_t, Error> ReadInt32() {
+    if (FORY_PREDICT_FALSE(reader_index_ + 4 > size_)) {
       return Unexpected(Error::buffer_out_of_bound(reader_index_, 4, size_));
     }
-    int32_t value = Get<int32_t>(reader_index_);
-    IncreaseReaderIndex(4);
+    int32_t value = reinterpret_cast<const int32_t *>(data_ + reader_index_)[0];
+    reader_index_ += 4;
+    return value;
+  }
+
+  /// Read int64_t value as fixed 8 bytes from buffer at current reader index.
+  /// Advances reader index and checks bounds.
+  FORY_ALWAYS_INLINE Result<int64_t, Error> ReadInt64() {
+    if (FORY_PREDICT_FALSE(reader_index_ + 8 > size_)) {
+      return Unexpected(Error::buffer_out_of_bound(reader_index_, 8, size_));
+    }
+    int64_t value = reinterpret_cast<const int64_t *>(data_ + reader_index_)[0];
+    reader_index_ += 8;
+    return value;
+  }
+
+  /// Read float value as fixed 4 bytes from buffer at current reader index.
+  /// Advances reader index and checks bounds.
+  FORY_ALWAYS_INLINE Result<float, Error> ReadFloat() {
+    if (FORY_PREDICT_FALSE(reader_index_ + 4 > size_)) {
+      return Unexpected(Error::buffer_out_of_bound(reader_index_, 4, size_));
+    }
+    float value = reinterpret_cast<const float *>(data_ + reader_index_)[0];
+    reader_index_ += 4;
+    return value;
+  }
+
+  /// Read double value as fixed 8 bytes from buffer at current reader index.
+  /// Advances reader index and checks bounds.
+  FORY_ALWAYS_INLINE Result<double, Error> ReadDouble() {
+    if (FORY_PREDICT_FALSE(reader_index_ + 8 > size_)) {
+      return Unexpected(Error::buffer_out_of_bound(reader_index_, 8, size_));
+    }
+    double value = reinterpret_cast<const double *>(data_ + reader_index_)[0];
+    reader_index_ += 8;
     return value;
   }
 
   /// Read uint32_t value as varint from buffer at current reader index.
   /// Advances reader index and checks bounds.
-  inline Result<uint32_t, Error> ReadVarUint32() {
-    if (reader_index_ + 1 > size_) {
+  FORY_ALWAYS_INLINE Result<uint32_t, Error> ReadVarUint32() {
+    if (FORY_PREDICT_FALSE(reader_index_ + 1 > size_)) {
       return Unexpected(Error::buffer_out_of_bound(reader_index_, 1, size_));
     }
     uint32_t read_bytes = 0;
@@ -353,22 +674,23 @@ public:
     return value;
   }
 
-  /// Read int32_t value as varint from buffer at current reader index.
-  /// Advances reader index and checks bounds.
-  inline Result<int32_t, Error> ReadVarInt32() {
-    if (reader_index_ + 1 > size_) {
+  /// Read int32_t value as varint (zigzag encoded) from buffer at current
+  /// reader index. Advances reader index and checks bounds.
+  FORY_ALWAYS_INLINE Result<int32_t, Error> ReadVarInt32() {
+    if (FORY_PREDICT_FALSE(reader_index_ + 1 > size_)) {
       return Unexpected(Error::buffer_out_of_bound(reader_index_, 1, size_));
     }
     uint32_t read_bytes = 0;
-    int32_t value = GetVarUint32(reader_index_, &read_bytes);
+    uint32_t raw = GetVarUint32(reader_index_, &read_bytes);
     IncreaseReaderIndex(read_bytes);
+    int32_t value = static_cast<int32_t>((raw >> 1) ^ (~(raw & 1) + 1));
     return value;
   }
 
   /// Read uint64_t value as varint from buffer at current reader index.
   /// Advances reader index and checks bounds.
-  inline Result<uint64_t, Error> ReadVarUint64() {
-    if (reader_index_ + 1 > size_) {
+  FORY_ALWAYS_INLINE Result<uint64_t, Error> ReadVarUint64() {
+    if (FORY_PREDICT_FALSE(reader_index_ + 1 > size_)) {
       return Unexpected(Error::buffer_out_of_bound(reader_index_, 1, size_));
     }
     uint32_t read_bytes = 0;
@@ -377,10 +699,84 @@ public:
     return value;
   }
 
+  /// Read int64_t value as varint (zigzag encoded) from buffer at current
+  /// reader index. Advances reader index and checks bounds.
+  FORY_ALWAYS_INLINE Result<int64_t, Error> ReadVarInt64() {
+    auto result = ReadVarUint64();
+    if (FORY_PREDICT_FALSE(!result.ok())) {
+      return Unexpected(result.error());
+    }
+    uint64_t raw = result.value();
+    int64_t value = static_cast<int64_t>((raw >> 1) ^ (~(raw & 1) + 1));
+    return value;
+  }
+
+  /// Read uint64_t value as varuint36small from buffer at current reader index.
+  /// This is the special variable-length encoding used for string headers.
+  /// Advances reader index and checks bounds.
+  FORY_ALWAYS_INLINE Result<uint64_t, Error> ReadVarUint36Small() {
+    if (FORY_PREDICT_FALSE(reader_index_ + 1 > size_)) {
+      return Unexpected(Error::buffer_out_of_bound(reader_index_, 1, size_));
+    }
+    uint32_t offset = reader_index_;
+    // Fast path: need at least 8 bytes for safe bulk read
+    if (FORY_PREDICT_TRUE(size_ - offset >= 8)) {
+      uint64_t bulk = *reinterpret_cast<uint64_t *>(data_ + offset);
+
+      uint64_t result = bulk & 0x7F;
+      if ((bulk & 0x80) == 0) {
+        IncreaseReaderIndex(1);
+        return result;
+      }
+      result |= (bulk >> 1) & 0x3F80;
+      if ((bulk & 0x8000) == 0) {
+        IncreaseReaderIndex(2);
+        return result;
+      }
+      result |= (bulk >> 2) & 0x1FC000;
+      if ((bulk & 0x800000) == 0) {
+        IncreaseReaderIndex(3);
+        return result;
+      }
+      result |= (bulk >> 3) & 0xFE00000;
+      if ((bulk & 0x80000000) == 0) {
+        IncreaseReaderIndex(4);
+        return result;
+      }
+      // 5th byte for bits 28-35 (up to 36 bits)
+      result |= (bulk >> 4) & 0xFF0000000ULL;
+      IncreaseReaderIndex(5);
+      return result;
+    }
+    // Slow path: byte-by-byte read
+    uint32_t position = offset;
+    uint8_t b = data_[position++];
+    uint64_t result = b & 0x7F;
+    if ((b & 0x80) != 0) {
+      b = data_[position++];
+      result |= static_cast<uint64_t>(b & 0x7F) << 7;
+      if ((b & 0x80) != 0) {
+        b = data_[position++];
+        result |= static_cast<uint64_t>(b & 0x7F) << 14;
+        if ((b & 0x80) != 0) {
+          b = data_[position++];
+          result |= static_cast<uint64_t>(b & 0x7F) << 21;
+          if ((b & 0x80) != 0) {
+            b = data_[position++];
+            result |= static_cast<uint64_t>(b & 0xFF) << 28;
+          }
+        }
+      }
+    }
+    IncreaseReaderIndex(position - offset);
+    return result;
+  }
+
   /// Read raw bytes from buffer at current reader index.
   /// Advances reader index and checks bounds.
-  inline Result<void, Error> ReadBytes(void *data, uint32_t length) {
-    if (reader_index_ + length > size_) {
+  FORY_ALWAYS_INLINE Result<void, Error> ReadBytes(void *data,
+                                                   uint32_t length) {
+    if (FORY_PREDICT_FALSE(reader_index_ + length > size_)) {
       return Unexpected(
           Error::buffer_out_of_bound(reader_index_, length, size_));
     }
@@ -391,8 +787,8 @@ public:
 
   /// Skip bytes in buffer by advancing reader index.
   /// Checks bounds to ensure we don't skip past the end.
-  inline Result<void, Error> Skip(uint32_t length) {
-    if (reader_index_ + length > size_) {
+  FORY_ALWAYS_INLINE Result<void, Error> Skip(uint32_t length) {
+    if (FORY_PREDICT_FALSE(reader_index_ + length > size_)) {
       return Unexpected(
           Error::buffer_out_of_bound(reader_index_, length, size_));
     }
@@ -407,7 +803,7 @@ public:
   /// Return true if both buffers are the same size and contain the same bytes
   bool Equals(const Buffer &other) const;
 
-  inline void Grow(uint32_t min_capacity) {
+  FORY_ALWAYS_INLINE void Grow(uint32_t min_capacity) {
     uint32_t len = writer_index_ + min_capacity;
     if (len > size_) {
       // NOTE: over allocate by 1.5 or 2 ?
@@ -423,25 +819,40 @@ public:
   /// Reserve buffer to new_size
   void Reserve(uint32_t new_size) {
     if (new_size > size_) {
-      uint8_t *new_ptr;
-      if (own_data_) {
-        new_ptr = static_cast<uint8_t *>(
-            realloc(data_, static_cast<size_t>(new_size)));
-      } else {
-        new_ptr = static_cast<uint8_t *>(malloc(static_cast<size_t>(new_size)));
-        if (new_ptr) {
-          own_data_ = true;
-        }
-      }
-      if (new_ptr) {
-        data_ = new_ptr;
+      if (wrapped_vector_) {
+        // Resize the underlying vector - zero-copy path
+        wrapped_vector_->resize(new_size);
+        data_ = wrapped_vector_->data();
         size_ = new_size;
       } else {
-        FORY_CHECK(false) << "Out of memory when grow buffer, needed_size "
-                          << size_;
+        uint8_t *new_ptr;
+        if (own_data_) {
+          new_ptr = static_cast<uint8_t *>(
+              realloc(data_, static_cast<size_t>(new_size)));
+        } else {
+          new_ptr =
+              static_cast<uint8_t *>(malloc(static_cast<size_t>(new_size)));
+          if (new_ptr) {
+            // Copy existing data before switching to owned buffer
+            if (data_ && size_ > 0) {
+              std::memcpy(new_ptr, data_, size_);
+            }
+            own_data_ = true;
+          }
+        }
+        if (new_ptr) {
+          data_ = new_ptr;
+          size_ = new_size;
+        } else {
+          FORY_CHECK(false)
+              << "Out of memory when grow buffer, needed_size " << size_;
+        }
       }
     }
   }
+
+  /// Check if this buffer wraps a vector.
+  bool wraps_vector() const { return wrapped_vector_ != nullptr; }
 
   /// Copy a section of the buffer into a new Buffer.
   void Copy(uint32_t start, uint32_t nbytes,
@@ -482,6 +893,7 @@ private:
   bool own_data_;
   uint32_t writer_index_;
   uint32_t reader_index_;
+  std::vector<uint8_t> *wrapped_vector_ = nullptr;
 };
 
 /// \brief Allocate a fixed-size mutable buffer from the default memory pool

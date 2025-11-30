@@ -55,5 +55,5 @@ public class MapFlags {
 
   /** Value is null, key type is declared type, and ref tracking for key is enabled. */
   public static int NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF =
-      VALUE_HAS_NULL | KEY_DECL_TYPE | TRACKING_VALUE_REF;
+      VALUE_HAS_NULL | KEY_DECL_TYPE | TRACKING_KEY_REF;
 }

@@ -21,14 +21,12 @@
 
 #include <iostream>
 
-#include "arrow/api.h"
-#include "arrow/status.h"
-#include "fory/row/type.h"
+#include "fory/row/schema.h"
 #include "fory/util/bit_util.h"
 #include "fory/util/buffer.h"
-#include "fory/util/result.h"
 
 namespace fory {
+namespace row {
 
 class ArrayData;
 
@@ -82,26 +80,22 @@ public:
 
   std::string GetString(int i) const;
 
-  std::shared_ptr<Row>
-  GetStruct(int i, std::shared_ptr<arrow::StructType> struct_type) const;
+  std::shared_ptr<Row> GetStruct(int i, StructTypePtr struct_type) const;
 
   virtual std::shared_ptr<Row> GetStruct(int i) const = 0;
 
-  std::shared_ptr<ArrayData>
-  GetArray(int i, std::shared_ptr<arrow::ListType> array_type) const;
+  std::shared_ptr<ArrayData> GetArray(int i, ListTypePtr array_type) const;
 
   virtual std::shared_ptr<ArrayData> GetArray(int i) const = 0;
 
-  std::shared_ptr<MapData>
-  GetMap(int i, std::shared_ptr<arrow::MapType> map_type) const;
+  std::shared_ptr<MapData> GetMap(int i, MapTypePtr map_type) const;
 
   virtual std::shared_ptr<MapData> GetMap(int i) const = 0;
 
   virtual std::string ToString() const = 0;
 
 protected:
-  void AppendValue(std::stringstream &ss, int i,
-                   std::shared_ptr<arrow::DataType> type) const;
+  void AppendValue(std::stringstream &ss, int i, DataTypePtr type) const;
 };
 
 class Setter {
@@ -151,7 +145,7 @@ public:
 
 class Row : public Getter, Setter {
 public:
-  explicit Row(const std::shared_ptr<arrow::Schema> &schema);
+  explicit Row(const SchemaPtr &schema);
 
   ~Row() override = default;
 
@@ -163,7 +157,7 @@ public:
 
   int size_bytes() const override { return size_bytes_; }
 
-  std::shared_ptr<arrow::Schema> schema() const { return schema_; }
+  SchemaPtr schema() const { return schema_; }
 
   int num_fields() const { return num_fields_; }
 
@@ -177,18 +171,18 @@ public:
   }
 
   std::shared_ptr<Row> GetStruct(int i) const override {
-    return Getter::GetStruct(i, std::dynamic_pointer_cast<arrow::StructType>(
-                                    schema_->field(i)->type()));
+    return Getter::GetStruct(
+        i, std::dynamic_pointer_cast<StructType>(schema_->field(i)->type()));
   }
 
   std::shared_ptr<ArrayData> GetArray(int i) const override {
-    return Getter::GetArray(i, std::dynamic_pointer_cast<arrow::ListType>(
-                                   schema_->field(i)->type()));
+    return Getter::GetArray(
+        i, std::dynamic_pointer_cast<ListType>(schema_->field(i)->type()));
   }
 
   std::shared_ptr<MapData> GetMap(int i) const override {
-    return Getter::GetMap(i, std::dynamic_pointer_cast<arrow::MapType>(
-                                 schema_->field(i)->type()));
+    return Getter::GetMap(
+        i, std::dynamic_pointer_cast<MapType>(schema_->field(i)->type()));
   }
 
   void SetNullAt(int i) override {
@@ -202,7 +196,7 @@ public:
   std::string ToString() const override;
 
 private:
-  std::shared_ptr<arrow::Schema> schema_;
+  SchemaPtr schema_;
   const int num_fields_;
   mutable std::shared_ptr<Buffer> buffer_;
   int base_offset_;
@@ -222,7 +216,7 @@ public:
 
   static std::shared_ptr<ArrayData> From(const std::vector<double> &vec);
 
-  explicit ArrayData(std::shared_ptr<arrow::ListType> type);
+  explicit ArrayData(ListTypePtr type);
 
   ~ArrayData() override = default;
 
@@ -235,7 +229,7 @@ public:
 
   int size_bytes() const override { return size_bytes_; }
 
-  std::shared_ptr<arrow::ListType> type() const { return type_; }
+  ListTypePtr type() const { return type_; }
 
   int num_elements() const { return num_elements_; }
 
@@ -250,17 +244,17 @@ public:
 
   std::shared_ptr<Row> GetStruct(int i) const override {
     return Getter::GetStruct(
-        i, std::dynamic_pointer_cast<arrow::StructType>(type_->value_type()));
+        i, std::dynamic_pointer_cast<StructType>(type_->value_type()));
   }
 
   std::shared_ptr<ArrayData> GetArray(int i) const override {
     return Getter::GetArray(
-        i, std::dynamic_pointer_cast<arrow::ListType>(type_->value_type()));
+        i, std::dynamic_pointer_cast<ListType>(type_->value_type()));
   }
 
   std::shared_ptr<MapData> GetMap(int i) const override {
     return Getter::GetMap(
-        i, std::dynamic_pointer_cast<arrow::MapType>(type_->value_type()));
+        i, std::dynamic_pointer_cast<MapType>(type_->value_type()));
   }
 
   void SetNullAt(int i) override {
@@ -280,7 +274,7 @@ public:
   static int *GetDimensions(ArrayData &array, int numDimensions);
 
 private:
-  std::shared_ptr<arrow::ListType> type_;
+  ListTypePtr type_;
   int element_size_;
   mutable std::shared_ptr<Buffer> buffer_;
   int num_elements_;
@@ -293,12 +287,12 @@ std::ostream &operator<<(std::ostream &os, const ArrayData &data);
 
 class MapData {
 public:
-  explicit MapData(std::shared_ptr<arrow::MapType> type);
+  explicit MapData(MapTypePtr type);
 
   void PointTo(std::shared_ptr<Buffer> buffer, uint32_t offset,
                uint32_t size_bytes);
 
-  std::shared_ptr<arrow::MapType> type() { return type_; }
+  MapTypePtr type() { return type_; }
 
   int num_elements() { return keys_->num_elements(); }
 
@@ -314,10 +308,8 @@ public:
 
   std::string ToString() const;
 
-  // TODO to unordered_map: To_unordered_map<std::string, uint64_t> possible?
-
 private:
-  std::shared_ptr<arrow::MapType> type_;
+  MapTypePtr type_;
   std::shared_ptr<ArrayData> keys_;
   std::shared_ptr<ArrayData> values_;
   mutable std::shared_ptr<Buffer> buffer_;
@@ -327,4 +319,5 @@ private:
 
 std::ostream &operator<<(std::ostream &os, const MapData &data);
 
+} // namespace row
 } // namespace fory

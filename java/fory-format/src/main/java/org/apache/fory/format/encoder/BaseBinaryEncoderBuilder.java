@@ -35,8 +35,6 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
 import java.util.Set;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CodegenContext;
@@ -71,6 +69,8 @@ import org.apache.fory.format.row.binary.writer.BinaryWriter;
 import org.apache.fory.format.type.CustomTypeEncoderRegistry;
 import org.apache.fory.format.type.CustomTypeHandler;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
@@ -84,7 +84,7 @@ import org.apache.fory.util.StringUtils;
 public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
   protected static final String REFERENCES_NAME = "references";
   protected static final TypeRef<Schema> SCHEMA_TYPE = TypeRef.of(Schema.class);
-  protected static final TypeRef<Field> ARROW_FIELD_TYPE = TypeRef.of(Field.class);
+  protected static final TypeRef<Field> FORY_FIELD_TYPE = TypeRef.of(Field.class);
   protected static TypeRef<Schema> schemaTypeToken = TypeRef.of(Schema.class);
   protected static TypeRef<BinaryWriter> writerTypeToken = TypeRef.of(BinaryWriter.class);
   protected static TypeRef<Row> rowTypeToken = TypeRef.of(Row.class);
@@ -337,7 +337,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
       Expression arrowField) {
     StaticInvoke arrayElementField =
         new StaticInvoke(
-            DataTypes.class, "arrayElementField", "elemField", ARROW_FIELD_TYPE, false, arrowField);
+            DataTypes.class, "arrayElementField", "elemField", FORY_FIELD_TYPE, false, arrowField);
     Class<?> rawType = getRawType(typeRef);
     if (rawType.isArray()) {
       FieldValue length = new FieldValue(inputObject, "length", TypeUtils.PRIMITIVE_INT_TYPE);
@@ -414,7 +414,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
             DataTypes.class,
             "keyArrayFieldForMap",
             "keyArrayField",
-            ARROW_FIELD_TYPE,
+            FORY_FIELD_TYPE,
             false,
             arrowField);
     StaticInvoke valueArrayField =
@@ -422,7 +422,7 @@ public abstract class BaseBinaryEncoderBuilder extends CodecBuilder {
             DataTypes.class,
             "itemArrayFieldForMap",
             "valueArrayField",
-            ARROW_FIELD_TYPE,
+            FORY_FIELD_TYPE,
             false,
             arrowField);
 

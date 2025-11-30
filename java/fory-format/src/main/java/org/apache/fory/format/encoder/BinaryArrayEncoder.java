@@ -19,9 +19,9 @@
 
 package org.apache.fory.format.encoder;
 
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.writer.BinaryArrayWriter;
+import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 

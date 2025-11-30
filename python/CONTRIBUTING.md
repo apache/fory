@@ -9,10 +9,8 @@ cd python
 # Uninstall numpy first so that when we install pyarrow, it will install the correct numpy version automatically.
 # For Python versions less than 3.13, numpy 2 is not currently supported.
 pip uninstall -y numpy
-# Install necessary environment for Python < 3.13.
-pip install pyarrow==15.0.0 Cython wheel pytest
-# For Python 3.13, pyarrow 18.0.0 is available and requires numpy version greater than 2.
-# pip install pyarrow==18.0.0 Cython wheel pytest
+# Install necessary environment for Python.
+pip install pyarrow Cython wheel pytest
 pip install -v -e .
 ```
 
@@ -21,10 +19,6 @@ you are probably suffering from bazel's aggressive caching; the sought library i
 temporary directory it was the last time bazel ran. To remedy this run
 
 > bazel clean --expunge
-
-In this situation, you might also find it fruitful to run bazel yourself before pip:
-
-> bazel build -s //:cp_fory_so
 
 ### Environment Requirements
 

@@ -30,6 +30,7 @@
 #include "fory/util/logging.h"
 
 namespace fory {
+namespace row {
 
 class Writer {
 public:
@@ -144,12 +145,11 @@ protected:
 /// Must call `reset()`/`reset(buffer)` before use this writer to write a row.
 class RowWriter : public Writer {
 public:
-  explicit RowWriter(const std::shared_ptr<arrow::Schema> &schema);
+  explicit RowWriter(const SchemaPtr &schema);
 
-  explicit RowWriter(const std::shared_ptr<arrow::Schema> &schema,
-                     Writer *writer);
+  explicit RowWriter(const SchemaPtr &schema, Writer *writer);
 
-  std::shared_ptr<arrow::Schema> schema() { return schema_; }
+  SchemaPtr schema() { return schema_; }
 
   void Reset();
 
@@ -174,7 +174,7 @@ public:
   std::shared_ptr<Row> ToRow();
 
 private:
-  std::shared_ptr<arrow::Schema> schema_;
+  SchemaPtr schema_;
   uint32_t header_in_bytes_;
   uint32_t fixed_size_;
 };
@@ -183,9 +183,9 @@ private:
 /// time.
 class ArrayWriter : public Writer {
 public:
-  explicit ArrayWriter(std::shared_ptr<arrow::ListType> type);
+  explicit ArrayWriter(ListTypePtr type);
 
-  explicit ArrayWriter(std::shared_ptr<arrow::ListType> type, Writer *writer);
+  explicit ArrayWriter(ListTypePtr type, Writer *writer);
 
   void Reset(uint32_t num_elements);
 
@@ -213,13 +213,14 @@ public:
 
   int size() { return cursor() - starting_offset_; }
 
-  std::shared_ptr<arrow::ListType> type() { return type_; }
+  ListTypePtr type() { return type_; }
 
 private:
-  std::shared_ptr<arrow::ListType> type_;
+  ListTypePtr type_;
   int element_size_;
   int num_elements_;
   int header_in_bytes_;
 };
 
+} // namespace row
 } // namespace fory

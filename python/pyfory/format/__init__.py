@@ -15,33 +15,69 @@
 # specific language governing permissions and limitations
 # under the License.
 
-import os
-import sys
 import warnings
 
 try:
-    import pyarrow as pa
-
-    # Ensure fory can link to arrow shared library
-    sys.path.extend(pa.get_library_dirs() + [os.path.dirname(__file__)])
-
-    from pyfory.format._format import (  # noqa: F401 # pylint: disable=unused-import
+    from pyfory.format._format import (  # noqa: F401
         create_row_encoder,
         RowData,
-        ArrowWriter,
-    )  # noqa: E402
-    from pyfory.format.infer import (  # noqa: F401 # pylint: disable=unused-import
+        # Schema types
+        DataType,
+        ListType,
+        MapType,
+        StructType,
+        Field,
+        Schema,
+        TypeId,
+        # Factory functions
+        boolean,
+        int8,
+        int16,
+        int32,
+        int64,
+        float16,
+        float32,
+        float64,
+        utf8,
+        string,
+        binary,
+        duration,
+        timestamp,
+        date32,
+        decimal,
+        list_,
+        map_,
+        struct,
+        field,
+        schema,
+        get_byte_width,
+    )
+    from pyfory.format.infer import (  # noqa: F401
         get_cls_by_schema,
         remove_schema,
         reset,
+        infer_schema,
+        infer_data_type,
+        get_type_id,
+        compute_schema_hash,
+        from_arrow_schema,
+        to_arrow_schema,
     )
-    from pyfory.format.encoder import (  # noqa: F401 # pylint: disable=unused-import
+    from pyfory.format.encoder import (  # noqa: F401
         encoder,
         Encoder,
     )
 except (ImportError, AttributeError) as e:
     warnings.warn(
-        f"Fory format initialization failed, please ensure pyarrow is installed with version which fory is compiled with: {e}",
+        f"Fory format initialization failed: {e}",
         RuntimeWarning,
         stacklevel=2,
     )
+
+# Optional: Arrow columnar format support (requires pyarrow)
+try:
+    from pyfory.format.columnar import (  # noqa: F401
+        ArrowWriter,
+    )
+except (ImportError, AttributeError):
+    pass

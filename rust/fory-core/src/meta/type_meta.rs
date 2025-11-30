@@ -337,6 +337,18 @@ impl TypeMetaLayer {
         &self.field_infos
     }
 
+    /// Creates a deep clone with new Rc instances.
+    /// This is safe for concurrent use from multiple threads.
+    pub fn deep_clone(&self) -> TypeMetaLayer {
+        TypeMetaLayer {
+            type_id: self.type_id,
+            namespace: Rc::new((*self.namespace).clone()),
+            type_name: Rc::new((*self.type_name).clone()),
+            register_by_name: self.register_by_name,
+            field_infos: self.field_infos.clone(),
+        }
+    }
+
     fn write_name(writer: &mut Writer, name: &MetaString, encodings: &[Encoding]) {
         let encoding_idx = encodings.iter().position(|x| *x == name.encoding).unwrap() as u8;
         let bytes = name.bytes.as_slice();
@@ -633,6 +645,15 @@ impl TypeMeta {
         TypeMeta {
             hash: 0,
             layer: TypeMetaLayer::empty(),
+        }
+    }
+
+    /// Creates a deep clone with new Rc instances.
+    /// This is safe for concurrent use from multiple threads.
+    pub fn deep_clone(&self) -> TypeMeta {
+        TypeMeta {
+            hash: self.hash,
+            layer: self.layer.deep_clone(),
         }
     }
 

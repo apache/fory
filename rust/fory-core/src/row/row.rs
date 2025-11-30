@@ -88,6 +88,47 @@ impl Row<'_> for bool {
     }
 }
 
+/// ArrayGetter for fixed-size arrays, wrapping the underlying ArrayViewer
+pub struct FixedArrayGetter<'a, T, const N: usize> {
+    array_data: ArrayViewer<'a>,
+    _marker: PhantomData<T>,
+}
+
+impl<'a, T: Row<'a>, const N: usize> FixedArrayGetter<'a, T, N> {
+    pub fn size(&self) -> usize {
+        self.array_data.num_elements()
+    }
+
+    pub fn get(&self, idx: usize) -> T::ReadResult {
+        if idx >= self.array_data.num_elements() {
+            panic!("out of bound");
+        }
+        let bytes = self.array_data.get_field_bytes(idx);
+        <T as Row>::cast(bytes)
+    }
+}
+
+impl<'a, T: Row<'a>, const N: usize> Row<'a> for [T; N] {
+    type ReadResult = FixedArrayGetter<'a, T, N>;
+
+    fn write(v: &Self, writer: &mut Writer) -> Result<(), Error> {
+        let mut array_writer = ArrayWriter::new(N, writer)?;
+        for (idx, item) in v.iter().enumerate() {
+            let callback_info = array_writer.write_start(idx);
+            <T as Row>::write(item, array_writer.get_writer())?;
+            array_writer.write_end(callback_info);
+        }
+        Ok(())
+    }
+
+    fn cast(row: &'a [u8]) -> Self::ReadResult {
+        FixedArrayGetter {
+            array_data: ArrayViewer::new(row),
+            _marker: PhantomData::<T>,
+        }
+    }
+}
+
 impl Row<'_> for NaiveDate {
     type ReadResult = Result<NaiveDate, Error>;
 

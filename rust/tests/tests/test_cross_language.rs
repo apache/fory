@@ -735,6 +735,16 @@ struct VersionCheckStruct {
     f3: f64,
 }
 
+#[derive(ForyObject, Debug, PartialEq)]
+struct StructWithList {
+    items: Vec<Option<String>>,
+}
+
+#[derive(ForyObject, Debug, PartialEq)]
+struct StructWithMap {
+    data: HashMap<Option<String>, Option<String>>,
+}
+
 #[test]
 #[ignore]
 fn test_struct_version_check() {
@@ -757,4 +767,129 @@ fn test_struct_version_check() {
     let new_local_obj: VersionCheckStruct = fory.deserialize(&new_bytes).unwrap();
     assert_eq!(new_local_obj, local_obj);
     fs::write(&data_file_path, new_bytes).unwrap();
+}
+
+#[test]
+#[ignore]
+fn test_item() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default().compatible(true).xlang(true);
+    fory.register::<Item>(102).unwrap();
+    let mut reader = Reader::new(bytes.as_slice());
+
+    let item1 = Item {
+        name: Some("test_item_1".to_string()),
+    };
+    let item2 = Item {
+        name: Some("test_item_2".to_string()),
+    };
+    let item3 = Item { name: None };
+
+    let remote_item1: Item = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(remote_item1, item1);
+    let remote_item2: Item = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(remote_item2, item2);
+    let remote_item3: Item = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(remote_item3, item3);
+
+    let mut buf = Vec::new();
+    fory.serialize_to(&remote_item1, &mut buf).unwrap();
+    fory.serialize_to(&remote_item2, &mut buf).unwrap();
+    fory.serialize_to(&remote_item3, &mut buf).unwrap();
+    fs::write(&data_file_path, buf).unwrap();
+}
+
+#[test]
+#[ignore]
+fn test_color() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default().compatible(true).xlang(true);
+    fory.register::<Color>(101).unwrap();
+    let mut reader = Reader::new(bytes.as_slice());
+
+    let remote_green: Color = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(remote_green, Color::Green);
+    let remote_red: Color = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(remote_red, Color::Red);
+    let remote_blue: Color = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(remote_blue, Color::Blue);
+    let remote_white: Color = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(remote_white, Color::White);
+
+    let mut buf = Vec::new();
+    fory.serialize_to(&Color::Green, &mut buf).unwrap();
+    fory.serialize_to(&Color::Red, &mut buf).unwrap();
+    fory.serialize_to(&Color::Blue, &mut buf).unwrap();
+    fory.serialize_to(&Color::White, &mut buf).unwrap();
+    fs::write(&data_file_path, buf).unwrap();
+}
+
+#[test]
+#[ignore]
+fn test_struct_with_list() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default().compatible(true).xlang(true);
+    fory.register::<StructWithList>(201).unwrap();
+    let mut reader = Reader::new(bytes.as_slice());
+
+    let struct1 = StructWithList {
+        items: vec![
+            Some("a".to_string()),
+            Some("b".to_string()),
+            Some("c".to_string()),
+        ],
+    };
+    let struct2 = StructWithList {
+        items: vec![Some("x".to_string()), None, Some("z".to_string())],
+    };
+
+    let remote_struct1: StructWithList = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(remote_struct1, struct1);
+    let remote_struct2: StructWithList = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(remote_struct2, struct2);
+
+    let mut buf = Vec::new();
+    fory.serialize_to(&remote_struct1, &mut buf).unwrap();
+    fory.serialize_to(&remote_struct2, &mut buf).unwrap();
+    fs::write(&data_file_path, buf).unwrap();
+}
+
+#[test]
+#[ignore]
+fn test_struct_with_map() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default().compatible(true).xlang(true);
+    fory.register::<StructWithMap>(202).unwrap();
+    let mut reader = Reader::new(bytes.as_slice());
+
+    let struct1 = StructWithMap {
+        data: HashMap::from([
+            (Some("key1".to_string()), Some("value1".to_string())),
+            (Some("key2".to_string()), Some("value2".to_string())),
+        ]),
+    };
+    let struct2 = StructWithMap {
+        data: HashMap::from([
+            (Some("k1".to_string()), None),
+            (None, Some("v2".to_string())),
+        ]),
+    };
+
+    let remote_struct1: StructWithMap = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(remote_struct1, struct1);
+    let remote_struct2: StructWithMap = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(remote_struct2, struct2);
+
+    let mut buf = Vec::new();
+    fory.serialize_to(&remote_struct1, &mut buf).unwrap();
+    fory.serialize_to(&remote_struct2, &mut buf).unwrap();
+    fs::write(&data_file_path, buf).unwrap();
 }

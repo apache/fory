@@ -29,6 +29,7 @@ import org.apache.arrow.vector.ipc.WriteChannel;
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
 import org.apache.arrow.vector.ipc.message.MessageSerializer;
 import org.apache.arrow.vector.types.pojo.Schema;
+import org.apache.fory.format.type.ArrowSchemaConverter;
 import org.apache.fory.io.MemoryBufferInputStream;
 import org.apache.fory.io.MemoryBufferOutputStream;
 import org.apache.fory.memory.MemoryBuffer;
@@ -51,12 +52,23 @@ public class ArrowUtils {
     return decimalArrowBuf.get();
   }
 
-  public static VectorSchemaRoot createVectorSchemaRoot(Schema schema) {
-    return VectorSchemaRoot.create(schema, allocator);
+  public static VectorSchemaRoot createVectorSchemaRoot(Schema arrowSchema) {
+    return VectorSchemaRoot.create(arrowSchema, allocator);
   }
 
-  public static ArrowWriter createArrowWriter(Schema schema) {
-    VectorSchemaRoot root = VectorSchemaRoot.create(schema, allocator);
+  public static VectorSchemaRoot createVectorSchemaRoot(
+      org.apache.fory.format.type.Schema forySchema) {
+    return VectorSchemaRoot.create(ArrowSchemaConverter.toArrowSchema(forySchema), allocator);
+  }
+
+  public static ArrowWriter createArrowWriter(Schema arrowSchema) {
+    VectorSchemaRoot root = VectorSchemaRoot.create(arrowSchema, allocator);
+    return new ArrowWriter(root);
+  }
+
+  public static ArrowWriter createArrowWriter(org.apache.fory.format.type.Schema forySchema) {
+    VectorSchemaRoot root =
+        VectorSchemaRoot.create(ArrowSchemaConverter.toArrowSchema(forySchema), allocator);
     return new ArrowWriter(root);
   }
 

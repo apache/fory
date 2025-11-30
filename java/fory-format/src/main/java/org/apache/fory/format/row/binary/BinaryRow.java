@@ -24,11 +24,11 @@ import static org.apache.fory.util.Preconditions.checkArgument;
 import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.Row;
+import org.apache.fory.format.type.DataType;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.BitUtils;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
@@ -51,7 +51,7 @@ import org.apache.fory.util.Preconditions;
  *
  * <ul>
  *   BinaryRow is inspired by Apache Spark tungsten UnsafeRow, the differences are
- *   <li>Use arrow schema to describe meta.
+ *   <li>Use Fory schema to describe meta.
  *   <li>String support latin/utf16/utf8 encoding.
  *   <li>Decimal use arrow decimal format.
  *   <li>Variable-size field can be inline in fixed-size region if small enough.
@@ -70,7 +70,7 @@ public class BinaryRow extends UnsafeTrait implements Row {
 
   public BinaryRow(Schema schema) {
     this.schema = schema;
-    this.numFields = schema.getFields().size();
+    this.numFields = schema.numFields();
     Preconditions.checkArgument(numFields > 0);
     this.bitmapWidthInBytes = computeBitmapWidthInBytes();
     initializeExtData(numFields);
@@ -139,13 +139,8 @@ public class BinaryRow extends UnsafeTrait implements Row {
   public void setNullAt(int ordinal) {
     assertIndexIsValid(ordinal);
     BitUtils.set(buffer, nullBitmapOffset(), ordinal);
-    assert DataTypes.getTypeWidth(schema.getFields().get(ordinal).getType()) > 0
-        : "field[ "
-            + ordinal
-            + " "
-            + schema.getFields().get(ordinal).getType()
-            + " ] "
-            + "must be fixed-width";
+    assert DataTypes.getTypeWidth(schema.field(ordinal).type()) > 0
+        : "field[ " + ordinal + " " + schema.field(ordinal).type() + " ] " + "must be fixed-width";
     // To preserve row equality, zero out the value when setting the column to null.
     // Since this row does not currently support updates to variable-length values, we don't
     // have to worry about zeroing out that data.
@@ -160,22 +155,23 @@ public class BinaryRow extends UnsafeTrait implements Row {
 
   @Override
   public BigDecimal getDecimal(int ordinal) {
-    return getDecimal(ordinal, (ArrowType.Decimal) schema.getFields().get(ordinal).getType());
+    DataTypes.DecimalType decimalType = (DataTypes.DecimalType) schema.field(ordinal).type();
+    return getDecimal(ordinal, decimalType);
   }
 
   @Override
   public BinaryRow getStruct(int ordinal) {
-    return getStruct(ordinal, schema.getFields().get(ordinal), ordinal);
+    return getStruct(ordinal, schema.field(ordinal), ordinal);
   }
 
   @Override
   public BinaryArray getArray(int ordinal) {
-    return getArray(ordinal, schema.getFields().get(ordinal));
+    return getArray(ordinal, schema.field(ordinal));
   }
 
   @Override
   public BinaryMap getMap(int ordinal) {
-    return getMap(ordinal, schema.getFields().get(ordinal));
+    return getMap(ordinal, schema.field(ordinal));
   }
 
   @Override
@@ -201,8 +197,8 @@ public class BinaryRow extends UnsafeTrait implements Row {
         if (i != 0) {
           build.append(", ");
         }
-        Field field = schema.getFields().get(i);
-        build.append(field.getName()).append("=");
+        Field field = schema.field(i);
+        build.append(field.name()).append("=");
         if (isNullAt(i)) {
           build.append("null");
         } else {
@@ -233,8 +229,8 @@ public class BinaryRow extends UnsafeTrait implements Row {
   public Map<String, Object> toMap() {
     Map<String, Object> map = new HashMap<>();
     for (int i = 0; i < numFields; i++) {
-      Field field = schema.getFields().get(i);
-      map.put(field.getName(), get(i, field));
+      Field field = schema.field(i);
+      map.put(field.name(), get(i, field));
     }
     return map;
   }
@@ -248,7 +244,7 @@ public class BinaryRow extends UnsafeTrait implements Row {
    * If it is variable-length field, can't use this method, because the underlying data is stored
    * continuously.
    */
-  public static boolean isFixedLength(ArrowType type) {
+  public static boolean isFixedLength(DataType type) {
     return DataTypes.getTypeWidth(type) > 0;
   }
 }

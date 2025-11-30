@@ -170,6 +170,59 @@ TEST_F(ResultTest, Assignment) {
   ASSERT_EQ(r7.value(), 42);
 }
 
+// ===== Test Result<T&, E> =====
+
+TEST_F(ResultTest, ReferenceBasic) {
+  int x = 42;
+  Result<int &, Error> res(x);
+  ASSERT_TRUE(res.ok());
+  ASSERT_EQ(res.value(), 42);
+  ASSERT_EQ(&res.value(), &x);
+
+  // Modify through reference
+  res.value() = 100;
+  ASSERT_EQ(x, 100);
+}
+
+TEST_F(ResultTest, ReferenceError) {
+  Result<int &, Error> res = Unexpected(Error::invalid("not found"));
+  ASSERT_FALSE(res.ok());
+  ASSERT_EQ(res.error().code(), ErrorCode::Invalid);
+}
+
+TEST_F(ResultTest, ReferenceValueOr) {
+  int x = 10, fallback = 99;
+  Result<int &, Error> ok_res(x);
+  ASSERT_EQ(&ok_res.value_or(fallback), &x);
+
+  Result<int &, Error> err_res = Unexpected(Error::invalid("error"));
+  ASSERT_EQ(&err_res.value_or(fallback), &fallback);
+}
+
+TEST_F(ResultTest, ReferenceCopyReseats) {
+  int x = 1, y = 2;
+  Result<int &, Error> r1(x);
+  Result<int &, Error> r2(y);
+  r1 = r2;
+  ASSERT_EQ(&r1.value(), &y);
+}
+
+TEST_F(ResultTest, ReferenceConstRef) {
+  const int x = 42;
+  Result<const int &, Error> res(x);
+  ASSERT_TRUE(res.ok());
+  ASSERT_EQ(res.value(), 42);
+  ASSERT_EQ(&res.value(), &x);
+}
+
+TEST_F(ResultTest, ReferenceArrowOperator) {
+  std::string s = "hello";
+  Result<std::string &, Error> res(s);
+  ASSERT_EQ(res->size(), 5);
+  res->append(" world");
+  ASSERT_EQ(s, "hello world");
+}
+
 // ===== Test macros =====
 
 Result<void, Error> helper_ok() { return Result<void, Error>(); }

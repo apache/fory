@@ -229,6 +229,8 @@ pub(super) fn classify_trait_object_field(ty: &Type) -> StructField {
 pub(super) struct TypeNode {
     pub name: String,
     pub generics: Vec<TypeNode>,
+    /// For arrays, store the original type string "[T; N]" to preserve length info
+    pub original_type_str: Option<String>,
 }
 
 pub(super) fn try_primitive_vec_type(node: &TypeNode) -> Option<TokenStream> {
@@ -277,6 +279,14 @@ impl fmt::Display for TypeNode {
                     .collect::<Vec<_>>()
                     .join(", ")
             )
+        } else if self.name == "Array" {
+            // For arrays, use the original type string if available (e.g., "[f32; 4]")
+            if let Some(ref original) = self.original_type_str {
+                write!(f, "{}", original)
+            } else {
+                // Fallback - shouldn't happen if properly constructed
+                write!(f, "Array")
+            }
         } else if self.generics.is_empty() {
             write!(f, "{}", self.name)
         } else {
@@ -326,6 +336,7 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
         return TypeNode {
             name: "TraitObject".to_string(),
             generics: vec![],
+            original_type_str: None,
         };
     }
 
@@ -334,15 +345,19 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
         return TypeNode {
             name: "Tuple".to_string(),
             generics: vec![],
+            original_type_str: None,
         };
     }
 
-    // Handle arrays - extract element type
+    // Handle arrays - extract element type and preserve original type string
     if let Type::Array(array) = ty {
         let elem_node = parse_generic_tree(&array.elem);
+        // Preserve the original type string including the length (e.g., "[f32; 4]")
+        let original_type_str = quote!(#ty).to_string().replace(' ', "");
         return TypeNode {
             name: "Array".to_string(),
             generics: vec![elem_node],
+            original_type_str: Some(original_type_str),
         };
     }
 
@@ -368,7 +383,11 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
     } else {
         vec![]
     };
-    TypeNode { name, generics }
+    TypeNode {
+        name,
+        generics,
+        original_type_str: None,
+    }
 }
 
 pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {

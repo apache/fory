@@ -41,15 +41,31 @@ namespace serialization {
 template <> struct Serializer<bool> {
   static constexpr TypeId type_id = TypeId::BOOL;
 
+  /// Write type info only (for collection/map element type headers)
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  /// Read and validate type info (primitives use read_varuint32 directly)
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+    return Result<void, Error>();
+  }
+
   /// Write boolean with optional reference and type info
   static inline Result<void, Error> write(bool value, WriteContext &ctx,
-                                          bool write_ref, bool write_type) {
+                                          bool write_ref, bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    ctx.write_uint8(value ? 1 : 0);
-    return Result<void, Error>();
+    return write_data_generic(value, ctx, has_generics);
   }
 
   /// Write boolean data only (no type info)
@@ -72,10 +88,10 @@ template <> struct Serializer<bool> {
       return false;
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     FORY_TRY(value, ctx.read_uint8());
@@ -107,14 +123,28 @@ template <> struct Serializer<bool> {
 template <> struct Serializer<int8_t> {
   static constexpr TypeId type_id = TypeId::INT8;
 
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+    return Result<void, Error>();
+  }
+
   static inline Result<void, Error> write(int8_t value, WriteContext &ctx,
-                                          bool write_ref, bool write_type) {
+                                          bool write_ref, bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    ctx.write_int8(value);
-    return Result<void, Error>();
+    return write_data_generic(value, ctx, has_generics);
   }
 
   static inline Result<void, Error> write_data(int8_t value,
@@ -135,10 +165,10 @@ template <> struct Serializer<int8_t> {
       return static_cast<int8_t>(0);
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     return ctx.read_int8();
@@ -164,14 +194,28 @@ template <> struct Serializer<int8_t> {
 template <> struct Serializer<int16_t> {
   static constexpr TypeId type_id = TypeId::INT16;
 
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+    return Result<void, Error>();
+  }
+
   static inline Result<void, Error> write(int16_t value, WriteContext &ctx,
-                                          bool write_ref, bool write_type) {
+                                          bool write_ref, bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    ctx.write_bytes(&value, sizeof(int16_t));
-    return Result<void, Error>();
+    return write_data_generic(value, ctx, has_generics);
   }
 
   static inline Result<void, Error> write_data(int16_t value,
@@ -192,10 +236,10 @@ template <> struct Serializer<int16_t> {
       return static_cast<int16_t>(0);
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     int16_t value;
@@ -225,19 +269,33 @@ template <> struct Serializer<int16_t> {
 template <> struct Serializer<int32_t> {
   static constexpr TypeId type_id = TypeId::INT32;
 
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+    return Result<void, Error>();
+  }
+
   static inline Result<void, Error> write(int32_t value, WriteContext &ctx,
-                                          bool write_ref, bool write_type) {
+                                          bool write_ref, bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    ctx.write_bytes(&value, sizeof(int32_t));
-    return Result<void, Error>();
+    return write_data_generic(value, ctx, has_generics);
   }
 
   static inline Result<void, Error> write_data(int32_t value,
                                                WriteContext &ctx) {
-    ctx.write_bytes(&value, sizeof(int32_t));
+    ctx.write_varint32(value);
     return Result<void, Error>();
   }
 
@@ -253,21 +311,17 @@ template <> struct Serializer<int32_t> {
       return static_cast<int32_t>(0);
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
-    int32_t value;
-    FORY_RETURN_NOT_OK(ctx.read_bytes(&value, sizeof(int32_t)));
-    return value;
+    return ctx.read_varint32();
   }
 
   static inline Result<int32_t, Error> read_data(ReadContext &ctx) {
-    int32_t value;
-    FORY_RETURN_NOT_OK(ctx.read_bytes(&value, sizeof(int32_t)));
-    return value;
+    return ctx.read_varint32();
   }
 
   static inline Result<int32_t, Error> read_data_generic(ReadContext &ctx,
@@ -286,19 +340,33 @@ template <> struct Serializer<int32_t> {
 template <> struct Serializer<int64_t> {
   static constexpr TypeId type_id = TypeId::INT64;
 
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+    return Result<void, Error>();
+  }
+
   static inline Result<void, Error> write(int64_t value, WriteContext &ctx,
-                                          bool write_ref, bool write_type) {
+                                          bool write_ref, bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    ctx.write_bytes(&value, sizeof(int64_t));
-    return Result<void, Error>();
+    return write_data_generic(value, ctx, has_generics);
   }
 
   static inline Result<void, Error> write_data(int64_t value,
                                                WriteContext &ctx) {
-    ctx.write_bytes(&value, sizeof(int64_t));
+    ctx.write_varint64(value);
     return Result<void, Error>();
   }
 
@@ -314,21 +382,17 @@ template <> struct Serializer<int64_t> {
       return static_cast<int64_t>(0);
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
-    int64_t value;
-    FORY_RETURN_NOT_OK(ctx.read_bytes(&value, sizeof(int64_t)));
-    return value;
+    return ctx.read_varint64();
   }
 
   static inline Result<int64_t, Error> read_data(ReadContext &ctx) {
-    int64_t value;
-    FORY_RETURN_NOT_OK(ctx.read_bytes(&value, sizeof(int64_t)));
-    return value;
+    return ctx.read_varint64();
   }
 
   static inline Result<int64_t, Error> read_data_generic(ReadContext &ctx,
@@ -347,14 +411,28 @@ template <> struct Serializer<int64_t> {
 template <> struct Serializer<float> {
   static constexpr TypeId type_id = TypeId::FLOAT32;
 
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+    return Result<void, Error>();
+  }
+
   static inline Result<void, Error> write(float value, WriteContext &ctx,
-                                          bool write_ref, bool write_type) {
+                                          bool write_ref, bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    ctx.write_bytes(&value, sizeof(float));
-    return Result<void, Error>();
+    return write_data_generic(value, ctx, has_generics);
   }
 
   static inline Result<void, Error> write_data(float value, WriteContext &ctx) {
@@ -374,10 +452,10 @@ template <> struct Serializer<float> {
       return 0.0f;
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     float value;
@@ -407,14 +485,28 @@ template <> struct Serializer<float> {
 template <> struct Serializer<double> {
   static constexpr TypeId type_id = TypeId::FLOAT64;
 
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+    return Result<void, Error>();
+  }
+
   static inline Result<void, Error> write(double value, WriteContext &ctx,
-                                          bool write_ref, bool write_type) {
+                                          bool write_ref, bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    ctx.write_bytes(&value, sizeof(double));
-    return Result<void, Error>();
+    return write_data_generic(value, ctx, has_generics);
   }
 
   static inline Result<void, Error> write_data(double value,
@@ -435,10 +527,10 @@ template <> struct Serializer<double> {
       return 0.0;
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     double value;
@@ -472,14 +564,28 @@ template <> struct Serializer<double> {
 template <> struct Serializer<uint8_t> {
   static constexpr TypeId type_id = TypeId::INT8; // Same as int8
 
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+    return Result<void, Error>();
+  }
+
   static inline Result<void, Error> write(uint8_t value, WriteContext &ctx,
-                                          bool write_ref, bool write_type) {
+                                          bool write_ref, bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    ctx.write_uint8(value);
-    return Result<void, Error>();
+    return write_data_generic(value, ctx, has_generics);
   }
 
   static inline Result<void, Error> write_data(uint8_t value,
@@ -500,10 +606,10 @@ template <> struct Serializer<uint8_t> {
       return static_cast<uint8_t>(0);
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     return ctx.read_uint8();
@@ -529,14 +635,28 @@ template <> struct Serializer<uint8_t> {
 template <> struct Serializer<uint16_t> {
   static constexpr TypeId type_id = TypeId::INT16;
 
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+    return Result<void, Error>();
+  }
+
   static inline Result<void, Error> write(uint16_t value, WriteContext &ctx,
-                                          bool write_ref, bool write_type) {
+                                          bool write_ref, bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    ctx.write_bytes(&value, sizeof(uint16_t));
-    return Result<void, Error>();
+    return write_data_generic(value, ctx, has_generics);
   }
 
   static inline Result<void, Error> write_data(uint16_t value,
@@ -557,10 +677,10 @@ template <> struct Serializer<uint16_t> {
       return static_cast<uint16_t>(0);
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     uint16_t value;
@@ -590,14 +710,28 @@ template <> struct Serializer<uint16_t> {
 template <> struct Serializer<uint32_t> {
   static constexpr TypeId type_id = TypeId::INT32;
 
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+    return Result<void, Error>();
+  }
+
   static inline Result<void, Error> write(uint32_t value, WriteContext &ctx,
-                                          bool write_ref, bool write_type) {
+                                          bool write_ref, bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    ctx.write_bytes(&value, sizeof(uint32_t));
-    return Result<void, Error>();
+    return write_data_generic(value, ctx, has_generics);
   }
 
   static inline Result<void, Error> write_data(uint32_t value,
@@ -618,10 +752,10 @@ template <> struct Serializer<uint32_t> {
       return static_cast<uint32_t>(0);
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     uint32_t value;
@@ -651,14 +785,28 @@ template <> struct Serializer<uint32_t> {
 template <> struct Serializer<uint64_t> {
   static constexpr TypeId type_id = TypeId::INT64;
 
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
+    }
+    return Result<void, Error>();
+  }
+
   static inline Result<void, Error> write(uint64_t value, WriteContext &ctx,
-                                          bool write_ref, bool write_type) {
+                                          bool write_ref, bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    ctx.write_bytes(&value, sizeof(uint64_t));
-    return Result<void, Error>();
+    return write_data_generic(value, ctx, has_generics);
   }
 
   static inline Result<void, Error> write_data(uint64_t value,
@@ -679,10 +827,10 @@ template <> struct Serializer<uint64_t> {
       return static_cast<uint64_t>(0);
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     uint64_t value;
@@ -712,7 +860,7 @@ template <> struct Serializer<uint64_t> {
 // String Serializer
 // ============================================================================
 
-/// std::string serializer with encoding detection per xlang spec
+/// std::string serializer using UTF-8 encoding per xlang spec
 template <> struct Serializer<std::string> {
   static constexpr TypeId type_id = TypeId::STRING;
 
@@ -723,41 +871,40 @@ template <> struct Serializer<std::string> {
     UTF8 = 2,   // UTF-8
   };
 
-  /// Detect string encoding (simplified - assumes UTF-8 for now)
-  static inline StringEncoding detect_encoding(const std::string &value) {
-    // Simple heuristic: check if all characters are ASCII (< 128)
-    bool is_latin1 = true;
-    for (char c : value) {
-      if (static_cast<unsigned char>(c) >= 128) {
-        is_latin1 = false;
-        break;
-      }
+  static inline Result<void, Error> write_type_info(WriteContext &ctx) {
+    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    return Result<void, Error>();
+  }
+
+  static inline Result<void, Error> read_type_info(ReadContext &ctx) {
+    FORY_TRY(actual, ctx.read_varuint32());
+    if (actual != static_cast<uint32_t>(type_id)) {
+      return Unexpected(
+          Error::type_mismatch(actual, static_cast<uint32_t>(type_id)));
     }
-    // For simplicity, use LATIN1 for ASCII, UTF8 otherwise
-    return is_latin1 ? StringEncoding::LATIN1 : StringEncoding::UTF8;
+    return Result<void, Error>();
   }
 
   static inline Result<void, Error> write(const std::string &value,
                                           WriteContext &ctx, bool write_ref,
-                                          bool write_type) {
+                                          bool write_type,
+                                          bool has_generics = false) {
     write_not_null_ref_flag(ctx, write_ref);
     if (write_type) {
-      ctx.write_uint8(static_cast<uint8_t>(type_id));
+      ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
-    return write_data(value, ctx);
+    return write_data_generic(value, ctx, has_generics);
   }
 
   static inline Result<void, Error> write_data(const std::string &value,
                                                WriteContext &ctx) {
-    // Detect encoding
-    StringEncoding encoding = detect_encoding(value);
-
-    // Per xlang spec: write size shifted left by 2 bits, with encoding in
-    // lower 2 bits Note: Using varuint32 instead of varuint64 for practical
-    // size limits
-    uint32_t size_with_encoding = (static_cast<uint32_t>(value.size()) << 2) |
-                                  static_cast<uint32_t>(encoding);
-    ctx.write_varuint32(size_with_encoding);
+    // Always use UTF-8 encoding for cross-language compatibility.
+    // Per xlang spec: write size shifted left by 2 bits, with encoding
+    // (UTF8) in the lower 2 bits. Use varuint36small encoding.
+    uint64_t length = static_cast<uint64_t>(value.size());
+    uint64_t size_with_encoding =
+        (length << 2) | static_cast<uint64_t>(StringEncoding::UTF8);
+    ctx.write_varuint36small(size_with_encoding);
 
     // Write string bytes
     if (!value.empty()) {
@@ -779,35 +926,55 @@ template <> struct Serializer<std::string> {
       return std::string();
     }
     if (read_type) {
-      FORY_TRY(type_byte, ctx.read_uint8());
-      if (type_byte != static_cast<uint8_t>(type_id)) {
+      FORY_TRY(type_id_read, ctx.read_varuint32());
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         return Unexpected(
-            Error::type_mismatch(type_byte, static_cast<uint8_t>(type_id)));
+            Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
     return read_data(ctx);
   }
 
   static inline Result<std::string, Error> read_data(ReadContext &ctx) {
-    // Read size with encoding
-    FORY_TRY(size_with_encoding, ctx.read_varuint32());
+    // Read size with encoding using varuint36small
+    FORY_TRY(size_with_encoding, ctx.read_varuint36small());
 
     // Extract size and encoding from lower 2 bits
-    uint32_t length = size_with_encoding >> 2;
-    // Encoding available but unused for now - all strings treated as raw bytes
-    // In full implementation, would convert UTF-16 to UTF-8 etc.
-    // StringEncoding encoding = static_cast<StringEncoding>(size_with_encoding
-    // & 0x3);
+    uint64_t length = size_with_encoding >> 2;
+    StringEncoding encoding =
+        static_cast<StringEncoding>(size_with_encoding & 0x3);
 
     if (length == 0) {
       return std::string();
     }
 
-    // Read string bytes
-    std::string result(length, '\0');
-    FORY_RETURN_NOT_OK(ctx.read_bytes(&result[0], length));
-
-    return result;
+    // Handle different encodings
+    switch (encoding) {
+    case StringEncoding::LATIN1: {
+      std::vector<uint8_t> bytes(length);
+      FORY_RETURN_NOT_OK(ctx.read_bytes(bytes.data(), length));
+      return latin1ToUtf8(bytes.data(), length);
+    }
+    case StringEncoding::UTF16: {
+      if (length % 2 != 0) {
+        return Unexpected(Error::invalid_data("UTF-16 length must be even"));
+      }
+      std::vector<uint16_t> utf16_chars(length / 2);
+      FORY_RETURN_NOT_OK(ctx.read_bytes(
+          reinterpret_cast<uint8_t *>(utf16_chars.data()), length));
+      return utf16ToUtf8(utf16_chars.data(), utf16_chars.size());
+    }
+    case StringEncoding::UTF8: {
+      // UTF-8: read bytes directly
+      std::string result(length, '\0');
+      FORY_RETURN_NOT_OK(ctx.read_bytes(&result[0], length));
+      return result;
+    }
+    default:
+      return Unexpected(
+          Error::encoding_error("Unknown string encoding: " +
+                                std::to_string(static_cast<int>(encoding))));
+    }
   }
 
   static inline Result<std::string, Error>

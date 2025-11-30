@@ -27,8 +27,6 @@
 #include <string>
 #include <type_traits>
 
-#include "fory/meta/type_traits.h"
-
 #ifdef _WIN32
 #define ROW_LITTLE_ENDIAN 1
 #else
@@ -144,8 +142,10 @@ static inline void ByteSwap(void *dst, const void *src, int len) {
 // Convert to little/big endian format from the machine's native endian format.
 template <typename T>
 using IsEndianConvertibleType =
-    meta::IsOneOf<T, int64_t, uint64_t, int32_t, uint32_t, int16_t, uint16_t,
-                  float, double>;
+    std::disjunction<std::is_same<T, int64_t>, std::is_same<T, uint64_t>,
+                     std::is_same<T, int32_t>, std::is_same<T, uint32_t>,
+                     std::is_same<T, int16_t>, std::is_same<T, uint16_t>,
+                     std::is_same<T, float>, std::is_same<T, double>>;
 
 template <typename T>
 using EnableIfIsEndianConvertibleType =

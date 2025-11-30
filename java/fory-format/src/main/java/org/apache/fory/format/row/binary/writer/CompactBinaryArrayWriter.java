@@ -21,9 +21,10 @@ package org.apache.fory.format.row.binary.writer;
 
 import static org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter.fixedWidthFor;
 
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.CompactBinaryArray;
+import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 
@@ -53,13 +54,15 @@ public class CompactBinaryArrayWriter extends BinaryArrayWriter {
 
   public CompactBinaryArrayWriter(final Field field, final MemoryBuffer buffer) {
     super(CompactBinaryRowWriter.sortField(field), buffer, 4, elementWidth(field));
-    final Field elementField = this.field.getChildren().get(0);
+    DataTypes.ListType listType = (DataTypes.ListType) this.field.type();
+    final Field elementField = listType.valueField();
     fixedWidth = fixedWidthFor(elementField);
-    elementNullable = elementField.isNullable();
+    elementNullable = elementField.nullable();
   }
 
   public static int elementWidth(final Field field) {
-    final int width = fixedWidthFor(field.getChildren().get(0));
+    DataTypes.ListType listType = (DataTypes.ListType) field.type();
+    final int width = fixedWidthFor(listType.valueField());
     if (width < 0) {
       return 8;
     } else {

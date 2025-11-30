@@ -15,34 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-workspace(name = "fory")
-
-load("//bazel:fory_deps_setup.bzl", "setup_deps")
-setup_deps()
-
-load("@bazel_skylib//:workspace.bzl", "bazel_skylib_workspace")
-load("@com_github_grpc_grpc//bazel:grpc_deps.bzl", "grpc_deps")
-load("@com_github_grpc_grpc//third_party/py:python_configure.bzl", "python_configure")
-load("//bazel/arrow:pyarrow_configure.bzl", "pyarrow_configure")
-load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")  
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
-
-# Add Benchmark
-git_repository(
-    name = "com_google_benchmark",
-    remote = "https://github.com/google/benchmark.git",
-    tag = "v1.9.1",
-)
-
-# Add SIMDUTF
-http_archive(
-    name = "simdutf",
-    urls = ["https://github.com/simdutf/simdutf/releases/download/v6.1.2/singleheader.zip"],
-    sha256 = "41bb25074fe1e917e96e539c7a87c502e530d88746d7c25d06fb55a28b884340",
-    build_file = "//cpp/fory/thirdparty:BUILD",
-)
-
-bazel_skylib_workspace()
-python_configure(name="local_config_python")
-pyarrow_configure(name="local_config_pyarrow")
-grpc_deps()
+# This file is intentionally kept minimal.
+# Dependencies are managed via MODULE.bazel using bzlmod.
+# See MODULE.bazel for the list of dependencies.

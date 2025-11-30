@@ -21,8 +21,8 @@ package org.apache.fory.format.row.binary.writer;
 
 import static org.apache.fory.memory.BitUtils.calculateBitmapWidthInBytes;
 
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.BinaryRow;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
 
 /**
@@ -58,11 +58,11 @@ public class BinaryRowWriter extends BaseBinaryRowWriter {
   }
 
   private int fixedAreaSize() {
-    return headerInBytes + getSchema().getFields().size() * 8;
+    return headerInBytes + getSchema().numFields() * 8;
   }
 
   static int headerBytes(Schema schema) {
-    return calculateBitmapWidthInBytes(schema.getFields().size());
+    return calculateBitmapWidthInBytes(schema.numFields());
   }
 
   @Override

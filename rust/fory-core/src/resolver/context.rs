@@ -16,6 +16,8 @@
 // under the License.
 
 use crate::buffer::{Reader, Writer};
+use crate::config::Config;
+use std::collections::HashMap;
 use std::mem;
 
 use crate::error::Error;
@@ -25,8 +27,87 @@ use crate::resolver::meta_string_resolver::{MetaStringReaderResolver, MetaString
 use crate::resolver::ref_resolver::{RefReader, RefWriter};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types;
-use crate::util::Spinlock;
 use std::rc::Rc;
+
+/// Thread-local context cache with fast path for single Fory instance.
+/// Uses (cached_id, context) for O(1) access when using same Fory instance repeatedly.
+/// Falls back to HashMap for multiple Fory instances per thread.
+pub struct ContextCache<T> {
+    /// Fast path: cached context for the most recently used Fory instance
+    cached_id: u64,
+    cached_context: Option<Box<T>>,
+    /// Slow path: HashMap for other Fory instances
+    others: HashMap<u64, Box<T>>,
+}
+
+impl<T> ContextCache<T> {
+    pub fn new() -> Self {
+        ContextCache {
+            cached_id: u64::MAX,
+            cached_context: None,
+            others: HashMap::new(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_or_insert(&mut self, id: u64, create: impl FnOnce() -> Box<T>) -> &mut T {
+        if self.cached_id == id {
+            // Fast path: same Fory instance as last time
+            return self.cached_context.as_mut().unwrap();
+        }
+
+        // Check if we need to swap with cached
+        if self.cached_context.is_some() {
+            // Move current cached to others
+            let old_id = self.cached_id;
+            let old_context = self.cached_context.take().unwrap();
+            self.others.insert(old_id, old_context);
+        }
+
+        // Get or create context for new id
+        let context = self.others.remove(&id).unwrap_or_else(create);
+        self.cached_id = id;
+        self.cached_context = Some(context);
+        self.cached_context.as_mut().unwrap()
+    }
+
+    /// Like `get_or_insert`, but the create closure returns a Result.
+    /// This allows error handling during context creation without pre-fetching resources.
+    #[inline(always)]
+    pub fn get_or_insert_result<E>(
+        &mut self,
+        id: u64,
+        create: impl FnOnce() -> Result<Box<T>, E>,
+    ) -> Result<&mut T, E> {
+        if self.cached_id == id {
+            // Fast path: same Fory instance as last time
+            return Ok(self.cached_context.as_mut().unwrap());
+        }
+
+        // Check if we need to swap with cached
+        if self.cached_context.is_some() {
+            // Move current cached to others
+            let old_id = self.cached_id;
+            let old_context = self.cached_context.take().unwrap();
+            self.others.insert(old_id, old_context);
+        }
+
+        // Get or create context for new id
+        let context = match self.others.remove(&id) {
+            Some(ctx) => ctx,
+            None => create()?,
+        };
+        self.cached_id = id;
+        self.cached_context = Some(context);
+        Ok(self.cached_context.as_mut().unwrap())
+    }
+}
+
+impl<T> Default for ContextCache<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Serialization state container used on a single thread at a time.
 /// Sharing the same instance across threads simultaneously causes undefined behavior.
@@ -50,21 +131,14 @@ pub struct WriteContext<'a> {
 
 #[allow(clippy::needless_lifetimes)]
 impl<'a> WriteContext<'a> {
-    pub fn new(
-        type_resolver: TypeResolver,
-        compatible: bool,
-        share_meta: bool,
-        compress_string: bool,
-        xlang: bool,
-        check_struct_version: bool,
-    ) -> WriteContext<'a> {
+    pub fn new(type_resolver: TypeResolver, config: Config) -> WriteContext<'a> {
         WriteContext {
             type_resolver,
-            compatible,
-            share_meta,
-            compress_string,
-            xlang,
-            check_struct_version,
+            compatible: config.compatible,
+            share_meta: config.share_meta,
+            compress_string: config.compress_string,
+            xlang: config.xlang,
+            check_struct_version: config.check_struct_version,
             default_writer: None,
             writer: Writer::from_buffer(Self::get_leak_buffer()),
             meta_resolver: MetaWriterResolver::default(),
@@ -254,21 +328,14 @@ unsafe impl<'a> Send for ReadContext<'a> {}
 unsafe impl<'a> Sync for ReadContext<'a> {}
 
 impl<'a> ReadContext<'a> {
-    pub fn new(
-        type_resolver: TypeResolver,
-        compatible: bool,
-        share_meta: bool,
-        xlang: bool,
-        max_dyn_depth: u32,
-        check_struct_version: bool,
-    ) -> ReadContext<'a> {
+    pub fn new(type_resolver: TypeResolver, config: Config) -> ReadContext<'a> {
         ReadContext {
             type_resolver,
-            compatible,
-            share_meta,
-            xlang,
-            max_dyn_depth,
-            check_struct_version,
+            compatible: config.compatible,
+            share_meta: config.share_meta,
+            xlang: config.xlang,
+            max_dyn_depth: config.max_dyn_depth,
+            check_struct_version: config.check_struct_version,
             reader: Reader::default(),
             meta_resolver: MetaReaderResolver::default(),
             meta_string_resolver: MetaStringReaderResolver::default(),
@@ -311,12 +378,6 @@ impl<'a> ReadContext<'a> {
     #[inline(always)]
     pub fn max_dyn_depth(&self) -> u32 {
         self.max_dyn_depth
-    }
-
-    #[inline(always)]
-    pub fn init(&mut self, max_dyn_depth: u32) {
-        self.max_dyn_depth = max_dyn_depth;
-        self.current_depth = 0;
     }
 
     #[inline(always)]
@@ -415,41 +476,6 @@ impl<'a> ReadContext<'a> {
         self.meta_resolver.reset();
         self.meta_string_resolver.reset();
         self.ref_reader.reset();
-    }
-}
-
-pub struct Pool<T> {
-    items: Spinlock<Vec<T>>,
-    factory: Box<dyn Fn() -> T + Send + Sync>,
-}
-
-impl<T> Pool<T> {
-    pub fn new<F>(factory: F) -> Self
-    where
-        F: Fn() -> T + Send + Sync + 'static,
-    {
-        Pool {
-            items: Spinlock::new(vec![]),
-            factory: Box::new(factory),
-        }
-    }
-
-    #[inline(always)]
-    pub fn borrow_mut<Result>(&self, handler: impl FnOnce(&mut T) -> Result) -> Result {
-        let mut obj = self.get();
-        let result = handler(&mut obj);
-        self.put(obj);
-        result
-    }
-
-    #[inline(always)]
-    fn get(&self) -> T {
-        self.items.lock().pop().unwrap_or_else(|| (self.factory)())
-    }
-
-    // put back manually
-    #[inline(always)]
-    fn put(&self, item: T) {
-        self.items.lock().push(item);
+        self.current_depth = 0;
     }
 }

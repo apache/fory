@@ -285,6 +285,53 @@ fn test_array_box_trait_objects() {
 }
 
 #[test]
+fn test_vec_of_arrays() {
+    // Test from GitHub issue: Vec<[f32;4]> should work with ForyObject
+    let fory = Fory::default();
+
+    // Test Vec of primitive arrays
+    let points: Vec<[f32; 4]> = vec![
+        [1.0, 2.0, 3.0, 4.0],
+        [5.0, 6.0, 7.0, 8.0],
+        [9.0, 10.0, 11.0, 12.0],
+    ];
+
+    let bin = fory.serialize(&points).unwrap();
+    let result: Vec<[f32; 4]> = fory.deserialize(&bin).expect("deserialize");
+
+    assert_eq!(result.len(), 3);
+    assert_eq!(result[0], [1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(result[1], [5.0, 6.0, 7.0, 8.0]);
+    assert_eq!(result[2], [9.0, 10.0, 11.0, 12.0]);
+}
+
+#[test]
+fn test_struct_with_vec_of_arrays() {
+    // Test from GitHub issue: struct with Vec<[f32;4]> field should work
+    #[derive(ForyObject, PartialEq, Debug)]
+    struct PointCloud {
+        index: i32,
+        points: Vec<[f32; 4]>,
+    }
+
+    let mut fory = Fory::default();
+    fory.register_by_name::<PointCloud>("PointCloud").unwrap();
+
+    let data = PointCloud {
+        index: 42,
+        points: vec![[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0]],
+    };
+
+    let bin = fory.serialize(&data).unwrap();
+    let result: PointCloud = fory.deserialize(&bin).expect("deserialize");
+
+    assert_eq!(result.index, 42);
+    assert_eq!(result.points.len(), 2);
+    assert_eq!(result.points[0], [1.0, 2.0, 3.0, 4.0]);
+    assert_eq!(result.points[1], [5.0, 6.0, 7.0, 8.0]);
+}
+
+#[test]
 fn test_array_rc_trait_objects() {
     let mut fory = Fory::default().compatible(true);
     fory.register::<Circle>(9001).unwrap();

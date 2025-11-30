@@ -79,7 +79,7 @@ jobs:
       - name: Install bazel
         run: python ./ci/run_ci.py cpp --install-deps-only
       - name: Install python dependencies
-        run: pip install pyarrow==15.0.0 Cython wheel pytest setuptools -U
+        run: pip install pyarrow Cython wheel pytest setuptools -U
       - name: Install pyfory for xlang tests
         run: pip install -e python/
       - name: Run CI with Maven
@@ -134,7 +134,7 @@ jobs:
       - name: Install pyfory for xlang tests
         run: pip install -e python/
       - name: Install python dependencies
-        run: pip install pyarrow==15.0.0 Cython wheel pytest setuptools -U
+        run: pip install pyarrow Cython wheel pytest setuptools -U
       - name: Run CI with Maven
         run: python ./ci/run_ci.py java --version ${{ matrix.java-version }}
 
@@ -377,6 +377,63 @@ jobs:
           key: bazel-build-cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE') }}
       - name: Run C++ CI with Bazel
         run: python ./ci/run_ci.py cpp
+
+  cpp_xlang:
+    name: C++ Xlang Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+          cache: 'pip'
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: 21
+          distribution: "temurin"
+      - name: Cache Maven local repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Cache Bazel binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/bin/bazel
+            ~/.local/bin/bazel
+          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
+          restore-keys: |
+            bazel-binary-${{ runner.os }}-${{ runner.arch }}-
+      - name: Install bazel
+        run: python ./ci/run_ci.py cpp --install-deps-only
+      - name: Run CPP Xlang Test
+        env:
+          FORY_CPP_JAVA_CI: "1"
+        run: |
+          cd java
+          mvn -T16 --no-transfer-progress clean install -DskipTests
+          cd fory-core
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.CPPXlangTest
+
+  cpp_example:
+    name: C++ Example
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build and run C++ CMake examples
+        run: |
+          cd examples/cpp/cmake_example
+          ./run.sh
+
   python:
     name: Python CI
     runs-on: ${{ matrix.os }}
@@ -460,7 +517,7 @@ jobs:
       - name: Install bazel
         run: python ./ci/run_ci.py cpp --install-deps-only
       - name: Install python dependencies
-        run: pip install pyarrow==15.0.0 cython wheel pytest setuptools -U
+        run: pip install pyarrow cython wheel pytest setuptools -U
       - name: Install pyfory for xlang tests
         run: pip install -e python/
       - name: Run Golang CI

@@ -19,20 +19,15 @@
 
 package org.apache.fory.format.row.binary;
 
-import static org.apache.fory.util.DecimalUtils.DECIMAL_BYTE_LENGTH;
-
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import org.apache.arrow.memory.ArrowBuf;
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
-import org.apache.arrow.vector.util.DecimalUtility;
 import org.apache.fory.format.row.Getters;
 import org.apache.fory.format.row.Setters;
 import org.apache.fory.format.type.DataTypes;
-import org.apache.fory.format.vectorized.ArrowUtils;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.util.DecimalUtils;
 
 /** Internal to binary row format to reuse code, don't use it in anywhere else. */
 abstract class UnsafeTrait implements Getters, Setters {
@@ -145,24 +140,33 @@ abstract class UnsafeTrait implements Getters, Setters {
     }
   }
 
-  BigDecimal getDecimal(int ordinal, ArrowType.Decimal decimalType) {
+  BigDecimal getDecimal(int ordinal, DataTypes.DecimalType decimalType) {
     if (isNullAt(ordinal)) {
       return null;
     }
     MemoryBuffer buffer = getBuffer(ordinal);
-    ArrowBuf arrowBuf = ArrowUtils.decimalArrowBuf();
-    buffer.copyToUnsafe(0, null, arrowBuf.memoryAddress(), DECIMAL_BYTE_LENGTH);
-    BigDecimal decimal =
-        DecimalUtility.getBigDecimalFromArrowBuf(
-            arrowBuf, 0, decimalType.getScale(), DECIMAL_BYTE_LENGTH);
-    return decimal;
+    return readDecimal(buffer, 0, decimalType.scale());
+  }
+
+  /**
+   * Reads a BigDecimal from the buffer at the given offset. The decimal is stored in little-endian
+   * format with sign extension.
+   */
+  private static BigDecimal readDecimal(MemoryBuffer buffer, int offset, int scale) {
+    byte[] bytes = new byte[DecimalUtils.DECIMAL_BYTE_LENGTH];
+    // Read in little-endian format
+    for (int i = 0; i < bytes.length; i++) {
+      bytes[bytes.length - 1 - i] = buffer.getByte(offset + i);
+    }
+    java.math.BigInteger unscaledValue = new java.math.BigInteger(bytes);
+    return new BigDecimal(unscaledValue, scale);
   }
 
   /**
    * Gets the field at a specific ordinal as a struct.
    *
    * @param ordinal the ordinal position of this field.
-   * @param field the Arrow field corresponding to this struct.
+   * @param field the Fory field corresponding to this struct.
    * @param extDataSlot the ext data slot used to cache the schema for the struct.
    * @return the binary row representation of the struct.
    */

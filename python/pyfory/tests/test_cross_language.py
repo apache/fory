@@ -38,6 +38,18 @@ def debug_print(*params):
     # print(*params)
 
 
+def to_dict(obj):
+    """Convert an object to a dictionary for comparison."""
+    if hasattr(obj, "as_dict"):
+        return obj.as_dict()
+    elif hasattr(obj, "__dataclass_fields__"):
+        from dataclasses import asdict
+
+        return asdict(obj)
+    else:
+        return obj
+
+
 def cross_language_test(test_func):
     env_key = "ENABLE_CROSS_LANGUAGE_TESTS"
     test_func = pytest.mark.skipif(
@@ -52,45 +64,48 @@ Bar = pyfory.record_class_factory("Bar", ["f" + str(i) for i in range(1, 3)])
 
 
 def create_bar_schema():
-    bar_schema = pa.schema(
+    from pyfory.format import field, int32, utf8, schema
+
+    bar_schema = schema(
         [
-            ("f1", pa.int32()),
-            ("f2", pa.utf8()),
+            field("f1", int32()),
+            field("f2", utf8()),
         ]
     )
     return bar_schema
 
 
 def create_foo_schema():
-    foo_schema = pa.schema(
+    from pyfory.format import field, int32, utf8, list_, map_, struct, schema
+
+    bar_fields = [
+        field("f1", int32()),
+        field("f2", utf8()),
+    ]
+    foo_schema = schema(
         [
-            ("f1", pa.int32()),
-            ("f2", pa.utf8()),
-            ("f3", pa.list_(pa.utf8())),
-            ("f4", pa.map_(pa.utf8(), pa.int32())),
-            pa.field(
-                "f5",
-                pa.struct(create_bar_schema()),
-                metadata={"cls": pyfory.get_qualified_classname(Bar)},
-            ),
-        ],
-        metadata={"cls": pyfory.get_qualified_classname(Foo)},
+            field("f1", int32()),
+            field("f2", utf8()),
+            field("f3", list_(utf8())),
+            field("f4", map_(utf8(), int32())),
+            field("f5", struct(bar_fields)),
+        ]
     )
     return foo_schema
 
 
 @dataclass
 class FooPOJO:
-    f1: "pa.int32"
+    f1: pyfory.int32
     f2: str
     f3: List[str]
-    f4: Dict[str, "pa.int32"]
+    f4: Dict[str, pyfory.int32]
     f5: "BarPOJO"
 
 
 @dataclass
 class BarPOJO:
-    f1: "pa.int32"
+    f1: pyfory.int32
     f2: str
 
 
@@ -113,7 +128,7 @@ def create_bar(cls):
 
 @dataclass
 class A:
-    f1: "pa.int32"
+    f1: pyfory.int32
     f2: Dict[str, str]
 
 
@@ -125,8 +140,10 @@ def test_map_encoder(data_file_path):
         data_bytes = f.read()
         obj = encoder.decode(data_bytes)
         debug_print("deserialized obj", obj)
-        assert a == obj
-        assert encoder.decode(encoder.encode(a)) == a
+        # Compare by dict since decoder returns a record class, not the original class
+        assert to_dict(obj) == to_dict(a)
+        decoded_round_trip = encoder.decode(encoder.encode(a))
+        assert to_dict(decoded_round_trip) == to_dict(a)
         f.seek(0)
         f.truncate()
         f.write(encoder.encode(a))
@@ -141,7 +158,8 @@ def test_encoder_without_schema(data_file_path):
         data_bytes = f.read()
         obj = encoder.decode(data_bytes)
         debug_print("deserialized foo", obj)
-        assert foo == obj
+        # Compare by dict since decoder returns a record class, not the original class
+        assert to_dict(obj) == to_dict(foo)
         f.seek(0)
         f.truncate()
         f.write(encoder.encode(foo))
@@ -177,9 +195,11 @@ def test_serialization_without_schema(data_file_path, schema=None):
 
 @cross_language_test
 def test_serialization_with_schema(schema_file_path, data_file_path):
+    from pyfory.format import Schema
+
     with open(schema_file_path, "rb") as f:
         schema_bytes = f.read()
-        schema = pa.ipc.read_schema(pa.py_buffer(schema_bytes))
+        schema = Schema.from_bytes(schema_bytes)
         debug_print("deserialized schema", schema)
         test_serialization_without_schema(data_file_path, schema)
 
@@ -367,61 +387,6 @@ def test_cross_language_reference(data_file_path):
         fory.serialize(new_list, buffer=new_buf)
     with open(data_file_path, "wb+") as f:
         f.write(new_buf.get_bytes(0, new_buf.writer_index))
-
-
-@cross_language_test
-def test_serialize_arrow_in_band(data_file_path):
-    with open(data_file_path, "rb") as f:
-        batch = create_record_batch(2000)
-        table = pa.Table.from_batches([batch] * 2)
-        data_bytes = f.read()
-        buffer = pyfory.Buffer(data_bytes)
-        fory = pyfory.Fory(xlang=True, ref=True)
-        new_batch = fory.deserialize(buffer)
-        assert new_batch == batch
-        new_table = fory.deserialize(buffer)
-        assert table == new_table
-
-
-@cross_language_test
-def test_serialize_arrow_out_of_band(int_band_file, out_of_band_file):
-    with open(int_band_file, "rb") as f:
-        in_band_data_bytes = f.read()
-    with open(out_of_band_file, "rb") as f:
-        out_of_band_data_bytes = f.read()
-    batch = create_record_batch(2000)
-    table = pa.Table.from_batches([batch] * 2)
-    in_band_buffer = pyfory.Buffer(in_band_data_bytes)
-    out_of_band_buffer = pyfory.Buffer(out_of_band_data_bytes)
-    len1, len2 = out_of_band_buffer.read_int32(), out_of_band_buffer.read_int32()
-    buffers = [
-        out_of_band_buffer.slice(8, len1),
-        out_of_band_buffer.slice(8 + len1, len2),
-    ]
-    fory = pyfory.Fory(xlang=True, ref=True)
-    objects = fory.deserialize(in_band_buffer, buffers=buffers)
-    assert objects == [batch, table]
-    buffer_objects = []
-    in_band_buffer = fory.serialize([batch, table], buffer_callback=buffer_objects.append)
-    buffers = [o.getbuffer() for o in buffer_objects]
-    with open(int_band_file, "wb+") as f:
-        f.write(in_band_buffer)
-    with open(out_of_band_file, "wb+") as f:
-        size_buf = pyfory.Buffer.allocate(8)
-        size_buf.write_int32(len(buffers[0]))
-        size_buf.write_int32(len(buffers[1]))
-        f.write(size_buf)
-        f.write(buffers[0])
-        f.write(buffers[1])
-
-
-@cross_language_test
-def create_record_batch(size):
-    data = [
-        pa.array([bool(i % 2) for i in range(size)]),
-        pa.array([f"test{i}" for i in range(size)]),
-    ]
-    return pa.RecordBatch.from_arrays(data, ["boolean", "varchar"])
 
 
 @dataclass

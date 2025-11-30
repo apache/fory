@@ -23,16 +23,12 @@
 from libc.stdint cimport *
 from libcpp.memory cimport *
 
-from pyarrow cimport import_pyarrow
-
-import_pyarrow()
-
 # include "buffer.pxi"
+
+# Fory schema types
+include "schema.pxi"
 
 include "row.pxi"
 
 # Python encoder for row format
 include "encoder.pxi"
-
-# Interoperability between row and columnar format
-include "vectorized.pxi"

@@ -6,7 +6,9 @@ cc_library(
     hdrs = glob(["*.h"]),
     strip_include_prefix = "/cpp",
     deps = [
-      "@local_config_pyarrow//:arrow", "//cpp/fory/util:fory_util"
+      "//cpp/fory/serialization:fory_serialization",
+      "//cpp/fory/util:fory_util",
+      "//cpp/fory/type:fory_type"
     ],
     visibility = ["//visibility:public"],
 )
@@ -16,6 +18,6 @@ cc_test(
     srcs = ["row_test.cc"],
     deps = [
         ":fory_row_format",
-        "@com_google_googletest//:gtest",
+        "@googletest//:gtest",
     ],
 )

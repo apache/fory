@@ -42,9 +42,11 @@ struct Config {
   /// When enabled, validates type hashes to detect schema mismatches.
   bool check_struct_version = false;
 
-  /// Maximum allowed nesting depth for preventing stack overflow.
-  /// Default is 64 levels deep.
-  uint32_t max_depth = 64;
+  /// Maximum allowed nesting depth for dynamically-typed objects (polymorphic
+  /// types like shared_ptr<Base>, unique_ptr<Base>). This prevents stack
+  /// overflow from deeply nested structures in dynamic serialization scenarios.
+  /// Default is 5 levels deep.
+  uint32_t max_dyn_depth = 5;
 
   /// Enable reference tracking for shared and circular references.
   /// When enabled, avoids duplicating shared objects and handles cycles.

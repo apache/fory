@@ -17,12 +17,8 @@ bazel test //:all
 bazel test //cpp/fory/serialization:all
 ```
 
-## Benchmark
+## Format Code
 
 ```bash
-bazel build //cpp/fory/benchmark:all
-bazel test //cpp/fory/benchmark:all
-# You can also run a single benchmark to see how efficient it is.
-# For example
-bazel run //cpp/fory/benchmark:benchmark_string_util
+bash ci/format.sh --cpp
 ```

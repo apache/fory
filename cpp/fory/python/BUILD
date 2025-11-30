@@ -16,7 +16,7 @@
 # under the License.
 
 load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
-load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
+load("//bazel:cython_library.bzl", "pyx_library")
 
 cc_library(
     name = "_pyfory",
@@ -27,7 +27,7 @@ cc_library(
     strip_include_prefix = "/cpp",
     deps = [
         "//cpp/fory/util:fory_util",
-        "@local_config_python//:python_headers",
+        "@rules_python//python/cc:current_py_cc_headers",
     ],
     visibility = ["//visibility:public"],
 )

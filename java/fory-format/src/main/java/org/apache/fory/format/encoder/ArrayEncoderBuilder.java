@@ -24,13 +24,13 @@ import static org.apache.fory.type.TypeUtils.getRawType;
 
 import java.lang.reflect.Array;
 import java.util.HashSet;
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.Fory;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.CodegenContext;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.ExpressionUtils;
 import org.apache.fory.format.row.binary.BinaryArray;
+import org.apache.fory.format.type.Field;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
@@ -46,7 +46,7 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
   private static final String ROOT_ARRAY_WRITER_NAME = "arrayWriter";
   private static final String ROOT_EMPTY_ARRAY_NAME = "emptyArray";
 
-  private static final TypeRef<Field> ARROW_FIELD_TYPE = TypeRef.of(Field.class);
+  private static final TypeRef<Field> FORY_FIELD_TYPE = TypeRef.of(Field.class);
   private final TypeRef<?> arrayToken;
 
   public ArrayEncoderBuilder(Class<?> arrayCls, Class<?> beanClass) {
@@ -145,7 +145,7 @@ public class ArrayEncoderBuilder extends BaseBinaryEncoderBuilder {
             inputObject, arrayToken, ctx.newName(getRawType(arrayToken)), false, false);
     expressions.add(array);
 
-    Expression.Reference fieldExpr = new Expression.Reference(FIELD_NAME, ARROW_FIELD_TYPE, false);
+    Expression.Reference fieldExpr = new Expression.Reference(FIELD_NAME, FORY_FIELD_TYPE, false);
     Expression listExpression =
         serializeForArrayByWriter(array, arrayWriter, arrayToken, null, fieldExpr);
 

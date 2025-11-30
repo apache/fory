@@ -19,11 +19,11 @@
 
 package org.apache.fory.format.row;
 
-import org.apache.arrow.vector.types.pojo.Schema;
+import org.apache.fory.format.type.Schema;
 
 /**
  * Interface for row in row format. Row is inspired by Apache Spark tungsten, the differences are
- * <li>Use arrow schema to describe meta.
+ * <li>Use Fory schema to describe meta.
  * <li>String support latin/utf16/utf8 encoding.
  * <li>Decimal use arrow decimal format.
  * <li>Variable-size field can be inline in fixed-size region if small enough.

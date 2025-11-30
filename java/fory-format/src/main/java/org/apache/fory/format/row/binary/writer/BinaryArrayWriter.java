@@ -28,10 +28,9 @@ import static org.apache.fory.format.type.DataTypes.PRIMITIVE_LONG_ARRAY_FIELD;
 import static org.apache.fory.format.type.DataTypes.PRIMITIVE_SHORT_ARRAY_FIELD;
 
 import java.math.BigDecimal;
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.memory.Platform;
@@ -77,7 +76,8 @@ public class BinaryArrayWriter extends BinaryWriter {
   }
 
   private static int elementWidth(Field field) {
-    int width = DataTypes.getTypeWidth(field.getChildren().get(0).getType());
+    DataTypes.ListType listType = (DataTypes.ListType) field.type();
+    int width = DataTypes.getTypeWidth(listType.valueType());
     // variable-length element type
     if (width < 0) {
       return 8;
@@ -176,7 +176,8 @@ public class BinaryArrayWriter extends BinaryWriter {
 
   @Override
   public void write(int ordinal, BigDecimal value) {
-    writeDecimal(ordinal, value, (ArrowType.Decimal) field.getChildren().get(0).getType());
+    DataTypes.ListType listType = (DataTypes.ListType) field.type();
+    writeDecimal(ordinal, value, (DataTypes.DecimalType) listType.valueType());
   }
 
   protected void primitiveArrayAdvance(int size) {
@@ -184,12 +185,13 @@ public class BinaryArrayWriter extends BinaryWriter {
   }
 
   private void fromPrimitiveArray(Object arr, int offset, int numElements, Field type) {
-    if (DataTypes.getTypeId(type.getChildren().get(0).getType())
-        != DataTypes.getTypeId(this.field.getChildren().get(0).getType())) {
+    DataTypes.ListType inputListType = (DataTypes.ListType) type.type();
+    DataTypes.ListType thisListType = (DataTypes.ListType) this.field.type();
+    if (DataTypes.getTypeId(inputListType.valueType())
+        != DataTypes.getTypeId(thisListType.valueType())) {
       String msg =
           String.format(
-              "Element type %s is not %s",
-              type.getChildren().get(0).getType(), this.field.getChildren().get(0).getType());
+              "Element type %s is not %s", inputListType.valueType(), thisListType.valueType());
       throw new IllegalArgumentException(msg);
     }
     int size = numElements * elementSize;

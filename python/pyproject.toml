@@ -21,8 +21,7 @@ requires = [
     "wheel",
     "Cython>=0.29",
     "numpy",
-    "pyarrow==15.0.0; python_version<'3.13'",
-    "pyarrow==18.0.0; python_version>='3.13'",
+    "pyarrow",
 ]
 build-backend = "setuptools.build_meta"
 

@@ -446,6 +446,10 @@ TEST(SchemaEvolutionTest, NonCompatibleModeStrictness) {
   // Different struct types should NOT be interchangeable
   auto fory_strict = Fory::builder().compatible(false).xlang(true).build();
 
+  // Register PersonV1 before serialization
+  constexpr uint32_t PERSON_TYPE_ID = 999;
+  ASSERT_TRUE(fory_strict.register_struct<PersonV1>(PERSON_TYPE_ID).ok());
+
   PersonV1 v1{"Eve", 28};
   auto ser_result = fory_strict.serialize(v1);
   ASSERT_TRUE(ser_result.ok());

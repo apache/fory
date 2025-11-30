@@ -268,3 +268,49 @@ fn test_rc_by_name() {
         &deserialized_vec[1]
     ));
 }
+
+// Tests for GitHub issue: multiple Vec<Struct> types wrapped in Box<dyn Any>
+// This reproduces the non-deterministic deserialization failures
+#[derive(ForyObject, Debug, Clone, PartialEq)]
+struct StructA {
+    a: i32,
+}
+
+#[derive(ForyObject, Debug, Clone, PartialEq)]
+struct StructB {
+    i: i32,
+}
+
+/// Test that serializing different Vec<T> types in Box<dyn Any> returns a clear error.
+///
+/// This tests for a known limitation of the xlang serialization protocol:
+/// different generic container types (Vec<StructA>, Vec<StructB>) share the same
+/// type ID (LIST=21), so they cannot be distinguished during polymorphic deserialization.
+///
+/// Previously this caused non-deterministic failures. Now it returns a clear error message.
+#[test]
+fn test_vec_of_different_struct_types_in_box_any_returns_error() {
+    let mut fory = Fory::default();
+    // Register both struct types
+    fory.register_by_name::<StructA>("StructA").unwrap();
+    fory.register_generic_trait::<Vec<StructA>>().unwrap();
+    fory.register_by_name::<StructB>("StructB").unwrap();
+    fory.register_generic_trait::<Vec<StructB>>().unwrap();
+
+    // Create Box<dyn Any> wrappers for Vec<StructA> and Vec<StructB>
+    let a_vec: Box<dyn Any> = Box::new(vec![StructA { a: 11 }; 5]);
+    let b_vec: Box<dyn Any> = Box::new(vec![StructB { i: 1 }; 5]);
+    let any_vec: Vec<Box<dyn Any>> = vec![a_vec, b_vec];
+
+    let bytes = fory.serialize(&any_vec).unwrap();
+
+    // Deserialization should fail with a clear error about generic containers
+    let result: Result<Vec<Box<dyn Any>>, _> = fory.deserialize(&bytes);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("generic container types"),
+        "Expected error about generic containers, got: {}",
+        err_msg
+    );
+}

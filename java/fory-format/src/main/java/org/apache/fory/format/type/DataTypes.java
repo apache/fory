@@ -19,376 +19,712 @@
 
 package org.apache.fory.format.type;
 
-import static org.apache.fory.util.Preconditions.checkArgument;
-
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.nio.channels.Channels;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
-import org.apache.arrow.vector.complex.MapVector;
-import org.apache.arrow.vector.ipc.ReadChannel;
-import org.apache.arrow.vector.ipc.WriteChannel;
-import org.apache.arrow.vector.ipc.message.MessageSerializer;
-import org.apache.arrow.vector.types.DateUnit;
-import org.apache.arrow.vector.types.FloatingPointPrecision;
-import org.apache.arrow.vector.types.TimeUnit;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.FieldType;
-import org.apache.arrow.vector.types.pojo.Schema;
-import org.apache.fory.exception.ForyException;
-import org.apache.fory.io.MemoryBufferOutputStream;
-import org.apache.fory.memory.MemoryBuffer;
+import java.util.Map;
+import java.util.Objects;
+import org.apache.fory.type.Types;
 import org.apache.fory.util.DecimalUtils;
 import org.apache.fory.util.Preconditions;
 
-/** Arrow data type utils. */
+/**
+ * Type system for Fory row format.
+ *
+ * <p>This class defines the schema types used by the Fory row format for binary serialization. The
+ * type system includes:
+ *
+ * <ul>
+ *   <li>Primitive types: bool, int8/16/32/64, float16/32/64
+ *   <li>Variable-width types: string (utf8), binary
+ *   <li>Temporal types: timestamp, duration, date32
+ *   <li>Decimal type with configurable precision and scale
+ *   <li>Composite types: list, map, struct
+ * </ul>
+ *
+ * <p>Usage example:
+ *
+ * <pre>{@code
+ * Schema schema = DataTypes.schema(Arrays.asList(
+ *     DataTypes.field("id", DataTypes.int64()),
+ *     DataTypes.field("name", DataTypes.utf8()),
+ *     DataTypes.field("scores", DataTypes.list(DataTypes.float32()))
+ * ));
+ * }</pre>
+ */
 public class DataTypes {
-  public static Field PRIMITIVE_BOOLEAN_ARRAY_FIELD =
-      primitiveArrayField(org.apache.arrow.vector.types.pojo.ArrowType.Bool.INSTANCE);
-  public static Field PRIMITIVE_BYTE_ARRAY_FIELD = primitiveArrayField(intType(8));
-  public static Field PRIMITIVE_SHORT_ARRAY_FIELD = primitiveArrayField(intType(16));
-  public static Field PRIMITIVE_INT_ARRAY_FIELD = primitiveArrayField(intType(32));
 
-  public static Field PRIMITIVE_LONG_ARRAY_FIELD = primitiveArrayField(intType(64));
-  public static Field PRIMITIVE_FLOAT_ARRAY_FIELD =
-      primitiveArrayField(
-          new org.apache.arrow.vector.types.pojo.ArrowType.FloatingPoint(
-              FloatingPointPrecision.SINGLE));
-  public static Field PRIMITIVE_DOUBLE_ARRAY_FIELD =
-      primitiveArrayField(
-          new org.apache.arrow.vector.types.pojo.ArrowType.FloatingPoint(
-              FloatingPointPrecision.DOUBLE));
+  // Type IDs - use constants from Types class for consistency
+  public static final int TYPE_BOOL = Types.BOOL;
+  public static final int TYPE_INT8 = Types.INT8;
+  public static final int TYPE_INT16 = Types.INT16;
+  public static final int TYPE_INT32 = Types.INT32;
+  public static final int TYPE_INT64 = Types.INT64;
+  public static final int TYPE_FLOAT16 = Types.FLOAT16;
+  public static final int TYPE_FLOAT32 = Types.FLOAT32;
+  public static final int TYPE_FLOAT64 = Types.FLOAT64;
+  public static final int TYPE_STRING = Types.STRING;
+  public static final int TYPE_STRUCT = Types.STRUCT;
+  public static final int TYPE_LIST = Types.LIST;
+  public static final int TYPE_MAP = Types.MAP;
+  public static final int TYPE_DURATION = Types.DURATION;
+  public static final int TYPE_TIMESTAMP = Types.TIMESTAMP;
+  public static final int TYPE_LOCAL_DATE = Types.LOCAL_DATE;
+  public static final int TYPE_DECIMAL = Types.DECIMAL;
+  public static final int TYPE_BINARY = Types.BINARY;
+
   // Array item field default name
   public static final String ARRAY_ITEM_NAME = "item";
 
-  private static final org.apache.arrow.vector.types.pojo.ArrowType.ArrowTypeVisitor<Integer>
-      typeWidthVisitor =
-          new DefaultTypeVisitor<Integer>() {
+  // Map key and value field names
+  public static final String MAP_KEY_NAME = "key";
+  public static final String MAP_VALUE_NAME = "value";
 
-            @Override
-            public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.Struct type) {
-              return -1;
-            }
+  // Pre-built primitive array fields for convenience
+  public static final Field PRIMITIVE_BOOLEAN_ARRAY_FIELD =
+      primitiveArrayField(bool(), ARRAY_ITEM_NAME, false);
+  public static final Field PRIMITIVE_BYTE_ARRAY_FIELD =
+      primitiveArrayField(int8(), ARRAY_ITEM_NAME, false);
+  public static final Field PRIMITIVE_SHORT_ARRAY_FIELD =
+      primitiveArrayField(int16(), ARRAY_ITEM_NAME, false);
+  public static final Field PRIMITIVE_INT_ARRAY_FIELD =
+      primitiveArrayField(int32(), ARRAY_ITEM_NAME, false);
+  public static final Field PRIMITIVE_LONG_ARRAY_FIELD =
+      primitiveArrayField(int64(), ARRAY_ITEM_NAME, false);
+  public static final Field PRIMITIVE_FLOAT_ARRAY_FIELD =
+      primitiveArrayField(float32(), ARRAY_ITEM_NAME, false);
+  public static final Field PRIMITIVE_DOUBLE_ARRAY_FIELD =
+      primitiveArrayField(float64(), ARRAY_ITEM_NAME, false);
 
-            @Override
-            public Integer visit(
-                org.apache.arrow.vector.types.pojo.ArrowType.FixedSizeBinary type) {
-              return type.getByteWidth();
-            }
+  // ============================================================================
+  // Fixed-width primitive types
+  // ============================================================================
 
-            @Override
-            public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.List type) {
-              return -1;
-            }
+  /** Boolean type (stored as 8-bit value). */
+  public static class BooleanType extends FixedWidthType {
+    public static final BooleanType INSTANCE = new BooleanType();
 
-            @Override
-            public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.Map type) {
-              return -1;
-            }
+    private BooleanType() {
+      super(TYPE_BOOL, 8);
+    }
 
-            @Override
-            public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.Bool type) {
-              return 1;
-            }
-
-            @Override
-            public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.Int type) {
-              return (type.getBitWidth() + 7) / 8;
-            }
-
-            @Override
-            public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.FloatingPoint type) {
-              switch (type.getPrecision()) {
-                case SINGLE:
-                  return 4;
-                case DOUBLE:
-                  return 8;
-                default:
-                  return unsupported(type);
-              }
-            }
-
-            @Override
-            public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.Date type) {
-              return 4;
-            }
-
-            @Override
-            public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.Timestamp type) {
-              return 8;
-            }
-
-            @Override
-            public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.Binary type) {
-              return -1;
-            }
-
-            @Override
-            public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.Decimal type) {
-              return -1;
-            }
-
-            @Override
-            public Integer visit(org.apache.arrow.vector.types.pojo.ArrowType.Utf8 type) {
-              return -1;
-            }
-          };
-
-  private static final org.apache.arrow.vector.types.pojo.ArrowType.ArrowTypeVisitor<ArrowType>
-      typeIdVisitor =
-          new DefaultTypeVisitor<ArrowType>() {
-
-            @Override
-            public ArrowType visit(org.apache.arrow.vector.types.pojo.ArrowType.Bool type) {
-              return ArrowType.BOOL;
-            }
-
-            @Override
-            public ArrowType visit(org.apache.arrow.vector.types.pojo.ArrowType.Int type) {
-              if (type.getIsSigned()) {
-                int byteWidth = type.getBitWidth() / 8;
-                switch (byteWidth) {
-                  case 1:
-                    return ArrowType.INT8;
-                  case 2:
-                    return ArrowType.INT16;
-                  case 4:
-                    return ArrowType.INT32;
-                  case 8:
-                    return ArrowType.INT64;
-                  default:
-                    return unsupported(type);
-                }
-              }
-              return unsupported(type);
-            }
-
-            @Override
-            public ArrowType visit(
-                org.apache.arrow.vector.types.pojo.ArrowType.FloatingPoint type) {
-              switch (type.getPrecision()) {
-                case SINGLE:
-                  return ArrowType.FLOAT;
-                case DOUBLE:
-                  return ArrowType.DOUBLE;
-                default:
-                  return unsupported(type);
-              }
-            }
-
-            @Override
-            public ArrowType visit(org.apache.arrow.vector.types.pojo.ArrowType.Date type) {
-              switch (type.getUnit()) {
-                case DAY:
-                  return ArrowType.DATE32;
-                case MILLISECOND:
-                  return ArrowType.DATE64;
-                default:
-                  return unsupported(type);
-              }
-            }
-
-            @Override
-            public ArrowType visit(org.apache.arrow.vector.types.pojo.ArrowType.Timestamp type) {
-              return ArrowType.TIMESTAMP;
-            }
-
-            @Override
-            public ArrowType visit(org.apache.arrow.vector.types.pojo.ArrowType.Binary type) {
-              return ArrowType.BINARY;
-            }
-
-            @Override
-            public ArrowType visit(org.apache.arrow.vector.types.pojo.ArrowType.Decimal type) {
-              return ArrowType.DECIMAL;
-            }
-
-            @Override
-            public ArrowType visit(org.apache.arrow.vector.types.pojo.ArrowType.Utf8 type) {
-              return ArrowType.STRING;
-            }
-
-            @Override
-            public ArrowType visit(org.apache.arrow.vector.types.pojo.ArrowType.Struct type) {
-              return ArrowType.STRUCT;
-            }
-
-            @Override
-            public ArrowType visit(
-                org.apache.arrow.vector.types.pojo.ArrowType.FixedSizeBinary type) {
-              return ArrowType.FIXED_SIZE_BINARY;
-            }
-
-            @Override
-            public ArrowType visit(org.apache.arrow.vector.types.pojo.ArrowType.List type) {
-              return ArrowType.LIST;
-            }
-
-            @Override
-            public ArrowType visit(org.apache.arrow.vector.types.pojo.ArrowType.Map type) {
-              return ArrowType.MAP;
-            }
-          };
-
-  public static int getTypeWidth(org.apache.arrow.vector.types.pojo.ArrowType type) {
-    return type.accept(typeWidthVisitor);
+    @Override
+    public String name() {
+      return "bool";
+    }
   }
 
-  public static ArrowType getTypeId(org.apache.arrow.vector.types.pojo.ArrowType type) {
-    return type.accept(typeIdVisitor);
+  /** Signed 8-bit integer. */
+  public static class Int8Type extends FixedWidthType {
+    public static final Int8Type INSTANCE = new Int8Type();
+
+    private Int8Type() {
+      super(TYPE_INT8, 8);
+    }
+
+    @Override
+    public String name() {
+      return "int8";
+    }
   }
 
-  public static short getTypeIdValue(org.apache.arrow.vector.types.pojo.ArrowType type) {
-    return type.accept(typeIdVisitor).getId();
+  /** Signed 16-bit integer. */
+  public static class Int16Type extends FixedWidthType {
+    public static final Int16Type INSTANCE = new Int16Type();
+
+    private Int16Type() {
+      super(TYPE_INT16, 16);
+    }
+
+    @Override
+    public String name() {
+      return "int16";
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Bool bool() {
-    return org.apache.arrow.vector.types.pojo.ArrowType.Bool.INSTANCE;
+  /** Signed 32-bit integer. */
+  public static class Int32Type extends FixedWidthType {
+    public static final Int32Type INSTANCE = new Int32Type();
+
+    private Int32Type() {
+      super(TYPE_INT32, 32);
+    }
+
+    @Override
+    public String name() {
+      return "int32";
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Int intType(int bitWidth) {
-    return new org.apache.arrow.vector.types.pojo.ArrowType.Int(bitWidth, true);
+  /** Signed 64-bit integer. */
+  public static class Int64Type extends FixedWidthType {
+    public static final Int64Type INSTANCE = new Int64Type();
+
+    private Int64Type() {
+      super(TYPE_INT64, 64);
+    }
+
+    @Override
+    public String name() {
+      return "int64";
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Int int8() {
-    return intType(8);
+  /** 16-bit floating point (half precision). */
+  public static class Float16Type extends FixedWidthType {
+    public static final Float16Type INSTANCE = new Float16Type();
+
+    private Float16Type() {
+      super(TYPE_FLOAT16, 16);
+    }
+
+    @Override
+    public String name() {
+      return "float16";
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Int int16() {
-    return intType(16);
+  /** 32-bit floating point (single precision). */
+  public static class Float32Type extends FixedWidthType {
+    public static final Float32Type INSTANCE = new Float32Type();
+
+    private Float32Type() {
+      super(TYPE_FLOAT32, 32);
+    }
+
+    @Override
+    public String name() {
+      return "float";
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Int int32() {
-    return intType(32);
+  /** 64-bit floating point (double precision). */
+  public static class Float64Type extends FixedWidthType {
+    public static final Float64Type INSTANCE = new Float64Type();
+
+    private Float64Type() {
+      super(TYPE_FLOAT64, 64);
+    }
+
+    @Override
+    public String name() {
+      return "double";
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Int int64() {
-    return intType(64);
+  // ============================================================================
+  // Variable-width types
+  // ============================================================================
+
+  /** UTF-8 encoded string (variable-width). */
+  public static class StringType extends DataType {
+    public static final StringType INSTANCE = new StringType();
+
+    private StringType() {
+      super(TYPE_STRING);
+    }
+
+    @Override
+    public String name() {
+      return "utf8";
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.FloatingPoint float32() {
-    return new org.apache.arrow.vector.types.pojo.ArrowType.FloatingPoint(
-        FloatingPointPrecision.SINGLE);
+  /** Raw binary data (variable-width). */
+  public static class BinaryType extends DataType {
+    public static final BinaryType INSTANCE = new BinaryType();
+
+    private BinaryType() {
+      super(TYPE_BINARY);
+    }
+
+    @Override
+    public String name() {
+      return "binary";
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.FloatingPoint float64() {
-    return new org.apache.arrow.vector.types.pojo.ArrowType.FloatingPoint(
-        FloatingPointPrecision.DOUBLE);
+  // ============================================================================
+  // Temporal types
+  // ============================================================================
+
+  /** Duration stored as 64-bit integer. */
+  public static class DurationType extends FixedWidthType {
+    public static final DurationType INSTANCE = new DurationType();
+
+    private DurationType() {
+      super(TYPE_DURATION, 64);
+    }
+
+    @Override
+    public String name() {
+      return "duration";
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Date date32() {
-    return new org.apache.arrow.vector.types.pojo.ArrowType.Date(DateUnit.DAY);
+  /** Timestamp stored as 64-bit integer (microseconds since epoch). */
+  public static class TimestampType extends FixedWidthType {
+    public static final TimestampType INSTANCE = new TimestampType();
+
+    private TimestampType() {
+      super(TYPE_TIMESTAMP, 64);
+    }
+
+    @Override
+    public String name() {
+      return "timestamp";
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Date date64() {
-    return new org.apache.arrow.vector.types.pojo.ArrowType.Date(DateUnit.MILLISECOND);
+  /** Date stored as 32-bit integer (days since epoch). */
+  public static class LocalDateType extends FixedWidthType {
+    public static final LocalDateType INSTANCE = new LocalDateType();
+
+    private LocalDateType() {
+      super(TYPE_LOCAL_DATE, 32);
+    }
+
+    @Override
+    public String name() {
+      return "date32";
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Timestamp timestamp() {
-    return new org.apache.arrow.vector.types.pojo.ArrowType.Timestamp(TimeUnit.MICROSECOND, null);
+  // ============================================================================
+  // Decimal type
+  // ============================================================================
+
+  /** Decimal type with configurable precision and scale. */
+  public static class DecimalType extends DataType {
+    private final int precision;
+    private final int scale;
+
+    public DecimalType(int precision, int scale) {
+      super(TYPE_DECIMAL);
+      this.precision = precision;
+      this.scale = scale;
+    }
+
+    @Override
+    public String name() {
+      return "decimal";
+    }
+
+    @Override
+    public String toString() {
+      return "decimal(" + precision + ", " + scale + ")";
+    }
+
+    public int precision() {
+      return precision;
+    }
+
+    public int scale() {
+      return scale;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (!super.equals(obj)) {
+        return false;
+      }
+      DecimalType other = (DecimalType) obj;
+      return precision == other.precision && scale == other.scale;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(super.hashCode(), precision, scale);
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Binary binary() {
-    return org.apache.arrow.vector.types.pojo.ArrowType.Binary.INSTANCE;
+  // ============================================================================
+  // Composite types
+  // ============================================================================
+
+  /** Variable-length list of elements with uniform type. */
+  public static class ListType extends DataType {
+    private final Field valueField;
+
+    public ListType(DataType valueType) {
+      this(new Field(ARRAY_ITEM_NAME, valueType, true));
+    }
+
+    public ListType(Field valueField) {
+      super(TYPE_LIST);
+      this.valueField = valueField;
+    }
+
+    @Override
+    public String name() {
+      return "list";
+    }
+
+    @Override
+    public String toString() {
+      return "list<" + valueField.type().toString() + ">";
+    }
+
+    public DataType valueType() {
+      return valueField.type();
+    }
+
+    public Field valueField() {
+      return valueField;
+    }
+
+    @Override
+    public int numFields() {
+      return 1;
+    }
+
+    @Override
+    public Field field(int i) {
+      return i == 0 ? valueField : null;
+    }
+
+    @Override
+    public List<Field> fields() {
+      return Collections.singletonList(valueField);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (!super.equals(obj)) {
+        return false;
+      }
+      ListType other = (ListType) obj;
+      return valueField.type().equals(other.valueField.type());
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(super.hashCode(), valueField.type());
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Utf8 utf8() {
-    return org.apache.arrow.vector.types.pojo.ArrowType.Utf8.INSTANCE;
+  /** Struct type: a sequence of named fields (like a row or record). */
+  public static class StructType extends DataType {
+    private final List<Field> fields;
+    private final Map<String, Integer> nameToIndex;
+
+    public StructType(List<Field> fields) {
+      super(TYPE_STRUCT);
+      this.fields = new ArrayList<>(fields);
+      this.nameToIndex = new HashMap<>();
+      for (int i = 0; i < fields.size(); i++) {
+        nameToIndex.put(fields.get(i).name(), i);
+      }
+    }
+
+    @Override
+    public String name() {
+      return "struct";
+    }
+
+    @Override
+    public String toString() {
+      StringBuilder sb = new StringBuilder("struct<");
+      for (int i = 0; i < fields.size(); i++) {
+        if (i > 0) {
+          sb.append(", ");
+        }
+        sb.append(fields.get(i).toString());
+      }
+      sb.append(">");
+      return sb.toString();
+    }
+
+    @Override
+    public int numFields() {
+      return fields.size();
+    }
+
+    @Override
+    public Field field(int i) {
+      return (i >= 0 && i < fields.size()) ? fields.get(i) : null;
+    }
+
+    @Override
+    public List<Field> fields() {
+      return Collections.unmodifiableList(fields);
+    }
+
+    public Field getFieldByName(String name) {
+      Integer idx = nameToIndex.get(name);
+      return idx != null ? fields.get(idx) : null;
+    }
+
+    public int getFieldIndex(String name) {
+      Integer idx = nameToIndex.get(name);
+      return idx != null ? idx : -1;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (!super.equals(obj)) {
+        return false;
+      }
+      StructType other = (StructType) obj;
+      if (fields.size() != other.fields.size()) {
+        return false;
+      }
+      for (int i = 0; i < fields.size(); i++) {
+        if (!fields.get(i).equals(other.fields.get(i))) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(super.hashCode(), fields);
+    }
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Decimal decimal() {
+  /** Map type: a collection of key-value pairs. */
+  public static class MapType extends DataType {
+    private final Field keyField;
+    private final Field itemField;
+    private final boolean keysSorted;
+
+    public MapType(DataType keyType, DataType itemType) {
+      this(keyType, itemType, false);
+    }
+
+    public MapType(DataType keyType, DataType itemType, boolean keysSorted) {
+      super(TYPE_MAP);
+      // Keys must be non-nullable
+      this.keyField = new Field(MAP_KEY_NAME, keyType, false);
+      this.itemField = new Field(MAP_VALUE_NAME, itemType, true);
+      this.keysSorted = keysSorted;
+    }
+
+    @Override
+    public String name() {
+      return "map";
+    }
+
+    @Override
+    public String toString() {
+      return "map<" + keyField.type().toString() + ", " + itemField.type().toString() + ">";
+    }
+
+    public DataType keyType() {
+      return keyField.type();
+    }
+
+    public DataType itemType() {
+      return itemField.type();
+    }
+
+    public Field keyField() {
+      return keyField;
+    }
+
+    public Field itemField() {
+      return itemField;
+    }
+
+    public boolean keysSorted() {
+      return keysSorted;
+    }
+
+    @Override
+    public int numFields() {
+      return 2;
+    }
+
+    @Override
+    public Field field(int i) {
+      if (i == 0) {
+        return keyField;
+      }
+      if (i == 1) {
+        return itemField;
+      }
+      return null;
+    }
+
+    @Override
+    public List<Field> fields() {
+      return Arrays.asList(keyField, itemField);
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (!super.equals(obj)) {
+        return false;
+      }
+      MapType other = (MapType) obj;
+      return keyField.type().equals(other.keyField.type())
+          && itemField.type().equals(other.itemField.type());
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(super.hashCode(), keyField.type(), itemField.type());
+    }
+  }
+
+  // ============================================================================
+  // Factory functions for creating types
+  // ============================================================================
+
+  public static BooleanType bool() {
+    return BooleanType.INSTANCE;
+  }
+
+  public static Int8Type int8() {
+    return Int8Type.INSTANCE;
+  }
+
+  public static Int16Type int16() {
+    return Int16Type.INSTANCE;
+  }
+
+  public static Int32Type int32() {
+    return Int32Type.INSTANCE;
+  }
+
+  public static Int64Type int64() {
+    return Int64Type.INSTANCE;
+  }
+
+  public static Float16Type float16() {
+    return Float16Type.INSTANCE;
+  }
+
+  public static Float32Type float32() {
+    return Float32Type.INSTANCE;
+  }
+
+  public static Float64Type float64() {
+    return Float64Type.INSTANCE;
+  }
+
+  public static StringType utf8() {
+    return StringType.INSTANCE;
+  }
+
+  public static BinaryType binary() {
+    return BinaryType.INSTANCE;
+  }
+
+  public static DurationType duration() {
+    return DurationType.INSTANCE;
+  }
+
+  public static TimestampType timestamp() {
+    return TimestampType.INSTANCE;
+  }
+
+  public static LocalDateType date32() {
+    return LocalDateType.INSTANCE;
+  }
+
+  public static DecimalType decimal() {
     return decimal(DecimalUtils.MAX_PRECISION, DecimalUtils.MAX_SCALE);
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Decimal decimal(
-      int precision, int scale) {
-    return new org.apache.arrow.vector.types.pojo.ArrowType.Decimal(precision, scale);
+  public static DecimalType decimal(int precision, int scale) {
+    return new DecimalType(precision, scale);
   }
 
-  public static org.apache.arrow.vector.types.pojo.ArrowType.Decimal bigintDecimal() {
+  public static DecimalType bigintDecimal() {
     return decimal(DecimalUtils.MAX_PRECISION, 0);
   }
 
-  /* ========================= field utils ========================= */
-  public static Field field(String name, FieldType fieldType) {
-    return field(name, fieldType, Collections.emptyList());
+  public static ListType list(DataType valueType) {
+    return new ListType(valueType);
+  }
+
+  public static ListType list(Field valueField) {
+    return new ListType(valueField);
+  }
+
+  public static StructType struct(List<Field> fields) {
+    return new StructType(fields);
+  }
+
+  public static StructType struct(Field... fields) {
+    return new StructType(Arrays.asList(fields));
+  }
+
+  public static MapType map(DataType keyType, DataType itemType) {
+    return new MapType(keyType, itemType);
+  }
+
+  public static MapType map(DataType keyType, DataType itemType, boolean keysSorted) {
+    return new MapType(keyType, itemType, keysSorted);
+  }
+
+  // ============================================================================
+  // Factory functions for creating fields
+  // ============================================================================
+
+  public static Field field(String name, DataType type) {
+    return new Field(name, type, true);
+  }
+
+  public static Field field(String name, DataType type, boolean nullable) {
+    return new Field(name, type, nullable);
   }
 
   public static Field field(
-      String name,
-      boolean nullable,
-      org.apache.arrow.vector.types.pojo.ArrowType type,
-      Field... children) {
-    return field(name, new FieldType(nullable, type, null), children);
+      String name, DataType type, boolean nullable, Map<String, String> meta) {
+    return new Field(name, type, nullable, meta);
   }
 
-  public static Field field(String name, FieldType fieldType, Field... children) {
-    return field(name, fieldType, Arrays.asList(children));
+  public static Field notNullField(String name, DataType type) {
+    return new Field(name, type, false);
   }
 
-  public static Field field(
-      String name,
-      boolean nullable,
-      org.apache.arrow.vector.types.pojo.ArrowType type,
-      List<Field> children) {
-    return field(name, new FieldType(nullable, type, null), children);
+  // ============================================================================
+  // Factory functions for creating schemas
+  // ============================================================================
+
+  public static Schema schema(List<Field> fields) {
+    return new Schema(fields);
   }
 
-  public static Field field(
-      String name, org.apache.arrow.vector.types.pojo.ArrowType type, Field... children) {
-    return field(name, true, type, children);
+  public static Schema schema(List<Field> fields, Map<String, String> metadata) {
+    return new Schema(fields, metadata);
   }
 
-  public static Field field(String name, FieldType fieldType, List<Field> children) {
-    return new Field(name, fieldType, children);
+  public static Schema schema(Field... fields) {
+    return new Schema(Arrays.asList(fields));
   }
 
-  public static Field notNullField(
-      String name, org.apache.arrow.vector.types.pojo.ArrowType type, Field... children) {
-    return field(name, false, type, children);
+  // ============================================================================
+  // Array field utility functions
+  // ============================================================================
+
+  private static Field primitiveArrayField(
+      DataType elementType, String itemName, boolean nullable) {
+    Field itemField = new Field(itemName, elementType, nullable);
+    return new Field("", new ListType(itemField), true);
   }
 
-  public static FieldType notNullFieldType(org.apache.arrow.vector.types.pojo.ArrowType type) {
-    return new FieldType(false, type, null);
+  public static Field primitiveArrayField(DataType elementType) {
+    return primitiveArrayField("", elementType);
   }
 
-  /* ========================= array field utils ========================= */
-  public static Field primitiveArrayField(org.apache.arrow.vector.types.pojo.ArrowType type) {
-    return primitiveArrayField("", type);
+  public static Field primitiveArrayField(String name, DataType elementType) {
+    Field itemField = new Field(ARRAY_ITEM_NAME, elementType, false);
+    return new Field(name, new ListType(itemField), true);
   }
 
-  public static Field primitiveArrayField(
-      String name, org.apache.arrow.vector.types.pojo.ArrowType type) {
-    return field(
-        name,
-        FieldType.nullable(org.apache.arrow.vector.types.pojo.ArrowType.List.INSTANCE),
-        Collections.singletonList(field(ARRAY_ITEM_NAME, false, type)));
+  public static Field arrayField(DataType elementType) {
+    return arrayField("", elementType);
   }
 
-  public static Field arrayField(org.apache.arrow.vector.types.pojo.ArrowType type) {
-    return arrayField("", type);
-  }
-
-  public static Field arrayField(String name, org.apache.arrow.vector.types.pojo.ArrowType type) {
-    return field(
-        name,
-        FieldType.nullable(org.apache.arrow.vector.types.pojo.ArrowType.List.INSTANCE),
-        Collections.singletonList(field(ARRAY_ITEM_NAME, true, type)));
-  }
-
-  public static Field arrayField(FieldType valueType) {
-    return arrayField("", valueType);
-  }
-
-  public static Field arrayField(String name, FieldType valueType) {
-    return field(
-        name,
-        FieldType.nullable(org.apache.arrow.vector.types.pojo.ArrowType.List.INSTANCE),
-        Collections.singletonList(field(ARRAY_ITEM_NAME, valueType)));
+  public static Field arrayField(String name, DataType elementType) {
+    Field itemField = new Field(ARRAY_ITEM_NAME, elementType, true);
+    return new Field(name, new ListType(itemField), true);
   }
 
   public static Field arrayField(Field valueField) {
@@ -396,51 +732,41 @@ public class DataTypes {
   }
 
   public static Field arrayField(String name, Field valueField) {
-    return field(
-        name,
-        FieldType.nullable(org.apache.arrow.vector.types.pojo.ArrowType.List.INSTANCE),
-        Collections.singletonList(valueField));
+    return new Field(name, new ListType(valueField), true);
   }
 
-  public static Field arrayElementField(Field field) {
-    return field.getChildren().get(0);
+  public static Field arrayElementField(Field arrayField) {
+    ListType listType = (ListType) arrayField.type();
+    return listType.valueField();
   }
 
-  /* ========================= map field utils start ========================= */
-  public static Field mapField(
-      org.apache.arrow.vector.types.pojo.ArrowType keyType,
-      org.apache.arrow.vector.types.pojo.ArrowType itemType) {
+  // ============================================================================
+  // Map field utility functions
+  // ============================================================================
+
+  public static Field mapField(DataType keyType, DataType itemType) {
     return mapField("", keyType, itemType);
   }
 
-  public static Field mapField(
-      String name,
-      org.apache.arrow.vector.types.pojo.ArrowType keyType,
-      org.apache.arrow.vector.types.pojo.ArrowType itemType) {
-    return mapField(
-        name,
-        field(MapVector.KEY_NAME, false, keyType),
-        field(MapVector.VALUE_NAME, true, itemType));
+  public static Field mapField(String name, DataType keyType, DataType itemType) {
+    return new Field(name, new MapType(keyType, itemType), true);
   }
 
-  /**
-   * Map data is nested data where each value is a variable number of key-item pairs. Maps can be
-   * recursively nested, for example map(utf8, map(utf8, int32)). see more about MapType in type.h
-   */
   public static Field mapField(String name, Field keyField, Field itemField) {
-    Preconditions.checkArgument(!keyField.isNullable(), "Map's keys must be non-nullable");
-    // Map's key-item pairs must be non-nullable structs
-    Field valueField = structField(false, keyField, itemField);
-    return field(
-        name, true, new org.apache.arrow.vector.types.pojo.ArrowType.Map(false), valueField);
+    Preconditions.checkArgument(!keyField.nullable(), "Map's keys must be non-nullable");
+    DataType keyType = keyField.type();
+    DataType itemType = itemField.type();
+    return new Field(name, new MapType(keyType, itemType), true);
   }
 
   public static Field keyFieldForMap(Field mapField) {
-    return mapField.getChildren().get(0).getChildren().get(0);
+    MapType mapType = (MapType) mapField.type();
+    return mapType.keyField();
   }
 
   public static Field itemFieldForMap(Field mapField) {
-    return mapField.getChildren().get(0).getChildren().get(1);
+    MapType mapType = (MapType) mapField.type();
+    return mapType.itemField();
   }
 
   public static Field keyArrayFieldForMap(Field mapField) {
@@ -451,13 +777,18 @@ public class DataTypes {
     return arrayField("items", itemFieldForMap(mapField));
   }
 
-  /* ========================= struct field utils start ========================= */
+  // ============================================================================
+  // Struct field utility functions
+  // ============================================================================
+
   public static Schema schemaFromStructField(Field structField) {
-    return new Schema(structField.getChildren(), structField.getMetadata());
+    StructType structType = (StructType) structField.type();
+    return new Schema(structType.fields(), structField.metadata());
   }
 
   public static Schema createSchema(Field field) {
-    return new Schema(field.getChildren(), field.getMetadata());
+    StructType structType = (StructType) field.type();
+    return new Schema(structType.fields(), field.metadata());
   }
 
   public static Field structField(boolean nullable, Field... fields) {
@@ -465,93 +796,116 @@ public class DataTypes {
   }
 
   public static Field structField(String name, boolean nullable, Field... fields) {
-    return field(
-        name, nullable, org.apache.arrow.vector.types.pojo.ArrowType.Struct.INSTANCE, fields);
+    return new Field(name, new StructType(Arrays.asList(fields)), nullable);
   }
 
   public static Field structField(String name, boolean nullable, List<Field> fields) {
-    return field(
-        name, nullable, org.apache.arrow.vector.types.pojo.ArrowType.Struct.INSTANCE, fields);
+    return new Field(name, new StructType(fields), nullable);
   }
 
-  /* ========================= struct field utils end ========================= */
+  // ============================================================================
+  // Type utility functions
+  // ============================================================================
 
   public static Field fieldOfSchema(Schema schema, int index) {
-    return schema.getFields().get(index);
+    return schema.field(index);
   }
 
-  public static void serializeSchema(Schema schema, MemoryBuffer buffer) {
-    try (MemoryBufferOutputStream outputStream = new MemoryBufferOutputStream(buffer);
-        WriteChannel writeChannel = new WriteChannel(Channels.newChannel(outputStream))) {
-      MessageSerializer.serialize(writeChannel, schema);
-    } catch (IOException e) {
-      throw new ForyException(String.format("Write schema %s failed", schema), e);
+  /**
+   * Returns the byte width of a type, or -1 for variable-width types.
+   *
+   * @param type the data type
+   * @return byte width or -1
+   */
+  public static int getTypeWidth(DataType type) {
+    int bitWidth = type.bitWidth();
+    if (bitWidth > 0) {
+      return (bitWidth + 7) / 8;
     }
+    return -1;
   }
 
-  public static byte[] serializeSchema(Schema schema) {
-    try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        WriteChannel writeChannel = new WriteChannel(Channels.newChannel(outputStream))) {
-      MessageSerializer.serialize(writeChannel, schema);
-      return outputStream.toByteArray();
-    } catch (IOException e) {
-      throw new ForyException(String.format("Write schema %s failed", schema), e);
-    }
+  /**
+   * Returns the type ID for a data type.
+   *
+   * @param type the data type
+   * @return type ID
+   */
+  public static int getTypeId(DataType type) {
+    return type.typeId();
   }
 
-  public static Schema deserializeSchema(byte[] bytes) {
-    try (ReadChannel readChannel =
-        new ReadChannel(Channels.newChannel(new ByteArrayInputStream(bytes)))) {
-      return MessageSerializer.deserializeSchema(readChannel);
-    } catch (IOException e) {
-      throw new ForyException("Deserialize schema failed", e);
-    }
-  }
-
+  /**
+   * Computes a hash for a schema based on field types.
+   *
+   * @param schema the schema
+   * @return hash value
+   */
   public static long computeSchemaHash(Schema schema) {
     long hash = 17;
-    for (Field field : schema.getFields()) {
+    for (Field field : schema.fields()) {
       hash = computeHash(hash, field);
     }
     return hash;
   }
 
   private static long computeHash(long hash, Field field) {
-    ArrowType typeID = getTypeId(field.getType());
+    int typeId = field.type().typeId();
     while (true) {
       try {
-        hash = Math.addExact(Math.multiplyExact(hash, 31), (long) typeID.getId());
+        hash = Math.addExact(Math.multiplyExact(hash, 31), (long) typeId);
         break;
       } catch (ArithmeticException e) {
         hash = hash >> 2;
       }
     }
-    List<Field> fields = new ArrayList<>();
-    switch (typeID) {
-      case LIST:
-        fields.add(arrayElementField(field));
-        break;
-      case MAP:
-        {
-          fields.add(keyFieldForMap(field));
-          fields.add(itemFieldForMap(field));
-          break;
-        }
-      case STRUCT:
-        {
-          fields.addAll(field.getChildren());
-          break;
-        }
-      default:
-        checkArgument(
-            field.getChildren().size() == 0,
-            "field type should not be nested, but got type id %s field %s.",
-            typeID,
-            field);
+    List<Field> childFields = new ArrayList<>();
+    DataType type = field.type();
+    if (type instanceof ListType) {
+      childFields.add(arrayElementField(field));
+    } else if (type instanceof MapType) {
+      childFields.add(keyFieldForMap(field));
+      childFields.add(itemFieldForMap(field));
+    } else if (type instanceof StructType) {
+      childFields.addAll(type.fields());
     }
-    for (Field child : fields) {
+    for (Field child : childFields) {
       hash = computeHash(hash, child);
     }
     return hash;
+  }
+
+  // ============================================================================
+  // Schema serialization
+  // ============================================================================
+
+  /**
+   * Serializes a Fory Schema to bytes.
+   *
+   * @param schema the schema to serialize
+   * @return serialized bytes
+   */
+  public static byte[] serializeSchema(Schema schema) {
+    return SchemaEncoder.toBytes(schema);
+  }
+
+  /**
+   * Serializes a Fory Schema to a MemoryBuffer.
+   *
+   * @param schema the schema to serialize
+   * @param buffer the buffer to write to
+   */
+  public static void serializeSchema(Schema schema, org.apache.fory.memory.MemoryBuffer buffer) {
+    SchemaEncoder.toBytes(schema, buffer);
+  }
+
+  /**
+   * Deserializes a Fory Schema from bytes.
+   *
+   * @param bytes the serialized bytes
+   * @return the deserialized schema
+   */
+  public static Schema deserializeSchema(byte[] bytes) {
+    return SchemaEncoder.fromBytes(bytes);
   }
 }

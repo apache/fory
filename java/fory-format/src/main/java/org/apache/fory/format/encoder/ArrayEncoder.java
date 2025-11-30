@@ -19,8 +19,8 @@
 
 package org.apache.fory.format.encoder;
 
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.binary.BinaryArray;
+import org.apache.fory.format.type.Field;
 
 /** Encoder to encode/decode object in the list container by toArray/fromArray row. */
 public interface ArrayEncoder<T> extends Encoder<T> {

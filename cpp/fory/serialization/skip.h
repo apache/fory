@@ -58,5 +58,8 @@ Result<void, Error> skip_map(ReadContext &ctx, const FieldType &field_type);
 /// Skip a struct value
 Result<void, Error> skip_struct(ReadContext &ctx, const FieldType &field_type);
 
+/// Skip an ext (extension) value
+Result<void, Error> skip_ext(ReadContext &ctx, const FieldType &field_type);
+
 } // namespace serialization
 } // namespace fory

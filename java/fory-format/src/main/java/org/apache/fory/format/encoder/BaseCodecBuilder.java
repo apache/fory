@@ -19,10 +19,10 @@
 
 package org.apache.fory.format.encoder;
 
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.Fory;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
 import org.apache.fory.format.row.binary.writer.CompactBinaryRowWriter;
+import org.apache.fory.format.type.Schema;
 
 public class BaseCodecBuilder<B extends BaseCodecBuilder<B>> {
   protected Schema schema;

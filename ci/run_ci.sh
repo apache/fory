@@ -65,10 +65,20 @@ get_bazel_version() {
 }
 
 install_bazel() {
+  REQUIRED_VERSION=$(get_bazel_version)
+
   if command -v bazel >/dev/null; then
     echo "existing bazel location $(which bazel)"
-    echo "existing bazel version $(bazel version)"
-    return
+    INSTALLED_VERSION=$(bazel --version 2>/dev/null | sed 's/bazel //')
+    echo "existing bazel version: $INSTALLED_VERSION, required: $REQUIRED_VERSION"
+    if [ "$INSTALLED_VERSION" = "$REQUIRED_VERSION" ]; then
+      echo "Bazel version matches, using cached binary"
+      return
+    else
+      echo "Bazel version mismatch, re-downloading..."
+      # Remove old bazel binary
+      rm -f "$(which bazel)" 2>/dev/null || true
+    fi
   fi
 
   ARCH="$(uname -m)"
@@ -88,12 +98,11 @@ install_bazel() {
     *)          echo "Unsupported OS: $OPERATING_SYSTEM"; exit 1 ;;
   esac
 
-  BAZEL_VERSION=$(get_bazel_version)
   BAZEL_DIR="$HOME/.local/bin"
   mkdir -p "$BAZEL_DIR"
 
-  # Construct platform-specific URL
-  BINARY_URL="https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-${OS}-${ARCH}"
+  # Construct platform-specific URL (use REQUIRED_VERSION defined at function start)
+  BINARY_URL="https://github.com/bazelbuild/bazel/releases/download/${REQUIRED_VERSION}/bazel-${REQUIRED_VERSION}-${OS}-${ARCH}"
 
   echo "Downloading bazel from: $BINARY_URL"
   # Retry download with exponential backoff to avoid transient network errors in CI

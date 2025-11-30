@@ -301,21 +301,6 @@ class TypeResolver:
         register(list, type_id=TypeId.LIST, serializer=ListSerializer)
         register(set, type_id=TypeId.SET, serializer=SetSerializer)
         register(dict, type_id=TypeId.MAP, serializer=MapSerializer)
-        try:
-            import pyarrow as pa
-            from pyfory.format.serializer import (
-                ArrowRecordBatchSerializer,
-                ArrowTableSerializer,
-            )
-
-            register(
-                pa.RecordBatch,
-                type_id=TypeId.ARROW_RECORD_BATCH,
-                serializer=ArrowRecordBatchSerializer,
-            )
-            register(pa.Table, type_id=TypeId.ARROW_TABLE, serializer=ArrowTableSerializer)
-        except Exception:
-            pass
 
     def register_type(
         self,

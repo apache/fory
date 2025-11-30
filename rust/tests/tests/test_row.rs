@@ -21,6 +21,64 @@ use fory_core::row::{from_row, to_row};
 use fory_derive::ForyRow;
 
 #[test]
+fn row_with_array_field() {
+    // Test from GitHub issue: ForyRow should work with fixed-size array fields
+    #[derive(ForyRow)]
+    struct PointWithArray {
+        index: i32,
+        point: [f32; 4],
+    }
+
+    let data = PointWithArray {
+        index: 42,
+        point: [1.0, 2.0, 3.0, 4.0],
+    };
+
+    let row = to_row(&data).unwrap();
+    let obj = from_row::<PointWithArray>(&row);
+
+    assert_eq!(obj.index(), 42);
+    let point_getter = obj.point();
+    assert_eq!(point_getter.size(), 4);
+    assert_eq!(point_getter.get(0), 1.0);
+    assert_eq!(point_getter.get(1), 2.0);
+    assert_eq!(point_getter.get(2), 3.0);
+    assert_eq!(point_getter.get(3), 4.0);
+}
+
+#[test]
+fn row_with_nested_struct_array() {
+    // Test ForyRow with nested struct containing arrays
+    #[derive(ForyRow)]
+    struct Point3D {
+        coords: [f64; 3],
+    }
+
+    #[derive(ForyRow)]
+    struct Geometry {
+        name: String,
+        origin: Point3D,
+    }
+
+    let data = Geometry {
+        name: String::from("origin"),
+        origin: Point3D {
+            coords: [0.0, 0.0, 0.0],
+        },
+    };
+
+    let row = to_row(&data).unwrap();
+    let obj = from_row::<Geometry>(&row);
+
+    assert_eq!(obj.name(), "origin");
+    let coords = obj.origin().coords();
+    assert_eq!(coords.size(), 3);
+    assert_eq!(coords.get(0), 0.0);
+    assert_eq!(coords.get(1), 0.0);
+    assert_eq!(coords.get(2), 0.0);
+}
+
+#[test]
 fn row() {
     #[derive(ForyRow)]
     struct Foo {

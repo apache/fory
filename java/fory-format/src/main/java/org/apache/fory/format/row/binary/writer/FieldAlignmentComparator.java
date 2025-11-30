@@ -20,7 +20,7 @@
 package org.apache.fory.format.row.binary.writer;
 
 import java.util.Comparator;
-import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.fory.format.type.Field;
 
 class FieldAlignmentComparator implements Comparator<Field> {
   @Override

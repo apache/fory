@@ -28,10 +28,10 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.UUID;
 import lombok.Data;
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.row.binary.BinaryRow;
+import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.reflect.TypeRef;
@@ -140,8 +140,8 @@ public class CustomCodecTest {
 
   static class ZoneIdEncoder implements CustomCodec<ZoneId, String> {
     @Override
-    public Field getField(final String fieldName) {
-      return Field.nullable(fieldName, ArrowType.Utf8.INSTANCE);
+    public Field getForyField(final String fieldName) {
+      return DataTypes.field(fieldName, DataTypes.utf8());
     }
 
     @Override
@@ -211,8 +211,8 @@ public class CustomCodecTest {
     }
 
     @Override
-    public Field getField(final String fieldName) {
-      return Field.nullable(fieldName, new ArrowType.FixedSizeBinary(16));
+    public Field getForyField(final String fieldName) {
+      return DataTypes.field(fieldName, DataTypes.binary());
     }
   }
 

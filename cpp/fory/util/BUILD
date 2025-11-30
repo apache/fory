@@ -8,11 +8,9 @@ cc_library(
     alwayslink=True,
     linkstatic=True,
     deps = [
-        "//cpp/fory/meta:fory_meta",
-        "@com_google_absl//absl/debugging:failure_signal_handler",
-        "@com_google_absl//absl/debugging:stacktrace",
-        "@com_google_absl//absl/debugging:symbolize",
-        "@simdutf//:simdutf"
+        "@abseil-cpp//absl/debugging:failure_signal_handler",
+        "@abseil-cpp//absl/debugging:stacktrace",
+        "@abseil-cpp//absl/debugging:symbolize",
     ],
     visibility = ["//visibility:public"],
 )
@@ -23,8 +21,8 @@ cc_test(
     srcs = ["time_util_test.cc"],
     deps = [
         ":fory_util",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -33,7 +31,7 @@ cc_test(
     srcs = ["logging_test.cc"],
     deps = [
         ":fory_util",
-        "@com_google_googletest//:gtest",
+        "@googletest//:gtest",
     ],
 )
 
@@ -42,7 +40,7 @@ cc_test(
     srcs = ["result_test.cc"],
     deps = [
         ":fory_util",
-        "@com_google_googletest//:gtest",
+        "@googletest//:gtest",
     ],
 )
 
@@ -51,7 +49,7 @@ cc_test(
     srcs = ["error_test.cc"],
     deps = [
         ":fory_util",
-        "@com_google_googletest//:gtest",
+        "@googletest//:gtest",
     ],
 )
 
@@ -60,8 +58,8 @@ cc_test(
     srcs = ["buffer_test.cc"],
     deps = [
         ":fory_util",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -70,8 +68,8 @@ cc_test(
     srcs = ["pool_test.cc"],
     deps = [
         ":fory_util",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -80,6 +78,6 @@ cc_test(
     srcs = ["string_util_test.cc"],
     deps = [
         ":fory_util",
-        "@com_google_googletest//:gtest",
+        "@googletest//:gtest",
     ],
 )

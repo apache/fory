@@ -30,6 +30,7 @@ Buffer::Buffer() {
   own_data_ = false;
   writer_index_ = 0;
   reader_index_ = 0;
+  wrapped_vector_ = nullptr;
 }
 
 Buffer::Buffer(Buffer &&buffer) noexcept {
@@ -38,14 +39,16 @@ Buffer::Buffer(Buffer &&buffer) noexcept {
   own_data_ = buffer.own_data_;
   writer_index_ = buffer.writer_index_;
   reader_index_ = buffer.reader_index_;
+  wrapped_vector_ = buffer.wrapped_vector_;
   buffer.data_ = nullptr;
   buffer.size_ = 0;
   buffer.own_data_ = false;
+  buffer.wrapped_vector_ = nullptr;
 }
 
 Buffer &Buffer::operator=(Buffer &&buffer) noexcept {
   if (own_data_) {
-    delete data_;
+    free(data_);
     data_ = nullptr;
   }
   data_ = buffer.data_;
@@ -53,9 +56,11 @@ Buffer &Buffer::operator=(Buffer &&buffer) noexcept {
   own_data_ = buffer.own_data_;
   writer_index_ = buffer.writer_index_;
   reader_index_ = buffer.reader_index_;
+  wrapped_vector_ = buffer.wrapped_vector_;
   buffer.data_ = nullptr;
   buffer.size_ = 0;
   buffer.own_data_ = false;
+  buffer.wrapped_vector_ = nullptr;
   return *this;
 }
 

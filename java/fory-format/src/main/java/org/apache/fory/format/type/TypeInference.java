@@ -19,9 +19,10 @@
 
 package org.apache.fory.format.type;
 
-import static org.apache.fory.format.type.DataTypes.field;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -31,14 +32,6 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
-import org.apache.arrow.vector.complex.MapVector;
-import org.apache.arrow.vector.types.DateUnit;
-import org.apache.arrow.vector.types.FloatingPointPrecision;
-import org.apache.arrow.vector.types.TimeUnit;
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.FieldType;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.format.encoder.CustomCodec;
 import org.apache.fory.format.encoder.CustomCollectionFactory;
@@ -51,7 +44,7 @@ import org.apache.fory.util.DecimalUtils;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
 
-/** Arrow related type inference. */
+/** Type inference for Fory row format schema. */
 public class TypeInference {
 
   public static Schema inferSchema(java.lang.reflect.Type type) {
@@ -75,18 +68,19 @@ public class TypeInference {
   public static Schema inferSchema(TypeRef<?> typeRef, boolean forStruct) {
     Field field = inferField(typeRef);
     if (forStruct) {
-      Preconditions.checkArgument(field.getType().getTypeID() == ArrowType.ArrowTypeID.Struct);
-      return new Schema(field.getChildren());
+      Preconditions.checkArgument(field.type() instanceof DataTypes.StructType);
+      DataTypes.StructType structType = (DataTypes.StructType) field.type();
+      return new Schema(structType.fields());
     } else {
       return new Schema(Arrays.asList(field));
     }
   }
 
-  public static Optional<ArrowType> getDataType(Class<?> cls) {
+  public static Optional<DataType> getDataType(Class<?> cls) {
     return getDataType(TypeRef.of(cls));
   }
 
-  public static Optional<ArrowType> getDataType(TypeRef<?> typeRef) {
+  public static Optional<DataType> getDataType(TypeRef<?> typeRef) {
     try {
       return Optional.of(inferDataType(typeRef));
     } catch (UnsupportedOperationException e) {
@@ -94,8 +88,8 @@ public class TypeInference {
     }
   }
 
-  public static ArrowType inferDataType(TypeRef<?> typeRef) {
-    return inferField(typeRef).getType();
+  public static DataType inferDataType(TypeRef<?> typeRef) {
+    return inferField(typeRef).type();
   }
 
   public static Field arrayInferField(
@@ -115,7 +109,7 @@ public class TypeInference {
    */
   public static Field arrayInferField(TypeRef<?> arrayTypeRef, TypeRef<?> typeRef) {
     Field field = inferField(arrayTypeRef, typeRef);
-    Preconditions.checkArgument(field.getType().getTypeID() == ArrowType.ArrowTypeID.List);
+    Preconditions.checkArgument(field.type() instanceof DataTypes.ListType);
     return field;
   }
 
@@ -142,6 +136,14 @@ public class TypeInference {
    * @return DataType of a typeToken
    */
   private static Field inferField(String name, TypeRef<?> typeRef, TypeResolutionContext ctx) {
+    // Handle TypeVariable (e.g., K, V from Map<K, V>) by resolving to its bound.
+    // This can happen with Scala 3 LTS where generic type information may not be fully resolved.
+    Type type = typeRef.getType();
+    if (type instanceof TypeVariable) {
+      TypeVariable<?> typeVariable = (TypeVariable<?>) type;
+      Type bound = typeVariable.getBounds()[0]; // First bound is a class, others are interfaces
+      return inferField(name, TypeRef.of(bound), ctx);
+    }
     Class<?> rawType = getRawType(typeRef);
     Class<?> enclosingType = ctx.getEnclosingType().getRawType();
     CustomCodec<?, ?> customEncoder =
@@ -149,17 +151,13 @@ public class TypeInference {
     if (rawType == Optional.class) {
       TypeRef<?> elemType = TypeUtils.getTypeArguments(typeRef).get(0);
       Field result = inferField(name, elemType, ctx);
-      if (result.isNullable()) {
+      if (result.nullable()) {
         return result;
       }
-      FieldType fieldType = result.getFieldType();
-      return new Field(
-          result.getName(),
-          new FieldType(
-              true, fieldType.getType(), fieldType.getDictionary(), fieldType.getMetadata()),
-          result.getChildren());
+      // Make it nullable
+      return result.withNullable(true);
     } else if (customEncoder != null) {
-      Field replacementField = customEncoder.getField(name);
+      Field replacementField = customEncoder.getForyField(name);
       if (replacementField != null) {
         return replacementField;
       }
@@ -169,60 +167,52 @@ public class TypeInference {
       }
     }
     if (rawType == boolean.class) {
-      return field(name, DataTypes.notNullFieldType(ArrowType.Bool.INSTANCE));
+      return DataTypes.notNullField(name, DataTypes.bool());
     } else if (rawType == byte.class) {
-      return field(name, DataTypes.notNullFieldType(new ArrowType.Int(8, true)));
+      return DataTypes.notNullField(name, DataTypes.int8());
     } else if (rawType == short.class) {
-      return field(name, DataTypes.notNullFieldType(new ArrowType.Int(16, true)));
+      return DataTypes.notNullField(name, DataTypes.int16());
     } else if (rawType == int.class) {
-      return field(name, DataTypes.notNullFieldType(new ArrowType.Int(32, true)));
+      return DataTypes.notNullField(name, DataTypes.int32());
     } else if (rawType == long.class) {
-      return field(name, DataTypes.notNullFieldType(new ArrowType.Int(64, true)));
+      return DataTypes.notNullField(name, DataTypes.int64());
     } else if (rawType == float.class) {
-      return field(
-          name,
-          DataTypes.notNullFieldType(new ArrowType.FloatingPoint(FloatingPointPrecision.SINGLE)));
+      return DataTypes.notNullField(name, DataTypes.float32());
     } else if (rawType == double.class) {
-      return field(
-          name,
-          DataTypes.notNullFieldType(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)));
+      return DataTypes.notNullField(name, DataTypes.float64());
     } else if (rawType == Boolean.class) {
-      return field(name, FieldType.nullable((ArrowType.Bool.INSTANCE)));
+      return DataTypes.field(name, DataTypes.bool());
     } else if (rawType == Byte.class) {
-      return field(name, FieldType.nullable((new ArrowType.Int(8, true))));
+      return DataTypes.field(name, DataTypes.int8());
     } else if (rawType == Short.class) {
-      return field(name, FieldType.nullable((new ArrowType.Int(16, true))));
+      return DataTypes.field(name, DataTypes.int16());
     } else if (rawType == Integer.class || rawType == OptionalInt.class) {
-      return field(name, FieldType.nullable((new ArrowType.Int(32, true))));
+      return DataTypes.field(name, DataTypes.int32());
     } else if (rawType == Long.class || rawType == OptionalLong.class) {
-      return field(name, FieldType.nullable((new ArrowType.Int(64, true))));
+      return DataTypes.field(name, DataTypes.int64());
     } else if (rawType == Float.class) {
-      return field(
-          name, FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.SINGLE)));
+      return DataTypes.field(name, DataTypes.float32());
     } else if (rawType == Double.class || rawType == OptionalDouble.class) {
-      return field(
-          name, FieldType.nullable(new ArrowType.FloatingPoint(FloatingPointPrecision.DOUBLE)));
+      return DataTypes.field(name, DataTypes.float64());
     } else if (rawType == java.math.BigDecimal.class) {
-      return field(
-          name,
-          FieldType.nullable(
-              new ArrowType.Decimal(DecimalUtils.MAX_PRECISION, DecimalUtils.MAX_SCALE)));
+      return DataTypes.field(
+          name, DataTypes.decimal(DecimalUtils.MAX_PRECISION, DecimalUtils.MAX_SCALE));
     } else if (rawType == java.math.BigInteger.class) {
-      return field(name, FieldType.nullable(new ArrowType.Decimal(DecimalUtils.MAX_PRECISION, 0)));
+      return DataTypes.field(name, DataTypes.decimal(DecimalUtils.MAX_PRECISION, 0));
     } else if (rawType == java.time.LocalDate.class) {
-      return field(name, FieldType.nullable(new ArrowType.Date(DateUnit.DAY)));
+      return DataTypes.field(name, DataTypes.date32());
     } else if (rawType == java.sql.Date.class) {
-      return field(name, FieldType.nullable(new ArrowType.Date(DateUnit.DAY)));
+      return DataTypes.field(name, DataTypes.date32());
     } else if (rawType == java.sql.Timestamp.class) {
-      return field(name, FieldType.nullable(new ArrowType.Timestamp(TimeUnit.MICROSECOND, null)));
+      return DataTypes.field(name, DataTypes.timestamp());
     } else if (rawType == java.time.Instant.class) {
-      return field(name, FieldType.nullable(new ArrowType.Timestamp(TimeUnit.MICROSECOND, null)));
+      return DataTypes.field(name, DataTypes.timestamp());
     } else if (rawType == String.class) {
-      return field(name, FieldType.nullable(ArrowType.Utf8.INSTANCE));
+      return DataTypes.field(name, DataTypes.utf8());
     } else if (rawType.isEnum()) {
-      return field(name, FieldType.nullable(ArrowType.Utf8.INSTANCE));
+      return DataTypes.field(name, DataTypes.utf8());
     } else if (rawType == BinaryArray.class) {
-      return field(name, FieldType.nullable(ArrowType.Binary.INSTANCE));
+      return DataTypes.field(name, DataTypes.binary());
     } else if (rawType.isArray()) { // array
       Field f =
           inferField(
@@ -234,13 +224,12 @@ public class TypeInference {
       return DataTypes.arrayField(name, f);
     } else if (TypeUtils.MAP_TYPE.isSupertypeOf(typeRef)) {
       Tuple2<TypeRef<?>, TypeRef<?>> kvType = TypeUtils.getMapKeyValueType(typeRef);
-      Field keyField = inferField(MapVector.KEY_NAME, kvType.f0, ctx);
+      Field keyField = inferField(DataTypes.MAP_KEY_NAME, kvType.f0, ctx);
       // Map's keys must be non-nullable
-      FieldType keyFieldType =
-          new FieldType(
-              false, keyField.getType(), keyField.getDictionary(), keyField.getMetadata());
-      keyField = DataTypes.field(keyField.getName(), keyFieldType, keyField.getChildren());
-      Field valueField = inferField(MapVector.VALUE_NAME, kvType.f1, ctx);
+      if (keyField.nullable()) {
+        keyField = keyField.withNullable(false);
+      }
+      Field valueField = inferField(DataTypes.MAP_VALUE_NAME, kvType.f1, ctx);
       return DataTypes.mapField(name, keyField, valueField);
     } else if (TypeUtils.isBean(rawType, ctx)) { // bean field
       ctx.checkNoCycle(rawType);

@@ -27,7 +27,6 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
-import org.apache.arrow.util.Preconditions;
 import org.apache.fory.Fory;
 import org.apache.fory.builder.CodecBuilder;
 import org.apache.fory.codegen.CodeGenerator;
@@ -42,6 +41,7 @@ import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.type.TypeResolutionContext;
 import org.apache.fory.type.TypeUtils;
+import org.apache.fory.util.Preconditions;
 
 /**
  * Factory to create {@link Encoder}.

@@ -20,10 +20,10 @@
 package org.apache.fory.format.vectorized;
 
 import org.apache.arrow.vector.ipc.message.ArrowRecordBatch;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.encoder.Encoders;
 import org.apache.fory.format.encoder.RowEncoder;
 import org.apache.fory.format.row.binary.BinaryRow;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.format.type.TypeInference;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;

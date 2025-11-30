@@ -24,6 +24,18 @@
 #include <iostream>
 #include <string>
 
+// Force-inline attribute for hot path functions
+#if defined(__GNUC__) || defined(__clang__)
+#define FORY_ALWAYS_INLINE __attribute__((always_inline)) inline
+#define FORY_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define FORY_ALWAYS_INLINE __forceinline
+#define FORY_NOINLINE __declspec(noinline)
+#else
+#define FORY_ALWAYS_INLINE inline
+#define FORY_NOINLINE
+#endif
+
 namespace fory {
 
 /// This function returns the current call stack information.

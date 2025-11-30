@@ -18,6 +18,9 @@
  */
 
 #include <iostream>
+#include <limits>
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 
@@ -62,6 +65,47 @@ TEST(Buffer, TestVarUint) {
     checkVarUint32(i, buffer, 1 << 27, 4);
     checkVarUint32(i, buffer, 1 << 28, 5);
     checkVarUint32(i, buffer, 1 << 30, 5);
+  }
+}
+
+void checkVarUint64(int32_t startOffset, std::shared_ptr<Buffer> buffer,
+                    uint64_t value, uint32_t bytesWritten) {
+  uint32_t actualBytesWritten = buffer->PutVarUint64(startOffset, value);
+  EXPECT_EQ(actualBytesWritten, bytesWritten);
+  uint32_t readBytesLength;
+  uint64_t varInt = buffer->GetVarUint64(startOffset, &readBytesLength);
+  EXPECT_EQ(value, varInt);
+  EXPECT_EQ(readBytesLength, bytesWritten);
+}
+
+TEST(Buffer, TestVarUint64) {
+  std::shared_ptr<Buffer> buffer;
+  AllocateBuffer(256, &buffer);
+  const std::vector<std::pair<uint64_t, uint32_t>> cases = {
+      {0, 1},
+      {1, 1},
+      {127, 1},
+      {128, 2},
+      {16383, 2},
+      {16384, 3},
+      {2097151, 3},
+      {2097152, 4},
+      {268435455, 4},
+      {268435456, 5},
+      {34359738367ULL, 5},
+      {34359738368ULL, 6},
+      {4398046511103ULL, 6},
+      {4398046511104ULL, 7},
+      {562949953421311ULL, 7},
+      {562949953421312ULL, 8},
+      {72057594037927935ULL, 8},
+      {72057594037927936ULL, 9},
+      {std::numeric_limits<uint64_t>::max(), 9},
+  };
+  for (int i = 0; i < 32; ++i) {
+    for (const auto &entry : cases) {
+      checkVarUint64(i, buffer, entry.first, entry.second);
+    }
   }
 }
 

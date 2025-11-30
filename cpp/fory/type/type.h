@@ -101,10 +101,6 @@ enum class TypeId : int32_t {
   FLOAT32_ARRAY = 36,
   // one-dimensional float64 array.
   FLOAT64_ARRAY = 37,
-  // an arrow record batch object.
-  ARROW_RECORD_BATCH = 38,
-  // an arrow table object.
-  ARROW_TABLE = 39,
   // Unknown/polymorphic type marker.
   UNKNOWN = 64,
   // Bound value, typically used as a sentinel value.

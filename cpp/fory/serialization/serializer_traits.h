@@ -20,10 +20,17 @@
 #pragma once
 
 #include "fory/meta/field_info.h"
+#include "fory/meta/type_index.h"
 #include "fory/meta/type_traits.h"
+#include "fory/type/type.h"
+#include <array>
+#include <deque>
+#include <list>
 #include <map>
+#include <memory>
 #include <optional>
 #include <set>
+#include <tuple>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
@@ -77,6 +84,90 @@ template <typename T> struct is_optional<std::optional<T>> : std::true_type {};
 
 template <typename T>
 inline constexpr bool is_optional_v = is_optional<T>::value;
+
+/// Detect std::weak_ptr
+template <typename T> struct is_weak_ptr : std::false_type {};
+
+template <typename T> struct is_weak_ptr<std::weak_ptr<T>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_weak_ptr_v = is_weak_ptr<T>::value;
+
+// ============================================================================
+// Nullable Type Detection and Helpers
+// ============================================================================
+
+/// Detect types that can hold null values (optional, shared_ptr, unique_ptr,
+/// weak_ptr)
+template <typename T> struct is_nullable : std::false_type {};
+
+template <typename T> struct is_nullable<std::optional<T>> : std::true_type {};
+
+template <typename T>
+struct is_nullable<std::shared_ptr<T>> : std::true_type {};
+
+template <typename T, typename D>
+struct is_nullable<std::unique_ptr<T, D>> : std::true_type {};
+
+template <typename T> struct is_nullable<std::weak_ptr<T>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_nullable_v = is_nullable<T>::value;
+
+/// Check if a nullable value is null
+template <typename T> inline bool is_null_value(const T &value) {
+  if constexpr (is_optional_v<T>) {
+    return !value.has_value();
+  } else if constexpr (is_weak_ptr_v<T>) {
+    return value.expired();
+  } else {
+    // shared_ptr, unique_ptr - check against nullptr
+    return value == nullptr;
+  }
+}
+
+/// Get the inner/element type of a nullable type
+template <typename T> struct nullable_element_type {
+  using type = T;
+};
+
+template <typename T> struct nullable_element_type<std::optional<T>> {
+  using type = T;
+};
+
+template <typename T> struct nullable_element_type<std::shared_ptr<T>> {
+  using type = T;
+};
+
+template <typename T, typename D>
+struct nullable_element_type<std::unique_ptr<T, D>> {
+  using type = T;
+};
+
+template <typename T> struct nullable_element_type<std::weak_ptr<T>> {
+  using type = T;
+};
+
+template <typename T>
+using nullable_element_t = typename nullable_element_type<T>::type;
+
+/// Dereference a nullable value to get the inner value
+/// Note: Caller must ensure the value is not null before calling this
+template <typename T>
+inline const nullable_element_t<T> &deref_nullable(const T &value) {
+  if constexpr (is_optional_v<T>) {
+    return *value;
+  } else if constexpr (is_weak_ptr_v<T>) {
+    // For weak_ptr, we need to lock it first
+    // This is a special case - caller should handle weak_ptr separately
+    static_assert(!is_weak_ptr_v<T>,
+                  "weak_ptr should be handled separately via lock()");
+    return *value.lock();
+  } else {
+    // shared_ptr, unique_ptr
+    return *value;
+  }
+}
 
 // ============================================================================
 // Fory Struct Detection
@@ -229,6 +320,8 @@ inline constexpr bool is_shared_ref_v = is_shared_ref<T>::value;
 
 /// Determine if a type requires reference metadata (null/ref flags) even when
 /// nested inside another structure.
+/// Note: std::string does NOT require ref metadata - it's written inline
+/// without ref tracking, matching Java/Rust xlang behavior.
 template <typename T> struct requires_ref_metadata : std::false_type {};
 
 template <typename T>
@@ -269,6 +362,157 @@ struct mapped_type_impl<T, std::void_t<typename T::mapped_type>> {
 };
 
 template <typename T> using mapped_type_t = typename mapped_type_impl<T>::type;
+
+// ============================================================================
+// TypeIndex - Compile-time type index for fast hash map lookups
+// Infrastructure (TypeIndex forward decl, fnv1a_64) comes from type_index.h
+// ============================================================================
+
+// Forward declaration of type_index function (needed for recursive container
+// types)
+template <typename T> constexpr uint64_t type_index();
+
+// ============================================================================
+// Primitive type specializations - use TypeId directly (guaranteed unique)
+// ============================================================================
+
+template <> struct TypeIndex<bool> {
+  static constexpr uint64_t value = static_cast<uint64_t>(TypeId::BOOL);
+};
+
+template <> struct TypeIndex<int8_t> {
+  static constexpr uint64_t value = static_cast<uint64_t>(TypeId::INT8);
+};
+
+template <> struct TypeIndex<int16_t> {
+  static constexpr uint64_t value = static_cast<uint64_t>(TypeId::INT16);
+};
+
+template <> struct TypeIndex<int32_t> {
+  static constexpr uint64_t value = static_cast<uint64_t>(TypeId::INT32);
+};
+
+template <> struct TypeIndex<int64_t> {
+  static constexpr uint64_t value = static_cast<uint64_t>(TypeId::INT64);
+};
+
+// Note: Unsigned types (uint8_t, uint16_t, uint32_t, uint64_t) use the fallback
+// template since xlang serialization doesn't have separate unsigned type IDs.
+// They get unique hashes via type_fallback_hash<T>() which uses
+// PRETTY_FUNCTION.
+
+template <> struct TypeIndex<float> {
+  static constexpr uint64_t value = static_cast<uint64_t>(TypeId::FLOAT32);
+};
+
+template <> struct TypeIndex<double> {
+  static constexpr uint64_t value = static_cast<uint64_t>(TypeId::FLOAT64);
+};
+
+template <> struct TypeIndex<std::string> {
+  static constexpr uint64_t value = static_cast<uint64_t>(TypeId::STRING);
+};
+
+// ============================================================================
+// Container type specializations - combine container name + element type_index
+// This ensures nested containers with FORY_STRUCT elements are unique
+// ============================================================================
+
+// vector<T>
+template <typename T> struct TypeIndex<std::vector<T>> {
+  static constexpr uint64_t value =
+      fnv1a_64_combine(fnv1a_64("std::vector"), type_index<T>());
+};
+
+// list<T>
+template <typename T> struct TypeIndex<std::list<T>> {
+  static constexpr uint64_t value =
+      fnv1a_64_combine(fnv1a_64("std::list"), type_index<T>());
+};
+
+// deque<T>
+template <typename T> struct TypeIndex<std::deque<T>> {
+  static constexpr uint64_t value =
+      fnv1a_64_combine(fnv1a_64("std::deque"), type_index<T>());
+};
+
+// set<T>
+template <typename T> struct TypeIndex<std::set<T>> {
+  static constexpr uint64_t value =
+      fnv1a_64_combine(fnv1a_64("std::set"), type_index<T>());
+};
+
+// unordered_set<T>
+template <typename T> struct TypeIndex<std::unordered_set<T>> {
+  static constexpr uint64_t value =
+      fnv1a_64_combine(fnv1a_64("std::unordered_set"), type_index<T>());
+};
+
+// map<K, V>
+template <typename K, typename V> struct TypeIndex<std::map<K, V>> {
+  static constexpr uint64_t value =
+      fnv1a_64_combine(fnv1a_64("std::map"), type_index<K>(), type_index<V>());
+};
+
+// unordered_map<K, V>
+template <typename K, typename V> struct TypeIndex<std::unordered_map<K, V>> {
+  static constexpr uint64_t value = fnv1a_64_combine(
+      fnv1a_64("std::unordered_map"), type_index<K>(), type_index<V>());
+};
+
+// pair<T1, T2>
+template <typename T1, typename T2> struct TypeIndex<std::pair<T1, T2>> {
+  static constexpr uint64_t value = fnv1a_64_combine(
+      fnv1a_64("std::pair"), type_index<T1>(), type_index<T2>());
+};
+
+// array<T, N>
+template <typename T, size_t N> struct TypeIndex<std::array<T, N>> {
+  static constexpr uint64_t value = fnv1a_64_combine(
+      fnv1a_64("std::array"), type_index<T>(), static_cast<uint64_t>(N));
+};
+
+// optional<T>
+template <typename T> struct TypeIndex<std::optional<T>> {
+  static constexpr uint64_t value =
+      fnv1a_64_combine(fnv1a_64("std::optional"), type_index<T>());
+};
+
+// shared_ptr<T>
+template <typename T> struct TypeIndex<std::shared_ptr<T>> {
+  static constexpr uint64_t value =
+      fnv1a_64_combine(fnv1a_64("std::shared_ptr"), type_index<T>());
+};
+
+// unique_ptr<T>
+template <typename T> struct TypeIndex<std::unique_ptr<T>> {
+  static constexpr uint64_t value =
+      fnv1a_64_combine(fnv1a_64("std::unique_ptr"), type_index<T>());
+};
+
+// tuple<Ts...>
+template <typename... Ts> struct TypeIndex<std::tuple<Ts...>> {
+  static constexpr uint64_t value =
+      fnv1a_64_combine(fnv1a_64("std::tuple"), (type_index<Ts>() ^ ...));
+};
+
+// ============================================================================
+// type_index<T>() function - main entry point
+// ============================================================================
+
+/// Get compile-time type index for a type.
+/// This is much faster than std::type_index for hash map lookups.
+/// Returns a unique uint64_t for each type.
+template <typename T> constexpr uint64_t type_index() {
+  return TypeIndex<T>::value;
+}
+
+/// Macro for user-defined types to define their TypeIndex
+/// Usage: FORY_DEFINE_TYPE_INDEX(MyType) after type definition
+#define FORY_DEFINE_TYPE_INDEX(Type)                                           \
+  template <> struct fory::serialization::TypeIndex<Type> {                    \
+    static constexpr uint64_t value = fnv1a_64(FORY_FILE_LINE);                \
+  }
 
 } // namespace serialization
 } // namespace fory

@@ -19,10 +19,9 @@
 
 package org.apache.fory.format.encoder;
 
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.reflect.TypeRef;
 
@@ -34,7 +33,14 @@ import org.apache.fory.reflect.TypeRef;
  * @param <E> the type the codec encodes to (byte representation)
  */
 public interface CustomCodec<T, E> {
-  Field getField(String fieldName);
+
+  /**
+   * Returns the Fory Field for the given field name.
+   *
+   * @param fieldName the name of the field
+   * @return the Fory field definition, or null to use default inference
+   */
+  Field getForyField(String fieldName);
 
   TypeRef<E> encodedType();
 
@@ -50,8 +56,8 @@ public interface CustomCodec<T, E> {
     }
 
     @Override
-    default Field getField(final String fieldName) {
-      return Field.nullable(fieldName, ArrowType.Binary.INSTANCE);
+    default Field getForyField(final String fieldName) {
+      return DataTypes.field(fieldName, DataTypes.binary());
     }
   }
 
@@ -63,7 +69,7 @@ public interface CustomCodec<T, E> {
     }
 
     @Override
-    default Field getField(final String fieldName) {
+    default Field getForyField(final String fieldName) {
       return DataTypes.primitiveArrayField(fieldName, DataTypes.int8());
     }
   }
@@ -76,7 +82,7 @@ public interface CustomCodec<T, E> {
     }
 
     @Override
-    default Field getField(final String fieldName) {
+    default Field getForyField(final String fieldName) {
       return DataTypes.primitiveArrayField(fieldName, DataTypes.int8());
     }
   }
@@ -88,7 +94,7 @@ public interface CustomCodec<T, E> {
    */
   interface InterceptingCodec<T> extends CustomCodec<T, T> {
     @Override
-    default Field getField(final String fieldName) {
+    default Field getForyField(final String fieldName) {
       return null;
     }
 

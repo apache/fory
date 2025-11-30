@@ -22,13 +22,12 @@ package org.apache.fory.format.row.binary.writer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.apache.arrow.vector.types.pojo.ArrowType;
-import org.apache.arrow.vector.types.pojo.ArrowType.ArrowTypeID;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.fory.format.row.binary.BinaryRow;
 import org.apache.fory.format.row.binary.CompactBinaryRow;
+import org.apache.fory.format.type.DataType;
 import org.apache.fory.format.type.DataTypes;
+import org.apache.fory.format.type.Field;
+import org.apache.fory.format.type.Schema;
 import org.apache.fory.memory.MemoryBuffer;
 
 /** Writer class to produce {@link CompactBinaryRow}-formatted rows. */
@@ -46,7 +45,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
     allFieldsFixedSize = allFieldsFixedSize(schema);
     fixedSize = computeAlignedFixedRegionSize();
     fixedOffsets = fixedOffsets(schema);
-    allFieldsNotNullable = allNotNullable(schema.getFields());
+    allFieldsNotNullable = allNotNullable(schema.fields());
   }
 
   public CompactBinaryRowWriter(final Schema schema, final BinaryWriter writer) {
@@ -55,7 +54,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
     allFieldsFixedSize = allFieldsFixedSize(schema);
     fixedSize = computeAlignedFixedRegionSize();
     fixedOffsets = fixedOffsets(schema);
-    allFieldsNotNullable = allNotNullable(schema.getFields());
+    allFieldsNotNullable = allNotNullable(schema.fields());
   }
 
   public CompactBinaryRowWriter(final Schema schema, final MemoryBuffer buffer) {
@@ -64,11 +63,11 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
     allFieldsFixedSize = allFieldsFixedSize(schema);
     fixedSize = computeAlignedFixedRegionSize();
     fixedOffsets = fixedOffsets(schema);
-    allFieldsNotNullable = allNotNullable(schema.getFields());
+    allFieldsNotNullable = allNotNullable(schema.fields());
   }
 
   private static boolean allFieldsFixedSize(final Schema schema) {
-    for (final Field f : schema.getFields()) {
+    for (final Field f : schema.fields()) {
       if (fixedWidthFor(f) == -1) {
         return false;
       }
@@ -87,7 +86,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
   // TODO: this should use StableValue once it's available
   public static boolean allNotNullable(final List<Field> fields) {
     for (final Field f : fields) {
-      if (f.isNullable()) {
+      if (f.nullable()) {
         return false;
       }
     }
@@ -95,10 +94,10 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
   }
 
   public static int headerBytes(final Schema schema) {
-    return headerBytes(schema.getFields());
+    return headerBytes(schema.fields());
   }
 
-  private static int headerBytes(final List<Field> fields) {
+  public static int headerBytes(final List<Field> fields) {
     if (allNotNullable(fields)) {
       return 0;
     }
@@ -106,7 +105,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
   }
 
   public static Schema sortSchema(final Schema schema) {
-    return new Schema(sortFields(schema.getFields()), schema.getCustomMetadata());
+    return new Schema(sortFields(schema.fields()), schema.metadata());
   }
 
   @Override
@@ -124,18 +123,10 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
     return startIndex + fixedOffsets[ordinal];
   }
 
-  private static int fixedBinarySize(final Field field) {
-    final ArrowType type = field.getType();
-    if (type.getTypeID() == ArrowTypeID.FixedSizeBinary) {
-      return ((ArrowType.FixedSizeBinary) type).getByteWidth();
-    }
-    return -1;
-  }
-
   /** Total size of fixed region: fixed size inline values plus variable sized values' pointers. */
   static int computeFixedRegionSize(final Schema schema) {
     int fixedSize = 0;
-    for (final Field f : schema.getFields()) {
+    for (final Field f : schema.fields()) {
       fixedSize += fixedRegionSpaceFor(f);
     }
     return fixedSize;
@@ -143,16 +134,18 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
 
   /** Number of bytes used for a field if fixed, -1 if variable sized. */
   public static int fixedWidthFor(final Schema schema, final int ordinal) {
-    return fixedWidthFor(schema.getFields().get(ordinal));
+    return fixedWidthFor(schema.field(ordinal));
   }
 
   /** Number of bytes used for a field if fixed, -1 if variable sized. */
   public static int fixedWidthFor(final Field f) {
-    int fixedWidth = DataTypes.getTypeWidth(f.getType());
+    DataType type = f.type();
+    int fixedWidth = DataTypes.getTypeWidth(type);
     if (fixedWidth == -1) {
-      if (f.getType().getTypeID() == ArrowTypeID.Struct) {
-        int nestedWidth = headerBytes(f.getChildren());
-        for (final Field child : f.getChildren()) {
+      if (type instanceof DataTypes.StructType) {
+        DataTypes.StructType structType = (DataTypes.StructType) type;
+        int nestedWidth = headerBytes(structType.fields());
+        for (final Field child : structType.fields()) {
           final int childWidth = fixedWidthFor(child);
           if (childWidth == -1) {
             return -1;
@@ -161,7 +154,6 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
         }
         return nestedWidth;
       }
-      fixedWidth = fixedBinarySize(f);
     }
     return fixedWidth;
   }
@@ -180,7 +172,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
 
   // TODO: this should use StableValue once it's available
   public static int[] fixedOffsets(final Schema schema) {
-    final List<Field> fields = schema.getFields();
+    final List<Field> fields = schema.fields();
     final int[] result = new int[fields.size() + 1];
     int off = 0;
     for (int i = 0; i < fields.size(); i++) {
@@ -192,21 +184,26 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
   }
 
   static List<Field> sortFields(final List<Field> fields) {
-    final ArrayList<Field> sortedFields = new ArrayList<>();
-    for (final Field f : fields) {
-      sortedFields.add(sortField(f));
+    final ArrayList<Field> sortedFields = new ArrayList<>(fields);
+    for (int i = 0; i < sortedFields.size(); i++) {
+      sortedFields.set(i, sortField(sortedFields.get(i)));
     }
     Collections.sort(sortedFields, new FieldAlignmentComparator());
     return sortedFields;
   }
 
   static Field sortField(final Field field) {
-    final List<Field> children = field.getChildren();
+    DataType type = field.type();
+    if (!(type instanceof DataTypes.StructType)) {
+      return field;
+    }
+    DataTypes.StructType structType = (DataTypes.StructType) type;
+    final List<Field> children = structType.fields();
     final List<Field> sortedChildren = sortFields(children);
     if (children.equals(sortedChildren)) {
       return field;
     }
-    return new Field(field.getName(), field.getFieldType(), sortedChildren);
+    return new Field(field.name(), new DataTypes.StructType(sortedChildren), field.nullable());
   }
 
   public void resetFor(final CompactBinaryRowWriter nestedWriter, final int ordinal) {
@@ -231,7 +228,7 @@ public class CompactBinaryRowWriter extends BaseBinaryRowWriter {
   public void setNullAt(final int ordinal) {
     if (allFieldsNotNullable) {
       throw new IllegalStateException(
-          "Field " + getSchema().getFields().get(ordinal) + " has null value for not-null field");
+          "Field " + getSchema().field(ordinal) + " has null value for not-null field");
     }
     super.setNullAt(ordinal);
   }
