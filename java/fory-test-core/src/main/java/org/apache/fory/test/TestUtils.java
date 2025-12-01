@@ -116,7 +116,7 @@ public class TestUtils {
           Arrays.asList(
               "python",
               "-c",
-              "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec(\"pyfory\") is None else 1)"),
+              "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('pyfory') is None else 1)"),
           10,
           Collections.emptyMap())) {
         throw new SkipException("pyfory not installed");
