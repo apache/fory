@@ -702,15 +702,33 @@ public class CollectionSerializers {
   public static class ArrayBlockingQueueSerializer
       extends ConcurrentCollectionSerializer<ArrayBlockingQueue> {
 
+    // Use reflection to get the items array length which represents the capacity.
+    // This avoids race conditions when reading remainingCapacity() and size() separately.
+    private static final long ITEMS_OFFSET;
+
+    static {
+      try {
+        Field itemsField = ArrayBlockingQueue.class.getDeclaredField("items");
+        ITEMS_OFFSET = Platform.objectFieldOffset(itemsField);
+      } catch (NoSuchFieldException e) {
+        throw new RuntimeException(e);
+      }
+    }
+
     public ArrayBlockingQueueSerializer(Fory fory, Class<ArrayBlockingQueue> cls) {
       super(fory, cls, true);
     }
 
+    private static int getCapacity(ArrayBlockingQueue queue) {
+      Object[] items = (Object[]) Platform.getObject(queue, ITEMS_OFFSET);
+      return items.length;
+    }
+
     @Override
     public CollectionSnapshot onCollectionWrite(MemoryBuffer buffer, ArrayBlockingQueue value) {
+      // Read capacity before creating snapshot to ensure consistency
+      int capacity = getCapacity(value);
       CollectionSnapshot snapshot = super.onCollectionWrite(buffer, value);
-      // Write the capacity (remaining capacity + current size = total capacity)
-      int capacity = value.remainingCapacity() + value.size();
       buffer.writeVarUint32Small7(capacity);
       return snapshot;
     }
@@ -728,8 +746,7 @@ public class CollectionSerializers {
     @Override
     public Collection newCollection(Collection collection) {
       ArrayBlockingQueue abq = (ArrayBlockingQueue) collection;
-      // Capacity is remaining + current size
-      int capacity = abq.remainingCapacity() + abq.size();
+      int capacity = getCapacity(abq);
       return new ArrayBlockingQueue<>(capacity);
     }
   }
@@ -743,15 +760,32 @@ public class CollectionSerializers {
   public static class LinkedBlockingQueueSerializer
       extends ConcurrentCollectionSerializer<LinkedBlockingQueue> {
 
+    // Use reflection to get the capacity field directly.
+    // This avoids race conditions when reading remainingCapacity() and size() separately.
+    private static final long CAPACITY_OFFSET;
+
+    static {
+      try {
+        Field capacityField = LinkedBlockingQueue.class.getDeclaredField("capacity");
+        CAPACITY_OFFSET = Platform.objectFieldOffset(capacityField);
+      } catch (NoSuchFieldException e) {
+        throw new RuntimeException(e);
+      }
+    }
+
     public LinkedBlockingQueueSerializer(Fory fory, Class<LinkedBlockingQueue> cls) {
       super(fory, cls, true);
     }
 
+    private static int getCapacity(LinkedBlockingQueue queue) {
+      return Platform.getInt(queue, CAPACITY_OFFSET);
+    }
+
     @Override
     public CollectionSnapshot onCollectionWrite(MemoryBuffer buffer, LinkedBlockingQueue value) {
+      // Read capacity before creating snapshot to ensure consistency
+      int capacity = getCapacity(value);
       CollectionSnapshot snapshot = super.onCollectionWrite(buffer, value);
-      // Write the capacity (remaining capacity + current size = total capacity)
-      int capacity = value.remainingCapacity() + value.size();
       buffer.writeVarUint32Small7(capacity);
       return snapshot;
     }
@@ -769,8 +803,7 @@ public class CollectionSerializers {
     @Override
     public Collection newCollection(Collection collection) {
       LinkedBlockingQueue lbq = (LinkedBlockingQueue) collection;
-      // Capacity is remaining + current size
-      int capacity = lbq.remainingCapacity() + lbq.size();
+      int capacity = getCapacity(lbq);
       return new LinkedBlockingQueue<>(capacity);
     }
   }
