@@ -165,15 +165,9 @@ public class ClassResolverTest extends ForyTestBase {
     assertEquals(
         classResolver.getSerializerClass(TreeMap.class), MapSerializers.SortedMapSerializer.class);
 
-    if (ClassResolver.requireJavaSerialization(ArrayBlockingQueue.class)) {
-      assertEquals(
-          classResolver.getSerializerClass(ArrayBlockingQueue.class),
-          CollectionSerializers.JDKCompatibleCollectionSerializer.class);
-    } else {
-      assertEquals(
-          classResolver.getSerializerClass(ArrayBlockingQueue.class),
-          CollectionSerializers.DefaultJavaCollectionSerializer.class);
-    }
+    assertEquals(
+        classResolver.getSerializerClass(ArrayBlockingQueue.class),
+        CollectionSerializers.ArrayBlockingQueueSerializer.class);
     assertEquals(
         classResolver.getSerializerClass(ConcurrentHashMap.class),
         MapSerializers.ConcurrentHashMapSerializer.class);
