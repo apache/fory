@@ -42,9 +42,11 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.Vector;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.CollectionSnapshot;
 import org.apache.fory.exception.ForyException;
@@ -691,6 +693,89 @@ public class CollectionSerializers {
   }
 
   /**
+   * Serializer for {@link ArrayBlockingQueue}.
+   *
+   * <p>This serializer handles the capacity field which is essential for ArrayBlockingQueue since
+   * it's a bounded queue. The capacity is stored in the items array length and needs to be
+   * preserved during serialization.
+   */
+  public static class ArrayBlockingQueueSerializer
+      extends ConcurrentCollectionSerializer<ArrayBlockingQueue> {
+
+    public ArrayBlockingQueueSerializer(Fory fory, Class<ArrayBlockingQueue> cls) {
+      super(fory, cls, true);
+    }
+
+    @Override
+    public CollectionSnapshot onCollectionWrite(MemoryBuffer buffer, ArrayBlockingQueue value) {
+      CollectionSnapshot snapshot = super.onCollectionWrite(buffer, value);
+      // Write the capacity (remaining capacity + current size = total capacity)
+      int capacity = value.remainingCapacity() + value.size();
+      buffer.writeVarUint32Small7(capacity);
+      return snapshot;
+    }
+
+    @Override
+    public ArrayBlockingQueue newCollection(MemoryBuffer buffer) {
+      int numElements = buffer.readVarUint32Small7();
+      setNumElements(numElements);
+      int capacity = buffer.readVarUint32Small7();
+      ArrayBlockingQueue queue = new ArrayBlockingQueue<>(capacity);
+      fory.getRefResolver().reference(queue);
+      return queue;
+    }
+
+    @Override
+    public Collection newCollection(Collection collection) {
+      ArrayBlockingQueue abq = (ArrayBlockingQueue) collection;
+      // Capacity is remaining + current size
+      int capacity = abq.remainingCapacity() + abq.size();
+      return new ArrayBlockingQueue<>(capacity);
+    }
+  }
+
+  /**
+   * Serializer for {@link LinkedBlockingQueue}.
+   *
+   * <p>This serializer handles the capacity field which is essential for LinkedBlockingQueue since
+   * it can be a bounded queue. The capacity needs to be preserved during serialization.
+   */
+  public static class LinkedBlockingQueueSerializer
+      extends ConcurrentCollectionSerializer<LinkedBlockingQueue> {
+
+    public LinkedBlockingQueueSerializer(Fory fory, Class<LinkedBlockingQueue> cls) {
+      super(fory, cls, true);
+    }
+
+    @Override
+    public CollectionSnapshot onCollectionWrite(MemoryBuffer buffer, LinkedBlockingQueue value) {
+      CollectionSnapshot snapshot = super.onCollectionWrite(buffer, value);
+      // Write the capacity (remaining capacity + current size = total capacity)
+      int capacity = value.remainingCapacity() + value.size();
+      buffer.writeVarUint32Small7(capacity);
+      return snapshot;
+    }
+
+    @Override
+    public LinkedBlockingQueue newCollection(MemoryBuffer buffer) {
+      int numElements = buffer.readVarUint32Small7();
+      setNumElements(numElements);
+      int capacity = buffer.readVarUint32Small7();
+      LinkedBlockingQueue queue = new LinkedBlockingQueue<>(capacity);
+      fory.getRefResolver().reference(queue);
+      return queue;
+    }
+
+    @Override
+    public Collection newCollection(Collection collection) {
+      LinkedBlockingQueue lbq = (LinkedBlockingQueue) collection;
+      // Capacity is remaining + current size
+      int capacity = lbq.remainingCapacity() + lbq.size();
+      return new LinkedBlockingQueue<>(capacity);
+    }
+  }
+
+  /**
    * Java serializer to serialize all fields of a collection implementation. Note that this
    * serializer won't use element generics and doesn't support JIT, performance won't be the best,
    * but the correctness can be ensured.
@@ -873,6 +958,11 @@ public class CollectionSerializers {
     resolver.registerSerializer(BitSet.class, new BitSetSerializer(fory, BitSet.class));
     resolver.registerSerializer(
         PriorityQueue.class, new PriorityQueueSerializer(fory, PriorityQueue.class));
+    resolver.registerSerializer(
+        ArrayBlockingQueue.class, new ArrayBlockingQueueSerializer(fory, ArrayBlockingQueue.class));
+    resolver.registerSerializer(
+        LinkedBlockingQueue.class,
+        new LinkedBlockingQueueSerializer(fory, LinkedBlockingQueue.class));
     resolver.registerSerializer(
         CopyOnWriteArrayList.class,
         new CopyOnWriteArrayListSerializer(fory, CopyOnWriteArrayList.class));

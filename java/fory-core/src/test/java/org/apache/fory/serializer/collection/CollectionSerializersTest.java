@@ -474,23 +474,25 @@ public class CollectionSerializersTest extends ForyTestBase {
             .withRefTracking(true)
             .requireClassRegistration(false)
             .build();
-    // TODO(chaokunyang) add optimized serializers for blocking queue.
     {
       ArrayBlockingQueue<Integer> queue = new ArrayBlockingQueue<>(10);
       queue.add(1);
       queue.add(2);
       queue.add(3);
-      assertEquals(new ArrayList<>(serDe(fory, queue)), new ArrayList<>(queue));
+      ArrayBlockingQueue<Integer> deserialized = serDe(fory, queue);
+      assertEquals(new ArrayList<>(deserialized), new ArrayList<>(queue));
+      // Verify capacity is preserved
+      assertEquals(deserialized.remainingCapacity() + deserialized.size(), 10);
     }
     {
-      // If reference tracking is off, deserialization will throw
-      // `java.lang.IllegalMonitorStateException`
-      // when using fory `ObjectStreamSerializer`, maybe some internal state are shared.
       LinkedBlockingQueue<Integer> queue = new LinkedBlockingQueue<>(10);
       queue.add(1);
       queue.add(2);
       queue.add(3);
-      assertEquals(new ArrayList<>(serDe(fory, queue)), new ArrayList<>(queue));
+      LinkedBlockingQueue<Integer> deserialized = serDe(fory, queue);
+      assertEquals(new ArrayList<>(deserialized), new ArrayList<>(queue));
+      // Verify capacity is preserved
+      assertEquals(deserialized.remainingCapacity() + deserialized.size(), 10);
     }
   }
 
@@ -503,17 +505,18 @@ public class CollectionSerializersTest extends ForyTestBase {
       queue.add(3);
       ArrayBlockingQueue<Integer> copy = fory.copy(queue);
       Assert.assertEquals(Arrays.toString(copy.toArray()), "[1, 2, 3]");
+      // Verify capacity is preserved
+      Assert.assertEquals(copy.remainingCapacity() + copy.size(), 10);
     }
     {
-      // If reference tracking is off, deserialization will throw
-      // `java.lang.IllegalMonitorStateException`
-      // when using fory `ObjectStreamSerializer`, maybe some internal state are shared.
       LinkedBlockingQueue<Integer> queue = new LinkedBlockingQueue<>(10);
       queue.add(1);
       queue.add(2);
       queue.add(3);
       LinkedBlockingQueue<Integer> copy = fory.copy(queue);
       Assert.assertEquals(Arrays.toString(copy.toArray()), "[1, 2, 3]");
+      // Verify capacity is preserved
+      Assert.assertEquals(copy.remainingCapacity() + copy.size(), 10);
     }
   }
 
