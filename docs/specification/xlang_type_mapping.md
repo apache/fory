@@ -66,8 +66,6 @@ Note:
 | float16_array           | 35           | float[]         | ndarray(float16)                  | /               | `fory::float16_t[n]/vector<T>` | `[n]float16/[]T` | `Vec<fory::f16>` |
 | float32_array           | 36           | float[]         | ndarray(float32)                  | /               | `float[n]/vector<T>`           | `[n]float32/[]T` | `Vec<f32>`       |
 | float64_array           | 37           | double[]        | ndarray(float64)                  | /               | `double[n]/vector<T>`          | `[n]float64/[]T` | `Vec<f64>`       |
-| arrow record batch      | 38           | /               | /                                 | /               | /                              | /                | /                |
-| arrow table             | 39           | /               | /                                 | /               | /                              | /                | /                |
 
 ## Type info(not implemented currently)
 
