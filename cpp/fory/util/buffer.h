@@ -75,29 +75,29 @@ public:
   FORY_ALWAYS_INLINE uint32_t reader_index() { return reader_index_; }
 
   FORY_ALWAYS_INLINE void WriterIndex(uint32_t writer_index) {
-    FORY_CHECK(writer_index < std::numeric_limits<int>::max())
+    FORY_CHECK(writer_index < std::numeric_limits<uint32_t>::max())
         << "Buffer overflow writer_index" << writer_index_
         << " target writer_index " << writer_index;
     writer_index_ = writer_index;
   }
 
   FORY_ALWAYS_INLINE void IncreaseWriterIndex(uint32_t diff) {
-    int64_t writer_index = writer_index_ + diff;
-    FORY_CHECK(writer_index < std::numeric_limits<int>::max())
+    uint64_t writer_index = writer_index_ + diff;
+    FORY_CHECK(writer_index < std::numeric_limits<uint32_t>::max())
         << "Buffer overflow writer_index" << writer_index_ << " diff " << diff;
     writer_index_ = writer_index;
   }
 
   FORY_ALWAYS_INLINE void ReaderIndex(uint32_t reader_index) {
-    FORY_CHECK(reader_index < std::numeric_limits<int>::max())
+    FORY_CHECK(reader_index < std::numeric_limits<uint32_t>::max())
         << "Buffer overflow reader_index" << reader_index_
         << " target reader_index " << reader_index;
     reader_index_ = reader_index;
   }
 
   FORY_ALWAYS_INLINE void IncreaseReaderIndex(uint32_t diff) {
-    int64_t reader_index = reader_index_ + diff;
-    FORY_CHECK(reader_index < std::numeric_limits<int>::max())
+    uint64_t reader_index = reader_index_ + diff;
+    FORY_CHECK(reader_index < std::numeric_limits<uint32_t>::max())
         << "Buffer overflow reader_index" << reader_index_ << " diff " << diff;
     reader_index_ = reader_index;
   }
