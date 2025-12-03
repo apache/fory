@@ -25,14 +25,13 @@ Apache Fory™ delivers exceptional performance through advanced optimization te
 - **JIT Compilation**: Runtime code generation for Java eliminates virtual method calls and inlines hot paths
 - **Static Code Generation**: Compile-time code generation for Rust, C++, and Go delivers peak performance without runtime overhead
 - **Zero-Copy Operations**: Direct memory access without intermediate buffer copies; row format enables random access and partial serialization
-- **Intelligent Encoding**: Variable-length compression for integers and strings; SIMD acceleration for arrays (Java 16+)
-- **Meta Sharing**: Class metadata packing reduces redundant type information across serializations
+- **Meta Packing & Sharing**: Class metadata packing and sharing reduces redundant type information across serializations
 
 ### 🌍 Cross-Language Serialization
 
 The **[xlang serialization format](docs/specification/xlang_serialization_spec.md)** enables seamless data exchange across programming languages:
 
-- **Automatic Type Mapping**: Intelligent conversion between language-specific types ([type mapping](docs/specification/xlang_type_mapping.md))
+- **Automatic Type Mapping**: Automatic conversion between language-specific types ([type mapping](docs/specification/xlang_type_mapping.md))
 - **Reference Preservation**: Shared and circular references work correctly across languages
 - **Polymorphism**: Objects serialize/deserialize with their actual runtime types
 - **Schema Evolution**: Optional forward/backward compatibility for evolving schemas
