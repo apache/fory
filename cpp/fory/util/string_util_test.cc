@@ -23,7 +23,7 @@
 #include <random>
 
 #include "fory/util/logging.h"
-#include "platform.h"
+#include "macros.h"
 #include "string_util.h"
 #include "gtest/gtest.h"
 

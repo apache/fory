@@ -21,28 +21,9 @@
 
 #include "fory/util/error.h"
 #include "fory/util/logging.h"
+#include "fory/util/macros.h"
 #include <type_traits>
 #include <utility>
-
-//
-// GCC branch prediction hints
-//
-#if defined(__GNUC__)
-#define FORY_PREDICT_FALSE(x) (__builtin_expect(x, 0))
-#define FORY_PREDICT_TRUE(x) (__builtin_expect(!!(x), 1))
-#define FORY_NORETURN __attribute__((noreturn))
-#define FORY_PREFETCH(addr) __builtin_prefetch(addr)
-#elif defined(_MSC_VER)
-#define FORY_NORETURN __declspec(noreturn))
-#define FORY_PREDICT_FALSE(x) x
-#define FORY_PREDICT_TRUE(x) x
-#define FORY_PREFETCH(addr)
-#else
-#define FORY_NORETURN
-#define FORY_PREDICT_FALSE(x) x
-#define FORY_PREDICT_TRUE(x) x
-#define FORY_PREFETCH(addr)
-#endif
 
 namespace fory {
 

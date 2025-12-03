@@ -20,14 +20,8 @@
 #include <chrono>
 #include <string>
 
-#include "platform.h"
+#include "macros.h"
 #include "string_util.h"
-
-#if defined(__GNUC__) && !defined(_MSC_VER)
-#define FORY_TARGET_AVX2_ATTR __attribute__((target("avx2")))
-#else
-#define FORY_TARGET_AVX2_ATTR
-#endif
 
 namespace fory {
 
@@ -519,5 +513,3 @@ std::u16string utf8ToUtf16(const std::string &utf8, bool is_little_endian) {
 #endif
 
 } // namespace fory
-
-#undef FORY_TARGET_AVX2_ATTR
