@@ -385,21 +385,7 @@ struct Serializer<
       return Result<void, Error>();
     }
 
-    // Build header bitmap
-    bool has_null = false;
-    if constexpr (is_nullable_v<T>) {
-      for (const auto &elem : vec) {
-        if (is_null_value(elem)) {
-          has_null = true;
-          break;
-        }
-      }
-    }
-
     uint8_t bitmap = 0b1000; // IS_SAME_TYPE
-    if (has_null) {
-      bitmap |= 0b0010; // HAS_NULL
-    }
 
     // Per Rust collection.rs: is_elem_declared = has_generics &&
     // !need_to_write_type_for_field(...)
@@ -424,17 +410,25 @@ struct Serializer<
       bitmap |= 0b0100; // IS_DECL_ELEMENT_TYPE
     }
 
-    // Write header
-    ctx.write_uint8(bitmap);
-
-    // Write element type info only if !IS_DECL_ELEMENT_TYPE
-    if (!is_elem_declared) {
-      using ElemType = nullable_element_t<T>;
-      FORY_RETURN_NOT_OK(Serializer<ElemType>::write_type_info(ctx));
-    }
-
     // Write elements
     if constexpr (is_nullable_v<T>) {
+      // Build header bitmap
+      bool has_null = false;
+      for (const auto &elem : vec) {
+        if (FORY_PREDICT_FALSE(is_null_value(elem))) {
+          has_null = true;
+          bitmap |= 0b0010; // HAS_NULL
+          break;
+        }
+      }
+      // Write header
+      ctx.write_uint8(bitmap);
+
+      // Write element type info only if !IS_DECL_ELEMENT_TYPE
+      if (!is_elem_declared) {
+        using ElemType = nullable_element_t<T>;
+        FORY_RETURN_NOT_OK(Serializer<ElemType>::write_type_info(ctx));
+      }
       using Inner = nullable_element_t<T>;
       // Only write null flags when HAS_NULL is set in bitmap
       if (has_null) {
@@ -468,6 +462,14 @@ struct Serializer<
         }
       }
     } else {
+      // Write header
+      ctx.write_uint8(bitmap);
+
+      // Write element type info only if !IS_DECL_ELEMENT_TYPE
+      if (!is_elem_declared) {
+        using ElemType = nullable_element_t<T>;
+        FORY_RETURN_NOT_OK(Serializer<ElemType>::write_type_info(ctx));
+      }
       for (const auto &elem : vec) {
         // When IS_DECL_ELEMENT_TYPE is set, write elements without ref/type
         // metadata
