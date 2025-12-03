@@ -64,7 +64,7 @@ also introduce more complexities compared to static serialization frameworks. So
 - named_ext: an `ext` type whose type mapping will be encoded as a name.
 - list: a sequence of objects.
 - set: an unordered set of unique elements.
-- map: a map of key-value pairs. Mutable types such as `list/map/set/array/tensor/arrow` are not allowed as key of map.
+- map: a map of key-value pairs. Mutable types such as `list/map/set/array/tensor` are not allowed as key of map.
 - duration: an absolute length of time, independent of any calendar/timezone, as a count of nanoseconds.
 - timestamp: a point in time, independent of any calendar/timezone, as a count of nanoseconds. The count is relative
   to an epoch at UTC midnight on January 1, 1970.
@@ -82,8 +82,6 @@ also introduce more complexities compared to static serialization frameworks. So
   - float32_array: one dimensional float32 array.
   - float64_array: one dimensional float64 array.
 - tensor: multidimensional array which every sub-array have same size and type.
-- arrow record batch: an arrow [record batch](https://arrow.apache.org/docs/cpp/tables.html#record-batches) object.
-- arrow table: an arrow [table](https://arrow.apache.org/docs/cpp/tables.html#tables) object.
 
 Note:
 
