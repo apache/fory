@@ -66,16 +66,22 @@ public class GraalvmSupport {
         && GRAAL_IMAGE_RUNTIME.equals(System.getProperty(GRAAL_IMAGE_CODE_KEY));
   }
 
-  /**
-   * Returns all classes registered for GraalVM native image compilation across all configurations.
-   */
+  /** Returns all classes registered for GraalVM native image compilation. */
   public static Set<Class<?>> getRegisteredClasses() {
-    return getAllRegisteredClasses();
+    Set<Class<?>> allClasses = ConcurrentHashMap.newKeySet();
+    for (GraalvmClassRegistry registry : GRAALVM_REGISTRY.values()) {
+      allClasses.addAll(registry.registeredClasses);
+    }
+    return Collections.unmodifiableSet(allClasses);
   }
 
   /** Returns all proxy interfaces registered for GraalVM native image compilation. */
   public static Set<Class<?>> getProxyInterfaces() {
-    return getAllProxyInterfaces();
+    Set<Class<?>> allInterfaces = ConcurrentHashMap.newKeySet();
+    for (GraalvmClassRegistry registry : GRAALVM_REGISTRY.values()) {
+      allInterfaces.addAll(registry.proxyInterfaces);
+    }
+    return Collections.unmodifiableSet(allInterfaces);
   }
 
   /** Clears all GraalVM native image registrations. Primarily for testing purposes. */
@@ -84,32 +90,6 @@ public class GraalvmSupport {
       registry.registeredClasses.clear();
       registry.proxyInterfaces.clear();
     }
-  }
-
-  /**
-   * Get all registered classes across all GraalVM registries for native image compilation.
-   *
-   * @return unmodifiable set of all registered classes
-   */
-  public static Set<Class<?>> getAllRegisteredClasses() {
-    Set<Class<?>> allClasses = ConcurrentHashMap.newKeySet();
-    for (GraalvmClassRegistry registry : GRAALVM_REGISTRY.values()) {
-      allClasses.addAll(registry.registeredClasses);
-    }
-    return Collections.unmodifiableSet(allClasses);
-  }
-
-  /**
-   * Get all registered proxy interfaces across all GraalVM registries for native image compilation.
-   *
-   * @return unmodifiable set of all registered proxy interfaces
-   */
-  public static Set<Class<?>> getAllProxyInterfaces() {
-    Set<Class<?>> allInterfaces = ConcurrentHashMap.newKeySet();
-    for (GraalvmClassRegistry registry : GRAALVM_REGISTRY.values()) {
-      allInterfaces.addAll(registry.proxyInterfaces);
-    }
-    return Collections.unmodifiableSet(allInterfaces);
   }
 
   /**
