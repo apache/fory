@@ -583,13 +583,13 @@ public abstract class TypeResolver {
     // CHECKSTYLE.ON:MethodName
     if (GraalvmSupport.isGraalBuildtime()) {
       GraalvmSupport.GraalvmClassRegistry registry =
-          GraalvmSupport.getGraalvmClassRegistry(foryConfigHash);
+          GraalvmSupport.getClassRegistry(foryConfigHash);
       registry.resolvers.add(classResolver);
     }
   }
 
   final GraalvmSupport.GraalvmClassRegistry getGraalvmClassRegistry() {
-    return GraalvmSupport.getGraalvmClassRegistry(fory.getConfig().getConfigHash());
+    return GraalvmSupport.getClassRegistry(fory.getConfig().getConfigHash());
   }
 
   final Class<? extends Serializer> getGraalvmSerializerClass(Serializer serializer) {

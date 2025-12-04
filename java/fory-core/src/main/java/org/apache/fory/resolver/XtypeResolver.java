@@ -168,7 +168,7 @@ public class XtypeResolver extends TypeResolver {
     ClassInfo classInfo = classInfoMap.get(type);
     if (type.isArray()) {
       buildClassInfo(type);
-      GraalvmSupport.registerClassForGraalvm(type, fory.getConfig().getConfigHash());
+      GraalvmSupport.registerClass(type, fory.getConfig().getConfigHash());
       return;
     }
     Serializer<?> serializer = null;
@@ -259,7 +259,7 @@ public class XtypeResolver extends TypeResolver {
     String qualifiedName = qualifiedName(namespace, typeName);
     qualifiedType2ClassInfo.put(qualifiedName, classInfo);
     extRegistry.registeredClasses.put(qualifiedName, type);
-    GraalvmSupport.registerClassForGraalvm(type, fory.getConfig().getConfigHash());
+    GraalvmSupport.registerClass(type, fory.getConfig().getConfigHash());
     if (serializer == null) {
       if (type.isEnum()) {
         classInfo.serializer = new EnumSerializer(fory, (Class<Enum>) type);

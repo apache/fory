@@ -80,7 +80,10 @@ public class GraalvmSupport {
 
   /** Clears all GraalVM native image registrations. Primarily for testing purposes. */
   public static void clearRegistrations() {
-    clearGraalvmRegistrations();
+    for (GraalvmClassRegistry registry : GRAALVM_REGISTRY.values()) {
+      registry.registeredClasses.clear();
+      registry.proxyInterfaces.clear();
+    }
   }
 
   /**
@@ -115,7 +118,7 @@ public class GraalvmSupport {
    * @param cls the class to register
    * @param configHash the configuration hash for the Fory instance
    */
-  public static void registerClassForGraalvm(Class<?> cls, int configHash) {
+  public static void registerClass(Class<?> cls, int configHash) {
     if (!IN_GRAALVM_NATIVE_IMAGE) {
       return;
     }
@@ -153,14 +156,6 @@ public class GraalvmSupport {
    */
   public static void registerProxySupport(Class<?> proxyInterface) {
     registerProxyInterface(proxyInterface, 0);
-  }
-
-  /** Clear all GraalVM registrations. This is primarily for testing purposes. */
-  public static void clearGraalvmRegistrations() {
-    for (GraalvmClassRegistry registry : GRAALVM_REGISTRY.values()) {
-      registry.registeredClasses.clear();
-      registry.proxyInterfaces.clear();
-    }
   }
 
   public static class GraalvmSerializerHolder extends Serializer {
@@ -271,7 +266,7 @@ public class GraalvmSupport {
    * Get the GraalVM class registry for a specific configuration hash. Package-private method for
    * use by TypeResolver and ClassResolver.
    */
-  public static GraalvmClassRegistry getGraalvmClassRegistry(int configHash) {
+  public static GraalvmClassRegistry getClassRegistry(int configHash) {
     if (!IN_GRAALVM_NATIVE_IMAGE) {
       return new GraalvmClassRegistry();
     }
