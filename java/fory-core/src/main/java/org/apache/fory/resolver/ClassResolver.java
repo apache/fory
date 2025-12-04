@@ -1800,10 +1800,8 @@ public class ClassResolver extends TypeResolver {
     try {
       fory.getJITContext().lock();
       Serializers.newSerializer(fory, LambdaSerializer.STUB_LAMBDA_CLASS, LambdaSerializer.class);
-      if (!GraalvmSupport.isGraalRuntime()) {
-        Serializers.newSerializer(
-            fory, JdkProxySerializer.SUBT_PROXY.getClass(), JdkProxySerializer.class);
-      }
+      Serializers.newSerializer(
+          fory, JdkProxySerializer.SUBT_PROXY.getClass(), JdkProxySerializer.class);
       classInfoMap.forEach(
           (cls, classInfo) -> {
             GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
