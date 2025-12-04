@@ -49,7 +49,8 @@ public class GraalvmSupportRecordTest {
   public void testIsRecordConstructorPublicAccessible() {
     Assert.assertTrue(GraalvmSupport.isRecordConstructorPublicAccessible(PublicRecord.class));
     Assert.assertFalse(GraalvmSupport.isRecordConstructorPublicAccessible(PrivateRecord.class));
-    Assert.assertFalse(GraalvmSupport.isRecordConstructorPublicAccessible(ClassWithNoArgCtor.class));
+    Assert.assertFalse(
+        GraalvmSupport.isRecordConstructorPublicAccessible(ClassWithNoArgCtor.class));
   }
 
   @Test
@@ -61,7 +62,8 @@ public class GraalvmSupportRecordTest {
     // Class with no-arg constructor doesn't need reflection registration
     Assert.assertFalse(GraalvmSupport.needReflectionRegisterForCreation(ClassWithNoArgCtor.class));
     // Class without no-arg constructor needs reflection registration
-    Assert.assertTrue(GraalvmSupport.needReflectionRegisterForCreation(ClassWithoutNoArgCtor.class));
+    Assert.assertTrue(
+        GraalvmSupport.needReflectionRegisterForCreation(ClassWithoutNoArgCtor.class));
     // Interface doesn't need reflection registration
     Assert.assertFalse(GraalvmSupport.needReflectionRegisterForCreation(Runnable.class));
   }
