@@ -30,17 +30,20 @@ import org.graalvm.nativeimage.hosted.Feature;
 import org.graalvm.nativeimage.hosted.RuntimeReflection;
 
 /**
- * GraalVM Feature for Apache Fory serialization framework.
+ * GraalVM native image feature for Apache Fory serialization framework.
  *
- * <p>This feature automatically registers necessary metadata for GraalVM native image compilation
- * to ensure Fory serialization works correctly at runtime. It handles:
+ * <p>This feature automatically registers reflection metadata during native image build to ensure
+ * Fory serialization works correctly at runtime. It handles:
  *
  * <ul>
- *   <li>Registering classes that require reflective instantiation (no accessible no-arg
- *       constructor)
- *   <li>Registering field reflection access for serialization
- *   <li>Registering proxy interfaces for dynamic proxy creation
+ *   <li>Classes requiring reflective instantiation (private constructors, Records, etc.)
+ *   <li>Record class accessor methods and canonical constructors
+ *   <li>Proxy interfaces for dynamic proxy serialization
  * </ul>
+ *
+ * <p>Usage: Add to native-image build via META-INF/native-image/.../native-image.properties:
+ *
+ * <pre>Args = --features=org.apache.fory.graalvm.feature.ForyGraalVMFeature</pre>
  */
 public class ForyGraalVMFeature implements Feature {
 
@@ -48,12 +51,17 @@ public class ForyGraalVMFeature implements Feature {
   private final Set<Class<?>> processedProxyInterfaces = ConcurrentHashMap.newKeySet();
 
   @Override
+  public String getDescription() {
+    return "Registers Fory serialization classes and proxy interfaces for GraalVM native image";
+  }
+
+  @Override
   public void duringAnalysis(DuringAnalysisAccess access) {
     boolean changed = false;
 
     for (Class<?> clazz : GraalvmSupport.getRegisteredClasses()) {
       if (processedClasses.add(clazz)) {
-        handleForyClass(clazz);
+        registerClass(clazz);
         changed = true;
       }
     }
@@ -71,50 +79,37 @@ public class ForyGraalVMFeature implements Feature {
     }
   }
 
-  public String getDescription() {
-    return "Fory GraalVM Feature: Registers classes for serialization and proxy support.";
-  }
-
-  private void handleForyClass(Class<?> clazz) {
-    if (GraalvmSupport.needReflectionRegisterForCreation(clazz)) {
-      try {
-        RuntimeReflection.registerForReflectiveInstantiation(clazz);
-        for (Field field : clazz.getDeclaredFields()) {
-          RuntimeReflection.register(field);
-        }
-      } catch (Exception e) {
-        throw new RuntimeException(
-            String.format(
-                "Failed to register class '%s' for GraalVM Native Image. "
-                    + "This class lacks an accessible no-arg constructor. "
-                    + "Please ensure fory-graalvm-feature is included in your native-image build.",
-                clazz.getName()),
-            e);
-      }
-    }
-
+  private void registerClass(Class<?> clazz) {
     RuntimeReflection.register(clazz);
-    // Enable class lookup via Class.forName
     RuntimeReflection.registerClassLookup(clazz.getName());
 
-    // Register methods and constructors for Record classes
-    // (accessor methods like f1(), f2() and the canonical constructor)
     if (RecordUtils.isRecord(clazz)) {
-      // Register all declared fields for Record classes
-      for (Field field : clazz.getDeclaredFields()) {
-        RuntimeReflection.register(field);
-        RuntimeReflection.registerFieldLookup(clazz, field.getName());
-      }
-      for (Method method : clazz.getDeclaredMethods()) {
-        RuntimeReflection.register(method);
-        // Also register for method lookup via getDeclaredMethod(name, paramTypes)
-        RuntimeReflection.registerMethodLookup(clazz, method.getName(), method.getParameterTypes());
-      }
-      for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
-        RuntimeReflection.register(constructor);
-        // Also register for constructor lookup via getDeclaredConstructor(paramTypes)
-        RuntimeReflection.registerConstructorLookup(clazz, constructor.getParameterTypes());
-      }
+      registerRecordClass(clazz);
+    } else if (GraalvmSupport.needReflectionRegisterForCreation(clazz)) {
+      registerForReflectiveInstantiation(clazz);
+    }
+  }
+
+  private void registerRecordClass(Class<?> clazz) {
+    RuntimeReflection.registerForReflectiveInstantiation(clazz);
+    for (Field field : clazz.getDeclaredFields()) {
+      RuntimeReflection.register(field);
+      RuntimeReflection.registerFieldLookup(clazz, field.getName());
+    }
+    for (Method method : clazz.getDeclaredMethods()) {
+      RuntimeReflection.register(method);
+      RuntimeReflection.registerMethodLookup(clazz, method.getName(), method.getParameterTypes());
+    }
+    for (Constructor<?> constructor : clazz.getDeclaredConstructors()) {
+      RuntimeReflection.register(constructor);
+      RuntimeReflection.registerConstructorLookup(clazz, constructor.getParameterTypes());
+    }
+  }
+
+  private void registerForReflectiveInstantiation(Class<?> clazz) {
+    RuntimeReflection.registerForReflectiveInstantiation(clazz);
+    for (Field field : clazz.getDeclaredFields()) {
+      RuntimeReflection.register(field);
     }
   }
 }
