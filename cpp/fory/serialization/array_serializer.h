@@ -71,19 +71,19 @@ struct Serializer<
 
   static Result<void, Error> write_data(const std::array<T, N> &arr,
                                         WriteContext &ctx) {
+    Buffer buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     constexpr size_t max_size = 8 + N * sizeof(T);
-    ctx.buffer().Grow(static_cast<uint32_t>(max_size));
-    uint32_t writer_index = ctx.buffer().writer_index();
+    buffer.Grow(static_cast<uint32_t>(max_size));
+    uint32_t writer_index = buffer.writer_index();
     // Write array length
-    writer_index +=
-        ctx.buffer().PutVarUint32(writer_index, static_cast<uint32_t>(N));
+    writer_index += buffer.PutVarUint32(writer_index, static_cast<uint32_t>(N));
 
     // Write raw binary data
     if constexpr (N > 0) {
-      ctx.buffer().UnsafePut(writer_index, arr.data(), N * sizeof(T));
+      buffer.UnsafePut(writer_index, arr.data(), N * sizeof(T));
     }
-    ctx.buffer().WriterIndex(writer_index + N * sizeof(T));
+    buffer.WriterIndex(writer_index + N * sizeof(T));
     return Result<void, Error>();
   }
 
@@ -155,21 +155,21 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
 
   static Result<void, Error> write_data(const std::array<bool, N> &arr,
                                         WriteContext &ctx) {
+    Buffer buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     constexpr size_t max_size = 8 + N;
-    ctx.buffer().Grow(static_cast<uint32_t>(max_size));
-    uint32_t writer_index = ctx.buffer().writer_index();
+    buffer.Grow(static_cast<uint32_t>(max_size));
+    uint32_t writer_index = buffer.writer_index();
     // Write array length
-    writer_index +=
-        ctx.buffer().PutVarUint32(writer_index, static_cast<uint32_t>(N));
+    writer_index += buffer.PutVarUint32(writer_index, static_cast<uint32_t>(N));
 
     // Write each boolean as a byte (per spec, bool is serialized as int16,
     // but for arrays we use packed bytes for efficiency)
     for (size_t i = 0; i < N; ++i) {
-      ctx.buffer().UnsafePutByte(writer_index + i,
+      buffer.UnsafePutByte(writer_index + i,
                                  static_cast<uint8_t>(arr[i] ? 1 : 0));
     }
-    ctx.buffer().WriterIndex(writer_index + N);
+    buffer.WriterIndex(writer_index + N);
     return Result<void, Error>();
   }
 

@@ -544,17 +544,18 @@ struct Serializer<
       return Unexpected(
           Error::invalid("Vector byte size exceeds uint32_t range"));
     }
+    Buffer buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     size_t max_size = 8 + total_bytes;
-    ctx.buffer().Grow(static_cast<uint32_t>(max_size));
-    uint32_t writer_index = ctx.buffer().writer_index();
-    writer_index += ctx.buffer().PutVarUint32(
+    buffer.Grow(static_cast<uint32_t>(max_size));
+    uint32_t writer_index = buffer.writer_index();
+    writer_index += buffer.PutVarUint32(
         writer_index, static_cast<uint32_t>(total_bytes));
     if (total_bytes > 0) {
-      ctx.buffer().UnsafePut(writer_index, vec.data(),
+      buffer.UnsafePut(writer_index, vec.data(),
                              static_cast<uint32_t>(total_bytes));
     }
-    ctx.buffer().WriterIndex(writer_index + static_cast<uint32_t>(total_bytes));
+    buffer.WriterIndex(writer_index + static_cast<uint32_t>(total_bytes));
     return Result<void, Error>();
   }
 
@@ -842,17 +843,18 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
 
   static inline Result<void, Error>
   write_data(const std::vector<bool, Alloc> &vec, WriteContext &ctx) {
+    Buffer buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     size_t max_size = 8 + vec.size();
-    ctx.buffer().Grow(static_cast<uint32_t>(max_size));
-    uint32_t writer_index = ctx.buffer().writer_index();
-    writer_index += ctx.buffer().PutVarUint32(
+    buffer.Grow(static_cast<uint32_t>(max_size));
+    uint32_t writer_index = buffer.writer_index();
+    writer_index += buffer.PutVarUint32(
         writer_index, static_cast<uint32_t>(vec.size()));
     for (size_t i = 0; i < vec.size(); ++i) {
-      ctx.buffer().UnsafePutByte(writer_index + i,
+      buffer.UnsafePutByte(writer_index + i,
                                  static_cast<uint8_t>(vec[i] ? 1 : 0));
     }
-    ctx.buffer().WriterIndex(writer_index + vec.size());
+    buffer.WriterIndex(writer_index + vec.size());
     return Result<void, Error>();
   }
 
