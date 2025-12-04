@@ -76,7 +76,8 @@ struct Serializer<
     ctx.buffer().Grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = ctx.buffer().writer_index();
     // Write array length
-    writer_index += ctx.buffer().PutVarUint32(writer_index, static_cast<uint32_t>(N));
+    writer_index +=
+        ctx.buffer().PutVarUint32(writer_index, static_cast<uint32_t>(N));
 
     // Write raw binary data
     if constexpr (N > 0) {
@@ -159,13 +160,14 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
     ctx.buffer().Grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = ctx.buffer().writer_index();
     // Write array length
-    writer_index += ctx.buffer().PutVarUint32(writer_index, static_cast<uint32_t>(N));
+    writer_index +=
+        ctx.buffer().PutVarUint32(writer_index, static_cast<uint32_t>(N));
 
     // Write each boolean as a byte (per spec, bool is serialized as int16,
     // but for arrays we use packed bytes for efficiency)
     for (size_t i = 0; i < N; ++i) {
       writer_index += i;
-      ctx.buffer().UnsafePutByte(writer_index, arr[i] ? 1 : 0);
+      ctx.buffer().UnsafePutByte(writer_index, static_cast<uint8_t>(arr[i] ? 1 : 0));
     }
     ctx.buffer().WriterIndex(writer_index);
     return Result<void, Error>();
