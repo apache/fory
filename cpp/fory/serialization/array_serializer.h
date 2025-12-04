@@ -167,7 +167,7 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
     // but for arrays we use packed bytes for efficiency)
     for (size_t i = 0; i < N; ++i) {
       buffer.UnsafePutByte(writer_index + i,
-                                 static_cast<uint8_t>(arr[i] ? 1 : 0));
+                           static_cast<uint8_t>(arr[i] ? 1 : 0));
     }
     buffer.WriterIndex(writer_index + N);
     return Result<void, Error>();
