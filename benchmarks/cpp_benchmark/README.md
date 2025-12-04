@@ -59,16 +59,21 @@ cmake --build . -j$(nproc)
 
 ## Benchmark Cases
 
-| Benchmark                        | Description                                                         |
-| -------------------------------- | ------------------------------------------------------------------- |
-| `BM_Fory_Struct_Serialize`       | Serialize a simple struct with 8 int32 fields using Fory            |
-| `BM_Protobuf_Struct_Serialize`   | Serialize the same struct using Protobuf                            |
-| `BM_Fory_Struct_Deserialize`     | Deserialize a simple struct using Fory                              |
-| `BM_Protobuf_Struct_Deserialize` | Deserialize the same struct using Protobuf                          |
-| `BM_Fory_Sample_Serialize`       | Serialize a complex object with various types and arrays using Fory |
-| `BM_Protobuf_Sample_Serialize`   | Serialize the same object using Protobuf                            |
-| `BM_Fory_Sample_Deserialize`     | Deserialize a complex object using Fory                             |
-| `BM_Protobuf_Sample_Deserialize` | Deserialize the same object using Protobuf                          |
+| Benchmark                             | Description                                                         |
+| ------------------------------------- | ------------------------------------------------------------------- |
+| `BM_Fory_Struct_Serialize`            | Serialize a simple struct with 8 int32 fields using Fory            |
+| `BM_Protobuf_Struct_Serialize`        | Serialize the same struct using Protobuf                            |
+| `BM_Fory_Struct_Deserialize`          | Deserialize a simple struct using Fory                              |
+| `BM_Protobuf_Struct_Deserialize`      | Deserialize the same struct using Protobuf                          |
+| `BM_Fory_Sample_Serialize`            | Serialize a complex object with various types and arrays using Fory |
+| `BM_Protobuf_Sample_Serialize`        | Serialize the same object using Protobuf                            |
+| `BM_Fory_Sample_Deserialize`          | Deserialize a complex object using Fory                             |
+| `BM_Protobuf_Sample_Deserialize`      | Deserialize the same object using Protobuf                          |
+| `BM_Fory_MediaContent_Serialize`      | Serialize a complex object with Media and Images using Fory         |
+| `BM_Protobuf_MediaContent_Serialize`  | Serialize the same object using Protobuf                            |
+| `BM_Fory_MediaContent_Deserialize`    | Deserialize a complex object with Media and Images using Fory       |
+| `BM_Protobuf_MediaContent_Deserialize`| Deserialize the same object using Protobuf                          |
+| `BM_PrintSerializedSizes`             | Just compares the serialization sizes of Fory and Protobuf          |
 
 ## Data Structures
 
@@ -83,6 +88,10 @@ A complex structure containing:
 - Primitive types (int32, int64, float, double, bool)
 - Multiple arrays (int, long, float, double, short, char, bool)
 - String field
+
+### MediaContent
+
+Contains one Media and multiple Images.
 
 ## Proto Definition
 
