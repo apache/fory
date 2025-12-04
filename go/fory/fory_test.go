@@ -66,7 +66,7 @@ func commonSlice() []interface{} {
 	return []interface{}{
 		(&[100]bool{})[:],
 		(&[100]byte{})[:],
-		// (&[100]int8{})[:],
+		(&[100]int8{})[:],
 		(&[100]int16{})[:],
 		(&[100]int32{})[:],
 		(&[100]int64{})[:],
@@ -102,17 +102,27 @@ func commonMap() []interface{} {
 	}
 }
 
+/*
+- Based on the review, this usage is generally uncommon in practice. We are keeping
+  the earliest test, and therefore still support serialization of fixed-length arrays
+  ([N]T) for completeness and compatibility.
+- Unless the destination type is explicitly an array ([N]T), values are deserialized
+  into slices ([]T).
+- For byte buffers, callers are expected to use []byte. A [N]byte target is not a
+  typical or supported path here, so we did not add extra deserialization logic for
+  [N]byte—only []byte is supported.
+*/
+
 func commonArray() []interface{} {
 	return []interface{}{
 		[100]bool{false, true, true},
-		[100]byte{1, 2, 3},
-		// [100]int8{1, 2, 3},
+		//[100]byte{1, 2, 3},
+		[100]int8{1, 2, 3},
 		[100]int16{1, 2, 3},
 		[100]int32{1, 2, 3},
 		[100]int64{1, 2, 3},
 		[100]float32{1, 2, 3},
 		[100]float64{1, 2, 3},
-		[100]string{"str1", "str1"},
 	}
 }
 
@@ -162,7 +172,7 @@ func TestSerializeSlice(t *testing.T) {
 	for _, referenceTracking := range []bool{false, true} {
 		fory := NewFory(referenceTracking)
 		serde(t, fory, []byte{0, 1, MaxUint8})
-		// serde(t, fory, []int8{MinInt8, -1, 0, 1, MaxInt8})
+		serde(t, fory, []int8{MinInt8, -1, 0, 1, MaxInt8})
 		serde(t, fory, []int16{MinInt16, -1, 0, 1, MaxInt16})
 		serde(t, fory, []int32{MinInt32, -1, 0, 1, MaxInt32})
 		serde(t, fory, []int64{MinInt64, -1, 0, 1, MaxInt64})

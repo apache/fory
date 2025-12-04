@@ -18,9 +18,10 @@
 package fory
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSnake(t *testing.T) {

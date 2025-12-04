@@ -18,10 +18,11 @@
 package fory
 
 import (
-	"github.com/stretchr/testify/require"
 	"reflect"
 	"testing"
 	"unsafe"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestReferenceResolver(t *testing.T) {
