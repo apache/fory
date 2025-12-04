@@ -166,11 +166,10 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
     // Write each boolean as a byte (per spec, bool is serialized as int16,
     // but for arrays we use packed bytes for efficiency)
     for (size_t i = 0; i < N; ++i) {
-      writer_index += i;
-      ctx.buffer().UnsafePutByte(writer_index,
+      ctx.buffer().UnsafePutByte(writer_index + i,
                                  static_cast<uint8_t>(arr[i] ? 1 : 0));
     }
-    ctx.buffer().WriterIndex(writer_index);
+    ctx.buffer().WriterIndex(writer_index + N);
     return Result<void, Error>();
   }
 

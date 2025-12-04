@@ -849,11 +849,10 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
     writer_index += ctx.buffer().PutVarUint32(
         writer_index, static_cast<uint32_t>(vec.size()));
     for (size_t i = 0; i < vec.size(); ++i) {
-      writer_index += i;
-      ctx.buffer().UnsafePutByte(writer_index,
+      ctx.buffer().UnsafePutByte(writer_index + i,
                                  static_cast<uint8_t>(vec[i] ? 1 : 0));
     }
-    ctx.buffer().WriterIndex(writer_index);
+    ctx.buffer().WriterIndex(writer_index + vec.size());
     return Result<void, Error>();
   }
 
