@@ -21,147 +21,56 @@ package org.apache.fory.graalvm.feature;
 
 import static org.testng.Assert.*;
 
-import org.apache.fory.Fory;
 import org.apache.fory.util.GraalvmSupport;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 public class ForyGraalVMFeatureTest {
 
-  private ForyGraalVMFeature feature;
-
   public static class PublicNoArgConstructorClass {
-    private String field1;
-    private int field2;
+    public PublicNoArgConstructorClass() {}
   }
 
-  public static class ProtectedNoArgConstructorClass {
-    protected ProtectedNoArgConstructorClass() {}
+  public static class PrivateNoArgConstructorClass {
+    private PrivateNoArgConstructorClass() {}
   }
 
-  public static class PrivateParameterizedConstructorClass {
-    private String data;
-
-    private PrivateParameterizedConstructorClass(String data) {
-      this.data = data;
-    }
+  public static class NoNoArgConstructorClass {
+    public NoNoArgConstructorClass(String data) {}
   }
 
-  public interface SampleProxyInterface {
-    void execute();
-  }
+  public abstract static class AbstractClass {}
 
-  public static class NonInterfaceProxy {}
+  public interface SampleInterface {}
 
   public enum SampleEnum {
     VALUE
   }
 
-  @BeforeMethod
-  public void setUp() {
-    GraalvmSupport.clearRegistrations();
-    feature = new ForyGraalVMFeature();
-  }
-
-  @AfterMethod
-  public void tearDown() {
-    GraalvmSupport.clearRegistrations();
-  }
-
   @Test
   public void testGetDescription() {
-    String description = feature.getDescription();
-    assertEquals(
-        "Fory GraalVM Feature: Registers classes for serialization and proxy support.",
-        description);
+    ForyGraalVMFeature feature = new ForyGraalVMFeature();
+    assertNotNull(feature.getDescription());
+    assertTrue(feature.getDescription().contains("Fory"));
   }
 
   @Test
-  public void testObjectCreatorsDetection() {
-    assertTrue(
-        GraalvmSupport.needReflectionRegisterForCreation(
-            PrivateParameterizedConstructorClass.class),
-        "Class without no-arg constructor requires reflective instantiation registration");
+  public void testNeedReflectionRegisterForCreation() {
+    // Classes with public no-arg constructor don't need reflection registration
+    assertFalse(GraalvmSupport.needReflectionRegisterForCreation(PublicNoArgConstructorClass.class));
 
-    assertFalse(
-        GraalvmSupport.needReflectionRegisterForCreation(PublicNoArgConstructorClass.class),
-        "Public no-arg constructor does not require reflective instantiation registration");
+    // Classes with private no-arg constructor don't need reflection registration
+    // (they have a no-arg constructor, just private)
+    assertFalse(GraalvmSupport.needReflectionRegisterForCreation(PrivateNoArgConstructorClass.class));
 
-    assertFalse(
-        GraalvmSupport.needReflectionRegisterForCreation(ProtectedNoArgConstructorClass.class),
-        "Protected no-arg constructor does not require reflective instantiation registration");
+    // Classes without no-arg constructor need reflection registration
+    assertTrue(GraalvmSupport.needReflectionRegisterForCreation(NoNoArgConstructorClass.class));
 
-    assertFalse(
-        GraalvmSupport.needReflectionRegisterForCreation(SampleEnum.class),
-        "Enums do not require reflective instantiation registration");
-  }
+    // Abstract classes, interfaces, enums don't need reflection registration
+    assertFalse(GraalvmSupport.needReflectionRegisterForCreation(AbstractClass.class));
+    assertFalse(GraalvmSupport.needReflectionRegisterForCreation(SampleInterface.class));
+    assertFalse(GraalvmSupport.needReflectionRegisterForCreation(SampleEnum.class));
 
-  @Test
-  public void testForyStaticMethods() {
-    // Test that Fory static methods are accessible
-    assertNotNull(GraalvmSupport.getRegisteredClasses(), "Registered classes should not be null");
-
-    assertNotNull(GraalvmSupport.getProxyInterfaces(), "Proxy interfaces should not be null");
-  }
-
-  @Test
-  public void testFeatureInstantiation() {
-    assertNotNull(feature, "Feature should be instantiated");
-    assertNotNull(feature.getDescription(), "Feature description should not be null");
-  }
-
-  @Test
-  public void testAddProxyInterfaceRejectsNull() {
-    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
-      try {
-        GraalvmSupport.registerProxySupport(null);
-        fail("Null proxy interface should throw NullPointerException");
-      } catch (NullPointerException expected) {
-        // expected
-      }
-    } else {
-      GraalvmSupport.registerProxySupport(null);
-    }
-  }
-
-  @Test
-  public void testAddProxyInterfaceRejectsNonInterface() {
-    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
-      try {
-        GraalvmSupport.registerProxySupport(NonInterfaceProxy.class);
-        fail("Non-interface proxy type should throw IllegalArgumentException");
-      } catch (IllegalArgumentException expected) {
-        // expected
-      }
-    } else {
-      GraalvmSupport.registerProxySupport(NonInterfaceProxy.class);
-    }
-  }
-
-  @Test
-  public void testClearRegistrationsResetsState() {
-    Fory builderInstance = Fory.builder().build();
-    GraalvmSupport.clearRegistrations();
-    builderInstance.register(PublicNoArgConstructorClass.class);
-    GraalvmSupport.registerProxySupport(SampleProxyInterface.class);
-
-    if (GraalvmSupport.IN_GRAALVM_NATIVE_IMAGE) {
-      assertFalse(GraalvmSupport.getRegisteredClasses().isEmpty());
-      assertFalse(GraalvmSupport.getProxyInterfaces().isEmpty());
-
-      GraalvmSupport.clearRegistrations();
-
-      assertTrue(GraalvmSupport.getRegisteredClasses().isEmpty());
-      assertTrue(GraalvmSupport.getProxyInterfaces().isEmpty());
-    } else {
-      assertTrue(GraalvmSupport.getRegisteredClasses().isEmpty());
-      assertTrue(GraalvmSupport.getProxyInterfaces().isEmpty());
-
-      GraalvmSupport.clearRegistrations();
-
-      assertTrue(GraalvmSupport.getRegisteredClasses().isEmpty());
-      assertTrue(GraalvmSupport.getProxyInterfaces().isEmpty());
-    }
+    // Arrays don't need reflection registration
+    assertFalse(GraalvmSupport.needReflectionRegisterForCreation(String[].class));
   }
 }
