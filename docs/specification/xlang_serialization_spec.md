@@ -233,7 +233,7 @@ Fory header format for xlang serialization:
 ```
 |    2 bytes   |        1 byte bitmap           |   1 byte   |          optional 4 bytes          |
 +--------------+--------------------------------+------------+------------------------------------+
-| magic number |  4 bits reserved | oob | xlang | endian | null |  language  | unsigned int for meta start offset |
+| magic number |  4 bits reserved | 4 bits meta |  language  | unsigned int for meta start offset |
 ```
 
 Detailed byte layout:
