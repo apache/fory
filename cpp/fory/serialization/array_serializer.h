@@ -71,7 +71,7 @@ struct Serializer<
 
   static Result<void, Error> write_data(const std::array<T, N> &arr,
                                         WriteContext &ctx) {
-    Buffer buffer = ctx.buffer();
+    Buffer &buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     constexpr size_t max_size = 8 + N * sizeof(T);
     buffer.Grow(static_cast<uint32_t>(max_size));
@@ -155,7 +155,7 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
 
   static Result<void, Error> write_data(const std::array<bool, N> &arr,
                                         WriteContext &ctx) {
-    Buffer buffer = ctx.buffer();
+    Buffer &buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     constexpr size_t max_size = 8 + N;
     buffer.Grow(static_cast<uint32_t>(max_size));

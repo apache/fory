@@ -544,7 +544,7 @@ struct Serializer<
       return Unexpected(
           Error::invalid("Vector byte size exceeds uint32_t range"));
     }
-    Buffer buffer = ctx.buffer();
+    Buffer &buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     size_t max_size = 8 + total_bytes;
     buffer.Grow(static_cast<uint32_t>(max_size));
@@ -843,7 +843,7 @@ template <typename Alloc> struct Serializer<std::vector<bool, Alloc>> {
 
   static inline Result<void, Error>
   write_data(const std::vector<bool, Alloc> &vec, WriteContext &ctx) {
-    Buffer buffer = ctx.buffer();
+    Buffer &buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     size_t max_size = 8 + vec.size();
     buffer.Grow(static_cast<uint32_t>(max_size));
