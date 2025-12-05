@@ -293,6 +293,11 @@ public class CollectionSerializers {
       Object[] elements = ((CollectionContainer) collection).elements;
       return new CopyOnWriteArrayList(elements);
     }
+
+    @Override
+    protected void onCollectionCopy(Collection originCollection, Collection newCollection) {
+      copyElementsAddAll(originCollection, newCollection);
+    }
   }
 
   public static class CopyOnWriteArraySetSerializer
@@ -313,6 +318,11 @@ public class CollectionSerializers {
     public CopyOnWriteArraySet onCollectionRead(Collection collection) {
       Object[] elements = ((CollectionContainer) collection).elements;
       return new CopyOnWriteArraySet(Arrays.asList(elements));
+    }
+
+    @Override
+    protected void onCollectionCopy(Collection originCollection, Collection newCollection) {
+      copyElementsAddAll(originCollection, newCollection);
     }
   }
 

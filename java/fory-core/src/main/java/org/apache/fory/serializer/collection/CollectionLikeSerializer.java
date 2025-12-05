@@ -20,7 +20,10 @@
 package org.apache.fory.serializer.collection;
 
 import java.lang.invoke.MethodHandle;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
+
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.memory.MemoryBuffer;
@@ -548,6 +551,21 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
       }
       elements[index++] = element;
     }
+  }
+
+  public void copyElementsAddAll(Collection originCollection, Collection newCollection) {
+    List<Object> elements = new ArrayList<>(originCollection.size());
+    for (Object element : originCollection) {
+      if (element != null) {
+        ClassInfo classInfo = typeResolver.getClassInfo(element.getClass(), elementClassInfoHolder);
+        if (!classInfo.getSerializer().isImmutable()) {
+          element = fory.copyObject(element, classInfo.getClassId());
+        }
+      }
+      elements.add(element);
+    }
+
+    newCollection.addAll(elements);
   }
 
   private RuntimeException buildException(Throwable e) {
