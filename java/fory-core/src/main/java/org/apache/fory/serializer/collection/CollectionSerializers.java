@@ -46,6 +46,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.LinkedBlockingQueue;
 import org.apache.fory.Fory;
 import org.apache.fory.collection.CollectionSnapshot;
@@ -291,6 +292,27 @@ public class CollectionSerializers {
     public CopyOnWriteArrayList onCollectionRead(Collection collection) {
       Object[] elements = ((CollectionContainer) collection).elements;
       return new CopyOnWriteArrayList(elements);
+    }
+  }
+
+  public static class CopyOnWriteArraySetSerializer
+      extends ConcurrentCollectionSerializer<CopyOnWriteArraySet> {
+
+    public CopyOnWriteArraySetSerializer(Fory fory, Class<CopyOnWriteArraySet> type) {
+      super(fory, type, true);
+    }
+
+    @Override
+    public Collection newCollection(MemoryBuffer buffer) {
+      int numElements = buffer.readVarUint32Small7();
+      setNumElements(numElements);
+      return new CollectionContainer<>(numElements);
+    }
+
+    @Override
+    public CopyOnWriteArraySet onCollectionRead(Collection collection) {
+      Object[] elements = ((CollectionContainer) collection).elements;
+      return new CopyOnWriteArraySet(Arrays.asList(elements));
     }
   }
 
@@ -1004,5 +1026,8 @@ public class CollectionSerializers {
     resolver.registerSerializer(
         ConcurrentHashMap.KeySetView.class,
         new ConcurrentHashMapKeySetViewSerializer(fory, ConcurrentHashMap.KeySetView.class));
+    resolver.registerSerializer(
+        CopyOnWriteArraySet.class,
+        new CopyOnWriteArraySetSerializer(fory, CopyOnWriteArraySet.class));
   }
 }

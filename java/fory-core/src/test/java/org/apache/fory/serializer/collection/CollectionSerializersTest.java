@@ -56,6 +56,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.LongStream;
@@ -967,5 +968,22 @@ public class CollectionSerializersTest extends ForyTestBase {
             .requireClassRegistration(false)
             .build();
     serDeCheck(fory, obj);
+  }
+
+  @Test
+  public void testCopyOnWriteArraySet() {
+    final CopyOnWriteArraySet<String> set =
+        new CopyOnWriteArraySet<>(Arrays.asList("Value1", "Value2"));
+    Assert.assertEquals(set, serDe(getJavaFory(), set));
+    Assert.assertEquals(
+        getJavaFory().getClassResolver().getSerializerClass(CopyOnWriteArraySet.class),
+        CollectionSerializers.CopyOnWriteArraySetSerializer.class);
+  }
+
+  @Test(dataProvider = "foryCopyConfig")
+  public void testCopyOnWriteArraySet(Fory fory) {
+    final CopyOnWriteArraySet<Object> set =
+        new CopyOnWriteArraySet<>(Arrays.asList("a", "b", Cyclic.create(true)));
+    copyCheck(fory, set);
   }
 }
