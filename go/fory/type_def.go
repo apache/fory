@@ -19,9 +19,9 @@ package fory
 
 import (
 	"fmt"
-	"reflect"
-
 	"github.com/apache/fory/go/fory/meta"
+	"github.com/spaolacci/murmur3"
+	"reflect"
 )
 
 const (
@@ -153,7 +153,7 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 			name:         fieldName,
 			nameEncoding: nameEncoding,
 			nullable:     nullable(field.Type),
-			trackingRef:  fory.refTracking,
+			trackingRef:  fory.config.TrackRef,
 			fieldType:    ft,
 		}
 		fieldDefs = append(fieldDefs, fieldInfo)
@@ -199,7 +199,8 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 type FieldType interface {
 	TypeId() TypeId
 	write(*ByteBuffer)
-	getTypeInfo(*Fory) (TypeInfo, error) // some serializer need typeinfo as well
+	getTypeInfo(*Fory) (TypeInfo, error)                     // some serializer need typeinfo as well
+	getTypeInfoWithResolver(*TypeResolver) (TypeInfo, error) // version that uses typeResolver directly
 }
 
 // BaseFieldType provides common functionality for field types
@@ -220,8 +221,24 @@ func getFieldTypeSerializer(fory *Fory, ft FieldType) (Serializer, error) {
 	return typeInfo.Serializer, nil
 }
 
+func getFieldTypeSerializerWithResolver(resolver *TypeResolver, ft FieldType) (Serializer, error) {
+	typeInfo, err := ft.getTypeInfoWithResolver(resolver)
+	if err != nil {
+		return nil, err
+	}
+	return typeInfo.Serializer, nil
+}
+
 func (b *BaseFieldType) getTypeInfo(fory *Fory) (TypeInfo, error) {
 	info, err := fory.typeResolver.getTypeInfoById(b.typeId)
+	if err != nil {
+		return TypeInfo{}, err
+	}
+	return info, nil
+}
+
+func (b *BaseFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, error) {
+	info, err := resolver.getTypeInfoById(b.typeId)
 	if err != nil {
 		return TypeInfo{}, err
 	}
@@ -287,6 +304,17 @@ func (c *CollectionFieldType) getTypeInfo(f *Fory) (TypeInfo, error) {
 	return TypeInfo{Type: collectionType, Serializer: sliceSerializer}, nil
 }
 
+func (c *CollectionFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, error) {
+	elemInfo, err := c.elementType.getTypeInfoWithResolver(resolver)
+	elementType := elemInfo.Type
+	collectionType := reflect.SliceOf(elementType)
+	if err != nil {
+		return TypeInfo{}, err
+	}
+	sliceSerializer := &sliceSerializer{elemInfo: elemInfo, declaredType: elemInfo.Type}
+	return TypeInfo{Type: collectionType, Serializer: sliceSerializer}, nil
+}
+
 // MapFieldType represents map types
 type MapFieldType struct {
 	BaseFieldType
@@ -314,6 +342,26 @@ func (m *MapFieldType) getTypeInfo(f *Fory) (TypeInfo, error) {
 		return TypeInfo{}, err
 	}
 	valueInfo, err := m.valueType.getTypeInfo(f)
+	if err != nil {
+		return TypeInfo{}, err
+	}
+	var mapType reflect.Type
+	if keyInfo.Type != nil && valueInfo.Type != nil {
+		mapType = reflect.MapOf(keyInfo.Type, valueInfo.Type)
+	}
+	mapSerializer := &mapSerializer{
+		keySerializer:   keyInfo.Serializer,
+		valueSerializer: valueInfo.Serializer,
+	}
+	return TypeInfo{Type: mapType, Serializer: mapSerializer}, nil
+}
+
+func (m *MapFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, error) {
+	keyInfo, err := m.keyType.getTypeInfoWithResolver(resolver)
+	if err != nil {
+		return TypeInfo{}, err
+	}
+	valueInfo, err := m.valueType.getTypeInfoWithResolver(resolver)
 	if err != nil {
 		return TypeInfo{}, err
 	}
@@ -359,6 +407,11 @@ func (d *DynamicFieldType) getTypeInfo(fory *Fory) (TypeInfo, error) {
 	return TypeInfo{Type: reflect.TypeOf((*interface{})(nil)).Elem(), Serializer: nil}, nil
 }
 
+func (d *DynamicFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo, error) {
+	// leave empty for runtime resolution, we not know the actual type here
+	return TypeInfo{Type: reflect.TypeOf((*interface{})(nil)).Elem(), Serializer: nil}, nil
+}
+
 // buildFieldType builds field type from reflect.Type, handling collection, map recursively
 func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 	fieldType := fieldValue.Type()
@@ -377,12 +430,33 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 		typeId = -typeId // restore pointer type id
 	}
 
-	// Handle slice and array types
-	if typeId == LIST || typeId == SET {
-		// Create a zero value of the element type for recursive processing
+	// Handle slice and array types by reflect.Kind
+	// For fixed-size arrays with primitive elements, use primitive array type IDs (INT16_ARRAY, etc.)
+	// For slices and arrays with non-primitive elements, use collection format
+	if fieldType.Kind() == reflect.Slice || fieldType.Kind() == reflect.Array {
 		elemType := fieldType.Elem()
-		elemValue := reflect.Zero(elemType)
 
+		// Check if element is a primitive type that maps to a primitive array type ID
+		// Only fixed-size arrays use primitive array format; slices always use LIST
+		if fieldType.Kind() == reflect.Array {
+			switch elemType.Kind() {
+			case reflect.Int8:
+				return NewSimpleFieldType(INT8_ARRAY), nil
+			case reflect.Int16:
+				return NewSimpleFieldType(INT16_ARRAY), nil
+			case reflect.Int32:
+				return NewSimpleFieldType(INT32_ARRAY), nil
+			case reflect.Int64:
+				return NewSimpleFieldType(INT64_ARRAY), nil
+			case reflect.Float32:
+				return NewSimpleFieldType(FLOAT32_ARRAY), nil
+			case reflect.Float64:
+				return NewSimpleFieldType(FLOAT64_ARRAY), nil
+			}
+		}
+
+		// For slices and non-primitive arrays, use collection format
+		elemValue := reflect.Zero(elemType)
 		elementFieldType, err := buildFieldType(fory, elemValue)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build element field type: %w", err)
@@ -391,8 +465,8 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 		return NewCollectionFieldType(LIST, elementFieldType), nil
 	}
 
-	// Handle map types
-	if typeId == MAP {
+	// Handle map types by reflect.Kind for consistency
+	if fieldType.Kind() == reflect.Map {
 		// Create zero values for key and value types
 		keyType := fieldType.Key()
 		valueType := fieldType.Elem()
@@ -417,4 +491,333 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 	}
 
 	return NewSimpleFieldType(typeId), nil
+}
+
+const (
+	SmallNumFieldsThreshold = 31
+	REGISTER_BY_NAME_FLAG   = 0b1 << 5
+	FieldNameSizeThreshold  = 15
+)
+
+// Encoding `UTF8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID` for fieldName
+var fieldNameEncodings = []meta.Encoding{
+	meta.UTF_8,
+	meta.ALL_TO_LOWER_SPECIAL,
+	meta.LOWER_UPPER_DIGIT_SPECIAL,
+	// todo: add support for TAG_ID encoding
+}
+
+func getFieldNameEncodingIndex(encoding meta.Encoding) int {
+	for i, enc := range fieldNameEncodings {
+		if enc == encoding {
+			return i
+		}
+	}
+	return 0 // Default to UTF_8 if not found
+}
+
+/*
+encodingTypeDef encodes a TypeDef into binary format according to the specification
+typeDef are layout as following:
+- first 8 bytes: global header (50 bits hash + 1 bit compress flag + write fields meta + 12 bits meta size)
+- next 1 byte: meta header (2 bits reserved + 1 bit register by name flag + 5 bits num fields)
+- next variable bytes: type id (varint) or ns name + type name
+- next variable bytes: field defs (see below)
+*/
+func encodingTypeDef(typeResolver *TypeResolver, typeDef *TypeDef) ([]byte, error) {
+	buffer := NewByteBuffer(nil)
+
+	if err := writeMetaHeader(buffer, typeDef); err != nil {
+		return nil, fmt.Errorf("failed to write meta header: %w", err)
+	}
+
+	if typeDef.registerByName {
+		if err := typeResolver.metaStringResolver.WriteMetaStringBytes(buffer, typeDef.nsName); err != nil {
+			return nil, err
+		}
+		if err := typeResolver.metaStringResolver.WriteMetaStringBytes(buffer, typeDef.typeName); err != nil {
+			return nil, err
+		}
+	} else {
+		buffer.WriteVarInt32(int32(typeDef.typeId))
+	}
+
+	if err := writeFieldDefs(typeResolver, buffer, typeDef.fieldDefs); err != nil {
+		return nil, fmt.Errorf("failed to write fields def: %w", err)
+	}
+
+	result, err := prependGlobalHeader(buffer, false, len(typeDef.fieldDefs) > 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to write global binary header: %w", err)
+	}
+
+	return result.GetByteSlice(0, result.WriterIndex()), nil
+}
+
+// prependGlobalHeader writes the 8-byte global header
+func prependGlobalHeader(buffer *ByteBuffer, isCompressed bool, hasFieldsMeta bool) (*ByteBuffer, error) {
+	var header uint64
+	metaSize := buffer.WriterIndex()
+
+	hashValue := murmur3.Sum64WithSeed(buffer.GetByteSlice(0, metaSize), 47)
+	header |= hashValue << (64 - NUM_HASH_BITS)
+
+	if hasFieldsMeta {
+		header |= HAS_FIELDS_META_FLAG
+	}
+
+	if isCompressed {
+		header |= COMPRESS_META_FLAG
+	}
+
+	if metaSize < META_SIZE_MASK {
+		header |= uint64(metaSize) & 0xFFF
+	} else {
+		header |= 0xFFF // Set to max value, actual size will follow
+	}
+
+	result := NewByteBuffer(make([]byte, metaSize+8))
+	result.WriteInt64(int64(header))
+
+	if metaSize >= META_SIZE_MASK {
+		result.WriteVarUint32(uint32(metaSize - META_SIZE_MASK))
+	}
+	result.WriteBinary(buffer.GetByteSlice(0, metaSize))
+
+	return result, nil
+}
+
+// writeMetaHeader writes the 1-byte meta header
+func writeMetaHeader(buffer *ByteBuffer, typeDef *TypeDef) error {
+	// 2 bits reserved + 1 bit register by name flag + 5 bits num fields
+	offset := buffer.writerIndex
+	if err := buffer.WriteByte(0xFF); err != nil {
+		return err
+	}
+	fieldInfos := typeDef.fieldDefs
+	header := len(fieldInfos)
+	if header > SmallNumFieldsThreshold {
+		header = SmallNumFieldsThreshold
+		buffer.WriteVarUint32(uint32(len(fieldInfos) - SmallNumFieldsThreshold))
+	}
+	if typeDef.registerByName {
+		header |= REGISTER_BY_NAME_FLAG
+	}
+
+	buffer.PutUint8(offset, uint8(header))
+	return nil
+}
+
+// writeFieldDefs writes field definitions according to the specification
+// field def layout as following:
+//   - first 1 byte: header (2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag)
+//   - next variable bytes: FieldType info
+//   - next variable bytes: field name or tag id
+func writeFieldDefs(typeResolver *TypeResolver, buffer *ByteBuffer, fieldDefs []FieldDef) error {
+	for _, field := range fieldDefs {
+		if err := writeFieldDef(typeResolver, buffer, field); err != nil {
+			return fmt.Errorf("failed to write field def for field %s: %w", field.name, err)
+		}
+	}
+	return nil
+}
+
+// writeFieldDef writes a single field's definition
+func writeFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer, field FieldDef) error {
+	// Write field header
+	// 2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag
+	offset := buffer.writerIndex
+	if err := buffer.WriteByte(0xFF); err != nil {
+		return err
+	}
+	var header uint8
+	if field.trackingRef {
+		header |= 0b1
+	}
+	if field.nullable {
+		header |= 0b10
+	}
+	// store index of encoding in the 2 highest bits
+	encodingFlag := byte(getFieldNameEncodingIndex(field.nameEncoding))
+	header |= encodingFlag << 6
+	metaString, err := typeResolver.typeNameEncoder.EncodeWithEncoding(field.name, field.nameEncoding)
+	if err != nil {
+		return err
+	}
+	nameLen := len(metaString.GetEncodedBytes())
+	if nameLen < FieldNameSizeThreshold {
+		header |= uint8((nameLen-1)&0x0F) << 2 // 1-based encoding
+	} else {
+		header |= 0x0F << 2 // Max value, actual length will follow
+		buffer.WriteVarUint32(uint32(nameLen - FieldNameSizeThreshold))
+	}
+	buffer.PutUint8(offset, header)
+
+	// Write field type
+	field.fieldType.write(buffer)
+
+	// todo: support tag id
+	// write field name
+	if _, err := buffer.Write(metaString.GetEncodedBytes()); err != nil {
+		return err
+	}
+	return nil
+}
+
+/*
+decodeTypeDef decodes a TypeDef from the buffer
+typeDef are layout as following:
+  - first 8 bytes: global header (50 bits hash + 1 bit compress flag + write fields meta + 12 bits meta size)
+  - next 1 byte: meta header (2 bits reserved + 1 bit register by name flag + 5 bits num fields)
+  - next variable bytes: type id (varint) or ns name + type name
+  - next variable bytes: field definitions (see below)
+*/
+func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, error) {
+	// Read 8-byte global header
+	globalHeader := header
+	hasFieldsMeta := (globalHeader & HAS_FIELDS_META_FLAG) != 0
+	isCompressed := (globalHeader & COMPRESS_META_FLAG) != 0
+	metaSize := int(globalHeader & META_SIZE_MASK)
+	if metaSize == META_SIZE_MASK {
+		metaSize += int(buffer.ReadVarUint32())
+	}
+
+	// Store the encoded bytes for the TypeDef (including meta header and metadata)
+	// todo: handle compression if is_compressed is true
+	if isCompressed {
+	}
+	encoded := buffer.ReadBinary(metaSize)
+	metaBuffer := NewByteBuffer(encoded)
+
+	// Read 1-byte meta header
+	metaHeaderByte, err := metaBuffer.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+	// Extract field count from lower 5 bits
+	fieldCount := int(metaHeaderByte & SmallNumFieldsThreshold)
+	if fieldCount == SmallNumFieldsThreshold {
+		fieldCount += int(metaBuffer.ReadVarUint32())
+	}
+	registeredByName := (metaHeaderByte & REGISTER_BY_NAME_FLAG) != 0
+
+	// Read name or type ID according to the registerByName flag
+	var typeId TypeId
+	var nsBytes, nameBytes *MetaStringBytes
+	var type_ reflect.Type
+	if registeredByName {
+		// Read namespace and type name for namespaced types
+		readingNsBytes, err := fory.typeResolver.metaStringResolver.ReadMetaStringBytes(metaBuffer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read package path: %w", err)
+		}
+		nsBytes = readingNsBytes
+		readingNameBytes, err := fory.typeResolver.metaStringResolver.ReadMetaStringBytes(metaBuffer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read type name: %w", err)
+		}
+		nameBytes = readingNameBytes
+		info, exists := fory.typeResolver.nsTypeToTypeInfo[nsTypeKey{nsBytes.Hashcode, nameBytes.Hashcode}]
+		if !exists {
+			// Try fallback: decode strings and look up by name
+			ns, _ := fory.typeResolver.namespaceDecoder.Decode(nsBytes.Data, nsBytes.Encoding)
+			typeName, _ := fory.typeResolver.typeNameDecoder.Decode(nameBytes.Data, nameBytes.Encoding)
+			nameKey := [2]string{ns, typeName}
+			if fallbackInfo, fallbackExists := fory.typeResolver.namedTypeToTypeInfo[nameKey]; fallbackExists {
+				info = fallbackInfo
+				exists = true
+				fory.typeResolver.nsTypeToTypeInfo[nsTypeKey{nsBytes.Hashcode, nameBytes.Hashcode}] = info
+			}
+		}
+		if exists {
+			// TypeDef is always for value types, but nsTypeToTypeInfo may have pointer type
+			// if pointer type was registered after value type. Normalize to value type.
+			type_ = info.Type
+			if type_.Kind() == reflect.Ptr {
+				type_ = type_.Elem()
+				typeId = TypeId(info.TypeID)
+			} else {
+				typeId = TypeId(info.TypeID)
+			}
+		} else {
+			// Type not registered - use NAMED_STRUCT as default typeId
+			// The type_ will remain nil and will be set from field definitions later
+			typeId = NAMED_STRUCT
+			type_ = nil
+		}
+	} else {
+		typeId = TypeId(metaBuffer.ReadVarInt32())
+		if info, err := fory.typeResolver.getTypeInfoById(typeId); err != nil {
+			return nil, fmt.Errorf("failed to get type info by id %d: %w", typeId, err)
+		} else {
+			type_ = info.Type
+		}
+	}
+
+	// Read fields information
+	fieldInfos := make([]FieldDef, fieldCount)
+	if hasFieldsMeta {
+		for i := 0; i < fieldCount; i++ {
+			fieldInfo, err := readFieldDef(fory.typeResolver, metaBuffer)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read field def %d: %w", i, err)
+			}
+			fieldInfos[i] = fieldInfo
+		}
+	}
+
+	// Create TypeDef
+	typeDef := NewTypeDef(typeId, nsBytes, nameBytes, registeredByName, isCompressed, fieldInfos)
+	typeDef.encoded = encoded
+	typeDef.type_ = type_
+
+	return typeDef, nil
+}
+
+/*
+readFieldDef reads a single field's definition from the buffer
+field def layout as following:
+  - first 1 byte: header (2 bits field name encoding + 4 bits size + nullability flag + ref tracking flag)
+  - next variable bytes: FieldType info
+  - next variable bytes: field name or tag id
+*/
+func readFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer) (FieldDef, error) {
+	// Read field header
+	headerByte, err := buffer.ReadByte()
+	if err != nil {
+		return FieldDef{}, fmt.Errorf("failed to read field header: %w", err)
+	}
+
+	// Resolve the header
+	nameEncodingFlag := (headerByte >> 6) & 0b11
+	nameEncoding := fieldNameEncodings[nameEncodingFlag]
+	nameLen := int((headerByte >> 2) & 0x0F)
+	refTracking := (headerByte & 0b1) != 0
+	isNullable := (headerByte & 0b10) != 0
+	if nameLen == 0x0F {
+		nameLen = FieldNameSizeThreshold + int(buffer.ReadVarUint32())
+	} else {
+		nameLen++ // Adjust for 1-based encoding
+	}
+
+	// reading field type
+	ft, err := readFieldType(buffer)
+	if err != nil {
+		return FieldDef{}, err
+	}
+
+	// Reading field name based on encoding
+	nameBytes := buffer.ReadBinary(nameLen)
+	fieldName, err := typeResolver.typeNameDecoder.Decode(nameBytes, nameEncoding)
+	if err != nil {
+		return FieldDef{}, fmt.Errorf("failed to decode field name: %w", err)
+	}
+
+	return FieldDef{
+		name:         fieldName,
+		nameEncoding: nameEncoding,
+		fieldType:    ft,
+		nullable:     isNullable,
+		trackingRef:  refTracking,
+	}, nil
 }

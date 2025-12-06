@@ -30,7 +30,8 @@ func generateReadTyped(buf *bytes.Buffer, s *StructInfo) error {
 	hash := computeStructHash(s)
 
 	fmt.Fprintf(buf, "// ReadTyped provides strongly-typed deserialization with no reflection overhead\n")
-	fmt.Fprintf(buf, "func (g %s_ForyGenSerializer) ReadTyped(f *fory.Fory, buf *fory.ByteBuffer, v *%s) error {\n", s.Name, s.Name)
+	fmt.Fprintf(buf, "func (g %s_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *%s) error {\n", s.Name, s.Name)
+	fmt.Fprintf(buf, "\tbuf := ctx.Buffer()\n")
 
 	// Read and verify struct hash
 	fmt.Fprintf(buf, "\t// Read and verify struct hash\n")
@@ -51,10 +52,11 @@ func generateReadTyped(buf *bytes.Buffer, s *StructInfo) error {
 	return nil
 }
 
-// generateReadInterface generates interface compatibility Read method
+// generateReadInterface generates interface compatibility method (Read)
 func generateReadInterface(buf *bytes.Buffer, s *StructInfo) error {
-	fmt.Fprintf(buf, "// Read provides reflect.Value interface compatibility\n")
-	fmt.Fprintf(buf, "func (g %s_ForyGenSerializer) Read(f *fory.Fory, buf *fory.ByteBuffer, type_ reflect.Type, value reflect.Value) error {\n", s.Name)
+	// Generate Read method (reflect.Value-based API)
+	fmt.Fprintf(buf, "// Read provides reflect.Value interface compatibility (implements fory.Serializer)\n")
+	fmt.Fprintf(buf, "func (g %s_ForyGenSerializer) Read(ctx *fory.ReadContext, type_ reflect.Type, value reflect.Value) error {\n", s.Name)
 	fmt.Fprintf(buf, "\t// Convert reflect.Value to concrete type and delegate to typed method\n")
 	fmt.Fprintf(buf, "\tvar v *%s\n", s.Name)
 	fmt.Fprintf(buf, "\tif value.Kind() == reflect.Ptr {\n")
@@ -68,7 +70,7 @@ func generateReadInterface(buf *bytes.Buffer, s *StructInfo) error {
 	fmt.Fprintf(buf, "\t\tv = value.Addr().Interface().(*%s)\n", s.Name)
 	fmt.Fprintf(buf, "\t}\n")
 	fmt.Fprintf(buf, "\t// Delegate to strongly-typed method for maximum performance\n")
-	fmt.Fprintf(buf, "\treturn g.ReadTyped(f, buf, v)\n")
+	fmt.Fprintf(buf, "\treturn g.ReadTyped(ctx, v)\n")
 	fmt.Fprintf(buf, "}\n\n")
 	return nil
 }
@@ -80,22 +82,22 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	fieldAccess := fmt.Sprintf("v.%s", field.GoName)
 
 	// Handle special named types first
-	// According to new spec, time types are "other internal types" and use ReadReferencable
+	// According to new spec, time types are "other internal types" and use ReadValue
 	if named, ok := field.Type.(*types.Named); ok {
 		typeStr := named.String()
 		switch typeStr {
 		case "time.Time", "github.com/apache/fory/go/fory.Date":
 			// These types are "other internal types" in the new spec
 			// They use: | null flag | value data | format
-			fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", fieldAccess)
+			fmt.Fprintf(buf, "\tctx.ReadValue(reflect.ValueOf(&%s).Elem())\n", fieldAccess)
 			return nil
 		}
 	}
 
 	// Handle pointer types
 	if _, ok := field.Type.(*types.Pointer); ok {
-		// For pointer types, use ReadReferencable
-		fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", fieldAccess)
+		// For pointer types, use ReadValue
+		fmt.Fprintf(buf, "\tctx.ReadValue(reflect.ValueOf(&%s).Elem())\n", fieldAccess)
 		return nil
 	}
 
@@ -155,9 +157,9 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\t\t_ = buf.ReadInt8()\n")
 			fmt.Fprintf(buf, "\t\t// Create slice with proper capacity\n")
 			fmt.Fprintf(buf, "\t\t%s = make([]interface{}, sliceLen)\n", fieldAccess)
-			fmt.Fprintf(buf, "\t\t// Read each element using ReadReferencable\n")
+			fmt.Fprintf(buf, "\t\t// Read each element using ReadValue\n")
 			fmt.Fprintf(buf, "\t\tfor i := range %s {\n", fieldAccess)
-			fmt.Fprintf(buf, "\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s[i]).Elem())\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\tctx.ReadValue(reflect.ValueOf(&%s[i]).Elem())\n", fieldAccess)
 			fmt.Fprintf(buf, "\t\t}\n")
 			fmt.Fprintf(buf, "\t} else {\n")
 			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected RefValueFlag or NullFlag for dynamic slice field %s, got %%d\", flag)\n", field.GoName)
@@ -183,15 +185,15 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	// Handle interface types
 	if iface, ok := field.Type.(*types.Interface); ok {
 		if iface.Empty() {
-			// For interface{}, use ReadReferencable for dynamic type handling
-			fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", fieldAccess)
+			// For interface{}, use ReadValue for dynamic type handling
+			fmt.Fprintf(buf, "\tctx.ReadValue(reflect.ValueOf(&%s).Elem())\n", fieldAccess)
 			return nil
 		}
 	}
 
 	// Handle struct types
 	if _, ok := field.Type.Underlying().(*types.Struct); ok {
-		fmt.Fprintf(buf, "\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", fieldAccess)
+		fmt.Fprintf(buf, "\tctx.ReadValue(reflect.ValueOf(&%s).Elem())\n", fieldAccess)
 		return nil
 	}
 
@@ -199,7 +201,7 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	return nil
 }
 
-// Note: generateSliceRead is no longer used since we use WriteReferencable/ReadReferencable for slice fields
+// Note: generateSliceRead is no longer used since we use WriteReferencable/ReadValue for slice fields
 // generateSliceRead generates code to deserialize a slice according to the list format
 func generateSliceRead(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess string) error {
 	elemType := sliceType.Elem()
@@ -307,14 +309,14 @@ func generateSliceElementRead(buf *bytes.Buffer, elemType types.Type, elemAccess
 		}
 		// Check if it's a struct
 		if _, ok := named.Underlying().(*types.Struct); ok {
-			fmt.Fprintf(buf, "\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", elemAccess)
+			fmt.Fprintf(buf, "\t\t\t\tctx.ReadValue(reflect.ValueOf(&%s).Elem())\n", elemAccess)
 			return nil
 		}
 	}
 
 	// Handle struct types
 	if _, ok := elemType.Underlying().(*types.Struct); ok {
-		fmt.Fprintf(buf, "\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", elemAccess)
+		fmt.Fprintf(buf, "\t\t\t\tctx.ReadValue(reflect.ValueOf(&%s).Elem())\n", elemAccess)
 		return nil
 	}
 
@@ -455,8 +457,8 @@ func generateSliceElementReadInline(buf *bytes.Buffer, elemType types.Type, elem
 	// Handle interface types
 	if iface, ok := elemType.(*types.Interface); ok {
 		if iface.Empty() {
-			// For interface{} elements, use ReadReferencable for dynamic type handling
-			fmt.Fprintf(buf, "\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", elemAccess)
+			// For interface{} elements, use ReadValue for dynamic type handling
+			fmt.Fprintf(buf, "\t\t\t\tctx.ReadValue(reflect.ValueOf(&%s).Elem())\n", elemAccess)
 			return nil
 		}
 	}
@@ -555,7 +557,7 @@ func generateMapReadInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess st
 	// Read key
 	if keyIsInterface {
 		fmt.Fprintf(buf, "\t\t\t\t\tvar mapKey interface{}\n")
-		fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&mapKey).Elem())\n")
+		fmt.Fprintf(buf, "\t\t\t\t\tctx.ReadValue(reflect.ValueOf(&mapKey).Elem())\n")
 	} else {
 		// Declare key variable with appropriate type
 		keyVarType := getGoTypeString(keyType)
@@ -568,7 +570,7 @@ func generateMapReadInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess st
 	// Read value
 	if valueIsInterface {
 		fmt.Fprintf(buf, "\t\t\t\t\tvar mapValue interface{}\n")
-		fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&mapValue).Elem())\n")
+		fmt.Fprintf(buf, "\t\t\t\t\tctx.ReadValue(reflect.ValueOf(&mapValue).Elem())\n")
 	} else {
 		// Declare value variable with appropriate type
 		valueVarType := getGoTypeString(valueType)
@@ -624,8 +626,8 @@ func generateMapKeyRead(buf *bytes.Buffer, keyType types.Type, varName string) e
 		return nil
 	}
 
-	// For other types, use ReadReferencable
-	fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", varName)
+	// For other types, use ReadValue
+	fmt.Fprintf(buf, "\t\t\t\t\tctx.ReadValue(reflect.ValueOf(&%s).Elem())\n", varName)
 	return nil
 }
 
@@ -646,7 +648,7 @@ func generateMapValueRead(buf *bytes.Buffer, valueType types.Type, varName strin
 		return nil
 	}
 
-	// For other types, use ReadReferencable
-	fmt.Fprintf(buf, "\t\t\t\t\tf.ReadReferencable(buf, reflect.ValueOf(&%s).Elem())\n", varName)
+	// For other types, use ReadValue
+	fmt.Fprintf(buf, "\t\t\t\t\tctx.ReadValue(reflect.ValueOf(&%s).Elem())\n", varName)
 	return nil
 }

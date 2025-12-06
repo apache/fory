@@ -145,20 +145,7 @@ public enum ArrowType {
   MAX_ID,
 
   /// Defined for backward-compatibility.
-  DECIMAL(DECIMAL128.getId()),
-
-  /// Fory added type for cross-language serialization.
-  FORY_TYPE_TAG(256),
-  FORY_SET(257),
-  FORY_PRIMITIVE_BOOL_ARRAY(258),
-  FORY_PRIMITIVE_SHORT_ARRAY(259),
-  FORY_PRIMITIVE_INT_ARRAY(260),
-  FORY_PRIMITIVE_LONG_ARRAY(261),
-  FORY_PRIMITIVE_FLOAT_ARRAY(262),
-  FORY_PRIMITIVE_DOUBLE_ARRAY(263),
-  FORY_STRING_ARRAY(264),
-  FORY_SERIALIZED_OBJECT(265),
-  FORY_BUFFER(266);
+  DECIMAL(DECIMAL128.getId());
 
   private short id;
 

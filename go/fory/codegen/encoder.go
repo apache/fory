@@ -30,7 +30,8 @@ func generateWriteTyped(buf *bytes.Buffer, s *StructInfo) error {
 	hash := computeStructHash(s)
 
 	fmt.Fprintf(buf, "// WriteTyped provides strongly-typed serialization with no reflection overhead\n")
-	fmt.Fprintf(buf, "func (g %s_ForyGenSerializer) WriteTyped(f *fory.Fory, buf *fory.ByteBuffer, v *%s) error {\n", s.Name, s.Name)
+	fmt.Fprintf(buf, "func (g %s_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, v *%s) error {\n", s.Name, s.Name)
+	fmt.Fprintf(buf, "\tbuf := ctx.Buffer()\n")
 
 	// Write struct hash
 	fmt.Fprintf(buf, "\t// Write precomputed struct hash for compatibility checking\n")
@@ -49,10 +50,11 @@ func generateWriteTyped(buf *bytes.Buffer, s *StructInfo) error {
 	return nil
 }
 
-// generateWriteInterface generates interface compatibility Write method
+// generateWriteInterface generates interface compatibility method (Write)
 func generateWriteInterface(buf *bytes.Buffer, s *StructInfo) error {
-	fmt.Fprintf(buf, "// Write provides reflect.Value interface compatibility\n")
-	fmt.Fprintf(buf, "func (g %s_ForyGenSerializer) Write(f *fory.Fory, buf *fory.ByteBuffer, value reflect.Value) error {\n", s.Name)
+	// Generate Write method (reflect.Value-based API)
+	fmt.Fprintf(buf, "// Write provides reflect.Value interface compatibility (implements fory.Serializer)\n")
+	fmt.Fprintf(buf, "func (g %s_ForyGenSerializer) Write(ctx *fory.WriteContext, value reflect.Value) error {\n", s.Name)
 	fmt.Fprintf(buf, "\t// Convert reflect.Value to concrete type and delegate to typed method\n")
 	fmt.Fprintf(buf, "\tvar v *%s\n", s.Name)
 	fmt.Fprintf(buf, "\tif value.Kind() == reflect.Ptr {\n")
@@ -63,7 +65,7 @@ func generateWriteInterface(buf *bytes.Buffer, s *StructInfo) error {
 	fmt.Fprintf(buf, "\t\tv = &temp\n")
 	fmt.Fprintf(buf, "\t}\n")
 	fmt.Fprintf(buf, "\t// Delegate to strongly-typed method for maximum performance\n")
-	fmt.Fprintf(buf, "\treturn g.WriteTyped(f, buf, v)\n")
+	fmt.Fprintf(buf, "\treturn g.WriteTyped(ctx, v)\n")
 	fmt.Fprintf(buf, "}\n\n")
 	return nil
 }
@@ -75,22 +77,22 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	fieldAccess := fmt.Sprintf("v.%s", field.GoName)
 
 	// Handle special named types first
-	// According to new spec, time types are "other internal types" and need WriteReferencable
+	// According to new spec, time types are "other internal types" and need WriteValue
 	if named, ok := field.Type.(*types.Named); ok {
 		typeStr := named.String()
 		switch typeStr {
 		case "time.Time", "github.com/apache/fory/go/fory.Date":
 			// These types are "other internal types" in the new spec
 			// They use: | null flag | value data | format
-			fmt.Fprintf(buf, "\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
+			fmt.Fprintf(buf, "\tctx.WriteValue(reflect.ValueOf(%s))\n", fieldAccess)
 			return nil
 		}
 	}
 
 	// Handle pointer types
 	if _, ok := field.Type.(*types.Pointer); ok {
-		// For all pointer types, use WriteReferencable
-		fmt.Fprintf(buf, "\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
+		// For all pointer types, use WriteValue
+		fmt.Fprintf(buf, "\tctx.WriteValue(reflect.ValueOf(%s))\n", fieldAccess)
 		return nil
 	}
 
@@ -137,7 +139,7 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		// Check if element type is interface{} (dynamic type)
 		if iface, ok := elemType.(*types.Interface); ok && iface.Empty() {
 			// For []interface{}, we need to manually implement the serialization
-			// because WriteReferencable produces incorrect length encoding
+			// because WriteValue produces incorrect length encoding
 			fmt.Fprintf(buf, "\t// Dynamic slice []interface{} handling - manual serialization\n")
 			fmt.Fprintf(buf, "\tif %s == nil {\n", fieldAccess)
 			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(-3) // null value flag\n")
@@ -149,9 +151,9 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\t\t// Write collection flags for dynamic slice []interface{}\n")
 			fmt.Fprintf(buf, "\t\t// Only CollectionTrackingRef is set (no declared type, may have different types)\n")
 			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(1) // CollectionTrackingRef only\n")
-			fmt.Fprintf(buf, "\t\t// Write each element using WriteReferencable\n")
+			fmt.Fprintf(buf, "\t\t// Write each element using WriteValue\n")
 			fmt.Fprintf(buf, "\t\tfor _, elem := range %s {\n", fieldAccess)
-			fmt.Fprintf(buf, "\t\t\tf.WriteReferencable(buf, reflect.ValueOf(elem))\n")
+			fmt.Fprintf(buf, "\t\t\tctx.WriteValue(reflect.ValueOf(elem))\n")
 			fmt.Fprintf(buf, "\t\t}\n")
 			fmt.Fprintf(buf, "\t}\n")
 			return nil
@@ -175,15 +177,15 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	// Handle interface types
 	if iface, ok := field.Type.(*types.Interface); ok {
 		if iface.Empty() {
-			// For interface{}, use WriteReferencable for dynamic type handling
-			fmt.Fprintf(buf, "\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
+			// For interface{}, use WriteValue for dynamic type handling
+			fmt.Fprintf(buf, "\tctx.WriteValue(reflect.ValueOf(%s))\n", fieldAccess)
 			return nil
 		}
 	}
 
 	// Handle struct types
 	if _, ok := field.Type.Underlying().(*types.Struct); ok {
-		fmt.Fprintf(buf, "\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", fieldAccess)
+		fmt.Fprintf(buf, "\tctx.WriteValue(reflect.ValueOf(%s))\n", fieldAccess)
 		return nil
 	}
 
@@ -329,9 +331,7 @@ func generateMapWriteInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess s
 	fmt.Fprintf(buf, "\t\t\tkvHeader := uint8(0)\n")
 
 	// Check if ref tracking is enabled
-	fmt.Fprintf(buf, "\t\t\tforyValue := reflect.ValueOf(f).Elem()\n")
-	fmt.Fprintf(buf, "\t\t\trefTrackingField := foryValue.FieldByName(\"refTracking\")\n")
-	fmt.Fprintf(buf, "\t\t\tisRefTracking := refTrackingField.IsValid() && refTrackingField.Bool()\n")
+	fmt.Fprintf(buf, "\t\t\tisRefTracking := ctx.TrackRef()\n")
 	fmt.Fprintf(buf, "\t\t\t_ = isRefTracking // Mark as used to avoid warning\n")
 
 	// Set header flags based on type properties
@@ -370,7 +370,7 @@ func generateMapWriteInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess s
 
 	// Write key
 	if keyIsInterface {
-		fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(mapKey))\n")
+		fmt.Fprintf(buf, "\t\t\t\tctx.WriteValue(reflect.ValueOf(mapKey))\n")
 	} else {
 		if err := generateMapKeyWrite(buf, keyType, "mapKey"); err != nil {
 			return err
@@ -379,7 +379,7 @@ func generateMapWriteInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess s
 
 	// Write value
 	if valueIsInterface {
-		fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(mapValue))\n")
+		fmt.Fprintf(buf, "\t\t\t\tctx.WriteValue(reflect.ValueOf(mapValue))\n")
 	} else {
 		if err := generateMapValueWrite(buf, valueType, "mapValue"); err != nil {
 			return err
@@ -455,8 +455,8 @@ func generateMapKeyWrite(buf *bytes.Buffer, keyType types.Type, varName string) 
 		return nil
 	}
 
-	// For other types, use WriteReferencable
-	fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", varName)
+	// For other types, use WriteValue
+	fmt.Fprintf(buf, "\t\t\t\tctx.WriteValue(reflect.ValueOf(%s))\n", varName)
 	return nil
 }
 
@@ -477,8 +477,8 @@ func generateMapValueWrite(buf *bytes.Buffer, valueType types.Type, varName stri
 		return nil
 	}
 
-	// For other types, use WriteReferencable
-	fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", varName)
+	// For other types, use WriteValue
+	fmt.Fprintf(buf, "\t\t\t\tctx.WriteValue(reflect.ValueOf(%s))\n", varName)
 	return nil
 }
 
@@ -557,8 +557,8 @@ func generateSliceElementWriteInline(buf *bytes.Buffer, elemType types.Type, ele
 	// Handle interface types
 	if iface, ok := elemType.(*types.Interface); ok {
 		if iface.Empty() {
-			// For interface{} elements, use WriteReferencable for dynamic type handling
-			fmt.Fprintf(buf, "\t\t\t\tf.WriteReferencable(buf, reflect.ValueOf(%s))\n", elemAccess)
+			// For interface{} elements, use WriteValue for dynamic type handling
+			fmt.Fprintf(buf, "\t\t\t\tctx.WriteValue(reflect.ValueOf(%s))\n", elemAccess)
 			return nil
 		}
 	}

@@ -53,7 +53,7 @@ bazel test $(bazel query //...)
 
 ```bash
 cd go/fory
-go test -v
+go test -v ./...
 go test -v fory_xlang_test.go
 ```
 

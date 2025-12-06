@@ -78,6 +78,12 @@ func (b *ByteBuffer) WriteInt8(value int8) {
 	b.writerIndex++
 }
 
+func (b *ByteBuffer) WriteUint8(value uint8) {
+	b.grow(1)
+	b.data[b.writerIndex] = value
+	b.writerIndex++
+}
+
 func (b *ByteBuffer) WriteInt16(value int16) {
 	b.grow(2)
 	binary.LittleEndian.PutUint16(b.data[b.writerIndex:], uint16(value))

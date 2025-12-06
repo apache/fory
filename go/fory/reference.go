@@ -23,17 +23,6 @@ import (
 	"unsafe"
 )
 
-const (
-	NullFlag int8 = -3
-	// RefFlag indicates that object is a not-null value.
-	// We don't use another byte to indicate REF, so that we can save one byte.
-	RefFlag int8 = -2
-	// NotNullValueFlag indicates that the object is a non-null value.
-	NotNullValueFlag int8 = -1
-	// RefValueFlag indicates that the object is a referencable and first read.
-	RefValueFlag int8 = 0
-)
-
 // RefResolver class is used to track objects that have already been read or written.
 type RefResolver struct {
 	refTracking    bool
@@ -185,6 +174,11 @@ func (r *RefResolver) Reference(value reflect.Value) {
 		return
 	}
 	length := len(r.readRefIds)
+	if length == 0 {
+		// No reference to track - this can happen for value types like arrays
+		// that don't participate in reference tracking
+		return
+	}
 	refId := r.readRefIds[length-1]
 	r.readRefIds = r.readRefIds[:length-1]
 	r.SetReadObject(refId, value)
@@ -260,4 +254,113 @@ func isNil(value reflect.Value) bool {
 		return true
 	}
 	return false
+}
+
+// ============================================================================
+// RefWriter - Handles reference tracking during serialization
+// ============================================================================
+
+// RefWriter handles reference tracking during serialization
+type RefWriter struct {
+	enabled bool
+	refs    map[uintptr]int32
+	nextId  int32
+}
+
+// NewRefWriter creates a new reference writer
+func NewRefWriter(enabled bool) *RefWriter {
+	return &RefWriter{
+		enabled: enabled,
+		refs:    make(map[uintptr]int32),
+		nextId:  0,
+	}
+}
+
+// Reset clears state for reuse
+func (w *RefWriter) Reset() {
+	clear(w.refs)
+	w.nextId = 0
+}
+
+// TryWriteRef attempts to write a reference. Returns true if the value was already seen.
+func (w *RefWriter) TryWriteRef(ctx *WriteContext, ptr uintptr) bool {
+	if !w.enabled {
+		return false
+	}
+	if refId, exists := w.refs[ptr]; exists {
+		ctx.buffer.WriteInt8(RefFlag)
+		ctx.buffer.WriteVarint32(refId)
+		return true
+	}
+	// First time seeing this reference
+	w.refs[ptr] = w.nextId
+	w.nextId++
+	ctx.buffer.WriteInt8(RefValueFlag)
+	return false
+}
+
+// WriteRefValue writes ref flag for a new value and registers it
+func (w *RefWriter) WriteRefValue(ctx *WriteContext, ptr uintptr) {
+	if w.enabled {
+		w.refs[ptr] = w.nextId
+		w.nextId++
+		ctx.buffer.WriteInt8(RefValueFlag)
+	} else {
+		ctx.buffer.WriteInt8(NotNullValueFlag)
+	}
+}
+
+// ============================================================================
+// RefReader - Handles reference tracking during deserialization
+// ============================================================================
+
+// RefReader handles reference tracking during deserialization
+type RefReader struct {
+	enabled bool
+	refs    []any
+}
+
+// NewRefReader creates a new reference reader
+func NewRefReader(enabled bool) *RefReader {
+	return &RefReader{
+		enabled: enabled,
+		refs:    make([]any, 0, 16),
+	}
+}
+
+// Reset clears state for reuse
+func (r *RefReader) Reset() {
+	r.refs = r.refs[:0]
+}
+
+// ReadRefFlag reads the reference flag and returns:
+// - flag: the flag value
+// - refId: the reference ID if flag is RefFlag
+// - needRead: true if we need to read the actual data
+func (r *RefReader) ReadRefFlag(ctx *ReadContext) (flag int8, refId int32, needRead bool) {
+	flag = ctx.RawInt8()
+	switch flag {
+	case NullFlag:
+		return flag, 0, false
+	case RefFlag:
+		refId = ctx.ReadVarInt32()
+		return flag, refId, false
+	default: // RefValueFlag or NotNullValueFlag
+		return flag, 0, true
+	}
+}
+
+// Reference stores a reference for later retrieval
+func (r *RefReader) Reference(value any) {
+	if r.enabled {
+		r.refs = append(r.refs, value)
+	}
+}
+
+// GetRef retrieves a reference by ID
+func (r *RefReader) GetRef(refId int32) any {
+	if int(refId) < len(r.refs) {
+		return r.refs[refId]
+	}
+	return nil
 }

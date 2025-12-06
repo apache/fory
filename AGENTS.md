@@ -126,10 +126,10 @@ ENABLE_FORY_CYTHON_SERIALIZATION=1 pytest -v -s .
 go fmt ./...
 
 # Run tests
-go test -v
+go test -v ./...
 
 # Run tests with race detection
-go test -race -v
+go test -race -v ./...
 
 # Build
 go build

@@ -19,619 +19,930 @@ package fory
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"reflect"
-	"sync"
+	"strconv"
+	"unsafe"
 )
 
-// Option represents a configuration option for Fory instances.
-// This follows the functional options pattern, allowing flexible configuration
-// by passing variadic option functions to constructors like NewForyWithOptions.
-type Option func(*Fory)
+// ============================================================================
+// Errors
+// ============================================================================
 
-// WithCompatible sets the compatible mode for the Fory instance.
-// When compatible=true, scoped meta sharing is automatically enabled.
-func WithCompatible(compatible bool) Option {
-	return func(f *Fory) {
-		f.compatible = compatible
-		if compatible {
-			f.metaContext = NewMetaContext(true) // Enable scoped meta sharing
-		} else {
-			f.metaContext = nil
-		}
-	}
-}
+// ErrMagicNumber indicates an invalid magic number in the data stream
+var ErrMagicNumber = errors.New("fory: invalid magic number")
 
-// WithRefTracking sets the reference tracking mode for the Fory instance
-func WithRefTracking(refTracking bool) Option {
-	return func(f *Fory) {
-		f.refTracking = refTracking
-	}
-}
+// ErrNoSerializer indicates no serializer is registered for a type
+var ErrNoSerializer = errors.New("fory: no serializer registered for type")
 
-// WithScopedMetaShare sets the scoped meta share mode for the Fory instance.
-// Note: Compatible mode automatically enables scoped meta sharing.
-// This option is mainly used for fine-grained control when compatible mode is already enabled.
-func WithScopedMetaShare(enabled bool) Option {
-	return func(f *Fory) {
-		if f.metaContext == nil {
-			f.metaContext = NewMetaContext(enabled)
-		} else {
-			f.metaContext.SetScopedMetaShareEnabled(enabled)
-		}
-	}
-}
+// ============================================================================
+// Constants
+// ============================================================================
 
-func NewFory(refTracking bool) *Fory {
-	return NewForyWithOptions(WithRefTracking(refTracking))
-}
-
-// NewForyWithOptions creates a Fory instance with configurable options
-func NewForyWithOptions(options ...Option) *Fory {
-	fory := &Fory{
-		refResolver: nil,
-		refTracking: false,
-		language:    XLANG,
-		buffer:      NewByteBuffer(nil),
-		compatible:  false,
-	}
-
-	// Apply options
-	for _, option := range options {
-		option(fory)
-	}
-
-	// Create a new type resolver for this instance but copy generated serializers from global resolver
-	fory.typeResolver = newTypeResolver(fory)
-
-	// Initialize meta context if compatible mode is enabled
-	if fory.compatible {
-		fory.metaContext = NewMetaContext(true)
-	}
-
-	fory.refResolver = newRefResolver(fory.refTracking)
-	return fory
-}
-
-var foryPool = sync.Pool{
-	New: func() interface{} {
-		return NewFory(true)
-	},
-}
-
-func GetFory() *Fory {
-	return foryPool.Get().(*Fory)
-}
-
-func PutFory(fory *Fory) {
-	foryPool.Put(fory)
-}
-
-// Marshal returns the MessagePack encoding of v.
-func Marshal(v interface{}) ([]byte, error) {
-	fory := GetFory()
-	err := fory.Serialize(nil, v, nil)
-	data := fory.buffer.GetByteSlice(0, fory.buffer.writerIndex)
-	PutFory(fory)
-	if err != nil {
-		return nil, err
-	}
-	return data, err
-}
-
-// Unmarshal decodes the fory-encoded data and stores the result
-// in the value pointed to by v.
-func Unmarshal(data []byte, v interface{}) error {
-	fory := GetFory()
-	err := fory.Deserialize(NewByteBuffer(data), v, nil)
-	PutFory(fory)
-	return err
-}
-
-// BufferCallback to check whether write buffer in band. If the callback returns false, the given buffer is
-// out-of-band; otherwise the buffer is serialized in-band, i.e. inside the serialized stream.
-type BufferCallback = func(o BufferObject) bool
-
-type Language = uint8
-
+// Language constants for protocol header
 const (
-	XLANG Language = iota
-	JAVA
-	PYTHON
-	CPP
-	GO
-	JAVASCRIPT
-	RUST
-	DART
+	LangXLANG uint8 = iota
+	LangJAVA
+	LangPYTHON
+	LangCPP
+	LangGO
+	LangJAVASCRIPT
+	LangRUST
+	LangDART
 )
 
+// Protocol constants
 const (
-	isNilFlag byte = 1 << iota
-	isLittleEndianFlag
-	isCrossLanguageFlag
-	isOutOfBandFlag
+	MAGIC_NUMBER int16 = 0x62D4
 )
 
+// Bitmap flags for protocol header
 const (
 	NilFlag          = 0
 	LittleEndianFlag = 2
 	XLangFlag        = 4
-	CallBackFlag     = 8
+	OutOfBandFlag    = 8
 )
 
-const MAGIC_NUMBER int16 = 0x62D4
+// Reference flags
+const (
+	NullFlag         int8 = -3
+	RefFlag          int8 = -2
+	NotNullValueFlag int8 = -1
+	RefValueFlag     int8 = 0
+)
 
+// ============================================================================
+// Config
+// ============================================================================
+
+// Config holds configuration options for Fory instances
+type Config struct {
+	TrackRef   bool
+	MaxDepth   int
+	IsXlang    bool
+	Compatible bool // Schema evolution compatibility mode
+}
+
+// defaultConfig returns the default configuration
+func defaultConfig() Config {
+	return Config{
+		TrackRef: true,
+		MaxDepth: 100,
+		IsXlang:  true,
+	}
+}
+
+// Option is a function that configures a Fory instance
+type Option func(*Fory)
+
+// WithTrackRef sets reference tracking mode
+func WithTrackRef(enabled bool) Option {
+	return func(f *Fory) {
+		f.config.TrackRef = enabled
+	}
+}
+
+// WithRefTracking is deprecated, use WithTrackRef instead
+func WithRefTracking(enabled bool) Option {
+	return WithTrackRef(enabled)
+}
+
+// WithMaxDepth sets the maximum serialization depth
+func WithMaxDepth(depth int) Option {
+	return func(f *Fory) {
+		f.config.MaxDepth = depth
+	}
+}
+
+// WithXlang sets cross-language serialization mode
+func WithXlang(enabled bool) Option {
+	return func(f *Fory) {
+		f.config.IsXlang = enabled
+	}
+}
+
+// WithCompatible sets schema evolution compatibility mode
+func WithCompatible(enabled bool) Option {
+	return func(f *Fory) {
+		f.config.Compatible = enabled
+	}
+}
+
+// ============================================================================
+// Fory - Main serialization instance
+// ============================================================================
+
+// MetaContext holds metadata for schema evolution and type sharing
+type MetaContext struct {
+	typeMap               map[reflect.Type]uint32
+	writingTypeDefs       []*TypeDef
+	readTypeInfos         []TypeInfo
+	scopedMetaShareEnable bool
+}
+
+// IsScopedMetaShareEnabled returns whether scoped meta share is enabled
+func (m *MetaContext) IsScopedMetaShareEnabled() bool {
+	return m.scopedMetaShareEnable
+}
+
+// Reset clears the meta context for reuse
+func (m *MetaContext) Reset() {
+	m.typeMap = make(map[reflect.Type]uint32)
+	m.writingTypeDefs = nil
+	m.readTypeInfos = nil
+}
+
+// Fory is the main serialization instance.
+// Note: Fory is NOT thread-safe. Use ThreadSafeFory for concurrent use.
 type Fory struct {
-	typeResolver   *typeResolver
-	refResolver    *RefResolver
-	refTracking    bool
-	language       Language
-	bufferCallback BufferCallback
-	peerLanguage   Language
-	buffer         *ByteBuffer
-	buffers        []*ByteBuffer
-	compatible     bool
-	metaContext    *MetaContext
+	config      Config
+	metaContext *MetaContext
+
+	// Reusable contexts - avoid allocation on each Serialize/Deserialize call
+	writeCtx *WriteContext
+	readCtx  *ReadContext
+
+	// Resolvers shared between contexts
+	typeResolver *TypeResolver
+	refResolver  *RefResolver
 }
 
-// RegisterByNamespace registers a type using a namespace and type name tag.
-func (f *Fory) RegisterByNamespace(
-	v interface{},
-	namespace string,
-	typeName string,
-) error {
-	return f.typeResolver.RegisterNamedType(reflect.TypeOf(v), 0, namespace, typeName)
+// MetaContext returns the meta context for schema evolution
+func (f *Fory) MetaContext() *MetaContext {
+	return f.metaContext
 }
 
-// RegisterNamedType register by name
-func (f *Fory) RegisterNamedType(
-	v interface{},
-	name string,
-) error {
-	return f.typeResolver.RegisterNamedType(reflect.TypeOf(v), 0, "", name)
+// RegisterNamedType registers a named type for cross-language serialization
+// type_ can be either a reflect.Type or an instance of the type
+func (f *Fory) RegisterNamedType(type_ interface{}, typeName string) error {
+	var t reflect.Type
+	if rt, ok := type_.(reflect.Type); ok {
+		t = rt
+	} else {
+		t = reflect.TypeOf(type_)
+		if t.Kind() == reflect.Ptr {
+			t = t.Elem()
+		}
+	}
+	return f.typeResolver.RegisterNamedType(t, 0, "", typeName)
 }
 
-// Register reister by typeId
-func (f *Fory) Register(
-	v interface{},
-	typeId int32,
-) error {
-	return f.typeResolver.RegisterNamedType(reflect.TypeOf(v), typeId, "", "")
+// NewForyWithOptions is an alias for New for backward compatibility
+func NewForyWithOptions(opts ...Option) *Fory {
+	return New(opts...)
 }
 
+// NewFory is an alias for New for backward compatibility
+func NewFory(opts ...Option) *Fory {
+	return New(opts...)
+}
+
+// Marshal serializes a value to bytes (instance method for backward compatibility)
 func (f *Fory) Marshal(v interface{}) ([]byte, error) {
-	err := f.Serialize(nil, v, nil)
+	return f.SerializeAny(v)
+}
+
+// Unmarshal deserializes bytes into the provided value (instance method for backward compatibility)
+func (f *Fory) Unmarshal(data []byte, v interface{}) error {
+	result, err := f.DeserializeAny(data)
+	if err != nil {
+		return err
+	}
+	if v == nil {
+		return nil
+	}
+	// Set the result into the provided value
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Ptr || rv.IsNil() {
+		return fmt.Errorf("v must be a non-nil pointer")
+	}
+	if result != nil {
+		resultVal := reflect.ValueOf(result)
+		targetType := rv.Elem().Type()
+
+		if resultVal.Type().AssignableTo(targetType) {
+			rv.Elem().Set(resultVal)
+		} else if resultVal.Type().ConvertibleTo(targetType) {
+			rv.Elem().Set(resultVal.Convert(targetType))
+		} else if resultVal.Kind() == reflect.Ptr && resultVal.Type().Elem().AssignableTo(targetType) {
+			// Handle case where result is *T but target is T: dereference the pointer
+			rv.Elem().Set(resultVal.Elem())
+		} else if resultVal.Kind() == reflect.Ptr && resultVal.Type().Elem().ConvertibleTo(targetType) {
+			// Handle case where result is *T but target is convertible from T
+			rv.Elem().Set(resultVal.Elem().Convert(targetType))
+		} else if resultVal.Kind() == reflect.Slice && targetType.Kind() == reflect.Slice {
+			// Handle []interface{} to []T conversion
+			converted := convertSlice(resultVal, targetType)
+			if converted.IsValid() {
+				rv.Elem().Set(converted)
+			}
+		} else if resultVal.Kind() == reflect.Slice && targetType.Kind() == reflect.Array {
+			// Handle []T to [N]T conversion (arrays are serialized as slices)
+			converted := convertSliceToArray(resultVal, targetType)
+			if converted.IsValid() {
+				rv.Elem().Set(converted)
+			}
+		} else if resultVal.Kind() == reflect.Map && targetType.Kind() == reflect.Map {
+			// Handle map[interface{}]interface{} to map[K]V conversion
+			converted := convertMap(resultVal, targetType)
+			if converted.IsValid() {
+				rv.Elem().Set(converted)
+			}
+		}
+	}
+	return nil
+}
+
+// convertSlice converts a []interface{} slice to the target slice type
+func convertSlice(src reflect.Value, targetType reflect.Type) reflect.Value {
+	if src.Kind() != reflect.Slice {
+		return reflect.Value{}
+	}
+
+	length := src.Len()
+	result := reflect.MakeSlice(targetType, length, length)
+	elemType := targetType.Elem()
+
+	for i := 0; i < length; i++ {
+		srcElem := src.Index(i)
+		dstElem := result.Index(i)
+
+		// Get the actual value from interface
+		if srcElem.Kind() == reflect.Interface {
+			srcElem = srcElem.Elem()
+		}
+
+		if !srcElem.IsValid() {
+			continue // nil element
+		}
+
+		srcType := srcElem.Type()
+
+		if srcType.AssignableTo(elemType) {
+			dstElem.Set(srcElem)
+		} else if srcType.ConvertibleTo(elemType) {
+			dstElem.Set(srcElem.Convert(elemType))
+		} else if elemType.Kind() == reflect.Ptr && srcType.AssignableTo(elemType.Elem()) {
+			// Target is *T, source is T - need to create pointer
+			ptr := reflect.New(elemType.Elem())
+			ptr.Elem().Set(srcElem)
+			dstElem.Set(ptr)
+		} else if elemType.Kind() == reflect.Ptr && srcType.ConvertibleTo(elemType.Elem()) {
+			ptr := reflect.New(elemType.Elem())
+			ptr.Elem().Set(srcElem.Convert(elemType.Elem()))
+			dstElem.Set(ptr)
+		}
+	}
+
+	return result
+}
+
+// convertSliceToArray converts a slice to a fixed-size array
+func convertSliceToArray(src reflect.Value, targetType reflect.Type) reflect.Value {
+	if src.Kind() != reflect.Slice || targetType.Kind() != reflect.Array {
+		return reflect.Value{}
+	}
+
+	arrayLen := targetType.Len()
+	sliceLen := src.Len()
+	copyLen := sliceLen
+	if copyLen > arrayLen {
+		copyLen = arrayLen
+	}
+
+	result := reflect.New(targetType).Elem()
+	elemType := targetType.Elem()
+
+	for i := 0; i < copyLen; i++ {
+		srcElem := src.Index(i)
+		dstElem := result.Index(i)
+
+		// Get the actual value from interface
+		if srcElem.Kind() == reflect.Interface {
+			srcElem = srcElem.Elem()
+		}
+
+		if !srcElem.IsValid() {
+			continue // nil element
+		}
+
+		srcType := srcElem.Type()
+
+		if srcType.AssignableTo(elemType) {
+			dstElem.Set(srcElem)
+		} else if srcType.ConvertibleTo(elemType) {
+			dstElem.Set(srcElem.Convert(elemType))
+		} else if elemType.Kind() == reflect.Ptr && srcType.AssignableTo(elemType.Elem()) {
+			// Target is *T, source is T - need to create pointer
+			ptr := reflect.New(elemType.Elem())
+			ptr.Elem().Set(srcElem)
+			dstElem.Set(ptr)
+		} else if elemType.Kind() == reflect.Ptr && srcType.ConvertibleTo(elemType.Elem()) {
+			ptr := reflect.New(elemType.Elem())
+			ptr.Elem().Set(srcElem.Convert(elemType.Elem()))
+			dstElem.Set(ptr)
+		}
+	}
+
+	return result
+}
+
+// convertMap converts a map[interface{}]interface{} to the target map type
+func convertMap(src reflect.Value, targetType reflect.Type) reflect.Value {
+	if src.Kind() != reflect.Map {
+		return reflect.Value{}
+	}
+
+	result := reflect.MakeMap(targetType)
+	keyType := targetType.Key()
+	valType := targetType.Elem()
+
+	iter := src.MapRange()
+	for iter.Next() {
+		srcKey := iter.Key()
+		srcVal := iter.Value()
+
+		// Get the actual value from interface
+		if srcKey.Kind() == reflect.Interface {
+			srcKey = srcKey.Elem()
+		}
+		if srcVal.Kind() == reflect.Interface {
+			srcVal = srcVal.Elem()
+		}
+
+		// Convert key
+		var dstKey reflect.Value
+		if !srcKey.IsValid() {
+			dstKey = reflect.Zero(keyType)
+		} else if srcKey.Type().AssignableTo(keyType) {
+			dstKey = srcKey
+		} else if srcKey.Type().ConvertibleTo(keyType) {
+			dstKey = srcKey.Convert(keyType)
+		} else {
+			continue // Skip incompatible key
+		}
+
+		// Convert value
+		var dstVal reflect.Value
+		if !srcVal.IsValid() {
+			dstVal = reflect.Zero(valType)
+		} else if srcVal.Type().AssignableTo(valType) {
+			dstVal = srcVal
+		} else if srcVal.Type().ConvertibleTo(valType) {
+			dstVal = srcVal.Convert(valType)
+		} else {
+			continue // Skip incompatible value
+		}
+
+		result.SetMapIndex(dstKey, dstVal)
+	}
+
+	return result
+}
+
+// Serialize serializes a value to buffer (for streaming/cross-language use).
+// The third parameter is an optional callback for buffer objects (can be nil).
+// If callback is provided, it will be called for each BufferObject during serialization.
+// Return true from callback to write in-band, false for out-of-band.
+func (f *Fory) Serialize(buffer *ByteBuffer, v interface{}, callback func(BufferObject) bool) error {
+	// Reset internal state but NOT the buffer - caller manages buffer state
+	// This allows streaming multiple values to the same buffer
+	f.writeCtx.ResetState()
+	f.writeCtx.buffer = buffer
+
+	// Set up buffer callback for out-of-band serialization
+	if callback != nil {
+		f.writeCtx.bufferCallback = callback
+		f.writeCtx.outOfBand = true
+	}
+
+	// Write protocol header
+	writeHeader(f.writeCtx, f.config)
+
+	// Serialize the value
+	if err := f.writeCtx.WriteValue(reflect.ValueOf(v)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Deserialize deserializes from buffer into the provided value (for streaming/cross-language use).
+// The third parameter is optional external buffers for out-of-band data (can be nil).
+func (f *Fory) Deserialize(buffer *ByteBuffer, v interface{}, buffers []*ByteBuffer) error {
+	// Reset context and use the provided buffer
+	f.readCtx.Reset()
+	f.readCtx.buffer = buffer
+
+	// Set up out-of-band buffers if provided
+	if buffers != nil {
+		f.readCtx.outOfBandBuffers = buffers
+	}
+
+	// Read and validate header
+	if err := readHeader(f.readCtx); err != nil {
+		return err
+	}
+
+	// Deserialize the value
+	var result interface{}
+	if err := f.readCtx.ReadValue(reflect.ValueOf(&result).Elem()); err != nil {
+		return err
+	}
+
+	// Set the result into the provided value
+	if v != nil {
+		rv := reflect.ValueOf(v)
+		if rv.Kind() == reflect.Ptr && !rv.IsNil() && result != nil {
+			resultVal := reflect.ValueOf(result)
+			if resultVal.Type().AssignableTo(rv.Elem().Type()) {
+				rv.Elem().Set(resultVal)
+			} else if resultVal.Type().ConvertibleTo(rv.Elem().Type()) {
+				rv.Elem().Set(resultVal.Convert(rv.Elem().Type()))
+			}
+		}
+	}
+
+	return nil
+}
+
+// RegisterByNamespace registers a type with namespace for cross-language serialization
+func (f *Fory) RegisterByNamespace(type_ interface{}, namespace, typeName string) error {
+	var t reflect.Type
+	if rt, ok := type_.(reflect.Type); ok {
+		t = rt
+	} else {
+		t = reflect.TypeOf(type_)
+		if t.Kind() == reflect.Ptr {
+			t = t.Elem()
+		}
+	}
+	return f.typeResolver.RegisterNamedType(t, 0, namespace, typeName)
+}
+
+// New creates a new Fory instance with the given options
+func New(opts ...Option) *Fory {
+	f := &Fory{
+		config: defaultConfig(),
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(f)
+	}
+
+	// Initialize meta context if compatible mode is enabled
+	if f.config.Compatible {
+		f.metaContext = &MetaContext{
+			typeMap:               make(map[reflect.Type]uint32),
+			writingTypeDefs:       make([]*TypeDef, 0),
+			readTypeInfos:         make([]TypeInfo, 0),
+			scopedMetaShareEnable: true,
+		}
+	}
+
+	// Initialize resolvers
+	f.typeResolver = newTypeResolver(f)
+	f.refResolver = newRefResolver(f.config.TrackRef)
+
+	// Initialize reusable contexts with resolvers
+	f.writeCtx = NewWriteContext(f.config.TrackRef, f.config.MaxDepth)
+	f.writeCtx.typeResolver = f.typeResolver
+	f.writeCtx.refResolver = f.refResolver
+	f.writeCtx.compatible = f.config.Compatible
+
+	f.readCtx = NewReadContext(f.config.TrackRef)
+	f.readCtx.typeResolver = f.typeResolver
+	f.readCtx.refResolver = f.refResolver
+	f.readCtx.compatible = f.config.Compatible
+
+	return f
+}
+
+// Reset clears internal state for reuse
+func (f *Fory) Reset() {
+	f.writeCtx.Reset()
+	f.readCtx.Reset()
+}
+
+// ============================================================================
+// Generic Serialization API
+// ============================================================================
+
+// Serialize - type T inferred, serializer auto-resolved.
+// The serializer handles its own ref/type info writing internally.
+// Falls back to reflection-based serialization for unregistered types.
+// Note: Fory instance is NOT thread-safe. Use ThreadSafeFory for concurrent use.
+func Serialize[T any](f *Fory, value *T) ([]byte, error) {
+	// Reuse context, just reset state
+	f.writeCtx.Reset()
+
+	// Write protocol header
+	writeHeader(f.writeCtx, f.config)
+
+	// Fast path: type switch for common types (Go compiler can optimize this)
+	// Using *T avoids interface heap allocation and struct copy
+	// Store boxed value once and reuse in default case
+	v := any(value)
+	var err error
+	switch val := v.(type) {
+	case *bool:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(BOOL)
+		f.writeCtx.buffer.WriteBool(*val)
+	case *int8:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(INT8)
+		f.writeCtx.buffer.WriteInt8(*val)
+	case *int16:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(INT16)
+		f.writeCtx.buffer.WriteInt16(*val)
+	case *int32:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(INT32)
+		f.writeCtx.buffer.WriteVarint32(*val)
+	case *int64:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(INT64)
+		f.writeCtx.buffer.WriteVarint64(*val)
+	case *int:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		if strconv.IntSize == 64 {
+			f.writeCtx.WriteTypeId(INT64)
+			f.writeCtx.buffer.WriteVarint64(int64(*val))
+		} else {
+			f.writeCtx.WriteTypeId(INT32)
+			f.writeCtx.buffer.WriteVarint32(int32(*val))
+		}
+	case *float32:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(FLOAT)
+		f.writeCtx.buffer.WriteFloat32(*val)
+	case *float64:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(DOUBLE)
+		f.writeCtx.buffer.WriteFloat64(*val)
+	case *string:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(STRING)
+		f.writeCtx.buffer.WriteVarUint32(uint32(len(*val)))
+		if len(*val) > 0 {
+			f.writeCtx.buffer.WriteBinary(unsafe.Slice(unsafe.StringData(*val), len(*val)))
+		}
+	case *[]byte:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(BINARY)
+		f.writeCtx.buffer.WriteBool(true) // in-band
+		f.writeCtx.buffer.WriteLength(len(*val))
+		f.writeCtx.buffer.WriteBinary(*val)
+	case *[]int8:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(INT8_ARRAY)
+		err = writeInt8Slice(f.writeCtx.buffer, *val)
+	case *[]int16:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(INT16_ARRAY)
+		err = writeInt16Slice(f.writeCtx.buffer, *val)
+	case *[]int32:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(INT32_ARRAY)
+		err = writeInt32Slice(f.writeCtx.buffer, *val)
+	case *[]int64:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(INT64_ARRAY)
+		err = writeInt64Slice(f.writeCtx.buffer, *val)
+	case *[]int:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		if strconv.IntSize == 64 {
+			f.writeCtx.WriteTypeId(INT64_ARRAY)
+		} else {
+			f.writeCtx.WriteTypeId(INT32_ARRAY)
+		}
+		err = writeIntSlice(f.writeCtx.buffer, *val)
+	case *[]float32:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(FLOAT32_ARRAY)
+		err = writeFloat32Slice(f.writeCtx.buffer, *val)
+	case *[]float64:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(FLOAT64_ARRAY)
+		err = writeFloat64Slice(f.writeCtx.buffer, *val)
+	case *[]bool:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(BOOL_ARRAY)
+		err = writeBoolSlice(f.writeCtx.buffer, *val)
+	case *map[string]string:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(MAP)
+		writeMapStringString(f.writeCtx.buffer, *val)
+	case *map[string]int64:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(MAP)
+		writeMapStringInt64(f.writeCtx.buffer, *val)
+	case *map[string]int:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(MAP)
+		writeMapStringInt(f.writeCtx.buffer, *val)
+	case *map[string]float64:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(MAP)
+		writeMapStringFloat64(f.writeCtx.buffer, *val)
+	case *map[string]bool:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(MAP)
+		writeMapStringBool(f.writeCtx.buffer, *val)
+	case *map[int32]int32:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(MAP)
+		writeMapInt32Int32(f.writeCtx.buffer, *val)
+	case *map[int64]int64:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(MAP)
+		writeMapInt64Int64(f.writeCtx.buffer, *val)
+	case *map[int]int:
+		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
+		f.writeCtx.WriteTypeId(MAP)
+		writeMapIntInt(f.writeCtx.buffer, *val)
+	default:
+		// Fall back to reflection-based serialization
+		// Reuse v (already boxed) and .Elem() to get underlying value without copy
+		return f.serializeReflectValue(reflect.ValueOf(v).Elem())
+	}
+
 	if err != nil {
 		return nil, err
 	}
-	return f.buffer.GetByteSlice(0, f.buffer.writerIndex), nil
+
+	// Return copy of buffer data
+	return f.writeCtx.buffer.GetByteSlice(0, f.writeCtx.buffer.writerIndex), nil
 }
 
-func (f *Fory) Serialize(buf *ByteBuffer, v interface{}, callback BufferCallback) error {
-	defer f.resetWrite()
-	f.bufferCallback = callback
-	buffer := buf
-	if buffer == nil {
-		buffer = f.buffer
-		buffer.writerIndex = 0
+// Deserialize deserializes data directly into the provided target.
+// Takes pointer to avoid interface heap allocation and enable direct writes.
+// For primitive types, this writes directly to the target pointer.
+// For slices, it reuses existing capacity when possible.
+// For structs, it reads directly into the struct fields.
+// Note: Fory instance is NOT thread-safe. Use ThreadSafeFory for concurrent use.
+func Deserialize[T any](f *Fory, data []byte, target *T) error {
+	// Reuse context, reset and set new data
+	f.readCtx.Reset()
+	f.readCtx.SetData(data)
+
+	// Read and validate header
+	if err := readHeader(f.readCtx); err != nil {
+		return err
 	}
-	if f.language == XLANG {
-		buffer.WriteInt16(MAGIC_NUMBER)
-	} else {
-		return fmt.Errorf("%d language is not supported", f.language)
+
+	// Fast path: type switch for common types (Go compiler can optimize this)
+	switch t := any(target).(type) {
+	case *bool:
+		return f.readCtx.ReadBoolInto(t, true, true)
+	case *int8:
+		return f.readCtx.ReadInt8Into(t, true, true)
+	case *int16:
+		return f.readCtx.ReadInt16Into(t, true, true)
+	case *int32:
+		return f.readCtx.ReadInt32Into(t, true, true)
+	case *int64:
+		return f.readCtx.ReadInt64Into(t, true, true)
+	case *int:
+		return f.readCtx.ReadIntInto(t, true, true)
+	case *float32:
+		return f.readCtx.ReadFloat32Into(t, true, true)
+	case *float64:
+		return f.readCtx.ReadFloat64Into(t, true, true)
+	case *string:
+		return f.readCtx.ReadStringInto(t, true, true)
+	case *[]byte:
+		return f.readCtx.ReadByteSliceInto(t, true, true)
+	case *[]int8:
+		return f.readCtx.ReadInt8SliceInto(t, true, true)
+	case *[]int16:
+		return f.readCtx.ReadInt16SliceInto(t, true, true)
+	case *[]int32:
+		return f.readCtx.ReadInt32SliceInto(t, true, true)
+	case *[]int64:
+		return f.readCtx.ReadInt64SliceInto(t, true, true)
+	case *[]int:
+		return f.readCtx.ReadIntSliceInto(t, true, true)
+	case *[]float32:
+		return f.readCtx.ReadFloat32SliceInto(t, true, true)
+	case *[]float64:
+		return f.readCtx.ReadFloat64SliceInto(t, true, true)
+	case *[]bool:
+		return f.readCtx.ReadBoolSliceInto(t, true, true)
+	case *map[string]string:
+		return f.readCtx.ReadStringStringMapInto(t, true, true)
+	case *map[string]int64:
+		return f.readCtx.ReadStringInt64MapInto(t, true, true)
+	case *map[string]int:
+		return f.readCtx.ReadStringIntMapInto(t, true, true)
+	case *map[string]float64:
+		return f.readCtx.ReadStringFloat64MapInto(t, true, true)
+	case *map[string]bool:
+		return f.readCtx.ReadStringBoolMapInto(t, true, true)
+	case *map[int32]int32:
+		return f.readCtx.ReadInt32Int32MapInto(t, true, true)
+	case *map[int64]int64:
+		return f.readCtx.ReadInt64Int64MapInto(t, true, true)
+	case *map[int]int:
+		return f.readCtx.ReadIntIntMapInto(t, true, true)
 	}
+
+	// Slow path: use reflection-based deserialization
+	f.readCtx.Reset()
+	result, err := f.DeserializeAny(data)
+	if err != nil {
+		return err
+	}
+	if result != nil {
+		resultVal := reflect.ValueOf(result)
+		targetVal := reflect.ValueOf(target).Elem()
+		targetType := targetVal.Type()
+
+		if resultVal.Type().AssignableTo(targetType) {
+			targetVal.Set(resultVal)
+		} else if resultVal.Type().ConvertibleTo(targetType) {
+			targetVal.Set(resultVal.Convert(targetType))
+		} else if resultVal.Kind() == reflect.Ptr && resultVal.Type().Elem().AssignableTo(targetType) {
+			targetVal.Set(resultVal.Elem())
+		} else if resultVal.Kind() == reflect.Ptr && resultVal.Type().Elem().ConvertibleTo(targetType) {
+			targetVal.Set(resultVal.Elem().Convert(targetType))
+		} else if targetType.Kind() == reflect.Map && resultVal.Kind() == reflect.Map {
+			// Handle map[interface{}]interface{} to map[K]V conversion
+			converted := convertMap(resultVal, targetType)
+			if converted.IsValid() {
+				targetVal.Set(converted)
+			}
+		} else if targetType.Kind() == reflect.Slice && resultVal.Kind() == reflect.Slice {
+			// Handle []interface{} to []T conversion
+			converted := convertSlice(resultVal, targetType)
+			if converted.IsValid() {
+				targetVal.Set(converted)
+			}
+		} else if targetType.Kind() == reflect.Struct && resultVal.Kind() == reflect.Ptr {
+			elemVal := resultVal.Elem()
+			if elemVal.Type() == targetType {
+				targetVal.Set(elemVal)
+			}
+		}
+	}
+	return nil
+}
+
+// SerializeAny serializes polymorphic values where concrete type is unknown.
+// Uses runtime type dispatch to find the appropriate serializer.
+func (f *Fory) SerializeAny(value any) ([]byte, error) {
+	if value == nil {
+		f.writeCtx.Reset()
+		if f.metaContext != nil {
+			f.metaContext.Reset()
+		}
+		writeHeader(f.writeCtx, f.config)
+		f.writeCtx.buffer.WriteInt8(NullFlag)
+		return f.writeCtx.buffer.GetByteSlice(0, f.writeCtx.buffer.writerIndex), nil
+	}
+
+	f.writeCtx.Reset()
+	if f.metaContext != nil {
+		f.metaContext.Reset()
+	}
+
+	// In compatible mode with meta share, we need two-phase serialization:
+	// 1. Serialize data to temp buffer (collects type definitions)
+	// 2. Write: header + type defs + data
+	if f.config.Compatible && f.metaContext != nil {
+		// Phase 1: Serialize data to a temporary buffer
+		tempBuffer := NewByteBuffer(nil)
+		origBuffer := f.writeCtx.buffer
+		f.writeCtx.buffer = tempBuffer
+
+		if err := f.writeCtx.WriteValue(reflect.ValueOf(value)); err != nil {
+			f.writeCtx.buffer = origBuffer
+			return nil, err
+		}
+
+		// Phase 2: Write header + type defs + data to the final buffer
+		f.writeCtx.buffer = origBuffer
+		writeHeader(f.writeCtx, f.config)
+
+		// Write type definitions that were collected during phase 1
+		f.typeResolver.writeTypeDefs(f.writeCtx.buffer)
+
+		// Append the serialized data
+		f.writeCtx.buffer.WriteBinary(tempBuffer.GetByteSlice(0, tempBuffer.writerIndex))
+
+		return f.writeCtx.buffer.GetByteSlice(0, f.writeCtx.buffer.writerIndex), nil
+	}
+
+	// Non-compatible mode: single-phase serialization
+	writeHeader(f.writeCtx, f.config)
+
+	// Use WriteValue to serialize the value through the typeResolver
+	if err := f.writeCtx.WriteValue(reflect.ValueOf(value)); err != nil {
+		return nil, err
+	}
+
+	return f.writeCtx.buffer.GetByteSlice(0, f.writeCtx.buffer.writerIndex), nil
+}
+
+// serializeReflectValue serializes a reflect.Value directly, avoiding boxing overhead.
+// This is used by Serialize[T] fallback path to avoid struct copy.
+func (f *Fory) serializeReflectValue(value reflect.Value) ([]byte, error) {
+	f.writeCtx.Reset()
+	if f.metaContext != nil {
+		f.metaContext.Reset()
+	}
+
+	// In compatible mode with meta share, we need two-phase serialization
+	if f.config.Compatible && f.metaContext != nil {
+		tempBuffer := NewByteBuffer(nil)
+		origBuffer := f.writeCtx.buffer
+		f.writeCtx.buffer = tempBuffer
+
+		if err := f.writeCtx.WriteValue(value); err != nil {
+			f.writeCtx.buffer = origBuffer
+			return nil, err
+		}
+
+		f.writeCtx.buffer = origBuffer
+		writeHeader(f.writeCtx, f.config)
+		f.typeResolver.writeTypeDefs(f.writeCtx.buffer)
+		f.writeCtx.buffer.WriteBinary(tempBuffer.GetByteSlice(0, tempBuffer.writerIndex))
+
+		return f.writeCtx.buffer.GetByteSlice(0, f.writeCtx.buffer.writerIndex), nil
+	}
+
+	// Non-compatible mode: single-phase serialization
+	writeHeader(f.writeCtx, f.config)
+	if err := f.writeCtx.WriteValue(value); err != nil {
+		return nil, err
+	}
+
+	return f.writeCtx.buffer.GetByteSlice(0, f.writeCtx.buffer.writerIndex), nil
+}
+
+// DeserializeAny deserializes polymorphic values.
+// Returns the concrete type as `any`.
+func (f *Fory) DeserializeAny(data []byte) (any, error) {
+	f.readCtx.Reset()
+	if f.metaContext != nil {
+		f.metaContext.Reset()
+	}
+	f.readCtx.SetData(data)
+
+	if err := readHeader(f.readCtx); err != nil {
+		return nil, err
+	}
+
+	// In compatible mode with meta share, read type definitions first
+	if f.config.Compatible && f.metaContext != nil {
+		if err := f.typeResolver.readTypeDefs(f.readCtx.buffer); err != nil {
+			return nil, fmt.Errorf("failed to read type definitions: %w", err)
+		}
+	}
+
+	// Use ReadValue to deserialize through the typeResolver
+	var result interface{}
+	if err := f.readCtx.ReadValue(reflect.ValueOf(&result).Elem()); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// ============================================================================
+// Protocol Header
+// ============================================================================
+
+// writeHeader writes the Fory protocol header
+func writeHeader(ctx *WriteContext, config Config) {
+	ctx.buffer.WriteInt16(MAGIC_NUMBER)
+
 	var bitmap byte = 0
-	if isNil(reflect.ValueOf(v)) {
-		bitmap |= NilFlag
-	}
 	if nativeEndian == binary.LittleEndian {
 		bitmap |= LittleEndianFlag
 	}
-	// set reader as x_lang.
-	if f.language == XLANG {
+	if config.IsXlang {
 		bitmap |= XLangFlag
-	} else {
-		return fmt.Errorf("%d language is not supported", f.language)
 	}
-	if callback != nil {
-		bitmap |= CallBackFlag
+	if ctx.outOfBand {
+		bitmap |= OutOfBandFlag
 	}
-	if err := buffer.WriteByte(bitmap); err != nil {
-		return err
+	ctx.buffer.WriteByte_(bitmap)
+	ctx.buffer.WriteByte_(LangGO)
+}
+
+// readHeader reads and validates the Fory protocol header
+func readHeader(ctx *ReadContext) error {
+	magicNumber := ctx.buffer.ReadInt16()
+	if magicNumber != MAGIC_NUMBER {
+		return ErrMagicNumber
 	}
-	if f.language != XLANG {
-		return fmt.Errorf("%d language is not supported", f.language)
-	} else {
-		if err := buffer.WriteByte(GO); err != nil {
-			return err
-		}
-		if err := f.Write(buffer, v); err != nil {
-			return err
-		}
-	}
+	_ = ctx.buffer.ReadByte_() // bitmap
+	_ = ctx.buffer.ReadByte_() // language
 	return nil
-}
-
-func (f *Fory) Write(buffer *ByteBuffer, v interface{}) (err error) {
-	// fast path for common type
-	switch v := v.(type) {
-	case nil:
-		buffer.WriteInt8(NullFlag)
-	case bool:
-		f.WriteBool(buffer, v)
-	case float64:
-		f.WriteFloat64(buffer, v)
-	case float32:
-		f.WriteFloat32(buffer, v)
-	case byte: // uint8
-		f.WriteByte_(buffer, v)
-	default:
-		err = f.WriteReferencable_(buffer, reflect.ValueOf(v))
-	}
-	return
-}
-
-func (f *Fory) WriteByte_(buffer *ByteBuffer, v interface{}) {
-	buffer.WriteInt8(NotNullValueFlag)
-	buffer.WriteInt8(UINT8)
-	buffer.WriteByte_(v.(byte))
-}
-
-func (f *Fory) WriteInt16(buffer *ByteBuffer, v interface{}) {
-	buffer.WriteInt8(NotNullValueFlag)
-	buffer.WriteInt8(INT32)
-	buffer.WriteInt32(v.(int32))
-}
-
-func (f *Fory) WriteBool(buffer *ByteBuffer, v interface{}) {
-	buffer.WriteInt8(NotNullValueFlag)
-	buffer.WriteInt8(BOOL)
-	buffer.WriteBool(v.(bool))
-}
-
-func (f *Fory) WriteInt32(buffer *ByteBuffer, v interface{}) {
-	buffer.WriteInt8(NotNullValueFlag)
-	buffer.WriteInt8(INT32)
-	buffer.WriteInt32(v.(int32))
-}
-
-func (f *Fory) WriteInt64(buffer *ByteBuffer, v interface{}) {
-	buffer.WriteInt8(NotNullValueFlag)
-	buffer.WriteInt8(INT64)
-	buffer.WriteInt64(v.(int64))
-}
-
-func (f *Fory) WriteFloat32(buffer *ByteBuffer, v interface{}) {
-	buffer.WriteInt8(NotNullValueFlag)
-	buffer.WriteInt8(FLOAT)
-	buffer.WriteFloat32(v.(float32))
-}
-
-func (f *Fory) WriteFloat64(buffer *ByteBuffer, v interface{}) {
-	buffer.WriteInt8(NotNullValueFlag)
-	buffer.WriteInt8(DOUBLE)
-	buffer.WriteFloat64(v.(float64))
-}
-
-func (f *Fory) writeLength(buffer *ByteBuffer, value int) error {
-	if value > MaxInt32 || value < MinInt32 {
-		return fmt.Errorf("value %d exceed the int32 range", value)
-	}
-	buffer.WriteVarInt32(int32(value))
-	return nil
-}
-
-func (f *Fory) readLength(buffer *ByteBuffer) int {
-	return int(buffer.ReadVarInt32())
-}
-
-func (f *Fory) WriteReferencable_(buffer *ByteBuffer, value reflect.Value) error {
-	metaOffset := buffer.writerIndex
-	if f.compatible {
-		buffer.WriteInt32(-1)
-	}
-	err := f.WriteReferencable(buffer, value)
-	if err != nil {
-		return err
-	}
-	if f.compatible && f.metaContext != nil && len(f.metaContext.writingTypeDefs) > 0 {
-		buffer.PutInt32(metaOffset, int32(buffer.writerIndex-metaOffset-4))
-		f.typeResolver.writeTypeDefs(buffer)
-	}
-	return nil
-}
-
-func (f *Fory) WriteReferencable(buffer *ByteBuffer, value reflect.Value) error {
-	return f.writeReferencableBySerializer(buffer, value, nil)
-}
-
-func (f *Fory) writeReferencableBySerializer(buffer *ByteBuffer, value reflect.Value, serializer Serializer) error {
-	if refWritten, err := f.refResolver.WriteRefOrNull(buffer, value); err == nil && !refWritten {
-		// check ptr
-		if value.Kind() == reflect.Ptr {
-			switch value.Elem().Kind() {
-			case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Interface:
-				return fmt.Errorf("pointer to reference type %s is not supported", value.Type())
-			}
-		}
-		return f.writeValue(buffer, value, serializer)
-	} else {
-		return err
-	}
-}
-
-func (f *Fory) writeNonReferencableBySerializer(buffer *ByteBuffer, value reflect.Value, serializer Serializer) error {
-	return f.writeValue(buffer, value, serializer)
-}
-
-func (f *Fory) writeValue(buffer *ByteBuffer, value reflect.Value, serializer Serializer) (err error) {
-	// Handle interface values by getting their concrete element
-	if value.Kind() == reflect.Interface {
-		value = value.Elem()
-	}
-
-	// For array types, pre-convert the value
-	// so the corresponding slice serializer can be reused
-	if value.Kind() == reflect.Array {
-		length := value.Len()
-		sliceType := reflect.SliceOf(value.Type().Elem())
-		slice := reflect.MakeSlice(sliceType, length, length)
-		reflect.Copy(slice, value)
-		value = slice
-	}
-
-	if serializer != nil {
-		return serializer.Write(f, buffer, value)
-	}
-
-	// Get type information for the value
-	typeInfo, err := f.typeResolver.getTypeInfo(value, true)
-	if err != nil {
-		return fmt.Errorf("cannot get typeinfo for value %v: %v", value, err)
-	}
-	err = f.typeResolver.writeTypeInfo(buffer, typeInfo)
-	if err != nil {
-		return fmt.Errorf("cannot write typeinfo for value %v: %v", value, err)
-	}
-	// if compatible mode enable, use declared serializer to write value
-	if IsNamespacedType(TypeId(typeInfo.TypeID)) && f.compatible {
-		if declaredTypeDef, err := f.typeResolver.getTypeDef(typeInfo.Type, false); err != nil {
-			return err
-		} else {
-			ti, err := declaredTypeDef.buildTypeInfo()
-			if err != nil {
-				return err
-			}
-			serializer = ti.Serializer
-		}
-	} else {
-		serializer = typeInfo.Serializer
-	}
-	// Serialize the actual value using the serializer
-	return serializer.Write(f, buffer, value)
-}
-
-func (f *Fory) WriteBufferObject(buffer *ByteBuffer, bufferObject BufferObject) error {
-	if f.bufferCallback == nil || f.bufferCallback(bufferObject) {
-		buffer.WriteBool(true)
-		size := bufferObject.TotalBytes()
-		// writer length
-		buffer.WriteLength(size)
-		writerIndex := buffer.writerIndex
-		buffer.grow(size)
-		bufferObject.WriteTo(buffer.Slice(writerIndex, size))
-		buffer.writerIndex += size
-		if size > MaxInt32 {
-			return fmt.Errorf("length %d exceed max int32", size)
-		}
-	} else {
-		buffer.WriteBool(false)
-	}
-	return nil
-}
-
-func (f *Fory) Unmarshal(data []byte, v interface{}) error {
-	return f.Deserialize(&ByteBuffer{data: data}, v, nil)
-}
-
-func (f *Fory) Deserialize(buf *ByteBuffer, v interface{}, buffers []*ByteBuffer) error {
-	defer f.resetRead()
-	if f.language == XLANG {
-		magicNumber := buf.ReadInt16()
-		if magicNumber != MAGIC_NUMBER {
-			return fmt.Errorf(
-				"the fory xlang serialization must start with magic number 0x%x. "+
-					"Please check whether the serialization is based on the xlang protocol and the data didn't corrupt",
-				MAGIC_NUMBER)
-		}
-	} else {
-		return fmt.Errorf("%d language is not supported", f.language)
-	}
-	var bitmap = buf.ReadByte_()
-	if bitmap&NilFlag != NilFlag {
-		return nil
-	}
-	isLittleEndian := bitmap&LittleEndianFlag == LittleEndianFlag
-	if !isLittleEndian {
-		return fmt.Errorf("big endian is not supported for now, please ensure peer machine is little endian")
-	}
-	isXLangFlag := bitmap&XLangFlag == XLangFlag
-	if isXLangFlag {
-		f.peerLanguage = buf.ReadByte_()
-	} else {
-		f.peerLanguage = GO
-	}
-	isCallBackFlag := bitmap&CallBackFlag == CallBackFlag
-	if isCallBackFlag {
-		if buffers == nil {
-			return fmt.Errorf("buffers shouldn't be null when the serialized stream is " +
-				"produced with buffer_callback not null")
-		}
-		f.buffers = buffers
-	} else {
-		if buffers != nil {
-			return fmt.Errorf("buffers should be null when the serialized stream is " +
-				"produced with buffer_callback null")
-		}
-	}
-
-	if f.compatible {
-		typeDefOffset := buf.ReadInt32()
-		if typeDefOffset >= 0 {
-			save := buf.readerIndex
-			buf.SetReaderIndex(save + int(typeDefOffset))
-			if err := f.typeResolver.readTypeDefs(buf); err != nil {
-				return fmt.Errorf("failed to read typeDefs: %w", err)
-			}
-			buf.SetReaderIndex(save)
-		}
-	}
-
-	if isXLangFlag {
-		return f.ReadReferencable(buf, reflect.ValueOf(v).Elem())
-	} else {
-		return fmt.Errorf("native serialization for golang is not supported currently")
-	}
-}
-
-func (f *Fory) ReadReferencable(buffer *ByteBuffer, value reflect.Value) error {
-	return f.readReferencableBySerializer(buffer, value, nil)
-}
-
-func (f *Fory) readReferencableBySerializer(buf *ByteBuffer, value reflect.Value, serializer Serializer) (err error) {
-	// dynamic-with-refroute or unknown serializer
-	if serializer == nil || serializer.NeedWriteRef() {
-		refId, err := f.refResolver.TryPreserveRefId(buf)
-		if err != nil {
-			return fmt.Errorf("failed to preserve refID: %w", err)
-		}
-		// first read
-		if refId >= int32(NotNullValueFlag) {
-			// deserialize non-ref (may read typeinfo or use provided serializer)
-			if err := f.readData(buf, value, serializer); err != nil {
-				return fmt.Errorf("failed to read data: %w", err)
-			}
-			// record in resolver
-			f.refResolver.SetReadObject(refId, value)
-			return nil
-		}
-		// back-reference or null
-		if refId == int32(NullFlag) {
-			value.Set(reflect.Zero(value.Type()))
-			return nil
-		}
-		prev := f.refResolver.GetReadObject(refId)
-		value.Set(prev)
-		return nil
-	}
-
-	// static path: no references
-	headFlag := buf.ReadInt8()
-	if headFlag == NullFlag {
-		value.Set(reflect.Zero(value.Type()))
-		return nil
-	}
-	// directly read without altering serializer
-	return serializer.Read(f, buf, value.Type(), value)
-}
-
-func (f *Fory) readData(buffer *ByteBuffer, value reflect.Value, serializer Serializer) (err error) {
-	if serializer == nil {
-		typeInfo, err := f.typeResolver.readTypeInfo(buffer, value)
-		if err != nil {
-			return fmt.Errorf("read typeinfo failed: %w", err)
-		}
-		serializer = typeInfo.Serializer
-
-		var concrete reflect.Value
-		var type_ reflect.Type
-		/*
-		   Added logic to distinguish between:
-		   1. Deserialization into a specified interface type,
-		      which matches the behavior in the original tests.
-		   2. Deserialization into a user-defined concrete type.
-		*/
-		switch {
-		case value.Kind() == reflect.Interface,
-			!value.CanSet():
-			concrete = reflect.New(typeInfo.Type).Elem()
-			type_ = typeInfo.Type
-		default:
-			concrete = value
-			type_ = concrete.Type()
-			// For slice types with concrete element types, prefer type-specific serializer
-			// to ensure format compatibility between serialization and deserialization.
-			// This is needed because LIST typeID is shared across all slice types,
-			// but different slice types may use different serializers with different formats.
-			if type_.Kind() == reflect.Slice && !isDynamicType(type_.Elem()) {
-				if typeSpecific, err := f.typeResolver.getSerializerByType(type_, false); err == nil && typeSpecific != nil {
-					serializer = typeSpecific
-				}
-			}
-		}
-		if err := serializer.Read(f, buffer, type_, concrete); err != nil {
-			return err
-		}
-		value.Set(concrete)
-		return nil
-	}
-	return serializer.Read(f, buffer, value.Type(), value)
-}
-
-func (f *Fory) ReadBufferObject(buffer *ByteBuffer) (*ByteBuffer, error) {
-	isInBand := buffer.ReadBool()
-	// TODO(chaokunyang) We need a way to wrap out-of-band buffer into byte slice without copy.
-	// See more at `https://github.com/golang/go/wiki/cgo#turning-c-arrays-into-go-slices`
-	if isInBand {
-		size := buffer.ReadLength()
-		buf := buffer.Slice(buffer.readerIndex, size)
-		buffer.readerIndex += size
-		return buf, nil
-	} else {
-		if f.buffers == nil {
-			return nil, fmt.Errorf("buffers shouldn't be nil when met a out-of-band buffer")
-		}
-		buf := f.buffers[0]
-		f.buffers = f.buffers[1:]
-		return buf, nil
-	}
-}
-
-func (f *Fory) Reset() {
-	f.resetWrite()
-	f.resetRead()
-}
-
-func (f *Fory) resetWrite() {
-	f.typeResolver.resetWrite()
-	f.refResolver.resetWrite()
-	if f.metaContext != nil {
-		if f.metaContext.IsScopedMetaShareEnabled() {
-			f.metaContext.resetWrite()
-		} else {
-			f.metaContext = nil
-		}
-	}
-}
-
-func (f *Fory) resetRead() {
-	f.typeResolver.resetRead()
-	f.refResolver.resetRead()
-	if f.metaContext != nil {
-		if f.metaContext.IsScopedMetaShareEnabled() {
-			f.metaContext.resetRead()
-		} else {
-			f.metaContext = nil
-		}
-	}
-}
-
-// methods for configure fory.
-
-func (f *Fory) SetLanguage(language Language) {
-	f.language = language
-}
-
-func (f *Fory) SetRefTracking(refTracking bool) {
-	f.refTracking = refTracking
 }

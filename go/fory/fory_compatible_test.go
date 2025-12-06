@@ -122,7 +122,7 @@ type NestedOuterIncompatible struct {
 func TestMetaShareEnabled(t *testing.T) {
 	fory := NewForyWithOptions(WithCompatible(true))
 
-	assert.True(t, fory.compatible, "Expected compatible mode to be enabled")
+	assert.True(t, fory.config.Compatible, "Expected compatible mode to be enabled")
 	assert.NotNil(t, fory.metaContext, "Expected metaContext to be initialized when compatible=true")
 	assert.True(t, fory.metaContext.IsScopedMetaShareEnabled(), "Expected scoped meta share to be enabled by default when compatible=true")
 }
@@ -130,7 +130,7 @@ func TestMetaShareEnabled(t *testing.T) {
 func TestMetaShareDisabled(t *testing.T) {
 	fory := NewForyWithOptions(WithCompatible(false))
 
-	assert.False(t, fory.compatible, "Expected compatible mode to be disabled")
+	assert.False(t, fory.config.Compatible, "Expected compatible mode to be disabled")
 	assert.Nil(t, fory.metaContext, "Expected metaContext to be nil when compatible=false")
 }
 

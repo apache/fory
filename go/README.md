@@ -219,7 +219,7 @@ func (f *Fory) Register(User{}, 101) error
 
 ```bash
 cd go/fory
-go test -v
+go test -v ./...
 go test -v fory_xlang_test.go
 ```
 

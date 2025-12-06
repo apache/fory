@@ -19,6 +19,7 @@ package fory
 
 import (
 	"fmt"
+	"reflect"
 	"unicode/utf16"
 )
 
@@ -162,4 +163,45 @@ func WriteString(buf *ByteBuffer, value string) error {
 // This method is specifically designed for code generation to avoid reflection overhead
 func ReadString(buf *ByteBuffer) string {
 	return readString(buf)
+}
+
+// ============================================================================
+// String Serializers - implement unified Serializer interface
+// ============================================================================
+
+// stringSerializer handles string type
+type stringSerializer struct{}
+
+var globalStringSerializer = stringSerializer{}
+
+func (s stringSerializer) TypeId() TypeId       { return STRING }
+func (s stringSerializer) NeedToWriteRef() bool { return false }
+
+func (s stringSerializer) Write(ctx *WriteContext, value reflect.Value) error {
+	return writeString(ctx.buffer, value.String())
+}
+
+func (s stringSerializer) Read(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+	str := readString(ctx.buffer)
+	value.SetString(str)
+	return nil
+}
+
+// ptrToStringSerializer serializes a pointer to string
+type ptrToStringSerializer struct{}
+
+func (s ptrToStringSerializer) TypeId() TypeId       { return -STRING }
+func (s ptrToStringSerializer) NeedToWriteRef() bool { return true }
+
+func (s ptrToStringSerializer) Write(ctx *WriteContext, value reflect.Value) error {
+	str := value.Interface().(*string)
+	return writeString(ctx.buffer, *str)
+}
+
+func (s ptrToStringSerializer) Read(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+	str := readString(ctx.buffer)
+	ptr := new(string)
+	*ptr = str
+	value.Set(reflect.ValueOf(ptr))
+	return nil
 }

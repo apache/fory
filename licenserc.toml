@@ -21,6 +21,7 @@ excludes = [
     # Skipped
     "*.txt",
     "go.sum",
+    "go/fory/tests/structs_fory_gen.go",
 
     # Generated
     "java/benchmark/src/main/java/org/apache/fory/benchmark/state/generated/**",

@@ -54,11 +54,12 @@ func (s mapSerializer) TypeId() TypeId {
 	return MAP
 }
 
-func (s mapSerializer) NeedWriteRef() bool {
+func (s mapSerializer) NeedToWriteRef() bool {
 	return true
 }
 
-func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) error {
+func (s mapSerializer) Write(ctx *WriteContext, value reflect.Value) error {
+	buf := ctx.Buffer()
 	if value.Kind() == reflect.Interface {
 		value = value.Elem()
 	}
@@ -67,8 +68,8 @@ func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 	if length == 0 {
 		return nil
 	}
-	typeResolver := f.typeResolver
-	refResolver := f.refResolver
+	typeResolver := ctx.TypeResolver()
+	refResolver := ctx.RefResolver()
 	s.keySerializer = nil
 	s.valueSerializer = nil
 	keySerializer := s.keySerializer
@@ -94,26 +95,26 @@ func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 					break
 				}
 				if keySerializer != nil {
-					if keySerializer.NeedWriteRef() {
+					if keySerializer.NeedToWriteRef() {
 						buf.WriteInt8(NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF)
 						if written, err := refResolver.WriteRefOrNull(buf, entryKey); err != nil {
 							return err
 						} else if !written {
-							err := s.writeObj(f, keySerializer, buf, entryKey)
+							err := s.writeObj(ctx, keySerializer, entryKey)
 							if err != nil {
 								return err
 							}
 						}
 					} else {
 						buf.WriteInt8(NULL_VALUE_KEY_DECL_TYPE)
-						err := s.writeObj(f, keySerializer, buf, entryKey)
+						err := s.writeObj(ctx, keySerializer, entryKey)
 						if err != nil {
 							return err
 						}
 					}
 				} else {
 					buf.WriteInt8(VALUE_HAS_NULL | TRACKING_KEY_REF)
-					err := f.Write(buf, entryKey)
+					err := ctx.WriteValue(entryKey)
 					if err != nil {
 						return err
 					}
@@ -121,12 +122,12 @@ func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 			} else {
 				if valValid {
 					if valueSerializer != nil {
-						if valueSerializer.NeedWriteRef() {
+						if valueSerializer.NeedToWriteRef() {
 							buf.WriteInt8(NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF)
 							if written, err := refResolver.WriteRefOrNull(buf, entryKey); err != nil {
 								return err
 							} else if !written {
-								err := valueSerializer.Write(f, buf, entryKey)
+								err := valueSerializer.Write(ctx, entryKey)
 								if err != nil {
 									return err
 								}
@@ -134,21 +135,21 @@ func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 							if written, err := refResolver.WriteRefOrNull(buf, value); err != nil {
 								return err
 							} else if !written {
-								err := valueSerializer.Write(f, buf, entryVal)
+								err := valueSerializer.Write(ctx, entryVal)
 								if err != nil {
 									return err
 								}
 							}
 						} else {
 							buf.WriteInt8(NULL_KEY_VALUE_DECL_TYPE)
-							err := valueSerializer.Write(f, buf, entryVal)
+							err := valueSerializer.Write(ctx, entryVal)
 							if err != nil {
 								return err
 							}
 						}
 					} else {
 						buf.WriteInt8(KEY_HAS_NULL | TRACKING_VALUE_REF)
-						err := f.Write(buf, entryVal)
+						err := ctx.WriteValue(entryVal)
 						if err != nil {
 							return err
 						}
@@ -198,13 +199,13 @@ func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 		}
 		keyWriteRef := s.keyReferencable
 		if keySerializer != nil {
-			keyWriteRef = keySerializer.NeedWriteRef()
+			keyWriteRef = keySerializer.NeedToWriteRef()
 		} else {
 			keyWriteRef = false
 		}
 		valueWriteRef := s.valueReferencable
 		if valueSerializer != nil {
-			valueWriteRef = valueSerializer.NeedWriteRef()
+			valueWriteRef = valueSerializer.NeedToWriteRef()
 		} else {
 			valueWriteRef = false
 		}
@@ -222,28 +223,28 @@ func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 				break
 			}
 			if !keyWriteRef {
-				err := s.writeObj(f, keySerializer, buf, entryKey)
+				err := s.writeObj(ctx, keySerializer, entryKey)
 				if err != nil {
 					return err
 				}
 			} else if written, err := refResolver.WriteRefOrNull(buf, entryKey); err != nil {
 				return err
 			} else if !written {
-				err := s.writeObj(f, keySerializer, buf, entryKey)
+				err := s.writeObj(ctx, keySerializer, entryKey)
 				if err != nil {
 					return err
 				}
 			}
 
 			if !valueWriteRef {
-				err := s.writeObj(f, valueSerializer, buf, entryVal)
+				err := s.writeObj(ctx, valueSerializer, entryVal)
 				if err != nil {
 					return err
 				}
 			} else if written, err := refResolver.WriteRefOrNull(buf, entryVal); err != nil {
 				return err
 			} else if !written {
-				err := s.writeObj(f, valueSerializer, buf, entryVal)
+				err := s.writeObj(ctx, valueSerializer, entryVal)
 				if err != nil {
 					return err
 				}
@@ -271,11 +272,13 @@ func (s mapSerializer) Write(f *Fory, buf *ByteBuffer, value reflect.Value) erro
 	return nil
 }
 
-func (s mapSerializer) writeObj(f *Fory, serializer Serializer, buf *ByteBuffer, obj reflect.Value) error {
-	return serializer.Write(f, buf, obj)
+func (s mapSerializer) writeObj(ctx *WriteContext, serializer Serializer, obj reflect.Value) error {
+	return serializer.Write(ctx, obj)
 }
 
-func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value reflect.Value) error {
+func (s mapSerializer) Read(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+	buf := ctx.Buffer()
+	refResolver := ctx.RefResolver()
 	if s.type_ == nil {
 		s.type_ = type_
 	}
@@ -301,8 +304,8 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 		}
 	}
 
-	f.refResolver.Reference(value)
-	size := int(buf.ReadUint8())
+	refResolver.Reference(value)
+	size := int(buf.ReadVarUint32())
 	var chunkHeader uint8
 	if size > 0 {
 		chunkHeader = buf.ReadUint8()
@@ -312,7 +315,7 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 	valueType := type_.Elem()
 	keySer := s.keySerializer
 	valSer := s.valueSerializer
-	resolver := f.typeResolver
+	typeResolver := ctx.TypeResolver()
 
 	for size > 0 {
 		for {
@@ -326,27 +329,27 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 					trackKeyRef := (chunkHeader & TRACKING_KEY_REF) != 0
 					if (chunkHeader & KEY_DECL_TYPE) != 0 {
 						if trackKeyRef {
-							refID, err := f.refResolver.TryPreserveRefId(buf)
+							refID, err := refResolver.TryPreserveRefId(buf)
 							if err != nil {
 								return fmt.Errorf("failed to preserve reference ID: %w", err)
 							}
 							if refID < int32(NotNullValueFlag) {
-								k = f.refResolver.GetCurrentReadObject()
+								k = refResolver.GetCurrentReadObject()
 							} else {
 								k = reflect.New(value.Type().Key()).Elem()
-								if err := s.readObj(f, buf, &k, keySer); err != nil {
+								if err := s.readObj(ctx, &k, keySer); err != nil {
 									return fmt.Errorf("failed to read map key object: %w", err)
 								}
-								f.refResolver.SetReadObject(refID, k)
+								refResolver.SetReadObject(refID, k)
 							}
 						} else {
 							k = reflect.New(keyType).Elem()
-							if err := s.readObj(f, buf, &k, keySer); err != nil {
+							if err := s.readObj(ctx, &k, keySer); err != nil {
 								return fmt.Errorf("failed to read map key object: %w", err)
 							}
 						}
 					} else {
-						if err := f.readReferencableBySerializer(buf, k, keySer); err != nil {
+						if err := ctx.readReferencableBySerializer(k, keySer); err != nil {
 							return fmt.Errorf("failed to deserialize key via serializer: %w", err)
 						}
 					}
@@ -357,22 +360,22 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 					trackValueRef := (chunkHeader & TRACKING_VALUE_REF) != 0
 					if (chunkHeader & VALUE_DECL_TYPE) != 0 {
 						if trackValueRef {
-							refID, err := f.refResolver.TryPreserveRefId(buf)
+							refID, err := refResolver.TryPreserveRefId(buf)
 							if err != nil {
 								return fmt.Errorf("failed to preserve reference ID: %w", err)
 							}
 							if refID < int32(NotNullValueFlag) {
-								v = f.refResolver.GetCurrentReadObject()
+								v = refResolver.GetCurrentReadObject()
 							} else {
 								v = reflect.New(value.Type().Elem()).Elem()
-								if err := s.readObj(f, buf, &v, valSer); err != nil {
+								if err := s.readObj(ctx, &v, valSer); err != nil {
 									return fmt.Errorf("failed to read map value object: %w", err)
 								}
-								f.refResolver.SetReadObject(refID, k)
+								refResolver.SetReadObject(refID, k)
 							}
 						}
 					} else {
-						if err := f.readReferencableBySerializer(buf, v, valSer); err != nil {
+						if err := ctx.readReferencableBySerializer(v, valSer); err != nil {
 							return fmt.Errorf("failed to deserialize map value via serializer: %w", err)
 						}
 
@@ -397,7 +400,7 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 		valDeclType := (chunkHeader & VALUE_DECL_TYPE) != 0
 		chunkSize := int(buf.ReadUint8())
 		if !keyDeclType {
-			ti, err := resolver.readTypeInfo(buf, value)
+			ti, err := typeResolver.readTypeInfo(buf, value)
 			if err != nil {
 				return err
 			}
@@ -405,7 +408,7 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 			keyType = ti.Type
 		}
 		if !valDeclType {
-			ti, err := resolver.readTypeInfo(buf, value)
+			ti, err := typeResolver.readTypeInfo(buf, value)
 			if err != nil {
 				return err
 			}
@@ -416,43 +419,43 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 		for i := 0; i < chunkSize; i++ {
 			var k, v reflect.Value
 			if trackKeyRef {
-				refID, err := f.refResolver.TryPreserveRefId(buf)
+				refID, err := refResolver.TryPreserveRefId(buf)
 				if err != nil {
 					return err
 				}
 				if refID < int32(NotNullValueFlag) {
-					k = f.refResolver.GetCurrentReadObject()
+					k = refResolver.GetCurrentReadObject()
 				} else {
 					k = reflect.New(value.Type().Key()).Elem()
-					if err := s.readObj(f, buf, &k, keySer); err != nil {
+					if err := s.readObj(ctx, &k, keySer); err != nil {
 						return err
 					}
-					f.refResolver.SetReadObject(refID, k)
+					refResolver.SetReadObject(refID, k)
 				}
 			} else {
 				k = reflect.New(keyType).Elem()
-				if err := s.readObj(f, buf, &k, keySer); err != nil {
+				if err := s.readObj(ctx, &k, keySer); err != nil {
 					return err
 				}
 			}
 
 			if trackValRef {
-				refID, err := f.refResolver.TryPreserveRefId(buf)
+				refID, err := refResolver.TryPreserveRefId(buf)
 				if err != nil {
 					return err
 				}
 				if refID < int32(NotNullValueFlag) {
-					v = f.refResolver.GetCurrentReadObject()
+					v = refResolver.GetCurrentReadObject()
 				} else {
 					v = reflect.New(value.Type().Elem()).Elem()
-					if err := s.readObj(f, buf, &v, valSer); err != nil {
+					if err := s.readObj(ctx, &v, valSer); err != nil {
 						return err
 					}
-					f.refResolver.SetReadObject(refID, v)
+					refResolver.SetReadObject(refID, v)
 				}
 			} else {
 				v = reflect.New(valueType).Elem()
-				if err := s.readObj(f, buf, &v, valSer); err != nil {
+				if err := s.readObj(ctx, &v, valSer); err != nil {
 					return err
 				}
 			}
@@ -476,12 +479,11 @@ func (s mapSerializer) Read(f *Fory, buf *ByteBuffer, type_ reflect.Type, value 
 }
 
 func (s mapSerializer) readObj(
-	f *Fory,
-	buf *ByteBuffer,
+	ctx *ReadContext,
 	v *reflect.Value,
 	serializer Serializer,
 ) error {
-	return serializer.Read(f, buf, v.Type(), *v)
+	return serializer.Read(ctx, v.Type(), *v)
 }
 
 func getActualType(v reflect.Value) reflect.Type {
@@ -491,7 +493,7 @@ func getActualType(v reflect.Value) reflect.Type {
 	return v.Type()
 }
 
-func getActualTypeInfo(v reflect.Value, resolver *typeResolver) (TypeInfo, error) {
+func getActualTypeInfo(v reflect.Value, resolver *TypeResolver) (TypeInfo, error) {
 	if v.Kind() == reflect.Interface && !v.IsNil() {
 		elem := v.Elem()
 		if !elem.IsValid() {
@@ -512,4 +514,638 @@ func UnwrapReflectValue(v reflect.Value) reflect.Value {
 func isValid(v reflect.Value) bool {
 	// Zero values are valid, so apply this change temporarily.
 	return v.IsValid()
+}
+
+// ============================================================================
+// Optimized map serializers for common types
+// ============================================================================
+
+// writeMapStringString writes map[string]string using chunk protocol
+func writeMapStringString(buf *ByteBuffer, m map[string]string) {
+	length := len(m)
+	buf.WriteVarUint32(uint32(length))
+	if length == 0 {
+		return
+	}
+
+	// Write chunks of entries
+	remaining := length
+	for remaining > 0 {
+		chunkSize := remaining
+		if chunkSize > MAX_CHUNK_SIZE {
+			chunkSize = MAX_CHUNK_SIZE
+		}
+
+		// Chunk header: -1 followed by header byte and size
+		buf.WriteInt16(-1)
+		// Header: KEY_DECL_TYPE | VALUE_DECL_TYPE (no refs for primitives)
+		buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+		buf.WriteUint8(uint8(chunkSize))
+
+		// Write chunk entries
+		count := 0
+		for k, v := range m {
+			writeString(buf, k)
+			writeString(buf, v)
+			count++
+			if count >= chunkSize {
+				break
+			}
+		}
+		remaining -= chunkSize
+	}
+}
+
+// readMapStringString reads map[string]string using chunk protocol
+func readMapStringString(buf *ByteBuffer) map[string]string {
+	size := int(buf.ReadVarUint32())
+	result := make(map[string]string, size)
+	if size == 0 {
+		return result
+	}
+
+	for size > 0 {
+		chunkHeader := buf.ReadUint8()
+		
+		// Handle null key/value cases
+		keyHasNull := (chunkHeader & KEY_HAS_NULL) != 0
+		valueHasNull := (chunkHeader & VALUE_HAS_NULL) != 0
+		
+		if keyHasNull || valueHasNull {
+			// Skip null entries (strings can't be null in Go)
+			size--
+			continue
+		}
+
+		// Read chunk size
+		chunkSize := int(buf.ReadUint8())
+		
+		// Read chunk entries
+		for i := 0; i < chunkSize && size > 0; i++ {
+			k := readString(buf)
+			v := readString(buf)
+			result[k] = v
+			size--
+		}
+	}
+	return result
+}
+
+// writeMapStringInt64 writes map[string]int64 using chunk protocol
+func writeMapStringInt64(buf *ByteBuffer, m map[string]int64) {
+	length := len(m)
+	buf.WriteVarUint32(uint32(length))
+	if length == 0 {
+		return
+	}
+
+	remaining := length
+	for remaining > 0 {
+		chunkSize := remaining
+		if chunkSize > MAX_CHUNK_SIZE {
+			chunkSize = MAX_CHUNK_SIZE
+		}
+
+		buf.WriteInt16(-1)
+		buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+		buf.WriteUint8(uint8(chunkSize))
+
+		count := 0
+		for k, v := range m {
+			writeString(buf, k)
+			buf.WriteVarint64(v)
+			count++
+			if count >= chunkSize {
+				break
+			}
+		}
+		remaining -= chunkSize
+	}
+}
+
+// readMapStringInt64 reads map[string]int64 using chunk protocol
+func readMapStringInt64(buf *ByteBuffer) map[string]int64 {
+	size := int(buf.ReadVarUint32())
+	result := make(map[string]int64, size)
+	if size == 0 {
+		return result
+	}
+
+	for size > 0 {
+		chunkHeader := buf.ReadUint8()
+		keyHasNull := (chunkHeader & KEY_HAS_NULL) != 0
+		valueHasNull := (chunkHeader & VALUE_HAS_NULL) != 0
+		
+		if keyHasNull || valueHasNull {
+			size--
+			continue
+		}
+
+		chunkSize := int(buf.ReadUint8())
+		for i := 0; i < chunkSize && size > 0; i++ {
+			k := readString(buf)
+			v := buf.ReadVarint64()
+			result[k] = v
+			size--
+		}
+	}
+	return result
+}
+
+// writeMapStringInt writes map[string]int using chunk protocol
+func writeMapStringInt(buf *ByteBuffer, m map[string]int) {
+	length := len(m)
+	buf.WriteVarUint32(uint32(length))
+	if length == 0 {
+		return
+	}
+
+	remaining := length
+	for remaining > 0 {
+		chunkSize := remaining
+		if chunkSize > MAX_CHUNK_SIZE {
+			chunkSize = MAX_CHUNK_SIZE
+		}
+
+		buf.WriteInt16(-1)
+		buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+		buf.WriteUint8(uint8(chunkSize))
+
+		count := 0
+		for k, v := range m {
+			writeString(buf, k)
+			buf.WriteVarint64(int64(v))
+			count++
+			if count >= chunkSize {
+				break
+			}
+		}
+		remaining -= chunkSize
+	}
+}
+
+// readMapStringInt reads map[string]int using chunk protocol
+func readMapStringInt(buf *ByteBuffer) map[string]int {
+	size := int(buf.ReadVarUint32())
+	result := make(map[string]int, size)
+	if size == 0 {
+		return result
+	}
+
+	for size > 0 {
+		chunkHeader := buf.ReadUint8()
+		keyHasNull := (chunkHeader & KEY_HAS_NULL) != 0
+		valueHasNull := (chunkHeader & VALUE_HAS_NULL) != 0
+		
+		if keyHasNull || valueHasNull {
+			size--
+			continue
+		}
+
+		chunkSize := int(buf.ReadUint8())
+		for i := 0; i < chunkSize && size > 0; i++ {
+			k := readString(buf)
+			v := buf.ReadVarint64()
+			result[k] = int(v)
+			size--
+		}
+	}
+	return result
+}
+
+// writeMapStringFloat64 writes map[string]float64 using chunk protocol
+func writeMapStringFloat64(buf *ByteBuffer, m map[string]float64) {
+	length := len(m)
+	buf.WriteVarUint32(uint32(length))
+	if length == 0 {
+		return
+	}
+
+	remaining := length
+	for remaining > 0 {
+		chunkSize := remaining
+		if chunkSize > MAX_CHUNK_SIZE {
+			chunkSize = MAX_CHUNK_SIZE
+		}
+
+		buf.WriteInt16(-1)
+		buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+		buf.WriteUint8(uint8(chunkSize))
+
+		count := 0
+		for k, v := range m {
+			writeString(buf, k)
+			buf.WriteFloat64(v)
+			count++
+			if count >= chunkSize {
+				break
+			}
+		}
+		remaining -= chunkSize
+	}
+}
+
+// readMapStringFloat64 reads map[string]float64 using chunk protocol
+func readMapStringFloat64(buf *ByteBuffer) map[string]float64 {
+	size := int(buf.ReadVarUint32())
+	result := make(map[string]float64, size)
+	if size == 0 {
+		return result
+	}
+
+	for size > 0 {
+		chunkHeader := buf.ReadUint8()
+		keyHasNull := (chunkHeader & KEY_HAS_NULL) != 0
+		valueHasNull := (chunkHeader & VALUE_HAS_NULL) != 0
+		
+		if keyHasNull || valueHasNull {
+			size--
+			continue
+		}
+
+		chunkSize := int(buf.ReadUint8())
+		for i := 0; i < chunkSize && size > 0; i++ {
+			k := readString(buf)
+			v := buf.ReadFloat64()
+			result[k] = v
+			size--
+		}
+	}
+	return result
+}
+
+// writeMapStringBool writes map[string]bool using chunk protocol
+func writeMapStringBool(buf *ByteBuffer, m map[string]bool) {
+	length := len(m)
+	buf.WriteVarUint32(uint32(length))
+	if length == 0 {
+		return
+	}
+
+	remaining := length
+	for remaining > 0 {
+		chunkSize := remaining
+		if chunkSize > MAX_CHUNK_SIZE {
+			chunkSize = MAX_CHUNK_SIZE
+		}
+
+		buf.WriteInt16(-1)
+		buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+		buf.WriteUint8(uint8(chunkSize))
+
+		count := 0
+		for k, v := range m {
+			writeString(buf, k)
+			buf.WriteBool(v)
+			count++
+			if count >= chunkSize {
+				break
+			}
+		}
+		remaining -= chunkSize
+	}
+}
+
+// readMapStringBool reads map[string]bool using chunk protocol
+func readMapStringBool(buf *ByteBuffer) map[string]bool {
+	size := int(buf.ReadVarUint32())
+	result := make(map[string]bool, size)
+	if size == 0 {
+		return result
+	}
+
+	for size > 0 {
+		chunkHeader := buf.ReadUint8()
+		keyHasNull := (chunkHeader & KEY_HAS_NULL) != 0
+		valueHasNull := (chunkHeader & VALUE_HAS_NULL) != 0
+		
+		if keyHasNull || valueHasNull {
+			size--
+			continue
+		}
+
+		chunkSize := int(buf.ReadUint8())
+		for i := 0; i < chunkSize && size > 0; i++ {
+			k := readString(buf)
+			v := buf.ReadBool()
+			result[k] = v
+			size--
+		}
+	}
+	return result
+}
+
+// writeMapInt32Int32 writes map[int32]int32 using chunk protocol
+func writeMapInt32Int32(buf *ByteBuffer, m map[int32]int32) {
+	length := len(m)
+	buf.WriteVarUint32(uint32(length))
+	if length == 0 {
+		return
+	}
+
+	remaining := length
+	for remaining > 0 {
+		chunkSize := remaining
+		if chunkSize > MAX_CHUNK_SIZE {
+			chunkSize = MAX_CHUNK_SIZE
+		}
+
+		buf.WriteInt16(-1)
+		buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+		buf.WriteUint8(uint8(chunkSize))
+
+		count := 0
+		for k, v := range m {
+			buf.WriteVarint32(k)
+			buf.WriteVarint32(v)
+			count++
+			if count >= chunkSize {
+				break
+			}
+		}
+		remaining -= chunkSize
+	}
+}
+
+// readMapInt32Int32 reads map[int32]int32 using chunk protocol
+func readMapInt32Int32(buf *ByteBuffer) map[int32]int32 {
+	size := int(buf.ReadVarUint32())
+	result := make(map[int32]int32, size)
+	if size == 0 {
+		return result
+	}
+
+	for size > 0 {
+		chunkHeader := buf.ReadUint8()
+		keyHasNull := (chunkHeader & KEY_HAS_NULL) != 0
+		valueHasNull := (chunkHeader & VALUE_HAS_NULL) != 0
+		
+		if keyHasNull || valueHasNull {
+			size--
+			continue
+		}
+
+		chunkSize := int(buf.ReadUint8())
+		for i := 0; i < chunkSize && size > 0; i++ {
+			k := buf.ReadVarint32()
+			v := buf.ReadVarint32()
+			result[k] = v
+			size--
+		}
+	}
+	return result
+}
+
+// writeMapInt64Int64 writes map[int64]int64 using chunk protocol
+func writeMapInt64Int64(buf *ByteBuffer, m map[int64]int64) {
+	length := len(m)
+	buf.WriteVarUint32(uint32(length))
+	if length == 0 {
+		return
+	}
+
+	remaining := length
+	for remaining > 0 {
+		chunkSize := remaining
+		if chunkSize > MAX_CHUNK_SIZE {
+			chunkSize = MAX_CHUNK_SIZE
+		}
+
+		buf.WriteInt16(-1)
+		buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+		buf.WriteUint8(uint8(chunkSize))
+
+		count := 0
+		for k, v := range m {
+			buf.WriteVarint64(k)
+			buf.WriteVarint64(v)
+			count++
+			if count >= chunkSize {
+				break
+			}
+		}
+		remaining -= chunkSize
+	}
+}
+
+// readMapInt64Int64 reads map[int64]int64 using chunk protocol
+func readMapInt64Int64(buf *ByteBuffer) map[int64]int64 {
+	size := int(buf.ReadVarUint32())
+	result := make(map[int64]int64, size)
+	if size == 0 {
+		return result
+	}
+
+	for size > 0 {
+		chunkHeader := buf.ReadUint8()
+		keyHasNull := (chunkHeader & KEY_HAS_NULL) != 0
+		valueHasNull := (chunkHeader & VALUE_HAS_NULL) != 0
+		
+		if keyHasNull || valueHasNull {
+			size--
+			continue
+		}
+
+		chunkSize := int(buf.ReadUint8())
+		for i := 0; i < chunkSize && size > 0; i++ {
+			k := buf.ReadVarint64()
+			v := buf.ReadVarint64()
+			result[k] = v
+			size--
+		}
+	}
+	return result
+}
+
+// writeMapIntInt writes map[int]int using chunk protocol
+func writeMapIntInt(buf *ByteBuffer, m map[int]int) {
+	length := len(m)
+	buf.WriteVarUint32(uint32(length))
+	if length == 0 {
+		return
+	}
+
+	remaining := length
+	for remaining > 0 {
+		chunkSize := remaining
+		if chunkSize > MAX_CHUNK_SIZE {
+			chunkSize = MAX_CHUNK_SIZE
+		}
+
+		buf.WriteInt16(-1)
+		buf.WriteUint8(KEY_DECL_TYPE | VALUE_DECL_TYPE)
+		buf.WriteUint8(uint8(chunkSize))
+
+		count := 0
+		for k, v := range m {
+			buf.WriteVarint64(int64(k))
+			buf.WriteVarint64(int64(v))
+			count++
+			if count >= chunkSize {
+				break
+			}
+		}
+		remaining -= chunkSize
+	}
+}
+
+// readMapIntInt reads map[int]int using chunk protocol
+func readMapIntInt(buf *ByteBuffer) map[int]int {
+	size := int(buf.ReadVarUint32())
+	result := make(map[int]int, size)
+	if size == 0 {
+		return result
+	}
+
+	for size > 0 {
+		chunkHeader := buf.ReadUint8()
+		keyHasNull := (chunkHeader & KEY_HAS_NULL) != 0
+		valueHasNull := (chunkHeader & VALUE_HAS_NULL) != 0
+		
+		if keyHasNull || valueHasNull {
+			size--
+			continue
+		}
+
+		chunkSize := int(buf.ReadUint8())
+		for i := 0; i < chunkSize && size > 0; i++ {
+			k := buf.ReadVarint64()
+			v := buf.ReadVarint64()
+			result[int(k)] = int(v)
+			size--
+		}
+	}
+	return result
+}
+
+// ============================================================================
+// Dedicated map serializers
+// ============================================================================
+
+type stringStringMapSerializer struct{}
+
+func (s stringStringMapSerializer) TypeId() TypeId       { return MAP }
+func (s stringStringMapSerializer) NeedToWriteRef() bool { return true }
+
+func (s stringStringMapSerializer) Write(ctx *WriteContext, value reflect.Value) error {
+	writeMapStringString(ctx.buffer, value.Interface().(map[string]string))
+	return nil
+}
+
+func (s stringStringMapSerializer) Read(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+	result := readMapStringString(ctx.buffer)
+	value.Set(reflect.ValueOf(result))
+	return nil
+}
+
+type stringInt64MapSerializer struct{}
+
+func (s stringInt64MapSerializer) TypeId() TypeId       { return MAP }
+func (s stringInt64MapSerializer) NeedToWriteRef() bool { return true }
+
+func (s stringInt64MapSerializer) Write(ctx *WriteContext, value reflect.Value) error {
+	writeMapStringInt64(ctx.buffer, value.Interface().(map[string]int64))
+	return nil
+}
+
+func (s stringInt64MapSerializer) Read(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+	result := readMapStringInt64(ctx.buffer)
+	value.Set(reflect.ValueOf(result))
+	return nil
+}
+
+type stringIntMapSerializer struct{}
+
+func (s stringIntMapSerializer) TypeId() TypeId       { return MAP }
+func (s stringIntMapSerializer) NeedToWriteRef() bool { return true }
+
+func (s stringIntMapSerializer) Write(ctx *WriteContext, value reflect.Value) error {
+	writeMapStringInt(ctx.buffer, value.Interface().(map[string]int))
+	return nil
+}
+
+func (s stringIntMapSerializer) Read(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+	result := readMapStringInt(ctx.buffer)
+	value.Set(reflect.ValueOf(result))
+	return nil
+}
+
+type stringFloat64MapSerializer struct{}
+
+func (s stringFloat64MapSerializer) TypeId() TypeId       { return MAP }
+func (s stringFloat64MapSerializer) NeedToWriteRef() bool { return true }
+
+func (s stringFloat64MapSerializer) Write(ctx *WriteContext, value reflect.Value) error {
+	writeMapStringFloat64(ctx.buffer, value.Interface().(map[string]float64))
+	return nil
+}
+
+func (s stringFloat64MapSerializer) Read(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+	result := readMapStringFloat64(ctx.buffer)
+	value.Set(reflect.ValueOf(result))
+	return nil
+}
+
+type stringBoolMapSerializer struct{}
+
+func (s stringBoolMapSerializer) TypeId() TypeId       { return MAP }
+func (s stringBoolMapSerializer) NeedToWriteRef() bool { return true }
+
+func (s stringBoolMapSerializer) Write(ctx *WriteContext, value reflect.Value) error {
+	writeMapStringBool(ctx.buffer, value.Interface().(map[string]bool))
+	return nil
+}
+
+func (s stringBoolMapSerializer) Read(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+	result := readMapStringBool(ctx.buffer)
+	value.Set(reflect.ValueOf(result))
+	return nil
+}
+
+type int32Int32MapSerializer struct{}
+
+func (s int32Int32MapSerializer) TypeId() TypeId       { return MAP }
+func (s int32Int32MapSerializer) NeedToWriteRef() bool { return true }
+
+func (s int32Int32MapSerializer) Write(ctx *WriteContext, value reflect.Value) error {
+	writeMapInt32Int32(ctx.buffer, value.Interface().(map[int32]int32))
+	return nil
+}
+
+func (s int32Int32MapSerializer) Read(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+	result := readMapInt32Int32(ctx.buffer)
+	value.Set(reflect.ValueOf(result))
+	return nil
+}
+
+type int64Int64MapSerializer struct{}
+
+func (s int64Int64MapSerializer) TypeId() TypeId       { return MAP }
+func (s int64Int64MapSerializer) NeedToWriteRef() bool { return true }
+
+func (s int64Int64MapSerializer) Write(ctx *WriteContext, value reflect.Value) error {
+	writeMapInt64Int64(ctx.buffer, value.Interface().(map[int64]int64))
+	return nil
+}
+
+func (s int64Int64MapSerializer) Read(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+	result := readMapInt64Int64(ctx.buffer)
+	value.Set(reflect.ValueOf(result))
+	return nil
+}
+
+type intIntMapSerializer struct{}
+
+func (s intIntMapSerializer) TypeId() TypeId       { return MAP }
+func (s intIntMapSerializer) NeedToWriteRef() bool { return true }
+
+func (s intIntMapSerializer) Write(ctx *WriteContext, value reflect.Value) error {
+	writeMapIntInt(ctx.buffer, value.Interface().(map[int]int))
+	return nil
+}
+
+func (s intIntMapSerializer) Read(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+	result := readMapIntInt(ctx.buffer)
+	value.Set(reflect.ValueOf(result))
+	return nil
 }

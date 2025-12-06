@@ -76,7 +76,7 @@ bazel build //cpp/fory/encoder:fory_encoder
 ```bash
 cd go/fory
 # run test
-go test -v
+go test -v ./...
 # run xlang test
 go test -v fory_xlang_test.go
 ```
