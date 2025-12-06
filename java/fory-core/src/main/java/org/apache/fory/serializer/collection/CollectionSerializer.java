@@ -61,7 +61,11 @@ public class CollectionSerializer<T extends Collection> extends CollectionLikeSe
     if (needToCopyRef) {
       fory.reference(originCollection, newCollection);
     }
-    copyElements(originCollection, newCollection);
+    onCollectionCopy(originCollection, newCollection);
     return (T) newCollection;
+  }
+
+  protected void onCollectionCopy(Collection originCollection, Collection newCollection) {
+    copyElements(originCollection, newCollection);
   }
 }
