@@ -295,8 +295,16 @@ public class CollectionSerializers {
     }
 
     @Override
-    protected void onCollectionCopy(Collection originCollection, Collection newCollection) {
-      copyElementsAddAll(originCollection, newCollection);
+    public CopyOnWriteArrayList copy(CopyOnWriteArrayList originCollection) {
+      Preconditions.checkArgument(supportCodegenHook);
+      CopyOnWriteArrayList newCollection = new CopyOnWriteArrayList();
+      if (needToCopyRef) {
+        fory.reference(originCollection, newCollection);
+      }
+      List copyList = new ArrayList(originCollection.size());
+      copyElements(originCollection, copyList);
+      newCollection.addAll(copyList);
+      return newCollection;
     }
   }
 
@@ -321,8 +329,16 @@ public class CollectionSerializers {
     }
 
     @Override
-    protected void onCollectionCopy(Collection originCollection, Collection newCollection) {
-      copyElementsAddAll(originCollection, newCollection);
+    public CopyOnWriteArraySet copy(CopyOnWriteArraySet originCollection) {
+      Preconditions.checkArgument(supportCodegenHook);
+      CopyOnWriteArraySet newCollection = new CopyOnWriteArraySet();
+      if (needToCopyRef) {
+        fory.reference(originCollection, newCollection);
+      }
+      List copyList = new ArrayList(originCollection.size());
+      copyElements(originCollection, copyList);
+      newCollection.addAll(copyList);
+      return newCollection;
     }
   }
 
