@@ -296,7 +296,6 @@ public class CollectionSerializers {
 
     @Override
     public CopyOnWriteArrayList copy(CopyOnWriteArrayList originCollection) {
-      Preconditions.checkArgument(supportCodegenHook);
       CopyOnWriteArrayList newCollection = new CopyOnWriteArrayList();
       if (needToCopyRef) {
         fory.reference(originCollection, newCollection);
@@ -330,7 +329,6 @@ public class CollectionSerializers {
 
     @Override
     public CopyOnWriteArraySet copy(CopyOnWriteArraySet originCollection) {
-      Preconditions.checkArgument(supportCodegenHook);
       CopyOnWriteArraySet newCollection = new CopyOnWriteArraySet();
       if (needToCopyRef) {
         fory.reference(originCollection, newCollection);
