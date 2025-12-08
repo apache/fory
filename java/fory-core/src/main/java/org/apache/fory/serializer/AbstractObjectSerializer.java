@@ -1000,9 +1000,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       nullable = d.isNullable();
       if (fory.trackingRef()) {
         trackingRef =
-            foryField != null
-                ? foryField.trackingRef()
-                : fory.getClassResolver().needToWriteRef(typeRef);
+            foryField != null ? foryField.ref() : fory.getClassResolver().needToWriteRef(typeRef);
       }
     }
 

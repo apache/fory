@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import org.apache.fory.Fory;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.memory.MemoryBuffer;
@@ -91,11 +92,27 @@ public class ClassDefEncoder {
   public static List<FieldInfo> buildFieldsInfo(TypeResolver resolver, List<Field> fields) {
     List<FieldInfo> fieldInfos = new ArrayList<>();
     for (Field field : fields) {
-      FieldInfo fieldInfo =
-          new FieldInfo(
-              field.getDeclaringClass().getName(),
-              field.getName(),
-              ClassDef.buildFieldType(resolver, field));
+      // Check for @ForyField annotation to extract tag ID
+      ForyField foryField = field.getAnnotation(ForyField.class);
+      FieldType fieldType = ClassDef.buildFieldType(resolver, field);
+
+      FieldInfo fieldInfo;
+      if (foryField != null) {
+        int tagId = foryField.id();
+        if (tagId >= 0) {
+          // Create FieldInfo with tag ID for optimized serialization
+          fieldInfo =
+              new FieldInfo(
+                  field.getDeclaringClass().getName(), field.getName(), fieldType, (short) tagId);
+        } else {
+          // tagId == -1 means opt-out, use field name
+          fieldInfo =
+              new FieldInfo(field.getDeclaringClass().getName(), field.getName(), fieldType);
+        }
+      } else {
+        // No annotation, use field name
+        fieldInfo = new FieldInfo(field.getDeclaringClass().getName(), field.getName(), fieldType);
+      }
       fieldInfos.add(fieldInfo);
     }
     return fieldInfos;
