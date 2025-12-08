@@ -118,23 +118,37 @@ class ClassDefDecoder {
       int header = buffer.readByte() & 0xff;
       //  `3 bits size + 2 bits field name encoding + polymorphism flag + nullability flag + ref
       // tracking flag`
-      // TODO(chaokunyang) read type tag
       int encodingFlags = (header >>> 3) & 0b11;
       boolean useTagID = encodingFlags == 3;
-      Preconditions.checkArgument(
-          !useTagID, "Type tag not supported currently, parsed fieldInfos %s", fieldInfos);
       int size = header >>> 5;
       if (size == 7) {
         size += buffer.readVarUint32Small7();
       }
       size += 1;
-      Encoding encoding = fieldNameEncodings[encodingFlags];
-      String fieldName = Encoders.FIELD_NAME_DECODER.decode(buffer.readBytes(size), encoding);
+
+      // Read field name or tag ID
+      String fieldName;
+      short tagId = -1;
+      if (useTagID) {
+        // When useTagID is true, size contains the tag ID
+        tagId = (short) (size - 1);
+        // Use placeholder field name since tag ID is used for identification
+        fieldName = "$tag" + tagId;
+      } else {
+        Encoding encoding = fieldNameEncodings[encodingFlags];
+        fieldName = Encoders.FIELD_NAME_DECODER.decode(buffer.readBytes(size), encoding);
+      }
+
       boolean isMonomorphic = (header & 0b100) != 0;
       boolean trackingRef = (header & 0b001) != 0;
       int typeId = buffer.readVarUint32Small14();
       FieldType fieldType = FieldType.read(buffer, resolver, isMonomorphic, trackingRef, typeId);
-      fieldInfos.add(new ClassDef.FieldInfo(className, fieldName, fieldType));
+
+      if (useTagID) {
+        fieldInfos.add(new ClassDef.FieldInfo(className, fieldName, fieldType, tagId));
+      } else {
+        fieldInfos.add(new ClassDef.FieldInfo(className, fieldName, fieldType));
+      }
     }
     return fieldInfos;
   }

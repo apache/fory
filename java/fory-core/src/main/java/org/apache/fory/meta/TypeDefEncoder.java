@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 import org.apache.fory.Fory;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.ClassDef.FieldInfo;
 import org.apache.fory.meta.ClassDef.FieldType;
@@ -81,9 +82,18 @@ class TypeDefEncoder {
   static List<FieldInfo> buildFieldsInfo(TypeResolver resolver, Class<?> type, List<Field> fields) {
     return fields.stream()
         .map(
-            field ->
-                new FieldInfo(
-                    type.getName(), field.getName(), ClassDef.buildFieldType(resolver, field)))
+            field -> {
+              ForyField foryField = field.getAnnotation(ForyField.class);
+              FieldType fieldType = ClassDef.buildFieldType(resolver, field);
+              if (foryField != null) {
+                int tagId = foryField.id();
+                if (tagId >= 0) {
+                  return new FieldInfo(type.getName(), field.getName(), fieldType, (short) tagId);
+                }
+                // tagId == -1 means use field name, fall through to create regular FieldInfo
+              }
+              return new FieldInfo(type.getName(), field.getName(), fieldType);
+            })
         .collect(Collectors.toList());
   }
 

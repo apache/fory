@@ -35,10 +35,10 @@ public class ForyAnnotationTest extends ForyTestBase {
 
   @Data
   public static class BeanM {
-    @ForyField(nullable = false)
+    @ForyField(id = 0, nullable = false)
     public Long f1;
 
-    @ForyField(nullable = false)
+    @ForyField(id = 1, nullable = false)
     private Long f2;
 
     String s = "str";
@@ -64,58 +64,61 @@ public class ForyAnnotationTest extends ForyTestBase {
 
     byte byte1;
 
-    @ForyField int i3 = 10;
+    @ForyField(id = 2)
+    int i3 = 10;
 
-    @ForyField List<Integer> integerList = Lists.newArrayList(1);
+    @ForyField(id = 3)
+    List<Integer> integerList = Lists.newArrayList(1);
 
-    @ForyField String s1 = "str";
+    @ForyField(id = 4)
+    String s1 = "str";
 
-    @ForyField(nullable = false)
+    @ForyField(id = 5, nullable = false)
     Short shortValue1 = Short.valueOf((short) 2);
 
-    @ForyField(nullable = false)
+    @ForyField(id = 6, nullable = false)
     Byte byteValue1 = Byte.valueOf((byte) 3);
 
-    @ForyField(nullable = false)
+    @ForyField(id = 7, nullable = false)
     Long longValue1 = Long.valueOf(4L);
 
-    @ForyField(nullable = false)
+    @ForyField(id = 8, nullable = false)
     Boolean booleanValue1 = Boolean.TRUE;
 
-    @ForyField(nullable = false)
+    @ForyField(id = 9, nullable = false)
     Float floatValue1 = Float.valueOf(5.0f);
 
-    @ForyField(nullable = false)
+    @ForyField(id = 10, nullable = false)
     Double doubleValue1 = Double.valueOf(6.0);
 
-    @ForyField(nullable = false)
+    @ForyField(id = 11, nullable = false)
     Character character1 = Character.valueOf('c');
 
-    @ForyField(nullable = true)
+    @ForyField(id = 12, nullable = true)
     List<Integer> integerList1 = Lists.newArrayList(1);
 
-    @ForyField(nullable = true)
+    @ForyField(id = 13, nullable = true)
     String s2 = "str";
 
-    @ForyField(nullable = true)
+    @ForyField(id = 14, nullable = true)
     Short shortValue2 = Short.valueOf((short) 2);
 
-    @ForyField(nullable = true)
+    @ForyField(id = 15, nullable = true)
     Byte byteValue2 = Byte.valueOf((byte) 3);
 
-    @ForyField(nullable = true)
+    @ForyField(id = 16, nullable = true)
     Long longValue2 = Long.valueOf(4L);
 
-    @ForyField(nullable = true)
+    @ForyField(id = 17, nullable = true)
     Boolean booleanValue2 = Boolean.TRUE;
 
-    @ForyField(nullable = true)
+    @ForyField(id = 18, nullable = true)
     Float floatValue2 = Float.valueOf(5.0f);
 
-    @ForyField(nullable = true)
+    @ForyField(id = 19, nullable = true)
     Double doubleValue2 = Double.valueOf(6.0);
 
-    @ForyField(nullable = true)
+    @ForyField(id = 20, nullable = true)
     Character character2 = Character.valueOf('c');
 
     public BeanM() {
@@ -133,7 +136,8 @@ public class ForyAnnotationTest extends ForyTestBase {
   @Data
   public static class BeanM1 {
 
-    @ForyField private BeanN beanN = new BeanN();
+    @ForyField(id = 0)
+    private BeanN beanN = new BeanN();
   }
 
   @Test(dataProvider = "basicMultiConfigFory")

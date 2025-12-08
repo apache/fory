@@ -42,6 +42,7 @@ import java.util.Objects;
 import java.util.SortedMap;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.builder.MetaSharedCodecBuilder;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.config.CompatibleMode;
@@ -349,17 +350,37 @@ public class ClassDef implements Serializable {
       SortedMap<Member, Descriptor> allDescriptorsMap =
           resolver.getFory().getClassResolver().getAllDescriptorsMap(cls, true);
       Map<String, Descriptor> descriptorsMap = new HashMap<>();
+      Map<Short, Descriptor> tagToDescriptorMap = new HashMap<>();
+
+      // Build maps for both name-based and tag-based lookups
       for (Map.Entry<Member, Descriptor> e : allDescriptorsMap.entrySet()) {
-        if (descriptorsMap.put(
-                e.getKey().getDeclaringClass().getName() + "." + e.getKey().getName(), e.getValue())
-            != null) {
+        String fullName = e.getKey().getDeclaringClass().getName() + "." + e.getKey().getName();
+        Descriptor desc = e.getValue();
+        if (descriptorsMap.put(fullName, desc) != null) {
           throw new IllegalStateException("Duplicate key");
         }
+
+        // If the field has @ForyField annotation with tag ID, index by tag ID
+        if (desc.getForyField() != null) {
+          int tagId = desc.getForyField().id();
+          if (tagId >= 0) {
+            tagToDescriptorMap.put((short) tagId, desc);
+          }
+        }
       }
+
       descriptors = new ArrayList<>(fieldsInfo.size());
       for (FieldInfo fieldInfo : fieldsInfo) {
-        Descriptor descriptor =
-            descriptorsMap.get(fieldInfo.getDefinedClass() + "." + fieldInfo.getFieldName());
+        Descriptor descriptor;
+
+        // Try to match by tag ID first if the FieldInfo has a tag
+        if (fieldInfo.hasTag()) {
+          descriptor = tagToDescriptorMap.get(fieldInfo.getTag());
+        } else {
+          descriptor =
+              descriptorsMap.get(fieldInfo.getDefinedClass() + "." + fieldInfo.getFieldName());
+        }
+
         Descriptor newDesc = fieldInfo.toDescriptor(resolver, descriptor);
         Class<?> rawType = newDesc.getRawType();
         FieldType fieldType = fieldInfo.getFieldType();
@@ -422,10 +443,18 @@ public class ClassDef implements Serializable {
 
     private final FieldType fieldType;
 
+    /** Tag ID for schema evolution, -1 means no tag (use field name). */
+    private final short tag;
+
     FieldInfo(String definedClass, String fieldName, FieldType fieldType) {
+      this(definedClass, fieldName, fieldType, (short) -1);
+    }
+
+    FieldInfo(String definedClass, String fieldName, FieldType fieldType, short tag) {
       this.definedClass = definedClass;
       this.fieldName = fieldName;
       this.fieldType = fieldType;
+      this.tag = tag;
     }
 
     /** Returns classname of current field defined. */
@@ -440,12 +469,12 @@ public class ClassDef implements Serializable {
 
     /** Returns whether field is annotated by an unsigned int id. */
     public boolean hasTag() {
-      return false;
+      return tag >= 0;
     }
 
     /** Returns annotated tag id for the field. */
     public short getTag() {
-      return -1;
+      return tag;
     }
 
     /** Returns type of current field. */
@@ -483,14 +512,15 @@ public class ClassDef implements Serializable {
         return false;
       }
       FieldInfo fieldInfo = (FieldInfo) o;
-      return Objects.equals(definedClass, fieldInfo.definedClass)
+      return tag == fieldInfo.tag
+          && Objects.equals(definedClass, fieldInfo.definedClass)
           && Objects.equals(fieldName, fieldInfo.fieldName)
           && Objects.equals(fieldType, fieldInfo.fieldType);
     }
 
     @Override
     public int hashCode() {
-      return Objects.hash(definedClass, fieldName, fieldType);
+      return Objects.hash(definedClass, fieldName, fieldType, tag);
     }
 
     @Override
@@ -502,6 +532,7 @@ public class ClassDef implements Serializable {
           + ", fieldName='"
           + fieldName
           + '\''
+          + (tag >= 0 ? ", tag=" + tag : "")
           + ", fieldType="
           + fieldType
           + '}';
@@ -1089,11 +1120,12 @@ public class ClassDef implements Serializable {
   static FieldType buildFieldType(TypeResolver resolver, Field field) {
     Preconditions.checkNotNull(field);
     GenericType genericType = resolver.buildGenericType(field.getGenericType());
-    return buildFieldType(resolver, genericType);
+    return buildFieldType(resolver, field, genericType);
   }
 
   /** Build field type from generics, nested generics will be extracted too. */
-  private static FieldType buildFieldType(TypeResolver resolver, GenericType genericType) {
+  private static FieldType buildFieldType(
+      TypeResolver resolver, Field field, GenericType genericType) {
     Preconditions.checkNotNull(genericType);
     Class<?> rawType = genericType.getCls();
     boolean isXlang = resolver.getFory().isCrossLanguage();
@@ -1108,8 +1140,17 @@ public class ClassDef implements Serializable {
     }
     boolean isMonomorphic = genericType.isMonomorphic();
     boolean trackingRef = genericType.trackingRef(resolver);
-    // TODO support @Nullable/ForyField annotation
     boolean nullable = !genericType.getCls().isPrimitive();
+
+    // Apply @ForyField annotation if present
+    if (field != null) {
+      ForyField foryField = field.getAnnotation(ForyField.class);
+      if (foryField != null) {
+        nullable = foryField.nullable();
+        trackingRef = foryField.ref();
+      }
+    }
+
     if (COLLECTION_TYPE.isSupertypeOf(genericType.getTypeRef())) {
       return new CollectionFieldType(
           xtypeId,
@@ -1118,6 +1159,7 @@ public class ClassDef implements Serializable {
           trackingRef,
           buildFieldType(
               resolver,
+              null, // nested fields don't have Field reference
               genericType.getTypeParameter0() == null
                   ? GenericType.build(Object.class)
                   : genericType.getTypeParameter0()));
@@ -1129,11 +1171,13 @@ public class ClassDef implements Serializable {
           trackingRef,
           buildFieldType(
               resolver,
+              null, // nested fields don't have Field reference
               genericType.getTypeParameter0() == null
                   ? GenericType.build(Object.class)
                   : genericType.getTypeParameter0()),
           buildFieldType(
               resolver,
+              null, // nested fields don't have Field reference
               genericType.getTypeParameter1() == null
                   ? GenericType.build(Object.class)
                   : genericType.getTypeParameter1()));
@@ -1160,7 +1204,7 @@ public class ClassDef implements Serializable {
                 isMonomorphic,
                 nullable,
                 trackingRef,
-                buildFieldType(resolver, GenericType.build(elemType)));
+                buildFieldType(resolver, null, GenericType.build(elemType)));
           }
           Tuple2<Class<?>, Integer> info = TypeUtils.getArrayComponentInfo(rawType);
           return new ArrayFieldType(
@@ -1168,7 +1212,7 @@ public class ClassDef implements Serializable {
               isMonomorphic,
               nullable,
               trackingRef,
-              buildFieldType(resolver, GenericType.build(info.f0)),
+              buildFieldType(resolver, null, GenericType.build(info.f0)),
               info.f1);
         }
         return new ObjectFieldType(xtypeId, isMonomorphic, nullable, trackingRef);

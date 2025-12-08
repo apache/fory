@@ -28,9 +28,31 @@ import java.lang.annotation.Target;
 @Target({ElementType.FIELD, ElementType.METHOD})
 public @interface ForyField {
 
-  /** Whether field is nullable, default false. */
+  /**
+   * Field tag ID for schema evolution mode (REQUIRED).
+   *
+   * <ul>
+   *   <li>When >= 0: Uses this numeric ID instead of field name string for compact encoding
+   *   <li>When -1: Explicitly opt-out of tag ID, use field name with meta string encoding
+   * </ul>
+   *
+   * <p>Must be unique within the class (except -1) and stable across versions.
+   */
+  int id();
+
+  /**
+   * Whether this field can be null. When set to false (default), Fory skips writing the null flag
+   * (saves 1 byte). When set to true, Fory writes null flag for nullable fields. Default: false
+   * (field is non-nullable, aligned with xlang protocol defaults)
+   */
   boolean nullable() default false;
 
-  /** Whether field need trackingRef, default false. */
-  boolean trackingRef() default false;
+  /**
+   * Whether to track references for this field. When set to false (default): - Avoids adding the
+   * object to IdentityMap (saves hash map overhead) - Skips writing ref tracking flag (saves 1 byte
+   * when combined with nullable=false) When set to true, enables reference tracking for
+   * shared/circular references. Default: false (no reference tracking, aligned with xlang protocol
+   * defaults)
+   */
+  boolean ref() default false;
 }

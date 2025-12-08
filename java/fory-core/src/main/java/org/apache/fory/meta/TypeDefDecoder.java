@@ -118,15 +118,20 @@ class TypeDefDecoder {
       boolean trackingRef = (header & 0b1) != 0;
       int typeId = buffer.readVarUint32Small14();
       FieldType fieldType = FieldType.xread(buffer, resolver, typeId, nullable, trackingRef);
-      // read field name
+
+      // read field name or tag ID
       if (useTagID) {
-        throw new UnsupportedOperationException(
-            "Type tag not supported currently, parsed fieldInfos %s " + fieldInfos);
+        // When useTagID is true, fieldNameSize actually contains the tag ID
+        short tagId = (short) (fieldNameSize - 1);
+        // Use a placeholder field name since tag ID is used for identification
+        String fieldName = "$tag" + tagId; // TODO we could use id as String as field name
+        fieldInfos.add(new ClassDef.FieldInfo(className, fieldName, fieldType, tagId));
+      } else {
+        Encoding encoding = fieldNameEncodings[encodingFlags];
+        String fieldName =
+            Encoders.FIELD_NAME_DECODER.decode(buffer.readBytes(fieldNameSize), encoding);
+        fieldInfos.add(new ClassDef.FieldInfo(className, fieldName, fieldType));
       }
-      Encoding encoding = fieldNameEncodings[encodingFlags];
-      String fieldName =
-          Encoders.FIELD_NAME_DECODER.decode(buffer.readBytes(fieldNameSize), encoding);
-      fieldInfos.add(new ClassDef.FieldInfo(className, fieldName, fieldType));
     }
     return fieldInfos;
   }
