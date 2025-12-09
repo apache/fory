@@ -1,10 +1,10 @@
-java @chaokunyang
-scala @chaokunyang
-go @chaokunyang
-integration_tests @chaokunyang
-python @chaokunyang
-cpp @chaokunyang @PragmaTwice
-rust @theweipeng @chaokunyang
-javascript @theweipeng
-docs @chaokunyang @theweipeng @PragmaTwice
-bazel @chaokunyang
+java @chaokunyang @pandalee99
+scala @chaokunyang @pandalee99
+go @chaokunyang @pandalee99
+integration_tests @chaokunyang @pandalee99
+python @chaokunyang @pandalee99
+cpp @chaokunyang @PragmaTwice @pandalee99
+rust @theweipeng @chaokunyang @pandalee99
+javascript @theweipeng @pandalee99
+docs @chaokunyang @theweipeng @PragmaTwice @pandalee99
+bazel @chaokunyang @pandalee99
