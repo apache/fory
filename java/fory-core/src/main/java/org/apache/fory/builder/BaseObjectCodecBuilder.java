@@ -404,8 +404,15 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Expression fieldValue, Expression buffer, Descriptor descriptor) {
     TypeRef<?> typeRef = descriptor.getTypeRef();
     boolean nullable = descriptor.isNullable();
+    boolean explicitRefTracking = descriptor.isTrackingRef();
 
-    if (needWriteRef(typeRef)) {
+    // Ref tracking logic:
+    // - If @ForyField(ref=true): explicitly enable ref tracking
+    // - Otherwise (no annotation OR ref=false/default): use type-based decision
+    // This makes @ForyField backward compatible - only ref=true changes behavior
+    boolean useRefTracking = explicitRefTracking || needWriteRef(typeRef);
+
+    if (useRefTracking) {
       return new If(
           not(writeRefOrNull(buffer, fieldValue)),
           serializeForNotNullForField(fieldValue, buffer, typeRef, null, false));
@@ -1767,8 +1774,14 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Expression buffer, Descriptor descriptor, Function<Expression, Expression> callback) {
     TypeRef<?> typeRef = descriptor.getTypeRef();
     boolean nullable = descriptor.isNullable();
+    boolean explicitRefTracking = descriptor.isTrackingRef();
 
-    if (needWriteRef(typeRef)) {
+    // Ref tracking logic (same as serializeField):
+    // - If @ForyField(ref=true): explicitly enable ref tracking
+    // - Otherwise (no annotation OR ref=false/default): use type-based decision
+    boolean useRefTracking = explicitRefTracking || needWriteRef(typeRef);
+
+    if (useRefTracking) {
       return readRef(buffer, callback, () -> deserializeForNotNullForField(buffer, typeRef, null));
     } else {
       if (!nullable) {

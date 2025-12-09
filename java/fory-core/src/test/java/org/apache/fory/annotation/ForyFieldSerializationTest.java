@@ -88,6 +88,51 @@ public class ForyFieldSerializationTest extends ForyTestBase {
     public int age; // No annotation, uses field name
   }
 
+  /** Nested object classes for testing field ID vs field type serialization */
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class VeryLongNestedObjectClassName {
+    @ForyField(id = 0, nullable = false)
+    public String value;
+
+    @ForyField(id = 1, nullable = false)
+    public int count;
+  }
+
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class AnotherVeryLongNestedObjectClassName {
+    @ForyField(id = 0, nullable = false)
+    public String description;
+  }
+
+  /** Container with nested objects using field tag IDs */
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class ContainerWithTagIds {
+    @ForyField(id = 0, nullable = false)
+    public VeryLongNestedObjectClassName veryLongFieldNameForNestedObject;
+
+    @ForyField(id = 1, nullable = false)
+    public AnotherVeryLongNestedObjectClassName anotherVeryLongFieldNameForAnotherNestedObject;
+
+    @ForyField(id = 2, nullable = false)
+    public String simpleField;
+  }
+
+  /** Container with nested objects WITHOUT tag IDs (uses field names) */
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class ContainerWithoutTagIds {
+    public VeryLongNestedObjectClassName veryLongFieldNameForNestedObject;
+    public AnotherVeryLongNestedObjectClassName anotherVeryLongFieldNameForAnotherNestedObject;
+    public String simpleField;
+  }
+
   @DataProvider(name = "modes")
   public Object[][] modes() {
     return new Object[][] {
@@ -249,14 +294,10 @@ public class ForyFieldSerializationTest extends ForyTestBase {
     PersonWithoutTagId person = new PersonWithoutTagId("Bob", "Johnson", 35);
     byte[] bytes = fory.serialize(person);
 
-    // Convert to string to search for field names
-    String serialized = new String(bytes, StandardCharsets.UTF_8);
-
-    // In COMPATIBLE mode without tag IDs, field names SHOULD appear in the payload
+    // In COMPATIBLE mode without tag IDs, field names are used for field matching
     // (though they may be encoded using meta string compression)
     if (compatibleMode == CompatibleMode.COMPATIBLE) {
-      // At least one of the field names should be present or detectable
-      // Note: field names might be compressed/encoded, so we just verify the data deserializes
+      // Verify the data deserializes correctly
       PersonWithoutTagId deserialized = (PersonWithoutTagId) fory.deserialize(bytes);
       assertEquals(deserialized.veryLongFieldNameForFirstName, "Bob");
       assertEquals(deserialized.anotherVeryLongFieldNameForLastName, "Johnson");
@@ -630,5 +671,168 @@ public class ForyFieldSerializationTest extends ForyTestBase {
 
     System.out.printf(
         "Schema evolution test - V1: %d bytes, V2: %d bytes%n", bytesV1.length, bytesV2.length);
+  }
+
+  /**
+   * Comprehensive test for nested objects with @ForyField tag IDs. Verifies that: 1. Field IDs are
+   * written instead of field names for nested object fields 2. Nested object class IDs (if
+   * registered) are written instead of class names/types 3. Payload size is smaller when using tag
+   * IDs 4. Deserialization works correctly
+   */
+  @Test(dataProvider = "modes")
+  public void testNestedObjectsWithTagIds(
+      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(language)
+            .requireClassRegistration(registered)
+            .withCompatibleMode(compatibleMode)
+            .withCodegen(codegen)
+            .build();
+
+    if (registered) {
+      fory.register(ContainerWithTagIds.class, "test.ContainerWithTagIds");
+      fory.register(ContainerWithoutTagIds.class, "test.ContainerWithoutTagIds");
+      fory.register(VeryLongNestedObjectClassName.class, "test.VeryLongNestedObjectClassName");
+      fory.register(
+          AnotherVeryLongNestedObjectClassName.class, "test.AnotherVeryLongNestedObjectClassName");
+    }
+
+    // Create nested objects with same data
+    VeryLongNestedObjectClassName nested1 = new VeryLongNestedObjectClassName("value1", 42);
+    AnotherVeryLongNestedObjectClassName nested2 =
+        new AnotherVeryLongNestedObjectClassName("description1");
+
+    ContainerWithTagIds containerWithTags =
+        new ContainerWithTagIds(nested1, nested2, "simpleValue");
+    ContainerWithoutTagIds containerWithoutTags =
+        new ContainerWithoutTagIds(nested1, nested2, "simpleValue");
+
+    // Serialize both
+    byte[] bytesWithTags = fory.serialize(containerWithTags);
+    byte[] bytesWithoutTags = fory.serialize(containerWithoutTags);
+
+    // Verify deserialization works
+    ContainerWithTagIds deserializedWithTags =
+        (ContainerWithTagIds) fory.deserialize(bytesWithTags);
+    ContainerWithoutTagIds deserializedWithoutTags =
+        (ContainerWithoutTagIds) fory.deserialize(bytesWithoutTags);
+
+    // Verify nested object values
+    assertEquals(
+        deserializedWithTags.veryLongFieldNameForNestedObject.value,
+        "value1",
+        "Nested object value should match");
+    assertEquals(
+        deserializedWithTags.veryLongFieldNameForNestedObject.count,
+        42,
+        "Nested object count should match");
+    assertEquals(
+        deserializedWithTags.anotherVeryLongFieldNameForAnotherNestedObject.description,
+        "description1",
+        "Another nested object description should match");
+    assertEquals(deserializedWithTags.simpleField, "simpleValue", "Simple field should match");
+
+    assertEquals(
+        deserializedWithoutTags.veryLongFieldNameForNestedObject.value,
+        "value1",
+        "Nested object value should match");
+    assertEquals(
+        deserializedWithoutTags.veryLongFieldNameForNestedObject.count,
+        42,
+        "Nested object count should match");
+    assertEquals(
+        deserializedWithoutTags.anotherVeryLongFieldNameForAnotherNestedObject.description,
+        "description1",
+        "Another nested object description should match");
+    assertEquals(deserializedWithoutTags.simpleField, "simpleValue", "Simple field should match");
+
+    System.out.printf(
+        "Nested objects test - %s/%s/codegen=%s/registered=%s - With tags: %d bytes, Without tags: %d bytes%n",
+        language,
+        compatibleMode,
+        codegen,
+        registered,
+        bytesWithTags.length,
+        bytesWithoutTags.length);
+
+    // Tag IDs should produce smaller payload in all modes
+    assertTrue(
+        bytesWithTags.length < bytesWithoutTags.length,
+        String.format(
+            "Expected nested objects with tag IDs (%d bytes) to be < without tag IDs (%d bytes) in %s/%s/codegen=%s/registered=%s",
+            bytesWithTags.length,
+            bytesWithoutTags.length,
+            language,
+            compatibleMode,
+            codegen,
+            registered));
+
+    // Print savings information
+    System.out.printf(
+        "  Savings from tag IDs: %d bytes (%.1f%%)%n",
+        bytesWithoutTags.length - bytesWithTags.length,
+        100.0 * (bytesWithoutTags.length - bytesWithTags.length) / bytesWithoutTags.length);
+  }
+
+  /**
+   * Test that verifies field IDs are written in the payload (not field names). This test inspects
+   * the raw bytes to confirm the serialization format.
+   */
+  @Test(dataProvider = "modes")
+  public void testNestedObjectFieldIdInPayload(
+      Language language, CompatibleMode compatibleMode, boolean codegen, boolean registered) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(language)
+            .requireClassRegistration(registered)
+            .withCompatibleMode(compatibleMode)
+            .withCodegen(codegen)
+            .build();
+
+    if (registered) {
+      fory.register(ContainerWithTagIds.class, "test.ContainerWithTagIds");
+      fory.register(VeryLongNestedObjectClassName.class, "test.VeryLongNestedObjectClassName");
+      fory.register(
+          AnotherVeryLongNestedObjectClassName.class, "test.AnotherVeryLongNestedObjectClassName");
+    }
+
+    VeryLongNestedObjectClassName nested1 = new VeryLongNestedObjectClassName("test", 1);
+    AnotherVeryLongNestedObjectClassName nested2 = new AnotherVeryLongNestedObjectClassName("desc");
+
+    ContainerWithTagIds container = new ContainerWithTagIds(nested1, nested2, "simple");
+
+    byte[] bytes = fory.serialize(container);
+
+    // Verify deserialization
+    ContainerWithTagIds deserialized = (ContainerWithTagIds) fory.deserialize(bytes);
+    assertEquals(deserialized.veryLongFieldNameForNestedObject.value, "test");
+    assertEquals(deserialized.veryLongFieldNameForNestedObject.count, 1);
+    assertEquals(deserialized.anotherVeryLongFieldNameForAnotherNestedObject.description, "desc");
+    assertEquals(deserialized.simpleField, "simple");
+
+    // When using tag IDs with @ForyField, field names should NOT be in payload
+    // This works in all modes: JAVA/XLANG and COMPATIBLE/SCHEMA_CONSISTENT
+    String serialized = new String(bytes, StandardCharsets.UTF_8);
+
+    // These long field names should not be present because we're using field IDs (0, 1, 2)
+    boolean hasLongFieldName1 = serialized.contains("veryLongFieldNameForNestedObject");
+    boolean hasLongFieldName2 =
+        serialized.contains("anotherVeryLongFieldNameForAnotherNestedObject");
+
+    assertFalse(
+        hasLongFieldName1,
+        String.format(
+            "Field name 'veryLongFieldNameForNestedObject' should NOT be in payload with tag ID in %s/%s/codegen=%s/registered=%s",
+            language, compatibleMode, codegen, registered));
+    assertFalse(
+        hasLongFieldName2,
+        String.format(
+            "Field name 'anotherVeryLongFieldNameForAnotherNestedObject' should NOT be in payload with tag ID in %s/%s/codegen=%s/registered=%s",
+            language, compatibleMode, codegen, registered));
+
+    System.out.printf(
+        "Verified: Field IDs used instead of field names in %s/%s/codegen=%s/registered=%s%n",
+        language, compatibleMode, codegen, registered);
   }
 }

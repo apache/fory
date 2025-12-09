@@ -89,6 +89,8 @@ public class Descriptor {
   private final Method writeMethod;
   private ForyField foryField;
   private boolean nullable;
+  // trackingRef should only be true if explicitly set to true via @ForyField(ref=true)
+  // If no annotation or ref not specified, trackingRef stays false and type-based tracking applies
   private boolean trackingRef;
   private FieldConverter<?> fieldConverter;
 
@@ -104,6 +106,7 @@ public class Descriptor {
     this.foryField = this.field.getAnnotation(ForyField.class);
     if (!typeRef.isPrimitive()) {
       this.nullable = foryField == null || foryField.nullable();
+      this.trackingRef = foryField != null && foryField.ref();
     }
   }
 
@@ -132,6 +135,7 @@ public class Descriptor {
     this.foryField = this.field.getAnnotation(ForyField.class);
     if (!field.getType().isPrimitive()) {
       this.nullable = foryField == null || foryField.nullable();
+      this.trackingRef = foryField != null && foryField.ref();
     }
   }
 
@@ -147,6 +151,7 @@ public class Descriptor {
     this.foryField = readMethod.getAnnotation(ForyField.class);
     if (!readMethod.getReturnType().isPrimitive()) {
       this.nullable = foryField == null || foryField.nullable();
+      this.trackingRef = foryField != null && foryField.ref();
     }
   }
 
@@ -170,6 +175,7 @@ public class Descriptor {
     this.foryField = this.field == null ? null : this.field.getAnnotation(ForyField.class);
     if (!typeRef.isPrimitive()) {
       this.nullable = foryField == null || foryField.nullable();
+      this.trackingRef = foryField != null && foryField.ref();
     }
   }
 
