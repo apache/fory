@@ -195,6 +195,7 @@ def bump_java_version(new_version):
         "java/fory-extensions",
         "java/fory-test-core",
         "java/fory-testsuite",
+        "java/fory-graalvm-feature",
     ]:
         _bump_version(p, "pom.xml", new_version, _update_pom_parent_version)
     # mvn versions:set too slow

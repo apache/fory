@@ -26,7 +26,7 @@
   <parent>
     <artifactId>fory-parent</artifactId>
     <groupId>org.apache.fory</groupId>
-    <version>0.14.0-SNAPSHOT</version>
+    <version>0.14.0</version>
   </parent>
 
   <artifactId>benchmark</artifactId>

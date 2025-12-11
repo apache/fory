@@ -84,7 +84,7 @@ from pyfory.type import (  # noqa: F401 # pylint: disable=unused-import
 from pyfory.policy import DeserializationPolicy  # noqa: F401 # pylint: disable=unused-import
 from pyfory._util import Buffer  # noqa: F401 # pylint: disable=unused-import
 
-__version__ = "0.14.0.dev"
+__version__ = "0.14.0"
 
 __all__ = [
     # Core classes
