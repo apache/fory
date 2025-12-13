@@ -36,9 +36,11 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
@@ -353,6 +355,7 @@ public class ClassDef implements Serializable {
       Map<Short, Descriptor> tagToDescriptorMap = new HashMap<>();
 
       // Build maps for both name-based and tag-based lookups
+      Set<Integer> usedTagIds = new HashSet<>();
       for (Map.Entry<Member, Descriptor> e : allDescriptorsMap.entrySet()) {
         String fullName = e.getKey().getDeclaringClass().getName() + "." + e.getKey().getName();
         Descriptor desc = e.getValue();
@@ -364,6 +367,15 @@ public class ClassDef implements Serializable {
         if (desc.getForyField() != null) {
           int tagId = desc.getForyField().id();
           if (tagId >= 0) {
+            if (!usedTagIds.add(tagId)) {
+              throw new IllegalArgumentException(
+                  "Duplicate tag id "
+                      + tagId
+                      + " for field "
+                      + desc.getName()
+                      + " in class "
+                      + cls.getName());
+            }
             tagToDescriptorMap.put((short) tagId, desc);
           }
         }

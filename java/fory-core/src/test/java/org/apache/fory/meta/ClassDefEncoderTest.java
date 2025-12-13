@@ -26,6 +26,7 @@ import java.io.Serializable;
 import java.util.List;
 import lombok.Data;
 import org.apache.fory.Fory;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
@@ -38,7 +39,7 @@ import org.testng.annotations.Test;
 public class ClassDefEncoderTest {
 
   @Test
-  public void testBasicClassDef() throws Exception {
+  public void testBasicClassDef() {
     Fory fory = Fory.builder().withMetaShare(true).build();
     Class<ClassDefTest.TestFieldsOrderClass1> type = ClassDefTest.TestFieldsOrderClass1.class;
     List<ClassDef.FieldInfo> fieldsInfo = buildFieldsInfo(fory.getClassResolver(), type);
@@ -169,5 +170,74 @@ public class ClassDefEncoderTest {
   @Data
   public static class ChildClass extends BaseAbstractClass {
     private String name;
+  }
+
+  // Test classes for duplicate tag ID validation in ClassDefEncoder
+  @Data
+  public static class ClassWithDuplicateTagIds {
+    @ForyField(id = 10)
+    private String fieldA;
+
+    @ForyField(id = 10)
+    private String fieldB;
+
+    @ForyField(id = 20)
+    private int fieldC;
+  }
+
+  @Data
+  public static class ClassWithValidTagIds {
+    @ForyField(id = 10)
+    private String fieldA;
+
+    @ForyField(id = 20)
+    private String fieldB;
+
+    @ForyField(id = 30)
+    private int fieldC;
+  }
+
+  @Data
+  public static class ClassWithMixedFields {
+    @ForyField(id = 15)
+    private String annotatedField1;
+
+    private String noAnnotation;
+
+    @ForyField(id = 15) // Duplicate with annotatedField1
+    private int annotatedField2;
+  }
+
+  @Test
+  public void testBuildFieldsInfoWithDuplicateTagIds() {
+    Fory fory = Fory.builder().withMetaShare(true).build();
+
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> buildFieldsInfo(fory.getClassResolver(), ClassWithDuplicateTagIds.class));
+  }
+
+  @Test
+  public void testBuildFieldsInfoWithValidTagIds() {
+    Fory fory = Fory.builder().withMetaShare(true).build();
+
+    // Should not throw any exception
+    List<ClassDef.FieldInfo> fieldsInfo =
+        buildFieldsInfo(fory.getClassResolver(), ClassWithValidTagIds.class);
+
+    Assert.assertEquals(fieldsInfo.size(), 3);
+    // Verify all fields have the correct tag IDs
+    for (ClassDef.FieldInfo fieldInfo : fieldsInfo) {
+      Assert.assertTrue(fieldInfo.hasTag());
+    }
+  }
+
+  @Test
+  public void testBuildFieldsInfoWithMixedFields() {
+    Fory fory = Fory.builder().withMetaShare(true).build();
+
+    Assert.assertThrows(
+        IllegalArgumentException.class,
+        () -> buildFieldsInfo(fory.getClassResolver(), ClassWithMixedFields.class));
   }
 }

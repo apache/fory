@@ -26,9 +26,11 @@ import static org.apache.fory.meta.Encoders.fieldNameEncodingsList;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
@@ -80,6 +82,7 @@ class TypeDefEncoder {
   }
 
   static List<FieldInfo> buildFieldsInfo(TypeResolver resolver, Class<?> type, List<Field> fields) {
+    Set<Integer> usedTagIds = new HashSet<>();
     return fields.stream()
         .map(
             field -> {
@@ -88,6 +91,15 @@ class TypeDefEncoder {
               if (foryField != null) {
                 int tagId = foryField.id();
                 if (tagId >= 0) {
+                  if (!usedTagIds.add(tagId)) {
+                    throw new IllegalArgumentException(
+                        "Duplicate tag id "
+                            + tagId
+                            + " for field "
+                            + field.getName()
+                            + " in class "
+                            + type.getName());
+                  }
                   return new FieldInfo(type.getName(), field.getName(), fieldType, (short) tagId);
                 }
                 // tagId == -1 means use field name, fall through to create regular FieldInfo

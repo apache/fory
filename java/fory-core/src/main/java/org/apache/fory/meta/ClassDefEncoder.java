@@ -30,9 +30,11 @@ import static org.apache.fory.meta.Encoders.typeNameEncodingsList;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
@@ -91,6 +93,7 @@ public class ClassDefEncoder {
 
   public static List<FieldInfo> buildFieldsInfo(TypeResolver resolver, List<Field> fields) {
     List<FieldInfo> fieldInfos = new ArrayList<>();
+    Set<Integer> usedTagIds = new HashSet<>();
     for (Field field : fields) {
       // Check for @ForyField annotation to extract tag ID
       ForyField foryField = field.getAnnotation(ForyField.class);
@@ -100,6 +103,15 @@ public class ClassDefEncoder {
       if (foryField != null) {
         int tagId = foryField.id();
         if (tagId >= 0) {
+          if (!usedTagIds.add(tagId)) {
+            throw new IllegalArgumentException(
+                "Duplicate tag id: "
+                    + tagId
+                    + ", field: "
+                    + field
+                    + ", class: "
+                    + field.getDeclaringClass());
+          }
           // Create FieldInfo with tag ID for optimized serialization
           fieldInfo =
               new FieldInfo(
