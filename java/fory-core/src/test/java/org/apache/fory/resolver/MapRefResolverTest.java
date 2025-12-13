@@ -31,7 +31,7 @@ public class MapRefResolverTest {
 
   @Test
   public void testTrackingReference() {
-    MapRefResolver referenceResolver = new MapRefResolver();
+    MapRefResolver referenceResolver = new MapRefResolver(0.51f);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
     assertTrue(referenceResolver.writeRefOrNull(buffer, null));
     assertFalse(referenceResolver.writeRefOrNull(buffer, new Object()));
@@ -48,7 +48,7 @@ public class MapRefResolverTest {
     // If java jit run and optimized `writeRefOrNull`, set `ENABLE_FORY_REF_PROFILING`
     // by reflection may not take effect too.
     // System.setProperty("fory.enable_ref_profiling", "true");
-    MapRefResolver referenceResolver = new MapRefResolver();
+    MapRefResolver referenceResolver = new MapRefResolver(0.51f);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(32);
     Object obj1 = new Object();
     referenceResolver.writeRefOrNull(buffer, obj1);

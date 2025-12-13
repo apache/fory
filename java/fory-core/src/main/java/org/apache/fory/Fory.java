@@ -147,7 +147,7 @@ public final class Fory implements BaseFory {
     longEncoding = config.longEncoding();
     maxDepth = config.maxDepth();
     if (refTracking) {
-      this.refResolver = new MapRefResolver();
+      this.refResolver = new MapRefResolver(config.mapRefLoadFactor());
     } else {
       this.refResolver = new NoRefResolver();
     }

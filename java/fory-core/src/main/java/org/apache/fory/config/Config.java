@@ -66,6 +66,7 @@ public class Config implements Serializable {
   private final boolean serializeEnumByName;
   private final int bufferSizeLimitBytes;
   private final int maxDepth;
+  private final float mapRefLoadFactor;
   boolean foryDebugOutputEnabled =
       "1".equals(System.getenv("ENABLE_FORY_DEBUG_OUTPUT"))
           || "true".equals(System.getenv("ENABLE_FORY_DEBUG_OUTPUT"));
@@ -110,6 +111,7 @@ public class Config implements Serializable {
     serializeEnumByName = builder.serializeEnumByName;
     bufferSizeLimitBytes = builder.bufferSizeLimitBytes;
     maxDepth = builder.maxDepth;
+    mapRefLoadFactor = builder.mapRefLoadFactor;
   }
 
   /** Returns the name for Fory serialization. */
@@ -312,6 +314,7 @@ public class Config implements Serializable {
     Config config = (Config) o;
     return name == config.name
         && trackingRef == config.trackingRef
+        && mapRefLoadFactor == config.mapRefLoadFactor
         && basicTypesRefIgnored == config.basicTypesRefIgnored
         && stringRefIgnored == config.stringRefIgnored
         && timeRefIgnored == config.timeRefIgnored
@@ -346,6 +349,7 @@ public class Config implements Serializable {
     return Objects.hash(
         name,
         language,
+        mapRefLoadFactor,
         trackingRef,
         basicTypesRefIgnored,
         stringRefIgnored,
@@ -390,5 +394,10 @@ public class Config implements Serializable {
   /** Returns max depth for deserialization, when depth exceeds, an exception will be thrown. */
   public int maxDepth() {
     return maxDepth;
+  }
+
+  /** Returns loadFactor of MacRef's writtenObjects. */
+  public float mapRefLoadFactor() {
+    return mapRefLoadFactor;
   }
 }

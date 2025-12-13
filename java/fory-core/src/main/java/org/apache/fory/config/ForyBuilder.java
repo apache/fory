@@ -89,6 +89,7 @@ public final class ForyBuilder {
   int bufferSizeLimitBytes = 128 * 1024;
   MetaCompressor metaCompressor = new DeflaterMetaCompressor();
   int maxDepth = 50;
+  float mapRefLoadFactor = 0.51f;
 
   public ForyBuilder() {}
 
@@ -386,6 +387,14 @@ public final class ForyBuilder {
   public ForyBuilder withMaxDepth(int maxDepth) {
     Preconditions.checkArgument(maxDepth >= 2, "maxDepth must >= 2 but got %s", maxDepth);
     this.maxDepth = maxDepth;
+    return this;
+  }
+
+  /** Set loadFactor of MapRefResolver writtenObjects. Default value is 0.51 */
+  public ForyBuilder withMapRefLoadFactor(float loadFactor) {
+    Preconditions.checkArgument(
+        loadFactor > 0 && loadFactor < 1, "loadFactor must > 0 and < 1 but got %s", loadFactor);
+    this.mapRefLoadFactor = loadFactor;
     return this;
   }
 

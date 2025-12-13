@@ -52,15 +52,16 @@ public final class MapRefResolver implements RefResolver {
   private long writeTotalObjectSize = 0;
   private long readCounter;
   private long readTotalObjectSize = 0;
-  private final IdentityObjectIntMap<Object> writtenObjects =
-      new IdentityObjectIntMap<>(DEFAULT_MAP_CAPACITY, 0.51f);
+  private final IdentityObjectIntMap<Object> writtenObjects;
   private final ObjectArray readObjects = new ObjectArray(DEFAULT_ARRAY_CAPACITY);
   private final IntArray readRefIds = new IntArray(DEFAULT_ARRAY_CAPACITY);
 
   // last read object which is not a reference
   private Object readObject;
 
-  public MapRefResolver() {}
+  public MapRefResolver(float loadFactor) {
+    writtenObjects = new IdentityObjectIntMap<>(DEFAULT_MAP_CAPACITY, loadFactor);
+  }
 
   @Override
   public boolean writeRefOrNull(MemoryBuffer buffer, Object obj) {
