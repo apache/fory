@@ -30,11 +30,14 @@ import static org.apache.fory.meta.Encoders.typeNameEncodingsList;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import org.apache.fory.Fory;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.memory.MemoryBuffer;
@@ -90,12 +93,38 @@ public class ClassDefEncoder {
 
   public static List<FieldInfo> buildFieldsInfo(TypeResolver resolver, List<Field> fields) {
     List<FieldInfo> fieldInfos = new ArrayList<>();
+    Set<Integer> usedTagIds = new HashSet<>();
     for (Field field : fields) {
-      FieldInfo fieldInfo =
-          new FieldInfo(
-              field.getDeclaringClass().getName(),
-              field.getName(),
-              ClassDef.buildFieldType(resolver, field));
+      // Check for @ForyField annotation to extract tag ID
+      ForyField foryField = field.getAnnotation(ForyField.class);
+      FieldType fieldType = ClassDef.buildFieldType(resolver, field);
+
+      FieldInfo fieldInfo;
+      if (foryField != null) {
+        int tagId = foryField.id();
+        if (tagId >= 0) {
+          if (!usedTagIds.add(tagId)) {
+            throw new IllegalArgumentException(
+                "Duplicate tag id: "
+                    + tagId
+                    + ", field: "
+                    + field
+                    + ", class: "
+                    + field.getDeclaringClass());
+          }
+          // Create FieldInfo with tag ID for optimized serialization
+          fieldInfo =
+              new FieldInfo(
+                  field.getDeclaringClass().getName(), field.getName(), fieldType, (short) tagId);
+        } else {
+          // tagId == -1 means opt-out, use field name
+          fieldInfo =
+              new FieldInfo(field.getDeclaringClass().getName(), field.getName(), fieldType);
+        }
+      } else {
+        // No annotation, use field name
+        fieldInfo = new FieldInfo(field.getDeclaringClass().getName(), field.getName(), fieldType);
+      }
       fieldInfos.add(fieldInfo);
     }
     return fieldInfos;
