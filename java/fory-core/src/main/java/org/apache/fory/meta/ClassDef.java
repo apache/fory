@@ -355,7 +355,6 @@ public class ClassDef implements Serializable {
       Map<Short, Descriptor> tagToDescriptorMap = new HashMap<>();
 
       // Build maps for both name-based and tag-based lookups
-      Set<Integer> usedTagIds = new HashSet<>();
       for (Map.Entry<Member, Descriptor> e : allDescriptorsMap.entrySet()) {
         String fullName = e.getKey().getDeclaringClass().getName() + "." + e.getKey().getName();
         Descriptor desc = e.getValue();
@@ -367,7 +366,7 @@ public class ClassDef implements Serializable {
         if (desc.getForyField() != null) {
           int tagId = desc.getForyField().id();
           if (tagId >= 0) {
-            if (!usedTagIds.add(tagId)) {
+            if (tagToDescriptorMap.containsKey((short) tagId)) {
               throw new IllegalArgumentException(
                   "Duplicate tag id "
                       + tagId

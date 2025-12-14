@@ -106,8 +106,8 @@ public class Descriptor {
     this.foryField = this.field.getAnnotation(ForyField.class);
     if (!typeRef.isPrimitive()) {
       this.nullable = foryField == null || foryField.nullable();
-      this.trackingRef = foryField != null && foryField.ref();
     }
+    this.trackingRef = foryField != null && foryField.ref();
   }
 
   public Descriptor(TypeRef<?> typeRef, String name, int modifier, String declaringClass) {
@@ -135,8 +135,8 @@ public class Descriptor {
     this.foryField = this.field.getAnnotation(ForyField.class);
     if (!field.getType().isPrimitive()) {
       this.nullable = foryField == null || foryField.nullable();
-      this.trackingRef = foryField != null && foryField.ref();
     }
+    this.trackingRef = foryField != null && foryField.ref();
   }
 
   private Descriptor(Method readMethod) {
@@ -151,8 +151,8 @@ public class Descriptor {
     this.foryField = readMethod.getAnnotation(ForyField.class);
     if (!readMethod.getReturnType().isPrimitive()) {
       this.nullable = foryField == null || foryField.nullable();
-      this.trackingRef = foryField != null && foryField.ref();
     }
+    this.trackingRef = foryField != null && foryField.ref();
   }
 
   private Descriptor(
@@ -175,8 +175,8 @@ public class Descriptor {
     this.foryField = this.field == null ? null : this.field.getAnnotation(ForyField.class);
     if (!typeRef.isPrimitive()) {
       this.nullable = foryField == null || foryField.nullable();
-      this.trackingRef = foryField != null && foryField.ref();
     }
+    this.trackingRef = foryField != null && foryField.ref();
   }
 
   public Descriptor(DescriptorBuilder builder) {
@@ -190,7 +190,9 @@ public class Descriptor {
         builder.readMethod,
         builder.writeMethod);
     this.nullable = builder.nullable;
-    this.trackingRef = builder.trackingRef;
+    // trackingRef could be disabled via @ForyField(ref=false)
+    // we ensure if trackingRef is enabled via builder, but disabled via annotation, it stays disabled
+    this.trackingRef = this.trackingRef && builder.trackingRef;
     this.type = builder.type;
     this.foryField = builder.foryField;
     this.fieldConverter = builder.fieldConverter;
