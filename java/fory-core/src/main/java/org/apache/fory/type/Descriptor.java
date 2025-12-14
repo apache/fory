@@ -191,7 +191,8 @@ public class Descriptor {
         builder.writeMethod);
     this.nullable = builder.nullable;
     // trackingRef could be disabled via @ForyField(ref=false)
-    // we ensure if trackingRef is enabled via builder, but disabled via annotation, it stays disabled
+    // we ensure if trackingRef is enabled via builder, but disabled via annotation, it stays
+    // disabled
     this.trackingRef = this.trackingRef && builder.trackingRef;
     this.type = builder.type;
     this.foryField = builder.foryField;
