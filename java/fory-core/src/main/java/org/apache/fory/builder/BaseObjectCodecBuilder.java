@@ -404,13 +404,16 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Expression fieldValue, Expression buffer, Descriptor descriptor) {
     TypeRef<?> typeRef = descriptor.getTypeRef();
     boolean nullable = descriptor.isNullable();
-    boolean explicitRefTracking = descriptor.isTrackingRef();
 
-    // Ref tracking logic:
-    // - If @ForyField(ref=true): explicitly enable ref tracking
-    // - Otherwise (no annotation OR ref=false/default): use type-based decision
-    // This makes @ForyField backward compatible - only ref=true changes behavior
-    boolean useRefTracking = explicitRefTracking || needWriteRef(typeRef);
+    // ref tracking logic:
+    // - 1st priority: if @ForyField is present, explicitly use the value from the annotation
+    // - 2nd priority: if no annotation, use type-based decision
+    boolean useRefTracking;
+    if (descriptor.getForyField() != null) {
+      useRefTracking = descriptor.isTrackingRef();
+    } else {
+      useRefTracking = descriptor.isTrackingRef() || needWriteRef(typeRef);
+    }
 
     if (useRefTracking) {
       return new If(
@@ -1774,27 +1777,54 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       Expression buffer, Descriptor descriptor, Function<Expression, Expression> callback) {
     TypeRef<?> typeRef = descriptor.getTypeRef();
     boolean nullable = descriptor.isNullable();
-    boolean explicitRefTracking = descriptor.isTrackingRef();
 
-    // Ref tracking logic (same as serializeField):
-    // - If @ForyField(ref=true): explicitly enable ref tracking
-    // - Otherwise (no annotation OR ref=false/default): use type-based decision
-    boolean useRefTracking = explicitRefTracking || needWriteRef(typeRef);
+    // Ref tracking logic:
+    // - 1st priority: if @ForyField is present, explicitly use the value from the annotation,
+    // - 2nd priority: if no annotation, use type-based decision.
+    boolean explicitlyDisabledRef;
+    boolean useRefTracking;
+    boolean typeNeedsRef = needWriteRef(typeRef);
+    if (descriptor.getForyField() != null) {
+      useRefTracking = descriptor.isTrackingRef();
+      explicitlyDisabledRef = !useRefTracking;
+    } else {
+      useRefTracking = descriptor.isTrackingRef() || typeNeedsRef;
+      explicitlyDisabledRef = false;
+    }
 
     if (useRefTracking) {
       return readRef(buffer, callback, () -> deserializeForNotNullForField(buffer, typeRef, null));
     } else {
+      // When a field explicitly disables ref tracking (@ForyField(trackingRef=false))
+      // but the type normally needs ref tracking (e.g., collections),
+      // we need to preserve a -1 id so that when the deserializer calls reference(),
+      // it will pop this -1 and skip the setReadObject call.
+      boolean needStubRefId = explicitlyDisabledRef && typeNeedsRef;
+
       if (!nullable) {
         Expression value = deserializeForNotNullForField(buffer, typeRef, null);
-        // Should put value expr ahead to avoid generated code in wrong scope.
+        if (needStubRefId) {
+          Expression preserveStubRefId =
+              new Invoke(refResolverRef, "preserveRefId", new Literal(-1, PRIMITIVE_INT_TYPE));
+          return new ListExpression(preserveStubRefId, value, callback.apply(value));
+        }
         return new ListExpression(value, callback.apply(value));
       }
-      return readNullable(
-          buffer,
-          typeRef,
-          callback,
-          () -> deserializeForNotNullForField(buffer, typeRef, null),
-          true);
+
+      Expression readNullableExpr =
+          readNullable(
+              buffer,
+              typeRef,
+              callback,
+              () -> deserializeForNotNullForField(buffer, typeRef, null),
+              true);
+
+      if (needStubRefId) {
+        Expression preserveStubRefId =
+            new Invoke(refResolverRef, "preserveRefId", new Literal(-1, PRIMITIVE_INT_TYPE));
+        return new ListExpression(preserveStubRefId, readNullableExpr);
+      }
+      return readNullableExpr;
     }
   }
 
