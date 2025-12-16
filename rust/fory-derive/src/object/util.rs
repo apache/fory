@@ -522,18 +522,27 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     quote! {
         {
             let type_id = #get_type_id;
-            let mut generics = vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>;
-            // For tuples and sets, if no generic info is available, add UNKNOWN element
-            // This handles type aliases to tuples where we can't detect the tuple at macro time
-            if (type_id == fory_core::types::TypeId::LIST as u32
-                || type_id == fory_core::types::TypeId::SET as u32)
-                && generics.is_empty() {
-                generics.push(fory_core::meta::FieldType::new(
-                    fory_core::types::TypeId::UNKNOWN as u32,
-                    true,
-                    vec![]
-                ));
-            }
+            let is_custom = !fory_core::types::is_internal_type(type_id & 0xff);
+            let generics = if is_custom {
+                if type_resolver.is_xlang() {
+                    return Err(fory_core::error::Error::unsupported("serialization of generic structs and enums is not supported in xlang mode"));
+                }
+                vec![]
+            } else {
+                let mut generics = vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>;
+                // For tuples and sets, if no generic info is available, add UNKNOWN element
+                // This handles type aliases to tuples where we can't detect the tuple at macro time
+                if (type_id == fory_core::types::TypeId::LIST as u32
+                    || type_id == fory_core::types::TypeId::SET as u32)
+                    && generics.is_empty() {
+                    generics.push(fory_core::meta::FieldType::new(
+                        fory_core::types::TypeId::UNKNOWN as u32,
+                        true,
+                        vec![]
+                    ));
+                }
+                generics
+            };
             fory_core::meta::FieldType::new(type_id, #nullable, generics)
         }
     }

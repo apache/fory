@@ -18,6 +18,8 @@
 use fory_core::fory::Fory;
 use fory_derive::ForyObject;
 use std::collections::{HashMap, HashSet};
+use std::marker::PhantomData;
+use fory_core::{Error, ForyDefault, ReadContext, Serializer, TypeResolver, WriteContext};
 
 // RUSTFLAGS="-Awarnings" cargo expand -p tests --test test_struct
 #[test]
@@ -598,4 +600,113 @@ fn boxed() {
     let bytes = fory1.serialize(&f6).unwrap();
     let item2_f6: Option<i32> = fory2.deserialize(&bytes).unwrap();
     assert_eq!(item2.f6, item2_f6);
+}
+
+#[test]
+fn test_struct_with_generic() {
+    #[derive(Debug, PartialEq)]
+    struct Wrapper<T> {
+        value: String,
+        _marker: PhantomData<T>,
+        data: T,
+    }
+
+    #[derive(ForyObject, Debug, PartialEq)]
+    #[fory(debug)]
+    struct MyStruct {
+        my_vec: Vec<Wrapper<Another>>,
+        my_vec1: Vec<Wrapper<i32>>,
+    }
+
+    #[derive(ForyObject, Debug, PartialEq)]
+    #[fory(debug)]
+    struct Another {
+        f1: i32,
+    }
+
+    impl<T: 'static + Serializer + ForyDefault> Serializer for Wrapper<T> {
+        fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+            context.writer.write_varuint32(self.value.len() as u32);
+            context.writer.write_utf8_string(&self.value);
+            self.data.fory_write_data(context)?;
+            Ok(())
+        }
+
+        fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+            let len = context.reader.read_varuint32()? as usize;
+            let value = context.reader.read_utf8_string(len)?;
+            let data = T::fory_read_data(context)?;
+            Ok(Self {
+                value,
+                _marker: PhantomData,
+                data,
+            })
+        }
+
+        fn fory_type_id_dyn(&self, type_resolver: &TypeResolver) -> Result<u32, Error> {
+            Self::fory_get_type_id(type_resolver)
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+    }
+
+    impl<T: ForyDefault> ForyDefault for Wrapper<T> {
+        fn fory_default() -> Self {
+            Self {
+                value: "".into(),
+                _marker: PhantomData,
+                data: T::fory_default()
+            }
+        }
+    }
+
+    let mut fory1 = Fory::default().compatible(true);
+    let mut fory2 = Fory::default(); // Without compatible it works fine.
+    let mut fory3 = Fory::default().xlang(true); // Works fine with xlang enabled
+
+    fn inner_test(fory: &mut Fory) -> Result<(), Error> {
+        fory.register::<MyStruct>(1)?;
+        fory.register::<Another>(2)?;
+        fory.register_serializer::<Wrapper<Another>>(3)?;
+        fory.register_serializer::<Wrapper<i32>>(4)?;
+
+        let w1 = Wrapper::<Another> {
+            value: "Value1".into(),
+            _marker: PhantomData,
+            data: Another { f1: 10, },
+        };
+        let w2 = Wrapper::<Another> {
+            value: "Value2".into(),
+            _marker: PhantomData,
+            data: Another { f1: 11 },
+        };
+
+        let w3 = Wrapper::<i32> {
+            value: "Value3".into(),
+            _marker: PhantomData,
+            data: 12,
+        };
+        let w4 = Wrapper::<i32> {
+            value: "Value4".into(),
+            _marker: PhantomData,
+            data: 13,
+        };
+
+        let ms = MyStruct {
+            my_vec: vec![w1, w2],
+            my_vec1: vec![w3, w4],
+        };
+
+        let bytes = fory.serialize(&ms)?;
+        let new_ms = fory.deserialize::<MyStruct>(&bytes)?;
+        assert_eq!(ms, new_ms);
+        Ok(())
+    }
+
+    for fory in [&mut fory1, &mut fory2] {
+        assert!(inner_test(fory).is_ok());
+    }
+    assert!(inner_test(&mut fory3).is_err());
 }

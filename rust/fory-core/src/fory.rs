@@ -183,6 +183,7 @@ impl Fory {
         if !self.config.check_struct_version {
             self.config.check_struct_version = !self.config.compatible;
         }
+        self.type_resolver.set_xlang(xlang);
         self
     }
 
