@@ -197,9 +197,7 @@ public final class MapRefResolver implements RefResolver {
   @Override
   public void reference(Object object) {
     int refId = readRefIds.pop();
-    if (refId >= 0) {
-      setReadObject(refId, object);
-    }
+    setReadObject(refId, object);
   }
 
   @Override
