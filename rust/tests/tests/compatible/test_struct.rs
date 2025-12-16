@@ -16,10 +16,10 @@
 // under the License.
 
 use fory_core::fory::Fory;
+use fory_core::{Error, ForyDefault, ReadContext, Serializer, TypeResolver, WriteContext};
 use fory_derive::ForyObject;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
-use fory_core::{Error, ForyDefault, ReadContext, Serializer, TypeResolver, WriteContext};
 
 // RUSTFLAGS="-Awarnings" cargo expand -p tests --test test_struct
 #[test]
@@ -657,7 +657,7 @@ fn test_struct_with_generic() {
             Self {
                 value: "".into(),
                 _marker: PhantomData,
-                data: T::fory_default()
+                data: T::fory_default(),
             }
         }
     }
@@ -675,7 +675,7 @@ fn test_struct_with_generic() {
         let w1 = Wrapper::<Another> {
             value: "Value1".into(),
             _marker: PhantomData,
-            data: Another { f1: 10, },
+            data: Another { f1: 10 },
         };
         let w2 = Wrapper::<Another> {
             value: "Value2".into(),
