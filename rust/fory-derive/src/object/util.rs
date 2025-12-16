@@ -539,7 +539,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
                 if type_resolver.is_xlang() && generics.len() > 0 {
                     return Err(fory_core::error::Error::unsupported("serialization of generic structs and enums is not supported in xlang mode"));
                 } else {
-                    generics.clear();
+                    generics = vec![];
                 }
             }
             fory_core::meta::FieldType::new(type_id, #nullable, generics)
