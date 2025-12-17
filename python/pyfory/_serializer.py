@@ -749,3 +749,101 @@ class SliceSerializer(Serializer):
 
     def xread(self, buffer):
         raise NotImplementedError
+
+
+class UnionSerializer(Serializer):
+    """
+    Serializer for typing.Union types.
+
+    Serializes a Union by storing:
+    1. The index of the active alternative (as varuint32)
+    2. The value of the active alternative
+
+    This allows the deserializer to determine which alternative to use
+    and forward to the appropriate serializer.
+    """
+
+    __slots__ = ("alternative_types", "alternative_serializers", "type_resolver")
+
+    def __init__(self, fory, type_, alternative_types):
+        super().__init__(fory, type_)
+        self.alternative_types = alternative_types
+        self.type_resolver = fory.type_resolver
+        self.alternative_serializers = []
+        for alt_type in alternative_types:
+            serializer = fory.type_resolver.get_serializer(alt_type)
+            self.alternative_serializers.append((alt_type, serializer))
+
+    def write(self, buffer, value):
+        # Find which alternative type matches the value
+        active_index = None
+        active_serializer = None
+
+        for i, (alt_type, serializer) in enumerate(self.alternative_serializers):
+            if isinstance(value, alt_type):
+                active_index = i
+                active_serializer = serializer
+                break
+
+        if active_index is None:
+            raise TypeError(f"Value {value} of type {type(value)} doesn't match any alternative in Union{self.alternative_types}")
+
+        # Write the active variant index
+        buffer.write_varuint32(active_index)
+
+        # Write the alternative's value (no type info in Python mode)
+        active_serializer.write(buffer, value)
+
+    def read(self, buffer):
+        # Read the stored variant index
+        stored_index = buffer.read_varuint32()
+
+        # Validate index is within bounds
+        if stored_index >= len(self.alternative_serializers):
+            raise ValueError(f"Union index out of bounds: {stored_index} (max: {len(self.alternative_serializers) - 1})")
+
+        # Dispatch to the appropriate alternative's serializer
+        _, serializer = self.alternative_serializers[stored_index]
+        return serializer.read(buffer)
+
+    def xwrite(self, buffer, value):
+        # Find which alternative type matches the value
+        active_index = None
+        active_serializer = None
+        active_type = None
+
+        for i, (alt_type, serializer) in enumerate(self.alternative_serializers):
+            if isinstance(value, alt_type):
+                active_index = i
+                active_serializer = serializer
+                active_type = alt_type
+                break
+
+        if active_index is None:
+            raise TypeError(f"Value {value} of type {type(value)} doesn't match any alternative in Union{self.alternative_types}")
+
+        # Write the active variant index
+        buffer.write_varuint32(active_index)
+
+        # In xlang mode, write type info for the alternative
+        # Get the typeinfo for the alternative type and write it
+        typeinfo = self.type_resolver.get_typeinfo(active_type)
+        self.type_resolver.write_typeinfo(buffer, typeinfo)
+
+        # Write the alternative's value data
+        active_serializer.xwrite(buffer, value)
+
+    def xread(self, buffer):
+        # Read the stored variant index
+        stored_index = buffer.read_varuint32()
+
+        # Validate index is within bounds
+        if stored_index >= len(self.alternative_serializers):
+            raise ValueError(f"Union index out of bounds: {stored_index} (max: {len(self.alternative_serializers) - 1})")
+
+        # In xlang mode, read type info for the alternative
+        typeinfo = self.type_resolver.read_typeinfo(buffer)
+
+        # Dispatch to the appropriate alternative's serializer
+        # Use typeinfo's serializer which may be more specific than what we registered
+        return typeinfo.serializer.xread(buffer)

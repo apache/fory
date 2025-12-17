@@ -23,6 +23,7 @@ import functools
 import logging
 import pickle
 import types
+import typing
 from typing import TypeVar, Union
 from enum import Enum
 
@@ -67,6 +68,7 @@ from pyfory.serializer import (
     UnsupportedSerializer,
     NativeFuncMethodSerializer,
     PickleBufferSerializer,
+    UnionSerializer,
 )
 from pyfory.meta.metastring import MetaStringEncoder, MetaStringDecoder
 from pyfory.meta.meta_compressor import DeflaterMetaCompressor
@@ -540,6 +542,23 @@ class TypeResolver:
         return typeinfo
 
     def _create_serializer(self, cls):
+        # Check if it's a Union type first
+        origin = typing.get_origin(cls) if hasattr(typing, "get_origin") else getattr(cls, "__origin__", None)
+        if origin is typing.Union:
+            # Extract alternative types from Union
+            args = typing.get_args(cls) if hasattr(typing, "get_args") else getattr(cls, "__args__", ())
+            # Filter out NoneType as it's handled separately via ref tracking
+            alternative_types = [arg for arg in args if arg is not type(None)]
+            if len(alternative_types) == 0:
+                # Union with only None is equivalent to NoneType
+                return NoneSerializer(self.fory)
+            elif len(alternative_types) == 1:
+                # Optional[T] should use the serializer for T
+                return self.get_serializer(alternative_types[0])
+            else:
+                # Real union with multiple alternatives
+                return UnionSerializer(self.fory, cls, alternative_types)
+
         for clz in cls.__mro__:
             type_info = self._types_info.get(clz)
             if type_info and type_info.serializer and type_info.serializer.support_subclass():

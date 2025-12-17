@@ -223,6 +223,10 @@ class TypeId:
     FLOAT32_ARRAY = 36
     # one dimensional float64 array.
     FLOAT64_ARRAY = 37
+    # a tagged union type that can hold one of several alternative types.
+    UNION = 38
+    # represents an empty/unit value with no data (e.g., for empty union alternatives).
+    NONE = 39
 
     # Bound value for range checks (types with id >= BOUND are not internal types).
     BOUND = 64
