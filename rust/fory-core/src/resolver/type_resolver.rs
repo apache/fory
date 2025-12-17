@@ -458,6 +458,7 @@ pub struct TypeResolver {
     // Fast lookup by numeric ID for common types
     type_id_index: Vec<u32>,
     compatible: bool,
+    xlang: bool,
 }
 
 // Safety: TypeResolver instances are only shared through higher-level synchronization that
@@ -478,6 +479,7 @@ impl Default for TypeResolver {
             type_id_index: Vec::new(),
             partial_type_infos: HashMap::new(),
             compatible: false,
+            xlang: false,
         };
         registry.register_builtin_types().unwrap();
         registry
@@ -1000,6 +1002,14 @@ impl TypeResolver {
         self.compatible = compatible;
     }
 
+    pub(crate) fn set_xlang(&mut self, xlang: bool) {
+        self.xlang = xlang;
+    }
+
+    pub fn is_xlang(&self) -> bool {
+        self.xlang
+    }
+
     /// Builds the final TypeResolver by completing all partial type infos created during registration.
     ///
     /// This method processes all types that were registered with lazy initialization enabled.
@@ -1061,6 +1071,7 @@ impl TypeResolver {
             partial_type_infos: HashMap::new(),
             type_id_index,
             compatible: self.compatible,
+            xlang: self.xlang,
         })
     }
 
@@ -1142,6 +1153,7 @@ impl TypeResolver {
             partial_type_infos: HashMap::new(),
             type_id_index: self.type_id_index.clone(),
             compatible: self.compatible,
+            xlang: self.xlang,
         }
     }
 }

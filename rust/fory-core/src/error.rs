@@ -163,7 +163,7 @@ pub enum Error {
     ///
     /// Do not construct this variant directly; use [`Error::unsupported`] instead.
     #[error("{0}")]
-    Uunsupported(Cow<'static, str>),
+    Unsupported(Cow<'static, str>),
 
     /// Operation not allowed in current context.
     ///
@@ -381,7 +381,7 @@ impl Error {
         err
     }
 
-    /// Creates a new [`Error::Uunsupported`] from a string or static message.
+    /// Creates a new [`Error::Unsupported`] from a string or static message.
     ///
     /// If `FORY_PANIC_ON_ERROR` environment variable is set, this will panic with the error message.
     ///
@@ -396,7 +396,7 @@ impl Error {
     #[cold]
     #[track_caller]
     pub fn unsupported<S: Into<Cow<'static, str>>>(s: S) -> Self {
-        let err = Error::Uunsupported(s.into());
+        let err = Error::Unsupported(s.into());
         if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }
