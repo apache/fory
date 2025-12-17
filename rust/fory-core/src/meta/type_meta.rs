@@ -326,6 +326,7 @@ pub struct TypeMeta {
     type_name: Rc<MetaString>,
     register_by_name: bool,
     field_infos: Vec<FieldInfo>,
+    bytes: Vec<u8>,
 }
 
 impl TypeMeta {
@@ -335,15 +336,20 @@ impl TypeMeta {
         type_name: MetaString,
         register_by_name: bool,
         field_infos: Vec<FieldInfo>,
-    ) -> TypeMeta {
-        TypeMeta {
+    ) -> Result<TypeMeta, Error> {
+        let mut meta = TypeMeta {
             hash: 0,
             type_id,
             namespace: Rc::from(namespace),
             type_name: Rc::from(type_name),
             register_by_name,
             field_infos,
-        }
+            bytes: vec![],
+        };
+        let (bytes, meta_hash) = meta.to_bytes()?;
+        meta.bytes = bytes;
+        meta.hash = meta_hash;
+        Ok(meta)
     }
 
     #[inline(always)]
@@ -372,15 +378,25 @@ impl TypeMeta {
     }
 
     #[inline(always)]
-    pub fn empty() -> TypeMeta {
-        TypeMeta {
+    pub fn get_bytes(&self) -> Vec<u8> {
+        self.bytes.clone()
+    }
+
+    #[inline(always)]
+    pub fn empty() -> Result<TypeMeta, Error> {
+        let mut meta = TypeMeta {
             hash: 0,
             type_id: 0,
             namespace: Rc::from(MetaString::get_empty().clone()),
             type_name: Rc::from(MetaString::get_empty().clone()),
             register_by_name: false,
             field_infos: vec![],
-        }
+            bytes: vec![],
+        };
+        let (bytes, meta_hash) = meta.to_bytes()?;
+        meta.bytes = bytes;
+        meta.hash = meta_hash;
+        Ok(meta)
     }
 
     /// Creates a deep clone with new Rc instances.
@@ -393,6 +409,7 @@ impl TypeMeta {
             type_name: Rc::new((*self.type_name).clone()),
             register_by_name: self.register_by_name,
             field_infos: self.field_infos.clone(),
+            bytes: self.bytes.clone(),
         }
     }
 
@@ -402,7 +419,7 @@ impl TypeMeta {
         type_name: MetaString,
         register_by_name: bool,
         field_infos: Vec<FieldInfo>,
-    ) -> TypeMeta {
+    ) -> Result<TypeMeta, Error> {
         TypeMeta::new(type_id, namespace, type_name, register_by_name, field_infos)
     }
 
@@ -628,13 +645,13 @@ impl TypeMeta {
             Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
         }
         // if no type found, keep all fields id as -1 to be skipped.
-        Ok(TypeMeta::new(
+        TypeMeta::new(
             type_id,
             namespace,
             type_name,
             register_by_name,
             sorted_field_infos,
-        ))
+        )
     }
 
     fn assign_field_ids(type_info_current: &TypeInfo, field_infos: &mut [FieldInfo]) {
@@ -734,7 +751,7 @@ impl TypeMeta {
         Ok(())
     }
 
-    pub(crate) fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn to_bytes(&self) -> Result<(Vec<u8>, i64), Error> {
         // | global_binary_header | meta_bytes |
         let mut buffer = vec![];
         let mut result = Writer::from_buffer(&mut buffer);
@@ -752,13 +769,15 @@ impl TypeMeta {
         if is_compressed {
             header |= COMPRESS_META_FLAG;
         }
-        let meta_hash = murmurhash3_x64_128(meta_writer.dump().as_slice(), 47).0 as i64;
-        header |= (meta_hash << (64 - NUM_HASH_BITS)).abs();
+        let hash_value = murmurhash3_x64_128(meta_writer.dump().as_slice(), 47).0 as i64;
+        let meta_hash_shifted = (hash_value << (64 - NUM_HASH_BITS)).abs();
+        let meta_hash = meta_hash_shifted >> (64 - NUM_HASH_BITS);
+        header |= meta_hash_shifted;
         result.write_i64(header);
         if meta_size >= META_SIZE_MASK {
             result.write_varuint32((meta_size - META_SIZE_MASK) as u32);
         }
         result.write_bytes(meta_buffer.as_slice());
-        Ok(buffer)
+        Ok((buffer, meta_hash))
     }
 }

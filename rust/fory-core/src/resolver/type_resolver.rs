@@ -166,7 +166,7 @@ impl TypeInfo {
             TYPE_NAME_ENCODER.encode_with_encodings(type_name, TYPE_NAME_ENCODINGS)?;
         Ok(TypeInfo {
             type_def: Rc::from(vec![]),
-            type_meta: Rc::new(TypeMeta::empty()),
+            type_meta: Rc::new(TypeMeta::empty()?),
             type_id,
             namespace: Rc::from(namespace_meta_string),
             type_name: Rc::from(type_name_meta_string),
@@ -180,7 +180,7 @@ impl TypeInfo {
         let namespace = type_meta.get_namespace();
         let type_name = type_meta.get_type_name();
         let register_by_name = !namespace.original.is_empty() || !type_name.original.is_empty();
-        let type_def_bytes = type_meta.to_bytes()?;
+        let type_def_bytes = type_meta.get_bytes();
         Ok(TypeInfo {
             type_def: Rc::from(type_def_bytes),
             type_meta,
@@ -250,7 +250,7 @@ impl TypeInfo {
         let type_id = remote_meta.get_type_id();
         let namespace = remote_meta.get_namespace();
         let type_name = remote_meta.get_type_name();
-        let type_def_bytes = remote_meta.to_bytes().unwrap_or_default();
+        let type_def_bytes = remote_meta.get_bytes();
         let register_by_name = !namespace.original.is_empty() || !type_name.original.is_empty();
 
         let harness = if let Some(h) = local_harness {
@@ -347,8 +347,8 @@ fn build_struct_type_infos<T: StructSerializer>(
         (*partial_info.type_name).clone(),
         partial_info.register_by_name,
         sorted_field_infos,
-    );
-    let type_def_bytes = type_meta.to_bytes()?;
+    )?;
+    let type_def_bytes = type_meta.get_bytes();
     let main_type_info = TypeInfo {
         type_def: Rc::from(type_def_bytes),
         type_meta: Rc::new(type_meta),
@@ -386,7 +386,7 @@ fn build_struct_type_infos<T: StructSerializer>(
                     type_name_ms,
                     true,
                     fields_info.clone(),
-                )
+                )?
             } else {
                 // add a check to avoid collision with main enum type_id
                 // since internal id is big alealdy, `74<<8 = 18944` is big enough to avoid collision most of time
@@ -407,7 +407,7 @@ fn build_struct_type_infos<T: StructSerializer>(
                     MetaString::get_empty().clone(),
                     false,
                     fields_info,
-                )
+                )?
             };
 
             let variant_type_info =
@@ -433,8 +433,8 @@ fn build_serializer_type_infos(
         (*partial_info.type_name).clone(),
         partial_info.register_by_name,
         vec![],
-    );
-    let type_def_bytes = type_meta.to_bytes()?;
+    )?;
+    let type_def_bytes = type_meta.get_bytes();
     let type_info = TypeInfo {
         type_def: Rc::from(type_def_bytes),
         type_meta: Rc::new(type_meta),
