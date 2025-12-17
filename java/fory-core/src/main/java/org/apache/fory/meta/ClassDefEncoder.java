@@ -290,8 +290,8 @@ public class ClassDefEncoder {
       int encodingFlags = fieldNameEncodingsList.indexOf(metaString.getEncoding());
       byte[] encoded = metaString.getBytes();
       int size = (encoded.length - 1);
-      if (fieldInfo.hasTag()) {
-        size = fieldInfo.getTag();
+      if (fieldInfo.hasFieldId()) {
+        size = fieldInfo.getFieldId();
         encodingFlags = 3;
       }
       header |= (byte) (encodingFlags << 3);
@@ -304,7 +304,7 @@ public class ClassDefEncoder {
         header |= (size << 5);
         buffer.writeByte(header);
       }
-      if (!fieldInfo.hasTag()) {
+      if (!fieldInfo.hasFieldId()) {
         buffer.writeBytes(encoded);
       }
       fieldType.write(buffer, false);

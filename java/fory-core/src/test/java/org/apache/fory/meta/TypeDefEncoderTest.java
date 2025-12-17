@@ -188,16 +188,16 @@ public class TypeDefEncoderTest {
     Assert.assertEquals(fieldInfos.size(), 3);
 
     // Verify all fields have the correct tag IDs
-    Assert.assertTrue(fieldInfos.get(0).hasTag());
-    Assert.assertEquals(fieldInfos.get(0).getTag(), (short) 100);
+    Assert.assertTrue(fieldInfos.get(0).hasFieldId());
+    Assert.assertEquals(fieldInfos.get(0).getFieldId(), (short) 100);
     Assert.assertEquals(fieldInfos.get(0).getFieldName(), "field1");
 
-    Assert.assertTrue(fieldInfos.get(1).hasTag());
-    Assert.assertEquals(fieldInfos.get(1).getTag(), (short) 200);
+    Assert.assertTrue(fieldInfos.get(1).hasFieldId());
+    Assert.assertEquals(fieldInfos.get(1).getFieldId(), (short) 200);
     Assert.assertEquals(fieldInfos.get(1).getFieldName(), "field2");
 
-    Assert.assertTrue(fieldInfos.get(2).hasTag());
-    Assert.assertEquals(fieldInfos.get(2).getTag(), (short) 300);
+    Assert.assertTrue(fieldInfos.get(2).hasFieldId());
+    Assert.assertEquals(fieldInfos.get(2).getFieldId(), (short) 300);
     Assert.assertEquals(fieldInfos.get(2).getFieldName(), "field3");
   }
 
@@ -220,21 +220,21 @@ public class TypeDefEncoderTest {
     Assert.assertEquals(fieldInfos.size(), 4);
 
     // annotatedField1 should have tag 50
-    Assert.assertTrue(fieldInfos.get(0).hasTag());
-    Assert.assertEquals(fieldInfos.get(0).getTag(), (short) 50);
+    Assert.assertTrue(fieldInfos.get(0).hasFieldId());
+    Assert.assertEquals(fieldInfos.get(0).getFieldId(), (short) 50);
     Assert.assertEquals(fieldInfos.get(0).getFieldName(), "annotatedField1");
 
     // noAnnotation should not have a tag (uses field name)
-    Assert.assertFalse(fieldInfos.get(1).hasTag());
+    Assert.assertFalse(fieldInfos.get(1).hasFieldId());
     Assert.assertEquals(fieldInfos.get(1).getFieldName(), "noAnnotation");
 
     // optOutField with id=-1 should not have a tag (uses field name)
-    Assert.assertFalse(fieldInfos.get(2).hasTag());
+    Assert.assertFalse(fieldInfos.get(2).hasFieldId());
     Assert.assertEquals(fieldInfos.get(2).getFieldName(), "optOutField");
 
     // annotatedField2 should have tag 60
-    Assert.assertTrue(fieldInfos.get(3).hasTag());
-    Assert.assertEquals(fieldInfos.get(3).getTag(), (short) 60);
+    Assert.assertTrue(fieldInfos.get(3).hasFieldId());
+    Assert.assertEquals(fieldInfos.get(3).getFieldId(), (short) 60);
     Assert.assertEquals(fieldInfos.get(3).getFieldName(), "annotatedField2");
   }
 
@@ -269,8 +269,8 @@ public class TypeDefEncoderTest {
         TypeDefEncoder.buildFieldsInfo(resolver, ClassWithSingleField.class, fields);
 
     Assert.assertEquals(fieldInfos.size(), 1);
-    Assert.assertTrue(fieldInfos.get(0).hasTag());
-    Assert.assertEquals(fieldInfos.get(0).getTag(), (short) 42);
+    Assert.assertTrue(fieldInfos.get(0).hasFieldId());
+    Assert.assertEquals(fieldInfos.get(0).getFieldId(), (short) 42);
     Assert.assertEquals(fieldInfos.get(0).getFieldName(), "field");
   }
 
@@ -293,7 +293,7 @@ public class TypeDefEncoderTest {
 
     // All fields should not have tags (use field names)
     for (ClassDef.FieldInfo fieldInfo : fieldInfos) {
-      Assert.assertFalse(fieldInfo.hasTag());
+      Assert.assertFalse(fieldInfo.hasFieldId());
     }
   }
 
@@ -316,7 +316,7 @@ public class TypeDefEncoderTest {
 
     // All fields with id=-1 should not have tags (use field names)
     for (ClassDef.FieldInfo fieldInfo : fieldInfos) {
-      Assert.assertFalse(fieldInfo.hasTag());
+      Assert.assertFalse(fieldInfo.hasFieldId());
     }
   }
 
@@ -336,11 +336,11 @@ public class TypeDefEncoderTest {
 
     Assert.assertEquals(fieldInfos.size(), 2);
 
-    Assert.assertTrue(fieldInfos.get(0).hasTag());
-    Assert.assertEquals(fieldInfos.get(0).getTag(), (short) 32000);
+    Assert.assertTrue(fieldInfos.get(0).hasFieldId());
+    Assert.assertEquals(fieldInfos.get(0).getFieldId(), (short) 32000);
 
-    Assert.assertTrue(fieldInfos.get(1).hasTag());
-    Assert.assertEquals(fieldInfos.get(1).getTag(), (short) 32767);
+    Assert.assertTrue(fieldInfos.get(1).hasFieldId());
+    Assert.assertEquals(fieldInfos.get(1).getFieldId(), (short) 32767);
   }
 
   @Test

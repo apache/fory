@@ -350,9 +350,8 @@ public class ClassDef implements Serializable {
       SortedMap<Member, Descriptor> allDescriptorsMap =
           resolver.getFory().getClassResolver().getAllDescriptorsMap(cls, true);
       Map<String, Descriptor> descriptorsMap = new HashMap<>();
-      Map<Short, Descriptor> tagToDescriptorMap = new HashMap<>();
+      Map<Short, Descriptor> fieldIdToDescriptorMap = new HashMap<>();
 
-      // Build maps for both name-based and tag-based lookups
       for (Map.Entry<Member, Descriptor> e : allDescriptorsMap.entrySet()) {
         String fullName = e.getKey().getDeclaringClass().getName() + "." + e.getKey().getName();
         Descriptor desc = e.getValue();
@@ -360,20 +359,20 @@ public class ClassDef implements Serializable {
           throw new IllegalStateException("Duplicate key");
         }
 
-        // If the field has @ForyField annotation with tag ID, index by tag ID
+        // If the field has @ForyField annotation with field ID, index by field ID
         if (desc.getForyField() != null) {
-          int tagId = desc.getForyField().id();
-          if (tagId >= 0) {
-            if (tagToDescriptorMap.containsKey((short) tagId)) {
+          int fieldId = desc.getForyField().id();
+          if (fieldId >= 0) {
+            if (fieldIdToDescriptorMap.containsKey((short) fieldId)) {
               throw new IllegalArgumentException(
-                  "Duplicate tag id "
-                      + tagId
+                  "Duplicate field id "
+                      + fieldId
                       + " for field "
                       + desc.getName()
                       + " in class "
                       + cls.getName());
             }
-            tagToDescriptorMap.put((short) tagId, desc);
+            fieldIdToDescriptorMap.put((short) fieldId, desc);
           }
         }
       }
@@ -382,9 +381,9 @@ public class ClassDef implements Serializable {
       for (FieldInfo fieldInfo : fieldsInfo) {
         Descriptor descriptor;
 
-        // Try to match by tag ID first if the FieldInfo has a tag
-        if (fieldInfo.hasTag()) {
-          descriptor = tagToDescriptorMap.get(fieldInfo.getTag());
+        // Try to match by field ID first if the FieldInfo has an ID
+        if (fieldInfo.hasFieldId()) {
+          descriptor = fieldIdToDescriptorMap.get(fieldInfo.getFieldId());
         } else {
           descriptor =
               descriptorsMap.get(fieldInfo.getDefinedClass() + "." + fieldInfo.getFieldName());
@@ -452,18 +451,18 @@ public class ClassDef implements Serializable {
 
     private final FieldType fieldType;
 
-    /** Tag ID for schema evolution, -1 means no tag (use field name). */
-    private final short tag;
+    /** Field ID for schema evolution, -1 means no field ID (use field name). */
+    private final short fieldId;
 
     FieldInfo(String definedClass, String fieldName, FieldType fieldType) {
       this(definedClass, fieldName, fieldType, (short) -1);
     }
 
-    FieldInfo(String definedClass, String fieldName, FieldType fieldType, short tag) {
+    FieldInfo(String definedClass, String fieldName, FieldType fieldType, short fieldId) {
       this.definedClass = definedClass;
       this.fieldName = fieldName;
       this.fieldType = fieldType;
-      this.tag = tag;
+      this.fieldId = fieldId;
     }
 
     /** Returns classname of current field defined. */
@@ -477,13 +476,13 @@ public class ClassDef implements Serializable {
     }
 
     /** Returns whether field is annotated by an unsigned int id. */
-    public boolean hasTag() {
-      return tag >= 0;
+    public boolean hasFieldId() {
+      return fieldId >= 0;
     }
 
-    /** Returns annotated tag id for the field. */
-    public short getTag() {
-      return tag;
+    /** Returns annotated field-id for the field. */
+    public short getFieldId() {
+      return fieldId;
     }
 
     /** Returns type of current field. */
@@ -521,7 +520,7 @@ public class ClassDef implements Serializable {
         return false;
       }
       FieldInfo fieldInfo = (FieldInfo) o;
-      return tag == fieldInfo.tag
+      return fieldId == fieldInfo.fieldId
           && Objects.equals(definedClass, fieldInfo.definedClass)
           && Objects.equals(fieldName, fieldInfo.fieldName)
           && Objects.equals(fieldType, fieldInfo.fieldType);
@@ -529,7 +528,7 @@ public class ClassDef implements Serializable {
 
     @Override
     public int hashCode() {
-      return Objects.hash(definedClass, fieldName, fieldType, tag);
+      return Objects.hash(definedClass, fieldName, fieldType, fieldId);
     }
 
     @Override
@@ -541,7 +540,7 @@ public class ClassDef implements Serializable {
           + ", fieldName='"
           + fieldName
           + '\''
-          + (tag >= 0 ? ", tag=" + tag : "")
+          + (fieldId >= 0 ? ", fieldID=" + fieldId : "")
           + ", fieldType="
           + fieldType
           + '}';

@@ -193,8 +193,8 @@ class TypeDefEncoder {
       header |= fieldType.nullable() ? 0b10 : 0b00;
       int size, encodingFlags;
       byte[] encoded = null;
-      if (fieldInfo.hasTag()) {
-        size = fieldInfo.getTag();
+      if (fieldInfo.hasFieldId()) {
+        size = fieldInfo.getFieldId();
         encodingFlags = 3;
       } else {
         MetaString metaString = Encoders.encodeFieldName(fieldInfo.getFieldName());
@@ -215,7 +215,7 @@ class TypeDefEncoder {
       }
       fieldType.xwrite(buffer, false);
       // write field name
-      if (!fieldInfo.hasTag()) {
+      if (!fieldInfo.hasFieldId()) {
         buffer.writeBytes(encoded);
       }
     }

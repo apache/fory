@@ -77,22 +77,22 @@ public class ForyFieldTagIdTest extends ForyTestBase {
     ClassDef.FieldInfo fieldNoAnnotation = findFieldByName(fieldsInfo, "fieldWithoutAnnotation");
 
     // Verify field with id=0 has tag
-    assertTrue(field0.hasTag(), "Field with id=0 should have tag in " + language + " mode");
+    assertTrue(field0.hasFieldId(), "Field with id=0 should have tag in " + language + " mode");
     assertEquals(
-        field0.getTag(),
+        field0.getFieldId(),
         (short) 0,
         "Field with id=0 should have tag value 0 in " + language + " mode");
 
     // Verify field with id=5 has tag
-    assertTrue(field5.hasTag(), "Field with id=5 should have tag in " + language + " mode");
+    assertTrue(field5.hasFieldId(), "Field with id=5 should have tag in " + language + " mode");
     assertEquals(
-        field5.getTag(),
+        field5.getFieldId(),
         (short) 5,
         "Field with id=5 should have tag value 5 in " + language + " mode");
 
     // Verify field with id=-1 does NOT have tag (opts out)
     assertFalse(
-        fieldOptOut.hasTag(),
+        fieldOptOut.hasFieldId(),
         "Field with id=-1 should NOT have tag (opt-out) in " + language + " mode");
     assertEquals(
         fieldOptOut.getFieldName(),
@@ -101,7 +101,7 @@ public class ForyFieldTagIdTest extends ForyTestBase {
 
     // Verify field without annotation does NOT have tag
     assertFalse(
-        fieldNoAnnotation.hasTag(),
+        fieldNoAnnotation.hasFieldId(),
         "Field without annotation should NOT have tag (use field name) in " + language + " mode");
     assertEquals(
         fieldNoAnnotation.getFieldName(),

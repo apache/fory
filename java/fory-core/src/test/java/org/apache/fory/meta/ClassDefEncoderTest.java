@@ -228,7 +228,7 @@ public class ClassDefEncoderTest {
     Assert.assertEquals(fieldsInfo.size(), 3);
     // Verify all fields have the correct tag IDs
     for (ClassDef.FieldInfo fieldInfo : fieldsInfo) {
-      Assert.assertTrue(fieldInfo.hasTag());
+      Assert.assertTrue(fieldInfo.hasFieldId());
     }
   }
 
