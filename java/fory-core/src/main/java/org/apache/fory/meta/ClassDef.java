@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
@@ -62,6 +63,7 @@ import org.apache.fory.serializer.NonexistentClass;
 import org.apache.fory.serializer.converter.FieldConverter;
 import org.apache.fory.serializer.converter.FieldConverters;
 import org.apache.fory.type.Descriptor;
+import org.apache.fory.type.DescriptorBuilder;
 import org.apache.fory.type.FinalObjectTypeStub;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
@@ -351,12 +353,27 @@ public class ClassDef implements Serializable {
           resolver.getFory().getClassResolver().getAllDescriptorsMap(cls, true);
       Map<String, Descriptor> descriptorsMap = new HashMap<>();
       Map<Short, Descriptor> fieldIdToDescriptorMap = new HashMap<>();
+      Map<Member, Descriptor>[] newDescriptors = new Map[] {null};
 
       for (Map.Entry<Member, Descriptor> e : allDescriptorsMap.entrySet()) {
         String fullName = e.getKey().getDeclaringClass().getName() + "." + e.getKey().getName();
         Descriptor desc = e.getValue();
         if (descriptorsMap.put(fullName, desc) != null) {
           throw new IllegalStateException("Duplicate key");
+        }
+
+        // if the ref tracking is disabled globally,
+        // update the descriptor accordingly if @ForyField(ref=true)
+        if (!resolver.getFory().trackingRef()
+            && e.getKey() instanceof Field
+            && desc.getForyField() != null
+            && desc.isTrackingRef()) {
+          Descriptor newDescriptor = new DescriptorBuilder(desc).trackingRef(false).build();
+          desc = newDescriptor;
+          if (newDescriptors[0] == null) {
+            newDescriptors[0] = new HashMap<>();
+          }
+          newDescriptors[0].put(e.getKey(), newDescriptor);
         }
 
         // If the field has @ForyField annotation with field ID, index by field ID
@@ -375,6 +392,12 @@ public class ClassDef implements Serializable {
             fieldIdToDescriptorMap.put((short) fieldId, desc);
           }
         }
+      }
+
+      if (newDescriptors[0] != null) {
+        SortedMap<Member, Descriptor> allDescriptorsCopy = new TreeMap<>(allDescriptorsMap);
+        allDescriptorsCopy.putAll(newDescriptors[0]);
+        resolver.getFory().getClassResolver().updateDescriptorsCache(cls, true, allDescriptorsCopy);
       }
 
       descriptors = new ArrayList<>(fieldsInfo.size());
