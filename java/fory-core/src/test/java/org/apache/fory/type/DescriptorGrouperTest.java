@@ -41,13 +41,15 @@ public class DescriptorGrouperTest {
     List<Descriptor> descriptors = new ArrayList<>();
     int index = 0;
     for (Class<?> aClass : Primitives.allPrimitiveTypes()) {
-      descriptors.add(new Descriptor(TypeRef.of(aClass), "f" + index++, -1, "TestClass"));
+      descriptors.add(new Descriptor(TypeRef.of(aClass), "f" + index++, -1, "TestClass", false));
     }
     for (Class<?> t : Primitives.allWrapperTypes()) {
-      descriptors.add(new Descriptor(TypeRef.of(t), "f" + index++, -1, "TestClass"));
+      descriptors.add(new Descriptor(TypeRef.of(t), "f" + index++, -1, "TestClass", false));
     }
-    descriptors.add(new Descriptor(TypeRef.of(String.class), "f" + index++, -1, "TestClass"));
-    descriptors.add(new Descriptor(TypeRef.of(Object.class), "f" + index++, -1, "TestClass"));
+    descriptors.add(
+        new Descriptor(TypeRef.of(String.class), "f" + index++, -1, "TestClass", false));
+    descriptors.add(
+        new Descriptor(TypeRef.of(Object.class), "f" + index++, -1, "TestClass", false));
     Collections.shuffle(descriptors, new Random(17));
     return descriptors;
   }
@@ -88,7 +90,7 @@ public class DescriptorGrouperTest {
     List<Descriptor> descriptors = new ArrayList<>();
     int index = 0;
     for (Class<?> aClass : Primitives.allPrimitiveTypes()) {
-      descriptors.add(new Descriptor(TypeRef.of(aClass), "f" + index++, -1, "TestClass"));
+      descriptors.add(new Descriptor(TypeRef.of(aClass), "f" + index++, -1, "TestClass", false));
     }
     Collections.shuffle(descriptors, new Random(7));
     descriptors.sort(DescriptorGrouper.getPrimitiveComparator(false, false));
@@ -113,7 +115,7 @@ public class DescriptorGrouperTest {
     List<Descriptor> descriptors = new ArrayList<>();
     int index = 0;
     for (Class<?> aClass : Primitives.allPrimitiveTypes()) {
-      descriptors.add(new Descriptor(TypeRef.of(aClass), "f" + index++, -1, "TestClass"));
+      descriptors.add(new Descriptor(TypeRef.of(aClass), "f" + index++, -1, "TestClass", false));
     }
     Collections.shuffle(descriptors, new Random(7));
     descriptors.sort(DescriptorGrouper.getPrimitiveComparator(true, true));
@@ -137,17 +139,23 @@ public class DescriptorGrouperTest {
   public void testGrouper() {
     List<Descriptor> descriptors = createDescriptors();
     int index = 0;
-    descriptors.add(new Descriptor(TypeRef.of(Object.class), "c" + index++, -1, "TestClass"));
-    descriptors.add(new Descriptor(TypeRef.of(Date.class), "c" + index++, -1, "TestClass"));
-    descriptors.add(new Descriptor(TypeRef.of(Instant.class), "c" + index++, -1, "TestClass"));
-    descriptors.add(new Descriptor(TypeRef.of(Instant.class), "c" + index++, -1, "TestClass"));
-    descriptors.add(new Descriptor(new TypeRef<List<String>>() {}, "c" + index++, -1, "TestClass"));
     descriptors.add(
-        new Descriptor(new TypeRef<List<Integer>>() {}, "c" + index++, -1, "TestClass"));
+        new Descriptor(TypeRef.of(Object.class), "c" + index++, -1, "TestClass", false));
+    descriptors.add(new Descriptor(TypeRef.of(Date.class), "c" + index++, -1, "TestClass", false));
     descriptors.add(
-        new Descriptor(new TypeRef<Map<String, Integer>>() {}, "c" + index++, -1, "TestClass"));
+        new Descriptor(TypeRef.of(Instant.class), "c" + index++, -1, "TestClass", false));
     descriptors.add(
-        new Descriptor(new TypeRef<Map<String, String>>() {}, "c" + index++, -1, "TestClass"));
+        new Descriptor(TypeRef.of(Instant.class), "c" + index++, -1, "TestClass", false));
+    descriptors.add(
+        new Descriptor(new TypeRef<List<String>>() {}, "c" + index++, -1, "TestClass", false));
+    descriptors.add(
+        new Descriptor(new TypeRef<List<Integer>>() {}, "c" + index++, -1, "TestClass", false));
+    descriptors.add(
+        new Descriptor(
+            new TypeRef<Map<String, Integer>>() {}, "c" + index++, -1, "TestClass", false));
+    descriptors.add(
+        new Descriptor(
+            new TypeRef<Map<String, String>>() {}, "c" + index++, -1, "TestClass", false));
     DescriptorGrouper grouper =
         DescriptorGrouper.createDescriptorGrouper(
                 ReflectionUtils::isMonomorphic,

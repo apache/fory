@@ -110,7 +110,8 @@ public class Descriptor {
     this.trackingRef = foryField != null && foryField.ref();
   }
 
-  public Descriptor(TypeRef<?> typeRef, String name, int modifier, String declaringClass) {
+  public Descriptor(
+      TypeRef<?> typeRef, String name, int modifier, String declaringClass, boolean trackingRef) {
     this.field = null;
     this.typeName = typeRef.getRawType().getName();
     this.name = name;
@@ -121,6 +122,7 @@ public class Descriptor {
     this.writeMethod = null;
     this.foryField = null;
     this.nullable = !typeRef.isPrimitive();
+    this.trackingRef = trackingRef;
   }
 
   private Descriptor(Field field, Method readMethod) {
@@ -155,47 +157,21 @@ public class Descriptor {
     this.trackingRef = foryField != null && foryField.ref();
   }
 
-  private Descriptor(
-      TypeRef<?> typeRef,
-      String typeName,
-      String name,
-      int modifier,
-      String declaringClass,
-      Field field,
-      Method readMethod,
-      Method writeMethod) {
-    this.typeRef = typeRef;
-    this.typeName = typeName;
-    this.name = name;
-    this.modifier = modifier;
-    this.declaringClass = declaringClass;
-    this.field = field;
-    this.readMethod = readMethod;
-    this.writeMethod = writeMethod;
+  public Descriptor(DescriptorBuilder builder) {
+    this.typeRef = builder.typeRef;
+    this.typeName = builder.typeName;
+    this.name = builder.name;
+    this.modifier = builder.modifier;
+    this.declaringClass = builder.declaringClass;
+    this.field = builder.field;
+    this.readMethod = builder.readMethod;
+    this.writeMethod = builder.writeMethod;
+    this.trackingRef = builder.trackingRef;
     this.foryField = this.field == null ? null : this.field.getAnnotation(ForyField.class);
     if (!typeRef.isPrimitive()) {
       this.nullable = foryField == null || foryField.nullable();
     }
-    this.trackingRef = foryField != null && foryField.ref();
-  }
-
-  public Descriptor(DescriptorBuilder builder) {
-    this(
-        builder.typeRef,
-        builder.typeName,
-        builder.name,
-        builder.modifier,
-        builder.declaringClass,
-        builder.field,
-        builder.readMethod,
-        builder.writeMethod);
-    this.nullable = builder.nullable;
-    // trackingRef could be disabled via @ForyField(ref=false)
-    // we ensure if trackingRef is enabled via builder, but disabled via annotation, it stays
-    // disabled
-    this.trackingRef = this.trackingRef && builder.trackingRef;
     this.type = builder.type;
-    this.foryField = builder.foryField;
     this.fieldConverter = builder.fieldConverter;
   }
 
@@ -318,6 +294,9 @@ public class Descriptor {
       sb.append(", typeRef=").append(typeRef);
     }
     sb.append(", foryField=").append(foryField);
+    sb.append(", trackingRef=").append(trackingRef);
+    sb.append(", foryFieldConverter=").append(fieldConverter);
+    sb.append(", nullable=").append(nullable);
     sb.append('}');
     return sb.toString();
   }
@@ -331,7 +310,7 @@ public class Descriptor {
     SortedMap<Member, Descriptor> allDescriptorsMap = getAllDescriptorsMap(clz);
     Map<String, List<Member>> duplicateNameFields = getDuplicateNames(allDescriptorsMap);
     checkArgument(
-        duplicateNameFields.size() == 0, "%s has duplicate fields %s", clz, duplicateNameFields);
+        duplicateNameFields.isEmpty(), "%s has duplicate fields %s", clz, duplicateNameFields);
     return new ArrayList<>(allDescriptorsMap.values());
   }
 
@@ -343,7 +322,7 @@ public class Descriptor {
     SortedMap<Member, Descriptor> allDescriptorsMap = getAllDescriptorsMap(clz);
     Map<String, List<Member>> duplicateNameFields = getDuplicateNames(allDescriptorsMap);
     Preconditions.checkArgument(
-        duplicateNameFields.size() == 0, "%s has duplicate fields %s", clz, duplicateNameFields);
+        duplicateNameFields.isEmpty(), "%s has duplicate fields %s", clz, duplicateNameFields);
     TreeMap<String, Descriptor> map = new TreeMap<>();
     allDescriptorsMap.forEach((k, v) -> map.put(k.getName(), v));
     return map;

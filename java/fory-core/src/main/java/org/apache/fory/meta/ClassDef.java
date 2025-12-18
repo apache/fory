@@ -362,18 +362,28 @@ public class ClassDef implements Serializable {
           throw new IllegalStateException("Duplicate key");
         }
 
-        // if the ref tracking is disabled globally,
-        // update the descriptor accordingly if @ForyField(ref=true)
-        if (!resolver.getFory().trackingRef()
-            && e.getKey() instanceof Field
-            && desc.getForyField() != null
-            && desc.isTrackingRef()) {
-          Descriptor newDescriptor = new DescriptorBuilder(desc).trackingRef(false).build();
-          desc = newDescriptor;
-          if (newDescriptors[0] == null) {
-            newDescriptors[0] = new HashMap<>();
+        if (e.getKey() instanceof Field) {
+          boolean refTracking = resolver.getFory().trackingRef();
+          ForyField foryField = desc.getForyField();
+          // update ref tracking if
+          // - global ref tracking is disabled but field is tracking ref (@ForyField#ref set)
+          // - global ref tracking is enabled but field is not tracking ref (@ForyField#ref not set)
+          boolean needsUpdate =
+              (refTracking && foryField == null && !desc.isTrackingRef())
+                  || (foryField != null && desc.isTrackingRef());
+
+          if (needsUpdate) {
+            if (newDescriptors[0] == null) {
+              newDescriptors[0] = new HashMap<>();
+            }
+            boolean newTrackingRef = refTracking && foryField == null;
+            Descriptor newDescriptor =
+                new DescriptorBuilder(desc).trackingRef(newTrackingRef).build();
+
+            descriptorsMap.put(fullName, newDescriptor);
+            desc = newDescriptor;
+            newDescriptors[0].put(e.getKey(), newDescriptor);
           }
-          newDescriptors[0].put(e.getKey(), newDescriptor);
         }
 
         // If the field has @ForyField annotation with field ID, index by field ID
@@ -525,13 +535,15 @@ public class ClassDef implements Serializable {
         if (typeRef.equals(declared)) {
           return descriptor;
         } else {
+          // TODO fix return here
           descriptor.copyWithTypeName(typeRef.getType().getTypeName());
         }
       }
       // This field doesn't exist in peer class, so any legal modifier will be OK.
       // Use constant instead of reflection to avoid GraalVM native image issues.
       int stubModifiers = Modifier.PRIVATE | Modifier.FINAL;
-      return new Descriptor(typeRef, fieldName, stubModifiers, definedClass);
+      return new Descriptor(
+          typeRef, fieldName, stubModifiers, definedClass, resolver.needToWriteRef(typeRef));
     }
 
     @Override

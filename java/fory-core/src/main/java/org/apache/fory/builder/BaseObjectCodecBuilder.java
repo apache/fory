@@ -405,12 +405,9 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     TypeRef<?> typeRef = descriptor.getTypeRef();
     boolean nullable = descriptor.isNullable();
 
-    // ref tracking logic:
-    // - if the ref tracking is enabled globally, then @ForyField will be checked
-    // - otherwise, fallback to global config
     boolean useRefTracking;
     if (needWriteRef(typeRef)) {
-      useRefTracking = descriptor.getForyField() == null || descriptor.isTrackingRef();
+      useRefTracking = descriptor.isTrackingRef();
     } else {
       useRefTracking = false;
     }
@@ -1778,13 +1775,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     TypeRef<?> typeRef = descriptor.getTypeRef();
     boolean nullable = descriptor.isNullable();
 
-    // ref tracking logic:
-    // - if the ref tracking is enabled globally, then @ForyField will be checked
-    // - otherwise, fallback to global config
     boolean typeNeedsRef = needWriteRef(typeRef);
     boolean useRefTracking;
-    if (typeNeedsRef) {
-      useRefTracking = descriptor.getForyField() == null || descriptor.isTrackingRef();
+    if (needWriteRef(typeRef)) {
+      useRefTracking = descriptor.isTrackingRef();
     } else {
       useRefTracking = false;
     }

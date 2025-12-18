@@ -1219,22 +1219,29 @@ public class ClassResolver extends TypeResolver {
 
     allDescriptors.forEach(
         (member, descriptor) -> {
-          if (member instanceof Field) {
-            // if the ref tracking is disabled globally,
-            // update the descriptor accordingly if @ForyField(ref=true)
-            if (!fory.trackingRef()
-                && descriptor.getForyField() != null
-                && descriptor.isTrackingRef()) {
-              if (newDescriptors[0] == null) {
-                newDescriptors[0] = new HashMap<>();
-              }
-              Descriptor newDescriptor =
-                  new DescriptorBuilder(descriptor).trackingRef(false).build();
-              result.add(newDescriptor);
-              newDescriptors[0].put(member, newDescriptor);
-            } else {
-              result.add(descriptor);
+          if (!(member instanceof Field)) {
+            return;
+          }
+
+          boolean shouldTrack = fory.trackingRef();
+          boolean hasForyField = descriptor.getForyField() != null;
+          // update ref tracking if
+          // - global ref tracking is enabled but field is not tracking ref (@ForyField#ref not set)
+          // - global ref tracking is disabled but field is tracking ref (@ForyField#ref set)
+          boolean needsUpdate =
+              (shouldTrack && !hasForyField)
+                  || (!shouldTrack && hasForyField && descriptor.isTrackingRef());
+
+          if (needsUpdate) {
+            if (newDescriptors[0] == null) {
+              newDescriptors[0] = new HashMap<>();
             }
+            Descriptor newDescriptor =
+                new DescriptorBuilder(descriptor).trackingRef(shouldTrack).build();
+            result.add(newDescriptor);
+            newDescriptors[0].put(member, newDescriptor);
+          } else {
+            result.add(descriptor);
           }
         });
 
