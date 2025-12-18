@@ -76,6 +76,7 @@ public final class ForyBuilder {
   boolean checkJdkClassSerializable = true;
   Class<? extends Serializer> defaultJDKStreamSerializerType = ObjectStreamSerializer.class;
   boolean requireClassRegistration = true;
+  boolean willConfigureTypeChecker = false;
   Boolean metaShareEnabled;
   Boolean scopedMetaShareEnabled;
   boolean codeGenEnabled = true;
@@ -308,6 +309,22 @@ public final class ForyBuilder {
   }
 
   /**
+   * Indicates whether a TypeChecker will be configured after Fory creation.  Setting this to true
+   * suppresses the security warning when {@link #requireClassRegistration(boolean)} is disabled.
+   *
+   * <p>You MUST configure {@link org.apache.fory.resolver.TypeChecker} or {@link
+   * org.apache.fory.resolver.ClassChecker} after building Fory, otherwise deserialization will be
+   * insecure.
+   *
+   * @param willConfigureTypeChecker true if a TypeChecker/ClassChecker will be configured later
+   * @return this builder instance for method chaining
+   */
+    public ForyBuilder willConfigureTypeChecker(boolean willConfigureTypeChecker) {
+        this.willConfigureTypeChecker = willConfigureTypeChecker;
+        return this;
+    }
+
+  /**
    * Whether suppress class registration warnings. The warnings can be used for security audit, but
    * may be annoying, this suppression will be enabled by default.
    *
@@ -482,7 +499,7 @@ public final class ForyBuilder {
         checkClassVersion = true;
       }
     }
-    if (!requireClassRegistration) {
+    if (!requireClassRegistration&&!willConfigureTypeChecker) {
       LOG.warn(
           "Class registration isn't forced, unknown classes can be deserialized. "
               + "If the environment isn't secure, please enable class registration by "

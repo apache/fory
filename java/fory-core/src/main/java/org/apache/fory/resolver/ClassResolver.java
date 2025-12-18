@@ -1207,6 +1207,9 @@ public class ClassResolver extends TypeResolver {
           }
           return false;
         };
+    if(classChecker instanceof AllowListChecker){
+        ((AllowListChecker) classChecker).addListener(this);
+    }
   }
 
   @Override
