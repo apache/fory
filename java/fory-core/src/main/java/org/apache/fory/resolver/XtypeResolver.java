@@ -618,6 +618,7 @@ public class XtypeResolver extends TypeResolver {
     registerDefaultTypes(Types.SET, HashSet.class, LinkedHashSet.class, Set.class);
     registerDefaultTypes(Types.MAP, HashMap.class, LinkedHashMap.class, Map.class);
     registerDefaultTypes(Types.LOCAL_DATE, LocalDate.class);
+    registerDefaultTypes(Types.UNION, org.apache.fory.type.Union.class);
   }
 
   private void registerDefaultTypes(int xtypeId, Class<?> defaultType, Class<?>... otherTypes) {

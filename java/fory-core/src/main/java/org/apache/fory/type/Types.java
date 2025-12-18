@@ -159,6 +159,12 @@ public class Types {
   /** One dimensional float64 array. */
   public static final int FLOAT64_ARRAY = 37;
 
+  /** A tagged union type that can hold one of several alternative types. */
+  public static final int UNION = 38;
+
+  /** Represents an empty/unit value with no data (e.g., for empty union alternatives). */
+  public static final int NONE = 39;
+
   /** Bound value for range checks (types with id >= BOUND are not internal types). */
   public static final int BOUND = 64;
 
