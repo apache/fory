@@ -17,7 +17,6 @@
 
 import dataclasses
 from typing import Union
-import pytest
 
 from pyfory import Fory
 
@@ -31,14 +30,14 @@ def test_union_basic_types():
     serialized = fory.serialize(value_int)
     deserialized = fory.deserialize(serialized)
     assert deserialized == 42
-    assert type(deserialized) == int
+    assert type(deserialized) is int
 
     # Test with str value
     value_str: Union[int, str] = "hello"
     serialized = fory.serialize(value_str)
     deserialized = fory.deserialize(serialized)
     assert deserialized == "hello"
-    assert type(deserialized) == str
+    assert type(deserialized) is str
 
 
 def test_union_multiple_types():
@@ -50,21 +49,21 @@ def test_union_multiple_types():
     serialized = fory.serialize(value1)
     deserialized = fory.deserialize(serialized)
     assert deserialized == 123
-    assert type(deserialized) == int
+    assert type(deserialized) is int
 
     # Test with str
     value2: Union[int, str, float] = "test"
     serialized = fory.serialize(value2)
     deserialized = fory.deserialize(serialized)
     assert deserialized == "test"
-    assert type(deserialized) == str
+    assert type(deserialized) is str
 
     # Test with float
     value3: Union[int, str, float] = 3.14
     serialized = fory.serialize(value3)
     deserialized = fory.deserialize(serialized)
     assert abs(deserialized - 3.14) < 0.0001
-    assert type(deserialized) == float
+    assert type(deserialized) is float
 
 
 def test_union_with_collections():
@@ -76,14 +75,14 @@ def test_union_with_collections():
     serialized = fory.serialize(value_list)
     deserialized = fory.deserialize(serialized)
     assert deserialized == [1, 2, 3]
-    assert type(deserialized) == list
+    assert type(deserialized) is list
 
     # Test with dict
     value_dict: Union[list, dict] = {"a": 1, "b": 2}
     serialized = fory.serialize(value_dict)
     deserialized = fory.deserialize(serialized)
     assert deserialized == {"a": 1, "b": 2}
-    assert type(deserialized) == dict
+    assert type(deserialized) is dict
 
 
 def test_union_with_optional():
@@ -126,7 +125,7 @@ def test_union_with_dataclass():
     serialized = fory.serialize(value)
     deserialized = fory.deserialize(serialized)
     assert deserialized == person
-    assert type(deserialized) == Person
+    assert type(deserialized) is Person
 
     # Test with Company
     company = Company("TechCorp", 100)
@@ -134,7 +133,7 @@ def test_union_with_dataclass():
     serialized = fory.serialize(value2)
     deserialized = fory.deserialize(serialized)
     assert deserialized == company
-    assert type(deserialized) == Company
+    assert type(deserialized) is Company
 
 
 def test_union_nested_in_dataclass():
@@ -154,7 +153,7 @@ def test_union_nested_in_dataclass():
     deserialized = fory.deserialize(serialized)
     assert deserialized.value == 42
     assert deserialized.name == "test1"
-    assert type(deserialized.value) == int
+    assert type(deserialized.value) is int
 
     # Test with str value
     obj2 = Container(value="hello", name="test2")
@@ -162,7 +161,7 @@ def test_union_nested_in_dataclass():
     deserialized = fory.deserialize(serialized)
     assert deserialized.value == "hello"
     assert deserialized.name == "test2"
-    assert type(deserialized.value) == str
+    assert type(deserialized.value) is str
 
 
 def test_union_with_bytes():
@@ -174,14 +173,14 @@ def test_union_with_bytes():
     serialized = fory.serialize(value_bytes)
     deserialized = fory.deserialize(serialized)
     assert deserialized == b"hello"
-    assert type(deserialized) == bytes
+    assert type(deserialized) is bytes
 
     # Test with str
     value_str: Union[bytes, str] = "world"
     serialized = fory.serialize(value_str)
     deserialized = fory.deserialize(serialized)
     assert deserialized == "world"
-    assert type(deserialized) == str
+    assert type(deserialized) is str
 
 
 def test_union_cross_language():
@@ -193,11 +192,11 @@ def test_union_cross_language():
     serialized = fory.serialize(value_int)
     deserialized = fory.deserialize(serialized)
     assert deserialized == 42
-    assert type(deserialized) == int
+    assert type(deserialized) is int
 
     # Test with str value
     value_str: Union[int, str] = "test"
     serialized = fory.serialize(value_str)
     deserialized = fory.deserialize(serialized)
     assert deserialized == "test"
-    assert type(deserialized) == str
+    assert type(deserialized) is str
