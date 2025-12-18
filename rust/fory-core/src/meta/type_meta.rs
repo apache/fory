@@ -378,8 +378,8 @@ impl TypeMeta {
     }
 
     #[inline(always)]
-    pub fn get_bytes(&self) -> Vec<u8> {
-        self.bytes.clone()
+    pub fn get_bytes(&self) -> &Vec<u8> {
+        &self.bytes
     }
 
     #[inline(always)]
