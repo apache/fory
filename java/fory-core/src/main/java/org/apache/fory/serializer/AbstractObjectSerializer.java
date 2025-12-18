@@ -29,7 +29,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
-import org.apache.fory.annotation.ForyField;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.collection.Tuple3;
 import org.apache.fory.memory.MemoryBuffer;
@@ -996,11 +995,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       this.qualifiedFieldName = d.getDeclaringClass() + "." + d.getName();
       this.fieldAccessor = d.getField() != null ? FieldAccessor.createAccessor(d.getField()) : null;
       fieldConverter = d.getFieldConverter();
-      ForyField foryField = d.getForyField();
       nullable = d.isNullable();
       if (fory.trackingRef()) {
-        trackingRef =
-            foryField != null ? foryField.ref() : fory.getClassResolver().needToWriteRef(typeRef);
+        trackingRef = d.isTrackingRef();
       }
     }
 
