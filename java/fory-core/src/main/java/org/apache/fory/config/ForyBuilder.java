@@ -309,7 +309,7 @@ public final class ForyBuilder {
   }
 
   /**
-   * Indicates whether a TypeChecker will be configured after Fory creation.  Setting this to true
+   * Indicates whether a TypeChecker will be configured after Fory creation. Setting this to true
    * suppresses the security warning when {@link #requireClassRegistration(boolean)} is disabled.
    *
    * <p>You MUST configure {@link org.apache.fory.resolver.TypeChecker} or {@link
@@ -319,10 +319,10 @@ public final class ForyBuilder {
    * @param willConfigureTypeChecker true if a TypeChecker/ClassChecker will be configured later
    * @return this builder instance for method chaining
    */
-    public ForyBuilder willConfigureTypeChecker(boolean willConfigureTypeChecker) {
-        this.willConfigureTypeChecker = willConfigureTypeChecker;
-        return this;
-    }
+  public ForyBuilder willConfigureTypeChecker(boolean willConfigureTypeChecker) {
+    this.willConfigureTypeChecker = willConfigureTypeChecker;
+    return this;
+  }
 
   /**
    * Whether suppress class registration warnings. The warnings can be used for security audit, but
@@ -499,7 +499,7 @@ public final class ForyBuilder {
         checkClassVersion = true;
       }
     }
-    if (!requireClassRegistration&&!willConfigureTypeChecker) {
+    if (!requireClassRegistration && !willConfigureTypeChecker) {
       LOG.warn(
           "Class registration isn't forced, unknown classes can be deserialized. "
               + "If the environment isn't secure, please enable class registration by "
