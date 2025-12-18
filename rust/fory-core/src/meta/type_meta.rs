@@ -378,7 +378,7 @@ impl TypeMeta {
     }
 
     #[inline(always)]
-    pub fn get_bytes(&self) -> &Vec<u8> {
+    pub fn get_bytes(&self) -> &[u8] {
         &self.bytes
     }
 

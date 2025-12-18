@@ -180,7 +180,7 @@ impl TypeInfo {
         let namespace = type_meta.get_namespace();
         let type_name = type_meta.get_type_name();
         let register_by_name = !namespace.original.is_empty() || !type_name.original.is_empty();
-        let type_def_bytes = type_meta.get_bytes().clone();
+        let type_def_bytes = type_meta.get_bytes().to_owned();
         Ok(TypeInfo {
             type_def: Rc::from(type_def_bytes),
             type_meta,
@@ -250,7 +250,7 @@ impl TypeInfo {
         let type_id = remote_meta.get_type_id();
         let namespace = remote_meta.get_namespace();
         let type_name = remote_meta.get_type_name();
-        let type_def_bytes = remote_meta.get_bytes().clone();
+        let type_def_bytes = remote_meta.get_bytes().to_owned();
         let register_by_name = !namespace.original.is_empty() || !type_name.original.is_empty();
 
         let harness = if let Some(h) = local_harness {
@@ -348,7 +348,7 @@ fn build_struct_type_infos<T: StructSerializer>(
         partial_info.register_by_name,
         sorted_field_infos,
     )?;
-    let type_def_bytes = type_meta.get_bytes().clone();
+    let type_def_bytes = type_meta.get_bytes().to_owned();
     let main_type_info = TypeInfo {
         type_def: Rc::from(type_def_bytes),
         type_meta: Rc::new(type_meta),
@@ -434,7 +434,7 @@ fn build_serializer_type_infos(
         partial_info.register_by_name,
         vec![],
     )?;
-    let type_def_bytes = type_meta.get_bytes().clone();
+    let type_def_bytes = type_meta.get_bytes().to_owned();
     let type_info = TypeInfo {
         type_def: Rc::from(type_def_bytes),
         type_meta: Rc::new(type_meta),
