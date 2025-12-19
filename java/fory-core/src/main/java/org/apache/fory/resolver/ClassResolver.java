@@ -1207,6 +1207,9 @@ public class ClassResolver extends TypeResolver {
           }
           return false;
         };
+    if (classChecker instanceof AllowListChecker) {
+      ((AllowListChecker) classChecker).addListener(this);
+    }
   }
 
   @Override
@@ -1335,7 +1338,8 @@ public class ClassResolver extends TypeResolver {
           && !Functions.isLambda(cls)
           && !ReflectionUtils.isJdkProxy(cls)
           && !extRegistry.registeredClassIdMap.containsKey(cls)
-          && !shimDispatcher.contains(cls)) {
+          && !shimDispatcher.contains(cls)
+          && !extRegistry.isTypeCheckerSet()) {
         LOG.warn(generateSecurityMsg(cls));
       }
     }
