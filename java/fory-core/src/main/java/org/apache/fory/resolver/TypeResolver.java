@@ -715,12 +715,17 @@ public abstract class TypeResolver {
     // TODO(chaokunyang) Better to  use soft reference, see ObjectStreamClass.
     final ConcurrentHashMap<Tuple2<Class<?>, Boolean>, SortedMap<Member, Descriptor>>
         descriptorsCache = new ConcurrentHashMap<>();
-    TypeChecker typeChecker = (resolver, className) -> true;
+    static final TypeChecker DEFAULT_TYPE_CHECKER = (resolver, className) -> true;
+    TypeChecker typeChecker = DEFAULT_TYPE_CHECKER;
     GenericType objectGenericType;
     final IdentityMap<Type, GenericType> genericTypes = new IdentityMap<>();
     final Map<Class, Map<String, GenericType>> classGenericTypes = new HashMap<>();
     final Map<List<ClassLoader>, CodeGenerator> codeGeneratorMap = new HashMap<>();
     final Set<ClassInfo> registeredClassInfos = new HashSet<>();
     boolean ensureSerializersCompiled;
+
+    public boolean isTypeCheckerSet() {
+      return typeChecker != DEFAULT_TYPE_CHECKER;
+    }
   }
 }

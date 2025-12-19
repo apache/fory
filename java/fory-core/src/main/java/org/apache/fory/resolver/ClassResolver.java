@@ -252,7 +252,6 @@ public class ClassResolver extends TypeResolver {
   // class id of last default registered class.
   private short innerEndClassId;
   private final ShimDispatcher shimDispatcher;
-  private boolean isClassCheckSet = false;
 
   public ClassResolver(Fory fory) {
     super(fory);
@@ -1208,7 +1207,6 @@ public class ClassResolver extends TypeResolver {
           }
           return false;
         };
-    isClassCheckSet = true;
     if (classChecker instanceof AllowListChecker) {
       ((AllowListChecker) classChecker).addListener(this);
     }
@@ -1341,7 +1339,7 @@ public class ClassResolver extends TypeResolver {
           && !ReflectionUtils.isJdkProxy(cls)
           && !extRegistry.registeredClassIdMap.containsKey(cls)
           && !shimDispatcher.contains(cls)
-          && !isClassCheckSet) {
+          && !extRegistry.isTypeCheckerSet()) {
         LOG.warn(generateSecurityMsg(cls));
       }
     }
