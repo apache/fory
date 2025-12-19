@@ -37,7 +37,7 @@
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.javadoc.skip>true</maven.javadoc.skip>
     <fory.java.rootdir>${basedir}/..</fory.java.rootdir>
-    <log4j.version>2.20.0</log4j.version>
+    <log4j.version>2.25.3</log4j.version>
   </properties>
 
   <dependencies>
