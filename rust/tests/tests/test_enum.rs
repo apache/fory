@@ -100,9 +100,10 @@ fn named_enum() {
     assert_eq!(value1, value2);
 }
 
-/// Test that tagged enum uses UNION type ID in xlang mode
+/// Test that simple enum (all unit variants) uses ENUM type ID in xlang mode
+/// while tagged enum (some variants with data) uses UNION type ID
 #[test]
-fn xlang_tagged_enum_uses_union_type_id() {
+fn xlang_simple_enum_uses_enum_type_id() {
     use fory_core::buffer::Reader;
     use fory_core::types::TypeId;
 
@@ -141,14 +142,16 @@ fn xlang_tagged_enum_uses_union_type_id() {
     let ref_flag = reader.read_i8().unwrap();
     assert_eq!(ref_flag, -1, "Expected NotNullValue ref flag");
 
-    // Read type id - should be UNION (38) in xlang mode
+    // Read type id - should be ENUM for simple enum in xlang mode
+    // The type ID format is: (registered_type_id << 8) + TypeId::ENUM
     let type_id = reader.read_varuint32().unwrap();
+    let base_type_id = type_id & 0xff;
     assert_eq!(
-        type_id,
-        TypeId::UNION as u32,
-        "Expected UNION type id ({}) in xlang mode, got {}",
-        TypeId::UNION as u32,
-        type_id
+        base_type_id,
+        TypeId::ENUM as u32,
+        "Expected ENUM type id ({}) in xlang mode for simple enum, got {}",
+        TypeId::ENUM as u32,
+        base_type_id
     );
 
     // Read variant index (B = 1)
@@ -163,27 +166,74 @@ fn xlang_tagged_enum_uses_union_type_id() {
     assert_eq!(deserialized, value);
 }
 
-/// Test xlang roundtrip with complex tagged enum
+/// Test that tagged enum (has variants with data) uses UNION type ID in xlang mode
+#[test]
+fn xlang_tagged_enum_uses_union_type_id() {
+    use fory_core::buffer::Reader;
+    use fory_core::types::TypeId;
+
+    #[derive(ForyObject, Debug, PartialEq, Default)]
+    enum TaggedEnum {
+        #[default]
+        Empty,
+        Value(i32),
+        Name(String),
+    }
+
+    let mut fory = Fory::default().xlang(true);
+    fory.register::<TaggedEnum>(1001).unwrap();
+
+    let value = TaggedEnum::Empty;
+    let bytes = fory.serialize(&value).unwrap();
+
+    let mut reader = Reader::new(&bytes);
+
+    // Skip header
+    let _magic = reader.read_u16().unwrap();
+    let _bitmap = reader.read_u8().unwrap();
+    let _language = reader.read_u8().unwrap();
+
+    // Read ref flag
+    let _ref_flag = reader.read_i8().unwrap();
+
+    // Read type id - should be UNION (38) in xlang mode for tagged enum
+    let type_id = reader.read_varuint32().unwrap();
+    assert_eq!(
+        type_id,
+        TypeId::UNION as u32,
+        "Expected UNION type id ({}) in xlang mode for tagged enum, got {}",
+        TypeId::UNION as u32,
+        type_id
+    );
+
+    // Verify roundtrip still works
+    let deserialized: TaggedEnum = fory.deserialize(&bytes).unwrap();
+    assert_eq!(deserialized, value);
+}
+
+/// Test xlang roundtrip with tagged enum (enum with data variants)
+/// Note: This test only tests unit variants of a tagged enum.
+/// Testing data variants in xlang mode is a separate concern.
 #[test]
 fn xlang_complex_tagged_enum_roundtrip() {
     #[derive(ForyObject, Debug, PartialEq, Default)]
-    enum Color {
+    enum TaggedColor {
         #[default]
         Red,
         Green,
         Blue,
-        Custom(String),
+        Value(i32),
     }
 
     let mut fory = Fory::default().xlang(true);
-    fory.register::<Color>(1001).unwrap();
+    fory.register::<TaggedColor>(1002).unwrap();
 
-    // Test all variants
-    let colors = vec![Color::Red, Color::Green, Color::Blue];
+    // Test unit variants - these should work even though the enum is tagged
+    let colors = vec![TaggedColor::Red, TaggedColor::Green, TaggedColor::Blue];
 
     for color in colors {
         let bytes = fory.serialize(&color).unwrap();
-        let deserialized: Color = fory.deserialize(&bytes).unwrap();
+        let deserialized: TaggedColor = fory.deserialize(&bytes).unwrap();
         assert_eq!(deserialized, color);
     }
 }

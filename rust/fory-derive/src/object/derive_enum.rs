@@ -28,6 +28,15 @@ fn temp_var_name(i: usize) -> String {
     format!("f{}", i)
 }
 
+/// Check if an enum is a "simple enum" (all variants are unit variants without data)
+/// Simple enums use ENUM type ID in xlang mode, while tagged enums use UNION type ID
+pub fn is_simple_enum(data_enum: &DataEnum) -> bool {
+    data_enum
+        .variants
+        .iter()
+        .all(|v| matches!(&v.fields, Fields::Unit))
+}
+
 pub fn gen_actual_type_id() -> TokenStream {
     quote! {
        fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
@@ -386,9 +395,10 @@ pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
     }
 }
 
-pub fn gen_write_type_info() -> TokenStream {
+pub fn gen_write_type_info(data_enum: &DataEnum) -> TokenStream {
+    let is_tagged = !is_simple_enum(data_enum);
     quote! {
-        fory_core::serializer::enum_::write_type_info::<Self>(context)
+        fory_core::serializer::enum_::write_type_info::<Self>(context, #is_tagged)
     }
 }
 
@@ -755,8 +765,9 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
     }
 }
 
-pub fn gen_read_type_info() -> TokenStream {
+pub fn gen_read_type_info(data_enum: &DataEnum) -> TokenStream {
+    let is_tagged = !is_simple_enum(data_enum);
     quote! {
-        fory_core::serializer::enum_::read_type_info::<Self>(context)
+        fory_core::serializer::enum_::read_type_info::<Self>(context, #is_tagged)
     }
 }
