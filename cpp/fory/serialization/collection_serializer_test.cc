@@ -20,6 +20,9 @@
 #include "fory/serialization/fory.h"
 #include "gtest/gtest.h"
 #include <cstdint>
+#include <deque>
+#include <forward_list>
+#include <list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -366,6 +369,254 @@ TEST(CollectionSerializerTest, VectorOptionalWithNulls) {
   EXPECT_FALSE(deserialized.values[1].has_value());
   EXPECT_TRUE(deserialized.values[2].has_value());
   EXPECT_EQ(*deserialized.values[2], "third");
+}
+
+// ============================================================================
+// std::list Tests
+// ============================================================================
+
+struct ListStringHolder {
+  std::list<std::string> strings;
+};
+FORY_STRUCT(ListStringHolder, strings);
+
+struct ListIntHolder {
+  std::list<int32_t> numbers;
+};
+FORY_STRUCT(ListIntHolder, numbers);
+
+TEST(CollectionSerializerTest, ListStringRoundTrip) {
+  auto fory = Fory::builder().xlang(true).build();
+  fory.register_struct<ListStringHolder>(300);
+
+  ListStringHolder original;
+  original.strings = {"hello", "world", "fory", "list"};
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
+
+  auto deserialize_result = fory.deserialize<ListStringHolder>(
+      bytes_result->data(), bytes_result->size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << deserialize_result.error().to_string();
+
+  auto deserialized = std::move(deserialize_result).value();
+  ASSERT_EQ(deserialized.strings.size(), 4u);
+  auto it = deserialized.strings.begin();
+  EXPECT_EQ(*it++, "hello");
+  EXPECT_EQ(*it++, "world");
+  EXPECT_EQ(*it++, "fory");
+  EXPECT_EQ(*it++, "list");
+}
+
+TEST(CollectionSerializerTest, ListIntRoundTrip) {
+  auto fory = Fory::builder().xlang(true).build();
+  fory.register_struct<ListIntHolder>(301);
+
+  ListIntHolder original;
+  original.numbers = {1, 2, 3, 42, 100};
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
+
+  auto deserialize_result = fory.deserialize<ListIntHolder>(
+      bytes_result->data(), bytes_result->size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << deserialize_result.error().to_string();
+
+  auto deserialized = std::move(deserialize_result).value();
+  ASSERT_EQ(deserialized.numbers.size(), 5u);
+  auto it = deserialized.numbers.begin();
+  EXPECT_EQ(*it++, 1);
+  EXPECT_EQ(*it++, 2);
+  EXPECT_EQ(*it++, 3);
+  EXPECT_EQ(*it++, 42);
+  EXPECT_EQ(*it++, 100);
+}
+
+TEST(CollectionSerializerTest, ListEmptyRoundTrip) {
+  auto fory = Fory::builder().xlang(true).build();
+  fory.register_struct<ListStringHolder>(302);
+
+  ListStringHolder original;
+  // Empty list
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
+
+  auto deserialize_result = fory.deserialize<ListStringHolder>(
+      bytes_result->data(), bytes_result->size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << deserialize_result.error().to_string();
+
+  auto deserialized = std::move(deserialize_result).value();
+  EXPECT_TRUE(deserialized.strings.empty());
+}
+
+// ============================================================================
+// std::deque Tests
+// ============================================================================
+
+struct DequeStringHolder {
+  std::deque<std::string> strings;
+};
+FORY_STRUCT(DequeStringHolder, strings);
+
+struct DequeIntHolder {
+  std::deque<int32_t> numbers;
+};
+FORY_STRUCT(DequeIntHolder, numbers);
+
+TEST(CollectionSerializerTest, DequeStringRoundTrip) {
+  auto fory = Fory::builder().xlang(true).build();
+  fory.register_struct<DequeStringHolder>(400);
+
+  DequeStringHolder original;
+  original.strings = {"hello", "world", "fory", "deque"};
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
+
+  auto deserialize_result = fory.deserialize<DequeStringHolder>(
+      bytes_result->data(), bytes_result->size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << deserialize_result.error().to_string();
+
+  auto deserialized = std::move(deserialize_result).value();
+  ASSERT_EQ(deserialized.strings.size(), 4u);
+  EXPECT_EQ(deserialized.strings[0], "hello");
+  EXPECT_EQ(deserialized.strings[1], "world");
+  EXPECT_EQ(deserialized.strings[2], "fory");
+  EXPECT_EQ(deserialized.strings[3], "deque");
+}
+
+TEST(CollectionSerializerTest, DequeIntRoundTrip) {
+  auto fory = Fory::builder().xlang(true).build();
+  fory.register_struct<DequeIntHolder>(401);
+
+  DequeIntHolder original;
+  original.numbers = {10, 20, 30, 40, 50};
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
+
+  auto deserialize_result = fory.deserialize<DequeIntHolder>(
+      bytes_result->data(), bytes_result->size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << deserialize_result.error().to_string();
+
+  auto deserialized = std::move(deserialize_result).value();
+  ASSERT_EQ(deserialized.numbers.size(), 5u);
+  EXPECT_EQ(deserialized.numbers[0], 10);
+  EXPECT_EQ(deserialized.numbers[1], 20);
+  EXPECT_EQ(deserialized.numbers[2], 30);
+  EXPECT_EQ(deserialized.numbers[3], 40);
+  EXPECT_EQ(deserialized.numbers[4], 50);
+}
+
+TEST(CollectionSerializerTest, DequeEmptyRoundTrip) {
+  auto fory = Fory::builder().xlang(true).build();
+  fory.register_struct<DequeStringHolder>(402);
+
+  DequeStringHolder original;
+  // Empty deque
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
+
+  auto deserialize_result = fory.deserialize<DequeStringHolder>(
+      bytes_result->data(), bytes_result->size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << deserialize_result.error().to_string();
+
+  auto deserialized = std::move(deserialize_result).value();
+  EXPECT_TRUE(deserialized.strings.empty());
+}
+
+// ============================================================================
+// std::forward_list Tests
+// ============================================================================
+
+struct ForwardListStringHolder {
+  std::forward_list<std::string> strings;
+};
+FORY_STRUCT(ForwardListStringHolder, strings);
+
+struct ForwardListIntHolder {
+  std::forward_list<int32_t> numbers;
+};
+FORY_STRUCT(ForwardListIntHolder, numbers);
+
+TEST(CollectionSerializerTest, ForwardListStringRoundTrip) {
+  auto fory = Fory::builder().xlang(true).build();
+  fory.register_struct<ForwardListStringHolder>(500);
+
+  ForwardListStringHolder original;
+  original.strings = {"hello", "world", "fory", "forward_list"};
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
+
+  auto deserialize_result = fory.deserialize<ForwardListStringHolder>(
+      bytes_result->data(), bytes_result->size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << deserialize_result.error().to_string();
+
+  auto deserialized = std::move(deserialize_result).value();
+  // Convert to vector for easier comparison
+  std::vector<std::string> result(deserialized.strings.begin(),
+                                  deserialized.strings.end());
+  ASSERT_EQ(result.size(), 4u);
+  EXPECT_EQ(result[0], "hello");
+  EXPECT_EQ(result[1], "world");
+  EXPECT_EQ(result[2], "fory");
+  EXPECT_EQ(result[3], "forward_list");
+}
+
+TEST(CollectionSerializerTest, ForwardListIntRoundTrip) {
+  auto fory = Fory::builder().xlang(true).build();
+  fory.register_struct<ForwardListIntHolder>(501);
+
+  ForwardListIntHolder original;
+  original.numbers = {100, 200, 300, 400, 500};
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
+
+  auto deserialize_result = fory.deserialize<ForwardListIntHolder>(
+      bytes_result->data(), bytes_result->size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << deserialize_result.error().to_string();
+
+  auto deserialized = std::move(deserialize_result).value();
+  // Convert to vector for easier comparison
+  std::vector<int32_t> result(deserialized.numbers.begin(),
+                              deserialized.numbers.end());
+  ASSERT_EQ(result.size(), 5u);
+  EXPECT_EQ(result[0], 100);
+  EXPECT_EQ(result[1], 200);
+  EXPECT_EQ(result[2], 300);
+  EXPECT_EQ(result[3], 400);
+  EXPECT_EQ(result[4], 500);
+}
+
+TEST(CollectionSerializerTest, ForwardListEmptyRoundTrip) {
+  auto fory = Fory::builder().xlang(true).build();
+  fory.register_struct<ForwardListStringHolder>(502);
+
+  ForwardListStringHolder original;
+  // Empty forward_list
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
+
+  auto deserialize_result = fory.deserialize<ForwardListStringHolder>(
+      bytes_result->data(), bytes_result->size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << deserialize_result.error().to_string();
+
+  auto deserialized = std::move(deserialize_result).value();
+  EXPECT_TRUE(deserialized.strings.empty());
 }
 
 } // namespace

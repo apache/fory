@@ -25,6 +25,7 @@
 #include "fory/type/type.h"
 #include <array>
 #include <deque>
+#include <forward_list>
 #include <list>
 #include <map>
 #include <memory>
@@ -77,6 +78,31 @@ template <typename T, typename Alloc>
 struct is_vector<std::vector<T, Alloc>> : std::true_type {};
 
 template <typename T> inline constexpr bool is_vector_v = is_vector<T>::value;
+
+/// Detect std::list
+template <typename T> struct is_list : std::false_type {};
+
+template <typename T, typename Alloc>
+struct is_list<std::list<T, Alloc>> : std::true_type {};
+
+template <typename T> inline constexpr bool is_list_v = is_list<T>::value;
+
+/// Detect std::deque
+template <typename T> struct is_deque : std::false_type {};
+
+template <typename T, typename Alloc>
+struct is_deque<std::deque<T, Alloc>> : std::true_type {};
+
+template <typename T> inline constexpr bool is_deque_v = is_deque<T>::value;
+
+/// Detect std::forward_list
+template <typename T> struct is_forward_list : std::false_type {};
+
+template <typename T, typename Alloc>
+struct is_forward_list<std::forward_list<T, Alloc>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_forward_list_v = is_forward_list<T>::value;
 
 /// Detect std::optional
 template <typename T> struct is_optional : std::false_type {};
@@ -240,6 +266,15 @@ struct is_generic_type<std::set<T, Args...>> : std::true_type {};
 
 template <typename T, typename... Args>
 struct is_generic_type<std::unordered_set<T, Args...>> : std::true_type {};
+
+template <typename T, typename Alloc>
+struct is_generic_type<std::list<T, Alloc>> : std::true_type {};
+
+template <typename T, typename Alloc>
+struct is_generic_type<std::deque<T, Alloc>> : std::true_type {};
+
+template <typename T, typename Alloc>
+struct is_generic_type<std::forward_list<T, Alloc>> : std::true_type {};
 
 template <typename... Ts>
 struct is_generic_type<std::tuple<Ts...>> : std::true_type {};
@@ -454,6 +489,12 @@ template <typename T> struct TypeIndex<std::list<T>> {
 template <typename T> struct TypeIndex<std::deque<T>> {
   static constexpr uint64_t value =
       fnv1a_64_combine(fnv1a_64("std::deque"), type_index<T>());
+};
+
+// forward_list<T>
+template <typename T> struct TypeIndex<std::forward_list<T>> {
+  static constexpr uint64_t value =
+      fnv1a_64_combine(fnv1a_64("std::forward_list"), type_index<T>());
 };
 
 // set<T>

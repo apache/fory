@@ -335,6 +335,42 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_vector_v<decay_t<T>>>> {
 };
 
 template <typename T>
+struct FieldTypeBuilder<T, std::enable_if_t<is_list_v<decay_t<T>>>> {
+  using List = decay_t<T>;
+  using Element = typename List::value_type;
+  static FieldType build(bool nullable) {
+    FieldType elem = FieldTypeBuilder<Element>::build(false);
+    FieldType ft(to_type_id(TypeId::LIST), nullable);
+    ft.generics.push_back(std::move(elem));
+    return ft;
+  }
+};
+
+template <typename T>
+struct FieldTypeBuilder<T, std::enable_if_t<is_deque_v<decay_t<T>>>> {
+  using Deque = decay_t<T>;
+  using Element = typename Deque::value_type;
+  static FieldType build(bool nullable) {
+    FieldType elem = FieldTypeBuilder<Element>::build(false);
+    FieldType ft(to_type_id(TypeId::LIST), nullable);
+    ft.generics.push_back(std::move(elem));
+    return ft;
+  }
+};
+
+template <typename T>
+struct FieldTypeBuilder<T, std::enable_if_t<is_forward_list_v<decay_t<T>>>> {
+  using FList = decay_t<T>;
+  using Element = typename FList::value_type;
+  static FieldType build(bool nullable) {
+    FieldType elem = FieldTypeBuilder<Element>::build(false);
+    FieldType ft(to_type_id(TypeId::LIST), nullable);
+    ft.generics.push_back(std::move(elem));
+    return ft;
+  }
+};
+
+template <typename T>
 struct FieldTypeBuilder<T, std::enable_if_t<is_set_like_v<decay_t<T>>>> {
   using Set = decay_t<T>;
   using Element = element_type_t<Set>;
@@ -409,13 +445,14 @@ struct FieldTypeBuilder<T, std::enable_if_t<std::is_enum_v<decay_t<T>>>> {
 
 template <typename T>
 struct FieldTypeBuilder<
-    T,
-    std::enable_if_t<
-        !is_optional_v<decay_t<T>> && !is_shared_ptr_v<decay_t<T>> &&
-        !is_unique_ptr_v<decay_t<T>> && !is_vector_v<decay_t<T>> &&
-        !is_set_like_v<decay_t<T>> && !is_map_like_v<decay_t<T>> &&
-        !is_string_view_v<decay_t<T>> && !is_tuple_v<decay_t<T>> &&
-        !std::is_enum_v<decay_t<T>> && has_serializer_type_id_v<decay_t<T>>>> {
+    T, std::enable_if_t<
+           !is_optional_v<decay_t<T>> && !is_shared_ptr_v<decay_t<T>> &&
+           !is_unique_ptr_v<decay_t<T>> && !is_vector_v<decay_t<T>> &&
+           !is_list_v<decay_t<T>> && !is_deque_v<decay_t<T>> &&
+           !is_forward_list_v<decay_t<T>> && !is_set_like_v<decay_t<T>> &&
+           !is_map_like_v<decay_t<T>> && !is_string_view_v<decay_t<T>> &&
+           !is_tuple_v<decay_t<T>> && !std::is_enum_v<decay_t<T>> &&
+           has_serializer_type_id_v<decay_t<T>>>> {
   using Decayed = decay_t<T>;
   static FieldType build(bool nullable) {
     return FieldType(to_type_id(Serializer<Decayed>::type_id), nullable);
