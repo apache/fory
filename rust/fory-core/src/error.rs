@@ -29,6 +29,7 @@
 
 use std::borrow::Cow;
 
+use crate::types::format_type_id;
 use thiserror::Error;
 
 /// Global flag to check if FORY_PANIC_ON_ERROR environment variable is set at compile time.
@@ -108,8 +109,8 @@ pub enum Error {
     /// Type mismatch between local and remote type IDs.
     ///
     /// Do not construct this variant directly; use [`Error::type_mismatch`] instead.
-    #[error("Type mismatch: type_a = {0}, type_b = {1}")]
-    TypeMismatch(u32, u32),
+    #[error("{0}")]
+    TypeMismatch(Cow<'static, str>),
 
     /// Buffer boundary violation during read/write operations.
     ///
@@ -187,6 +188,9 @@ pub enum Error {
 impl Error {
     /// Creates a new [`Error::TypeMismatch`] with the given type IDs.
     ///
+    /// The error message will display both the original registered ID and the internal type name
+    /// for user-registered types, making debugging easier.
+    ///
     /// If `FORY_PANIC_ON_ERROR` environment variable is set, this will panic with the error message.
     ///
     /// # Example
@@ -199,7 +203,12 @@ impl Error {
     #[cold]
     #[track_caller]
     pub fn type_mismatch(type_a: u32, type_b: u32) -> Self {
-        let err = Error::TypeMismatch(type_a, type_b);
+        let msg = format!(
+            "Type mismatch: local {} vs remote {}",
+            format_type_id(type_a),
+            format_type_id(type_b)
+        );
+        let err = Error::TypeMismatch(Cow::Owned(msg));
         if PANIC_ON_ERROR {
             panic!("FORY_PANIC_ON_ERROR: {}", err);
         }

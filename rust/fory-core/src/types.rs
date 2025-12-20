@@ -400,3 +400,90 @@ impl TryFrom<u8> for Language {
 pub const SIZE_OF_REF_AND_TYPE: usize = mem::size_of::<i8>() + mem::size_of::<i16>();
 
 pub const MAGIC_NUMBER: u16 = 0x62d4;
+
+/// Formats a combined type ID into a human-readable string.
+///
+/// Combined type IDs have the format: `(registered_id << 8) + internal_type_id`.
+/// This function extracts both parts and formats them for debugging.
+///
+/// For internal types (type_id < BOUND), returns just the type name.
+/// For user-registered types, returns format like "registered_id=3(STRUCT)".
+///
+/// # Examples
+/// ```
+/// use fory_core::types::format_type_id;
+///
+/// // Internal type (e.g., BOOL = 1)
+/// assert_eq!(format_type_id(1), "BOOL");
+///
+/// // User registered struct with id=3: (3 << 8) + 15 = 783
+/// assert_eq!(format_type_id(783), "registered_id=3(STRUCT)");
+/// ```
+pub fn format_type_id(type_id: u32) -> String {
+    let internal_type_id = type_id & 0xff;
+    let registered_id = type_id >> 8;
+
+    let type_name = match internal_type_id {
+        0 => "UNKNOWN",
+        1 => "BOOL",
+        2 => "INT8",
+        3 => "INT16",
+        4 => "INT32",
+        5 => "VAR_INT32",
+        6 => "INT64",
+        7 => "VAR_INT64",
+        8 => "SLI_INT64",
+        9 => "FLOAT16",
+        10 => "FLOAT32",
+        11 => "FLOAT64",
+        12 => "STRING",
+        13 => "ENUM",
+        14 => "NAMED_ENUM",
+        15 => "STRUCT",
+        16 => "COMPATIBLE_STRUCT",
+        17 => "NAMED_STRUCT",
+        18 => "NAMED_COMPATIBLE_STRUCT",
+        19 => "EXT",
+        20 => "NAMED_EXT",
+        21 => "LIST",
+        22 => "SET",
+        23 => "MAP",
+        24 => "DURATION",
+        25 => "TIMESTAMP",
+        26 => "LOCAL_DATE",
+        27 => "DECIMAL",
+        28 => "BINARY",
+        29 => "ARRAY",
+        30 => "BOOL_ARRAY",
+        31 => "INT8_ARRAY",
+        32 => "INT16_ARRAY",
+        33 => "INT32_ARRAY",
+        34 => "INT64_ARRAY",
+        35 => "FLOAT16_ARRAY",
+        36 => "FLOAT32_ARRAY",
+        37 => "FLOAT64_ARRAY",
+        64 => "U8",
+        65 => "U16",
+        66 => "U32",
+        67 => "U64",
+        68 => "USIZE",
+        69 => "U128",
+        70 => "VAR_U32",
+        71 => "VAR_U64",
+        72 => "SLI_U64",
+        73 => "U16_ARRAY",
+        74 => "U32_ARRAY",
+        75 => "U64_ARRAY",
+        76 => "USIZE_ARRAY",
+        77 => "U128_ARRAY",
+        _ => "UNKNOWN_TYPE",
+    };
+
+    // If it's a pure internal type (no registered_id), just return the type name
+    if registered_id == 0 {
+        type_name.to_string()
+    } else {
+        // For user-registered types, show both the registered ID and internal type
+        format!("registered_id={}({})", registered_id, type_name)
+    }
+}

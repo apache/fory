@@ -286,3 +286,45 @@ fn test_unregistered_type_error_message() {
         err_str
     );
 }
+
+#[test]
+fn test_type_mismatch_error_shows_registered_id() {
+    use fory_core::error::Error;
+    use fory_core::types::format_type_id;
+
+    // Test internal type (BOOL = 1), no registered_id
+    let formatted = format_type_id(1);
+    assert_eq!(formatted, "BOOL");
+
+    // Test user registered struct with id=3: (3 << 8) + 15(STRUCT) = 783
+    let formatted = format_type_id(783);
+    assert_eq!(formatted, "registered_id=3(STRUCT)");
+
+    // Test user registered enum with id=1: (1 << 8) + 13(ENUM) = 269
+    let formatted = format_type_id(269);
+    assert_eq!(formatted, "registered_id=1(ENUM)");
+
+    // Test user registered EXT with id=3: (3 << 8) + 19(EXT) = 787
+    let formatted = format_type_id(787);
+    assert_eq!(formatted, "registered_id=3(EXT)");
+
+    // Test error message format
+    let err = Error::type_mismatch(783, 269);
+    let err_str = format!("{}", err);
+    assert!(
+        err_str.contains("registered_id=3(STRUCT)"),
+        "error should contain registered_id=3(STRUCT), got: {}",
+        err_str
+    );
+    assert!(
+        err_str.contains("registered_id=1(ENUM)"),
+        "error should contain registered_id=1(ENUM), got: {}",
+        err_str
+    );
+    // Check the message contains "local" and "remote" for clarity
+    assert!(
+        err_str.contains("local") && err_str.contains("remote"),
+        "error should indicate local vs remote types, got: {}",
+        err_str
+    );
+}
