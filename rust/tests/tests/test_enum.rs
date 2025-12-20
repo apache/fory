@@ -99,3 +99,91 @@ fn named_enum() {
     assert_eq!(target1, target2);
     assert_eq!(value1, value2);
 }
+
+/// Test that tagged enum uses UNION type ID in xlang mode
+#[test]
+fn xlang_tagged_enum_uses_union_type_id() {
+    use fory_core::buffer::Reader;
+    use fory_core::types::TypeId;
+
+    #[derive(ForyObject, Debug, PartialEq, Default)]
+    enum SimpleEnum {
+        #[default]
+        A,
+        B,
+        C,
+    }
+
+    let mut fory = Fory::default().xlang(true);
+    fory.register::<SimpleEnum>(1000).unwrap();
+
+    let value = SimpleEnum::B;
+    let bytes = fory.serialize(&value).unwrap();
+
+    // Fory header:
+    // - 2 bytes: magic number (0x62d4)
+    // - 1 byte: bitmap flags
+    // - 1 byte: language
+    // Total header: 4 bytes
+
+    let mut reader = Reader::new(&bytes);
+
+    // Read magic number
+    let _magic = reader.read_u16().unwrap();
+
+    // Read bitmap
+    let _bitmap = reader.read_u8().unwrap();
+
+    // Read language
+    let _language = reader.read_u8().unwrap();
+
+    // Read ref flag (-1 = NotNullValue)
+    let ref_flag = reader.read_i8().unwrap();
+    assert_eq!(ref_flag, -1, "Expected NotNullValue ref flag");
+
+    // Read type id - should be UNION (38) in xlang mode
+    let type_id = reader.read_varuint32().unwrap();
+    assert_eq!(
+        type_id,
+        TypeId::UNION as u32,
+        "Expected UNION type id ({}) in xlang mode, got {}",
+        TypeId::UNION as u32,
+        type_id
+    );
+
+    // Read variant index (B = 1)
+    let variant_index = reader.read_varuint32().unwrap();
+    assert_eq!(
+        variant_index, 1,
+        "Expected variant index 1 for SimpleEnum::B"
+    );
+
+    // Verify roundtrip still works
+    let deserialized: SimpleEnum = fory.deserialize(&bytes).unwrap();
+    assert_eq!(deserialized, value);
+}
+
+/// Test xlang roundtrip with complex tagged enum
+#[test]
+fn xlang_complex_tagged_enum_roundtrip() {
+    #[derive(ForyObject, Debug, PartialEq, Default)]
+    enum Color {
+        #[default]
+        Red,
+        Green,
+        Blue,
+        Custom(String),
+    }
+
+    let mut fory = Fory::default().xlang(true);
+    fory.register::<Color>(1001).unwrap();
+
+    // Test all variants
+    let colors = vec![Color::Red, Color::Green, Color::Blue];
+
+    for color in colors {
+        let bytes = fory.serialize(&color).unwrap();
+        let deserialized: Color = fory.deserialize(&bytes).unwrap();
+        assert_eq!(deserialized, color);
+    }
+}

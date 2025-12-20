@@ -50,6 +50,11 @@ pub fn write<T: Serializer>(
 
 #[inline(always)]
 pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
+    // In xlang mode, use UNION type ID for tagged enums
+    if context.is_xlang() {
+        context.writer.write_varuint32(TypeId::UNION as u32);
+        return Ok(());
+    }
     let type_id = T::fory_get_type_id(context.get_type_resolver())?;
     context.writer.write_varuint32(type_id);
     let is_named_enum = type_id & 0xff == TypeId::NAMED_ENUM as u32;
@@ -100,8 +105,16 @@ pub fn read<T: Serializer + ForyDefault>(
 
 #[inline(always)]
 pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
-    let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
     let remote_type_id = context.reader.read_varuint32()?;
+    // In xlang mode, expect UNION type ID for tagged enums
+    if context.is_xlang() {
+        ensure!(
+            remote_type_id == TypeId::UNION as u32,
+            Error::type_mismatch(TypeId::UNION as u32, remote_type_id)
+        );
+        return Ok(());
+    }
+    let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
     ensure!(
         local_type_id == remote_type_id,
         Error::type_mismatch(local_type_id, remote_type_id)
