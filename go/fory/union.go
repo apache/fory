@@ -22,109 +22,228 @@ import (
 	"reflect"
 )
 
-// Union represents a tagged union type that can hold one of several alternative types.
-// It's equivalent to Rust's enum, C++'s std::variant, or Python's typing.Union.
+// ============================================================================
+// Generic Union Types
+// ============================================================================
+
+// Union2 represents a tagged union type that can hold one of two alternative types.
+// It's equivalent to Rust's enum with two variants, C++'s std::variant<T1, T2>,
+// or Python's typing.Union[T1, T2].
 //
-// The Value field holds the actual value, which must be one of the types specified
-// when registering the Union type.
+// Note: The fields are exported for serialization purposes. Use the provided
+// methods (Index, First, Second, Match) for normal usage.
 //
 // Example usage:
 //
-//	// Create a union that can hold int32 or string
-//	union := fory.Union{Value: int32(42)}
-//	// or
-//	union := fory.Union{Value: "hello"}
-type Union struct {
-	Value interface{}
+//	// Create a union that holds an int32
+//	union := fory.NewUnion2A[int32, string](42)
+//	// or create a union that holds a string
+//	union := fory.NewUnion2B[int32, string]("hello")
+//
+//	// Pattern matching
+//	union.Match(
+//	    func(i int32) { fmt.Println("got int:", i) },
+//	    func(s string) { fmt.Println("got string:", s) },
+//	)
+type Union2[T1 any, T2 any] struct {
+	V1  *T1
+	V2  *T2
+	Idx int
 }
 
-// NewUnion creates a new Union with the given value.
-func NewUnion(value interface{}) Union {
-	return Union{Value: value}
+// NewUnion2A creates a Union2 containing the first alternative type.
+func NewUnion2A[T1 any, T2 any](t T1) Union2[T1, T2] {
+	return Union2[T1, T2]{V1: &t, Idx: 1}
 }
 
-// IsNil returns true if the union holds no value.
-func (u Union) IsNil() bool {
-	return u.Value == nil
+// NewUnion2B creates a Union2 containing the second alternative type.
+func NewUnion2B[T1 any, T2 any](t T2) Union2[T1, T2] {
+	return Union2[T1, T2]{V2: &t, Idx: 2}
 }
 
-// unionSerializer serializes Union types.
+// Match performs pattern matching on the union, calling the appropriate function
+// based on which alternative is active.
+func (u Union2[T1, T2]) Match(case1 func(T1), case2 func(T2)) {
+	switch u.Idx {
+	case 1:
+		case1(*u.V1)
+	case 2:
+		case2(*u.V2)
+	default:
+		panic("Union2 is uninitialized")
+	}
+}
+
+// Index returns the 1-based index of the active alternative.
+func (u Union2[T1, T2]) Index() int {
+	return u.Idx
+}
+
+// IsFirst returns true if the first alternative is active.
+func (u Union2[T1, T2]) IsFirst() bool {
+	return u.Idx == 1
+}
+
+// IsSecond returns true if the second alternative is active.
+func (u Union2[T1, T2]) IsSecond() bool {
+	return u.Idx == 2
+}
+
+// First returns the first alternative value. Panics if not the active alternative.
+func (u Union2[T1, T2]) First() T1 {
+	if u.Idx != 1 {
+		panic("Union2: First() called but second alternative is active")
+	}
+	return *u.V1
+}
+
+// Second returns the second alternative value. Panics if not the active alternative.
+func (u Union2[T1, T2]) Second() T2 {
+	if u.Idx != 2 {
+		panic("Union2: Second() called but first alternative is active")
+	}
+	return *u.V2
+}
+
+// Union3 represents a tagged union type that can hold one of three alternative types.
+type Union3[T1 any, T2 any, T3 any] struct {
+	V1  *T1
+	V2  *T2
+	V3  *T3
+	Idx int
+}
+
+// NewUnion3A creates a Union3 containing the first alternative type.
+func NewUnion3A[T1 any, T2 any, T3 any](t T1) Union3[T1, T2, T3] {
+	return Union3[T1, T2, T3]{V1: &t, Idx: 1}
+}
+
+// NewUnion3B creates a Union3 containing the second alternative type.
+func NewUnion3B[T1 any, T2 any, T3 any](t T2) Union3[T1, T2, T3] {
+	return Union3[T1, T2, T3]{V2: &t, Idx: 2}
+}
+
+// NewUnion3C creates a Union3 containing the third alternative type.
+func NewUnion3C[T1 any, T2 any, T3 any](t T3) Union3[T1, T2, T3] {
+	return Union3[T1, T2, T3]{V3: &t, Idx: 3}
+}
+
+// Match performs pattern matching on the union.
+func (u Union3[T1, T2, T3]) Match(f1 func(T1), f2 func(T2), f3 func(T3)) {
+	switch u.Idx {
+	case 1:
+		f1(*u.V1)
+	case 2:
+		f2(*u.V2)
+	case 3:
+		f3(*u.V3)
+	default:
+		panic("Union3 is uninitialized")
+	}
+}
+
+// Index returns the 1-based index of the active alternative.
+func (u Union3[T1, T2, T3]) Index() int {
+	return u.Idx
+}
+
+// Union4 represents a tagged union type that can hold one of four alternative types.
+type Union4[T1 any, T2 any, T3 any, T4 any] struct {
+	V1  *T1
+	V2  *T2
+	V3  *T3
+	V4  *T4
+	Idx int
+}
+
+// NewUnion4A creates a Union4 containing the first alternative type.
+func NewUnion4A[T1 any, T2 any, T3 any, T4 any](t T1) Union4[T1, T2, T3, T4] {
+	return Union4[T1, T2, T3, T4]{V1: &t, Idx: 1}
+}
+
+// NewUnion4B creates a Union4 containing the second alternative type.
+func NewUnion4B[T1 any, T2 any, T3 any, T4 any](t T2) Union4[T1, T2, T3, T4] {
+	return Union4[T1, T2, T3, T4]{V2: &t, Idx: 2}
+}
+
+// NewUnion4C creates a Union4 containing the third alternative type.
+func NewUnion4C[T1 any, T2 any, T3 any, T4 any](t T3) Union4[T1, T2, T3, T4] {
+	return Union4[T1, T2, T3, T4]{V3: &t, Idx: 3}
+}
+
+// NewUnion4D creates a Union4 containing the fourth alternative type.
+func NewUnion4D[T1 any, T2 any, T3 any, T4 any](t T4) Union4[T1, T2, T3, T4] {
+	return Union4[T1, T2, T3, T4]{V4: &t, Idx: 4}
+}
+
+// Match performs pattern matching on the union.
+func (u Union4[T1, T2, T3, T4]) Match(f1 func(T1), f2 func(T2), f3 func(T3), f4 func(T4)) {
+	switch u.Idx {
+	case 1:
+		f1(*u.V1)
+	case 2:
+		f2(*u.V2)
+	case 3:
+		f3(*u.V3)
+	case 4:
+		f4(*u.V4)
+	default:
+		panic("Union4 is uninitialized")
+	}
+}
+
+// Index returns the 1-based index of the active alternative.
+func (u Union4[T1, T2, T3, T4]) Index() int {
+	return u.Idx
+}
+
+// ============================================================================
+// Union Serializer
+// ============================================================================
+
+// unionSerializer serializes generic Union types.
 //
 // Serialization format:
 // 1. Write variant index (varuint32) - identifies which alternative type is active
 // 2. In xlang mode, write type info for the active alternative
 // 3. Write the value data using the alternative's serializer
 type unionSerializer struct {
-	type_               reflect.Type
-	alternativeTypes    []reflect.Type
-	typeResolver        *TypeResolver
-	alternativeTypeInfo []*TypeInfo
+	type_            reflect.Type
+	alternativeTypes []reflect.Type
+	typeResolver     *TypeResolver
 }
 
 // newUnionSerializer creates a new serializer for Union types with the specified alternatives.
-// The alternativeTypes slice defines the allowed types in order - the index is used as the variant index.
-func newUnionSerializer(typeResolver *TypeResolver, alternativeTypes []reflect.Type) *unionSerializer {
-	typeInfos := make([]*TypeInfo, len(alternativeTypes))
+func newUnionSerializer(type_ reflect.Type, typeResolver *TypeResolver, alternativeTypes []reflect.Type) *unionSerializer {
 	return &unionSerializer{
-		type_:               reflect.TypeOf(Union{}),
-		alternativeTypes:    alternativeTypes,
-		typeResolver:        typeResolver,
-		alternativeTypeInfo: typeInfos,
+		type_:            type_,
+		alternativeTypes: alternativeTypes,
+		typeResolver:     typeResolver,
 	}
 }
 
-// findAlternativeIndex finds the index of the type that matches the given value.
-// Returns -1 if no match is found.
-func (s *unionSerializer) findAlternativeIndex(value reflect.Value) int {
-	if !value.IsValid() || (value.Kind() == reflect.Interface && value.IsNil()) {
-		return -1
-	}
-
-	valueType := value.Type()
-	if valueType.Kind() == reflect.Interface {
-		valueType = value.Elem().Type()
-	}
-
-	for i, altType := range s.alternativeTypes {
-		if valueType == altType {
-			return i
-		}
-		// Also check if the value is assignable to the alternative type
-		if valueType.AssignableTo(altType) {
-			return i
-		}
-		// For pointer types, check the elem type
-		if valueType.Kind() == reflect.Ptr && altType.Kind() == reflect.Ptr {
-			if valueType.Elem() == altType.Elem() {
-				return i
-			}
-		}
-	}
-	return -1
-}
-
-func (s *unionSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, value reflect.Value) error {
+func (s *unionSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, value reflect.Value) {
 	buf := ctx.Buffer()
 
-	// Get the Union value
-	var union Union
-	if value.Kind() == reflect.Ptr {
-		if value.IsNil() {
-			buf.WriteInt8(NullFlag)
-			return nil
-		}
-		union = value.Elem().Interface().(Union)
-	} else {
-		union = value.Interface().(Union)
+	// Handle nil pointer
+	if value.Kind() == reflect.Ptr && value.IsNil() {
+		buf.WriteInt8(NullFlag)
+		return
 	}
 
-	// Handle null union value
-	if union.Value == nil {
+	// Get the actual struct value
+	if value.Kind() == reflect.Ptr {
+		value = value.Elem()
+	}
+
+	// Get the index field to check if initialized
+	indexField := value.FieldByName("Idx")
+	if !indexField.IsValid() || indexField.Int() == 0 {
 		switch refMode {
 		case RefModeTracking, RefModeNullOnly:
 			buf.WriteInt8(NullFlag)
 		}
-		return nil
+		return
 	}
 
 	// Write ref flag for non-null
@@ -132,10 +251,11 @@ func (s *unionSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bo
 	case RefModeTracking:
 		refWritten, err := ctx.RefResolver().WriteRefOrNull(buf, value)
 		if err != nil {
-			return err
+			ctx.SetError(FromError(err))
+			return
 		}
 		if refWritten {
-			return nil
+			return
 		}
 	case RefModeNullOnly:
 		buf.WriteInt8(NotNullValueFlag)
@@ -146,61 +266,75 @@ func (s *unionSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bo
 		buf.WriteVaruint32Small7(uint32(UNION))
 	}
 
-	return s.WriteData(ctx, value)
+	s.WriteData(ctx, value)
 }
 
-func (s *unionSerializer) WriteData(ctx *WriteContext, value reflect.Value) error {
+func (s *unionSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	buf := ctx.Buffer()
 
-	// Get the Union value
-	var union Union
+	// Get the actual struct value
 	if value.Kind() == reflect.Ptr {
-		union = value.Elem().Interface().(Union)
-	} else {
-		union = value.Interface().(Union)
+		value = value.Elem()
 	}
 
-	// Find which alternative type matches the value
-	innerValue := reflect.ValueOf(union.Value)
-	activeIndex := s.findAlternativeIndex(innerValue)
+	// Get the active index (1-based in the struct)
+	indexField := value.FieldByName("Idx")
+	activeIndex := int(indexField.Int()) - 1 // Convert to 0-based
 
-	if activeIndex < 0 {
-		return fmt.Errorf("union value type %T doesn't match any alternative in %v", union.Value, s.alternativeTypes)
+	if activeIndex < 0 || activeIndex >= len(s.alternativeTypes) {
+		ctx.SetError(SerializationErrorf("union index out of bounds: %d", activeIndex+1))
+		return
 	}
 
-	// Write the active variant index
+	// Write the active variant index (0-based for protocol)
 	buf.WriteVaruint32(uint32(activeIndex))
+
+	// Get the value pointer field (V1, V2, V3, V4)
+	fieldName := fmt.Sprintf("V%d", activeIndex+1)
+	valueField := value.FieldByName(fieldName)
+	if !valueField.IsValid() || valueField.IsNil() {
+		ctx.SetError(SerializationErrorf("union value field %s is nil", fieldName))
+		return
+	}
+
+	// Get the actual value (dereference the pointer)
+	innerValue := valueField.Elem()
 
 	// Get the serializer for the active alternative
 	altType := s.alternativeTypes[activeIndex]
 	serializer, err := ctx.TypeResolver().getSerializerByType(altType, false)
 	if err != nil {
-		return fmt.Errorf("no serializer for union alternative type %v: %w", altType, err)
+		ctx.SetError(FromError(fmt.Errorf("no serializer for union alternative type %v: %w", altType, err)))
+		return
 	}
 
 	// In xlang mode, write type info for the alternative
 	if ctx.TypeResolver().isXlang {
 		typeInfo, err := ctx.TypeResolver().getTypeInfo(innerValue, true)
 		if err != nil {
-			return err
+			ctx.SetError(FromError(err))
+			return
 		}
 		if err := ctx.TypeResolver().WriteTypeInfo(buf, typeInfo); err != nil {
-			return err
+			ctx.SetError(FromError(err))
+			return
 		}
 	}
 
 	// Write the value data
-	return serializer.WriteData(ctx, innerValue)
+	serializer.WriteData(ctx, innerValue)
 }
 
-func (s *unionSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, value reflect.Value) error {
+func (s *unionSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, value reflect.Value) {
 	buf := ctx.Buffer()
+	ctxErr := ctx.Err()
 
 	switch refMode {
 	case RefModeTracking:
 		refID, err := ctx.RefResolver().TryPreserveRefId(buf)
 		if err != nil {
-			return err
+			ctx.SetError(FromError(err))
+			return
 		}
 		if int8(refID) < NotNullValueFlag {
 			obj := ctx.RefResolver().GetReadObject(refID)
@@ -211,34 +345,40 @@ func (s *unionSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool,
 					value.Set(obj)
 				}
 			}
-			return nil
+			return
 		}
 	case RefModeNullOnly:
-		flag := buf.ReadInt8()
+		flag := buf.ReadInt8(ctxErr)
 		if flag == NullFlag {
-			return nil
+			return
 		}
 	}
 
 	if readType {
-		typeId := buf.ReadVaruint32Small7()
+		typeId := buf.ReadVaruint32Small7(ctxErr)
 		if TypeId(typeId) != UNION {
-			return fmt.Errorf("expected UNION type id %d, got %d", UNION, typeId)
+			ctx.SetError(DeserializationErrorf("expected UNION type id %d, got %d", UNION, typeId))
+			return
 		}
 	}
 
-	return s.ReadData(ctx, s.type_, value)
+	s.ReadData(ctx, s.type_, value)
 }
 
-func (s *unionSerializer) ReadData(ctx *ReadContext, type_ reflect.Type, value reflect.Value) error {
+func (s *unionSerializer) ReadData(ctx *ReadContext, type_ reflect.Type, value reflect.Value) {
 	buf := ctx.Buffer()
+	ctxErr := ctx.Err()
 
-	// Read the stored variant index
-	storedIndex := buf.ReadVaruint32()
+	// Read the stored variant index (0-based)
+	storedIndex := int(buf.ReadVaruint32(ctxErr))
+	if ctx.HasError() {
+		return
+	}
 
 	// Validate index is within bounds
-	if int(storedIndex) >= len(s.alternativeTypes) {
-		return fmt.Errorf("union index out of bounds: %d (max: %d)", storedIndex, len(s.alternativeTypes)-1)
+	if storedIndex < 0 || storedIndex >= len(s.alternativeTypes) {
+		ctx.SetError(DeserializationErrorf("union index out of bounds: %d (max: %d)", storedIndex, len(s.alternativeTypes)-1))
+		return
 	}
 
 	// Get the alternative type
@@ -247,16 +387,17 @@ func (s *unionSerializer) ReadData(ctx *ReadContext, type_ reflect.Type, value r
 	// Get serializer for this alternative
 	serializer, err := ctx.TypeResolver().getSerializerByType(altType, false)
 	if err != nil {
-		return fmt.Errorf("no serializer for union alternative type %v: %w", altType, err)
+		ctx.SetError(FromError(fmt.Errorf("no serializer for union alternative type %v: %w", altType, err)))
+		return
 	}
 
 	// In xlang mode, read type info for the alternative
 	if ctx.TypeResolver().isXlang {
-		// Read the type info - we need to pass a value for the ReadTypeInfo function
 		dummyValue := reflect.New(altType).Elem()
 		_, err := ctx.TypeResolver().ReadTypeInfo(buf, dummyValue)
 		if err != nil {
-			return err
+			ctx.SetError(FromError(err))
+			return
 		}
 	}
 
@@ -264,48 +405,117 @@ func (s *unionSerializer) ReadData(ctx *ReadContext, type_ reflect.Type, value r
 	altValue := reflect.New(altType).Elem()
 
 	// Read the value data
-	if err := serializer.ReadData(ctx, altType, altValue); err != nil {
-		return err
+	serializer.ReadData(ctx, altType, altValue)
+	if ctx.HasError() {
+		return
 	}
 
-	// Set the union value
-	union := Union{Value: altValue.Interface()}
-	if value.Kind() == reflect.Ptr {
-		value.Elem().Set(reflect.ValueOf(union))
-	} else {
-		value.Set(reflect.ValueOf(union))
+	// Get the target struct value
+	targetValue := value
+	if targetValue.Kind() == reflect.Ptr {
+		if targetValue.IsNil() {
+			targetValue.Set(reflect.New(targetValue.Type().Elem()))
+		}
+		targetValue = targetValue.Elem()
 	}
 
-	return nil
+	// Set the index field (1-based)
+	indexField := targetValue.FieldByName("Idx")
+	indexField.SetInt(int64(storedIndex + 1))
+
+	// Set the value pointer field
+	fieldName := fmt.Sprintf("V%d", storedIndex+1)
+	valueField := targetValue.FieldByName(fieldName)
+	// Create a pointer to the value and set it
+	ptrValue := reflect.New(altType)
+	ptrValue.Elem().Set(altValue)
+	valueField.Set(ptrValue)
 }
 
-func (s *unionSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) error {
-	return s.Read(ctx, refMode, false, value)
+func (s *unionSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, value)
 }
 
-// RegisterUnionType registers a Union type with the specified alternative types.
-// The alternative types are the types that the union can hold.
+// ============================================================================
+// Registration Functions
+// ============================================================================
+
+// RegisterUnion2Type registers a Union2[T1, T2] type for serialization.
 // Returns an error if registration fails.
 //
 // Example:
 //
 //	f := fory.NewFory()
-//	err := f.RegisterUnionType(reflect.TypeOf(int32(0)), reflect.TypeOf(""))
+//	err := fory.RegisterUnion2Type[int32, string](f)
 //	if err != nil {
 //	    panic(err)
 //	}
-func (f *Fory) RegisterUnionType(alternativeTypes ...reflect.Type) error {
-	if len(alternativeTypes) == 0 {
-		return fmt.Errorf("union must have at least one alternative type")
+func RegisterUnion2Type[T1 any, T2 any](f *Fory) error {
+	var zero1 T1
+	var zero2 T2
+
+	unionType := reflect.TypeOf(Union2[T1, T2]{})
+	alternativeTypes := []reflect.Type{
+		reflect.TypeOf(zero1),
+		reflect.TypeOf(zero2),
 	}
 
-	unionType := reflect.TypeOf(Union{})
-	serializer := newUnionSerializer(f.typeResolver, alternativeTypes)
+	serializer := newUnionSerializer(unionType, f.typeResolver, alternativeTypes)
 
 	// Register the union type with the serializer
 	f.typeResolver.typeToSerializers[unionType] = serializer
 
 	// Also register pointer type
+	ptrUnionType := reflect.PtrTo(unionType)
+	f.typeResolver.typeToSerializers[ptrUnionType] = &ptrToValueSerializer{
+		valueSerializer: serializer,
+	}
+
+	return nil
+}
+
+// RegisterUnion3Type registers a Union3[T1, T2, T3] type for serialization.
+func RegisterUnion3Type[T1 any, T2 any, T3 any](f *Fory) error {
+	var zero1 T1
+	var zero2 T2
+	var zero3 T3
+
+	unionType := reflect.TypeOf(Union3[T1, T2, T3]{})
+	alternativeTypes := []reflect.Type{
+		reflect.TypeOf(zero1),
+		reflect.TypeOf(zero2),
+		reflect.TypeOf(zero3),
+	}
+
+	serializer := newUnionSerializer(unionType, f.typeResolver, alternativeTypes)
+
+	f.typeResolver.typeToSerializers[unionType] = serializer
+	ptrUnionType := reflect.PtrTo(unionType)
+	f.typeResolver.typeToSerializers[ptrUnionType] = &ptrToValueSerializer{
+		valueSerializer: serializer,
+	}
+
+	return nil
+}
+
+// RegisterUnion4Type registers a Union4[T1, T2, T3, T4] type for serialization.
+func RegisterUnion4Type[T1 any, T2 any, T3 any, T4 any](f *Fory) error {
+	var zero1 T1
+	var zero2 T2
+	var zero3 T3
+	var zero4 T4
+
+	unionType := reflect.TypeOf(Union4[T1, T2, T3, T4]{})
+	alternativeTypes := []reflect.Type{
+		reflect.TypeOf(zero1),
+		reflect.TypeOf(zero2),
+		reflect.TypeOf(zero3),
+		reflect.TypeOf(zero4),
+	}
+
+	serializer := newUnionSerializer(unionType, f.typeResolver, alternativeTypes)
+
+	f.typeResolver.typeToSerializers[unionType] = serializer
 	ptrUnionType := reflect.PtrTo(unionType)
 	f.typeResolver.typeToSerializers[ptrUnionType] = &ptrToValueSerializer{
 		valueSerializer: serializer,

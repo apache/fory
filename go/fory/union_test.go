@@ -18,210 +18,314 @@
 package fory
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestUnionBasicTypes(t *testing.T) {
+// ============================================================================
+// Union2 Tests
+// ============================================================================
+
+func TestUnion2BasicTypes(t *testing.T) {
 	f := NewFory()
-	err := f.RegisterUnionType(reflect.TypeOf(int32(0)), reflect.TypeOf(""))
+	err := RegisterUnion2Type[int32, string](f)
 	require.NoError(t, err)
 
-	// Test with int32 value
-	unionInt := Union{Value: int32(42)}
-	data, err := f.Serialize(unionInt)
-	require.NoError(t, err)
-
-	var result Union
-	err = f.Deserialize(data, &result)
-	require.NoError(t, err)
-	require.Equal(t, int32(42), result.Value)
-
-	// Test with string value
-	unionStr := Union{Value: "hello"}
-	data, err = f.Serialize(unionStr)
-	require.NoError(t, err)
-
-	err = f.Deserialize(data, &result)
-	require.NoError(t, err)
-	require.Equal(t, "hello", result.Value)
-}
-
-func TestUnionMultipleTypes(t *testing.T) {
-	f := NewFory()
-	err := f.RegisterUnionType(
-		reflect.TypeOf(int32(0)),
-		reflect.TypeOf(""),
-		reflect.TypeOf(float64(0)),
-	)
-	require.NoError(t, err)
-
-	// Test with int32
-	union1 := Union{Value: int32(123)}
+	// Test with int32 value (first alternative)
+	union1 := NewUnion2A[int32, string](42)
 	data, err := f.Serialize(union1)
 	require.NoError(t, err)
 
-	var result Union
-	err = f.Deserialize(data, &result)
+	var result1 Union2[int32, string]
+	err = f.Deserialize(data, &result1)
 	require.NoError(t, err)
-	require.Equal(t, int32(123), result.Value)
+	require.Equal(t, 1, result1.Index())
+	require.True(t, result1.IsFirst())
+	require.Equal(t, int32(42), result1.First())
 
-	// Test with string
-	union2 := Union{Value: "test"}
+	// Test with string value (second alternative)
+	union2 := NewUnion2B[int32, string]("hello")
 	data, err = f.Serialize(union2)
 	require.NoError(t, err)
 
-	err = f.Deserialize(data, &result)
+	var result2 Union2[int32, string]
+	err = f.Deserialize(data, &result2)
 	require.NoError(t, err)
-	require.Equal(t, "test", result.Value)
+	require.Equal(t, 2, result2.Index())
+	require.True(t, result2.IsSecond())
+	require.Equal(t, "hello", result2.Second())
+}
+
+func TestUnion2Match(t *testing.T) {
+	union1 := NewUnion2A[int32, string](42)
+	var matchedInt int32
+	var matchedStr string
+
+	union1.Match(
+		func(i int32) { matchedInt = i },
+		func(s string) { matchedStr = s },
+	)
+	require.Equal(t, int32(42), matchedInt)
+	require.Empty(t, matchedStr)
+
+	union2 := NewUnion2B[int32, string]("hello")
+	matchedInt = 0
+	matchedStr = ""
+
+	union2.Match(
+		func(i int32) { matchedInt = i },
+		func(s string) { matchedStr = s },
+	)
+	require.Equal(t, int32(0), matchedInt)
+	require.Equal(t, "hello", matchedStr)
+}
+
+func TestUnion2WithFloats(t *testing.T) {
+	f := NewFory()
+	err := RegisterUnion2Type[float32, float64](f)
+	require.NoError(t, err)
+
+	// Test with float32
+	union1 := NewUnion2A[float32, float64](float32(3.14))
+	data, err := f.Serialize(union1)
+	require.NoError(t, err)
+
+	var result1 Union2[float32, float64]
+	err = f.Deserialize(data, &result1)
+	require.NoError(t, err)
+	require.True(t, result1.IsFirst())
+	require.InDelta(t, float32(3.14), result1.First(), 0.0001)
 
 	// Test with float64
-	union3 := Union{Value: float64(3.14)}
+	union2 := NewUnion2B[float32, float64](float64(2.71828))
+	data, err = f.Serialize(union2)
+	require.NoError(t, err)
+
+	var result2 Union2[float32, float64]
+	err = f.Deserialize(data, &result2)
+	require.NoError(t, err)
+	require.True(t, result2.IsSecond())
+	require.InDelta(t, float64(2.71828), result2.Second(), 0.0001)
+}
+
+func TestUnion2WithBoolAndInt64(t *testing.T) {
+	f := NewFory()
+	err := RegisterUnion2Type[bool, int64](f)
+	require.NoError(t, err)
+
+	// Test with bool
+	union1 := NewUnion2A[bool, int64](true)
+	data, err := f.Serialize(union1)
+	require.NoError(t, err)
+
+	var result1 Union2[bool, int64]
+	err = f.Deserialize(data, &result1)
+	require.NoError(t, err)
+	require.True(t, result1.IsFirst())
+	require.True(t, result1.First())
+
+	// Test with int64
+	union2 := NewUnion2B[bool, int64](int64(9999999999))
+	data, err = f.Serialize(union2)
+	require.NoError(t, err)
+
+	var result2 Union2[bool, int64]
+	err = f.Deserialize(data, &result2)
+	require.NoError(t, err)
+	require.True(t, result2.IsSecond())
+	require.Equal(t, int64(9999999999), result2.Second())
+}
+
+// ============================================================================
+// Union3 Tests
+// ============================================================================
+
+func TestUnion3BasicTypes(t *testing.T) {
+	f := NewFory()
+	err := RegisterUnion3Type[int32, string, float64](f)
+	require.NoError(t, err)
+
+	// Test with int32 value (first alternative)
+	union1 := NewUnion3A[int32, string, float64](123)
+	data, err := f.Serialize(union1)
+	require.NoError(t, err)
+
+	var result1 Union3[int32, string, float64]
+	err = f.Deserialize(data, &result1)
+	require.NoError(t, err)
+	require.Equal(t, 1, result1.Index())
+
+	// Test with string value (second alternative)
+	union2 := NewUnion3B[int32, string, float64]("test")
+	data, err = f.Serialize(union2)
+	require.NoError(t, err)
+
+	var result2 Union3[int32, string, float64]
+	err = f.Deserialize(data, &result2)
+	require.NoError(t, err)
+	require.Equal(t, 2, result2.Index())
+
+	// Test with float64 value (third alternative)
+	union3 := NewUnion3C[int32, string, float64](3.14)
 	data, err = f.Serialize(union3)
 	require.NoError(t, err)
 
-	err = f.Deserialize(data, &result)
+	var result3 Union3[int32, string, float64]
+	err = f.Deserialize(data, &result3)
 	require.NoError(t, err)
-	require.InDelta(t, 3.14, result.Value.(float64), 0.0001)
+	require.Equal(t, 3, result3.Index())
 }
 
-func TestUnionNullValue(t *testing.T) {
+func TestUnion3Match(t *testing.T) {
+	union := NewUnion3C[int32, string, float64](2.5)
+
+	var matchedInt int32
+	var matchedStr string
+	var matchedFloat float64
+
+	union.Match(
+		func(i int32) { matchedInt = i },
+		func(s string) { matchedStr = s },
+		func(f float64) { matchedFloat = f },
+	)
+
+	require.Equal(t, int32(0), matchedInt)
+	require.Empty(t, matchedStr)
+	require.InDelta(t, 2.5, matchedFloat, 0.0001)
+}
+
+// ============================================================================
+// Union4 Tests
+// ============================================================================
+
+func TestUnion4BasicTypes(t *testing.T) {
+	f := NewFory()
+	err := RegisterUnion4Type[int32, string, float64, bool](f)
+	require.NoError(t, err)
+
+	// Test with bool value (fourth alternative)
+	union := NewUnion4D[int32, string, float64, bool](true)
+	data, err := f.Serialize(union)
+	require.NoError(t, err)
+
+	var result Union4[int32, string, float64, bool]
+	err = f.Deserialize(data, &result)
+	require.NoError(t, err)
+	require.Equal(t, 4, result.Index())
+}
+
+func TestUnion4Match(t *testing.T) {
+	union := NewUnion4B[int32, string, float64, bool]("world")
+
+	var matchedInt int32
+	var matchedStr string
+	var matchedFloat float64
+	var matchedBool bool
+
+	union.Match(
+		func(i int32) { matchedInt = i },
+		func(s string) { matchedStr = s },
+		func(f float64) { matchedFloat = f },
+		func(b bool) { matchedBool = b },
+	)
+
+	require.Equal(t, int32(0), matchedInt)
+	require.Equal(t, "world", matchedStr)
+	require.Equal(t, float64(0), matchedFloat)
+	require.False(t, matchedBool)
+}
+
+// ============================================================================
+// Edge Cases
+// ============================================================================
+
+func TestUnion2WithRefTracking(t *testing.T) {
 	f := NewFory(WithTrackRef(true))
-	err := f.RegisterUnionType(reflect.TypeOf(int32(0)), reflect.TypeOf(""))
-	require.NoError(t, err)
-
-	// Test with nil value
-	unionNil := Union{Value: nil}
-	data, err := f.Serialize(unionNil)
-	require.NoError(t, err)
-
-	var result Union
-	err = f.Deserialize(data, &result)
-	require.NoError(t, err)
-	require.Nil(t, result.Value)
-}
-
-func TestUnionWithPointerValue(t *testing.T) {
-	f := NewFory()
-	err := f.RegisterUnionType(reflect.TypeOf((*int32)(nil)), reflect.TypeOf(""))
-	require.NoError(t, err)
-
-	// Test with pointer to int32
-	val := int32(42)
-	unionPtr := Union{Value: &val}
-	data, err := f.Serialize(unionPtr)
-	require.NoError(t, err)
-
-	var result Union
-	err = f.Deserialize(data, &result)
-	require.NoError(t, err)
-
-	resultPtr, ok := result.Value.(*int32)
-	require.True(t, ok)
-	require.Equal(t, int32(42), *resultPtr)
-}
-
-func TestUnionNewHelper(t *testing.T) {
-	union := NewUnion(int32(42))
-	require.Equal(t, int32(42), union.Value)
-	require.False(t, union.IsNil())
-
-	unionNil := NewUnion(nil)
-	require.True(t, unionNil.IsNil())
-}
-
-func TestUnionInvalidAlternative(t *testing.T) {
-	f := NewFory()
-	err := f.RegisterUnionType(reflect.TypeOf(int32(0)), reflect.TypeOf(""))
-	require.NoError(t, err)
-
-	// Try to serialize a union with an unregistered alternative type
-	unionBool := Union{Value: true}
-	_, err = f.Serialize(unionBool)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "doesn't match any alternative")
-}
-
-func TestUnionEmptyRegistration(t *testing.T) {
-	f := NewFory()
-	err := f.RegisterUnionType()
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "at least one alternative type")
-}
-
-func TestUnionWithBytes(t *testing.T) {
-	f := NewFory()
-	err := f.RegisterUnionType(reflect.TypeOf([]byte{}), reflect.TypeOf(""))
-	require.NoError(t, err)
-
-	// Test with bytes
-	unionBytes := Union{Value: []byte("hello")}
-	data, err := f.Serialize(unionBytes)
-	require.NoError(t, err)
-
-	var result Union
-	err = f.Deserialize(data, &result)
-	require.NoError(t, err)
-	require.Equal(t, []byte("hello"), result.Value)
-
-	// Test with string
-	unionStr := Union{Value: "world"}
-	data, err = f.Serialize(unionStr)
-	require.NoError(t, err)
-
-	err = f.Deserialize(data, &result)
-	require.NoError(t, err)
-	require.Equal(t, "world", result.Value)
-}
-
-func TestUnionWithRefTracking(t *testing.T) {
-	f := NewFory(WithTrackRef(true))
-	err := f.RegisterUnionType(reflect.TypeOf(int32(0)), reflect.TypeOf(""))
+	err := RegisterUnion2Type[int32, string](f)
 	require.NoError(t, err)
 
 	// Test with int32 value
-	unionInt := Union{Value: int32(42)}
-	data, err := f.Serialize(unionInt)
+	union := NewUnion2A[int32, string](42)
+	data, err := f.Serialize(union)
 	require.NoError(t, err)
 
-	var result Union
+	var result Union2[int32, string]
 	err = f.Deserialize(data, &result)
 	require.NoError(t, err)
-	require.Equal(t, int32(42), result.Value)
-
-	// Test with string value
-	unionStr := Union{Value: "hello"}
-	data, err = f.Serialize(unionStr)
-	require.NoError(t, err)
-
-	err = f.Deserialize(data, &result)
-	require.NoError(t, err)
-	require.Equal(t, "hello", result.Value)
+	require.Equal(t, int32(42), result.First())
 }
 
-func TestUnionWithInt64AndBool(t *testing.T) {
+func TestUnion2PanicOnWrongAccess(t *testing.T) {
+	union := NewUnion2A[int32, string](42)
+
+	// Accessing First() should work
+	require.NotPanics(t, func() {
+		_ = union.First()
+	})
+
+	// Accessing Second() should panic
+	require.Panics(t, func() {
+		_ = union.Second()
+	})
+}
+
+func TestUnion2MultipleRegistrations(t *testing.T) {
 	f := NewFory()
-	err := f.RegisterUnionType(reflect.TypeOf(int64(0)), reflect.TypeOf(false))
+
+	// Register first Union2 type
+	err := RegisterUnion2Type[int32, string](f)
 	require.NoError(t, err)
 
-	// Test with int64
-	union1 := Union{Value: int64(9999999999)}
+	// Register second different Union2 type
+	err = RegisterUnion2Type[bool, float64](f)
+	require.NoError(t, err)
+
+	// Serialize and deserialize first type
+	union1 := NewUnion2A[int32, string](42)
+	data1, err := f.Serialize(union1)
+	require.NoError(t, err)
+
+	var result1 Union2[int32, string]
+	err = f.Deserialize(data1, &result1)
+	require.NoError(t, err)
+	require.Equal(t, int32(42), result1.First())
+
+	// Serialize and deserialize second type
+	union2 := NewUnion2A[bool, float64](true)
+	data2, err := f.Serialize(union2)
+	require.NoError(t, err)
+
+	var result2 Union2[bool, float64]
+	err = f.Deserialize(data2, &result2)
+	require.NoError(t, err)
+	require.True(t, result2.First())
+}
+
+func TestUnion2Bytes(t *testing.T) {
+	f := NewFory()
+	err := RegisterUnion2Type[[]byte, string](f)
+	require.NoError(t, err)
+
+	// Test with bytes
+	union1 := NewUnion2A[[]byte, string]([]byte("hello bytes"))
 	data, err := f.Serialize(union1)
 	require.NoError(t, err)
 
-	var result Union
-	err = f.Deserialize(data, &result)
+	var result1 Union2[[]byte, string]
+	err = f.Deserialize(data, &result1)
 	require.NoError(t, err)
-	require.Equal(t, int64(9999999999), result.Value)
+	require.True(t, result1.IsFirst())
+	require.Equal(t, []byte("hello bytes"), result1.First())
 
-	// Test with bool
-	union2 := Union{Value: true}
+	// Test with string
+	union2 := NewUnion2B[[]byte, string]("hello string")
 	data, err = f.Serialize(union2)
 	require.NoError(t, err)
 
-	err = f.Deserialize(data, &result)
+	var result2 Union2[[]byte, string]
+	err = f.Deserialize(data, &result2)
 	require.NoError(t, err)
-	require.Equal(t, true, result.Value)
+	require.True(t, result2.IsSecond())
+	require.Equal(t, "hello string", result2.Second())
 }
