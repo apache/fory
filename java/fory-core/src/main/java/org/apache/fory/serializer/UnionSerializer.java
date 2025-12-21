@@ -25,9 +25,15 @@ import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.type.union.Union;
+import org.apache.fory.type.union.Union2;
+import org.apache.fory.type.union.Union3;
+import org.apache.fory.type.union.Union4;
+import org.apache.fory.type.union.Union5;
+import org.apache.fory.type.union.Union6;
 
 /**
- * Serializer for {@link Union} type.
+ * Serializer for {@link Union} and its subclasses ({@link Union2}, {@link Union3}, {@link Union4},
+ * {@link Union5}, {@link Union6}).
  *
  * <p>The serialization format is:
  *
@@ -39,6 +45,10 @@ import org.apache.fory.type.union.Union;
  *
  * <p>This allows cross-language interoperability with union types in other languages like C++'s
  * std::variant, Rust's enum, or Python's typing.Union.
+ *
+ * <p>Note: When deserializing, this serializer always returns the base {@link Union} class. If you
+ * need a specific typed union (e.g., {@link Union2}), you can use {@link Union2#of(int, Object)} to
+ * convert.
  */
 public class UnionSerializer extends Serializer<Union> {
   private final ClassResolver classResolver;

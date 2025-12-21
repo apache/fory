@@ -19,15 +19,13 @@
 
 package org.apache.fory.type.union;
 
-import java.util.Objects;
-
 /**
  * A typed union that can hold one of six alternative types. The active alternative is identified by
  * an index (0-5).
  *
- * <p>This class provides a type-safe way to represent values that can be one of six types. Six
- * types should cover most use cases. For unions with more than 6 types, use the generic {@link
- * Union} class instead.
+ * <p>This class extends {@link Union} and provides a type-safe way to represent values that can be
+ * one of six types. Six types should cover most use cases. For unions with more than 6 types, use
+ * the generic {@link Union} class instead.
  *
  * <p>Usage example:
  *
@@ -55,16 +53,10 @@ import java.util.Objects;
  * @see Union4
  * @see Union5
  */
-public class Union6<T1, T2, T3, T4, T5, T6> {
-  /** The index indicating which alternative is active. */
-  private final int index;
-
-  /** The current value. */
-  private final Object value;
+public class Union6<T1, T2, T3, T4, T5, T6> extends Union {
 
   private Union6(int index, Object value) {
-    this.index = index;
-    this.value = value;
+    super(index, value);
   }
 
   /**
@@ -189,6 +181,7 @@ public class Union6<T1, T2, T3, T4, T5, T6> {
    *
    * @return 0-5 indicating which type is active
    */
+  @Override
   public int getIndex() {
     return index;
   }
@@ -258,6 +251,7 @@ public class Union6<T1, T2, T3, T4, T5, T6> {
    *
    * @return the value
    */
+  @Override
   public Object getValue() {
     return value;
   }
@@ -321,17 +315,9 @@ public class Union6<T1, T2, T3, T4, T5, T6> {
    *
    * @return true if a value is set (not null), false otherwise
    */
+  @Override
   public boolean hasValue() {
     return value != null;
-  }
-
-  /**
-   * Converts this typed union to an untyped Union.
-   *
-   * @return an untyped Union with the same index and value
-   */
-  public Union toUnion() {
-    return new Union(index, value);
   }
 
   @Override
@@ -339,16 +325,16 @@ public class Union6<T1, T2, T3, T4, T5, T6> {
     if (this == o) {
       return true;
     }
-    if (o == null || getClass() != o.getClass()) {
+    if (!(o instanceof Union)) {
       return false;
     }
-    Union6<?, ?, ?, ?, ?, ?> union6 = (Union6<?, ?, ?, ?, ?, ?>) o;
-    return index == union6.index && Objects.equals(value, union6.value);
+    Union union = (Union) o;
+    return index == union.getIndex() && java.util.Objects.equals(value, union.getValue());
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(index, value);
+    return java.util.Objects.hash(index, value);
   }
 
   @Override

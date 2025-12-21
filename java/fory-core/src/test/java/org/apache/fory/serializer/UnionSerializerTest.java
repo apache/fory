@@ -67,16 +67,16 @@ public class UnionSerializerTest extends ForyTestBase {
   public void testUnion2Types() {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
 
-    // Test with T1 (String)
+    // Test with T1 (String) - serialize Union2 directly
     Union2<String, Long> union1 = Union2.ofT1("hello");
-    byte[] bytes = fory.serialize(union1.toUnion());
+    byte[] bytes = fory.serialize(union1);
     Union deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), "hello");
     assertEquals(deserialized.getIndex(), 0);
 
-    // Test with T2 (Long)
+    // Test with T2 (Long) - serialize Union2 directly
     Union2<String, Long> union2 = Union2.ofT2(100L);
-    bytes = fory.serialize(union2.toUnion());
+    bytes = fory.serialize(union2);
     deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), 100L);
     assertEquals(deserialized.getIndex(), 1);
@@ -86,23 +86,23 @@ public class UnionSerializerTest extends ForyTestBase {
   public void testUnion3Types() {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
 
-    // Test with T1
+    // Test with T1 - serialize Union3 directly
     Union3<Integer, String, Double> union1 = Union3.ofT1(42);
-    byte[] bytes = fory.serialize(union1.toUnion());
+    byte[] bytes = fory.serialize(union1);
     Union deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), 42);
     assertEquals(deserialized.getIndex(), 0);
 
-    // Test with T2
+    // Test with T2 - serialize Union3 directly
     Union3<Integer, String, Double> union2 = Union3.ofT2("test");
-    bytes = fory.serialize(union2.toUnion());
+    bytes = fory.serialize(union2);
     deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), "test");
     assertEquals(deserialized.getIndex(), 1);
 
-    // Test with T3
+    // Test with T3 - serialize Union3 directly
     Union3<Integer, String, Double> union3 = Union3.ofT3(3.14);
-    bytes = fory.serialize(union3.toUnion());
+    bytes = fory.serialize(union3);
     deserialized = (Union) fory.deserialize(bytes);
     assertEquals((Double) deserialized.getValue(), 3.14, 0.0001);
     assertEquals(deserialized.getIndex(), 2);
@@ -112,16 +112,16 @@ public class UnionSerializerTest extends ForyTestBase {
   public void testUnion4Types() {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
 
-    // Test with T1
+    // Test with T1 - serialize Union4 directly
     Union4<Integer, String, Double, Boolean> union1 = Union4.ofT1(42);
-    byte[] bytes = fory.serialize(union1.toUnion());
+    byte[] bytes = fory.serialize(union1);
     Union deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), 42);
     assertEquals(deserialized.getIndex(), 0);
 
-    // Test with T4
+    // Test with T4 - serialize Union4 directly
     Union4<Integer, String, Double, Boolean> union4 = Union4.ofT4(true);
-    bytes = fory.serialize(union4.toUnion());
+    bytes = fory.serialize(union4);
     deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), true);
     assertEquals(deserialized.getIndex(), 3);
@@ -242,6 +242,11 @@ public class UnionSerializerTest extends ForyTestBase {
     Union2<String, Long> u2b = Union2.ofT1("hello");
     assertEquals(u2a, u2b);
     assertEquals(u2a.hashCode(), u2b.hashCode());
+
+    // Union2-6 extends Union, so they should be equal to Union with same index/value
+    Union baseUnion = new Union(0, "hello");
+    assertEquals(u2a, baseUnion);
+    assertEquals(baseUnion, u2a);
   }
 
   @Test
@@ -282,16 +287,16 @@ public class UnionSerializerTest extends ForyTestBase {
   public void testUnion5Types() {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
 
-    // Test with T1
+    // Test with T1 - serialize Union5 directly
     Union5<Integer, String, Double, Boolean, Long> union1 = Union5.ofT1(42);
-    byte[] bytes = fory.serialize(union1.toUnion());
+    byte[] bytes = fory.serialize(union1);
     Union deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), 42);
     assertEquals(deserialized.getIndex(), 0);
 
-    // Test with T5
+    // Test with T5 - serialize Union5 directly
     Union5<Integer, String, Double, Boolean, Long> union5 = Union5.ofT5(999L);
-    bytes = fory.serialize(union5.toUnion());
+    bytes = fory.serialize(union5);
     deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), 999L);
     assertEquals(deserialized.getIndex(), 4);
@@ -317,16 +322,16 @@ public class UnionSerializerTest extends ForyTestBase {
   public void testUnion6Types() {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
 
-    // Test with T1
+    // Test with T1 - serialize Union6 directly
     Union6<Integer, String, Double, Boolean, Long, Float> union1 = Union6.ofT1(42);
-    byte[] bytes = fory.serialize(union1.toUnion());
+    byte[] bytes = fory.serialize(union1);
     Union deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), 42);
     assertEquals(deserialized.getIndex(), 0);
 
-    // Test with T6
+    // Test with T6 - serialize Union6 directly
     Union6<Integer, String, Double, Boolean, Long, Float> union6 = Union6.ofT6(1.5f);
-    bytes = fory.serialize(union6.toUnion());
+    bytes = fory.serialize(union6);
     deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), 1.5f);
     assertEquals(deserialized.getIndex(), 5);

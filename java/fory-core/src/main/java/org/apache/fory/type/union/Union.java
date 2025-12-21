@@ -22,12 +22,11 @@ package org.apache.fory.type.union;
 import java.util.Objects;
 
 /**
- * A general untyped union that holds a value and an index. This class is used when deserializing
- * union data without knowing the specific union type (Union2, Union3, etc.), or when you need more
- * than 6 alternative types.
+ * A general union that holds a value and an index. This is the base class for all typed unions
+ * (Union2, Union3, etc.).
  *
- * <p>This is similar to Java's Map without generics - it provides a flexible container when the
- * exact type parameters are not known at compile time.
+ * <p>This class can be used directly when deserializing union data without knowing the specific
+ * union type, or when you need more than 6 alternative types.
  *
  * <p>For type-safe unions with up to 6 types, use {@link Union2}, {@link Union3}, {@link Union4},
  * {@link Union5}, or {@link Union6} instead.
@@ -52,10 +51,10 @@ import java.util.Objects;
  */
 public class Union {
   /** The index indicating which alternative is active. */
-  private final int index;
+  protected final int index;
 
   /** The current value. */
-  private final Object value;
+  protected final Object value;
 
   /**
    * Creates a new Union with the specified index and value.
@@ -113,11 +112,11 @@ public class Union {
     if (this == o) {
       return true;
     }
-    if (o == null || getClass() != o.getClass()) {
+    if (!(o instanceof Union)) {
       return false;
     }
     Union union = (Union) o;
-    return index == union.index && Objects.equals(value, union.value);
+    return index == union.getIndex() && Objects.equals(value, union.getValue());
   }
 
   @Override

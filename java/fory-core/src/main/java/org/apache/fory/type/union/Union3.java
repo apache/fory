@@ -19,13 +19,12 @@
 
 package org.apache.fory.type.union;
 
-import java.util.Objects;
-
 /**
  * A typed union that can hold one of three alternative types. The active alternative is identified
  * by an index (0, 1, or 2).
  *
- * <p>This class provides a type-safe way to represent values that can be one of three types.
+ * <p>This class extends {@link Union} and provides a type-safe way to represent values that can be
+ * one of three types.
  *
  * <p>Usage example:
  *
@@ -50,16 +49,10 @@ import java.util.Objects;
  * @see Union5
  * @see Union6
  */
-public class Union3<T1, T2, T3> {
-  /** The index indicating which alternative is active (0 for T1, 1 for T2, 2 for T3). */
-  private final int index;
-
-  /** The current value. */
-  private final Object value;
+public class Union3<T1, T2, T3> extends Union {
 
   private Union3(int index, Object value) {
-    this.index = index;
-    this.value = value;
+    super(index, value);
   }
 
   /**
@@ -123,6 +116,7 @@ public class Union3<T1, T2, T3> {
    *
    * @return 0 if T1 is active, 1 if T2 is active, 2 if T3 is active
    */
+  @Override
   public int getIndex() {
     return index;
   }
@@ -165,6 +159,7 @@ public class Union3<T1, T2, T3> {
    *
    * @return the value
    */
+  @Override
   public Object getValue() {
     return value;
   }
@@ -201,17 +196,9 @@ public class Union3<T1, T2, T3> {
    *
    * @return true if a value is set (not null), false otherwise
    */
+  @Override
   public boolean hasValue() {
     return value != null;
-  }
-
-  /**
-   * Converts this typed union to an untyped Union.
-   *
-   * @return an untyped Union with the same index and value
-   */
-  public Union toUnion() {
-    return new Union(index, value);
   }
 
   @Override
@@ -219,16 +206,16 @@ public class Union3<T1, T2, T3> {
     if (this == o) {
       return true;
     }
-    if (o == null || getClass() != o.getClass()) {
+    if (!(o instanceof Union)) {
       return false;
     }
-    Union3<?, ?, ?> union3 = (Union3<?, ?, ?>) o;
-    return index == union3.index && Objects.equals(value, union3.value);
+    Union union = (Union) o;
+    return index == union.getIndex() && java.util.Objects.equals(value, union.getValue());
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(index, value);
+    return java.util.Objects.hash(index, value);
   }
 
   @Override
