@@ -19,11 +19,9 @@
 
 package org.apache.fory.serializer;
 
+import java.util.function.BiFunction;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
-import org.apache.fory.resolver.ClassInfo;
-import org.apache.fory.resolver.ClassInfoHolder;
-import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.type.union.Union;
 import org.apache.fory.type.union.Union2;
 import org.apache.fory.type.union.Union3;
@@ -38,73 +36,61 @@ import org.apache.fory.type.union.Union6;
  * <p>The serialization format is:
  *
  * <ul>
+ *   <li>Union type tag (byte): 0=Union, 1=Union2, 2=Union3, 3=Union4, 4=Union5, 5=Union6
  *   <li>Variant index (varuint32): identifies which alternative type is active
- *   <li>Type info: the type information for the active alternative
  *   <li>Value data: the serialized value of the active alternative
  * </ul>
  *
  * <p>This allows cross-language interoperability with union types in other languages like C++'s
  * std::variant, Rust's enum, or Python's typing.Union.
- *
- * <p>Note: When deserializing, this serializer always returns the base {@link Union} class. If you
- * need a specific typed union (e.g., {@link Union2}), you can use {@link Union2#of(int, Object)} to
- * convert.
  */
 public class UnionSerializer extends Serializer<Union> {
-  private final ClassResolver classResolver;
-  private final ClassInfoHolder classInfoHolder;
+  /** Array of factories for creating Union instances by type tag. */
+  @SuppressWarnings("unchecked")
+  private static final BiFunction<Integer, Object, Union>[] FACTORIES =
+      new BiFunction[] {
+        (BiFunction<Integer, Object, Union>) Union::new,
+        (BiFunction<Integer, Object, Union>) (index, value) -> Union2.of(index, value),
+        (BiFunction<Integer, Object, Union>) (index, value) -> Union3.of(index, value),
+        (BiFunction<Integer, Object, Union>) (index, value) -> Union4.of(index, value),
+        (BiFunction<Integer, Object, Union>) (index, value) -> Union5.of(index, value),
+        (BiFunction<Integer, Object, Union>) (index, value) -> Union6.of(index, value)
+      };
 
-  public UnionSerializer(Fory fory) {
-    super(fory, Union.class);
-    this.classResolver = fory.getClassResolver();
-    this.classInfoHolder = fory.getClassResolver().nilClassInfoHolder();
+  private final int typeTag;
+  private final BiFunction<Integer, Object, Union> factory;
+
+  @SuppressWarnings("unchecked")
+  public UnionSerializer(Fory fory, Class<? extends Union> cls) {
+    super(fory, (Class<Union>) cls);
+    this.typeTag = getTypeTag(cls);
+    this.factory = FACTORIES[typeTag];
   }
 
-  @Override
-  public void write(MemoryBuffer buffer, Union union) {
-    int index = union.getIndex();
-    buffer.writeVarUint32(index);
-
-    Object value = union.getValue();
-    if (value != null) {
-      ClassInfo classInfo = classResolver.getClassInfo(value.getClass(), classInfoHolder);
-      classResolver.writeClassInfo(buffer, classInfo);
-      fory.writeNonRef(buffer, value, classInfo);
+  private static int getTypeTag(Class<? extends Union> cls) {
+    if (cls == Union.class) {
+      return 0;
+    } else if (cls == Union2.class) {
+      return 1;
+    } else if (cls == Union3.class) {
+      return 2;
+    } else if (cls == Union4.class) {
+      return 3;
+    } else if (cls == Union5.class) {
+      return 4;
+    } else if (cls == Union6.class) {
+      return 5;
     } else {
-      buffer.writeByte(Fory.NULL_FLAG);
-    }
-  }
-
-  @Override
-  public Union copy(Union union) {
-    if (union == null) {
-      return null;
-    }
-    Object value = union.getValue();
-    Object copiedValue = value != null ? fory.copyObject(value) : null;
-    return new Union(union.getIndex(), copiedValue);
-  }
-
-  @Override
-  public Union read(MemoryBuffer buffer) {
-    int index = buffer.readVarUint32();
-
-    int refId = fory.getRefResolver().tryPreserveRefId(buffer);
-    if (refId >= Fory.NOT_NULL_VALUE_FLAG) {
-      ClassInfo classInfo = classResolver.readClassInfo(buffer, classInfoHolder);
-      Object value = classInfo.getSerializer().read(buffer);
-      fory.getRefResolver().setReadObject(refId, value);
-      return new Union(index, value);
-    } else if (refId == Fory.NULL_FLAG) {
-      return new Union(index, null);
-    } else {
-      Object value = fory.getRefResolver().getReadObject();
-      return new Union(index, value);
+      // Default to base Union for unknown subclasses
+      return 0;
     }
   }
 
   @Override
   public void xwrite(MemoryBuffer buffer, Union union) {
+    // Write type tag to identify the Union subclass
+    buffer.writeByte(getTypeTag(union.getClass()));
+
     int index = union.getIndex();
     buffer.writeVarUint32(index);
 
@@ -118,9 +104,24 @@ public class UnionSerializer extends Serializer<Union> {
 
   @Override
   public Union xread(MemoryBuffer buffer) {
-    int index = buffer.readVarUint32();
+    // Read type tag and select the appropriate factory
+    int readTypeTag = buffer.readByte();
+    BiFunction<Integer, Object, Union> readFactory =
+        (readTypeTag >= 0 && readTypeTag < FACTORIES.length) ? FACTORIES[readTypeTag] : factory;
 
+    int index = buffer.readVarUint32();
     Object value = fory.xreadRef(buffer);
-    return new Union(index, value);
+    return readFactory.apply(index, value);
+  }
+
+  @Override
+  public Union copy(Union union) {
+    if (union == null) {
+      return null;
+    }
+    Object value = union.getValue();
+    Object copiedValue = value != null ? fory.copyObject(value) : null;
+    int tag = getTypeTag(union.getClass());
+    return FACTORIES[tag].apply(union.getIndex(), copiedValue);
   }
 }

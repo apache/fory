@@ -82,6 +82,7 @@ import org.apache.fory.serializer.SerializationUtils;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.serializer.Serializers;
 import org.apache.fory.serializer.TimeSerializers;
+import org.apache.fory.serializer.UnionSerializer;
 import org.apache.fory.serializer.collection.CollectionLikeSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializer;
 import org.apache.fory.serializer.collection.CollectionSerializers.ArrayListSerializer;
@@ -618,7 +619,7 @@ public class XtypeResolver extends TypeResolver {
     registerDefaultTypes(Types.SET, HashSet.class, LinkedHashSet.class, Set.class);
     registerDefaultTypes(Types.MAP, HashMap.class, LinkedHashMap.class, Map.class);
     registerDefaultTypes(Types.LOCAL_DATE, LocalDate.class);
-    registerDefaultTypes(Types.UNION, org.apache.fory.type.union.Union.class);
+    registerUnionTypes();
   }
 
   private void registerDefaultTypes(int xtypeId, Class<?> defaultType, Class<?>... otherTypes) {
@@ -644,6 +645,27 @@ public class XtypeResolver extends TypeResolver {
       ClassInfo info = newClassInfo(otherType, serializer, (short) xtypeId);
       classInfoMap.put(otherType, info);
     }
+  }
+
+  private void registerUnionTypes() {
+    Class<?>[] unionClasses =
+        new Class<?>[] {
+          org.apache.fory.type.union.Union.class,
+          org.apache.fory.type.union.Union2.class,
+          org.apache.fory.type.union.Union3.class,
+          org.apache.fory.type.union.Union4.class,
+          org.apache.fory.type.union.Union5.class,
+          org.apache.fory.type.union.Union6.class
+        };
+    for (Class<?> cls : unionClasses) {
+      @SuppressWarnings("unchecked")
+      Class<? extends org.apache.fory.type.union.Union> unionCls =
+          (Class<? extends org.apache.fory.type.union.Union>) cls;
+      UnionSerializer serializer = new UnionSerializer(fory, unionCls);
+      ClassInfo classInfo = newClassInfo(cls, serializer, (short) Types.UNION);
+      classInfoMap.put(cls, classInfo);
+    }
+    xtypeIdToClassMap.put(Types.UNION, classInfoMap.get(org.apache.fory.type.union.Union.class));
   }
 
   public ClassInfo writeClassInfo(MemoryBuffer buffer, Object obj) {
