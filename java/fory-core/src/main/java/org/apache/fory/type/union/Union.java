@@ -1,0 +1,123 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.fory.type.union;
+
+import java.util.Objects;
+
+/**
+ * A general untyped union that holds a value and an index. This class is used when deserializing
+ * union data without knowing the specific union type (Union2, Union3, etc.).
+ *
+ * <p>This is similar to Java's Map without generics - it provides a flexible container when the
+ * exact type parameters are not known at compile time.
+ *
+ * <p>Usage example:
+ *
+ * <pre>{@code
+ * // When deserializing union data without type information
+ * Union union = new Union(0, "hello");
+ * Object value = union.getValue();
+ * int index = union.getIndex();
+ * }</pre>
+ *
+ * @see Union2
+ * @see Union3
+ * @see Union4
+ */
+public class Union {
+  /** The index indicating which alternative is active. */
+  private final int index;
+
+  /** The current value. */
+  private final Object value;
+
+  /**
+   * Creates a new Union with the specified index and value.
+   *
+   * @param index the index of the active alternative
+   * @param value the value
+   */
+  public Union(int index, Object value) {
+    this.index = index;
+    this.value = value;
+  }
+
+  /**
+   * Gets the index of the active alternative.
+   *
+   * @return the index
+   */
+  public int getIndex() {
+    return index;
+  }
+
+  /**
+   * Gets the current value.
+   *
+   * @return the value
+   */
+  public Object getValue() {
+    return value;
+  }
+
+  /**
+   * Gets the current value cast to the specified type.
+   *
+   * @param <T> the expected type
+   * @param type the class of the expected type
+   * @return the current value cast to the specified type
+   * @throws ClassCastException if the value cannot be cast to the specified type
+   */
+  @SuppressWarnings("unchecked")
+  public <T> T getValue(Class<T> type) {
+    return (T) value;
+  }
+
+  /**
+   * Checks if this union currently holds a value.
+   *
+   * @return true if a value is set (not null), false otherwise
+   */
+  public boolean hasValue() {
+    return value != null;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    Union union = (Union) o;
+    return index == union.index && Objects.equals(value, union.value);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(index, value);
+  }
+
+  @Override
+  public String toString() {
+    return "Union{index=" + index + ", value=" + value + "}";
+  }
+}

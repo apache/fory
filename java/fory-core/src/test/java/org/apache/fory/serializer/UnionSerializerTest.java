@@ -32,7 +32,10 @@ import java.util.Map;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.Language;
-import org.apache.fory.type.Union;
+import org.apache.fory.type.union.Union;
+import org.apache.fory.type.union.Union2;
+import org.apache.fory.type.union.Union3;
+import org.apache.fory.type.union.Union4;
 import org.testng.annotations.Test;
 
 public class UnionSerializerTest extends ForyTestBase {
@@ -42,46 +45,84 @@ public class UnionSerializerTest extends ForyTestBase {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
 
     // Test with Integer value
-    Union unionInt = Union.of(Integer.class, String.class);
-    unionInt.setValue(42);
+    Union unionInt = new Union(0, 42);
     byte[] bytes = fory.serialize(unionInt);
     Union deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), 42);
+    assertEquals(deserialized.getIndex(), 0);
     assertTrue(deserialized.getValue() instanceof Integer);
 
     // Test with String value
-    Union unionStr = Union.of(Integer.class, String.class);
-    unionStr.setValue("hello");
+    Union unionStr = new Union(1, "hello");
     bytes = fory.serialize(unionStr);
     deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), "hello");
+    assertEquals(deserialized.getIndex(), 1);
     assertTrue(deserialized.getValue() instanceof String);
   }
 
   @Test
-  public void testUnionMultipleTypes() {
+  public void testUnion2Types() {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
 
-    // Test with Integer
-    Union union1 = Union.of(Integer.class, String.class, Double.class);
-    union1.setValue(123);
-    byte[] bytes = fory.serialize(union1);
+    // Test with T1 (String)
+    Union2<String, Long> union1 = Union2.ofT1("hello");
+    byte[] bytes = fory.serialize(union1.toUnion());
     Union deserialized = (Union) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), 123);
+    assertEquals(deserialized.getValue(), "hello");
+    assertEquals(deserialized.getIndex(), 0);
 
-    // Test with String
-    Union union2 = Union.of(Integer.class, String.class, Double.class);
-    union2.setValue("test");
-    bytes = fory.serialize(union2);
+    // Test with T2 (Long)
+    Union2<String, Long> union2 = Union2.ofT2(100L);
+    bytes = fory.serialize(union2.toUnion());
+    deserialized = (Union) fory.deserialize(bytes);
+    assertEquals(deserialized.getValue(), 100L);
+    assertEquals(deserialized.getIndex(), 1);
+  }
+
+  @Test
+  public void testUnion3Types() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+
+    // Test with T1
+    Union3<Integer, String, Double> union1 = Union3.ofT1(42);
+    byte[] bytes = fory.serialize(union1.toUnion());
+    Union deserialized = (Union) fory.deserialize(bytes);
+    assertEquals(deserialized.getValue(), 42);
+    assertEquals(deserialized.getIndex(), 0);
+
+    // Test with T2
+    Union3<Integer, String, Double> union2 = Union3.ofT2("test");
+    bytes = fory.serialize(union2.toUnion());
     deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), "test");
+    assertEquals(deserialized.getIndex(), 1);
 
-    // Test with Double
-    Union union3 = Union.of(Integer.class, String.class, Double.class);
-    union3.setValue(3.14);
-    bytes = fory.serialize(union3);
+    // Test with T3
+    Union3<Integer, String, Double> union3 = Union3.ofT3(3.14);
+    bytes = fory.serialize(union3.toUnion());
     deserialized = (Union) fory.deserialize(bytes);
     assertEquals((Double) deserialized.getValue(), 3.14, 0.0001);
+    assertEquals(deserialized.getIndex(), 2);
+  }
+
+  @Test
+  public void testUnion4Types() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+
+    // Test with T1
+    Union4<Integer, String, Double, Boolean> union1 = Union4.ofT1(42);
+    byte[] bytes = fory.serialize(union1.toUnion());
+    Union deserialized = (Union) fory.deserialize(bytes);
+    assertEquals(deserialized.getValue(), 42);
+    assertEquals(deserialized.getIndex(), 0);
+
+    // Test with T4
+    Union4<Integer, String, Double, Boolean> union4 = Union4.ofT4(true);
+    bytes = fory.serialize(union4.toUnion());
+    deserialized = (Union) fory.deserialize(bytes);
+    assertEquals(deserialized.getValue(), true);
+    assertEquals(deserialized.getIndex(), 3);
   }
 
   @Test
@@ -89,23 +130,21 @@ public class UnionSerializerTest extends ForyTestBase {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
 
     // Test with List
-    Union unionList = Union.of(List.class, Map.class);
     List<Integer> list = new ArrayList<>();
     list.add(1);
     list.add(2);
     list.add(3);
-    unionList.setValue(list);
+    Union unionList = new Union(0, list);
     byte[] bytes = fory.serialize(unionList);
     Union deserialized = (Union) fory.deserialize(bytes);
     assertTrue(deserialized.getValue() instanceof List);
     assertEquals(deserialized.getValue(), list);
 
     // Test with Map
-    Union unionMap = Union.of(List.class, Map.class);
     Map<String, Integer> map = new HashMap<>();
     map.put("a", 1);
     map.put("b", 2);
-    unionMap.setValue(map);
+    Union unionMap = new Union(1, map);
     bytes = fory.serialize(unionMap);
     deserialized = (Union) fory.deserialize(bytes);
     assertTrue(deserialized.getValue() instanceof Map);
@@ -113,43 +152,28 @@ public class UnionSerializerTest extends ForyTestBase {
   }
 
   @Test
-  public void testUnionEmpty() {
-    Fory fory = Fory.builder().requireClassRegistration(false).build();
-
-    Union union = Union.of(Integer.class, String.class);
-    // No value set, activeIndex = -1
-    assertFalse(union.hasValue());
-
-    byte[] bytes = fory.serialize(union);
-    Union deserialized = (Union) fory.deserialize(bytes);
-    assertNotNull(deserialized);
-  }
-
-  @Test
   public void testUnionWithNull() {
     Fory fory = Fory.builder().requireClassRegistration(false).withRefTracking(true).build();
 
-    Union union = Union.of(Integer.class, String.class);
-    union.setValue(null);
+    Union union = new Union(0, null);
     assertFalse(union.hasValue());
-    assertEquals(union.getActiveIndex(), -1);
 
     byte[] bytes = fory.serialize(union);
     Union deserialized = (Union) fory.deserialize(bytes);
     assertNotNull(deserialized);
     assertNull(deserialized.getValue());
+    assertEquals(deserialized.getIndex(), 0);
   }
 
   @Test
   public void testUnionCopy() {
     Fory fory = Fory.builder().requireClassRegistration(false).build();
 
-    Union union = Union.of(Integer.class, String.class);
-    union.setValue(42);
+    Union union = new Union(0, 42);
 
     Union copy = fory.copy(union);
     assertEquals(copy.getValue(), 42);
-    assertEquals(copy.getActiveIndex(), 0);
+    assertEquals(copy.getIndex(), 0);
   }
 
   @Test
@@ -157,96 +181,98 @@ public class UnionSerializerTest extends ForyTestBase {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
 
     // Test with Integer value
-    Union unionInt = Union.of(Integer.class, String.class);
-    unionInt.setValue(42);
+    Union unionInt = new Union(0, 42);
     byte[] bytes = fory.serialize(unionInt);
     Union deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), 42);
+    assertEquals(deserialized.getIndex(), 0);
 
     // Test with String value
-    Union unionStr = Union.of(Integer.class, String.class);
-    unionStr.setValue("hello");
+    Union unionStr = new Union(1, "hello");
     bytes = fory.serialize(unionStr);
     deserialized = (Union) fory.deserialize(bytes);
     assertEquals(deserialized.getValue(), "hello");
+    assertEquals(deserialized.getIndex(), 1);
   }
 
   @Test
-  public void testUnionOfValue() {
-    Fory fory = Fory.builder().requireClassRegistration(false).build();
+  public void testUnion2TypeSafety() {
+    Union2<String, Long> union = Union2.ofT1("hello");
+    assertTrue(union.isT1());
+    assertFalse(union.isT2());
+    assertEquals(union.getT1(), "hello");
+    assertEquals(union.getIndex(), 0);
 
-    // Create Union directly with value
-    Union union = Union.ofValue(42, Integer.class, String.class);
-    assertEquals(union.getValue(), 42);
-    assertEquals(union.getActiveIndex(), 0);
-    assertTrue(union.isType(Integer.class));
-
-    byte[] bytes = fory.serialize(union);
-    Union deserialized = (Union) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), 42);
+    Union2<String, Long> union2 = Union2.ofT2(100L);
+    assertFalse(union2.isT1());
+    assertTrue(union2.isT2());
+    assertEquals(union2.getT2(), Long.valueOf(100L));
+    assertEquals(union2.getIndex(), 1);
   }
 
   @Test
-  public void testUnionValueAt() {
-    Union union = Union.of(Integer.class, String.class, Double.class);
-
-    union.setValueAt(0, 100);
-    assertEquals(union.getValue(), 100);
-    assertEquals(union.getActiveIndex(), 0);
-
-    union.setValueAt(1, "test");
-    assertEquals(union.getValue(), "test");
-    assertEquals(union.getActiveIndex(), 1);
-
-    union.setValueAt(2, 3.14);
-    assertEquals(union.getValue(), 3.14);
-    assertEquals(union.getActiveIndex(), 2);
+  public void testUnion3TypeSafety() {
+    Union3<Integer, String, Double> union = Union3.ofT2("test");
+    assertFalse(union.isT1());
+    assertTrue(union.isT2());
+    assertFalse(union.isT3());
+    assertEquals(union.getT2(), "test");
   }
 
   @Test
-  public void testUnionGetValue() {
-    Union union = Union.of(Integer.class, String.class);
-    union.setValue(42);
-
-    Integer intValue = union.getValue(Integer.class);
-    assertEquals(intValue, Integer.valueOf(42));
+  public void testUnion4TypeSafety() {
+    Union4<Integer, String, Double, Boolean> union = Union4.ofT3(3.14);
+    assertFalse(union.isT1());
+    assertFalse(union.isT2());
+    assertTrue(union.isT3());
+    assertFalse(union.isT4());
+    assertEquals(union.getT3(), 3.14);
   }
 
   @Test
   public void testUnionEquality() {
-    Union union1 = Union.of(Integer.class, String.class);
-    union1.setValue(42);
-
-    Union union2 = Union.of(Integer.class, String.class);
-    union2.setValue(42);
-
+    Union union1 = new Union(0, 42);
+    Union union2 = new Union(0, 42);
     assertEquals(union1, union2);
     assertEquals(union1.hashCode(), union2.hashCode());
+
+    Union2<String, Long> u2a = Union2.ofT1("hello");
+    Union2<String, Long> u2b = Union2.ofT1("hello");
+    assertEquals(u2a, u2b);
+    assertEquals(u2a.hashCode(), u2b.hashCode());
   }
 
   @Test
   public void testUnionToString() {
-    Union union = Union.of(Integer.class, String.class);
-    union.setValue(42);
+    Union union = new Union(0, 42);
     String str = union.toString();
-    assertTrue(str.contains("Integer"));
     assertTrue(str.contains("42"));
+    assertTrue(str.contains("0"));
+
+    Union2<String, Long> union2 = Union2.ofT1("hello");
+    String str2 = union2.toString();
+    assertTrue(str2.contains("hello"));
+  }
+
+  @Test
+  public void testUnionGetValueTyped() {
+    Union union = new Union(0, 42);
+    Integer value = union.getValue(Integer.class);
+    assertEquals(value, Integer.valueOf(42));
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
-  public void testUnionInvalidValue() {
-    Union union = Union.of(Integer.class, String.class);
-    union.setValue(3.14); // Double is not in alternative types
+  public void testUnion2InvalidIndex() {
+    Union2.of(5, "test"); // Index out of bounds for Union2
   }
 
   @Test(expectedExceptions = IllegalArgumentException.class)
-  public void testUnionEmptyTypes() {
-    Union.of(); // Should throw exception
+  public void testUnion3InvalidIndex() {
+    Union3.of(5, "test"); // Index out of bounds for Union3
   }
 
-  @Test(expectedExceptions = IndexOutOfBoundsException.class)
-  public void testUnionInvalidIndex() {
-    Union union = Union.of(Integer.class, String.class);
-    union.setValueAt(5, "test"); // Index out of bounds
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testUnion4InvalidIndex() {
+    Union4.of(5, "test"); // Index out of bounds for Union4
   }
 }

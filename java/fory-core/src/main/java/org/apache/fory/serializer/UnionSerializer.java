@@ -24,7 +24,7 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
-import org.apache.fory.type.Union;
+import org.apache.fory.type.union.Union;
 
 /**
  * Serializer for {@link Union} type.
@@ -52,19 +52,16 @@ public class UnionSerializer extends Serializer<Union> {
 
   @Override
   public void write(MemoryBuffer buffer, Union union) {
-    int activeIndex = union.getActiveIndex();
-    buffer.writeVarUint32(activeIndex);
+    int index = union.getIndex();
+    buffer.writeVarUint32(index);
 
-    if (activeIndex >= 0) {
-      Object value = union.getValue();
-      if (value != null) {
-        ClassInfo classInfo = classResolver.getClassInfo(value.getClass(), classInfoHolder);
-        classResolver.writeClassInfo(buffer, classInfo);
-        fory.writeNonRef(buffer, value, classInfo);
-      } else {
-        // Write null marker
-        buffer.writeByte(Fory.NULL_FLAG);
-      }
+    Object value = union.getValue();
+    if (value != null) {
+      ClassInfo classInfo = classResolver.getClassInfo(value.getClass(), classInfoHolder);
+      classResolver.writeClassInfo(buffer, classInfo);
+      fory.writeNonRef(buffer, value, classInfo);
+    } else {
+      buffer.writeByte(Fory.NULL_FLAG);
     }
   }
 
@@ -73,78 +70,47 @@ public class UnionSerializer extends Serializer<Union> {
     if (union == null) {
       return null;
     }
-    Union copy = new Union(union.getAlternativeTypes());
-    if (union.hasValue()) {
-      Object value = union.getValue();
-      Object copiedValue = fory.copyObject(value);
-      copy.setValueAt(union.getActiveIndex(), copiedValue);
-    }
-    return copy;
+    Object value = union.getValue();
+    Object copiedValue = value != null ? fory.copyObject(value) : null;
+    return new Union(union.getIndex(), copiedValue);
   }
 
   @Override
   public Union read(MemoryBuffer buffer) {
-    int activeIndex = buffer.readVarUint32();
+    int index = buffer.readVarUint32();
 
-    // We need to read the type info and value, but we don't know the alternative types
-    // until we read the Union's metadata. For now, create a Union with Object as alternative.
-    if (activeIndex >= 0) {
-      int refId = fory.getRefResolver().tryPreserveRefId(buffer);
-      if (refId >= Fory.NOT_NULL_VALUE_FLAG) {
-        ClassInfo classInfo = classResolver.readClassInfo(buffer, classInfoHolder);
-        Object value = classInfo.getSerializer().read(buffer);
-        fory.getRefResolver().setReadObject(refId, value);
-
-        Union union = new Union(classInfo.getCls());
-        union.setValueAt(0, value);
-        return union;
-      } else if (refId == Fory.NULL_FLAG) {
-        return new Union(Object.class);
-      } else {
-        Object value = fory.getRefResolver().getReadObject();
-        Union union = new Union(value.getClass());
-        union.setValue(value);
-        return union;
-      }
+    int refId = fory.getRefResolver().tryPreserveRefId(buffer);
+    if (refId >= Fory.NOT_NULL_VALUE_FLAG) {
+      ClassInfo classInfo = classResolver.readClassInfo(buffer, classInfoHolder);
+      Object value = classInfo.getSerializer().read(buffer);
+      fory.getRefResolver().setReadObject(refId, value);
+      return new Union(index, value);
+    } else if (refId == Fory.NULL_FLAG) {
+      return new Union(index, null);
+    } else {
+      Object value = fory.getRefResolver().getReadObject();
+      return new Union(index, value);
     }
-
-    return new Union(Object.class);
   }
 
   @Override
   public void xwrite(MemoryBuffer buffer, Union union) {
-    int activeIndex = union.getActiveIndex();
-    buffer.writeVarUint32(activeIndex);
+    int index = union.getIndex();
+    buffer.writeVarUint32(index);
 
-    if (activeIndex >= 0) {
-      Object value = union.getValue();
-      if (value != null) {
-        // Write type info and value using xlang serialization
-        fory.xwriteRef(buffer, value);
-      } else {
-        // Write null marker
-        buffer.writeByte(Fory.NULL_FLAG);
-      }
+    Object value = union.getValue();
+    if (value != null) {
+      fory.xwriteRef(buffer, value);
+    } else {
+      buffer.writeByte(Fory.NULL_FLAG);
     }
   }
 
   @Override
   public Union xread(MemoryBuffer buffer) {
-    int activeIndex = buffer.readVarUint32();
+    int index = buffer.readVarUint32();
 
-    if (activeIndex >= 0) {
-      // Read the value using xlang deserialization
-      Object value = fory.xreadRef(buffer);
-      if (value != null) {
-        // Create a Union with the value's type as the only alternative
-        // In xlang mode, we don't have the original type information,
-        // so we use the deserialized value's type
-        Union union = new Union(value.getClass());
-        union.setValueAt(0, value);
-        return union;
-      }
-    }
-
-    return new Union(Object.class);
+    Object value = fory.xreadRef(buffer);
+    return new Union(index, value);
   }
 }

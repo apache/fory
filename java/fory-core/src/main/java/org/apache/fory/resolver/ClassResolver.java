@@ -329,7 +329,7 @@ public class ClassResolver extends TypeResolver {
     OptionalSerializers.registerDefaultSerializers(fory);
     CollectionSerializers.registerDefaultSerializers(fory);
     MapSerializers.registerDefaultSerializers(fory);
-    addDefaultSerializer(org.apache.fory.type.Union.class, new UnionSerializer(fory));
+    addDefaultSerializer(org.apache.fory.type.union.Union.class, new UnionSerializer(fory));
     addDefaultSerializer(Locale.class, new LocaleSerializer(fory));
     addDefaultSerializer(
         LambdaSerializer.ReplaceStub.class,
