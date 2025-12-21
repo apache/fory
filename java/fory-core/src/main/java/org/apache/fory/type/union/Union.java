@@ -23,10 +23,14 @@ import java.util.Objects;
 
 /**
  * A general untyped union that holds a value and an index. This class is used when deserializing
- * union data without knowing the specific union type (Union2, Union3, etc.).
+ * union data without knowing the specific union type (Union2, Union3, etc.), or when you need more
+ * than 6 alternative types.
  *
  * <p>This is similar to Java's Map without generics - it provides a flexible container when the
  * exact type parameters are not known at compile time.
+ *
+ * <p>For type-safe unions with up to 6 types, use {@link Union2}, {@link Union3}, {@link Union4},
+ * {@link Union5}, or {@link Union6} instead.
  *
  * <p>Usage example:
  *
@@ -35,11 +39,16 @@ import java.util.Objects;
  * Union union = new Union(0, "hello");
  * Object value = union.getValue();
  * int index = union.getIndex();
+ *
+ * // For unions with more than 6 types
+ * Union union = new Union(7, someValue);
  * }</pre>
  *
  * @see Union2
  * @see Union3
  * @see Union4
+ * @see Union5
+ * @see Union6
  */
 public class Union {
   /** The index indicating which alternative is active. */

@@ -36,6 +36,8 @@ import org.apache.fory.type.union.Union;
 import org.apache.fory.type.union.Union2;
 import org.apache.fory.type.union.Union3;
 import org.apache.fory.type.union.Union4;
+import org.apache.fory.type.union.Union5;
+import org.apache.fory.type.union.Union6;
 import org.testng.annotations.Test;
 
 public class UnionSerializerTest extends ForyTestBase {
@@ -274,5 +276,76 @@ public class UnionSerializerTest extends ForyTestBase {
   @Test(expectedExceptions = IllegalArgumentException.class)
   public void testUnion4InvalidIndex() {
     Union4.of(5, "test"); // Index out of bounds for Union4
+  }
+
+  @Test
+  public void testUnion5Types() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+
+    // Test with T1
+    Union5<Integer, String, Double, Boolean, Long> union1 = Union5.ofT1(42);
+    byte[] bytes = fory.serialize(union1.toUnion());
+    Union deserialized = (Union) fory.deserialize(bytes);
+    assertEquals(deserialized.getValue(), 42);
+    assertEquals(deserialized.getIndex(), 0);
+
+    // Test with T5
+    Union5<Integer, String, Double, Boolean, Long> union5 = Union5.ofT5(999L);
+    bytes = fory.serialize(union5.toUnion());
+    deserialized = (Union) fory.deserialize(bytes);
+    assertEquals(deserialized.getValue(), 999L);
+    assertEquals(deserialized.getIndex(), 4);
+  }
+
+  @Test
+  public void testUnion5TypeSafety() {
+    Union5<Integer, String, Double, Boolean, Long> union = Union5.ofT3(3.14);
+    assertFalse(union.isT1());
+    assertFalse(union.isT2());
+    assertTrue(union.isT3());
+    assertFalse(union.isT4());
+    assertFalse(union.isT5());
+    assertEquals(union.getT3(), 3.14);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testUnion5InvalidIndex() {
+    Union5.of(6, "test"); // Index out of bounds for Union5
+  }
+
+  @Test
+  public void testUnion6Types() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+
+    // Test with T1
+    Union6<Integer, String, Double, Boolean, Long, Float> union1 = Union6.ofT1(42);
+    byte[] bytes = fory.serialize(union1.toUnion());
+    Union deserialized = (Union) fory.deserialize(bytes);
+    assertEquals(deserialized.getValue(), 42);
+    assertEquals(deserialized.getIndex(), 0);
+
+    // Test with T6
+    Union6<Integer, String, Double, Boolean, Long, Float> union6 = Union6.ofT6(1.5f);
+    bytes = fory.serialize(union6.toUnion());
+    deserialized = (Union) fory.deserialize(bytes);
+    assertEquals(deserialized.getValue(), 1.5f);
+    assertEquals(deserialized.getIndex(), 5);
+  }
+
+  @Test
+  public void testUnion6TypeSafety() {
+    Union6<Integer, String, Double, Boolean, Long, Float> union = Union6.ofT4(true);
+    assertFalse(union.isT1());
+    assertFalse(union.isT2());
+    assertFalse(union.isT3());
+    assertTrue(union.isT4());
+    assertFalse(union.isT5());
+    assertFalse(union.isT6());
+    assertEquals(union.getT4(), true);
+  }
+
+  @Test(expectedExceptions = IllegalArgumentException.class)
+  public void testUnion6InvalidIndex() {
+    Union6.of(7, "test"); // Index out of bounds for Union6
   }
 }

@@ -43,8 +43,15 @@ import java.util.Objects;
  * }
  * }</pre>
  *
+ * <p>For unions with more than 6 types, use the generic {@link Union} class instead.
+ *
  * @param <T1> the first alternative type
  * @param <T2> the second alternative type
+ * @see Union
+ * @see Union3
+ * @see Union4
+ * @see Union5
+ * @see Union6
  */
 public class Union2<T1, T2> {
   /** The index indicating which alternative is active (0 for T1, 1 for T2). */

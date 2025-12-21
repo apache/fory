@@ -22,16 +22,18 @@ package org.apache.fory.type.union;
 import java.util.Objects;
 
 /**
- * A typed union that can hold one of four alternative types. The active alternative is identified
- * by an index (0, 1, 2, or 3).
+ * A typed union that can hold one of six alternative types. The active alternative is identified by
+ * an index (0-5).
  *
- * <p>This class provides a type-safe way to represent values that can be one of four types.
+ * <p>This class provides a type-safe way to represent values that can be one of six types. Six
+ * types should cover most use cases. For unions with more than 6 types, use the generic {@link
+ * Union} class instead.
  *
  * <p>Usage example:
  *
  * <pre>{@code
  * // Create a union holding a String (type T2, index 1)
- * Union4<Integer, String, Double, Boolean> union = Union4.ofT2("hello");
+ * Union6<Integer, String, Double, Boolean, Long, Float> union = Union6.ofT2("hello");
  *
  * // Get the value
  * if (union.isT2()) {
@@ -45,102 +47,147 @@ import java.util.Objects;
  * @param <T2> the second alternative type
  * @param <T3> the third alternative type
  * @param <T4> the fourth alternative type
+ * @param <T5> the fifth alternative type
+ * @param <T6> the sixth alternative type
  * @see Union
  * @see Union2
  * @see Union3
+ * @see Union4
  * @see Union5
- * @see Union6
  */
-public class Union4<T1, T2, T3, T4> {
+public class Union6<T1, T2, T3, T4, T5, T6> {
   /** The index indicating which alternative is active. */
   private final int index;
 
   /** The current value. */
   private final Object value;
 
-  private Union4(int index, Object value) {
+  private Union6(int index, Object value) {
     this.index = index;
     this.value = value;
   }
 
   /**
-   * Creates a Union4 holding a value of the first type T1.
+   * Creates a Union6 holding a value of the first type T1.
    *
    * @param <T1> the first alternative type
    * @param <T2> the second alternative type
    * @param <T3> the third alternative type
    * @param <T4> the fourth alternative type
+   * @param <T5> the fifth alternative type
+   * @param <T6> the sixth alternative type
    * @param value the value of type T1
-   * @return a new Union4 instance
+   * @return a new Union6 instance
    */
-  public static <T1, T2, T3, T4> Union4<T1, T2, T3, T4> ofT1(T1 value) {
-    return new Union4<>(0, value);
+  public static <T1, T2, T3, T4, T5, T6> Union6<T1, T2, T3, T4, T5, T6> ofT1(T1 value) {
+    return new Union6<>(0, value);
   }
 
   /**
-   * Creates a Union4 holding a value of the second type T2.
+   * Creates a Union6 holding a value of the second type T2.
    *
    * @param <T1> the first alternative type
    * @param <T2> the second alternative type
    * @param <T3> the third alternative type
    * @param <T4> the fourth alternative type
+   * @param <T5> the fifth alternative type
+   * @param <T6> the sixth alternative type
    * @param value the value of type T2
-   * @return a new Union4 instance
+   * @return a new Union6 instance
    */
-  public static <T1, T2, T3, T4> Union4<T1, T2, T3, T4> ofT2(T2 value) {
-    return new Union4<>(1, value);
+  public static <T1, T2, T3, T4, T5, T6> Union6<T1, T2, T3, T4, T5, T6> ofT2(T2 value) {
+    return new Union6<>(1, value);
   }
 
   /**
-   * Creates a Union4 holding a value of the third type T3.
+   * Creates a Union6 holding a value of the third type T3.
    *
    * @param <T1> the first alternative type
    * @param <T2> the second alternative type
    * @param <T3> the third alternative type
    * @param <T4> the fourth alternative type
+   * @param <T5> the fifth alternative type
+   * @param <T6> the sixth alternative type
    * @param value the value of type T3
-   * @return a new Union4 instance
+   * @return a new Union6 instance
    */
-  public static <T1, T2, T3, T4> Union4<T1, T2, T3, T4> ofT3(T3 value) {
-    return new Union4<>(2, value);
+  public static <T1, T2, T3, T4, T5, T6> Union6<T1, T2, T3, T4, T5, T6> ofT3(T3 value) {
+    return new Union6<>(2, value);
   }
 
   /**
-   * Creates a Union4 holding a value of the fourth type T4.
+   * Creates a Union6 holding a value of the fourth type T4.
    *
    * @param <T1> the first alternative type
    * @param <T2> the second alternative type
    * @param <T3> the third alternative type
    * @param <T4> the fourth alternative type
+   * @param <T5> the fifth alternative type
+   * @param <T6> the sixth alternative type
    * @param value the value of type T4
-   * @return a new Union4 instance
+   * @return a new Union6 instance
    */
-  public static <T1, T2, T3, T4> Union4<T1, T2, T3, T4> ofT4(T4 value) {
-    return new Union4<>(3, value);
+  public static <T1, T2, T3, T4, T5, T6> Union6<T1, T2, T3, T4, T5, T6> ofT4(T4 value) {
+    return new Union6<>(3, value);
   }
 
   /**
-   * Creates a Union4 from an index and value. Used primarily for deserialization.
+   * Creates a Union6 holding a value of the fifth type T5.
    *
    * @param <T1> the first alternative type
    * @param <T2> the second alternative type
    * @param <T3> the third alternative type
    * @param <T4> the fourth alternative type
-   * @param index the index (0, 1, 2, or 3)
-   * @param value the value
-   * @return a new Union4 instance
+   * @param <T5> the fifth alternative type
+   * @param <T6> the sixth alternative type
+   * @param value the value of type T5
+   * @return a new Union6 instance
    */
-  public static <T1, T2, T3, T4> Union4<T1, T2, T3, T4> of(int index, Object value) {
-    if (index < 0 || index > 3) {
-      throw new IllegalArgumentException("Index must be 0-3 for Union4, got: " + index);
+  public static <T1, T2, T3, T4, T5, T6> Union6<T1, T2, T3, T4, T5, T6> ofT5(T5 value) {
+    return new Union6<>(4, value);
+  }
+
+  /**
+   * Creates a Union6 holding a value of the sixth type T6.
+   *
+   * @param <T1> the first alternative type
+   * @param <T2> the second alternative type
+   * @param <T3> the third alternative type
+   * @param <T4> the fourth alternative type
+   * @param <T5> the fifth alternative type
+   * @param <T6> the sixth alternative type
+   * @param value the value of type T6
+   * @return a new Union6 instance
+   */
+  public static <T1, T2, T3, T4, T5, T6> Union6<T1, T2, T3, T4, T5, T6> ofT6(T6 value) {
+    return new Union6<>(5, value);
+  }
+
+  /**
+   * Creates a Union6 from an index and value. Used primarily for deserialization.
+   *
+   * @param <T1> the first alternative type
+   * @param <T2> the second alternative type
+   * @param <T3> the third alternative type
+   * @param <T4> the fourth alternative type
+   * @param <T5> the fifth alternative type
+   * @param <T6> the sixth alternative type
+   * @param index the index (0-5)
+   * @param value the value
+   * @return a new Union6 instance
+   */
+  public static <T1, T2, T3, T4, T5, T6> Union6<T1, T2, T3, T4, T5, T6> of(
+      int index, Object value) {
+    if (index < 0 || index > 5) {
+      throw new IllegalArgumentException("Index must be 0-5 for Union6, got: " + index);
     }
-    return new Union4<>(index, value);
+    return new Union6<>(index, value);
   }
 
   /**
    * Gets the index of the active alternative.
    *
-   * @return 0-3 indicating which type is active
+   * @return 0-5 indicating which type is active
    */
   public int getIndex() {
     return index;
@@ -184,6 +231,26 @@ public class Union4<T1, T2, T3, T4> {
   @SuppressWarnings("unchecked")
   public T4 getT4() {
     return (T4) value;
+  }
+
+  /**
+   * Gets the value as the fifth type T5.
+   *
+   * @return the value cast to T5
+   */
+  @SuppressWarnings("unchecked")
+  public T5 getT5() {
+    return (T5) value;
+  }
+
+  /**
+   * Gets the value as the sixth type T6.
+   *
+   * @return the value cast to T6
+   */
+  @SuppressWarnings("unchecked")
+  public T6 getT6() {
+    return (T6) value;
   }
 
   /**
@@ -232,6 +299,24 @@ public class Union4<T1, T2, T3, T4> {
   }
 
   /**
+   * Checks if the fifth type T5 is active.
+   *
+   * @return true if index is 4
+   */
+  public boolean isT5() {
+    return index == 4;
+  }
+
+  /**
+   * Checks if the sixth type T6 is active.
+   *
+   * @return true if index is 5
+   */
+  public boolean isT6() {
+    return index == 5;
+  }
+
+  /**
    * Checks if this union currently holds a non-null value.
    *
    * @return true if a value is set (not null), false otherwise
@@ -257,8 +342,8 @@ public class Union4<T1, T2, T3, T4> {
     if (o == null || getClass() != o.getClass()) {
       return false;
     }
-    Union4<?, ?, ?, ?> union4 = (Union4<?, ?, ?, ?>) o;
-    return index == union4.index && Objects.equals(value, union4.value);
+    Union6<?, ?, ?, ?, ?, ?> union6 = (Union6<?, ?, ?, ?, ?, ?>) o;
+    return index == union6.index && Objects.equals(value, union6.value);
   }
 
   @Override
@@ -268,6 +353,6 @@ public class Union4<T1, T2, T3, T4> {
 
   @Override
   public String toString() {
-    return "Union4{index=" + index + ", value=" + value + "}";
+    return "Union6{index=" + index + ", value=" + value + "}";
   }
 }
