@@ -36,7 +36,11 @@ fn has_existing_default(ast: &syn::DeriveInput, trait_name: &str) -> bool {
     })
 }
 
-pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenStream {
+pub fn derive_serializer(
+    ast: &syn::DeriveInput,
+    debug_enabled: bool,
+    skip_default: bool,
+) -> TokenStream {
     let name = &ast.ident;
     use crate::object::util::{clear_struct_context, set_struct_context};
     set_struct_context(&name.to_string(), debug_enabled);
@@ -44,7 +48,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
     // Check if ForyDefault is already derived/implemented
     let has_existing_default = has_existing_default(ast, "ForyDefault");
     let default_impl = if !has_existing_default {
-        generate_default_impl(ast)
+        generate_default_impl(ast, skip_default)
     } else {
         quote! {}
     };
@@ -242,9 +246,10 @@ pub fn derive_serializer(ast: &syn::DeriveInput, debug_enabled: bool) -> TokenSt
     code
 }
 
-fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
+fn generate_default_impl(ast: &syn::DeriveInput, skip_default: bool) -> proc_macro2::TokenStream {
     let name = &ast.ident;
-    let has_existing_default = has_existing_default(ast, "Default");
+    // If skip_default is set, treat it as if there's an existing Default implementation
+    let has_existing_default = skip_default || has_existing_default(ast, "Default");
 
     match &ast.data {
         Data::Struct(s) => {
@@ -296,6 +301,8 @@ fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
             });
 
             if has_existing_default {
+                // User has their own Default impl (either via #[derive(Default)] or manual impl)
+                // Only generate ForyDefault that delegates to Default
                 quote! {
                    impl fory_core::ForyDefault for #name {
                         fn fory_default() -> Self {
@@ -329,45 +336,9 @@ fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
 
             // For C-like enums, implement Default by returning the first variant
             // Only if there's no #[default] attribute (which means Default is being derived)
-            if !has_default_variant {
-                if let Some(first_variant) = e.variants.first() {
-                    let variant_ident = &first_variant.ident;
-                    let field_defaults = match &first_variant.fields {
-                        syn::Fields::Unit => quote! {},
-                        syn::Fields::Unnamed(fields) => {
-                            let defaults =
-                                (0..fields.unnamed.len()).map(|_| quote! { Default::default() });
-                            quote! { (#(#defaults),*) }
-                        }
-                        syn::Fields::Named(fields) => {
-                            let field_idents = fields.named.iter().map(|f| &f.ident);
-                            let defaults =
-                                fields.named.iter().map(|_| quote! { Default::default() });
-                            quote! { { #(#field_idents: #defaults),* } }
-                        }
-                    };
-                    quote! {
-                        impl fory_core::ForyDefault for #name {
-                            fn fory_default() -> Self {
-                                Self::#variant_ident #field_defaults
-                            }
-                        }
-
-                        impl std::default::Default for #name {
-                            fn default() -> Self {
-                                Self::#variant_ident #field_defaults
-                            }
-                        }
-                    }
-                } else {
-                    // impl fory_core::ForyDefault for #name {
-                    //     fn fory_default() -> Self {
-                    //         panic!("No unit-like variants found in enum {}", stringify!(#name));
-                    //     }
-                    // }
-                    quote! {}
-                }
-            } else {
+            // Also skip if skip_default is set
+            if has_existing_default || has_default_variant {
+                // User has their own Default impl
                 quote! {
                     impl fory_core::ForyDefault for #name {
                         fn fory_default() -> Self {
@@ -375,6 +346,36 @@ fn generate_default_impl(ast: &syn::DeriveInput) -> proc_macro2::TokenStream {
                         }
                     }
                 }
+            } else if let Some(first_variant) = e.variants.first() {
+                let variant_ident = &first_variant.ident;
+                let field_defaults = match &first_variant.fields {
+                    syn::Fields::Unit => quote! {},
+                    syn::Fields::Unnamed(fields) => {
+                        let defaults =
+                            (0..fields.unnamed.len()).map(|_| quote! { Default::default() });
+                        quote! { (#(#defaults),*) }
+                    }
+                    syn::Fields::Named(fields) => {
+                        let field_idents = fields.named.iter().map(|f| &f.ident);
+                        let defaults = fields.named.iter().map(|_| quote! { Default::default() });
+                        quote! { { #(#field_idents: #defaults),* } }
+                    }
+                };
+                quote! {
+                    impl fory_core::ForyDefault for #name {
+                        fn fory_default() -> Self {
+                            Self::#variant_ident #field_defaults
+                        }
+                    }
+
+                    impl std::default::Default for #name {
+                        fn default() -> Self {
+                            Self::#variant_ident #field_defaults
+                        }
+                    }
+                }
+            } else {
+                quote! {}
             }
         }
         Data::Union(_) => quote! {},

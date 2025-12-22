@@ -113,6 +113,9 @@
 //!   `fory_core::serializer::struct_`.
 //! - **`#[fory(skip)]`**: Marks an individual field (or enum variant) to be ignored by the
 //!   generated serializer, retaining compatibility with previous releases.
+//! - **`#[fory(skip_default)]`**: Prevents the macro from generating `Default` implementation,
+//!   useful when you have a manual `impl Default` for your type. The macro will still generate
+//!   `ForyDefault` that delegates to your `Default` implementation.
 //!
 //! ## Field Types
 //!
@@ -212,12 +215,12 @@ pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStr
 
     // Check if this is being applied to a trait (which is not possible with derive macros)
     // Derive macros can only be applied to structs, enums, and unions
-    let debug_enabled = match parse_debug_flag(&input.attrs) {
-        Ok(flag) => flag,
+    let (debug_enabled, skip_default) = match parse_fory_attrs(&input.attrs) {
+        Ok(flags) => flags,
         Err(err) => return err.into_compile_error().into(),
     };
 
-    object::derive_serializer(&input, debug_enabled)
+    object::derive_serializer(&input, debug_enabled, skip_default)
 }
 
 /// Derive macro for row-based serialization.
@@ -245,8 +248,10 @@ pub fn proc_macro_derive_fory_row(input: proc_macro::TokenStream) -> TokenStream
     derive_row(&input)
 }
 
-fn parse_debug_flag(attrs: &[Attribute]) -> syn::Result<bool> {
+/// Parse fory attributes and return (debug_enabled, skip_default)
+fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<(bool, bool)> {
     let mut debug_flag: Option<bool> = None;
+    let mut skip_default_flag: Option<bool> = None;
 
     for attr in attrs {
         if attr.path().is_ident("fory") {
@@ -268,11 +273,31 @@ fn parse_debug_flag(attrs: &[Attribute]) -> syn::Result<bool> {
                         Some(_) => debug_flag,
                         None => Some(value),
                     };
+                } else if meta.path.is_ident("skip_default") {
+                    let value = if meta.input.is_empty() {
+                        true
+                    } else {
+                        let lit: LitBool = meta.value()?.parse()?;
+                        lit.value
+                    };
+                    skip_default_flag = match skip_default_flag {
+                        Some(existing) if existing != value => {
+                            return Err(syn::Error::new(
+                                meta.path.span(),
+                                "conflicting `skip_default` attribute values",
+                            ));
+                        }
+                        Some(_) => skip_default_flag,
+                        None => Some(value),
+                    };
                 }
                 Ok(())
             })?;
         }
     }
 
-    Ok(debug_flag.unwrap_or(false))
+    Ok((
+        debug_flag.unwrap_or(false),
+        skip_default_flag.unwrap_or(false),
+    ))
 }
