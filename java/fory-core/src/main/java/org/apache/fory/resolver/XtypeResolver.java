@@ -446,7 +446,8 @@ public class XtypeResolver extends TypeResolver {
       Serializer<?> s = classInfo.serializer;
       if (s instanceof TimeSerializers.TimeSerializer
           || s instanceof MapLikeSerializer
-          || s instanceof CollectionLikeSerializer) {
+          || s instanceof CollectionLikeSerializer
+          || s instanceof UnionSerializer) {
         return true;
       }
 

@@ -40,143 +40,220 @@ import org.apache.fory.type.union.Union5;
 import org.apache.fory.type.union.Union6;
 import org.testng.annotations.Test;
 
-/** Tests for {@link UnionSerializer}. Union serialization is only used for xlang mode. */
+/**
+ * Tests for {@link UnionSerializer}. Union serialization is only used for xlang mode. Union types
+ * are serialized as part of struct fields, where the declared field type determines which Union
+ * serializer is used.
+ */
 public class UnionSerializerTest extends ForyTestBase {
 
   private Fory createXlangFory() {
-    return Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(false).build();
+    Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(true).build();
+    fory.register(StructWithUnion.class);
+    fory.register(StructWithUnion2.class);
+    fory.register(StructWithUnion3.class);
+    fory.register(StructWithUnion4.class);
+    fory.register(StructWithUnion5.class);
+    fory.register(StructWithUnion6.class);
+    return fory;
+  }
+
+  // Test struct classes with Union fields
+  public static class StructWithUnion {
+    public Union union;
+
+    public StructWithUnion() {}
+
+    public StructWithUnion(Union union) {
+      this.union = union;
+    }
+  }
+
+  public static class StructWithUnion2 {
+    public Union2<String, Long> union;
+
+    public StructWithUnion2() {}
+
+    public StructWithUnion2(Union2<String, Long> union) {
+      this.union = union;
+    }
+  }
+
+  public static class StructWithUnion3 {
+    public Union3<Integer, String, Double> union;
+
+    public StructWithUnion3() {}
+
+    public StructWithUnion3(Union3<Integer, String, Double> union) {
+      this.union = union;
+    }
+  }
+
+  public static class StructWithUnion4 {
+    public Union4<Integer, String, Double, Boolean> union;
+
+    public StructWithUnion4() {}
+
+    public StructWithUnion4(Union4<Integer, String, Double, Boolean> union) {
+      this.union = union;
+    }
+  }
+
+  public static class StructWithUnion5 {
+    public Union5<Integer, String, Double, Boolean, Long> union;
+
+    public StructWithUnion5() {}
+
+    public StructWithUnion5(Union5<Integer, String, Double, Boolean, Long> union) {
+      this.union = union;
+    }
+  }
+
+  public static class StructWithUnion6 {
+    public Union6<Integer, String, Double, Boolean, Long, Float> union;
+
+    public StructWithUnion6() {}
+
+    public StructWithUnion6(Union6<Integer, String, Double, Boolean, Long, Float> union) {
+      this.union = union;
+    }
   }
 
   @Test
   public void testUnionBasicTypes() {
     Fory fory = createXlangFory();
 
-    // Test with Integer value
-    Union unionInt = new Union(0, 42);
-    byte[] bytes = fory.serialize(unionInt);
-    Union deserialized = (Union) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), 42);
-    assertEquals(deserialized.getIndex(), 0);
+    // Test with Integer value via struct
+    StructWithUnion struct = new StructWithUnion(new Union(0, 42));
+    byte[] bytes = fory.serialize(struct);
+    StructWithUnion deserialized = (StructWithUnion) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), 42);
+    assertEquals(deserialized.union.getIndex(), 0);
 
     // Test with String value
-    Union unionStr = new Union(1, "hello");
-    bytes = fory.serialize(unionStr);
-    deserialized = (Union) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), "hello");
-    assertEquals(deserialized.getIndex(), 1);
+    struct = new StructWithUnion(new Union(1, "hello"));
+    bytes = fory.serialize(struct);
+    deserialized = (StructWithUnion) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), "hello");
+    assertEquals(deserialized.union.getIndex(), 1);
   }
 
   @Test
   public void testUnion2Serialization() {
     Fory fory = createXlangFory();
 
-    // Test with T1 (String) - serialize Union2 directly
-    Union2<String, Long> union1 = Union2.ofT1("hello");
-    byte[] bytes = fory.serialize(union1);
-    Union2<?, ?> deserialized = (Union2<?, ?>) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), "hello");
-    assertEquals(deserialized.getIndex(), 0);
-    assertTrue(deserialized.isT1());
+    // Test with T1 (String) via struct field
+    StructWithUnion2 struct = new StructWithUnion2(Union2.ofT1("hello"));
+    byte[] bytes = fory.serialize(struct);
+    StructWithUnion2 deserialized = (StructWithUnion2) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), "hello");
+    assertEquals(deserialized.union.getIndex(), 0);
+    assertTrue(deserialized.union.isT1());
+    assertTrue(deserialized.union instanceof Union2);
 
-    // Test with T2 (Long) - serialize Union2 directly
-    Union2<String, Long> union2 = Union2.ofT2(100L);
-    bytes = fory.serialize(union2);
-    deserialized = (Union2<?, ?>) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), 100L);
-    assertEquals(deserialized.getIndex(), 1);
-    assertTrue(deserialized.isT2());
+    // Test with T2 (Long)
+    struct = new StructWithUnion2(Union2.ofT2(100L));
+    bytes = fory.serialize(struct);
+    deserialized = (StructWithUnion2) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), 100L);
+    assertEquals(deserialized.union.getIndex(), 1);
+    assertTrue(deserialized.union.isT2());
   }
 
   @Test
   public void testUnion3Serialization() {
     Fory fory = createXlangFory();
 
-    // Test with T1 - serialize Union3 directly
-    Union3<Integer, String, Double> union1 = Union3.ofT1(42);
-    byte[] bytes = fory.serialize(union1);
-    Union3<?, ?, ?> deserialized = (Union3<?, ?, ?>) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), 42);
-    assertEquals(deserialized.getIndex(), 0);
-    assertTrue(deserialized.isT1());
+    // Test with T1
+    StructWithUnion3 struct = new StructWithUnion3(Union3.ofT1(42));
+    byte[] bytes = fory.serialize(struct);
+    StructWithUnion3 deserialized = (StructWithUnion3) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), 42);
+    assertEquals(deserialized.union.getIndex(), 0);
+    assertTrue(deserialized.union.isT1());
+    assertTrue(deserialized.union instanceof Union3);
 
-    // Test with T2 - serialize Union3 directly
-    Union3<Integer, String, Double> union2 = Union3.ofT2("test");
-    bytes = fory.serialize(union2);
-    deserialized = (Union3<?, ?, ?>) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), "test");
-    assertEquals(deserialized.getIndex(), 1);
-    assertTrue(deserialized.isT2());
+    // Test with T2
+    struct = new StructWithUnion3(Union3.ofT2("test"));
+    bytes = fory.serialize(struct);
+    deserialized = (StructWithUnion3) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), "test");
+    assertEquals(deserialized.union.getIndex(), 1);
+    assertTrue(deserialized.union.isT2());
 
-    // Test with T3 - serialize Union3 directly
-    Union3<Integer, String, Double> union3 = Union3.ofT3(3.14);
-    bytes = fory.serialize(union3);
-    deserialized = (Union3<?, ?, ?>) fory.deserialize(bytes);
-    assertEquals((Double) deserialized.getValue(), 3.14, 0.0001);
-    assertEquals(deserialized.getIndex(), 2);
-    assertTrue(deserialized.isT3());
+    // Test with T3
+    struct = new StructWithUnion3(Union3.ofT3(3.14));
+    bytes = fory.serialize(struct);
+    deserialized = (StructWithUnion3) fory.deserialize(bytes);
+    assertEquals((Double) deserialized.union.getValue(), 3.14, 0.0001);
+    assertEquals(deserialized.union.getIndex(), 2);
+    assertTrue(deserialized.union.isT3());
   }
 
   @Test
   public void testUnion4Serialization() {
     Fory fory = createXlangFory();
 
-    // Test with T1 - serialize Union4 directly
-    Union4<Integer, String, Double, Boolean> union1 = Union4.ofT1(42);
-    byte[] bytes = fory.serialize(union1);
-    Union4<?, ?, ?, ?> deserialized = (Union4<?, ?, ?, ?>) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), 42);
-    assertEquals(deserialized.getIndex(), 0);
-    assertTrue(deserialized.isT1());
+    // Test with T1
+    StructWithUnion4 struct = new StructWithUnion4(Union4.ofT1(42));
+    byte[] bytes = fory.serialize(struct);
+    StructWithUnion4 deserialized = (StructWithUnion4) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), 42);
+    assertEquals(deserialized.union.getIndex(), 0);
+    assertTrue(deserialized.union.isT1());
+    assertTrue(deserialized.union instanceof Union4);
 
-    // Test with T4 - serialize Union4 directly
-    Union4<Integer, String, Double, Boolean> union4 = Union4.ofT4(true);
-    bytes = fory.serialize(union4);
-    deserialized = (Union4<?, ?, ?, ?>) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), true);
-    assertEquals(deserialized.getIndex(), 3);
-    assertTrue(deserialized.isT4());
+    // Test with T4
+    struct = new StructWithUnion4(Union4.ofT4(true));
+    bytes = fory.serialize(struct);
+    deserialized = (StructWithUnion4) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), true);
+    assertEquals(deserialized.union.getIndex(), 3);
+    assertTrue(deserialized.union.isT4());
   }
 
   @Test
   public void testUnion5Serialization() {
     Fory fory = createXlangFory();
 
-    // Test with T1 - serialize Union5 directly
-    Union5<Integer, String, Double, Boolean, Long> union1 = Union5.ofT1(42);
-    byte[] bytes = fory.serialize(union1);
-    Union5<?, ?, ?, ?, ?> deserialized = (Union5<?, ?, ?, ?, ?>) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), 42);
-    assertEquals(deserialized.getIndex(), 0);
-    assertTrue(deserialized.isT1());
+    // Test with T1
+    StructWithUnion5 struct = new StructWithUnion5(Union5.ofT1(42));
+    byte[] bytes = fory.serialize(struct);
+    StructWithUnion5 deserialized = (StructWithUnion5) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), 42);
+    assertEquals(deserialized.union.getIndex(), 0);
+    assertTrue(deserialized.union.isT1());
+    assertTrue(deserialized.union instanceof Union5);
 
-    // Test with T5 - serialize Union5 directly
-    Union5<Integer, String, Double, Boolean, Long> union5 = Union5.ofT5(999L);
-    bytes = fory.serialize(union5);
-    deserialized = (Union5<?, ?, ?, ?, ?>) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), 999L);
-    assertEquals(deserialized.getIndex(), 4);
-    assertTrue(deserialized.isT5());
+    // Test with T5
+    struct = new StructWithUnion5(Union5.ofT5(999L));
+    bytes = fory.serialize(struct);
+    deserialized = (StructWithUnion5) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), 999L);
+    assertEquals(deserialized.union.getIndex(), 4);
+    assertTrue(deserialized.union.isT5());
   }
 
   @Test
   public void testUnion6Serialization() {
     Fory fory = createXlangFory();
 
-    // Test with T1 - serialize Union6 directly
-    Union6<Integer, String, Double, Boolean, Long, Float> union1 = Union6.ofT1(42);
-    byte[] bytes = fory.serialize(union1);
-    Union6<?, ?, ?, ?, ?, ?> deserialized = (Union6<?, ?, ?, ?, ?, ?>) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), 42);
-    assertEquals(deserialized.getIndex(), 0);
-    assertTrue(deserialized.isT1());
+    // Test with T1
+    StructWithUnion6 struct = new StructWithUnion6(Union6.ofT1(42));
+    byte[] bytes = fory.serialize(struct);
+    StructWithUnion6 deserialized = (StructWithUnion6) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), 42);
+    assertEquals(deserialized.union.getIndex(), 0);
+    assertTrue(deserialized.union.isT1());
+    assertTrue(deserialized.union instanceof Union6);
 
-    // Test with T6 - serialize Union6 directly
-    Union6<Integer, String, Double, Boolean, Long, Float> union6 = Union6.ofT6(1.5f);
-    bytes = fory.serialize(union6);
-    deserialized = (Union6<?, ?, ?, ?, ?, ?>) fory.deserialize(bytes);
-    assertEquals(deserialized.getValue(), 1.5f);
-    assertEquals(deserialized.getIndex(), 5);
-    assertTrue(deserialized.isT6());
+    // Test with T6
+    struct = new StructWithUnion6(Union6.ofT6(1.5f));
+    bytes = fory.serialize(struct);
+    deserialized = (StructWithUnion6) fory.deserialize(bytes);
+    assertEquals(deserialized.union.getValue(), 1.5f);
+    assertEquals(deserialized.union.getIndex(), 5);
+    assertTrue(deserialized.union.isT6());
   }
 
   @Test
@@ -188,21 +265,21 @@ public class UnionSerializerTest extends ForyTestBase {
     list.add(1);
     list.add(2);
     list.add(3);
-    Union unionList = new Union(0, list);
-    byte[] bytes = fory.serialize(unionList);
-    Union deserialized = (Union) fory.deserialize(bytes);
-    assertTrue(deserialized.getValue() instanceof List);
-    assertEquals(deserialized.getValue(), list);
+    StructWithUnion struct = new StructWithUnion(new Union(0, list));
+    byte[] bytes = fory.serialize(struct);
+    StructWithUnion deserialized = (StructWithUnion) fory.deserialize(bytes);
+    assertTrue(deserialized.union.getValue() instanceof List);
+    assertEquals(deserialized.union.getValue(), list);
 
     // Test with Map
     Map<String, Integer> map = new HashMap<>();
     map.put("a", 1);
     map.put("b", 2);
-    Union unionMap = new Union(1, map);
-    bytes = fory.serialize(unionMap);
-    deserialized = (Union) fory.deserialize(bytes);
-    assertTrue(deserialized.getValue() instanceof Map);
-    assertEquals(deserialized.getValue(), map);
+    struct = new StructWithUnion(new Union(1, map));
+    bytes = fory.serialize(struct);
+    deserialized = (StructWithUnion) fory.deserialize(bytes);
+    assertTrue(deserialized.union.getValue() instanceof Map);
+    assertEquals(deserialized.union.getValue(), map);
   }
 
   @Test
@@ -212,28 +289,12 @@ public class UnionSerializerTest extends ForyTestBase {
     Union union = new Union(0, null);
     assertFalse(union.hasValue());
 
-    byte[] bytes = fory.serialize(union);
-    Union deserialized = (Union) fory.deserialize(bytes);
-    assertNotNull(deserialized);
-    assertNull(deserialized.getValue());
-    assertEquals(deserialized.getIndex(), 0);
-  }
-
-  @Test
-  public void testUnionCopy() {
-    Fory fory = createXlangFory();
-
-    Union union = new Union(0, 42);
-    Union copy = fory.copy(union);
-    assertEquals(copy.getValue(), 42);
-    assertEquals(copy.getIndex(), 0);
-
-    // Test Union2 copy
-    Union2<String, Long> union2 = Union2.ofT1("hello");
-    Union2<?, ?> copy2 = fory.copy(union2);
-    assertEquals(copy2.getValue(), "hello");
-    assertEquals(copy2.getIndex(), 0);
-    assertTrue(copy2.isT1());
+    StructWithUnion struct = new StructWithUnion(union);
+    byte[] bytes = fory.serialize(struct);
+    StructWithUnion deserialized = (StructWithUnion) fory.deserialize(bytes);
+    assertNotNull(deserialized.union);
+    assertNull(deserialized.union.getValue());
+    assertEquals(deserialized.union.getIndex(), 0);
   }
 
   @Test

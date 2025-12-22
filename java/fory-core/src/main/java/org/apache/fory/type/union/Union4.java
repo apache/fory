@@ -50,7 +50,7 @@ package org.apache.fory.type.union;
  * @see Union5
  * @see Union6
  */
-public class Union4<T1, T2, T3, T4> extends Union {
+public final class Union4<T1, T2, T3, T4> extends Union {
 
   private Union4(int index, Object value) {
     super(index, value);
@@ -67,7 +67,9 @@ public class Union4<T1, T2, T3, T4> extends Union {
    * @return a new Union4 instance
    */
   public static <T1, T2, T3, T4> Union4<T1, T2, T3, T4> ofT1(T1 value) {
-    return new Union4<>(0, value);
+    Union4<T1, T2, T3, T4> union = new Union4<>(0, value);
+    assert union.getIndex() == 0 : "ofT1 should create union with index 0";
+    return union;
   }
 
   /**
@@ -81,7 +83,9 @@ public class Union4<T1, T2, T3, T4> extends Union {
    * @return a new Union4 instance
    */
   public static <T1, T2, T3, T4> Union4<T1, T2, T3, T4> ofT2(T2 value) {
-    return new Union4<>(1, value);
+    Union4<T1, T2, T3, T4> union = new Union4<>(1, value);
+    assert union.getIndex() == 1 : "ofT2 should create union with index 1";
+    return union;
   }
 
   /**
@@ -95,7 +99,9 @@ public class Union4<T1, T2, T3, T4> extends Union {
    * @return a new Union4 instance
    */
   public static <T1, T2, T3, T4> Union4<T1, T2, T3, T4> ofT3(T3 value) {
-    return new Union4<>(2, value);
+    Union4<T1, T2, T3, T4> union = new Union4<>(2, value);
+    assert union.getIndex() == 2 : "ofT3 should create union with index 2";
+    return union;
   }
 
   /**
@@ -109,7 +115,9 @@ public class Union4<T1, T2, T3, T4> extends Union {
    * @return a new Union4 instance
    */
   public static <T1, T2, T3, T4> Union4<T1, T2, T3, T4> ofT4(T4 value) {
-    return new Union4<>(3, value);
+    Union4<T1, T2, T3, T4> union = new Union4<>(3, value);
+    assert union.getIndex() == 3 : "ofT4 should create union with index 3";
+    return union;
   }
 
   /**

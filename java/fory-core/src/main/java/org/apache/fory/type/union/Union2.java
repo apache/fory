@@ -51,7 +51,7 @@ package org.apache.fory.type.union;
  * @see Union5
  * @see Union6
  */
-public class Union2<T1, T2> extends Union {
+public final class Union2<T1, T2> extends Union {
 
   private Union2(int index, Object value) {
     super(index, value);
@@ -66,7 +66,9 @@ public class Union2<T1, T2> extends Union {
    * @return a new Union2 instance
    */
   public static <T1, T2> Union2<T1, T2> ofT1(T1 value) {
-    return new Union2<>(0, value);
+    Union2<T1, T2> union = new Union2<>(0, value);
+    assert union.getIndex() == 0 : "ofT1 should create union with index 0";
+    return union;
   }
 
   /**
@@ -78,7 +80,9 @@ public class Union2<T1, T2> extends Union {
    * @return a new Union2 instance
    */
   public static <T1, T2> Union2<T1, T2> ofT2(T2 value) {
-    return new Union2<>(1, value);
+    Union2<T1, T2> union = new Union2<>(1, value);
+    assert union.getIndex() == 1 : "ofT2 should create union with index 1";
+    return union;
   }
 
   /**
