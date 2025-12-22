@@ -32,7 +32,7 @@ fn get_data_file() -> String {
     std::env::var("DATA_FILE").expect("DATA_FILE not set")
 }
 
-#[derive(ForyObject, Debug, PartialEq)]
+#[derive(ForyObject, Debug, PartialEq, Default)]
 struct Empty {}
 
 #[derive(ForyObject, Debug, PartialEq, Default)]

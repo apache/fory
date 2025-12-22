@@ -34,7 +34,7 @@ For types that don't support `#[derive(ForyObject)]`, implement the `Serializer`
 use fory::{Fory, ReadContext, WriteContext, Serializer, ForyDefault, Error};
 use std::any::Any;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 struct CustomType {
     value: i32,
     name: String,
@@ -63,12 +63,18 @@ impl Serializer for CustomType {
     }
 }
 
+// ForyDefault delegates to Default
 impl ForyDefault for CustomType {
     fn fory_default() -> Self {
         Self::default()
     }
 }
 ```
+
+> **Note**: When implementing `ForyDefault` manually, ensure your type also implements `Default` if you use `Self::default()`.
+> Alternatively, you can construct a default instance directly in `fory_default()`.
+>
+> **Tip**: If your type supports `#[derive(ForyObject)]`, you can use `#[fory(generate_default)]` to automatically generate both `ForyDefault` and `Default` implementations.
 
 ## Registering Custom Serializers
 

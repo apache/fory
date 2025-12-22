@@ -30,7 +30,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.14.0"
+version = "0.15.0"
 rust-version = "1.70"
 description = "Apache Fory: Blazingly fast multi-language serialization framework with trait objects and reference support."
 license = "Apache-2.0"
@@ -40,3 +40,7 @@ repository = "https://github.com/apache/fory"
 edition = "2021"
 keywords = ["serialization", "serde", "trait-object", "zero-copy", "schema-evolution"]
 categories = ["encoding"]
+
+[workspace.dependencies]
+fory-core = { path = "fory-core", version = "0.15.0" }
+fory-derive = { path = "fory-derive", version = "0.15.0" }
