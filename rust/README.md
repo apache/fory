@@ -32,7 +32,7 @@ Add Apache Fory™ to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-fory = "0.13"
+fory = "0.14"
 ```
 
 ### Basic Example
@@ -459,7 +459,7 @@ For types that don't support `#[derive(ForyObject)]`, implement the `Serializer`
 use fory::{Fory, ReadContext, WriteContext, Serializer, ForyDefault, Error};
 use std::any::Any;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 struct CustomType {
     value: i32,
     name: String,

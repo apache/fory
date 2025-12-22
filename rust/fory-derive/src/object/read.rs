@@ -88,8 +88,9 @@ pub(crate) fn assign_value(fields: &[&Field]) -> Vec<TokenStream> {
                 }
                 _ => {
                     if need_declared_by_option(field) {
+                        let ty = &field.ty;
                         quote! {
-                            #name: #var_name.unwrap_or_default()
+                            #name: #var_name.unwrap_or_else(|| <#ty as fory_core::ForyDefault>::fory_default())
                         }
                     } else {
                         quote! {

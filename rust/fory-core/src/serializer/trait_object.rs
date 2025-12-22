@@ -120,16 +120,10 @@ macro_rules! resolve_and_deserialize {
 macro_rules! register_trait_type {
     ($trait_name:ident, $($impl_type:ty),+ $(,)?) => {
         // 1. Generate Box<dyn Trait> serializer (existing functionality)
-        // Default implementation using first registered type
-        impl std::default::Default for Box<dyn $trait_name> {
-            fn default() -> Self {
-                Box::new(<register_trait_type!(@first_type $($impl_type),+) as std::default::Default>::default())
-            }
-        }
-
+        // ForyDefault implementation using first registered type
         impl $crate::serializer::ForyDefault for Box<dyn $trait_name> {
             fn fory_default() -> Self {
-                Box::new(<register_trait_type!(@first_type $($impl_type),+) as std::default::Default>::default())
+                Box::new(<register_trait_type!(@first_type $($impl_type),+) as $crate::serializer::ForyDefault>::fory_default())
             }
         }
 
@@ -328,15 +322,9 @@ macro_rules! generate_smart_pointer_wrapper {
                 }
             }
 
-            impl std::default::Default for [<$trait_name $ptr_name>] {
-                fn default() -> Self {
-                    Self($ptr_path::new(<$crate::register_trait_type!(@first_type $($impl_type),+) as std::default::Default>::default()))
-                }
-            }
-
             impl $crate::serializer::ForyDefault for [<$trait_name $ptr_name>] {
                 fn fory_default() -> Self {
-                    Self($ptr_path::new(<$crate::register_trait_type!(@first_type $($impl_type),+) as std::default::Default>::default()))
+                    Self($ptr_path::new(<$crate::register_trait_type!(@first_type $($impl_type),+) as $crate::serializer::ForyDefault>::fory_default()))
                 }
             }
 

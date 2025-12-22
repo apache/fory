@@ -113,6 +113,10 @@
 //!   `fory_core::serializer::struct_`.
 //! - **`#[fory(skip)]`**: Marks an individual field (or enum variant) to be ignored by the
 //!   generated serializer, retaining compatibility with previous releases.
+//! - **`#[fory(generate_default)]`**: Enables the macro to generate `Default` implementation.
+//!   By default, `ForyObject` does NOT generate `impl Default` to avoid conflicts with existing
+//!   `Default` implementations. Use this attribute when you want the macro to generate both
+//!   `ForyDefault` and `Default` for you.
 //!
 //! ## Field Types
 //!
@@ -212,12 +216,12 @@ pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStr
 
     // Check if this is being applied to a trait (which is not possible with derive macros)
     // Derive macros can only be applied to structs, enums, and unions
-    let debug_enabled = match parse_debug_flag(&input.attrs) {
-        Ok(flag) => flag,
+    let (debug_enabled, generate_default) = match parse_fory_attrs(&input.attrs) {
+        Ok(flags) => flags,
         Err(err) => return err.into_compile_error().into(),
     };
 
-    object::derive_serializer(&input, debug_enabled)
+    object::derive_serializer(&input, debug_enabled, generate_default)
 }
 
 /// Derive macro for row-based serialization.
@@ -245,8 +249,10 @@ pub fn proc_macro_derive_fory_row(input: proc_macro::TokenStream) -> TokenStream
     derive_row(&input)
 }
 
-fn parse_debug_flag(attrs: &[Attribute]) -> syn::Result<bool> {
+/// Parse fory attributes and return (debug_enabled, generate_default)
+fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<(bool, bool)> {
     let mut debug_flag: Option<bool> = None;
+    let mut generate_default_flag: Option<bool> = None;
 
     for attr in attrs {
         if attr.path().is_ident("fory") {
@@ -268,11 +274,31 @@ fn parse_debug_flag(attrs: &[Attribute]) -> syn::Result<bool> {
                         Some(_) => debug_flag,
                         None => Some(value),
                     };
+                } else if meta.path.is_ident("generate_default") {
+                    let value = if meta.input.is_empty() {
+                        true
+                    } else {
+                        let lit: LitBool = meta.value()?.parse()?;
+                        lit.value
+                    };
+                    generate_default_flag = match generate_default_flag {
+                        Some(existing) if existing != value => {
+                            return Err(syn::Error::new(
+                                meta.path.span(),
+                                "conflicting `generate_default` attribute values",
+                            ));
+                        }
+                        Some(_) => generate_default_flag,
+                        None => Some(value),
+                    };
                 }
                 Ok(())
             })?;
         }
     }
 
-    Ok(debug_flag.unwrap_or(false))
+    Ok((
+        debug_flag.unwrap_or(false),
+        generate_default_flag.unwrap_or(false),
+    ))
 }

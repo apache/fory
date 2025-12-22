@@ -160,13 +160,14 @@ fn test_wrapper_polymorphism() {
 
 #[test]
 fn test_wrapper_default_implementations() {
-    // Test that wrapper types have proper Default implementations
-    let default_rc = AnimalRc::default();
-    // Dog::default() should have empty name
+    use fory_core::ForyDefault;
+    // Test that wrapper types have proper ForyDefault implementations
+    let default_rc = AnimalRc::fory_default();
+    // Dog::fory_default() should have empty name
     assert_eq!(default_rc.as_ref().name(), "");
 
-    let default_arc = AnimalArc::default();
-    // Dog::default() should have empty name
+    let default_arc = AnimalArc::fory_default();
+    // Dog::fory_default() should have empty name
     assert_eq!(default_arc.as_ref().name(), "");
 }
 

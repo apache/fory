@@ -429,8 +429,9 @@ fn xlang_variant_read_branches(
                     let default_fields: Vec<TokenStream> = fields_unnamed
                         .unnamed
                         .iter()
-                        .map(|_| {
-                            quote! { Default::default() }
+                        .map(|f| {
+                            let ty = &f.ty;
+                            quote! { <#ty as fory_core::ForyDefault>::fory_default() }
                         })
                         .collect();
 
@@ -444,7 +445,8 @@ fn xlang_variant_read_branches(
                         .iter()
                         .map(|f| {
                             let field_ident = f.ident.as_ref().unwrap();
-                            quote! { #field_ident: Default::default() }
+                            let ty = &f.ty;
+                            quote! { #field_ident: <#ty as fory_core::ForyDefault>::fory_default() }
                         })
                         .collect();
 
@@ -577,7 +579,7 @@ fn rust_compatible_variant_read_branches(
                                     use fory_core::serializer::Serializer;
                                     <#field_ty>::fory_read(context, true, true)?
                                 } else {
-                                    Default::default()
+                                    <#field_ty as fory_core::ForyDefault>::fory_default()
                                 }
                             }
                         })
@@ -587,7 +589,10 @@ fn rust_compatible_variant_read_branches(
                     let default_fields: Vec<TokenStream> = fields_unnamed
                         .unnamed
                         .iter()
-                        .map(|_| quote! { Default::default() })
+                        .map(|f| {
+                            let ty = &f.ty;
+                            quote! { <#ty as fory_core::ForyDefault>::fory_default() }
+                        })
                         .collect();
                     let default_value = quote! { Self::#ident( #(#default_fields),* ) };
 
@@ -636,7 +641,8 @@ fn rust_compatible_variant_read_branches(
                         .iter()
                         .map(|f| {
                             let field_ident = f.ident.as_ref().unwrap();
-                            quote! { #field_ident: Default::default() }
+                            let ty = &f.ty;
+                            quote! { #field_ident: <#ty as fory_core::ForyDefault>::fory_default() }
                         })
                         .collect();
                     let default_value = quote! { Self::#ident { #(#default_fields),* } };
@@ -695,7 +701,10 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
             let default_fields: Vec<TokenStream> = fields_unnamed
                 .unnamed
                 .iter()
-                .map(|_| quote! { Default::default() })
+                .map(|f| {
+                    let ty = &f.ty;
+                    quote! { <#ty as fory_core::ForyDefault>::fory_default() }
+                })
                 .collect();
             quote! { Self::#default_variant_ident( #(#default_fields),* ) }
         }
@@ -705,7 +714,8 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
                 .iter()
                 .map(|f| {
                     let field_ident = f.ident.as_ref().unwrap();
-                    quote! { #field_ident: Default::default() }
+                    let ty = &f.ty;
+                    quote! { #field_ident: <#ty as fory_core::ForyDefault>::fory_default() }
                 })
                 .collect();
             quote! { Self::#default_variant_ident { #(#default_fields),* } }
