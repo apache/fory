@@ -1,9 +1,9 @@
 # Apache Fory™ Python
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/apache/fory/ci.yml?branch=main&style=for-the-badge&label=GITHUB%20ACTIONS&logo=github)](https://github.com/apache/fory/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/pyfory.svg?logo=PyPI)](https://pypi.org/project/pyfory/)
-[![Python Versions](https://img.shields.io/pypi/pyversions/pyfory.svg?logo=python)](https://pypi.org/project/pyfory/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![PyPI](https://img.shields.io/pypi/v/pyfory.svg?logo=PyPI&style=for-the-badge)](https://pypi.org/project/pyfory/)
+[![Python Versions](https://img.shields.io/pypi/pyversions/pyfory.svg?logo=python&style=for-the-badge)](https://pypi.org/project/pyfory/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge)](https://opensource.org/licenses/Apache-2.0)
 [![Slack Channel](https://img.shields.io/badge/slack-join-3f0e40?logo=slack&style=for-the-badge)](https://join.slack.com/t/fory-project/shared_invite/zt-36g0qouzm-kcQSvV_dtfbtBKHRwT5gsw)
 [![X](https://img.shields.io/badge/@ApacheFory-follow-blue?logo=x&style=for-the-badge)](https://x.com/ApacheFory)
 
