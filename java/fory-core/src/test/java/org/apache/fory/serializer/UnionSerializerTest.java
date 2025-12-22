@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.type.union.Union;
 import org.apache.fory.type.union.Union2;
@@ -38,6 +39,7 @@ import org.apache.fory.type.union.Union3;
 import org.apache.fory.type.union.Union4;
 import org.apache.fory.type.union.Union5;
 import org.apache.fory.type.union.Union6;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -47,8 +49,18 @@ import org.testng.annotations.Test;
  */
 public class UnionSerializerTest extends ForyTestBase {
 
-  private Fory createXlangFory() {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).requireClassRegistration(true).build();
+  @DataProvider(name = "compatibleMode")
+  public static Object[][] compatibleModeProvider() {
+    return new Object[][] {{CompatibleMode.COMPATIBLE}, {CompatibleMode.SCHEMA_CONSISTENT}};
+  }
+
+  private Fory createXlangFory(CompatibleMode mode) {
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(mode)
+            .requireClassRegistration(true)
+            .build();
     fory.register(StructWithUnion.class);
     fory.register(StructWithUnion2.class);
     fory.register(StructWithUnion3.class);
@@ -119,9 +131,9 @@ public class UnionSerializerTest extends ForyTestBase {
     }
   }
 
-  @Test
-  public void testUnionBasicTypes() {
-    Fory fory = createXlangFory();
+  @Test(dataProvider = "compatibleMode")
+  public void testUnionBasicTypes(CompatibleMode mode) {
+    Fory fory = createXlangFory(mode);
 
     // Test with Integer value via struct
     StructWithUnion struct = new StructWithUnion(new Union(0, 42));
@@ -138,9 +150,9 @@ public class UnionSerializerTest extends ForyTestBase {
     assertEquals(deserialized.union.getIndex(), 1);
   }
 
-  @Test
-  public void testUnion2Serialization() {
-    Fory fory = createXlangFory();
+  @Test(dataProvider = "compatibleMode")
+  public void testUnion2Serialization(CompatibleMode mode) {
+    Fory fory = createXlangFory(mode);
 
     // Test with T1 (String) via struct field
     StructWithUnion2 struct = new StructWithUnion2(Union2.ofT1("hello"));
@@ -160,9 +172,9 @@ public class UnionSerializerTest extends ForyTestBase {
     assertTrue(deserialized.union.isT2());
   }
 
-  @Test
-  public void testUnion3Serialization() {
-    Fory fory = createXlangFory();
+  @Test(dataProvider = "compatibleMode")
+  public void testUnion3Serialization(CompatibleMode mode) {
+    Fory fory = createXlangFory(mode);
 
     // Test with T1
     StructWithUnion3 struct = new StructWithUnion3(Union3.ofT1(42));
@@ -190,9 +202,9 @@ public class UnionSerializerTest extends ForyTestBase {
     assertTrue(deserialized.union.isT3());
   }
 
-  @Test
-  public void testUnion4Serialization() {
-    Fory fory = createXlangFory();
+  @Test(dataProvider = "compatibleMode")
+  public void testUnion4Serialization(CompatibleMode mode) {
+    Fory fory = createXlangFory(mode);
 
     // Test with T1
     StructWithUnion4 struct = new StructWithUnion4(Union4.ofT1(42));
@@ -212,9 +224,9 @@ public class UnionSerializerTest extends ForyTestBase {
     assertTrue(deserialized.union.isT4());
   }
 
-  @Test
-  public void testUnion5Serialization() {
-    Fory fory = createXlangFory();
+  @Test(dataProvider = "compatibleMode")
+  public void testUnion5Serialization(CompatibleMode mode) {
+    Fory fory = createXlangFory(mode);
 
     // Test with T1
     StructWithUnion5 struct = new StructWithUnion5(Union5.ofT1(42));
@@ -234,9 +246,9 @@ public class UnionSerializerTest extends ForyTestBase {
     assertTrue(deserialized.union.isT5());
   }
 
-  @Test
-  public void testUnion6Serialization() {
-    Fory fory = createXlangFory();
+  @Test(dataProvider = "compatibleMode")
+  public void testUnion6Serialization(CompatibleMode mode) {
+    Fory fory = createXlangFory(mode);
 
     // Test with T1
     StructWithUnion6 struct = new StructWithUnion6(Union6.ofT1(42));
@@ -256,9 +268,9 @@ public class UnionSerializerTest extends ForyTestBase {
     assertTrue(deserialized.union.isT6());
   }
 
-  @Test
-  public void testUnionWithCollections() {
-    Fory fory = createXlangFory();
+  @Test(dataProvider = "compatibleMode")
+  public void testUnionWithCollections(CompatibleMode mode) {
+    Fory fory = createXlangFory(mode);
 
     // Test with List
     List<Integer> list = new ArrayList<>();
@@ -282,9 +294,9 @@ public class UnionSerializerTest extends ForyTestBase {
     assertEquals(deserialized.union.getValue(), map);
   }
 
-  @Test
-  public void testUnionWithNull() {
-    Fory fory = createXlangFory();
+  @Test(dataProvider = "compatibleMode")
+  public void testUnionWithNull(CompatibleMode mode) {
+    Fory fory = createXlangFory(mode);
 
     Union union = new Union(0, null);
     assertFalse(union.hasValue());

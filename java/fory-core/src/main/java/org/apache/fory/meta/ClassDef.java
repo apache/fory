@@ -754,6 +754,8 @@ public class ClassDef implements Serializable {
         case Types.ENUM:
         case Types.NAMED_ENUM:
           return new EnumFieldType(nullable, xtypeId);
+        case Types.UNION:
+          return new UnionFieldType(nullable, trackingRef);
         case Types.UNKNOWN:
           return new ObjectFieldType(xtypeId, false, nullable, trackingRef);
         default:
@@ -1156,6 +1158,40 @@ public class ClassDef implements Serializable {
           + ", trackingRef="
           + trackingRef
           + '}';
+    }
+  }
+
+  /** Class for Union field type. Union types are always monomorphic and use declared type. */
+  public static class UnionFieldType extends FieldType {
+
+    public UnionFieldType(boolean nullable, boolean trackingRef) {
+      super(Types.UNION, true, nullable, trackingRef);
+    }
+
+    @Override
+    public TypeRef<?> toTypeToken(TypeResolver classResolver, TypeRef<?> declared) {
+      // Union types use the declared field type directly
+      if (declared != null) {
+        return declared;
+      }
+      // Fallback to base Union class if no declared type
+      return TypeRef.of(
+          org.apache.fory.type.union.Union.class, new TypeExtMeta(nullable, trackingRef));
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      return super.equals(o);
+    }
+
+    @Override
+    public int hashCode() {
+      return super.hashCode();
+    }
+
+    @Override
+    public String toString() {
+      return "UnionFieldType{" + "nullable=" + nullable + ", trackingRef=" + trackingRef + '}';
     }
   }
 
