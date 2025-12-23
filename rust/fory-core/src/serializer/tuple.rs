@@ -24,6 +24,51 @@ use crate::serializer::{ForyDefault, Serializer};
 use crate::types::TypeId;
 use std::mem;
 
+// Unit type () implementation
+impl Serializer for () {
+    #[inline(always)]
+    fn fory_write_data(&self, _context: &mut WriteContext) -> Result<(), Error> {
+        // Unit type has no data to write
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn fory_read_data(_context: &mut ReadContext) -> Result<Self, Error> {
+        // Unit type has no data to read
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn fory_reserved_space() -> usize {
+        0
+    }
+
+    #[inline(always)]
+    fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
+        Ok(TypeId::STRUCT as u32)
+    }
+
+    #[inline(always)]
+    fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
+        Ok(TypeId::STRUCT as u32)
+    }
+
+    #[inline(always)]
+    fn fory_static_type_id() -> TypeId {
+        TypeId::STRUCT
+    }
+
+    #[inline(always)]
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
+
+impl ForyDefault for () {
+    #[inline(always)]
+    fn fory_default() -> Self {}
+}
+
 /// Helper function to write a tuple element based on its type characteristics.
 /// This handles the different serialization strategies for various element types.
 #[inline(always)]

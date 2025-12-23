@@ -344,3 +344,46 @@ fn test_struct_with_complex_tuple_fields() {
 fn test_struct_with_complex_tuple_fields_xlang() {
     run_struct_with_complex_tuple_fields(true);
 }
+
+// Test unit type () - the empty tuple / 0-element tuple
+#[test]
+fn test_tuple_with_unit() {
+    let fory = Fory::default();
+
+    let value: (i32, (), String) = (42, (), "hello".to_string());
+    let bytes = fory.serialize(&value).unwrap();
+    let result: (i32, (), String) = fory.deserialize(&bytes).unwrap();
+    assert_eq!(result, value);
+}
+
+#[test]
+fn test_tuple_with_multiple_units() {
+    let fory = Fory::default();
+
+    let value: ((), i32, (), String, ()) = ((), 42, (), "hello".to_string(), ());
+    let bytes = fory.serialize(&value).unwrap();
+    let result: ((), i32, (), String, ()) = fory.deserialize(&bytes).unwrap();
+    assert_eq!(result, value);
+}
+
+#[derive(ForyObject, Debug, PartialEq)]
+struct StructWithUnit {
+    name: String,
+    unit: (),
+    count: i32,
+}
+
+#[test]
+fn test_struct_with_unit_field() {
+    let mut fory = Fory::default();
+    fory.register::<StructWithUnit>(200).unwrap();
+
+    let value = StructWithUnit {
+        name: "test".to_string(),
+        unit: (),
+        count: 42,
+    };
+    let bytes = fory.serialize(&value).unwrap();
+    let result: StructWithUnit = fory.deserialize(&bytes).unwrap();
+    assert_eq!(result, value);
+}

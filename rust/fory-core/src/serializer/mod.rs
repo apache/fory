@@ -26,6 +26,7 @@ pub mod enum_;
 mod heap;
 mod list;
 pub mod map;
+mod marker;
 mod mutex;
 mod number;
 mod option;
