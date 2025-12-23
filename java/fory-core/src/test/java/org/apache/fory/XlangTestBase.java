@@ -39,6 +39,12 @@ import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.MemoryUtils;
 import org.apache.fory.serializer.Serializer;
 import org.apache.fory.test.TestUtils;
+import org.apache.fory.type.union.Union;
+import org.apache.fory.type.union.Union2;
+import org.apache.fory.type.union.Union3;
+import org.apache.fory.type.union.Union4;
+import org.apache.fory.type.union.Union5;
+import org.apache.fory.type.union.Union6;
 import org.apache.fory.util.MurmurHash3;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -1582,12 +1588,12 @@ public abstract class XlangTestBase extends ForyTestBase {
   /** Struct containing Union fields of different arities (Union through Union6). */
   @Data
   public static class StructWithUnionFields {
-    public org.apache.fory.type.union.Union union;
-    public org.apache.fory.type.union.Union2<String, Long> union2;
-    public org.apache.fory.type.union.Union3<Integer, String, Double> union3;
-    public org.apache.fory.type.union.Union4<Integer, String, Double, Boolean> union4;
-    public org.apache.fory.type.union.Union5<Integer, String, Double, Boolean, Long> union5;
-    public org.apache.fory.type.union.Union6<Integer, String, Double, Boolean, Long, Float> union6;
+    public Union union;
+    public Union2<String, Long> union2;
+    public Union3<Integer, String, Double> union3;
+    public Union4<Integer, String, Double, Boolean> union4;
+    public Union5<Integer, String, Double, Boolean, Long> union5;
+    public Union6<Integer, String, Double, Boolean, Long, Float> union6;
   }
 
   @Test
@@ -1602,12 +1608,12 @@ public abstract class XlangTestBase extends ForyTestBase {
     fory.register(StructWithUnionFields.class, 200);
 
     StructWithUnionFields obj = new StructWithUnionFields();
-    obj.union = new org.apache.fory.type.union.Union(0, 42);
-    obj.union2 = org.apache.fory.type.union.Union2.ofT1("hello");
-    obj.union3 = org.apache.fory.type.union.Union3.ofT2("world");
-    obj.union4 = org.apache.fory.type.union.Union4.ofT3(3.14);
-    obj.union5 = org.apache.fory.type.union.Union5.ofT4(true);
-    obj.union6 = org.apache.fory.type.union.Union6.ofT5(999L);
+    obj.union = new Union(0, 42);
+    obj.union2 = Union2.ofT1("hello");
+    obj.union3 = Union3.ofT2("world");
+    obj.union4 = Union4.ofT3(3.14);
+    obj.union5 = Union5.ofT4(true);
+    obj.union6 = Union6.ofT5(999L);
 
     MemoryBuffer buffer = MemoryUtils.buffer(128);
     fory.serialize(buffer, obj);
@@ -1648,7 +1654,7 @@ public abstract class XlangTestBase extends ForyTestBase {
             .build();
 
     // Test Union with integer value
-    org.apache.fory.type.union.Union union1 = new org.apache.fory.type.union.Union(0, 42);
+    Union union1 = new Union(0, 42);
     MemoryBuffer buffer = MemoryUtils.buffer(64);
     fory.serialize(buffer, union1);
 
@@ -1657,13 +1663,12 @@ public abstract class XlangTestBase extends ForyTestBase {
     runPeer(ctx1);
 
     MemoryBuffer buffer2 = readBuffer(ctx1.dataFile());
-    org.apache.fory.type.union.Union result1 =
-        (org.apache.fory.type.union.Union) fory.deserialize(buffer2);
+    Union result1 = (Union) fory.deserialize(buffer2);
     Assert.assertEquals(result1.getIndex(), 0);
     Assert.assertEquals(result1.getValue(), 42);
 
     // Test Union with string value
-    org.apache.fory.type.union.Union union2 = new org.apache.fory.type.union.Union(1, "hello");
+    Union union2 = new Union(1, "hello");
     buffer = MemoryUtils.buffer(64);
     fory.serialize(buffer, union2);
 
@@ -1672,8 +1677,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     runPeer(ctx2);
 
     MemoryBuffer buffer3 = readBuffer(ctx2.dataFile());
-    org.apache.fory.type.union.Union result2 =
-        (org.apache.fory.type.union.Union) fory.deserialize(buffer3);
+    Union result2 = (Union) fory.deserialize(buffer3);
     Assert.assertEquals(result2.getIndex(), 1);
     Assert.assertEquals(result2.getValue(), "hello");
   }
