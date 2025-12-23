@@ -26,8 +26,14 @@ use super::util::{
     should_skip_type_info_for_field, skip_ref_flag, StructField,
 };
 
-pub(crate) fn create_private_field_name(field: &Field) -> Ident {
-    format_ident!("_{}", field.ident.as_ref().unwrap())
+/// Create a private variable name for a field during deserialization.
+/// For named fields: `_field_name`
+/// For tuple struct fields: `_0`, `_1`, etc.
+pub(crate) fn create_private_field_name(field: &Field, index: usize) -> Ident {
+    match &field.ident {
+        Some(ident) => format_ident!("_{}", ident),
+        None => format_ident!("_{}", index),
+    }
 }
 
 fn need_declared_by_option(field: &Field) -> bool {
@@ -38,9 +44,10 @@ fn need_declared_by_option(field: &Field) -> bool {
 pub(crate) fn declare_var(fields: &[&Field]) -> Vec<TokenStream> {
     fields
         .iter()
-        .map(|field| {
+        .enumerate()
+        .map(|(idx, field)| {
             let ty = &field.ty;
-            let var_name = create_private_field_name(field);
+            let var_name = create_private_field_name(field, idx);
             match classify_trait_object_field(ty) {
                 StructField::BoxDyn
                 | StructField::RcDyn(_)
@@ -70,40 +77,43 @@ pub(crate) fn declare_var(fields: &[&Field]) -> Vec<TokenStream> {
 }
 
 pub(crate) fn assign_value(fields: &[&Field]) -> Vec<TokenStream> {
+    let is_tuple = super::util::is_tuple_struct(fields);
+
     fields
         .iter()
-        .map(|field| {
-            let name = &field.ident;
-            let var_name = create_private_field_name(field);
-            match classify_trait_object_field(&field.ty) {
+        .enumerate()
+        .map(|(idx, field)| {
+            let var_name = create_private_field_name(field, idx);
+            let value_expr = match classify_trait_object_field(&field.ty) {
                 StructField::BoxDyn | StructField::RcDyn(_) | StructField::ArcDyn(_) => {
-                    quote! {
-                        #name: #var_name
-                    }
+                    quote! { #var_name }
                 }
                 StructField::ContainsTraitObject => {
-                    quote! {
-                        #name: #var_name.unwrap()
-                    }
+                    quote! { #var_name.unwrap() }
                 }
                 _ => {
                     if need_declared_by_option(field) {
                         let ty = &field.ty;
-                        quote! {
-                            #name: #var_name.unwrap_or_else(|| <#ty as fory_core::ForyDefault>::fory_default())
-                        }
+                        quote! { #var_name.unwrap_or_else(|| <#ty as fory_core::ForyDefault>::fory_default()) }
                     } else {
-                        quote! {
-                            #name: #var_name
-                        }
+                        quote! { #var_name }
                     }
                 }
+            };
+
+            if is_tuple {
+                // For tuple structs, just return the value
+                value_expr
+            } else {
+                // For named structs, include the field name
+                let name = &field.ident;
+                quote! { #name: #value_expr }
             }
         })
         .collect()
 }
 
-pub fn gen_read_field(field: &Field, private_ident: &Ident) -> TokenStream {
+pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) -> TokenStream {
     let ty = &field.ty;
     if is_skip_field(field) {
         return quote! {
@@ -232,8 +242,7 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident) -> TokenStream {
     if is_debug_enabled() {
         let struct_name = get_struct_name().expect("struct context not set");
         let struct_name_lit = syn::LitStr::new(&struct_name, proc_macro2::Span::call_site());
-        let field_name = field.ident.as_ref().unwrap().to_string();
-        let field_name_lit = syn::LitStr::new(&field_name, proc_macro2::Span::call_site());
+        let field_name_lit = syn::LitStr::new(field_name, proc_macro2::Span::call_site());
         quote! {
             fory_core::serializer::struct_::struct_before_read_field(
                 #struct_name_lit,
@@ -262,9 +271,11 @@ pub fn gen_read_type_info() -> TokenStream {
 fn get_fields_loop_ts(fields: &[&Field]) -> TokenStream {
     let read_fields_ts: Vec<_> = fields
         .iter()
-        .map(|field| {
-            let private_ident = create_private_field_name(field);
-            gen_read_field(field, &private_ident)
+        .enumerate()
+        .map(|(idx, field)| {
+            let private_ident = create_private_field_name(field, idx);
+            let field_name = super::util::get_field_name(field, idx);
+            gen_read_field(field, &private_ident, &field_name)
         })
         .collect();
     quote! {
@@ -282,13 +293,29 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
             #loop_ts
         }
     };
-    let field_idents = fields.iter().map(|field| {
-        let private_ident = create_private_field_name(field);
-        let original_ident = &field.ident;
-        quote! {
-            #original_ident: #private_ident
-        }
-    });
+
+    let is_tuple = super::util::is_tuple_struct(fields);
+    let field_idents: Vec<_> = fields
+        .iter()
+        .enumerate()
+        .map(|(idx, field)| {
+            let private_ident = create_private_field_name(field, idx);
+            if is_tuple {
+                // For tuple structs, just use the variable
+                quote! { #private_ident }
+            } else {
+                // For named structs, include the field name
+                let original_ident = &field.ident;
+                quote! { #original_ident: #private_ident }
+            }
+        })
+        .collect();
+    let self_construction = if is_tuple {
+        quote! { Ok(Self( #(#field_idents),* )) }
+    } else {
+        quote! { Ok(Self { #(#field_idents),* }) }
+    };
+
     quote! {
         // Read and check version hash when class version checking is enabled
         if context.is_check_struct_version() {
@@ -297,13 +324,15 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
             fory_core::meta::TypeMeta::check_struct_version(read_version, #version_hash, type_name)?;
         }
         #sorted_read
-        Ok(Self {
-            #(#field_idents),*
-        })
+        #self_construction
     }
 }
 
-pub(crate) fn gen_read_compatible_match_arm_body(field: &Field, var_name: &Ident) -> TokenStream {
+pub(crate) fn gen_read_compatible_match_arm_body(
+    field: &Field,
+    var_name: &Ident,
+    field_name: &str,
+) -> TokenStream {
     let ty = &field.ty;
     let field_kind = classify_trait_object_field(ty);
     let is_skip_flag = is_skip_field(field);
@@ -482,8 +511,7 @@ pub(crate) fn gen_read_compatible_match_arm_body(field: &Field, var_name: &Ident
     if is_debug_enabled() {
         let struct_name = get_struct_name().expect("struct context not set");
         let struct_name_lit = syn::LitStr::new(&struct_name, proc_macro2::Span::call_site());
-        let field_name = field.ident.as_ref().unwrap().to_string();
-        let field_name_lit = syn::LitStr::new(&field_name, proc_macro2::Span::call_site());
+        let field_name_lit = syn::LitStr::new(field_name, proc_macro2::Span::call_site());
         quote! {
             fory_core::serializer::struct_::struct_before_read_field(
                 #struct_name_lit,
@@ -505,7 +533,10 @@ pub(crate) fn gen_read_compatible_match_arm_body(field: &Field, var_name: &Ident
     }
 }
 
-pub fn gen_read(struct_ident: &Ident) -> TokenStream {
+pub fn gen_read(_struct_ident: &Ident) -> TokenStream {
+    // Note: We use `Self` instead of `#struct_ident` to correctly handle generic types.
+    // When the struct has generics (e.g., LeaderId<C>), using `Self` ensures the full
+    // type with generics is used in the impl block.
     quote! {
         let ref_flag = if read_ref_info {
             context.reader.read_i8()?
@@ -520,7 +551,7 @@ pub fn gen_read(struct_ident: &Ident) -> TokenStream {
                     let rs_type_id = std::any::TypeId::of::<Self>();
                     context.get_type_info(&rs_type_id)?
                 };
-                <#struct_ident as fory_core::StructSerializer>::fory_read_compatible(context, type_info)
+                <Self as fory_core::StructSerializer>::fory_read_compatible(context, type_info)
             } else {
                 if read_type_info {
                     <Self as fory_core::Serializer>::fory_read_type_info(context)?;
@@ -535,12 +566,13 @@ pub fn gen_read(struct_ident: &Ident) -> TokenStream {
     }
 }
 
-pub fn gen_read_with_type_info(struct_ident: &Ident) -> TokenStream {
+pub fn gen_read_with_type_info() -> TokenStream {
     // fn fory_read_with_type_info(
     //     context: &mut ReadContext,
     //     read_ref_info: bool,
     //     type_info: Rc<TypeInfo>,
     // ) -> Result<Self, Error>
+    // Note: We use `Self` instead of `#struct_ident` to correctly handle generic types.
     quote! {
         let ref_flag = if read_ref_info {
             context.reader.read_i8()?
@@ -549,7 +581,7 @@ pub fn gen_read_with_type_info(struct_ident: &Ident) -> TokenStream {
         };
         if ref_flag == (fory_core::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::RefFlag::RefValue as i8) {
             if context.is_compatible() {
-                <#struct_ident as fory_core::StructSerializer>::fory_read_compatible(context, type_info)
+                <Self as fory_core::StructSerializer>::fory_read_compatible(context, type_info)
             } else {
                 <Self as fory_core::Serializer>::fory_read_data(context)
             }
@@ -576,9 +608,10 @@ pub(crate) fn gen_read_compatible_with_construction(
         .iter()
         .enumerate()
         .map(|(i, field)| {
-            let var_name = create_private_field_name(field);
+            let var_name = create_private_field_name(field, i);
+            let field_name = super::util::get_field_name(field, i);
             let field_id = i as i16;
-            let body = gen_read_compatible_match_arm_body(field, &var_name);
+            let body = gen_read_compatible_match_arm_body(field, &var_name, &field_name);
             quote! {
                 #field_id => {
                     #body
@@ -627,13 +660,21 @@ pub(crate) fn gen_read_compatible_with_construction(
     };
 
     // Generate construction based on whether this is a struct or enum variant
+    let is_tuple = super::util::is_tuple_struct(fields);
     let construction = if let Some(variant) = variant_ident {
+        // Enum variants use named syntax (struct variants) or tuple syntax (tuple variants)
         quote! {
             Ok(Self::#variant {
                 #(#assign_ts),*
             })
         }
+    } else if is_tuple {
+        // Tuple structs use parentheses
+        quote! {
+            Ok(Self( #(#assign_ts),* ))
+        }
     } else {
+        // Named structs use braces
         quote! {
             Ok(Self {
                 #(#assign_ts),*

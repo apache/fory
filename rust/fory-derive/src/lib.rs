@@ -216,12 +216,12 @@ pub fn proc_macro_derive_fory_object(input: proc_macro::TokenStream) -> TokenStr
 
     // Check if this is being applied to a trait (which is not possible with derive macros)
     // Derive macros can only be applied to structs, enums, and unions
-    let (debug_enabled, generate_default) = match parse_fory_attrs(&input.attrs) {
-        Ok(flags) => flags,
+    let attrs = match parse_fory_attrs(&input.attrs) {
+        Ok(attrs) => attrs,
         Err(err) => return err.into_compile_error().into(),
     };
 
-    object::derive_serializer(&input, debug_enabled, generate_default)
+    object::derive_serializer(&input, attrs)
 }
 
 /// Derive macro for row-based serialization.
@@ -249,8 +249,14 @@ pub fn proc_macro_derive_fory_row(input: proc_macro::TokenStream) -> TokenStream
     derive_row(&input)
 }
 
-/// Parse fory attributes and return (debug_enabled, generate_default)
-fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<(bool, bool)> {
+/// Parsed fory attributes
+pub(crate) struct ForyAttrs {
+    pub debug_enabled: bool,
+    pub generate_default: bool,
+}
+
+/// Parse fory attributes and return ForyAttrs
+fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<ForyAttrs> {
     let mut debug_flag: Option<bool> = None;
     let mut generate_default_flag: Option<bool> = None;
 
@@ -297,8 +303,8 @@ fn parse_fory_attrs(attrs: &[Attribute]) -> syn::Result<(bool, bool)> {
         }
     }
 
-    Ok((
-        debug_flag.unwrap_or(false),
-        generate_default_flag.unwrap_or(false),
-    ))
+    Ok(ForyAttrs {
+        debug_enabled: debug_flag.unwrap_or(false),
+        generate_default: generate_default_flag.unwrap_or(false),
+    })
 }

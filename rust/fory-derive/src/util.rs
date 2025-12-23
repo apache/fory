@@ -23,13 +23,25 @@ pub fn sorted_fields(fields: &Fields) -> Vec<&Field> {
 }
 
 pub fn get_sorted_fields<'a>(fields: &[&'a Field]) -> Vec<&'a Field> {
-    use crate::object::util::get_sorted_field_names;
+    use crate::object::util::{get_sorted_field_names, is_tuple_struct};
 
+    // For tuple structs, we must preserve the original field order
+    // because fields are accessed by index (self.0, self.1, etc.)
+    // Sorting would cause type mismatches during serialization/deserialization.
+    if is_tuple_struct(fields) {
+        return fields.to_vec();
+    }
+
+    // For named structs, sort fields by type for optimal memory layout
     let sorted_names = get_sorted_field_names(fields);
     let mut sorted_fields = Vec::with_capacity(fields.len());
 
     for name in &sorted_names {
-        if let Some(field) = fields.iter().find(|f| *f.ident.as_ref().unwrap() == name) {
+        // For named structs, field.ident is Some
+        if let Some(field) = fields
+            .iter()
+            .find(|f| f.ident.as_ref().map(|ident| ident == name).unwrap_or(false))
+        {
             sorted_fields.push(*field);
         }
     }

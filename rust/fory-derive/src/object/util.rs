@@ -26,7 +26,41 @@ use quote::{format_ident, quote, ToTokens};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt;
-use syn::{Field, GenericArgument, PathArguments, Type};
+use syn::{Field, GenericArgument, Index, PathArguments, Type};
+
+/// Get field name for a field, handling both named and tuple struct fields.
+/// For named fields, returns the field name.
+/// For tuple struct fields, returns the index as a string (e.g., "0", "1").
+pub(super) fn get_field_name(field: &Field, index: usize) -> String {
+    match &field.ident {
+        Some(ident) => ident.to_string(),
+        None => index.to_string(),
+    }
+}
+
+/// Get the field accessor token for a field.
+/// For named fields: `self.field_name`
+/// For tuple struct fields: `self.0`, `self.1`, etc.
+pub(super) fn get_field_accessor(field: &Field, index: usize, use_self: bool) -> TokenStream {
+    let prefix = if use_self {
+        quote! { self. }
+    } else {
+        quote! {}
+    };
+
+    match &field.ident {
+        Some(ident) => quote! { #prefix #ident },
+        None => {
+            let idx = Index::from(index);
+            quote! { #prefix #idx }
+        }
+    }
+}
+
+/// Check if this is a tuple struct (all fields are unnamed)
+pub fn is_tuple_struct(fields: &[&Field]) -> bool {
+    !fields.is_empty() && fields[0].ident.is_none()
+}
 
 thread_local! {
     static MACRO_CONTEXT: RefCell<Option<MacroContext>> = const {RefCell::new(None)};
@@ -36,13 +70,24 @@ thread_local! {
 struct MacroContext {
     struct_name: String,
     debug_enabled: bool,
+    /// Type parameter names extracted from the struct/enum generics (e.g., "C", "T", "E")
+    type_params: std::collections::HashSet<String>,
 }
 
-pub(super) fn set_struct_context(name: &str, debug_enabled: bool) {
+/// Set the macro context with struct name, debug flag, and type parameters.
+///
+/// `type_params` should contain the names of all type parameters from the struct/enum
+/// generics (e.g., for `struct Vote<C: RaftTypeConfig>`, pass `{"C"}`).
+pub(super) fn set_struct_context(
+    name: &str,
+    debug_enabled: bool,
+    type_params: std::collections::HashSet<String>,
+) {
     MACRO_CONTEXT.with(|ctx| {
         *ctx.borrow_mut() = Some(MacroContext {
             struct_name: name.to_string(),
             debug_enabled,
+            type_params,
         });
     });
 }
@@ -62,6 +107,16 @@ pub(super) fn is_debug_enabled() -> bool {
         ctx.borrow()
             .as_ref()
             .map(|c| c.debug_enabled)
+            .unwrap_or(false)
+    })
+}
+
+/// Check if a type name is a type parameter of the current struct/enum.
+pub(super) fn is_type_parameter(name: &str) -> bool {
+    MACRO_CONTEXT.with(|ctx| {
+        ctx.borrow()
+            .as_ref()
+            .map(|c| c.type_params.contains(name))
             .unwrap_or(false)
     })
 }
@@ -233,7 +288,10 @@ pub(super) fn classify_trait_object_field(ty: &Type) -> StructField {
 
 #[derive(Debug)]
 pub(super) struct TypeNode {
+    /// Simple type name, used for type matching (e.g., "LeaderId", "Vec")
     pub name: String,
+    /// Full type path string, used for code generation (e.g., "C::LeaderId")
+    pub full_path: String,
     pub generics: Vec<TypeNode>,
     /// For arrays, store the original type string "[T; N]" to preserve length info
     pub original_type_str: Option<String>,
@@ -294,12 +352,14 @@ impl fmt::Display for TypeNode {
                 write!(f, "Array")
             }
         } else if self.generics.is_empty() {
-            write!(f, "{}", self.name)
+            // Use full_path to preserve associated type paths like C::LeaderId
+            write!(f, "{}", self.full_path)
         } else {
+            // Use full_path for the base type, recursively format generics
             write!(
                 f,
                 "{}<{}>",
-                self.name,
+                self.full_path,
                 self.generics
                     .iter()
                     .map(|g| g.to_string())
@@ -313,6 +373,28 @@ impl fmt::Display for TypeNode {
 pub(super) fn extract_type_name(ty: &Type) -> String {
     if let Type::Path(type_path) = ty {
         type_path.path.segments.last().unwrap().ident.to_string()
+    } else if matches!(ty, Type::TraitObject(_)) {
+        "TraitObject".to_string()
+    } else if matches!(ty, Type::Tuple(_)) {
+        "Tuple".to_string()
+    } else if matches!(ty, Type::Array(_)) {
+        "Array".to_string()
+    } else {
+        quote!(#ty).to_string()
+    }
+}
+
+/// Extracts the full type path string, preserving associated types like `C::LeaderId`
+pub(super) fn extract_full_type_path(ty: &Type) -> String {
+    if let Type::Path(type_path) = ty {
+        // Build the full path from all segments without generic arguments
+        type_path
+            .path
+            .segments
+            .iter()
+            .map(|seg| seg.ident.to_string())
+            .collect::<Vec<_>>()
+            .join("::")
     } else if matches!(ty, Type::TraitObject(_)) {
         "TraitObject".to_string()
     } else if matches!(ty, Type::Tuple(_)) {
@@ -341,6 +423,7 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
     if matches!(ty, Type::TraitObject(_)) {
         return TypeNode {
             name: "TraitObject".to_string(),
+            full_path: "TraitObject".to_string(),
             generics: vec![],
             original_type_str: None,
         };
@@ -350,6 +433,7 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
     if let Type::Tuple(_tuple) = ty {
         return TypeNode {
             name: "Tuple".to_string(),
+            full_path: "Tuple".to_string(),
             generics: vec![],
             original_type_str: None,
         };
@@ -362,12 +446,14 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
         let original_type_str = quote!(#ty).to_string().replace(' ', "");
         return TypeNode {
             name: "Array".to_string(),
+            full_path: "Array".to_string(),
             generics: vec![elem_node],
             original_type_str: Some(original_type_str),
         };
     }
 
     let name = extract_type_name(ty);
+    let full_path = extract_full_type_path(ty);
 
     let generics = if let Type::Path(type_path) = ty {
         if let PathArguments::AngleBracketed(args) =
@@ -391,12 +477,27 @@ pub(super) fn parse_generic_tree(ty: &Type) -> TypeNode {
     };
     TypeNode {
         name,
+        full_path,
         generics,
         original_type_str: None,
     }
 }
 
 pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
+    // Special handling for type parameters (e.g., C, T, E)
+    // Type parameters should use UNKNOWN type ID since they are not concrete types.
+    // This prevents `C::LeaderId` generating code like `<C as Serializer>::fory_get_type_id()` which
+    // would require the type parameter to implement Serializer.
+    if is_type_parameter(&node.name) {
+        return quote! {
+            fory_core::meta::FieldType::new(
+                fory_core::types::TypeId::UNKNOWN as u32,
+                true,
+                vec![]
+            )
+        };
+    }
+
     // Special handling for tuples: always use FieldType { LIST, nullable: true, generics: vec![UNKNOWN] }
     if node.name == "Tuple" {
         return quote! {
@@ -817,9 +918,9 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
     let mut other_fields = Vec::new();
 
     // First handle Forward fields separately to avoid borrow checker issues
-    for field in fields {
+    for (idx, field) in fields.iter().enumerate() {
         if is_forward_field(&field.ty) {
-            let raw_ident = field.ident.as_ref().unwrap().to_string();
+            let raw_ident = get_field_name(field, idx);
             let ident = to_snake_case(&raw_ident);
             other_fields.push((ident, "Forward".to_string(), TypeId::UNKNOWN as u32));
         }
@@ -844,8 +945,8 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
         }
     };
 
-    for field in fields {
-        let raw_ident = field.ident.as_ref().unwrap().to_string();
+    for (idx, field) in fields.iter().enumerate() {
+        let raw_ident = get_field_name(field, idx);
         let ident = to_snake_case(&raw_ident);
 
         // Skip if already handled as Forward field
@@ -1013,8 +1114,8 @@ fn to_snake_case(name: &str) -> String {
 /// This format is consistent across Go, Java, Rust, and C++ implementations.
 pub(crate) fn compute_struct_fingerprint(fields: &[&Field]) -> String {
     let mut field_info_map: HashMap<String, (u32, bool)> = HashMap::with_capacity(fields.len());
-    for field in fields {
-        let name = field.ident.as_ref().unwrap().to_string();
+    for (idx, field) in fields.iter().enumerate() {
+        let name = get_field_name(field, idx);
         let type_id = get_type_id_by_type_ast(&field.ty);
         // Match Java's behavior: primitives are non-nullable, everything else is nullable
         // In Java: char nullable = rawType.isPrimitive() ? '0' : '1';

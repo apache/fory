@@ -17,6 +17,7 @@
 
 use crate::object::{derive_enum, misc, read, write};
 use crate::util::sorted_fields;
+use crate::ForyAttrs;
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::Data;
@@ -36,19 +37,28 @@ fn has_existing_default(ast: &syn::DeriveInput, trait_name: &str) -> bool {
     })
 }
 
-pub fn derive_serializer(
-    ast: &syn::DeriveInput,
-    debug_enabled: bool,
-    generate_default: bool,
-) -> TokenStream {
+pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStream {
     let name = &ast.ident;
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+
+    // Extract type parameter names from generics (e.g., "C", "T", "E")
+    let type_params: std::collections::HashSet<String> = ast
+        .generics
+        .params
+        .iter()
+        .filter_map(|p| match p {
+            syn::GenericParam::Type(tp) => Some(tp.ident.to_string()),
+            _ => None, // Ignore lifetime and const parameters
+        })
+        .collect();
+
     use crate::object::util::{clear_struct_context, set_struct_context};
-    set_struct_context(&name.to_string(), debug_enabled);
+    set_struct_context(&name.to_string(), attrs.debug_enabled, type_params);
 
     // Check if ForyDefault is already derived/implemented
     let has_existing_default = has_existing_default(ast, "ForyDefault");
     let default_impl = if !has_existing_default {
-        generate_default_impl(ast, generate_default)
+        generate_default_impl(ast, attrs.generate_default)
     } else {
         quote! {}
     };
@@ -112,7 +122,7 @@ pub fn derive_serializer(
                 write::gen_write_data(&fields),
                 write::gen_write_type_info(),
                 read::gen_read(name),
-                read::gen_read_with_type_info(name),
+                read::gen_read_with_type_info(),
                 read::gen_read_data(&fields),
                 read::gen_read_type_info(),
                 write::gen_reserved_space(&fields),
@@ -146,7 +156,7 @@ pub fn derive_serializer(
 
         #default_impl
 
-        impl fory_core::StructSerializer for #name {
+        impl #impl_generics fory_core::StructSerializer for #name #ty_generics #where_clause {
             #[inline(always)]
             fn fory_type_index() -> u32 {
                 #type_idx
@@ -175,7 +185,7 @@ pub fn derive_serializer(
             }
         }
 
-        impl fory_core::Serializer for #name {
+        impl #impl_generics fory_core::Serializer for #name #ty_generics #where_clause {
             #[inline(always)]
             fn fory_get_type_id(type_resolver: &fory_core::resolver::type_resolver::TypeResolver) -> Result<u32, fory_core::error::Error> {
                 type_resolver.get_type_id(&std::any::TypeId::of::<Self>(), #type_idx)
@@ -251,6 +261,8 @@ fn generate_default_impl(
     generate_default: bool,
 ) -> proc_macro2::TokenStream {
     let name = &ast.ident;
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
+
     // By default, we don't generate Default impl to avoid conflicts.
     // Only generate if generate_default is true AND there's no existing Default.
     let should_generate_default = generate_default && !has_existing_default(ast, "Default");
@@ -258,63 +270,87 @@ fn generate_default_impl(
     match &ast.data {
         Data::Struct(s) => {
             let fields = sorted_fields(&s.fields);
+            let is_tuple_struct = super::util::is_tuple_struct(&fields);
 
             use super::util::{
                 classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
                 StructField,
             };
 
-            let field_inits = fields.iter().map(|field| {
-                let ident = &field.ident;
-                let ty = &field.ty;
+            let field_inits: Vec<_> = fields
+                .iter()
+                .map(|field| {
+                    let ident = &field.ident;
+                    let ty = &field.ty;
 
-                match classify_trait_object_field(ty) {
-                    StructField::RcDyn(trait_name) => {
-                        let types = create_wrapper_types_rc(&trait_name);
-                        let wrapper_ty = types.wrapper_ty;
-                        let trait_ident = types.trait_ident;
-                        quote! {
-                            #ident: {
-                                let wrapper = #wrapper_ty::default();
-                                std::rc::Rc::<dyn #trait_ident>::from(wrapper)
+                    match classify_trait_object_field(ty) {
+                        StructField::RcDyn(trait_name) => {
+                            let types = create_wrapper_types_rc(&trait_name);
+                            let wrapper_ty = types.wrapper_ty;
+                            let trait_ident = types.trait_ident;
+                            let value = quote! {
+                                {
+                                    let wrapper = #wrapper_ty::default();
+                                    std::rc::Rc::<dyn #trait_ident>::from(wrapper)
+                                }
+                            };
+                            if is_tuple_struct {
+                                value
+                            } else {
+                                quote! { #ident: #value }
+                            }
+                        }
+                        StructField::ArcDyn(trait_name) => {
+                            let types = create_wrapper_types_arc(&trait_name);
+                            let wrapper_ty = types.wrapper_ty;
+                            let trait_ident = types.trait_ident;
+                            let value = quote! {
+                                {
+                                    let wrapper = #wrapper_ty::default();
+                                    std::sync::Arc::<dyn #trait_ident>::from(wrapper)
+                                }
+                            };
+                            if is_tuple_struct {
+                                value
+                            } else {
+                                quote! { #ident: #value }
+                            }
+                        }
+                        StructField::Forward => {
+                            let value = quote! { <#ty as fory_core::ForyDefault>::fory_default() };
+                            if is_tuple_struct {
+                                value
+                            } else {
+                                quote! { #ident: #value }
+                            }
+                        }
+                        _ => {
+                            let value = quote! { <#ty as fory_core::ForyDefault>::fory_default() };
+                            if is_tuple_struct {
+                                value
+                            } else {
+                                quote! { #ident: #value }
                             }
                         }
                     }
-                    StructField::ArcDyn(trait_name) => {
-                        let types = create_wrapper_types_arc(&trait_name);
-                        let wrapper_ty = types.wrapper_ty;
-                        let trait_ident = types.trait_ident;
-                        quote! {
-                            #ident: {
-                                let wrapper = #wrapper_ty::default();
-                                std::sync::Arc::<dyn #trait_ident>::from(wrapper)
-                            }
-                        }
-                    }
-                    StructField::Forward => {
-                        quote! {
-                            #ident: <#ty as fory_core::ForyDefault>::fory_default()
-                        }
-                    }
-                    _ => {
-                        quote! {
-                            #ident: <#ty as fory_core::ForyDefault>::fory_default()
-                        }
-                    }
-                }
-            });
+                })
+                .collect();
+
+            let self_construction = if is_tuple_struct {
+                quote! { Self( #(#field_inits),* ) }
+            } else {
+                quote! { Self { #(#field_inits),* } }
+            };
 
             if should_generate_default {
                 // User requested Default generation via #[fory(generate_default)]
                 quote! {
-                    impl fory_core::ForyDefault for #name {
+                    impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
                         fn fory_default() -> Self {
-                            Self {
-                                #(#field_inits),*
-                            }
+                            #self_construction
                         }
                     }
-                    impl std::default::Default for #name {
+                    impl #impl_generics std::default::Default for #name #ty_generics #where_clause {
                         fn default() -> Self {
                             Self::fory_default()
                         }
@@ -324,11 +360,9 @@ fn generate_default_impl(
                 // Default case: only generate ForyDefault, not Default
                 // This avoids conflicts with existing Default implementations
                 quote! {
-                   impl fory_core::ForyDefault for #name {
+                   impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
                         fn fory_default() -> Self {
-                            Self {
-                                #(#field_inits),*
-                            }
+                            #self_construction
                         }
                     }
                 }
@@ -369,7 +403,7 @@ fn generate_default_impl(
                     // User has #[derive(Default)] or #[default] attribute
                     // Only generate ForyDefault that delegates to Default
                     quote! {
-                        impl fory_core::ForyDefault for #name {
+                        impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
                             fn fory_default() -> Self {
                                 Self::default()
                             }
@@ -378,13 +412,13 @@ fn generate_default_impl(
                 } else if should_generate_default {
                     // User requested Default generation via #[fory(generate_default)]
                     quote! {
-                        impl fory_core::ForyDefault for #name {
+                        impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
                             fn fory_default() -> Self {
                                 Self::#variant_ident #field_defaults
                             }
                         }
 
-                        impl std::default::Default for #name {
+                        impl #impl_generics std::default::Default for #name #ty_generics #where_clause {
                             fn default() -> Self {
                                 Self::#variant_ident #field_defaults
                             }
@@ -393,7 +427,7 @@ fn generate_default_impl(
                 } else {
                     // Default case: only generate ForyDefault, not Default
                     quote! {
-                        impl fory_core::ForyDefault for #name {
+                        impl #impl_generics fory_core::ForyDefault for #name #ty_generics #where_clause {
                             fn fory_default() -> Self {
                                 Self::#variant_ident #field_defaults
                             }

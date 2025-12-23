@@ -488,8 +488,12 @@ fn rust_variant_read_branches(
                     let read_fields: Vec<TokenStream> = fields_unnamed
                         .unnamed
                         .iter()
+                        .enumerate()
                         .zip(field_idents.iter())
-                        .map(|(f, ident)| gen_read_field(f, ident))
+                        .map(|((idx, f), ident)| {
+                            let field_name = idx.to_string();
+                            gen_read_field(f, ident, &field_name)
+                        })
                         .collect();
 
                     quote! {
@@ -511,7 +515,10 @@ fn rust_variant_read_branches(
                     let read_fields: Vec<_> = sorted_fields
                         .iter()
                         .zip(field_idents.iter())
-                        .map(|(f, ident)| gen_read_field(f, ident))
+                        .map(|(f, ident)| {
+                            let field_name = ident.to_string();
+                            gen_read_field(f, ident, &field_name)
+                        })
                         .collect();
 
                     quote! {

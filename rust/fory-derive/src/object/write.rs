@@ -17,9 +17,10 @@
 
 use super::util::{
     classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
-    create_wrapper_types_rc, extract_type_name, get_filtered_fields_iter,
-    get_primitive_writer_method, get_struct_name, get_type_id_by_type_ast, is_debug_enabled,
-    is_direct_primitive_numeric_type, should_skip_type_info_for_field, skip_ref_flag, StructField,
+    create_wrapper_types_rc, extract_type_name, get_field_accessor, get_field_name,
+    get_filtered_fields_iter, get_primitive_writer_method, get_struct_name,
+    get_type_id_by_type_ast, is_debug_enabled, is_direct_primitive_numeric_type,
+    should_skip_type_info_for_field, skip_ref_flag, StructField,
 };
 use fory_core::types::TypeId;
 use proc_macro2::{Ident, TokenStream};
@@ -114,13 +115,30 @@ pub fn gen_write_type_info() -> TokenStream {
     }
 }
 
+/// Generate write code for a field using index-based access (supports tuple structs)
+pub fn gen_write_field_with_index(field: &Field, index: usize, use_self: bool) -> TokenStream {
+    let value_ts = get_field_accessor(field, index, use_self);
+    let field_name = get_field_name(field, index);
+    gen_write_field_impl(field, &value_ts, &field_name, use_self)
+}
+
 pub fn gen_write_field(field: &Field, ident: &Ident, use_self: bool) -> TokenStream {
-    let ty = &field.ty;
     let value_ts = if use_self {
         quote! { self.#ident }
     } else {
         quote! { #ident }
     };
+    let field_name = ident.to_string();
+    gen_write_field_impl(field, &value_ts, &field_name, use_self)
+}
+
+fn gen_write_field_impl(
+    field: &Field,
+    value_ts: &TokenStream,
+    field_name: &str,
+    use_self: bool,
+) -> TokenStream {
+    let ty = &field.ty;
     let base = match classify_trait_object_field(ty) {
         StructField::BoxDyn => {
             quote! {
@@ -266,20 +284,19 @@ pub fn gen_write_field(field: &Field, ident: &Ident, use_self: bool) -> TokenStr
     if is_debug_enabled() && use_self {
         let struct_name = get_struct_name().expect("struct context not set");
         let struct_name_lit = syn::LitStr::new(&struct_name, proc_macro2::Span::call_site());
-        let field_name = field.ident.as_ref().unwrap().to_string();
-        let field_name_lit = syn::LitStr::new(&field_name, proc_macro2::Span::call_site());
+        let field_name_lit = syn::LitStr::new(field_name, proc_macro2::Span::call_site());
         quote! {
             fory_core::serializer::struct_::struct_before_write_field(
                 #struct_name_lit,
                 #field_name_lit,
-                (&self.#ident) as &dyn std::any::Any,
+                (&#value_ts) as &dyn std::any::Any,
                 context,
             );
             #base
             fory_core::serializer::struct_::struct_after_write_field(
                 #struct_name_lit,
                 #field_name_lit,
-                (&self.#ident) as &dyn std::any::Any,
+                (&#value_ts) as &dyn std::any::Any,
                 context,
             );
         }
@@ -290,10 +307,8 @@ pub fn gen_write_field(field: &Field, ident: &Ident, use_self: bool) -> TokenStr
 
 pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
     let write_fields_ts: Vec<_> = get_filtered_fields_iter(fields)
-        .map(|field| {
-            let ident = field.ident.as_ref().unwrap();
-            gen_write_field(field, ident, true)
-        })
+        .enumerate()
+        .map(|(idx, field)| gen_write_field_with_index(field, idx, true))
         .collect();
 
     let version_hash = compute_struct_version_hash(fields);

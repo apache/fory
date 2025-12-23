@@ -35,9 +35,9 @@ pub fn allocate_type_id() -> u32 {
 
 #[allow(dead_code)]
 fn hash(fields: &[&Field]) -> TokenStream {
-    let props = fields.iter().map(|field| {
+    let props = fields.iter().enumerate().map(|(idx, field)| {
         let ty = &field.ty;
-        let name = format!("{}", field.ident.as_ref().expect("should be field name"));
+        let name = super::util::get_field_name(field, idx);
         quote! {
             (#name, <#ty as fory_core::serializer::Serializer>::fory_get_type_id())
         }
@@ -72,61 +72,63 @@ pub fn gen_get_sorted_field_names(fields: &[&Field]) -> TokenStream {
 }
 
 pub fn gen_field_fields_info(fields: &[&Field]) -> TokenStream {
-    let field_infos = get_filtered_fields_iter(fields).map(|field| {
-        let ty = &field.ty;
-        let name = format!("{}", field.ident.as_ref().expect("should be field name"));
-        match classify_trait_object_field(ty) {
-            StructField::None => {
-                let generic_tree = parse_generic_tree(ty);
-                let generic_token = generic_tree_to_tokens(&generic_tree);
-                quote! {
-                    fory_core::meta::FieldInfo::new(#name, #generic_token)
+    let field_infos = get_filtered_fields_iter(fields)
+        .enumerate()
+        .map(|(idx, field)| {
+            let ty = &field.ty;
+            let name = super::util::get_field_name(field, idx);
+            match classify_trait_object_field(ty) {
+                StructField::None => {
+                    let generic_tree = parse_generic_tree(ty);
+                    let generic_token = generic_tree_to_tokens(&generic_tree);
+                    quote! {
+                        fory_core::meta::FieldInfo::new(#name, #generic_token)
+                    }
                 }
-            }
-            StructField::VecBox(_) | StructField::VecRc(_) | StructField::VecArc(_) => {
-                quote! {
-                    fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
-                        type_id: fory_core::types::TypeId::LIST as u32,
-                        nullable: false,
-                        generics: vec![fory_core::meta::FieldType {
-                            type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                StructField::VecBox(_) | StructField::VecRc(_) | StructField::VecArc(_) => {
+                    quote! {
+                        fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
+                            type_id: fory_core::types::TypeId::LIST as u32,
                             nullable: false,
-                            generics: Vec::new()
-                        }]
-                    })
-                }
-            }
-            StructField::HashMapBox(key_ty, _)
-            | StructField::HashMapRc(key_ty, _)
-            | StructField::HashMapArc(key_ty, _) => {
-                let key_generic_tree = parse_generic_tree(key_ty.as_ref());
-                let key_generic_token = generic_tree_to_tokens(&key_generic_tree);
-                quote! {
-                    fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
-                        type_id: fory_core::types::TypeId::MAP as u32,
-                        nullable: false,
-                        generics: vec![
-                            #key_generic_token,
-                            fory_core::meta::FieldType {
+                            generics: vec![fory_core::meta::FieldType {
                                 type_id: fory_core::types::TypeId::UNKNOWN as u32,
                                 nullable: false,
                                 generics: Vec::new()
-                            }
-                        ]
-                    })
+                            }]
+                        })
+                    }
+                }
+                StructField::HashMapBox(key_ty, _)
+                | StructField::HashMapRc(key_ty, _)
+                | StructField::HashMapArc(key_ty, _) => {
+                    let key_generic_tree = parse_generic_tree(key_ty.as_ref());
+                    let key_generic_token = generic_tree_to_tokens(&key_generic_tree);
+                    quote! {
+                        fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
+                            type_id: fory_core::types::TypeId::MAP as u32,
+                            nullable: false,
+                            generics: vec![
+                                #key_generic_token,
+                                fory_core::meta::FieldType {
+                                    type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                                    nullable: false,
+                                    generics: Vec::new()
+                                }
+                            ]
+                        })
+                    }
+                }
+                _ => {
+                    quote! {
+                        fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
+                            type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                            nullable: false,
+                            generics: Vec::new()
+                        })
+                    }
                 }
             }
-            _ => {
-                quote! {
-                    fory_core::meta::FieldInfo::new(#name, fory_core::meta::FieldType {
-                        type_id: fory_core::types::TypeId::UNKNOWN as u32,
-                        nullable: false,
-                        generics: Vec::new()
-                    })
-                }
-            }
-        }
-    });
+        });
 
     // Get sorted field names for sorting
     let static_field_names = get_sort_fields_ts(fields);
