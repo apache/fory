@@ -107,4 +107,34 @@ public class CollectionSnapshotTest {
       assertEquals(result, newData);
     }
   }
+
+  @Test
+  public void testGet() {
+    CollectionSnapshot<String> snapshot = new CollectionSnapshot<>();
+    List<String> source = Arrays.asList("a", "b", "c");
+    snapshot.setCollection(source);
+
+    assertEquals(snapshot.get(0), "a");
+    assertEquals(snapshot.get(1), "b");
+    assertEquals(snapshot.get(2), "c");
+  }
+
+  @Test
+  public void testIndexedAccessAfterReuse() {
+    CollectionSnapshot<String> snapshot = new CollectionSnapshot<>();
+
+    // First use
+    snapshot.setCollection(Arrays.asList("a", "b", "c"));
+    assertEquals(snapshot.get(0), "a");
+    assertEquals(snapshot.get(1), "b");
+    assertEquals(snapshot.get(2), "c");
+
+    snapshot.clear();
+
+    // Second use
+    snapshot.setCollection(Arrays.asList("x", "y"));
+    assertEquals(snapshot.get(0), "x");
+    assertEquals(snapshot.get(1), "y");
+    assertEquals(snapshot.size(), 2);
+  }
 }

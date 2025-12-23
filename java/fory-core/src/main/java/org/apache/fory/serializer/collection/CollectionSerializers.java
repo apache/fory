@@ -275,7 +275,7 @@ public class CollectionSerializers {
   }
 
   public static class CopyOnWriteArrayListSerializer
-      extends ConcurrentListSerializer<CopyOnWriteArrayList> {
+      extends ConcurrentCollectionSerializer<CopyOnWriteArrayList> {
 
     public CopyOnWriteArrayListSerializer(Fory fory, Class<CopyOnWriteArrayList> type) {
       super(fory, type, true);

@@ -19,7 +19,7 @@
 
 package org.apache.fory.collection;
 
-import java.util.AbstractCollection;
+import java.util.AbstractList;
 import java.util.Collection;
 import java.util.Iterator;
 import org.apache.fory.annotation.Internal;
@@ -46,7 +46,7 @@ import org.apache.fory.annotation.Internal;
  * @since 1.0
  */
 @Internal
-public class CollectionSnapshot<E> extends AbstractCollection<E> {
+public class CollectionSnapshot<E> extends AbstractList<E> {
   /** Threshold for array reallocation during clear operation to prevent memory leaks. */
   private static final int CLEAR_ARRAY_SIZE_THRESHOLD = 2048;
 
@@ -77,6 +77,11 @@ public class CollectionSnapshot<E> extends AbstractCollection<E> {
   @Override
   public int size() {
     return size;
+  }
+
+  @Override
+  public E get(int index) {
+    return array.get(index);
   }
 
   /**
