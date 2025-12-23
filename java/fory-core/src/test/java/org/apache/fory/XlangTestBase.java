@@ -1575,6 +1575,109 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertNull(result2.f2);
   }
 
+  // ============================================================================
+  // Union type tests
+  // ============================================================================
+
+  /** Struct containing Union fields of different arities (Union through Union6). */
+  @Data
+  public static class StructWithUnionFields {
+    public org.apache.fory.type.union.Union union;
+    public org.apache.fory.type.union.Union2<String, Long> union2;
+    public org.apache.fory.type.union.Union3<Integer, String, Double> union3;
+    public org.apache.fory.type.union.Union4<Integer, String, Double, Boolean> union4;
+    public org.apache.fory.type.union.Union5<Integer, String, Double, Boolean, Long> union5;
+    public org.apache.fory.type.union.Union6<Integer, String, Double, Boolean, Long, Float> union6;
+  }
+
+  @Test
+  public void testStructWithUnionFields() throws java.io.IOException {
+    String caseName = "test_struct_with_union_fields";
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+            .withCodegen(false)
+            .build();
+    fory.register(StructWithUnionFields.class, 200);
+
+    StructWithUnionFields obj = new StructWithUnionFields();
+    obj.union = new org.apache.fory.type.union.Union(0, 42);
+    obj.union2 = org.apache.fory.type.union.Union2.ofT1("hello");
+    obj.union3 = org.apache.fory.type.union.Union3.ofT2("world");
+    obj.union4 = org.apache.fory.type.union.Union4.ofT3(3.14);
+    obj.union5 = org.apache.fory.type.union.Union5.ofT4(true);
+    obj.union6 = org.apache.fory.type.union.Union6.ofT5(999L);
+
+    MemoryBuffer buffer = MemoryUtils.buffer(128);
+    fory.serialize(buffer, obj);
+
+    ExecutionContext ctx = prepareExecution(caseName, buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+
+    MemoryBuffer buffer2 = readBuffer(ctx.dataFile());
+    StructWithUnionFields result = (StructWithUnionFields) fory.deserialize(buffer2);
+
+    Assert.assertEquals(result.union.getIndex(), 0);
+    Assert.assertEquals(result.union.getValue(), 42);
+    Assert.assertEquals(result.union2.getIndex(), 0);
+    Assert.assertEquals(result.union2.getValue(), "hello");
+    Assert.assertTrue(result.union2.isT1());
+    Assert.assertEquals(result.union3.getIndex(), 1);
+    Assert.assertEquals(result.union3.getValue(), "world");
+    Assert.assertTrue(result.union3.isT2());
+    Assert.assertEquals(result.union4.getIndex(), 2);
+    Assert.assertEquals((Double) result.union4.getValue(), 3.14, 0.001);
+    Assert.assertTrue(result.union4.isT3());
+    Assert.assertEquals(result.union5.getIndex(), 3);
+    Assert.assertEquals(result.union5.getValue(), true);
+    Assert.assertTrue(result.union5.isT4());
+    Assert.assertEquals(result.union6.getIndex(), 4);
+    Assert.assertEquals(result.union6.getValue(), 999L);
+    Assert.assertTrue(result.union6.isT5());
+  }
+
+  @Test
+  public void testTopLevelUnion() throws java.io.IOException {
+    String caseName = "test_top_level_union";
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+            .withCodegen(false)
+            .build();
+
+    // Test Union with integer value
+    org.apache.fory.type.union.Union union1 = new org.apache.fory.type.union.Union(0, 42);
+    MemoryBuffer buffer = MemoryUtils.buffer(64);
+    fory.serialize(buffer, union1);
+
+    ExecutionContext ctx1 =
+        prepareExecution(caseName + "_int", buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx1);
+
+    MemoryBuffer buffer2 = readBuffer(ctx1.dataFile());
+    org.apache.fory.type.union.Union result1 =
+        (org.apache.fory.type.union.Union) fory.deserialize(buffer2);
+    Assert.assertEquals(result1.getIndex(), 0);
+    Assert.assertEquals(result1.getValue(), 42);
+
+    // Test Union with string value
+    org.apache.fory.type.union.Union union2 = new org.apache.fory.type.union.Union(1, "hello");
+    buffer = MemoryUtils.buffer(64);
+    fory.serialize(buffer, union2);
+
+    ExecutionContext ctx2 =
+        prepareExecution(caseName + "_str", buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx2);
+
+    MemoryBuffer buffer3 = readBuffer(ctx2.dataFile());
+    org.apache.fory.type.union.Union result2 =
+        (org.apache.fory.type.union.Union) fory.deserialize(buffer3);
+    Assert.assertEquals(result2.getIndex(), 1);
+    Assert.assertEquals(result2.getValue(), "hello");
+  }
+
   @SuppressWarnings("unchecked")
   private void assertStringEquals(Object actual, Object expected, boolean useToString) {
     if (useToString) {
