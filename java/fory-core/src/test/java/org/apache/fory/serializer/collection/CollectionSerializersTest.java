@@ -62,6 +62,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.LongStream;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.Language;
@@ -387,6 +388,23 @@ public class CollectionSerializersTest extends ForyTestBase {
     Assert.assertEquals(
         getJavaFory().getClassResolver().getSerializerClass(CopyOnWriteArrayList.class),
         CollectionSerializers.CopyOnWriteArrayListSerializer.class);
+  }
+
+  @EqualsAndHashCode
+  public static class NestedCopyOnWriteArrayList {
+    private final CopyOnWriteArrayList<String> list;
+
+    public NestedCopyOnWriteArrayList(CopyOnWriteArrayList<String> list) {
+      this.list = list;
+    }
+  }
+
+  @Test
+  public void testCopyOnWriteArrayListNested() {
+    final CopyOnWriteArrayList<String> list =
+        new CopyOnWriteArrayList<>(Arrays.asList("a", "b", "c"));
+    NestedCopyOnWriteArrayList nestedObject = new NestedCopyOnWriteArrayList(list);
+    Assert.assertEquals(nestedObject, serDe(getJavaFory(), nestedObject));
   }
 
   @Test(dataProvider = "foryCopyConfig")
