@@ -426,13 +426,13 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
                     "i16" => quote! { fory_core::types::TypeId::INT16_ARRAY as u32 },
                     "i32" => quote! { fory_core::types::TypeId::INT32_ARRAY as u32 },
                     "i64" => quote! { fory_core::types::TypeId::INT64_ARRAY as u32 },
+                    "i128" => quote! { fory_core::types::TypeId::INT128_ARRAY as u32 },
                     "f32" => quote! { fory_core::types::TypeId::FLOAT32_ARRAY as u32 },
                     "f64" => quote! { fory_core::types::TypeId::FLOAT64_ARRAY as u32 },
                     "u8" => quote! { fory_core::types::TypeId::U8 as u32 },
                     "u16" => quote! { fory_core::types::TypeId::U16_ARRAY as u32 },
                     "u32" => quote! { fory_core::types::TypeId::U32_ARRAY as u32 },
                     "u64" => quote! { fory_core::types::TypeId::U64_ARRAY as u32 },
-                    "usize" => quote! { fory_core::types::TypeId::USIZE_ARRAY as u32 },
                     "u128" => quote! { fory_core::types::TypeId::U128_ARRAY as u32 },
                     _ => quote! { fory_core::types::TypeId::LIST as u32 },
                 };
@@ -563,7 +563,7 @@ fn extract_option_inner(s: &str) -> Option<&str> {
 }
 
 const PRIMITIVE_TYPE_NAMES: [&str; 13] = [
-    "bool", "i8", "i16", "i32", "i64", "f32", "f64", "u8", "u16", "u32", "u64", "usize", "u128",
+    "bool", "i8", "i16", "i32", "i64", "i128", "f32", "f64", "u8", "u16", "u32", "u64", "u128",
 ];
 
 fn get_primitive_type_id(ty: &str) -> u32 {
@@ -579,8 +579,8 @@ fn get_primitive_type_id(ty: &str) -> u32 {
         "u16" => TypeId::U16 as u32,
         "u32" => TypeId::U32 as u32,
         "u64" => TypeId::U64 as u32,
-        "usize" => TypeId::USIZE as u32,
         "u128" => TypeId::U128 as u32,
+        "i128" => TypeId::INT128 as u32,
         _ => unreachable!("Unknown primitive type: {}", ty),
     }
 }
@@ -683,13 +683,13 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
         "Vec<i16>" => return TypeId::INT16_ARRAY as u32,
         "Vec<i32>" => return TypeId::INT32_ARRAY as u32,
         "Vec<i64>" => return TypeId::INT64_ARRAY as u32,
+        "Vec<i128>" => return TypeId::INT128_ARRAY as u32,
         "Vec<f16>" => return TypeId::FLOAT16_ARRAY as u32,
         "Vec<f32>" => return TypeId::FLOAT32_ARRAY as u32,
         "Vec<f64>" => return TypeId::FLOAT64_ARRAY as u32,
         "Vec<u16>" => return TypeId::U16_ARRAY as u32,
         "Vec<u32>" => return TypeId::U32_ARRAY as u32,
         "Vec<u64>" => return TypeId::U64_ARRAY as u32,
-        "Vec<usize>" => return TypeId::USIZE_ARRAY as u32,
         "Vec<u128>" => return TypeId::U128_ARRAY as u32,
         _ => {}
     }
@@ -705,13 +705,13 @@ pub(crate) fn get_type_id_by_name(ty: &str) -> u32 {
                 "i16" => return TypeId::INT16_ARRAY as u32,
                 "i32" => return TypeId::INT32_ARRAY as u32,
                 "i64" => return TypeId::INT64_ARRAY as u32,
+                "i128" => return TypeId::INT128_ARRAY as u32,
                 "f16" => return TypeId::FLOAT16_ARRAY as u32,
                 "f32" => return TypeId::FLOAT32_ARRAY as u32,
                 "f64" => return TypeId::FLOAT64_ARRAY as u32,
                 "u16" => return TypeId::U16_ARRAY as u32,
                 "u32" => return TypeId::U32_ARRAY as u32,
                 "u64" => return TypeId::U64_ARRAY as u32,
-                "usize" => return TypeId::USIZE_ARRAY as u32,
                 "u128" => return TypeId::U128_ARRAY as u32,
                 _ => {
                     // Non-primitive array elements, treat as LIST
@@ -760,11 +760,11 @@ fn get_primitive_type_size(type_id_num: u32) -> i32 {
         TypeId::FLOAT16 => 2,
         TypeId::FLOAT32 => 4,
         TypeId::FLOAT64 => 8,
+        TypeId::INT128 => 16,
         TypeId::U8 => 1,
         TypeId::U16 => 2,
         TypeId::U32 => 4,
         TypeId::U64 => 8,
-        TypeId::USIZE => 8,
         TypeId::U128 => 16,
         _ => unreachable!(),
     }
@@ -793,13 +793,13 @@ fn is_internal_type_id(type_id: u32) -> bool {
         TypeId::INT16_ARRAY as u32,
         TypeId::INT32_ARRAY as u32,
         TypeId::INT64_ARRAY as u32,
+        TypeId::INT128_ARRAY as u32,
         TypeId::FLOAT16_ARRAY as u32,
         TypeId::FLOAT32_ARRAY as u32,
         TypeId::FLOAT64_ARRAY as u32,
         TypeId::U16_ARRAY as u32,
         TypeId::U32_ARRAY as u32,
         TypeId::U64_ARRAY as u32,
-        TypeId::USIZE_ARRAY as u32,
         TypeId::U128_ARRAY as u32,
     ]
     .contains(&type_id)

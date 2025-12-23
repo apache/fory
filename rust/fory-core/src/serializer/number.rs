@@ -99,3 +99,10 @@ impl_num_serializer!(
 );
 impl_num_serializer!(f32, Writer::write_f32, Reader::read_f32, TypeId::FLOAT32);
 impl_num_serializer!(f64, Writer::write_f64, Reader::read_f64, TypeId::FLOAT64);
+impl_num_serializer!(i128, Writer::write_i128, Reader::read_i128, TypeId::INT128);
+impl_num_serializer!(
+    isize,
+    Writer::write_isize,
+    Reader::read_isize,
+    TypeId::ISIZE
+);

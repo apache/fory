@@ -547,8 +547,8 @@ impl TypeMeta {
                 TypeId::U16 => 2,
                 TypeId::U32 => 4,
                 TypeId::U64 => 8,
-                TypeId::USIZE => 8,
                 TypeId::U128 => 16,
+                TypeId::INT128 => 16,
                 _ => unreachable!(),
             }
         }

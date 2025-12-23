@@ -176,7 +176,13 @@ impl<'a> Writer<'a> {
 
     #[inline(always)]
     pub fn write_usize(&mut self, value: usize) {
-        self.write_u64(value as u64);
+        const SIZE: usize = std::mem::size_of::<usize>();
+        match SIZE {
+            2 => self.write_u16(value as u16),
+            4 => self.write_varuint32(value as u32),
+            8 => self.write_varuint64(value as u64),
+            _ => unreachable!("unsupported usize size"),
+        }
     }
 
     #[inline(always)]
@@ -189,6 +195,22 @@ impl<'a> Writer<'a> {
         #[cfg(target_endian = "big")]
         {
             self.bf.extend_from_slice(&value.to_le_bytes());
+        }
+    }
+
+    #[inline(always)]
+    pub fn write_i128(&mut self, value: i128) {
+        self.write_u128(value as u128);
+    }
+
+    #[inline(always)]
+    pub fn write_isize(&mut self, value: isize) {
+        const SIZE: usize = std::mem::size_of::<isize>();
+        match SIZE {
+            2 => self.write_i16(value as i16),
+            4 => self.write_varint32(value as i32),
+            8 => self.write_varint64(value as i64),
+            _ => unreachable!("unsupported isize size"),
         }
     }
 
@@ -533,7 +555,13 @@ impl<'a> Reader<'a> {
 
     #[inline(always)]
     pub fn read_usize(&mut self) -> Result<usize, Error> {
-        Ok(self.read_u64()? as usize)
+        const SIZE: usize = std::mem::size_of::<usize>();
+        match SIZE {
+            2 => Ok(self.read_u16()? as usize),
+            4 => Ok(self.read_varuint32()? as usize),
+            8 => Ok(self.read_varuint64()? as usize),
+            _ => unreachable!("unsupported usize size"),
+        }
     }
 
     #[inline(always)]
@@ -542,6 +570,22 @@ impl<'a> Reader<'a> {
         let result = LittleEndian::read_u128(slice);
         self.cursor += 16;
         Ok(result)
+    }
+
+    #[inline(always)]
+    pub fn read_i128(&mut self) -> Result<i128, Error> {
+        Ok(self.read_u128()? as i128)
+    }
+
+    #[inline(always)]
+    pub fn read_isize(&mut self) -> Result<isize, Error> {
+        const SIZE: usize = std::mem::size_of::<isize>();
+        match SIZE {
+            2 => Ok(self.read_i16()? as isize),
+            4 => Ok(self.read_varint32()? as isize),
+            8 => Ok(self.read_varint64()? as isize),
+            _ => unreachable!("unsupported isize size"),
+        }
     }
 
     #[inline(always)]

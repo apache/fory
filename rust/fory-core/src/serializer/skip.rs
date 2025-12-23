@@ -520,9 +520,6 @@ fn skip_value(
         types::U64 => {
             <u64 as Serializer>::fory_read_data(context)?;
         }
-        types::USIZE => {
-            <usize as Serializer>::fory_read_data(context)?;
-        }
         types::U128 => {
             <u128 as Serializer>::fory_read_data(context)?;
         }
@@ -534,9 +531,6 @@ fn skip_value(
         }
         types::U64_ARRAY => {
             <Vec<u64> as Serializer>::fory_read_data(context)?;
-        }
-        types::USIZE_ARRAY => {
-            <Vec<usize> as Serializer>::fory_read_data(context)?;
         }
         types::U128_ARRAY => {
             <Vec<u128> as Serializer>::fory_read_data(context)?;

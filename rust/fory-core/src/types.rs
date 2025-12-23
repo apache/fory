@@ -84,19 +84,29 @@ pub enum TypeId {
     U8 = 64,
     U16 = 65,
     U32 = 66,
-    U64 = 67,
-    USIZE = 68,
-    U128 = 69,
-    VAR_U32 = 70,
-    VAR_U64 = 71,
-    SLI_U64 = 72,
-    U16_ARRAY = 73,
-    U32_ARRAY = 74,
-    U64_ARRAY = 75,
-    USIZE_ARRAY = 76,
-    U128_ARRAY = 77,
+    VAR_U32 = 67,
+    U64 = 68,
+    VAR_U64 = 69,
+    SLI_U64 = 70,
+    U128 = 71,
+    INT128 = 72,
+    // USIZE/ISIZE must have their own TypeId.
+    // Although usize and u64 have the same size on 64-bit systems, they are
+    // different Rust types.
+    // When deserializing `Box<dyn Any>`, we need to create the exact type.
+    // If we used U64's TypeId for usize, deserialization would create a u64 value,
+    // and `result.downcast_ref::<usize>()` would return None.
+    USIZE = 73,
+    ISIZE = 74,
+    U16_ARRAY = 75,
+    U32_ARRAY = 76,
+    U64_ARRAY = 77,
+    U128_ARRAY = 78,
+    INT128_ARRAY = 79,
+    USIZE_ARRAY = 80,
+    ISIZE_ARRAY = 81,
     // Bound value for range checks (types with id >= BOUND are not internal types).
-    BOUND = 78,
+    BOUND = 82,
 }
 
 pub const BOOL: u32 = TypeId::BOOL as u32;
@@ -107,6 +117,7 @@ pub const VAR_INT32: u32 = TypeId::VAR_INT32 as u32;
 pub const INT64: u32 = TypeId::INT64 as u32;
 pub const VAR_INT64: u32 = TypeId::VAR_INT64 as u32;
 pub const SLI_INT64: u32 = TypeId::SLI_INT64 as u32;
+pub const INT128: u32 = TypeId::INT128 as u32;
 pub const FLOAT16: u32 = TypeId::FLOAT16 as u32;
 pub const FLOAT32: u32 = TypeId::FLOAT32 as u32;
 pub const FLOAT64: u32 = TypeId::FLOAT64 as u32;
@@ -140,7 +151,6 @@ pub const U8: u32 = TypeId::U8 as u32;
 pub const U16: u32 = TypeId::U16 as u32;
 pub const U32: u32 = TypeId::U32 as u32;
 pub const U64: u32 = TypeId::U64 as u32;
-pub const USIZE: u32 = TypeId::USIZE as u32;
 pub const U128: u32 = TypeId::U128 as u32;
 pub const VAR_U32: u32 = TypeId::VAR_U32 as u32;
 pub const VAR_U64: u32 = TypeId::VAR_U64 as u32;
@@ -148,8 +158,12 @@ pub const SLI_U64: u32 = TypeId::SLI_U64 as u32;
 pub const U16_ARRAY: u32 = TypeId::U16_ARRAY as u32;
 pub const U32_ARRAY: u32 = TypeId::U32_ARRAY as u32;
 pub const U64_ARRAY: u32 = TypeId::U64_ARRAY as u32;
-pub const USIZE_ARRAY: u32 = TypeId::USIZE_ARRAY as u32;
 pub const U128_ARRAY: u32 = TypeId::U128_ARRAY as u32;
+pub const INT128_ARRAY: u32 = TypeId::INT128_ARRAY as u32;
+pub const USIZE: u32 = TypeId::USIZE as u32;
+pub const ISIZE: u32 = TypeId::ISIZE as u32;
+pub const USIZE_ARRAY: u32 = TypeId::USIZE_ARRAY as u32;
+pub const ISIZE_ARRAY: u32 = TypeId::ISIZE_ARRAY as u32;
 pub const UNKNOWN: u32 = TypeId::UNKNOWN as u32;
 pub const BOUND: u32 = TypeId::BOUND as u32;
 
@@ -191,16 +205,16 @@ pub static BASIC_TYPES: [TypeId; 29] = [
     TypeId::U16,
     TypeId::U32,
     TypeId::U64,
-    TypeId::USIZE,
     TypeId::U128,
     TypeId::U16_ARRAY,
     TypeId::U32_ARRAY,
     TypeId::U64_ARRAY,
-    TypeId::USIZE_ARRAY,
     TypeId::U128_ARRAY,
+    TypeId::INT128,
+    TypeId::INT128_ARRAY,
 ];
 
-pub static PRIMITIVE_TYPES: [u32; 13] = [
+pub static PRIMITIVE_TYPES: [u32; 12] = [
     TypeId::BOOL as u32,
     TypeId::INT8 as u32,
     TypeId::INT16 as u32,
@@ -212,7 +226,6 @@ pub static PRIMITIVE_TYPES: [u32; 13] = [
     TypeId::U16 as u32,
     TypeId::U32 as u32,
     TypeId::U64 as u32,
-    TypeId::USIZE as u32,
     TypeId::U128 as u32,
 ];
 
@@ -228,16 +241,17 @@ pub static PRIMITIVE_ARRAY_TYPES: [u32; 13] = [
     TypeId::U16_ARRAY as u32,
     TypeId::U32_ARRAY as u32,
     TypeId::U64_ARRAY as u32,
-    TypeId::USIZE_ARRAY as u32,
     TypeId::U128_ARRAY as u32,
+    TypeId::INT128_ARRAY as u32,
 ];
 
-pub static BASIC_TYPE_NAMES: [&str; 16] = [
+pub static BASIC_TYPE_NAMES: [&str; 18] = [
     "bool",
     "i8",
     "i16",
     "i32",
     "i64",
+    "i128",
     "f32",
     "f64",
     "String",
@@ -247,8 +261,9 @@ pub static BASIC_TYPE_NAMES: [&str; 16] = [
     "u16",
     "u32",
     "u64",
-    "usize",
     "u128",
+    "usize",
+    "isize",
 ];
 
 pub static CONTAINER_TYPES: [TypeId; 3] = [TypeId::LIST, TypeId::SET, TypeId::MAP];
@@ -262,13 +277,15 @@ pub static PRIMITIVE_ARRAY_TYPE_MAP: &[(&str, u32, &str)] = &[
     ("i16", TypeId::INT16_ARRAY as u32, "Vec<i16>"),
     ("i32", TypeId::INT32_ARRAY as u32, "Vec<i32>"),
     ("i64", TypeId::INT64_ARRAY as u32, "Vec<i64>"),
+    ("i128", TypeId::INT128_ARRAY as u32, "Vec<i128>"),
     ("f32", TypeId::FLOAT32_ARRAY as u32, "Vec<f32>"),
     ("f64", TypeId::FLOAT64_ARRAY as u32, "Vec<f64>"),
     ("u16", TypeId::U16_ARRAY as u32, "Vec<u16>"),
     ("u32", TypeId::U32_ARRAY as u32, "Vec<u32>"),
     ("u64", TypeId::U64_ARRAY as u32, "Vec<u64>"),
-    ("usize", TypeId::USIZE_ARRAY as u32, "Vec<usize>"),
     ("u128", TypeId::U128_ARRAY as u32, "Vec<u128>"),
+    ("usize", TypeId::USIZE_ARRAY as u32, "Vec<usize>"),
+    ("isize", TypeId::ISIZE_ARRAY as u32, "Vec<isize>"),
 ];
 
 /// Keep as const fn for compile time evaluation or constant folding
@@ -281,14 +298,16 @@ pub const fn is_primitive_type_id(type_id: TypeId) -> bool {
             | TypeId::INT16
             | TypeId::INT32
             | TypeId::INT64
+            | TypeId::INT128
             | TypeId::FLOAT32
             | TypeId::FLOAT64
             | TypeId::U8
             | TypeId::U16
             | TypeId::U32
             | TypeId::U64
-            | TypeId::USIZE
             | TypeId::U128
+            | TypeId::USIZE
+            | TypeId::ISIZE
     )
 }
 
@@ -465,17 +484,21 @@ pub fn format_type_id(type_id: u32) -> String {
         64 => "U8",
         65 => "U16",
         66 => "U32",
-        67 => "U64",
-        68 => "USIZE",
-        69 => "U128",
-        70 => "VAR_U32",
-        71 => "VAR_U64",
-        72 => "SLI_U64",
-        73 => "U16_ARRAY",
-        74 => "U32_ARRAY",
-        75 => "U64_ARRAY",
-        76 => "USIZE_ARRAY",
-        77 => "U128_ARRAY",
+        67 => "VAR_U32",
+        68 => "U64",
+        69 => "VAR_U64",
+        70 => "SLI_U64",
+        71 => "U128",
+        72 => "INT128",
+        73 => "USIZE",
+        74 => "ISIZE",
+        75 => "U16_ARRAY",
+        76 => "U32_ARRAY",
+        77 => "U64_ARRAY",
+        78 => "U128_ARRAY",
+        79 => "INT128_ARRAY",
+        80 => "USIZE_ARRAY",
+        81 => "ISIZE_ARRAY",
         _ => "UNKNOWN_TYPE",
     };
 
