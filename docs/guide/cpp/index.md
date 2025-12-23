@@ -52,7 +52,9 @@ project(my_project LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
+if(MSVC)
+    add_compile_options(/Zc:preprocessor)
+endif()
 include(FetchContent)
 FetchContent_Declare(
     fory
