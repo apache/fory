@@ -63,6 +63,11 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
     let type_id = context.reader.read_varuint32()?;
     let internal_id = type_id & 0xff;
 
+    // NONE type has no data - return early
+    if internal_id == types::NONE {
+        return Ok(());
+    }
+
     // For struct-like types, also read meta_index to get type_info
     // This is critical for polymorphic collections where elements are struct types.
     let (field_type, type_info_opt) = match internal_id {
@@ -557,6 +562,17 @@ fn skip_value(
         types::UNKNOWN => {
             // UNKNOWN (0) is used for polymorphic types in cross-language serialization
             return skip_any_value(context, false);
+        }
+        types::NONE => {
+            // NONE represents an empty/unit value with no data - nothing to skip
+            return Ok(());
+        }
+        types::UNION => {
+            // UNION format: index (varuint32) + value (xreadRef)
+            // Skip the index
+            let _ = context.reader.read_varuint32()?;
+            // Skip the value (which is written via xwriteRef)
+            return skip_any_value(context, true);
         }
 
         _ => {

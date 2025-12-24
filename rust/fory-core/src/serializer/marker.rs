@@ -44,20 +44,20 @@ impl<T: 'static> Serializer for PhantomData<T> {
 
     #[inline(always)]
     fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        // Use UNKNOWN to skip type registry lookup - PhantomData<T> has no runtime data
-        Ok(TypeId::UNKNOWN as u32)
+        // Use NONE - PhantomData<T> has no runtime data, skip can return early
+        Ok(TypeId::NONE as u32)
     }
 
     #[inline(always)]
     fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        // Use UNKNOWN to skip type registry lookup - PhantomData<T> has no runtime data
-        Ok(TypeId::UNKNOWN as u32)
+        // Use NONE - PhantomData<T> has no runtime data, skip can return early
+        Ok(TypeId::NONE as u32)
     }
 
     #[inline(always)]
     fn fory_static_type_id() -> TypeId {
-        // Use UNKNOWN to skip type registry lookup - PhantomData<T> has no runtime data
-        TypeId::UNKNOWN
+        // Use NONE - PhantomData<T> has no runtime data, skip can return early
+        TypeId::NONE
     }
 
     #[inline(always)]

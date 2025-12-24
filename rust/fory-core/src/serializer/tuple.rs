@@ -24,7 +24,7 @@ use crate::serializer::{ForyDefault, Serializer};
 use crate::types::TypeId;
 use std::mem;
 
-// Unit type () implementation
+// Unit type () implementation - represents an empty/unit value with no data
 impl Serializer for () {
     #[inline(always)]
     fn fory_write_data(&self, _context: &mut WriteContext) -> Result<(), Error> {
@@ -45,17 +45,20 @@ impl Serializer for () {
 
     #[inline(always)]
     fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::STRUCT as u32)
+        // Use NONE - unit type has no runtime data, skip can return early
+        Ok(TypeId::NONE as u32)
     }
 
     #[inline(always)]
     fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::STRUCT as u32)
+        // Use NONE - unit type has no runtime data, skip can return early
+        Ok(TypeId::NONE as u32)
     }
 
     #[inline(always)]
     fn fory_static_type_id() -> TypeId {
-        TypeId::STRUCT
+        // Use NONE - unit type has no runtime data, skip can return early
+        TypeId::NONE
     }
 
     #[inline(always)]

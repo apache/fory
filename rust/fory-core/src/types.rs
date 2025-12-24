@@ -81,6 +81,10 @@ pub enum TypeId {
     FLOAT16_ARRAY = 35,
     FLOAT32_ARRAY = 36,
     FLOAT64_ARRAY = 37,
+    // A tagged union type that can hold one of several alternative types.
+    UNION = 38,
+    // Represents an empty/unit value with no data.
+    NONE = 39,
     U8 = 64,
     U16 = 65,
     U32 = 66,
@@ -147,6 +151,8 @@ pub const INT64_ARRAY: u32 = TypeId::INT64_ARRAY as u32;
 pub const FLOAT16_ARRAY: u32 = TypeId::FLOAT16_ARRAY as u32;
 pub const FLOAT32_ARRAY: u32 = TypeId::FLOAT32_ARRAY as u32;
 pub const FLOAT64_ARRAY: u32 = TypeId::FLOAT64_ARRAY as u32;
+pub const UNION: u32 = TypeId::UNION as u32;
+pub const NONE: u32 = TypeId::NONE as u32;
 pub const U8: u32 = TypeId::U8 as u32;
 pub const U16: u32 = TypeId::U16 as u32;
 pub const U32: u32 = TypeId::U32 as u32;
@@ -347,10 +353,11 @@ pub(crate) const fn need_to_write_type_for_field(type_id: TypeId) -> bool {
 
 /// Keep as const fn for compile time evaluation or constant folding
 #[inline(always)]
-pub(crate) const fn is_user_type(type_id: u32) -> bool {
+pub const fn is_user_type(type_id: u32) -> bool {
     matches!(
         type_id,
         ENUM | NAMED_ENUM
+            | UNION
             | STRUCT
             | COMPATIBLE_STRUCT
             | NAMED_STRUCT
@@ -481,6 +488,8 @@ pub fn format_type_id(type_id: u32) -> String {
         35 => "FLOAT16_ARRAY",
         36 => "FLOAT32_ARRAY",
         37 => "FLOAT64_ARRAY",
+        38 => "UNION",
+        39 => "NONE",
         64 => "U8",
         65 => "U16",
         66 => "U32",

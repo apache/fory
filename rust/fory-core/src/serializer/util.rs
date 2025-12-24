@@ -22,7 +22,7 @@ use crate::serializer::Serializer;
 use crate::types::TypeId;
 use crate::types::{
     is_user_type, BOOL, ENUM, FLOAT32, FLOAT64, INT128, INT16, INT32, INT64, INT8, NAMED_ENUM,
-    U128, U16, U32, U64, U8,
+    NONE, U128, U16, U32, U64, U8,
 };
 
 #[inline(always)]
@@ -68,6 +68,7 @@ pub const fn field_need_write_ref_into(type_id: u32, nullable: bool) -> bool {
         return true;
     }
     let internal_type_id = type_id & 0xff;
+    // NONE type has no data, so no ref tracking needed
     !matches!(
         internal_type_id,
         BOOL | INT8
@@ -82,6 +83,7 @@ pub const fn field_need_write_ref_into(type_id: u32, nullable: bool) -> bool {
             | U32
             | U64
             | U128
+            | NONE
     )
 }
 

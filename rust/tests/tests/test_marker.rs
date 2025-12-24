@@ -15,13 +15,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Tests for marker types like `PhantomData<T>`.
+//! Tests for marker types like `PhantomData<T>` and TypeId constants.
 //!
 //! `PhantomData<T>` is a zero-sized marker type used for type-level information
 //! without any runtime data. These tests verify that structs containing
 //! `PhantomData<T>` can be serialized correctly.
+//!
+//! Also tests `UNION` and `NONE` TypeId constants defined in xlang spec.
 
 use fory_core::fory::Fory;
+use fory_core::serializer::Serializer;
+use fory_core::types::TypeId;
 use fory_derive::ForyObject;
 use std::marker::PhantomData;
 
@@ -104,4 +108,45 @@ fn test_nested_struct_with_phantom_data() {
     let bytes = fory.serialize(&value).unwrap();
     let result: OuterWithPhantom = fory.deserialize(&bytes).unwrap();
     assert_eq!(result, value);
+}
+
+// ============================================================================
+// TypeId Tests for UNION and NONE
+// ============================================================================
+
+/// Test that UNION TypeId matches xlang spec (38)
+#[test]
+fn test_union_type_id() {
+    assert_eq!(TypeId::UNION as i16, 38);
+    assert_eq!(fory_core::types::UNION, 38);
+}
+
+/// Test that NONE TypeId matches xlang spec (39)
+#[test]
+fn test_none_type_id() {
+    assert_eq!(TypeId::NONE as i16, 39);
+    assert_eq!(fory_core::types::NONE, 39);
+}
+
+/// Test that PhantomData uses NONE TypeId (no runtime data)
+#[test]
+fn test_phantom_data_uses_none_type_id() {
+    assert_eq!(
+        <PhantomData<i32> as Serializer>::fory_static_type_id(),
+        TypeId::NONE
+    );
+    assert_eq!(
+        <PhantomData<String> as Serializer>::fory_static_type_id(),
+        TypeId::NONE
+    );
+    assert_eq!(
+        <PhantomData<Vec<u8>> as Serializer>::fory_static_type_id(),
+        TypeId::NONE
+    );
+}
+
+/// Test that unit type () uses NONE TypeId (empty/unit value with no data)
+#[test]
+fn test_unit_type_uses_none_type_id() {
+    assert_eq!(<() as Serializer>::fory_static_type_id(), TypeId::NONE);
 }
