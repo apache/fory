@@ -122,11 +122,11 @@ pub fn derive_serializer(
         syn::Data::Enum(e) => (
             derive_enum::gen_write(e),
             derive_enum::gen_write_data(e),
-            derive_enum::gen_write_type_info(),
+            derive_enum::gen_write_type_info(e),
             derive_enum::gen_read(e),
             derive_enum::gen_read_with_type_info(e),
             derive_enum::gen_read_data(e),
-            derive_enum::gen_read_type_info(),
+            derive_enum::gen_read_type_info(e),
             derive_enum::gen_reserved_space(),
             quote! { fory_core::TypeId::ENUM },
         ),

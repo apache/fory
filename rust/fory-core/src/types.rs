@@ -81,6 +81,10 @@ pub enum TypeId {
     FLOAT16_ARRAY = 35,
     FLOAT32_ARRAY = 36,
     FLOAT64_ARRAY = 37,
+    // Tagged union type (one of several alternatives)
+    UNION = 38,
+    // Empty/unit type (no data)
+    NONE = 39,
     U8 = 64,
     U16 = 65,
     U32 = 66,
@@ -147,6 +151,8 @@ pub const INT64_ARRAY: u32 = TypeId::INT64_ARRAY as u32;
 pub const FLOAT16_ARRAY: u32 = TypeId::FLOAT16_ARRAY as u32;
 pub const FLOAT32_ARRAY: u32 = TypeId::FLOAT32_ARRAY as u32;
 pub const FLOAT64_ARRAY: u32 = TypeId::FLOAT64_ARRAY as u32;
+pub const UNION: u32 = TypeId::UNION as u32;
+pub const NONE: u32 = TypeId::NONE as u32;
 pub const U8: u32 = TypeId::U8 as u32;
 pub const U16: u32 = TypeId::U16 as u32;
 pub const U32: u32 = TypeId::U32 as u32;
