@@ -319,11 +319,11 @@ func (s sliceDynSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, valu
 				ctx.SetError(FromError(refErr))
 				return
 			}
-			if int8(refID) == NullFlag {
+			if refID == int32(NullFlag) {
 				continue
 			}
 			// Handle RefFlag - element references a previously read object
-			if int8(refID) < NotNullValueFlag {
+			if refID < int32(NotNullValueFlag) {
 				obj := ctx.RefResolver().GetReadObject(refID)
 				if obj.IsValid() {
 					value.Index(i).Set(obj)
@@ -379,10 +379,10 @@ func (s sliceDynSerializer) readDifferentTypes(
 				ctx.SetError(FromError(refErr))
 				return
 			}
-			if int8(refID) == NullFlag {
+			if refID == int32(NullFlag) {
 				continue
 			}
-			if int8(refID) < NotNullValueFlag {
+			if refID < int32(NotNullValueFlag) {
 				// Reference to existing object
 				obj := ctx.RefResolver().GetReadObject(refID)
 				if obj.IsValid() {

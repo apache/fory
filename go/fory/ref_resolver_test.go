@@ -18,6 +18,7 @@
 package fory
 
 import (
+	"fmt"
 	"github.com/stretchr/testify/require"
 	"reflect"
 	"testing"
@@ -118,4 +119,67 @@ func same(x, y interface{}) bool {
 		}
 	}
 	return unsafe.Pointer(reflect.ValueOf(x).Pointer()) == unsafe.Pointer(reflect.ValueOf(y).Pointer())
+}
+
+// TestRefTrackingLargeCount tests that reference tracking works correctly
+// when the number of tracked objects exceeds 127 (the int8 overflow boundary).
+// This is a regression test for https://github.com/apache/fory/issues/3085
+func TestRefTrackingLargeCount(t *testing.T) {
+	type Inner struct {
+		Name     string
+		Operator string
+		Version  string
+	}
+
+	type Outer struct {
+		Id    int32
+		Name  string
+		Items []Inner
+	}
+
+	tests := []struct {
+		name  string
+		count int
+	}{
+		{"127 items (boundary)", 127},
+		{"128 items (overflow boundary)", 128},
+		{"200 items (well over boundary)", 200},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := New(WithRefTracking(true))
+
+			err := f.RegisterByName(&Inner{}, fmt.Sprintf("RefTest_Inner_%d", tt.count))
+			require.NoError(t, err)
+			err = f.RegisterByName(&Outer{}, fmt.Sprintf("RefTest_Outer_%d", tt.count))
+			require.NoError(t, err)
+
+			original := make([]Outer, tt.count)
+			for i := 0; i < tt.count; i++ {
+				original[i] = Outer{
+					Id:   int32(i),
+					Name: fmt.Sprintf("item%d", i),
+					Items: []Inner{
+						{Name: "dep1", Operator: ">=", Version: "1.0.0"},
+					},
+				}
+			}
+
+			data, err := f.Marshal(original)
+			require.NoError(t, err)
+
+			var loaded []Outer
+			err = f.Unmarshal(data, &loaded)
+			require.NoError(t, err, "Unmarshal should succeed with %d items", tt.count)
+			require.Equal(t, len(original), len(loaded))
+
+			// Verify data integrity
+			for i := 0; i < tt.count; i++ {
+				require.Equal(t, original[i].Id, loaded[i].Id)
+				require.Equal(t, original[i].Name, loaded[i].Name)
+				require.Equal(t, len(original[i].Items), len(loaded[i].Items))
+			}
+		})
+	}
 }

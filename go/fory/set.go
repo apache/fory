@@ -290,7 +290,7 @@ func (s setSerializer) readSameType(ctx *ReadContext, buf *ByteBuffer, value ref
 		if trackRefs {
 			// Handle reference tracking if enabled
 			refID, _ = ctx.RefResolver().TryPreserveRefId(buf)
-			if int8(refID) < NotNullValueFlag {
+			if refID < int32(NotNullValueFlag) {
 				// Use existing reference if available
 				elem := ctx.RefResolver().GetReadObject(refID)
 				value.SetMapIndex(reflect.ValueOf(elem), reflect.ValueOf(true))
@@ -328,11 +328,11 @@ func (s setSerializer) readDifferentTypes(ctx *ReadContext, buf *ByteBuffer, val
 				ctx.SetError(FromError(refErr))
 				return
 			}
-			if int8(refID) == NullFlag {
+			if refID == int32(NullFlag) {
 				// Null element - skip for sets
 				continue
 			}
-			if int8(refID) < NotNullValueFlag {
+			if refID < int32(NotNullValueFlag) {
 				// Use existing reference if available
 				elem := ctx.RefResolver().GetReadObject(refID)
 				value.SetMapIndex(elem, reflect.ValueOf(true))
@@ -412,7 +412,7 @@ func (s setSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, ha
 			ctx.SetError(FromError(refErr))
 			return
 		}
-		if int8(refID) < NotNullValueFlag {
+		if refID < int32(NotNullValueFlag) {
 			// Reference found
 			obj := ctx.RefResolver().GetReadObject(refID)
 			if obj.IsValid() {

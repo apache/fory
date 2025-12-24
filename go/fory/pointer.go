@@ -103,7 +103,7 @@ func (s *ptrToValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 			ctx.SetError(FromError(refErr))
 			return
 		}
-		if int8(refID) < NotNullValueFlag {
+		if refID < int32(NotNullValueFlag) {
 			// Reference found
 			obj := ctx.RefResolver().GetReadObject(refID)
 			if obj.IsValid() {
@@ -210,7 +210,7 @@ func (s *ptrToInterfaceSerializer) Read(ctx *ReadContext, refMode RefMode, readT
 			ctx.SetError(FromError(refErr))
 			return
 		}
-		if int8(refID) < NotNullValueFlag {
+		if refID < int32(NotNullValueFlag) {
 			// Reference found
 			obj := ctx.RefResolver().GetReadObject(refID)
 			if obj.IsValid() {

@@ -551,7 +551,7 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 			ctx.SetError(FromError(refErr))
 			return
 		}
-		if int8(refID) < NotNullValueFlag {
+		if refID < int32(NotNullValueFlag) {
 			// Reference found
 			obj := ctx.RefResolver().GetReadObject(refID)
 			if obj.IsValid() {
@@ -2080,7 +2080,7 @@ func (s *skipStructSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 			ctx.SetError(FromError(refErr))
 			return
 		}
-		if int8(refID) < NotNullValueFlag {
+		if refID < int32(NotNullValueFlag) {
 			// Reference found, nothing to skip
 			return
 		}

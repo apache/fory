@@ -214,7 +214,7 @@ func (s *extensionSerializerAdapter) Read(ctx *ReadContext, refMode RefMode, rea
 			ctx.SetError(FromError(refErr))
 			return
 		}
-		if int8(refID) < NotNullValueFlag {
+		if refID < int32(NotNullValueFlag) {
 			obj := ctx.RefResolver().GetReadObject(refID)
 			if obj.IsValid() {
 				value.Set(obj)

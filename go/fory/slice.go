@@ -73,7 +73,7 @@ func readSliceRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value
 			ctx.SetError(FromError(refErr))
 			return true
 		}
-		if int8(refID) < NotNullValueFlag {
+		if refID < int32(NotNullValueFlag) {
 			obj := ctx.RefResolver().GetReadObject(refID)
 			if obj.IsValid() {
 				value.Set(obj)

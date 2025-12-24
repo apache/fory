@@ -82,7 +82,7 @@ func readMapRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value r
 			ctx.SetError(FromError(refErr))
 			return false
 		}
-		if int8(refID) < NotNullValueFlag {
+		if refID < int32(NotNullValueFlag) {
 			obj := ctx.RefResolver().GetReadObject(refID)
 			if obj.IsValid() {
 				value.Set(obj)
@@ -375,7 +375,7 @@ func (s mapSerializer) ReadData(ctx *ReadContext, type_ reflect.Type, value refl
 							ctx.SetError(FromError(err))
 							return
 						}
-						if int8(refID) < NotNullValueFlag {
+						if refID < int32(NotNullValueFlag) {
 							// Reference to existing object
 							obj := refResolver.GetReadObject(refID)
 							if obj.IsValid() {
@@ -466,7 +466,7 @@ func (s mapSerializer) ReadData(ctx *ReadContext, type_ reflect.Type, value refl
 							ctx.SetError(FromError(err))
 							return
 						}
-						if int8(refID) < NotNullValueFlag {
+						if refID < int32(NotNullValueFlag) {
 							// Reference to existing object
 							obj := refResolver.GetReadObject(refID)
 							if obj.IsValid() {

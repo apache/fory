@@ -569,7 +569,7 @@ func (c *ReadContext) ReadValue(value reflect.Value) {
 			c.SetError(FromError(err))
 			return
 		}
-		if int8(refID) < NotNullValueFlag {
+		if refID < int32(NotNullValueFlag) {
 			// Reference found
 			obj := c.RefResolver().GetReadObject(refID)
 			if obj.IsValid() {
@@ -625,7 +625,7 @@ func (c *ReadContext) ReadValue(value reflect.Value) {
 
 		// For named structs, register the pointer BEFORE reading data
 		// This is critical for circular references to work correctly
-		if isNamedStruct && int8(refID) >= NotNullValueFlag {
+		if isNamedStruct && refID >= int32(NotNullValueFlag) {
 			c.RefResolver().SetReadObject(refID, newValue)
 		}
 
@@ -643,7 +643,7 @@ func (c *ReadContext) ReadValue(value reflect.Value) {
 		}
 
 		// Register reference after reading data for non-struct types
-		if !isNamedStruct && int8(refID) >= NotNullValueFlag {
+		if !isNamedStruct && refID >= int32(NotNullValueFlag) {
 			c.RefResolver().SetReadObject(refID, newValue)
 		}
 
@@ -701,7 +701,7 @@ func (c *ReadContext) ReadStruct(value reflect.Value) {
 	}
 
 	// Handle null
-	if int8(refID) == NullFlag {
+	if refID == int32(NullFlag) {
 		if isPtr {
 			value.Set(reflect.Zero(valueType))
 		}
@@ -709,7 +709,7 @@ func (c *ReadContext) ReadStruct(value reflect.Value) {
 	}
 
 	// Handle reference to existing object
-	if int8(refID) < NotNullValueFlag {
+	if refID < int32(NotNullValueFlag) {
 		obj := c.RefResolver().GetReadObject(refID)
 		if obj.IsValid() {
 			value.Set(obj)
@@ -771,7 +771,7 @@ func (c *ReadContext) readArrayValue(target reflect.Value) {
 		c.SetError(FromError(err))
 		return
 	}
-	if int8(refID) < NotNullValueFlag {
+	if refID < int32(NotNullValueFlag) {
 		// Reference to existing object
 		obj := c.RefResolver().GetReadObject(refID)
 		if obj.IsValid() {
@@ -812,7 +812,7 @@ func (c *ReadContext) readArrayValue(target reflect.Value) {
 	reflect.Copy(target, tempSlice)
 
 	// Register for circular refs
-	if int8(refID) >= NotNullValueFlag {
+	if refID >= int32(NotNullValueFlag) {
 		c.RefResolver().SetReadObject(refID, target)
 	}
 }
