@@ -16,7 +16,7 @@
 // under the License.
 
 use crate::object::{derive_enum, misc, read, write};
-use crate::util::sorted_fields;
+use crate::util::{extract_fields, source_fields};
 use crate::ForyAttrs;
 use proc_macro::TokenStream;
 use quote::quote;
@@ -73,13 +73,14 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
         enum_variant_meta_types,
     ) = match &ast.data {
         syn::Data::Struct(s) => {
-            let fields = sorted_fields(&s.fields);
+            let source_fields = source_fields(&s.fields);
+            let fields = extract_fields(&source_fields);
             (
                 misc::gen_actual_type_id(),
                 misc::gen_get_sorted_field_names(&fields),
-                misc::gen_field_fields_info(&fields),
+                misc::gen_field_fields_info(&source_fields),
                 quote! { Ok(Vec::new()) }, // No variants for structs
-                read::gen_read_compatible(&fields),
+                read::gen_read_compatible(&source_fields),
                 vec![], // No variant meta types for structs
             )
         }
@@ -116,14 +117,15 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
         static_type_id_ts,
     ) = match &ast.data {
         syn::Data::Struct(s) => {
-            let fields = sorted_fields(&s.fields);
+            let source_fields = source_fields(&s.fields);
+            let fields = extract_fields(&source_fields);
             (
                 write::gen_write(),
-                write::gen_write_data(&fields),
+                write::gen_write_data(&source_fields),
                 write::gen_write_type_info(),
                 read::gen_read(name),
                 read::gen_read_with_type_info(),
-                read::gen_read_data(&fields),
+                read::gen_read_data(&source_fields),
                 read::gen_read_type_info(),
                 write::gen_reserved_space(&fields),
                 quote! { fory_core::TypeId::STRUCT },
@@ -269,78 +271,60 @@ fn generate_default_impl(
 
     match &ast.data {
         Data::Struct(s) => {
-            let fields = sorted_fields(&s.fields);
-            let is_tuple_struct = super::util::is_tuple_struct(&fields);
+            let source_fields = source_fields(&s.fields);
+            let is_tuple_struct = source_fields
+                .first()
+                .map(|sf| sf.is_tuple_struct)
+                .unwrap_or(false);
 
             use super::util::{
                 classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
                 StructField,
             };
 
-            let field_inits: Vec<_> = fields
+            // Generate field initializations with original index for sorting
+            let mut indexed: Vec<_> = source_fields
                 .iter()
-                .map(|field| {
-                    let ident = &field.ident;
-                    let ty = &field.ty;
-
-                    match classify_trait_object_field(ty) {
+                .map(|sf| {
+                    let ty = &sf.field.ty;
+                    let value = match classify_trait_object_field(ty) {
                         StructField::RcDyn(trait_name) => {
                             let types = create_wrapper_types_rc(&trait_name);
                             let wrapper_ty = types.wrapper_ty;
                             let trait_ident = types.trait_ident;
-                            let value = quote! {
+                            quote! {
                                 {
                                     let wrapper = #wrapper_ty::default();
                                     std::rc::Rc::<dyn #trait_ident>::from(wrapper)
                                 }
-                            };
-                            if is_tuple_struct {
-                                value
-                            } else {
-                                quote! { #ident: #value }
                             }
                         }
                         StructField::ArcDyn(trait_name) => {
                             let types = create_wrapper_types_arc(&trait_name);
                             let wrapper_ty = types.wrapper_ty;
                             let trait_ident = types.trait_ident;
-                            let value = quote! {
+                            quote! {
                                 {
                                     let wrapper = #wrapper_ty::default();
                                     std::sync::Arc::<dyn #trait_ident>::from(wrapper)
                                 }
-                            };
-                            if is_tuple_struct {
-                                value
-                            } else {
-                                quote! { #ident: #value }
-                            }
-                        }
-                        StructField::Forward => {
-                            let value = quote! { <#ty as fory_core::ForyDefault>::fory_default() };
-                            if is_tuple_struct {
-                                value
-                            } else {
-                                quote! { #ident: #value }
                             }
                         }
                         _ => {
-                            let value = quote! { <#ty as fory_core::ForyDefault>::fory_default() };
-                            if is_tuple_struct {
-                                value
-                            } else {
-                                quote! { #ident: #value }
-                            }
+                            quote! { <#ty as fory_core::ForyDefault>::fory_default() }
                         }
-                    }
+                    };
+                    (sf.original_index, sf.field_init(value))
                 })
                 .collect();
 
-            let self_construction = if is_tuple_struct {
-                quote! { Self( #(#field_inits),* ) }
-            } else {
-                quote! { Self { #(#field_inits),* } }
-            };
+            // For tuple structs, sort by original index
+            if is_tuple_struct {
+                indexed.sort_by_key(|(idx, _)| *idx);
+            }
+
+            let field_inits: Vec<_> = indexed.into_iter().map(|(_, ts)| ts).collect();
+            let self_construction = crate::util::self_construction(is_tuple_struct, &field_inits);
 
             if should_generate_default {
                 // User requested Default generation via #[fory(generate_default)]

@@ -1019,6 +1019,19 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
 }
 
 pub(crate) fn get_sorted_field_names(fields: &[&Field]) -> Vec<String> {
+    // For tuple structs, preserve the original field order.
+    // Tuple struct field names are "0", "1", "2", etc., which are positional.
+    // Sorting would break schema evolution when adding fields in the middle
+    // (e.g., (f64, u8) -> (f64, u8, f64) would change sorted order).
+    if is_tuple_struct(fields) {
+        return fields
+            .iter()
+            .enumerate()
+            .map(|(idx, field)| get_field_name(field, idx))
+            .collect();
+    }
+
+    // For named structs, sort by type for optimal memory layout
     let (
         primitive_fields,
         nullable_primitive_fields,
@@ -1045,6 +1058,13 @@ pub(crate) fn get_filtered_fields_iter<'a>(
 ) -> impl Iterator<Item = &'a Field> {
     fields.iter().filter(|field| !is_skip_field(field)).copied()
 }
+
+pub(super) fn get_filtered_source_fields_iter<'a>(
+    source_fields: &'a [crate::util::SourceField<'a>],
+) -> impl Iterator<Item = &'a crate::util::SourceField<'a>> {
+    source_fields.iter().filter(|sf| !is_skip_field(sf.field))
+}
+
 pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
     let filterd_fields: Vec<&Field> = get_filtered_fields_iter(fields).collect();
     let sorted_names = get_sorted_field_names(&filterd_fields);

@@ -15,18 +15,19 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::util::sorted_fields;
+use crate::util::{extract_fields, source_fields};
 use proc_macro::TokenStream;
 use quote::quote;
 
 pub fn derive_row(ast: &syn::DeriveInput) -> TokenStream {
     let name = &ast.ident;
-    let fields = match &ast.data {
-        syn::Data::Struct(s) => sorted_fields(&s.fields),
+    let source_fields = match &ast.data {
+        syn::Data::Struct(s) => source_fields(&s.fields),
         _ => {
             panic!("only struct be supported")
         }
     };
+    let fields = extract_fields(&source_fields);
 
     let write_exprs = fields.iter().enumerate().map(|(index, field)| {
         let ty = &field.ty;

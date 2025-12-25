@@ -25,6 +25,7 @@ use super::util::{
     is_debug_enabled, is_direct_primitive_numeric_type, is_primitive_type, is_skip_field,
     should_skip_type_info_for_field, skip_ref_flag, StructField,
 };
+use crate::util::SourceField;
 
 /// Create a private variable name for a field during deserialization.
 /// For named fields: `_field_name`
@@ -41,17 +42,15 @@ fn need_declared_by_option(field: &Field) -> bool {
     type_name == "Option" || !is_primitive_type(type_name.as_str())
 }
 
-pub(crate) fn declare_var(fields: &[&Field]) -> Vec<TokenStream> {
-    fields
+pub(crate) fn declare_var(source_fields: &[SourceField<'_>]) -> Vec<TokenStream> {
+    source_fields
         .iter()
-        .enumerate()
-        .map(|(idx, field)| {
+        .map(|sf| {
+            let field = sf.field;
             let ty = &field.ty;
-            let var_name = create_private_field_name(field, idx);
+            let var_name = create_private_field_name(field, sf.original_index);
             match classify_trait_object_field(ty) {
-                StructField::BoxDyn
-                | StructField::RcDyn(_)
-                | StructField::ArcDyn(_) => {
+                StructField::BoxDyn | StructField::RcDyn(_) | StructField::ArcDyn(_) => {
                     quote! {
                         let mut #var_name: #ty = <#ty as fory_core::serializer::ForyDefault>::fory_default();
                     }
@@ -76,15 +75,18 @@ pub(crate) fn declare_var(fields: &[&Field]) -> Vec<TokenStream> {
         .collect()
 }
 
-pub(crate) fn assign_value(fields: &[&Field]) -> Vec<TokenStream> {
-    let is_tuple = super::util::is_tuple_struct(fields);
+pub(crate) fn assign_value(source_fields: &[SourceField<'_>]) -> Vec<TokenStream> {
+    let is_tuple = source_fields
+        .first()
+        .map(|sf| sf.is_tuple_struct)
+        .unwrap_or(false);
 
-    fields
+    // Generate field value expressions with original index for sorting
+    let mut indexed: Vec<_> = source_fields
         .iter()
-        .enumerate()
-        .map(|(idx, field)| {
-            let var_name = create_private_field_name(field, idx);
-            let value_expr = match classify_trait_object_field(&field.ty) {
+        .map(|sf| {
+            let var_name = create_private_field_name(sf.field, sf.original_index);
+            let value_expr = match classify_trait_object_field(&sf.field.ty) {
                 StructField::BoxDyn | StructField::RcDyn(_) | StructField::ArcDyn(_) => {
                     quote! { #var_name }
                 }
@@ -92,25 +94,24 @@ pub(crate) fn assign_value(fields: &[&Field]) -> Vec<TokenStream> {
                     quote! { #var_name.unwrap() }
                 }
                 _ => {
-                    if need_declared_by_option(field) {
-                        let ty = &field.ty;
+                    if need_declared_by_option(sf.field) {
+                        let ty = &sf.field.ty;
                         quote! { #var_name.unwrap_or_else(|| <#ty as fory_core::ForyDefault>::fory_default()) }
                     } else {
                         quote! { #var_name }
                     }
                 }
             };
-
-            if is_tuple {
-                // For tuple structs, just return the value
-                value_expr
-            } else {
-                // For named structs, include the field name
-                let name = &field.ident;
-                quote! { #name: #value_expr }
-            }
+            (sf.original_index, sf.field_init(value_expr))
         })
-        .collect()
+        .collect();
+
+    // For tuple structs, sort by original index to construct Self(field0, field1, ...) correctly
+    if is_tuple {
+        indexed.sort_by_key(|(idx, _)| *idx);
+    }
+
+    indexed.into_iter().map(|(_, ts)| ts).collect()
 }
 
 pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) -> TokenStream {
@@ -268,14 +269,12 @@ pub fn gen_read_type_info() -> TokenStream {
     }
 }
 
-fn get_fields_loop_ts(fields: &[&Field]) -> TokenStream {
-    let read_fields_ts: Vec<_> = fields
+fn get_source_fields_loop_ts(source_fields: &[SourceField<'_>]) -> TokenStream {
+    let read_fields_ts: Vec<_> = source_fields
         .iter()
-        .enumerate()
-        .map(|(idx, field)| {
-            let private_ident = create_private_field_name(field, idx);
-            let field_name = super::util::get_field_name(field, idx);
-            gen_read_field(field, &private_ident, &field_name)
+        .map(|sf| {
+            let private_ident = create_private_field_name(sf.field, sf.original_index);
+            gen_read_field(sf.field, &private_ident, &sf.field_name)
         })
         .collect();
     quote! {
@@ -283,38 +282,39 @@ fn get_fields_loop_ts(fields: &[&Field]) -> TokenStream {
     }
 }
 
-pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
-    let version_hash = compute_struct_version_hash(fields);
-    let sorted_read = if fields.is_empty() {
+pub fn gen_read_data(source_fields: &[SourceField<'_>]) -> TokenStream {
+    let fields: Vec<&Field> = source_fields.iter().map(|sf| sf.field).collect();
+    let version_hash = compute_struct_version_hash(&fields);
+    let read_fields = if source_fields.is_empty() {
         quote! {}
     } else {
-        let loop_ts = get_fields_loop_ts(fields);
+        let loop_ts = get_source_fields_loop_ts(source_fields);
         quote! {
             #loop_ts
         }
     };
 
-    let is_tuple = super::util::is_tuple_struct(fields);
-    let field_idents: Vec<_> = fields
+    let is_tuple = source_fields
+        .first()
+        .map(|sf| sf.is_tuple_struct)
+        .unwrap_or(false);
+
+    // Generate field initializations, sorted by original index for tuple structs
+    let mut indexed: Vec<_> = source_fields
         .iter()
-        .enumerate()
-        .map(|(idx, field)| {
-            let private_ident = create_private_field_name(field, idx);
-            if is_tuple {
-                // For tuple structs, just use the variable
-                quote! { #private_ident }
-            } else {
-                // For named structs, include the field name
-                let original_ident = &field.ident;
-                quote! { #original_ident: #private_ident }
-            }
+        .map(|sf| {
+            let private_ident = create_private_field_name(sf.field, sf.original_index);
+            let value = quote! { #private_ident };
+            (sf.original_index, sf.field_init(value))
         })
         .collect();
-    let self_construction = if is_tuple {
-        quote! { Ok(Self( #(#field_idents),* )) }
-    } else {
-        quote! { Ok(Self { #(#field_idents),* }) }
-    };
+
+    if is_tuple {
+        indexed.sort_by_key(|(idx, _)| *idx);
+    }
+
+    let field_inits: Vec<_> = indexed.into_iter().map(|(_, ts)| ts).collect();
+    let self_construction = crate::util::ok_self_construction(is_tuple, &field_inits);
 
     quote! {
         // Read and check version hash when class version checking is enabled
@@ -323,7 +323,7 @@ pub fn gen_read_data(fields: &[&Field]) -> TokenStream {
             let type_name = std::any::type_name::<Self>();
             fory_core::meta::TypeMeta::check_struct_version(read_version, #version_hash, type_name)?;
         }
-        #sorted_read
+        #read_fields
         #self_construction
     }
 }
@@ -593,28 +593,27 @@ pub fn gen_read_with_type_info() -> TokenStream {
     }
 }
 
-pub fn gen_read_compatible(fields: &[&Field]) -> TokenStream {
-    gen_read_compatible_with_construction(fields, None)
+pub fn gen_read_compatible(source_fields: &[SourceField<'_>]) -> TokenStream {
+    gen_read_compatible_with_construction(source_fields, None)
 }
 
 pub(crate) fn gen_read_compatible_with_construction(
-    fields: &[&Field],
+    source_fields: &[SourceField<'_>],
     variant_ident: Option<&Ident>,
 ) -> TokenStream {
-    let declare_ts: Vec<TokenStream> = declare_var(fields);
-    let assign_ts: Vec<TokenStream> = assign_value(fields);
+    let declare_ts: Vec<TokenStream> = declare_var(source_fields);
+    let assign_ts: Vec<TokenStream> = assign_value(source_fields);
 
-    let match_arms: Vec<TokenStream> = fields
+    let match_arms: Vec<TokenStream> = source_fields
         .iter()
         .enumerate()
-        .map(|(i, field)| {
-            let var_name = create_private_field_name(field, i);
-            let field_name = super::util::get_field_name(field, i);
+        .map(|(sorted_idx, sf)| {
+            let var_name = create_private_field_name(sf.field, sf.original_index);
             // Use sorted index for matching. The assign_field_ids function assigns
             // the sorted index to matched fields after lookup (by ID or name).
             // Fields that don't match or have type mismatches get field_id = -1.
-            let field_id = i as i16;
-            let body = gen_read_compatible_match_arm_body(field, &var_name, &field_name);
+            let field_id = sorted_idx as i16;
+            let body = gen_read_compatible_match_arm_body(sf.field, &var_name, &sf.field_name);
             quote! {
                 #field_id => {
                     #body
@@ -663,7 +662,11 @@ pub(crate) fn gen_read_compatible_with_construction(
     };
 
     // Generate construction based on whether this is a struct or enum variant
-    let is_tuple = super::util::is_tuple_struct(fields);
+    let is_tuple = source_fields
+        .first()
+        .map(|sf| sf.is_tuple_struct)
+        .unwrap_or(false);
+
     let construction = if let Some(variant) = variant_ident {
         // Enum variants use named syntax (struct variants) or tuple syntax (tuple variants)
         quote! {
@@ -671,18 +674,8 @@ pub(crate) fn gen_read_compatible_with_construction(
                 #(#assign_ts),*
             })
         }
-    } else if is_tuple {
-        // Tuple structs use parentheses
-        quote! {
-            Ok(Self( #(#assign_ts),* ))
-        }
     } else {
-        // Named structs use braces
-        quote! {
-            Ok(Self {
-                #(#assign_ts),*
-            })
-        }
+        crate::util::ok_self_construction(is_tuple, &assign_ts)
     };
 
     quote! {

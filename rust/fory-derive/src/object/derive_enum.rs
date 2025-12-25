@@ -20,7 +20,7 @@ use crate::object::misc;
 use crate::object::read::gen_read_field;
 use crate::object::util::{get_filtered_fields_iter, get_sorted_field_names};
 use crate::object::write::gen_write_field;
-use crate::util::sorted_fields;
+use crate::util::{extract_fields, source_fields};
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 use syn::{DataEnum, Fields};
@@ -119,8 +119,9 @@ pub(crate) fn gen_named_variant_meta_type_impl_with_enum_name(
     fields: &syn::FieldsNamed,
 ) -> TokenStream {
     let fields_clone = syn::Fields::Named(fields.clone());
-    let sorted_fields_slice = sorted_fields(&fields_clone);
-    let filtered_fields: Vec<_> = get_filtered_fields_iter(&sorted_fields_slice).collect();
+    let source_fields = source_fields(&fields_clone);
+    let fields_slice = extract_fields(&source_fields);
+    let filtered_fields: Vec<_> = get_filtered_fields_iter(&fields_slice).collect();
     let sorted_field_names_vec = get_sorted_field_names(&filtered_fields);
 
     // Generate individual field name literals
@@ -131,7 +132,7 @@ pub(crate) fn gen_named_variant_meta_type_impl_with_enum_name(
         })
         .collect();
 
-    let fields_info_ts = misc::gen_field_fields_info(&sorted_fields_slice);
+    let fields_info_ts = misc::gen_field_fields_info(&source_fields);
 
     // Include enum name to make meta type unique
     let meta_type_ident = Ident::new(
@@ -239,20 +240,20 @@ fn rust_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> Ve
                     }
                 }
                 Fields::Named(fields_named) => {
-                    use crate::util::sorted_fields;
+                    use crate::util::source_fields;
 
                     let fields_clone = syn::Fields::Named(fields_named.clone());
-                    let sorted_fields = sorted_fields(&fields_clone);
+                    let source_fields = source_fields(&fields_clone);
 
-                    let field_idents: Vec<_> = sorted_fields
+                    let field_idents: Vec<_> = source_fields
                         .iter()
-                        .map(|f| f.ident.as_ref().unwrap())
+                        .map(|sf| sf.field.ident.as_ref().unwrap())
                         .collect();
 
-                    let write_fields: Vec<_> = sorted_fields
+                    let write_fields: Vec<_> = source_fields
                         .iter()
                         .zip(field_idents.iter())
-                        .map(|(f, ident)| gen_write_field(f, ident, false))
+                        .map(|(sf, ident)| gen_write_field(sf.field, ident, false))
                         .collect();
 
                     quote! {
@@ -322,16 +323,16 @@ fn rust_compatible_variant_write_branches(
                         proc_macro2::Span::call_site()
                     );
                     let fields_clone = syn::Fields::Named(fields_named.clone());
-                    let sorted_fields = sorted_fields(&fields_clone);
-                    let field_idents: Vec<_> = sorted_fields
+                    let source_fields = source_fields(&fields_clone);
+                    let field_idents: Vec<_> = source_fields
                         .iter()
-                        .map(|f| f.ident.as_ref().unwrap())
+                        .map(|sf| sf.field.ident.as_ref().unwrap())
                         .collect();
 
-                    let write_fields: Vec<_> = sorted_fields
+                    let write_fields: Vec<_> = source_fields
                         .iter()
                         .zip(field_idents.iter())
-                        .map(|(f, ident)| gen_write_field(f, ident, false))
+                        .map(|(sf, ident)| gen_write_field(sf.field, ident, false))
                         .collect();
 
                     quote! {
@@ -505,19 +506,19 @@ fn rust_variant_read_branches(
                 }
                 Fields::Named(fields_named) => {
                     let fields_clone = syn::Fields::Named(fields_named.clone());
-                    let sorted_fields = sorted_fields(&fields_clone);
+                    let source_fields = source_fields(&fields_clone);
 
-                    let field_idents: Vec<_> = sorted_fields
+                    let field_idents: Vec<_> = source_fields
                         .iter()
-                        .map(|f| f.ident.as_ref().unwrap())
+                        .map(|sf| sf.field.ident.as_ref().unwrap())
                         .collect();
 
-                    let read_fields: Vec<_> = sorted_fields
+                    let read_fields: Vec<_> = source_fields
                         .iter()
                         .zip(field_idents.iter())
-                        .map(|(f, ident)| {
+                        .map(|(sf, ident)| {
                             let field_name = ident.to_string();
-                            gen_read_field(f, ident, &field_name)
+                            gen_read_field(sf.field, ident, &field_name)
                         })
                         .collect();
 
@@ -629,16 +630,16 @@ fn rust_compatible_variant_read_branches(
                     }
                 }
                 Fields::Named(fields_named) => {
-                    use crate::util::sorted_fields;
+                    use crate::util::source_fields;
 
                     // Sort fields to match the meta type generation
                     let fields_clone = syn::Fields::Named(fields_named.clone());
-                    let sorted_fields_slice = sorted_fields(&fields_clone);
+                    let source_fields = source_fields(&fields_clone);
 
                     // Generate compatible read logic using gen_read_compatible_with_construction
                     let compatible_read_body =
                         crate::object::read::gen_read_compatible_with_construction(
-                            &sorted_fields_slice,
+                            &source_fields,
                             Some(ident),
                         );
 

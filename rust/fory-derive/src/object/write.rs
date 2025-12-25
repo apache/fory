@@ -18,10 +18,11 @@
 use super::util::{
     classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
     create_wrapper_types_rc, extract_type_name, get_field_accessor, get_field_name,
-    get_filtered_fields_iter, get_primitive_writer_method, get_struct_name,
+    get_filtered_source_fields_iter, get_primitive_writer_method, get_struct_name,
     get_type_id_by_type_ast, is_debug_enabled, is_direct_primitive_numeric_type,
     should_skip_type_info_for_field, skip_ref_flag, StructField,
 };
+use crate::util::SourceField;
 use fory_core::types::TypeId;
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
@@ -305,13 +306,13 @@ fn gen_write_field_impl(
     }
 }
 
-pub fn gen_write_data(fields: &[&Field]) -> TokenStream {
-    let write_fields_ts: Vec<_> = get_filtered_fields_iter(fields)
-        .enumerate()
-        .map(|(idx, field)| gen_write_field_with_index(field, idx, true))
+pub fn gen_write_data(source_fields: &[SourceField<'_>]) -> TokenStream {
+    let fields: Vec<&Field> = source_fields.iter().map(|sf| sf.field).collect();
+    let write_fields_ts: Vec<_> = get_filtered_source_fields_iter(source_fields)
+        .map(|sf| gen_write_field_with_index(sf.field, sf.original_index, true))
         .collect();
 
-    let version_hash = compute_struct_version_hash(fields);
+    let version_hash = compute_struct_version_hash(&fields);
     quote! {
         // Write version hash when class version checking is enabled
         if context.is_check_struct_version() {

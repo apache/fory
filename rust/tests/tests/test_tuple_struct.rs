@@ -298,3 +298,135 @@ fn test_large_tuple_struct() {
     let result: LargeTupleStruct = fory.deserialize(&bytes).unwrap();
     assert_eq!(result, data);
 }
+
+// Schema Evolution Tests for Tuple Structs
+
+// Simulate remote version with fewer fields
+mod remote_v1 {
+    use fory_derive::ForyObject;
+
+    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    pub struct Point(pub f64, pub f64);
+}
+
+// Simulate local version with more fields (added field 2)
+mod local_v2 {
+    use fory_derive::ForyObject;
+
+    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    pub struct Point(pub f64, pub f64, pub f64);
+}
+
+// Simulate remote version with more fields
+mod remote_v3 {
+    use fory_derive::ForyObject;
+
+    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    pub struct Point(pub f64, pub f64, pub f64, pub f64);
+}
+
+/// Test schema evolution: remote has fewer fields than local.
+#[test]
+fn test_tuple_struct_schema_evolution_add_field() {
+    let mut fory_writer = Fory::default().compatible(true);
+    fory_writer.register::<remote_v1::Point>(100).unwrap();
+
+    let remote_data = remote_v1::Point(1.0, 2.0);
+    let bytes = fory_writer.serialize(&remote_data).unwrap();
+
+    let mut fory_reader = Fory::default().compatible(true);
+    fory_reader.register::<local_v2::Point>(100).unwrap();
+
+    let local_data: local_v2::Point = fory_reader.deserialize(&bytes).unwrap();
+
+    assert_eq!(local_data.0, 1.0);
+    assert_eq!(local_data.1, 2.0);
+    assert_eq!(local_data.2, 0.0);
+}
+
+/// Test schema evolution: remote has more fields than local.
+#[test]
+fn test_tuple_struct_schema_evolution_remove_field() {
+    let mut fory_writer = Fory::default().compatible(true);
+    fory_writer.register::<remote_v3::Point>(100).unwrap();
+
+    let remote_data = remote_v3::Point(1.0, 2.0, 3.0, 4.0);
+    let bytes = fory_writer.serialize(&remote_data).unwrap();
+
+    let mut fory_reader = Fory::default().compatible(true);
+    fory_reader.register::<remote_v1::Point>(100).unwrap();
+
+    let local_data: remote_v1::Point = fory_reader.deserialize(&bytes).unwrap();
+
+    assert_eq!(local_data.0, 1.0);
+    assert_eq!(local_data.1, 2.0);
+}
+
+// Test with mixed types to verify sorting doesn't break schema evolution
+mod remote_mixed_v1 {
+    use fory_derive::ForyObject;
+
+    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    pub struct MixedPoint(pub f64, pub f64);
+}
+
+mod local_mixed_v2 {
+    use fory_derive::ForyObject;
+
+    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    pub struct MixedPoint(pub f64, pub f64, pub i64);
+}
+
+mod local_mixed_v3 {
+    use fory_derive::ForyObject;
+
+    // Adding u8 (which has smaller size than f64)
+    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    pub struct MixedPoint(pub f64, pub f64, pub u8);
+}
+
+/// Test that adding i64 (compress=true) doesn't break schema evolution
+#[test]
+fn test_tuple_struct_schema_evolution_add_i64() {
+    let mut fory_writer = Fory::default().compatible(true);
+    fory_writer
+        .register::<remote_mixed_v1::MixedPoint>(100)
+        .unwrap();
+
+    let remote_data = remote_mixed_v1::MixedPoint(1.0, 2.0);
+    let bytes = fory_writer.serialize(&remote_data).unwrap();
+
+    let mut fory_reader = Fory::default().compatible(true);
+    fory_reader
+        .register::<local_mixed_v2::MixedPoint>(100)
+        .unwrap();
+
+    let local_data: local_mixed_v2::MixedPoint = fory_reader.deserialize(&bytes).unwrap();
+
+    assert_eq!(local_data.0, 1.0);
+    assert_eq!(local_data.1, 2.0);
+    assert_eq!(local_data.2, 0);
+}
+
+/// Test that adding u8 (smaller size) doesn't break schema evolution
+#[test]
+fn test_tuple_struct_schema_evolution_add_u8() {
+    let mut fory_writer = Fory::default().compatible(true);
+    fory_writer
+        .register::<remote_mixed_v1::MixedPoint>(100)
+        .unwrap();
+
+    let remote_data = remote_mixed_v1::MixedPoint(1.0, 2.0);
+    let bytes = fory_writer.serialize(&remote_data).unwrap();
+
+    let mut fory_reader = Fory::default().compatible(true);
+    fory_reader
+        .register::<local_mixed_v3::MixedPoint>(100)
+        .unwrap();
+
+    let local_data: local_mixed_v3::MixedPoint = fory_reader.deserialize(&bytes).unwrap();
+
+    assert_eq!(local_data.0, 1.0);
+    assert_eq!(local_data.1, 2.0);
+    assert_eq!(local_data.2, 0);
+}

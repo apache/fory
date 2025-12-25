@@ -15,38 +15,117 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use proc_macro2::TokenStream;
+use quote::{format_ident, quote};
 use syn::{Field, Fields, GenericArgument, PathArguments, Type, TypePath, TypeTraitObject};
 
-pub fn sorted_fields(fields: &Fields) -> Vec<&Field> {
-    let fields = fields.iter().collect::<Vec<&Field>>();
-    get_sorted_fields(&fields)
+/// Source field with its original index and computed field name preserved.
+///
+/// For tuple structs, `original_index` is the field's position in the original
+/// struct definition (0, 1, 2, ...), and `field_name` is the index as a string.
+/// For named structs, `field_name` is the field identifier.
+#[derive(Clone)]
+pub struct SourceField<'a> {
+    pub original_index: usize,
+    pub field: &'a Field,
+    pub field_name: String,
+    pub is_tuple_struct: bool,
 }
 
-pub fn get_sorted_fields<'a>(fields: &[&'a Field]) -> Vec<&'a Field> {
-    use crate::object::util::{get_sorted_field_names, is_tuple_struct};
-
-    // For tuple structs, we must preserve the original field order
-    // because fields are accessed by index (self.0, self.1, etc.)
-    // Sorting would cause type mismatches during serialization/deserialization.
-    if is_tuple_struct(fields) {
-        return fields.to_vec();
+impl<'a> SourceField<'a> {
+    /// Generate field initialization syntax for struct construction.
+    /// - tuple struct: just the value
+    /// - named struct: `field_name: value`
+    pub fn field_init(&self, value: TokenStream) -> TokenStream {
+        if self.is_tuple_struct {
+            value
+        } else {
+            let ident = format_ident!("{}", self.field_name);
+            quote! { #ident: #value }
+        }
     }
+}
 
-    // For named structs, sort fields by type for optimal memory layout
+/// Generate Self construction syntax.
+/// - tuple struct: `Self(field0, field1, ...)`
+/// - named struct: `Self { field0, field1, ... }`
+pub fn self_construction(is_tuple_struct: bool, field_inits: &[TokenStream]) -> TokenStream {
+    if is_tuple_struct {
+        quote! { Self( #(#field_inits),* ) }
+    } else {
+        quote! { Self { #(#field_inits),* } }
+    }
+}
+
+/// Generate Ok(Self(...)) construction syntax for Result return.
+pub fn ok_self_construction(is_tuple_struct: bool, field_inits: &[TokenStream]) -> TokenStream {
+    if is_tuple_struct {
+        quote! { Ok(Self( #(#field_inits),* )) }
+    } else {
+        quote! { Ok(Self { #(#field_inits),* }) }
+    }
+}
+
+/// Returns source fields with their original indices preserved.
+///
+/// For named structs, fields are sorted by type for optimal serialization.
+/// For tuple structs, fields keep their original order.
+/// The original index is preserved so that:
+/// - For named structs: field names can be used directly
+/// - For tuple structs: the original index (0, 1, 2, ...) is used as field name
+pub fn source_fields(fields: &Fields) -> Vec<SourceField<'_>> {
+    let fields: Vec<&Field> = fields.iter().collect();
+    get_source_fields(&fields)
+}
+
+/// Returns source fields with their original indices and field names preserved.
+pub fn get_source_fields<'a>(fields: &[&'a Field]) -> Vec<SourceField<'a>> {
+    use crate::object::util::get_sorted_field_names;
+
+    let is_tuple = !fields.is_empty() && fields[0].ident.is_none();
     let sorted_names = get_sorted_field_names(fields);
-    let mut sorted_fields = Vec::with_capacity(fields.len());
+    let mut result = Vec::with_capacity(fields.len());
 
     for name in &sorted_names {
-        // For named structs, field.ident is Some
-        if let Some(field) = fields
-            .iter()
-            .find(|f| f.ident.as_ref().map(|ident| ident == name).unwrap_or(false))
-        {
-            sorted_fields.push(*field);
+        if is_tuple {
+            // For tuple structs, field name is the original index as string
+            if let Ok(idx) = name.parse::<usize>() {
+                if idx < fields.len() {
+                    result.push(SourceField {
+                        original_index: idx,
+                        field: fields[idx],
+                        field_name: name.clone(),
+                        is_tuple_struct: true,
+                    });
+                }
+            }
+        } else {
+            // For named structs, match by field identifier
+            for (idx, field) in fields.iter().enumerate() {
+                if field
+                    .ident
+                    .as_ref()
+                    .map(|ident| ident == name)
+                    .unwrap_or(false)
+                {
+                    result.push(SourceField {
+                        original_index: idx,
+                        field,
+                        field_name: name.clone(),
+                        is_tuple_struct: false,
+                    });
+                    break;
+                }
+            }
         }
     }
 
-    sorted_fields
+    result
+}
+
+/// Extract just the fields from source fields.
+pub fn extract_fields<'a>(source_fields: &[SourceField<'a>]) -> Vec<&'a Field> {
+    source_fields.iter().map(|sf| sf.field).collect()
 }
 
 /// Check if a type is `Box<dyn Trait>` and return the trait type and trait name if it is

@@ -22,9 +22,10 @@ use syn::Field;
 
 use super::field_meta::{classify_field_type, parse_field_meta};
 use super::util::{
-    classify_trait_object_field, generic_tree_to_tokens, get_filtered_fields_iter,
+    classify_trait_object_field, generic_tree_to_tokens, get_filtered_source_fields_iter,
     get_sort_fields_ts, parse_generic_tree, StructField,
 };
+use crate::util::SourceField;
 
 // Global type ID counter that auto-grows from 0 at macro processing time
 static TYPE_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -72,95 +73,94 @@ pub fn gen_get_sorted_field_names(fields: &[&Field]) -> TokenStream {
     }
 }
 
-pub fn gen_field_fields_info(fields: &[&Field]) -> TokenStream {
-    let field_infos = get_filtered_fields_iter(fields)
-        .enumerate()
-        .map(|(idx, field)| {
-            let ty = &field.ty;
-            let name = super::util::get_field_name(field, idx);
+pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
+    let field_infos = get_filtered_source_fields_iter(source_fields).map(|sf| {
+        let field = sf.field;
+        let ty = &field.ty;
+        let name = &sf.field_name;
 
-            // Parse field metadata for nullable/ref tracking and field ID
-            let meta = parse_field_meta(field).unwrap_or_default();
-            let type_class = classify_field_type(ty);
-            let nullable = meta.effective_nullable(type_class);
-            let ref_tracking = meta.effective_ref_tracking(type_class);
-            // Only use explicit field ID when user sets #[fory(id = N)]
-            // Otherwise use -1 to indicate field name encoding should be used
-            let field_id = if meta.uses_tag_id() {
-                meta.effective_id() as i16
-            } else {
-                -1i16 // Use field name encoding when no explicit ID
-            };
+        // Parse field metadata for nullable/ref tracking and field ID
+        let meta = parse_field_meta(field).unwrap_or_default();
+        let type_class = classify_field_type(ty);
+        let nullable = meta.effective_nullable(type_class);
+        let ref_tracking = meta.effective_ref_tracking(type_class);
+        // Only use explicit field ID when user sets #[fory(id = N)]
+        // Otherwise use -1 to indicate field name encoding should be used
+        let field_id = if meta.uses_tag_id() {
+            meta.effective_id() as i16
+        } else {
+            -1i16 // Use field name encoding when no explicit ID
+        };
 
-            match classify_trait_object_field(ty) {
-                StructField::None => {
-                    let generic_tree = parse_generic_tree(ty);
-                    let generic_token = generic_tree_to_tokens(&generic_tree);
-                    quote! {
-                        fory_core::meta::FieldInfo::new_with_id(
-                            #field_id,
-                            #name,
-                            {
-                                let mut ft = #generic_token;
-                                ft.nullable = #nullable;
-                                ft.ref_tracking = #ref_tracking;
-                                ft
-                            }
-                        )
-                    }
+        match classify_trait_object_field(ty) {
+            StructField::None => {
+                let generic_tree = parse_generic_tree(ty);
+                let generic_token = generic_tree_to_tokens(&generic_tree);
+                quote! {
+                    fory_core::meta::FieldInfo::new_with_id(
+                        #field_id,
+                        #name,
+                        {
+                            let mut ft = #generic_token;
+                            ft.nullable = #nullable;
+                            ft.ref_tracking = #ref_tracking;
+                            ft
+                        }
+                    )
                 }
-                StructField::VecBox(_) | StructField::VecRc(_) | StructField::VecArc(_) => {
-                    quote! {
-                        fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
-                            type_id: fory_core::types::TypeId::LIST as u32,
-                            nullable: #nullable,
-                            ref_tracking: #ref_tracking,
-                            generics: vec![fory_core::meta::FieldType {
+            }
+            StructField::VecBox(_) | StructField::VecRc(_) | StructField::VecArc(_) => {
+                quote! {
+                    fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
+                        type_id: fory_core::types::TypeId::LIST as u32,
+                        nullable: #nullable,
+                        ref_tracking: #ref_tracking,
+                        generics: vec![fory_core::meta::FieldType {
+                            type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                            nullable: false,
+                            ref_tracking: false,
+                            generics: Vec::new()
+                        }]
+                    })
+                }
+            }
+            StructField::HashMapBox(key_ty, _)
+            | StructField::HashMapRc(key_ty, _)
+            | StructField::HashMapArc(key_ty, _) => {
+                let key_generic_tree = parse_generic_tree(key_ty.as_ref());
+                let key_generic_token = generic_tree_to_tokens(&key_generic_tree);
+                quote! {
+                    fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
+                        type_id: fory_core::types::TypeId::MAP as u32,
+                        nullable: #nullable,
+                        ref_tracking: #ref_tracking,
+                        generics: vec![
+                            #key_generic_token,
+                            fory_core::meta::FieldType {
                                 type_id: fory_core::types::TypeId::UNKNOWN as u32,
                                 nullable: false,
                                 ref_tracking: false,
                                 generics: Vec::new()
-                            }]
-                        })
-                    }
-                }
-                StructField::HashMapBox(key_ty, _)
-                | StructField::HashMapRc(key_ty, _)
-                | StructField::HashMapArc(key_ty, _) => {
-                    let key_generic_tree = parse_generic_tree(key_ty.as_ref());
-                    let key_generic_token = generic_tree_to_tokens(&key_generic_tree);
-                    quote! {
-                        fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
-                            type_id: fory_core::types::TypeId::MAP as u32,
-                            nullable: #nullable,
-                            ref_tracking: #ref_tracking,
-                            generics: vec![
-                                #key_generic_token,
-                                fory_core::meta::FieldType {
-                                    type_id: fory_core::types::TypeId::UNKNOWN as u32,
-                                    nullable: false,
-                                    ref_tracking: false,
-                                    generics: Vec::new()
-                                }
-                            ]
-                        })
-                    }
-                }
-                _ => {
-                    quote! {
-                        fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
-                            type_id: fory_core::types::TypeId::UNKNOWN as u32,
-                            nullable: #nullable,
-                            ref_tracking: #ref_tracking,
-                            generics: Vec::new()
-                        })
-                    }
+                            }
+                        ]
+                    })
                 }
             }
-        });
+            _ => {
+                quote! {
+                    fory_core::meta::FieldInfo::new_with_id(#field_id, #name, fory_core::meta::FieldType {
+                        type_id: fory_core::types::TypeId::UNKNOWN as u32,
+                        nullable: #nullable,
+                        ref_tracking: #ref_tracking,
+                        generics: Vec::new()
+                    })
+                }
+            }
+        }
+    });
 
-    // Get sorted field names for sorting
-    let static_field_names = get_sort_fields_ts(fields);
+    let fields: Vec<&Field> = source_fields.iter().map(|sf| sf.field).collect();
+    let static_field_names = get_sort_fields_ts(&fields);
 
     quote! {
         let mut field_infos: Vec<fory_core::meta::FieldInfo> = vec![#(#field_infos),*];
