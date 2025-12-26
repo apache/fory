@@ -378,8 +378,6 @@ public abstract class TypeResolver {
       MemoryBuffer buffer, ObjectArray<ClassDef> writingClassDefs, int size) {
     for (int i = 0; i < size; i++) {
       buffer.writeBytes(writingClassDefs.get(i).getEncoded());
-      MemoryBuffer memoryBuffer = MemoryBuffer.fromByteArray(writingClassDefs.get(i).getEncoded());
-      ClassDef.readClassDef(fory, memoryBuffer, memoryBuffer.readInt64());
     }
   }
 
