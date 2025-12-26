@@ -1329,7 +1329,8 @@ public class ClassResolver extends TypeResolver {
     }
   }
 
-  private Serializer createSerializer(Class<?> cls) {
+  @Internal
+  public Serializer createSerializer(Class<?> cls) {
     DisallowedList.checkNotInDisallowedList(cls.getName());
     if (!isSecure(cls)) {
       throw new InsecureException(generateSecurityMsg(cls));
