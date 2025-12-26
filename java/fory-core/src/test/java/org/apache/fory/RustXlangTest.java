@@ -86,4 +86,16 @@ public class RustXlangTest extends XlangTestBase {
             .build();
     return new CommandContext(command, env, new File("../../rust"));
   }
+
+  @Test
+  @Override
+  public void testStructWithUnionFields() throws java.io.IOException {
+    throw new SkipException("Union types not yet supported in Rust");
+  }
+
+  @Test
+  @Override
+  public void testTopLevelUnion() throws java.io.IOException {
+    throw new SkipException("Union types not yet supported in Rust");
+  }
 }

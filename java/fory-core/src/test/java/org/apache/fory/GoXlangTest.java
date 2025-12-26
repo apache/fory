@@ -233,4 +233,16 @@ public class GoXlangTest extends XlangTestBase {
   public void testEnumSchemaEvolutionCompatible() throws java.io.IOException {
     super.testEnumSchemaEvolutionCompatible();
   }
+
+  @Test
+  @Override
+  public void testStructWithUnionFields() throws java.io.IOException {
+    throw new SkipException("Union types not yet supported in Go");
+  }
+
+  @Test
+  @Override
+  public void testTopLevelUnion() throws java.io.IOException {
+    throw new SkipException("Union types not yet supported in Go");
+  }
 }

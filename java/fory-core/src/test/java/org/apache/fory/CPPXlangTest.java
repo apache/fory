@@ -130,4 +130,16 @@ public class CPPXlangTest extends XlangTestBase {
   public void testConsistentNamed() throws java.io.IOException {
     super.testConsistentNamed();
   }
+
+  @Test
+  @Override
+  public void testStructWithUnionFields() throws java.io.IOException {
+    throw new SkipException("Union types not yet supported in C++");
+  }
+
+  @Test
+  @Override
+  public void testTopLevelUnion() throws java.io.IOException {
+    throw new SkipException("Union types not yet supported in C++");
+  }
 }
