@@ -97,10 +97,15 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         fieldValue = binding.readRef(buffer, serializer);
       }
     } else {
+      // Union types don't write type_id in Rust/C++ xlang mode, so we need special handling
+      boolean isUnionType =
+          org.apache.fory.type.union.Union.class.isAssignableFrom(fieldInfo.typeRef.getRawType());
       if (serializer.needToWriteRef()) {
         int nextReadRefId = refResolver.tryPreserveRefId(buffer);
         if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
-          typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
+          if (!isUnionType) {
+            typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
+          }
           fieldValue = serializer.read(buffer);
           refResolver.setReadObject(nextReadRefId, fieldValue);
         } else {
@@ -114,7 +119,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
             return null;
           }
         }
-        typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
+        if (!isUnionType) {
+          typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
+        }
         fieldValue = serializer.read(buffer);
       }
     }
@@ -126,7 +133,15 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       SerializationBinding binding, GenericTypeField fieldInfo, MemoryBuffer buffer) {
     Object fieldValue;
     boolean nullable = fieldInfo.nullable;
-    if (fieldInfo.genericType.getCls().isEnum()) {
+    Class<?> fieldClass = fieldInfo.genericType.getCls();
+    if (fieldClass.isEnum()) {
+      if (buffer.readByte() == Fory.NULL_FLAG) {
+        return null;
+      } else {
+        return fieldInfo.genericType.getSerializer(binding.typeResolver).read(buffer);
+      }
+    } else if (org.apache.fory.type.union.Union.class.isAssignableFrom(fieldClass)) {
+      // Union types need special handling - read ref_flag then use UnionSerializer
       if (buffer.readByte() == Fory.NULL_FLAG) {
         return null;
       } else {

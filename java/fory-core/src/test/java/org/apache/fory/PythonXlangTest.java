@@ -191,4 +191,11 @@ public class PythonXlangTest extends XlangTestBase {
   public void testPolymorphicMap() throws IOException {
     super.testPolymorphicMap();
   }
+
+  @Override
+  @Test
+  public void testUnionXlang() throws IOException {
+    // Skip: Python doesn't have Union xlang support yet
+    throw new SkipException("Skipping testUnionXlang: Python Union xlang support not implemented");
+  }
 }

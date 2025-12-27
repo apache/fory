@@ -233,4 +233,11 @@ public class GoXlangTest extends XlangTestBase {
   public void testEnumSchemaEvolutionCompatible() throws java.io.IOException {
     super.testEnumSchemaEvolutionCompatible();
   }
+
+  @Test
+  @Override
+  public void testUnionXlang() throws java.io.IOException {
+    // Skip: Go doesn't have Union xlang support yet
+    throw new SkipException("Skipping testUnionXlang: Go Union xlang support not implemented");
+  }
 }
