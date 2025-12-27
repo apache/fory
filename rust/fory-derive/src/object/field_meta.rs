@@ -62,9 +62,11 @@ pub enum FieldTypeClass {
 impl ForyFieldMeta {
     /// Returns effective nullable value based on field type classification
     ///
-    /// Defaults:
+    /// Defaults (for xlang compatibility - all languages use same defaults):
     /// - `Option<T>`, `RcWeak<T>`, `ArcWeak<T>`: true (can be None/dangling)
-    /// - All other types: false
+    /// - All other types: false (non-nullable by default)
+    ///
+    /// This ensures consistent struct hash computation across all languages for xlang serialization.
     pub fn effective_nullable(&self, type_class: FieldTypeClass) -> bool {
         self.nullable.unwrap_or(matches!(
             type_class,
@@ -413,12 +415,12 @@ mod tests {
     fn test_effective_nullable_defaults() {
         let meta = ForyFieldMeta::default();
 
-        // Option and RcWeak/ArcWeak are nullable by default
+        // Only Option and RcWeak/ArcWeak are nullable by default (can be None/dangling)
         assert!(meta.effective_nullable(FieldTypeClass::Option));
         assert!(meta.effective_nullable(FieldTypeClass::RcWeak));
         assert!(meta.effective_nullable(FieldTypeClass::ArcWeak));
 
-        // All others are non-nullable by default
+        // All other types are non-nullable by default (xlang default)
         assert!(!meta.effective_nullable(FieldTypeClass::Primitive));
         assert!(!meta.effective_nullable(FieldTypeClass::Rc));
         assert!(!meta.effective_nullable(FieldTypeClass::Arc));

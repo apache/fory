@@ -98,21 +98,28 @@ class FieldInfo:
     unwrapped_type: type  # Type with Optional unwrapped
 
 
-def _default_field_meta(type_hint: type, field_nullable: bool = False) -> ForyFieldMeta:
+def _default_field_meta(type_hint: type, field_nullable: bool = False, xlang: bool = False) -> ForyFieldMeta:
     """Returns default field metadata for fields without pyfory.field().
 
-    A field is considered nullable if:
+    For native mode, a field is considered nullable if:
     1. It's Optional[T], OR
     2. It's a non-primitive type (all reference types can be None), OR
     3. Global field_nullable is True
+
+    For xlang mode, a field is nullable only if:
+    1. It's Optional[T]
 
     For ref, defaults to False to preserve original serialization behavior.
     Non-nullable complex fields use xwrite_no_ref (no ref header in buffer).
     Users can explicitly set ref=True in pyfory.field() to enable ref tracking.
     """
     unwrapped_type, is_optional = unwrap_optional(type_hint)
-    # Non-primitive types (str, list, dict, etc.) are all nullable by default
-    nullable = is_optional or not is_primitive_type(unwrapped_type) or field_nullable
+    if xlang:
+        # For xlang: nullable=False by default, except for Optional[T] types
+        nullable = is_optional
+    else:
+        # For native: Non-primitive types (str, list, dict, etc.) are all nullable by default
+        nullable = is_optional or not is_primitive_type(unwrapped_type) or field_nullable
     # Default ref=False to preserve original serialization behavior where non-nullable
     # fields use xwrite_no_ref. Users can explicitly set ref=True in pyfory.field()
     # to enable per-field ref tracking when fory.ref_tracking is enabled.
@@ -123,6 +130,7 @@ def _extract_field_infos(
     fory,
     clz: type,
     type_hints: dict,
+    xlang: bool = False,
 ) -> tuple[list[FieldInfo], dict[str, ForyFieldMeta]]:
     """
     Extract FieldInfo list from a dataclass.
@@ -133,6 +141,9 @@ def _extract_field_infos(
     - Computing effective nullable based on Optional[T]
     - Computing runtime ref tracking based on global config
     - Inheritance: parent fields first, subclass fields override parent fields
+
+    Args:
+        xlang: If True, use xlang defaults (nullable=False except for Optional[T])
 
     Returns:
         Tuple of (field_infos, field_metas) where field_metas maps field name to ForyFieldMeta
@@ -165,7 +176,7 @@ def _extract_field_infos(
             # Field without pyfory.field() - use defaults
             # Auto-detect Optional[T] for nullable, also respect global field_nullable
             field_type = type_hints.get(field_name, typing.Any)
-            meta = _default_field_meta(field_type, global_field_nullable)
+            meta = _default_field_meta(field_type, global_field_nullable, xlang=xlang)
 
         field_metas[field_name] = meta
 
@@ -185,8 +196,13 @@ def _extract_field_infos(
         type_hint = type_hints.get(field_name, typing.Any)
         unwrapped_type, is_optional = unwrap_optional(type_hint)
 
-        # Compute effective nullable: Optional[T] or non-primitive types are nullable
-        effective_nullable = meta.nullable or is_optional or not is_primitive_type(unwrapped_type)
+        # Compute effective nullable based on mode
+        if xlang:
+            # For xlang: respect explicit annotation or default to is_optional only
+            effective_nullable = meta.nullable or is_optional
+        else:
+            # For native: Optional[T] or non-primitive types are nullable
+            effective_nullable = meta.nullable or is_optional or not is_primitive_type(unwrapped_type)
 
         # Compute runtime ref tracking: field.ref AND global config
         runtime_ref = meta.ref and global_ref_tracking
@@ -255,7 +271,8 @@ class DataClassSerializer(Serializer):
             self._field_metas = {}
         else:
             # Extract field infos using new pyfory.field() metadata
-            self._field_infos, self._field_metas = _extract_field_infos(fory, clz, self._type_hints)
+            # Pass xlang to get correct nullable defaults for the mode
+            self._field_infos, self._field_metas = _extract_field_infos(fory, clz, self._type_hints, xlang=xlang)
 
             if self._field_infos:
                 # Use new field info based approach
@@ -658,15 +675,16 @@ class DataClassSerializer(Serializer):
             serializer = self._serializers[index]
             context[serializer_var] = serializer
             is_nullable = self._nullable_fields.get(field_name, False)
-            # For nullable fields, use safe access with None default to handle
-            # schema evolution cases where the field might not exist on the object
+            # For schema evolution: use safe access with None default to handle
+            # cases where the field might not exist on the object (missing from remote schema)
+            # In compatible mode, always use safe access even for non-nullable fields
             if not self._has_slots:
-                if is_nullable:
+                if is_nullable or self.fory.compatible:
                     stmts.append(f"{field_value} = {value_dict}.get('{field_name}')")
                 else:
                     stmts.append(f"{field_value} = {value_dict}['{field_name}']")
             else:
-                if is_nullable:
+                if is_nullable or self.fory.compatible:
                     stmts.append(f"{field_value} = getattr({value}, '{field_name}', None)")
                 else:
                     stmts.append(f"{field_value} = {value}.{field_name}")
@@ -688,7 +706,22 @@ class DataClassSerializer(Serializer):
                 if stmt is None:
                     # For non-nullable complex types, use xwrite_no_ref
                     stmt = f"{fory}.xwrite_no_ref({buffer}, {field_value}, serializer={serializer_var})"
-                stmts.append(stmt)
+                # In compatible mode, handle None for non-nullable fields (schema evolution)
+                # Write zero/default value when field is None due to missing from remote schema
+                if self.fory.compatible:
+                    from pyfory.serializer import EnumSerializer
+                    if isinstance(serializer, EnumSerializer):
+                        # For enums, write ordinal 0 when None
+                        stmts.extend([
+                            f"if {field_value} is None:",
+                            f"    {buffer}.write_varuint32(0)",
+                            "else:",
+                            f"    {stmt}",
+                        ])
+                    else:
+                        stmts.append(stmt)
+                else:
+                    stmts.append(stmt)
         self._xwrite_method_code, func = compile_function(
             f"xwrite_{self.type_.__module__}_{self.type_.__qualname__}".replace(".", "_"),
             [buffer, value],
@@ -776,6 +809,29 @@ class DataClassSerializer(Serializer):
                 stmts.append(f"{obj_dict}['{field_name}'] = {field_value}")
             else:
                 stmts.append(f"{obj}.{field_name} = {field_value}")
+
+        # For schema evolution: initialize missing fields with default values
+        # This handles cases where the sender's schema has fewer fields than the receiver's
+        if self.fory.compatible:
+            read_field_names = set(self._field_names)
+            missing_fields = current_class_field_names - read_field_names
+            if missing_fields and dataclasses.is_dataclass(self.type_):
+                for dc_field in dataclasses.fields(self.type_):
+                    if dc_field.name in missing_fields:
+                        if dc_field.default is not dataclasses.MISSING:
+                            default_val = repr(dc_field.default)
+                            if not self._has_slots:
+                                stmts.append(f"{obj_dict}['{dc_field.name}'] = {default_val}")
+                            else:
+                                stmts.append(f"{obj}.{dc_field.name} = {default_val}")
+                        elif dc_field.default_factory is not dataclasses.MISSING:
+                            factory_var = f"_default_factory_{dc_field.name}"
+                            context[factory_var] = dc_field.default_factory
+                            if not self._has_slots:
+                                stmts.append(f"{obj_dict}['{dc_field.name}'] = {factory_var}()")
+                            else:
+                                stmts.append(f"{obj}.{dc_field.name} = {factory_var}()")
+                        # else: field has no default, leave it unset
 
         stmts.append(f"return {obj}")
         self._xread_method_code, func = compile_function(
@@ -868,6 +924,7 @@ class DataClassSerializer(Serializer):
         obj = self.type_.__new__(self.type_)
         self.fory.ref_resolver.reference(obj)
         current_class_field_names = set(self._get_field_names(self.type_))
+        read_field_names = set()
         for index, field_name in enumerate(self._field_names):
             serializer = self._serializers[index]
             is_nullable = self._nullable_fields.get(field_name, False)
@@ -882,6 +939,19 @@ class DataClassSerializer(Serializer):
                 field_value = serializer.xread(buffer)
             if field_name in current_class_field_names:
                 setattr(obj, field_name, field_value)
+                read_field_names.add(field_name)
+        # For schema evolution: initialize missing fields with default values
+        # This handles cases where the sender's schema has fewer fields than the receiver's
+        if self.fory.compatible:
+            missing_fields = current_class_field_names - read_field_names
+            if missing_fields and dataclasses.is_dataclass(self.type_):
+                for dc_field in dataclasses.fields(self.type_):
+                    if dc_field.name in missing_fields:
+                        if dc_field.default is not dataclasses.MISSING:
+                            setattr(obj, dc_field.name, dc_field.default)
+                        elif dc_field.default_factory is not dataclasses.MISSING:
+                            setattr(obj, dc_field.name, dc_field.default_factory())
+                        # else: field has no default, leave it unset (will be None for nullable)
         return obj
 
 
@@ -1086,18 +1156,19 @@ def compute_struct_fingerprint(type_resolver, field_names, serializers, nullable
 
         if serializer is None:
             type_id = TypeId.UNKNOWN
-            nullable_flag = "1"
+            # For unknown serializers, use nullable from map (defaults to False for xlang)
+            nullable_flag = "1" if nullable_map.get(field_name, False) else "0"
         else:
             type_id = type_resolver.get_typeinfo(serializer.type_).type_id & 0xFF
             is_nullable = nullable_map.get(field_name, False)
 
-            if is_primitive_type(type_id) and not is_nullable:
-                nullable_flag = "0"
-            elif is_polymorphic_type(type_id) or type_id in {TypeId.ENUM, TypeId.NAMED_ENUM}:
+            # For polymorphic or enum types, set type_id to UNKNOWN but preserve nullable from map
+            if is_polymorphic_type(type_id) or type_id in {TypeId.ENUM, TypeId.NAMED_ENUM}:
                 type_id = TypeId.UNKNOWN
-                nullable_flag = "1"
-            else:
-                nullable_flag = "1"
+
+            # Use nullable from map - for xlang, this is already computed correctly
+            # (False by default except for Optional[T] or explicit annotation)
+            nullable_flag = "1" if is_nullable else "0"
 
         # Determine field identifier for fingerprint
         if tag_id >= 0:

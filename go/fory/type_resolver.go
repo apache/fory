@@ -748,11 +748,17 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 	typeString := value.Type()
 	typePtr := typePointer(typeString)
 	if cachedInfo, ok := r.typePointerCache[typePtr]; ok {
+		if DebugOutputEnabled() {
+			fmt.Printf("[fory-debug] getTypeInfo: found in cache type=%v serializer=%T\n", typeString, cachedInfo.Serializer)
+		}
 		return cachedInfo, nil
 	}
 
 	// Slow path: map lookup by reflect.Type
 	if info, ok := r.typesInfo[typeString]; ok {
+		if DebugOutputEnabled() {
+			fmt.Printf("[fory-debug] getTypeInfo: found in typesInfo type=%v serializer=%T\n", typeString, info.Serializer)
+		}
 		if info.Serializer == nil {
 			/*
 			   Lazy initialize serializer if not created yet

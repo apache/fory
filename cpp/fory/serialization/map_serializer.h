@@ -512,27 +512,66 @@ inline MapType read_map_data_fast(ReadContext &ctx, uint32_t length) {
       return MapType{};
     }
 
-    // Handle null entries (shouldn't happen in fast path, but be defensive)
+    // Handle null entries - insert with default-constructed key/value
     if ((header & KEY_NULL) && (header & VALUE_NULL)) {
-      // Both null - skip for now (would need default values)
+      // Both null - insert with default values
+      result.emplace(K{}, V{});
       len_counter++;
       continue;
     }
     if (header & KEY_NULL) {
-      // Null key - read value and skip
-      Serializer<V>::read(ctx, false, false);
+      // Null key, non-null value
+      // Java writes: header, then type info (if not declared), then value data
+      bool value_declared = (header & DECL_VALUE_TYPE) != 0;
+      bool track_value_ref = (header & TRACKING_VALUE_REF) != 0;
+
+      // Read type info if not declared
+      if (!value_declared) {
+        read_type_info<V>(ctx);
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return MapType{};
+        }
+      }
+
+      // Read value - consume ref flag if tracking, then read data
+      V value;
+      if (track_value_ref) {
+        value = Serializer<V>::read(ctx, true, false);
+      } else {
+        value = Serializer<V>::read_data(ctx);
+      }
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return MapType{};
       }
+      result.emplace(K{}, std::move(value));
       len_counter++;
       continue;
     }
     if (header & VALUE_NULL) {
-      // Null value - read key and skip
-      Serializer<K>::read(ctx, false, false);
+      // Non-null key, null value
+      // Java writes: header, then type info (if not declared), then key data
+      bool key_declared = (header & DECL_KEY_TYPE) != 0;
+      bool track_key_ref = (header & TRACKING_KEY_REF) != 0;
+
+      // Read type info if not declared
+      if (!key_declared) {
+        read_type_info<K>(ctx);
+        if (FORY_PREDICT_FALSE(ctx.has_error())) {
+          return MapType{};
+        }
+      }
+
+      // Read key - consume ref flag if tracking, then read data
+      K key;
+      if (track_key_ref) {
+        key = Serializer<K>::read(ctx, true, false);
+      } else {
+        key = Serializer<K>::read_data(ctx);
+      }
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return MapType{};
       }
+      result.emplace(std::move(key), V{});
       len_counter++;
       continue;
     }

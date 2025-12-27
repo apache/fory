@@ -247,7 +247,10 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
     if (fieldValue == null) {
       buffer.writeByte(Fory.NULL_FLAG);
     } else if (fieldValue.getClass().isEnum()) {
-      buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
+      // Only write null flag when the field is nullable (for xlang compatibility)
+      if (fieldInfo.nullable) {
+        buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
+      }
       fieldInfo.genericType.getSerializer(typeResolver).write(buffer, fieldValue);
     } else if (fieldInfo.trackingRef) {
       binding.writeRef(buffer, fieldValue, fieldInfo.classInfoHolder);
@@ -431,10 +434,22 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
       // This allows fingerprint to be computed at compile time for C++/Rust
       char ref = (foryField != null && foryField.ref()) ? '1' : '0';
 
-      // Get nullable flag: primitives are non-nullable, others depend on descriptor
+      // Get nullable flag:
+      // - Primitives are always non-nullable
+      // - For xlang: default is false (except Optional types), can be overridden by @ForyField
+      // - For native: use descriptor.isNullable() which defaults to true for non-primitives
       char nullable;
       if (rawType.isPrimitive()) {
         nullable = '0';
+      } else if (fory.isCrossLanguage()) {
+        // For xlang: nullable defaults to false, except for Optional types
+        // If @ForyField annotation is present, use its nullable value
+        if (foryField != null) {
+          nullable = foryField.nullable() ? '1' : '0';
+        } else {
+          // Default: only Optional types are nullable
+          nullable = isOptionalType(rawType) ? '1' : '0';
+        }
       } else {
         nullable = descriptor.isNullable() ? '1' : '0';
       }
@@ -491,6 +506,14 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
       }
       return typeId;
     }
+  }
+
+  /** Check if a type is an Optional type (Optional, OptionalInt, OptionalLong, OptionalDouble). */
+  public static boolean isOptionalType(Class<?> type) {
+    return type == java.util.Optional.class
+        || type == java.util.OptionalInt.class
+        || type == java.util.OptionalLong.class
+        || type == java.util.OptionalDouble.class;
   }
 
   public static void checkClassVersion(Fory fory, int readHash, int classVersionHash) {

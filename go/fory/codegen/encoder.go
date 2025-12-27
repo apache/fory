@@ -124,12 +124,11 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		case types.Float64:
 			fmt.Fprintf(buf, "\tbuf.WriteFloat64(%s)\n", fieldAccess)
 		case types.String:
-			// String is referencable in xlang spec (nullable=1 in hash)
-			// For struct field serialization, we need to write ref flag when tracking is enabled
-			// This matches the reflection behavior where strings get RefModeTracking or RefModeNullOnly
-			fmt.Fprintf(buf, "\tif ctx.TrackRef() {\n")
-			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(-1) // NotNullValueFlag for string\n")
-			fmt.Fprintf(buf, "\t}\n")
+			// In xlang mode, nullable=false is the default for struct fields.
+			// With nullable=false, RefMode = RefModeNone, so no ref flag is written.
+			// This matches reflection behavior in struct.go where refMode is calculated as:
+			// refMode := RefModeNone; if trackRef && nullableFlag { refMode = RefModeTracking }
+			// Since codegen follows xlang defaults (nullable=false), we don't write ref flags.
 			fmt.Fprintf(buf, "\tctx.WriteString(%s)\n", fieldAccess)
 		default:
 			fmt.Fprintf(buf, "\t// TODO: unsupported basic type %s\n", basic.String())
@@ -143,21 +142,24 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		// Check if element type is interface{} (dynamic type)
 		if iface, ok := elemType.(*types.Interface); ok && iface.Empty() {
 			// For []interface{}, we need to manually implement the serialization
-			// because WriteValue produces incorrect length encoding
+			// because WriteValue produces incorrect length encoding.
+			// In xlang mode, nullable=false is the default, so no null/ref flag is written.
+			// A nil slice is treated as empty (length=0).
 			fmt.Fprintf(buf, "\t// Dynamic slice []interface{} handling - manual serialization\n")
-			fmt.Fprintf(buf, "\tif %s == nil {\n", fieldAccess)
-			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(-3) // null value flag\n")
-			fmt.Fprintf(buf, "\t} else {\n")
-			fmt.Fprintf(buf, "\t\t// WriteData reference flag for the slice itself\n")
-			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(0) // RefValueFlag\n")
-			fmt.Fprintf(buf, "\t\t// WriteData slice length\n")
-			fmt.Fprintf(buf, "\t\tbuf.WriteVaruint32(uint32(len(%s)))\n", fieldAccess)
-			fmt.Fprintf(buf, "\t\t// WriteData collection flags for dynamic slice []interface{}\n")
-			fmt.Fprintf(buf, "\t\t// Only CollectionTrackingRef is set (no declared type, may have different types)\n")
-			fmt.Fprintf(buf, "\t\tbuf.WriteInt8(1) // CollectionTrackingRef only\n")
-			fmt.Fprintf(buf, "\t\t// WriteData each element using WriteValue\n")
-			fmt.Fprintf(buf, "\t\tfor _, elem := range %s {\n", fieldAccess)
-			fmt.Fprintf(buf, "\t\t\tctx.WriteValue(reflect.ValueOf(elem))\n")
+			fmt.Fprintf(buf, "\t{\n")
+			fmt.Fprintf(buf, "\t\tsliceLen := 0\n")
+			fmt.Fprintf(buf, "\t\tif %s != nil {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\tsliceLen = len(%s)\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t}\n")
+			fmt.Fprintf(buf, "\t\tbuf.WriteVaruint32(uint32(sliceLen))\n")
+			fmt.Fprintf(buf, "\t\tif sliceLen > 0 {\n")
+			fmt.Fprintf(buf, "\t\t\t// WriteData collection flags for dynamic slice []interface{}\n")
+			fmt.Fprintf(buf, "\t\t\t// Only CollectionTrackingRef is set (no declared type, may have different types)\n")
+			fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(1) // CollectionTrackingRef only\n")
+			fmt.Fprintf(buf, "\t\t\t// WriteData each element using WriteValue\n")
+			fmt.Fprintf(buf, "\t\t\tfor _, elem := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t\tctx.WriteValue(reflect.ValueOf(elem))\n")
+			fmt.Fprintf(buf, "\t\t\t}\n")
 			fmt.Fprintf(buf, "\t\t}\n")
 			fmt.Fprintf(buf, "\t}\n")
 			return nil
@@ -271,8 +273,11 @@ func generateSliceWriteInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAc
 	// Check if element type is referencable (needs ref tracking)
 	elemIsReferencable := isReferencableType(elemType)
 
-	// WriteData RefValueFlag first (slice is referencable)
-	fmt.Fprintf(buf, "\tbuf.WriteInt8(0) // RefValueFlag for slice\n")
+	// In xlang mode, nullable=false is the default for struct fields.
+	// With nullable=false, RefMode = RefModeNone, so no ref flag is written.
+	// This matches reflection behavior in struct.go where:
+	// refMode := RefModeNone; if trackRef && nullableFlag { refMode = RefModeTracking }
+	// Since codegen follows xlang defaults (nullable=false), we don't write ref flags.
 
 	// WriteData slice length - use block scope to avoid variable name conflicts
 	fmt.Fprintf(buf, "\t{\n")
@@ -336,8 +341,9 @@ func generatePrimitiveSliceWriteInline(buf *bytes.Buffer, sliceType *types.Slice
 	elemType := sliceType.Elem()
 	basic := elemType.Underlying().(*types.Basic)
 
-	// WriteData RefValueFlag first (slice is referencable)
-	fmt.Fprintf(buf, "\tbuf.WriteInt8(0) // RefValueFlag for slice\n")
+	// In xlang mode, nullable=false is the default for struct fields.
+	// With nullable=false, RefMode = RefModeNone, so no ref flag is written.
+	// This matches reflection behavior in struct.go.
 
 	// Call the exported helper function for each primitive type
 	switch basic.Kind() {
@@ -382,8 +388,9 @@ func generateMapWriteInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess s
 		valueIsInterface = true
 	}
 
-	// WriteData RefValueFlag first (map is referencable)
-	fmt.Fprintf(buf, "\tbuf.WriteInt8(0) // RefValueFlag for map\n")
+	// In xlang mode, nullable=false is the default for struct fields.
+	// With nullable=false, RefMode = RefModeNone, so no ref flag is written.
+	// This matches reflection behavior in struct.go.
 
 	// WriteData map length
 	fmt.Fprintf(buf, "\t{\n")

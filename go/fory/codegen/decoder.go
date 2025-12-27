@@ -139,12 +139,9 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		case types.Float64:
 			fmt.Fprintf(buf, "\t%s = buf.ReadFloat64(err)\n", fieldAccess)
 		case types.String:
-			// String is referencable in xlang spec (nullable=1 in hash)
-			// For struct field deserialization, we need to read ref flag when tracking is enabled
-			// This matches the reflection behavior where strings get RefModeTracking or RefModeNullOnly
-			fmt.Fprintf(buf, "\tif ctx.TrackRef() {\n")
-			fmt.Fprintf(buf, "\t\t_ = buf.ReadInt8(err) // Read NotNullValueFlag for string\n")
-			fmt.Fprintf(buf, "\t}\n")
+			// In xlang mode, nullable=false is the default for struct fields.
+			// With nullable=false, RefMode = RefModeNone, so no ref flag is written/read.
+			// This matches reflection behavior in struct.go.
 			fmt.Fprintf(buf, "\t%s = ctx.ReadString()\n", fieldAccess)
 		default:
 			fmt.Fprintf(buf, "\t// TODO: unsupported basic type %s\n", basic.String())
@@ -158,23 +155,24 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 		// Check if element type is interface{} (dynamic type)
 		if iface, ok := elemType.(*types.Interface); ok && iface.Empty() {
 			// For []interface{}, we need to manually implement the deserialization
-			// to match our custom encoding
+			// to match our custom encoding.
+			// In xlang mode, nullable=false is the default, so no null/ref flag is read.
+			// Length=0 means empty slice (nil in Go is treated as empty).
 			fmt.Fprintf(buf, "\t// Dynamic slice []interface{} handling - manual deserialization\n")
-			fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(err); flag == -3 {\n")
-			fmt.Fprintf(buf, "\t\t%s = nil // null slice\n", fieldAccess)
-			fmt.Fprintf(buf, "\t} else if flag == 0 {\n")
-			fmt.Fprintf(buf, "\t\t// ReadData slice length\n")
-			fmt.Fprintf(buf, "\t\tsliceLen := buf.ReadVaruint32(err)\n")
-			fmt.Fprintf(buf, "\t\t// ReadData collection flags (ignore for now)\n")
-			fmt.Fprintf(buf, "\t\t_ = buf.ReadInt8(err)\n")
-			fmt.Fprintf(buf, "\t\t// Create slice with proper capacity\n")
-			fmt.Fprintf(buf, "\t\t%s = make([]interface{}, sliceLen)\n", fieldAccess)
-			fmt.Fprintf(buf, "\t\t// ReadData each element using ReadValue\n")
-			fmt.Fprintf(buf, "\t\tfor i := range %s {\n", fieldAccess)
-			fmt.Fprintf(buf, "\t\t\tctx.ReadValue(reflect.ValueOf(&%s[i]).Elem())\n", fieldAccess)
+			fmt.Fprintf(buf, "\t{\n")
+			fmt.Fprintf(buf, "\t\tsliceLen := int(buf.ReadVaruint32(err))\n")
+			fmt.Fprintf(buf, "\t\tif sliceLen == 0 {\n")
+			fmt.Fprintf(buf, "\t\t\t%s = nil\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t} else {\n")
+			fmt.Fprintf(buf, "\t\t\t// ReadData collection flags (ignore for now)\n")
+			fmt.Fprintf(buf, "\t\t\t_ = buf.ReadInt8(err)\n")
+			fmt.Fprintf(buf, "\t\t\t// Create slice with proper capacity\n")
+			fmt.Fprintf(buf, "\t\t\t%s = make([]interface{}, sliceLen)\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t// ReadData each element using ReadValue\n")
+			fmt.Fprintf(buf, "\t\t\tfor i := range %s {\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t\tctx.ReadValue(reflect.ValueOf(&%s[i]).Elem())\n", fieldAccess)
+			fmt.Fprintf(buf, "\t\t\t}\n")
 			fmt.Fprintf(buf, "\t\t}\n")
-			fmt.Fprintf(buf, "\t} else {\n")
-			fmt.Fprintf(buf, "\t\treturn fmt.Errorf(\"expected RefValueFlag or NullFlag for dynamic slice field %s, got %%d\", flag)\n", field.GoName)
 			fmt.Fprintf(buf, "\t}\n")
 			return nil
 		}
@@ -349,12 +347,9 @@ func generateSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAcc
 	// Check if element type is referencable (needs ref tracking)
 	elemIsReferencable := isReferencableType(elemType)
 
-	// ReadData RefValueFlag first (slice is referencable)
-	fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(err); flag != 0 {\n")
-	fmt.Fprintf(buf, "\t\tif !ctx.HasError() {\n")
-	fmt.Fprintf(buf, "\t\t\treturn fmt.Errorf(\"expected RefValueFlag for slice field, got %%d\", flag)\n")
-	fmt.Fprintf(buf, "\t\t}\n")
-	fmt.Fprintf(buf, "\t}\n")
+	// In xlang mode, nullable=false is the default for struct fields.
+	// With nullable=false, RefMode = RefModeNone, so no ref flag is written/read.
+	// This matches reflection behavior in struct.go.
 
 	// ReadData slice length - use block scope to avoid variable name conflicts
 	fmt.Fprintf(buf, "\t{\n")
@@ -419,12 +414,9 @@ func generatePrimitiveSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice,
 	elemType := sliceType.Elem()
 	basic := elemType.Underlying().(*types.Basic)
 
-	// ReadData RefValueFlag first (slice is referencable)
-	fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(err); flag != 0 {\n")
-	fmt.Fprintf(buf, "\t\tif !ctx.HasError() {\n")
-	fmt.Fprintf(buf, "\t\t\treturn fmt.Errorf(\"expected RefValueFlag for slice field, got %%d\", flag)\n")
-	fmt.Fprintf(buf, "\t\t}\n")
-	fmt.Fprintf(buf, "\t}\n")
+	// In xlang mode, nullable=false is the default for struct fields.
+	// With nullable=false, RefMode = RefModeNone, so no ref flag is written/read.
+	// This matches reflection behavior in struct.go.
 
 	// Call the exported helper function for each primitive type
 	switch basic.Kind() {
@@ -609,12 +601,9 @@ func generateMapReadInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess st
 		valueIsInterface = true
 	}
 
-	// ReadData RefValueFlag first (map is referencable)
-	fmt.Fprintf(buf, "\tif flag := buf.ReadInt8(err); flag != 0 {\n")
-	fmt.Fprintf(buf, "\t\tif !ctx.HasError() {\n")
-	fmt.Fprintf(buf, "\t\t\treturn fmt.Errorf(\"expected RefValueFlag for map field, got %%d\", flag)\n")
-	fmt.Fprintf(buf, "\t\t}\n")
-	fmt.Fprintf(buf, "\t}\n")
+	// In xlang mode, nullable=false is the default for struct fields.
+	// With nullable=false, RefMode = RefModeNone, so no ref flag is written/read.
+	// This matches reflection behavior in struct.go.
 
 	// ReadData map length
 	fmt.Fprintf(buf, "\t{\n")

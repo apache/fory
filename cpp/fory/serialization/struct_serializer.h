@@ -57,37 +57,19 @@ constexpr int8_t FIELD_TYPE_MAP_KV_FINAL = 4;
 
 /// Check if a field needs reference/null flags in the stream.
 ///
-/// This mirrors Rust's
-/// `field_need_write_ref_into(type_id, nullable)` in
-/// rust/fory-core/src/serializer/util.rs and determines
-/// whether the writer emits a `RefFlag` byte before the
-/// field's value payload.
+/// This mirrors Rust's `field_need_write_ref_into(type_id, nullable)` in
+/// rust/fory-core/src/serializer/util.rs and determines whether the writer
+/// emits a `RefFlag` byte before the field's value payload.
+///
+/// Aligns with the xlang protocol where:
+/// - Non-optional types (nullable=false) skip the ref flag entirely
+/// - Optional types (nullable=true) write a ref flag to indicate null vs
+/// non-null
 inline bool field_requires_ref_flag(uint32_t type_id, bool nullable) {
-  if (nullable) {
-    return true;
-  }
-
-  uint32_t internal = type_id & 0xffu;
-  TypeId tid = static_cast<TypeId>(internal);
-  switch (tid) {
-  // Primitive numeric / bool types never write ref flags
-  case TypeId::BOOL:
-  case TypeId::INT8:
-  case TypeId::INT16:
-  case TypeId::INT32:
-  case TypeId::INT64:
-  case TypeId::FLOAT32:
-  case TypeId::FLOAT64:
-    return false;
-  // Enums in xlang are written without ref flags (see Rust
-  // enum serializer and Java EnumSerializer.xwrite), so we
-  // must not try to consume a ref flag for enum fields.
-  case TypeId::ENUM:
-  case TypeId::NAMED_ENUM:
-    return false;
-  default:
-    return true;
-  }
+  // Only write ref flag when nullable is true (value can be null).
+  // When nullable=false, the value is always present, no ref flag needed.
+  (void)type_id; // Unused, kept for API compatibility
+  return nullable;
 }
 
 inline bool field_requires_ref_flag(uint32_t type_id) {
@@ -318,12 +300,12 @@ template <typename T> struct CompileTimeFieldHelpers {
     }
   }
 
-  /// Returns true if the field at Index is nullable.
+  /// Returns true if the field at Index is nullable for fingerprint computation.
   /// This checks:
   /// 1. If the field is a fory::field<>, use its is_nullable metadata
   /// 2. Else if FORY_FIELD_TAGS is defined, use that metadata
-  /// 3. Otherwise, use legacy behavior: requires_ref_metadata_v (optional,
-  ///    shared_ptr, unique_ptr are all nullable)
+  /// 3. Otherwise, use xlang defaults: only std::optional is nullable
+  ///    (For xlang: nullable=false by default, except for Optional types)
   template <size_t Index> static constexpr bool field_nullable() {
     if constexpr (FieldCount == 0) {
       return false;
@@ -339,11 +321,12 @@ template <typename T> struct CompileTimeFieldHelpers {
       else if constexpr (::fory::detail::has_field_tags_v<T>) {
         return ::fory::detail::GetFieldTagEntry<T, Index>::is_nullable;
       }
-      // For non-wrapped types, use legacy behavior:
-      // optional, shared_ptr, unique_ptr are all "nullable" in terms of
-      // wire format (they write ref/null flags)
+      // For non-wrapped types, use xlang defaults:
+      // Only std::optional is nullable (field_is_nullable_v returns true for
+      // optional). For xlang consistency, shared_ptr/unique_ptr are NOT
+      // nullable by default - users must explicitly mark them as nullable.
       else {
-        return requires_ref_metadata_v<RawFieldType>;
+        return field_is_nullable_v<RawFieldType>;
       }
     }
   }
@@ -1304,22 +1287,25 @@ void write_single_field(const T &obj, WriteContext &ctx,
     return;
   }
 
-  // Per Rust: collections always use fory_write(value, context, true, false,
-  // true) Now C++ write() has matching signature with has_generics parameter
+  // Per xlang protocol: collections follow the same nullable logic as other
+  // fields. write_ref is only true when field is nullable.
+  // write_type is false for collections (type is known from struct schema).
+  // has_generics is true to enable generic element type handling.
   constexpr bool is_collection_field = field_type_id == TypeId::LIST ||
                                        field_type_id == TypeId::SET ||
                                        field_type_id == TypeId::MAP;
   if constexpr (is_collection_field) {
-    // Rust: fory_write(value, context, write_ref=true, write_type=false,
-    // has_generics=true)
-    Serializer<FieldType>::write(field_value, ctx, true, false, true);
+    // For non-nullable collection fields, write_ref should be false
+    // Only nullable collections write a ref flag
+    bool coll_write_ref = is_nullable || field_requires_ref || track_ref;
+    Serializer<FieldType>::write(field_value, ctx, coll_write_ref, false, true);
     return;
   }
 
   // For other types, determine write_ref and write_type per Rust logic
-  // write_ref: true for non-primitives OR if field is nullable/trackable
-  // Note: is_nullable controls whether null flag is written for smart pointers
-  bool write_ref = is_nullable || field_requires_ref || !is_primitive_field;
+  // write_ref: true only when field is nullable or explicitly tracked by ref
+  // Per xlang protocol: non-nullable fields skip ref flag entirely
+  bool write_ref = is_nullable || field_requires_ref || track_ref;
 
   // write_type: determined by field_need_write_type_info logic
   // Enums: false (per Rust util.rs:58-59)
@@ -1496,6 +1482,7 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
 
   // Get field metadata from fory::field<> or FORY_FIELD_TAGS or defaults
   constexpr bool is_nullable = Helpers::template field_nullable<Index>();
+  constexpr bool track_ref = Helpers::template field_track_ref<Index>();
 
   // In compatible mode, nested struct fields always carry type metadata
   // (xtypeId + meta index). We must read this metadata so that
@@ -1515,8 +1502,9 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   // Read ref flag if:
   // 1. Field is nullable (per new field metadata)
   // 2. Field requires ref metadata (legacy: optional, shared_ptr, etc.)
-  // 3. Field is non-primitive
-  bool read_ref = is_nullable || field_requires_ref || !is_primitive_field;
+  // 3. Field has explicit ref tracking enabled
+  // Per xlang protocol: non-nullable fields skip ref flag entirely
+  bool read_ref = is_nullable || field_requires_ref || track_ref;
 
 #ifdef FORY_DEBUG
   const auto debug_names = decltype(field_info)::Names;
@@ -1903,25 +1891,12 @@ void read_struct_fields_compatible(T &obj, ReadContext &ctx,
     const auto &remote_field = remote_fields[remote_idx];
     int16_t field_id = remote_field.field_id;
 
-    // In compatible mode, whether a field carries a ref/null flag depends on:
-    // 1. The field's nullable flag from TypeDef (Java marks enum fields and
-    //    other reference types as nullable)
-    // 2. The Fory config's trackingRef setting (ctx.track_ref())
-    //
-    // Java's ObjectSerializer writes null/not-null flags for:
-    // - Nullable fields (regardless of trackingRef)
-    // - Non-primitive fields when trackingRef is enabled
-    //
-    // For enum fields specifically, Java always marks them as nullable in
-    // the TypeDef (via EnumFieldType with nullable=true).
-    uint32_t type_id = remote_field.field_type.type_id;
-    bool is_primitive = is_primitive_type_id(static_cast<TypeId>(type_id));
-
-    // Read ref flags if:
-    // 1. Field is marked as nullable in TypeDef (Java writes flag), OR
-    // 2. trackingRef is enabled AND field is non-primitive
-    bool read_ref_flag =
-        remote_field.field_type.nullable || (ctx.track_ref() && !is_primitive);
+    // Per xlang protocol (see rust/fory-core/src/serializer/util.rs):
+    // Ref flags are ONLY written when nullable=true.
+    // The global trackingRef setting controls reference deduplication, NOT
+    // whether ref flags are written. Non-nullable fields skip ref flags
+    // entirely regardless of trackingRef.
+    bool read_ref_flag = remote_field.field_type.nullable;
 
     if (field_id == -1) {
       // Field unknown locally — skip its value

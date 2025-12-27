@@ -203,6 +203,10 @@ class MapRefResolver(RefResolver):
         return self.read_ref_ids[-1]
 
     def reference(self, obj):
+        # In xlang mode with xread_no_ref, read_ref_ids might be empty
+        # because ref tracking was skipped for this object
+        if not self.read_ref_ids:
+            return
         ref_id = self.read_ref_ids.pop()
         # When NOT_NULL_VALUE_FLAG was read instead of REF_VALUE_FLAG,
         # -1 is pushed to read_ref_ids. This means the object is a value type

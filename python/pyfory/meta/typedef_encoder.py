@@ -194,32 +194,31 @@ def write_fields_info(type_resolver, buffer: Buffer, field_infos: list):
 def write_field_info(buffer: Buffer, field_info: FieldInfo):
     """Write a single field info to the buffer.
 
-    Field header format (8 bits):
-    - 2 bits encoding type (0b00-10 = field name, 0b11 = TAG_ID)
-    - 4 bits size/tag_id
-    - 1 bit nullable flag
-    - 1 bit ref tracking flag
+    Field header format (8 bits) - aligned with Java TypeDefEncoder (for xlang):
+    - bit 0: ref tracking flag
+    - bit 1: nullable flag
+    - bits 2-5: size (4 bits, 0-14 inline, 15 = overflow)
+    - bits 6-7: encoding type (0b00-10 = field name, 0b11 = TAG_ID)
 
-    For TAG_ID encoding (when field.tag_id >= 0):
-    - encoding = 0b11
-    - 4 bits for tag_id (0-14 inline, 15 = overflow, read varint for tag_id - 15)
+    For TAG_ID encoding (when encoding = 0b11):
+    - size field contains tag_id (0-14 inline, 15 = overflow)
+    - No field name bytes to write
 
-    For field name encoding (when field.tag_id < 0):
-    - encoding = 0b00-10 (UTF8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL)
-    - 4 bits for encoded_size - 1 (0-14 inline, 15 = overflow)
-    - followed by field name meta string
+    For field name encoding (when encoding = 0b00-10):
+    - size field contains (encoded_size - 1)
+    - type info followed by field name meta string
     """
-    # Build header flags
+    # Build header flags (bits 0-1)
     header = 0
-    if field_info.field_type.is_nullable:
-        header |= 0b10
     if field_info.field_type.is_tracking_ref:
-        header |= 0b1
+        header |= 0b01  # bit 0
+    if field_info.field_type.is_nullable:
+        header |= 0b10  # bit 1
 
     if field_info.uses_tag_id():
-        # TAG_ID encoding
+        # TAG_ID encoding (encoding = 0b11 at bits 6-7)
         tag_id = field_info.tag_id
-        header |= FIELD_NAME_ENCODING_TAG_ID << 6
+        header |= FIELD_NAME_ENCODING_TAG_ID << 6  # encoding at bits 6-7
 
         if tag_id >= TAG_ID_SIZE_THRESHOLD:
             # Overflow: use 0b1111 and write extra varint
@@ -231,16 +230,16 @@ def write_field_info(buffer: Buffer, field_info: FieldInfo):
             header |= tag_id << 2
             buffer.write_uint8(header)
 
-        # Write field type info (without flags since they're in header)
+        # Write field type info (no field name for TAG_ID)
         field_info.field_type.xwrite(buffer, False)
-        # No field name to write for TAG_ID encoding
     else:
         # Field name encoding
         encoding = FIELD_NAME_ENCODER.compute_encoding(field_info.name, FIELD_NAME_ENCODINGS)
         meta_string = FIELD_NAME_ENCODER.encode_with_encoding(field_info.name, encoding)
+        # Store (length - 1) in size field, matching Java TypeDefEncoder
         field_name_binary_size = len(meta_string.encoded_data) - 1
         encoding_flags = FIELD_NAME_ENCODINGS.index(meta_string.encoding)
-        header |= encoding_flags << 6
+        header |= encoding_flags << 6  # encoding at bits 6-7
 
         if field_name_binary_size >= FIELD_NAME_SIZE_THRESHOLD:
             header |= FIELD_NAME_SIZE_THRESHOLD << 2
@@ -250,7 +249,7 @@ def write_field_info(buffer: Buffer, field_info: FieldInfo):
             header |= field_name_binary_size << 2
             buffer.write_uint8(header)
 
-        # Write field type info (without flags since they're in header)
+        # Write field type info BEFORE field name (matching Java TypeDefEncoder order)
         field_info.field_type.xwrite(buffer, False)
 
         # Write field name meta string

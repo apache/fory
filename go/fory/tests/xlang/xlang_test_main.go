@@ -159,8 +159,9 @@ type OneFieldStruct struct {
 // String field structs for schema evolution tests
 type EmptyStruct struct{}
 
+// F1 has @ForyField(id = -1, nullable = true) in Java
 type OneStringFieldStruct struct {
-	F1 string
+	F1 *string `fory:"nullable"`
 }
 
 type TwoStringFieldStruct struct {
@@ -228,7 +229,8 @@ type MyStruct struct {
 
 type VersionCheckStruct struct {
 	F1 int32
-	F2 string
+	// Match Java's @ForyField(nullable = true) annotation
+	F2 *string `fory:"nullable=true"`
 	F3 float64
 }
 
@@ -238,7 +240,8 @@ type Animal interface {
 }
 
 type Dog struct {
-	Name string
+	// Match Java's @ForyField(nullable = true) annotation
+	Name *string `fory:"nullable=true"`
 	Age  int32
 }
 
@@ -1123,7 +1126,9 @@ func testOneStringFieldSchemaConsistent() {
 	}
 
 	result := getOneStringFieldStruct(obj)
-	assertEqual("hello", result.F1, "f1")
+	if result.F1 == nil || *result.F1 != "hello" {
+		panic(fmt.Sprintf("f1 mismatch: expected 'hello', got '%v'", result.F1))
+	}
 
 	serialized, err := f.Serialize(result)
 	if err != nil {
@@ -1148,7 +1153,9 @@ func testOneStringFieldCompatible() {
 	}
 
 	result := getOneStringFieldStruct(obj)
-	assertEqual("hello", result.F1, "f1")
+	if result.F1 == nil || *result.F1 != "hello" {
+		panic(fmt.Sprintf("f1 mismatch: expected 'hello', got '%v'", result.F1))
+	}
 
 	serialized, err := f.Serialize(result)
 	if err != nil {

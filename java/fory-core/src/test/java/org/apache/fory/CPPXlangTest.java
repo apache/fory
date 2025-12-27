@@ -37,7 +37,7 @@ public class CPPXlangTest extends XlangTestBase {
 
   @Override
   protected void ensurePeerReady() {
-    String enabled = System.getenv("FORY_CPP_JAVA_CI_IGNORED");
+    String enabled = System.getenv("FORY_CPP_JAVA_CI");
     if (!"1".equals(enabled)) {
       throw new SkipException("Skipping CPPXlangTest: FORY_CPP_JAVA_CI not set to 1");
     }
@@ -125,9 +125,147 @@ public class CPPXlangTest extends XlangTestBase {
     }
   }
 
+  // ============================================================================
+  // Test methods - duplicated from XlangTestBase for Maven Surefire discovery
+  // ============================================================================
+
   @Test
-  @Override
+  public void testBuffer() throws java.io.IOException {
+    super.testBuffer();
+  }
+
+  @Test
+  public void testBufferVar() throws java.io.IOException {
+    super.testBufferVar();
+  }
+
+  @Test
+  public void testMurmurHash3() throws java.io.IOException {
+    super.testMurmurHash3();
+  }
+
+  @Test
+  public void testStringSerializer() throws Exception {
+    super.testStringSerializer();
+  }
+
+  @Test
+  public void testCrossLanguageSerializer() throws Exception {
+    super.testCrossLanguageSerializer();
+  }
+
+  @Test
+  public void testSimpleStruct() throws java.io.IOException {
+    super.testSimpleStruct();
+  }
+
+  @Test
+  public void testSimpleNamedStruct() throws java.io.IOException {
+    super.testSimpleNamedStruct();
+  }
+
+  @Test
+  public void testList() throws java.io.IOException {
+    super.testList();
+  }
+
+  @Test
+  public void testMap() throws java.io.IOException {
+    super.testMap();
+  }
+
+  @Test
+  public void testInteger() throws java.io.IOException {
+    super.testInteger();
+  }
+
+  @Test
+  public void testItem() throws java.io.IOException {
+    super.testItem();
+  }
+
+  @Test
+  public void testColor() throws java.io.IOException {
+    super.testColor();
+  }
+
+  @Test
+  public void testStructWithList() throws java.io.IOException {
+    super.testStructWithList();
+  }
+
+  @Test
+  public void testStructWithMap() throws java.io.IOException {
+    super.testStructWithMap();
+  }
+
+  @Test
+  public void testSkipIdCustom() throws java.io.IOException {
+    super.testSkipIdCustom();
+  }
+
+  @Test
+  public void testSkipNameCustom() throws java.io.IOException {
+    super.testSkipNameCustom();
+  }
+
+  @Test
   public void testConsistentNamed() throws java.io.IOException {
     super.testConsistentNamed();
+  }
+
+  @Test
+  public void testStructVersionCheck() throws java.io.IOException {
+    super.testStructVersionCheck();
+  }
+
+  @Test
+  public void testPolymorphicList() throws java.io.IOException {
+    super.testPolymorphicList();
+  }
+
+  @Test
+  public void testPolymorphicMap() throws java.io.IOException {
+    super.testPolymorphicMap();
+  }
+
+  @Test
+  public void testOneStringFieldSchemaConsistent() throws java.io.IOException {
+    super.testOneStringFieldSchemaConsistent();
+  }
+
+  @Test
+  public void testOneStringFieldCompatible() throws java.io.IOException {
+    super.testOneStringFieldCompatible();
+  }
+
+  @Test
+  public void testTwoStringFieldCompatible() throws java.io.IOException {
+    super.testTwoStringFieldCompatible();
+  }
+
+  @Test
+  public void testSchemaEvolutionCompatible() throws java.io.IOException {
+    super.testSchemaEvolutionCompatible();
+  }
+
+  @Test
+  public void testOneEnumFieldSchemaConsistent() throws java.io.IOException {
+    super.testOneEnumFieldSchemaConsistent();
+  }
+
+  @Test
+  public void testOneEnumFieldCompatible() throws java.io.IOException {
+    super.testOneEnumFieldCompatible();
+  }
+
+  @Test
+  public void testTwoEnumFieldCompatible() throws java.io.IOException {
+    super.testTwoEnumFieldCompatible();
+  }
+
+  @Test
+  public void testEnumSchemaEvolutionCompatible() throws java.io.IOException {
+    super.testEnumSchemaEvolutionCompatible();
   }
 }

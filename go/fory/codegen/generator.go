@@ -296,8 +296,8 @@ func generateCodeForFile(pkg *packages.Package, structs []*StructInfo, sourceFil
 	}
 
 	// Generate imports
+	// Note: "fmt" is not imported by default. Add it only if the generated code uses fmt.
 	fmt.Fprintf(&buf, "import (\n")
-	fmt.Fprintf(&buf, "\t\"fmt\"\n")
 	if needsReflect {
 		fmt.Fprintf(&buf, "\t\"reflect\"\n")
 	}
@@ -549,8 +549,8 @@ func generateCode(pkg *packages.Package, structs []*StructInfo) error {
 	}
 
 	// Generate imports
+	// Note: "fmt" is not imported by default. Add it only if the generated code uses fmt.
 	fmt.Fprintf(&buf, "import (\n")
-	fmt.Fprintf(&buf, "\t\"fmt\"\n")
 	if needsReflect {
 		fmt.Fprintf(&buf, "\t\"reflect\"\n")
 	}

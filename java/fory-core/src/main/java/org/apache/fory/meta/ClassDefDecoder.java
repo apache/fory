@@ -140,9 +140,11 @@ class ClassDefDecoder {
       }
 
       boolean isMonomorphic = (header & 0b100) != 0;
+      boolean nullable = (header & 0b010) != 0;
       boolean trackingRef = (header & 0b001) != 0;
       int typeId = buffer.readVarUint32Small14();
-      FieldType fieldType = FieldType.read(buffer, resolver, isMonomorphic, trackingRef, typeId);
+      FieldType fieldType =
+          FieldType.read(buffer, resolver, isMonomorphic, nullable, trackingRef, typeId);
 
       if (useTagID) {
         fieldInfos.add(new ClassDef.FieldInfo(className, fieldName, fieldType, tagId));

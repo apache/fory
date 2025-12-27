@@ -28,6 +28,10 @@ import static org.apache.fory.codegen.Expression.Literal;
 import static org.apache.fory.codegen.Expression.NewArray;
 import static org.apache.fory.codegen.Expression.Not;
 import static org.apache.fory.codegen.Expression.StaticInvoke;
+import static org.apache.fory.type.TypeUtils.PRIMITIVE_CHAR_TYPE;
+import static org.apache.fory.type.TypeUtils.PRIMITIVE_DOUBLE_TYPE;
+import static org.apache.fory.type.TypeUtils.PRIMITIVE_FLOAT_TYPE;
+import static org.apache.fory.type.TypeUtils.PRIMITIVE_SHORT_TYPE;
 import static org.apache.fory.type.TypeUtils.getRawType;
 
 import java.io.Serializable;
@@ -149,6 +153,29 @@ public class ExpressionUtils {
 
   public static Literal nullValue(TypeRef<?> type) {
     return new Literal(null, type);
+  }
+
+  /** Returns the default value for a type. For primitives returns 0/false, for objects returns null. */
+  public static Literal defaultValue(Class<?> type) {
+    if (type == boolean.class) {
+      return Literal.False;
+    } else if (type == byte.class) {
+      return Literal.ofByte((short) 0);
+    } else if (type == char.class) {
+      return new Literal((char) 0, PRIMITIVE_CHAR_TYPE);
+    } else if (type == short.class) {
+      return new Literal((short) 0, PRIMITIVE_SHORT_TYPE);
+    } else if (type == int.class) {
+      return Literal.ofInt(0);
+    } else if (type == long.class) {
+      return Literal.ofLong(0L);
+    } else if (type == float.class) {
+      return new Literal(0.0f, PRIMITIVE_FLOAT_TYPE);
+    } else if (type == double.class) {
+      return new Literal(0.0, PRIMITIVE_DOUBLE_TYPE);
+    } else {
+      return new Literal(null, TypeRef.of(type));
+    }
   }
 
   public static Comparator eq(Expression left, Expression right) {

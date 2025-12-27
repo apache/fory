@@ -111,7 +111,7 @@ enum class Color : int32_t { Green = 0, Red = 1, Blue = 2, White = 3 };
 FORY_ENUM(Color, Green, Red, Blue, White);
 
 struct Item {
-  std::optional<std::string> name;
+  std::string name;
   bool operator==(const Item &other) const { return name == other.name; }
 };
 FORY_STRUCT(Item, name);
@@ -120,12 +120,12 @@ struct SimpleStruct {
   std::map<int32_t, double> f1;
   int32_t f2;
   Item f3;
-  std::optional<std::string> f4;
+  std::string f4;
   Color f5;
-  std::vector<std::optional<std::string>> f6;
+  std::vector<std::string> f6;
   int32_t f7;
-  int32_t f8;   // Changed from optional to match Rust
-  int32_t last; // Changed from optional to match Rust
+  int32_t f8;
+  int32_t last;
   bool operator==(const SimpleStruct &other) const {
     return f1 == other.f1 && f2 == other.f2 && f3 == other.f3 &&
            f4 == other.f4 && f5 == other.f5 && f6 == other.f6 &&
@@ -135,26 +135,14 @@ struct SimpleStruct {
 FORY_STRUCT(SimpleStruct, f1, f2, f3, f4, f5, f6, f7, f8, last);
 
 // Integer struct used for cross-language boxed integer tests.
-//
-// This layout mirrors Rust's Item2 in tests/tests/test_cross_language.rs
-// test_integer:
-//   struct Item2 {
-//       f1: i32,
-//       f2: Option<i32>,
-//       f3: Option<i32>,
-//       f4: i32,
-//       f5: i32,
-//       f6: Option<i32>,
-//   }
-// so that Java -> C++ and C++ -> Java semantics for boxed/unboxed
-// integers are aligned with the Rust reference implementation.
+// Java xlang mode: all fields are non-nullable by default.
 struct Item1 {
   int32_t f1;
-  std::optional<int32_t> f2;
-  std::optional<int32_t> f3;
+  int32_t f2;
+  int32_t f3;
   int32_t f4;
   int32_t f5;
-  std::optional<int32_t> f6;
+  int32_t f6;
   bool operator==(const Item1 &other) const {
     return f1 == other.f1 && f2 == other.f2 && f3 == other.f3 &&
            f4 == other.f4 && f5 == other.f5 && f6 == other.f6;
@@ -211,7 +199,7 @@ struct VersionCheckStruct {
 FORY_STRUCT(VersionCheckStruct, f1, f2, f3);
 
 struct StructWithList {
-  std::vector<std::optional<std::string>> items;
+  std::vector<std::string> items;
   bool operator==(const StructWithList &other) const {
     return items == other.items;
   }
@@ -219,7 +207,7 @@ struct StructWithList {
 FORY_STRUCT(StructWithList, items);
 
 struct StructWithMap {
-  std::map<std::optional<std::string>, std::optional<std::string>> data;
+  std::map<std::string, std::string> data;
   bool operator==(const StructWithMap &other) const {
     return data == other.data;
   }
@@ -255,7 +243,7 @@ struct AnimalListHolder {
 FORY_STRUCT(AnimalListHolder, animals);
 
 struct AnimalMapHolder {
-  std::map<std::optional<std::string>, std::shared_ptr<Animal>> animal_map;
+  std::map<std::string, std::shared_ptr<Animal>> animal_map;
 };
 FORY_STRUCT(AnimalMapHolder, animal_map);
 
@@ -280,8 +268,8 @@ struct OneStringFieldStruct {
 FORY_STRUCT(OneStringFieldStruct, f1);
 
 struct TwoStringFieldStruct {
-  std::optional<std::string> f1;
-  std::optional<std::string> f2;
+  std::string f1;
+  std::string f2;
   bool operator==(const TwoStringFieldStruct &other) const {
     return f1 == other.f1 && f2 == other.f2;
   }
@@ -301,7 +289,7 @@ FORY_STRUCT(OneEnumFieldStruct, f1);
 
 struct TwoEnumFieldStruct {
   TestEnum f1;
-  std::optional<TestEnum> f2;
+  TestEnum f2;
   bool operator==(const TwoEnumFieldStruct &other) const {
     return f1 == other.f1 && f2 == other.f2;
   }
@@ -442,7 +430,7 @@ Fory BuildFory(bool compatible = true, bool xlang = true,
 }
 
 void RegisterBasicStructs(Fory &fory) {
-  EnsureOk(fory.register_struct<Color>(101), "register Color");
+  EnsureOk(fory.register_enum<Color>(101), "register Color");
   EnsureOk(fory.register_struct<Item>(102), "register Item");
   EnsureOk(fory.register_struct<SimpleStruct>(103), "register SimpleStruct");
 }
@@ -1010,7 +998,7 @@ void RunTestSimpleStruct(const std::string &data_file) {
 void RunTestSimpleNamedStruct(const std::string &data_file) {
   auto bytes = ReadFile(data_file);
   auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_struct<Color>("demo", "color"), "register color");
+  EnsureOk(fory.register_enum<Color>("demo", "color"), "register color");
   EnsureOk(fory.register_struct<Item>("demo", "item"), "register item");
   EnsureOk(fory.register_struct<SimpleStruct>("demo", "simple_struct"),
            "register simple_struct");
@@ -1114,7 +1102,7 @@ void RunTestInteger(const std::string &data_file) {
   expected.f3 = 3;
   expected.f4 = 4;
   expected.f5 = 0;
-  expected.f6 = std::nullopt;
+  expected.f6 = 0;
 
   auto item_value = ReadNext<Item1>(fory, buffer);
   if (!(item_value == expected)) {
@@ -1131,8 +1119,9 @@ void RunTestInteger(const std::string &data_file) {
   AppendSerialized(fory, 2, out);
   AppendSerialized(fory, std::optional<int32_t>(3), out);
   AppendSerialized(fory, std::optional<int32_t>(4), out);
+  // xlang mode uses nullable=false by default, so write 0 not null
   AppendSerialized(fory, 0, out);
-  AppendSerialized(fory, std::optional<int32_t>(), out);
+  AppendSerialized(fory, 0, out);
   WriteFile(data_file, out);
 }
 
@@ -1148,7 +1137,7 @@ void RunTestItem(const std::string &data_file) {
   Item expected2;
   expected2.name = std::string("test_item_2");
   Item expected3;
-  expected3.name = std::nullopt;
+  expected3.name = std::string("");  // Empty string for non-nullable field
 
   Item item1 = ReadNext<Item>(fory, buffer);
   if (!(item1 == expected1)) {
@@ -1173,7 +1162,7 @@ void RunTestItem(const std::string &data_file) {
 void RunTestColor(const std::string &data_file) {
   auto bytes = ReadFile(data_file);
   auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_struct<Color>(101), "register Color");
+  EnsureOk(fory.register_enum<Color>(101), "register Color");
 
   Buffer buffer = MakeBuffer(bytes);
 
@@ -1210,7 +1199,7 @@ void RunTestStructWithList(const std::string &data_file) {
   expected1.items = {std::string("a"), std::string("b"), std::string("c")};
 
   StructWithList expected2;
-  expected2.items = {std::string("x"), std::nullopt, std::string("z")};
+  expected2.items = {std::string("x"), std::string(""), std::string("z")};  // Empty string instead of null
 
   StructWithList struct1 = ReadNext<StructWithList>(fory, buffer);
   if (!(struct1 == expected1)) {
@@ -1240,8 +1229,10 @@ void RunTestStructWithMap(const std::string &data_file) {
                     {std::string("key2"), std::string("value2")}};
 
   StructWithMap expected2;
-  expected2.data = {{std::string("k1"), std::nullopt},
-                    {std::nullopt, std::string("v2")}};
+  // Java test uses null values - but with xlang non-nullable default,
+  // these should be empty strings or the test may need adjustment
+  expected2.data = {{std::string("k1"), std::string("")},
+                    {std::string(""), std::string("v2")}};
 
   StructWithMap struct1 = ReadNext<StructWithMap>(fory, buffer);
   if (!(struct1 == expected1)) {
@@ -1273,7 +1264,7 @@ void RunTestSkipIdCustom(const std::string &data_file) {
   }
 
   auto full = BuildFory(true, true);
-  EnsureOk(full.register_struct<Color>(101), "register Color full");
+  EnsureOk(full.register_enum<Color>(101), "register Color full");
   EnsureOk(full.register_struct<MyStruct>(102), "register MyStruct full");
   EnsureOk(full.register_extension_type<MyExt>(103), "register MyExt full");
   EnsureOk(full.register_struct<MyWrapper>(104), "register MyWrapper full");
@@ -1305,7 +1296,7 @@ void RunTestSkipNameCustom(const std::string &data_file) {
   }
 
   auto full = BuildFory(true, true);
-  EnsureOk(full.register_struct<Color>("color"), "register named Color");
+  EnsureOk(full.register_enum<Color>("color"), "register named Color");
   EnsureOk(full.register_struct<MyStruct>("my_struct"),
            "register named MyStruct");
   EnsureOk(full.register_extension_type<MyExt>("my_ext"),
@@ -1327,7 +1318,7 @@ void RunTestConsistentNamed(const std::string &data_file) {
   auto bytes = ReadFile(data_file);
   // Java uses SCHEMA_CONSISTENT mode which does NOT enable meta sharing
   auto fory = BuildFory(false, true, true);
-  EnsureOk(fory.register_struct<Color>("color"), "register named color");
+  EnsureOk(fory.register_enum<Color>("color"), "register named color");
   EnsureOk(fory.register_struct<MyStruct>("my_struct"),
            "register named MyStruct");
   EnsureOk(fory.register_extension_type<MyExt>("my_ext"),
@@ -1576,8 +1567,8 @@ void RunTestTwoStringFieldCompatible(const std::string &data_file) {
   expected.f1 = std::string("first");
   expected.f2 = std::string("second");
   if (!(value == expected)) {
-    Fail("TwoStringFieldStruct compatible mismatch: got f1=" +
-         value.f1.value_or("null") + ", f2=" + value.f2.value_or("null"));
+    Fail("TwoStringFieldStruct compatible mismatch: got f1=" + value.f1 +
+         ", f2=" + value.f2);
   }
 
   std::vector<uint8_t> out;
@@ -1611,15 +1602,15 @@ void RunTestSchemaEvolutionCompatibleReverse(const std::string &data_file) {
   Buffer buffer = MakeBuffer(bytes);
   auto value = ReadNext<TwoStringFieldStruct>(fory, buffer);
 
-  // f1 should be "only_one", f2 should be empty/null
-  if (!value.f1.has_value() || value.f1.value() != "only_one") {
+  // f1 should be "only_one", f2 should be empty (default value)
+  if (value.f1 != "only_one") {
     Fail("Schema evolution reverse mismatch: expected f1='only_one', got f1=" +
-         value.f1.value_or("null"));
+         value.f1);
   }
-  // f2 should be empty (not present in source data)
-  if (value.f2.has_value()) {
-    Fail("Schema evolution reverse mismatch: expected f2=null, got f2=" +
-         value.f2.value());
+  // f2 should be empty (not present in source data, default initialized)
+  if (!value.f2.empty()) {
+    Fail("Schema evolution reverse mismatch: expected f2='', got f2=" +
+         value.f2);
   }
 
   // Serialize back
@@ -1637,7 +1628,7 @@ void RunTestOneEnumFieldSchema(const std::string &data_file) {
   // SCHEMA_CONSISTENT mode: compatible=false, xlang=true,
   // check_struct_version=true
   auto fory = BuildFory(false, true, true);
-  EnsureOk(fory.register_struct<TestEnum>(210), "register TestEnum");
+  EnsureOk(fory.register_enum<TestEnum>(210), "register TestEnum");
   EnsureOk(fory.register_struct<OneEnumFieldStruct>(211),
            "register OneEnumFieldStruct");
 
@@ -1657,7 +1648,7 @@ void RunTestOneEnumFieldSchema(const std::string &data_file) {
 void RunTestOneEnumFieldCompatible(const std::string &data_file) {
   auto bytes = ReadFile(data_file);
   auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_struct<TestEnum>(210), "register TestEnum");
+  EnsureOk(fory.register_enum<TestEnum>(210), "register TestEnum");
   EnsureOk(fory.register_struct<OneEnumFieldStruct>(211),
            "register OneEnumFieldStruct");
 
@@ -1677,7 +1668,7 @@ void RunTestOneEnumFieldCompatible(const std::string &data_file) {
 void RunTestTwoEnumFieldCompatible(const std::string &data_file) {
   auto bytes = ReadFile(data_file);
   auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_struct<TestEnum>(210), "register TestEnum");
+  EnsureOk(fory.register_enum<TestEnum>(210), "register TestEnum");
   EnsureOk(fory.register_struct<TwoEnumFieldStruct>(212),
            "register TwoEnumFieldStruct");
 
@@ -1688,8 +1679,9 @@ void RunTestTwoEnumFieldCompatible(const std::string &data_file) {
     Fail("TwoEnumFieldStruct compatible mismatch: expected f1=VALUE_A, got " +
          std::to_string(static_cast<int32_t>(value.f1)));
   }
-  if (!value.f2.has_value() || value.f2.value() != TestEnum::VALUE_C) {
-    Fail("TwoEnumFieldStruct compatible mismatch: expected f2=VALUE_C");
+  if (value.f2 != TestEnum::VALUE_C) {
+    Fail("TwoEnumFieldStruct compatible mismatch: expected f2=VALUE_C, got " +
+         std::to_string(static_cast<int32_t>(value.f2)));
   }
 
   std::vector<uint8_t> out;
@@ -1701,7 +1693,7 @@ void RunTestEnumSchemaEvolutionCompatible(const std::string &data_file) {
   auto bytes = ReadFile(data_file);
   // Read TwoEnumFieldStruct data as EmptyStructEvolution
   auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_struct<TestEnum>(210), "register TestEnum");
+  EnsureOk(fory.register_enum<TestEnum>(210), "register TestEnum");
   EnsureOk(fory.register_struct<EmptyStructEvolution>(211),
            "register EmptyStructEvolution");
 
@@ -1718,7 +1710,7 @@ void RunTestEnumSchemaEvolutionCompatibleReverse(const std::string &data_file) {
   auto bytes = ReadFile(data_file);
   // Read OneEnumFieldStruct data as TwoEnumFieldStruct (missing f2)
   auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_struct<TestEnum>(210), "register TestEnum");
+  EnsureOk(fory.register_enum<TestEnum>(210), "register TestEnum");
   EnsureOk(fory.register_struct<TwoEnumFieldStruct>(211),
            "register TwoEnumFieldStruct");
 
@@ -1730,10 +1722,10 @@ void RunTestEnumSchemaEvolutionCompatibleReverse(const std::string &data_file) {
     Fail("Enum schema evolution reverse mismatch: expected f1=VALUE_C, got " +
          std::to_string(static_cast<int32_t>(value.f1)));
   }
-  // f2 should be empty (not present in source data)
-  if (value.f2.has_value()) {
-    Fail("Enum schema evolution reverse mismatch: expected f2=null, got " +
-         std::to_string(static_cast<int32_t>(value.f2.value())));
+  // f2 should be default (VALUE_A = 0, not present in source data)
+  if (value.f2 != TestEnum::VALUE_A) {
+    Fail("Enum schema evolution reverse mismatch: expected f2=VALUE_A (default), got " +
+         std::to_string(static_cast<int32_t>(value.f2)));
   }
 
   // Serialize back

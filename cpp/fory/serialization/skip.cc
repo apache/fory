@@ -26,26 +26,21 @@ namespace serialization {
 
 namespace {
 
-// Mirror Rust's field_need_write_ref_into(type_id, nullable) for runtime
-// computation of whether a field writes ref/null flags before the value.
+// Mirror Java's field ref/null flag writing behavior for runtime computation
+// of whether a field writes ref/null flags before the value.
+//
+// Per xlang protocol and Java's ObjectSerializer.writeOtherFieldValue:
+// - In xlang mode with refTracking=false (default), fields only write
+//   ref/null flag if they are nullable
+// - Primitives never have ref flags (handled separately)
+// - All other types (enums, structs, exts, etc.) only write NOT_NULL_VALUE_FLAG
+//   when the field is nullable
+//
+// Java's writeNullable(buffer, obj, classInfoHolder, nullable):
+//   if (nullable) writeNullable(...)  // writes flag
+//   else writeNonRef(...)             // no flag
 inline bool field_need_write_ref_into_runtime(const FieldType &field_type) {
-  if (field_type.nullable) {
-    return true;
-  }
-  uint32_t internal = field_type.type_id & 0xffu;
-  TypeId tid = static_cast<TypeId>(internal);
-  switch (tid) {
-  case TypeId::BOOL:
-  case TypeId::INT8:
-  case TypeId::INT16:
-  case TypeId::INT32:
-  case TypeId::INT64:
-  case TypeId::FLOAT32:
-  case TypeId::FLOAT64:
-    return false;
-  default:
-    return true;
-  }
+  return field_type.nullable;
 }
 
 } // namespace
@@ -214,8 +209,13 @@ void skip_map(ReadContext &ctx, const FieldType &field_type) {
 
 void skip_struct(ReadContext &ctx, const FieldType &field_type) {
   // Struct fields in compatible mode are serialized with type_id and
-  // meta_index followed by field values. We use the loaded TypeMeta to
-  // skip all fields for the remote struct.
+  // optionally meta_index, followed by field values. We use the loaded
+  // TypeMeta to skip all fields for the remote struct.
+  //
+  // Type categories:
+  // - COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT: type_id + meta_index + fields
+  // - NAMED_STRUCT in compatible mode: type_id + meta_index + fields
+  // - STRUCT: type_id + struct_version + fields (no meta_index)
 
   if (!ctx.is_compatible()) {
     ctx.set_error(Error::unsupported(
@@ -223,24 +223,49 @@ void skip_struct(ReadContext &ctx, const FieldType &field_type) {
     return;
   }
 
-  // Read remote type_id (ignored for now) and meta_index
+  // Read remote type_id
   uint32_t remote_type_id = ctx.read_varuint32(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return;
   }
-  (void)remote_type_id;
 
-  uint32_t meta_index = ctx.read_varuint32(ctx.error());
-  if (FORY_PREDICT_FALSE(ctx.has_error())) {
-    return;
-  }
+  uint32_t type_id_low = remote_type_id & 0xff;
+  TypeId remote_tid = static_cast<TypeId>(type_id_low);
 
-  auto type_info_res = ctx.get_type_info_by_index(meta_index);
-  if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
-    ctx.set_error(std::move(type_info_res).error());
-    return;
+  const TypeInfo *type_info = nullptr;
+
+  if (remote_tid == TypeId::COMPATIBLE_STRUCT ||
+      remote_tid == TypeId::NAMED_COMPATIBLE_STRUCT ||
+      remote_tid == TypeId::NAMED_STRUCT) {
+    // These types write meta_index after type_id
+    uint32_t meta_index = ctx.read_varuint32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+
+    auto type_info_res = ctx.get_type_info_by_index(meta_index);
+    if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
+      ctx.set_error(std::move(type_info_res).error());
+      return;
+    }
+    type_info = type_info_res.value();
+  } else {
+    // Plain STRUCT: look up by type_id, read struct_version if enabled
+    auto type_info_res = ctx.type_resolver().get_type_info_by_id(remote_type_id);
+    if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
+      ctx.set_error(std::move(type_info_res).error());
+      return;
+    }
+    type_info = type_info_res.value();
+
+    // STRUCT writes struct_version if class version checking is enabled
+    // For now we skip 4 bytes for the version hash
+    // TODO: make this conditional based on config
+    (void)ctx.read_int32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
   }
-  const TypeInfo *type_info = type_info_res.value();
 
   if (!type_info || !type_info->type_meta) {
     ctx.set_error(
@@ -260,9 +285,10 @@ void skip_struct(ReadContext &ctx, const FieldType &field_type) {
 }
 
 void skip_ext(ReadContext &ctx, const FieldType &field_type) {
-  // EXT fields in compatible mode are serialized with type_id and meta_index
-  // (for named ext) or just the user type_id (for id-based ext).
-  // We look up the registered ext harness and call its read_data function.
+  // EXT fields in compatible mode are serialized with type_id followed by
+  // ext data. For named ext, meta_index is also written after type_id.
+  // We read the type_id, look up the registered ext harness, and call its
+  // read_data function to consume the data bytes.
 
   if (!ctx.is_compatible()) {
     ctx.set_error(Error::unsupported(
@@ -270,20 +296,19 @@ void skip_ext(ReadContext &ctx, const FieldType &field_type) {
     return;
   }
 
-  uint32_t full_type_id = field_type.type_id;
-  uint32_t low = full_type_id & 0xffu;
-  TypeId tid = static_cast<TypeId>(low);
+  // Read remote type_id from buffer - Java always writes type_id for ext
+  uint32_t remote_type_id = ctx.read_varuint32(ctx.error());
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return;
+  }
+
+  uint32_t low = remote_type_id & 0xffu;
+  TypeId remote_tid = static_cast<TypeId>(low);
 
   const TypeInfo *type_info = nullptr;
 
-  if (tid == TypeId::NAMED_EXT) {
-    // Named ext: read type_id and meta_index
-    uint32_t remote_type_id = ctx.read_varuint32(ctx.error());
-    if (FORY_PREDICT_FALSE(ctx.has_error())) {
-      return;
-    }
-    (void)remote_type_id;
-
+  if (remote_tid == TypeId::NAMED_EXT) {
+    // Named ext: also read meta_index
     uint32_t meta_index = ctx.read_varuint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
@@ -296,9 +321,8 @@ void skip_ext(ReadContext &ctx, const FieldType &field_type) {
     }
     type_info = type_info_res.value();
   } else {
-    // ID-based ext: look up by full type_id
-    // The ext fields in TypeMeta store the user type_id (high bits | EXT)
-    auto type_info_res = ctx.type_resolver().get_type_info_by_id(full_type_id);
+    // ID-based ext: look up by remote type_id we just read
+    auto type_info_res = ctx.type_resolver().get_type_info_by_id(remote_type_id);
     if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
       ctx.set_error(std::move(type_info_res).error());
       return;
@@ -308,14 +332,14 @@ void skip_ext(ReadContext &ctx, const FieldType &field_type) {
 
   if (!type_info) {
     ctx.set_error(Error::type_error("TypeInfo not found for ext type: " +
-                                    std::to_string(full_type_id)));
+                                    std::to_string(remote_type_id)));
     return;
   }
 
   if (!type_info->harness.valid() || !type_info->harness.read_data_fn) {
     ctx.set_error(
         Error::type_error("Ext harness not found or incomplete for type: " +
-                          std::to_string(full_type_id)));
+                          std::to_string(remote_type_id)));
     return;
   }
 

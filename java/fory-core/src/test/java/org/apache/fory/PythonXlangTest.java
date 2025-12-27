@@ -43,7 +43,7 @@ public class PythonXlangTest extends XlangTestBase {
 
   @Override
   protected void ensurePeerReady() {
-    String enabled = System.getenv("FORY_PYTHON_JAVA_CI_IGNORED");
+    String enabled = System.getenv("FORY_PYTHON_JAVA_CI");
     if (!"1".equals(enabled)) {
       throw new SkipException("Skipping PythonXlangTest: FORY_PYTHON_JAVA_CI not set to 1");
     }

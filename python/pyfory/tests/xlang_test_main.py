@@ -57,7 +57,7 @@ class Color(enum.Enum):
 
 @dataclass
 class Item:
-    name: Optional[str] = None
+    name: str = ""
 
 
 @dataclass
@@ -65,9 +65,9 @@ class SimpleStruct:
     f1: Dict[pyfory.int32, pyfory.float64] = None
     f2: pyfory.int32 = 0
     f3: Item = None
-    f4: Optional[str] = None
+    f4: str = ""
     f5: Color = None
-    f6: List[Optional[str]] = None
+    f6: List[str] = None
     f7: pyfory.int32 = 0
     f8: pyfory.int32 = 0
     last: pyfory.int32 = 0
@@ -152,8 +152,8 @@ class OneStringFieldStruct:
 
 @dataclass
 class TwoStringFieldStruct:
-    f1: Optional[str] = None
-    f2: Optional[str] = None
+    f1: str = ""
+    f2: str = ""
 
 
 class TestEnum(enum.Enum):

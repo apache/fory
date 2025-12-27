@@ -445,15 +445,14 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_tuple_v<decay_t<T>>>> {
   }
 };
 
-// Specialization for enum types - Java always marks enum fields as nullable
+// Specialization for enum types - xlang mode treats enums as non-nullable by default
 template <typename T>
 struct FieldTypeBuilder<T, std::enable_if_t<std::is_enum_v<decay_t<T>>>> {
   using Decayed = decay_t<T>;
-  static FieldType build(bool /* nullable */) {
-    // Java's ClassDef.EnumFieldType always sets nullable=true for enum fields
-    // since enums are reference types in Java. We need to match this for
-    // consistent struct version hashes across languages.
-    return FieldType(to_type_id(Serializer<Decayed>::type_id), true);
+  static FieldType build(bool nullable) {
+    // In xlang mode, enum fields are non-nullable by default (like primitives).
+    // This matches Java's ObjectSerializer.computeStructFingerprint behavior.
+    return FieldType(to_type_id(Serializer<Decayed>::type_id), nullable);
   }
 };
 

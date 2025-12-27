@@ -33,6 +33,7 @@ import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import lombok.Data;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
@@ -657,8 +658,10 @@ public abstract class XlangTestBase extends ForyTestBase {
     int f2 = 2;
     Integer f3 = 3;
     Integer f4 = 4;
-    Integer f5 = null;
-    Integer f6 = null;
+    // Use 0 instead of null for xlang mode with nullable=false default
+    // Go uses int (not *int), so null is not allowed
+    Integer f5 = 0;
+    Integer f6 = 0;
     item1.f1 = f1;
     item1.f2 = f2;
     item1.f3 = f3;
@@ -683,14 +686,15 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(newItem1.f2, 2);
     Assert.assertEquals(newItem1.f3, 3);
     Assert.assertEquals(newItem1.f4, 4);
-    Assert.assertEquals(newItem1.f5, 0);
-    Assert.assertNull(newItem1.f6);
+    // With nullable=false (xlang default), 0 should round-trip correctly
+    Assert.assertEquals(newItem1.f5, (Integer) 0);
+    Assert.assertEquals(newItem1.f6, (Integer) 0);
     Assert.assertEquals(fory.deserialize(buffer2), 1);
     Assert.assertEquals(fory.deserialize(buffer2), 2);
     Assert.assertEquals(fory.deserialize(buffer2), 3);
     Assert.assertEquals(fory.deserialize(buffer2), 4);
     Assert.assertEquals(fory.deserialize(buffer2), 0);
-    Assert.assertNull(fory.deserialize(buffer2));
+    Assert.assertEquals(fory.deserialize(buffer2), 0);
   }
 
   @Test
@@ -709,7 +713,9 @@ public abstract class XlangTestBase extends ForyTestBase {
     Item item2 = new Item();
     item2.name = "test_item_2";
     Item item3 = new Item();
-    item3.name = null;
+    // Use empty string instead of null - xlang mode uses nullable=false by default
+    // Go strings are always non-nil (empty string for "no value")
+    item3.name = "";
 
     MemoryBuffer buffer = MemoryUtils.buffer(64);
     fory.serialize(buffer, item1);
@@ -725,11 +731,8 @@ public abstract class XlangTestBase extends ForyTestBase {
     Item readItem2 = (Item) fory.deserialize(buffer2);
     Assert.assertEquals(readItem2.name, "test_item_2");
     Item readItem3 = (Item) fory.deserialize(buffer2);
-    // Go uses string (not *string), so null becomes empty string
-    // Rust uses Option<String>, so null stays null
-    Assert.assertTrue(
-        readItem3.name == null || readItem3.name.isEmpty(),
-        "Expected null or empty string but got: " + readItem3.name);
+    // With nullable=false (xlang default), empty string should round-trip correctly
+    Assert.assertEquals(readItem3.name, "");
   }
 
   @Test
@@ -1013,7 +1016,10 @@ public abstract class XlangTestBase extends ForyTestBase {
   @Data
   static class VersionCheckStruct {
     int f1;
+
+    @ForyField(id = -1, nullable = true)
     String f2;
+
     double f3;
   }
 
@@ -1057,7 +1063,14 @@ public abstract class XlangTestBase extends ForyTestBase {
   @Data
   public static class Dog implements Animal {
     int age;
+
+    @ForyField(id = -1, nullable = true)
     String name;
+
+    @Override
+    public int getAge() {
+      return age;
+    }
 
     @Override
     public String speak() {
@@ -1069,6 +1082,11 @@ public abstract class XlangTestBase extends ForyTestBase {
   public static class Cat implements Animal {
     int age;
     int lives;
+
+    @Override
+    public int getAge() {
+      return age;
+    }
 
     @Override
     public String speak() {
@@ -1233,6 +1251,7 @@ public abstract class XlangTestBase extends ForyTestBase {
 
   @Data
   static class OneStringFieldStruct {
+    @ForyField(id = -1, nullable = true)
     String f1;
   }
 
@@ -1539,8 +1558,9 @@ public abstract class XlangTestBase extends ForyTestBase {
     byte[] goBytes = buffer3.getBytes(0, buffer3.size());
     TwoEnumFieldStruct result2 = (TwoEnumFieldStruct) fory2.deserialize(buffer3);
     Assert.assertEquals(result2.f1, TestEnum.VALUE_C);
-    // Go uses zero value for missing enum fields (first enum value)
-    Assert.assertNull(result2.f2);
+    // With nullable=false (xlang default), Go writes zero value for nil pointers.
+    // So f2 should be VALUE_A (ordinal 0), not null.
+    Assert.assertEquals(result2.f2, TestEnum.VALUE_A);
   }
 
   @SuppressWarnings("unchecked")

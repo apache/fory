@@ -60,6 +60,7 @@ import org.apache.fory.serializer.NonexistentClass;
 import org.apache.fory.serializer.converter.FieldConverter;
 import org.apache.fory.serializer.converter.FieldConverters;
 import org.apache.fory.type.Descriptor;
+import org.apache.fory.type.DescriptorBuilder;
 import org.apache.fory.type.FinalObjectTypeStub;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
@@ -495,19 +496,87 @@ public class ClassDef implements Serializable {
     Descriptor toDescriptor(TypeResolver resolver, Descriptor descriptor) {
       TypeRef<?> declared = descriptor != null ? descriptor.getTypeRef() : null;
       TypeRef<?> typeRef = fieldType.toTypeToken(resolver, declared);
+      // Get nullable and trackingRef from remote FieldType - these are what the remote peer
+      // used when serializing, so we must respect them when deserializing
+      boolean remoteNullable = fieldType.nullable();
+      boolean remoteTrackingRef = fieldType.trackingRef();
+
       if (descriptor != null) {
-        if (typeRef.equals(declared)) {
-          return descriptor;
+        // Local field exists - check if we need to update nullable/trackingRef
+        boolean nullableMismatch = descriptor.isNullable() != remoteNullable;
+        boolean trackingRefMismatch = descriptor.isTrackingRef() != remoteTrackingRef;
+        boolean typeMismatch = !typeRef.equals(declared);
+
+        // Check for primitive/boxed equivalence - both map to same wire format (e.g., int/Integer)
+        boolean isPrimitiveBoxedPair = false;
+        if (typeMismatch && declared != null) {
+          Class<?> typeRefRaw = typeRef.getRawType();
+          Class<?> declaredRaw = declared.getRawType();
+          if (TypeUtils.isPrimitive(typeRefRaw) || TypeUtils.isPrimitive(declaredRaw)) {
+            if (TypeUtils.unwrap(typeRefRaw) == TypeUtils.unwrap(declaredRaw)) {
+              isPrimitiveBoxedPair = true;
+              typeMismatch = false; // They're equivalent primitive/boxed pair
+            }
+          }
+        }
+
+        if (typeMismatch) {
+          // When types don't match, we need to update typeRef.
+          // The getDescriptors() caller will set up a FieldConverter for type conversion.
+          return new DescriptorBuilder(descriptor)
+              .typeRef(typeRef)
+              .typeName(typeRef.getType().getTypeName())
+              .nullable(remoteNullable)
+              .trackingRef(remoteTrackingRef)
+              .build();
+        } else if (isPrimitiveBoxedPair) {
+          // For primitive/boxed pairs, the treatment depends on the mode:
+          // - Xlang: Type info is lost in xlang classId (both int and Integer map to INT32).
+          //   The type difference is just from nullable unwrap. Use local type for grouping.
+          // - Native Java: ClassDef stores actual Java class ID. If local type is boxed
+          //   but ClassDef type is primitive (or vice versa), writer used different type.
+          //   Use ClassDef type for grouping to match writer's serialization order.
+          boolean isXlang = resolver.getFory().isCrossLanguage();
+          boolean classDefIsPrimitive = TypeUtils.isPrimitive(typeRef.getRawType());
+          boolean localIsPrimitive = TypeUtils.isPrimitive(declared.getRawType());
+
+          if (isXlang || classDefIsPrimitive == localIsPrimitive) {
+            // Either xlang mode (can't distinguish original type) or same primitive/boxed nature.
+            // Use local type for grouping.
+            return new DescriptorBuilder(descriptor)
+                .nullable(remoteNullable)
+                .trackingRef(remoteTrackingRef)
+                .build();
+          } else {
+            // Native Java mode with different primitive/boxed type.
+            // Writer used different type, use ClassDef type for grouping.
+            return new DescriptorBuilder(descriptor)
+                .typeRef(typeRef)
+                .type(typeRef.getRawType())
+                .typeName(typeRef.getType().getTypeName())
+                .nullable(remoteNullable)
+                .trackingRef(remoteTrackingRef)
+                .build();
+          }
+        } else if (nullableMismatch || trackingRefMismatch) {
+          // Type matches but nullable/trackingRef differ - update those flags
+          return new DescriptorBuilder(descriptor)
+              .nullable(remoteNullable)
+              .trackingRef(remoteTrackingRef)
+              .build();
         } else {
-          // TODO fix return here
-          descriptor.copyWithTypeName(typeRef.getType().getTypeName());
+          return descriptor;
         }
       }
       // This field doesn't exist in peer class, so any legal modifier will be OK.
       // Use constant instead of reflection to avoid GraalVM native image issues.
       int stubModifiers = Modifier.PRIVATE | Modifier.FINAL;
-      return new Descriptor(
-          typeRef, fieldName, stubModifiers, definedClass, resolver.needToWriteRef(typeRef));
+      // For new descriptors, create with remote nullable/trackingRef flags
+      Descriptor newDesc =
+          new Descriptor(typeRef, fieldName, stubModifiers, definedClass, remoteTrackingRef);
+      // The Descriptor constructor doesn't set nullable properly for non-field cases,
+      // so we need to use DescriptorBuilder to set it explicitly
+      return new DescriptorBuilder(newDesc).nullable(remoteNullable).build();
     }
 
     @Override
@@ -633,7 +702,8 @@ public class ClassDef implements Serializable {
       int header = buffer.readVarUint32Small7();
       boolean isMonomorphic = (header & 0b10) != 0;
       boolean trackingRef = (header & 0b1) != 0;
-      return read(buffer, resolver, isMonomorphic, trackingRef, header >>> 2);
+      // For nested types (in collections/maps), nullable defaults to true
+      return read(buffer, resolver, isMonomorphic, true, trackingRef, header >>> 2);
     }
 
     /** Read field type info. */
@@ -641,22 +711,22 @@ public class ClassDef implements Serializable {
         MemoryBuffer buffer,
         TypeResolver resolver,
         boolean isFinal,
+        boolean nullable,
         boolean trackingRef,
         int typeId) {
       if (typeId == 0) {
-        return new ObjectFieldType(-1, isFinal, true, trackingRef);
+        return new ObjectFieldType(-1, isFinal, nullable, trackingRef);
       } else if (typeId == 1) {
         return new MapFieldType(
-            -1, isFinal, true, trackingRef, read(buffer, resolver), read(buffer, resolver));
+            -1, isFinal, nullable, trackingRef, read(buffer, resolver), read(buffer, resolver));
       } else if (typeId == 2) {
-        return new CollectionFieldType(-1, isFinal, true, trackingRef, read(buffer, resolver));
+        return new CollectionFieldType(-1, isFinal, nullable, trackingRef, read(buffer, resolver));
       } else if (typeId == 3) {
         int dims = buffer.readVarUint32Small7();
-        return new ArrayFieldType(isFinal, trackingRef, read(buffer, resolver), dims);
+        return new ArrayFieldType(-1, isFinal, nullable, trackingRef, read(buffer, resolver), dims);
       } else if (typeId == 4) {
-        return new EnumFieldType(true, -1);
+        return new EnumFieldType(nullable, -1);
       } else {
-        boolean nullable = ((ClassResolver) resolver).isPrimitive((short) typeId);
         return new RegisteredFieldType(isFinal, nullable, trackingRef, (typeId - 5));
       }
     }
@@ -1182,8 +1252,19 @@ public class ClassDef implements Serializable {
       }
     }
     boolean isMonomorphic = genericType.isMonomorphic();
-    boolean trackingRef = genericType.trackingRef(resolver);
-    boolean nullable = !genericType.getCls().isPrimitive();
+    // For xlang: ref tracking is false by default (no shared ownership like Rust's Rc/Arc)
+    // For native: use the type's default tracking behavior
+    boolean trackingRef = isXlang ? false : genericType.trackingRef(resolver);
+    // For xlang: nullable is false by default (aligned with all languages)
+    // Exception: Optional types are nullable (like Rust's Option<T>)
+    // For native: non-primitive types are nullable by default
+    boolean nullable;
+    if (isXlang) {
+      // Only Optional types are nullable by default in xlang mode
+      nullable = isOptionalType(rawType);
+    } else {
+      nullable = !genericType.getCls().isPrimitive();
+    }
 
     // Apply @ForyField annotation if present
     if (field != null) {
@@ -1261,6 +1342,14 @@ public class ClassDef implements Serializable {
         return new ObjectFieldType(xtypeId, isMonomorphic, nullable, trackingRef);
       }
     }
+  }
+
+  /** Check if a type is an Optional type (Optional, OptionalInt, OptionalLong, OptionalDouble). */
+  private static boolean isOptionalType(Class<?> type) {
+    return type == java.util.Optional.class
+        || type == java.util.OptionalInt.class
+        || type == java.util.OptionalLong.class
+        || type == java.util.OptionalDouble.class;
   }
 
   public static ClassDef buildClassDef(Fory fory, Class<?> cls) {

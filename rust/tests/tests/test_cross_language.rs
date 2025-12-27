@@ -46,7 +46,9 @@ enum Color {
 
 #[derive(ForyObject, Debug, PartialEq)]
 struct Item {
-    name: Option<String>,
+    // Use String (not Option<String>) to match Java's non-nullable String field
+    // xlang mode defaults to nullable=false for non-Optional types
+    name: String,
 }
 
 #[derive(ForyObject, Debug, PartialEq)]
@@ -55,9 +57,11 @@ struct SimpleStruct {
     f1: HashMap<i32, f64>,
     f2: i32,
     f3: Item,
-    f4: Option<String>,
+    // Use String (not Option<String>) to match Java's non-nullable String field
+    f4: String,
     f5: Color,
-    f6: Vec<Option<String>>,
+    // Use Vec<String> to match Java's List<String> with non-nullable elements
+    f6: Vec<String>,
     f7: i32,
     f8: i32,
     last: i32,
@@ -365,11 +369,11 @@ fn test_simple_struct() {
         f1: HashMap::from([(1, 1.0f64), (2, 2.0f64)]),
         f2: 39,
         f3: Item {
-            name: Some("item".to_string()),
+            name: "item".to_string(),
         },
-        f4: Some("f4".to_string()),
+        f4: "f4".to_string(),
         f5: Color::White,
-        f6: vec![Some("f6".to_string())],
+        f6: vec!["f6".to_string()],
         f7: 40,
         f8: 41,
         last: 42,
@@ -398,11 +402,11 @@ fn test_simple_named_struct() {
         f1: HashMap::from([(1, 1.0f64), (2, 2.0f64)]),
         f2: 39,
         f3: Item {
-            name: Some("item".to_string()),
+            name: "item".to_string(),
         },
-        f4: Some("f4".to_string()),
+        f4: "f4".to_string(),
         f5: Color::White,
-        f6: vec![Some("f6".to_string())],
+        f6: vec!["f6".to_string()],
         f7: 40,
         f8: 41,
         last: 42,
@@ -428,13 +432,13 @@ fn test_list() {
     let str_list = vec![Some("a".to_string()), Some("b".to_string())];
     let str_list2 = vec![None, Some("b".to_string())];
     let item = Item {
-        name: Some("a".to_string()),
+        name: "a".to_string(),
     };
     let item2 = Item {
-        name: Some("b".to_string()),
+        name: "b".to_string(),
     };
     let item3 = Item {
-        name: Some("c".to_string()),
+        name: "c".to_string(),
     };
     let item_list = vec![Some(item), Some(item2)];
     let item_list2 = vec![None, Some(item3)];
@@ -477,20 +481,20 @@ fn test_map() {
         (
             Some("k1".to_string()),
             Some(Item {
-                name: Some("item1".to_string()),
+                name: "item1".to_string(),
             }),
         ),
         (
             None,
             Some(Item {
-                name: Some("item2".to_string()),
+                name: "item2".to_string(),
             }),
         ),
         (Some("k3".to_string()), None),
         (
             Some("k4".to_string()),
             Some(Item {
-                name: Some("item3".to_string()),
+                name: "item3".to_string(),
             }),
         ),
     ]);
@@ -518,14 +522,18 @@ fn test_map() {
 #[test]
 #[ignore]
 fn test_integer() {
+    // In xlang mode with nullable=false default:
+    // - Java int fields -> Rust i32 (no ref flag)
+    // - Java Integer fields (with nullable=false) -> Rust i32 (no ref flag)
+    // All fields use i32 because Java xlang mode defaults to nullable=false for all non-primitives
     #[derive(ForyObject, Debug, PartialEq)]
     struct Item2 {
         f1: i32,
-        f2: Option<i32>,
-        f3: Option<i32>,
+        f2: i32,
+        f3: i32,
         f4: i32,
         f5: i32,
-        f6: Option<i32>,
+        f6: i32,
     }
 
     let data_file_path = get_data_file();
@@ -535,11 +543,11 @@ fn test_integer() {
     fory.register::<Item2>(101).unwrap();
     let mut reader = Reader::new(bytes.as_slice());
     let f1 = 1;
-    let f2 = Some(2);
-    let f3 = Some(3);
+    let f2 = 2;
+    let f3 = 3;
     let f4 = 4;
-    let f5 = i32::default();
-    let f6 = None;
+    let f5 = 0;
+    let f6 = 0;
 
     let local_item2 = Item2 {
         f1,
@@ -551,17 +559,18 @@ fn test_integer() {
     };
     let remote_item2: Item2 = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(remote_item2, local_item2);
+    // When deserializing standalone values, they're serialized with ref flag
     let remote_f1: i32 = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(remote_f1, f1);
-    let remote_f2: Option<i32> = fory.deserialize_from(&mut reader).unwrap();
+    let remote_f2: i32 = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(remote_f2, f2);
-    let remote_f3: Option<i32> = fory.deserialize_from(&mut reader).unwrap();
+    let remote_f3: i32 = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(remote_f3, f3);
     let remote_f4: i32 = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(remote_f4, f4);
     let remote_f5: i32 = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(remote_f5, f5);
-    let remote_f6: Option<i32> = fory.deserialize_from(&mut reader).unwrap();
+    let remote_f6: i32 = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(remote_f6, f6);
 
     let mut buf = Vec::new();
@@ -731,15 +740,18 @@ struct StructWithMap {
 #[derive(ForyObject, Debug, PartialEq)]
 struct EmptyStructEvolution {}
 
+// Java f1 has @ForyField(id = -1, nullable = true), so it's nullable
 #[derive(ForyObject, Debug, PartialEq)]
 struct OneStringFieldStruct {
+    #[fory(nullable = true)]
     f1: Option<String>,
 }
 
+// Both f1 and f2 are non-nullable in Java xlang mode
 #[derive(ForyObject, Debug, PartialEq)]
 struct TwoStringFieldStruct {
-    f1: String,         // non-nullable, like Go's string
-    f2: Option<String>, // nullable, like Go's *string
+    f1: String,
+    f2: String,
 }
 
 #[allow(non_camel_case_types)]
@@ -756,10 +768,11 @@ struct OneEnumFieldStruct {
     f1: TestEnum,
 }
 
+// Both f1 and f2 are non-nullable in Java xlang mode
 #[derive(ForyObject, Debug, PartialEq)]
 struct TwoEnumFieldStruct {
     f1: TestEnum,
-    f2: Option<TestEnum>,
+    f2: TestEnum,
 }
 
 #[test]
@@ -797,13 +810,13 @@ fn test_item() {
     let mut reader = Reader::new(bytes.as_slice());
 
     let item1 = Item {
-        name: Some("test_item_1".to_string()),
+        name: "test_item_1".to_string(),
     };
     let item2 = Item {
-        name: Some("test_item_2".to_string()),
+        name: "test_item_2".to_string(),
     };
-    // Java sends null, Rust deserializes as None
-    let item3 = Item { name: None };
+    // With nullable=false (xlang default), Java sends empty string instead of null
+    let item3 = Item { name: String::new() };
 
     let remote_item1: Item = fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(remote_item1, item1);
@@ -921,6 +934,7 @@ use std::any::Any;
 #[derive(ForyObject, Debug, PartialEq, Clone)]
 struct Dog {
     age: i32,
+    // Match Java's @ForyField(nullable = true) annotation
     name: Option<String>,
 }
 
@@ -937,7 +951,7 @@ struct AnimalListHolder {
 
 #[derive(ForyObject, Debug)]
 struct AnimalMapHolder {
-    animal_map: HashMap<Option<String>, Box<dyn Any>>,
+    animal_map: HashMap<String, Box<dyn Any>>,
 }
 
 #[test]
@@ -1004,12 +1018,12 @@ fn test_polymorphic_map() {
     let mut reader = Reader::new(bytes.as_slice());
 
     // Part 1: Read Map<String, Animal> with polymorphic values
-    let animal_map: HashMap<Option<String>, Box<dyn Any>> =
+    let animal_map: HashMap<String, Box<dyn Any>> =
         fory.deserialize_from(&mut reader).unwrap();
     assert_eq!(animal_map.len(), 2);
 
     let dog1 = animal_map
-        .get(&Some("dog1".to_string()))
+        .get("dog1")
         .expect("dog1 should exist")
         .downcast_ref::<Dog>()
         .expect("dog1 should be Dog");
@@ -1017,7 +1031,7 @@ fn test_polymorphic_map() {
     assert_eq!(dog1.age, 2);
 
     let cat1 = animal_map
-        .get(&Some("cat1".to_string()))
+        .get("cat1")
         .expect("cat1 should exist")
         .downcast_ref::<Cat>()
         .expect("cat1 should be Cat");
@@ -1030,7 +1044,7 @@ fn test_polymorphic_map() {
 
     let my_dog = holder
         .animal_map
-        .get(&Some("myDog".to_string()))
+        .get("myDog")
         .expect("myDog should exist")
         .downcast_ref::<Dog>()
         .expect("myDog should be Dog");
@@ -1038,7 +1052,7 @@ fn test_polymorphic_map() {
 
     let my_cat = holder
         .animal_map
-        .get(&Some("myCat".to_string()))
+        .get("myCat")
         .expect("myCat should exist")
         .downcast_ref::<Cat>()
         .expect("myCat should be Cat");
@@ -1098,7 +1112,7 @@ fn test_two_string_field_compatible() {
 
     let value: TwoStringFieldStruct = fory.deserialize(&bytes).unwrap();
     assert_eq!(value.f1, "first".to_string());
-    assert_eq!(value.f2, Some("second".to_string()));
+    assert_eq!(value.f2, "second".to_string());
 
     let new_bytes = fory.serialize(&value).unwrap();
     fs::write(&data_file_path, new_bytes).unwrap();
@@ -1133,9 +1147,9 @@ fn test_schema_evolution_compatible_reverse() {
 
     let value: TwoStringFieldStruct = fory.deserialize(&bytes).unwrap();
 
-    // f1 (String) should be "only_one", f2 (Option<String>) should be None (not present in source data)
+    // f1 should be "only_one", f2 should be empty string (default for missing non-nullable String field)
     assert_eq!(value.f1, "only_one".to_string());
-    assert_eq!(value.f2, None);
+    assert_eq!(value.f2, String::default());  // Empty string for missing non-nullable field
 
     // Serialize back
     let new_bytes = fory.serialize(&value).unwrap();
@@ -1192,7 +1206,7 @@ fn test_two_enum_field_compatible() {
 
     let value: TwoEnumFieldStruct = fory.deserialize(&bytes).unwrap();
     assert_eq!(value.f1, TestEnum::VALUE_A);
-    assert_eq!(value.f2, Some(TestEnum::VALUE_C));
+    assert_eq!(value.f2, TestEnum::VALUE_C);
 
     let new_bytes = fory.serialize(&value).unwrap();
     fs::write(&data_file_path, new_bytes).unwrap();
@@ -1231,8 +1245,8 @@ fn test_enum_schema_evolution_compatible_reverse() {
 
     // f1 should be ValueC
     assert_eq!(value.f1, TestEnum::VALUE_C);
-    // f2 should be None (not present in source data)
-    assert_eq!(value.f2, None);
+    // f2 should be default (VALUE_A) since it's not present in source data and is non-nullable
+    assert_eq!(value.f2, TestEnum::VALUE_A);
 
     // Serialize back
     let new_bytes = fory.serialize(&value).unwrap();

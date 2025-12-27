@@ -1005,7 +1005,7 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
     list_fields.sort_by(name_sorter);
     set_fields.sort_by(name_sorter);
     map_fields.sort_by(name_sorter);
-    other_fields.sort_by(name_sorter);
+    other_fields.sort_by(type_id_then_name_sorter);
 
     (
         primitive_fields,
@@ -1223,8 +1223,12 @@ pub(crate) fn compute_struct_version_hash(fields: &[&Field]) -> i32 {
 }
 
 pub(crate) fn skip_ref_flag(ty: &Type) -> bool {
-    // !T::fory_is_option() && PRIMITIVE_TYPES.contains(&elem_type_id)
-    PRIMITIVE_TYPE_NAMES.contains(&extract_type_name(ty).as_str())
+    // For xlang mode with nullable=false default:
+    // - All non-Option types skip the ref flag (nullable=false)
+    // - Only Option<T> writes a ref flag (nullable=true)
+    // This aligns with Java/Go/Python/C++ xlang behavior
+    let type_name = extract_type_name(ty);
+    type_name != "Option"
 }
 
 /// Determine whether to skip writing type info for a struct field based on its type.

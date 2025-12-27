@@ -170,14 +170,28 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) ->
         }
         StructField::VecBox(_) => {
             // Vec<Box<dyn Any>> uses standard Vec deserialization with polymorphic elements
-            quote! {
-                let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, false)?;
+            // Respect skip_ref_flag for xlang nullable=false default
+            if skip_ref_flag(ty) {
+                quote! {
+                    let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, false, false)?;
+                }
+            } else {
+                quote! {
+                    let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, false)?;
+                }
             }
         }
         StructField::HashMapBox(_, _) => {
             // HashMap<K, Box<dyn Any>> uses standard HashMap deserialization with polymorphic values
-            quote! {
-                let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, false)?;
+            // Respect skip_ref_flag for xlang nullable=false default
+            if skip_ref_flag(ty) {
+                quote! {
+                    let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, false, false)?;
+                }
+            } else {
+                quote! {
+                    let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, false)?;
+                }
             }
         }
         StructField::HashMapRc(key_ty, trait_name) => {
@@ -232,9 +246,20 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) ->
                 }
             } else {
                 // Custom types (struct/enum/ext) - need runtime check for enums
-                quote! {
-                    let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
-                    let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, need_type_info)?;
+                // For xlang mode: non-Option types skip ref flag (nullable=false by default)
+                if skip_ref_flag {
+                    quote! {
+                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
+                        if need_type_info {
+                            <#ty as fory_core::Serializer>::fory_read_type_info(context)?;
+                        }
+                        let #private_ident = <#ty as fory_core::Serializer>::fory_read_data(context)?;
+                    }
+                } else {
+                    quote! {
+                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
+                        let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, need_type_info)?;
+                    }
                 }
             }
         }
@@ -406,14 +431,32 @@ pub(crate) fn gen_read_compatible_match_arm_body(
             }
             StructField::VecBox(_) => {
                 // Vec<Box<dyn Any>> uses standard Vec deserialization with polymorphic elements
+                // Check nullable flag from remote field info to determine if ref flag was written
                 quote! {
-                    #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, true, false)?);
+                    let read_ref_flag = fory_core::serializer::util::field_need_write_ref_into(
+                        _field.field_type.type_id,
+                        _field.field_type.nullable,
+                    );
+                    if read_ref_flag {
+                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, true, false)?);
+                    } else {
+                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read_data(context)?);
+                    }
                 }
             }
             StructField::HashMapBox(_, _) => {
                 // HashMap<K, Box<dyn Any>> uses standard HashMap deserialization with polymorphic values
+                // Check nullable flag from remote field info to determine if ref flag was written
                 quote! {
-                    #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, true, false)?);
+                    let read_ref_flag = fory_core::serializer::util::field_need_write_ref_into(
+                        _field.field_type.type_id,
+                        _field.field_type.nullable,
+                    );
+                    if read_ref_flag {
+                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, true, false)?);
+                    } else {
+                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read_data(context)?);
+                    }
                 }
             }
             StructField::HashMapRc(key_ty, trait_name) => {
@@ -487,6 +530,10 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                         if read_ref_flag {
                             #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, true, read_type_info)?);
                         } else {
+                            // When nullable=false, still need to read type info for nested structs
+                            if read_type_info {
+                                <#ty as fory_core::Serializer>::fory_read_type_info(context)?;
+                            }
                             #var_name = Some(<#ty as fory_core::Serializer>::fory_read_data(context)?);
                         }
                     }
@@ -500,6 +547,10 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                         if read_ref_flag {
                             #var_name = <#ty as fory_core::Serializer>::fory_read(context, true, read_type_info)?;
                         } else {
+                            // When nullable=false, still need to read type info for nested structs
+                            if read_type_info {
+                                <#ty as fory_core::Serializer>::fory_read_type_info(context)?;
+                            }
                             #var_name = <#ty as fory_core::Serializer>::fory_read_data(context)?;
                         }
                     }

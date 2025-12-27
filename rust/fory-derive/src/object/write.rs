@@ -188,14 +188,30 @@ fn gen_write_field_impl(
         }
         StructField::VecBox(_) => {
             // Vec<Box<dyn Any>> uses standard Vec serialization with polymorphic elements
-            quote! {
-                <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, false, true)?;
+            // Respect skip_ref_flag for xlang nullable=false default
+            let skip_ref_flag = skip_ref_flag(ty);
+            if skip_ref_flag {
+                quote! {
+                    <#ty as fory_core::Serializer>::fory_write_data_generic(&#value_ts, context, true)?;
+                }
+            } else {
+                quote! {
+                    <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, false, true)?;
+                }
             }
         }
         StructField::HashMapBox(_, _) => {
             // HashMap<K, Box<dyn Any>> uses standard HashMap serialization with polymorphic values
-            quote! {
-                <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, false, true)?;
+            // Respect skip_ref_flag for xlang nullable=false default
+            let skip_ref_flag = skip_ref_flag(ty);
+            if skip_ref_flag {
+                quote! {
+                    <#ty as fory_core::Serializer>::fory_write_data_generic(&#value_ts, context, true)?;
+                }
+            } else {
+                quote! {
+                    <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, false, true)?;
+                }
             }
         }
         StructField::HashMapRc(key_ty, trait_name) => {
@@ -250,8 +266,17 @@ fn gen_write_field_impl(
                 || type_id == TypeId::SET as u32
                 || type_id == TypeId::MAP as u32
             {
-                quote! {
-                    <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, false, true)?;
+                // For collections: respect skip_ref_flag for xlang nullable=false default
+                // Use has_generics=true since element type is known at compile time from struct field type
+                if skip_ref_flag {
+                    quote! {
+                        <#ty as fory_core::Serializer>::fory_write_data_generic(&#value_ts, context, true)?;
+                    }
+                } else {
+                    // Option<Collection> - write ref flag but no type info, has_generics for element type
+                    quote! {
+                        <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, false, true)?;
+                    }
                 }
             } else {
                 // Known types (primitives, strings, collections) - skip type info at compile time

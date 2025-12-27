@@ -35,7 +35,7 @@ pa = lazy_import("pyarrow")
 
 def debug_print(*params):
     """print params if debug is needed."""
-    # print(*params)
+    print(*params)
 
 
 def to_dict(obj):
@@ -549,6 +549,7 @@ def struct_round_back(data_file_path, fory, obj1):
     with open(data_file_path, "rb") as f:
         data_bytes = f.read()
     debug_print(f"len {len(data_bytes)}")
+    debug_print(f"first 100 bytes: {data_bytes[:100].hex()}")
     new_obj = fory.deserialize(data_bytes)
     debug_print(new_obj)
     assert new_obj == obj1, f"new_obj {new_obj}\n expected {obj1}"

@@ -62,29 +62,19 @@ pub const fn field_need_write_type_info(static_type_id: TypeId) -> bool {
 }
 
 /// Keep as const fn for compile time evaluation or constant folding
+///
+/// In xlang mode with nullable=false default:
+/// - If nullable=true: always need to write ref flag (to handle null values)
+/// - If nullable=false: no ref flag needed (value is always present, no null handling required)
+///
+/// This aligns with the xlang protocol where:
+/// - Non-optional types (nullable=false) skip the ref flag entirely
+/// - Optional types (nullable=true) write a ref flag to indicate null vs non-null
 #[inline]
-pub const fn field_need_write_ref_into(type_id: u32, nullable: bool) -> bool {
-    if nullable {
-        return true;
-    }
-    let internal_type_id = type_id & 0xff;
-    // NONE type has no data, so no ref tracking needed
-    !matches!(
-        internal_type_id,
-        BOOL | INT8
-            | INT16
-            | INT32
-            | INT64
-            | INT128
-            | FLOAT32
-            | FLOAT64
-            | U8
-            | U16
-            | U32
-            | U64
-            | U128
-            | NONE
-    )
+pub const fn field_need_write_ref_into(_type_id: u32, nullable: bool) -> bool {
+    // Only write ref flag when nullable is true (value can be null)
+    // When nullable=false, the value is always present, no ref flag needed
+    nullable
 }
 
 #[inline(always)]

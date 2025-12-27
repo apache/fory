@@ -431,16 +431,23 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to build field type for field %s: %w", fieldName, err)
 		}
-		// Treat object/enum fields as nullable to match Java's xlang TypeDef encoding.
-		nullableFlag := nullable(field.Type)
+		// For xlang serialization: nullable=false by default for ALL fields
+		// This matches the xlang defaults across all languages (Java, Rust, C++, Python)
+		// Note: Go pointers default to nullable=false to match xlang defaults.
+		// When serializing a nil pointer with nullable=false, a zero/default value is written.
+		// Can be overridden by explicit fory tag
 		typeId := ft.TypeId()
 		internalId := TypeId(typeId & 0xFF)
-		if isUserDefinedType(int16(internalId)) || internalId == ENUM || internalId == NAMED_ENUM {
-			nullableFlag = true
-		}
+		isEnumField := internalId == ENUM || internalId == NAMED_ENUM
+		// Default to nullable=false for xlang mode
+		nullableFlag := false
 		// Override nullable flag if explicitly set in fory tag
 		if foryTag.NullableSet {
 			nullableFlag = foryTag.Nullable
+		}
+		// Primitives are never nullable, regardless of tag
+		if isNonNullablePrimitiveKind(field.Type.Kind()) && !isEnumField {
+			nullableFlag = false
 		}
 
 		// Calculate ref tracking - use tag override if explicitly set

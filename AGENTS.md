@@ -126,7 +126,7 @@ cd fory-core
 # disable fory cython for faster debugging
 FORY_PYTHON_JAVA_CI=1 ENABLE_FORY_CYTHON_SERIALIZATION=0 mvn -T16 test -Dtest=org.apache.fory.PythonXlangTest
 # enable fory cython
-FORY_PYTHON_JAVA_CI=1 ENABLE_FORY_CYTHON_SERIALIZATION=1 mvn -T16 test -Dtest=org.apache.fory.PythonXlangTest
+FORY_PYTHON_JAVA_CI=1 ENABLE_FORY_CYTHON_SERIALIZATION=1 ENABLE_FORY_DEBUG_OUTPUT=1 mvn -T16 test -Dtest=org.apache.fory.PythonXlangTest
 ```
 
 ### Golang Development
@@ -214,7 +214,7 @@ Run Rust xlang tests:
 cd java
 mvn -T16 install -DskipTests
 cd fory-core
-FORY_RUST_JAVA_CI=1 mvn test -Dtest=org.apache.fory.RustXlangTest
+FORY_RUST_JAVA_CI=1 ENABLE_FORY_DEBUG_OUTPUT=1 mvn test -Dtest=org.apache.fory.RustXlangTest
 ```
 
 ### JavaScript/TypeScript Development

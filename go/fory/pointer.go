@@ -60,6 +60,26 @@ func (s *ptrToValueSerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 			return
 		}
 		ctx.Buffer().WriteInt8(NotNullValueFlag)
+	case RefModeNone:
+		// For RefModeNone with nullable=false, we should NOT write any null flag.
+		// The xlang protocol expects the value data directly without any header.
+		// If the pointer is nil, write a zero/default value for the underlying type.
+		// This can happen in schema evolution when a field is missing from the remote data.
+		if value.IsNil() {
+			// Create a zero value for the underlying type and write it
+			zeroValue := reflect.New(value.Type().Elem()).Elem()
+			if writeType {
+				typeInfo, err := ctx.TypeResolver().getTypeInfo(zeroValue, true)
+				if err != nil {
+					ctx.SetError(FromError(err))
+					return
+				}
+				ctx.TypeResolver().WriteTypeInfo(ctx.Buffer(), typeInfo, ctx.Err())
+			}
+			s.valueSerializer.WriteData(ctx, zeroValue)
+			return
+		}
+		// Do NOT write any flag - just continue to write the value data
 	}
 	if writeType {
 		// Always use TypeResolver to get the correct TypeID from registered TypeInfo
@@ -116,6 +136,9 @@ func (s *ptrToValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType 
 		if flag == NullFlag {
 			return
 		}
+	case RefModeNone:
+		// For RefModeNone with nullable=false, no null flag was written.
+		// Just continue to read the value data directly.
 	}
 	if readType {
 		// Read type info - in compatible mode this contains the serializer with fieldDefs

@@ -88,8 +88,12 @@ public class CrossLanguageTest extends ForyTestBase {
   private static final String PYTHON_EXECUTABLE = "python";
 
   @BeforeClass
-  public void isPyforyInstalled() {
-    throw new SkipException("pyfory not installed");
+  public void ensurePeerReady() {
+    String enabled = System.getenv("FORY_PYTHON_JAVA_CI");
+    if (!"1".equals(enabled)) {
+      throw new SkipException("Skipping CrossLanguageTest: FORY_PYTHON_JAVA_CI not set to 1");
+    }
+    TestUtils.verifyPyforyInstalled();
   }
 
   /**
@@ -474,8 +478,24 @@ public class CrossLanguageTest extends ForyTestBase {
             .requireClassRegistration(false)
             .build();
     fory.register(ComplexObject1.class, "test.ComplexObject1");
-    fory.serialize(new ComplexObject1()); // trigger serializer update
-    ObjectSerializer serializer = (ObjectSerializer) fory.getSerializer(ComplexObject1.class);
+    // Serialize a valid object to trigger serializer creation
+    ComplexObject1 obj = new ComplexObject1();
+    obj.f1 = true; // non-null value
+    obj.f2 = "test"; // non-null string
+    obj.f3 = new ArrayList<>(); // non-null list
+    obj.f4 = new HashMap<>(); // non-null map
+    obj.f11 = new short[0]; // non-null array
+    obj.f12 = new ArrayList<>(); // non-null list
+    fory.serialize(obj);
+    Serializer<?> serializer = fory.getSerializer(ComplexObject1.class);
+    // Unwrap DeferedLazySerializer if needed - use reflection since getSerializer() is private
+    if (serializer instanceof org.apache.fory.serializer.DeferedLazySerializer) {
+      java.lang.reflect.Method getSerializerMethod =
+          org.apache.fory.serializer.DeferedLazySerializer.class.getDeclaredMethod("getSerializer");
+      getSerializerMethod.setAccessible(true);
+      serializer = (Serializer<?>) getSerializerMethod.invoke(serializer);
+    }
+    ObjectSerializer objSerializer = (ObjectSerializer) serializer;
     Method method =
         ObjectSerializer.class.getDeclaredMethod(
             "computeStructHash", Fory.class, DescriptorGrouper.class);
@@ -483,7 +503,7 @@ public class CrossLanguageTest extends ForyTestBase {
     TypeResolver resolver = fory._getTypeResolver();
     Collection<Descriptor> descriptors = resolver.getFieldDescriptors(ComplexObject1.class, false);
     DescriptorGrouper grouper = resolver.createDescriptorGrouper(descriptors, false);
-    Integer hash = (Integer) method.invoke(serializer, fory, grouper);
+    Integer hash = (Integer) method.invoke(objSerializer, fory, grouper);
     MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(4);
     buffer.writeInt32(hash);
     roundBytes("test_struct_hash", buffer.getBytes(0, 4));
@@ -500,6 +520,7 @@ public class CrossLanguageTest extends ForyTestBase {
             .requireClassRegistration(false)
             .build();
     fory.register(ComplexObject2.class, "test.ComplexObject2");
+
     ComplexObject2 obj2 = new ComplexObject2();
     obj2.f1 = true;
     obj2.f2 = new HashMap<>(ImmutableMap.of((byte) -1, 2));

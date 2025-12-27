@@ -168,9 +168,10 @@ public class Descriptor {
     this.writeMethod = builder.writeMethod;
     this.trackingRef = builder.trackingRef;
     this.foryField = this.field == null ? null : this.field.getAnnotation(ForyField.class);
-    if (!typeRef.isPrimitive()) {
-      this.nullable = foryField == null || foryField.nullable();
-    }
+    // Use builder.nullable directly - this is set by DescriptorBuilder.nullable()
+    // and should be respected, especially for xlang compatible mode where remote
+    // TypeDef's nullable flag may differ from local field's nullable
+    this.nullable = builder.nullable;
     this.type = builder.type;
     this.fieldConverter = builder.fieldConverter;
   }

@@ -81,6 +81,7 @@ import java.util.stream.Collectors;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyCopyable;
 import org.apache.fory.annotation.CodegenInvoke;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.JITContext;
 import org.apache.fory.codegen.CodeGenerator;
@@ -1213,6 +1214,49 @@ public class ClassResolver extends TypeResolver {
     }
   }
 
+  /**
+   * Get the nullable flag for a field, respecting xlang mode.
+   *
+   * <p>For xlang mode (SERIALIZATION): use xlang defaults unless @ForyField annotation overrides:
+   *
+   * <ul>
+   *   <li>If @ForyField annotation is present: use its nullable() value
+   *   <li>Otherwise: return true only for Optional types, false for all other non-primitives
+   * </ul>
+   *
+   * <p>For native mode: use descriptor's nullable which defaults to true for non-primitives.
+   *
+   * <p>Important: This ensures the serialization format matches what the TypeDef metadata says. The
+   * TypeDef uses xlang defaults (nullable=false except for Optional types), so the actual
+   * serialization must use the same defaults to ensure consistency across languages.
+   */
+  private boolean isFieldNullable(Descriptor descriptor) {
+    Class<?> rawType = descriptor.getTypeRef().getRawType();
+    if (rawType.isPrimitive()) {
+      return false;
+    }
+    if (fory.isCrossLanguage()) {
+      // For xlang mode: apply xlang defaults
+      // This must match what TypeDefEncoder.buildFieldType uses for TypeDef metadata
+      ForyField foryField = descriptor.getForyField();
+      if (foryField != null) {
+        // Use explicit annotation value
+        return foryField.nullable();
+      }
+      // Default for xlang: false for all non-primitives, except Optional types
+      return isOptionalType(rawType);
+    }
+    // For native mode: use descriptor's nullable (true for non-primitives by default)
+    return descriptor.isNullable();
+  }
+
+  private static boolean isOptionalType(Class<?> type) {
+    return type == java.util.Optional.class
+        || type == java.util.OptionalInt.class
+        || type == java.util.OptionalLong.class
+        || type == java.util.OptionalDouble.class;
+  }
+
   @Override
   public List<Descriptor> getFieldDescriptors(Class<?> clz, boolean searchParent) {
     SortedMap<Member, Descriptor> allDescriptors = getAllDescriptorsMap(clz, searchParent);
@@ -1228,23 +1272,37 @@ public class ClassResolver extends TypeResolver {
 
           boolean globalRefTracking = fory.trackingRef();
           boolean hasForyField = descriptor.getForyField() != null;
+          boolean isXlang = fory.isCrossLanguage();
           // Compute the final isTrackingRef value:
-          // 1. If global ref tracking is enabled and no @ForyField, use global setting
-          // 2. If @ForyField(ref=true) is set, use that (but can be overridden if global is off)
-          // 3. Additionally, check if the type actually supports ref tracking
-          boolean wantsRefTracking =
-              (globalRefTracking && !hasForyField)
-                  || (hasForyField && descriptor.isTrackingRef() && globalRefTracking);
+          // For xlang mode: "Reference tracking is disabled by default" (xlang spec)
+          //   - Only enable ref tracking if explicitly set via @ForyField(ref=true)
+          // For Java mode:
+          //   - If global ref tracking is enabled and no @ForyField, use global setting
+          //   - If @ForyField(ref=true) is set, use that (but can be overridden if global is off)
+          boolean wantsRefTracking;
+          if (isXlang) {
+            // In xlang mode, only track refs if explicitly annotated with @ForyField(ref=true)
+            wantsRefTracking = hasForyField && descriptor.isTrackingRef() && globalRefTracking;
+          } else {
+            wantsRefTracking =
+                (globalRefTracking && !hasForyField)
+                    || (hasForyField && descriptor.isTrackingRef() && globalRefTracking);
+          }
           // Compute the final tracking: type must support refs AND user/global wants tracking
           boolean finalTrackingRef = wantsRefTracking && needToWriteRef(descriptor.getTypeRef());
-          boolean needsUpdate = finalTrackingRef != descriptor.isTrackingRef();
+          boolean nullable = isFieldNullable(descriptor);
+          boolean needsUpdate =
+              finalTrackingRef != descriptor.isTrackingRef() || nullable != descriptor.isNullable();
 
           if (needsUpdate) {
             if (newDescriptors[0] == null) {
               newDescriptors[0] = new HashMap<>();
             }
             Descriptor newDescriptor =
-                new DescriptorBuilder(descriptor).trackingRef(finalTrackingRef).build();
+                new DescriptorBuilder(descriptor)
+                    .trackingRef(finalTrackingRef)
+                    .nullable(nullable)
+                    .build();
             result.add(newDescriptor);
             newDescriptors[0].put(member, newDescriptor);
           } else {
