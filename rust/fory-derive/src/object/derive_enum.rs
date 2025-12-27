@@ -28,9 +28,28 @@ fn temp_var_name(i: usize) -> String {
     format!("f{}", i)
 }
 
-pub fn gen_actual_type_id() -> TokenStream {
-    quote! {
-       fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
+/// For Union-compatible enums with data variants, return UNION TypeId in xlang mode.
+pub fn gen_actual_type_id(data_enum: &DataEnum) -> TokenStream {
+    let is_union_compatible = is_union_compatible_enum(data_enum);
+    let has_data_variants = data_enum
+        .variants
+        .iter()
+        .any(|v| !matches!(v.fields, Fields::Unit));
+
+    if is_union_compatible && has_data_variants {
+        // Union-compatible enum: use UNION TypeId ONLY in xlang mode
+        quote! {
+            if xlang {
+                fory_core::types::TypeId::UNION as u32
+            } else {
+                fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
+            }
+        }
+    } else {
+        quote! {
+            let _ = xlang;
+            fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)
+        }
     }
 }
 
@@ -162,6 +181,8 @@ pub fn gen_write(_data_enum: &DataEnum) -> TokenStream {
 }
 
 fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> Vec<TokenStream> {
+    let is_union_compatible = is_union_compatible_enum(data_enum);
+
     data_enum
         .variants
         .iter()
@@ -175,23 +196,58 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
 
             match &v.fields {
                 Fields::Unit => {
-                    quote! {
-                        Self::#ident => {
-                            context.writer.write_varuint32(#tag_value);
+                    if is_union_compatible {
+                        // Union-compatible: write tag + null flag (matches Java/C++ Union with null value)
+                        quote! {
+                            Self::#ident => {
+                                context.writer.write_varuint32(#tag_value);
+                                // Write null flag for unit variant (no value)
+                                context.writer.write_i8(fory_core::types::RefFlag::Null as i8);
+                            }
+                        }
+                    } else {
+                        quote! {
+                            Self::#ident => {
+                                context.writer.write_varuint32(#tag_value);
+                            }
                         }
                     }
                 }
-                Fields::Unnamed(_) => {
-                    quote! {
-                        Self::#ident(..) => {
-                            context.writer.write_varuint32(#tag_value);
+                Fields::Unnamed(fields_unnamed) => {
+                    if is_union_compatible && fields_unnamed.unnamed.len() == 1 {
+                        // Union-compatible single field: write tag + value with type info (like xwriteRef)
+                        quote! {
+                            Self::#ident(ref value) => {
+                                context.writer.write_varuint32(#tag_value);
+                                use fory_core::serializer::Serializer;
+                                value.fory_write(context, fory_core::types::RefMode::Tracking, true, false)?;
+                            }
+                        }
+                    } else {
+                        quote! {
+                            Self::#ident(..) => {
+                                context.writer.write_varuint32(#tag_value);
+                            }
                         }
                     }
                 }
-                Fields::Named(_) => {
-                    quote! {
-                        Self::#ident { .. } => {
-                            context.writer.write_varuint32(#tag_value);
+                Fields::Named(fields_named) => {
+                    if is_union_compatible && fields_named.named.len() == 1 {
+                        // Union-compatible single field: write tag + value with type info (like xwriteRef)
+                        let field_ident =
+                            fields_named.named.first().unwrap().ident.as_ref().unwrap();
+                        quote! {
+                            Self::#ident { ref #field_ident } => {
+                                context.writer.write_varuint32(#tag_value);
+                                use fory_core::serializer::Serializer;
+                                #field_ident.fory_write(context, fory_core::types::RefMode::Tracking, true, false)?;
+                            }
+                        }
+                    } else {
+                        quote! {
+                            Self::#ident { .. } => {
+                                context.writer.write_varuint32(#tag_value);
+                            }
                         }
                     }
                 }
@@ -387,9 +443,27 @@ pub fn gen_write_data(data_enum: &DataEnum) -> TokenStream {
     }
 }
 
-pub fn gen_write_type_info() -> TokenStream {
-    quote! {
-        fory_core::serializer::enum_::write_type_info::<Self>(context)
+pub fn gen_write_type_info(data_enum: &DataEnum) -> TokenStream {
+    let is_union_compatible = is_union_compatible_enum(data_enum);
+    let has_data_variants = data_enum
+        .variants
+        .iter()
+        .any(|v| !matches!(v.fields, Fields::Unit));
+
+    if is_union_compatible && has_data_variants {
+        // Union-compatible with data: use UNION TypeId in xlang mode
+        quote! {
+            if context.is_xlang() {
+                context.writer.write_varuint32(fory_core::types::TypeId::UNION as u32);
+                Ok(())
+            } else {
+                fory_core::serializer::enum_::write_type_info::<Self>(context)
+            }
+        }
+    } else {
+        quote! {
+            fory_core::serializer::enum_::write_type_info::<Self>(context)
+        }
     }
 }
 
@@ -405,10 +479,46 @@ pub fn gen_read_with_type_info(_: &DataEnum) -> TokenStream {
     }
 }
 
+/// Check if enum is Union-compatible:
+/// - Must have at least one data-carrying variant (single-field)
+/// - All variants must be either unit or single-field
+fn is_union_compatible_enum(data_enum: &DataEnum) -> bool {
+    let has_data_variant = data_enum
+        .variants
+        .iter()
+        .any(|v| !matches!(v.fields, Fields::Unit));
+    let all_variants_compatible = data_enum.variants.iter().all(|v| match &v.fields {
+        Fields::Unit => true,
+        Fields::Unnamed(f) => f.unnamed.len() == 1,
+        Fields::Named(f) => f.named.len() == 1,
+    });
+
+    has_data_variant && all_variants_compatible
+}
+
+/// Generate the static TypeId for enum.
+/// For Union-compatible enums with data variants, return UNION TypeId
+/// to ensure correct type info handling in xlang mode struct field read/write.
+pub fn gen_static_type_id(data_enum: &DataEnum) -> TokenStream {
+    let is_union_compatible = is_union_compatible_enum(data_enum);
+    let has_data_variants = data_enum
+        .variants
+        .iter()
+        .any(|v| !matches!(v.fields, Fields::Unit));
+
+    if is_union_compatible && has_data_variants {
+        quote! { fory_core::TypeId::UNION }
+    } else {
+        quote! { fory_core::TypeId::ENUM }
+    }
+}
+
 fn xlang_variant_read_branches(
     data_enum: &DataEnum,
     default_variant_value: u32,
 ) -> Vec<TokenStream> {
+    let is_union_compatible = is_union_compatible_enum(data_enum);
+
     data_enum
         .variants
         .iter()
@@ -422,37 +532,71 @@ fn xlang_variant_read_branches(
 
             match &v.fields {
                 Fields::Unit => {
-                    quote! {
-                        #tag_value => Ok(Self::#ident),
+                    if is_union_compatible {
+                        // Union-compatible: read null flag (matches Java/C++ Union with null value)
+                        quote! {
+                            #tag_value => {
+                                let _ = context.reader.read_i8()?;
+                                Ok(Self::#ident)
+                            }
+                        }
+                    } else {
+                        quote! {
+                            #tag_value => Ok(Self::#ident),
+                        }
                     }
                 }
                 Fields::Unnamed(fields_unnamed) => {
-                    let default_fields: Vec<TokenStream> = fields_unnamed
-                        .unnamed
-                        .iter()
-                        .map(|f| {
-                            let ty = &f.ty;
-                            quote! { <#ty as fory_core::ForyDefault>::fory_default() }
-                        })
-                        .collect();
-
-                    quote! {
-                        #tag_value => Ok(Self::#ident( #(#default_fields),* )),
+                    if is_union_compatible && fields_unnamed.unnamed.len() == 1 {
+                        // Union-compatible single field: read value with ref_info=Tracking, type_info=true
+                        let field_ty = &fields_unnamed.unnamed.first().unwrap().ty;
+                        quote! {
+                            #tag_value => {
+                                use fory_core::serializer::Serializer;
+                                let value = <#field_ty as Serializer>::fory_read(context, fory_core::types::RefMode::Tracking, true)?;
+                                Ok(Self::#ident(value))
+                            }
+                        }
+                    } else {
+                        let default_fields: Vec<TokenStream> = fields_unnamed
+                            .unnamed
+                            .iter()
+                            .map(|f| {
+                                let ty = &f.ty;
+                                quote! { <#ty as fory_core::ForyDefault>::fory_default() }
+                            })
+                            .collect();
+                        quote! {
+                            #tag_value => Ok(Self::#ident( #(#default_fields),* )),
+                        }
                     }
                 }
                 Fields::Named(fields_named) => {
-                    let default_fields: Vec<TokenStream> = fields_named
-                        .named
-                        .iter()
-                        .map(|f| {
-                            let field_ident = f.ident.as_ref().unwrap();
-                            let ty = &f.ty;
-                            quote! { #field_ident: <#ty as fory_core::ForyDefault>::fory_default() }
-                        })
-                        .collect();
-
-                    quote! {
-                        #tag_value => Ok(Self::#ident { #(#default_fields),* }),
+                    if is_union_compatible && fields_named.named.len() == 1 {
+                        // Union-compatible single field: read value with ref_info=Tracking, type_info=true
+                        let field = fields_named.named.first().unwrap();
+                        let field_ident = field.ident.as_ref().unwrap();
+                        let field_ty = &field.ty;
+                        quote! {
+                            #tag_value => {
+                                use fory_core::serializer::Serializer;
+                                let value = <#field_ty as Serializer>::fory_read(context, fory_core::types::RefMode::Tracking, true)?;
+                                Ok(Self::#ident { #field_ident: value })
+                            }
+                        }
+                    } else {
+                        let default_fields: Vec<TokenStream> = fields_named
+                            .named
+                            .iter()
+                            .map(|f| {
+                                let field_ident = f.ident.as_ref().unwrap();
+                                let ty = &f.ty;
+                                quote! { #field_ident: <#ty as fory_core::ForyDefault>::fory_default() }
+                            })
+                            .collect();
+                        quote! {
+                            #tag_value => Ok(Self::#ident { #(#default_fields),* }),
+                        }
                     }
                 }
             }
@@ -773,8 +917,31 @@ pub fn gen_read_data(data_enum: &DataEnum) -> TokenStream {
     }
 }
 
-pub fn gen_read_type_info() -> TokenStream {
-    quote! {
-        fory_core::serializer::enum_::read_type_info::<Self>(context)
+pub fn gen_read_type_info(data_enum: &DataEnum) -> TokenStream {
+    // Only use UNION TypeId for Union-compatible enums (unit or single-field variants)
+    let is_union_compatible = is_union_compatible_enum(data_enum);
+    let has_data_variants = data_enum
+        .variants
+        .iter()
+        .any(|v| !matches!(v.fields, Fields::Unit));
+
+    if is_union_compatible && has_data_variants {
+        // Union-compatible with data: read UNION TypeId in xlang mode
+        quote! {
+            if context.is_xlang() {
+                let remote_type_id = context.reader.read_varuint32()?;
+                let expected_type_id = fory_core::types::TypeId::UNION as u32;
+                if remote_type_id != expected_type_id {
+                    return Err(fory_core::error::Error::type_mismatch(expected_type_id, remote_type_id));
+                }
+                Ok(())
+            } else {
+                fory_core::serializer::enum_::read_type_info::<Self>(context)
+            }
+        }
+    } else {
+        quote! {
+            fory_core::serializer::enum_::read_type_info::<Self>(context)
+        }
     }
 }

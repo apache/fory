@@ -20,11 +20,9 @@ use crate::util::{
     CollectionTraitInfo,
 };
 use fory_core::types::{TypeId, PRIMITIVE_ARRAY_TYPE_MAP};
-use fory_core::util::ENABLE_FORY_DEBUG_OUTPUT;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, ToTokens};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt;
 use syn::{Field, GenericArgument, Index, PathArguments, Type};
 
@@ -1117,109 +1115,123 @@ fn to_snake_case(name: &str) -> String {
     result
 }
 
-/// Computes the fingerprint string for a struct type used in schema versioning.
+/// Field metadata for fingerprint computation.
+struct FieldFingerprintInfo {
+    /// Field name (snake_case) or field ID as string
+    name_or_id: String,
+    /// Whether the field has explicit nullable=true/false set via #[fory(nullable)]
+    explicit_nullable: Option<bool>,
+    /// Whether reference tracking is enabled
+    ref_tracking: bool,
+    /// The type ID (UNKNOWN for user-defined types including enums/unions)
+    type_id: u32,
+    /// Whether the field type is Option<T>
+    is_option_type: bool,
+}
+
+/// Computes struct fingerprint string at compile time (during proc-macro execution).
 ///
-/// **Fingerprint Format:**
-///
-/// Each field contributes: `<field_name_or_id>,<type_id>,<ref>,<nullable>;`
-///
-/// Fields are sorted by field name (snake_case) lexicographically.
-///
-/// **Field Components:**
-/// - `field_name_or_id`: snake_case field name, or tag ID if `#[fory(id = N)]` is set
-/// - `type_id`: Fory TypeId as decimal string (e.g., "4" for INT32)
-/// - `ref`: "1" if reference tracking enabled, "0" otherwise
-/// - `nullable`: "1" if null flag is written, "0" otherwise
-///
-/// **Example fingerprint:** `"age,4,0,0;name,12,0,1;"`
-///
-/// This format is consistent across Go, Java, Rust, and C++ implementations.
-pub(crate) fn compute_struct_fingerprint(fields: &[&Field]) -> String {
+/// **Fingerprint Format:** `<field_name_or_id>,<type_id>,<ref>,<nullable>;`
+/// Fields are sorted by name lexicographically.
+fn compute_struct_fingerprint(fields: &[&Field]) -> String {
     use super::field_meta::{classify_field_type, parse_field_meta};
 
-    // (name, type_id, ref_tracking, nullable, field_id)
-    let mut field_info_map: HashMap<String, (u32, bool, bool, i32)> =
-        HashMap::with_capacity(fields.len());
-    for (idx, field) in fields.iter().enumerate() {
-        let name = get_field_name(field, idx);
-        let type_id = get_type_id_by_type_ast(&field.ty);
+    let mut field_infos: Vec<FieldFingerprintInfo> = Vec::with_capacity(fields.len());
 
-        // Parse field metadata for nullable/ref tracking
+    for (idx, field) in fields.iter().enumerate() {
         let meta = parse_field_meta(field).unwrap_or_default();
         if meta.skip {
             continue;
         }
 
-        let type_class = classify_field_type(&field.ty);
-        let nullable = meta.effective_nullable(type_class);
-        let ref_tracking = meta.effective_ref_tracking(type_class);
+        let name = get_field_name(field, idx);
         let field_id = meta.effective_id();
+        let name_or_id = if field_id >= 0 {
+            field_id.to_string()
+        } else {
+            to_snake_case(&name)
+        };
 
-        field_info_map.insert(name, (type_id, ref_tracking, nullable, field_id));
+        let type_class = classify_field_type(&field.ty);
+        let ref_tracking = meta.effective_ref_tracking(type_class);
+        let explicit_nullable = meta.nullable;
+
+        // Get compile-time TypeId (UNKNOWN for user-defined types including enums/unions)
+        let type_id = get_type_id_by_type_ast(&field.ty);
+
+        // Check if field type is Option<T>
+        let ty_str: String = field
+            .ty
+            .to_token_stream()
+            .to_string()
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        let is_option_type = ty_str.starts_with("Option<");
+
+        field_infos.push(FieldFingerprintInfo {
+            name_or_id,
+            explicit_nullable,
+            ref_tracking,
+            type_id,
+            is_option_type,
+        });
     }
 
-    // Sort field names lexicographically for fingerprint computation
-    // This matches Java/Go behavior where fingerprint fields are sorted by name,
-    // not by the type-category-based ordering used for serialization
-    let mut sorted_names: Vec<String> = field_info_map.keys().cloned().collect();
-    sorted_names.sort();
+    // Sort field infos by name_or_id lexicographically (matches Java/C++ behavior)
+    field_infos.sort_by(|a, b| a.name_or_id.cmp(&b.name_or_id));
 
+    // Build fingerprint string
     let mut fingerprint = String::new();
-    for name in sorted_names.iter() {
-        let (type_id, ref_tracking, nullable, field_id) = field_info_map
-            .get(name)
-            .expect("Field metadata missing during struct hash computation");
-
-        // Format: <field_name_or_id>,<type_id>,<ref>,<nullable>;
-        // If field has a tag ID >= 0, use that; otherwise use snake_case field name
-        if *field_id >= 0 {
-            fingerprint.push_str(&field_id.to_string());
-        } else {
-            fingerprint.push_str(&to_snake_case(name));
-        }
-        fingerprint.push(',');
-
-        let effective_type_id = if *type_id == TypeId::UNKNOWN as u32 {
-            TypeId::UNKNOWN as u32
-        } else {
-            *type_id
+    for info in &field_infos {
+        let ref_flag = if info.ref_tracking { "1" } else { "0" };
+        let nullable = match info.explicit_nullable {
+            Some(true) => true,
+            Some(false) => false,
+            None => info.is_option_type,
         };
+        let nullable_flag = if nullable { "1" } else { "0" };
+
+        // User-defined types (UNKNOWN) use 0 in fingerprint, matching Java behavior
+        let effective_type_id = if info.type_id == TypeId::UNKNOWN as u32 {
+            0
+        } else {
+            info.type_id
+        };
+
+        fingerprint.push_str(&info.name_or_id);
+        fingerprint.push(',');
         fingerprint.push_str(&effective_type_id.to_string());
         fingerprint.push(',');
-        fingerprint.push_str(if *ref_tracking { "1" } else { "0" });
+        fingerprint.push_str(ref_flag);
         fingerprint.push(',');
-        fingerprint.push_str(if *nullable { "1;" } else { "0;" });
+        fingerprint.push_str(nullable_flag);
+        fingerprint.push(';');
     }
 
     fingerprint
 }
 
-/// Computes the struct version hash from field metadata.
-///
-/// Uses `compute_struct_fingerprint` to build the fingerprint string,
-/// then hashes it with MurmurHash3_x64_128 using seed 47, and takes
-/// the low 32 bits as signed i32.
-///
-/// This provides the cross-language struct version ID used by class
-/// version checking, consistent with Go, Java, and C++ implementations.
-pub(crate) fn compute_struct_version_hash(fields: &[&Field]) -> i32 {
+/// Generates TokenStream for struct version hash (computed at compile time).
+pub(crate) fn gen_struct_version_hash_ts(fields: &[&Field]) -> TokenStream {
     let fingerprint = compute_struct_fingerprint(fields);
+    let (hash, _) = fory_core::meta::murmurhash3_x64_128(fingerprint.as_bytes(), 47);
+    let version_hash = (hash & 0xFFFF_FFFF) as i32;
 
-    let seed: u64 = 47;
-    let (hash, _) = fory_core::meta::murmurhash3_x64_128(fingerprint.as_bytes(), seed);
-    let version = (hash & 0xFFFF_FFFF) as u32;
-    let version = version as i32;
-
-    if ENABLE_FORY_DEBUG_OUTPUT {
-        if let Some(struct_name) = get_struct_name() {
-            println!(
-                "[fory-debug] struct {struct_name} version fingerprint=\"{fingerprint}\" hash={version}"
-            );
-        } else {
-            println!("[fory-debug] struct version fingerprint=\"{fingerprint}\" hash={version}");
+    quote! {
+        {
+            const VERSION_HASH: i32 = #version_hash;
+            if fory_core::util::ENABLE_FORY_DEBUG_OUTPUT {
+                println!(
+                    "[fory-debug] struct {} version fingerprint=\"{}\" hash={}",
+                    std::any::type_name::<Self>(),
+                    #fingerprint,
+                    VERSION_HASH
+                );
+            }
+            VERSION_HASH
         }
     }
-    version
 }
 
 /// Represents the determined RefMode for a field

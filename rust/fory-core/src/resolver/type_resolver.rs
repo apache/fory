@@ -22,7 +22,7 @@ use crate::meta::{
     TYPE_NAME_ENCODINGS,
 };
 use crate::serializer::{ForyDefault, Serializer, StructSerializer};
-use crate::types::RefMode;
+use crate::types::{is_enum_type_id, RefMode};
 use crate::util::get_ext_actual_type_id;
 use crate::TypeId;
 use chrono::{NaiveDate, NaiveDateTime};
@@ -363,7 +363,8 @@ fn build_struct_type_infos<T: StructSerializer>(
     let mut result = vec![(std::any::TypeId::of::<T>(), main_type_info)];
 
     // Handle enum variants in compatible mode
-    if type_resolver.compatible && T::fory_static_type_id() == TypeId::ENUM {
+    // Check for ENUM, NAMED_ENUM, and UNION (Union-compatible Rust enums return UNION TypeId)
+    if type_resolver.compatible && is_enum_type_id(T::fory_static_type_id()) {
         // Fields are already sorted with IDs assigned by the macro
         let variants_info = T::fory_variants_fields_info(type_resolver)?;
         for (idx, (variant_name, variant_type_id, fields_info)) in
@@ -662,7 +663,8 @@ impl TypeResolver {
                 "Either id must be non-zero for ID registration, or type_name must be non-empty for name registration",
             ));
         }
-        let actual_type_id = T::fory_actual_type_id(id, register_by_name, self.compatible);
+        let actual_type_id =
+            T::fory_actual_type_id(id, register_by_name, self.compatible, self.xlang);
 
         fn write<T2: 'static + Serializer>(
             this: &dyn Any,

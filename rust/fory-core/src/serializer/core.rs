@@ -1346,6 +1346,7 @@ pub trait StructSerializer: Serializer + 'static {
     /// * `type_id` - The base type ID
     /// * `register_by_name` - Whether type was registered by name (vs by hash)
     /// * `compatible` - Whether compatibility mode is enabled
+    /// * `xlang` - Whether cross-language mode is enabled
     ///
     /// # Returns
     ///
@@ -1357,7 +1358,13 @@ pub trait StructSerializer: Serializer + 'static {
     /// - Handles type ID transformations for compatibility
     /// - **Do not override** for user types with custom serialization (EXT types)
     #[inline(always)]
-    fn fory_actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) -> u32 {
+    fn fory_actual_type_id(
+        type_id: u32,
+        register_by_name: bool,
+        compatible: bool,
+        xlang: bool,
+    ) -> u32 {
+        let _ = xlang; // Default implementation ignores xlang parameter
         struct_::actual_type_id(type_id, register_by_name, compatible)
     }
 

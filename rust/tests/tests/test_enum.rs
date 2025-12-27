@@ -99,3 +99,141 @@ fn named_enum() {
     assert_eq!(target1, target2);
     assert_eq!(value1, value2);
 }
+
+/// Test that struct with enum field serializes correctly.
+#[test]
+fn struct_with_enum_field() {
+    use fory_core::serializer::Serializer;
+    use fory_core::types::TypeId;
+
+    // Define a simple enum
+    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    enum Color {
+        Red,
+        Green,
+        Blue,
+    }
+
+    // Define a struct with enum field
+    #[derive(ForyObject, Debug, PartialEq)]
+    struct StructWithEnum {
+        name: String,
+        color: Color,
+        value: i32,
+    }
+
+    // Verify Color is recognized as ENUM TypeId
+    assert!(
+        matches!(
+            Color::fory_static_type_id(),
+            TypeId::ENUM | TypeId::NAMED_ENUM
+        ),
+        "Color should have ENUM TypeId, got {:?}",
+        Color::fory_static_type_id()
+    );
+
+    let mut fory = Fory::default().xlang(true).compatible(false);
+    fory.register::<Color>(100).unwrap();
+    fory.register::<StructWithEnum>(101).unwrap();
+
+    let obj = StructWithEnum {
+        name: "test".to_string(),
+        color: Color::Green,
+        value: 42,
+    };
+
+    let bin = fory.serialize(&obj).unwrap();
+    let result: StructWithEnum = fory.deserialize(&bin).unwrap();
+    assert_eq!(obj, result);
+}
+
+/// Test Union-compatible enum xlang serialization format.
+/// This verifies that Rust enum writes: index + ref_flag + type_id + data
+/// which should be compatible with Java's Union: index + xwriteRef(value)
+#[test]
+fn union_compatible_enum_xlang_format() {
+    use fory_core::serializer::Serializer;
+    use fory_core::types::TypeId;
+
+    // Define a Union-compatible enum (each variant has exactly one field)
+    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    enum StringOrLong {
+        Text(String),
+        Number(i64),
+    }
+
+    // Verify it's recognized as UNION TypeId
+    assert_eq!(
+        StringOrLong::fory_static_type_id(),
+        TypeId::UNION,
+        "Union-compatible enum should have UNION TypeId"
+    );
+
+    // Struct containing the Union-compatible enum
+    #[derive(ForyObject, Debug, PartialEq)]
+    struct StructWithUnion {
+        union_field: StringOrLong,
+    }
+
+    // Test xlang mode serialization
+    let mut fory = Fory::default().xlang(true).compatible(false);
+    fory.register::<StringOrLong>(300).unwrap();
+    fory.register::<StructWithUnion>(301).unwrap();
+
+    // Test with String variant (index 0)
+    let obj1 = StructWithUnion {
+        union_field: StringOrLong::Text("hello".to_string()),
+    };
+    let bin1 = fory.serialize(&obj1).unwrap();
+    let result1: StructWithUnion = fory.deserialize(&bin1).unwrap();
+    assert_eq!(obj1, result1);
+
+    // Test with Long variant (index 1)
+    let obj2 = StructWithUnion {
+        union_field: StringOrLong::Number(42),
+    };
+    let bin2 = fory.serialize(&obj2).unwrap();
+    let result2: StructWithUnion = fory.deserialize(&bin2).unwrap();
+    assert_eq!(obj2, result2);
+}
+
+/// Test explicit #[fory(nullable)] attribute on enum field
+#[test]
+fn struct_with_enum_field_explicit_nullable() {
+    use fory_core::serializer::Serializer;
+    use fory_core::types::TypeId;
+
+    #[derive(ForyObject, Debug, PartialEq, Clone)]
+    enum Status {
+        Active,
+        Inactive,
+    }
+
+    #[derive(ForyObject, Debug, PartialEq)]
+    struct StructWithExplicitNullable {
+        name: String,
+        #[fory(id = 0, nullable = true)]
+        status: Status,
+    }
+
+    assert!(
+        matches!(
+            Status::fory_static_type_id(),
+            TypeId::ENUM | TypeId::NAMED_ENUM
+        ),
+        "Status should have ENUM TypeId"
+    );
+
+    let mut fory = Fory::default().xlang(true).compatible(false);
+    fory.register::<Status>(200).unwrap();
+    fory.register::<StructWithExplicitNullable>(201).unwrap();
+
+    let obj = StructWithExplicitNullable {
+        name: "explicit".to_string(),
+        status: Status::Active,
+    };
+
+    let bin = fory.serialize(&obj).unwrap();
+    let result: StructWithExplicitNullable = fory.deserialize(&bin).unwrap();
+    assert_eq!(obj, result);
+}

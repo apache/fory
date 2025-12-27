@@ -298,4 +298,11 @@ public class GoXlangTest extends XlangTestBase {
     // Go writes null for nil pointers (nullable=true by default for pointer types)
     Assert.assertNull(result2.f2);
   }
+
+  @Test
+  @Override
+  public void testUnionXlang() throws java.io.IOException {
+    // Skip: Go doesn't have Union xlang support yet
+    throw new SkipException("Skipping testUnionXlang: Go Union xlang support not implemented");
+  }
 }

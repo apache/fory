@@ -230,4 +230,9 @@ public class RustXlangTest extends XlangTestBase {
   public void testEnumSchemaEvolutionCompatible() throws java.io.IOException {
     super.testEnumSchemaEvolutionCompatible();
   }
+
+  @Test
+  public void testUnionXlang() throws java.io.IOException {
+    super.testUnionXlang();
+  }
 }

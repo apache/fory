@@ -229,6 +229,19 @@ pub const ISIZE_ARRAY: u32 = TypeId::ISIZE_ARRAY as u32;
 pub const UNKNOWN: u32 = TypeId::UNKNOWN as u32;
 pub const BOUND: u32 = TypeId::BOUND as u32;
 
+/// Returns true if the given TypeId represents an enum type.
+///
+/// This is used during fingerprint computation to match Java/C++ behavior
+/// where enum fields are always treated as nullable (since Java enums are
+/// reference types that can be null).
+///
+/// **NOTE**: ENUM, NAMED_ENUM, and UNION are all considered enum types since Rust enums
+/// can be represented as Union in xlang mode when they have data-carrying variants.
+#[inline]
+pub const fn is_enum_type_id(type_id: TypeId) -> bool {
+    matches!(type_id, TypeId::ENUM | TypeId::NAMED_ENUM | TypeId::UNION)
+}
+
 const MAX_UNT32: u64 = (1 << 31) - 1;
 
 // todo: struct hash

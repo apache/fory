@@ -89,7 +89,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
             let variant_meta_types =
                 derive_enum::gen_all_variant_meta_types_with_enum_name(name, s);
             (
-                derive_enum::gen_actual_type_id(),
+                derive_enum::gen_actual_type_id(s),
                 quote! { &[] },
                 derive_enum::gen_field_fields_info(s),
                 derive_enum::gen_variants_fields_info(name, s),
@@ -134,13 +134,13 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
         syn::Data::Enum(e) => (
             derive_enum::gen_write(e),
             derive_enum::gen_write_data(e),
-            derive_enum::gen_write_type_info(),
+            derive_enum::gen_write_type_info(e),
             derive_enum::gen_read(e),
             derive_enum::gen_read_with_type_info(e),
             derive_enum::gen_read_data(e),
-            derive_enum::gen_read_type_info(),
+            derive_enum::gen_read_type_info(e),
             derive_enum::gen_reserved_space(),
-            quote! { fory_core::TypeId::ENUM },
+            derive_enum::gen_static_type_id(e),
         ),
         syn::Data::Union(_) => {
             panic!("Union is not supported")
@@ -165,7 +165,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
             }
 
             #[inline(always)]
-            fn fory_actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) -> u32 {
+            fn fory_actual_type_id(type_id: u32, register_by_name: bool, compatible: bool, xlang: bool) -> u32 {
                 #actual_type_id_ts
             }
 

@@ -762,6 +762,55 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), Color.White);
   }
 
+  // Union xlang test - Java Union2 <-> Rust enum with single-field variants
+  //
+  // Union fields in xlang mode follow a special format:
+  // - Rust writes: ref_flag + union_data (no type_id, since Union fields skip type info)
+  // - Java reads: null_flag + union_data (directly calls UnionSerializer.read())
+  //
+  // AbstractObjectSerializer.readFinalObjectFieldValue and readOtherFieldValue
+  // have special handling for Union types to skip reading type_id.
+  @Data
+  static class StructWithUnion2 {
+    org.apache.fory.type.union.Union2<String, Long> union;
+  }
+
+  @Test
+  public void testUnionXlang() throws java.io.IOException {
+    String caseName = "test_union_xlang";
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(false)
+            .build();
+    fory.register(StructWithUnion2.class, 301);
+
+    // Create Union with String value (index 0)
+    StructWithUnion2 struct1 = new StructWithUnion2();
+    struct1.union = org.apache.fory.type.union.Union2.ofT1("hello");
+
+    // Create Union with Long value (index 1)
+    StructWithUnion2 struct2 = new StructWithUnion2();
+    struct2.union = org.apache.fory.type.union.Union2.ofT2(42L);
+
+    MemoryBuffer buffer = MemoryUtils.buffer(64);
+    fory.serialize(buffer, struct1);
+    fory.serialize(buffer, struct2);
+
+    ExecutionContext ctx = prepareExecution(caseName, buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+
+    MemoryBuffer buffer2 = readBuffer(ctx.dataFile());
+    StructWithUnion2 readStruct1 = (StructWithUnion2) fory.deserialize(buffer2);
+    Assert.assertEquals(readStruct1.union.getValue(), "hello");
+    Assert.assertEquals(readStruct1.union.getIndex(), 0);
+
+    StructWithUnion2 readStruct2 = (StructWithUnion2) fory.deserialize(buffer2);
+    Assert.assertEquals(readStruct2.union.getValue(), 42L);
+    Assert.assertEquals(readStruct2.union.getIndex(), 1);
+  }
+
   @Data
   static class StructWithList {
     List<String> items;

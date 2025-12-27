@@ -1253,3 +1253,58 @@ fn test_enum_schema_evolution_compatible_reverse() {
     let new_bytes = fory.serialize(&value).unwrap();
     fs::write(&data_file_path, new_bytes).unwrap();
 }
+
+// Union Xlang Tests - Rust enum <-> Java Union2
+
+/// Rust enum that matches Java Union2<String, Long>
+/// Each variant has exactly one field to be Union-compatible
+#[derive(ForyObject, Debug, PartialEq)]
+enum StringOrLong {
+    Str(String),
+    Long(i64),
+}
+
+impl Default for StringOrLong {
+    fn default() -> Self {
+        StringOrLong::Str(String::default())
+    }
+}
+
+/// Struct containing a Union field, matches Java StructWithUnion2
+#[derive(ForyObject, Debug, PartialEq)]
+struct StructWithUnion2 {
+    union: StringOrLong,
+}
+
+/// Test cross-language Union serialization between Rust enum and Java Union2.
+///
+/// Rust enum with single-field variants is Union-compatible and can be deserialized
+/// from Java Union2 types. Union fields in xlang mode follow a special format:
+/// - Rust writes: ref_flag + union_data (no type_id, since Union fields skip type info)
+/// - Java reads: null_flag + union_data (directly calls UnionSerializer.read())
+#[test]
+#[ignore]
+fn test_union_xlang() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default().compatible(true).xlang(true);
+    // Register both the enum and the struct that contains it
+    fory.register::<StringOrLong>(300).unwrap();
+    fory.register::<StructWithUnion2>(301).unwrap();
+
+    // Read struct1 with String value (index 0)
+    let mut reader = Reader::new(bytes.as_slice());
+    let struct1: StructWithUnion2 = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(struct1.union, StringOrLong::Str("hello".to_string()));
+
+    // Read struct2 with Long value (index 1)
+    let struct2: StructWithUnion2 = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(struct2.union, StringOrLong::Long(42));
+
+    // Serialize back
+    let mut buf = Vec::new();
+    fory.serialize_to(&mut buf, &struct1).unwrap();
+    fory.serialize_to(&mut buf, &struct2).unwrap();
+    fs::write(&data_file_path, buf).unwrap();
+}

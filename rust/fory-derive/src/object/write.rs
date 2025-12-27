@@ -16,8 +16,8 @@
 // under the License.
 
 use super::util::{
-    classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
-    create_wrapper_types_rc, determine_field_ref_mode, extract_type_name, get_field_accessor,
+    classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
+    determine_field_ref_mode, extract_type_name, gen_struct_version_hash_ts, get_field_accessor,
     get_field_name, get_filtered_source_fields_iter, get_primitive_writer_method, get_struct_name,
     get_type_id_by_type_ast, is_debug_enabled, is_direct_primitive_numeric_type,
     should_skip_type_info_for_field, FieldRefMode, StructField,
@@ -335,11 +335,11 @@ pub fn gen_write_data(source_fields: &[SourceField<'_>]) -> TokenStream {
         .map(|sf| gen_write_field_with_index(sf.field, sf.original_index, true))
         .collect();
 
-    let version_hash = compute_struct_version_hash(&fields);
+    let version_hash_ts = gen_struct_version_hash_ts(&fields);
     quote! {
-        // Write version hash when class version checking is enabled
         if context.is_check_struct_version() {
-            context.writer.write_i32(#version_hash);
+            let version_hash: i32 = #version_hash_ts;
+            context.writer.write_i32(version_hash);
         }
         #(#write_fields_ts)*
         Ok(())

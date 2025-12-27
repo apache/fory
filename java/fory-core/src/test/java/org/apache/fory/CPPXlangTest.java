@@ -268,4 +268,11 @@ public class CPPXlangTest extends XlangTestBase {
   public void testEnumSchemaEvolutionCompatible() throws java.io.IOException {
     super.testEnumSchemaEvolutionCompatible();
   }
+
+  @Test
+  @Override
+  public void testUnionXlang() throws java.io.IOException {
+    // Skip: C++ doesn't have Union xlang support yet
+    throw new SkipException("Skipping testUnionXlang: C++ Union xlang support not implemented");
+  }
 }

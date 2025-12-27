@@ -20,7 +20,7 @@ use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::Serializer;
 use crate::types::TypeId;
-use crate::types::{is_user_type, ENUM, NAMED_ENUM};
+use crate::types::{is_user_type, ENUM, NAMED_ENUM, UNION};
 
 #[inline(always)]
 pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
@@ -43,7 +43,7 @@ pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> 
 #[inline]
 pub const fn field_need_read_type_info(type_id: u32) -> bool {
     let internal_type_id = type_id & 0xff;
-    if internal_type_id == ENUM || internal_type_id == NAMED_ENUM {
+    if internal_type_id == ENUM || internal_type_id == NAMED_ENUM || internal_type_id == UNION {
         return false;
     }
     is_user_type(internal_type_id)
@@ -52,7 +52,7 @@ pub const fn field_need_read_type_info(type_id: u32) -> bool {
 /// Keep as const fn for compile time evaluation or constant folding
 pub const fn field_need_write_type_info(static_type_id: TypeId) -> bool {
     let static_type_id = static_type_id as u32;
-    if static_type_id == ENUM || static_type_id == NAMED_ENUM {
+    if static_type_id == ENUM || static_type_id == NAMED_ENUM || static_type_id == UNION {
         return false;
     }
     is_user_type(static_type_id)

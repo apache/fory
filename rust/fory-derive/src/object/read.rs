@@ -20,8 +20,8 @@ use quote::{format_ident, quote};
 use syn::Field;
 
 use super::util::{
-    classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
-    create_wrapper_types_rc, determine_field_ref_mode, extract_type_name,
+    classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
+    determine_field_ref_mode, extract_type_name, gen_struct_version_hash_ts,
     get_primitive_reader_method, get_struct_name, is_debug_enabled,
     is_direct_primitive_numeric_type, is_primitive_type, is_skip_field,
     should_skip_type_info_for_field, FieldRefMode, StructField,
@@ -304,7 +304,8 @@ fn get_source_fields_loop_ts(source_fields: &[SourceField<'_>]) -> TokenStream {
 
 pub fn gen_read_data(source_fields: &[SourceField<'_>]) -> TokenStream {
     let fields: Vec<&Field> = source_fields.iter().map(|sf| sf.field).collect();
-    let version_hash = compute_struct_version_hash(&fields);
+    // Generate runtime version hash computation that detects enum fields
+    let version_hash_ts = gen_struct_version_hash_ts(&fields);
     let read_fields = if source_fields.is_empty() {
         quote! {}
     } else {
@@ -341,7 +342,8 @@ pub fn gen_read_data(source_fields: &[SourceField<'_>]) -> TokenStream {
         if context.is_check_struct_version() {
             let read_version = context.reader.read_i32()?;
             let type_name = std::any::type_name::<Self>();
-            fory_core::meta::TypeMeta::check_struct_version(read_version, #version_hash, type_name)?;
+            let local_version: i32 = #version_hash_ts;
+            fory_core::meta::TypeMeta::check_struct_version(read_version, local_version, type_name)?;
         }
         #read_fields
         #self_construction
