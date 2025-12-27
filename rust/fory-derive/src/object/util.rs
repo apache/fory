@@ -20,11 +20,9 @@ use crate::util::{
     CollectionTraitInfo,
 };
 use fory_core::types::{TypeId, PRIMITIVE_ARRAY_TYPE_MAP};
-use fory_core::util::ENABLE_FORY_DEBUG_OUTPUT;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, ToTokens};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt;
 use syn::{Field, GenericArgument, Index, PathArguments, Type};
 
@@ -1117,109 +1115,181 @@ fn to_snake_case(name: &str) -> String {
     result
 }
 
-/// Computes the fingerprint string for a struct type used in schema versioning.
+/// Field metadata for runtime fingerprint computation.
+/// This struct holds compile-time known values while allowing runtime TypeId detection.
+struct FieldFingerprintInfo {
+    /// Field name (snake_case) or field ID as string
+    name_or_id: String,
+    /// Whether the field has explicit nullable=true/false set via #[fory(nullable)]
+    explicit_nullable: Option<bool>,
+    /// Whether reference tracking is enabled
+    ref_tracking: bool,
+    /// The field type for TypeId detection
+    field_type: Type,
+}
+
+/// Generates code to compute struct version hash at runtime.
 ///
-/// **Fingerprint Format:**
+/// This function generates TokenStream that computes the fingerprint and hash
+/// at runtime, allowing dynamic detection of enum fields. This matches Java/C++
+/// behavior where enum fields are always treated as nullable.
 ///
-/// Each field contributes: `<field_name_or_id>,<type_id>,<ref>,<nullable>;`
+/// The generated code:
+/// 1. Uses `OnceLock` to cache the computed hash (computed only once)
+/// 2. For user-defined types (TypeId::UNKNOWN at macro time), checks `fory_static_type_id()` at runtime
+/// 3. If field is enum (ENUM/NAMED_ENUM/UNION) and no explicit nullable=false, sets nullable=true
+/// 4. Builds fingerprint string and computes MurmurHash3
 ///
-/// Fields are sorted by field name (snake_case) lexicographically.
+/// This is for cross-language compatibility with Java/C++ where:
+/// - Java: all non-primitive fields without @ForyField annotation default to nullable=true
+/// - C++: enum fields explicitly set nullable=true via FieldTypeBuilder specialization
 ///
-/// **Field Components:**
-/// - `field_name_or_id`: snake_case field name, or tag ID if `#[fory(id = N)]` is set
-/// - `type_id`: Fory TypeId as decimal string (e.g., "4" for INT32)
-/// - `ref`: "1" if reference tracking enabled, "0" otherwise
-/// - `nullable`: "1" if null flag is written, "0" otherwise
-///
-/// **Example fingerprint:** `"age,4,0,0;name,12,0,1;"`
-///
-/// This format is consistent across Go, Java, Rust, and C++ implementations.
-pub(crate) fn compute_struct_fingerprint(fields: &[&Field]) -> String {
+/// **Note**: For known primitive types, we avoid runtime `fory_static_type_id()` calls to prevent
+/// introducing unnecessary trait bounds on trait objects like `dyn Trait`.
+pub(crate) fn gen_struct_version_hash_ts(fields: &[&Field]) -> TokenStream {
     use super::field_meta::{classify_field_type, parse_field_meta};
 
-    // (name, type_id, ref_tracking, nullable, field_id)
-    let mut field_info_map: HashMap<String, (u32, bool, bool, i32)> =
-        HashMap::with_capacity(fields.len());
-    for (idx, field) in fields.iter().enumerate() {
-        let name = get_field_name(field, idx);
-        let type_id = get_type_id_by_type_ast(&field.ty);
+    // Collect field info for code generation
+    let mut field_infos: Vec<FieldFingerprintInfo> = Vec::with_capacity(fields.len());
 
-        // Parse field metadata for nullable/ref tracking
+    for (idx, field) in fields.iter().enumerate() {
         let meta = parse_field_meta(field).unwrap_or_default();
         if meta.skip {
             continue;
         }
 
-        let type_class = classify_field_type(&field.ty);
-        let nullable = meta.effective_nullable(type_class);
-        let ref_tracking = meta.effective_ref_tracking(type_class);
+        let name = get_field_name(field, idx);
         let field_id = meta.effective_id();
-
-        field_info_map.insert(name, (type_id, ref_tracking, nullable, field_id));
-    }
-
-    // Sort field names lexicographically for fingerprint computation
-    // This matches Java/Go behavior where fingerprint fields are sorted by name,
-    // not by the type-category-based ordering used for serialization
-    let mut sorted_names: Vec<String> = field_info_map.keys().cloned().collect();
-    sorted_names.sort();
-
-    let mut fingerprint = String::new();
-    for name in sorted_names.iter() {
-        let (type_id, ref_tracking, nullable, field_id) = field_info_map
-            .get(name)
-            .expect("Field metadata missing during struct hash computation");
-
-        // Format: <field_name_or_id>,<type_id>,<ref>,<nullable>;
-        // If field has a tag ID >= 0, use that; otherwise use snake_case field name
-        if *field_id >= 0 {
-            fingerprint.push_str(&field_id.to_string());
+        let name_or_id = if field_id >= 0 {
+            field_id.to_string()
         } else {
-            fingerprint.push_str(&to_snake_case(name));
-        }
-        fingerprint.push(',');
-
-        let effective_type_id = if *type_id == TypeId::UNKNOWN as u32 {
-            TypeId::UNKNOWN as u32
-        } else {
-            *type_id
+            to_snake_case(&name)
         };
-        fingerprint.push_str(&effective_type_id.to_string());
-        fingerprint.push(',');
-        fingerprint.push_str(if *ref_tracking { "1" } else { "0" });
-        fingerprint.push(',');
-        fingerprint.push_str(if *nullable { "1;" } else { "0;" });
+
+        let type_class = classify_field_type(&field.ty);
+        let ref_tracking = meta.effective_ref_tracking(type_class);
+
+        // Capture explicit nullable setting from #[fory(nullable = true/false)]
+        let explicit_nullable = meta.nullable;
+
+        field_infos.push(FieldFingerprintInfo {
+            name_or_id,
+            explicit_nullable,
+            ref_tracking,
+            field_type: field.ty.clone(),
+        });
     }
 
-    fingerprint
-}
+    // Sort field infos by name_or_id lexicographically (matches Java/C++ behavior)
+    field_infos.sort_by(|a, b| a.name_or_id.cmp(&b.name_or_id));
 
-/// Computes the struct version hash from field metadata.
-///
-/// Uses `compute_struct_fingerprint` to build the fingerprint string,
-/// then hashes it with MurmurHash3_x64_128 using seed 47, and takes
-/// the low 32 bits as signed i32.
-///
-/// This provides the cross-language struct version ID used by class
-/// version checking, consistent with Go, Java, and C++ implementations.
-pub(crate) fn compute_struct_version_hash(fields: &[&Field]) -> i32 {
-    let fingerprint = compute_struct_fingerprint(fields);
+    // Generate code for each field's fingerprint contribution
+    let field_fingerprint_parts: Vec<TokenStream> = field_infos
+        .iter()
+        .map(|info| {
+            let name_or_id = &info.name_or_id;
+            let ref_flag = if info.ref_tracking { "1" } else { "0" };
+            let field_ty = &info.field_type;
 
-    let seed: u64 = 47;
-    let (hash, _) = fory_core::meta::murmurhash3_x64_128(fingerprint.as_bytes(), seed);
-    let version = (hash & 0xFFFF_FFFF) as u32;
-    let version = version as i32;
+            // Get compile-time TypeId if known (UNKNOWN for user-defined types)
+            let compile_time_type_id = get_type_id_by_type_ast(field_ty);
+            let is_user_defined_type = compile_time_type_id == TypeId::UNKNOWN as u32;
 
-    if ENABLE_FORY_DEBUG_OUTPUT {
-        if let Some(struct_name) = get_struct_name() {
-            println!(
-                "[fory-debug] struct {struct_name} version fingerprint=\"{fingerprint}\" hash={version}"
-            );
-        } else {
-            println!("[fory-debug] struct version fingerprint=\"{fingerprint}\" hash={version}");
+            // For user-defined types, we need runtime check; for known types, use compile-time value
+            let (type_id_code, nullable_code) = if is_user_defined_type {
+                // User-defined type - need runtime check for enum detection
+                let nullable_code = match info.explicit_nullable {
+                    Some(true) => quote! { true },
+                    Some(false) => quote! { false },
+                    None => {
+                        // No explicit setting - check if field type is enum at runtime
+                        quote! {
+                            fory_core::types::is_enum_type_id(
+                                <#field_ty as fory_core::serializer::Serializer>::fory_static_type_id()
+                            )
+                        }
+                    }
+                };
+                let type_id_code = quote! {
+                    let type_id = <#field_ty as fory_core::serializer::Serializer>::fory_static_type_id();
+                    // Use UNKNOWN (0) in fingerprint for user-defined types
+                    let effective_type_id = if matches!(
+                        type_id,
+                        fory_core::TypeId::STRUCT
+                            | fory_core::TypeId::COMPATIBLE_STRUCT
+                            | fory_core::TypeId::NAMED_STRUCT
+                            | fory_core::TypeId::NAMED_COMPATIBLE_STRUCT
+                            | fory_core::TypeId::EXT
+                            | fory_core::TypeId::NAMED_EXT
+                            | fory_core::TypeId::ENUM
+                            | fory_core::TypeId::NAMED_ENUM
+                            | fory_core::TypeId::UNION
+                    ) {
+                        0u32  // UNKNOWN for user-defined types
+                    } else {
+                        type_id as u32
+                    };
+                };
+                (type_id_code, nullable_code)
+            } else {
+                // Known type at compile time - no runtime check needed
+                // Primitive types are never enums, so nullable defaults to false
+                let nullable_code = match info.explicit_nullable {
+                    Some(true) => quote! { true },
+                    Some(false) => quote! { false },
+                    None => quote! { false }, // Known non-enum types default to non-nullable
+                };
+                let type_id_value = compile_time_type_id;
+                let type_id_code = quote! {
+                    let effective_type_id: u32 = #type_id_value;
+                };
+                (type_id_code, nullable_code)
+            };
+
+            quote! {
+                {
+                    #type_id_code
+                    let nullable: bool = #nullable_code;
+                    let nullable_flag = if nullable { "1" } else { "0" };
+
+                    fingerprint.push_str(#name_or_id);
+                    fingerprint.push(',');
+                    fingerprint.push_str(&effective_type_id.to_string());
+                    fingerprint.push(',');
+                    fingerprint.push_str(#ref_flag);
+                    fingerprint.push(',');
+                    fingerprint.push_str(nullable_flag);
+                    fingerprint.push(';');
+                }
+            }
+        })
+        .collect();
+
+    // Generate the full version hash computation code with OnceLock caching
+    quote! {
+        {
+            static VERSION_HASH: std::sync::OnceLock<i32> = std::sync::OnceLock::new();
+            *VERSION_HASH.get_or_init(|| {
+                let mut fingerprint = String::new();
+                #(#field_fingerprint_parts)*
+
+                let seed: u64 = 47;
+                let (hash, _) = fory_core::meta::murmurhash3_x64_128(fingerprint.as_bytes(), seed);
+                let version = (hash & 0xFFFF_FFFF) as u32;
+
+                if fory_core::util::ENABLE_FORY_DEBUG_OUTPUT {
+                    println!(
+                        "[fory-debug] struct {} version fingerprint=\"{}\" hash={}",
+                        std::any::type_name::<Self>(),
+                        fingerprint,
+                        version as i32
+                    );
+                }
+
+                version as i32
+            })
         }
     }
-    version
 }
 
 pub(crate) fn skip_ref_flag(ty: &Type) -> bool {

@@ -1225,6 +1225,11 @@ public class ClassDef implements Serializable {
                   ? GenericType.build(Object.class)
                   : genericType.getTypeParameter1()));
     } else {
+      // Handle Union types (Union, Union2, Union3, etc.) first before registered type check
+      // Union types need special handling in xlang mode for cross-language compatibility
+      if (org.apache.fory.type.union.Union.class.isAssignableFrom(rawType)) {
+        return new UnionFieldType(nullable, trackingRef);
+      }
       if (isXlang
           && !Types.isUserDefinedType((byte) xtypeId)
           && resolver.isRegisteredById(rawType)) {

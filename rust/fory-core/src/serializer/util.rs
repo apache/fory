@@ -22,7 +22,7 @@ use crate::serializer::Serializer;
 use crate::types::TypeId;
 use crate::types::{
     is_user_type, BOOL, ENUM, FLOAT32, FLOAT64, INT128, INT16, INT32, INT64, INT8, NAMED_ENUM,
-    NONE, U128, U16, U32, U64, U8,
+    NONE, U128, U16, U32, U64, U8, UNION,
 };
 
 #[inline(always)]
@@ -39,14 +39,15 @@ pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> 
 /// Check at runtime whether type info should be skipped for a given type id.
 ///
 /// According to xlang_serialization_spec.md:
-/// - For enums (ENUM/NAMED_ENUM), we should skip writing type info
+/// - For enums (ENUM/NAMED_ENUM/UNION), we should skip writing type info
 /// - For structs and ext types, we should write type info
 ///
 /// Keep as const fn for compile time evaluation or constant folding
 #[inline]
 pub const fn field_need_read_type_info(type_id: u32) -> bool {
     let internal_type_id = type_id & 0xff;
-    if internal_type_id == ENUM || internal_type_id == NAMED_ENUM {
+    // UNION is also an enum-like type (tagged union), should not read type info
+    if internal_type_id == ENUM || internal_type_id == NAMED_ENUM || internal_type_id == UNION {
         return false;
     }
     is_user_type(internal_type_id)
@@ -55,7 +56,9 @@ pub const fn field_need_read_type_info(type_id: u32) -> bool {
 /// Keep as const fn for compile time evaluation or constant folding
 pub const fn field_need_write_type_info(static_type_id: TypeId) -> bool {
     let static_type_id = static_type_id as u32;
-    if static_type_id == ENUM || static_type_id == NAMED_ENUM {
+    // UNION is also an enum-like type in Rust,
+    // Union-compatible enums return UNION TypeId
+    if static_type_id == ENUM || static_type_id == NAMED_ENUM || static_type_id == UNION {
         return false;
     }
     is_user_type(static_type_id)
