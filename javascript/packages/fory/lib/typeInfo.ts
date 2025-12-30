@@ -205,7 +205,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
 
 export interface StructTypeInfo extends TypeInfo {
   options: {
-  props?: { [key: string]: TypeInfo & { nullable?: boolean } };
+    props?: { [key: string]: TypeInfo & { nullable?: boolean } };
     withConstructor?: boolean;
   };
 }
