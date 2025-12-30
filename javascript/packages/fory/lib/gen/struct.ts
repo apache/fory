@@ -76,7 +76,11 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
             throw new Error(`${inner.type} generator not exists`);
         }
         const innerGenerator = new InnerGeneratorClass(inner, this.builder, this.scope);
-        return innerGenerator.toWriteEmbed(`${accessor}${CodecBuilder.safePropAccessor(key)}`);
+
+        const fieldAccessor = `${accessor}${CodecBuilder.safePropAccessor(key)}`;
+        return (inner as any).nullable === false
+          ? `if (${fieldAccessor} === null || ${fieldAccessor} === undefined) { throw new Error("Field '${CodecBuilder.replaceBackslashAndQuote(key)}' is not nullable"); }\n${innerGenerator.toWriteEmbed(fieldAccessor, true)}`
+          : innerGenerator.toWriteEmbed(fieldAccessor);
       }).join(";\n")}
     `;
   }
