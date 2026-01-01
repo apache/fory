@@ -134,14 +134,14 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       boolean nullable = fieldInfo.nullable;
       short classId = fieldInfo.classId;
-      if (AbstractObjectSerializer.writePrimitiveFieldValueFailed(
+      if (AbstractObjectSerializer.writePrimitiveFieldValue(
           fory, buffer, value, fieldAccessor, classId)) {
         Object fieldValue = fieldAccessor.getObject(value);
         boolean writeBasicObjectResult =
             nullable
-                ? AbstractObjectSerializer.writeBasicNullableObjectFieldValueFailed(
+                ? AbstractObjectSerializer.writeBasicNullableObjectFieldValue(
                     fory, buffer, fieldValue, classId)
-                : AbstractObjectSerializer.writeBasicObjectFieldValueFailed(
+                : AbstractObjectSerializer.writeBasicObjectFieldValue(
                     fory, buffer, fieldValue, classId);
         if (writeBasicObjectResult) {
           Serializer<Object> serializer = fieldInfo.classInfo.getSerializer();
@@ -244,12 +244,12 @@ public class MetaSharedLayerSerializer<T> extends MetaSharedLayerSerializerBase<
       if (fieldAccessor != null) {
         boolean nullable = fieldInfo.nullable;
         short classId = fieldInfo.classId;
-        if (AbstractObjectSerializer.readPrimitiveFieldValueFailed(
+        if (AbstractObjectSerializer.readPrimitiveFieldValue(
                 fory, buffer, obj, fieldAccessor, classId)
             && (nullable
-                ? AbstractObjectSerializer.readBasicNullableObjectFieldValueFailed(
+                ? AbstractObjectSerializer.readBasicNullableObjectFieldValue(
                     fory, buffer, obj, fieldAccessor, classId)
-                : AbstractObjectSerializer.readBasicObjectFieldValueFailed(
+                : AbstractObjectSerializer.readBasicObjectFieldValue(
                     fory, buffer, obj, fieldAccessor, classId))) {
           Object fieldValue =
               AbstractObjectSerializer.readFinalObjectFieldValue(

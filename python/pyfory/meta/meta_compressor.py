@@ -57,6 +57,35 @@ class MetaCompressor(ABC):
         pass
 
 
+class NoOpMetaCompressor(MetaCompressor):
+    """
+    A meta compressor that does no compression.
+    This is useful for testing and debugging cross-language serialization.
+    """
+
+    def compress(self, data: bytes, offset: int = 0, size: Optional[int] = None) -> bytes:
+        """Return the data unchanged."""
+        if size is None:
+            size = len(data) - offset
+        return data[offset : offset + size]
+
+    def decompress(self, data: bytes, offset: int = 0, size: Optional[int] = None) -> bytes:
+        """Return the data unchanged."""
+        if size is None:
+            size = len(data) - offset
+        return data[offset : offset + size]
+
+    def __hash__(self) -> int:
+        """Return hash code based on class type."""
+        return hash(NoOpMetaCompressor)
+
+    def __eq__(self, other) -> bool:
+        """Check equality based on class type."""
+        if self is other:
+            return True
+        return other is not None and isinstance(other, NoOpMetaCompressor)
+
+
 class DeflaterMetaCompressor(MetaCompressor):
     """
     A meta compressor based on zlib compression algorithm (equivalent to Java's Deflater).

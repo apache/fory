@@ -685,6 +685,18 @@ func (c *CollectionFieldType) getTypeInfo(f *Fory) (TypeInfo, error) {
 	if err != nil {
 		return TypeInfo{}, err
 	}
+
+	// For SET type, Go uses map[T]bool to represent sets
+	if c.typeId == SET {
+		setType := reflect.MapOf(elemInfo.Type, reflect.TypeOf(true))
+		setSerializer, serErr := f.GetTypeResolver().GetSetSerializer(setType)
+		if serErr != nil {
+			return TypeInfo{}, serErr
+		}
+		return TypeInfo{Type: setType, Serializer: setSerializer}, nil
+	}
+
+	// For LIST type, use slice
 	collectionType := reflect.SliceOf(elemInfo.Type)
 	// Use TypeResolver helper to get the appropriate slice serializer
 	sliceSerializer, serErr := f.GetTypeResolver().GetSliceSerializer(collectionType)
@@ -699,6 +711,18 @@ func (c *CollectionFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (T
 	if err != nil {
 		return TypeInfo{}, err
 	}
+
+	// For SET type, Go uses map[T]bool to represent sets
+	if c.typeId == SET {
+		setType := reflect.MapOf(elemInfo.Type, reflect.TypeOf(true))
+		setSerializer, serErr := resolver.GetSetSerializer(setType)
+		if serErr != nil {
+			return TypeInfo{}, serErr
+		}
+		return TypeInfo{Type: setType, Serializer: setSerializer}, nil
+	}
+
+	// For LIST type, use slice
 	collectionType := reflect.SliceOf(elemInfo.Type)
 	// Use TypeResolver helper to get the appropriate slice serializer
 	sliceSerializer, serErr := resolver.GetSliceSerializer(collectionType)
@@ -894,9 +918,21 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 
 	// Handle map types BEFORE getTypeInfo to avoid anonymous type errors
 	if fieldType.Kind() == reflect.Map {
-		// Create zero values for key and value types
 		keyType := fieldType.Key()
 		valueType := fieldType.Elem()
+
+		// In Go xlang mode, map[T]bool is used to represent a Set<T>
+		// The key type becomes the element type of the set
+		if valueType.Kind() == reflect.Bool {
+			keyValue := reflect.Zero(keyType)
+			keyFieldType, err := buildFieldType(fory, keyValue)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build element field type for set: %w", err)
+			}
+			return NewCollectionFieldType(SET, keyFieldType), nil
+		}
+
+		// Regular map type
 		keyValue := reflect.Zero(keyType)
 		valueValue := reflect.Zero(valueType)
 

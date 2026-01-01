@@ -232,7 +232,7 @@ public class StringUtils {
     while ((index = lowerUnderscore.indexOf('_', fromIndex)) != -1) {
       builder.append(lowerUnderscore, fromIndex, index);
 
-      if (length >= index + 1) {
+      if (length > index + 1) {
         char symbol = lowerUnderscore.charAt(index + 1);
         if (symbol >= 'a' && symbol <= 'z') {
           builder.append(Character.toUpperCase(symbol));

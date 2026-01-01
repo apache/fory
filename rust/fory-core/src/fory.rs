@@ -26,7 +26,7 @@ use crate::serializer::{Serializer, StructSerializer};
 use crate::types::config_flags::IS_NULL_FLAG;
 use crate::types::{
     config_flags::{IS_CROSS_LANGUAGE_FLAG, IS_LITTLE_ENDIAN_FLAG},
-    Language, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
+    Language, RefMode, MAGIC_NUMBER, SIZE_OF_REF_AND_TYPE,
 };
 use std::cell::UnsafeCell;
 use std::mem;
@@ -590,7 +590,13 @@ impl Fory {
             if context.is_compatible() {
                 context.writer.write_i32(-1);
             };
-            <T as Serializer>::fory_write(record, context, true, true, false)?;
+            // Use RefMode::Tracking for shared ref types (Rc, Arc, RcWeak, ArcWeak)
+            let ref_mode = if T::fory_is_shared_ref() {
+                RefMode::Tracking
+            } else {
+                RefMode::NullOnly
+            };
+            <T as Serializer>::fory_write(record, context, ref_mode, true, false)?;
             if context.is_compatible() && !context.empty() {
                 context.write_meta(meta_start_offset);
             }
@@ -977,7 +983,13 @@ impl Fory {
                 bytes_to_skip = context.load_type_meta(meta_offset as usize)?;
             }
         }
-        let result = <T as Serializer>::fory_read(context, true, true);
+        // Use RefMode::Tracking for shared ref types (Rc, Arc, RcWeak, ArcWeak)
+        let ref_mode = if T::fory_is_shared_ref() {
+            RefMode::Tracking
+        } else {
+            RefMode::NullOnly
+        };
+        let result = <T as Serializer>::fory_read(context, ref_mode, true);
         if bytes_to_skip > 0 {
             context.reader.skip(bytes_to_skip)?;
         }

@@ -79,7 +79,8 @@ Result<void, Error> FieldType::write_to(Buffer &buffer, bool write_flag,
 }
 
 Result<FieldType, Error> FieldType::read_from(Buffer &buffer, bool read_flag,
-                                              bool nullable_val) {
+                                              bool nullable_val,
+                                              bool ref_tracking_val) {
   Error error;
   uint32_t header = buffer.ReadVarUint32(error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
@@ -88,15 +89,19 @@ Result<FieldType, Error> FieldType::read_from(Buffer &buffer, bool read_flag,
 
   uint32_t tid;
   bool null;
+  bool ref_track;
   if (read_flag) {
+    // Header layout: type_id:N bits | nullable:1 bit | ref_tracking:1 bit
     tid = header >> 2;
-    null = (header & 2) != 0;
+    null = (header & 0b10) != 0;
+    ref_track = (header & 0b01) != 0;
   } else {
     tid = header;
     null = nullable_val;
+    ref_track = ref_tracking_val;
   }
 
-  FieldType ft(tid, null);
+  FieldType ft(tid, null, ref_track);
 
   // Read generics for list/set/map
   if (tid == static_cast<uint32_t>(TypeId::LIST) ||
@@ -160,11 +165,12 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
   }
 
   // Decode header layout:
-  // bits 0: ref tracking flag
+  // bit  0: ref tracking flag
   // bit  1: nullability flag
   // bits 2-5: size (0-14, 15 means extended)
   // bits 6-7: field name encoding index
   uint8_t encoding_idx = static_cast<uint8_t>(header >> 6);
+  bool ref_tracking = (header & 0b01u) != 0;
   bool nullable = (header & 0b10u) != 0;
   size_t name_size = ((header >> 2) & FIELD_NAME_SIZE_THRESHOLD);
   if (name_size == FIELD_NAME_SIZE_THRESHOLD) {
@@ -176,8 +182,9 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
   }
   name_size += 1;
 
-  // Read field type
-  FORY_TRY(field_type, FieldType::read_from(buffer, false, nullable));
+  // Read field type with nullable and ref_tracking from header
+  FORY_TRY(field_type,
+           FieldType::read_from(buffer, false, nullable, ref_tracking));
 
   // Read and decode field name. Java encodes field names using
   // MetaString with encodings:
@@ -632,7 +639,7 @@ bool numeric_sorter(const FieldInfo &a, const FieldInfo &b) {
   int32_t size_b = get_primitive_type_size(b_id);
 
   // Sort by: nullable (false first), compress (false first), size (larger
-  // first), type_id, field_name
+  // first), type_id (descending to match Java), field_name
   if (a_nullable != b_nullable)
     return !a_nullable; // non-nullable first
   if (compress_a != compress_b)
@@ -640,11 +647,12 @@ bool numeric_sorter(const FieldInfo &a, const FieldInfo &b) {
   if (size_a != size_b)
     return size_a > size_b; // larger size first
   if (a_id != b_id)
-    return a_id < b_id; // smaller type id first
+    return a_id > b_id; // type_id descending to match Java
   return a.field_name < b.field_name;
 }
 
-// Type then name sorter (for internal type fields)
+// Type then name sorter (for internal type fields like STRING)
+// Sorts by: type_id (ascending), field_name
 bool type_then_name_sorter(const FieldInfo &a, const FieldInfo &b) {
   if (a.field_type.type_id != b.field_type.type_id) {
     return a.field_type.type_id < b.field_type.type_id;
@@ -653,6 +661,7 @@ bool type_then_name_sorter(const FieldInfo &a, const FieldInfo &b) {
 }
 
 // Name sorter (for list/set/map/other fields)
+// Sorts by: field_name only
 bool name_sorter(const FieldInfo &a, const FieldInfo &b) {
   return a.field_name < b.field_name;
 }

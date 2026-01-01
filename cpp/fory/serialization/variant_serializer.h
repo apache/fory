@@ -51,10 +51,10 @@ template <> struct Serializer<std::monostate> {
   }
 
   static inline void write(const std::monostate &, WriteContext &ctx,
-                           bool write_ref, bool write_type,
+                           RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
     (void)has_generics;
-    write_not_null_ref_flag(ctx, write_ref);
+    write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       write_type_info(ctx);
     }
@@ -70,9 +70,9 @@ template <> struct Serializer<std::monostate> {
     // No data to write for monostate
   }
 
-  static inline std::monostate read(ReadContext &ctx, bool read_ref,
+  static inline std::monostate read(ReadContext &ctx, RefMode ref_mode,
                                     bool read_type) {
-    bool has_value = consume_ref_flag(ctx, read_ref);
+    bool has_value = read_null_only_flag(ctx, ref_mode);
     if (!has_value) {
       return std::monostate{};
     }
@@ -88,9 +88,9 @@ template <> struct Serializer<std::monostate> {
   }
 
   static inline std::monostate read_with_type_info(ReadContext &ctx,
-                                                   bool read_ref,
+                                                   RefMode ref_mode,
                                                    const TypeInfo &type_info) {
-    return read(ctx, read_ref, false);
+    return read(ctx, ref_mode, false);
   }
 };
 
@@ -107,7 +107,7 @@ inline void write_variant_by_index(const Variant &variant, WriteContext &ctx,
     if (Index == active_index) {
       using AlternativeType = std::variant_alternative_t<Index, Variant>;
       const auto &value = std::get<Index>(variant);
-      Serializer<AlternativeType>::write(value, ctx, false, write_type);
+      Serializer<AlternativeType>::write(value, ctx, RefMode::None, write_type);
     } else {
       write_variant_by_index<Variant, Index + 1>(variant, ctx, active_index,
                                                  write_type);
@@ -128,7 +128,7 @@ inline Variant read_variant_by_index(ReadContext &ctx, size_t stored_index,
     if (Index == stored_index) {
       using AlternativeType = std::variant_alternative_t<Index, Variant>;
       AlternativeType value =
-          Serializer<AlternativeType>::read(ctx, false, read_type);
+          Serializer<AlternativeType>::read(ctx, RefMode::None, read_type);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         // Return a default-constructed variant with the first alternative
         return Variant{};
@@ -190,10 +190,10 @@ template <typename... Ts> struct Serializer<std::variant<Ts...>> {
   }
 
   static inline void write(const VariantType &variant, WriteContext &ctx,
-                           bool write_ref, bool write_type,
+                           RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
     (void)has_generics;
-    write_not_null_ref_flag(ctx, write_ref);
+    write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       write_type_info(ctx);
     }
@@ -216,9 +216,9 @@ template <typename... Ts> struct Serializer<std::variant<Ts...>> {
     write_data(variant, ctx);
   }
 
-  static inline VariantType read(ReadContext &ctx, bool read_ref,
+  static inline VariantType read(ReadContext &ctx, RefMode ref_mode,
                                  bool read_type) {
-    bool has_value = consume_ref_flag(ctx, read_ref);
+    bool has_value = read_null_only_flag(ctx, ref_mode);
     if (!has_value) {
       return VariantType{};
     }
@@ -246,9 +246,10 @@ template <typename... Ts> struct Serializer<std::variant<Ts...>> {
     return read_variant_by_index<VariantType>(ctx, stored_index, read_alt_type);
   }
 
-  static inline VariantType read_with_type_info(ReadContext &ctx, bool read_ref,
+  static inline VariantType read_with_type_info(ReadContext &ctx,
+                                                RefMode ref_mode,
                                                 const TypeInfo &type_info) {
-    return read(ctx, read_ref, false);
+    return read(ctx, ref_mode, false);
   }
 };
 

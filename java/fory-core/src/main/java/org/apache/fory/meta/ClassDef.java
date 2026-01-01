@@ -45,6 +45,7 @@ import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.MetaSharedSerializer;
 import org.apache.fory.type.Descriptor;
+import org.apache.fory.util.StringUtils;
 
 /**
  * Serializable class definition to be sent to other process. So if sender peer and receiver peer
@@ -354,14 +355,23 @@ public class ClassDef implements Serializable {
         }
       }
       descriptors = new ArrayList<>(fieldsInfo.size());
+      boolean isXlang = resolver.getFory().isCrossLanguage();
       for (FieldInfo fieldInfo : fieldsInfo) {
         Descriptor descriptor;
         // Try to match by field ID first if the FieldInfo has an ID
         if (fieldInfo.hasFieldId()) {
           descriptor = fieldIdToDescriptorMap.get(fieldInfo.getFieldId());
         } else {
-          descriptor =
-              descriptorsMap.get(fieldInfo.getDefinedClass() + "." + fieldInfo.getFieldName());
+          String fieldName = fieldInfo.getFieldName();
+          String definedClass = fieldInfo.getDefinedClass();
+          // First try camelCase field name (decoded name from TypeDefDecoder)
+          descriptor = descriptorsMap.get(definedClass + "." + fieldName);
+          // If not found and in xlang mode, also try snake_case field name
+          // This supports users who use snake_case field names in Java for xlang compatibility
+          if (descriptor == null && isXlang) {
+            String snakeCaseName = StringUtils.lowerCamelToLowerUnderscore(fieldName);
+            descriptor = descriptorsMap.get(definedClass + "." + snakeCaseName);
+          }
         }
         Descriptor newDesc = fieldInfo.toDescriptor(resolver, descriptor);
         descriptors.add(newDesc);

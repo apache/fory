@@ -15,25 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use crate::types::TypeId;
-use chrono::NaiveDate;
-use std::cell::UnsafeCell;
-use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::{ptr, thread};
+use std::ptr;
 
-pub const EPOCH: NaiveDate = match NaiveDate::from_ymd_opt(1970, 1, 1) {
-    None => {
-        panic!("Unreachable code")
-    }
-    Some(epoch) => epoch,
-};
-
-// Swapping the high 8 bits and the low 8 bits of a 16-bit value
+/// Swaps the high 8 bits and the low 8 bits of a 16-bit value.
 fn swap_endian(value: u16) -> u16 {
     value.rotate_right(8)
 }
 
+/// Converts UTF-16 encoded data to UTF-8.
 pub fn to_utf8(utf16: &[u16], is_little_endian: bool) -> Result<Vec<u8>, String> {
     // Pre-allocating capacity to avoid dynamic resizing
     // Longest case: 1 u16 to 3 u8
@@ -124,81 +113,73 @@ pub fn to_utf8(utf16: &[u16], is_little_endian: bool) -> Result<Vec<u8>, String>
     Ok(utf8_bytes)
 }
 
-pub fn get_ext_actual_type_id(type_id: u32, register_by_name: bool) -> u32 {
-    (type_id << 8)
-        + if register_by_name {
-            TypeId::NAMED_EXT as u32
-        } else {
-            TypeId::EXT as u32
-        }
-}
+/// Converts a camelCase or PascalCase string to snake_case.
+/// Used for cross-language field name matching since Java uses camelCase
+/// and Rust uses snake_case.
+pub fn to_snake_case(name: &str) -> String {
+    let mut result = String::with_capacity(name.len() + 4);
+    let chars: Vec<char> = name.chars().collect();
 
-pub struct Spinlock<T> {
-    data: UnsafeCell<T>,
-    flag: AtomicBool,
-}
-
-unsafe impl<T: Send> Send for Spinlock<T> {}
-unsafe impl<T: Sync> Sync for Spinlock<T> {}
-
-impl<T> Spinlock<T> {
-    pub fn new(data: T) -> Self {
-        Spinlock {
-            data: UnsafeCell::new(data),
-            flag: AtomicBool::new(false),
-        }
-    }
-
-    pub fn lock(&self) -> SpinlockGuard<'_, T> {
-        let mut spins = 0;
-        while self
-            .flag
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_err()
-        {
-            // Spin for a few iterations
-            if spins < 10 {
-                std::hint::spin_loop();
-                spins += 1;
-            } else {
-                // Then yield to the scheduler
-                thread::yield_now();
-                spins = 0; // reset spin counter
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_ascii_uppercase() {
+            // Add underscore before uppercase unless:
+            // - It's the first character
+            // - Previous char was uppercase and next is uppercase or doesn't exist
+            //   (e.g., "HTTPRequest" -> "http_request", not "h_t_t_p_request")
+            if i > 0 {
+                let prev_upper = chars.get(i - 1).is_some_and(|c| c.is_ascii_uppercase());
+                let next_upper_or_end = chars.get(i + 1).map_or(true, |c| c.is_ascii_uppercase());
+                if !prev_upper || !next_upper_or_end {
+                    result.push('_');
+                }
             }
+            result.push(c.to_ascii_lowercase());
+        } else {
+            result.push(c);
         }
-        SpinlockGuard { lock: self }
     }
-
-    fn unlock(&self) {
-        self.flag.store(false, Ordering::Release);
-    }
+    result
 }
 
-#[allow(clippy::needless_lifetimes)]
-pub struct SpinlockGuard<'a, T> {
-    lock: &'a Spinlock<T>,
-}
-#[allow(clippy::needless_lifetimes)]
-impl<'a, T> Drop for SpinlockGuard<'a, T> {
-    fn drop(&mut self) {
-        self.lock.unlock();
+/// Converts a snake_case string to lowerCamelCase.
+/// Used for cross-language field name serialization since Rust uses snake_case
+/// but other languages (Java, etc.) expect camelCase in the wire format.
+pub fn to_camel_case(name: &str) -> String {
+    let mut result = String::with_capacity(name.len());
+    let mut capitalize_next = false;
+
+    for c in name.chars() {
+        if c == '_' {
+            capitalize_next = true;
+        } else if capitalize_next {
+            result.push(c.to_ascii_uppercase());
+            capitalize_next = false;
+        } else {
+            result.push(c);
+        }
     }
-}
-#[allow(clippy::needless_lifetimes)]
-impl<'a, T> Deref for SpinlockGuard<'a, T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.lock.data.get() }
-    }
+    result
 }
 
-#[allow(clippy::needless_lifetimes)]
-impl<'a, T> DerefMut for SpinlockGuard<'a, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.lock.data.get() }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_snake_case() {
+        assert_eq!(to_snake_case("camelCase"), "camel_case");
+        assert_eq!(to_snake_case("PascalCase"), "pascal_case");
+        assert_eq!(to_snake_case("HTTPRequest"), "http_request");
+        assert_eq!(to_snake_case("simpleTest"), "simple_test");
+        assert_eq!(to_snake_case("already_snake"), "already_snake");
+        assert_eq!(to_snake_case("ABC"), "abc");
+    }
+
+    #[test]
+    fn test_to_camel_case() {
+        assert_eq!(to_camel_case("snake_case"), "snakeCase");
+        assert_eq!(to_camel_case("simple_test"), "simpleTest");
+        assert_eq!(to_camel_case("already"), "already");
+        assert_eq!(to_camel_case("a_b_c"), "aBC");
     }
 }
-
-/// Global flag to check if ENABLE_FORY_DEBUG_OUTPUT environment variable is set at compile time.
-/// Set ENABLE_FORY_DEBUG_OUTPUT=1 at compile time to enable debug output.
-pub const ENABLE_FORY_DEBUG_OUTPUT: bool = option_env!("ENABLE_FORY_DEBUG_OUTPUT").is_some();

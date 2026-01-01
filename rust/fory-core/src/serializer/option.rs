@@ -20,7 +20,7 @@ use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::resolver::type_resolver::TypeResolver;
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{RefFlag, TypeId};
+use crate::types::{RefFlag, RefMode, TypeId};
 use std::rc::Rc;
 
 impl<T: Serializer + ForyDefault> Serializer for Option<T> {
@@ -28,19 +28,39 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
     fn fory_write(
         &self,
         context: &mut WriteContext,
-        write_ref_info: bool,
+        ref_mode: RefMode,
         write_type_info: bool,
         has_generics: bool,
     ) -> Result<(), Error> {
-        if let Some(v) = self {
-            // pass has_generics to nested collection/map serializers
-            T::fory_write(v, context, write_ref_info, write_type_info, has_generics)
-        } else {
-            if write_ref_info {
-                context.writer.write_u8(RefFlag::Null as u8);
+        match ref_mode {
+            RefMode::None => {
+                // Write inner directly, no null check
+                if let Some(v) = self {
+                    T::fory_write(v, context, RefMode::None, write_type_info, has_generics)
+                } else {
+                    // None with RefMode::None is a protocol error
+                    Err(Error::invalid_data("Option::None with RefMode::None"))
+                }
             }
-            // no value, skip write type info
-            Ok(())
+            RefMode::NullOnly => {
+                if let Some(v) = self {
+                    context.writer.write_i8(RefFlag::NotNullValue as i8);
+                    T::fory_write(v, context, RefMode::None, write_type_info, has_generics)
+                } else {
+                    context.writer.write_i8(RefFlag::Null as i8);
+                    Ok(())
+                }
+            }
+            RefMode::Tracking => {
+                // Only handle null here, pass Tracking to inner for ref handling
+                if let Some(v) = self {
+                    // DON'T write flag here - inner (e.g. Rc) handles RefValue/Ref flags
+                    T::fory_write(v, context, RefMode::Tracking, write_type_info, has_generics)
+                } else {
+                    context.writer.write_i8(RefFlag::Null as i8);
+                    Ok(())
+                }
+            }
         }
     }
 
@@ -60,55 +80,96 @@ impl<T: Serializer + ForyDefault> Serializer for Option<T> {
 
     fn fory_read(
         context: &mut ReadContext,
-        read_ref_info: bool,
+        ref_mode: RefMode,
         read_type_info: bool,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
     {
-        if read_ref_info {
-            let ref_flag = context.reader.read_i8()?;
-            if ref_flag == RefFlag::Null as i8 {
-                // null value won't write type info, so we can ignore `read_type_info`
-                return Ok(None);
+        match ref_mode {
+            RefMode::None => {
+                // Read inner directly, no null check
+                Ok(Some(T::fory_read(context, RefMode::None, read_type_info)?))
             }
-            if T::fory_is_shared_ref() {
-                // shared ref types always write ref flag, so we can ignore `read_type_info`
-                context.reader.move_back(1); // rewind to re-read ref flag in nested read
-                return Ok(Some(T::fory_read(context, true, read_type_info)?));
+            RefMode::NullOnly => {
+                let ref_flag = context.reader.read_i8()?;
+                if ref_flag == RefFlag::Null as i8 {
+                    return Ok(None);
+                }
+                // NotNullValue - read inner without ref handling
+                Ok(Some(T::fory_read(context, RefMode::None, read_type_info)?))
+            }
+            RefMode::Tracking => {
+                let ref_flag = context.reader.read_i8()?;
+                if ref_flag == RefFlag::Null as i8 {
+                    return Ok(None);
+                }
+                // Rewind to let inner type handle the ref flag (RefValue/Ref)
+                context.reader.move_back(1);
+                Ok(Some(T::fory_read(
+                    context,
+                    RefMode::Tracking,
+                    read_type_info,
+                )?))
             }
         }
-        Ok(Some(T::fory_read(context, false, read_type_info)?))
     }
 
     fn fory_read_with_type_info(
         context: &mut ReadContext,
-        read_ref_info: bool,
+        ref_mode: RefMode,
         type_info: Rc<crate::TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
     {
-        if read_ref_info {
-            let ref_flag = context.reader.read_i8()?;
-            if ref_flag == RefFlag::Null as i8 {
-                return Ok(None);
+        match ref_mode {
+            RefMode::None => {
+                if T::fory_is_polymorphic() {
+                    Ok(Some(T::fory_read_with_type_info(
+                        context,
+                        RefMode::None,
+                        type_info,
+                    )?))
+                } else {
+                    Ok(Some(T::fory_read_data(context)?))
+                }
             }
-        }
-        if T::fory_is_polymorphic() {
-            // Type info already resolved by caller
-            Ok(Some(T::fory_read_with_type_info(
-                context, false, type_info,
-            )?))
-        } else {
-            Ok(Some(T::fory_read_data(context)?))
+            RefMode::NullOnly => {
+                let ref_flag = context.reader.read_i8()?;
+                if ref_flag == RefFlag::Null as i8 {
+                    return Ok(None);
+                }
+                if T::fory_is_polymorphic() {
+                    Ok(Some(T::fory_read_with_type_info(
+                        context,
+                        RefMode::None,
+                        type_info,
+                    )?))
+                } else {
+                    Ok(Some(T::fory_read_data(context)?))
+                }
+            }
+            RefMode::Tracking => {
+                let ref_flag = context.reader.read_i8()?;
+                if ref_flag == RefFlag::Null as i8 {
+                    return Ok(None);
+                }
+                // Rewind to let inner type handle the ref flag
+                context.reader.move_back(1);
+                Ok(Some(T::fory_read_with_type_info(
+                    context,
+                    RefMode::Tracking,
+                    type_info,
+                )?))
+            }
         }
     }
 
     #[inline(always)]
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
         if T::fory_is_polymorphic() {
-            Ok(Some(T::fory_read(context, false, true)?))
+            Ok(Some(T::fory_read(context, RefMode::None, true)?))
         } else {
             Ok(Some(T::fory_read_data(context)?))
         }

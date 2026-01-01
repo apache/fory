@@ -146,6 +146,7 @@ import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.TypeUtils;
+import org.apache.fory.type.union.Union;
 import org.apache.fory.util.GraalvmSupport;
 import org.apache.fory.util.Preconditions;
 import org.apache.fory.util.StringUtils;
@@ -705,6 +706,11 @@ public class ClassResolver extends TypeResolver {
       if (clz.isArray()) {
         Class<?> component = TypeUtils.getArrayComponent(clz);
         return isMonomorphic(component);
+      }
+      // Union types (Union2~6) are final classes, treat them as monomorphic
+      // so they don't need to read/write type info
+      if (Union.class.isAssignableFrom(clz)) {
+        return true;
       }
       return (isInnerClass(clz) || clz.isEnum());
     }

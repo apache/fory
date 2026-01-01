@@ -20,10 +20,11 @@ use quote::{format_ident, quote};
 use syn::Field;
 
 use super::util::{
-    classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
-    create_wrapper_types_rc, extract_type_name, get_primitive_reader_method, get_struct_name,
-    is_debug_enabled, is_direct_primitive_numeric_type, is_primitive_type, is_skip_field,
-    should_skip_type_info_for_field, skip_ref_flag, StructField,
+    classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
+    determine_field_ref_mode, extract_type_name, gen_struct_version_hash_ts,
+    get_primitive_reader_method, get_struct_name, is_debug_enabled,
+    is_direct_primitive_numeric_type, is_primitive_type, is_skip_field,
+    should_skip_type_info_for_field, FieldRefMode, StructField,
 };
 use crate::util::SourceField;
 
@@ -122,107 +123,102 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) ->
         };
     }
 
+    // Determine RefMode from field meta (respects #[fory(ref=false)] attribute)
+    let ref_mode = determine_field_ref_mode(field);
     let base = match classify_trait_object_field(ty) {
         StructField::BoxDyn => {
+            // Box<dyn Trait> - respect field meta for ref mode
             quote! {
-                let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, true)?;
+                let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, #ref_mode, true)?;
             }
         }
         StructField::RcDyn(trait_name) => {
+            // Rc<dyn Trait> - respect field meta for ref mode
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                let wrapper = <#wrapper_ty as fory_core::Serializer>::fory_read(context, true, true)?;
+                let wrapper = <#wrapper_ty as fory_core::Serializer>::fory_read(context, #ref_mode, true)?;
                 let #private_ident = std::rc::Rc::<dyn #trait_ident>::from(wrapper);
             }
         }
         StructField::ArcDyn(trait_name) => {
+            // Arc<dyn Trait> - respect field meta for ref mode
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                let wrapper = <#wrapper_ty as fory_core::Serializer>::fory_read(context, true, true)?;
+                let wrapper = <#wrapper_ty as fory_core::Serializer>::fory_read(context, #ref_mode, true)?;
                 let #private_ident = std::sync::Arc::<dyn #trait_ident>::from(wrapper);
             }
         }
         StructField::VecRc(trait_name) => {
+            // Vec<Rc<dyn Trait>> - respect field meta for ref mode
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                let wrapper_vec = <Vec<#wrapper_ty> as fory_core::Serializer>::fory_read(context, true, false)?;
+                let wrapper_vec = <Vec<#wrapper_ty> as fory_core::Serializer>::fory_read(context, #ref_mode, false)?;
                 let #private_ident = wrapper_vec.into_iter()
                     .map(|w| std::rc::Rc::<dyn #trait_ident>::from(w))
                     .collect();
             }
         }
         StructField::VecArc(trait_name) => {
+            // Vec<Arc<dyn Trait>> - respect field meta for ref mode
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                let wrapper_vec = <Vec<#wrapper_ty> as fory_core::Serializer>::fory_read(context, true, false)?;
+                let wrapper_vec = <Vec<#wrapper_ty> as fory_core::Serializer>::fory_read(context, #ref_mode, false)?;
                 let #private_ident = wrapper_vec.into_iter()
                     .map(|w| std::sync::Arc::<dyn #trait_ident>::from(w))
                     .collect();
             }
         }
         StructField::VecBox(_) => {
-            // Vec<Box<dyn Any>> uses standard Vec deserialization with polymorphic elements
-            // Respect skip_ref_flag for xlang nullable=false default
-            if skip_ref_flag(ty) {
-                quote! {
-                    let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, false, false)?;
-                }
-            } else {
-                quote! {
-                    let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, false)?;
-                }
+            // Vec<Box<dyn Any>> - respect field meta for ref mode
+            quote! {
+                let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, #ref_mode, false)?;
             }
         }
         StructField::HashMapBox(_, _) => {
-            // HashMap<K, Box<dyn Any>> uses standard HashMap deserialization with polymorphic values
-            // Respect skip_ref_flag for xlang nullable=false default
-            if skip_ref_flag(ty) {
-                quote! {
-                    let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, false, false)?;
-                }
-            } else {
-                quote! {
-                    let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, false)?;
-                }
+            // HashMap<K, Box<dyn Any>> - respect field meta for ref mode
+            quote! {
+                let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, #ref_mode, false)?;
             }
         }
         StructField::HashMapRc(key_ty, trait_name) => {
+            // HashMap<K, Rc<dyn Trait>> - respect field meta for ref mode
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_read(context, true, false)?;
+                let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_read(context, #ref_mode, false)?;
                 let #private_ident = wrapper_map.into_iter()
                     .map(|(k, v)| (k, std::rc::Rc::<dyn #trait_ident>::from(v)))
                     .collect();
             }
         }
         StructField::HashMapArc(key_ty, trait_name) => {
+            // HashMap<K, Arc<dyn Trait>> - respect field meta for ref mode
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
-                let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_read(context, true, false)?;
+                let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_read(context, #ref_mode, false)?;
                 let #private_ident = wrapper_map.into_iter()
                     .map(|(k, v)| (k, std::sync::Arc::<dyn #trait_ident>::from(v)))
                     .collect();
             }
         }
         StructField::Forward => {
+            // Forward types - respect field meta for ref mode
             quote! {
-                let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, true)?;
+                let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, #ref_mode, true)?;
             }
         }
         _ => {
-            let skip_ref_flag = skip_ref_flag(ty);
             let skip_type_info = should_skip_type_info_for_field(ty);
 
             // Check if this is a direct primitive numeric type that can use direct reader calls
@@ -235,19 +231,18 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) ->
                 }
             } else if skip_type_info {
                 // Known types (primitives, strings, collections) - skip type info at compile time
-                if skip_ref_flag {
+                if ref_mode == FieldRefMode::None {
                     quote! {
                         let #private_ident = <#ty as fory_core::Serializer>::fory_read_data(context)?;
                     }
                 } else {
                     quote! {
-                        let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, false)?;
+                        let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, #ref_mode, false)?;
                     }
                 }
             } else {
                 // Custom types (struct/enum/ext) - need runtime check for enums
-                // For xlang mode: non-Option types skip ref flag (nullable=false by default)
-                if skip_ref_flag {
+                if ref_mode == FieldRefMode::None {
                     quote! {
                         let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
                         if need_type_info {
@@ -258,7 +253,7 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) ->
                 } else {
                     quote! {
                         let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
-                        let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, true, need_type_info)?;
+                        let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, #ref_mode, need_type_info)?;
                     }
                 }
             }
@@ -309,7 +304,8 @@ fn get_source_fields_loop_ts(source_fields: &[SourceField<'_>]) -> TokenStream {
 
 pub fn gen_read_data(source_fields: &[SourceField<'_>]) -> TokenStream {
     let fields: Vec<&Field> = source_fields.iter().map(|sf| sf.field).collect();
-    let version_hash = compute_struct_version_hash(&fields);
+    // Generate runtime version hash computation that detects enum fields
+    let version_hash_ts = gen_struct_version_hash_ts(&fields);
     let read_fields = if source_fields.is_empty() {
         quote! {}
     } else {
@@ -346,7 +342,8 @@ pub fn gen_read_data(source_fields: &[SourceField<'_>]) -> TokenStream {
         if context.is_check_struct_version() {
             let read_version = context.reader.read_i32()?;
             let type_name = std::any::type_name::<Self>();
-            fory_core::meta::TypeMeta::check_struct_version(read_version, #version_hash, type_name)?;
+            let local_version: i32 = #version_hash_ts;
+            fory_core::meta::TypeMeta::check_struct_version(read_version, local_version, type_name)?;
         }
         #read_fields
         #self_construction
@@ -361,6 +358,8 @@ pub(crate) fn gen_read_compatible_match_arm_body(
     let ty = &field.ty;
     let field_kind = classify_trait_object_field(ty);
     let is_skip_flag = is_skip_field(field);
+    // Determine RefMode from field meta (respects #[fory(ref=false)] attribute)
+    let ref_mode = determine_field_ref_mode(field);
 
     let base = if is_skip_flag {
         match field_kind {
@@ -385,45 +384,50 @@ pub(crate) fn gen_read_compatible_match_arm_body(
     } else {
         match field_kind {
             StructField::BoxDyn => {
+                // Box<dyn Trait> - respect field meta for ref mode
                 quote! {
-                    #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, true, true)?);
+                    #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, #ref_mode, true)?);
                 }
             }
             StructField::RcDyn(trait_name) => {
+                // Rc<dyn Trait> - respect field meta for ref mode
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 let trait_ident = types.trait_ident;
                 quote! {
-                    let wrapper = <#wrapper_ty as fory_core::Serializer>::fory_read(context, true, true)?;
+                    let wrapper = <#wrapper_ty as fory_core::Serializer>::fory_read(context, #ref_mode, true)?;
                     #var_name = Some(std::rc::Rc::<dyn #trait_ident>::from(wrapper));
                 }
             }
             StructField::ArcDyn(trait_name) => {
+                // Arc<dyn Trait> - respect field meta for ref mode
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 let trait_ident = types.trait_ident;
                 quote! {
-                    let wrapper = <#wrapper_ty as fory_core::Serializer>::fory_read(context, true, true)?;
+                    let wrapper = <#wrapper_ty as fory_core::Serializer>::fory_read(context, #ref_mode, true)?;
                     #var_name = Some(std::sync::Arc::<dyn #trait_ident>::from(wrapper));
                 }
             }
             StructField::VecRc(trait_name) => {
+                // Vec<Rc<dyn Trait>> - respect field meta for ref mode
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 let trait_ident = types.trait_ident;
                 quote! {
-                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::Serializer>::fory_read(context, true, false)?;
+                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::Serializer>::fory_read(context, #ref_mode, false)?;
                     #var_name = Some(wrapper_vec.into_iter()
                         .map(|w| std::rc::Rc::<dyn #trait_ident>::from(w))
                         .collect());
                 }
             }
             StructField::VecArc(trait_name) => {
+                // Vec<Arc<dyn Trait>> - respect field meta for ref mode
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 let trait_ident = types.trait_ident;
                 quote! {
-                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::Serializer>::fory_read(context, true, false)?;
+                    let wrapper_vec = <Vec<#wrapper_ty> as fory_core::Serializer>::fory_read(context, #ref_mode, false)?;
                     #var_name = Some(wrapper_vec.into_iter()
                         .map(|w| std::sync::Arc::<dyn #trait_ident>::from(w))
                         .collect());
@@ -438,7 +442,7 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                         _field.field_type.nullable,
                     );
                     if read_ref_flag {
-                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, true, false)?);
+                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, fory_core::RefMode::NullOnly, false)?);
                     } else {
                         #var_name = Some(<#ty as fory_core::Serializer>::fory_read_data(context)?);
                     }
@@ -453,42 +457,46 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                         _field.field_type.nullable,
                     );
                     if read_ref_flag {
-                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, true, false)?);
+                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, fory_core::RefMode::NullOnly, false)?);
                     } else {
                         #var_name = Some(<#ty as fory_core::Serializer>::fory_read_data(context)?);
                     }
                 }
             }
             StructField::HashMapRc(key_ty, trait_name) => {
+                // HashMap<K, Rc<dyn Trait>> - respect field meta for ref mode
                 let types = create_wrapper_types_rc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 let trait_ident = types.trait_ident;
                 quote! {
-                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_read(context, true, false)?;
+                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_read(context, #ref_mode, false)?;
                     #var_name = Some(wrapper_map.into_iter()
                         .map(|(k, v)| (k, std::rc::Rc::<dyn #trait_ident>::from(v)))
                         .collect());
                 }
             }
             StructField::HashMapArc(key_ty, trait_name) => {
+                // HashMap<K, Arc<dyn Trait>> - respect field meta for ref mode
                 let types = create_wrapper_types_arc(&trait_name);
                 let wrapper_ty = types.wrapper_ty;
                 let trait_ident = types.trait_ident;
                 quote! {
-                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_read(context, true, false)?;
+                    let wrapper_map = <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_read(context, #ref_mode, false)?;
                     #var_name = Some(wrapper_map.into_iter()
                         .map(|(k, v)| (k, std::sync::Arc::<dyn #trait_ident>::from(v)))
                         .collect());
                 }
             }
             StructField::ContainsTraitObject => {
+                // Struct containing trait objects - respect field meta for ref mode
                 quote! {
-                    #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, true, true)?);
+                    #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, #ref_mode, true)?);
                 }
             }
             StructField::Forward => {
+                // Forward types - respect field meta for ref mode
                 quote! {
-                    #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, true, true)?);
+                    #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, #ref_mode, true)?);
                 }
             }
             StructField::None => {
@@ -502,7 +510,7 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                                 _field.field_type.nullable,
                             );
                             if read_ref_flag {
-                                #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, true, false)?);
+                                #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, fory_core::RefMode::NullOnly, false)?);
                             } else {
                                 #var_name = Some(<#ty as fory_core::Serializer>::fory_read_data(context)?);
                             }
@@ -514,7 +522,7 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                                 _field.field_type.nullable,
                             );
                             if read_ref_flag {
-                                #var_name = <#ty as fory_core::Serializer>::fory_read(context, true, false)?;
+                                #var_name = <#ty as fory_core::Serializer>::fory_read(context, fory_core::RefMode::NullOnly, false)?;
                             } else {
                                 #var_name = <#ty as fory_core::Serializer>::fory_read_data(context)?;
                             }
@@ -527,9 +535,10 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                             _field.field_type.type_id,
                             _field.field_type.nullable,
                         );
+                        let ref_mode = if read_ref_flag { fory_core::RefMode::NullOnly } else { fory_core::RefMode::None };
                         // Always use fory_read which handles compatible mode correctly
                         // for nested struct types with different registered IDs
-                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, read_ref_flag, read_type_info)?);
+                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, ref_mode, read_type_info)?);
                     }
                 } else {
                     quote! {
@@ -538,9 +547,10 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                             _field.field_type.type_id,
                             _field.field_type.nullable,
                         );
+                        let ref_mode = if read_ref_flag { fory_core::RefMode::NullOnly } else { fory_core::RefMode::None };
                         // Always use fory_read which handles compatible mode correctly
                         // for nested struct types with different registered IDs
-                        #var_name = <#ty as fory_core::Serializer>::fory_read(context, read_ref_flag, read_type_info)?;
+                        #var_name = <#ty as fory_core::Serializer>::fory_read(context, ref_mode, read_type_info)?;
                     }
                 }
             }
@@ -577,7 +587,7 @@ pub fn gen_read(_struct_ident: &Ident) -> TokenStream {
     // When the struct has generics (e.g., LeaderId<C>), using `Self` ensures the full
     // type with generics is used in the impl block.
     quote! {
-        let ref_flag = if read_ref_info {
+        let ref_flag = if ref_mode != fory_core::RefMode::None {
             context.reader.read_i8()?
         } else {
             fory_core::RefFlag::NotNullValue as i8
@@ -608,12 +618,12 @@ pub fn gen_read(_struct_ident: &Ident) -> TokenStream {
 pub fn gen_read_with_type_info() -> TokenStream {
     // fn fory_read_with_type_info(
     //     context: &mut ReadContext,
-    //     read_ref_info: bool,
+    //     ref_mode: RefMode,
     //     type_info: Rc<TypeInfo>,
     // ) -> Result<Self, Error>
     // Note: We use `Self` instead of `#struct_ident` to correctly handle generic types.
     quote! {
-        let ref_flag = if read_ref_info {
+        let ref_flag = if ref_mode != fory_core::RefMode::None {
             context.reader.read_i8()?
         } else {
             fory_core::RefFlag::NotNullValue as i8

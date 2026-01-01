@@ -27,9 +27,10 @@ import enum
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import pyfory
+from pyfory.meta.meta_compressor import NoOpMetaCompressor
 
 
 def debug_print(*params):
@@ -171,6 +172,102 @@ class OneEnumFieldStruct:
 class TwoEnumFieldStruct:
     f1: TestEnum = None
     f2: TestEnum = None
+
+
+# ============================================================================
+# Nullable Field Test Types
+# ============================================================================
+
+
+@dataclass
+class NullableComprehensiveSchemaConsistent:
+    """
+    Comprehensive struct for testing nullable fields in SCHEMA_CONSISTENT mode.
+
+    Fields are organized as:
+    - Base non-nullable fields: byte, short, int, long, float, double, bool, string, list, set, map
+    - Nullable fields (first half - boxed numeric types): Integer, Long, Float
+    - Nullable fields (second half): Double, Boolean, String, List, Set, Map
+    """
+
+    # Base non-nullable primitive fields
+    byte_field: pyfory.int8 = 0
+    short_field: pyfory.int16 = 0
+    int_field: pyfory.int32 = 0
+    long_field: pyfory.int64 = 0
+    float_field: pyfory.float32 = 0.0
+    double_field: pyfory.float64 = 0.0
+    bool_field: bool = False
+
+    # Base non-nullable reference fields
+    string_field: str = ""
+    list_field: List[str] = None
+    set_field: Set[str] = None
+    map_field: Dict[str, str] = None
+
+    # Nullable fields - first half (boxed types)
+    nullable_int: Optional[pyfory.int32] = None
+    nullable_long: Optional[pyfory.int64] = None
+    nullable_float: Optional[pyfory.float32] = None
+
+    # Nullable fields - second half
+    nullable_double: Optional[pyfory.float64] = None
+    nullable_bool: Optional[bool] = None
+    nullable_string: Optional[str] = None
+    nullable_list: Optional[List[str]] = None
+    nullable_set: Optional[Set[str]] = None
+    nullable_map: Optional[Dict[str, str]] = None
+
+
+@dataclass
+class NullableComprehensiveCompatible:
+    """
+    Cross-language schema evolution test struct for COMPATIBLE mode.
+    All fields are Optional in Python to properly handle both null and non-null values from Java:
+    - Group 1: Non-nullable in Java (always has values)
+    - Group 2: Nullable in Java (@ForyField(nullable=true)) - can be null
+
+    Python uses Optional for all fields so it can correctly receive and re-serialize
+    values from Java, whether they are null or non-null.
+    """
+
+    # Group 1: Nullable in Python (Optional), Non-nullable in Java
+    # Primitive fields
+    byte_field: Optional[pyfory.int8] = None
+    short_field: Optional[pyfory.int16] = None
+    int_field: Optional[pyfory.int32] = None
+    long_field: Optional[pyfory.int64] = None
+    float_field: Optional[pyfory.float32] = None
+    double_field: Optional[pyfory.float64] = None
+    bool_field: Optional[bool] = None
+
+    # Boxed fields - also nullable in Python
+    boxed_int: Optional[pyfory.int32] = None
+    boxed_long: Optional[pyfory.int64] = None
+    boxed_float: Optional[pyfory.float32] = None
+    boxed_double: Optional[pyfory.float64] = None
+    boxed_bool: Optional[bool] = None
+
+    # Reference fields - also nullable in Python
+    string_field: Optional[str] = None
+    list_field: Optional[List[str]] = None
+    set_field: Optional[Set[str]] = None
+    map_field: Optional[Dict[str, str]] = None
+
+    # Group 2: Also Nullable in Python (must match Java's nullable annotation)
+    # When Java sends null for these fields, Python must be able to receive and re-serialize None.
+    # Boxed types - use Optional to handle None from Java
+    nullable_int1: Optional[pyfory.int32] = None
+    nullable_long1: Optional[pyfory.int64] = None
+    nullable_float1: Optional[pyfory.float32] = None
+    nullable_double1: Optional[pyfory.float64] = None
+    nullable_bool1: Optional[bool] = None
+
+    # Reference types - also Optional
+    nullable_string2: Optional[str] = None
+    nullable_list2: Optional[List[str]] = None
+    nullable_set2: Optional[Set[str]] = None
+    nullable_map2: Optional[Dict[str, str]] = None
 
 
 # ============================================================================
@@ -681,6 +778,326 @@ def test_enum_schema_evolution_compatible_reverse():
     # f2 should be None (missing field due to schema evolution)
     f2_value = getattr(obj, "f2", None)
     assert f2_value is None, f"Expected f2=None, got f2={f2_value}"
+
+    new_bytes = fory.serialize(obj)
+    with open(data_file, "wb") as f:
+        f.write(new_bytes)
+
+
+# ============================================================================
+# Nullable Field Tests
+# ============================================================================
+
+
+def test_nullable_field_schema_consistent_not_null():
+    """Test nullable fields with non-null values in schema consistent mode."""
+    data_file = get_data_file()
+    with open(data_file, "rb") as f:
+        data_bytes = f.read()
+
+    fory = pyfory.Fory(xlang=True, compatible=False)
+    fory.register_type(NullableComprehensiveSchemaConsistent, type_id=401)
+
+    expected = NullableComprehensiveSchemaConsistent(
+        # Base non-nullable primitive fields
+        byte_field=1,
+        short_field=2,
+        int_field=42,
+        long_field=123456789,
+        float_field=1.5,
+        double_field=2.5,
+        bool_field=True,
+        # Base non-nullable reference fields
+        string_field="hello",
+        list_field=["a", "b", "c"],
+        set_field={"x", "y"},
+        map_field={"key1": "value1", "key2": "value2"},
+        # Nullable fields - first half (boxed types) - all have values
+        nullable_int=100,
+        nullable_long=200,
+        nullable_float=1.5,
+        # Nullable fields - second half - all have values
+        nullable_double=2.5,
+        nullable_bool=False,
+        nullable_string="nullable_value",
+        nullable_list=["p", "q"],
+        nullable_set={"m", "n"},
+        nullable_map={"nk1": "nv1"},
+    )
+
+    obj = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized: {obj}")
+
+    # Verify base primitive fields
+    assert obj.byte_field == expected.byte_field, f"byte_field: {obj.byte_field} != {expected.byte_field}"
+    assert obj.short_field == expected.short_field, f"short_field: {obj.short_field} != {expected.short_field}"
+    assert obj.int_field == expected.int_field, f"int_field: {obj.int_field} != {expected.int_field}"
+    assert obj.long_field == expected.long_field, f"long_field: {obj.long_field} != {expected.long_field}"
+    assert abs(obj.float_field - expected.float_field) < 0.01, f"float_field: {obj.float_field} != {expected.float_field}"
+    assert abs(obj.double_field - expected.double_field) < 0.000001, f"double_field: {obj.double_field} != {expected.double_field}"
+    assert obj.bool_field == expected.bool_field, f"bool_field: {obj.bool_field} != {expected.bool_field}"
+
+    # Verify base reference fields
+    assert obj.string_field == expected.string_field, f"string_field: {obj.string_field} != {expected.string_field}"
+    assert obj.list_field == expected.list_field, f"list_field: {obj.list_field} != {expected.list_field}"
+    assert obj.set_field == expected.set_field, f"set_field: {obj.set_field} != {expected.set_field}"
+    assert obj.map_field == expected.map_field, f"map_field: {obj.map_field} != {expected.map_field}"
+
+    # Verify nullable fields - first half (boxed types)
+    assert obj.nullable_int == expected.nullable_int, f"nullable_int: {obj.nullable_int} != {expected.nullable_int}"
+    assert obj.nullable_long == expected.nullable_long, f"nullable_long: {obj.nullable_long} != {expected.nullable_long}"
+    assert abs(obj.nullable_float - expected.nullable_float) < 0.01, f"nullable_float: {obj.nullable_float} != {expected.nullable_float}"
+
+    # Verify nullable fields - second half
+    assert abs(obj.nullable_double - expected.nullable_double) < 0.01, f"nullable_double: {obj.nullable_double} != {expected.nullable_double}"
+    assert obj.nullable_bool == expected.nullable_bool, f"nullable_bool: {obj.nullable_bool} != {expected.nullable_bool}"
+    assert obj.nullable_string == expected.nullable_string, f"nullable_string: {obj.nullable_string} != {expected.nullable_string}"
+    assert obj.nullable_list == expected.nullable_list, f"nullable_list: {obj.nullable_list} != {expected.nullable_list}"
+    assert obj.nullable_set == expected.nullable_set, f"nullable_set: {obj.nullable_set} != {expected.nullable_set}"
+    assert obj.nullable_map == expected.nullable_map, f"nullable_map: {obj.nullable_map} != {expected.nullable_map}"
+
+    new_bytes = fory.serialize(obj)
+    with open(data_file, "wb") as f:
+        f.write(new_bytes)
+
+
+def test_nullable_field_schema_consistent_null():
+    """Test nullable fields with null values in schema consistent mode."""
+    data_file = get_data_file()
+    with open(data_file, "rb") as f:
+        data_bytes = f.read()
+
+    fory = pyfory.Fory(xlang=True, compatible=False)
+    fory.register_type(NullableComprehensiveSchemaConsistent, type_id=401)
+
+    expected = NullableComprehensiveSchemaConsistent(
+        # Base non-nullable primitive fields - must have values
+        byte_field=1,
+        short_field=2,
+        int_field=42,
+        long_field=123456789,
+        float_field=1.5,
+        double_field=2.5,
+        bool_field=True,
+        # Base non-nullable reference fields - must have values
+        string_field="hello",
+        list_field=["a", "b", "c"],
+        set_field={"x", "y"},
+        map_field={"key1": "value1", "key2": "value2"},
+        # Nullable fields - first half (boxed types) - all null
+        nullable_int=None,
+        nullable_long=None,
+        nullable_float=None,
+        # Nullable fields - second half - all null
+        nullable_double=None,
+        nullable_bool=None,
+        nullable_string=None,
+        nullable_list=None,
+        nullable_set=None,
+        nullable_map=None,
+    )
+
+    obj = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized: {obj}")
+
+    # Verify base primitive fields
+    assert obj.byte_field == expected.byte_field, f"byte_field: {obj.byte_field} != {expected.byte_field}"
+    assert obj.short_field == expected.short_field, f"short_field: {obj.short_field} != {expected.short_field}"
+    assert obj.int_field == expected.int_field, f"int_field: {obj.int_field} != {expected.int_field}"
+    assert obj.long_field == expected.long_field, f"long_field: {obj.long_field} != {expected.long_field}"
+    assert abs(obj.float_field - expected.float_field) < 0.01, f"float_field: {obj.float_field} != {expected.float_field}"
+    assert abs(obj.double_field - expected.double_field) < 0.000001, f"double_field: {obj.double_field} != {expected.double_field}"
+    assert obj.bool_field == expected.bool_field, f"bool_field: {obj.bool_field} != {expected.bool_field}"
+
+    # Verify base reference fields
+    assert obj.string_field == expected.string_field, f"string_field: {obj.string_field} != {expected.string_field}"
+    assert obj.list_field == expected.list_field, f"list_field: {obj.list_field} != {expected.list_field}"
+    assert obj.set_field == expected.set_field, f"set_field: {obj.set_field} != {expected.set_field}"
+    assert obj.map_field == expected.map_field, f"map_field: {obj.map_field} != {expected.map_field}"
+
+    # Verify nullable fields - first half (boxed types) - all null
+    assert obj.nullable_int is None, f"nullable_int: {obj.nullable_int} != None"
+    assert obj.nullable_long is None, f"nullable_long: {obj.nullable_long} != None"
+    assert obj.nullable_float is None, f"nullable_float: {obj.nullable_float} != None"
+
+    # Verify nullable fields - second half - all null
+    assert obj.nullable_double is None, f"nullable_double: {obj.nullable_double} != None"
+    assert obj.nullable_bool is None, f"nullable_bool: {obj.nullable_bool} != None"
+    assert obj.nullable_string is None, f"nullable_string: {obj.nullable_string} != None"
+    assert obj.nullable_list is None, f"nullable_list: {obj.nullable_list} != None"
+    assert obj.nullable_set is None, f"nullable_set: {obj.nullable_set} != None"
+    assert obj.nullable_map is None, f"nullable_map: {obj.nullable_map} != None"
+
+    new_bytes = fory.serialize(obj)
+    with open(data_file, "wb") as f:
+        f.write(new_bytes)
+
+
+def test_nullable_field_compatible_not_null():
+    """
+    Test cross-language schema evolution - all fields have values.
+    Java sends: Group 1 (non-nullable) + Group 2 (nullable with values)
+    Python reads: Group 1 (nullable/Optional) + Group 2 (non-nullable)
+    """
+    data_file = get_data_file()
+    with open(data_file, "rb") as f:
+        data_bytes = f.read()
+
+    # Use NoOpMetaCompressor to match Java's test configuration
+    fory = pyfory.Fory(xlang=True, compatible=True, meta_compressor=NoOpMetaCompressor())
+    fory.register_type(NullableComprehensiveCompatible, type_id=402)
+
+    expected = NullableComprehensiveCompatible(
+        # Group 1: Nullable in Python (read from Java's non-nullable)
+        byte_field=1,
+        short_field=2,
+        int_field=42,
+        long_field=123456789,
+        float_field=1.5,
+        double_field=2.5,
+        bool_field=True,
+        boxed_int=10,
+        boxed_long=20,
+        boxed_float=1.1,
+        boxed_double=2.2,
+        boxed_bool=True,
+        string_field="hello",
+        list_field=["a", "b", "c"],
+        set_field={"x", "y"},
+        map_field={"key1": "value1", "key2": "value2"},
+        # Group 2: Non-nullable in Python (read from Java's nullable with values)
+        nullable_int1=100,
+        nullable_long1=200,
+        nullable_float1=1.5,
+        nullable_double1=2.5,
+        nullable_bool1=False,
+        nullable_string2="nullable_value",
+        nullable_list2=["p", "q"],
+        nullable_set2={"m", "n"},
+        nullable_map2={"nk1": "nv1"},
+    )
+
+    obj = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized: {obj}")
+
+    # Verify Group 1: Nullable in Python (read from Java's non-nullable)
+    assert obj.byte_field == expected.byte_field, f"byte_field: {obj.byte_field} != {expected.byte_field}"
+    assert obj.short_field == expected.short_field, f"short_field: {obj.short_field} != {expected.short_field}"
+    assert obj.int_field == expected.int_field, f"int_field: {obj.int_field} != {expected.int_field}"
+    assert obj.long_field == expected.long_field, f"long_field: {obj.long_field} != {expected.long_field}"
+    assert abs(obj.float_field - expected.float_field) < 0.01, f"float_field: {obj.float_field} != {expected.float_field}"
+    assert abs(obj.double_field - expected.double_field) < 0.000001, f"double_field: {obj.double_field} != {expected.double_field}"
+    assert obj.bool_field == expected.bool_field, f"bool_field: {obj.bool_field} != {expected.bool_field}"
+
+    assert obj.boxed_int == expected.boxed_int, f"boxed_int: {obj.boxed_int} != {expected.boxed_int}"
+    assert obj.boxed_long == expected.boxed_long, f"boxed_long: {obj.boxed_long} != {expected.boxed_long}"
+    assert abs(obj.boxed_float - expected.boxed_float) < 0.01, f"boxed_float: {obj.boxed_float} != {expected.boxed_float}"
+    assert abs(obj.boxed_double - expected.boxed_double) < 0.01, f"boxed_double: {obj.boxed_double} != {expected.boxed_double}"
+    assert obj.boxed_bool == expected.boxed_bool, f"boxed_bool: {obj.boxed_bool} != {expected.boxed_bool}"
+
+    assert obj.string_field == expected.string_field, f"string_field: {obj.string_field} != {expected.string_field}"
+    assert obj.list_field == expected.list_field, f"list_field: {obj.list_field} != {expected.list_field}"
+    assert obj.set_field == expected.set_field, f"set_field: {obj.set_field} != {expected.set_field}"
+    assert obj.map_field == expected.map_field, f"map_field: {obj.map_field} != {expected.map_field}"
+
+    # Verify Group 2: Non-nullable in Python (read from Java's nullable with values)
+    assert obj.nullable_int1 == expected.nullable_int1, f"nullable_int1: {obj.nullable_int1} != {expected.nullable_int1}"
+    assert obj.nullable_long1 == expected.nullable_long1, f"nullable_long1: {obj.nullable_long1} != {expected.nullable_long1}"
+    assert abs(obj.nullable_float1 - expected.nullable_float1) < 0.01, f"nullable_float1: {obj.nullable_float1} != {expected.nullable_float1}"
+    assert abs(obj.nullable_double1 - expected.nullable_double1) < 0.01, f"nullable_double1: {obj.nullable_double1} != {expected.nullable_double1}"
+    assert obj.nullable_bool1 == expected.nullable_bool1, f"nullable_bool1: {obj.nullable_bool1} != {expected.nullable_bool1}"
+
+    assert obj.nullable_string2 == expected.nullable_string2, f"nullable_string2: {obj.nullable_string2} != {expected.nullable_string2}"
+    assert obj.nullable_list2 == expected.nullable_list2, f"nullable_list2: {obj.nullable_list2} != {expected.nullable_list2}"
+    assert obj.nullable_set2 == expected.nullable_set2, f"nullable_set2: {obj.nullable_set2} != {expected.nullable_set2}"
+    assert obj.nullable_map2 == expected.nullable_map2, f"nullable_map2: {obj.nullable_map2} != {expected.nullable_map2}"
+
+    new_bytes = fory.serialize(obj)
+    with open(data_file, "wb") as f:
+        f.write(new_bytes)
+
+
+def test_nullable_field_compatible_null():
+    """
+    Test cross-language schema evolution - nullable fields are null.
+    Java sends: Group 1 (non-nullable with values) + Group 2 (nullable with null)
+    Python reads: Group 1 (nullable/Optional) + Group 2 (non-nullable -> defaults)
+
+    When Java sends null for Group 2 fields, Python's non-nullable fields receive
+    default values (0 for numbers, False for bool, empty/None for collections/strings).
+    """
+    data_file = get_data_file()
+    with open(data_file, "rb") as f:
+        data_bytes = f.read()
+
+    # Use NoOpMetaCompressor to match Java's test configuration
+    fory = pyfory.Fory(xlang=True, compatible=True, meta_compressor=NoOpMetaCompressor())
+    fory.register_type(NullableComprehensiveCompatible, type_id=402)
+
+    expected = NullableComprehensiveCompatible(
+        # Group 1: Nullable in Python (read from Java's non-nullable)
+        byte_field=1,
+        short_field=2,
+        int_field=42,
+        long_field=123456789,
+        float_field=1.5,
+        double_field=2.5,
+        bool_field=True,
+        boxed_int=10,
+        boxed_long=20,
+        boxed_float=1.1,
+        boxed_double=2.2,
+        boxed_bool=True,
+        string_field="hello",
+        list_field=["a", "b", "c"],
+        set_field={"x", "y"},
+        map_field={"key1": "value1", "key2": "value2"},
+        # Group 2: Java sends null, Python receives null (like C++)
+        # Python properly preserves null values from the wire format
+        nullable_int1=None,
+        nullable_long1=None,
+        nullable_float1=None,
+        nullable_double1=None,
+        nullable_bool1=None,
+        nullable_string2=None,
+        nullable_list2=None,
+        nullable_set2=None,
+        nullable_map2=None,
+    )
+
+    obj = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized: {obj}")
+
+    # Verify Group 1: Nullable in Python (read from Java's non-nullable)
+    assert obj.byte_field == expected.byte_field, f"byte_field: {obj.byte_field} != {expected.byte_field}"
+    assert obj.short_field == expected.short_field, f"short_field: {obj.short_field} != {expected.short_field}"
+    assert obj.int_field == expected.int_field, f"int_field: {obj.int_field} != {expected.int_field}"
+    assert obj.long_field == expected.long_field, f"long_field: {obj.long_field} != {expected.long_field}"
+    assert abs(obj.float_field - expected.float_field) < 0.01, f"float_field: {obj.float_field} != {expected.float_field}"
+    assert abs(obj.double_field - expected.double_field) < 0.000001, f"double_field: {obj.double_field} != {expected.double_field}"
+    assert obj.bool_field == expected.bool_field, f"bool_field: {obj.bool_field} != {expected.bool_field}"
+
+    assert obj.boxed_int == expected.boxed_int, f"boxed_int: {obj.boxed_int} != {expected.boxed_int}"
+    assert obj.boxed_long == expected.boxed_long, f"boxed_long: {obj.boxed_long} != {expected.boxed_long}"
+    assert abs(obj.boxed_float - expected.boxed_float) < 0.01, f"boxed_float: {obj.boxed_float} != {expected.boxed_float}"
+    assert abs(obj.boxed_double - expected.boxed_double) < 0.01, f"boxed_double: {obj.boxed_double} != {expected.boxed_double}"
+    assert obj.boxed_bool == expected.boxed_bool, f"boxed_bool: {obj.boxed_bool} != {expected.boxed_bool}"
+
+    assert obj.string_field == expected.string_field, f"string_field: {obj.string_field} != {expected.string_field}"
+    assert obj.list_field == expected.list_field, f"list_field: {obj.list_field} != {expected.list_field}"
+    assert obj.set_field == expected.set_field, f"set_field: {obj.set_field} != {expected.set_field}"
+    assert obj.map_field == expected.map_field, f"map_field: {obj.map_field} != {expected.map_field}"
+
+    # Verify Group 2: Java sent null, Python receives null (like C++ with std::optional)
+    assert obj.nullable_int1 is None, f"nullable_int1: {obj.nullable_int1} != None"
+    assert obj.nullable_long1 is None, f"nullable_long1: {obj.nullable_long1} != None"
+    assert obj.nullable_float1 is None, f"nullable_float1: {obj.nullable_float1} != None"
+    assert obj.nullable_double1 is None, f"nullable_double1: {obj.nullable_double1} != None"
+    assert obj.nullable_bool1 is None, f"nullable_bool1: {obj.nullable_bool1} != None"
+    assert obj.nullable_string2 is None, f"nullable_string2: {obj.nullable_string2} != None"
+    assert obj.nullable_list2 is None, f"nullable_list2: {obj.nullable_list2} != None"
+    assert obj.nullable_set2 is None, f"nullable_set2: {obj.nullable_set2} != None"
+    assert obj.nullable_map2 is None, f"nullable_map2: {obj.nullable_map2} != None"
 
     new_bytes = fory.serialize(obj)
     with open(data_file, "wb") as f:

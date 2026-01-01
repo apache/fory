@@ -267,6 +267,9 @@ def read_field_info(buffer: Buffer, resolver, defined_class: str) -> FieldInfo:
         field_type = FieldType.xread_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
 
         # Read field name meta string
+        # Keep the wire field name as-is; TypeDef._resolve_field_names_from_tag_ids()
+        # will handle matching against the Python class's field names (which may be
+        # snake_case or camelCase depending on Python conventions used)
         field_name_bytes = buffer.read_bytes(field_name_size)
         field_name = FIELD_NAME_DECODER.decode(field_name_bytes, encoding)
         return FieldInfo(field_name, field_type, defined_class, -1)

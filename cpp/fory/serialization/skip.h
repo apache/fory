@@ -20,6 +20,7 @@
 #pragma once
 
 #include "fory/serialization/context.h"
+#include "fory/serialization/ref_mode.h"
 #include "fory/serialization/type_resolver.h"
 #include "fory/type/type.h"
 #include "fory/util/error.h"
@@ -33,9 +34,9 @@ namespace serialization {
 ///
 /// @param ctx Read context (errors are set on ctx.error_)
 /// @param field_type Field type information
-/// @param read_ref_flag Whether to read reference flag
+/// @param ref_mode Reference mode for the field
 void skip_field_value(ReadContext &ctx, const FieldType &field_type,
-                      bool read_ref_flag);
+                      RefMode ref_mode);
 
 /// Skip a varint value
 void skip_varint(ReadContext &ctx);

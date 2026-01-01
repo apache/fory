@@ -296,6 +296,174 @@ struct TwoEnumFieldStruct {
 };
 FORY_STRUCT(TwoEnumFieldStruct, f1, f2);
 
+// ============================================================================
+// Nullable Field Test Types - Comprehensive versions matching Java structs
+// ============================================================================
+
+// NullableComprehensiveSchemaConsistent (type id 401)
+// Matches Java's NullableComprehensiveSchemaConsistent for SCHEMA_CONSISTENT
+// mode
+struct NullableComprehensiveSchemaConsistent {
+  // Base non-nullable primitive fields
+  int8_t byte_field;
+  int16_t short_field;
+  int32_t int_field;
+  int64_t long_field;
+  float float_field;
+  double double_field;
+  bool bool_field;
+
+  // Base non-nullable reference fields
+  std::string string_field;
+  std::vector<std::string> list_field;
+  std::set<std::string> set_field;
+  std::map<std::string, std::string> map_field;
+
+  // Nullable fields - first half using boxed types (std::optional)
+  std::optional<int32_t> nullable_int;
+  std::optional<int64_t> nullable_long;
+  std::optional<float> nullable_float;
+
+  // Nullable fields - second half using @ForyField annotation
+  std::optional<double> nullable_double;
+  std::optional<bool> nullable_bool;
+  std::optional<std::string> nullable_string;
+  std::optional<std::vector<std::string>> nullable_list;
+  std::optional<std::set<std::string>> nullable_set;
+  std::optional<std::map<std::string, std::string>> nullable_map;
+
+  bool operator==(const NullableComprehensiveSchemaConsistent &other) const {
+    return byte_field == other.byte_field && short_field == other.short_field &&
+           int_field == other.int_field && long_field == other.long_field &&
+           std::abs(float_field - other.float_field) < 1e-6 &&
+           std::abs(double_field - other.double_field) < 1e-9 &&
+           bool_field == other.bool_field &&
+           string_field == other.string_field &&
+           list_field == other.list_field && set_field == other.set_field &&
+           map_field == other.map_field && nullable_int == other.nullable_int &&
+           nullable_long == other.nullable_long &&
+           compare_optional_float(nullable_float, other.nullable_float) &&
+           compare_optional_double(nullable_double, other.nullable_double) &&
+           nullable_bool == other.nullable_bool &&
+           nullable_string == other.nullable_string &&
+           nullable_list == other.nullable_list &&
+           nullable_set == other.nullable_set &&
+           nullable_map == other.nullable_map;
+  }
+
+private:
+  static bool compare_optional_float(const std::optional<float> &a,
+                                     const std::optional<float> &b) {
+    if (a.has_value() != b.has_value())
+      return false;
+    if (!a.has_value())
+      return true;
+    return std::abs(*a - *b) < 1e-6;
+  }
+
+  static bool compare_optional_double(const std::optional<double> &a,
+                                      const std::optional<double> &b) {
+    if (a.has_value() != b.has_value())
+      return false;
+    if (!a.has_value())
+      return true;
+    return std::abs(*a - *b) < 1e-9;
+  }
+};
+FORY_STRUCT(NullableComprehensiveSchemaConsistent, byte_field, short_field,
+            int_field, long_field, float_field, double_field, bool_field,
+            string_field, list_field, set_field, map_field, nullable_int,
+            nullable_long, nullable_float, nullable_double, nullable_bool,
+            nullable_string, nullable_list, nullable_set, nullable_map);
+
+// NullableComprehensiveCompatible (type id 402)
+// Matches Java's NullableComprehensiveCompatible for COMPATIBLE mode
+struct NullableComprehensiveCompatible {
+  // Base non-nullable primitive fields
+  int8_t byte_field;
+  int16_t short_field;
+  int32_t int_field;
+  int64_t long_field;
+  float float_field;
+  double double_field;
+  bool bool_field;
+
+  // Base non-nullable boxed fields (not nullable by default in xlang)
+  int32_t boxed_int;
+  int64_t boxed_long;
+  float boxed_float;
+  double boxed_double;
+  bool boxed_bool;
+
+  // Base non-nullable reference fields
+  std::string string_field;
+  std::vector<std::string> list_field;
+  std::set<std::string> set_field;
+  std::map<std::string, std::string> map_field;
+
+  // Nullable group 1 - boxed types with @ForyField(nullable=true)
+  std::optional<int32_t> nullable_int1;
+  std::optional<int64_t> nullable_long1;
+  std::optional<float> nullable_float1;
+  std::optional<double> nullable_double1;
+  std::optional<bool> nullable_bool1;
+
+  // Nullable group 2 - reference types with @ForyField(nullable=true)
+  std::optional<std::string> nullable_string2;
+  std::optional<std::vector<std::string>> nullable_list2;
+  std::optional<std::set<std::string>> nullable_set2;
+  std::optional<std::map<std::string, std::string>> nullable_map2;
+
+  bool operator==(const NullableComprehensiveCompatible &other) const {
+    return byte_field == other.byte_field && short_field == other.short_field &&
+           int_field == other.int_field && long_field == other.long_field &&
+           std::abs(float_field - other.float_field) < 1e-6 &&
+           std::abs(double_field - other.double_field) < 1e-9 &&
+           bool_field == other.bool_field && boxed_int == other.boxed_int &&
+           boxed_long == other.boxed_long &&
+           std::abs(boxed_float - other.boxed_float) < 1e-6 &&
+           std::abs(boxed_double - other.boxed_double) < 1e-9 &&
+           boxed_bool == other.boxed_bool &&
+           string_field == other.string_field &&
+           list_field == other.list_field && set_field == other.set_field &&
+           map_field == other.map_field &&
+           nullable_int1 == other.nullable_int1 &&
+           nullable_long1 == other.nullable_long1 &&
+           compare_optional_float(nullable_float1, other.nullable_float1) &&
+           compare_optional_double(nullable_double1, other.nullable_double1) &&
+           nullable_bool1 == other.nullable_bool1 &&
+           nullable_string2 == other.nullable_string2 &&
+           nullable_list2 == other.nullable_list2 &&
+           nullable_set2 == other.nullable_set2 &&
+           nullable_map2 == other.nullable_map2;
+  }
+
+private:
+  static bool compare_optional_float(const std::optional<float> &a,
+                                     const std::optional<float> &b) {
+    if (a.has_value() != b.has_value())
+      return false;
+    if (!a.has_value())
+      return true;
+    return std::abs(*a - *b) < 1e-6;
+  }
+
+  static bool compare_optional_double(const std::optional<double> &a,
+                                      const std::optional<double> &b) {
+    if (a.has_value() != b.has_value())
+      return false;
+    if (!a.has_value())
+      return true;
+    return std::abs(*a - *b) < 1e-9;
+  }
+};
+FORY_STRUCT(NullableComprehensiveCompatible, byte_field, short_field, int_field,
+            long_field, float_field, double_field, bool_field, boxed_int,
+            boxed_long, boxed_float, boxed_double, boxed_bool, string_field,
+            list_field, set_field, map_field, nullable_int1, nullable_long1,
+            nullable_float1, nullable_double1, nullable_bool1, nullable_string2,
+            nullable_list2, nullable_set2, nullable_map2);
+
 namespace fory {
 namespace serialization {
 
@@ -305,10 +473,10 @@ namespace serialization {
 template <> struct Serializer<MyExt> {
   static constexpr TypeId type_id = TypeId::EXT;
 
-  static void write(const MyExt &value, WriteContext &ctx, bool write_ref,
+  static void write(const MyExt &value, WriteContext &ctx, RefMode ref_mode,
                     bool write_type, bool has_generics = false) {
     (void)has_generics;
-    write_not_null_ref_flag(ctx, write_ref);
+    write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       // Delegate dynamic typeinfo to WriteContext so that user type
       // ids and named registrations are encoded consistently with
@@ -334,8 +502,8 @@ template <> struct Serializer<MyExt> {
     write_data(value, ctx);
   }
 
-  static MyExt read(ReadContext &ctx, bool read_ref, bool read_type) {
-    bool has_value = consume_ref_flag(ctx, read_ref);
+  static MyExt read(ReadContext &ctx, RefMode ref_mode, bool read_type) {
+    bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
       return MyExt{};
     }
@@ -366,10 +534,10 @@ template <> struct Serializer<MyExt> {
     return read_data(ctx);
   }
 
-  static MyExt read_with_type_info(ReadContext &ctx, bool read_ref,
+  static MyExt read_with_type_info(ReadContext &ctx, RefMode ref_mode,
                                    const TypeInfo &type_info) {
     (void)type_info;
-    return read(ctx, read_ref, false);
+    return read(ctx, ref_mode, false);
   }
 };
 
@@ -467,6 +635,10 @@ void RunTestOneEnumFieldCompatible(const std::string &data_file);
 void RunTestTwoEnumFieldCompatible(const std::string &data_file);
 void RunTestEnumSchemaEvolutionCompatible(const std::string &data_file);
 void RunTestEnumSchemaEvolutionCompatibleReverse(const std::string &data_file);
+void RunTestNullableFieldSchemaConsistentNotNull(const std::string &data_file);
+void RunTestNullableFieldSchemaConsistentNull(const std::string &data_file);
+void RunTestNullableFieldCompatibleNotNull(const std::string &data_file);
+void RunTestNullableFieldCompatibleNull(const std::string &data_file);
 } // namespace
 
 int main(int argc, char **argv) {
@@ -550,6 +722,14 @@ int main(int argc, char **argv) {
       RunTestEnumSchemaEvolutionCompatible(data_file);
     } else if (case_name == "test_enum_schema_evolution_compatible_reverse") {
       RunTestEnumSchemaEvolutionCompatibleReverse(data_file);
+    } else if (case_name == "test_nullable_field_schema_consistent_not_null") {
+      RunTestNullableFieldSchemaConsistentNotNull(data_file);
+    } else if (case_name == "test_nullable_field_schema_consistent_null") {
+      RunTestNullableFieldSchemaConsistentNull(data_file);
+    } else if (case_name == "test_nullable_field_compatible_not_null") {
+      RunTestNullableFieldCompatibleNotNull(data_file);
+    } else if (case_name == "test_nullable_field_compatible_null") {
+      RunTestNullableFieldCompatibleNull(data_file);
     } else {
       Fail("Unknown test case: " + case_name);
     }
@@ -1731,6 +1911,242 @@ void RunTestEnumSchemaEvolutionCompatibleReverse(const std::string &data_file) {
   }
 
   // Serialize back
+  std::vector<uint8_t> out;
+  AppendSerialized(fory, value, out);
+  WriteFile(data_file, out);
+}
+
+// ============================================================================
+// Nullable Field Tests - Comprehensive versions
+// ============================================================================
+
+void RunTestNullableFieldSchemaConsistentNotNull(const std::string &data_file) {
+  auto bytes = ReadFile(data_file);
+  // SCHEMA_CONSISTENT mode: compatible=false, xlang=true,
+  // check_struct_version=true
+  auto fory = BuildFory(false, true, true);
+  EnsureOk(fory.register_struct<NullableComprehensiveSchemaConsistent>(401),
+           "register NullableComprehensiveSchemaConsistent");
+
+  // Debug: Print sorted field order
+  {
+    const char *debug_env = std::getenv("ENABLE_FORY_DEBUG_OUTPUT");
+    if (debug_env && std::string(debug_env) == "1") {
+      using Helpers = fory::serialization::detail::CompileTimeFieldHelpers<
+          NullableComprehensiveSchemaConsistent>;
+      std::cerr << "[C++][fory-debug] NullableComprehensiveSchemaConsistent "
+                   "sorted field order:\n";
+      for (size_t i = 0; i < Helpers::FieldCount; ++i) {
+        size_t orig_idx = Helpers::sorted_indices[i];
+        std::cerr << "  [" << i << "] orig_idx=" << orig_idx
+                  << " name=" << Helpers::sorted_field_names[i]
+                  << " type_id=" << Helpers::type_ids[orig_idx]
+                  << " nullable=" << Helpers::nullable_flags[orig_idx]
+                  << " group=" << Helpers::group_rank(orig_idx) << "\n";
+      }
+      std::cerr << std::endl;
+    }
+  }
+
+  NullableComprehensiveSchemaConsistent expected;
+  // Base non-nullable primitive fields
+  expected.byte_field = 1;
+  expected.short_field = 2;
+  expected.int_field = 42;
+  expected.long_field = 123456789;
+  expected.float_field = 1.5f;
+  expected.double_field = 2.5;
+  expected.bool_field = true;
+
+  // Base non-nullable reference fields
+  expected.string_field = std::string("hello");
+  expected.list_field = {std::string("a"), std::string("b"), std::string("c")};
+  expected.set_field = {std::string("x"), std::string("y")};
+  expected.map_field = {{std::string("key1"), std::string("value1")},
+                        {std::string("key2"), std::string("value2")}};
+
+  // Nullable fields - all have values (first half - boxed)
+  expected.nullable_int = 100;
+  expected.nullable_long = 200;
+  expected.nullable_float = 1.5f;
+
+  // Nullable fields - all have values (second half - @ForyField)
+  expected.nullable_double = 2.5;
+  expected.nullable_bool = false;
+  expected.nullable_string = std::string("nullable_value");
+  expected.nullable_list =
+      std::vector<std::string>{std::string("p"), std::string("q")};
+  expected.nullable_set =
+      std::set<std::string>{std::string("m"), std::string("n")};
+  expected.nullable_map = std::map<std::string, std::string>{
+      {std::string("nk1"), std::string("nv1")}};
+
+  Buffer buffer = MakeBuffer(bytes);
+  auto value = ReadNext<NullableComprehensiveSchemaConsistent>(fory, buffer);
+  if (!(value == expected)) {
+    Fail("NullableComprehensiveSchemaConsistent not null mismatch");
+  }
+
+  std::vector<uint8_t> out;
+  AppendSerialized(fory, value, out);
+  WriteFile(data_file, out);
+}
+
+void RunTestNullableFieldSchemaConsistentNull(const std::string &data_file) {
+  auto bytes = ReadFile(data_file);
+  // SCHEMA_CONSISTENT mode: compatible=false, xlang=true,
+  // check_struct_version=true
+  auto fory = BuildFory(false, true, true);
+  EnsureOk(fory.register_struct<NullableComprehensiveSchemaConsistent>(401),
+           "register NullableComprehensiveSchemaConsistent");
+
+  NullableComprehensiveSchemaConsistent expected;
+  // Base non-nullable primitive fields - must have values
+  expected.byte_field = 1;
+  expected.short_field = 2;
+  expected.int_field = 42;
+  expected.long_field = 123456789;
+  expected.float_field = 1.5f;
+  expected.double_field = 2.5;
+  expected.bool_field = true;
+
+  // Base non-nullable reference fields - must have values
+  expected.string_field = std::string("hello");
+  expected.list_field = {std::string("a"), std::string("b"), std::string("c")};
+  expected.set_field = {std::string("x"), std::string("y")};
+  expected.map_field = {{std::string("key1"), std::string("value1")},
+                        {std::string("key2"), std::string("value2")}};
+
+  // Nullable fields - all null (first half - boxed)
+  expected.nullable_int = std::nullopt;
+  expected.nullable_long = std::nullopt;
+  expected.nullable_float = std::nullopt;
+
+  // Nullable fields - all null (second half - @ForyField)
+  expected.nullable_double = std::nullopt;
+  expected.nullable_bool = std::nullopt;
+  expected.nullable_string = std::nullopt;
+  expected.nullable_list = std::nullopt;
+  expected.nullable_set = std::nullopt;
+  expected.nullable_map = std::nullopt;
+
+  Buffer buffer = MakeBuffer(bytes);
+  auto value = ReadNext<NullableComprehensiveSchemaConsistent>(fory, buffer);
+  if (!(value == expected)) {
+    Fail("NullableComprehensiveSchemaConsistent null mismatch");
+  }
+
+  std::vector<uint8_t> out;
+  AppendSerialized(fory, value, out);
+  WriteFile(data_file, out);
+}
+
+void RunTestNullableFieldCompatibleNotNull(const std::string &data_file) {
+  auto bytes = ReadFile(data_file);
+  auto fory = BuildFory(true, true); // COMPATIBLE mode
+  EnsureOk(fory.register_struct<NullableComprehensiveCompatible>(402),
+           "register NullableComprehensiveCompatible");
+
+  NullableComprehensiveCompatible expected;
+  // Base non-nullable primitive fields
+  expected.byte_field = 1;
+  expected.short_field = 2;
+  expected.int_field = 42;
+  expected.long_field = 123456789;
+  expected.float_field = 1.5f;
+  expected.double_field = 2.5;
+  expected.bool_field = true;
+
+  // Base non-nullable boxed fields
+  expected.boxed_int = 10;
+  expected.boxed_long = 20;
+  expected.boxed_float = 1.1f;
+  expected.boxed_double = 2.2;
+  expected.boxed_bool = true;
+
+  // Base non-nullable reference fields
+  expected.string_field = std::string("hello");
+  expected.list_field = {std::string("a"), std::string("b"), std::string("c")};
+  expected.set_field = {std::string("x"), std::string("y")};
+  expected.map_field = {{std::string("key1"), std::string("value1")},
+                        {std::string("key2"), std::string("value2")}};
+
+  // Nullable group 1 - all have values
+  expected.nullable_int1 = 100;
+  expected.nullable_long1 = 200;
+  expected.nullable_float1 = 1.5f;
+  expected.nullable_double1 = 2.5;
+  expected.nullable_bool1 = false;
+
+  // Nullable group 2 - all have values
+  expected.nullable_string2 = std::string("nullable_value");
+  expected.nullable_list2 =
+      std::vector<std::string>{std::string("p"), std::string("q")};
+  expected.nullable_set2 =
+      std::set<std::string>{std::string("m"), std::string("n")};
+  expected.nullable_map2 = std::map<std::string, std::string>{
+      {std::string("nk1"), std::string("nv1")}};
+
+  Buffer buffer = MakeBuffer(bytes);
+  auto value = ReadNext<NullableComprehensiveCompatible>(fory, buffer);
+  if (!(value == expected)) {
+    Fail("NullableComprehensiveCompatible not null mismatch");
+  }
+
+  std::vector<uint8_t> out;
+  AppendSerialized(fory, value, out);
+  WriteFile(data_file, out);
+}
+
+void RunTestNullableFieldCompatibleNull(const std::string &data_file) {
+  auto bytes = ReadFile(data_file);
+  auto fory = BuildFory(true, true); // COMPATIBLE mode
+  EnsureOk(fory.register_struct<NullableComprehensiveCompatible>(402),
+           "register NullableComprehensiveCompatible");
+
+  NullableComprehensiveCompatible expected;
+  // Base non-nullable primitive fields - must have values
+  expected.byte_field = 1;
+  expected.short_field = 2;
+  expected.int_field = 42;
+  expected.long_field = 123456789;
+  expected.float_field = 1.5f;
+  expected.double_field = 2.5;
+  expected.bool_field = true;
+
+  // Base non-nullable boxed fields - must have values
+  expected.boxed_int = 10;
+  expected.boxed_long = 20;
+  expected.boxed_float = 1.1f;
+  expected.boxed_double = 2.2;
+  expected.boxed_bool = true;
+
+  // Base non-nullable reference fields - must have values
+  expected.string_field = std::string("hello");
+  expected.list_field = {std::string("a"), std::string("b"), std::string("c")};
+  expected.set_field = {std::string("x"), std::string("y")};
+  expected.map_field = {{std::string("key1"), std::string("value1")},
+                        {std::string("key2"), std::string("value2")}};
+
+  // Nullable group 1 - all null
+  expected.nullable_int1 = std::nullopt;
+  expected.nullable_long1 = std::nullopt;
+  expected.nullable_float1 = std::nullopt;
+  expected.nullable_double1 = std::nullopt;
+  expected.nullable_bool1 = std::nullopt;
+
+  // Nullable group 2 - all null
+  expected.nullable_string2 = std::nullopt;
+  expected.nullable_list2 = std::nullopt;
+  expected.nullable_set2 = std::nullopt;
+  expected.nullable_map2 = std::nullopt;
+
+  Buffer buffer = MakeBuffer(bytes);
+  auto value = ReadNext<NullableComprehensiveCompatible>(fory, buffer);
+  if (!(value == expected)) {
+    Fail("NullableComprehensiveCompatible null mismatch");
+  }
+
   std::vector<uint8_t> out;
   AppendSerialized(fory, value, out);
   WriteFile(data_file, out);

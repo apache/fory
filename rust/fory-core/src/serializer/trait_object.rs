@@ -23,6 +23,7 @@ use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
+use crate::types::RefMode;
 use crate::RefFlag;
 use std::rc::Rc;
 
@@ -154,21 +155,21 @@ macro_rules! register_trait_type {
         // 4. Serializer implementation for Box<dyn Trait> (existing functionality)
         impl fory_core::Serializer for Box<dyn $trait_name> {
             #[inline(always)]
-            fn fory_write(&self, context: &mut fory_core::WriteContext, write_ref_info: bool, write_type_info: bool, has_generics: bool) -> Result<(), fory_core::Error> {
+            fn fory_write(&self, context: &mut fory_core::WriteContext, ref_mode: fory_core::RefMode, write_type_info: bool, has_generics: bool) -> Result<(), fory_core::Error> {
                 let any_ref = <dyn $trait_name as fory_core::Serializer>::as_any(&**self);
-                fory_core::serializer::write_box_any(any_ref, context, write_ref_info, write_type_info, has_generics)
+                fory_core::serializer::write_box_any(any_ref, context, ref_mode, write_type_info, has_generics)
             }
 
             #[inline(always)]
             fn fory_write_data(&self, context: &mut fory_core::WriteContext) -> Result<(), fory_core::Error> {
                 let any_ref = <dyn $trait_name as fory_core::Serializer>::as_any(&**self);
-                fory_core::serializer::write_box_any(any_ref, context, false, false, false)
+                fory_core::serializer::write_box_any(any_ref, context, fory_core::RefMode::None, false, false)
             }
 
             #[inline(always)]
             fn fory_write_data_generic(&self, context: &mut fory_core::WriteContext, has_generics: bool) -> Result<(), fory_core::Error> {
                 let any_ref = <dyn $trait_name as fory_core::Serializer>::as_any(&**self);
-                fory_core::serializer::write_box_any(any_ref, context, false, false, has_generics)
+                fory_core::serializer::write_box_any(any_ref, context, fory_core::RefMode::None, false, has_generics)
             }
 
             #[inline(always)]
@@ -193,8 +194,8 @@ macro_rules! register_trait_type {
                 $crate::not_allowed!("fory_read_type_info should not be called directly on polymorphic Box<dyn {}> trait object", stringify!($trait_name))
             }
 
-            fn fory_read(context: &mut fory_core::ReadContext, read_ref_info: bool, read_type_info: bool) -> Result<Self, fory_core::Error> {
-                let boxed_any = fory_core::serializer::read_box_any(context, read_ref_info, read_type_info, None)?;
+            fn fory_read(context: &mut fory_core::ReadContext, ref_mode: fory_core::RefMode, read_type_info: bool) -> Result<Self, fory_core::Error> {
+                let boxed_any = fory_core::serializer::read_box_any(context, ref_mode, read_type_info, None)?;
                 $(
                     if boxed_any.is::<$impl_type>() {
                         let concrete = boxed_any.downcast::<$impl_type>()
@@ -210,13 +211,13 @@ macro_rules! register_trait_type {
 
             fn fory_read_with_type_info(
                 context: &mut fory_core::ReadContext,
-                read_ref_info: bool,
+                ref_mode: fory_core::RefMode,
                 type_info: std::rc::Rc<fory_core::TypeInfo>,
             ) -> Result<Self, fory_core::Error>
             where
                 Self: Sized + fory_core::ForyDefault,
             {
-                let boxed_any = fory_core::serializer::read_box_any(context, read_ref_info, false, Some(type_info))?;
+                let boxed_any = fory_core::serializer::read_box_any(context, ref_mode, false, Some(type_info))?;
                 $(
                     if boxed_any.is::<$impl_type>() {
                         let concrete = boxed_any.downcast::<$impl_type>()
@@ -358,8 +359,8 @@ macro_rules! generate_smart_pointer_wrapper {
 /// This macro handles ref tracking and directly constructs the trait object from concrete types
 #[macro_export]
 macro_rules! read_ptr_trait_object {
-    ($context:expr, $read_ref_info:expr, $read_type_info:expr, $type_info:expr, $pointer_type:ty, $trait_name:ident, $constructor_expr:expr, $get_ref:ident, $store_ref:ident, $($impl_type:ty),+) => {{
-        let ref_flag = if $read_ref_info {
+    ($context:expr, $ref_mode:expr, $read_type_info:expr, $type_info:expr, $pointer_type:ty, $trait_name:ident, $constructor_expr:expr, $get_ref:ident, $store_ref:ident, $($impl_type:ty),+) => {{
+        let ref_flag = if $ref_mode != fory_core::RefMode::None {
             $context.ref_reader.read_ref_flag(&mut $context.reader)?
         } else {
             fory_core::RefFlag::NotNullValue
@@ -429,8 +430,8 @@ macro_rules! read_ptr_trait_object {
 macro_rules! impl_smart_pointer_serializer {
     ($wrapper_name:ident, $pointer_type:ty, $constructor_expr:expr, $trait_name:ident, $try_write_ref:ident, $get_ref:ident, $store_ref:ident, $($impl_type:ty),+) => {
         impl fory_core::Serializer for $wrapper_name {
-            fn fory_write(&self, context: &mut fory_core::WriteContext, write_ref_info: bool, write_type_info: bool, has_generics: bool) -> Result<(), fory_core::Error> {
-                if !write_ref_info || !context.ref_writer.$try_write_ref(&mut context.writer, &self.0) {
+            fn fory_write(&self, context: &mut fory_core::WriteContext, ref_mode: fory_core::RefMode, write_type_info: bool, has_generics: bool) -> Result<(), fory_core::Error> {
+                if ref_mode == fory_core::RefMode::None || !context.ref_writer.$try_write_ref(&mut context.writer, &self.0) {
                     let any_obj = <dyn $trait_name as fory_core::Serializer>::as_any(&*self.0);
                     let concrete_type_id = any_obj.type_id();
                     let typeinfo = if write_type_info {
@@ -449,10 +450,10 @@ macro_rules! impl_smart_pointer_serializer {
                 $crate::downcast_and_serialize!(any_obj, context, $trait_name, $($impl_type),+)
             }
 
-            fn fory_read(context: &mut fory_core::ReadContext, read_ref_info: bool, read_type_info: bool) -> Result<Self, fory_core::Error> {
+            fn fory_read(context: &mut fory_core::ReadContext, ref_mode: fory_core::RefMode, read_type_info: bool) -> Result<Self, fory_core::Error> {
                 $crate::read_ptr_trait_object!(
                     context,
-                    read_ref_info,
+                    ref_mode,
                     read_type_info,
                     None,
                     $pointer_type,
@@ -464,10 +465,10 @@ macro_rules! impl_smart_pointer_serializer {
                 )
             }
 
-            fn fory_read_with_type_info(context: &mut fory_core::ReadContext, read_ref_info: bool, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::Error> {
+            fn fory_read_with_type_info(context: &mut fory_core::ReadContext, ref_mode: fory_core::RefMode, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::Error> {
                 $crate::read_ptr_trait_object!(
                     context,
-                    read_ref_info,
+                    ref_mode,
                     false,
                     Some(type_info),
                     $pointer_type,
@@ -597,11 +598,11 @@ impl Serializer for Box<dyn Serializer> {
     fn fory_write(
         &self,
         context: &mut WriteContext,
-        write_ref_info: bool,
+        ref_mode: RefMode,
         write_type_info: bool,
         has_generics: bool,
     ) -> Result<(), Error> {
-        if write_ref_info {
+        if ref_mode != RefMode::None {
             context.writer.write_i8(RefFlag::NotNullValue as i8);
         }
         let fory_type_id_dyn = self.fory_type_id_dyn(context.get_type_resolver())?;
@@ -656,22 +657,22 @@ impl Serializer for Box<dyn Serializer> {
     #[inline(always)]
     fn fory_read(
         context: &mut ReadContext,
-        read_ref_info: bool,
+        ref_mode: RefMode,
         read_type_info: bool,
     ) -> Result<Self, Error> {
-        read_box_seralizer(context, read_ref_info, read_type_info, None)
+        read_box_seralizer(context, ref_mode, read_type_info, None)
     }
 
     #[inline(always)]
     fn fory_read_with_type_info(
         context: &mut ReadContext,
-        read_ref_info: bool,
+        ref_mode: RefMode,
         type_info: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
     {
-        read_box_seralizer(context, read_ref_info, false, Some(type_info))
+        read_box_seralizer(context, ref_mode, false, Some(type_info))
     }
 
     fn fory_read_data(_context: &mut ReadContext) -> Result<Self, Error> {
@@ -683,12 +684,12 @@ impl Serializer for Box<dyn Serializer> {
 
 fn read_box_seralizer(
     context: &mut ReadContext,
-    read_ref_info: bool,
+    ref_mode: RefMode,
     read_type_info: bool,
     type_info: Option<Rc<TypeInfo>>,
 ) -> Result<Box<dyn Serializer>, Error> {
     context.inc_depth()?;
-    let ref_flag = if read_ref_info {
+    let ref_flag = if ref_mode != RefMode::None {
         context.reader.read_i8()?
     } else {
         RefFlag::NotNullValue as i8

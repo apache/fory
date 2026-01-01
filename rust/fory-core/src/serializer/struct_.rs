@@ -19,7 +19,7 @@ use crate::ensure;
 use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::Serializer;
-use crate::types::{RefFlag, TypeId};
+use crate::types::{RefFlag, RefMode, TypeId};
 use crate::util::ENABLE_FORY_DEBUG_OUTPUT;
 use std::any::Any;
 
@@ -92,10 +92,10 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Er
 pub fn write<T: Serializer>(
     this: &T,
     context: &mut WriteContext,
-    write_ref_info: bool,
+    ref_mode: RefMode,
     write_type_info: bool,
 ) -> Result<(), Error> {
-    if write_ref_info {
+    if ref_mode != RefMode::None {
         context.writer.write_i8(RefFlag::NotNullValue as i8);
     }
     if write_type_info {

@@ -1253,3 +1253,388 @@ fn test_enum_schema_evolution_compatible_reverse() {
     let new_bytes = fory.serialize(&value).unwrap();
     fs::write(&data_file_path, new_bytes).unwrap();
 }
+
+// ============================================================================
+// Nullable Field Tests - Comprehensive nullable field testing
+// ============================================================================
+
+/// Comprehensive struct for testing nullable fields in SCHEMA_CONSISTENT mode (compatible=false).
+/// Fields are organized as:
+/// - Base non-nullable fields: byte, short, int, long, float, double, bool, string, list, set, map
+/// - Nullable fields (first half - boxed numeric types): Integer, Long, Float
+/// - Nullable fields (second half - @ForyField): Double, Boolean, String, List, Set, Map
+#[derive(ForyObject, Debug, PartialEq)]
+struct NullableComprehensiveSchemaConsistent {
+    // Base non-nullable primitive fields
+    byte_field: i8,
+    short_field: i16,
+    int_field: i32,
+    long_field: i64,
+    float_field: f32,
+    double_field: f64,
+    bool_field: bool,
+
+    // Base non-nullable reference fields
+    string_field: String,
+    list_field: Vec<String>,
+    set_field: HashSet<String>,
+    map_field: HashMap<String, String>,
+
+    // Nullable fields - first half using boxed types
+    #[fory(nullable = true)]
+    nullable_int: Option<i32>,
+    #[fory(nullable = true)]
+    nullable_long: Option<i64>,
+    #[fory(nullable = true)]
+    nullable_float: Option<f32>,
+
+    // Nullable fields - second half using @ForyField annotation
+    #[fory(nullable = true)]
+    nullable_double: Option<f64>,
+    #[fory(nullable = true)]
+    nullable_bool: Option<bool>,
+    #[fory(nullable = true)]
+    nullable_string: Option<String>,
+    #[fory(nullable = true)]
+    nullable_list: Option<Vec<String>>,
+    #[fory(nullable = true)]
+    nullable_set: Option<HashSet<String>>,
+    #[fory(nullable = true)]
+    nullable_map: Option<HashMap<String, String>>,
+}
+
+/// Cross-language schema evolution test struct for COMPATIBLE mode.
+/// This struct has INVERTED nullability compared to Java:
+/// - Group 1: Nullable in Rust (Option), Non-nullable in Java
+/// - Group 2: Non-nullable in Rust, Nullable in Java (@ForyField(nullable=true))
+///
+/// This tests that compatible mode properly handles schema differences across languages.
+#[derive(ForyObject, Debug, PartialEq)]
+struct NullableComprehensiveCompatible {
+    // Group 1: Nullable in Rust, Non-nullable in Java
+    // Primitive fields
+    #[fory(nullable = true)]
+    byte_field: Option<i8>,
+    #[fory(nullable = true)]
+    short_field: Option<i16>,
+    #[fory(nullable = true)]
+    int_field: Option<i32>,
+    #[fory(nullable = true)]
+    long_field: Option<i64>,
+    #[fory(nullable = true)]
+    float_field: Option<f32>,
+    #[fory(nullable = true)]
+    double_field: Option<f64>,
+    #[fory(nullable = true)]
+    bool_field: Option<bool>,
+
+    // Boxed fields - also nullable in Rust
+    #[fory(nullable = true)]
+    boxed_int: Option<i32>,
+    #[fory(nullable = true)]
+    boxed_long: Option<i64>,
+    #[fory(nullable = true)]
+    boxed_float: Option<f32>,
+    #[fory(nullable = true)]
+    boxed_double: Option<f64>,
+    #[fory(nullable = true)]
+    boxed_bool: Option<bool>,
+
+    // Reference fields - also nullable in Rust
+    #[fory(nullable = true)]
+    string_field: Option<String>,
+    #[fory(nullable = true)]
+    list_field: Option<Vec<String>>,
+    #[fory(nullable = true)]
+    set_field: Option<HashSet<String>>,
+    #[fory(nullable = true)]
+    map_field: Option<HashMap<String, String>>,
+
+    // Group 2: Non-nullable in Rust, Nullable in Java (@ForyField(nullable=true))
+    // Boxed types
+    nullable_int1: i32,
+    nullable_long1: i64,
+    nullable_float1: f32,
+    nullable_double1: f64,
+    nullable_bool1: bool,
+
+    // Reference types
+    nullable_string2: String,
+    nullable_list2: Vec<String>,
+    nullable_set2: HashSet<String>,
+    nullable_map2: HashMap<String, String>,
+}
+
+#[test]
+#[ignore]
+fn test_nullable_field_schema_consistent_not_null() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default().compatible(false).xlang(true);
+    fory.register::<NullableComprehensiveSchemaConsistent>(401)
+        .unwrap();
+
+    let local_obj = NullableComprehensiveSchemaConsistent {
+        // Base non-nullable primitive fields
+        byte_field: 1,
+        short_field: 2,
+        int_field: 42,
+        long_field: 123456789,
+        float_field: 1.5,
+        double_field: 2.5,
+        bool_field: true,
+
+        // Base non-nullable reference fields
+        string_field: "hello".to_string(),
+        list_field: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+        set_field: HashSet::from(["x".to_string(), "y".to_string()]),
+        map_field: HashMap::from([
+            ("key1".to_string(), "value1".to_string()),
+            ("key2".to_string(), "value2".to_string()),
+        ]),
+
+        // Nullable fields - all have values (first half - boxed)
+        nullable_int: Some(100),
+        nullable_long: Some(200),
+        nullable_float: Some(1.5),
+
+        // Nullable fields - all have values (second half - @ForyField)
+        nullable_double: Some(2.5),
+        nullable_bool: Some(false),
+        nullable_string: Some("nullable_value".to_string()),
+        nullable_list: Some(vec!["p".to_string(), "q".to_string()]),
+        nullable_set: Some(HashSet::from(["m".to_string(), "n".to_string()])),
+        nullable_map: Some(HashMap::from([("nk1".to_string(), "nv1".to_string())])),
+    };
+
+    let remote_obj: NullableComprehensiveSchemaConsistent = fory.deserialize(&bytes).unwrap();
+    assert_eq!(remote_obj, local_obj);
+
+    let new_bytes = fory.serialize(&remote_obj).unwrap();
+    fs::write(&data_file_path, new_bytes).unwrap();
+}
+
+#[test]
+#[ignore]
+fn test_nullable_field_schema_consistent_null() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default().compatible(false).xlang(true);
+    fory.register::<NullableComprehensiveSchemaConsistent>(401)
+        .unwrap();
+
+    let local_obj = NullableComprehensiveSchemaConsistent {
+        // Base non-nullable primitive fields - must have values
+        byte_field: 1,
+        short_field: 2,
+        int_field: 42,
+        long_field: 123456789,
+        float_field: 1.5,
+        double_field: 2.5,
+        bool_field: true,
+
+        // Base non-nullable reference fields - must have values
+        string_field: "hello".to_string(),
+        list_field: vec!["a".to_string(), "b".to_string(), "c".to_string()],
+        set_field: HashSet::from(["x".to_string(), "y".to_string()]),
+        map_field: HashMap::from([
+            ("key1".to_string(), "value1".to_string()),
+            ("key2".to_string(), "value2".to_string()),
+        ]),
+
+        // Nullable fields - all null (first half - boxed)
+        nullable_int: None,
+        nullable_long: None,
+        nullable_float: None,
+
+        // Nullable fields - all null (second half - @ForyField)
+        nullable_double: None,
+        nullable_bool: None,
+        nullable_string: None,
+        nullable_list: None,
+        nullable_set: None,
+        nullable_map: None,
+    };
+
+    let remote_obj: NullableComprehensiveSchemaConsistent = fory.deserialize(&bytes).unwrap();
+    assert_eq!(remote_obj, local_obj);
+
+    let new_bytes = fory.serialize(&remote_obj).unwrap();
+    fs::write(&data_file_path, new_bytes).unwrap();
+}
+
+/// Test cross-language schema evolution - all fields have values.
+/// Java sends: Group 1 (non-nullable) + Group 2 (nullable with values)
+/// Rust reads: Group 1 (nullable/Option) + Group 2 (non-nullable)
+#[test]
+#[ignore]
+fn test_nullable_field_compatible_not_null() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default().compatible(true).xlang(true);
+    fory.register::<NullableComprehensiveCompatible>(402)
+        .unwrap();
+
+    let local_obj = NullableComprehensiveCompatible {
+        // Group 1: Nullable in Rust (read from Java's non-nullable)
+        byte_field: Some(1),
+        short_field: Some(2),
+        int_field: Some(42),
+        long_field: Some(123456789),
+        float_field: Some(1.5),
+        double_field: Some(2.5),
+        bool_field: Some(true),
+
+        boxed_int: Some(10),
+        boxed_long: Some(20),
+        boxed_float: Some(1.1),
+        boxed_double: Some(2.2),
+        boxed_bool: Some(true),
+
+        string_field: Some("hello".to_string()),
+        list_field: Some(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
+        set_field: Some(HashSet::from(["x".to_string(), "y".to_string()])),
+        map_field: Some(HashMap::from([
+            ("key1".to_string(), "value1".to_string()),
+            ("key2".to_string(), "value2".to_string()),
+        ])),
+
+        // Group 2: Non-nullable in Rust (read from Java's nullable with values)
+        nullable_int1: 100,
+        nullable_long1: 200,
+        nullable_float1: 1.5,
+        nullable_double1: 2.5,
+        nullable_bool1: false,
+
+        nullable_string2: "nullable_value".to_string(),
+        nullable_list2: vec!["p".to_string(), "q".to_string()],
+        nullable_set2: HashSet::from(["m".to_string(), "n".to_string()]),
+        nullable_map2: HashMap::from([("nk1".to_string(), "nv1".to_string())]),
+    };
+
+    let remote_obj: NullableComprehensiveCompatible = fory.deserialize(&bytes).unwrap();
+    assert_eq!(remote_obj, local_obj);
+
+    let new_bytes = fory.serialize(&remote_obj).unwrap();
+    fs::write(&data_file_path, new_bytes).unwrap();
+}
+
+/// Test cross-language schema evolution - nullable fields are null.
+/// Java sends: Group 1 (non-nullable with values) + Group 2 (nullable with null)
+/// Rust reads: Group 1 (nullable/Option) + Group 2 (non-nullable -> defaults)
+///
+/// When Java sends null for Group 2 fields, Rust's non-nullable fields receive
+/// default values (0 for numbers, false for bool, empty for collections/strings).
+#[test]
+#[ignore]
+fn test_nullable_field_compatible_null() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default().compatible(true).xlang(true);
+    fory.register::<NullableComprehensiveCompatible>(402)
+        .unwrap();
+
+    let local_obj = NullableComprehensiveCompatible {
+        // Group 1: Nullable in Rust (read from Java's non-nullable)
+        byte_field: Some(1),
+        short_field: Some(2),
+        int_field: Some(42),
+        long_field: Some(123456789),
+        float_field: Some(1.5),
+        double_field: Some(2.5),
+        bool_field: Some(true),
+
+        boxed_int: Some(10),
+        boxed_long: Some(20),
+        boxed_float: Some(1.1),
+        boxed_double: Some(2.2),
+        boxed_bool: Some(true),
+
+        string_field: Some("hello".to_string()),
+        list_field: Some(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
+        set_field: Some(HashSet::from(["x".to_string(), "y".to_string()])),
+        map_field: Some(HashMap::from([
+            ("key1".to_string(), "value1".to_string()),
+            ("key2".to_string(), "value2".to_string()),
+        ])),
+
+        // Group 2: Non-nullable in Rust (Java sent null -> use defaults)
+        nullable_int1: 0,
+        nullable_long1: 0,
+        nullable_float1: 0.0,
+        nullable_double1: 0.0,
+        nullable_bool1: false,
+
+        nullable_string2: String::new(),
+        nullable_list2: Vec::new(),
+        nullable_set2: HashSet::new(),
+        nullable_map2: HashMap::new(),
+    };
+
+    let remote_obj: NullableComprehensiveCompatible = fory.deserialize(&bytes).unwrap();
+    assert_eq!(remote_obj, local_obj);
+
+    let new_bytes = fory.serialize(&remote_obj).unwrap();
+    fs::write(&data_file_path, new_bytes).unwrap();
+}
+
+// ============================================================================
+// Union Xlang Tests - Rust enum <-> Java Union2
+// ============================================================================
+
+/// Rust enum that matches Java Union2<String, Long>
+/// Each variant has exactly one field to be Union-compatible
+#[derive(ForyObject, Debug, PartialEq)]
+enum StringOrLong {
+    Str(String),
+    Long(i64),
+}
+
+impl Default for StringOrLong {
+    fn default() -> Self {
+        StringOrLong::Str(String::default())
+    }
+}
+
+/// Struct containing a Union field, matches Java StructWithUnion2
+#[derive(ForyObject, Debug, PartialEq)]
+struct StructWithUnion2 {
+    union: StringOrLong,
+}
+
+/// Test cross-language Union serialization between Rust enum and Java Union2.
+///
+/// Rust enum with single-field variants is Union-compatible and can be deserialized
+/// from Java Union2 types. Union fields in xlang mode follow a special format:
+/// - Rust writes: ref_flag + union_data (no type_id, since Union fields skip type info)
+/// - Java reads: null_flag + union_data (directly calls UnionSerializer.read())
+#[test]
+#[ignore]
+fn test_union_xlang() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default().compatible(true).xlang(true);
+    // Register both the enum and the struct that contains it
+    fory.register::<StringOrLong>(300).unwrap();
+    fory.register::<StructWithUnion2>(301).unwrap();
+
+    // Read struct1 with String value (index 0)
+    let mut reader = Reader::new(bytes.as_slice());
+    let struct1: StructWithUnion2 = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(struct1.union, StringOrLong::Str("hello".to_string()));
+
+    // Read struct2 with Long value (index 1)
+    let struct2: StructWithUnion2 = fory.deserialize_from(&mut reader).unwrap();
+    assert_eq!(struct2.union, StringOrLong::Long(42));
+
+    // Serialize back
+    let mut buf = Vec::new();
+    fory.serialize_to(&mut buf, &struct1).unwrap();
+    fory.serialize_to(&mut buf, &struct2).unwrap();
+    fs::write(&data_file_path, buf).unwrap();
+}

@@ -62,9 +62,9 @@ struct Serializer<E, std::enable_if_t<std::is_enum_v<E>>> {
     }
   }
 
-  static inline void write(E value, WriteContext &ctx, bool write_ref,
+  static inline void write(E value, WriteContext &ctx, RefMode ref_mode,
                            bool write_type, bool has_generics = false) {
-    write_not_null_ref_flag(ctx, write_ref);
+    write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       write_type_info(ctx);
     }
@@ -86,14 +86,14 @@ struct Serializer<E, std::enable_if_t<std::is_enum_v<E>>> {
     write_data(value, ctx);
   }
 
-  static inline E read(ReadContext &ctx, bool read_ref, bool read_type) {
+  static inline E read(ReadContext &ctx, RefMode ref_mode, bool read_type) {
     // Handle null/ref flag if requested.
     // In compatible mode, the caller (read_struct_fields_compatible) determines
     // whether to pass read_ref=true based on the remote TypeDef's nullable
     // flag. In non-compatible mode, read_ref is based on C++ type traits. When
     // reading through std::optional, the optional serializer already handles
     // the null flag and calls us with read_ref=false.
-    bool has_value = consume_ref_flag(ctx, read_ref);
+    bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
       return E{};
     }
@@ -123,9 +123,9 @@ struct Serializer<E, std::enable_if_t<std::is_enum_v<E>>> {
     return value;
   }
 
-  static inline E read_with_type_info(ReadContext &ctx, bool read_ref,
+  static inline E read_with_type_info(ReadContext &ctx, RefMode ref_mode,
                                       const TypeInfo &type_info) {
-    return read(ctx, read_ref, false);
+    return read(ctx, ref_mode, false);
   }
 };
 

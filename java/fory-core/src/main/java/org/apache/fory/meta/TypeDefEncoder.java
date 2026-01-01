@@ -47,6 +47,7 @@ import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.Types;
 import org.apache.fory.util.Preconditions;
+import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.Utils;
 
 /**
@@ -196,7 +197,9 @@ class TypeDefEncoder {
         size = fieldInfo.getFieldId();
         encodingFlags = 3;
       } else {
-        MetaString metaString = Encoders.encodeFieldName(fieldInfo.getFieldName());
+        // Convert camelCase field names to snake_case for xlang interoperability
+        String fieldName = StringUtils.lowerCamelToLowerUnderscore(fieldInfo.getFieldName());
+        MetaString metaString = Encoders.encodeFieldName(fieldName);
         // Encoding `UTF8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID`
         encodingFlags = fieldNameEncodingsList.indexOf(metaString.getEncoding());
         encoded = metaString.getBytes();

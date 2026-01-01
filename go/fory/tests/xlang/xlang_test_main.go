@@ -107,6 +107,28 @@ func getTwoEnumFieldStruct(obj interface{}) TwoEnumFieldStruct {
 	}
 }
 
+func getNullableComprehensiveSchemaConsistent(obj interface{}) NullableComprehensiveSchemaConsistent {
+	switch v := obj.(type) {
+	case NullableComprehensiveSchemaConsistent:
+		return v
+	case *NullableComprehensiveSchemaConsistent:
+		return *v
+	default:
+		panic(fmt.Sprintf("expected NullableComprehensiveSchemaConsistent, got %T", obj))
+	}
+}
+
+func getNullableComprehensiveCompatible(obj interface{}) NullableComprehensiveCompatible {
+	switch v := obj.(type) {
+	case NullableComprehensiveCompatible:
+		return v
+	case *NullableComprehensiveCompatible:
+		return *v
+	default:
+		panic(fmt.Sprintf("expected NullableComprehensiveCompatible, got %T", obj))
+	}
+}
+
 func assertEqualFloat32(expected, actual float32, name string) {
 	diff := expected - actual
 	if diff < 0 {
@@ -272,6 +294,86 @@ type AnimalListHolder struct {
 
 type AnimalMapHolder struct {
 	AnimalMap map[string]Animal
+}
+
+// ============================================================================
+// Nullable Field Test Types
+// ============================================================================
+
+// NullableComprehensiveSchemaConsistent matches Java's NullableComprehensiveSchemaConsistent
+// for SCHEMA_CONSISTENT mode (type id 401)
+type NullableComprehensiveSchemaConsistent struct {
+	// Base non-nullable primitive fields
+	ByteField   int8
+	ShortField  int16
+	IntField    int32
+	LongField   int64
+	FloatField  float32
+	DoubleField float64
+	BoolField   bool
+
+	// Base non-nullable reference fields
+	StringField string
+	ListField   []string
+	SetField    map[string]bool
+	MapField    map[string]string
+
+	// Nullable fields - first half (boxed types in Java)
+	NullableInt   *int32   `fory:"nullable"`
+	NullableLong  *int64   `fory:"nullable"`
+	NullableFloat *float32 `fory:"nullable"`
+
+	// Nullable fields - second half (reference types)
+	NullableDouble *float64          `fory:"nullable"`
+	NullableBool   *bool             `fory:"nullable"`
+	NullableString *string           `fory:"nullable"`
+	NullableList   []string          `fory:"nullable"`
+	NullableSet    map[string]bool   `fory:"nullable"`
+	NullableMap    map[string]string `fory:"nullable"`
+}
+
+// NullableComprehensiveCompatible - Cross-language schema evolution test struct.
+// This struct has INVERTED nullability compared to Java:
+// - Group 1: Nullable (pointer) in Go, Non-nullable in Java
+// - Group 2: Non-nullable in Go, Nullable in Java (@ForyField(nullable=true))
+// Type id 402
+type NullableComprehensiveCompatible struct {
+	// Group 1: Nullable in Go (pointer), Non-nullable in Java
+	// Primitive fields
+	ByteField   *int8    `fory:"nullable"`
+	ShortField  *int16   `fory:"nullable"`
+	IntField    *int32   `fory:"nullable"`
+	LongField   *int64   `fory:"nullable"`
+	FloatField  *float32 `fory:"nullable"`
+	DoubleField *float64 `fory:"nullable"`
+	BoolField   *bool    `fory:"nullable"`
+
+	// Boxed fields - also nullable in Go
+	BoxedInt    *int32   `fory:"nullable"`
+	BoxedLong   *int64   `fory:"nullable"`
+	BoxedFloat  *float32 `fory:"nullable"`
+	BoxedDouble *float64 `fory:"nullable"`
+	BoxedBool   *bool    `fory:"nullable"`
+
+	// Reference fields - also nullable in Go
+	StringField *string           `fory:"nullable"`
+	ListField   []string          `fory:"nullable"`
+	SetField    map[string]bool   `fory:"nullable"`
+	MapField    map[string]string `fory:"nullable"`
+
+	// Group 2: Non-nullable in Go, Nullable in Java (@ForyField(nullable=true))
+	// Boxed types
+	NullableInt1    int32
+	NullableLong1   int64
+	NullableFloat1  float32
+	NullableDouble1 float64
+	NullableBool1   bool
+
+	// Reference types
+	NullableString2 string
+	NullableList2   []string
+	NullableSet2    map[string]bool
+	NullableMap2    map[string]string
 }
 
 // ============================================================================
@@ -1394,6 +1496,373 @@ func testEnumSchemaEvolutionCompatibleReverse() {
 }
 
 // ============================================================================
+// Nullable Field Tests
+// ============================================================================
+
+func testNullableFieldSchemaConsistentNotNull() {
+	dataFile := getDataFile()
+	data := readFile(dataFile)
+
+	f := fory.New(fory.WithXlang(true), fory.WithCompatible(false))
+	f.Register(NullableComprehensiveSchemaConsistent{}, 401)
+
+	buf := fory.NewByteBuffer(data)
+	var obj interface{}
+	err := f.DeserializeWithCallbackBuffers(buf, &obj, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to deserialize: %v", err))
+	}
+
+	result := getNullableComprehensiveSchemaConsistent(obj)
+
+	// Verify base non-nullable primitive fields
+	assertEqual(int8(1), result.ByteField, "ByteField")
+	assertEqual(int16(2), result.ShortField, "ShortField")
+	assertEqual(int32(42), result.IntField, "IntField")
+	assertEqual(int64(123456789), result.LongField, "LongField")
+	assertEqualFloat32(1.5, result.FloatField, "FloatField")
+	assertEqualFloat64(2.5, result.DoubleField, "DoubleField")
+	assertEqual(true, result.BoolField, "BoolField")
+
+	// Verify base non-nullable reference fields
+	assertEqual("hello", result.StringField, "StringField")
+	if len(result.ListField) != 3 || result.ListField[0] != "a" || result.ListField[1] != "b" || result.ListField[2] != "c" {
+		panic(fmt.Sprintf("ListField mismatch: expected [a, b, c], got %v", result.ListField))
+	}
+	if len(result.SetField) != 2 || !result.SetField["x"] || !result.SetField["y"] {
+		panic(fmt.Sprintf("SetField mismatch: expected {x, y}, got %v", result.SetField))
+	}
+	if len(result.MapField) != 2 || result.MapField["key1"] != "value1" || result.MapField["key2"] != "value2" {
+		panic(fmt.Sprintf("MapField mismatch: expected {key1:value1, key2:value2}, got %v", result.MapField))
+	}
+
+	// Verify nullable fields - first half (boxed types)
+	if result.NullableInt == nil || *result.NullableInt != 100 {
+		panic(fmt.Sprintf("NullableInt mismatch: expected 100, got %v", result.NullableInt))
+	}
+	if result.NullableLong == nil || *result.NullableLong != 200 {
+		panic(fmt.Sprintf("NullableLong mismatch: expected 200, got %v", result.NullableLong))
+	}
+	if result.NullableFloat == nil {
+		panic("NullableFloat mismatch: expected 1.5, got nil")
+	}
+	assertEqualFloat32(1.5, *result.NullableFloat, "NullableFloat")
+
+	// Verify nullable fields - second half (reference types)
+	if result.NullableDouble == nil {
+		panic("NullableDouble mismatch: expected 2.5, got nil")
+	}
+	assertEqualFloat64(2.5, *result.NullableDouble, "NullableDouble")
+	if result.NullableBool == nil || *result.NullableBool != false {
+		panic(fmt.Sprintf("NullableBool mismatch: expected false, got %v", result.NullableBool))
+	}
+	if result.NullableString == nil || *result.NullableString != "nullable_value" {
+		panic(fmt.Sprintf("NullableString mismatch: expected 'nullable_value', got %v", result.NullableString))
+	}
+	if len(result.NullableList) != 2 || result.NullableList[0] != "p" || result.NullableList[1] != "q" {
+		panic(fmt.Sprintf("NullableList mismatch: expected [p, q], got %v", result.NullableList))
+	}
+	if len(result.NullableSet) != 2 || !result.NullableSet["m"] || !result.NullableSet["n"] {
+		panic(fmt.Sprintf("NullableSet mismatch: expected {m, n}, got %v", result.NullableSet))
+	}
+	if len(result.NullableMap) != 1 || result.NullableMap["nk1"] != "nv1" {
+		panic(fmt.Sprintf("NullableMap mismatch: expected {nk1:nv1}, got %v", result.NullableMap))
+	}
+
+	serialized, err := f.Serialize(result)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to serialize: %v", err))
+	}
+
+	writeFile(dataFile, serialized)
+}
+
+func testNullableFieldSchemaConsistentNull() {
+	dataFile := getDataFile()
+	data := readFile(dataFile)
+
+	f := fory.New(fory.WithXlang(true), fory.WithCompatible(false))
+	f.Register(NullableComprehensiveSchemaConsistent{}, 401)
+
+	buf := fory.NewByteBuffer(data)
+	var obj interface{}
+	err := f.DeserializeWithCallbackBuffers(buf, &obj, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to deserialize: %v", err))
+	}
+
+	result := getNullableComprehensiveSchemaConsistent(obj)
+
+	// Verify base non-nullable primitive fields
+	assertEqual(int8(1), result.ByteField, "ByteField")
+	assertEqual(int16(2), result.ShortField, "ShortField")
+	assertEqual(int32(42), result.IntField, "IntField")
+	assertEqual(int64(123456789), result.LongField, "LongField")
+	assertEqualFloat32(1.5, result.FloatField, "FloatField")
+	assertEqualFloat64(2.5, result.DoubleField, "DoubleField")
+	assertEqual(true, result.BoolField, "BoolField")
+
+	// Verify base non-nullable reference fields
+	assertEqual("hello", result.StringField, "StringField")
+	if len(result.ListField) != 3 || result.ListField[0] != "a" || result.ListField[1] != "b" || result.ListField[2] != "c" {
+		panic(fmt.Sprintf("ListField mismatch: expected [a, b, c], got %v", result.ListField))
+	}
+	if len(result.SetField) != 2 || !result.SetField["x"] || !result.SetField["y"] {
+		panic(fmt.Sprintf("SetField mismatch: expected {x, y}, got %v", result.SetField))
+	}
+	if len(result.MapField) != 2 || result.MapField["key1"] != "value1" || result.MapField["key2"] != "value2" {
+		panic(fmt.Sprintf("MapField mismatch: expected {key1:value1, key2:value2}, got %v", result.MapField))
+	}
+
+	// Verify nullable fields - first half (boxed types) - all nil
+	if result.NullableInt != nil {
+		panic(fmt.Sprintf("NullableInt mismatch: expected nil, got %v", *result.NullableInt))
+	}
+	if result.NullableLong != nil {
+		panic(fmt.Sprintf("NullableLong mismatch: expected nil, got %v", *result.NullableLong))
+	}
+	if result.NullableFloat != nil {
+		panic(fmt.Sprintf("NullableFloat mismatch: expected nil, got %v", *result.NullableFloat))
+	}
+
+	// Verify nullable fields - second half (reference types) - all nil
+	if result.NullableDouble != nil {
+		panic(fmt.Sprintf("NullableDouble mismatch: expected nil, got %v", *result.NullableDouble))
+	}
+	if result.NullableBool != nil {
+		panic(fmt.Sprintf("NullableBool mismatch: expected nil, got %v", *result.NullableBool))
+	}
+	if result.NullableString != nil {
+		panic(fmt.Sprintf("NullableString mismatch: expected nil, got %v", *result.NullableString))
+	}
+	if result.NullableList != nil {
+		panic(fmt.Sprintf("NullableList mismatch: expected nil, got %v", result.NullableList))
+	}
+	if result.NullableSet != nil {
+		panic(fmt.Sprintf("NullableSet mismatch: expected nil, got %v", result.NullableSet))
+	}
+	if result.NullableMap != nil {
+		panic(fmt.Sprintf("NullableMap mismatch: expected nil, got %v", result.NullableMap))
+	}
+
+	serialized, err := f.Serialize(result)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to serialize: %v", err))
+	}
+
+	writeFile(dataFile, serialized)
+}
+
+// Test cross-language schema evolution - all fields have values.
+// Java sends: Group 1 (non-nullable) + Group 2 (nullable with values)
+// Go reads: Group 1 (nullable/pointer) + Group 2 (non-nullable)
+func testNullableFieldCompatibleNotNull() {
+	dataFile := getDataFile()
+	data := readFile(dataFile)
+
+	f := fory.New(fory.WithXlang(true), fory.WithCompatible(true))
+	f.Register(NullableComprehensiveCompatible{}, 402)
+
+	buf := fory.NewByteBuffer(data)
+	var obj interface{}
+	err := f.DeserializeWithCallbackBuffers(buf, &obj, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to deserialize: %v", err))
+	}
+
+	result := getNullableComprehensiveCompatible(obj)
+
+	// Verify Group 1: Nullable in Go (read from Java's non-nullable)
+	if result.ByteField == nil || *result.ByteField != 1 {
+		panic(fmt.Sprintf("ByteField mismatch: expected 1, got %v", result.ByteField))
+	}
+	if result.ShortField == nil || *result.ShortField != 2 {
+		panic(fmt.Sprintf("ShortField mismatch: expected 2, got %v", result.ShortField))
+	}
+	if result.IntField == nil || *result.IntField != 42 {
+		panic(fmt.Sprintf("IntField mismatch: expected 42, got %v", result.IntField))
+	}
+	if result.LongField == nil || *result.LongField != 123456789 {
+		panic(fmt.Sprintf("LongField mismatch: expected 123456789, got %v", result.LongField))
+	}
+	if result.FloatField == nil {
+		panic("FloatField mismatch: expected 1.5, got nil")
+	}
+	assertEqualFloat32(1.5, *result.FloatField, "FloatField")
+	if result.DoubleField == nil {
+		panic("DoubleField mismatch: expected 2.5, got nil")
+	}
+	assertEqualFloat64(2.5, *result.DoubleField, "DoubleField")
+	if result.BoolField == nil || *result.BoolField != true {
+		panic(fmt.Sprintf("BoolField mismatch: expected true, got %v", result.BoolField))
+	}
+
+	// Verify boxed fields (also nullable in Go)
+	if result.BoxedInt == nil || *result.BoxedInt != 10 {
+		panic(fmt.Sprintf("BoxedInt mismatch: expected 10, got %v", result.BoxedInt))
+	}
+	if result.BoxedLong == nil || *result.BoxedLong != 20 {
+		panic(fmt.Sprintf("BoxedLong mismatch: expected 20, got %v", result.BoxedLong))
+	}
+	if result.BoxedFloat == nil {
+		panic("BoxedFloat mismatch: expected 1.1, got nil")
+	}
+	assertEqualFloat32(1.1, *result.BoxedFloat, "BoxedFloat")
+	if result.BoxedDouble == nil {
+		panic("BoxedDouble mismatch: expected 2.2, got nil")
+	}
+	assertEqualFloat64(2.2, *result.BoxedDouble, "BoxedDouble")
+	if result.BoxedBool == nil || *result.BoxedBool != true {
+		panic(fmt.Sprintf("BoxedBool mismatch: expected true, got %v", result.BoxedBool))
+	}
+
+	// Verify reference fields (also nullable in Go)
+	if result.StringField == nil || *result.StringField != "hello" {
+		panic(fmt.Sprintf("StringField mismatch: expected 'hello', got %v", result.StringField))
+	}
+	if len(result.ListField) != 3 || result.ListField[0] != "a" || result.ListField[1] != "b" || result.ListField[2] != "c" {
+		panic(fmt.Sprintf("ListField mismatch: expected [a, b, c], got %v", result.ListField))
+	}
+	if len(result.SetField) != 2 || !result.SetField["x"] || !result.SetField["y"] {
+		panic(fmt.Sprintf("SetField mismatch: expected {x, y}, got %v", result.SetField))
+	}
+	if len(result.MapField) != 2 || result.MapField["key1"] != "value1" || result.MapField["key2"] != "value2" {
+		panic(fmt.Sprintf("MapField mismatch: expected {key1:value1, key2:value2}, got %v", result.MapField))
+	}
+
+	// Verify Group 2: Non-nullable in Go (read from Java's nullable with values)
+	assertEqual(int32(100), result.NullableInt1, "NullableInt1")
+	assertEqual(int64(200), result.NullableLong1, "NullableLong1")
+	assertEqualFloat32(1.5, result.NullableFloat1, "NullableFloat1")
+	assertEqualFloat64(2.5, result.NullableDouble1, "NullableDouble1")
+	assertEqual(false, result.NullableBool1, "NullableBool1")
+
+	assertEqual("nullable_value", result.NullableString2, "NullableString2")
+	if len(result.NullableList2) != 2 || result.NullableList2[0] != "p" || result.NullableList2[1] != "q" {
+		panic(fmt.Sprintf("NullableList2 mismatch: expected [p, q], got %v", result.NullableList2))
+	}
+	if len(result.NullableSet2) != 2 || !result.NullableSet2["m"] || !result.NullableSet2["n"] {
+		panic(fmt.Sprintf("NullableSet2 mismatch: expected {m, n}, got %v", result.NullableSet2))
+	}
+	if len(result.NullableMap2) != 1 || result.NullableMap2["nk1"] != "nv1" {
+		panic(fmt.Sprintf("NullableMap2 mismatch: expected {nk1:nv1}, got %v", result.NullableMap2))
+	}
+
+	serialized, err := f.Serialize(result)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to serialize: %v", err))
+	}
+
+	writeFile(dataFile, serialized)
+}
+
+// Test cross-language schema evolution - nullable fields are null.
+// Java sends: Group 1 (non-nullable with values) + Group 2 (nullable with null)
+// Go reads: Group 1 (nullable/pointer) + Group 2 (non-nullable -> defaults)
+//
+// When Java sends null for Group 2 fields, Go's non-nullable fields receive
+// default values (0 for numbers, false for bool, empty/nil for collections/strings).
+func testNullableFieldCompatibleNull() {
+	dataFile := getDataFile()
+	data := readFile(dataFile)
+
+	f := fory.New(fory.WithXlang(true), fory.WithCompatible(true))
+	f.Register(NullableComprehensiveCompatible{}, 402)
+
+	buf := fory.NewByteBuffer(data)
+	var obj interface{}
+	err := f.DeserializeWithCallbackBuffers(buf, &obj, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to deserialize: %v", err))
+	}
+
+	result := getNullableComprehensiveCompatible(obj)
+
+	// Verify Group 1: Nullable in Go (read from Java's non-nullable)
+	if result.ByteField == nil || *result.ByteField != 1 {
+		panic(fmt.Sprintf("ByteField mismatch: expected 1, got %v", result.ByteField))
+	}
+	if result.ShortField == nil || *result.ShortField != 2 {
+		panic(fmt.Sprintf("ShortField mismatch: expected 2, got %v", result.ShortField))
+	}
+	if result.IntField == nil || *result.IntField != 42 {
+		panic(fmt.Sprintf("IntField mismatch: expected 42, got %v", result.IntField))
+	}
+	if result.LongField == nil || *result.LongField != 123456789 {
+		panic(fmt.Sprintf("LongField mismatch: expected 123456789, got %v", result.LongField))
+	}
+	if result.FloatField == nil {
+		panic("FloatField mismatch: expected 1.5, got nil")
+	}
+	assertEqualFloat32(1.5, *result.FloatField, "FloatField")
+	if result.DoubleField == nil {
+		panic("DoubleField mismatch: expected 2.5, got nil")
+	}
+	assertEqualFloat64(2.5, *result.DoubleField, "DoubleField")
+	if result.BoolField == nil || *result.BoolField != true {
+		panic(fmt.Sprintf("BoolField mismatch: expected true, got %v", result.BoolField))
+	}
+
+	// Verify boxed fields (also nullable in Go)
+	if result.BoxedInt == nil || *result.BoxedInt != 10 {
+		panic(fmt.Sprintf("BoxedInt mismatch: expected 10, got %v", result.BoxedInt))
+	}
+	if result.BoxedLong == nil || *result.BoxedLong != 20 {
+		panic(fmt.Sprintf("BoxedLong mismatch: expected 20, got %v", result.BoxedLong))
+	}
+	if result.BoxedFloat == nil {
+		panic("BoxedFloat mismatch: expected 1.1, got nil")
+	}
+	assertEqualFloat32(1.1, *result.BoxedFloat, "BoxedFloat")
+	if result.BoxedDouble == nil {
+		panic("BoxedDouble mismatch: expected 2.2, got nil")
+	}
+	assertEqualFloat64(2.2, *result.BoxedDouble, "BoxedDouble")
+	if result.BoxedBool == nil || *result.BoxedBool != true {
+		panic(fmt.Sprintf("BoxedBool mismatch: expected true, got %v", result.BoxedBool))
+	}
+
+	// Verify reference fields (also nullable in Go)
+	if result.StringField == nil || *result.StringField != "hello" {
+		panic(fmt.Sprintf("StringField mismatch: expected 'hello', got %v", result.StringField))
+	}
+	if len(result.ListField) != 3 || result.ListField[0] != "a" || result.ListField[1] != "b" || result.ListField[2] != "c" {
+		panic(fmt.Sprintf("ListField mismatch: expected [a, b, c], got %v", result.ListField))
+	}
+	if len(result.SetField) != 2 || !result.SetField["x"] || !result.SetField["y"] {
+		panic(fmt.Sprintf("SetField mismatch: expected {x, y}, got %v", result.SetField))
+	}
+	if len(result.MapField) != 2 || result.MapField["key1"] != "value1" || result.MapField["key2"] != "value2" {
+		panic(fmt.Sprintf("MapField mismatch: expected {key1:value1, key2:value2}, got %v", result.MapField))
+	}
+
+	// Verify Group 2: Non-nullable in Go (Java sent null -> use defaults)
+	assertEqual(int32(0), result.NullableInt1, "NullableInt1")
+	assertEqual(int64(0), result.NullableLong1, "NullableLong1")
+	assertEqualFloat32(0.0, result.NullableFloat1, "NullableFloat1")
+	assertEqualFloat64(0.0, result.NullableDouble1, "NullableDouble1")
+	assertEqual(false, result.NullableBool1, "NullableBool1")
+
+	assertEqual("", result.NullableString2, "NullableString2")
+	if result.NullableList2 != nil && len(result.NullableList2) != 0 {
+		panic(fmt.Sprintf("NullableList2 mismatch: expected empty/nil, got %v", result.NullableList2))
+	}
+	if result.NullableSet2 != nil && len(result.NullableSet2) != 0 {
+		panic(fmt.Sprintf("NullableSet2 mismatch: expected empty/nil, got %v", result.NullableSet2))
+	}
+	if result.NullableMap2 != nil && len(result.NullableMap2) != 0 {
+		panic(fmt.Sprintf("NullableMap2 mismatch: expected empty/nil, got %v", result.NullableMap2))
+	}
+
+	serialized, err := f.Serialize(result)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to serialize: %v", err))
+	}
+
+	writeFile(dataFile, serialized)
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1480,6 +1949,14 @@ func main() {
 		testEnumSchemaEvolutionCompatible()
 	case "test_enum_schema_evolution_compatible_reverse":
 		testEnumSchemaEvolutionCompatibleReverse()
+	case "test_nullable_field_schema_consistent_not_null":
+		testNullableFieldSchemaConsistentNotNull()
+	case "test_nullable_field_schema_consistent_null":
+		testNullableFieldSchemaConsistentNull()
+	case "test_nullable_field_compatible_not_null":
+		testNullableFieldCompatibleNotNull()
+	case "test_nullable_field_compatible_null":
+		testNullableFieldCompatibleNull()
 	default:
 		panic(fmt.Sprintf("Unknown test case: %s", *caseName))
 	}

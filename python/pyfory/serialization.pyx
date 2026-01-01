@@ -510,12 +510,12 @@ cdef class TypeResolver:
         c_bool meta_share
         readonly SerializationContext serialization_context
 
-    def __init__(self, fory, meta_share=False):
+    def __init__(self, fory, meta_share=False, meta_compressor=None):
         self.fory = fory
         self.metastring_resolver = fory.metastring_resolver
         self.meta_share = meta_share
         from pyfory._registry import TypeResolver
-        self._resolver = TypeResolver(fory, meta_share=meta_share)
+        self._resolver = TypeResolver(fory, meta_share=meta_share, meta_compressor=meta_compressor)
 
     def initialize(self):
         self._resolver.initialize()
@@ -933,6 +933,7 @@ cdef class Fory:
             compatible: bool = False,
             max_depth: int = 50,
             field_nullable: bool = False,
+            meta_compressor=None,
             **kwargs,
     ):
         """
@@ -998,7 +999,7 @@ cdef class Fory:
         self.is_py = self.language == Language.PYTHON
         self.field_nullable = field_nullable if self.is_py else False
         self.metastring_resolver = MetaStringResolver()
-        self.type_resolver = TypeResolver(self, meta_share=compatible)
+        self.type_resolver = TypeResolver(self, meta_share=compatible, meta_compressor=meta_compressor)
         self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
         self.type_resolver.initialize()
         self.buffer = Buffer.allocate(32)

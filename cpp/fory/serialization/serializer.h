@@ -21,6 +21,7 @@
 
 #include "fory/meta/type_traits.h"
 #include "fory/serialization/context.h"
+#include "fory/serialization/ref_mode.h"
 #include "fory/serialization/ref_resolver.h"
 #include "fory/serialization/serializer_traits.h"
 #include "fory/type/type.h"
@@ -152,27 +153,21 @@ inline Result<HeaderInfo, Error> read_header(Buffer &buffer) {
 // Reference Metadata Helpers
 // ============================================================================
 
-/// Write a NOT_NULL reference flag when reference metadata is requested.
-///
-/// According to the xlang specification, when reference tracking is disabled
-/// but reference metadata is requested, serializers must still emit the
-/// NOT_NULL flag so deserializers can consume the ref prefix consistently.
+/// Write ref flag for NullOnly mode (not null case).
+/// Fast path: primitives, strings, time types use this.
 FORY_ALWAYS_INLINE void write_not_null_ref_flag(WriteContext &ctx,
-                                                bool write_ref) {
-  if (write_ref) {
+                                                RefMode ref_mode) {
+  if (ref_mode != RefMode::None) {
     ctx.write_int8(NOT_NULL_VALUE_FLAG);
   }
 }
 
-/// Consume a reference flag from the read context when reference metadata is
-/// expected. Uses context error accumulation pattern.
-///
-/// @param ctx Read context
-/// @param read_ref Whether the caller requested reference metadata
-/// @return True if the upcoming value payload is present, false if it was null
-///         or if an error occurred (check ctx.has_error() after calling)
-FORY_ALWAYS_INLINE bool consume_ref_flag(ReadContext &ctx, bool read_ref) {
-  if (!read_ref) {
+/// Read ref flag for NullOnly mode.
+/// Returns true if value present, false if null or error.
+/// Fast path: primitives, strings, time types use this.
+FORY_ALWAYS_INLINE bool read_null_only_flag(ReadContext &ctx,
+                                            RefMode ref_mode) {
+  if (ref_mode == RefMode::None) {
     return true;
   }
   int8_t flag = ctx.read_int8(ctx.error());
@@ -182,6 +177,8 @@ FORY_ALWAYS_INLINE bool consume_ref_flag(ReadContext &ctx, bool read_ref) {
   if (flag == NULL_FLAG) {
     return false;
   }
+  // NotNullValue or RefValue both mean "continue reading" for non-trackable
+  // types
   if (flag == NOT_NULL_VALUE_FLAG || flag == REF_VALUE_FLAG) {
     return true;
   }

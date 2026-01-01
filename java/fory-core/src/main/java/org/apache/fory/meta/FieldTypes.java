@@ -324,8 +324,10 @@ public class FieldTypes {
         }
       }
       buffer.writeVarUint32Small7(xtypeId);
-      switch (xtypeId) {
+      // Use the original xtypeId for the switch (not the one with flags)
+      switch (this.xtypeId & 0xff) {
         case Types.LIST:
+        case Types.SET:
           ((CollectionFieldType) this).getElementType().xwrite(buffer, true);
           break;
         case Types.MAP:
@@ -377,7 +379,13 @@ public class FieldTypes {
           {
             if (!Types.isUserDefinedType((byte) xtypeId)) {
               ClassInfo classInfo = resolver.getXtypeInfo(xtypeId);
-              Preconditions.checkNotNull(classInfo);
+              if (classInfo == null) {
+                // Type not registered locally - this can happen in compatible mode
+                // when remote sends a type ID that's not registered here.
+                // Fall back to ObjectFieldType to handle gracefully.
+                LOG.warn("Type {} not registered locally, treating as ObjectFieldType", xtypeId);
+                return new ObjectFieldType(xtypeId, false, nullable, trackingRef);
+              }
               Class<?> cls = classInfo.getCls();
               return new RegisteredFieldType(
                   resolver.isMonomorphic(cls), nullable, trackingRef, xtypeId);

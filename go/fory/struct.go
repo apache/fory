@@ -551,11 +551,11 @@ func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Poi
 			ctx.WriteStringFloat64Map(*(*map[string]float64)(fieldPtr), field.RefMode, false)
 			return
 		case ConcreteTypeStringBoolMap:
-			if field.RefMode == RefModeTracking {
-				break
-			}
-			ctx.WriteStringBoolMap(*(*map[string]bool)(fieldPtr), field.RefMode, false)
-			return
+			// NOTE: map[string]bool is used to represent SETs in Go xlang mode.
+			// We CANNOT use the fast path here because it writes MAP format,
+			// but the data should be written in SET format. Fall through to slow path
+			// which uses setSerializer to correctly write the SET format.
+			break
 		case ConcreteTypeIntIntMap:
 			if field.RefMode == RefModeTracking {
 				break
@@ -869,11 +869,11 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 			*(*map[string]float64)(fieldPtr) = ctx.ReadStringFloat64Map(field.RefMode, false)
 			return
 		case ConcreteTypeStringBoolMap:
-			if field.RefMode == RefModeTracking {
-				break
-			}
-			*(*map[string]bool)(fieldPtr) = ctx.ReadStringBoolMap(field.RefMode, false)
-			return
+			// NOTE: map[string]bool is used to represent SETs in Go xlang mode.
+			// We CANNOT use the fast path here because it reads MAP format,
+			// but the data is actually in SET format. Fall through to slow path
+			// which uses setSerializer to correctly read the SET format.
+			break
 		case ConcreteTypeIntIntMap:
 			if field.RefMode == RefModeTracking {
 				break
@@ -1077,17 +1077,20 @@ func (s *structSerializer) initFieldsFromTypeResolver(typeResolver *TypeResolver
 		if fieldTypeId == 0 {
 			fieldTypeId = typeIdFromKind(fieldType)
 		}
-		// Calculate nullable flag for serialization:
-		// - Pointer types (*T): can hold nil → nullable=true by default
-		// - Slices, maps, interfaces: can hold nil → nullable=true by default
-		// - Primitives (int32, bool, etc.): cannot be nil → nullable=false
+		// Calculate nullable flag for serialization (wire format):
+		// - In COMPATIBLE mode: reference types default to nullable=true to match Java's
+		//   wire format where reference types have null flags
+		// - In SCHEMA_CONSISTENT mode: reference types default to nullable=false to match
+		//   Java's default behavior where reference types are non-nullable unless annotated
+		// - Primitives (int32, bool, etc.) are always non-nullable
 		// - Can be overridden by explicit fory tag
-		// This ensures writer and reader use the same field ordering and ref mode,
-		// and is consistent with computeHash fingerprint calculation.
+		// Note: computeHash uses its own nullable calculation for fingerprint matching
 		internalId := TypeId(fieldTypeId & 0xFF)
 		isEnum := internalId == ENUM || internalId == NAMED_ENUM
-		// Default nullable based on whether Go type can be nil
-		// Pointer types, slices, maps, interfaces can hold nil → nullable=true by default
+
+		// Default nullable based on type (reference types are nullable by default)
+		// Go's codegen always writes null flags for reference types, so reflect must match
+		// This is consistent with Go's existing behavior and codegen
 		nullableFlag := fieldType.Kind() == reflect.Ptr ||
 			fieldType.Kind() == reflect.Slice ||
 			fieldType.Kind() == reflect.Map ||
@@ -1787,6 +1790,13 @@ func (s *structSerializer) computeHash() int32 {
 				}
 			} else if field.Type.Kind() == reflect.Slice {
 				typeId = LIST
+			} else if field.Type.Kind() == reflect.Map {
+				// map[T]bool is used to represent a Set in Go
+				if field.Type.Elem().Kind() == reflect.Bool {
+					typeId = SET
+				} else {
+					typeId = MAP
+				}
 			}
 		}
 
@@ -1919,6 +1929,7 @@ func sortFields(
 		}
 	}
 	// Sort primitives (non-nullable) - same logic as boxed
+	// Java sorts by: compressed types last, then by size (largest first), then by type ID (descending)
 	sortPrimitiveSlice := func(s []triple) {
 		sort.Slice(s, func(i, j int) bool {
 			ai, aj := s[i], s[j]
@@ -1932,6 +1943,10 @@ func sortFields(
 			szI, szJ := getPrimitiveTypeSize(ai.typeID), getPrimitiveTypeSize(aj.typeID)
 			if szI != szJ {
 				return szI > szJ
+			}
+			// Tie-breaker: type ID descending (higher type ID first), then field name
+			if ai.typeID != aj.typeID {
+				return ai.typeID > aj.typeID
 			}
 			return ai.getSortKey() < aj.getSortKey()
 		})
@@ -1954,6 +1969,7 @@ func sortFields(
 	sortByTypeIDThenName(otherInternalTypeFields)
 	sortTuple(others)
 	sortTuple(collection)
+	sortTuple(setFields)
 	sortTuple(maps)
 	sortTuple(userDefined)
 
@@ -2100,6 +2116,10 @@ func typeIdFromKind(type_ reflect.Type) TypeId {
 			return LIST
 		}
 	case reflect.Map:
+		// map[T]bool is used to represent a Set in Go
+		if type_.Elem().Kind() == reflect.Bool {
+			return SET
+		}
 		return MAP
 	case reflect.Struct:
 		return NAMED_STRUCT

@@ -75,9 +75,9 @@ template <> struct Serializer<Duration> {
   }
 
   static inline void write(const Duration &duration, WriteContext &ctx,
-                           bool write_ref, bool write_type,
+                           RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
-    write_not_null_ref_flag(ctx, write_ref);
+    write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
@@ -94,8 +94,9 @@ template <> struct Serializer<Duration> {
     write_data(duration, ctx);
   }
 
-  static inline Duration read(ReadContext &ctx, bool read_ref, bool read_type) {
-    bool has_value = consume_ref_flag(ctx, read_ref);
+  static inline Duration read(ReadContext &ctx, RefMode ref_mode,
+                              bool read_type) {
+    bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
       return Duration(0);
     }
@@ -119,9 +120,9 @@ template <> struct Serializer<Duration> {
     return Duration(nanos);
   }
 
-  static inline Duration read_with_type_info(ReadContext &ctx, bool read_ref,
+  static inline Duration read_with_type_info(ReadContext &ctx, RefMode ref_mode,
                                              const TypeInfo &type_info) {
-    return read(ctx, read_ref, false);
+    return read(ctx, ref_mode, false);
   }
 };
 
@@ -150,9 +151,9 @@ template <> struct Serializer<Timestamp> {
   }
 
   static inline void write(const Timestamp &timestamp, WriteContext &ctx,
-                           bool write_ref, bool write_type,
+                           RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
-    write_not_null_ref_flag(ctx, write_ref);
+    write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
@@ -169,9 +170,9 @@ template <> struct Serializer<Timestamp> {
     write_data(timestamp, ctx);
   }
 
-  static inline Timestamp read(ReadContext &ctx, bool read_ref,
+  static inline Timestamp read(ReadContext &ctx, RefMode ref_mode,
                                bool read_type) {
-    bool has_value = consume_ref_flag(ctx, read_ref);
+    bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
       return Timestamp(Duration(0));
     }
@@ -195,9 +196,10 @@ template <> struct Serializer<Timestamp> {
     return Timestamp(Duration(nanos));
   }
 
-  static inline Timestamp read_with_type_info(ReadContext &ctx, bool read_ref,
+  static inline Timestamp read_with_type_info(ReadContext &ctx,
+                                              RefMode ref_mode,
                                               const TypeInfo &type_info) {
-    return read(ctx, read_ref, false);
+    return read(ctx, ref_mode, false);
   }
 };
 
@@ -226,9 +228,9 @@ template <> struct Serializer<LocalDate> {
   }
 
   static inline void write(const LocalDate &date, WriteContext &ctx,
-                           bool write_ref, bool write_type,
+                           RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
-    write_not_null_ref_flag(ctx, write_ref);
+    write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
       ctx.write_varuint32(static_cast<uint32_t>(type_id));
     }
@@ -244,9 +246,9 @@ template <> struct Serializer<LocalDate> {
     write_data(date, ctx);
   }
 
-  static inline LocalDate read(ReadContext &ctx, bool read_ref,
+  static inline LocalDate read(ReadContext &ctx, RefMode ref_mode,
                                bool read_type) {
-    bool has_value = consume_ref_flag(ctx, read_ref);
+    bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
       return LocalDate();
     }
@@ -270,9 +272,10 @@ template <> struct Serializer<LocalDate> {
     return date;
   }
 
-  static inline LocalDate read_with_type_info(ReadContext &ctx, bool read_ref,
+  static inline LocalDate read_with_type_info(ReadContext &ctx,
+                                              RefMode ref_mode,
                                               const TypeInfo &type_info) {
-    return read(ctx, read_ref, false);
+    return read(ctx, ref_mode, false);
   }
 };
 

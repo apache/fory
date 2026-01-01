@@ -176,6 +176,7 @@ class Fory:
         max_depth: int = 50,
         policy: DeserializationPolicy = None,
         field_nullable: bool = False,
+        meta_compressor=None,
         **kwargs,
     ):
         """
@@ -244,7 +245,7 @@ class Fory:
         from pyfory._registry import TypeResolver
 
         self.metastring_resolver = MetaStringResolver()
-        self.type_resolver = TypeResolver(self, meta_share=compatible)
+        self.type_resolver = TypeResolver(self, meta_share=compatible, meta_compressor=meta_compressor)
         self.serialization_context = SerializationContext(fory=self, scoped_meta_share_enabled=compatible)
         self.type_resolver.initialize()
 

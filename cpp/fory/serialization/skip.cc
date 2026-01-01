@@ -26,23 +26,12 @@ namespace serialization {
 
 namespace {
 
-// Mirror Java's field ref/null flag writing behavior for runtime computation
-// of whether a field writes ref/null flags before the value.
+// Compute RefMode from field type at runtime.
 //
 // Per xlang protocol and Java's ObjectSerializer.writeOtherFieldValue:
 // - In xlang mode with refTracking=false (default), fields only write
 //   ref/null flag if they are nullable
 // - Primitives never have ref flags (handled separately)
-// - All other types (enums, structs, exts, etc.) only write NOT_NULL_VALUE_FLAG
-//   when the field is nullable
-//
-// Java's writeNullable(buffer, obj, classInfoHolder, nullable):
-//   if (nullable) writeNullable(...)  // writes flag
-//   else writeNonRef(...)             // no flag
-inline bool field_need_write_ref_into_runtime(const FieldType &field_type) {
-  return field_type.nullable;
-}
-
 } // namespace
 
 void skip_varint(ReadContext &ctx) {
@@ -120,7 +109,7 @@ void skip_list(ReadContext &ctx, const FieldType &field_type) {
     }
 
     // Skip element value
-    skip_field_value(ctx, elem_type, false); // No ref flag for elements
+    skip_field_value(ctx, elem_type, RefMode::None); // No ref flag for elements
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -182,7 +171,7 @@ void skip_map(ReadContext &ctx, const FieldType &field_type) {
           continue; // Null or ref, skip value too
         }
       }
-      skip_field_value(ctx, key_type, false);
+      skip_field_value(ctx, key_type, RefMode::None);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return;
       }
@@ -197,7 +186,7 @@ void skip_map(ReadContext &ctx, const FieldType &field_type) {
           continue; // Null or ref
         }
       }
-      skip_field_value(ctx, value_type, false);
+      skip_field_value(ctx, value_type, RefMode::None);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return;
       }
@@ -277,8 +266,8 @@ void skip_struct(ReadContext &ctx, const FieldType &field_type) {
   const auto &field_infos = type_info->type_meta->get_field_infos();
 
   for (const auto &fi : field_infos) {
-    bool read_ref = field_need_write_ref_into_runtime(fi.field_type);
-    skip_field_value(ctx, fi.field_type, read_ref);
+    // Use precomputed ref_mode from field metadata
+    skip_field_value(ctx, fi.field_type, fi.field_type.ref_mode);
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -399,8 +388,8 @@ void skip_unknown(ReadContext &ctx) {
     }
     const auto &field_infos = type_info->type_meta->get_field_infos();
     for (const auto &fi : field_infos) {
-      bool read_ref = field_need_write_ref_into_runtime(fi.field_type);
-      skip_field_value(ctx, fi.field_type, read_ref);
+      // Use precomputed ref_mode from field metadata
+      skip_field_value(ctx, fi.field_type, fi.field_type.ref_mode);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return;
       }
@@ -413,7 +402,7 @@ void skip_unknown(ReadContext &ctx) {
     FieldType actual_field_type;
     actual_field_type.type_id = type_info->type_id;
     actual_field_type.nullable = false;
-    skip_field_value(ctx, actual_field_type, false);
+    skip_field_value(ctx, actual_field_type, RefMode::None);
     return;
   }
   }
@@ -440,13 +429,13 @@ void skip_union(ReadContext &ctx) {
   FieldType alt_field_type;
   alt_field_type.type_id = type_info->type_id;
   alt_field_type.nullable = false;
-  skip_field_value(ctx, alt_field_type, false);
+  skip_field_value(ctx, alt_field_type, RefMode::None);
 }
 
 void skip_field_value(ReadContext &ctx, const FieldType &field_type,
-                      bool read_ref_flag) {
+                      RefMode ref_mode) {
   // Read ref flag if needed
-  if (read_ref_flag) {
+  if (ref_mode != RefMode::None) {
     int8_t ref_flag = ctx.read_int8(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;

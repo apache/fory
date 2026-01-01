@@ -16,11 +16,11 @@
 // under the License.
 
 use super::util::{
-    classify_trait_object_field, compute_struct_version_hash, create_wrapper_types_arc,
-    create_wrapper_types_rc, extract_type_name, get_field_accessor, get_field_name,
-    get_filtered_source_fields_iter, get_primitive_writer_method, get_struct_name,
+    classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
+    determine_field_ref_mode, extract_type_name, gen_struct_version_hash_ts, get_field_accessor,
+    get_field_name, get_filtered_source_fields_iter, get_primitive_writer_method, get_struct_name,
     get_type_id_by_type_ast, is_debug_enabled, is_direct_primitive_numeric_type,
-    should_skip_type_info_for_field, skip_ref_flag, StructField,
+    should_skip_type_info_for_field, FieldRefMode, StructField,
 };
 use crate::util::SourceField;
 use fory_core::types::TypeId;
@@ -140,31 +140,37 @@ fn gen_write_field_impl(
     use_self: bool,
 ) -> TokenStream {
     let ty = &field.ty;
+    // Determine RefMode from field meta (respects #[fory(ref=false)] attribute)
+    let ref_mode = determine_field_ref_mode(field);
     let base = match classify_trait_object_field(ty) {
         StructField::BoxDyn => {
+            // Box<dyn Trait> - respect field meta for ref mode
             quote! {
-                <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, true, false)?;
+                <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, #ref_mode, true, false)?;
             }
         }
         StructField::RcDyn(trait_name) => {
+            // Rc<dyn Trait> - respect field meta for ref mode
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
                 let wrapper = #wrapper_ty::from(#value_ts.clone() as std::rc::Rc<dyn #trait_ident>);
-                <#wrapper_ty as fory_core::Serializer>::fory_write(&wrapper, context, true, true, false)?;
+                <#wrapper_ty as fory_core::Serializer>::fory_write(&wrapper, context, #ref_mode, true, false)?;
             }
         }
         StructField::ArcDyn(trait_name) => {
+            // Arc<dyn Trait> - respect field meta for ref mode
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
             quote! {
                 let wrapper = #wrapper_ty::from(#value_ts.clone() as std::sync::Arc<dyn #trait_ident>);
-                <#wrapper_ty as fory_core::Serializer>::fory_write(&wrapper, context, true, true, false)?;
+                <#wrapper_ty as fory_core::Serializer>::fory_write(&wrapper, context, #ref_mode, true, false)?;
             }
         }
         StructField::VecRc(trait_name) => {
+            // Vec<Rc<dyn Trait>> - respect field meta for ref mode
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -172,10 +178,11 @@ fn gen_write_field_impl(
                 let wrapper_vec: Vec<#wrapper_ty> = #value_ts.iter()
                     .map(|item| #wrapper_ty::from(item.clone() as std::rc::Rc<dyn #trait_ident>))
                     .collect();
-                <Vec<#wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_vec, context, true, false, true)?;
+                <Vec<#wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_vec, context, #ref_mode, false, true)?;
             }
         }
         StructField::VecArc(trait_name) => {
+            // Vec<Arc<dyn Trait>> - respect field meta for ref mode
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -183,38 +190,35 @@ fn gen_write_field_impl(
                 let wrapper_vec: Vec<#wrapper_ty> = #value_ts.iter()
                     .map(|item| #wrapper_ty::from(item.clone() as std::sync::Arc<dyn #trait_ident>))
                     .collect();
-                <Vec<#wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_vec, context, true, false, true)?;
+                <Vec<#wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_vec, context, #ref_mode, false, true)?;
             }
         }
         StructField::VecBox(_) => {
-            // Vec<Box<dyn Any>> uses standard Vec serialization with polymorphic elements
-            // Respect skip_ref_flag for xlang nullable=false default
-            let skip_ref_flag = skip_ref_flag(ty);
-            if skip_ref_flag {
+            // Vec<Box<dyn Any>> - respect field meta for ref mode
+            if ref_mode == FieldRefMode::None {
                 quote! {
                     <#ty as fory_core::Serializer>::fory_write_data_generic(&#value_ts, context, true)?;
                 }
             } else {
                 quote! {
-                    <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, false, true)?;
+                    <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, #ref_mode, false, true)?;
                 }
             }
         }
         StructField::HashMapBox(_, _) => {
-            // HashMap<K, Box<dyn Any>> uses standard HashMap serialization with polymorphic values
-            // Respect skip_ref_flag for xlang nullable=false default
-            let skip_ref_flag = skip_ref_flag(ty);
-            if skip_ref_flag {
+            // HashMap<K, Box<dyn Any>> - respect field meta for ref mode
+            if ref_mode == FieldRefMode::None {
                 quote! {
                     <#ty as fory_core::Serializer>::fory_write_data_generic(&#value_ts, context, true)?;
                 }
             } else {
                 quote! {
-                    <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, false, true)?;
+                    <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, #ref_mode, false, true)?;
                 }
             }
         }
         StructField::HashMapRc(key_ty, trait_name) => {
+            // HashMap<K, Rc<dyn Trait>> - respect field meta for ref mode
             let types = create_wrapper_types_rc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -222,10 +226,11 @@ fn gen_write_field_impl(
                 let wrapper_map: std::collections::HashMap<#key_ty, #wrapper_ty> = #value_ts.iter()
                     .map(|(k, v)| (k.clone(), #wrapper_ty::from(v.clone() as std::rc::Rc<dyn #trait_ident>)))
                     .collect();
-                <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_map, context, true, false, true)?;
+                <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_map, context, #ref_mode, false, true)?;
             }
         }
         StructField::HashMapArc(key_ty, trait_name) => {
+            // HashMap<K, Arc<dyn Trait>> - respect field meta for ref mode
             let types = create_wrapper_types_arc(&trait_name);
             let wrapper_ty = types.wrapper_ty;
             let trait_ident = types.trait_ident;
@@ -233,16 +238,16 @@ fn gen_write_field_impl(
                 let wrapper_map: std::collections::HashMap<#key_ty, #wrapper_ty> = #value_ts.iter()
                     .map(|(k, v)| (k.clone(), #wrapper_ty::from(v.clone() as std::sync::Arc<dyn #trait_ident>)))
                     .collect();
-                <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_map, context, true, false, true)?;
+                <std::collections::HashMap<#key_ty, #wrapper_ty> as fory_core::Serializer>::fory_write(&wrapper_map, context, #ref_mode, false, true)?;
             }
         }
         StructField::Forward => {
+            // Forward types - respect field meta for ref mode
             quote! {
-                <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, true, false)?;
+                <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, #ref_mode, true, false)?;
             }
         }
         _ => {
-            let skip_ref_flag = skip_ref_flag(ty);
             let skip_type_info = should_skip_type_info_for_field(ty);
             let type_id = get_type_id_by_type_ast(ty);
 
@@ -266,16 +271,14 @@ fn gen_write_field_impl(
                 || type_id == TypeId::SET as u32
                 || type_id == TypeId::MAP as u32
             {
-                // For collections: respect skip_ref_flag for xlang nullable=false default
-                // Use has_generics=true since element type is known at compile time from struct field type
-                if skip_ref_flag {
+                // For collections - respect field meta for ref mode
+                if ref_mode == FieldRefMode::None {
                     quote! {
                         <#ty as fory_core::Serializer>::fory_write_data_generic(&#value_ts, context, true)?;
                     }
                 } else {
-                    // Option<Collection> - write ref flag but no type info, has_generics for element type
                     quote! {
-                        <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, false, true)?;
+                        <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, #ref_mode, false, true)?;
                     }
                 }
             } else {
@@ -283,24 +286,19 @@ fn gen_write_field_impl(
                 // For custom types that we can't determine at compile time (like enums),
                 // we need to check at runtime whether to skip type info
                 if skip_type_info {
-                    if skip_ref_flag {
+                    if ref_mode == FieldRefMode::None {
                         quote! {
                             <#ty as fory_core::Serializer>::fory_write_data(&#value_ts, context)?;
                         }
                     } else {
                         quote! {
-                            <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, false, false)?;
+                            <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, #ref_mode, false, false)?;
                         }
-                    }
-                } else if skip_ref_flag {
-                    quote! {
-                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
-                        <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, false, need_type_info, false)?;
                     }
                 } else {
                     quote! {
                         let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
-                        <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, true, need_type_info, false)?;
+                        <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, #ref_mode, need_type_info, false)?;
                     }
                 }
             }
@@ -337,11 +335,11 @@ pub fn gen_write_data(source_fields: &[SourceField<'_>]) -> TokenStream {
         .map(|sf| gen_write_field_with_index(sf.field, sf.original_index, true))
         .collect();
 
-    let version_hash = compute_struct_version_hash(&fields);
+    let version_hash_ts = gen_struct_version_hash_ts(&fields);
     quote! {
-        // Write version hash when class version checking is enabled
         if context.is_check_struct_version() {
-            context.writer.write_i32(#version_hash);
+            let version_hash: i32 = #version_hash_ts;
+            context.writer.write_i32(version_hash);
         }
         #(#write_fields_ts)*
         Ok(())
@@ -350,6 +348,6 @@ pub fn gen_write_data(source_fields: &[SourceField<'_>]) -> TokenStream {
 
 pub fn gen_write() -> TokenStream {
     quote! {
-        fory_core::serializer::struct_::write::<Self>(self, context, write_ref_info, write_type_info)
+        fory_core::serializer::struct_::write::<Self>(self, context, ref_mode, write_type_info)
     }
 }

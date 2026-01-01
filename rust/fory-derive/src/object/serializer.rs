@@ -89,7 +89,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
             let variant_meta_types =
                 derive_enum::gen_all_variant_meta_types_with_enum_name(name, s);
             (
-                derive_enum::gen_actual_type_id(),
+                derive_enum::gen_actual_type_id(s),
                 quote! { &[] },
                 derive_enum::gen_field_fields_info(s),
                 derive_enum::gen_variants_fields_info(name, s),
@@ -134,13 +134,13 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
         syn::Data::Enum(e) => (
             derive_enum::gen_write(e),
             derive_enum::gen_write_data(e),
-            derive_enum::gen_write_type_info(),
+            derive_enum::gen_write_type_info(e),
             derive_enum::gen_read(e),
             derive_enum::gen_read_with_type_info(e),
             derive_enum::gen_read_data(e),
-            derive_enum::gen_read_type_info(),
+            derive_enum::gen_read_type_info(e),
             derive_enum::gen_reserved_space(),
-            quote! { fory_core::TypeId::ENUM },
+            derive_enum::gen_static_type_id(e),
         ),
         syn::Data::Union(_) => {
             panic!("Union is not supported")
@@ -165,7 +165,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
             }
 
             #[inline(always)]
-            fn fory_actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) -> u32 {
+            fn fory_actual_type_id(type_id: u32, register_by_name: bool, compatible: bool, xlang: bool) -> u32 {
                 #actual_type_id_ts
             }
 
@@ -218,7 +218,7 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
             }
 
             #[inline(always)]
-            fn fory_write(&self, context: &mut fory_core::resolver::context::WriteContext, write_ref_info: bool, write_type_info: bool, _: bool) -> Result<(), fory_core::error::Error> {
+            fn fory_write(&self, context: &mut fory_core::resolver::context::WriteContext, ref_mode: fory_core::RefMode, write_type_info: bool, _: bool) -> Result<(), fory_core::error::Error> {
                 #write_ts
             }
 
@@ -233,12 +233,12 @@ pub fn derive_serializer(ast: &syn::DeriveInput, attrs: ForyAttrs) -> TokenStrea
             }
 
             #[inline(always)]
-            fn fory_read(context: &mut fory_core::resolver::context::ReadContext, read_ref_info: bool, read_type_info: bool) -> Result<Self, fory_core::error::Error> {
+            fn fory_read(context: &mut fory_core::resolver::context::ReadContext, ref_mode: fory_core::RefMode, read_type_info: bool) -> Result<Self, fory_core::error::Error> {
                 #read_ts
             }
 
             #[inline(always)]
-            fn fory_read_with_type_info(context: &mut fory_core::resolver::context::ReadContext, read_ref_info: bool, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::error::Error> {
+            fn fory_read_with_type_info(context: &mut fory_core::resolver::context::ReadContext, ref_mode: fory_core::RefMode, type_info: std::rc::Rc<fory_core::TypeInfo>) -> Result<Self, fory_core::error::Error> {
                 #read_with_type_info_ts
             }
 

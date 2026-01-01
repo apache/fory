@@ -36,7 +36,7 @@ use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::TypeId;
+use crate::types::{RefMode, TypeId};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -48,7 +48,7 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
     #[inline(always)]
     fn fory_read(
         context: &mut ReadContext,
-        read_ref_info: bool,
+        ref_mode: RefMode,
         read_type_info: bool,
     ) -> Result<Self, Error>
     where
@@ -56,7 +56,7 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
     {
         Ok(RefCell::new(T::fory_read(
             context,
-            read_ref_info,
+            ref_mode,
             read_type_info,
         )?))
     }
@@ -64,16 +64,14 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
     #[inline(always)]
     fn fory_read_with_type_info(
         context: &mut ReadContext,
-        read_ref_info: bool,
+        ref_mode: RefMode,
         type_info: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
     {
         Ok(RefCell::new(T::fory_read_with_type_info(
-            context,
-            read_ref_info,
-            type_info,
+            context, ref_mode, type_info,
         )?))
     }
 
@@ -91,7 +89,7 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
     fn fory_write(
         &self,
         context: &mut WriteContext,
-        write_ref_info: bool,
+        ref_mode: RefMode,
         write_type_info: bool,
         has_generics: bool,
     ) -> Result<(), Error> {
@@ -100,7 +98,7 @@ impl<T: Serializer + ForyDefault> Serializer for RefCell<T> {
         T::fory_write(
             &*self.borrow(),
             context,
-            write_ref_info,
+            ref_mode,
             write_type_info,
             has_generics,
         )

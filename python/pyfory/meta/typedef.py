@@ -83,11 +83,15 @@ class TypeDef:
         return [field_info.name for field_info in self.fields]
 
     def _resolve_field_names_from_tag_ids(self):
-        """Resolve actual field names from TAG_ID encoding.
+        """Resolve actual field names from TAG_ID encoding or wire field names.
 
         When TAG_ID encoding is used, field names in the TypeDef are placeholders like "__tag_N__".
         This method looks up the registered class's field metadata to find the actual field names
         that correspond to each tag_id.
+
+        For field name encoding (non-TAG_ID), the wire field name may be in snake_case
+        (Java's xlang convention) while the Python class may use either snake_case or camelCase.
+        This method tries to match the wire name against the Python class fields.
 
         Returns:
             List of resolved field names (same order as self.fields)
@@ -97,8 +101,10 @@ class TypeDef:
 
         # Build tag_id -> actual field name mapping from the class
         tag_id_to_field_name = {}
+        class_field_names = set()
         if dataclasses.is_dataclass(self.cls):
             for dc_field in dataclasses.fields(self.cls):
+                class_field_names.add(dc_field.name)
                 meta = extract_field_meta(dc_field)
                 if meta is not None and meta.id >= 0:
                     tag_id_to_field_name[meta.id] = dc_field.name
@@ -110,8 +116,19 @@ class TypeDef:
                 # TAG_ID encoding: use the actual field name from the class
                 resolved_names.append(tag_id_to_field_name[field_info.tag_id])
             else:
-                # Field name encoding or unknown tag_id: use the name as-is
-                resolved_names.append(field_info.name)
+                # Field name encoding: try to match with class fields
+                wire_name = field_info.name
+                if wire_name in class_field_names:
+                    # Wire name matches class field directly (e.g., snake_case or camelCase)
+                    resolved_names.append(wire_name)
+                else:
+                    # Try converting snake_case to camelCase
+                    camel_name = _snake_to_camel(wire_name)
+                    if camel_name in class_field_names:
+                        resolved_names.append(camel_name)
+                    else:
+                        # Fallback: use the wire name as-is
+                        resolved_names.append(wire_name)
         return resolved_names
 
     def create_serializer(self, resolver):
@@ -149,6 +166,23 @@ class TypeDef:
 
     def __repr__(self):
         return f"TypeDef(namespace={self.namespace}, typename={self.typename}, cls={self.cls}, type_id={self.type_id}, fields={self.fields}, is_compressed={self.is_compressed})"
+
+
+def _snake_to_camel(s: str) -> str:
+    """Convert snake_case to camelCase.
+
+    This reverses Java's lowerCamelToLowerUnderscore conversion:
+    - new_object -> newObject
+    - old_object -> oldObject
+    - my_field_name -> myFieldName
+
+    If there are no underscores, the string is returned unchanged.
+    """
+    if "_" not in s:
+        return s
+    parts = s.split("_")
+    # First part stays lowercase, rest are capitalized
+    return parts[0] + "".join(part.capitalize() for part in parts[1:])
 
 
 class FieldInfo:

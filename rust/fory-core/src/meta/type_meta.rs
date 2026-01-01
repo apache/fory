@@ -26,6 +26,7 @@ use crate::types::{
     TypeId, COMPATIBLE_STRUCT, ENUM, EXT, NAMED_COMPATIBLE_STRUCT, NAMED_ENUM, NAMED_EXT,
     NAMED_STRUCT, PRIMITIVE_TYPES, STRUCT, UNKNOWN,
 };
+use crate::util::to_snake_case;
 
 /// Normalizes a type ID for comparison purposes in cross-language schema evolution.
 /// This treats all struct variants (STRUCT, COMPATIBLE_STRUCT, NAMED_STRUCT,
@@ -766,7 +767,10 @@ impl TypeMeta {
                 field_index_by_id.get(&field.field_id).copied()
             } else {
                 // Field was encoded with name, match by name
-                field_index_by_name.get(&field.field_name).copied()
+                // Convert incoming field name to snake_case for cross-language compatibility
+                // (Java uses camelCase, Rust uses snake_case)
+                let snake_case_name = to_snake_case(&field.field_name);
+                field_index_by_name.get(&snake_case_name).copied()
             };
 
             match local_match {

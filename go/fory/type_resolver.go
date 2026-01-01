@@ -330,7 +330,7 @@ func (r *TypeResolver) initialize() {
 		{stringInt64MapType, MAP, stringInt64MapSerializer{}},
 		{stringIntMapType, MAP, stringIntMapSerializer{}},
 		{stringFloat64MapType, MAP, stringFloat64MapSerializer{}},
-		{stringBoolMapType, MAP, stringBoolMapSerializer{}},
+		{stringBoolMapType, SET, setSerializer{}}, // map[T]bool represents a Set in Go
 		{int32Int32MapType, MAP, int32Int32MapSerializer{}},
 		{int64Int64MapType, MAP, int64Int64MapSerializer{}},
 		{intIntMapType, MAP, intIntMapSerializer{}},
@@ -1487,6 +1487,17 @@ func (r *TypeResolver) GetSliceSerializer(sliceType reflect.Type) (Serializer, e
 		return nil, err
 	}
 	return newSliceConcreteValueSerializer(sliceType, elemSerializer)
+}
+
+// GetSetSerializer returns the setSerializer for a map[T]bool type (used to represent sets in Go).
+func (r *TypeResolver) GetSetSerializer(setType reflect.Type) (Serializer, error) {
+	if setType.Kind() != reflect.Map {
+		return nil, fmt.Errorf("expected map type but got %s", setType.Kind())
+	}
+	if setType.Elem().Kind() != reflect.Bool {
+		return nil, fmt.Errorf("expected map[T]bool for set but got map[%s]%s", setType.Key(), setType.Elem())
+	}
+	return setSerializer{}, nil
 }
 
 // GetArraySerializer returns the appropriate serializer for an array type.

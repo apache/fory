@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "fory/serialization/ref_mode.h"
 #include "fory/util/error.h"
 #include "fory/util/result.h"
 
@@ -53,9 +54,9 @@ class FieldInfo;
 /// functions.
 struct Harness {
   using WriteFn = void (*)(const void *value, WriteContext &ctx,
-                           bool write_ref_info, bool write_type_info,
+                           RefMode ref_mode, bool write_type_info,
                            bool has_generics);
-  using ReadFn = void *(*)(ReadContext &ctx, bool read_ref_info,
+  using ReadFn = void *(*)(ReadContext &ctx, RefMode ref_mode,
                            bool read_type_info);
   using WriteDataFn = void (*)(const void *value, WriteContext &ctx,
                                bool has_generics);

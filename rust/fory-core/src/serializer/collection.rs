@@ -20,7 +20,7 @@ use crate::error::Error;
 use crate::resolver::context::ReadContext;
 use crate::resolver::context::WriteContext;
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{need_to_write_type_for_field, RefFlag, PRIMITIVE_ARRAY_TYPES};
+use crate::types::{need_to_write_type_for_field, RefFlag, RefMode, PRIMITIVE_ARRAY_TYPES};
 
 const TRACKING_REF: u8 = 0b1;
 
@@ -170,43 +170,32 @@ where
         }
     }
     // Write elements data
+    // Compute RefMode from flags
+    let elem_ref_mode = if elem_is_shared_ref {
+        RefMode::Tracking
+    } else if has_null {
+        RefMode::NullOnly
+    } else {
+        RefMode::None
+    };
+
     if is_same_type {
         // All elements are same type
-        if !has_null {
-            // No null elements
-            if elem_is_shared_ref {
-                for item in iter {
-                    item.fory_write(context, true, false, has_generics)?;
-                }
-            } else {
-                for item in iter {
-                    item.fory_write_data_generic(context, has_generics)?;
-                }
+        if elem_ref_mode == RefMode::None {
+            // No null elements, no tracking
+            for item in iter {
+                item.fory_write_data_generic(context, has_generics)?;
             }
         } else {
-            // Has null elements
+            // Has null or tracking
             for item in iter {
-                item.fory_write(context, true, false, has_generics)?;
+                item.fory_write(context, elem_ref_mode, false, has_generics)?;
             }
         }
     } else {
         // Different types (polymorphic elements with different types)
-        if !has_null {
-            // No null elements
-            if elem_is_shared_ref {
-                for item in iter {
-                    item.fory_write(context, true, true, has_generics)?;
-                }
-            } else {
-                for item in iter {
-                    item.fory_write(context, false, true, has_generics)?;
-                }
-            }
-        } else {
-            // Has null elements
-            for item in iter {
-                item.fory_write(context, true, true, has_generics)?;
-            }
+        for item in iter {
+            item.fory_write(context, elem_ref_mode, true, has_generics)?;
         }
     }
 
@@ -285,6 +274,16 @@ where
     let is_same_type = (header & IS_SAME_TYPE) != 0;
     let has_null = (header & HAS_NULL) != 0;
     let is_declared = (header & DECL_ELEMENT_TYPE) != 0;
+
+    // Compute RefMode from flags
+    let elem_ref_mode = if is_track_ref {
+        RefMode::Tracking
+    } else if has_null {
+        RefMode::NullOnly
+    } else {
+        RefMode::None
+    };
+
     // Read elements
     if is_same_type {
         let type_info = if !is_declared {
@@ -294,31 +293,20 @@ where
             context.get_type_resolver().get_type_info(&rs_type_id)?
         };
         // All elements are same type
-        if is_track_ref {
+        if elem_ref_mode == RefMode::None {
+            // No null elements, no tracking
             (0..len)
-                .map(|_| T::fory_read_with_type_info(context, true, type_info.clone()))
-                .collect::<Result<C, Error>>()
-        } else if !has_null {
-            // No null elements
-            (0..len)
-                .map(|_| T::fory_read_with_type_info(context, false, type_info.clone()))
+                .map(|_| T::fory_read_with_type_info(context, RefMode::None, type_info.clone()))
                 .collect::<Result<C, Error>>()
         } else {
-            // Has null elements
+            // Has null or tracking - use ref mode
             (0..len)
-                .map(|_| {
-                    let flag = context.reader.read_i8()?;
-                    if flag == RefFlag::Null as i8 {
-                        Ok(T::fory_default())
-                    } else {
-                        T::fory_read_with_type_info(context, false, type_info.clone())
-                    }
-                })
+                .map(|_| T::fory_read_with_type_info(context, elem_ref_mode, type_info.clone()))
                 .collect::<Result<C, Error>>()
         }
     } else {
         (0..len)
-            .map(|_| T::fory_read(context, is_track_ref, true))
+            .map(|_| T::fory_read(context, elem_ref_mode, true))
             .collect::<Result<C, Error>>()
     }
 }

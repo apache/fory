@@ -624,7 +624,7 @@ private:
     }
 
     // Top-level serialization: YES ref flags, yes type info
-    Serializer<T>::write(obj, *write_ctx_, true, true);
+    Serializer<T>::write(obj, *write_ctx_, RefMode::NullOnly, true);
     // Check for errors at serialization boundary
     if (FORY_PREDICT_FALSE(write_ctx_->has_error())) {
       return Unexpected(write_ctx_->take_error());
@@ -655,7 +655,7 @@ private:
     }
 
     // Top-level deserialization: YES ref flags, yes type info
-    T result = Serializer<T>::read(*read_ctx_, true, true);
+    T result = Serializer<T>::read(*read_ctx_, RefMode::NullOnly, true);
     // Check for errors at deserialization boundary
     if (FORY_PREDICT_FALSE(read_ctx_->has_error())) {
       return Unexpected(read_ctx_->take_error());

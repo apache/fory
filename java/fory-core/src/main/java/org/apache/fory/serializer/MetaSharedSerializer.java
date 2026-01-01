@@ -208,17 +208,16 @@ public class MetaSharedSerializer<T> extends AbstractObjectSerializer<T> {
         boolean needRead = true;
         if (fieldInfo.isPrimitive) {
           if (nullable) {
-            needRead =
-                readPrimitiveNullableFieldValueFailed(fory, buffer, obj, fieldAccessor, classId);
+            needRead = readPrimitiveNullableFieldValue(fory, buffer, obj, fieldAccessor, classId);
           } else {
-            needRead = readPrimitiveFieldValueFailed(fory, buffer, obj, fieldAccessor, classId);
+            needRead = readPrimitiveFieldValue(fory, buffer, obj, fieldAccessor, classId);
           }
         }
         if (needRead
             && (nullable
-                ? AbstractObjectSerializer.readBasicNullableObjectFieldValueFailed(
+                ? AbstractObjectSerializer.readBasicNullableObjectFieldValue(
                     fory, buffer, obj, fieldAccessor, classId)
-                : AbstractObjectSerializer.readBasicObjectFieldValueFailed(
+                : AbstractObjectSerializer.readBasicObjectFieldValue(
                     fory, buffer, obj, fieldAccessor, classId))) {
           assert fieldInfo.classInfo != null;
           Object fieldValue =

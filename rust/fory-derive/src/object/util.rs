@@ -20,11 +20,10 @@ use crate::util::{
     CollectionTraitInfo,
 };
 use fory_core::types::{TypeId, PRIMITIVE_ARRAY_TYPE_MAP};
-use fory_core::util::ENABLE_FORY_DEBUG_OUTPUT;
+use fory_core::util::to_snake_case;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote, ToTokens};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt;
 use syn::{Field, GenericArgument, Index, PathArguments, Type};
 
@@ -984,7 +983,8 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
         compress_a
             .cmp(&compress_b)
             .then_with(|| size_b.cmp(&size_a))
-            .then_with(|| a.2.cmp(&b.2))
+            // Use descending type_id order to match Java's COMPARATOR_BY_PRIMITIVE_TYPE_ID
+            .then_with(|| b.2.cmp(&a.2))
             .then_with(|| a.0.cmp(&b.0))
     }
 
@@ -1076,159 +1076,161 @@ pub(super) fn get_sort_fields_ts(fields: &[&Field]) -> TokenStream {
     }
 }
 
-fn to_snake_case(name: &str) -> String {
-    if name
-        .chars()
-        .all(|c| c.is_lowercase() || c.is_ascii_digit() || c == '_')
-    {
-        return name.to_string();
-    }
-
-    let mut result = String::with_capacity(name.len() * 2);
-    let mut chars = name.chars().peekable();
-    let mut prev: Option<char> = None;
-
-    while let Some(ch) = chars.next() {
-        if ch == '_' {
-            result.push('_');
-            prev = Some(ch);
-            continue;
-        }
-
-        if ch.is_uppercase() {
-            if let Some(prev_ch) = prev {
-                let need_underscore = (prev_ch.is_lowercase() || prev_ch.is_ascii_digit())
-                    || (prev_ch.is_uppercase()
-                        && chars
-                            .peek()
-                            .map(|next| next.is_lowercase())
-                            .unwrap_or(false));
-                if need_underscore && !result.ends_with('_') {
-                    result.push('_');
-                }
-            }
-            result.push(ch.to_ascii_lowercase());
-        } else {
-            result.push(ch);
-        }
-        prev = Some(ch);
-    }
-
-    result
+/// Field metadata for fingerprint computation.
+struct FieldFingerprintInfo {
+    /// Field name (snake_case) or field ID as string
+    name_or_id: String,
+    /// Whether the field has explicit nullable=true/false set via #[fory(nullable)]
+    explicit_nullable: Option<bool>,
+    /// Whether reference tracking is enabled
+    ref_tracking: bool,
+    /// The type ID (UNKNOWN for user-defined types including enums/unions)
+    type_id: u32,
+    /// Whether the field type is Option<T>
+    is_option_type: bool,
 }
 
-/// Computes the fingerprint string for a struct type used in schema versioning.
+/// Computes struct fingerprint string at compile time (during proc-macro execution).
 ///
-/// **Fingerprint Format:**
-///
-/// Each field contributes: `<field_name_or_id>,<type_id>,<ref>,<nullable>;`
-///
-/// Fields are sorted by field name (snake_case) lexicographically.
-///
-/// **Field Components:**
-/// - `field_name_or_id`: snake_case field name, or tag ID if `#[fory(id = N)]` is set
-/// - `type_id`: Fory TypeId as decimal string (e.g., "4" for INT32)
-/// - `ref`: "1" if reference tracking enabled, "0" otherwise
-/// - `nullable`: "1" if null flag is written, "0" otherwise
-///
-/// **Example fingerprint:** `"age,4,0,0;name,12,0,1;"`
-///
-/// This format is consistent across Go, Java, Rust, and C++ implementations.
-pub(crate) fn compute_struct_fingerprint(fields: &[&Field]) -> String {
+/// **Fingerprint Format:** `<field_name_or_id>,<type_id>,<ref>,<nullable>;`
+/// Fields are sorted by name lexicographically.
+fn compute_struct_fingerprint(fields: &[&Field]) -> String {
     use super::field_meta::{classify_field_type, parse_field_meta};
 
-    // (name, type_id, ref_tracking, nullable, field_id)
-    let mut field_info_map: HashMap<String, (u32, bool, bool, i32)> =
-        HashMap::with_capacity(fields.len());
-    for (idx, field) in fields.iter().enumerate() {
-        let name = get_field_name(field, idx);
-        let type_id = get_type_id_by_type_ast(&field.ty);
+    let mut field_infos: Vec<FieldFingerprintInfo> = Vec::with_capacity(fields.len());
 
-        // Parse field metadata for nullable/ref tracking
+    for (idx, field) in fields.iter().enumerate() {
         let meta = parse_field_meta(field).unwrap_or_default();
         if meta.skip {
             continue;
         }
 
-        let type_class = classify_field_type(&field.ty);
-        let nullable = meta.effective_nullable(type_class);
-        let ref_tracking = meta.effective_ref_tracking(type_class);
+        let name = get_field_name(field, idx);
         let field_id = meta.effective_id();
+        let name_or_id = if field_id >= 0 {
+            field_id.to_string()
+        } else {
+            to_snake_case(&name)
+        };
 
-        field_info_map.insert(name, (type_id, ref_tracking, nullable, field_id));
+        let type_class = classify_field_type(&field.ty);
+        let ref_tracking = meta.effective_ref_tracking(type_class);
+        let explicit_nullable = meta.nullable;
+
+        // Get compile-time TypeId (UNKNOWN for user-defined types including enums/unions)
+        let type_id = get_type_id_by_type_ast(&field.ty);
+
+        // Check if field type is Option<T>
+        let ty_str: String = field
+            .ty
+            .to_token_stream()
+            .to_string()
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        let is_option_type = ty_str.starts_with("Option<");
+
+        field_infos.push(FieldFingerprintInfo {
+            name_or_id,
+            explicit_nullable,
+            ref_tracking,
+            type_id,
+            is_option_type,
+        });
     }
 
-    // Sort field names lexicographically for fingerprint computation
-    // This matches Java/Go behavior where fingerprint fields are sorted by name,
-    // not by the type-category-based ordering used for serialization
-    let mut sorted_names: Vec<String> = field_info_map.keys().cloned().collect();
-    sorted_names.sort();
+    // Sort field infos by name_or_id lexicographically (matches Java/C++ behavior)
+    field_infos.sort_by(|a, b| a.name_or_id.cmp(&b.name_or_id));
 
+    // Build fingerprint string
     let mut fingerprint = String::new();
-    for name in sorted_names.iter() {
-        let (type_id, ref_tracking, nullable, field_id) = field_info_map
-            .get(name)
-            .expect("Field metadata missing during struct hash computation");
-
-        // Format: <field_name_or_id>,<type_id>,<ref>,<nullable>;
-        // If field has a tag ID >= 0, use that; otherwise use snake_case field name
-        if *field_id >= 0 {
-            fingerprint.push_str(&field_id.to_string());
-        } else {
-            fingerprint.push_str(&to_snake_case(name));
-        }
-        fingerprint.push(',');
-
-        let effective_type_id = if *type_id == TypeId::UNKNOWN as u32 {
-            TypeId::UNKNOWN as u32
-        } else {
-            *type_id
+    for info in &field_infos {
+        let ref_flag = if info.ref_tracking { "1" } else { "0" };
+        let nullable = match info.explicit_nullable {
+            Some(true) => true,
+            Some(false) => false,
+            None => info.is_option_type,
         };
+        let nullable_flag = if nullable { "1" } else { "0" };
+
+        // User-defined types (UNKNOWN) use 0 in fingerprint, matching Java behavior
+        let effective_type_id = if info.type_id == TypeId::UNKNOWN as u32 {
+            0
+        } else {
+            info.type_id
+        };
+
+        fingerprint.push_str(&info.name_or_id);
+        fingerprint.push(',');
         fingerprint.push_str(&effective_type_id.to_string());
         fingerprint.push(',');
-        fingerprint.push_str(if *ref_tracking { "1" } else { "0" });
+        fingerprint.push_str(ref_flag);
         fingerprint.push(',');
-        fingerprint.push_str(if *nullable { "1;" } else { "0;" });
+        fingerprint.push_str(nullable_flag);
+        fingerprint.push(';');
     }
 
     fingerprint
 }
 
-/// Computes the struct version hash from field metadata.
-///
-/// Uses `compute_struct_fingerprint` to build the fingerprint string,
-/// then hashes it with MurmurHash3_x64_128 using seed 47, and takes
-/// the low 32 bits as signed i32.
-///
-/// This provides the cross-language struct version ID used by class
-/// version checking, consistent with Go, Java, and C++ implementations.
-pub(crate) fn compute_struct_version_hash(fields: &[&Field]) -> i32 {
+/// Generates TokenStream for struct version hash (computed at compile time).
+pub(crate) fn gen_struct_version_hash_ts(fields: &[&Field]) -> TokenStream {
     let fingerprint = compute_struct_fingerprint(fields);
+    let (hash, _) = fory_core::meta::murmurhash3_x64_128(fingerprint.as_bytes(), 47);
+    let version_hash = (hash & 0xFFFF_FFFF) as i32;
 
-    let seed: u64 = 47;
-    let (hash, _) = fory_core::meta::murmurhash3_x64_128(fingerprint.as_bytes(), seed);
-    let version = (hash & 0xFFFF_FFFF) as u32;
-    let version = version as i32;
-
-    if ENABLE_FORY_DEBUG_OUTPUT {
-        if let Some(struct_name) = get_struct_name() {
-            println!(
-                "[fory-debug] struct {struct_name} version fingerprint=\"{fingerprint}\" hash={version}"
-            );
-        } else {
-            println!("[fory-debug] struct version fingerprint=\"{fingerprint}\" hash={version}");
+    quote! {
+        {
+            const VERSION_HASH: i32 = #version_hash;
+            if fory_core::util::ENABLE_FORY_DEBUG_OUTPUT {
+                println!(
+                    "[fory-debug] struct {} version fingerprint=\"{}\" hash={}",
+                    std::any::type_name::<Self>(),
+                    #fingerprint,
+                    VERSION_HASH
+                );
+            }
+            VERSION_HASH
         }
     }
-    version
 }
 
-pub(crate) fn skip_ref_flag(ty: &Type) -> bool {
-    // For xlang mode with nullable=false default:
-    // - All non-Option types skip the ref flag (nullable=false)
-    // - Only Option<T> writes a ref flag (nullable=true)
-    // This aligns with Java/Go/Python/C++ xlang behavior
-    let type_name = extract_type_name(ty);
-    type_name != "Option"
+/// Represents the determined RefMode for a field
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FieldRefMode {
+    None,
+    NullOnly,
+    Tracking,
+}
+
+impl ToTokens for FieldRefMode {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let ts = match self {
+            FieldRefMode::None => quote! { fory_core::RefMode::None },
+            FieldRefMode::NullOnly => quote! { fory_core::RefMode::NullOnly },
+            FieldRefMode::Tracking => quote! { fory_core::RefMode::Tracking },
+        };
+        tokens.extend(ts);
+    }
+}
+
+/// Determine the RefMode for a field based on field meta attributes and type.
+/// This respects `#[fory(ref=false)]` and `#[fory(nullable)]` attributes.
+pub(crate) fn determine_field_ref_mode(field: &syn::Field) -> FieldRefMode {
+    use super::field_meta::{classify_field_type, parse_field_meta};
+
+    let meta = parse_field_meta(field).unwrap_or_default();
+    let type_class = classify_field_type(&field.ty);
+    let nullable = meta.effective_nullable(type_class);
+    let ref_tracking = meta.effective_ref_tracking(type_class);
+
+    if ref_tracking {
+        FieldRefMode::Tracking
+    } else if nullable {
+        FieldRefMode::NullOnly
+    } else {
+        FieldRefMode::None
+    }
 }
 
 /// Determine whether to skip writing type info for a struct field based on its type.
@@ -1293,15 +1295,6 @@ pub(crate) fn is_default_value_variant(variant: &syn::Variant) -> bool {
 mod tests {
     use super::*;
     use syn::parse_quote;
-
-    #[test]
-    fn to_snake_case_handles_common_patterns() {
-        assert_eq!(to_snake_case("lowercase"), "lowercase");
-        assert_eq!(to_snake_case("camelCase"), "camel_case");
-        assert_eq!(to_snake_case("HTTPRequest"), "http_request");
-        assert_eq!(to_snake_case("withNumbers123"), "with_numbers123");
-        assert_eq!(to_snake_case("snake_case"), "snake_case");
-    }
 
     #[test]
     fn group_fields_normalizes_names_and_preserves_ordering() {

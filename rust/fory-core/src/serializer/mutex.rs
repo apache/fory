@@ -45,7 +45,7 @@ use crate::error::Error;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::TypeId;
+use crate::types::{RefMode, TypeId};
 use std::rc::Rc;
 use std::sync::Mutex;
 
@@ -58,20 +58,14 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     fn fory_write(
         &self,
         context: &mut WriteContext,
-        write_ref_data: bool,
+        ref_mode: RefMode,
         write_type_info: bool,
         has_generics: bool,
     ) -> Result<(), Error> {
         // Don't add ref tracking for Mutex itself, just delegate to inner type
         // The inner type will handle its own ref tracking
         let guard = self.lock().unwrap();
-        T::fory_write(
-            &*guard,
-            context,
-            write_ref_data,
-            write_type_info,
-            has_generics,
-        )
+        T::fory_write(&*guard, context, ref_mode, write_type_info, has_generics)
     }
 
     #[inline(always)]
@@ -104,32 +98,26 @@ impl<T: Serializer + ForyDefault> Serializer for Mutex<T> {
     #[inline(always)]
     fn fory_read(
         context: &mut ReadContext,
-        read_ref_info: bool,
+        ref_mode: RefMode,
         read_type_info: bool,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
     {
-        Ok(Mutex::new(T::fory_read(
-            context,
-            read_ref_info,
-            read_type_info,
-        )?))
+        Ok(Mutex::new(T::fory_read(context, ref_mode, read_type_info)?))
     }
 
     #[inline(always)]
     fn fory_read_with_type_info(
         context: &mut ReadContext,
-        read_ref_info: bool,
+        ref_mode: RefMode,
         type_info: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
     {
         Ok(Mutex::new(T::fory_read_with_type_info(
-            context,
-            read_ref_info,
-            type_info,
+            context, ref_mode, type_info,
         )?))
     }
 

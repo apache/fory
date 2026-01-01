@@ -178,7 +178,7 @@ class TypeResolver:
         "_internal_py_serializer_map",
     )
 
-    def __init__(self, fory, meta_share=False):
+    def __init__(self, fory, meta_share=False, meta_compressor=None):
         self.fory = fory
         self.metastring_resolver = fory.metastring_resolver
         self.language = fory.language
@@ -202,7 +202,7 @@ class TypeResolver:
         self._meta_shared_typeinfo = {}
         self.typename_encoder = MetaStringEncoder("$", "_")
         self.typename_decoder = MetaStringDecoder("$", "_")
-        self.meta_compressor = DeflaterMetaCompressor()
+        self.meta_compressor = meta_compressor if meta_compressor is not None else DeflaterMetaCompressor()
         self.meta_share = meta_share
         self._internal_py_serializer_map = {}
 

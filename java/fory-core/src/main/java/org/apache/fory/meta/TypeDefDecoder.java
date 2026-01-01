@@ -39,6 +39,7 @@ import org.apache.fory.meta.MetaString.Encoding;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.NonexistentClass;
+import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.Utils;
 
 /**
@@ -55,7 +56,7 @@ class TypeDefDecoder {
     byte header = buffer.readByte();
     int numFields = header & SMALL_NUM_FIELDS_THRESHOLD;
     if (numFields == SMALL_NUM_FIELDS_THRESHOLD) {
-      numFields += buffer.readVarUint32Small7() + SMALL_NUM_FIELDS_THRESHOLD;
+      numFields += buffer.readVarUint32Small7();
     }
     ClassSpec classSpec;
     if ((header & REGISTER_BY_NAME_FLAG) != 0) {
@@ -129,8 +130,10 @@ class TypeDefDecoder {
         fieldInfos.add(new FieldInfo(className, fieldName, fieldType, tagId));
       } else {
         Encoding encoding = fieldNameEncodings[encodingFlags];
-        String fieldName =
+        String wireFieldName =
             Encoders.FIELD_NAME_DECODER.decode(buffer.readBytes(fieldNameSize), encoding);
+        // Convert snake_case field names back to camelCase for Java field matching
+        String fieldName = StringUtils.lowerUnderscoreToLowerCamelCase(wireFieldName);
         fieldInfos.add(new FieldInfo(className, fieldName, fieldType));
       }
     }

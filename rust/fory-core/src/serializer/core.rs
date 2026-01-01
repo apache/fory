@@ -20,7 +20,7 @@ use crate::meta::FieldInfo;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::TypeInfo;
 use crate::serializer::{bool, struct_};
-use crate::types::{RefFlag, TypeId};
+use crate::types::{RefFlag, RefMode, TypeId};
 use crate::TypeResolver;
 use std::any::Any;
 use std::rc::Rc;
@@ -215,15 +215,18 @@ pub trait Serializer: 'static {
     ///
     /// # Parameters
     ///
-    /// * `write_ref_info` - When `true`, WRITES reference flag (null/not-null/ref). When `false`, SKIPS writing ref flag.
+    /// * `ref_mode` - Controls how reference flags are written:
+    ///   - `RefMode::None`: Skip writing ref flag entirely
+    ///   - `RefMode::NullOnly`: Write `NotNullValue` flag (null check only)
+    ///   - `RefMode::Tracking`: Write ref tracking flags (for Rc/Arc/Weak)
     /// * `write_type_info` - When `true`, WRITES type information. When `false`, SKIPS writing type info.
     /// * `has_generics` - Indicates if the type has generic parameters (used for collection meta).
     ///
-    /// # Default Implementation
+    /// # Default Implementation (Fast Path)
     ///
-    /// The default implementation handles standard non-nullable types:
+    /// The default implementation uses a fast path suitable for primitives, strings, and time types:
     ///
-    /// 1. If `write_ref_info` is true, writes `RefFlag::NotNullValue`
+    /// 1. If `ref_mode != RefMode::None`, writes `RefFlag::NotNullValue`
     /// 2. If `write_type_info` is true, calls [`fory_write_type_info`]
     /// 3. Calls [`fory_write_data_generic`] to write the actual data
     ///
@@ -231,17 +234,11 @@ pub trait Serializer: 'static {
     ///
     /// You should override this method for:
     ///
-    /// - **Option types**: Need to write `RefFlag::Null` for None values
-    /// - **Reference types** (Rc/Arc/Weak): Need custom reference handling
+    /// - **Option types**: Need to handle `None` with `RefFlag::Null`
+    /// - **Reference types** (Rc/Arc/Weak): Need full ref tracking with `RefWriter`
     /// - **Polymorphic types**: Need to write actual runtime type instead of static type
     ///
     /// For regular types (structs, primitives, collections), the default implementation is sufficient.
-    ///
-    /// # Implementation Notes
-    ///
-    /// - This method is implemented by Fory for all built-in types
-    /// - User types with custom serialization typically don't need to override this
-    /// - Focus on implementing [`fory_write_data`] instead
     ///
     /// [`fory_write_data`]: Serializer::fory_write_data
     /// [`fory_write_type_info`]: Serializer::fory_write_type_info
@@ -250,19 +247,18 @@ pub trait Serializer: 'static {
     fn fory_write(
         &self,
         context: &mut WriteContext,
-        write_ref_info: bool,
+        ref_mode: RefMode,
         write_type_info: bool,
         has_generics: bool,
     ) -> Result<(), Error>
     where
         Self: Sized,
     {
-        if write_ref_info {
-            // skip check option/pointer, the Serializer for such types will override `fory_write`.
+        // Fast path: single comparison for primitives/strings/time types
+        if ref_mode != RefMode::None {
             context.writer.write_i8(RefFlag::NotNullValue as i8);
         }
         if write_type_info {
-            // Serializer for dynamic types should override `fory_write` to write actual typeinfo.
             Self::fory_write_type_info(context)?;
         }
         self.fory_write_data_generic(context, has_generics)
@@ -395,7 +391,7 @@ pub trait Serializer: 'static {
     /// ## Struct with nested serializable types
     ///
     /// ```rust
-    /// use fory_core::{Serializer, ForyDefault};
+    /// use fory_core::{Serializer, ForyDefault, RefMode};
     /// use fory_core::resolver::context::WriteContext;
     /// use fory_core::error::Error;
     /// use std::any::Any;
@@ -419,9 +415,9 @@ pub trait Serializer: 'static {
     /// impl Serializer for Person {
     ///     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
     ///         // Write nested types using their Serializer implementations
-    ///         self.name.fory_write(context, false, false, false)?;
+    ///         self.name.fory_write(context, RefMode::None, false, false)?;
     ///         context.writer.write_u32(self.age);
-    ///         self.scores.fory_write(context, false, false, true)?; // has_generics=true for Vec
+    ///         self.scores.fory_write(context, RefMode::None, false, true)?; // has_generics=true for Vec
     ///         Ok(())
     ///     }
     ///
@@ -429,9 +425,9 @@ pub trait Serializer: 'static {
     ///     where
     ///         Self: Sized + fory_core::ForyDefault,
     ///     {
-    ///         let name = String::fory_read(context, false, false)?;
+    ///         let name = String::fory_read(context, RefMode::None, false)?;
     ///         let age = context.reader.read_u32()?;
-    ///         let scores = Vec::<i32>::fory_read(context, false, false)?;
+    ///         let scores = Vec::<i32>::fory_read(context, RefMode::None, false)?;
     ///         Ok(Person { name, age, scores })
     ///     }
     ///
@@ -534,7 +530,10 @@ pub trait Serializer: 'static {
     ///
     /// # Parameters
     ///
-    /// * `read_ref_info` - When `true`, READS reference flag from buffer. When `false`, SKIPS reading ref flag.
+    /// * `ref_mode` - Controls how reference flags are read:
+    ///   - `RefMode::None`: Skip reading ref flag entirely
+    ///   - `RefMode::NullOnly`: Read flag, return default on null
+    ///   - `RefMode::Tracking`: Full ref tracking (for Rc/Arc/Weak)
     /// * `read_type_info` - When `true`, READS type information from buffer. When `false`, SKIPS reading type info.
     ///
     /// # Type Requirements
@@ -544,14 +543,13 @@ pub trait Serializer: 'static {
     /// - **Sized**: Need to construct concrete instances
     /// - **ForyDefault**: Need to create default/null values for optional types
     ///
-    /// # Default Implementation
+    /// # Default Implementation (Fast Path)
     ///
-    /// The default implementation handles standard non-nullable types:
+    /// The default implementation uses a fast path suitable for primitives, strings, and time types:
     ///
-    /// 1. If `read_ref_info` is true:
+    /// 1. If `ref_mode != RefMode::None`:
     ///    - Reads ref flag from buffer
     ///    - Returns `ForyDefault::fory_default()` for null values
-    ///    - Handles ref tracking for shared references
     /// 2. If `read_type_info` is true, calls [`fory_read_type_info`]
     /// 3. Calls [`fory_read_data`] to read the actual data
     ///
@@ -560,18 +558,10 @@ pub trait Serializer: 'static {
     /// Override this method for:
     ///
     /// - **Option types**: Need custom null handling logic
-    /// - **Reference types** (Rc/Arc/Weak): Need custom ref tracking
+    /// - **Reference types** (Rc/Arc/Weak): Need custom ref tracking with RefReader
     /// - **Polymorphic types**: Need to dispatch based on actual runtime type
     ///
     /// For regular types (structs, primitives, collections), the default implementation is sufficient.
-    ///
-    /// # Implementation Notes
-    ///
-    /// - Unlike [`fory_write`], this doesn't need `has_generics` parameter
-    /// - Generic metadata is already in the buffer and parsed during read
-    /// - Implemented by Fory for all built-in types
-    /// - User types with custom serialization typically don't need to override this
-    /// - Focus on implementing [`fory_read_data`] instead
     ///
     /// [`fory_read_data`]: Serializer::fory_read_data
     /// [`fory_read_type_info`]: Serializer::fory_read_type_info
@@ -579,33 +569,24 @@ pub trait Serializer: 'static {
     #[inline(always)]
     fn fory_read(
         context: &mut ReadContext,
-        read_ref_info: bool,
+        ref_mode: RefMode,
         read_type_info: bool,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
     {
-        if read_ref_info {
+        // Fast path: single comparison for primitives/strings/time types
+        if ref_mode != RefMode::None {
             let ref_flag = context.reader.read_i8()?;
-            match ref_flag {
-                flag if flag == RefFlag::Null as i8 => Ok(Self::fory_default()),
-                flag if flag == RefFlag::NotNullValue as i8 || flag == RefFlag::RefValue as i8 => {
-                    if read_type_info {
-                        Self::fory_read_type_info(context)?;
-                    }
-                    Self::fory_read_data(context)
-                }
-                flag if flag == RefFlag::Ref as i8 => {
-                    Err(Error::invalid_ref("Invalid ref, current type is not a ref"))
-                }
-                other => Err(Error::invalid_data(format!("Unknown ref flag: {}", other))),
+            if ref_flag == RefFlag::Null as i8 {
+                return Ok(Self::fory_default());
             }
-        } else {
-            if read_type_info {
-                Self::fory_read_type_info(context)?;
-            }
-            Self::fory_read_data(context)
+            // NotNullValue or RefValue both mean "continue reading" for non-trackable types
         }
+        if read_type_info {
+            Self::fory_read_type_info(context)?;
+        }
+        Self::fory_read_data(context)
     }
 
     /// Deserialize with pre-read type information.
@@ -616,7 +597,7 @@ pub trait Serializer: 'static {
     ///
     /// # Parameters
     ///
-    /// * `read_ref_info` - When `true`, READS reference flag from buffer. When `false`, SKIPS reading ref flag.
+    /// * `ref_mode` - Controls how reference flags are read (see [`fory_read`])
     /// * `type_info` - Type information that has already been read ahead. DO NOT read type info again from buffer.
     ///
     /// # Important
@@ -631,11 +612,11 @@ pub trait Serializer: 'static {
     /// ```rust,ignore
     /// fn fory_read_with_type_info(
     ///     context: &mut ReadContext,
-    ///     read_ref_info: bool,
+    ///     ref_mode: RefMode,
     ///     type_info: Rc<TypeInfo>,
     /// ) -> Result<Self, Error> {
     ///     // Ignore type_info since static type matches
-    ///     Self::fory_read(context, read_ref_info, false) // read_type_info=false
+    ///     Self::fory_read(context, ref_mode, false) // read_type_info=false
     /// }
     /// ```
     ///
@@ -653,27 +634,19 @@ pub trait Serializer: 'static {
     /// - **Reference types with polymorphic targets**: Rc\<dyn Trait\>, Arc\<dyn Trait\>
     /// - **Custom polymorphic types**: Types with runtime type variation
     ///
-    /// # Implementation Notes
-    ///
-    /// - Called by Fory's polymorphic deserialization infrastructure
-    /// - The `type_info` parameter contains the actual runtime type ID
-    /// - Implemented by Fory for all polymorphic types
-    /// - User types with custom serialization rarely need to override this
-    ///
     /// [`fory_read`]: Serializer::fory_read
     #[inline(always)]
     #[allow(unused_variables)]
     fn fory_read_with_type_info(
         context: &mut ReadContext,
-        read_ref_info: bool,
+        ref_mode: RefMode,
         type_info: Rc<TypeInfo>,
     ) -> Result<Self, Error>
     where
         Self: Sized + ForyDefault,
     {
         // Default implementation ignores the provided typeinfo because the static type matches.
-        // Honor the supplied `read_ref_info` flag so callers can control whether ref metadata is present.
-        Self::fory_read(context, read_ref_info, false)
+        Self::fory_read(context, ref_mode, false)
     }
 
     /// **[USER IMPLEMENTATION REQUIRED]** Deserialize the type's data from the buffer.
@@ -765,7 +738,7 @@ pub trait Serializer: 'static {
     /// ## Struct with nested serializable types
     ///
     /// ```rust
-    /// use fory_core::{Serializer, ForyDefault};
+    /// use fory_core::{Serializer, ForyDefault, RefMode};
     /// use fory_core::resolver::context::{ReadContext, WriteContext};
     /// use fory_core::error::Error;
     /// use std::any::Any;
@@ -789,9 +762,9 @@ pub trait Serializer: 'static {
     ///
     /// impl Serializer for Person {
     ///     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-    ///         self.name.fory_write(context, false, false, false)?;
+    ///         self.name.fory_write(context, RefMode::None, false, false)?;
     ///         context.writer.write_u32(self.age);
-    ///         self.scores.fory_write(context, false, false, true)?;
+    ///         self.scores.fory_write(context, RefMode::None, false, true)?;
     ///         Ok(())
     ///     }
     ///
@@ -800,9 +773,9 @@ pub trait Serializer: 'static {
     ///         Self: Sized + ForyDefault,
     ///     {
     ///         // Read nested types in the same order as written
-    ///         let name = String::fory_read(context, false, false)?;
+    ///         let name = String::fory_read(context, RefMode::None, false)?;
     ///         let age = context.reader.read_u32()?;
-    ///         let scores = Vec::<i32>::fory_read(context, false, false)?;
+    ///         let scores = Vec::<i32>::fory_read(context, RefMode::None, false)?;
     ///         Ok(Person { name, age, scores })
     ///     }
     ///
@@ -1373,6 +1346,7 @@ pub trait StructSerializer: Serializer + 'static {
     /// * `type_id` - The base type ID
     /// * `register_by_name` - Whether type was registered by name (vs by hash)
     /// * `compatible` - Whether compatibility mode is enabled
+    /// * `xlang` - Whether cross-language mode is enabled
     ///
     /// # Returns
     ///
@@ -1384,7 +1358,13 @@ pub trait StructSerializer: Serializer + 'static {
     /// - Handles type ID transformations for compatibility
     /// - **Do not override** for user types with custom serialization (EXT types)
     #[inline(always)]
-    fn fory_actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) -> u32 {
+    fn fory_actual_type_id(
+        type_id: u32,
+        register_by_name: bool,
+        compatible: bool,
+        xlang: bool,
+    ) -> u32 {
+        let _ = xlang; // Default implementation ignores xlang parameter
         struct_::actual_type_id(type_id, register_by_name, compatible)
     }
 

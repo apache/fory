@@ -21,7 +21,7 @@ use crate::resolver::context::{ReadContext, WriteContext};
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::serializer::util::read_basic_type_info;
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{need_to_write_type_for_field, TypeId, SIZE_OF_REF_AND_TYPE};
+use crate::types::{need_to_write_type_for_field, RefMode, TypeId, SIZE_OF_REF_AND_TYPE};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
@@ -206,7 +206,7 @@ where
                     }
                 }
                 if key_is_shared_ref {
-                    key.fory_write(context, true, false, has_generics)?;
+                    key.fory_write(context, RefMode::Tracking, false, has_generics)?;
                 } else {
                     key.fory_write_data_generic(context, has_generics)?;
                 }
@@ -232,7 +232,7 @@ where
                     }
                 }
                 if val_is_shared_ref {
-                    value.fory_write(context, true, false, has_generics)?;
+                    value.fory_write(context, RefMode::Tracking, false, has_generics)?;
                 } else {
                     value.fory_write_data_generic(context, has_generics)?;
                 }
@@ -316,12 +316,12 @@ where
 
         // Write key-value pair
         if key_is_shared_ref {
-            key.fory_write(context, true, false, has_generics)?;
+            key.fory_write(context, RefMode::Tracking, false, has_generics)?;
         } else {
             key.fory_write_data_generic(context, has_generics)?;
         }
         if val_is_shared_ref {
-            value.fory_write(context, true, false, has_generics)?;
+            value.fory_write(context, RefMode::Tracking, false, has_generics)?;
         } else {
             value.fory_write_data_generic(context, has_generics)?;
         }
@@ -393,10 +393,11 @@ macro_rules! impl_read_map_dyn_ref {
 
                     // Read value payload
                     let read_ref = val_is_shared_ref || track_value_ref;
+                    let ref_mode = if read_ref { RefMode::Tracking } else { RefMode::None };
                     let value = if let Some(type_info) = value_type_info {
-                        V::fory_read_with_type_info(context, read_ref, type_info)?
+                        V::fory_read_with_type_info(context, ref_mode, type_info)?
                     } else if read_ref {
-                        V::fory_read(context, read_ref, false)?
+                        V::fory_read(context, ref_mode, false)?
                     } else {
                         V::fory_read_data(context)?
                     };
@@ -423,10 +424,11 @@ macro_rules! impl_read_map_dyn_ref {
                     };
 
                     let read_ref = key_is_shared_ref || track_key_ref;
+                    let ref_mode = if read_ref { RefMode::Tracking } else { RefMode::None };
                     let key = if let Some(type_info) = key_type_info {
-                        K::fory_read_with_type_info(context, read_ref, type_info)?
+                        K::fory_read_with_type_info(context, ref_mode, type_info)?
                     } else if read_ref {
-                        K::fory_read(context, read_ref, false)?
+                        K::fory_read(context, ref_mode, false)?
                     } else {
                         K::fory_read_data(context)?
                     };
@@ -475,19 +477,21 @@ macro_rules! impl_read_map_dyn_ref {
                 // Read chunk_size pairs of key-value
                 let key_read_ref = key_is_shared_ref || track_key_ref;
                 let val_read_ref = val_is_shared_ref || track_value_ref;
+                let key_ref_mode = if key_read_ref { RefMode::Tracking } else { RefMode::None };
+                let val_ref_mode = if val_read_ref { RefMode::Tracking } else { RefMode::None };
                 for _ in 0..chunk_size {
                     let key = if let Some(type_info) = key_type_info.as_ref() {
-                        K::fory_read_with_type_info(context, key_read_ref, type_info.clone())?
+                        K::fory_read_with_type_info(context, key_ref_mode, type_info.clone())?
                     } else if key_read_ref {
-                        K::fory_read(context, key_read_ref, false)?
+                        K::fory_read(context, key_ref_mode, false)?
                     } else {
                         K::fory_read_data(context)?
                     };
 
                     let value = if let Some(type_info) = value_type_info.as_ref() {
-                        V::fory_read_with_type_info(context, val_read_ref, type_info.clone())?
+                        V::fory_read_with_type_info(context, val_ref_mode, type_info.clone())?
                     } else if val_read_ref {
-                        V::fory_read(context, val_read_ref, false)?
+                        V::fory_read(context, val_ref_mode, false)?
                     } else {
                         V::fory_read_data(context)?
                     };
@@ -562,13 +566,25 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
             let track_key_ref = (header & TRACKING_KEY_REF) != 0;
             let track_value_ref = (header & TRACKING_VALUE_REF) != 0;
             if header & KEY_NULL != 0 {
-                let value = V::fory_read(context, track_value_ref, !value_declared)?;
+                // Null case is handled by KEY_NULL flag, so use None (no ref flag) unless tracking
+                let ref_mode = if track_value_ref {
+                    RefMode::Tracking
+                } else {
+                    RefMode::None
+                };
+                let value = V::fory_read(context, ref_mode, !value_declared)?;
                 map.insert(K::fory_default(), value);
                 len_counter += 1;
                 continue;
             }
             if header & VALUE_NULL != 0 {
-                let key = K::fory_read(context, track_key_ref, !key_declared)?;
+                // Null case is handled by VALUE_NULL flag, so use None (no ref flag) unless tracking
+                let ref_mode = if track_key_ref {
+                    RefMode::Tracking
+                } else {
+                    RefMode::None
+                };
+                let key = K::fory_read(context, ref_mode, !key_declared)?;
                 map.insert(key, V::fory_default());
                 len_counter += 1;
                 continue;
@@ -595,9 +611,19 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
                     map.insert(key, value);
                 }
             } else {
+                let key_ref_mode = if track_key_ref {
+                    RefMode::Tracking
+                } else {
+                    RefMode::None
+                };
+                let val_ref_mode = if track_value_ref {
+                    RefMode::Tracking
+                } else {
+                    RefMode::None
+                };
                 for _ in 0..chunk_size {
-                    let key = K::fory_read(context, track_key_ref, false)?;
-                    let value = V::fory_read(context, track_value_ref, false)?;
+                    let key = K::fory_read(context, key_ref_mode, false)?;
+                    let value = V::fory_read(context, val_ref_mode, false)?;
                     map.insert(key, value);
                 }
             }
@@ -691,13 +717,25 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
             let track_key_ref = (header & TRACKING_KEY_REF) != 0;
             let track_value_ref = (header & TRACKING_VALUE_REF) != 0;
             if header & KEY_NULL != 0 {
-                let value = V::fory_read(context, track_value_ref, !value_declared)?;
+                // Null case is handled by KEY_NULL flag, so use None (no ref flag) unless tracking
+                let ref_mode = if track_value_ref {
+                    RefMode::Tracking
+                } else {
+                    RefMode::None
+                };
+                let value = V::fory_read(context, ref_mode, !value_declared)?;
                 map.insert(K::fory_default(), value);
                 len_counter += 1;
                 continue;
             }
             if header & VALUE_NULL != 0 {
-                let key = K::fory_read(context, track_key_ref, !key_declared)?;
+                // Null case is handled by VALUE_NULL flag, so use None (no ref flag) unless tracking
+                let ref_mode = if track_key_ref {
+                    RefMode::Tracking
+                } else {
+                    RefMode::None
+                };
+                let key = K::fory_read(context, ref_mode, !key_declared)?;
                 map.insert(key, V::fory_default());
                 len_counter += 1;
                 continue;
@@ -724,9 +762,19 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
                     map.insert(key, value);
                 }
             } else {
+                let key_ref_mode = if track_key_ref {
+                    RefMode::Tracking
+                } else {
+                    RefMode::None
+                };
+                let val_ref_mode = if track_value_ref {
+                    RefMode::Tracking
+                } else {
+                    RefMode::None
+                };
                 for _ in 0..chunk_size {
-                    let key = K::fory_read(context, track_key_ref, false)?;
-                    let value = V::fory_read(context, track_value_ref, false)?;
+                    let key = K::fory_read(context, key_ref_mode, false)?;
+                    let value = V::fory_read(context, val_ref_mode, false)?;
                     map.insert(key, value);
                 }
             }

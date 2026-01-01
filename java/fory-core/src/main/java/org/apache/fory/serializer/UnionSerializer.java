@@ -85,6 +85,11 @@ public class UnionSerializer extends Serializer<Union> {
   }
 
   @Override
+  public void write(MemoryBuffer buffer, Union union) {
+    xwrite(buffer, union);
+  }
+
+  @Override
   public void xwrite(MemoryBuffer buffer, Union union) {
     int index = union.getIndex();
     buffer.writeVarUint32(index);
@@ -95,6 +100,11 @@ public class UnionSerializer extends Serializer<Union> {
     } else {
       buffer.writeByte(Fory.NULL_FLAG);
     }
+  }
+
+  @Override
+  public Union read(MemoryBuffer buffer) {
+    return xread(buffer);
   }
 
   @Override

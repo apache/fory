@@ -31,7 +31,7 @@ use super::collection::{
 };
 use super::list::{get_primitive_type_id, is_primitive_type};
 use crate::ensure;
-use crate::types::RefFlag;
+use crate::types::{RefFlag, RefMode};
 
 // Collection header flags (matching collection.rs private constants)
 const TRACKING_REF: u8 = 0b1;
@@ -166,12 +166,13 @@ where
         };
         if is_track_ref {
             for elem_slot in arr.iter_mut().take(len) {
-                let elem = T::fory_read_with_type_info(context, true, type_info.clone())?;
+                let elem =
+                    T::fory_read_with_type_info(context, RefMode::Tracking, type_info.clone())?;
                 elem_slot.write(elem);
             }
         } else if !has_null {
             for elem_slot in arr.iter_mut().take(len) {
-                let elem = T::fory_read_with_type_info(context, false, type_info.clone())?;
+                let elem = T::fory_read_with_type_info(context, RefMode::None, type_info.clone())?;
                 elem_slot.write(elem);
             }
         } else {
@@ -180,14 +181,22 @@ where
                 let elem = if flag == RefFlag::Null as i8 {
                     T::fory_default()
                 } else {
-                    T::fory_read_with_type_info(context, false, type_info.clone())?
+                    T::fory_read_with_type_info(context, RefMode::None, type_info.clone())?
                 };
                 elem_slot.write(elem);
             }
         }
     } else {
+        // Match write side logic: Tracking > NullOnly (if has null) > None
+        let ref_mode = if is_track_ref {
+            RefMode::Tracking
+        } else if has_null {
+            RefMode::NullOnly
+        } else {
+            RefMode::None
+        };
         for elem_slot in arr.iter_mut().take(len) {
-            let elem = T::fory_read(context, is_track_ref, true)?;
+            let elem = T::fory_read(context, ref_mode, true)?;
             elem_slot.write(elem);
         }
     }

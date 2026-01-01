@@ -22,7 +22,7 @@ use crate::meta::{
     TYPE_NAME_ENCODINGS,
 };
 use crate::serializer::{ForyDefault, Serializer, StructSerializer};
-use crate::util::get_ext_actual_type_id;
+use crate::types::{get_ext_actual_type_id, is_enum_type_id, RefMode};
 use crate::TypeId;
 use chrono::{NaiveDate, NaiveDateTime};
 use std::collections::{HashSet, LinkedList};
@@ -34,12 +34,12 @@ use std::{any::Any, collections::HashMap};
 type WriteFn = fn(
     &dyn Any,
     &mut WriteContext,
-    write_ref_info: bool,
+    ref_mode: RefMode,
     write_type_info: bool,
     has_enerics: bool,
 ) -> Result<(), Error>;
 type ReadFn =
-    fn(&mut ReadContext, read_ref_info: bool, read_type_info: bool) -> Result<Box<dyn Any>, Error>;
+    fn(&mut ReadContext, ref_mode: RefMode, read_type_info: bool) -> Result<Box<dyn Any>, Error>;
 
 type WriteDataFn = fn(&dyn Any, &mut WriteContext, has_generics: bool) -> Result<(), Error>;
 type ReadDataFn = fn(&mut ReadContext) -> Result<Box<dyn Any>, Error>;
@@ -284,7 +284,7 @@ impl TypeInfo {
 fn stub_write_fn(
     _: &dyn Any,
     _: &mut WriteContext,
-    _: bool,
+    _: RefMode,
     _: bool,
     _: bool,
 ) -> Result<(), Error> {
@@ -293,7 +293,7 @@ fn stub_write_fn(
     ))
 }
 
-fn stub_read_fn(_: &mut ReadContext, _: bool, _: bool) -> Result<Box<dyn Any>, Error> {
+fn stub_read_fn(_: &mut ReadContext, _: RefMode, _: bool) -> Result<Box<dyn Any>, Error> {
     Err(Error::type_error(
         "Cannot deserialize unknown remote type - type not registered locally",
     ))
@@ -362,7 +362,8 @@ fn build_struct_type_infos<T: StructSerializer>(
     let mut result = vec![(std::any::TypeId::of::<T>(), main_type_info)];
 
     // Handle enum variants in compatible mode
-    if type_resolver.compatible && T::fory_static_type_id() == TypeId::ENUM {
+    // Check for ENUM, NAMED_ENUM, and UNION (Union-compatible Rust enums return UNION TypeId)
+    if type_resolver.compatible && is_enum_type_id(T::fory_static_type_id()) {
         // Fields are already sorted with IDs assigned by the macro
         let variants_info = T::fory_variants_fields_info(type_resolver)?;
         for (idx, (variant_name, variant_type_id, fields_info)) in
@@ -661,20 +662,19 @@ impl TypeResolver {
                 "Either id must be non-zero for ID registration, or type_name must be non-empty for name registration",
             ));
         }
-        let actual_type_id = T::fory_actual_type_id(id, register_by_name, self.compatible);
+        let actual_type_id =
+            T::fory_actual_type_id(id, register_by_name, self.compatible, self.xlang);
 
         fn write<T2: 'static + Serializer>(
             this: &dyn Any,
             context: &mut WriteContext,
-            write_ref_info: bool,
+            ref_mode: RefMode,
             write_type_info: bool,
             has_generics: bool,
         ) -> Result<(), Error> {
             let this = this.downcast_ref::<T2>();
             match this {
-                Some(v) => {
-                    T2::fory_write(v, context, write_ref_info, write_type_info, has_generics)
-                }
+                Some(v) => T2::fory_write(v, context, ref_mode, write_type_info, has_generics),
                 None => Err(Error::type_error(format!(
                     "Cast type to {:?} error when writing: {:?}",
                     std::any::type_name::<T2>(),
@@ -685,14 +685,10 @@ impl TypeResolver {
 
         fn read<T2: 'static + Serializer + ForyDefault>(
             context: &mut ReadContext,
-            read_ref_info: bool,
+            ref_mode: RefMode,
             read_type_info: bool,
         ) -> Result<Box<dyn Any>, Error> {
-            Ok(Box::new(T2::fory_read(
-                context,
-                read_ref_info,
-                read_type_info,
-            )?))
+            Ok(Box::new(T2::fory_read(context, ref_mode, read_type_info)?))
         }
 
         fn write_data<T2: 'static + Serializer>(
@@ -856,15 +852,13 @@ impl TypeResolver {
         fn write<T2: 'static + Serializer>(
             this: &dyn Any,
             context: &mut WriteContext,
-            write_ref_info: bool,
+            ref_mode: RefMode,
             write_type_info: bool,
             has_generics: bool,
         ) -> Result<(), Error> {
             let this = this.downcast_ref::<T2>();
             match this {
-                Some(v) => {
-                    Ok(v.fory_write(context, write_ref_info, write_type_info, has_generics)?)
-                }
+                Some(v) => v.fory_write(context, ref_mode, write_type_info, has_generics),
                 None => Err(Error::type_error(format!(
                     "Cast type to {:?} error when writing: {:?}",
                     std::any::type_name::<T2>(),
@@ -875,14 +869,10 @@ impl TypeResolver {
 
         fn read<T2: 'static + Serializer + ForyDefault>(
             context: &mut ReadContext,
-            read_ref_info: bool,
+            ref_mode: RefMode,
             read_type_info: bool,
         ) -> Result<Box<dyn Any>, Error> {
-            Ok(Box::new(T2::fory_read(
-                context,
-                read_ref_info,
-                read_type_info,
-            )?))
+            Ok(Box::new(T2::fory_read(context, ref_mode, read_type_info)?))
         }
 
         fn write_data<T2: 'static + Serializer>(

@@ -93,17 +93,24 @@ template <typename T, typename Enable> struct TypeIndex {
 // FieldType - Represents type information for a field
 // ============================================================================
 
-/// Represents type information including type ID, nullability, and generics
+/// Represents type information including type ID, nullability, ref tracking,
+/// ref_mode (precomputed), and generics
 class FieldType {
 public:
   uint32_t type_id;
   bool nullable;
+  bool ref_tracking;
+  RefMode ref_mode; // Precomputed from nullable and ref_tracking
   std::vector<FieldType> generics;
 
-  FieldType() : type_id(0), nullable(false) {}
+  FieldType()
+      : type_id(0), nullable(false), ref_tracking(false),
+        ref_mode(RefMode::None) {}
 
-  FieldType(uint32_t tid, bool null, std::vector<FieldType> gens = {})
-      : type_id(tid), nullable(null), generics(std::move(gens)) {}
+  FieldType(uint32_t tid, bool null, bool ref_track = false,
+            std::vector<FieldType> gens = {})
+      : type_id(tid), nullable(null), ref_tracking(ref_track),
+        ref_mode(make_ref_mode(null, ref_track)), generics(std::move(gens)) {}
 
   /// Write field type to buffer
   /// @param buffer Target buffer
@@ -116,12 +123,14 @@ public:
   /// @param buffer Source buffer
   /// @param read_flag Whether to read nullability flag (for nested types)
   /// @param nullable_val Nullability if read_flag is false
+  /// @param ref_tracking_val Ref tracking if read_flag is false
   static Result<FieldType, Error> read_from(Buffer &buffer, bool read_flag,
-                                            bool nullable_val);
+                                            bool nullable_val,
+                                            bool ref_tracking_val = false);
 
   bool operator==(const FieldType &other) const {
     return type_id == other.type_id && nullable == other.nullable &&
-           generics == other.generics;
+           ref_tracking == other.ref_tracking && generics == other.generics;
   }
 
   bool operator!=(const FieldType &other) const { return !(*this == other); }
@@ -616,11 +625,11 @@ private:
 
   template <typename T>
   static void harness_write_adapter(const void *value, WriteContext &ctx,
-                                    bool write_ref_info, bool write_type_info,
+                                    RefMode ref_mode, bool write_type_info,
                                     bool has_generics);
 
   template <typename T>
-  static void *harness_read_adapter(ReadContext &ctx, bool read_ref_info,
+  static void *harness_read_adapter(ReadContext &ctx, RefMode ref_mode,
                                     bool read_type_info);
 
   template <typename T>
@@ -1061,18 +1070,17 @@ template <typename T> Harness TypeResolver::make_serializer_harness() {
 
 template <typename T>
 void TypeResolver::harness_write_adapter(const void *value, WriteContext &ctx,
-                                         bool write_ref_info,
-                                         bool write_type_info,
+                                         RefMode ref_mode, bool write_type_info,
                                          bool has_generics) {
   (void)has_generics;
   const T *ptr = static_cast<const T *>(value);
-  Serializer<T>::write(*ptr, ctx, write_ref_info, write_type_info);
+  Serializer<T>::write(*ptr, ctx, ref_mode, write_type_info);
 }
 
 template <typename T>
-void *TypeResolver::harness_read_adapter(ReadContext &ctx, bool read_ref_info,
+void *TypeResolver::harness_read_adapter(ReadContext &ctx, RefMode ref_mode,
                                          bool read_type_info) {
-  T value = Serializer<T>::read(ctx, read_ref_info, read_type_info);
+  T value = Serializer<T>::read(ctx, ref_mode, read_type_info);
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return nullptr;
   }

@@ -16,6 +16,7 @@ cc_library(
         "enum_serializer.h",
         "fory.h",
         "map_serializer.h",
+        "ref_mode.h",
         "ref_resolver.h",
         "serializer.h",
         "serializer_traits.h",

@@ -39,6 +39,7 @@ import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
+import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.serializer.converter.FieldConverter;
@@ -87,93 +88,160 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     Serializer<Object> serializer = fieldInfo.classInfo.getSerializer();
     binding.incReadDepth();
     Object fieldValue;
-    boolean nullable = fieldInfo.nullable;
     if (isFinal) {
-      if (!fieldInfo.trackingRef) {
-        fieldValue = binding.readNullable(buffer, serializer, nullable);
-      } else {
-        // whether tracking ref is recorded in `fieldInfo.serializer`, so it's still
-        // consistent with jit serializer.
-        fieldValue = binding.readRef(buffer, serializer);
+      switch (fieldInfo.refMode) {
+        case NONE:
+          fieldValue = binding.read(buffer, serializer);
+          break;
+        case NULL_ONLY:
+          fieldValue = binding.readNullable(buffer, serializer);
+          break;
+        case TRACKING:
+          // whether tracking ref is recorded in `fieldInfo.serializer`, so it's still
+          // consistent with jit serializer.
+          fieldValue = binding.readRef(buffer, serializer);
+          break;
+        default:
+          throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
       }
     } else {
-      if (serializer.needToWriteRef()) {
-        int nextReadRefId = refResolver.tryPreserveRefId(buffer);
-        if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
+      switch (fieldInfo.refMode) {
+        case NONE:
           typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
           fieldValue = serializer.read(buffer);
-          refResolver.setReadObject(nextReadRefId, fieldValue);
-        } else {
-          fieldValue = refResolver.getReadObject();
-        }
-      } else {
-        if (nullable) {
-          byte headFlag = buffer.readByte();
-          if (headFlag == Fory.NULL_FLAG) {
-            binding.decDepth();
-            return null;
+          break;
+        case NULL_ONLY:
+          {
+            byte headFlag = buffer.readByte();
+            if (headFlag == Fory.NULL_FLAG) {
+              binding.decDepth();
+              return null;
+            }
+            typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
+            fieldValue = serializer.read(buffer);
           }
-        }
-        typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
-        fieldValue = serializer.read(buffer);
+          break;
+        case TRACKING:
+          {
+            int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+            if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
+              typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
+              fieldValue = serializer.read(buffer);
+              refResolver.setReadObject(nextReadRefId, fieldValue);
+            } else {
+              fieldValue = refResolver.getReadObject();
+            }
+          }
+          break;
+        default:
+          throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
       }
     }
     binding.decDepth();
     return fieldValue;
   }
 
+  /**
+   * Read a non-container field value that is not a final type. Handles enum types, reference
+   * tracking, and nullable fields according to xlang serialization protocol.
+   *
+   * @param binding the serialization binding for read operations
+   * @param fieldInfo the field metadata including type info and nullability
+   * @param buffer the buffer to read from
+   * @return the deserialized field value, or null if the field is nullable and was null
+   */
   static Object readOtherFieldValue(
       SerializationBinding binding, GenericTypeField fieldInfo, MemoryBuffer buffer) {
-    Object fieldValue;
-    boolean nullable = fieldInfo.nullable;
+    // Note: Enum has special handling for xlang compatibility - no type info for enum fields
     if (fieldInfo.genericType.getCls().isEnum()) {
       // Only read null flag when the field is nullable (for xlang compatibility)
-      if (nullable && buffer.readByte() == Fory.NULL_FLAG) {
+      if (fieldInfo.nullable && buffer.readByte() == Fory.NULL_FLAG) {
         return null;
       }
       return fieldInfo.genericType.getSerializer(binding.typeResolver).read(buffer);
-    } else if (fieldInfo.trackingRef) {
-      fieldValue = binding.readRef(buffer, fieldInfo);
-    } else {
-      binding.preserveRefId(-1);
-      if (nullable) {
-        byte headFlag = buffer.readByte();
-        if (headFlag == Fory.NULL_FLAG) {
-          return null;
+    }
+    Object fieldValue;
+    switch (fieldInfo.refMode) {
+      case NONE:
+        binding.preserveRefId(-1);
+        fieldValue = binding.readNonRef(buffer, fieldInfo);
+        break;
+      case NULL_ONLY:
+        {
+          binding.preserveRefId(-1);
+          byte headFlag = buffer.readByte();
+          if (headFlag == Fory.NULL_FLAG) {
+            return null;
+          }
+          fieldValue = binding.readNonRef(buffer, fieldInfo);
         }
-      }
-      fieldValue = binding.readNonRef(buffer, fieldInfo);
+        break;
+      case TRACKING:
+        fieldValue = binding.readRef(buffer, fieldInfo);
+        break;
+      default:
+        throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
     }
     return fieldValue;
   }
 
+  /**
+   * Read a container field value (Collection or Map). Handles reference tracking, nullable fields,
+   * and pushes/pops generic type information for proper deserialization of parameterized types.
+   *
+   * @param binding the serialization binding for read operations
+   * @param generics the generics context for tracking parameterized types
+   * @param fieldInfo the field metadata including generic type info and nullability
+   * @param buffer the buffer to read from
+   * @return the deserialized container field value, or null if the field is nullable and was null
+   */
   static Object readContainerFieldValue(
       SerializationBinding binding,
       Generics generics,
       GenericTypeField fieldInfo,
       MemoryBuffer buffer) {
     Object fieldValue;
-    if (fieldInfo.trackingRef) {
-      generics.pushGenericType(fieldInfo.genericType);
-      fieldValue = binding.readContainerFieldValueRef(buffer, fieldInfo);
-      generics.popGenericType();
-    } else {
-      binding.preserveRefId(-1);
-      boolean nullable = fieldInfo.nullable;
-      if (nullable) {
-        byte headFlag = buffer.readByte();
-        if (headFlag == Fory.NULL_FLAG) {
-          return null;
+    switch (fieldInfo.refMode) {
+      case NONE:
+        binding.preserveRefId(-1);
+        generics.pushGenericType(fieldInfo.genericType);
+        fieldValue = binding.readContainerFieldValue(buffer, fieldInfo);
+        generics.popGenericType();
+        break;
+      case NULL_ONLY:
+        {
+          binding.preserveRefId(-1);
+          byte headFlag = buffer.readByte();
+          if (headFlag == Fory.NULL_FLAG) {
+            return null;
+          }
+          generics.pushGenericType(fieldInfo.genericType);
+          fieldValue = binding.readContainerFieldValue(buffer, fieldInfo);
+          generics.popGenericType();
         }
-      }
-      generics.pushGenericType(fieldInfo.genericType);
-      fieldValue = binding.readContainerFieldValue(buffer, fieldInfo);
-      generics.popGenericType();
+        break;
+      case TRACKING:
+        generics.pushGenericType(fieldInfo.genericType);
+        fieldValue = binding.readContainerFieldValueRef(buffer, fieldInfo);
+        generics.popGenericType();
+        break;
+      default:
+        throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
     }
     return fieldValue;
   }
 
-  static boolean writePrimitiveFieldValueFailed(
+  /**
+   * Write a primitive field value to buffer using the field accessor.
+   *
+   * @param fory the fory instance for compression settings
+   * @param buffer the buffer to write to
+   * @param targetObject the object containing the field
+   * @param fieldAccessor the accessor to get the field value
+   * @param classId the class ID of the primitive type
+   * @return true if classId is not a primitive type and needs further write handling
+   */
+  static boolean writePrimitiveFieldValue(
       Fory fory,
       MemoryBuffer buffer,
       Object targetObject,
@@ -181,7 +249,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       short classId) {
     long fieldOffset = fieldAccessor.getFieldOffset();
     if (fieldOffset != -1) {
-      return writePrimitiveFieldValueFailed(fory, buffer, targetObject, fieldOffset, classId);
+      return writePrimitiveFieldValue(fory, buffer, targetObject, fieldOffset, classId);
     }
     switch (classId) {
       case ClassResolver.PRIMITIVE_BOOLEAN_CLASS_ID:
@@ -223,7 +291,17 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     }
   }
 
-  static boolean writePrimitiveFieldValueFailed(
+  /**
+   * Write a primitive field value to buffer using direct memory offset access.
+   *
+   * @param fory the fory instance for compression settings
+   * @param buffer the buffer to write to
+   * @param targetObject the object containing the field
+   * @param fieldOffset the memory offset of the field
+   * @param classId the class ID of the primitive type
+   * @return true if classId is not a primitive type and needs further write handling
+   */
+  static boolean writePrimitiveFieldValue(
       Fory fory, MemoryBuffer buffer, Object targetObject, long fieldOffset, short classId) {
     switch (classId) {
       case ClassResolver.PRIMITIVE_BOOLEAN_CLASS_ID:
@@ -270,7 +348,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
    *
    * @return true if field value isn't written by this function.
    */
-  static boolean writeBasicObjectFieldValueFailed(
+  static boolean writeBasicObjectFieldValue(
       Fory fory, MemoryBuffer buffer, Object fieldValue, short classId) {
     if (fieldValue == null) {
       throw new IllegalArgumentException(
@@ -339,7 +417,18 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     }
   }
 
-  static boolean writeBasicNullableObjectFieldValueFailed(
+  /**
+   * Write a nullable boxed primitive or String field value to buffer. Writes null flag before value
+   * if the field is null.
+   *
+   * @param fory the fory instance for compression and ref tracking settings
+   * @param buffer the buffer to write to
+   * @param fieldValue the field value to write (may be null)
+   * @param classId the class ID of the boxed type
+   * @return true if classId is not a basic type or ref tracking is enabled, needing further write
+   *     handling
+   */
+  static boolean writeBasicNullableObjectFieldValue(
       Fory fory, MemoryBuffer buffer, Object fieldValue, short classId) {
     if (!fory.isBasicTypesRefIgnored()) {
       return true; // let common path handle this.
@@ -444,7 +533,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
    *
    * @return true if <code>classId</code> is not a primitive type id.
    */
-  static boolean readPrimitiveFieldValueFailed(
+  static boolean readPrimitiveFieldValue(
       Fory fory,
       MemoryBuffer buffer,
       Object targetObject,
@@ -452,7 +541,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       short classId) {
     long fieldOffset = fieldAccessor.getFieldOffset();
     if (fieldOffset != -1) {
-      return readPrimitiveFieldValueFailed(fory, buffer, targetObject, fieldOffset, classId);
+      return readPrimitiveFieldValue(fory, buffer, targetObject, fieldOffset, classId);
     }
     switch (classId) {
       case ClassResolver.PRIMITIVE_BOOLEAN_CLASS_ID:
@@ -488,7 +577,17 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     }
   }
 
-  private static boolean readPrimitiveFieldValueFailed(
+  /**
+   * Read a primitive field value from buffer and set it using direct memory offset access.
+   *
+   * @param fory the fory instance for compression settings
+   * @param buffer the buffer to read from
+   * @param targetObject the object to set the field value on
+   * @param fieldOffset the memory offset of the field
+   * @param classId the class ID of the primitive type
+   * @return true if classId is not a primitive type and needs further read handling
+   */
+  private static boolean readPrimitiveFieldValue(
       Fory fory, MemoryBuffer buffer, Object targetObject, long fieldOffset, short classId) {
     switch (classId) {
       case ClassResolver.PRIMITIVE_BOOLEAN_CLASS_ID:
@@ -524,7 +623,19 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     }
   }
 
-  static boolean readPrimitiveNullableFieldValueFailed(
+  /**
+   * Read a nullable primitive field value from buffer. Reads the null flag first and returns early
+   * if null.
+   *
+   * @param fory the fory instance for compression settings
+   * @param buffer the buffer to read from
+   * @param targetObject the object to set the field value on
+   * @param fieldAccessor the accessor to set the field value
+   * @param classId the class ID of the primitive type
+   * @return true if classId is not a primitive type and needs further read handling; false if value
+   *     was null or successfully read
+   */
+  static boolean readPrimitiveNullableFieldValue(
       Fory fory,
       MemoryBuffer buffer,
       Object targetObject,
@@ -533,7 +644,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     if (buffer.readByte() == Fory.NULL_FLAG) {
       return false;
     }
-    return readPrimitiveFieldValueFailed(fory, buffer, targetObject, fieldAccessor, classId);
+    return readPrimitiveFieldValue(fory, buffer, targetObject, fieldAccessor, classId);
   }
 
   /**
@@ -541,7 +652,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
    *
    * @return true if field value isn't read by this function.
    */
-  static boolean readBasicObjectFieldValueFailed(
+  static boolean readBasicObjectFieldValue(
       Fory fory,
       MemoryBuffer buffer,
       Object targetObject,
@@ -608,7 +719,19 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     }
   }
 
-  static boolean readBasicNullableObjectFieldValueFailed(
+  /**
+   * Read a nullable boxed primitive or String field value from buffer and set it on the target
+   * object. Reads the null flag before value for nullable types.
+   *
+   * @param fory the fory instance for compression and ref tracking settings
+   * @param buffer the buffer to read from
+   * @param targetObject the object to set the field value on
+   * @param fieldAccessor the accessor to set the field value
+   * @param classId the class ID of the boxed type
+   * @return true if classId is not a basic type or ref tracking is enabled, needing further read
+   *     handling
+   */
+  static boolean readBasicNullableObjectFieldValue(
       Fory fory,
       MemoryBuffer buffer,
       Object targetObject,
@@ -1003,8 +1126,9 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     protected final String qualifiedFieldName;
     protected final FieldAccessor fieldAccessor;
     protected final FieldConverter<?> fieldConverter;
-    protected boolean nullable;
-    protected boolean trackingRef;
+    protected final RefMode refMode;
+    protected final boolean nullable;
+    protected final boolean trackingRef;
     protected final boolean isPrimitive;
 
     private InternalFieldInfo(Fory fory, Descriptor d, short classId) {
@@ -1022,6 +1146,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       nullable = d.isNullable();
       // descriptor.isTrackingRef() already includes the needToWriteRef check
       trackingRef = d.isTrackingRef();
+      refMode = RefMode.of(trackingRef, nullable);
     }
 
     @Override

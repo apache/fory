@@ -713,11 +713,12 @@ template <typename T> struct CompileTimeFieldHelpers {
         if (sa != sb)
           return sa > sb;
         if (a_tid != b_tid)
-          return a_tid < b_tid;
+          return a_tid > b_tid; // type_id descending to match Java
         return snake_case_names[a] < snake_case_names[b];
       }
 
       if (ga == 2) {
+        // Internal types (STRING, etc.): sort by type_id ascending, then name
         if (a_tid != b_tid)
           return a_tid < b_tid;
         return snake_case_names[a] < snake_case_names[b];
@@ -1267,24 +1268,25 @@ void write_single_field(const T &obj, WriteContext &ctx,
   }
 
   // Per xlang protocol: collections follow the same nullable logic as other
-  // fields. write_ref is only true when field is nullable.
+  // fields. RefMode is determined by nullable/track_ref flags.
   // write_type is false for collections (type is known from struct schema).
   // has_generics is true to enable generic element type handling.
   constexpr bool is_collection_field = field_type_id == TypeId::LIST ||
                                        field_type_id == TypeId::SET ||
                                        field_type_id == TypeId::MAP;
   if constexpr (is_collection_field) {
-    // For non-nullable collection fields, write_ref should be false
-    // Only nullable collections write a ref flag
-    bool coll_write_ref = is_nullable || field_requires_ref || track_ref;
-    Serializer<FieldType>::write(field_value, ctx, coll_write_ref, false, true);
+    // Compute RefMode from field metadata
+    constexpr RefMode coll_ref_mode =
+        make_ref_mode(is_nullable || field_requires_ref, track_ref);
+    Serializer<FieldType>::write(field_value, ctx, coll_ref_mode, false, true);
     return;
   }
 
-  // For other types, determine write_ref and write_type per Rust logic
-  // write_ref: true only when field is nullable or explicitly tracked by ref
+  // For other types, determine RefMode and write_type per Rust logic
+  // RefMode: based on nullable and track_ref flags
   // Per xlang protocol: non-nullable fields skip ref flag entirely
-  bool write_ref = is_nullable || field_requires_ref || track_ref;
+  constexpr RefMode field_ref_mode =
+      make_ref_mode(is_nullable || field_requires_ref, track_ref);
 
   // write_type: determined by field_need_write_type_info logic
   // Enums: false (per Rust util.rs:58-59)
@@ -1303,7 +1305,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
   bool write_type =
       is_polymorphic || ((is_struct || is_ext) && ctx.is_compatible());
 
-  Serializer<FieldType>::write(field_value, ctx, write_ref, write_type);
+  Serializer<FieldType>::write(field_value, ctx, field_ref_mode, write_type);
 }
 
 /// Helper to write a single field at compile-time sorted position
@@ -1478,19 +1480,19 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   constexpr TypeId field_type_id = Serializer<FieldType>::type_id;
   constexpr bool is_primitive_field = is_primitive_type_id(field_type_id);
 
-  // Read ref flag if:
-  // 1. Field is nullable (per new field metadata)
-  // 2. Field requires ref metadata (legacy: optional, shared_ptr, etc.)
-  // 3. Field has explicit ref tracking enabled
+  // Compute RefMode based on field metadata
+  // RefMode: based on nullable and track_ref flags
   // Per xlang protocol: non-nullable fields skip ref flag entirely
-  bool read_ref = is_nullable || field_requires_ref || track_ref;
+  constexpr RefMode field_ref_mode =
+      make_ref_mode(is_nullable || field_requires_ref, track_ref);
 
 #ifdef FORY_DEBUG
   const auto debug_names = decltype(field_info)::Names;
   std::cerr << "[xlang][field] T=" << typeid(T).name() << ", index=" << Index
             << ", name=" << debug_names[Index]
             << ", field_requires_ref=" << field_requires_ref
-            << ", is_nullable=" << is_nullable << ", read_ref=" << read_ref
+            << ", is_nullable=" << is_nullable
+            << ", ref_mode=" << static_cast<int>(field_ref_mode)
             << ", read_type=" << read_type
             << ", reader_index=" << ctx.buffer().reader_index() << std::endl;
 #endif
@@ -1509,7 +1511,8 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
     }
   } else {
     // Assign to field (handle fory::field<> wrapper if needed)
-    FieldType result = Serializer<FieldType>::read(ctx, read_ref, read_type);
+    FieldType result =
+        Serializer<FieldType>::read(ctx, field_ref_mode, read_type);
     if constexpr (is_fory_field_v<RawFieldType>) {
       (obj.*field_ptr).value = std::move(result);
     } else {
@@ -1522,7 +1525,7 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
 /// remote field metadata to decide reference flag presence.
 template <size_t Index, typename T>
 void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
-                                           bool remote_ref_flag) {
+                                           RefMode remote_ref_mode) {
   const auto field_info = ForyFieldInfo(obj);
   const auto field_ptrs = decltype(field_info)::Ptrs;
   const auto field_ptr = std::get<Index>(field_ptrs);
@@ -1548,19 +1551,14 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
     read_type = true;
   }
 
-  // In compatible mode, trust the remote field metadata to tell us whether
-  // a ref/null flag was written before the value payload. The remote_ref_flag
-  // is determined by read_struct_fields_compatible() based on:
-  // 1. Field nullability
-  // 2. Whether field is non-primitive (per xlang spec, all non-primitives have
-  // ref flags)
-  bool read_ref = remote_ref_flag;
+  // In compatible mode, trust the remote field metadata (remote_ref_mode)
+  // to tell us whether a ref/null flag was written before the value payload.
 
   // OPTIMIZATION: For raw primitive fields (not wrappers) with no ref flag,
   // bypass Serializer<T>::read and use direct buffer reads with Error&.
   constexpr bool is_raw_prim = is_raw_primitive_v<FieldType>;
   if constexpr (is_raw_prim && is_primitive_field) {
-    if (!read_ref) {
+    if (remote_ref_mode == RefMode::None) {
       // Assign to field (handle fory::field<> wrapper if needed)
       if constexpr (is_fory_field_v<RawFieldType>) {
         (obj.*field_ptr).value =
@@ -1574,7 +1572,8 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
   }
 
   // Assign to field (handle fory::field<> wrapper if needed)
-  FieldType result = Serializer<FieldType>::read(ctx, read_ref, read_type);
+  FieldType result =
+      Serializer<FieldType>::read(ctx, remote_ref_mode, read_type);
   if constexpr (is_fory_field_v<RawFieldType>) {
     (obj.*field_ptr).value = std::move(result);
   } else {
@@ -1588,7 +1587,7 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
 template <typename T, size_t... Indices>
 FORY_ALWAYS_INLINE void
 dispatch_compatible_field_read_impl(T &obj, ReadContext &ctx, int16_t field_id,
-                                    bool read_ref_flag, bool &handled,
+                                    RefMode remote_ref_mode, bool &handled,
                                     std::index_sequence<Indices...>) {
   using Helpers = CompileTimeFieldHelpers<T>;
 
@@ -1597,7 +1596,7 @@ dispatch_compatible_field_read_impl(T &obj, ReadContext &ctx, int16_t field_id,
   ((static_cast<int16_t>(Indices) == field_id
         ? (handled = true,
            read_single_field_by_index_compatible<
-               Helpers::sorted_indices[Indices]>(obj, ctx, read_ref_flag),
+               Helpers::sorted_indices[Indices]>(obj, ctx, remote_ref_mode),
            true)
         : false) ||
    ...);
@@ -1870,16 +1869,14 @@ void read_struct_fields_compatible(T &obj, ReadContext &ctx,
     const auto &remote_field = remote_fields[remote_idx];
     int16_t field_id = remote_field.field_id;
 
-    // Per xlang protocol (see rust/fory-core/src/serializer/util.rs):
-    // Ref flags are ONLY written when nullable=true.
-    // The global trackingRef setting controls reference deduplication, NOT
-    // whether ref flags are written. Non-nullable fields skip ref flags
-    // entirely regardless of trackingRef.
-    bool read_ref_flag = remote_field.field_type.nullable;
+    // Use the precomputed ref_mode from remote field metadata.
+    // This is computed from nullable and ref_tracking flags in the remote
+    // field's header during FieldInfo::from_bytes.
+    RefMode remote_ref_mode = remote_field.field_type.ref_mode;
 
     if (field_id == -1) {
       // Field unknown locally — skip its value
-      skip_field_value(ctx, remote_field.field_type, read_ref_flag);
+      skip_field_value(ctx, remote_field.field_type, remote_ref_mode);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return;
       }
@@ -1889,13 +1886,13 @@ void read_struct_fields_compatible(T &obj, ReadContext &ctx,
     // Dispatch to the correct local field by field_id
     // Uses fold expression with short-circuit - no lambda overhead
     bool handled = false;
-    dispatch_compatible_field_read_impl<T>(obj, ctx, field_id, read_ref_flag,
+    dispatch_compatible_field_read_impl<T>(obj, ctx, field_id, remote_ref_mode,
                                            handled,
                                            std::index_sequence<Indices...>{});
 
     if (!handled) {
       // Shouldn't happen if TypeMeta::assign_field_ids worked correctly
-      skip_field_value(ctx, remote_field.field_type, read_ref_flag);
+      skip_field_value(ctx, remote_field.field_type, remote_ref_mode);
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return;
       }
@@ -1948,9 +1945,9 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     }
   }
 
-  static void write(const T &obj, WriteContext &ctx, bool write_ref,
+  static void write(const T &obj, WriteContext &ctx, RefMode ref_mode,
                     bool write_type, bool has_generics = false) {
-    write_not_null_ref_flag(ctx, write_ref);
+    write_not_null_ref_flag(ctx, ref_mode);
 
     if (write_type) {
       // Direct lookup using compile-time type_index<T>() - O(1) hash lookup
@@ -2027,10 +2024,10 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
         obj, ctx, std::make_index_sequence<field_count>{}, has_generics);
   }
 
-  static T read(ReadContext &ctx, bool read_ref, bool read_type) {
+  static T read(ReadContext &ctx, RefMode ref_mode, bool read_type) {
     // Handle reference metadata
     int8_t ref_flag;
-    if (read_ref) {
+    if (ref_mode != RefMode::None) {
       ref_flag = ctx.read_int8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return T{};
@@ -2271,7 +2268,7 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
   // section 5.4.4 When deserializing List<Base> where all elements are same
   // concrete type, we read type info once and pass it to all element
   // deserializers
-  static T read_with_type_info(ReadContext &ctx, bool read_ref,
+  static T read_with_type_info(ReadContext &ctx, RefMode ref_mode,
                                const TypeInfo &type_info) {
     // Note: When called from polymorphic shared_ptr, the shared_ptr has already
     // consumed the ref flag, so we should not read it again here. The read_ref

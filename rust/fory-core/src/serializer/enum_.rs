@@ -20,7 +20,7 @@ use crate::error::Error;
 use crate::meta::FieldInfo;
 use crate::resolver::context::{ReadContext, WriteContext};
 use crate::serializer::{ForyDefault, Serializer};
-use crate::types::{RefFlag, TypeId};
+use crate::types::{RefFlag, RefMode, TypeId};
 use crate::TypeResolver;
 
 #[inline(always)]
@@ -36,10 +36,10 @@ pub fn actual_type_id(type_id: u32, register_by_name: bool, _compatible: bool) -
 pub fn write<T: Serializer>(
     this: &T,
     context: &mut WriteContext,
-    write_ref_info: bool,
+    ref_mode: RefMode,
     write_type_info: bool,
 ) -> Result<(), Error> {
-    if write_ref_info {
+    if ref_mode != RefMode::None {
         context.writer.write_i8(RefFlag::NotNullValue as i8);
     }
     if write_type_info {
@@ -73,10 +73,10 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), 
 #[inline(always)]
 pub fn read<T: Serializer + ForyDefault>(
     context: &mut ReadContext,
-    read_ref_info: bool,
+    ref_mode: RefMode,
     read_type_info: bool,
 ) -> Result<T, Error> {
-    let ref_flag = if read_ref_info {
+    let ref_flag = if ref_mode != RefMode::None {
         context.reader.read_i8()?
     } else {
         RefFlag::NotNullValue as i8
