@@ -19,7 +19,7 @@
 
 package org.apache.fory.serializer;
 
-import static org.apache.fory.serializer.ObjectSerializer.writeOtherFieldValue;
+import static org.apache.fory.serializer.AbstractObjectSerializer.writeOtherFieldValue;
 import static org.apache.fory.serializer.SerializationUtils.getTypeResolver;
 
 import java.util.ArrayList;
@@ -29,8 +29,6 @@ import org.apache.fory.Fory;
 import org.apache.fory.collection.IdentityObjectIntMap;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.MapEntry;
-import org.apache.fory.collection.Tuple2;
-import org.apache.fory.collection.Tuple3;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.meta.ClassDef;
 import org.apache.fory.resolver.ClassInfo;
@@ -40,6 +38,7 @@ import org.apache.fory.resolver.MetaContext;
 import org.apache.fory.resolver.MetaStringResolver;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.serializer.NonexistentClass.NonexistentEnum;
 import org.apache.fory.serializer.Serializers.CrossLanguageCompatibleSerializer;
 import org.apache.fory.type.Descriptor;
@@ -51,22 +50,15 @@ import org.apache.fory.util.Preconditions;
 public final class NonexistentClassSerializers {
 
   private static final class ClassFieldsInfo {
-    private final ObjectSerializer.FinalTypeField[] finalFields;
-    private final boolean[] isFinal;
-    private final ObjectSerializer.GenericTypeField[] otherFields;
-    private final ObjectSerializer.GenericTypeField[] containerFields;
+    private final SerializationFieldInfo[] buildInFields;
+    private final SerializationFieldInfo[] otherFields;
+    private final SerializationFieldInfo[] containerFields;
     private final int classVersionHash;
 
-    private ClassFieldsInfo(
-        ObjectSerializer.FinalTypeField[] finalFields,
-        boolean[] isFinal,
-        ObjectSerializer.GenericTypeField[] otherFields,
-        ObjectSerializer.GenericTypeField[] containerFields,
-        int classVersionHash) {
-      this.finalFields = finalFields;
-      this.isFinal = isFinal;
-      this.otherFields = otherFields;
-      this.containerFields = containerFields;
+    private ClassFieldsInfo(FieldGroups fieldGroups, int classVersionHash) {
+      this.buildInFields = fieldGroups.buildInFields;
+      this.otherFields = fieldGroups.userTypeFields;
+      this.containerFields = fieldGroups.containerFields;
       this.classVersionHash = classVersionHash;
     }
   }
@@ -76,7 +68,6 @@ public final class NonexistentClassSerializers {
     private final ClassInfoHolder classInfoHolder;
     private final LongMap<ClassFieldsInfo> fieldsInfoMap;
     private final SerializationBinding binding;
-    private final TypeResolver typeResolver;
 
     public NonexistentClassSerializer(Fory fory, ClassDef classDef) {
       super(fory, NonexistentClass.NonexistentMetaShared.class);
@@ -84,7 +75,6 @@ public final class NonexistentClassSerializers {
       classInfoHolder = fory.getClassResolver().nilClassInfoHolder();
       fieldsInfoMap = new LongMap<>();
       binding = SerializationBinding.createBinding(fory);
-      typeResolver = fory._getTypeResolver();
       Preconditions.checkArgument(fory.getConfig().isMetaShareEnabled());
     }
 
@@ -124,16 +114,13 @@ public final class NonexistentClassSerializers {
         buffer.writeInt32(fieldsInfo.classVersionHash);
       }
       // write order: primitive,boxed,final,other,collection,map
-      ObjectSerializer.FinalTypeField[] finalFields = fieldsInfo.finalFields;
-      boolean[] isFinal = fieldsInfo.isFinal;
-      for (int i = 0; i < finalFields.length; i++) {
-        ObjectSerializer.FinalTypeField fieldInfo = finalFields[i];
+      for (SerializationFieldInfo fieldInfo : fieldsInfo.buildInFields) {
         Object fieldValue = value.get(fieldInfo.qualifiedFieldName);
         ClassInfo classInfo = fieldInfo.classInfo;
         if (classResolver.isPrimitive(fieldInfo.classId)) {
           classInfo.getSerializer().write(buffer, fieldValue);
         } else {
-          if (isFinal[i]) {
+          if (fieldInfo.useDeclaredTypeInfo) {
             // whether tracking ref is recorded in `fieldInfo.serializer`, so it's still
             // consistent with jit serializer.
             Serializer<Object> serializer = classInfo.getSerializer();
@@ -144,14 +131,14 @@ public final class NonexistentClassSerializers {
         }
       }
       Generics generics = fory.getGenerics();
-      for (ObjectSerializer.GenericTypeField fieldInfo : fieldsInfo.containerFields) {
+      for (SerializationFieldInfo fieldInfo : fieldsInfo.containerFields) {
         Object fieldValue = value.get(fieldInfo.qualifiedFieldName);
-        ObjectSerializer.writeContainerFieldValue(
+        AbstractObjectSerializer.writeContainerFieldValue(
             binding, refResolver, classResolver, generics, fieldInfo, buffer, fieldValue);
       }
-      for (ObjectSerializer.GenericTypeField fieldInfo : fieldsInfo.otherFields) {
+      for (SerializationFieldInfo fieldInfo : fieldsInfo.otherFields) {
         Object fieldValue = value.get(fieldInfo.qualifiedFieldName);
-        writeOtherFieldValue(binding, typeResolver, buffer, fieldInfo, fieldValue);
+        writeOtherFieldValue(binding, buffer, fieldInfo, fieldValue);
       }
     }
 
@@ -165,17 +152,12 @@ public final class NonexistentClassSerializers {
                 resolver, NonexistentClass.NonexistentSkip.class, classDef);
         DescriptorGrouper grouper =
             fory.getClassResolver().createDescriptorGrouper(descriptors, false);
-        Tuple3<
-                Tuple2<ObjectSerializer.FinalTypeField[], boolean[]>,
-                ObjectSerializer.GenericTypeField[],
-                ObjectSerializer.GenericTypeField[]>
-            tuple = AbstractObjectSerializer.buildFieldInfos(fory, grouper);
+        FieldGroups fieldGroups = FieldGroups.buildFieldInfos(fory, grouper);
         int classVersionHash = 0;
         if (fory.checkClassVersion()) {
           classVersionHash = ObjectSerializer.computeStructHash(fory, grouper);
         }
-        fieldsInfo =
-            new ClassFieldsInfo(tuple.f0.f0, tuple.f0.f1, tuple.f1, tuple.f2, classVersionHash);
+        fieldsInfo = new ClassFieldsInfo(fieldGroups, classVersionHash);
         fieldsInfoMap.put(classDef.getId(), fieldsInfo);
       }
       return fieldsInfo;
@@ -192,10 +174,7 @@ public final class NonexistentClassSerializers {
       List<MapEntry> entries = new ArrayList<>();
       // read order: primitive,boxed,final,other,collection,map
       ClassFieldsInfo fieldsInfo = getClassFieldsInfo(classDef);
-      ObjectSerializer.FinalTypeField[] finalFields = fieldsInfo.finalFields;
-      boolean[] isFinal = fieldsInfo.isFinal;
-      for (int i = 0; i < finalFields.length; i++) {
-        ObjectSerializer.FinalTypeField fieldInfo = finalFields[i];
+      for (SerializationFieldInfo fieldInfo : fieldsInfo.buildInFields) {
         Object fieldValue;
         if (fieldInfo.classInfo == null) {
           // TODO(chaokunyang) support registered serializer in peer with ref tracking disabled.
@@ -206,18 +185,18 @@ public final class NonexistentClassSerializers {
           } else {
             fieldValue =
                 AbstractObjectSerializer.readFinalObjectFieldValue(
-                    binding, refResolver, classResolver, fieldInfo, isFinal[i], buffer);
+                    binding, refResolver, classResolver, fieldInfo, buffer);
           }
         }
         entries.add(new MapEntry(fieldInfo.qualifiedFieldName, fieldValue));
       }
       Generics generics = fory.getGenerics();
-      for (ObjectSerializer.GenericTypeField fieldInfo : fieldsInfo.containerFields) {
+      for (SerializationFieldInfo fieldInfo : fieldsInfo.containerFields) {
         Object fieldValue =
             AbstractObjectSerializer.readContainerFieldValue(binding, generics, fieldInfo, buffer);
         entries.add(new MapEntry(fieldInfo.qualifiedFieldName, fieldValue));
       }
-      for (ObjectSerializer.GenericTypeField fieldInfo : fieldsInfo.otherFields) {
+      for (SerializationFieldInfo fieldInfo : fieldsInfo.otherFields) {
         Object fieldValue =
             AbstractObjectSerializer.readOtherFieldValue(binding, fieldInfo, buffer);
         entries.add(new MapEntry(fieldInfo.qualifiedFieldName, fieldValue));

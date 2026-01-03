@@ -106,45 +106,45 @@ func isNull(v reflect.Value) bool {
 	}
 }
 
-// sliceConcreteValueSerializer serialize a slice whose elem is not an interface or pointer to interface.
-// Use newSliceConcreteValueSerializer to create instances with proper type validation.
+// sliceSerializer serialize a slice whose elem is not an interface or pointer to interface.
+// Use newSliceSerializer to create instances with proper type validation.
 // This serializer uses LIST protocol for non-primitive element types.
-type sliceConcreteValueSerializer struct {
+type sliceSerializer struct {
 	type_          reflect.Type
 	elemSerializer Serializer
 	referencable   bool
 }
 
-// newSliceConcreteValueSerializer creates a sliceConcreteValueSerializer for slices with concrete element types.
+// newSliceSerializer creates a sliceSerializer for slices with concrete element types.
 // It returns an error if the element type is an interface, pointer to interface, or a primitive type.
 // Primitive numeric types (bool, int8, int16, int32, int64, uint8, float32, float64) must use
 // dedicated primitive slice serializers that use ARRAY protocol (binary size + binary).
-func newSliceConcreteValueSerializer(type_ reflect.Type, elemSerializer Serializer) (*sliceConcreteValueSerializer, error) {
+func newSliceSerializer(type_ reflect.Type, elemSerializer Serializer, xlang bool) (*sliceSerializer, error) {
 	elem := type_.Elem()
 	if elem.Kind() == reflect.Interface {
-		return nil, fmt.Errorf("sliceConcreteValueSerializer does not support interface element type: %v", type_)
+		return nil, fmt.Errorf("sliceSerializer does not support interface element type: %v", type_)
 	}
 	if elem.Kind() == reflect.Ptr && elem.Elem().Kind() == reflect.Interface {
-		return nil, fmt.Errorf("sliceConcreteValueSerializer does not support pointer to interface element type: %v", type_)
+		return nil, fmt.Errorf("sliceSerializer does not support pointer to interface element type: %v", type_)
 	}
 	// Primitive numeric types must use dedicated primitive slice serializers (ARRAY protocol)
 	switch elem.Kind() {
 	case reflect.Bool, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint8, reflect.Float32, reflect.Float64:
-		return nil, fmt.Errorf("sliceConcreteValueSerializer does not support primitive element type %v: use dedicated primitive slice serializer", type_)
+		return nil, fmt.Errorf("sliceSerializer does not support primitive element type %v: use dedicated primitive slice serializer", type_)
 	}
-	return &sliceConcreteValueSerializer{
+	return &sliceSerializer{
 		type_:          type_,
 		elemSerializer: elemSerializer,
-		referencable:   nullable(elem),
+		referencable:   isRefType(elem, xlang),
 	}, nil
 }
 
-func (s *sliceConcreteValueSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+func (s *sliceSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	s.writeDataWithGenerics(ctx, value, false)
 }
 
-func (s *sliceConcreteValueSerializer) writeDataWithGenerics(ctx *WriteContext, value reflect.Value, hasGenerics bool) {
+func (s *sliceSerializer) writeDataWithGenerics(ctx *WriteContext, value reflect.Value, hasGenerics bool) {
 	length := value.Len()
 	buf := ctx.Buffer()
 
@@ -233,7 +233,7 @@ func (s *sliceConcreteValueSerializer) writeDataWithGenerics(ctx *WriteContext, 
 	}
 }
 
-func (s *sliceConcreteValueSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+func (s *sliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
 	done := writeSliceRefAndType(ctx, refMode, writeType, value, LIST)
 	if done || ctx.HasError() {
 		return
@@ -241,7 +241,7 @@ func (s *sliceConcreteValueSerializer) Write(ctx *WriteContext, refMode RefMode,
 	s.writeDataWithGenerics(ctx, value, hasGenerics)
 }
 
-func (s *sliceConcreteValueSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+func (s *sliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
 	done := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
 		return
@@ -249,12 +249,12 @@ func (s *sliceConcreteValueSerializer) Read(ctx *ReadContext, refMode RefMode, r
 	s.ReadData(ctx, value.Type(), value)
 }
 
-func (s *sliceConcreteValueSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+func (s *sliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
 	// typeInfo is already read, don't read it again
 	s.Read(ctx, refMode, false, false, value)
 }
 
-func (s *sliceConcreteValueSerializer) ReadData(ctx *ReadContext, type_ reflect.Type, value reflect.Value) {
+func (s *sliceSerializer) ReadData(ctx *ReadContext, type_ reflect.Type, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	length := int(buf.ReadVaruint32(ctxErr))

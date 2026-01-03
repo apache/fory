@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.fory;
+package org.apache.fory.xlang;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.hash.Hashing;
@@ -33,6 +33,8 @@ import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 import lombok.Data;
+import org.apache.fory.Fory;
+import org.apache.fory.ForyTestBase;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
@@ -421,12 +423,14 @@ public abstract class XlangTestBase extends ForyTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(false)
             .build();
     _testStringSerializer(fory, caseName);
     Fory foryCompress =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(false)
             .withStringCompressed(true)
             .withWriteNumUtf16BytesForUtf8Encoding(false)
             .build();
@@ -454,6 +458,7 @@ public abstract class XlangTestBase extends ForyTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(false)
             .build();
     fory.register(Color.class, 101);
     MemoryBuffer buffer = MemoryUtils.buffer(64);
@@ -542,14 +547,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     int last; // Changed from Integer to int to match Rust
   }
 
-  @Test
-  public void testSimpleStruct() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testSimpleStruct(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_simple_struct";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(Color.class, 101);
     fory.register(Item.class, 102);
@@ -580,14 +585,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), obj);
   }
 
-  @Test
-  public void testSimpleNamedStruct() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testSimpleNamedStruct(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_named_simple_struct";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(Color.class, "demo", "color");
     fory.register(Item.class, "demo", "item");
@@ -618,14 +623,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), obj);
   }
 
-  @Test
-  public void testList() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testList(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_list";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(Item.class, 102);
     MemoryBuffer buffer = MemoryUtils.buffer(64);
@@ -653,14 +658,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     assertEqualsNullTolerant(fory.deserialize(buffer2), itemList2);
   }
 
-  @Test
-  public void testMap() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testMap(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_map";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(Item.class, 102);
     MemoryBuffer buffer = MemoryUtils.buffer(64);
@@ -698,13 +703,13 @@ public abstract class XlangTestBase extends ForyTestBase {
     Integer f6;
   }
 
-  @Test
-  public void testInteger() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testInteger(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_integer";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
             .build();
     fory.register(Item1.class, 101);
@@ -752,14 +757,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(fory.deserialize(buffer2), 0);
   }
 
-  @Test
-  public void testItem() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testItem(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_item";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(Item.class, 102);
 
@@ -790,14 +795,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(readItem3.name, "");
   }
 
-  @Test
-  public void testColor() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testColor(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_color";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(Color.class, 101);
 
@@ -830,14 +835,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     org.apache.fory.type.union.Union2<String, Long> union;
   }
 
-  @Test
-  public void testUnionXlang() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testUnionXlang(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_union_xlang";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(StructWithUnion2.class, 301);
 
@@ -871,14 +876,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     List<String> items;
   }
 
-  @Test
-  public void testStructWithList() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testStructWithList(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_struct_with_list";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(StructWithList.class, 201);
 
@@ -908,14 +913,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Map<String, String> data;
   }
 
-  @Test
-  public void testStructWithMap() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testStructWithMap(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_struct_with_map";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(StructWithMap.class, 202);
 
@@ -1010,8 +1015,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     MyWrapper wrapper = new MyWrapper();
     wrapper.color = Color.White;
     MyStruct myStruct = new MyStruct(42);
-    MyExt myExt = new MyExt(43);
-    wrapper.myExt = myExt;
+    wrapper.myExt = new MyExt(43);
     wrapper.myStruct = myStruct;
     byte[] serialize = fory1.serialize(wrapper);
     ExecutionContext ctx = prepareExecution(caseName, serialize);
@@ -1021,14 +1025,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(newWrapper, new EmptyWrapper());
   }
 
-  @Test
-  public void testSkipIdCustom() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testSkipIdCustom(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_skip_id_custom";
     Fory fory1 =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory1.register(Color.class, 101);
     fory1.register(MyStruct.class, 102);
@@ -1039,7 +1043,7 @@ public abstract class XlangTestBase extends ForyTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory2.register(MyExt.class, 103);
     fory2.registerSerializer(MyExt.class, MyExtSerializer.class);
@@ -1047,14 +1051,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     _testSkipCustom(fory1, fory2, caseName);
   }
 
-  @Test
-  public void testSkipNameCustom() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testSkipNameCustom(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_skip_name_custom";
     Fory fory1 =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory1.register(Color.class, "color");
     fory1.register(MyStruct.class, "my_struct");
@@ -1065,7 +1069,7 @@ public abstract class XlangTestBase extends ForyTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory2.register(MyExt.class, "my_ext");
     fory2.registerSerializer(MyExt.class, MyExtSerializer.class);
@@ -1073,14 +1077,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     _testSkipCustom(fory1, fory2, caseName);
   }
 
-  @Test
-  public void testConsistentNamed() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testConsistentNamed(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_consistent_named";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .withClassVersionCheck(true)
             .build();
     fory.register(Color.class, "color");
@@ -1127,14 +1131,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     double f3;
   }
 
-  @Test
-  public void testStructVersionCheck() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testStructVersionCheck(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_struct_version_check";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .withClassVersionCheck(true)
             .build();
     fory.register(VersionCheckStruct.class, 201);
@@ -1209,14 +1213,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Map<String, Animal> animal_map;
   }
 
-  @Test
-  public void testPolymorphicList() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testPolymorphicList(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_polymorphic_list";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     // Register concrete types, not the interface
     fory.register(Dog.class, 302);
@@ -1268,14 +1272,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(((Cat) readHolder.animals.get(1)).lives, 7);
   }
 
-  @Test
-  public void testPolymorphicMap() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testPolymorphicMap(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_polymorphic_map";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(Dog.class, 302);
     fory.register(Cat.class, 303);
@@ -1366,13 +1370,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     String f2;
   }
 
-  @Test
-  public void testOneStringFieldSchemaConsistent() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testOneStringFieldSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_one_string_field_schema";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(OneStringFieldStruct.class, 200);
 
@@ -1390,13 +1395,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f1, "hello");
   }
 
-  @Test
-  public void testOneStringFieldCompatible() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testOneStringFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_one_string_field_compatible";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(OneStringFieldStruct.class, 200);
 
@@ -1414,13 +1420,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f1, "hello");
   }
 
-  @Test
-  public void testTwoStringFieldCompatible() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testTwoStringFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_two_string_field_compatible";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(TwoStringFieldStruct.class, 201);
 
@@ -1440,14 +1447,15 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f2, "second");
   }
 
-  @Test
-  public void testSchemaEvolutionCompatible() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testSchemaEvolutionCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_schema_evolution_compatible";
     // Fory for TwoStringFieldStruct
     Fory fory2 =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
             .build();
     fory2.register(TwoStringFieldStruct.class, 200);
 
@@ -1456,6 +1464,7 @@ public abstract class XlangTestBase extends ForyTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
             .build();
     foryEmpty.register(EmptyStruct.class, 200);
 
@@ -1463,6 +1472,7 @@ public abstract class XlangTestBase extends ForyTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
             .build();
     fory1.register(OneStringFieldStruct.class, 200);
 
@@ -1522,13 +1532,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     TestEnum f2;
   }
 
-  @Test
-  public void testOneEnumFieldSchemaConsistent() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testOneEnumFieldSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_one_enum_field_schema";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(TestEnum.class, 210);
     fory.register(OneEnumFieldStruct.class, 211);
@@ -1547,13 +1558,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f1, TestEnum.VALUE_B);
   }
 
-  @Test
-  public void testOneEnumFieldCompatible() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testOneEnumFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_one_enum_field_compatible";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(TestEnum.class, 210);
     fory.register(OneEnumFieldStruct.class, 211);
@@ -1572,13 +1584,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f1, TestEnum.VALUE_A);
   }
 
-  @Test
-  public void testTwoEnumFieldCompatible() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testTwoEnumFieldCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_two_enum_field_compatible";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(TestEnum.class, 210);
     fory.register(TwoEnumFieldStruct.class, 212);
@@ -1599,14 +1612,15 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result.f2, TestEnum.VALUE_C);
   }
 
-  @Test
-  public void testEnumSchemaEvolutionCompatible() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testEnumSchemaEvolutionCompatible(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_enum_schema_evolution_compatible";
     // Fory for TwoEnumFieldStruct
     Fory fory2 =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
             .build();
     fory2.register(TestEnum.class, 210);
     fory2.register(TwoEnumFieldStruct.class, 211);
@@ -1616,6 +1630,7 @@ public abstract class XlangTestBase extends ForyTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
             .build();
     foryEmpty.register(TestEnum.class, 210);
     foryEmpty.register(EmptyStruct.class, 211);
@@ -1624,6 +1639,7 @@ public abstract class XlangTestBase extends ForyTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(enableCodegen)
             .build();
     fory1.register(TestEnum.class, 210);
     fory1.register(OneEnumFieldStruct.class, 211);
@@ -1732,14 +1748,15 @@ public abstract class XlangTestBase extends ForyTestBase {
     Map<String, String> nullableMap;
   }
 
-  @Test
-  public void testNullableFieldSchemaConsistentNotNull() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldSchemaConsistentNotNull(boolean enableCodegen)
+      throws java.io.IOException {
     String caseName = "test_nullable_field_schema_consistent_not_null";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(NullableComprehensiveSchemaConsistent.class, 401);
 
@@ -1790,14 +1807,15 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result, obj);
   }
 
-  @Test
-  public void testNullableFieldSchemaConsistentNull() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldSchemaConsistentNull(boolean enableCodegen)
+      throws java.io.IOException {
     String caseName = "test_nullable_field_schema_consistent_null";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .build();
     fory.register(NullableComprehensiveSchemaConsistent.class, 401);
 
@@ -1915,14 +1933,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Map<String, String> nullableMap2;
   }
 
-  @Test
-  public void testNullableFieldCompatibleNotNull() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldCompatibleNotNull(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_nullable_field_compatible_not_null";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .withMetaCompressor(new NoOpMetaCompressor())
             .build();
     fory.register(NullableComprehensiveCompatible.class, 402);
@@ -1981,14 +1999,14 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result, obj);
   }
 
-  @Test
-  public void testNullableFieldCompatibleNull() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldCompatibleNull(boolean enableCodegen) throws java.io.IOException {
     String caseName = "test_nullable_field_compatible_null";
     Fory fory =
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .withMetaCompressor(new NoOpMetaCompressor())
             .build();
     fory.register(NullableComprehensiveCompatible.class, 402);
@@ -2080,43 +2098,7 @@ public abstract class XlangTestBase extends ForyTestBase {
     Assert.assertEquals(result, expected);
   }
 
-  // Keep the old simple structs for backward compatibility with existing tests
-  @Data
-  static class NullableFieldStruct {
-    int intField;
-    long longField;
-    float floatField;
-    double doubleField;
-    boolean boolField;
-    String stringField;
-
-    @ForyField(nullable = true)
-    String nullableString1;
-
-    @ForyField(nullable = true)
-    String nullableString2;
-  }
-
-  @Data
-  static class NullableFieldStructCompatible {
-    int intField;
-    long longField;
-    float floatField;
-    double doubleField;
-    boolean boolField;
-    String stringField;
-
-    @ForyField(nullable = true)
-    String nullableString1;
-
-    @ForyField(nullable = true)
-    String nullableString2;
-
-    @ForyField(nullable = true)
-    String nullableString3;
-  }
-
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({"unchecked", "rawtypes"})
   private void assertStringEquals(Object actual, Object expected, boolean useToString) {
     if (useToString) {
       if (expected instanceof Map) {
@@ -2156,7 +2138,6 @@ public abstract class XlangTestBase extends ForyTestBase {
    * null strings become empty strings "". This method first tries direct comparison, then
    * normalizes null to empty string and compares again. Prints normalized values on mismatch.
    */
-  @SuppressWarnings("unchecked")
   protected void assertEqualsNullTolerant(Object actual, Object expected) {
     // First try direct comparison
     if (Objects.equals(actual, expected)) {
@@ -2184,8 +2165,166 @@ public abstract class XlangTestBase extends ForyTestBase {
     }
   }
 
+  // ============================================================================
+  // Reference Tracking Tests - Test struct field reference sharing
+  // ============================================================================
+
+  /**
+   * Inner struct for reference tracking tests in SCHEMA_CONSISTENT mode (compatible=false). A
+   * simple struct with id and name fields.
+   */
+  @Data
+  static class RefInnerSchemaConsistent {
+    int id;
+    String name;
+  }
+
+  /**
+   * Outer struct for reference tracking tests in SCHEMA_CONSISTENT mode. Contains two fields that
+   * can point to the same RefInnerSchemaConsistent instance. Both fields have ref tracking enabled.
+   */
+  @Data
+  static class RefOuterSchemaConsistent {
+    @ForyField(ref = true, nullable = true, morphic = ForyField.Morphic.FINAL)
+    RefInnerSchemaConsistent inner1;
+
+    @ForyField(ref = true, nullable = true, morphic = ForyField.Morphic.FINAL)
+    RefInnerSchemaConsistent inner2;
+  }
+
+  /**
+   * Test reference tracking in SCHEMA_CONSISTENT mode (compatible=false). Creates an outer struct
+   * with two fields pointing to the same inner struct instance. Verifies that after
+   * serialization/deserialization across languages, both fields still reference the same object.
+   */
+  @Test(dataProvider = "enableCodegen")
+  public void testRefSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
+    String caseName = "test_ref_schema_consistent";
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+            .withRefTracking(true)
+            .withCodegen(enableCodegen)
+            .build();
+    fory.register(RefInnerSchemaConsistent.class, 501);
+    fory.register(RefOuterSchemaConsistent.class, 502);
+
+    // Create inner struct
+    RefInnerSchemaConsistent inner = new RefInnerSchemaConsistent();
+    inner.id = 42;
+    inner.name = "shared_inner";
+
+    // Create outer struct with both fields pointing to the same inner struct
+    RefOuterSchemaConsistent outer = new RefOuterSchemaConsistent();
+    outer.inner1 = inner;
+    outer.inner2 = inner; // Same reference as inner1
+
+    // Verify Java serialization preserves reference identity
+    byte[] javaBytes = fory.serialize(outer);
+    RefOuterSchemaConsistent javaResult = (RefOuterSchemaConsistent) fory.deserialize(javaBytes);
+    Assert.assertSame(
+        javaResult.inner1, javaResult.inner2, "Java: inner1 and inner2 should be same object");
+    Assert.assertEquals(javaResult.inner1.id, 42);
+    Assert.assertEquals(javaResult.inner1.name, "shared_inner");
+
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
+    fory.serialize(buffer, outer);
+
+    ExecutionContext ctx = prepareExecution(caseName, buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+
+    MemoryBuffer buffer2 = readBuffer(ctx.dataFile());
+    RefOuterSchemaConsistent result = (RefOuterSchemaConsistent) fory.deserialize(buffer2);
+
+    // Verify reference identity is preserved after cross-language round-trip
+    Assert.assertSame(
+        result.inner1,
+        result.inner2,
+        "After xlang round-trip: inner1 and inner2 should be same object");
+    Assert.assertEquals(result.inner1.id, 42);
+    Assert.assertEquals(result.inner1.name, "shared_inner");
+  }
+
+  /**
+   * Inner struct for reference tracking tests in COMPATIBLE mode (compatible=true). A simple struct
+   * with id and name fields.
+   */
+  @Data
+  static class RefInnerCompatible {
+    int id;
+    String name;
+  }
+
+  /**
+   * Outer struct for reference tracking tests in COMPATIBLE mode. Contains two fields that can
+   * point to the same RefInnerCompatible instance. Both fields have ref tracking enabled.
+   */
+  @Data
+  static class RefOuterCompatible {
+    @ForyField(ref = true, nullable = true)
+    RefInnerCompatible inner1;
+
+    @ForyField(ref = true, nullable = true)
+    RefInnerCompatible inner2;
+  }
+
+  /**
+   * Test reference tracking in COMPATIBLE mode (compatible=true). Creates an outer struct with two
+   * fields pointing to the same inner struct instance. Verifies that after
+   * serialization/deserialization across languages, both fields still reference the same object.
+   */
+  @Test(dataProvider = "enableCodegen")
+  public void testRefCompatible(boolean enableCodegen) throws java.io.IOException {
+    String caseName = "test_ref_compatible";
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withRefTracking(true)
+            .withCodegen(enableCodegen)
+            .withMetaCompressor(new NoOpMetaCompressor())
+            .build();
+    fory.register(RefInnerCompatible.class, 503);
+    fory.register(RefOuterCompatible.class, 504);
+
+    // Create inner struct
+    RefInnerCompatible inner = new RefInnerCompatible();
+    inner.id = 99;
+    inner.name = "compatible_shared";
+
+    // Create outer struct with both fields pointing to the same inner struct
+    RefOuterCompatible outer = new RefOuterCompatible();
+    outer.inner1 = inner;
+    outer.inner2 = inner; // Same reference as inner1
+
+    // Verify Java serialization preserves reference identity
+    byte[] javaBytes = fory.serialize(outer);
+    RefOuterCompatible javaResult = (RefOuterCompatible) fory.deserialize(javaBytes);
+    Assert.assertSame(
+        javaResult.inner1, javaResult.inner2, "Java: inner1 and inner2 should be same object");
+    Assert.assertEquals(javaResult.inner1.id, 99);
+    Assert.assertEquals(javaResult.inner1.name, "compatible_shared");
+
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
+    fory.serialize(buffer, outer);
+
+    ExecutionContext ctx = prepareExecution(caseName, buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+
+    MemoryBuffer buffer2 = readBuffer(ctx.dataFile());
+    RefOuterCompatible result = (RefOuterCompatible) fory.deserialize(buffer2);
+
+    // Verify reference identity is preserved after cross-language round-trip
+    Assert.assertSame(
+        result.inner1,
+        result.inner2,
+        "After xlang round-trip: inner1 and inner2 should be same object");
+    Assert.assertEquals(result.inner1.id, 99);
+    Assert.assertEquals(result.inner1.name, "compatible_shared");
+  }
+
   /** Normalize null values to empty strings in collections and maps recursively. */
-  @SuppressWarnings("unchecked")
   private Object normalizeNulls(Object obj) {
     if (obj == null) {
       return "";

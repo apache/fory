@@ -1053,6 +1053,11 @@ class StructFieldSerializerVisitor(TypeVisitor):
     def visit_customized(self, field_name, type_, types_path=None):
         if issubclass(type_, enum.Enum):
             return self.fory.type_resolver.get_serializer(type_)
+        # For custom types (dataclasses, etc.), try to get or create serializer
+        # This enables field-level serializer resolution for types like inner structs
+        typeinfo = self.fory.type_resolver.get_typeinfo(type_, create=False)
+        if typeinfo is not None:
+            return typeinfo.serializer
         return None
 
     def visit_other(self, field_name, type_, types_path=None):

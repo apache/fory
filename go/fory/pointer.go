@@ -178,8 +178,8 @@ func (s *ptrToInterfaceSerializer) WriteData(ctx *WriteContext, value reflect.Va
 	// Get the concrete element that the interface pointer points to
 	elemValue := value.Elem()
 
-	// Use WriteValue to handle the polymorphic interface value
-	ctx.WriteValue(elemValue)
+	// Use WriteValue to handle the polymorphic interface value with ref tracking and type info
+	ctx.WriteValue(elemValue, RefModeTracking, true)
 }
 
 func (s *ptrToInterfaceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
@@ -206,7 +206,7 @@ func (s *ptrToInterfaceSerializer) Write(ctx *WriteContext, refMode RefMode, wri
 	}
 
 	// For interface pointers, we don't write type info here
-	// WriteValue will handle the type info for the concrete value
+	// WriteData will call WriteValue which handles the type info for the concrete value
 	s.WriteData(ctx, value)
 }
 
@@ -214,8 +214,8 @@ func (s *ptrToInterfaceSerializer) ReadData(ctx *ReadContext, type_ reflect.Type
 	// Create a new interface pointer
 	newVal := reflect.New(type_.Elem())
 
-	// Use ReadValue to handle the polymorphic interface value
-	ctx.ReadValue(newVal.Elem())
+	// Use ReadValue to handle the polymorphic interface value with ref tracking and type info
+	ctx.ReadValue(newVal.Elem(), RefModeTracking, true)
 	if ctx.HasError() {
 		return
 	}

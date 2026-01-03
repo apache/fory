@@ -97,8 +97,8 @@ def encode_typedef(type_resolver, cls):
     # Write fields info
     write_fields_info(type_resolver, buffer, field_infos)
 
-    # Get the encoded binary
-    binary = buffer.to_bytes()
+    # Get the encoded binary (only the written portion, not the full buffer)
+    binary = buffer.to_bytes(0, buffer.writer_index)
 
     # Compress if beneficial
     compressed_binary = type_resolver.get_meta_compressor().compress(binary)

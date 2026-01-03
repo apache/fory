@@ -178,7 +178,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
             new TypeRef<Map<String, String>>() {}, "c" + index++, -1, "TestClass", false));
     DescriptorGrouper grouper =
         DescriptorGrouper.createDescriptorGrouper(
-                ReflectionUtils::isMonomorphic,
+                d -> ReflectionUtils.isMonomorphic(d.getRawType()),
                 descriptors,
                 false,
                 null,
@@ -244,7 +244,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
     }
     {
       List<? extends Class<?>> classes =
-          grouper.getFinalDescriptors().stream()
+          grouper.getBuildInDescriptors().stream()
               .map(Descriptor::getRawType)
               .collect(Collectors.toList());
       assertEquals(classes, Arrays.asList(String.class, Instant.class, Instant.class));
@@ -262,7 +262,7 @@ public class DescriptorGrouperTest extends ForyTestBase {
   public void testCompressedPrimitiveGrouper() {
     DescriptorGrouper grouper =
         DescriptorGrouper.createDescriptorGrouper(
-                ReflectionUtils::isMonomorphic,
+                d -> ReflectionUtils.isMonomorphic(d.getRawType()),
                 createDescriptors(),
                 false,
                 null,

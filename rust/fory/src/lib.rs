@@ -251,7 +251,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default();
+//! let mut fory = Fory::default().track_ref(true);
 //! fory.register::<Node>(2000);
 //!
 //! let parent = Rc::new(RefCell::new(Node {
@@ -293,7 +293,7 @@
 //! }
 //!
 //! # fn main() -> Result<(), Error> {
-//! let mut fory = Fory::default();
+//! let mut fory = Fory::default().track_ref(true);
 //! fory.register::<Node>(6000);
 //!
 //! let parent = Arc::new(Mutex::new(Node {

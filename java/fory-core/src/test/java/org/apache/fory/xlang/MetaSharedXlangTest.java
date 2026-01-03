@@ -20,13 +20,13 @@
 package org.apache.fory.xlang;
 
 import lombok.Data;
-import org.apache.fory.CrossLanguageTest.Bar;
-import org.apache.fory.CrossLanguageTest.Foo;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.test.bean.BeanB;
+import org.apache.fory.xlang.PyCrossLanguageTest.Bar;
+import org.apache.fory.xlang.PyCrossLanguageTest.Foo;
 import org.testng.annotations.Test;
 
 public class MetaSharedXlangTest extends ForyTestBase {

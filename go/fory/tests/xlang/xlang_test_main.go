@@ -1863,6 +1863,162 @@ func testNullableFieldCompatibleNull() {
 }
 
 // ============================================================================
+// Reference Tracking Test Types
+// ============================================================================
+
+// RefInnerSchemaConsistent - Inner struct for ref tracking tests in SCHEMA_CONSISTENT mode
+// Matches Java's RefInnerSchemaConsistent (type id 501)
+type RefInnerSchemaConsistent struct {
+	Id   int32
+	Name string
+}
+
+// RefOuterSchemaConsistent - Outer struct for ref tracking tests in SCHEMA_CONSISTENT mode
+// Both fields point to the same RefInnerSchemaConsistent instance
+// Matches Java's RefOuterSchemaConsistent (type id 502)
+type RefOuterSchemaConsistent struct {
+	Inner1 *RefInnerSchemaConsistent `fory:"ref,nullable"`
+	Inner2 *RefInnerSchemaConsistent `fory:"ref,nullable"`
+}
+
+// RefInnerCompatible - Inner struct for ref tracking tests in COMPATIBLE mode
+// Matches Java's RefInnerCompatible (type id 503)
+type RefInnerCompatible struct {
+	Id   int32
+	Name string
+}
+
+// RefOuterCompatible - Outer struct for ref tracking tests in COMPATIBLE mode
+// Both fields point to the same RefInnerCompatible instance
+// Matches Java's RefOuterCompatible (type id 504)
+type RefOuterCompatible struct {
+	Inner1 *RefInnerCompatible `fory:"ref,nullable"`
+	Inner2 *RefInnerCompatible `fory:"ref,nullable"`
+}
+
+func getRefOuterSchemaConsistent(obj interface{}) RefOuterSchemaConsistent {
+	switch v := obj.(type) {
+	case RefOuterSchemaConsistent:
+		return v
+	case *RefOuterSchemaConsistent:
+		return *v
+	default:
+		panic(fmt.Sprintf("expected RefOuterSchemaConsistent, got %T", obj))
+	}
+}
+
+func getRefOuterCompatible(obj interface{}) RefOuterCompatible {
+	switch v := obj.(type) {
+	case RefOuterCompatible:
+		return v
+	case *RefOuterCompatible:
+		return *v
+	default:
+		panic(fmt.Sprintf("expected RefOuterCompatible, got %T", obj))
+	}
+}
+
+// ============================================================================
+// Reference Tracking Tests
+// ============================================================================
+
+func testRefSchemaConsistent() {
+	dataFile := getDataFile()
+	data := readFile(dataFile)
+
+	f := fory.New(fory.WithXlang(true), fory.WithCompatible(false), fory.WithRefTracking(true))
+	f.Register(RefInnerSchemaConsistent{}, 501)
+	f.Register(RefOuterSchemaConsistent{}, 502)
+
+	buf := fory.NewByteBuffer(data)
+	var obj interface{}
+	err := f.DeserializeWithCallbackBuffers(buf, &obj, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to deserialize: %v", err))
+	}
+
+	result := getRefOuterSchemaConsistent(obj)
+
+	// Verify both fields have the expected values
+	if result.Inner1 == nil {
+		panic("Inner1 is nil")
+	}
+	if result.Inner2 == nil {
+		panic("Inner2 is nil")
+	}
+	assertEqual(int32(42), result.Inner1.Id, "Inner1.Id")
+	assertEqual("shared_inner", result.Inner1.Name, "Inner1.Name")
+	assertEqual(int32(42), result.Inner2.Id, "Inner2.Id")
+	assertEqual("shared_inner", result.Inner2.Name, "Inner2.Name")
+
+	// Verify reference identity is preserved
+	if result.Inner1 != result.Inner2 {
+		panic("Reference tracking failed: Inner1 and Inner2 should point to the same object")
+	}
+	fmt.Println("Reference identity verified: Inner1 == Inner2")
+
+	// Re-serialize with same shared reference
+	outer := &RefOuterSchemaConsistent{
+		Inner1: result.Inner1,
+		Inner2: result.Inner1, // Use same reference
+	}
+	serialized, err := f.Serialize(outer)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to serialize: %v", err))
+	}
+
+	writeFile(dataFile, serialized)
+}
+
+func testRefCompatible() {
+	dataFile := getDataFile()
+	data := readFile(dataFile)
+
+	f := fory.New(fory.WithXlang(true), fory.WithCompatible(true), fory.WithRefTracking(true))
+	f.Register(RefInnerCompatible{}, 503)
+	f.Register(RefOuterCompatible{}, 504)
+
+	buf := fory.NewByteBuffer(data)
+	var obj interface{}
+	err := f.DeserializeWithCallbackBuffers(buf, &obj, nil)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to deserialize: %v", err))
+	}
+
+	result := getRefOuterCompatible(obj)
+
+	// Verify both fields have the expected values
+	if result.Inner1 == nil {
+		panic("Inner1 is nil")
+	}
+	if result.Inner2 == nil {
+		panic("Inner2 is nil")
+	}
+	assertEqual(int32(99), result.Inner1.Id, "Inner1.Id")
+	assertEqual("compatible_shared", result.Inner1.Name, "Inner1.Name")
+	assertEqual(int32(99), result.Inner2.Id, "Inner2.Id")
+	assertEqual("compatible_shared", result.Inner2.Name, "Inner2.Name")
+
+	// Verify reference identity is preserved
+	if result.Inner1 != result.Inner2 {
+		panic("Reference tracking failed: Inner1 and Inner2 should point to the same object")
+	}
+	fmt.Println("Reference identity verified: Inner1 == Inner2")
+
+	// Re-serialize with same shared reference
+	outer := &RefOuterCompatible{
+		Inner1: result.Inner1,
+		Inner2: result.Inner1, // Use same reference
+	}
+	serialized, err := f.Serialize(outer)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to serialize: %v", err))
+	}
+
+	writeFile(dataFile, serialized)
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1957,6 +2113,10 @@ func main() {
 		testNullableFieldCompatibleNotNull()
 	case "test_nullable_field_compatible_null":
 		testNullableFieldCompatibleNull()
+	case "test_ref_schema_consistent":
+		testRefSchemaConsistent()
+	case "test_ref_compatible":
+		testRefCompatible()
 	default:
 		panic(fmt.Sprintf("Unknown test case: %s", *caseName))
 	}

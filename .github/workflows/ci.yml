@@ -326,7 +326,7 @@ jobs:
           cd java
           mvn -T16 --no-transfer-progress clean install -DskipTests
           cd fory-core
-          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.RustXlangTest
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.RustXlangTest
 
   cpp:
     name: C++ CI
@@ -412,7 +412,7 @@ jobs:
           cd java
           mvn -T16 --no-transfer-progress clean install -DskipTests
           cd fory-core
-          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.CPPXlangTest
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.CPPXlangTest
 
   cpp_examples:
     name: C++ Examples
@@ -533,8 +533,10 @@ jobs:
           cd java
           mvn -T16 --no-transfer-progress clean install -DskipTests
           cd fory-core
-          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.PythonXlangTest
-          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.CrossLanguageTest
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.PythonXlangTest
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.PyCrossLanguageTest
+          cd ../fory-format
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.format.CrossLanguageTest
 
   go:
     name: Golang CI
@@ -599,7 +601,7 @@ jobs:
           cd java
           mvn -T16 --no-transfer-progress clean install -DskipTests
           cd fory-core
-          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.GoXlangTest
+          mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.GoXlangTest
 
   lint:
     name: Code Style Check

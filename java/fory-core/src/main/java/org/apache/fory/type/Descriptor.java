@@ -261,6 +261,18 @@ public class Descriptor {
     return foryField;
   }
 
+  /**
+   * Returns the morphic setting for this field.
+   *
+   * @return the morphic setting from @ForyField annotation, or AUTO if not specified
+   */
+  public ForyField.Morphic getMorphic() {
+    if (foryField != null) {
+      return foryField.morphic();
+    }
+    return ForyField.Morphic.AUTO;
+  }
+
   /** Try not use {@link TypeRef#getRawType()} since it's expensive. */
   public Class<?> getRawType() {
     Class<?> type = this.type;

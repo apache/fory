@@ -88,6 +88,33 @@ func isReferencable(t reflect.Type) bool {
 	}
 }
 
+// isRefType determines if a type should track references.
+// For xlang mode, only pointer to struct/ext, interface, slice, and map track refs.
+// Arrays do NOT track refs in xlang mode (they are value types).
+// For native Go mode, uses standard Go reference semantics.
+//
+// Note: Struct fields can provide tags to override ref tracking behavior for specific
+// field types. However, if the value is not a struct field (e.g., top-level value,
+// collection element), then this function's result is always used.
+func isRefType(t reflect.Type, xlang bool) bool {
+	kind := t.Kind()
+	if xlang {
+		switch kind {
+		case reflect.Ptr:
+			// Only pointer to struct tracks ref in xlang
+			elemKind := t.Elem().Kind()
+			return elemKind == reflect.Struct
+		case reflect.Interface, reflect.Slice, reflect.Map:
+			return true
+		default:
+			// Arrays and other types don't track refs in xlang
+			return false
+		}
+	}
+	// Native Go mode: pointers, maps, slices, and interfaces track refs
+	return isReferencable(t)
+}
+
 func newRefResolver(refTracking bool) *RefResolver {
 	refResolver := &RefResolver{
 		refTracking:    refTracking,

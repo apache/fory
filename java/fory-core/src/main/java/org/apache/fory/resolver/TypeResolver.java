@@ -37,6 +37,7 @@ import java.util.SortedMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import org.apache.fory.Fory;
+import org.apache.fory.annotation.CodegenInvoke;
 import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.CodecUtils;
@@ -97,6 +98,7 @@ public abstract class TypeResolver {
   static final String SET_META__CONTEXT_MSG =
       "Meta context must be set before serialization, "
           + "please set meta context by SerializationContext.setMetaContext";
+  private static final GenericType OBJECT_GENERIC_TYPE = GenericType.build(Object.class);
 
   final Fory fory;
   final boolean metaContextShareEnabled;
@@ -222,6 +224,10 @@ public abstract class TypeResolver {
   public abstract boolean isRegisteredById(Class<?> cls);
 
   public abstract boolean isRegisteredByName(Class<?> cls);
+
+  public abstract boolean isBuildIn(Descriptor descriptor);
+
+  public abstract boolean isMonomorphic(Descriptor descriptor);
 
   public abstract boolean isMonomorphic(Class<?> clz);
 
@@ -478,6 +484,13 @@ public abstract class TypeResolver {
   public abstract GenericType buildGenericType(TypeRef<?> typeRef);
 
   public abstract GenericType buildGenericType(Type type);
+
+  @CodegenInvoke
+  public GenericType getGenericTypeInStruct(Class<?> cls, String genericTypeStr) {
+    Map<String, GenericType> map =
+        extRegistry.classGenericTypes.computeIfAbsent(cls, this::buildGenericMap);
+    return map.getOrDefault(genericTypeStr, OBJECT_GENERIC_TYPE);
+  }
 
   public abstract void initialize();
 

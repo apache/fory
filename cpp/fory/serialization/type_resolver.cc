@@ -133,8 +133,11 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
   uint8_t header =
       (std::min(FIELD_NAME_SIZE_THRESHOLD, name_size - 1) << 2) & 0x3C;
 
+  if (field_type.ref_tracking) {
+    header |= 1; // bit 0 for ref tracking
+  }
   if (field_type.nullable) {
-    header |= 2;
+    header |= 2; // bit 1 for nullable
   }
   header |= (encoding_idx << 6);
 
@@ -974,16 +977,19 @@ std::string TypeMeta::compute_struct_fingerprint(
 
     // Java's ObjectSerializer.getTypeId returns Types.UNKNOWN (0) for:
     // - abstract classes, interfaces, and enum types
+    // - user-defined struct types (in xlang mode)
     // This aligns the hash computation with Java's behavior.
     uint32_t effective_type_id = fi.field_type.type_id;
     if (effective_type_id == static_cast<uint32_t>(TypeId::ENUM) ||
-        effective_type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM)) {
+        effective_type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM) ||
+        effective_type_id == static_cast<uint32_t>(TypeId::STRUCT) ||
+        effective_type_id == static_cast<uint32_t>(TypeId::NAMED_STRUCT)) {
       effective_type_id = static_cast<uint32_t>(TypeId::UNKNOWN);
     }
     fingerprint.append(std::to_string(effective_type_id));
     fingerprint.push_back(',');
-    // ref flag: currently always 0 in C++ (no ref tracking support yet)
-    fingerprint.push_back('0');
+    // Use field-level ref tracking flag from FORY_FIELD_TAGS or fory::field<>
+    fingerprint.push_back(fi.field_type.ref_tracking ? '1' : '0');
     fingerprint.push_back(',');
     fingerprint.append(fi.field_type.nullable ? "1;" : "0;");
   }
@@ -1002,9 +1008,10 @@ int32_t TypeMeta::compute_struct_version(const TypeMeta &meta) {
   uint64_t low = static_cast<uint64_t>(hash_out[0]);
   uint32_t version = static_cast<uint32_t>(low & 0xFFFF'FFFFu);
 #ifdef FORY_DEBUG
+  // DEBUG: Print fingerprint for debugging version mismatch
   std::cerr << "[xlang][debug] struct_version type_name=" << meta.type_name
-            << ", fingerprint=\"" << fingerprint << "\" version=" << version
-            << std::endl;
+            << ", fingerprint=\"" << fingerprint
+            << "\" version=" << static_cast<int32_t>(version) << std::endl;
 #endif
   return static_cast<int32_t>(version);
 }

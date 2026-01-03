@@ -39,7 +39,7 @@ class Serializer(ABC):
     def __init__(self, fory, type_: type):
         self.fory = fory
         self.type_: type = type_
-        self.need_to_write_ref = not is_primitive_type(type_)
+        self.need_to_write_ref = fory.ref_tracking and not is_primitive_type(type_)
 
     def write(self, buffer, value):
         raise NotImplementedError

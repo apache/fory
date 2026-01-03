@@ -50,6 +50,12 @@ struct not_null {};
 /// tracking).
 struct ref {};
 
+/// Tag to mark a polymorphic shared_ptr/unique_ptr field as monomorphic.
+/// Use this when the field type has virtual methods but you know the actual
+/// runtime type will always be exactly T (not a derived type).
+/// This avoids dynamic type dispatch overhead during serialization.
+struct monomorphic {};
+
 namespace detail {
 
 // ============================================================================
@@ -96,10 +102,12 @@ inline constexpr bool has_option_v = (std::is_same_v<Tag, Options> || ...);
 // ============================================================================
 
 /// Compile-time field tag metadata entry
-template <int16_t Id, bool Nullable, bool Ref> struct FieldTagEntry {
+template <int16_t Id, bool Nullable, bool Ref, bool Monomorphic = false>
+struct FieldTagEntry {
   static constexpr int16_t id = Id;
   static constexpr bool is_nullable = Nullable;
   static constexpr bool track_ref = Ref;
+  static constexpr bool is_monomorphic = Monomorphic;
 };
 
 /// Default: no field tags defined for type T
@@ -163,6 +171,11 @@ template <typename T, int16_t Id, typename... Options> class field {
                 "fory::ref is only valid for shared_ptr "
                 "(reference tracking requires shared ownership).");
 
+  // Validate: monomorphic only for smart pointers
+  static_assert(!detail::has_option_v<monomorphic, Options...> ||
+                    detail::is_smart_ptr_v<T>,
+                "fory::monomorphic is only valid for shared_ptr/unique_ptr.");
+
   // Validate: no options for optional (inherently nullable)
   static_assert(!detail::is_optional_v<T> || sizeof...(Options) == 0,
                 "std::optional<T> is inherently nullable. No options allowed.");
@@ -188,6 +201,13 @@ public:
   /// - It's std::shared_ptr with fory::ref option
   static constexpr bool track_ref =
       detail::is_shared_ptr_v<T> && detail::has_option_v<ref, Options...>;
+
+  /// Monomorphic serialization is enabled if:
+  /// - It's std::shared_ptr or std::unique_ptr with fory::monomorphic option
+  /// - When true, the serializer will not use dynamic type dispatch
+  static constexpr bool is_monomorphic =
+      detail::is_smart_ptr_v<T> &&
+      detail::has_option_v<monomorphic, Options...>;
 
   T value{};
 
@@ -309,6 +329,19 @@ struct field_track_ref<field<T, Id, Options...>> {
 template <typename T>
 inline constexpr bool field_track_ref_v = field_track_ref<T>::value;
 
+/// Get is_monomorphic from field type
+template <typename T> struct field_is_monomorphic {
+  static constexpr bool value = false;
+};
+
+template <typename T, int16_t Id, typename... Options>
+struct field_is_monomorphic<field<T, Id, Options...>> {
+  static constexpr bool value = field<T, Id, Options...>::is_monomorphic;
+};
+
+template <typename T>
+inline constexpr bool field_is_monomorphic_v = field_is_monomorphic<T>::value;
+
 // ============================================================================
 // FORY_FIELD_TAGS Macro Support
 // ============================================================================
@@ -317,7 +350,7 @@ namespace detail {
 
 // Helper to parse field tag entry from macro arguments
 // Supports: (field, id), (field, id, nullable), (field, id, ref),
-//           (field, id, nullable, ref)
+//           (field, id, nullable, ref), (field, id, monomorphic), etc.
 template <typename FieldType, int16_t Id, typename... Options>
 struct ParseFieldTagEntry {
   static constexpr bool is_nullable =
@@ -327,6 +360,9 @@ struct ParseFieldTagEntry {
   static constexpr bool track_ref =
       is_shared_ptr_v<FieldType> && has_option_v<ref, Options...>;
 
+  static constexpr bool is_monomorphic =
+      is_smart_ptr_v<FieldType> && has_option_v<monomorphic, Options...>;
+
   // Compile-time validation
   static_assert(!has_option_v<nullable, Options...> ||
                     is_smart_ptr_v<FieldType>,
@@ -335,7 +371,11 @@ struct ParseFieldTagEntry {
   static_assert(!has_option_v<ref, Options...> || is_shared_ptr_v<FieldType>,
                 "fory::ref is only valid for shared_ptr");
 
-  using type = FieldTagEntry<Id, is_nullable, track_ref>;
+  static_assert(!has_option_v<monomorphic, Options...> ||
+                    is_smart_ptr_v<FieldType>,
+                "fory::monomorphic is only valid for shared_ptr/unique_ptr");
+
+  using type = FieldTagEntry<Id, is_nullable, track_ref, is_monomorphic>;
 };
 
 /// Get field tag entry by index from ForyFieldTagsImpl
@@ -343,6 +383,7 @@ template <typename T, size_t Index, typename = void> struct GetFieldTagEntry {
   static constexpr int16_t id = -1;
   static constexpr bool is_nullable = false;
   static constexpr bool track_ref = false;
+  static constexpr bool is_monomorphic = false;
 };
 
 template <typename T, size_t Index>
@@ -355,6 +396,7 @@ struct GetFieldTagEntry<
   static constexpr int16_t id = Entry::id;
   static constexpr bool is_nullable = Entry::is_nullable;
   static constexpr bool track_ref = Entry::track_ref;
+  static constexpr bool is_monomorphic = Entry::is_monomorphic;
 };
 
 } // namespace detail
@@ -377,12 +419,14 @@ struct GetFieldTagEntry<
 #define FORY_FT_GET_OPT1_IMPL(f, i, o1, ...) o1
 #define FORY_FT_GET_OPT2(tuple) FORY_FT_GET_OPT2_IMPL tuple
 #define FORY_FT_GET_OPT2_IMPL(f, i, o1, o2, ...) o2
+#define FORY_FT_GET_OPT3(tuple) FORY_FT_GET_OPT3_IMPL tuple
+#define FORY_FT_GET_OPT3_IMPL(f, i, o1, o2, o3, ...) o3
 
-// Detect number of elements in tuple: 2, 3, or 4
+// Detect number of elements in tuple: 2, 3, 4, or 5
 #define FORY_FT_TUPLE_SIZE(tuple) FORY_FT_TUPLE_SIZE_IMPL tuple
 #define FORY_FT_TUPLE_SIZE_IMPL(...)                                           \
-  FORY_FT_TUPLE_SIZE_SELECT(__VA_ARGS__, 4, 3, 2, 1, 0)
-#define FORY_FT_TUPLE_SIZE_SELECT(_1, _2, _3, _4, N, ...) N
+  FORY_FT_TUPLE_SIZE_SELECT(__VA_ARGS__, 5, 4, 3, 2, 1, 0)
+#define FORY_FT_TUPLE_SIZE_SELECT(_1, _2, _3, _4, _5, N, ...) N
 
 // Create FieldTagEntry based on tuple size using indirect call pattern
 // This pattern ensures the concatenated macro name is properly rescanned
@@ -407,6 +451,12 @@ struct GetFieldTagEntry<
   typename ::fory::detail::ParseFieldTagEntry<                                 \
       decltype(std::declval<Type>().FORY_FT_FIELD(tuple)), FORY_FT_ID(tuple),  \
       ::fory::FORY_FT_GET_OPT1(tuple), ::fory::FORY_FT_GET_OPT2(tuple)>::type
+
+#define FORY_FT_MAKE_ENTRY_5(Type, tuple)                                      \
+  typename ::fory::detail::ParseFieldTagEntry<                                 \
+      decltype(std::declval<Type>().FORY_FT_FIELD(tuple)), FORY_FT_ID(tuple),  \
+      ::fory::FORY_FT_GET_OPT1(tuple), ::fory::FORY_FT_GET_OPT2(tuple),        \
+      ::fory::FORY_FT_GET_OPT3(tuple)>::type
 
 // Main macro: FORY_FIELD_TAGS(Type, (field1, id1), (field2, id2, nullable),...)
 // Note: Uses fory::detail:: instead of ::fory::detail:: for GCC compatibility

@@ -82,7 +82,7 @@ public class DescriptorGrouper {
         return c;
       };
   private final Collection<Descriptor> descriptors;
-  private final Predicate<Class<?>> isMonomorphic;
+  private final Predicate<Descriptor> isBuildIn;
   private final Function<Descriptor, Descriptor> descriptorUpdater;
   private final boolean descriptorsGroupedOrdered;
   private boolean sorted = false;
@@ -167,13 +167,13 @@ public class DescriptorGrouper {
   private final Collection<Descriptor> collectionDescriptors;
   // The key/value type should be final.
   private final Collection<Descriptor> mapDescriptors;
-  private final Collection<Descriptor> finalDescriptors;
+  private final Collection<Descriptor> buildInDescriptors;
   private Collection<Descriptor> otherDescriptors;
 
   /**
    * Create a descriptor grouper.
    *
-   * @param isMonomorphic whether the class is monomorphic.
+   * @param isBuildIn whether the class is build-in types.
    * @param descriptors descriptors may have field with same name.
    * @param descriptorsGroupedOrdered whether the descriptors are grouped and ordered.
    * @param descriptorUpdater create a new descriptor from original one.
@@ -181,14 +181,14 @@ public class DescriptorGrouper {
    * @param comparator comparator for non-primitive fields.
    */
   private DescriptorGrouper(
-      Predicate<Class<?>> isMonomorphic,
+      Predicate<Descriptor> isBuildIn,
       Collection<Descriptor> descriptors,
       boolean descriptorsGroupedOrdered,
       Function<Descriptor, Descriptor> descriptorUpdater,
       Comparator<Descriptor> primitiveComparator,
       Comparator<Descriptor> comparator) {
     this.descriptors = descriptors;
-    this.isMonomorphic = isMonomorphic;
+    this.isBuildIn = isBuildIn;
     this.descriptorUpdater = descriptorUpdater;
     this.descriptorsGroupedOrdered = descriptorsGroupedOrdered;
     this.primitiveDescriptors =
@@ -198,7 +198,7 @@ public class DescriptorGrouper {
     this.collectionDescriptors =
         descriptorsGroupedOrdered ? new ArrayList<>() : new TreeSet<>(comparator);
     this.mapDescriptors = descriptorsGroupedOrdered ? new ArrayList<>() : new TreeSet<>(comparator);
-    this.finalDescriptors =
+    this.buildInDescriptors =
         descriptorsGroupedOrdered ? new ArrayList<>() : new TreeSet<>(comparator);
     this.otherDescriptors =
         descriptorsGroupedOrdered ? new ArrayList<>() : new TreeSet<>(comparator);
@@ -232,8 +232,8 @@ public class DescriptorGrouper {
         collectionDescriptors.add(descriptorUpdater.apply(descriptor));
       } else if (TypeUtils.isMap(descriptor.getRawType())) {
         mapDescriptors.add(descriptorUpdater.apply(descriptor));
-      } else if (isMonomorphic.test(descriptor.getRawType())) {
-        finalDescriptors.add(descriptorUpdater.apply(descriptor));
+      } else if (isBuildIn.test(descriptor)) {
+        buildInDescriptors.add(descriptorUpdater.apply(descriptor));
       } else {
         otherDescriptors.add(descriptorUpdater.apply(descriptor));
       }
@@ -247,7 +247,7 @@ public class DescriptorGrouper {
     List<Descriptor> descriptors = new ArrayList<>(getNumDescriptors());
     descriptors.addAll(getPrimitiveDescriptors());
     descriptors.addAll(getBoxedDescriptors());
-    descriptors.addAll(getFinalDescriptors());
+    descriptors.addAll(getBuildInDescriptors());
     descriptors.addAll(getCollectionDescriptors());
     descriptors.addAll(getMapDescriptors());
     descriptors.addAll(getOtherDescriptors());
@@ -274,9 +274,9 @@ public class DescriptorGrouper {
     return mapDescriptors;
   }
 
-  public Collection<Descriptor> getFinalDescriptors() {
+  public Collection<Descriptor> getBuildInDescriptors() {
     Preconditions.checkArgument(sorted);
-    return finalDescriptors;
+    return buildInDescriptors;
   }
 
   public Collection<Descriptor> getOtherDescriptors() {
@@ -297,7 +297,7 @@ public class DescriptorGrouper {
   }
 
   public static DescriptorGrouper createDescriptorGrouper(
-      Predicate<Class<?>> isMonomorphic,
+      Predicate<Descriptor> isBuildIn,
       Collection<Descriptor> descriptors,
       boolean descriptorsGroupedOrdered,
       Function<Descriptor, Descriptor> descriptorUpdator,
@@ -305,7 +305,7 @@ public class DescriptorGrouper {
       boolean compressLong,
       Comparator<Descriptor> comparator) {
     return new DescriptorGrouper(
-        isMonomorphic,
+        isBuildIn,
         descriptors,
         descriptorsGroupedOrdered,
         descriptorUpdator == null ? DescriptorGrouper::createDescriptor : descriptorUpdator,
@@ -319,7 +319,7 @@ public class DescriptorGrouper {
         + boxedDescriptors.size()
         + collectionDescriptors.size()
         + mapDescriptors.size()
-        + finalDescriptors.size()
+        + buildInDescriptors.size()
         + otherDescriptors.size();
   }
 }

@@ -1694,7 +1694,7 @@ cdef class Serializer:
     def __init__(self, fory, type_: Union[type, TypeVar]):
         self.fory = fory
         self.type_ = type_
-        self.need_to_write_ref = not is_primitive_type(type_)
+        self.need_to_write_ref = fory.ref_tracking and not is_primitive_type(type_)
 
     cpdef write(self, Buffer buffer, value):
         raise NotImplementedError(f"write method not implemented in {type(self)}")

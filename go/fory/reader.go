@@ -32,6 +32,7 @@ type ReadContext struct {
 	buffer           *ByteBuffer
 	refReader        *RefReader
 	trackRef         bool          // Cached flag to avoid indirection
+	xlang            bool          // Cross-language serialization mode
 	compatible       bool          // Schema evolution compatibility mode
 	typeResolver     *TypeResolver // For complex type deserialization
 	refResolver      *RefResolver  // For reference tracking (legacy)
@@ -40,6 +41,11 @@ type ReadContext struct {
 	depth            int           // Current nesting depth for cycle detection
 	maxDepth         int           // Maximum allowed nesting depth
 	err              Error         // Accumulated error state for deferred checking
+}
+
+// IsXlang returns whether cross-language serialization mode is enabled
+func (c *ReadContext) IsXlang() bool {
+	return c.xlang
 }
 
 // NewReadContext creates a new read context
@@ -548,8 +554,11 @@ func (c *ReadContext) decDepth() {
 	c.depth--
 }
 
-// ReadValue reads a polymorphic value - queries serializer by type and deserializes
-func (c *ReadContext) ReadValue(value reflect.Value) {
+// ReadValue reads a polymorphic value with configurable reference tracking and type info reading.
+// Parameters:
+//   - refMode: controls reference tracking behavior (RefModeNone, RefModeTracking, RefModeNullOnly)
+//   - readType: if true, reads type info from the buffer
+func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType bool) {
 	if !value.IsValid() {
 		c.SetError(DeserializationError("invalid reflect.Value"))
 		return
@@ -557,28 +566,41 @@ func (c *ReadContext) ReadValue(value reflect.Value) {
 
 	// Handle array targets (arrays are serialized as slices)
 	if value.Type().Kind() == reflect.Array {
-		c.readArrayValue(value)
+		c.ReadArrayValue(value, refMode, readType)
 		return
 	}
 
 	// For interface{} types, we need to read the actual type from the buffer first
 	if value.Type().Kind() == reflect.Interface {
-		// Read ref flag
-		refID, err := c.RefResolver().TryPreserveRefId(c.buffer)
-		if err != nil {
-			c.SetError(FromError(err))
-			return
-		}
-		if refID < int32(NotNullValueFlag) {
-			// Reference found
-			obj := c.RefResolver().GetReadObject(refID)
-			if obj.IsValid() {
-				value.Set(obj)
+		// Handle ref tracking based on refMode
+		var refID int32 = int32(NotNullValueFlag)
+		if refMode == RefModeTracking {
+			var err error
+			refID, err = c.RefResolver().TryPreserveRefId(c.buffer)
+			if err != nil {
+				c.SetError(FromError(err))
+				return
 			}
-			return
+			if refID < int32(NotNullValueFlag) {
+				// Reference found
+				obj := c.RefResolver().GetReadObject(refID)
+				if obj.IsValid() {
+					value.Set(obj)
+				}
+				return
+			}
+		} else if refMode == RefModeNullOnly {
+			flag := c.buffer.ReadInt8(c.Err())
+			if flag == NullFlag {
+				return
+			}
 		}
 
 		// Read type info to determine the actual type
+		if !readType {
+			c.SetError(DeserializationError("cannot read interface{} without type info"))
+			return
+		}
 		ctxErr := c.Err()
 		typeInfo := c.typeResolver.ReadTypeInfo(c.buffer, ctxErr)
 		if ctxErr.HasError() {
@@ -625,7 +647,7 @@ func (c *ReadContext) ReadValue(value reflect.Value) {
 
 		// For named structs, register the pointer BEFORE reading data
 		// This is critical for circular references to work correctly
-		if isNamedStruct && refID >= int32(NotNullValueFlag) {
+		if isNamedStruct && refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
 			c.RefResolver().SetReadObject(refID, newValue)
 		}
 
@@ -643,7 +665,7 @@ func (c *ReadContext) ReadValue(value reflect.Value) {
 		}
 
 		// Register reference after reading data for non-struct types
-		if !isNamedStruct && refID >= int32(NotNullValueFlag) {
+		if !isNamedStruct && refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
 			c.RefResolver().SetReadObject(refID, newValue)
 		}
 
@@ -652,15 +674,17 @@ func (c *ReadContext) ReadValue(value reflect.Value) {
 		return
 	}
 
-	// For struct types, use optimized ReadStruct path
+	// For struct types, use optimized ReadStruct path when using full ref tracking and type info
 	valueType := value.Type()
-	if valueType.Kind() == reflect.Struct {
-		c.ReadStruct(value)
-		return
-	}
-	if valueType.Kind() == reflect.Ptr && valueType.Elem().Kind() == reflect.Struct {
-		c.ReadStruct(value)
-		return
+	if refMode == RefModeTracking && readType {
+		if valueType.Kind() == reflect.Struct {
+			c.ReadStruct(value)
+			return
+		}
+		if valueType.Kind() == reflect.Ptr && valueType.Elem().Kind() == reflect.Struct {
+			c.ReadStruct(value)
+			return
+		}
 	}
 
 	// Get serializer for the value's type
@@ -671,7 +695,7 @@ func (c *ReadContext) ReadValue(value reflect.Value) {
 	}
 
 	// Read handles ref tracking and type info internally
-	serializer.Read(c, RefModeTracking, true, false, value)
+	serializer.Read(c, refMode, readType, false, value)
 }
 
 // ReadStruct reads a struct value with optimized type resolution.
@@ -762,26 +786,38 @@ func (c *ReadContext) ReadInto(value reflect.Value, serializer Serializer, refMo
 	serializer.Read(c, refMode, readTypeInfo, false, value)
 }
 
-// readArrayValue handles array targets when stream contains slice data
-// Arrays are serialized as slices in xlang protocol
-func (c *ReadContext) readArrayValue(target reflect.Value) {
-	// Read ref flag
-	refID, err := c.RefResolver().TryPreserveRefId(c.buffer)
-	if err != nil {
-		c.SetError(FromError(err))
-		return
-	}
-	if refID < int32(NotNullValueFlag) {
-		// Reference to existing object
-		obj := c.RefResolver().GetReadObject(refID)
-		if obj.IsValid() {
-			reflect.Copy(target, obj)
+// ReadArrayValue handles array targets with configurable ref mode and type reading.
+// Arrays are serialized as slices in xlang protocol.
+func (c *ReadContext) ReadArrayValue(target reflect.Value, refMode RefMode, readType bool) {
+	var refID int32 = int32(NotNullValueFlag)
+
+	// Handle ref tracking based on refMode
+	if refMode == RefModeTracking {
+		var err error
+		refID, err = c.RefResolver().TryPreserveRefId(c.buffer)
+		if err != nil {
+			c.SetError(FromError(err))
+			return
 		}
-		return
+		if refID < int32(NotNullValueFlag) {
+			// Reference to existing object
+			obj := c.RefResolver().GetReadObject(refID)
+			if obj.IsValid() {
+				reflect.Copy(target, obj)
+			}
+			return
+		}
+	} else if refMode == RefModeNullOnly {
+		flag := c.buffer.ReadInt8(c.Err())
+		if flag == NullFlag {
+			return
+		}
 	}
 
-	// Read type ID (will be slice type in stream)
-	c.buffer.ReadVaruint32Small7(c.Err())
+	// Read type ID if requested (will be slice type in stream)
+	if readType {
+		c.buffer.ReadVaruint32Small7(c.Err())
+	}
 
 	// Get slice serializer to read the data
 	sliceType := reflect.SliceOf(target.Type().Elem())
@@ -812,7 +848,7 @@ func (c *ReadContext) readArrayValue(target reflect.Value) {
 	reflect.Copy(target, tempSlice)
 
 	// Register for circular refs
-	if refID >= int32(NotNullValueFlag) {
+	if refMode == RefModeTracking && refID >= int32(NotNullValueFlag) {
 		c.RefResolver().SetReadObject(refID, target)
 	}
 }

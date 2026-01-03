@@ -22,9 +22,8 @@ use syn::Field;
 use super::util::{
     classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
     determine_field_ref_mode, extract_type_name, gen_struct_version_hash_ts,
-    get_primitive_reader_method, get_struct_name, is_debug_enabled,
-    is_direct_primitive_numeric_type, is_primitive_type, is_skip_field,
-    should_skip_type_info_for_field, FieldRefMode, StructField,
+    get_primitive_reader_method, get_struct_name, is_debug_enabled, is_direct_primitive_type,
+    is_primitive_type, is_skip_field, should_skip_type_info_for_field, FieldRefMode, StructField,
 };
 use crate::util::SourceField;
 
@@ -213,7 +212,7 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) ->
             }
         }
         StructField::Forward => {
-            // Forward types - respect field meta for ref mode
+            // Forward types (trait objects, forward references) - polymorphic, always need type info
             quote! {
                 let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, #ref_mode, true)?;
             }
@@ -221,13 +220,23 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) ->
         _ => {
             let skip_type_info = should_skip_type_info_for_field(ty);
 
-            // Check if this is a direct primitive numeric type that can use direct reader calls
-            if is_direct_primitive_numeric_type(ty) {
+            // Check if this is a direct primitive type that can use direct reader calls
+            // Only apply when ref_mode is None (no ref tracking needed)
+            if ref_mode == FieldRefMode::None && is_direct_primitive_type(ty) {
                 let type_name = extract_type_name(ty);
-                let reader_method = get_primitive_reader_method(&type_name);
-                let reader_ident = syn::Ident::new(reader_method, proc_macro2::Span::call_site());
-                quote! {
-                    let #private_ident = context.reader.#reader_ident()?;
+                if type_name == "String" {
+                    // String: call fory_read_data directly
+                    quote! {
+                        let #private_ident = <#ty as fory_core::Serializer>::fory_read_data(context)?;
+                    }
+                } else {
+                    // Numeric primitives: use direct buffer methods
+                    let reader_method = get_primitive_reader_method(&type_name);
+                    let reader_ident =
+                        syn::Ident::new(reader_method, proc_macro2::Span::call_site());
+                    quote! {
+                        let #private_ident = context.reader.#reader_ident()?;
+                    }
                 }
             } else if skip_type_info {
                 // Known types (primitives, strings, collections) - skip type info at compile time
@@ -241,20 +250,21 @@ pub fn gen_read_field(field: &Field, private_ident: &Ident, field_name: &str) ->
                     }
                 }
             } else {
-                // Custom types (struct/enum/ext) - need runtime check for enums
-                if ref_mode == FieldRefMode::None {
-                    quote! {
-                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
-                        if need_type_info {
-                            <#ty as fory_core::Serializer>::fory_read_type_info(context)?;
-                        }
-                        let #private_ident = <#ty as fory_core::Serializer>::fory_read_data(context)?;
-                    }
-                } else {
-                    quote! {
-                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
-                        let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, #ref_mode, need_type_info)?;
-                    }
+                // Custom types (struct/enum/ext) - always need mode-dependent type info logic
+                // Determine read_type_info based on mode:
+                // - compatible=true: use need_to_write_type_for_field (struct types need type info)
+                // - compatible=false: use fory_is_polymorphic
+                // This applies regardless of ref_mode because Java always writes type info
+                // for struct-type fields in compatible mode, even for non-nullable fields.
+                quote! {
+                    let read_type_info = if context.is_compatible() {
+                        fory_core::types::need_to_write_type_for_field(
+                            <#ty as fory_core::Serializer>::fory_static_type_id()
+                        )
+                    } else {
+                        <#ty as fory_core::Serializer>::fory_is_polymorphic()
+                    };
+                    let #private_ident = <#ty as fory_core::Serializer>::fory_read(context, #ref_mode, read_type_info)?;
                 }
             }
         }
@@ -435,14 +445,21 @@ pub(crate) fn gen_read_compatible_match_arm_body(
             }
             StructField::VecBox(_) => {
                 // Vec<Box<dyn Any>> uses standard Vec deserialization with polymorphic elements
-                // Check nullable flag from remote field info to determine if ref flag was written
+                // Check nullable and ref_tracking flags from remote field info
                 quote! {
                     let read_ref_flag = fory_core::serializer::util::field_need_write_ref_into(
                         _field.field_type.type_id,
                         _field.field_type.nullable,
                     );
-                    if read_ref_flag {
-                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, fory_core::RefMode::NullOnly, false)?);
+                    let ref_mode = if _field.field_type.ref_tracking {
+                        fory_core::RefMode::Tracking
+                    } else if read_ref_flag {
+                        fory_core::RefMode::NullOnly
+                    } else {
+                        fory_core::RefMode::None
+                    };
+                    if read_ref_flag || _field.field_type.ref_tracking {
+                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, ref_mode, false)?);
                     } else {
                         #var_name = Some(<#ty as fory_core::Serializer>::fory_read_data(context)?);
                     }
@@ -450,14 +467,21 @@ pub(crate) fn gen_read_compatible_match_arm_body(
             }
             StructField::HashMapBox(_, _) => {
                 // HashMap<K, Box<dyn Any>> uses standard HashMap deserialization with polymorphic values
-                // Check nullable flag from remote field info to determine if ref flag was written
+                // Check nullable and ref_tracking flags from remote field info
                 quote! {
                     let read_ref_flag = fory_core::serializer::util::field_need_write_ref_into(
                         _field.field_type.type_id,
                         _field.field_type.nullable,
                     );
-                    if read_ref_flag {
-                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, fory_core::RefMode::NullOnly, false)?);
+                    let ref_mode = if _field.field_type.ref_tracking {
+                        fory_core::RefMode::Tracking
+                    } else if read_ref_flag {
+                        fory_core::RefMode::NullOnly
+                    } else {
+                        fory_core::RefMode::None
+                    };
+                    if read_ref_flag || _field.field_type.ref_tracking {
+                        #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, ref_mode, false)?);
                     } else {
                         #var_name = Some(<#ty as fory_core::Serializer>::fory_read_data(context)?);
                     }
@@ -494,9 +518,23 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                 }
             }
             StructField::Forward => {
-                // Forward types - respect field meta for ref mode
+                // Forward types (trait objects, forward references) - polymorphic, always need type info
+                // Use remote field's ref_tracking flag for ref_mode
                 quote! {
-                    #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, #ref_mode, true)?);
+                    let read_ref_flag = fory_core::serializer::util::field_need_write_ref_into(
+                        _field.field_type.type_id,
+                        _field.field_type.nullable,
+                    );
+                    // Use RefMode::Tracking if remote field has ref_tracking enabled
+                    let ref_mode = if _field.field_type.ref_tracking {
+                        fory_core::RefMode::Tracking
+                    } else if read_ref_flag {
+                        fory_core::RefMode::NullOnly
+                    } else {
+                        fory_core::RefMode::None
+                    };
+                    // Forward types are polymorphic, always read type info
+                    #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, ref_mode, true)?);
                 }
             }
             StructField::None => {
@@ -509,8 +547,16 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                                 _field.field_type.type_id,
                                 _field.field_type.nullable,
                             );
-                            if read_ref_flag {
-                                #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, fory_core::RefMode::NullOnly, false)?);
+                            // Use RefMode::Tracking if remote field has ref_tracking enabled
+                            let ref_mode = if _field.field_type.ref_tracking {
+                                fory_core::RefMode::Tracking
+                            } else if read_ref_flag {
+                                fory_core::RefMode::NullOnly
+                            } else {
+                                fory_core::RefMode::None
+                            };
+                            if read_ref_flag || _field.field_type.ref_tracking {
+                                #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, ref_mode, false)?);
                             } else {
                                 #var_name = Some(<#ty as fory_core::Serializer>::fory_read_data(context)?);
                             }
@@ -521,8 +567,16 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                                 _field.field_type.type_id,
                                 _field.field_type.nullable,
                             );
-                            if read_ref_flag {
-                                #var_name = <#ty as fory_core::Serializer>::fory_read(context, fory_core::RefMode::NullOnly, false)?;
+                            // Use RefMode::Tracking if remote field has ref_tracking enabled
+                            let ref_mode = if _field.field_type.ref_tracking {
+                                fory_core::RefMode::Tracking
+                            } else if read_ref_flag {
+                                fory_core::RefMode::NullOnly
+                            } else {
+                                fory_core::RefMode::None
+                            };
+                            if read_ref_flag || _field.field_type.ref_tracking {
+                                #var_name = <#ty as fory_core::Serializer>::fory_read(context, ref_mode, false)?;
                             } else {
                                 #var_name = <#ty as fory_core::Serializer>::fory_read_data(context)?;
                             }
@@ -530,26 +584,42 @@ pub(crate) fn gen_read_compatible_match_arm_body(
                     }
                 } else if dec_by_option {
                     quote! {
-                        let read_type_info = fory_core::serializer::util::field_need_read_type_info(_field.field_type.type_id);
                         let read_ref_flag = fory_core::serializer::util::field_need_write_ref_into(
                             _field.field_type.type_id,
                             _field.field_type.nullable,
                         );
-                        let ref_mode = if read_ref_flag { fory_core::RefMode::NullOnly } else { fory_core::RefMode::None };
-                        // Always use fory_read which handles compatible mode correctly
-                        // for nested struct types with different registered IDs
+                        // Use RefMode::Tracking if remote field has ref_tracking enabled
+                        let ref_mode = if _field.field_type.ref_tracking {
+                            fory_core::RefMode::Tracking
+                        } else if read_ref_flag {
+                            fory_core::RefMode::NullOnly
+                        } else {
+                            fory_core::RefMode::None
+                        };
+                        // For ref-tracked struct types, Java writes type info after RefValue flag
+                        let read_type_info = fory_core::types::need_to_write_type_for_field(
+                            <#ty as fory_core::Serializer>::fory_static_type_id()
+                        );
                         #var_name = Some(<#ty as fory_core::Serializer>::fory_read(context, ref_mode, read_type_info)?);
                     }
                 } else {
                     quote! {
-                        let read_type_info = fory_core::serializer::util::field_need_read_type_info(_field.field_type.type_id);
                         let read_ref_flag = fory_core::serializer::util::field_need_write_ref_into(
                             _field.field_type.type_id,
                             _field.field_type.nullable,
                         );
-                        let ref_mode = if read_ref_flag { fory_core::RefMode::NullOnly } else { fory_core::RefMode::None };
-                        // Always use fory_read which handles compatible mode correctly
-                        // for nested struct types with different registered IDs
+                        // Use RefMode::Tracking if remote field has ref_tracking enabled
+                        let ref_mode = if _field.field_type.ref_tracking {
+                            fory_core::RefMode::Tracking
+                        } else if read_ref_flag {
+                            fory_core::RefMode::NullOnly
+                        } else {
+                            fory_core::RefMode::None
+                        };
+                        // For ref-tracked struct types, Java writes type info after RefValue flag
+                        let read_type_info = fory_core::types::need_to_write_type_for_field(
+                            <#ty as fory_core::Serializer>::fory_static_type_id()
+                        );
                         #var_name = <#ty as fory_core::Serializer>::fory_read(context, ref_mode, read_type_info)?;
                     }
                 }
@@ -593,6 +663,13 @@ pub fn gen_read(_struct_ident: &Ident) -> TokenStream {
             fory_core::RefFlag::NotNullValue as i8
         };
         if ref_flag == (fory_core::RefFlag::NotNullValue as i8) || ref_flag == (fory_core::RefFlag::RefValue as i8) {
+            // For RefValueFlag with Tracking mode, reserve a ref_id to participate in ref tracking.
+            // This is needed for xlang compatibility where all objects (not just Rc/Arc)
+            // participate in reference tracking when ref tracking is enabled.
+            // Only reserve for Tracking mode, not NullOnly mode.
+            if ref_flag == (fory_core::RefFlag::RefValue as i8) && ref_mode == fory_core::RefMode::Tracking {
+                context.ref_reader.reserve_ref_id();
+            }
             if context.is_compatible() {
                 let type_info = if read_type_info {
                     context.read_any_typeinfo()?

@@ -208,6 +208,9 @@ fn is_forward_field_internal(ty: &Type, struct_name: &str) -> bool {
                 }
 
                 // Check smart pointers: Rc<T> / Arc<T>
+                // Only return true if:
+                // 1. Inner type is Rc<dyn Any> (polymorphic)
+                // 2. Inner type references the containing struct (forward reference)
                 if seg.ident == "Rc" || seg.ident == "Arc" {
                     if let PathArguments::AngleBracketed(args) = &seg.arguments {
                         if let Some(GenericArgument::Type(inner_ty)) = args.args.first() {
@@ -226,9 +229,10 @@ fn is_forward_field_internal(ty: &Type, struct_name: &str) -> bool {
                                         return false;
                                     }
                                 }
-                                // Inner type is not a trait object → return true
+                                // Inner type is not a trait object - recursively check
+                                // if it references the containing struct
                                 _ => {
-                                    return true;
+                                    return is_forward_field_internal(inner_ty, struct_name);
                                 }
                             }
                         }
@@ -590,6 +594,18 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
         (!PRIMITIVE_TYPE_NAMES.contains(&node.name.as_str()), node)
     };
 
+    // If Rc or Arc, unwrap to inner type - these are reference wrappers
+    // that don't add type info to the field type (handled by ref_tracking flag)
+    let base_node = if base_node.name == "Rc" || base_node.name == "Arc" {
+        if let Some(inner) = base_node.generics.first() {
+            inner
+        } else {
+            base_node
+        }
+    } else {
+        base_node
+    };
+
     // `Vec<Option<primitive>>` rule stays as is
     if let Some(ts) = try_vec_of_option_primitive(base_node) {
         return ts;
@@ -709,13 +725,18 @@ static PRIMITIVE_IO_METHODS: &[(&str, &str, &str)] = &[
     ("u128", "write_u128", "read_u128"),
 ];
 
-/// Check if a type is a direct primitive numeric type (not wrapped in Option, Vec, etc.)
-pub(super) fn is_direct_primitive_numeric_type(ty: &Type) -> bool {
+/// Check if a type is a direct primitive type (numeric or String, not wrapped in Option, Vec, etc.)
+pub(super) fn is_direct_primitive_type(ty: &Type) -> bool {
     if let Type::Path(type_path) = ty {
         if let Some(seg) = type_path.path.segments.last() {
             // Check if it's a simple type path without generics
             if matches!(seg.arguments, PathArguments::None) {
                 let type_name = seg.ident.to_string();
+                // Check for String type
+                if type_name == "String" {
+                    return true;
+                }
+                // Check for numeric primitive types
                 return PRIMITIVE_IO_METHODS
                     .iter()
                     .any(|(name, _, _)| *name == type_name.as_str());

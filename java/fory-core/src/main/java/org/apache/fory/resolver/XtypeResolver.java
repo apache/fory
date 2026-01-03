@@ -53,6 +53,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import org.apache.fory.Fory;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.collection.IdentityObjectIntMap;
 import org.apache.fory.collection.LongMap;
@@ -434,6 +435,28 @@ public class XtypeResolver extends TypeResolver {
   }
 
   @Override
+  public boolean isMonomorphic(Descriptor descriptor) {
+    ForyField foryField = descriptor.getForyField();
+    ForyField.Morphic morphic = foryField != null ? foryField.morphic() : ForyField.Morphic.AUTO;
+    switch (morphic) {
+      case POLYMORPHIC:
+        return false;
+      case FINAL:
+        return true;
+      default:
+        Class<?> rawType = descriptor.getRawType();
+        if (rawType.isEnum()) {
+          return true;
+        }
+        byte xtypeId = getXtypeId(rawType);
+        if (fory.isCompatible()) {
+          return !Types.isUserDefinedType(xtypeId) && xtypeId != Types.UNKNOWN;
+        }
+        return xtypeId != Types.UNKNOWN;
+    }
+  }
+
+  @Override
   public boolean isMonomorphic(Class<?> clz) {
     if (TypeUtils.unwrap(clz).isPrimitive() || clz.isEnum() || clz == String.class) {
       return true;
@@ -457,6 +480,12 @@ public class XtypeResolver extends TypeResolver {
       return true;
     }
     return false;
+  }
+
+  public boolean isBuildIn(Descriptor descriptor) {
+    Class<?> rawType = descriptor.getRawType();
+    byte xtypeId = getXtypeId(rawType);
+    return !Types.isUserDefinedType(xtypeId) && xtypeId != Types.UNKNOWN;
   }
 
   @Override
@@ -920,19 +949,7 @@ public class XtypeResolver extends TypeResolver {
       boolean descriptorsGroupedOrdered,
       Function<Descriptor, Descriptor> descriptorUpdator) {
     return DescriptorGrouper.createDescriptorGrouper(
-            clz -> {
-              ClassInfo classInfo = getClassInfo(clz, false);
-              if (classInfo == null || clz.isEnum()) {
-                return false;
-              }
-              byte foryTypeId = (byte) (classInfo.xtypeId & 0xff);
-              if (foryTypeId == 0
-                  || foryTypeId == Types.UNKNOWN
-                  || Types.isUserDefinedType(foryTypeId)) {
-                return false;
-              }
-              return foryTypeId != Types.LIST && foryTypeId != Types.SET && foryTypeId != Types.MAP;
-            },
+            this::isBuildIn,
             descriptors,
             descriptorsGroupedOrdered,
             descriptorUpdator,
@@ -952,9 +969,7 @@ public class XtypeResolver extends TypeResolver {
         .sort();
   }
 
-  private static final int UNKNOWN_TYPE_ID = Types.UNKNOWN;
-
-  private int getXtypeId(Class<?> cls) {
+  private byte getXtypeId(Class<?> cls) {
     if (isSet(cls)) {
       return Types.SET;
     }
@@ -967,8 +982,8 @@ public class XtypeResolver extends TypeResolver {
     if (isMap(cls)) {
       return Types.MAP;
     }
-    if (fory.getXtypeResolver().isRegistered(cls)) {
-      return fory.getXtypeResolver().getClassInfo(cls).getXtypeId();
+    if (isRegistered(cls)) {
+      return (byte) (getClassInfo(cls).getXtypeId() & 0xff);
     } else {
       if (cls.isEnum()) {
         return Types.ENUM;
@@ -979,7 +994,7 @@ public class XtypeResolver extends TypeResolver {
       if (ReflectionUtils.isMonomorphic(cls)) {
         throw new UnsupportedOperationException(cls + " is not supported for xlang serialization");
       }
-      return UNKNOWN_TYPE_ID;
+      return Types.UNKNOWN;
     }
   }
 

@@ -206,8 +206,6 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
   constexpr bool val_is_polymorphic = is_polymorphic_v<V>;
   constexpr bool key_is_shared_ref = is_shared_ref_v<K>;
   constexpr bool val_is_shared_ref = is_shared_ref_v<V>;
-  constexpr bool key_needs_ref = requires_ref_metadata_v<K>;
-  constexpr bool val_needs_ref = requires_ref_metadata_v<V>;
 
   const bool is_key_declared =
       has_generics && !need_to_write_type_for_field<K>();
@@ -251,7 +249,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         // Non-null key, null value
         // Java writes: chunk_header, then ref_flag, then type_info, then data
         uint8_t chunk_header = VALUE_NULL;
-        bool write_ref = key_is_shared_ref || key_needs_ref;
+        // Only track refs for shared_ptr types when global ref tracking enabled
+        bool write_ref = key_is_shared_ref && ctx.track_ref();
         if (write_ref) {
           chunk_header |= TRACKING_KEY_REF;
         }
@@ -297,7 +296,8 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         // key_is_none
         // Java writes: chunk_header, then ref_flag, then type_info, then data
         uint8_t chunk_header = KEY_NULL;
-        bool write_ref = val_is_shared_ref || val_needs_ref;
+        // Only track refs for shared_ptr types when global ref tracking enabled
+        bool write_ref = val_is_shared_ref && ctx.track_ref();
         if (write_ref) {
           chunk_header |= TRACKING_VALUE_REF;
         }
@@ -385,16 +385,18 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       ctx.write_uint16(0); // Placeholder for header and chunk size
 
       uint8_t chunk_header = 0;
-      // Set key flags
-      if (key_is_shared_ref || key_needs_ref) {
+      // Set key flags - only track refs for shared_ptr when global ref tracking
+      // enabled
+      if (key_is_shared_ref && ctx.track_ref()) {
         chunk_header |= TRACKING_KEY_REF;
       }
       if (is_key_declared && !key_is_polymorphic) {
         chunk_header |= DECL_KEY_TYPE;
       }
 
-      // Set value flags
-      if (val_is_shared_ref || val_needs_ref) {
+      // Set value flags - only track refs for shared_ptr when global ref
+      // tracking enabled
+      if (val_is_shared_ref && ctx.track_ref()) {
         chunk_header |= TRACKING_VALUE_REF;
       }
       if (is_val_declared && !val_is_polymorphic) {
@@ -443,12 +445,15 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
     }
 
     // Write key-value pair
-    // For polymorphic types, we've already written type info above,
-    // so we write ref flag + data directly using the serializer
+    // For shared_ptr with ref tracking: write ref flag + data
+    // For other types: null cases already handled via KEY_NULL/VALUE_NULL,
+    // so just write data directly
     if constexpr (key_is_shared_ref) {
-      Serializer<K>::write(key, ctx, RefMode::NullOnly, false, has_generics);
-    } else if constexpr (key_needs_ref) {
-      Serializer<K>::write(key, ctx, RefMode::NullOnly, false);
+      if (ctx.track_ref()) {
+        Serializer<K>::write(key, ctx, RefMode::Tracking, false, has_generics);
+      } else {
+        Serializer<K>::write_data(key, ctx);
+      }
     } else {
       if (has_generics && is_generic_type_v<K>) {
         Serializer<K>::write_data_generic(key, ctx, has_generics);
@@ -458,9 +463,12 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
     }
 
     if constexpr (val_is_shared_ref) {
-      Serializer<V>::write(value, ctx, RefMode::NullOnly, false, has_generics);
-    } else if constexpr (val_needs_ref) {
-      Serializer<V>::write(value, ctx, RefMode::NullOnly, false);
+      if (ctx.track_ref()) {
+        Serializer<V>::write(value, ctx, RefMode::Tracking, false,
+                             has_generics);
+      } else {
+        Serializer<V>::write_data(value, ctx);
+      }
     } else {
       if (has_generics && is_generic_type_v<V>) {
         Serializer<V>::write_data_generic(value, ctx, has_generics);
@@ -822,15 +830,16 @@ inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
       // Read key - use type info if available (polymorphic case)
       K key;
       if constexpr (key_is_polymorphic) {
+        // TRACKING_KEY_REF means full ref tracking for shared_ptr
         key = Serializer<K>::read_with_type_info(
-            ctx, key_read_ref ? RefMode::NullOnly : RefMode::None,
+            ctx, key_read_ref ? RefMode::Tracking : RefMode::None,
             *key_type_info);
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return MapType{};
         }
       } else if (key_read_ref) {
-        key =
-            Serializer<K>::read(ctx, make_ref_mode(false, key_read_ref), false);
+        // TRACKING_KEY_REF means full ref tracking for shared_ptr
+        key = Serializer<K>::read(ctx, RefMode::Tracking, false);
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return MapType{};
         }
@@ -845,15 +854,16 @@ inline MapType read_map_data_slow(ReadContext &ctx, uint32_t length) {
       // Read value - use type info if available (polymorphic case)
       V value;
       if constexpr (val_is_polymorphic) {
+        // TRACKING_VALUE_REF means full ref tracking for shared_ptr
         value = Serializer<V>::read_with_type_info(
-            ctx, val_read_ref ? RefMode::NullOnly : RefMode::None,
+            ctx, val_read_ref ? RefMode::Tracking : RefMode::None,
             *value_type_info);
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return MapType{};
         }
       } else if (val_read_ref) {
-        value =
-            Serializer<V>::read(ctx, make_ref_mode(false, val_read_ref), false);
+        // TRACKING_VALUE_REF means full ref tracking for shared_ptr
+        value = Serializer<V>::read(ctx, RefMode::Tracking, false);
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           return MapType{};
         }

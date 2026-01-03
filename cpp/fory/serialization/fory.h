@@ -623,8 +623,11 @@ private:
       buffer.WriteInt32(-1); // Placeholder for meta offset (fixed 4 bytes)
     }
 
-    // Top-level serialization: YES ref flags, yes type info
-    Serializer<T>::write(obj, *write_ctx_, RefMode::NullOnly, true);
+    // Top-level serialization: use Tracking if ref tracking is enabled,
+    // otherwise NullOnly for nullable handling
+    const RefMode top_level_ref_mode =
+        write_ctx_->track_ref() ? RefMode::Tracking : RefMode::NullOnly;
+    Serializer<T>::write(obj, *write_ctx_, top_level_ref_mode, true);
     // Check for errors at serialization boundary
     if (FORY_PREDICT_FALSE(write_ctx_->has_error())) {
       return Unexpected(write_ctx_->take_error());
@@ -654,8 +657,11 @@ private:
       }
     }
 
-    // Top-level deserialization: YES ref flags, yes type info
-    T result = Serializer<T>::read(*read_ctx_, RefMode::NullOnly, true);
+    // Top-level deserialization: use Tracking if ref tracking is enabled,
+    // otherwise NullOnly for nullable handling
+    const RefMode top_level_ref_mode =
+        read_ctx_->track_ref() ? RefMode::Tracking : RefMode::NullOnly;
+    T result = Serializer<T>::read(*read_ctx_, top_level_ref_mode, true);
     // Check for errors at deserialization boundary
     if (FORY_PREDICT_FALSE(read_ctx_->has_error())) {
       return Unexpected(read_ctx_->take_error());

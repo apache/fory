@@ -74,7 +74,7 @@ public class ClassDefEncoder {
         .getBoxedDescriptors()
         .forEach(descriptor -> fields.add(descriptor.getField()));
     descriptorGrouper
-        .getFinalDescriptors()
+        .getBuildInDescriptors()
         .forEach(descriptor -> fields.add(descriptor.getField()));
     descriptorGrouper
         .getOtherDescriptors()

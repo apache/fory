@@ -120,6 +120,7 @@ pub struct WriteContext<'a> {
     compress_string: bool,
     xlang: bool,
     check_struct_version: bool,
+    track_ref: bool,
 
     // Context-specific fields
     default_writer: Option<Writer<'a>>,
@@ -139,6 +140,7 @@ impl<'a> WriteContext<'a> {
             compress_string: config.compress_string,
             xlang: config.xlang,
             check_struct_version: config.check_struct_version,
+            track_ref: config.track_ref,
             default_writer: None,
             writer: Writer::from_buffer(Self::get_leak_buffer()),
             meta_resolver: MetaWriterResolver::default(),
@@ -203,6 +205,12 @@ impl<'a> WriteContext<'a> {
     #[inline(always)]
     pub fn is_check_struct_version(&self) -> bool {
         self.check_struct_version
+    }
+
+    /// Check if reference tracking is enabled
+    #[inline(always)]
+    pub fn is_track_ref(&self) -> bool {
+        self.track_ref
     }
 
     #[inline(always)]

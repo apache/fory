@@ -34,6 +34,10 @@ pub struct Config {
     pub max_dyn_depth: u32,
     /// Whether class version checking is enabled.
     pub check_struct_version: bool,
+    /// Whether reference tracking is enabled.
+    /// When enabled, shared references and circular references are tracked
+    /// and preserved during serialization/deserialization.
+    pub track_ref: bool,
 }
 
 impl Default for Config {
@@ -45,6 +49,7 @@ impl Default for Config {
             compress_string: false,
             max_dyn_depth: 5,
             check_struct_version: false,
+            track_ref: false,
         }
     }
 }
@@ -89,5 +94,11 @@ impl Config {
     #[inline(always)]
     pub fn is_check_struct_version(&self) -> bool {
         self.check_struct_version
+    }
+
+    /// Check if reference tracking is enabled.
+    #[inline(always)]
+    pub fn is_track_ref(&self) -> bool {
+        self.track_ref
     }
 }

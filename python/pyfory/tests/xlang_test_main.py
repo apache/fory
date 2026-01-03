@@ -219,6 +219,43 @@ class NullableComprehensiveSchemaConsistent:
     nullable_map: Optional[Dict[str, str]] = None
 
 
+# ============================================================================
+# Reference Tracking Test Types
+# ============================================================================
+
+
+@dataclass
+class RefInnerSchemaConsistent:
+    """Inner struct for reference tracking test (SCHEMA_CONSISTENT mode)."""
+
+    id: pyfory.int32 = 0
+    name: str = ""
+
+
+@dataclass
+class RefOuterSchemaConsistent:
+    """Outer struct with two fields pointing to the same inner object (SCHEMA_CONSISTENT mode)."""
+
+    inner1: Optional[RefInnerSchemaConsistent] = pyfory.field(default=None, ref=True, nullable=True)
+    inner2: Optional[RefInnerSchemaConsistent] = pyfory.field(default=None, ref=True, nullable=True)
+
+
+@dataclass
+class RefInnerCompatible:
+    """Inner struct for reference tracking test (COMPATIBLE mode)."""
+
+    id: pyfory.int32 = 0
+    name: str = ""
+
+
+@dataclass
+class RefOuterCompatible:
+    """Outer struct with two fields pointing to the same inner object (COMPATIBLE mode)."""
+
+    inner1: Optional[RefInnerCompatible] = pyfory.field(default=None, ref=True, nullable=True)
+    inner2: Optional[RefInnerCompatible] = pyfory.field(default=None, ref=True, nullable=True)
+
+
 @dataclass
 class NullableComprehensiveCompatible:
     """
@@ -1100,6 +1137,87 @@ def test_nullable_field_compatible_null():
     assert obj.nullable_map2 is None, f"nullable_map2: {obj.nullable_map2} != None"
 
     new_bytes = fory.serialize(obj)
+    with open(data_file, "wb") as f:
+        f.write(new_bytes)
+
+
+# ============================================================================
+# Reference Tracking Tests
+# ============================================================================
+
+
+def test_ref_schema_consistent():
+    """
+    Test cross-language reference tracking in SCHEMA_CONSISTENT mode (compatible=false).
+
+    This test verifies that when Java serializes an object where two fields point to
+    the same instance, Python can properly deserialize it and both fields will reference
+    the same object. When re-serializing, the reference relationship should be preserved.
+    """
+    data_file = get_data_file()
+    with open(data_file, "rb") as f:
+        data_bytes = f.read()
+
+    fory = pyfory.Fory(xlang=True, compatible=False, ref=True)
+    fory.register_type(RefInnerSchemaConsistent, type_id=501)
+    fory.register_type(RefOuterSchemaConsistent, type_id=502)
+
+    outer = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized: {outer}")
+
+    # Both inner1 and inner2 should have values
+    assert outer.inner1 is not None, "inner1 should not be None"
+    assert outer.inner2 is not None, "inner2 should not be None"
+
+    # Both should have the same values (they reference the same object in Java)
+    assert outer.inner1.id == 42, f"inner1.id should be 42, got {outer.inner1.id}"
+    assert outer.inner1.name == "shared_inner", f"inner1.name should be 'shared_inner', got {outer.inner1.name}"
+    assert outer.inner1 == outer.inner2, "inner1 and inner2 should be equal (same reference)"
+
+    # In Python, after deserialization with reference tracking, inner1 and inner2
+    # should point to the same object (identity check)
+    assert outer.inner1 is outer.inner2, "inner1 and inner2 should be the same object (reference identity)"
+
+    # Re-serialize and write back
+    new_bytes = fory.serialize(outer)
+    with open(data_file, "wb") as f:
+        f.write(new_bytes)
+
+
+def test_ref_compatible():
+    """
+    Test cross-language reference tracking in COMPATIBLE mode (compatible=true).
+
+    This test verifies reference tracking works correctly with schema evolution support.
+    The inner object is shared between two fields, and this relationship should be
+    preserved through serialization/deserialization.
+    """
+    data_file = get_data_file()
+    with open(data_file, "rb") as f:
+        data_bytes = f.read()
+
+    fory = pyfory.Fory(xlang=True, compatible=True, ref=True)
+    fory.register_type(RefInnerCompatible, type_id=503)
+    fory.register_type(RefOuterCompatible, type_id=504)
+
+    outer = fory.deserialize(data_bytes)
+    debug_print(f"Deserialized: {outer}")
+
+    # Both inner1 and inner2 should have values
+    assert outer.inner1 is not None, "inner1 should not be None"
+    assert outer.inner2 is not None, "inner2 should not be None"
+
+    # Both should have the same values (they reference the same object in Java)
+    assert outer.inner1.id == 99, f"inner1.id should be 99, got {outer.inner1.id}"
+    assert outer.inner1.name == "compatible_shared", f"inner1.name should be 'compatible_shared', got {outer.inner1.name}"
+    assert outer.inner1 == outer.inner2, "inner1 and inner2 should be equal (same reference)"
+
+    # In Python, after deserialization with reference tracking, inner1 and inner2
+    # should point to the same object (identity check)
+    assert outer.inner1 is outer.inner2, "inner1 and inner2 should be the same object (reference identity)"
+
+    # Re-serialize and write back
+    new_bytes = fory.serialize(outer)
     with open(data_file, "wb") as f:
         f.write(new_bytes)
 

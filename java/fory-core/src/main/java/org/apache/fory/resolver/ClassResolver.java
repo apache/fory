@@ -78,6 +78,7 @@ import java.util.stream.Collectors;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyCopyable;
 import org.apache.fory.annotation.CodegenInvoke;
+import org.apache.fory.annotation.ForyField;
 import org.apache.fory.annotation.Internal;
 import org.apache.fory.builder.JITContext;
 import org.apache.fory.codegen.CodeGenerator;
@@ -687,6 +688,22 @@ public class ClassResolver extends TypeResolver {
     return cls.getName();
   }
 
+  @Override
+  public boolean isMonomorphic(Descriptor descriptor) {
+    ForyField foryField = descriptor.getForyField();
+    if (foryField != null) {
+      switch (foryField.morphic()) {
+        case POLYMORPHIC:
+          return false;
+        case FINAL:
+          return true;
+        default:
+          return isMonomorphic(descriptor.getRawType());
+      }
+    }
+    return isMonomorphic(descriptor.getRawType());
+  }
+
   /**
    * Mark non-inner registered final types as non-final to write class def for those types. Note if
    * a class is registered but not an inner class with inner serializer, it will still be taken as
@@ -715,6 +732,10 @@ public class ClassResolver extends TypeResolver {
       return (isInnerClass(clz) || clz.isEnum());
     }
     return ReflectionUtils.isMonomorphic(clz);
+  }
+
+  public boolean isBuildIn(Descriptor descriptor) {
+    return isMonomorphic(descriptor);
   }
 
   /** Returns true if <code>cls</code> is fory inner registered class. */
@@ -1794,15 +1815,6 @@ public class ClassResolver extends TypeResolver {
 
   public void resetWrite() {}
 
-  private static final GenericType OBJECT_GENERIC_TYPE = GenericType.build(Object.class);
-
-  @CodegenInvoke
-  public GenericType getGenericTypeInStruct(Class<?> cls, String genericTypeStr) {
-    Map<String, GenericType> map =
-        extRegistry.classGenericTypes.computeIfAbsent(cls, this::buildGenericMap);
-    return map.getOrDefault(genericTypeStr, OBJECT_GENERIC_TYPE);
-  }
-
   @Override
   public GenericType buildGenericType(TypeRef<?> typeRef) {
     return GenericType.build(
@@ -1930,7 +1942,7 @@ public class ClassResolver extends TypeResolver {
       boolean descriptorsGroupedOrdered,
       Function<Descriptor, Descriptor> descriptorUpdator) {
     return DescriptorGrouper.createDescriptorGrouper(
-            fory.getClassResolver()::isMonomorphic,
+            this::isBuildIn,
             descriptors,
             descriptorsGroupedOrdered,
             descriptorUpdator,

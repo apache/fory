@@ -43,7 +43,8 @@ import org.apache.fory.meta.ClassDef;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.serializer.AbstractObjectSerializer;
-import org.apache.fory.serializer.AbstractObjectSerializer.InternalFieldInfo;
+import org.apache.fory.serializer.FieldGroups;
+import org.apache.fory.serializer.FieldGroups.SerializationFieldInfo;
 import org.apache.fory.serializer.JavaSerializer;
 import org.apache.fory.serializer.MetaSharedLayerSerializer;
 import org.apache.fory.serializer.ObjectSerializer;
@@ -131,7 +132,7 @@ public class ChildContainerSerializers {
             ArrayList.class, LinkedList.class, ArrayDeque.class, Vector.class, HashSet.class
             // PriorityQueue/TreeSet/ConcurrentSkipListSet need comparator as constructor argument
             );
-    protected InternalFieldInfo[] fieldInfos;
+    protected SerializationFieldInfo[] fieldInfos;
     protected final Serializer[] slotsSerializers;
 
     public ChildCollectionSerializer(Fory fory, Class<T> cls) {
@@ -159,7 +160,7 @@ public class ChildContainerSerializers {
       Collection newCollection = super.newCollection(originCollection);
       if (fieldInfos == null) {
         List<Field> fields = ReflectionUtils.getFieldsWithoutSuperClasses(type, superClasses);
-        fieldInfos = AbstractObjectSerializer.buildFieldsInfo(fory, fields);
+        fieldInfos = FieldGroups.buildFieldsInfo(fory, fields).allFields;
       }
       AbstractObjectSerializer.copyFields(fory, fieldInfos, originCollection, newCollection);
       return newCollection;
@@ -193,7 +194,7 @@ public class ChildContainerSerializers {
             // TreeMap/ConcurrentSkipListMap need comparator as constructor argument
             );
     private final Serializer[] slotsSerializers;
-    private InternalFieldInfo[] fieldInfos;
+    private SerializationFieldInfo[] fieldInfos;
 
     public ChildMapSerializer(Fory fory, Class<T> cls) {
       super(fory, cls);
@@ -221,7 +222,7 @@ public class ChildContainerSerializers {
       Map newMap = super.newMap(originMap);
       if (fieldInfos == null || fieldInfos.length == 0) {
         List<Field> fields = ReflectionUtils.getFieldsWithoutSuperClasses(type, superClasses);
-        fieldInfos = AbstractObjectSerializer.buildFieldsInfo(fory, fields);
+        fieldInfos = FieldGroups.buildFieldsInfo(fory, fields).allFields;
       }
       AbstractObjectSerializer.copyFields(fory, fieldInfos, originMap, newMap);
       return newMap;

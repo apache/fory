@@ -26,7 +26,7 @@ import (
 // element values at runtime.
 // This serializer is designed for slices with any interface element type
 // (e.g., []interface{}, []io.Reader, []fmt.Stringer, or pointers to interfaces).
-// For slices with concrete element types, use sliceConcreteValueSerializer instead.
+// For slices with concrete element types, use sliceSerializer instead.
 type sliceDynSerializer struct {
 	elemType        reflect.Type
 	isInterfaceElem bool
@@ -35,7 +35,7 @@ type sliceDynSerializer struct {
 
 // newSliceDynSerializer creates a new sliceDynSerializer.
 // This serializer is ONLY for slices with interface or pointer to interface element types.
-// For other slice types, use sliceConcreteValueSerializer instead.
+// For other slice types, use sliceSerializer instead.
 func newSliceDynSerializer(elemType reflect.Type) (sliceDynSerializer, error) {
 	// Nil element type is allowed for fully dynamic slices (e.g., []interface{})
 	if elemType == nil {
@@ -48,7 +48,7 @@ func newSliceDynSerializer(elemType reflect.Type) (sliceDynSerializer, error) {
 	isPointerToInterface := elemType.Kind() == reflect.Ptr && elemType.Elem().Kind() == reflect.Interface
 	if !isInterface && !isPointerToInterface {
 		return sliceDynSerializer{}, fmt.Errorf(
-			"sliceDynSerializer only supports interface or pointer to interface element types, got %v; use sliceConcreteValueSerializer for other types", elemType)
+			"sliceDynSerializer only supports interface or pointer to interface element types, got %v; use sliceSerializer for other types", elemType)
 	}
 	return sliceDynSerializer{
 		elemType:        elemType,

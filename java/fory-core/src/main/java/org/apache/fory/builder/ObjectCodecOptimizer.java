@@ -70,8 +70,8 @@ public class ObjectCodecOptimizer extends ExpressionOptimizer {
   final List<List<Descriptor>> primitiveGroups = new ArrayList<>();
   final List<List<Descriptor>> boxedWriteGroups = new ArrayList<>();
   final List<List<Descriptor>> boxedReadGroups = new ArrayList<>();
-  final List<List<Descriptor>> finalWriteGroups = new ArrayList<>();
-  final List<List<Descriptor>> finalReadGroups = new ArrayList<>();
+  final List<List<Descriptor>> buildInWriteGroups = new ArrayList<>();
+  final List<List<Descriptor>> buildInReadGroups = new ArrayList<>();
   final List<List<Descriptor>> otherWriteGroups = new ArrayList<>();
   final List<List<Descriptor>> otherReadGroups = new ArrayList<>();
 
@@ -117,9 +117,9 @@ public class ObjectCodecOptimizer extends ExpressionOptimizer {
                 boxedReadWeight,
                 boxedReadGroups),
             MutableTuple3.of(
-                new ArrayList<>(descriptorGrouper.getFinalDescriptors()), 9, finalWriteGroups),
+                new ArrayList<>(descriptorGrouper.getBuildInDescriptors()), 9, buildInWriteGroups),
             MutableTuple3.of(
-                new ArrayList<>(descriptorGrouper.getFinalDescriptors()), 5, finalReadGroups),
+                new ArrayList<>(descriptorGrouper.getBuildInDescriptors()), 5, buildInReadGroups),
             MutableTuple3.of(
                 new ArrayList<>(descriptorGrouper.getOtherDescriptors()), 4, otherReadGroups),
             MutableTuple3.of(

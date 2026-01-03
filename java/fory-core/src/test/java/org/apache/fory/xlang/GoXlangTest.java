@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.fory;
+package org.apache.fory.xlang;
 
 import com.google.common.collect.ImmutableMap;
 import java.io.File;
@@ -29,6 +29,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import org.apache.fory.Fory;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
@@ -125,119 +126,119 @@ public class GoXlangTest extends XlangTestBase {
     super.testCrossLanguageSerializer();
   }
 
-  @Test
-  public void testSimpleStruct() throws java.io.IOException {
-    super.testSimpleStruct();
+  @Test(dataProvider = "enableCodegen")
+  public void testSimpleStruct(boolean enableCodegen) throws java.io.IOException {
+    super.testSimpleStruct(enableCodegen);
   }
 
-  @Test
-  public void testSimpleNamedStruct() throws java.io.IOException {
-    super.testSimpleNamedStruct();
+  @Test(dataProvider = "enableCodegen")
+  public void testSimpleNamedStruct(boolean enableCodegen) throws java.io.IOException {
+    super.testSimpleNamedStruct(enableCodegen);
   }
 
-  @Test
-  public void testList() throws java.io.IOException {
-    super.testList();
+  @Test(dataProvider = "enableCodegen")
+  public void testList(boolean enableCodegen) throws java.io.IOException {
+    super.testList(enableCodegen);
   }
 
-  @Test
-  public void testMap() throws java.io.IOException {
-    super.testMap();
+  @Test(dataProvider = "enableCodegen")
+  public void testMap(boolean enableCodegen) throws java.io.IOException {
+    super.testMap(enableCodegen);
   }
 
-  @Test
-  public void testInteger() throws java.io.IOException {
-    super.testInteger();
+  @Test(dataProvider = "enableCodegen")
+  public void testInteger(boolean enableCodegen) throws java.io.IOException {
+    super.testInteger(enableCodegen);
   }
 
-  @Test
-  public void testItem() throws java.io.IOException {
-    super.testItem();
+  @Test(dataProvider = "enableCodegen")
+  public void testItem(boolean enableCodegen) throws java.io.IOException {
+    super.testItem(enableCodegen);
   }
 
-  @Test
-  public void testColor() throws java.io.IOException {
-    super.testColor();
+  @Test(dataProvider = "enableCodegen")
+  public void testColor(boolean enableCodegen) throws java.io.IOException {
+    super.testColor(enableCodegen);
   }
 
-  @Test
-  public void testStructWithList() throws java.io.IOException {
-    super.testStructWithList();
+  @Test(dataProvider = "enableCodegen")
+  public void testStructWithList(boolean enableCodegen) throws java.io.IOException {
+    super.testStructWithList(enableCodegen);
   }
 
-  @Test
-  public void testStructWithMap() throws java.io.IOException {
-    super.testStructWithMap();
+  @Test(dataProvider = "enableCodegen")
+  public void testStructWithMap(boolean enableCodegen) throws java.io.IOException {
+    super.testStructWithMap(enableCodegen);
   }
 
-  @Test
-  public void testSkipIdCustom() throws java.io.IOException {
-    super.testSkipIdCustom();
+  @Test(dataProvider = "enableCodegen")
+  public void testSkipIdCustom(boolean enableCodegen) throws java.io.IOException {
+    super.testSkipIdCustom(enableCodegen);
   }
 
-  @Test
-  public void testSkipNameCustom() throws java.io.IOException {
-    super.testSkipNameCustom();
+  @Test(dataProvider = "enableCodegen")
+  public void testSkipNameCustom(boolean enableCodegen) throws java.io.IOException {
+    super.testSkipNameCustom(enableCodegen);
   }
 
-  @Test
-  public void testConsistentNamed() throws java.io.IOException {
-    super.testConsistentNamed();
+  @Test(dataProvider = "enableCodegen")
+  public void testConsistentNamed(boolean enableCodegen) throws java.io.IOException {
+    super.testConsistentNamed(enableCodegen);
   }
 
-  @Test
-  public void testStructVersionCheck() throws java.io.IOException {
-    super.testStructVersionCheck();
+  @Test(dataProvider = "enableCodegen")
+  public void testStructVersionCheck(boolean enableCodegen) throws java.io.IOException {
+    super.testStructVersionCheck(enableCodegen);
   }
 
-  @Test
-  public void testPolymorphicList() throws java.io.IOException {
-    super.testPolymorphicList();
+  @Test(dataProvider = "enableCodegen")
+  public void testPolymorphicList(boolean enableCodegen) throws java.io.IOException {
+    super.testPolymorphicList(enableCodegen);
   }
 
-  @Test
-  public void testPolymorphicMap() throws java.io.IOException {
-    super.testPolymorphicMap();
+  @Test(dataProvider = "enableCodegen")
+  public void testPolymorphicMap(boolean enableCodegen) throws java.io.IOException {
+    super.testPolymorphicMap(enableCodegen);
   }
 
-  @Test
-  public void testOneStringFieldSchemaConsistent() throws java.io.IOException {
-    super.testOneStringFieldSchemaConsistent();
+  @Test(dataProvider = "enableCodegen")
+  public void testOneStringFieldSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
+    super.testOneStringFieldSchemaConsistent(enableCodegen);
   }
 
-  @Test
-  public void testOneStringFieldCompatible() throws java.io.IOException {
-    super.testOneStringFieldCompatible();
+  @Test(dataProvider = "enableCodegen")
+  public void testOneStringFieldCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testOneStringFieldCompatible(enableCodegen);
   }
 
-  @Test
-  public void testTwoStringFieldCompatible() throws java.io.IOException {
-    super.testTwoStringFieldCompatible();
+  @Test(dataProvider = "enableCodegen")
+  public void testTwoStringFieldCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testTwoStringFieldCompatible(enableCodegen);
   }
 
-  @Test
-  public void testSchemaEvolutionCompatible() throws java.io.IOException {
-    super.testSchemaEvolutionCompatible();
+  @Test(dataProvider = "enableCodegen")
+  public void testSchemaEvolutionCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testSchemaEvolutionCompatible(enableCodegen);
   }
 
-  @Test
-  public void testOneEnumFieldSchemaConsistent() throws java.io.IOException {
-    super.testOneEnumFieldSchemaConsistent();
+  @Test(dataProvider = "enableCodegen")
+  public void testOneEnumFieldSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
+    super.testOneEnumFieldSchemaConsistent(enableCodegen);
   }
 
-  @Test
-  public void testOneEnumFieldCompatible() throws java.io.IOException {
-    super.testOneEnumFieldCompatible();
+  @Test(dataProvider = "enableCodegen")
+  public void testOneEnumFieldCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testOneEnumFieldCompatible(enableCodegen);
   }
 
-  @Test
-  public void testTwoEnumFieldCompatible() throws java.io.IOException {
-    super.testTwoEnumFieldCompatible();
+  @Test(dataProvider = "enableCodegen")
+  public void testTwoEnumFieldCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testTwoEnumFieldCompatible(enableCodegen);
   }
 
-  @Test
   @Override
-  public void testEnumSchemaEvolutionCompatible() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testEnumSchemaEvolutionCompatible(boolean enableCodegen) throws java.io.IOException {
     // Go-specific override: Go writes null for nil pointers (nullable=true by default)
     String caseName = "test_enum_schema_evolution_compatible";
     // Fory for TwoEnumFieldStruct
@@ -302,34 +303,28 @@ public class GoXlangTest extends XlangTestBase {
   }
 
   @Override
-  @Test
-  public void testNullableFieldSchemaConsistentNotNull() throws java.io.IOException {
-    // Go's codegen always writes null flags for slice/map/interface fields,
-    // which is incompatible with Java's SCHEMA_CONSISTENT mode that expects no null flags.
-    // TODO: Update Go code generator to respect nullable flag in SCHEMA_CONSISTENT mode.
-    throw new SkipException(
-        "Skipping: Go codegen always writes null flags, incompatible with SCHEMA_CONSISTENT mode");
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldSchemaConsistentNotNull(boolean enableCodegen)
+      throws java.io.IOException {
+    super.testNullableFieldSchemaConsistentNotNull(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testNullableFieldSchemaConsistentNull() throws java.io.IOException {
-    // Go's codegen always writes null flags for slice/map/interface fields,
-    // which is incompatible with Java's SCHEMA_CONSISTENT mode that expects no null flags.
-    // TODO: Update Go code generator to respect nullable flag in SCHEMA_CONSISTENT mode.
-    throw new SkipException(
-        "Skipping: Go codegen always writes null flags, incompatible with SCHEMA_CONSISTENT mode");
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldSchemaConsistentNull(boolean enableCodegen)
+      throws java.io.IOException {
+    super.testNullableFieldSchemaConsistentNull(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testNullableFieldCompatibleNotNull() throws java.io.IOException {
-    super.testNullableFieldCompatibleNotNull();
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldCompatibleNotNull(boolean enableCodegen) throws java.io.IOException {
+    super.testNullableFieldCompatibleNotNull(enableCodegen);
   }
 
-  @Test
   @Override
-  public void testNullableFieldCompatibleNull() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldCompatibleNull(boolean enableCodegen) throws java.io.IOException {
     // Go-specific override: Unlike Rust which has non-nullable reference types (Vec<T>),
     // Go's slices and maps can be nil and default to nullable in COMPATIBLE mode.
     // So Go sends null for nil values, not empty collections like Rust does.
@@ -338,7 +333,7 @@ public class GoXlangTest extends XlangTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .withMetaCompressor(new NoOpMetaCompressor())
             .build();
     fory.register(NullableComprehensiveCompatible.class, 402);
@@ -420,21 +415,35 @@ public class GoXlangTest extends XlangTestBase {
     expected.nullableFloat1 = 0.0f;
     expected.nullableDouble1 = 0.0;
     expected.nullableBool1 = false;
-    // Nullable group 2 - Go's nullable reference fields:
+    // Nullable group 2 - Go's reference fields:
     // - string (not a pointer): defaults to "" (empty string) when nil in Go
-    // - slices/maps: can be nil, so Go sends null
+    // - slices/maps: Go struct doesn't have fory:"nullable" tag, so they're non-nullable
+    //   and are read as empty collections, not nil
     expected.nullableString2 = "";
-    expected.nullableList2 = null;
-    expected.nullableSet2 = null;
-    expected.nullableMap2 = null;
+    expected.nullableList2 = new ArrayList<>();
+    expected.nullableSet2 = new HashSet<>();
+    expected.nullableMap2 = new HashMap<>();
 
     Assert.assertEquals(result, expected);
   }
 
-  @Test
   @Override
-  public void testUnionXlang() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testUnionXlang(boolean enableCodegen) throws java.io.IOException {
     // Skip: Go doesn't have Union xlang support yet
     throw new SkipException("Skipping testUnionXlang: Go Union xlang support not implemented");
+  }
+
+  @Override
+  @Test(dataProvider = "enableCodegen")
+  public void testRefSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
+    // Run the test to debug hash mismatch
+    super.testRefSchemaConsistent(enableCodegen);
+  }
+
+  @Override
+  @Test(dataProvider = "enableCodegen")
+  public void testRefCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testRefCompatible(enableCodegen);
   }
 }

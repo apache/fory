@@ -18,9 +18,16 @@
 //! Tests for Rc and Arc serialization support in Fory
 
 use fory_core::fory::Fory;
+use fory_derive::ForyObject;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
+
+/// A simple struct for testing nested Rc/Arc serialization
+#[derive(ForyObject, Debug, Clone, PartialEq, Default)]
+struct NestedData {
+    value: String,
+}
 
 #[test]
 fn test_rc_string_serialization() {
@@ -166,16 +173,19 @@ fn test_mixed_rc_arc_serialization() {
 
 #[test]
 fn test_nested_rc_arc() {
-    let fory = Fory::default();
+    let mut fory = Fory::default();
+    fory.register::<NestedData>(100).unwrap();
 
-    // Test Rc containing Arc
-    let inner_data = Arc::new(String::from("nested"));
+    // Test Rc containing Arc with allowed struct type
+    let inner_data = Arc::new(NestedData {
+        value: String::from("nested"),
+    });
     let outer_data = Rc::new(inner_data.clone());
 
     let serialized = fory.serialize(&outer_data).unwrap();
-    let deserialized: Rc<Arc<String>> = fory.deserialize(&serialized).unwrap();
+    let deserialized: Rc<Arc<NestedData>> = fory.deserialize(&serialized).unwrap();
 
-    assert_eq!(**outer_data, **deserialized);
+    assert_eq!(outer_data.value, deserialized.value);
 }
 
 #[test]

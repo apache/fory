@@ -33,6 +33,7 @@ type WriteContext struct {
 	buffer         *ByteBuffer
 	refWriter      *RefWriter
 	trackRef       bool // Cached flag to avoid indirection
+	xlang          bool // Cross-language serialization mode
 	compatible     bool // Schema evolution compatibility mode
 	depth          int
 	maxDepth       int
@@ -41,6 +42,11 @@ type WriteContext struct {
 	bufferCallback func(BufferObject) bool // Callback for out-of-band buffers
 	outOfBand      bool                    // Whether out-of-band serialization is enabled
 	err            Error                   // Accumulated error state for deferred checking
+}
+
+// IsXlang returns whether cross-language serialization mode is enabled
+func (c *WriteContext) IsXlang() bool {
+	return c.xlang
 }
 
 // NewWriteContext creates a new write context
@@ -559,10 +565,12 @@ func (c *WriteContext) WriteBufferObject(bufferObject BufferObject) {
 	// If out-of-band, we just write false (already done above) and the data is handled externally
 }
 
-// WriteValue writes a polymorphic value with reference tracking and type info.
+// WriteValue writes a polymorphic value with configurable reference tracking and type info.
 // This is used when the concrete type is not known at compile time.
-// Each serializer's Write method handles reference tracking internally.
-func (c *WriteContext) WriteValue(value reflect.Value) {
+// Parameters:
+//   - refMode: controls reference tracking behavior (RefModeNone, RefModeTracking, RefModeNullOnly)
+//   - writeType: if true, writes type info before the value
+func (c *WriteContext) WriteValue(value reflect.Value, refMode RefMode, writeType bool) {
 	// Handle interface values by getting their concrete element
 	if value.Kind() == reflect.Interface {
 		if !value.IsValid() || value.IsNil() {
@@ -604,5 +612,5 @@ func (c *WriteContext) WriteValue(value reflect.Value) {
 	}
 
 	// Use serializer's Write method which handles ref tracking and type info internally
-	typeInfo.Serializer.Write(c, RefModeTracking, true, false, value)
+	typeInfo.Serializer.Write(c, refMode, writeType, false, value)
 }

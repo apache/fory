@@ -19,8 +19,7 @@ use super::util::{
     classify_trait_object_field, create_wrapper_types_arc, create_wrapper_types_rc,
     determine_field_ref_mode, extract_type_name, gen_struct_version_hash_ts, get_field_accessor,
     get_field_name, get_filtered_source_fields_iter, get_primitive_writer_method, get_struct_name,
-    get_type_id_by_type_ast, is_debug_enabled, is_direct_primitive_numeric_type,
-    should_skip_type_info_for_field, FieldRefMode, StructField,
+    get_type_id_by_type_ast, is_debug_enabled, is_direct_primitive_type, FieldRefMode, StructField,
 };
 use crate::util::SourceField;
 use fory_core::types::TypeId;
@@ -242,30 +241,39 @@ fn gen_write_field_impl(
             }
         }
         StructField::Forward => {
-            // Forward types - respect field meta for ref mode
+            // Forward types (trait objects, forward references) - polymorphic, always need type info
             quote! {
                 <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, #ref_mode, true, false)?;
             }
         }
         _ => {
-            let skip_type_info = should_skip_type_info_for_field(ty);
             let type_id = get_type_id_by_type_ast(ty);
 
-            // Check if this is a direct primitive numeric type that can use direct writer calls
-            if is_direct_primitive_numeric_type(ty) {
+            // Check if this is a direct primitive type that can use direct writer calls
+            // Only apply when ref_mode is None (no ref tracking needed)
+            if ref_mode == FieldRefMode::None && is_direct_primitive_type(ty) {
                 let type_name = extract_type_name(ty);
-                let writer_method = get_primitive_writer_method(&type_name);
-                let writer_ident = syn::Ident::new(writer_method, proc_macro2::Span::call_site());
-                // For primitives:
-                // - use_self=true: #value_ts is `self.field`, which is T (copy happens automatically)
-                // - use_self=false: #value_ts is `field` from pattern match on &self, which is &T
-                let value_expr = if use_self {
-                    quote! { #value_ts }
+                if type_name == "String" {
+                    // String: call fory_write_data directly
+                    quote! {
+                        <#ty as fory_core::Serializer>::fory_write_data(&#value_ts, context)?;
+                    }
                 } else {
-                    quote! { *#value_ts }
-                };
-                quote! {
-                    context.writer.#writer_ident(#value_expr);
+                    // Numeric primitives: use direct buffer methods
+                    let writer_method = get_primitive_writer_method(&type_name);
+                    let writer_ident =
+                        syn::Ident::new(writer_method, proc_macro2::Span::call_site());
+                    // For primitives:
+                    // - use_self=true: #value_ts is `self.field`, which is T (copy happens automatically)
+                    // - use_self=false: #value_ts is `field` from pattern match on &self, which is &T
+                    let value_expr = if use_self {
+                        quote! { #value_ts }
+                    } else {
+                        quote! { *#value_ts }
+                    };
+                    quote! {
+                        context.writer.#writer_ident(#value_expr);
+                    }
                 }
             } else if type_id == TypeId::LIST as u32
                 || type_id == TypeId::SET as u32
@@ -282,24 +290,21 @@ fn gen_write_field_impl(
                     }
                 }
             } else {
-                // Known types (primitives, strings, collections) - skip type info at compile time
-                // For custom types that we can't determine at compile time (like enums),
-                // we need to check at runtime whether to skip type info
-                if skip_type_info {
-                    if ref_mode == FieldRefMode::None {
-                        quote! {
-                            <#ty as fory_core::Serializer>::fory_write_data(&#value_ts, context)?;
-                        }
+                // Custom types (struct/enum/ext) - always need mode-dependent type info logic
+                // Determine write_type_info based on mode:
+                // - compatible=true: use need_to_write_type_for_field (struct types need type info)
+                // - compatible=false: use fory_is_polymorphic
+                // This applies regardless of ref_mode because Java always writes type info
+                // for struct-type fields in compatible mode, even for non-nullable fields.
+                quote! {
+                    let write_type_info = if context.is_compatible() {
+                        fory_core::types::need_to_write_type_for_field(
+                            <#ty as fory_core::Serializer>::fory_static_type_id()
+                        )
                     } else {
-                        quote! {
-                            <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, #ref_mode, false, false)?;
-                        }
-                    }
-                } else {
-                    quote! {
-                        let need_type_info = fory_core::serializer::util::field_need_write_type_info(<#ty as fory_core::Serializer>::fory_static_type_id());
-                        <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, #ref_mode, need_type_info, false)?;
-                    }
+                        <#ty as fory_core::Serializer>::fory_is_polymorphic()
+                    };
+                    <#ty as fory_core::Serializer>::fory_write(&#value_ts, context, #ref_mode, write_type_info, false)?;
                 }
             }
         }

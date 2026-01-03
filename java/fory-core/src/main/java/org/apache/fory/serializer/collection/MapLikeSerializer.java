@@ -52,6 +52,7 @@ import org.apache.fory.serializer.Serializer;
 import org.apache.fory.type.GenericType;
 import org.apache.fory.type.Generics;
 import org.apache.fory.type.TypeUtils;
+import org.apache.fory.util.Preconditions;
 
 /** Serializer for all map-like objects. */
 @SuppressWarnings({"unchecked", "rawtypes"})
@@ -80,6 +81,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
   private int numElements;
   private final TypeResolver typeResolver;
   protected final SerializationBinding binding;
+  private boolean trackRef;
 
   public MapLikeSerializer(Fory fory, Class<T> cls) {
     this(fory, cls, !ReflectionUtils.isDynamicGeneratedCLass(cls));
@@ -92,6 +94,7 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
   public MapLikeSerializer(Fory fory, Class<T> cls, boolean supportCodegenHook, boolean immutable) {
     super(fory, cls, immutable);
     this.typeResolver = fory.isCrossLanguage() ? fory.getXtypeResolver() : fory.getClassResolver();
+    trackRef = fory.trackingRef();
     this.supportCodegenHook = supportCodegenHook;
     keyClassInfoWriteCache = typeResolver.nilClassInfoHolder();
     keyClassInfoReadCache = typeResolver.nilClassInfoHolder();
@@ -773,6 +776,9 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     // noinspection Duplicates
     boolean trackKeyRef = (chunkHeader & TRACKING_KEY_REF) != 0;
     boolean trackValueRef = (chunkHeader & TRACKING_VALUE_REF) != 0;
+    if (trackKeyRef || trackValueRef) {
+      Preconditions.checkState(trackRef, "Ref tracking is not enabled");
+    }
     boolean keyIsDeclaredType = (chunkHeader & KEY_DECL_TYPE) != 0;
     boolean valueIsDeclaredType = (chunkHeader & VALUE_DECL_TYPE) != 0;
     int chunkSize = buffer.readUnsignedByte();
@@ -818,6 +824,9 @@ public abstract class MapLikeSerializer<T> extends Serializer<T> {
     // noinspection Duplicates
     boolean trackKeyRef = (chunkHeader & TRACKING_KEY_REF) != 0;
     boolean trackValueRef = (chunkHeader & TRACKING_VALUE_REF) != 0;
+    if (trackKeyRef || trackValueRef) {
+      Preconditions.checkState(trackRef, "Ref tracking is not enabled");
+    }
     boolean keyIsDeclaredType = (chunkHeader & KEY_DECL_TYPE) != 0;
     boolean valueIsDeclaredType = (chunkHeader & VALUE_DECL_TYPE) != 0;
     int chunkSize = buffer.readUnsignedByte();

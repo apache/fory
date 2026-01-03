@@ -358,6 +358,31 @@ template <typename T> struct CompileTimeFieldHelpers {
     }
   }
 
+  /// Returns true if the field at Index is marked as monomorphic.
+  /// Use this for shared_ptr/unique_ptr fields with polymorphic inner types
+  /// when you know the actual runtime type will always be exactly T.
+  template <size_t Index> static constexpr bool field_monomorphic() {
+    if constexpr (FieldCount == 0) {
+      return false;
+    } else {
+      using PtrT = std::tuple_element_t<Index, FieldPtrs>;
+      using RawFieldType = meta::RemoveMemberPointerCVRefT<PtrT>;
+
+      // If it's a fory::field<> wrapper, use its is_monomorphic metadata
+      if constexpr (is_fory_field_v<RawFieldType>) {
+        return RawFieldType::is_monomorphic;
+      }
+      // Else if FORY_FIELD_TAGS is defined, use that metadata
+      else if constexpr (::fory::detail::has_field_tags_v<T>) {
+        return ::fory::detail::GetFieldTagEntry<T, Index>::is_monomorphic;
+      }
+      // Default: not monomorphic (polymorphic types use dynamic dispatch)
+      else {
+        return false;
+      }
+    }
+  }
+
   /// Get the underlying field type (unwraps fory::field<> if present)
   template <size_t Index> struct UnwrappedFieldTypeHelper {
     using PtrT = std::tuple_element_t<Index, FieldPtrs>;
@@ -1292,18 +1317,17 @@ void write_single_field(const T &obj, WriteContext &ctx,
   // Enums: false (per Rust util.rs:58-59)
   // Structs/EXT: true ONLY in compatible mode (per C++ read logic)
   // Others: false
-  constexpr bool is_struct = field_type_id == TypeId::STRUCT ||
-                             field_type_id == TypeId::COMPATIBLE_STRUCT ||
-                             field_type_id == TypeId::NAMED_STRUCT ||
-                             field_type_id == TypeId::NAMED_COMPATIBLE_STRUCT;
-  constexpr bool is_ext =
-      field_type_id == TypeId::EXT || field_type_id == TypeId::NAMED_EXT;
+  constexpr bool is_struct = is_struct_type(field_type_id);
+  constexpr bool is_ext = is_ext_type(field_type_id);
   constexpr bool is_polymorphic = field_type_id == TypeId::UNKNOWN;
 
+  // Check if field is marked as monomorphic (skip dynamic type dispatch)
+  constexpr bool is_monomorphic = Helpers::template field_monomorphic<Index>();
+
   // Per C++ read logic: struct fields need type info only in compatible mode
-  // Polymorphic types always need type info
-  bool write_type =
-      is_polymorphic || ((is_struct || is_ext) && ctx.is_compatible());
+  // Polymorphic types always need type info, UNLESS marked as monomorphic
+  bool write_type = (is_polymorphic && !is_monomorphic) ||
+                    ((is_struct || is_ext) && ctx.is_compatible());
 
   Serializer<FieldType>::write(field_value, ctx, field_ref_mode, write_type);
 }
@@ -1456,10 +1480,17 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   // `Serializer<T>::read` can dispatch to `read_compatible` with the correct
   // remote schema.
   constexpr bool field_requires_ref = requires_ref_metadata_v<FieldType>;
-  constexpr bool is_struct_field = is_fory_serializable_v<FieldType>;
-  constexpr bool is_polymorphic_field =
-      Serializer<FieldType>::type_id == TypeId::UNKNOWN;
-  bool read_type = is_polymorphic_field;
+  constexpr TypeId field_type_id = Serializer<FieldType>::type_id;
+  // Check if field is a struct type - use type_id to handle shared_ptr<Struct>
+  constexpr bool is_struct_field = is_struct_type(field_type_id);
+  constexpr bool is_ext_field = is_ext_type(field_type_id);
+  constexpr bool is_polymorphic_field = field_type_id == TypeId::UNKNOWN;
+
+  // Check if field is marked as monomorphic (skip dynamic type dispatch)
+  constexpr bool is_monomorphic = Helpers::template field_monomorphic<Index>();
+
+  // Polymorphic types need type info, UNLESS marked as monomorphic
+  bool read_type = is_polymorphic_field && !is_monomorphic;
 
   // Get field metadata from fory::field<> or FORY_FIELD_TAGS or defaults
   constexpr bool is_nullable = Helpers::template field_nullable<Index>();
@@ -1470,14 +1501,14 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   // `Serializer<T>::read` can dispatch to `read_compatible` with the correct
   // remote TypeMeta instead of treating the bytes as part of the first field
   // value.
-  if (!is_polymorphic_field && is_struct_field && ctx.is_compatible()) {
+  if (!is_polymorphic_field && (is_struct_field || is_ext_field) &&
+      ctx.is_compatible()) {
     read_type = true;
   }
 
   // Per xlang spec, all non-primitive fields have ref flags.
   // Primitive types: bool, int8-64, var_int32/64, sli_int64, float16/32/64
   // Non-primitives include: string, list, set, map, struct, enum, etc.
-  constexpr TypeId field_type_id = Serializer<FieldType>::type_id;
   constexpr bool is_primitive_field = is_primitive_type_id(field_type_id);
 
   // Compute RefMode based on field metadata
@@ -1526,6 +1557,7 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
 template <size_t Index, typename T>
 void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
                                            RefMode remote_ref_mode) {
+  using Helpers = CompileTimeFieldHelpers<T>;
   const auto field_info = ForyFieldInfo(obj);
   const auto field_ptrs = decltype(field_info)::Ptrs;
   const auto field_ptr = std::get<Index>(field_ptrs);
@@ -1534,20 +1566,26 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
   // Unwrap fory::field<> to get the actual type for deserialization
   using FieldType = unwrap_field_t<RawFieldType>;
 
-  constexpr bool is_struct_field = is_fory_serializable_v<FieldType>;
-  constexpr bool is_polymorphic_field =
-      Serializer<FieldType>::type_id == TypeId::UNKNOWN;
   constexpr TypeId field_type_id = Serializer<FieldType>::type_id;
+  // Check if field is a struct type - use type_id to handle shared_ptr<Struct>
+  constexpr bool is_struct_field = is_struct_type(field_type_id);
+  constexpr bool is_ext_field = is_ext_type(field_type_id);
+  constexpr bool is_polymorphic_field = field_type_id == TypeId::UNKNOWN;
   constexpr bool is_primitive_field = is_primitive_type_id(field_type_id);
 
-  bool read_type = is_polymorphic_field;
+  // Check if field is marked as monomorphic (skip dynamic type dispatch)
+  constexpr bool is_monomorphic = Helpers::template field_monomorphic<Index>();
+
+  // Polymorphic types need type info, UNLESS marked as monomorphic
+  bool read_type = is_polymorphic_field && !is_monomorphic;
 
   // In compatible mode, nested struct fields always carry type metadata
   // (xtypeId + meta index). We must read this metadata so that
   // `Serializer<T>::read` can dispatch to `read_compatible` with the correct
   // remote TypeMeta instead of treating the bytes as part of the first field
   // value.
-  if (!is_polymorphic_field && is_struct_field && ctx.is_compatible()) {
+  if (!is_polymorphic_field && (is_struct_field || is_ext_field) &&
+      ctx.is_compatible()) {
     read_type = true;
   }
 
@@ -1947,7 +1985,15 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
 
   static void write(const T &obj, WriteContext &ctx, RefMode ref_mode,
                     bool write_type, bool has_generics = false) {
-    write_not_null_ref_flag(ctx, ref_mode);
+    // Handle ref flag based on mode
+    if (ref_mode == RefMode::Tracking && ctx.track_ref()) {
+      // In Tracking mode, write REF_VALUE_FLAG (0) and reserve a ref_id slot
+      // to keep ref IDs in sync with Java (which tracks all objects)
+      ctx.write_int8(REF_VALUE_FLAG);
+      ctx.ref_writer().reserve_ref_id();
+    } else if (ref_mode != RefMode::None) {
+      ctx.write_int8(NOT_NULL_VALUE_FLAG);
+    }
 
     if (write_type) {
       // Direct lookup using compile-time type_index<T>() - O(1) hash lookup
@@ -2048,6 +2094,13 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
     constexpr int8_t null_flag = static_cast<int8_t>(RefFlag::Null);
 
     if (ref_flag == not_null_value_flag || ref_flag == ref_value_flag) {
+      // When ref_flag is RefValue (0), Java assigned a ref_id to this object.
+      // We must reserve a matching ref_id slot so that nested refs line up.
+      // Structs can't actually be referenced (only shared_ptrs can), but we
+      // need the ref_id numbering to stay in sync with Java.
+      if (ctx.track_ref() && ref_flag == ref_value_flag) {
+        ctx.ref_reader().reserve_ref_id();
+      }
       // In compatible mode: use meta sharing (matches Rust behavior)
       if (ctx.is_compatible()) {
         // In compatible mode: always use remote TypeMeta for schema evolution

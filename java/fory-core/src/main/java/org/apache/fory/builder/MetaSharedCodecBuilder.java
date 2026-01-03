@@ -91,23 +91,18 @@ public class MetaSharedCodecBuilder extends ObjectCodecBuilder {
     this.classDef = classDef;
     Collection<Descriptor> descriptors =
         fory(
-            f ->
-                MetaSharedSerializer.consolidateFields(
-                    f.isCrossLanguage() ? f.getXtypeResolver() : f.getClassResolver(),
-                    beanClass,
-                    classDef));
+            f -> MetaSharedSerializer.consolidateFields(f._getTypeResolver(), beanClass, classDef));
     DescriptorGrouper grouper = typeResolver(r -> r.createDescriptorGrouper(descriptors, false));
     List<Descriptor> sortedDescriptors = grouper.getSortedDescriptors();
     if (org.apache.fory.util.Utils.debugOutputEnabled()) {
       LOG.info("========== sorted descriptors for {} ==========", classDef.getClassName());
       for (Descriptor d : sortedDescriptors) {
         LOG.info(
-            "  {} -> {}, ref {}, nullable {}, morphic {}",
+            "  {} -> {}, ref {}, nullable {}",
             d.getName(),
             d.getTypeName(),
             d.isTrackingRef(),
-            d.isNullable(),
-            d.isFinalField());
+            d.isNullable());
       }
     }
     objectCodecOptimizer =

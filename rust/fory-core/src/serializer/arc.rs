@@ -38,48 +38,18 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
         match ref_mode {
             RefMode::None => {
                 // No ref flag - write inner directly
-                if T::fory_is_shared_ref() || T::fory_is_polymorphic() {
-                    let inner_ref_mode = if T::fory_is_shared_ref() {
-                        RefMode::Tracking
-                    } else {
-                        RefMode::None
-                    };
-                    T::fory_write(
-                        &**self,
-                        context,
-                        inner_ref_mode,
-                        write_type_info,
-                        has_generics,
-                    )
-                } else {
-                    if write_type_info {
-                        T::fory_write_type_info(context)?;
-                    }
-                    T::fory_write_data_generic(self, context, has_generics)
+                if write_type_info {
+                    T::fory_write_type_info(context)?;
                 }
+                T::fory_write_data_generic(self, context, has_generics)
             }
             RefMode::NullOnly => {
                 // Only null check, no ref tracking
                 context.writer.write_i8(RefFlag::NotNullValue as i8);
-                if T::fory_is_shared_ref() || T::fory_is_polymorphic() {
-                    let inner_ref_mode = if T::fory_is_shared_ref() {
-                        RefMode::Tracking
-                    } else {
-                        RefMode::None
-                    };
-                    T::fory_write(
-                        &**self,
-                        context,
-                        inner_ref_mode,
-                        write_type_info,
-                        has_generics,
-                    )
-                } else {
-                    if write_type_info {
-                        T::fory_write_type_info(context)?;
-                    }
-                    T::fory_write_data_generic(self, context, has_generics)
+                if write_type_info {
+                    T::fory_write_type_info(context)?;
                 }
+                T::fory_write_data_generic(self, context, has_generics)
             }
             RefMode::Tracking => {
                 // Full ref tracking with RefWriter
@@ -90,40 +60,30 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
                     // Already written as ref - done
                     return Ok(());
                 }
-                // First occurrence - write inner
-                if T::fory_is_shared_ref() || T::fory_is_polymorphic() {
-                    let inner_ref_mode = if T::fory_is_shared_ref() {
-                        RefMode::Tracking
-                    } else {
-                        RefMode::None
-                    };
-                    T::fory_write(
-                        &**self,
-                        context,
-                        inner_ref_mode,
-                        write_type_info,
-                        has_generics,
-                    )
-                } else {
-                    if write_type_info {
-                        T::fory_write_type_info(context)?;
-                    }
-                    T::fory_write_data_generic(self, context, has_generics)
+                // First occurrence - write type info and data
+                if write_type_info {
+                    T::fory_write_type_info(context)?;
                 }
+                T::fory_write_data_generic(self, context, has_generics)
             }
         }
     }
 
-    fn fory_write_data_generic(&self, _: &mut WriteContext, _: bool) -> Result<(), Error> {
-        Err(Error::not_allowed(
-            "Arc<T> should be written using `fory_write` to handle reference tracking properly",
-        ))
+    fn fory_write_data_generic(
+        &self,
+        context: &mut WriteContext,
+        has_generics: bool,
+    ) -> Result<(), Error> {
+        if T::fory_is_shared_ref() {
+            return Err(Error::not_allowed(
+                "Arc<T> where T is a shared ref type is not allowed for serialization.",
+            ));
+        }
+        T::fory_write_data_generic(&**self, context, has_generics)
     }
 
-    fn fory_write_data(&self, _: &mut WriteContext) -> Result<(), Error> {
-        Err(Error::not_allowed(
-            "Arc<T> should be written using `fory_write` to handle reference tracking properly",
-        ))
+    fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
+        self.fory_write_data_generic(context, false)
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
@@ -149,8 +109,14 @@ impl<T: Serializer + ForyDefault + Send + Sync + 'static> Serializer for Arc<T> 
         read_arc(context, ref_mode, false, Some(typeinfo))
     }
 
-    fn fory_read_data(_: &mut ReadContext) -> Result<Self, Error> {
-        Err(Error::not_allowed("Arc<T> should be read using `fory_read/fory_read_with_type_info` to handle reference tracking properly"))
+    fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
+        if T::fory_is_shared_ref() {
+            return Err(Error::not_allowed(
+                "Arc<T> where T is a shared ref type is not allowed for deserialization.",
+            ));
+        }
+        let inner = T::fory_read_data(context)?;
+        Ok(Arc::new(inner))
     }
 
     fn fory_read_type_info(context: &mut ReadContext) -> Result<(), Error> {
@@ -233,21 +199,10 @@ fn read_arc_inner<T: Serializer + ForyDefault + 'static>(
     read_type_info: bool,
     typeinfo: Option<Rc<TypeInfo>>,
 ) -> Result<T, Error> {
+    // Read type info if needed, then read data directly
+    // No recursive ref handling needed since Arc<T> only wraps allowed types
     if let Some(typeinfo) = typeinfo {
-        let inner_ref_mode = if T::fory_is_shared_ref() {
-            RefMode::Tracking
-        } else {
-            RefMode::None
-        };
-        return T::fory_read_with_type_info(context, inner_ref_mode, typeinfo);
-    }
-    if T::fory_is_shared_ref() || T::fory_is_polymorphic() {
-        let inner_ref_mode = if T::fory_is_shared_ref() {
-            RefMode::Tracking
-        } else {
-            RefMode::None
-        };
-        return T::fory_read(context, inner_ref_mode, read_type_info);
+        return T::fory_read_with_type_info(context, RefMode::None, typeinfo);
     }
     if read_type_info {
         T::fory_read_type_info(context)?;

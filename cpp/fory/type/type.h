@@ -175,6 +175,21 @@ inline bool IsTypeShareMeta(int32_t type_id) {
   }
 }
 
+/// Check if type_id represents a struct type.
+/// Struct types include STRUCT, COMPATIBLE_STRUCT, NAMED_STRUCT, and
+/// NAMED_COMPATIBLE_STRUCT.
+inline constexpr bool is_struct_type(TypeId type_id) {
+  return type_id == TypeId::STRUCT || type_id == TypeId::COMPATIBLE_STRUCT ||
+         type_id == TypeId::NAMED_STRUCT ||
+         type_id == TypeId::NAMED_COMPATIBLE_STRUCT;
+}
+
+/// Check if type_id represents an ext type.
+/// Ext types include EXT and NAMED_EXT.
+inline constexpr bool is_ext_type(TypeId type_id) {
+  return type_id == TypeId::EXT || type_id == TypeId::NAMED_EXT;
+}
+
 /// Check if type_id represents an internal (built-in) type.
 /// Internal types are all types except user-defined types (ENUM, STRUCT, EXT).
 /// UNKNOWN is excluded because it's a marker for polymorphic types, not a

@@ -111,12 +111,11 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
       List<Descriptor> sortedDescriptors = grouper.getSortedDescriptors();
       for (Descriptor d : sortedDescriptors) {
         LOG.info(
-            "  {} -> {}, ref {}, nullable {}, morphic {}",
+            "  {} -> {}, ref {}, nullable {}",
             d.getName(),
             d.getTypeName(),
             d.isTrackingRef(),
-            d.isNullable(),
-            d.isFinalField());
+            d.isNullable());
       }
     }
     classVersionHash =
@@ -155,12 +154,6 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     ctx.addImport(Generated.GeneratedObjectSerializer.class);
   }
 
-  /** Mark non-inner registered final types as non-final to write class def for those types. */
-  @Override
-  protected boolean isMonomorphic(Class<?> clz) {
-    return typeResolver(r -> r.isMonomorphic(clz));
-  }
-
   /**
    * Return an expression that serialize java bean of type {@link CodecBuilder#beanClass} to buffer.
    */
@@ -180,7 +173,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     addGroupExpressions(
         objectCodecOptimizer.boxedWriteGroups, numGroups, expressions, bean, buffer);
     addGroupExpressions(
-        objectCodecOptimizer.finalWriteGroups, numGroups, expressions, bean, buffer);
+        objectCodecOptimizer.buildInWriteGroups, numGroups, expressions, bean, buffer);
     for (Descriptor descriptor :
         objectCodecOptimizer.descriptorGrouper.getCollectionDescriptors()) {
       expressions.add(serializeGroup(Collections.singletonList(descriptor), bean, buffer, false));
@@ -210,7 +203,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
 
   private int getNumGroups(ObjectCodecOptimizer objectCodecOptimizer) {
     return objectCodecOptimizer.boxedWriteGroups.size()
-        + objectCodecOptimizer.finalWriteGroups.size()
+        + objectCodecOptimizer.buildInWriteGroups.size()
         + objectCodecOptimizer.otherWriteGroups.size()
         + objectCodecOptimizer.descriptorGrouper.getCollectionDescriptors().size()
         + objectCodecOptimizer.descriptorGrouper.getMapDescriptors().size();
@@ -473,7 +466,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
     deserializeReadGroup(
         objectCodecOptimizer.boxedReadGroups, numGroups, expressions, bean, buffer);
     deserializeReadGroup(
-        objectCodecOptimizer.finalReadGroups, numGroups, expressions, bean, buffer);
+        objectCodecOptimizer.buildInReadGroups, numGroups, expressions, bean, buffer);
     for (Descriptor d : objectCodecOptimizer.descriptorGrouper.getCollectionDescriptors()) {
       expressions.add(deserializeGroup(Collections.singletonList(d), bean, buffer, false));
     }
@@ -611,7 +604,7 @@ public class ObjectCodecBuilder extends BaseObjectCodecBuilder {
         "checkClassVersion",
         PRIMITIVE_VOID_TYPE,
         false,
-        foryRef,
+        beanClassExpr(),
         inlineInvoke(buffer, readIntFunc(), PRIMITIVE_INT_TYPE),
         Objects.requireNonNull(classVersionHash));
   }

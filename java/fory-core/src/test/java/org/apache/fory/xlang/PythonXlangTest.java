@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.fory;
+package org.apache.fory.xlang;
 
 import com.google.common.collect.ImmutableMap;
 import java.io.File;
@@ -28,6 +28,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import org.apache.fory.Fory;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
@@ -88,56 +89,55 @@ public class PythonXlangTest extends XlangTestBase {
   }
 
   @Override
-  @Test
-  public void testList() throws IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testList(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: similar test already covered in CrossLanguageTest");
   }
 
   @Override
-  @Test
-  public void testMap() throws IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testMap(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: similar test already covered in CrossLanguageTest");
   }
 
   @Override
-  @Test
-  public void testItem() throws IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testItem(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: simple struct tests covered in CrossLanguageTest");
   }
 
   @Override
-  @Test
-  public void testColor() throws IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testColor(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: enum tests covered in CrossLanguageTest");
   }
 
   @Override
-  @Test
-  public void testStructWithList() throws IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testStructWithList(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: struct with list covered in CrossLanguageTest");
   }
 
   @Override
-  @Test
-  public void testStructWithMap() throws IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testStructWithMap(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: struct with map covered in CrossLanguageTest");
   }
 
-  @Override
   @Test
   public void testBufferVar() throws IOException {
     throw new SkipException("Skipping: similar test already covered in CrossLanguageTest");
   }
 
   @Override
-  @Test
-  public void testInteger() throws IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testInteger(boolean enableCodegen) throws IOException {
     throw new SkipException("Skipping: similar test already covered in CrossLanguageTest");
   }
 
   // ============================================================================
   // Explicitly re-declare inherited test methods to enable running individual
-  // tests via Maven: mvn test -Dtest=org.apache.fory.PythonXlangTest#testXxx
+  // tests via Maven: mvn test -Dtest=org.apache.fory.xlang.PythonXlangTest#testXxx
   //
   // Maven Surefire cannot find inherited test methods when using the #methodName
   // syntax for test selection. By overriding and forwarding to the parent class,
@@ -151,74 +151,74 @@ public class PythonXlangTest extends XlangTestBase {
   }
 
   @Override
-  @Test
-  public void testSimpleStruct() throws IOException {
-    super.testSimpleStruct();
+  @Test(dataProvider = "enableCodegen")
+  public void testSimpleStruct(boolean enableCodegen) throws IOException {
+    super.testSimpleStruct(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testSimpleNamedStruct() throws IOException {
-    super.testSimpleNamedStruct();
+  @Test(dataProvider = "enableCodegen")
+  public void testSimpleNamedStruct(boolean enableCodegen) throws IOException {
+    super.testSimpleNamedStruct(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testSkipIdCustom() throws IOException {
-    super.testSkipIdCustom();
+  @Test(dataProvider = "enableCodegen")
+  public void testSkipIdCustom(boolean enableCodegen) throws IOException {
+    super.testSkipIdCustom(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testSkipNameCustom() throws IOException {
-    super.testSkipNameCustom();
+  @Test(dataProvider = "enableCodegen")
+  public void testSkipNameCustom(boolean enableCodegen) throws IOException {
+    super.testSkipNameCustom(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testConsistentNamed() throws IOException {
-    super.testConsistentNamed();
+  @Test(dataProvider = "enableCodegen")
+  public void testConsistentNamed(boolean enableCodegen) throws IOException {
+    super.testConsistentNamed(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testStructVersionCheck() throws IOException {
-    super.testStructVersionCheck();
+  @Test(dataProvider = "enableCodegen")
+  public void testStructVersionCheck(boolean enableCodegen) throws IOException {
+    super.testStructVersionCheck(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testPolymorphicList() throws IOException {
-    super.testPolymorphicList();
+  @Test(dataProvider = "enableCodegen")
+  public void testPolymorphicList(boolean enableCodegen) throws IOException {
+    super.testPolymorphicList(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testPolymorphicMap() throws IOException {
-    super.testPolymorphicMap();
+  @Test(dataProvider = "enableCodegen")
+  public void testPolymorphicMap(boolean enableCodegen) throws IOException {
+    super.testPolymorphicMap(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testNullableFieldSchemaConsistentNotNull() throws IOException {
-    super.testNullableFieldSchemaConsistentNotNull();
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldSchemaConsistentNotNull(boolean enableCodegen) throws IOException {
+    super.testNullableFieldSchemaConsistentNotNull(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testNullableFieldSchemaConsistentNull() throws IOException {
-    super.testNullableFieldSchemaConsistentNull();
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldSchemaConsistentNull(boolean enableCodegen) throws IOException {
+    super.testNullableFieldSchemaConsistentNull(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testNullableFieldCompatibleNotNull() throws IOException {
-    super.testNullableFieldCompatibleNotNull();
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldCompatibleNotNull(boolean enableCodegen) throws IOException {
+    super.testNullableFieldCompatibleNotNull(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testNullableFieldCompatibleNull() throws IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldCompatibleNull(boolean enableCodegen) throws IOException {
     // Python properly supports Optional and sends actual null values,
     // unlike Rust which sends default values. Override with Python-specific expectations.
     String caseName = "test_nullable_field_compatible_null";
@@ -226,7 +226,7 @@ public class PythonXlangTest extends XlangTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .withMetaCompressor(new NoOpMetaCompressor())
             .build();
     fory.register(NullableComprehensiveCompatible.class, 402);
@@ -285,9 +285,19 @@ public class PythonXlangTest extends XlangTestBase {
   }
 
   @Override
-  @Test
-  public void testUnionXlang() throws IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testUnionXlang(boolean enableCodegen) throws IOException {
     // Skip: Python doesn't have Union xlang support yet
     throw new SkipException("Skipping testUnionXlang: Python Union xlang support not implemented");
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testRefSchemaConsistent(boolean enableCodegen) throws IOException {
+    super.testRefSchemaConsistent(enableCodegen);
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testRefCompatible(boolean enableCodegen) throws IOException {
+    super.testRefCompatible(enableCodegen);
   }
 }

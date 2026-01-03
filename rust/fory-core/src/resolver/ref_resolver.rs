@@ -131,6 +131,21 @@ impl RefWriter {
         }
     }
 
+    /// Reserve a reference ID slot without storing anything.
+    ///
+    /// This is used for xlang compatibility where ALL objects (including struct values,
+    /// not just Rc/Arc) participate in reference tracking.
+    ///
+    /// # Returns
+    ///
+    /// The reserved reference ID
+    #[inline(always)]
+    pub fn reserve_ref_id(&mut self) -> u32 {
+        let ref_id = self.next_ref_id;
+        self.next_ref_id += 1;
+        ref_id
+    }
+
     /// Clear all stored references.
     ///
     /// This is useful for reusing the RefWriter for multiple serialization operations.

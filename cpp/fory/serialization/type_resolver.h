@@ -482,6 +482,33 @@ struct FieldTypeBuilder<
   }
 };
 
+// Helper template functions to compute is_nullable and track_ref at compile
+// time. These replace constexpr lambdas which have issues on MSVC.
+template <typename ActualFieldType, typename T, size_t Index,
+          typename UnwrappedFieldType>
+constexpr bool compute_is_nullable() {
+  if constexpr (is_fory_field_v<ActualFieldType>) {
+    return ActualFieldType::is_nullable;
+  } else if constexpr (::fory::detail::has_field_tags_v<T>) {
+    return ::fory::detail::GetFieldTagEntry<T, Index>::is_nullable;
+  } else {
+    // Default: nullable if std::optional or std::shared_ptr
+    return is_optional_v<UnwrappedFieldType> ||
+           is_shared_ptr_v<UnwrappedFieldType>;
+  }
+}
+
+template <typename ActualFieldType, typename T, size_t Index>
+constexpr bool compute_track_ref() {
+  if constexpr (is_fory_field_v<ActualFieldType>) {
+    return ActualFieldType::track_ref;
+  } else if constexpr (::fory::detail::has_field_tags_v<T>) {
+    return ::fory::detail::GetFieldTagEntry<T, Index>::track_ref;
+  } else {
+    return false;
+  }
+}
+
 template <typename T, size_t Index> struct FieldInfoBuilder {
   static FieldInfo build() {
     const auto meta = ForyFieldInfo(T{});
@@ -497,7 +524,22 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
     // Unwrap fory::field<> to get the underlying type for FieldTypeBuilder
     using UnwrappedFieldType = fory::unwrap_field_t<ActualFieldType>;
 
+    // Get nullable and track_ref from field tags (FORY_FIELD_TAGS or
+    // fory::field<>)
+    constexpr bool is_nullable =
+        compute_is_nullable<ActualFieldType, T, Index, UnwrappedFieldType>();
+    constexpr bool track_ref = compute_track_ref<ActualFieldType, T, Index>();
+
     FieldType field_type = FieldTypeBuilder<UnwrappedFieldType>::build(false);
+    // Override nullable and ref_tracking from field-level metadata
+    field_type.nullable = is_nullable;
+    field_type.ref_tracking = track_ref;
+    field_type.ref_mode = make_ref_mode(is_nullable, track_ref);
+    // DEBUG: Print field info for debugging fingerprint mismatch
+    std::cerr << "[xlang][debug] FieldInfoBuilder T=" << typeid(T).name()
+              << " Index=" << Index << " field=" << field_name << " has_tags="
+              << ::fory::detail::has_field_tags_v<T> << " is_nullable="
+              << is_nullable << " track_ref=" << track_ref << std::endl;
     return FieldInfo(std::move(field_name), std::move(field_type));
   }
 };

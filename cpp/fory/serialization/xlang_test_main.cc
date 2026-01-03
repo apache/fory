@@ -464,6 +464,94 @@ FORY_STRUCT(NullableComprehensiveCompatible, byte_field, short_field, int_field,
             nullable_float1, nullable_double1, nullable_bool1, nullable_string2,
             nullable_list2, nullable_set2, nullable_map2);
 
+// ============================================================================
+// Reference Tracking Test Types - Cross-language shared reference tests
+// ============================================================================
+
+// Inner struct for reference tracking test (SCHEMA_CONSISTENT mode)
+// Matches Java RefInnerSchemaConsistent with type ID 501
+struct RefInnerSchemaConsistent {
+  int32_t id;
+  std::string name;
+  bool operator==(const RefInnerSchemaConsistent &other) const {
+    return id == other.id && name == other.name;
+  }
+  bool operator!=(const RefInnerSchemaConsistent &other) const {
+    return !(*this == other);
+  }
+};
+FORY_STRUCT(RefInnerSchemaConsistent, id, name);
+
+// Outer struct for reference tracking test (SCHEMA_CONSISTENT mode)
+// Contains two fields that both point to the same inner object.
+// Matches Java RefOuterSchemaConsistent with type ID 502
+// Uses std::shared_ptr for reference tracking to share the same object
+struct RefOuterSchemaConsistent {
+  std::shared_ptr<RefInnerSchemaConsistent> inner1;
+  std::shared_ptr<RefInnerSchemaConsistent> inner2;
+  bool operator==(const RefOuterSchemaConsistent &other) const {
+    bool inner1_eq = (inner1 == nullptr && other.inner1 == nullptr) ||
+                     (inner1 != nullptr && other.inner1 != nullptr &&
+                      *inner1 == *other.inner1);
+    bool inner2_eq = (inner2 == nullptr && other.inner2 == nullptr) ||
+                     (inner2 != nullptr && other.inner2 != nullptr &&
+                      *inner2 == *other.inner2);
+    return inner1_eq && inner2_eq;
+  }
+};
+FORY_STRUCT(RefOuterSchemaConsistent, inner1, inner2);
+FORY_FIELD_TAGS(RefOuterSchemaConsistent, (inner1, 0, nullable, ref),
+                (inner2, 1, nullable, ref));
+// Verify field tags are correctly parsed
+static_assert(fory::detail::has_field_tags_v<RefOuterSchemaConsistent>,
+              "RefOuterSchemaConsistent should have field tags");
+static_assert(fory::detail::GetFieldTagEntry<RefOuterSchemaConsistent, 0>::id ==
+                  0,
+              "inner1 should have id=0");
+static_assert(
+    fory::detail::GetFieldTagEntry<RefOuterSchemaConsistent, 0>::is_nullable ==
+        true,
+    "inner1 should be nullable");
+static_assert(
+    fory::detail::GetFieldTagEntry<RefOuterSchemaConsistent, 0>::track_ref ==
+        true,
+    "inner1 should have track_ref=true");
+
+// Inner struct for reference tracking test (COMPATIBLE mode)
+// Matches Java RefInnerCompatible with type ID 503
+struct RefInnerCompatible {
+  int32_t id;
+  std::string name;
+  bool operator==(const RefInnerCompatible &other) const {
+    return id == other.id && name == other.name;
+  }
+  bool operator!=(const RefInnerCompatible &other) const {
+    return !(*this == other);
+  }
+};
+FORY_STRUCT(RefInnerCompatible, id, name);
+
+// Outer struct for reference tracking test (COMPATIBLE mode)
+// Contains two fields that both point to the same inner object.
+// Matches Java RefOuterCompatible with type ID 504
+// Uses std::shared_ptr for reference tracking to share the same object
+struct RefOuterCompatible {
+  std::shared_ptr<RefInnerCompatible> inner1;
+  std::shared_ptr<RefInnerCompatible> inner2;
+  bool operator==(const RefOuterCompatible &other) const {
+    bool inner1_eq = (inner1 == nullptr && other.inner1 == nullptr) ||
+                     (inner1 != nullptr && other.inner1 != nullptr &&
+                      *inner1 == *other.inner1);
+    bool inner2_eq = (inner2 == nullptr && other.inner2 == nullptr) ||
+                     (inner2 != nullptr && other.inner2 != nullptr &&
+                      *inner2 == *other.inner2);
+    return inner1_eq && inner2_eq;
+  }
+};
+FORY_STRUCT(RefOuterCompatible, inner1, inner2);
+FORY_FIELD_TAGS(RefOuterCompatible, (inner1, 0, nullable, ref),
+                (inner2, 1, nullable, ref));
+
 namespace fory {
 namespace serialization {
 
@@ -589,11 +677,12 @@ void AppendSerialized(Fory &fory, const T &value, std::vector<uint8_t> &out) {
 }
 
 Fory BuildFory(bool compatible = true, bool xlang = true,
-               bool check_struct_version = false) {
+               bool check_struct_version = false, bool track_ref = false) {
   return Fory::builder()
       .compatible(compatible)
       .xlang(xlang)
       .check_struct_version(check_struct_version)
+      .track_ref(track_ref)
       .build();
 }
 
@@ -639,6 +728,8 @@ void RunTestNullableFieldSchemaConsistentNotNull(const std::string &data_file);
 void RunTestNullableFieldSchemaConsistentNull(const std::string &data_file);
 void RunTestNullableFieldCompatibleNotNull(const std::string &data_file);
 void RunTestNullableFieldCompatibleNull(const std::string &data_file);
+void RunTestRefSchemaConsistent(const std::string &data_file);
+void RunTestRefCompatible(const std::string &data_file);
 } // namespace
 
 int main(int argc, char **argv) {
@@ -730,6 +821,10 @@ int main(int argc, char **argv) {
       RunTestNullableFieldCompatibleNotNull(data_file);
     } else if (case_name == "test_nullable_field_compatible_null") {
       RunTestNullableFieldCompatibleNull(data_file);
+    } else if (case_name == "test_ref_schema_consistent") {
+      RunTestRefSchemaConsistent(data_file);
+    } else if (case_name == "test_ref_compatible") {
+      RunTestRefCompatible(data_file);
     } else {
       Fail("Unknown test case: " + case_name);
     }
@@ -2149,6 +2244,97 @@ void RunTestNullableFieldCompatibleNull(const std::string &data_file) {
 
   std::vector<uint8_t> out;
   AppendSerialized(fory, value, out);
+  WriteFile(data_file, out);
+}
+
+// ============================================================================
+// Reference Tracking Tests - Cross-language shared reference tests
+// ============================================================================
+
+void RunTestRefSchemaConsistent(const std::string &data_file) {
+  auto bytes = ReadFile(data_file);
+  // SCHEMA_CONSISTENT mode: compatible=false, xlang=true,
+  // check_struct_version=true, track_ref=true
+  auto fory = BuildFory(false, true, true, true);
+  EnsureOk(fory.register_struct<RefInnerSchemaConsistent>(501),
+           "register RefInnerSchemaConsistent");
+  EnsureOk(fory.register_struct<RefOuterSchemaConsistent>(502),
+           "register RefOuterSchemaConsistent");
+
+  Buffer buffer = MakeBuffer(bytes);
+  auto outer = ReadNext<RefOuterSchemaConsistent>(fory, buffer);
+
+  // Both inner1 and inner2 should have values
+  if (outer.inner1 == nullptr) {
+    Fail("RefOuterSchemaConsistent: inner1 should not be null");
+  }
+  if (outer.inner2 == nullptr) {
+    Fail("RefOuterSchemaConsistent: inner2 should not be null");
+  }
+
+  // Both should have the same values (they reference the same object in Java)
+  if (outer.inner1->id != 42) {
+    Fail("RefOuterSchemaConsistent: inner1.id should be 42, got " +
+         std::to_string(outer.inner1->id));
+  }
+  if (outer.inner1->name != "shared_inner") {
+    Fail(
+        "RefOuterSchemaConsistent: inner1.name should be 'shared_inner', got " +
+        outer.inner1->name);
+  }
+  if (*outer.inner1 != *outer.inner2) {
+    Fail("RefOuterSchemaConsistent: inner1 and inner2 should be equal (same "
+         "reference)");
+  }
+
+  // In C++, shared_ptr may or may not point to the same object after
+  // deserialization, depending on reference tracking implementation.
+  // The key test is that both have equal values.
+
+  // Re-serialize and write back
+  std::vector<uint8_t> out;
+  AppendSerialized(fory, outer, out);
+  WriteFile(data_file, out);
+}
+
+void RunTestRefCompatible(const std::string &data_file) {
+  auto bytes = ReadFile(data_file);
+  // COMPATIBLE mode: compatible=true, xlang=true, check_struct_version=false,
+  // track_ref=true
+  auto fory = BuildFory(true, true, false, true);
+  EnsureOk(fory.register_struct<RefInnerCompatible>(503),
+           "register RefInnerCompatible");
+  EnsureOk(fory.register_struct<RefOuterCompatible>(504),
+           "register RefOuterCompatible");
+
+  Buffer buffer = MakeBuffer(bytes);
+  auto outer = ReadNext<RefOuterCompatible>(fory, buffer);
+
+  // Both inner1 and inner2 should have values
+  if (outer.inner1 == nullptr) {
+    Fail("RefOuterCompatible: inner1 should not be null");
+  }
+  if (outer.inner2 == nullptr) {
+    Fail("RefOuterCompatible: inner2 should not be null");
+  }
+
+  // Both should have the same values (they reference the same object in Java)
+  if (outer.inner1->id != 99) {
+    Fail("RefOuterCompatible: inner1.id should be 99, got " +
+         std::to_string(outer.inner1->id));
+  }
+  if (outer.inner1->name != "compatible_shared") {
+    Fail("RefOuterCompatible: inner1.name should be 'compatible_shared', got " +
+         outer.inner1->name);
+  }
+  if (*outer.inner1 != *outer.inner2) {
+    Fail("RefOuterCompatible: inner1 and inner2 should be equal (same "
+         "reference)");
+  }
+
+  // Re-serialize and write back
+  std::vector<uint8_t> out;
+  AppendSerialized(fory, outer, out);
   WriteFile(data_file, out);
 }
 

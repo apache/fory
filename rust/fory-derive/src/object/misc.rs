@@ -20,7 +20,7 @@ use quote::quote;
 use std::sync::atomic::{AtomicU32, Ordering};
 use syn::Field;
 
-use super::field_meta::{classify_field_type, parse_field_meta};
+use super::field_meta::{classify_field_type, is_option_type, parse_field_meta};
 use super::util::{
     classify_trait_object_field, generic_tree_to_tokens, get_filtered_source_fields_iter,
     get_sort_fields_ts, parse_generic_tree, StructField,
@@ -82,7 +82,11 @@ pub fn gen_field_fields_info(source_fields: &[SourceField<'_>]) -> TokenStream {
         // Parse field metadata for nullable/ref tracking and field ID
         let meta = parse_field_meta(field).unwrap_or_default();
         let type_class = classify_field_type(ty);
-        let nullable = meta.effective_nullable(type_class);
+        // For nullable, check both the classified type AND whether outer type is Option
+        // This handles Option<Rc<T>> correctly - classify_field_type returns Rc for ref_tracking,
+        // but we also need to detect that the outer wrapper is Option for nullable.
+        let is_outer_option = is_option_type(ty);
+        let nullable = meta.effective_nullable(type_class) || is_outer_option;
         let ref_tracking = meta.effective_ref_tracking(type_class);
         // Only use explicit field ID when user sets #[fory(id = N)]
         // Otherwise use -1 to indicate field name encoding should be used

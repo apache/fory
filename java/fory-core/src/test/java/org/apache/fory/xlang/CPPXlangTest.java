@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.fory;
+package org.apache.fory.xlang;
 
 import com.google.common.collect.ImmutableMap;
 import java.io.File;
@@ -29,6 +29,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import org.apache.fory.Fory;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.apache.fory.memory.MemoryBuffer;
@@ -46,7 +47,7 @@ public class CPPXlangTest extends XlangTestBase {
   protected void ensurePeerReady() {
     String enabled = System.getenv("FORY_CPP_JAVA_CI");
     if (!"1".equals(enabled)) {
-      //      throw new SkipException("Skipping CPPXlangTest: FORY_CPP_JAVA_CI not set to 1");
+      throw new SkipException("Skipping CPPXlangTest: FORY_CPP_JAVA_CI not set to 1");
     }
     boolean bazelAvailable = true;
     try {
@@ -161,142 +162,144 @@ public class CPPXlangTest extends XlangTestBase {
     super.testCrossLanguageSerializer();
   }
 
-  @Test
-  public void testSimpleStruct() throws java.io.IOException {
-    super.testSimpleStruct();
+  @Test(dataProvider = "enableCodegen")
+  public void testSimpleStruct(boolean enableCodegen) throws java.io.IOException {
+    super.testSimpleStruct(enableCodegen);
   }
 
-  @Test
-  public void testSimpleNamedStruct() throws java.io.IOException {
-    super.testSimpleNamedStruct();
+  @Test(dataProvider = "enableCodegen")
+  public void testSimpleNamedStruct(boolean enableCodegen) throws java.io.IOException {
+    super.testSimpleNamedStruct(enableCodegen);
   }
 
-  @Test
-  public void testList() throws java.io.IOException {
-    super.testList();
+  @Test(dataProvider = "enableCodegen")
+  public void testList(boolean enableCodegen) throws java.io.IOException {
+    super.testList(enableCodegen);
   }
 
-  @Test
-  public void testMap() throws java.io.IOException {
-    super.testMap();
+  @Test(dataProvider = "enableCodegen")
+  public void testMap(boolean enableCodegen) throws java.io.IOException {
+    super.testMap(enableCodegen);
   }
 
-  @Test
-  public void testInteger() throws java.io.IOException {
-    super.testInteger();
+  @Test(dataProvider = "enableCodegen")
+  public void testInteger(boolean enableCodegen) throws java.io.IOException {
+    super.testInteger(enableCodegen);
   }
 
-  @Test
-  public void testItem() throws java.io.IOException {
-    super.testItem();
+  @Test(dataProvider = "enableCodegen")
+  public void testItem(boolean enableCodegen) throws java.io.IOException {
+    super.testItem(enableCodegen);
   }
 
-  @Test
-  public void testColor() throws java.io.IOException {
-    super.testColor();
+  @Test(dataProvider = "enableCodegen")
+  public void testColor(boolean enableCodegen) throws java.io.IOException {
+    super.testColor(enableCodegen);
   }
 
-  @Test
-  public void testStructWithList() throws java.io.IOException {
-    super.testStructWithList();
+  @Test(dataProvider = "enableCodegen")
+  public void testStructWithList(boolean enableCodegen) throws java.io.IOException {
+    super.testStructWithList(enableCodegen);
   }
 
-  @Test
-  public void testStructWithMap() throws java.io.IOException {
-    super.testStructWithMap();
+  @Test(dataProvider = "enableCodegen")
+  public void testStructWithMap(boolean enableCodegen) throws java.io.IOException {
+    super.testStructWithMap(enableCodegen);
   }
 
-  @Test
-  public void testSkipIdCustom() throws java.io.IOException {
-    super.testSkipIdCustom();
+  @Test(dataProvider = "enableCodegen")
+  public void testSkipIdCustom(boolean enableCodegen) throws java.io.IOException {
+    super.testSkipIdCustom(enableCodegen);
   }
 
-  @Test
-  public void testSkipNameCustom() throws java.io.IOException {
-    super.testSkipNameCustom();
+  @Test(dataProvider = "enableCodegen")
+  public void testSkipNameCustom(boolean enableCodegen) throws java.io.IOException {
+    super.testSkipNameCustom(enableCodegen);
   }
 
-  @Test
-  public void testConsistentNamed() throws java.io.IOException {
-    super.testConsistentNamed();
+  @Test(dataProvider = "enableCodegen")
+  public void testConsistentNamed(boolean enableCodegen) throws java.io.IOException {
+    super.testConsistentNamed(enableCodegen);
   }
 
-  @Test
-  public void testStructVersionCheck() throws java.io.IOException {
-    super.testStructVersionCheck();
+  @Test(dataProvider = "enableCodegen")
+  public void testStructVersionCheck(boolean enableCodegen) throws java.io.IOException {
+    super.testStructVersionCheck(enableCodegen);
   }
 
-  @Test
-  public void testPolymorphicList() throws java.io.IOException {
-    super.testPolymorphicList();
+  @Test(dataProvider = "enableCodegen")
+  public void testPolymorphicList(boolean enableCodegen) throws java.io.IOException {
+    super.testPolymorphicList(enableCodegen);
   }
 
-  @Test
-  public void testPolymorphicMap() throws java.io.IOException {
-    super.testPolymorphicMap();
+  @Test(dataProvider = "enableCodegen")
+  public void testPolymorphicMap(boolean enableCodegen) throws java.io.IOException {
+    super.testPolymorphicMap(enableCodegen);
   }
 
-  @Test
-  public void testOneStringFieldSchemaConsistent() throws java.io.IOException {
-    super.testOneStringFieldSchemaConsistent();
+  @Test(dataProvider = "enableCodegen")
+  public void testOneStringFieldSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
+    super.testOneStringFieldSchemaConsistent(enableCodegen);
   }
 
-  @Test
-  public void testOneStringFieldCompatible() throws java.io.IOException {
-    super.testOneStringFieldCompatible();
+  @Test(dataProvider = "enableCodegen")
+  public void testOneStringFieldCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testOneStringFieldCompatible(enableCodegen);
   }
 
-  @Test
-  public void testTwoStringFieldCompatible() throws java.io.IOException {
-    super.testTwoStringFieldCompatible();
+  @Test(dataProvider = "enableCodegen")
+  public void testTwoStringFieldCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testTwoStringFieldCompatible(enableCodegen);
   }
 
-  @Test
-  public void testSchemaEvolutionCompatible() throws java.io.IOException {
-    super.testSchemaEvolutionCompatible();
+  @Test(dataProvider = "enableCodegen")
+  public void testSchemaEvolutionCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testSchemaEvolutionCompatible(enableCodegen);
   }
 
-  @Test
-  public void testOneEnumFieldSchemaConsistent() throws java.io.IOException {
-    super.testOneEnumFieldSchemaConsistent();
+  @Test(dataProvider = "enableCodegen")
+  public void testOneEnumFieldSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
+    super.testOneEnumFieldSchemaConsistent(enableCodegen);
   }
 
-  @Test
-  public void testOneEnumFieldCompatible() throws java.io.IOException {
-    super.testOneEnumFieldCompatible();
+  @Test(dataProvider = "enableCodegen")
+  public void testOneEnumFieldCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testOneEnumFieldCompatible(enableCodegen);
   }
 
-  @Test
-  public void testTwoEnumFieldCompatible() throws java.io.IOException {
-    super.testTwoEnumFieldCompatible();
+  @Test(dataProvider = "enableCodegen")
+  public void testTwoEnumFieldCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testTwoEnumFieldCompatible(enableCodegen);
   }
 
-  @Test
-  public void testEnumSchemaEvolutionCompatible() throws java.io.IOException {
-    super.testEnumSchemaEvolutionCompatible();
-  }
-
-  @Override
-  @Test
-  public void testNullableFieldSchemaConsistentNotNull() throws java.io.IOException {
-    super.testNullableFieldSchemaConsistentNotNull();
+  @Test(dataProvider = "enableCodegen")
+  public void testEnumSchemaEvolutionCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testEnumSchemaEvolutionCompatible(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testNullableFieldSchemaConsistentNull() throws java.io.IOException {
-    super.testNullableFieldSchemaConsistentNull();
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldSchemaConsistentNotNull(boolean enableCodegen)
+      throws java.io.IOException {
+    super.testNullableFieldSchemaConsistentNotNull(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testNullableFieldCompatibleNotNull() throws java.io.IOException {
-    super.testNullableFieldCompatibleNotNull();
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldSchemaConsistentNull(boolean enableCodegen)
+      throws java.io.IOException {
+    super.testNullableFieldSchemaConsistentNull(enableCodegen);
   }
 
   @Override
-  @Test
-  public void testNullableFieldCompatibleNull() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldCompatibleNotNull(boolean enableCodegen) throws java.io.IOException {
+    super.testNullableFieldCompatibleNotNull(enableCodegen);
+  }
+
+  @Override
+  @Test(dataProvider = "enableCodegen")
+  public void testNullableFieldCompatibleNull(boolean enableCodegen) throws java.io.IOException {
     // C++ has proper std::optional support and sends actual null values,
     // unlike Rust which sends default values. Override with C++-specific expectations.
     String caseName = "test_nullable_field_compatible_null";
@@ -304,7 +307,7 @@ public class CPPXlangTest extends XlangTestBase {
         Fory.builder()
             .withLanguage(Language.XLANG)
             .withCompatibleMode(CompatibleMode.COMPATIBLE)
-            .withCodegen(false)
+            .withCodegen(enableCodegen)
             .withMetaCompressor(new NoOpMetaCompressor())
             .build();
     fory.register(NullableComprehensiveCompatible.class, 402);
@@ -362,10 +365,20 @@ public class CPPXlangTest extends XlangTestBase {
     Assert.assertEquals(result, obj);
   }
 
-  @Test
   @Override
-  public void testUnionXlang() throws java.io.IOException {
+  @Test(dataProvider = "enableCodegen")
+  public void testUnionXlang(boolean enableCodegen) throws java.io.IOException {
     // Skip: C++ doesn't have Union xlang support yet
     throw new SkipException("Skipping testUnionXlang: C++ Union xlang support not implemented");
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testRefSchemaConsistent(boolean enableCodegen) throws java.io.IOException {
+    super.testRefSchemaConsistent(enableCodegen);
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testRefCompatible(boolean enableCodegen) throws java.io.IOException {
+    super.testRefCompatible(enableCodegen);
   }
 }

@@ -78,6 +78,11 @@ public:
     return false;
   }
 
+  /// Reserve a ref_id slot without storing a pointer.
+  /// Used for types (like structs) that Java tracks but C++ doesn't reference.
+  /// This keeps ref ID numbering in sync across languages.
+  uint32_t reserve_ref_id() { return next_id_++; }
+
   /// Reset resolver for reuse in new serialization.
   /// Clears all tracked references.
   void reset() {

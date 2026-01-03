@@ -607,6 +607,7 @@ public abstract class CollectionLikeSerializer<T> extends Serializer<T> {
   private <T extends Collection> void readDifferentTypeElements(
       Fory fory, MemoryBuffer buffer, int flags, T collection, int numElements) {
     if ((flags & CollectionFlags.TRACKING_REF) == CollectionFlags.TRACKING_REF) {
+      Preconditions.checkState(fory.trackingRef(), "Reference tracking is not enabled");
       for (int i = 0; i < numElements; i++) {
         collection.add(binding.readRef(buffer));
       }

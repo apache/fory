@@ -411,23 +411,23 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     if (useRefTracking) {
       return new If(
           not(writeRefOrNull(buffer, fieldValue)),
-          serializeForNotNullForField(fieldValue, buffer, typeRef, null, false));
+          serializeForNotNullForField(fieldValue, buffer, descriptor, null, false));
     } else {
       // if typeToken is not final, ref tracking of subclass will be ignored too.
       if (typeRef.isPrimitive()) {
-        return serializeForNotNullForField(fieldValue, buffer, typeRef, null, false);
+        return serializeForNotNullForField(fieldValue, buffer, descriptor, null, false);
       }
       if (nullable) {
         Expression action =
             new ListExpression(
                 new Invoke(buffer, "writeByte", Literal.ofByte(Fory.NOT_NULL_VALUE_FLAG)),
-                serializeForNotNullForField(fieldValue, buffer, typeRef, null, false));
+                serializeForNotNullForField(fieldValue, buffer, descriptor, null, false));
         return new If(
             eqNull(fieldValue),
             new Invoke(buffer, "writeByte", Literal.ofByte(Fory.NULL_FLAG)),
             action);
       } else {
-        return serializeForNotNullForField(fieldValue, buffer, typeRef, null, false);
+        return serializeForNotNullForField(fieldValue, buffer, descriptor, null, false);
       }
     }
   }
@@ -435,9 +435,10 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   private Expression serializeForNotNullForField(
       Expression inputObject,
       Expression buffer,
-      TypeRef<?> typeRef,
+      Descriptor descriptor,
       Expression serializer,
       boolean generateNewMethod) {
+    TypeRef<?> typeRef = descriptor.getTypeRef();
     Class<?> clz = getRawType(typeRef);
     if (isPrimitive(clz) || isBoxed(clz)) {
       return serializePrimitive(inputObject, buffer, clz);
@@ -452,7 +453,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
       } else if (useMapSerialization(typeRef)) {
         action = serializeForMap(buffer, inputObject, typeRef, serializer, generateNewMethod);
       } else {
-        action = serializeForNotNullObjectForField(inputObject, buffer, typeRef, serializer);
+        action = serializeForNotNullObjectForField(inputObject, buffer, descriptor, serializer);
       }
       return action;
     }
@@ -483,12 +484,13 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   private Expression serializeForNotNullObjectForField(
-      Expression inputObject, Expression buffer, TypeRef<?> typeRef, Expression serializer) {
+      Expression inputObject, Expression buffer, Descriptor descriptor, Expression serializer) {
+    TypeRef<?> typeRef = descriptor.getTypeRef();
     Class<?> clz = getRawType(typeRef);
     if (serializer != null) {
       return new Invoke(serializer, writeMethodName, buffer, inputObject);
     }
-    if (isMonomorphic(clz)) {
+    if (isMonomorphic(descriptor)) {
       // Use descriptor to get the appropriate serializer
       serializer = getSerializerForField(clz);
       return new Invoke(serializer, writeMethodName, buffer, inputObject);
@@ -613,10 +615,16 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
    * the method can still return false. For example, we return false in meta share mode to write
    * class defs for the non-inner final types.
    */
-  protected abstract boolean isMonomorphic(Class<?> clz);
+  protected boolean isMonomorphic(Class<?> clz) {
+    return typeResolver(r -> r.isMonomorphic(clz));
+  }
 
   protected boolean isMonomorphic(TypeRef<?> typeRef) {
     return isMonomorphic(typeRef.getRawType());
+  }
+
+  protected boolean isMonomorphic(Descriptor descriptor) {
+    return typeResolver(r -> r.isMonomorphic(descriptor));
   }
 
   protected Expression serializeForNotNullObject(
@@ -1803,10 +1811,11 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     boolean typeNeedsRef = needWriteRef(typeRef);
 
     if (useRefTracking) {
-      return readRef(buffer, callback, () -> deserializeForNotNullForField(buffer, typeRef, null));
+      return readRef(
+          buffer, callback, () -> deserializeForNotNullForField(buffer, descriptor, null));
     } else {
       if (!nullable) {
-        Expression value = deserializeForNotNullForField(buffer, typeRef, null);
+        Expression value = deserializeForNotNullForField(buffer, descriptor, null);
 
         if (typeNeedsRef) {
           // When a field explicitly disables ref tracking (@ForyField(trackingRef=false))
@@ -1828,7 +1837,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
               buffer,
               typeRef,
               callback,
-              () -> deserializeForNotNullForField(buffer, typeRef, null),
+              () -> deserializeForNotNullForField(buffer, descriptor, null),
               true,
               localFieldType);
 
@@ -1842,7 +1851,8 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   private Expression deserializeForNotNullForField(
-      Expression buffer, TypeRef<?> typeRef, Expression serializer) {
+      Expression buffer, Descriptor descriptor, Expression serializer) {
+    TypeRef<?> typeRef = descriptor.getTypeRef();
     Class<?> cls = getRawType(typeRef);
     if (isPrimitive(cls) || isBoxed(cls)) {
       return deserializePrimitive(buffer, cls);
@@ -1859,7 +1869,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
         if (serializer != null) {
           return read(serializer, buffer, OBJECT_TYPE);
         }
-        if (isMonomorphic(cls)) {
+        if (isMonomorphic(descriptor)) {
           // Use descriptor to get the appropriate serializer
           serializer = getSerializerForField(cls);
           Class<?> returnType =

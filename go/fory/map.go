@@ -22,6 +22,7 @@ import (
 	"reflect"
 )
 
+// Map chunk header flags
 const (
 	TRACKING_KEY_REF   = 1 << 0 // 0b00000001
 	KEY_HAS_NULL       = 1 << 1 // 0b00000010
@@ -32,16 +33,523 @@ const (
 	MAX_CHUNK_SIZE     = 255
 )
 
+// Combined header constants for null entry cases
 const (
-	KV_NULL                               = KEY_HAS_NULL | VALUE_HAS_NULL                       // 0b00010010
-	NULL_KEY_VALUE_DECL_TYPE              = KEY_HAS_NULL | VALUE_DECL_TYPE                      // 0b00100010
-	NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF = KEY_HAS_NULL | VALUE_DECL_TYPE | TRACKING_VALUE_REF // 0b00101010
-	NULL_VALUE_KEY_DECL_TYPE              = VALUE_HAS_NULL | KEY_DECL_TYPE                      // 0b00010100
-	NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF = VALUE_HAS_NULL | KEY_DECL_TYPE | TRACKING_KEY_REF   // 0b00010101
+	KV_NULL                               = KEY_HAS_NULL | VALUE_HAS_NULL
+	NULL_KEY_VALUE_DECL_TYPE              = KEY_HAS_NULL | VALUE_DECL_TYPE
+	NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF = KEY_HAS_NULL | VALUE_DECL_TYPE | TRACKING_VALUE_REF
+	NULL_VALUE_KEY_DECL_TYPE              = VALUE_HAS_NULL | KEY_DECL_TYPE
+	NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF = VALUE_HAS_NULL | KEY_DECL_TYPE | TRACKING_KEY_REF
 )
 
-// writeMapRefAndType handles reference and type writing for map serializers.
-// Returns true if the value was already written (nil or ref), false if data should be written.
+type mapSerializer struct {
+	type_             reflect.Type
+	keySerializer     Serializer
+	valueSerializer   Serializer
+	keyReferencable   bool
+	valueReferencable bool
+	hasGenerics       bool // True when map is a struct field with declared key/value types
+}
+
+// Write handles ref tracking and type writing, then delegates to WriteData
+func (s mapSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	if writeMapRefAndType(ctx, refMode, writeType, value) || ctx.HasError() {
+		return
+	}
+	s.WriteData(ctx, value)
+}
+
+// WriteData serializes map data using chunk protocol
+func (s mapSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	buf := ctx.Buffer()
+	value = unwrapInterface(value)
+	length := value.Len()
+	buf.WriteVaruint32(uint32(length))
+	if length == 0 {
+		return
+	}
+
+	iter := value.MapRange()
+	if !iter.Next() {
+		return
+	}
+
+	typeResolver := ctx.TypeResolver()
+	trackRef := ctx.TrackRef()
+	entryKey := unwrapInterface(iter.Key())
+	entryVal := unwrapInterface(iter.Value())
+	hasNext := true
+
+	for hasNext {
+		// Phase 1: Handle null entries (single-item chunks)
+		for {
+			keyValid := entryKey.IsValid()
+			valValid := entryVal.IsValid()
+
+			if keyValid && valValid {
+				break // Proceed to regular chunk
+			}
+
+			if !keyValid && !valValid {
+				buf.WriteInt8(KV_NULL)
+			} else if !valValid {
+				s.writeNullValueEntry(ctx, entryKey, typeResolver, trackRef)
+			} else {
+				s.writeNullKeyEntry(ctx, entryVal, typeResolver, trackRef)
+			}
+
+			if ctx.HasError() {
+				return
+			}
+
+			if iter.Next() {
+				entryKey = unwrapInterface(iter.Key())
+				entryVal = unwrapInterface(iter.Value())
+			} else {
+				return
+			}
+		}
+
+		// Phase 2: Write regular chunk with same-type entries
+		hasNext = s.writeChunk(ctx, iter, &entryKey, &entryVal, typeResolver, trackRef)
+		if ctx.HasError() {
+			return
+		}
+	}
+}
+
+// writeNullValueEntry writes a single entry where the value is null
+func (s mapSerializer) writeNullValueEntry(ctx *WriteContext, key reflect.Value, resolver *TypeResolver, trackRef bool) {
+	buf := ctx.Buffer()
+
+	if s.hasGenerics && s.keySerializer != nil {
+		if s.keyReferencable && trackRef {
+			buf.WriteInt8(NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF)
+			s.keySerializer.Write(ctx, RefModeTracking, false, false, key)
+		} else {
+			buf.WriteInt8(NULL_VALUE_KEY_DECL_TYPE)
+			s.keySerializer.WriteData(ctx, key)
+		}
+		return
+	}
+
+	// Polymorphic key
+	keyTypeInfo, err := getTypeInfoForValue(key, resolver)
+	if err != nil {
+		ctx.SetError(FromError(err))
+		return
+	}
+
+	header := int8(VALUE_HAS_NULL)
+	writeKeyRef := trackRef && keyTypeInfo.NeedWriteRef
+	if writeKeyRef {
+		header |= TRACKING_KEY_REF
+	}
+	buf.WriteInt8(header)
+	resolver.WriteTypeInfo(buf, keyTypeInfo, ctx.Err())
+
+	refMode := RefModeNone
+	if writeKeyRef {
+		refMode = RefModeTracking
+	}
+	keyTypeInfo.Serializer.Write(ctx, refMode, false, false, key)
+}
+
+// writeNullKeyEntry writes a single entry where the key is null
+func (s mapSerializer) writeNullKeyEntry(ctx *WriteContext, value reflect.Value, resolver *TypeResolver, trackRef bool) {
+	buf := ctx.Buffer()
+
+	if s.hasGenerics && s.valueSerializer != nil {
+		if s.valueReferencable && trackRef {
+			buf.WriteInt8(NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF)
+			s.valueSerializer.Write(ctx, RefModeTracking, false, false, value)
+		} else {
+			buf.WriteInt8(NULL_KEY_VALUE_DECL_TYPE)
+			s.valueSerializer.WriteData(ctx, value)
+		}
+		return
+	}
+
+	// Polymorphic value
+	valueTypeInfo, err := getTypeInfoForValue(value, resolver)
+	if err != nil {
+		ctx.SetError(FromError(err))
+		return
+	}
+
+	header := int8(KEY_HAS_NULL)
+	writeValueRef := trackRef && valueTypeInfo.NeedWriteRef
+	if writeValueRef {
+		header |= TRACKING_VALUE_REF
+	}
+	buf.WriteInt8(header)
+	resolver.WriteTypeInfo(buf, valueTypeInfo, ctx.Err())
+
+	refMode := RefModeNone
+	if writeValueRef {
+		refMode = RefModeTracking
+	}
+	valueTypeInfo.Serializer.Write(ctx, refMode, false, false, value)
+}
+
+// writeChunk writes a chunk of entries with the same key/value types
+func (s mapSerializer) writeChunk(ctx *WriteContext, iter *reflect.MapIter, entryKey, entryVal *reflect.Value, resolver *TypeResolver, trackRef bool) bool {
+	buf := ctx.Buffer()
+	keyType := (*entryKey).Type()
+	valueType := (*entryVal).Type()
+
+	// Reserve space: header (1 byte) + size (1 byte)
+	headerOffset := buf.writerIndex
+	buf.WriteInt16(-1)
+
+	header := 0
+	var keySer, valSer Serializer
+	keyWriteRef := s.keyReferencable
+	valueWriteRef := s.valueReferencable
+
+	// Determine key serializer and write type info if needed
+	if s.hasGenerics && s.keySerializer != nil {
+		header |= KEY_DECL_TYPE
+		keySer = s.keySerializer
+	} else {
+		keyTypeInfo, _ := getTypeInfoForValue(*entryKey, resolver)
+		resolver.WriteTypeInfo(buf, keyTypeInfo, ctx.Err())
+		keySer = keyTypeInfo.Serializer
+		keyWriteRef = keyTypeInfo.NeedWriteRef
+	}
+
+	// Determine value serializer and write type info if needed
+	if s.hasGenerics && s.valueSerializer != nil {
+		header |= VALUE_DECL_TYPE
+		valSer = s.valueSerializer
+	} else {
+		valueTypeInfo, _ := getTypeInfoForValue(*entryVal, resolver)
+		resolver.WriteTypeInfo(buf, valueTypeInfo, ctx.Err())
+		valSer = valueTypeInfo.Serializer
+		valueWriteRef = valueTypeInfo.NeedWriteRef
+	}
+
+	// Set ref tracking flags
+	keyRefMode := RefModeNone
+	if keyWriteRef && trackRef {
+		header |= TRACKING_KEY_REF
+		keyRefMode = RefModeTracking
+	}
+	valueRefMode := RefModeNone
+	if valueWriteRef && trackRef {
+		header |= TRACKING_VALUE_REF
+		valueRefMode = RefModeTracking
+	}
+
+	buf.PutUint8(headerOffset, uint8(header))
+
+	// Write entries with same type
+	chunkSize := 0
+	for chunkSize < MAX_CHUNK_SIZE {
+		k := *entryKey
+		v := *entryVal
+
+		// Break if null or type changed
+		if !k.IsValid() || !v.IsValid() || k.Type() != keyType || v.Type() != valueType {
+			break
+		}
+
+		keySer.Write(ctx, keyRefMode, false, false, k)
+		if ctx.HasError() {
+			return false
+		}
+		valSer.Write(ctx, valueRefMode, false, false, v)
+		if ctx.HasError() {
+			return false
+		}
+		chunkSize++
+
+		if iter.Next() {
+			*entryKey = unwrapInterface(iter.Key())
+			*entryVal = unwrapInterface(iter.Value())
+		} else {
+			buf.PutUint8(headerOffset+1, uint8(chunkSize))
+			return false
+		}
+	}
+
+	buf.PutUint8(headerOffset+1, uint8(chunkSize))
+	return true
+}
+
+// Read handles ref tracking and type reading, then delegates to ReadData
+func (s mapSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	if readMapRefAndType(ctx, refMode, readType, value) || ctx.HasError() {
+		return
+	}
+	s.ReadData(ctx, value.Type(), value)
+}
+
+// ReadData deserializes map data using chunk protocol
+func (s mapSerializer) ReadData(ctx *ReadContext, type_ reflect.Type, value reflect.Value) {
+	buf := ctx.Buffer()
+	ctxErr := ctx.Err()
+	refResolver := ctx.RefResolver()
+	typeResolver := ctx.TypeResolver()
+
+	// Initialize map
+	if value.IsNil() {
+		mapType := type_
+		// For interface{} maps without declared types, use map[interface{}]interface{}
+		if !s.hasGenerics && type_.Key().Kind() == reflect.Interface && type_.Elem().Kind() == reflect.Interface {
+			iface := reflect.TypeOf((*interface{})(nil)).Elem()
+			mapType = reflect.MapOf(iface, iface)
+		}
+		value.Set(reflect.MakeMap(mapType))
+	}
+	refResolver.Reference(value)
+
+	size := int(buf.ReadVaruint32(ctxErr))
+	if size == 0 || ctx.HasError() {
+		return
+	}
+
+	chunkHeader := buf.ReadUint8(ctxErr)
+	if ctx.HasError() {
+		return
+	}
+
+	keyType := type_.Key()
+	valueType := type_.Elem()
+
+	for size > 0 {
+		// Phase 1: Handle null entries
+		for {
+			keyHasNull := (chunkHeader & KEY_HAS_NULL) != 0
+			valueHasNull := (chunkHeader & VALUE_HAS_NULL) != 0
+
+			if !keyHasNull && !valueHasNull {
+				break // Proceed to regular chunk
+			}
+
+			if keyHasNull && valueHasNull {
+				value.SetMapIndex(reflect.Zero(keyType), reflect.Zero(valueType))
+			} else if valueHasNull {
+				k := s.readNullValueEntry(ctx, chunkHeader, keyType, typeResolver, refResolver)
+				if ctx.HasError() {
+					return
+				}
+				value.SetMapIndex(k, reflect.Zero(valueType))
+			} else {
+				v := s.readNullKeyEntry(ctx, chunkHeader, valueType, typeResolver, refResolver)
+				if ctx.HasError() {
+					return
+				}
+				value.SetMapIndex(reflect.Zero(keyType), v)
+			}
+
+			size--
+			if size == 0 {
+				return
+			}
+			chunkHeader = buf.ReadUint8(ctxErr)
+			if ctx.HasError() {
+				return
+			}
+		}
+
+		// Phase 2: Read regular chunk
+		size = s.readChunk(ctx, value, chunkHeader, size, keyType, valueType, typeResolver)
+		if ctx.HasError() {
+			return
+		}
+
+		if size > 0 {
+			chunkHeader = buf.ReadUint8(ctxErr)
+			if ctx.HasError() {
+				return
+			}
+		}
+	}
+}
+
+// readNullValueEntry reads an entry where value is null, returns the key
+func (s mapSerializer) readNullValueEntry(ctx *ReadContext, header uint8, keyType reflect.Type, resolver *TypeResolver, refResolver *RefResolver) reflect.Value {
+	buf := ctx.Buffer()
+	ctxErr := ctx.Err()
+	keyDeclared := (header & KEY_DECL_TYPE) != 0
+	trackKeyRef := (header & TRACKING_KEY_REF) != 0
+
+	return s.readSingleValue(ctx, buf, ctxErr, keyDeclared, trackKeyRef, keyType, s.keySerializer, resolver, refResolver)
+}
+
+// readNullKeyEntry reads an entry where key is null, returns the value
+func (s mapSerializer) readNullKeyEntry(ctx *ReadContext, header uint8, valueType reflect.Type, resolver *TypeResolver, refResolver *RefResolver) reflect.Value {
+	buf := ctx.Buffer()
+	ctxErr := ctx.Err()
+	valueDeclared := (header & VALUE_DECL_TYPE) != 0
+	trackValueRef := (header & TRACKING_VALUE_REF) != 0
+
+	return s.readSingleValue(ctx, buf, ctxErr, valueDeclared, trackValueRef, valueType, s.valueSerializer, resolver, refResolver)
+}
+
+// readSingleValue reads a single key or value with proper ref/type handling
+func (s mapSerializer) readSingleValue(ctx *ReadContext, buf *ByteBuffer, ctxErr *Error, isDeclared, trackRef bool, staticType reflect.Type, declaredSer Serializer, resolver *TypeResolver, refResolver *RefResolver) reflect.Value {
+	// When ref tracking AND not declared, ref flag comes before type info
+	if trackRef && !isDeclared {
+		refID, err := refResolver.TryPreserveRefId(buf)
+		if err != nil {
+			ctx.SetError(FromError(err))
+			return reflect.Value{}
+		}
+		if refID < int32(NotNullValueFlag) {
+			return refResolver.GetReadObject(refID)
+		}
+
+		// Read type info and data
+		ti := resolver.ReadTypeInfo(buf, ctxErr)
+		if ctxErr.HasError() {
+			return reflect.Value{}
+		}
+
+		valType := ti.Type
+		if valType == nil {
+			valType = staticType
+		}
+		v := reflect.New(valType).Elem()
+		ti.Serializer.ReadData(ctx, valType, v)
+		if ctx.HasError() {
+			return reflect.Value{}
+		}
+		refResolver.Reference(v)
+		return v
+	}
+
+	// Read type info if not declared
+	var typeInfo *TypeInfo
+	var ser Serializer
+	valType := staticType
+
+	if !isDeclared {
+		typeInfo = resolver.ReadTypeInfo(buf, ctxErr)
+		if ctxErr.HasError() {
+			return reflect.Value{}
+		}
+		ser = typeInfo.Serializer
+		valType = typeInfo.Type
+	} else {
+		ser = declaredSer
+		if ser == nil {
+			ser, _ = resolver.getSerializerByType(staticType, false)
+		}
+	}
+
+	if valType == nil {
+		valType = staticType
+	}
+	v := reflect.New(valType).Elem()
+
+	refMode := RefModeNone
+	if trackRef {
+		refMode = RefModeTracking
+	}
+
+	if typeInfo != nil {
+		ser.ReadWithTypeInfo(ctx, refMode, typeInfo, v)
+	} else {
+		ser.Read(ctx, refMode, false, false, v)
+	}
+
+	return v
+}
+
+// readChunk reads a chunk of entries, returns remaining size
+func (s mapSerializer) readChunk(ctx *ReadContext, mapVal reflect.Value, header uint8, size int, keyType, valueType reflect.Type, resolver *TypeResolver) int {
+	buf := ctx.Buffer()
+	ctxErr := ctx.Err()
+
+	trackKeyRef := (header & TRACKING_KEY_REF) != 0
+	trackValRef := (header & TRACKING_VALUE_REF) != 0
+	keyDeclType := (header & KEY_DECL_TYPE) != 0
+	valDeclType := (header & VALUE_DECL_TYPE) != 0
+
+	chunkSize := int(buf.ReadUint8(ctxErr))
+	if ctx.HasError() {
+		return 0
+	}
+
+	// Read type info if not declared
+	var keyTypeInfo, valueTypeInfo *TypeInfo
+	var keySer, valSer Serializer
+
+	if !keyDeclType {
+		keyTypeInfo = resolver.ReadTypeInfo(buf, ctxErr)
+		if ctxErr.HasError() {
+			return 0
+		}
+		keySer = keyTypeInfo.Serializer
+		keyType = keyTypeInfo.Type
+	} else {
+		keySer = s.keySerializer
+		if keySer == nil {
+			keySer, _ = resolver.getSerializerByType(keyType, false)
+		}
+	}
+
+	if !valDeclType {
+		valueTypeInfo = resolver.ReadTypeInfo(buf, ctxErr)
+		if ctxErr.HasError() {
+			return 0
+		}
+		valSer = valueTypeInfo.Serializer
+		valueType = valueTypeInfo.Type
+	} else {
+		valSer = s.valueSerializer
+		if valSer == nil {
+			valSer, _ = resolver.getSerializerByType(valueType, false)
+		}
+	}
+
+	keyRefMode := RefModeNone
+	if trackKeyRef {
+		keyRefMode = RefModeTracking
+	}
+	valRefMode := RefModeNone
+	if trackValRef {
+		valRefMode = RefModeTracking
+	}
+
+	for i := 0; i < chunkSize; i++ {
+		k := reflect.New(keyType).Elem()
+		if keyTypeInfo != nil {
+			keySer.ReadWithTypeInfo(ctx, keyRefMode, keyTypeInfo, k)
+		} else {
+			keySer.Read(ctx, keyRefMode, false, false, k)
+		}
+		if ctx.HasError() {
+			return 0
+		}
+
+		v := reflect.New(valueType).Elem()
+		if valueTypeInfo != nil {
+			valSer.ReadWithTypeInfo(ctx, valRefMode, valueTypeInfo, v)
+		} else {
+			valSer.Read(ctx, valRefMode, false, false, v)
+		}
+		if ctx.HasError() {
+			return 0
+		}
+
+		setMapValue(mapVal, unwrapInterface(k), unwrapInterface(v))
+		size--
+	}
+
+	return size
+}
+
+func (s mapSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
+
+// Helper functions
+
+// writeMapRefAndType handles reference and type writing for maps.
+// Returns true if value was already written (nil or ref).
 func writeMapRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, value reflect.Value) bool {
 	switch refMode {
 	case RefModeTracking:
@@ -70,16 +578,16 @@ func writeMapRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, valu
 	return false
 }
 
-// readMapRefAndType handles reference and type reading for map serializers.
-// Returns true if a reference was resolved (value already set), false if data should be read.
+// readMapRefAndType handles reference and type reading for maps.
+// Returns true if a reference was resolved.
 func readMapRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value reflect.Value) bool {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	switch refMode {
 	case RefModeTracking:
-		refID, refErr := ctx.RefResolver().TryPreserveRefId(buf)
-		if refErr != nil {
-			ctx.SetError(FromError(refErr))
+		refID, err := ctx.RefResolver().TryPreserveRefId(buf)
+		if err != nil {
+			ctx.SetError(FromError(err))
 			return false
 		}
 		if refID < int32(NotNullValueFlag) {
@@ -101,585 +609,21 @@ func readMapRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value r
 	return false
 }
 
-type mapSerializer struct {
-	type_             reflect.Type
-	keySerializer     Serializer
-	valueSerializer   Serializer
-	keyReferencable   bool
-	valueReferencable bool
-	mapInStruct       bool // Use mapInStruct to distinguish concrete map types during deserialization
-
+func unwrapInterface(v reflect.Value) reflect.Value {
+	// For map serialization, we need to unwrap interfaces including nil ones
+	// A nil interface should become an invalid (zero) Value for proper null detection
+	if v.Kind() == reflect.Interface {
+		return v.Elem()
+	}
+	return v
 }
 
-func (s mapSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
-	buf := ctx.Buffer()
-	if value.Kind() == reflect.Interface {
-		value = value.Elem()
-	}
-	length := value.Len()
-	buf.WriteVaruint32(uint32(length))
-	if length == 0 {
-		return
-	}
-	typeResolver := ctx.TypeResolver()
-	// Use declared serializers if available (mapInStruct case)
-	// Don't clear them - we need them for KEY_DECL_TYPE/VALUE_DECL_TYPE flags
-	keySerializer := s.keySerializer
-	valueSerializer := s.valueSerializer
-	iter := value.MapRange()
-	if !iter.Next() {
-		return
-	}
-	entryKey, entryVal := iter.Key(), iter.Value()
-	if entryKey.Kind() == reflect.Interface {
-		entryKey = entryKey.Elem()
-	}
-	if entryVal.Kind() == reflect.Interface {
-		entryVal = entryVal.Elem()
-	}
-	hasNext := true
-	// For xlang struct fields (mapInStruct = true), use declared types (set DECL_TYPE flags)
-	// For internal Go serialization (mapInStruct = false), always write type info (don't set DECL_TYPE flags)
-	isXlang := s.mapInStruct
-	for hasNext {
-		for {
-			keyValid := isValid(entryKey)
-			valValid := isValid(entryVal)
-			if keyValid {
-				if valValid {
-					break
-				}
-				// Null value case - use DECL_TYPE only for xlang struct fields
-				if isXlang && keySerializer != nil {
-					if s.keyReferencable {
-						buf.WriteInt8(NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF)
-						keySerializer.Write(ctx, RefModeTracking, false, false, entryKey)
-						if ctx.HasError() {
-							return
-						}
-					} else {
-						buf.WriteInt8(NULL_VALUE_KEY_DECL_TYPE)
-						keySerializer.WriteData(ctx, entryKey)
-						if ctx.HasError() {
-							return
-						}
-					}
-				} else {
-					buf.WriteInt8(VALUE_HAS_NULL | TRACKING_KEY_REF)
-					ctx.WriteValue(entryKey)
-					if ctx.HasError() {
-						return
-					}
-				}
-			} else {
-				if valValid {
-					// Null key case - use DECL_TYPE only for xlang struct fields
-					if isXlang && valueSerializer != nil {
-						if s.valueReferencable {
-							buf.WriteInt8(NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF)
-							valueSerializer.Write(ctx, RefModeTracking, false, false, entryVal)
-							if ctx.HasError() {
-								return
-							}
-						} else {
-							buf.WriteInt8(NULL_KEY_VALUE_DECL_TYPE)
-							valueSerializer.WriteData(ctx, entryVal)
-							if ctx.HasError() {
-								return
-							}
-						}
-					} else {
-						buf.WriteInt8(KEY_HAS_NULL | TRACKING_VALUE_REF)
-						ctx.WriteValue(entryVal)
-						if ctx.HasError() {
-							return
-						}
-					}
-				} else {
-					buf.WriteInt8(KV_NULL)
-				}
-			}
-			if iter.Next() {
-				entryKey, entryVal = iter.Key(), iter.Value()
-				if entryKey.Kind() == reflect.Interface {
-					entryKey = entryKey.Elem()
-				}
-				if entryVal.Kind() == reflect.Interface {
-					entryVal = entryVal.Elem()
-				}
-			} else {
-				hasNext = false
-				break
-			}
-		}
-		if !hasNext {
-			break
-		}
-		keyCls := getActualType(entryKey)
-		valueCls := getActualType(entryVal)
-		buf.WriteInt16(-1)
-		chunkSizeOffset := buf.writerIndex
-		chunkHeader := 0
-		keyWriteRef := s.keyReferencable
-		valueWriteRef := s.valueReferencable
-		// For xlang struct fields, use declared types (set DECL_TYPE flags)
-		// For internal Go serialization, always write type info
-		if isXlang && keySerializer != nil {
-			chunkHeader |= KEY_DECL_TYPE
-		} else {
-			keyTypeInfo, _ := getActualTypeInfo(entryKey, typeResolver)
-			typeResolver.WriteTypeInfo(buf, keyTypeInfo, ctx.Err())
-			keySerializer = keyTypeInfo.Serializer
-			keyWriteRef = keyTypeInfo.NeedWriteRef
-		}
-		if isXlang && valueSerializer != nil {
-			chunkHeader |= VALUE_DECL_TYPE
-		} else {
-			valueTypeInfo, _ := getActualTypeInfo(entryVal, typeResolver)
-			typeResolver.WriteTypeInfo(buf, valueTypeInfo, ctx.Err())
-			valueSerializer = valueTypeInfo.Serializer
-			valueWriteRef = valueTypeInfo.NeedWriteRef
-		}
-
-		if keyWriteRef {
-			chunkHeader |= TRACKING_KEY_REF
-		}
-		if valueWriteRef {
-			chunkHeader |= TRACKING_VALUE_REF
-		}
-		buf.PutUint8(chunkSizeOffset-2, uint8(chunkHeader))
-		chunkSize := 0
-		keyRefMode := RefModeNone
-		if keyWriteRef {
-			keyRefMode = RefModeTracking
-		}
-		valueRefMode := RefModeNone
-		if valueWriteRef {
-			valueRefMode = RefModeTracking
-		}
-		for chunkSize < MAX_CHUNK_SIZE {
-			if !isValid(entryKey) || !isValid(entryVal) || getActualType(entryKey) != keyCls || getActualType(entryVal) != valueCls {
-				break
-			}
-
-			// WriteData key with optional ref tracking
-			keySerializer.Write(ctx, keyRefMode, false, false, entryKey)
-			if ctx.HasError() {
-				return
-			}
-
-			// WriteData value with optional ref tracking
-			valueSerializer.Write(ctx, valueRefMode, false, false, entryVal)
-			if ctx.HasError() {
-				return
-			}
-
-			chunkSize++
-
-			if iter.Next() {
-				entryKey, entryVal = iter.Key(), iter.Value()
-				if entryKey.Kind() == reflect.Interface {
-					entryKey = entryKey.Elem()
-				}
-				if entryVal.Kind() == reflect.Interface {
-					entryVal = entryVal.Elem()
-				}
-			} else {
-				hasNext = false
-				break
-			}
-		}
-		keySerializer = s.keySerializer
-		valueSerializer = s.valueSerializer
-		buf.PutUint8(chunkSizeOffset-1, uint8(chunkSize))
-	}
+// UnwrapReflectValue is exported for use by other packages
+func UnwrapReflectValue(v reflect.Value) reflect.Value {
+	return unwrapInterface(v)
 }
 
-func (s mapSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
-	done := writeMapRefAndType(ctx, refMode, writeType, value)
-	if done || ctx.HasError() {
-		return
-	}
-	s.WriteData(ctx, value)
-}
-
-func (s mapSerializer) writeObj(ctx *WriteContext, serializer Serializer, obj reflect.Value) {
-	serializer.WriteData(ctx, obj)
-}
-
-func (s mapSerializer) ReadData(ctx *ReadContext, type_ reflect.Type, value reflect.Value) {
-	buf := ctx.Buffer()
-	ctxErr := ctx.Err()
-	refResolver := ctx.RefResolver()
-	if s.type_ == nil {
-		s.type_ = type_
-	}
-
-	if value.IsNil() {
-		isIfaceMap := func(t reflect.Type) bool {
-			return t.Kind() == reflect.Map &&
-				t.Key().Kind() == reflect.Interface &&
-				t.Elem().Kind() == reflect.Interface
-		}
-		// case 1: A map inside a struct will have a fixed key and value type.
-		// case 2: The user has specified the type of the map explicitly.
-		// Otherwise, a generic map type will be used
-		switch {
-		case s.mapInStruct:
-			value.Set(reflect.MakeMap(type_))
-		case !isIfaceMap(type_):
-			value.Set(reflect.MakeMap(type_))
-		default:
-			iface := reflect.TypeOf((*interface{})(nil)).Elem()
-			newMapType := reflect.MapOf(iface, iface)
-			value.Set(reflect.MakeMap(newMapType))
-		}
-	}
-
-	refResolver.Reference(value)
-	size := int(buf.ReadVaruint32(ctxErr))
-	var chunkHeader uint8
-	if size > 0 {
-		chunkHeader = buf.ReadUint8(ctxErr)
-	}
-	if ctx.HasError() {
-		return
-	}
-
-	keyType := type_.Key()
-	valueType := type_.Elem()
-	keySer := s.keySerializer
-	valSer := s.valueSerializer
-	typeResolver := ctx.TypeResolver()
-
-	for size > 0 {
-		for {
-			keyHasNull := (chunkHeader & KEY_HAS_NULL) != 0
-			valueHasNull := (chunkHeader & VALUE_HAS_NULL) != 0
-			var k, v reflect.Value
-			if !keyHasNull {
-				if !valueHasNull {
-					break
-				} else {
-					// Null value case: read key only
-					keyDeclared := (chunkHeader & KEY_DECL_TYPE) != 0
-					trackKeyRef := (chunkHeader & TRACKING_KEY_REF) != 0
-
-					// When trackKeyRef is set and type is not declared, Java writes:
-					// ref flag + type info + data
-					// So we need to read ref flag first, then type info, then data
-					if trackKeyRef && !keyDeclared {
-						// Read ref flag first
-						refID, err := refResolver.TryPreserveRefId(buf)
-						if err != nil {
-							ctx.SetError(FromError(err))
-							return
-						}
-						if refID < int32(NotNullValueFlag) {
-							// Reference to existing object
-							obj := refResolver.GetReadObject(refID)
-							if obj.IsValid() {
-								// Use zero value for null value (nil for interface{}/pointer types)
-								nullVal := reflect.Zero(value.Type().Elem())
-								value.SetMapIndex(obj, nullVal)
-							}
-							size--
-							if size == 0 {
-								return
-							}
-							chunkHeader = buf.ReadUint8(ctxErr)
-							continue
-						}
-
-						// Read type info
-						ti := typeResolver.ReadTypeInfo(buf, ctxErr)
-						if ctxErr.HasError() {
-							return
-						}
-						keySer = ti.Serializer
-						keyType = ti.Type
-
-						kt := keyType
-						if kt == nil {
-							kt = value.Type().Key()
-						}
-						k = reflect.New(kt).Elem()
-
-						// Read data (ref already handled)
-						keySer.ReadData(ctx, keyType, k)
-						if ctx.HasError() {
-							return
-						}
-						refResolver.Reference(k)
-						// Use zero value for null value (nil for interface{}/pointer types)
-						nullVal := reflect.Zero(value.Type().Elem())
-						value.SetMapIndex(k, nullVal)
-					} else {
-						// ReadData type info if not declared
-						var keyTypeInfo *TypeInfo
-						if !keyDeclared {
-							keyTypeInfo = typeResolver.ReadTypeInfo(buf, ctxErr)
-							if ctxErr.HasError() {
-								return
-							}
-							keySer = keyTypeInfo.Serializer
-							keyType = keyTypeInfo.Type
-						}
-
-						kt := keyType
-						if kt == nil {
-							kt = value.Type().Key()
-						}
-						k = reflect.New(kt).Elem()
-
-						// Use ReadWithTypeInfo if type was read, otherwise Read
-						keyRefMode := RefModeNone
-						if trackKeyRef {
-							keyRefMode = RefModeTracking
-						}
-						if keyTypeInfo != nil {
-							keySer.ReadWithTypeInfo(ctx, keyRefMode, keyTypeInfo, k)
-						} else {
-							keySer.Read(ctx, keyRefMode, false, false, k)
-						}
-						if ctx.HasError() {
-							return
-						}
-						// Use zero value for null value (nil for interface{}/pointer types)
-						nullVal := reflect.Zero(value.Type().Elem())
-						value.SetMapIndex(k, nullVal)
-					}
-				}
-			} else {
-				if !valueHasNull {
-					// Null key case: read value only
-					valueDeclared := (chunkHeader & VALUE_DECL_TYPE) != 0
-					trackValueRef := (chunkHeader & TRACKING_VALUE_REF) != 0
-
-					// When trackValueRef is set and type is not declared, Java writes:
-					// ref flag + type info + data
-					// So we need to read ref flag first, then type info, then data
-					if trackValueRef && !valueDeclared {
-						// Read ref flag first
-						refID, err := refResolver.TryPreserveRefId(buf)
-						if err != nil {
-							ctx.SetError(FromError(err))
-							return
-						}
-						if refID < int32(NotNullValueFlag) {
-							// Reference to existing object
-							obj := refResolver.GetReadObject(refID)
-							if obj.IsValid() {
-								// Use zero value for null key (nil for interface{}/pointer types)
-								nullKey := reflect.Zero(value.Type().Key())
-								value.SetMapIndex(nullKey, obj)
-							}
-							size--
-							if size == 0 {
-								return
-							}
-							chunkHeader = buf.ReadUint8(ctxErr)
-							continue
-						}
-
-						// Read type info
-						ti := typeResolver.ReadTypeInfo(buf, ctxErr)
-						if ctxErr.HasError() {
-							return
-						}
-						valSer = ti.Serializer
-						valueType = ti.Type
-
-						vt := valueType
-						if vt == nil {
-							vt = value.Type().Elem()
-						}
-						v = reflect.New(vt).Elem()
-
-						// Read data (ref already handled)
-						valSer.ReadData(ctx, valueType, v)
-						if ctx.HasError() {
-							return
-						}
-						refResolver.Reference(v)
-						// Use zero value for null key (nil for interface{}/pointer types)
-						nullKey := reflect.Zero(value.Type().Key())
-						value.SetMapIndex(nullKey, v)
-					} else {
-						// ReadData type info if not declared
-						var valueTypeInfo *TypeInfo
-						if !valueDeclared {
-							valueTypeInfo = typeResolver.ReadTypeInfo(buf, ctxErr)
-							if ctxErr.HasError() {
-								return
-							}
-							valSer = valueTypeInfo.Serializer
-							valueType = valueTypeInfo.Type
-						}
-
-						vt := valueType
-						if vt == nil {
-							vt = value.Type().Elem()
-						}
-						v = reflect.New(vt).Elem()
-
-						// Use ReadWithTypeInfo if type was read, otherwise Read
-						valueRefMode := RefModeNone
-						if trackValueRef {
-							valueRefMode = RefModeTracking
-						}
-						if valueTypeInfo != nil {
-							valSer.ReadWithTypeInfo(ctx, valueRefMode, valueTypeInfo, v)
-						} else {
-							valSer.Read(ctx, valueRefMode, false, false, v)
-						}
-						if ctx.HasError() {
-							return
-						}
-						// Use zero value for null key (nil for interface{}/pointer types)
-						nullKey := reflect.Zero(value.Type().Key())
-						value.SetMapIndex(nullKey, v)
-					}
-				} else {
-					// Both key and value are null
-					nullKey := reflect.Zero(value.Type().Key())
-					nullVal := reflect.Zero(value.Type().Elem())
-					value.SetMapIndex(nullKey, nullVal)
-				}
-			}
-
-			size--
-			if size == 0 {
-				return
-			} else {
-				chunkHeader = buf.ReadUint8(ctxErr)
-			}
-		}
-
-		trackKeyRef := (chunkHeader & TRACKING_KEY_REF) != 0
-		trackValRef := (chunkHeader & TRACKING_VALUE_REF) != 0
-		keyDeclType := (chunkHeader & KEY_DECL_TYPE) != 0
-		valDeclType := (chunkHeader & VALUE_DECL_TYPE) != 0
-		chunkSize := int(buf.ReadUint8(ctxErr))
-
-		// ReadData type info if not declared
-		var keyTypeInfo *TypeInfo
-		if !keyDeclType {
-			keyTypeInfo = typeResolver.ReadTypeInfo(buf, ctxErr)
-			if ctxErr.HasError() {
-				return
-			}
-			keySer = keyTypeInfo.Serializer
-			keyType = keyTypeInfo.Type
-		} else if keySer == nil {
-			// KEY_DECL_TYPE is set but we don't have a serializer - get one from the map's key type
-			keySer, _ = typeResolver.getSerializerByType(keyType, false)
-		}
-		var valueTypeInfo *TypeInfo
-		if !valDeclType {
-			valueTypeInfo = typeResolver.ReadTypeInfo(buf, ctxErr)
-			if ctxErr.HasError() {
-				return
-			}
-			valSer = valueTypeInfo.Serializer
-			valueType = valueTypeInfo.Type
-		} else if valSer == nil {
-			// VALUE_DECL_TYPE is set but we don't have a serializer - get one from the map's value type
-			valSer, _ = typeResolver.getSerializerByType(valueType, false)
-		}
-
-		keyRefMode := RefModeNone
-		if trackKeyRef {
-			keyRefMode = RefModeTracking
-		}
-		valRefMode := RefModeNone
-		if trackValRef {
-			valRefMode = RefModeTracking
-		}
-		for i := 0; i < chunkSize; i++ {
-			var k, v reflect.Value
-
-			// ReadData key
-			kt := keyType
-			if kt == nil {
-				kt = value.Type().Key()
-			}
-			k = reflect.New(kt).Elem()
-
-			// Use ReadWithTypeInfo if type was read, otherwise Read
-			if keyTypeInfo != nil {
-				keySer.ReadWithTypeInfo(ctx, keyRefMode, keyTypeInfo, k)
-			} else {
-				keySer.Read(ctx, keyRefMode, false, false, k)
-			}
-			if ctx.HasError() {
-				return
-			}
-
-			// ReadData value
-			vt := valueType
-			if vt == nil {
-				vt = value.Type().Elem()
-			}
-			v = reflect.New(vt).Elem()
-
-			// Use ReadWithTypeInfo if type was read, otherwise Read
-			if valueTypeInfo != nil {
-				valSer.ReadWithTypeInfo(ctx, valRefMode, valueTypeInfo, v)
-			} else {
-				valSer.Read(ctx, valRefMode, false, false, v)
-			}
-			if ctx.HasError() {
-				return
-			}
-			// Unwrap interfaces if they're not the map's type
-			if k.Kind() == reflect.Interface {
-				k = k.Elem()
-			}
-			if v.Kind() == reflect.Interface {
-				v = v.Elem()
-			}
-			setMapValue(value, k, v)
-			size--
-		}
-
-		keySer = s.keySerializer
-		valSer = s.valueSerializer
-		if size > 0 {
-			chunkHeader = buf.ReadUint8(ctxErr)
-		}
-	}
-}
-
-func (s mapSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readMapRefAndType(ctx, refMode, readType, value)
-	if done || ctx.HasError() {
-		return
-	}
-	s.ReadData(ctx, value.Type(), value)
-}
-
-func (s mapSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
-	// typeInfo is already read, don't read it again
-	s.Read(ctx, refMode, false, false, value)
-}
-
-func (s mapSerializer) readObj(
-	ctx *ReadContext,
-	v *reflect.Value,
-	serializer Serializer,
-) {
-	serializer.ReadData(ctx, v.Type(), *v)
-}
-
-func getActualType(v reflect.Value) reflect.Type {
-	if v.Kind() == reflect.Interface && !v.IsNil() {
-		return v.Elem().Type()
-	}
-	return v.Type()
-}
-
-func getActualTypeInfo(v reflect.Value, resolver *TypeResolver) (*TypeInfo, error) {
+func getTypeInfoForValue(v reflect.Value, resolver *TypeResolver) (*TypeInfo, error) {
 	if v.Kind() == reflect.Interface && !v.IsNil() {
 		elem := v.Elem()
 		if !elem.IsValid() {
@@ -690,44 +634,23 @@ func getActualTypeInfo(v reflect.Value, resolver *TypeResolver) (*TypeInfo, erro
 	return resolver.getTypeInfo(v, true)
 }
 
-func UnwrapReflectValue(v reflect.Value) reflect.Value {
-	for v.Kind() == reflect.Interface && !v.IsNil() {
-		v = v.Elem()
-	}
-	return v
-}
-
-func isValid(v reflect.Value) bool {
-	// Zero values are valid, so apply this change temporarily.
-	return v.IsValid()
-}
-
-// setMapValue sets a key-value pair into a map, handling interface types where
-// the concrete type may need to be wrapped in a pointer to implement the interface.
+// setMapValue sets a key-value pair into a map, handling interface types
 func setMapValue(mapVal, key, value reflect.Value) {
 	mapKeyType := mapVal.Type().Key()
 	mapValueType := mapVal.Type().Elem()
 
-	// Handle key
 	finalKey := key
-	if mapKeyType.Kind() == reflect.Interface {
-		if !key.Type().AssignableTo(mapKeyType) {
-			// Try pointer - common case where interface has pointer receivers
-			ptr := reflect.New(key.Type())
-			ptr.Elem().Set(key)
-			finalKey = ptr
-		}
+	if mapKeyType.Kind() == reflect.Interface && !key.Type().AssignableTo(mapKeyType) {
+		ptr := reflect.New(key.Type())
+		ptr.Elem().Set(key)
+		finalKey = ptr
 	}
 
-	// Handle value
 	finalValue := value
-	if mapValueType.Kind() == reflect.Interface {
-		if !value.Type().AssignableTo(mapValueType) {
-			// Try pointer - common case where interface has pointer receivers
-			ptr := reflect.New(value.Type())
-			ptr.Elem().Set(value)
-			finalValue = ptr
-		}
+	if mapValueType.Kind() == reflect.Interface && !value.Type().AssignableTo(mapValueType) {
+		ptr := reflect.New(value.Type())
+		ptr.Elem().Set(value)
+		finalValue = ptr
 	}
 
 	mapVal.SetMapIndex(finalKey, finalValue)

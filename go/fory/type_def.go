@@ -431,20 +431,31 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to build field type for field %s: %w", fieldName, err)
 		}
-		// Determine nullable based on Go type capability:
-		// - Pointer types (*T): can hold nil → nullable=true by default
-		// - Slices, maps, interfaces: can hold nil → nullable=true by default
-		// - Primitive types (int32, bool, etc.): cannot be nil → nullable=false
-		// Can be overridden by explicit fory tag
+		// Determine nullable based on mode:
+		// - In xlang mode: Per xlang spec, fields are NON-NULLABLE by default.
+		//   Only pointer types are nullable by default.
+		// - In native mode: Go's natural semantics apply - slice/map/interface can be nil,
+		//   so they are nullable by default.
+		// Can be overridden by explicit fory tag `fory:"nullable"`
 		typeId := ft.TypeId()
 		internalId := TypeId(typeId & 0xFF)
 		isEnumField := internalId == ENUM || internalId == NAMED_ENUM
-		// Default nullable based on whether Go type can be nil
-		// Pointer types, slices, maps, interfaces can hold nil → nullable=true by default
-		nullableFlag := field.Type.Kind() == reflect.Ptr ||
-			field.Type.Kind() == reflect.Slice ||
-			field.Type.Kind() == reflect.Map ||
-			field.Type.Kind() == reflect.Interface
+		// Determine nullable based on mode
+		// In xlang mode: only pointer types are nullable by default (per xlang spec)
+		// In native mode: Go's natural semantics - all nil-able types are nullable
+		// This ensures proper interoperability with Java/other languages in xlang mode.
+		var nullableFlag bool
+		if fory.config.IsXlang {
+			// xlang mode: only pointer types are nullable by default per xlang spec
+			// Slices and maps are NOT nullable - they serialize as empty when nil
+			nullableFlag = field.Type.Kind() == reflect.Ptr
+		} else {
+			// Native mode: Go's natural semantics - all nil-able types are nullable
+			nullableFlag = field.Type.Kind() == reflect.Ptr ||
+				field.Type.Kind() == reflect.Slice ||
+				field.Type.Kind() == reflect.Map ||
+				field.Type.Kind() == reflect.Interface
+		}
 		// Override nullable flag if explicitly set in fory tag
 		if foryTag.NullableSet {
 			nullableFlag = foryTag.Nullable
@@ -455,9 +466,20 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 		}
 
 		// Calculate ref tracking - use tag override if explicitly set
+		// In xlang mode, registered types (primitives, strings) don't use ref tracking
+		// because they are value types, not reference types.
 		trackingRef := fory.config.TrackRef
 		if foryTag.RefSet {
 			trackingRef = foryTag.Ref
+		}
+		// Disable ref tracking for simple types (primitives, strings) in xlang mode
+		// These types don't benefit from ref tracking and Java doesn't expect ref flags for them
+		if fory.config.IsXlang && trackingRef {
+			// Check if this is a simple field type (primitives, strings, enums, etc.)
+			// SimpleFieldType represents built-in types that don't need ref tracking
+			if _, ok := ft.(*SimpleFieldType); ok {
+				trackingRef = false
+			}
 		}
 
 		fieldInfo := FieldDef{
@@ -592,8 +614,10 @@ func (b *BaseFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInf
 // This is called for top-level field types where flags are NOT embedded in the type ID
 func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
 	typeId := buffer.ReadVaruint32Small7(err)
+	// Use internal type ID (low byte) for switch, but store the full typeId
+	internalTypeId := TypeId(typeId & 0xFF)
 
-	switch typeId {
+	switch internalTypeId {
 	case LIST, SET:
 		// For nested types, flags ARE embedded in the type ID
 		elementType, etErr := readFieldTypeWithFlags(buffer, err)
@@ -626,8 +650,10 @@ func readFieldTypeWithFlags(buffer *ByteBuffer, err *Error) (FieldType, error) {
 	// trackingRef := (rawValue & 0b1) != 0  // Not used currently
 	// nullable := (rawValue & 0b10) != 0    // Not used currently
 	typeId := rawValue >> 2
+	// Use internal type ID (low byte) for switch, but store the full typeId
+	internalTypeId := TypeId(typeId & 0xFF)
 
-	switch typeId {
+	switch internalTypeId {
 	case LIST, SET:
 		elementType, etErr := readFieldTypeWithFlags(buffer, err)
 		if etErr != nil {
@@ -782,6 +808,7 @@ func (m *MapFieldType) getTypeInfo(f *Fory) (TypeInfo, error) {
 	mapSerializer := &mapSerializer{
 		keySerializer:   keyInfo.Serializer,
 		valueSerializer: valueInfo.Serializer,
+		hasGenerics:     true,
 	}
 	return TypeInfo{Type: mapType, Serializer: mapSerializer}, nil
 }
@@ -802,6 +829,7 @@ func (m *MapFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo
 	mapSerializer := &mapSerializer{
 		keySerializer:   keyInfo.Serializer,
 		valueSerializer: valueInfo.Serializer,
+		hasGenerics:     true,
 	}
 	return TypeInfo{Type: mapType, Serializer: mapSerializer}, nil
 }

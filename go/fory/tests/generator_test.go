@@ -135,12 +135,14 @@ func TestDynamicSliceDemo(t *testing.T) {
 
 func TestDynamicSliceDemoWithNilAndEmpty(t *testing.T) {
 	// Test with nil and empty dynamic slices
+	// Use WithXlang(false) for native Go mode where nil slices are preserved
 	original := &DynamicSliceDemo{
 		DynamicSlice: nil, // nil slice
 	}
 
 	// SerializeWithCallback using generated code
-	f := fory.NewFory(fory.WithRefTracking(true))
+	// WithXlang(false) enables native Go mode where nil slices are preserved as nil
+	f := fory.NewFory(fory.WithXlang(false), fory.WithRefTracking(true))
 	data, err := f.Marshal(original)
 	require.NoError(t, err, "Serialization should not fail")
 	require.NotEmpty(t, data, "Serialized data should not be empty")
@@ -174,6 +176,7 @@ func TestDynamicSliceDemoWithNilAndEmpty(t *testing.T) {
 // TestMapDemo tests basic map serialization and deserialization (including nil maps)
 func TestMapDemo(t *testing.T) {
 	// Create test instance with various map types (including nil)
+	// Use WithXlang(false) for native Go mode where nil maps are preserved
 	instance := &MapDemo{
 		StringMap: map[string]string{
 			"key1": "value1",
@@ -188,7 +191,8 @@ func TestMapDemo(t *testing.T) {
 	}
 
 	// SerializeWithCallback with codegen
-	f := fory.NewFory(fory.WithRefTracking(true))
+	// WithXlang(false) enables native Go mode where nil maps are preserved as nil
+	f := fory.NewFory(fory.WithXlang(false), fory.WithRefTracking(true))
 	data, err := f.Marshal(instance)
 	require.NoError(t, err, "Serialization failed")
 

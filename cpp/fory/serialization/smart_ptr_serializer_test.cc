@@ -441,5 +441,77 @@ TEST(SmartPtrSerializerTest, MaxDynDepthDefault) {
 }
 
 } // namespace
+
+// ============================================================================
+// Monomorphic field tests (fory::field<> style)
+// ============================================================================
+namespace {
+
+// A polymorphic base class (has virtual methods)
+struct PolymorphicBaseForMono {
+  virtual ~PolymorphicBaseForMono() = default;
+  virtual std::string name() const { return "PolymorphicBaseForMono"; }
+  int32_t value = 0;
+  std::string data;
+};
+FORY_STRUCT(PolymorphicBaseForMono, value, data);
+
+// Holder with monomorphic field using fory::field<>
+struct MonomorphicFieldHolder {
+  // Field marked as monomorphic - no dynamic type dispatch, always
+  // PolymorphicBaseForMono
+  fory::field<std::shared_ptr<PolymorphicBaseForMono>, 0, fory::nullable,
+              fory::monomorphic>
+      ptr;
+};
+FORY_STRUCT(MonomorphicFieldHolder, ptr);
+
+TEST(SmartPtrSerializerTest, MonomorphicFieldWithForyField) {
+  MonomorphicFieldHolder original;
+  original.ptr.value = std::make_shared<PolymorphicBaseForMono>();
+  original.ptr.value->value = 42;
+  original.ptr.value->data = "test data";
+
+  auto fory = Fory::builder().track_ref(false).build();
+  fory.register_struct<MonomorphicFieldHolder>(400);
+  fory.register_struct<PolymorphicBaseForMono>(401);
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
+
+  auto deserialize_result = fory.deserialize<MonomorphicFieldHolder>(
+      bytes_result->data(), bytes_result->size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << deserialize_result.error().to_string();
+
+  auto deserialized = std::move(deserialize_result).value();
+  ASSERT_TRUE(deserialized.ptr.value);
+  EXPECT_EQ(deserialized.ptr.value->value, 42);
+  EXPECT_EQ(deserialized.ptr.value->data, "test data");
+  EXPECT_EQ(deserialized.ptr.value->name(), "PolymorphicBaseForMono");
+}
+
+TEST(SmartPtrSerializerTest, MonomorphicFieldNullValue) {
+  MonomorphicFieldHolder original;
+  original.ptr.value = nullptr;
+
+  auto fory = Fory::builder().track_ref(false).build();
+  fory.register_struct<MonomorphicFieldHolder>(404);
+  fory.register_struct<PolymorphicBaseForMono>(405);
+
+  auto bytes_result = fory.serialize(original);
+  ASSERT_TRUE(bytes_result.ok()) << bytes_result.error().to_string();
+
+  auto deserialize_result = fory.deserialize<MonomorphicFieldHolder>(
+      bytes_result->data(), bytes_result->size());
+  ASSERT_TRUE(deserialize_result.ok())
+      << deserialize_result.error().to_string();
+
+  auto deserialized = std::move(deserialize_result).value();
+  EXPECT_FALSE(deserialized.ptr.value);
+}
+
+} // namespace
+
 } // namespace serialization
 } // namespace fory

@@ -23,12 +23,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
-import org.apache.fory.collection.Tuple2;
-import org.apache.fory.collection.Tuple3;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.memory.Platform;
 import org.apache.fory.reflect.FieldAccessor;
@@ -37,19 +34,12 @@ import org.apache.fory.reflect.ObjectCreators;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.reflect.TypeRef;
 import org.apache.fory.resolver.ClassInfo;
-import org.apache.fory.resolver.ClassInfoHolder;
 import org.apache.fory.resolver.ClassResolver;
-import org.apache.fory.resolver.RefMode;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
-import org.apache.fory.serializer.converter.FieldConverter;
 import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
-import org.apache.fory.type.FinalObjectTypeStub;
-import org.apache.fory.type.GenericType;
 import org.apache.fory.type.Generics;
-import org.apache.fory.type.TypeUtils;
-import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.record.RecordComponent;
 import org.apache.fory.util.record.RecordInfo;
 import org.apache.fory.util.record.RecordUtils;
@@ -57,9 +47,10 @@ import org.apache.fory.util.record.RecordUtils;
 public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   protected final RefResolver refResolver;
   protected final ClassResolver classResolver;
+  protected final TypeResolver typeResolver;
   protected final boolean isRecord;
   protected final ObjectCreator<T> objectCreator;
-  private InternalFieldInfo[] fieldInfos;
+  private FieldGroups.SerializationFieldInfo[] fieldInfos;
   private RecordInfo copyRecordInfo;
 
   public AbstractObjectSerializer(Fory fory, Class<T> type) {
@@ -70,165 +61,151 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     super(fory, type);
     this.refResolver = fory.getRefResolver();
     this.classResolver = fory.getClassResolver();
+    this.typeResolver = fory._getTypeResolver();
     this.isRecord = RecordUtils.isRecord(type);
     this.objectCreator = objectCreator;
   }
 
-  /**
-   * Read final object field value. Note that primitive field value can't be read by this method,
-   * because primitive field doesn't write null flag.
-   */
-  static Object readFinalObjectFieldValue(
+  static void writeOtherFieldValue(
       SerializationBinding binding,
-      RefResolver refResolver,
-      TypeResolver typeResolver,
-      FinalTypeField fieldInfo,
-      boolean isFinal,
-      MemoryBuffer buffer) {
-    Serializer<Object> serializer = fieldInfo.classInfo.getSerializer();
-    binding.incReadDepth();
-    Object fieldValue;
-    if (isFinal) {
+      MemoryBuffer buffer,
+      FieldGroups.SerializationFieldInfo fieldInfo,
+      Object fieldValue) {
+    if (fieldInfo.useDeclaredTypeInfo) {
       switch (fieldInfo.refMode) {
         case NONE:
-          fieldValue = binding.read(buffer, serializer);
+          binding.writeNonRef(buffer, fieldValue, fieldInfo.serializer);
           break;
         case NULL_ONLY:
-          fieldValue = binding.readNullable(buffer, serializer);
+          if (fieldValue == null) {
+            buffer.writeByte(Fory.NULL_FLAG);
+          } else {
+            buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
+            binding.writeNonRef(buffer, fieldValue, fieldInfo.serializer);
+          }
           break;
         case TRACKING:
-          // whether tracking ref is recorded in `fieldInfo.serializer`, so it's still
-          // consistent with jit serializer.
-          fieldValue = binding.readRef(buffer, serializer);
+          binding.writeRef(buffer, fieldValue, fieldInfo.serializer);
           break;
         default:
-          throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
+          throw new IllegalStateException("Unexpected refMode: " + fieldInfo.refMode);
       }
     } else {
       switch (fieldInfo.refMode) {
         case NONE:
-          typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
-          fieldValue = serializer.read(buffer);
+          binding.writeNonRef(buffer, fieldValue, fieldInfo.classInfoHolder);
           break;
         case NULL_ONLY:
-          {
-            byte headFlag = buffer.readByte();
-            if (headFlag == Fory.NULL_FLAG) {
-              binding.decDepth();
-              return null;
-            }
-            typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
-            fieldValue = serializer.read(buffer);
+          if (fieldValue == null) {
+            buffer.writeByte(Fory.NULL_FLAG);
+          } else {
+            buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
+            binding.writeNonRef(buffer, fieldValue, fieldInfo.classInfoHolder);
           }
           break;
         case TRACKING:
-          {
-            int nextReadRefId = refResolver.tryPreserveRefId(buffer);
-            if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
-              typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
-              fieldValue = serializer.read(buffer);
-              refResolver.setReadObject(nextReadRefId, fieldValue);
-            } else {
-              fieldValue = refResolver.getReadObject();
-            }
-          }
+          binding.writeRef(buffer, fieldValue, fieldInfo.classInfoHolder);
           break;
         default:
-          throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
+          throw new IllegalStateException("Unexpected refMode: " + fieldInfo.refMode);
       }
     }
-    binding.decDepth();
-    return fieldValue;
   }
 
-  /**
-   * Read a non-container field value that is not a final type. Handles enum types, reference
-   * tracking, and nullable fields according to xlang serialization protocol.
-   *
-   * @param binding the serialization binding for read operations
-   * @param fieldInfo the field metadata including type info and nullability
-   * @param buffer the buffer to read from
-   * @return the deserialized field value, or null if the field is nullable and was null
-   */
-  static Object readOtherFieldValue(
-      SerializationBinding binding, GenericTypeField fieldInfo, MemoryBuffer buffer) {
-    // Note: Enum has special handling for xlang compatibility - no type info for enum fields
-    if (fieldInfo.genericType.getCls().isEnum()) {
-      // Only read null flag when the field is nullable (for xlang compatibility)
-      if (fieldInfo.nullable && buffer.readByte() == Fory.NULL_FLAG) {
-        return null;
-      }
-      return fieldInfo.genericType.getSerializer(binding.typeResolver).read(buffer);
-    }
-    Object fieldValue;
-    switch (fieldInfo.refMode) {
-      case NONE:
-        binding.preserveRefId(-1);
-        fieldValue = binding.readNonRef(buffer, fieldInfo);
-        break;
-      case NULL_ONLY:
-        {
-          binding.preserveRefId(-1);
-          byte headFlag = buffer.readByte();
-          if (headFlag == Fory.NULL_FLAG) {
-            return null;
-          }
-          fieldValue = binding.readNonRef(buffer, fieldInfo);
-        }
-        break;
-      case TRACKING:
-        fieldValue = binding.readRef(buffer, fieldInfo);
-        break;
-      default:
-        throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
-    }
-    return fieldValue;
-  }
-
-  /**
-   * Read a container field value (Collection or Map). Handles reference tracking, nullable fields,
-   * and pushes/pops generic type information for proper deserialization of parameterized types.
-   *
-   * @param binding the serialization binding for read operations
-   * @param generics the generics context for tracking parameterized types
-   * @param fieldInfo the field metadata including generic type info and nullability
-   * @param buffer the buffer to read from
-   * @return the deserialized container field value, or null if the field is nullable and was null
-   */
-  static Object readContainerFieldValue(
+  static void writeContainerFieldValue(
       SerializationBinding binding,
+      RefResolver refResolver,
+      TypeResolver typeResolver,
       Generics generics,
-      GenericTypeField fieldInfo,
-      MemoryBuffer buffer) {
-    Object fieldValue;
+      FieldGroups.SerializationFieldInfo fieldInfo,
+      MemoryBuffer buffer,
+      Object fieldValue) {
     switch (fieldInfo.refMode) {
       case NONE:
-        binding.preserveRefId(-1);
         generics.pushGenericType(fieldInfo.genericType);
-        fieldValue = binding.readContainerFieldValue(buffer, fieldInfo);
+        binding.writeContainerFieldValue(
+            buffer,
+            fieldValue,
+            typeResolver.getClassInfo(fieldValue.getClass(), fieldInfo.classInfoHolder));
         generics.popGenericType();
         break;
       case NULL_ONLY:
-        {
-          binding.preserveRefId(-1);
-          byte headFlag = buffer.readByte();
-          if (headFlag == Fory.NULL_FLAG) {
-            return null;
-          }
+        if (fieldValue == null) {
+          buffer.writeByte(Fory.NULL_FLAG);
+        } else {
+          buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
           generics.pushGenericType(fieldInfo.genericType);
-          fieldValue = binding.readContainerFieldValue(buffer, fieldInfo);
+          binding.writeContainerFieldValue(
+              buffer,
+              fieldValue,
+              typeResolver.getClassInfo(fieldValue.getClass(), fieldInfo.classInfoHolder));
           generics.popGenericType();
         }
         break;
       case TRACKING:
-        generics.pushGenericType(fieldInfo.genericType);
-        fieldValue = binding.readContainerFieldValueRef(buffer, fieldInfo);
-        generics.popGenericType();
+        if (!refResolver.writeRefOrNull(buffer, fieldValue)) {
+          ClassInfo classInfo =
+              typeResolver.getClassInfo(fieldValue.getClass(), fieldInfo.classInfoHolder);
+          generics.pushGenericType(fieldInfo.genericType);
+          binding.writeContainerFieldValue(buffer, fieldValue, classInfo);
+          generics.popGenericType();
+        }
         break;
       default:
-        throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
+        throw new IllegalStateException("Unexpected refMode: " + fieldInfo.refMode);
     }
-    return fieldValue;
+  }
+
+  /**
+   * Write a primitive field value to buffer using direct memory offset access.
+   *
+   * @param fory the fory instance for compression settings
+   * @param buffer the buffer to write to
+   * @param targetObject the object containing the field
+   * @param fieldOffset the memory offset of the field
+   * @param classId the class ID of the primitive type
+   * @return true if classId is not a primitive type and needs further write handling
+   */
+  static boolean writePrimitiveFieldValue(
+      Fory fory, MemoryBuffer buffer, Object targetObject, long fieldOffset, short classId) {
+    switch (classId) {
+      case ClassResolver.PRIMITIVE_BOOLEAN_CLASS_ID:
+        buffer.writeBoolean(Platform.getBoolean(targetObject, fieldOffset));
+        return false;
+      case ClassResolver.PRIMITIVE_BYTE_CLASS_ID:
+        buffer.writeByte(Platform.getByte(targetObject, fieldOffset));
+        return false;
+      case ClassResolver.PRIMITIVE_CHAR_CLASS_ID:
+        buffer.writeChar(Platform.getChar(targetObject, fieldOffset));
+        return false;
+      case ClassResolver.PRIMITIVE_SHORT_CLASS_ID:
+        buffer.writeInt16(Platform.getShort(targetObject, fieldOffset));
+        return false;
+      case ClassResolver.PRIMITIVE_INT_CLASS_ID:
+        {
+          int fieldValue = Platform.getInt(targetObject, fieldOffset);
+          if (fory.compressInt()) {
+            buffer.writeVarInt32(fieldValue);
+          } else {
+            buffer.writeInt32(fieldValue);
+          }
+          return false;
+        }
+      case ClassResolver.PRIMITIVE_FLOAT_CLASS_ID:
+        buffer.writeFloat32(Platform.getFloat(targetObject, fieldOffset));
+        return false;
+      case ClassResolver.PRIMITIVE_LONG_CLASS_ID:
+        {
+          long fieldValue = Platform.getLong(targetObject, fieldOffset);
+          fory.writeInt64(buffer, fieldValue);
+          return false;
+        }
+      case ClassResolver.PRIMITIVE_DOUBLE_CLASS_ID:
+        buffer.writeFloat64(Platform.getDouble(targetObject, fieldOffset));
+        return false;
+      default:
+        return true;
+    }
   }
 
   /**
@@ -285,58 +262,6 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
         }
       case ClassResolver.PRIMITIVE_DOUBLE_CLASS_ID:
         buffer.writeFloat64((Double) fieldAccessor.get(targetObject));
-        return false;
-      default:
-        return true;
-    }
-  }
-
-  /**
-   * Write a primitive field value to buffer using direct memory offset access.
-   *
-   * @param fory the fory instance for compression settings
-   * @param buffer the buffer to write to
-   * @param targetObject the object containing the field
-   * @param fieldOffset the memory offset of the field
-   * @param classId the class ID of the primitive type
-   * @return true if classId is not a primitive type and needs further write handling
-   */
-  static boolean writePrimitiveFieldValue(
-      Fory fory, MemoryBuffer buffer, Object targetObject, long fieldOffset, short classId) {
-    switch (classId) {
-      case ClassResolver.PRIMITIVE_BOOLEAN_CLASS_ID:
-        buffer.writeBoolean(Platform.getBoolean(targetObject, fieldOffset));
-        return false;
-      case ClassResolver.PRIMITIVE_BYTE_CLASS_ID:
-        buffer.writeByte(Platform.getByte(targetObject, fieldOffset));
-        return false;
-      case ClassResolver.PRIMITIVE_CHAR_CLASS_ID:
-        buffer.writeChar(Platform.getChar(targetObject, fieldOffset));
-        return false;
-      case ClassResolver.PRIMITIVE_SHORT_CLASS_ID:
-        buffer.writeInt16(Platform.getShort(targetObject, fieldOffset));
-        return false;
-      case ClassResolver.PRIMITIVE_INT_CLASS_ID:
-        {
-          int fieldValue = Platform.getInt(targetObject, fieldOffset);
-          if (fory.compressInt()) {
-            buffer.writeVarInt32(fieldValue);
-          } else {
-            buffer.writeInt32(fieldValue);
-          }
-          return false;
-        }
-      case ClassResolver.PRIMITIVE_FLOAT_CLASS_ID:
-        buffer.writeFloat32(Platform.getFloat(targetObject, fieldOffset));
-        return false;
-      case ClassResolver.PRIMITIVE_LONG_CLASS_ID:
-        {
-          long fieldValue = Platform.getLong(targetObject, fieldOffset);
-          fory.writeInt64(buffer, fieldValue);
-          return false;
-        }
-      case ClassResolver.PRIMITIVE_DOUBLE_CLASS_ID:
-        buffer.writeFloat64(Platform.getDouble(targetObject, fieldOffset));
         return false;
       default:
         return true;
@@ -525,6 +450,164 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
       default:
         return true;
     }
+  }
+
+  /**
+   * Read final object field value. Note that primitive field value can't be read by this method,
+   * because primitive field doesn't write null flag.
+   */
+  static Object readFinalObjectFieldValue(
+      SerializationBinding binding,
+      RefResolver refResolver,
+      TypeResolver typeResolver,
+      FieldGroups.SerializationFieldInfo fieldInfo,
+      MemoryBuffer buffer) {
+    Serializer<Object> serializer = fieldInfo.classInfo.getSerializer();
+    binding.incReadDepth();
+    Object fieldValue;
+    if (fieldInfo.useDeclaredTypeInfo) {
+      switch (fieldInfo.refMode) {
+        case NONE:
+          fieldValue = binding.read(buffer, serializer);
+          break;
+        case NULL_ONLY:
+          fieldValue = binding.readNullable(buffer, serializer);
+          break;
+        case TRACKING:
+          // whether tracking ref is recorded in `fieldInfo.serializer`, so it's still
+          // consistent with jit serializer.
+          fieldValue = binding.readRef(buffer, serializer);
+          break;
+        default:
+          throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
+      }
+    } else {
+      switch (fieldInfo.refMode) {
+        case NONE:
+          typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
+          fieldValue = serializer.read(buffer);
+          break;
+        case NULL_ONLY:
+          {
+            byte headFlag = buffer.readByte();
+            if (headFlag == Fory.NULL_FLAG) {
+              binding.decDepth();
+              return null;
+            }
+            typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
+            fieldValue = serializer.read(buffer);
+          }
+          break;
+        case TRACKING:
+          {
+            int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+            if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
+              typeResolver.readClassInfo(buffer, fieldInfo.classInfo);
+              fieldValue = serializer.read(buffer);
+              refResolver.setReadObject(nextReadRefId, fieldValue);
+            } else {
+              fieldValue = refResolver.getReadObject();
+            }
+          }
+          break;
+        default:
+          throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
+      }
+    }
+    binding.decDepth();
+    return fieldValue;
+  }
+
+  /**
+   * Read a non-container field value that is not a final type. Handles enum types, reference
+   * tracking, and nullable fields according to xlang serialization protocol.
+   *
+   * @param binding the serialization binding for read operations
+   * @param fieldInfo the field metadata including type info and nullability
+   * @param buffer the buffer to read from
+   * @return the deserialized field value, or null if the field is nullable and was null
+   */
+  static Object readOtherFieldValue(
+      SerializationBinding binding,
+      FieldGroups.SerializationFieldInfo fieldInfo,
+      MemoryBuffer buffer) {
+    // Note: Enum has special handling for xlang compatibility - no type info for enum fields
+    if (fieldInfo.genericType.getCls().isEnum()) {
+      // Only read null flag when the field is nullable (for xlang compatibility)
+      if (fieldInfo.nullable && buffer.readByte() == Fory.NULL_FLAG) {
+        return null;
+      }
+      return fieldInfo.genericType.getSerializer(binding.typeResolver).read(buffer);
+    }
+    Object fieldValue;
+    switch (fieldInfo.refMode) {
+      case NONE:
+        binding.preserveRefId(-1);
+        fieldValue = binding.readNonRef(buffer, fieldInfo);
+        break;
+      case NULL_ONLY:
+        {
+          binding.preserveRefId(-1);
+          byte headFlag = buffer.readByte();
+          if (headFlag == Fory.NULL_FLAG) {
+            return null;
+          }
+          fieldValue = binding.readNonRef(buffer, fieldInfo);
+        }
+        break;
+      case TRACKING:
+        fieldValue = binding.readRef(buffer, fieldInfo);
+        break;
+      default:
+        throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
+    }
+    return fieldValue;
+  }
+
+  /**
+   * Read a container field value (Collection or Map). Handles reference tracking, nullable fields,
+   * and pushes/pops generic type information for proper deserialization of parameterized types.
+   *
+   * @param binding the serialization binding for read operations
+   * @param generics the generics context for tracking parameterized types
+   * @param fieldInfo the field metadata including generic type info and nullability
+   * @param buffer the buffer to read from
+   * @return the deserialized container field value, or null if the field is nullable and was null
+   */
+  static Object readContainerFieldValue(
+      SerializationBinding binding,
+      Generics generics,
+      FieldGroups.SerializationFieldInfo fieldInfo,
+      MemoryBuffer buffer) {
+    Object fieldValue;
+    switch (fieldInfo.refMode) {
+      case NONE:
+        binding.preserveRefId(-1);
+        generics.pushGenericType(fieldInfo.genericType);
+        fieldValue = binding.readContainerFieldValue(buffer, fieldInfo);
+        generics.popGenericType();
+        break;
+      case NULL_ONLY:
+        {
+          binding.preserveRefId(-1);
+          byte headFlag = buffer.readByte();
+          if (headFlag == Fory.NULL_FLAG) {
+            return null;
+          }
+          generics.pushGenericType(fieldInfo.genericType);
+          fieldValue = binding.readContainerFieldValue(buffer, fieldInfo);
+          generics.popGenericType();
+        }
+        break;
+      case TRACKING:
+        generics.pushGenericType(fieldInfo.genericType);
+        fieldValue = binding.readContainerFieldValueRef(buffer, fieldInfo);
+        generics.popGenericType();
+        break;
+      default:
+        throw new IllegalStateException("Unknown refMode: " + fieldInfo.refMode);
+    }
+    return fieldValue;
   }
 
   /**
@@ -856,13 +939,13 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   }
 
   private Object[] copyFields(T originObj) {
-    InternalFieldInfo[] fieldInfos = this.fieldInfos;
+    FieldGroups.SerializationFieldInfo[] fieldInfos = this.fieldInfos;
     if (fieldInfos == null) {
       fieldInfos = buildFieldsInfo();
     }
     Object[] fieldValues = new Object[fieldInfos.length];
     for (int i = 0; i < fieldInfos.length; i++) {
-      InternalFieldInfo fieldInfo = fieldInfos[i];
+      FieldGroups.SerializationFieldInfo fieldInfo = fieldInfos[i];
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       long fieldOffset = fieldAccessor.getFieldOffset();
       if (fieldOffset != -1) {
@@ -877,11 +960,11 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   }
 
   private void copyFields(T originObj, T newObj) {
-    InternalFieldInfo[] fieldInfos = this.fieldInfos;
+    FieldGroups.SerializationFieldInfo[] fieldInfos = this.fieldInfos;
     if (fieldInfos == null) {
       fieldInfos = buildFieldsInfo();
     }
-    for (InternalFieldInfo fieldInfo : fieldInfos) {
+    for (FieldGroups.SerializationFieldInfo fieldInfo : fieldInfos) {
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       long fieldOffset = fieldAccessor.getFieldOffset();
       // record class won't go to this path;
@@ -930,8 +1013,8 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
   }
 
   public static void copyFields(
-      Fory fory, InternalFieldInfo[] fieldInfos, Object originObj, Object newObj) {
-    for (InternalFieldInfo fieldInfo : fieldInfos) {
+      Fory fory, FieldGroups.SerializationFieldInfo[] fieldInfos, Object originObj, Object newObj) {
+    for (FieldGroups.SerializationFieldInfo fieldInfo : fieldInfos) {
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       long fieldOffset = fieldAccessor.getFieldOffset();
       // record class won't go to this path;
@@ -1012,7 +1095,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     }
   }
 
-  private InternalFieldInfo[] buildFieldsInfo() {
+  private FieldGroups.SerializationFieldInfo[] buildFieldsInfo() {
     List<Descriptor> descriptors = new ArrayList<>();
     if (RecordUtils.isRecord(type)) {
       RecordComponent[] components = RecordUtils.getRecordComponents(type);
@@ -1037,12 +1120,8 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     }
     DescriptorGrouper descriptorGrouper =
         fory.getClassResolver().createDescriptorGrouper(descriptors, false);
-    Tuple3<Tuple2<FinalTypeField[], boolean[]>, GenericTypeField[], GenericTypeField[]> infos =
-        buildFieldInfos(fory, descriptorGrouper);
-    fieldInfos = new InternalFieldInfo[descriptors.size()];
-    System.arraycopy(infos.f0.f0, 0, fieldInfos, 0, infos.f0.f0.length);
-    System.arraycopy(infos.f1, 0, fieldInfos, infos.f0.f0.length, infos.f1.length);
-    System.arraycopy(infos.f2, 0, fieldInfos, fieldInfos.length - infos.f2.length, infos.f2.length);
+    FieldGroups fieldGroups = FieldGroups.buildFieldInfos(fory, descriptorGrouper);
+    fieldInfos = fieldGroups.allFields;
     if (isRecord) {
       List<String> fieldNames =
           Arrays.stream(fieldInfos)
@@ -1053,206 +1132,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     return fieldInfos;
   }
 
-  public static InternalFieldInfo[] buildFieldsInfo(Fory fory, List<Field> fields) {
-    List<Descriptor> descriptors = new ArrayList<>();
-    for (Field field : fields) {
-      if (!Modifier.isTransient(field.getModifiers()) && !Modifier.isStatic(field.getModifiers())) {
-        descriptors.add(new Descriptor(field, TypeRef.of(field.getGenericType()), null, null));
-      }
-    }
-    DescriptorGrouper descriptorGrouper =
-        fory.getClassResolver().createDescriptorGrouper(descriptors, false);
-    Tuple3<Tuple2<FinalTypeField[], boolean[]>, GenericTypeField[], GenericTypeField[]> infos =
-        buildFieldInfos(fory, descriptorGrouper);
-    InternalFieldInfo[] fieldInfos = new InternalFieldInfo[descriptors.size()];
-    System.arraycopy(infos.f0.f0, 0, fieldInfos, 0, infos.f0.f0.length);
-    System.arraycopy(infos.f1, 0, fieldInfos, infos.f0.f0.length, infos.f1.length);
-    System.arraycopy(infos.f2, 0, fieldInfos, fieldInfos.length - infos.f2.length, infos.f2.length);
-    return fieldInfos;
-  }
-
   protected T newBean() {
     return objectCreator.newInstance();
-  }
-
-  static Tuple3<Tuple2<FinalTypeField[], boolean[]>, GenericTypeField[], GenericTypeField[]>
-      buildFieldInfos(Fory fory, DescriptorGrouper grouper) {
-    // When a type is both Collection/Map and final, add it to collection/map fields to keep
-    // consistent with jit.
-    Collection<Descriptor> primitives = grouper.getPrimitiveDescriptors();
-    Collection<Descriptor> boxed = grouper.getBoxedDescriptors();
-    Collection<Descriptor> finals = grouper.getFinalDescriptors();
-    FinalTypeField[] finalFields =
-        new FinalTypeField[primitives.size() + boxed.size() + finals.size()];
-    int cnt = 0;
-    for (Descriptor d : primitives) {
-      finalFields[cnt++] = new FinalTypeField(fory, d);
-    }
-    for (Descriptor d : boxed) {
-      finalFields[cnt++] = new FinalTypeField(fory, d);
-    }
-    // TODO(chaokunyang) Support Pojo<T> generics besides Map/Collection subclass
-    //  when it's supported in BaseObjectCodecBuilder.
-    for (Descriptor d : finals) {
-      finalFields[cnt++] = new FinalTypeField(fory, d);
-    }
-    boolean[] isFinal = new boolean[finalFields.length];
-    for (int i = 0; i < isFinal.length; i++) {
-      ClassInfo classInfo = finalFields[i].classInfo;
-      isFinal[i] = classInfo != null && fory.getClassResolver().isMonomorphic(classInfo.getCls());
-    }
-    cnt = 0;
-    GenericTypeField[] otherFields = new GenericTypeField[grouper.getOtherDescriptors().size()];
-    for (Descriptor descriptor : grouper.getOtherDescriptors()) {
-      GenericTypeField genericTypeField = new GenericTypeField(fory, descriptor);
-      otherFields[cnt++] = genericTypeField;
-    }
-    cnt = 0;
-    Collection<Descriptor> collections = grouper.getCollectionDescriptors();
-    Collection<Descriptor> maps = grouper.getMapDescriptors();
-    GenericTypeField[] containerFields = new GenericTypeField[collections.size() + maps.size()];
-    for (Descriptor d : collections) {
-      containerFields[cnt++] = new GenericTypeField(fory, d);
-    }
-    for (Descriptor d : maps) {
-      containerFields[cnt++] = new GenericTypeField(fory, d);
-    }
-    return Tuple3.of(Tuple2.of(finalFields, isFinal), otherFields, containerFields);
-  }
-
-  public static class InternalFieldInfo {
-    protected final TypeRef<?> typeRef;
-    protected final short classId;
-    protected final String qualifiedFieldName;
-    protected final FieldAccessor fieldAccessor;
-    protected final FieldConverter<?> fieldConverter;
-    protected final RefMode refMode;
-    protected final boolean nullable;
-    protected final boolean trackingRef;
-    protected final boolean isPrimitive;
-
-    private InternalFieldInfo(Fory fory, Descriptor d, short classId) {
-      this.typeRef = d.getTypeRef();
-      this.classId = classId;
-      this.qualifiedFieldName = d.getDeclaringClass() + "." + d.getName();
-      if (d.getField() != null) {
-        this.fieldAccessor = FieldAccessor.createAccessor(d.getField());
-        isPrimitive = d.getField().getType().isPrimitive();
-      } else {
-        this.fieldAccessor = null;
-        isPrimitive = d.getTypeRef().getRawType().isPrimitive();
-      }
-      fieldConverter = d.getFieldConverter();
-      nullable = d.isNullable();
-      // descriptor.isTrackingRef() already includes the needToWriteRef check
-      trackingRef = d.isTrackingRef();
-      refMode = RefMode.of(trackingRef, nullable);
-    }
-
-    @Override
-    public String toString() {
-      String[] rsplit = StringUtils.rsplit(qualifiedFieldName, ".", 1);
-      return "InternalFieldInfo{"
-          + "fieldName='"
-          + rsplit[1]
-          + ", typeRef="
-          + typeRef
-          + ", classId="
-          + classId
-          + ", fieldAccessor="
-          + fieldAccessor
-          + ", nullable="
-          + nullable
-          + '}';
-    }
-  }
-
-  static final class FinalTypeField extends InternalFieldInfo {
-    final ClassInfo classInfo;
-
-    private FinalTypeField(Fory fory, Descriptor d) {
-      super(fory, d, getRegisteredClassId(fory, d));
-      // invoke `copy` to avoid ObjectSerializer construct clear serializer by `clearSerializer`.
-      if (typeRef.getRawType() == FinalObjectTypeStub.class) {
-        // `FinalObjectTypeStub` has no fields, using its `classInfo`
-        // will make deserialization failed.
-        classInfo = null;
-      } else {
-        classInfo = SerializationUtils.getClassInfo(fory, typeRef.getRawType());
-        if (!fory.isShareMeta()
-            && !fory.isCompatible()
-            && classInfo.getSerializer() instanceof ReplaceResolveSerializer) {
-          // overwrite replace resolve serializer for final field
-          classInfo.setSerializer(new FinalFieldReplaceResolveSerializer(fory, classInfo.getCls()));
-        }
-      }
-    }
-  }
-
-  static final class GenericTypeField extends InternalFieldInfo {
-    final GenericType genericType;
-    final ClassInfoHolder classInfoHolder;
-    final boolean isArray;
-    final ClassInfo containerClassInfo;
-
-    private GenericTypeField(Fory fory, Descriptor d) {
-      super(fory, d, getRegisteredClassId(fory, d));
-      // TODO support generics <T> in Pojo<T>, see ComplexObjectSerializer.getGenericTypes
-      ClassResolver classResolver = fory.getClassResolver();
-      GenericType t = classResolver.buildGenericType(typeRef);
-      Class<?> cls = t.getCls();
-      if (t.getTypeParametersCount() > 0) {
-        boolean skip =
-            Arrays.stream(t.getTypeParameters()).allMatch(p -> p.getCls() == Object.class);
-        if (skip) {
-          t = new GenericType(t.getTypeRef(), t.isMonomorphic());
-        }
-      }
-      genericType = t;
-      classInfoHolder = classResolver.nilClassInfoHolder();
-      isArray = cls.isArray();
-      if (!fory.isCrossLanguage()) {
-        containerClassInfo = null;
-      } else {
-        if (classResolver.isMap(cls)
-            || classResolver.isCollection(cls)
-            || classResolver.isSet(cls)) {
-          containerClassInfo = fory.getXtypeResolver().getClassInfo(cls);
-        } else {
-          containerClassInfo = null;
-        }
-      }
-    }
-
-    @Override
-    public String toString() {
-      String[] rsplit = StringUtils.rsplit(qualifiedFieldName, ".", 1);
-      return "GenericTypeField{"
-          + "fieldName="
-          + rsplit[1]
-          + ", genericType="
-          + genericType
-          + ", classInfoHolder="
-          + classInfoHolder
-          + ", trackingRef="
-          + trackingRef
-          + ", typeRef="
-          + typeRef
-          + ", classId="
-          + classId
-          + ", nullable="
-          + nullable
-          + '}';
-    }
-  }
-
-  private static short getRegisteredClassId(Fory fory, Descriptor d) {
-    Field field = d.getField();
-    Class<?> cls = d.getTypeRef().getRawType();
-    if (TypeUtils.unwrap(cls).isPrimitive() && field != null) {
-      return fory.getClassResolver().getRegisteredClassId(field.getType());
-    }
-    Short classId = fory.getClassResolver().getRegisteredClassId(cls);
-    return classId == null ? ClassResolver.NO_CLASS_ID : classId;
   }
 }

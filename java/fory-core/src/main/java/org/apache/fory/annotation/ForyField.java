@@ -28,6 +28,26 @@ import java.lang.annotation.Target;
 @Target({ElementType.FIELD, ElementType.METHOD})
 public @interface ForyField {
 
+  /** Controls polymorphism behavior for struct fields in cross-language serialization. */
+  enum Morphic {
+    /**
+     * Auto-detect based on declared type (default).
+     *
+     * <ul>
+     *   <li>Xlang mode: only interface/abstract class are treated as POLYMORPHIC, concrete classes
+     *       are treated as FINAL (no type info written)
+     *   <li>Java native mode: all classes without {@code final} modifier are treated as POLYMORPHIC
+     * </ul>
+     */
+    AUTO,
+
+    /** Treat as final/sealed - no type info written, uses declared type's serializer directly. */
+    FINAL,
+
+    /** Treat as polymorphic - type info written to support subtypes at runtime. */
+    POLYMORPHIC
+  }
+
   /**
    * Field tag ID for schema evolution mode.
    *
@@ -55,4 +75,18 @@ public @interface ForyField {
    * defaults)
    */
   boolean ref() default false;
+
+  /**
+   * Controls polymorphism behavior for this field in cross-language serialization.
+   *
+   * <ul>
+   *   <li>{@link Morphic#AUTO} (default): Interface/abstract types are polymorphic, concrete types
+   *       are final
+   *   <li>{@link Morphic#FINAL}: No type info written, uses declared type's serializer
+   *   <li>{@link Morphic#POLYMORPHIC}: Type info written to support runtime subtypes
+   * </ul>
+   *
+   * <p>Default: AUTO (concrete struct types are final, interface/abstract are polymorphic)
+   */
+  Morphic morphic() default Morphic.AUTO;
 }

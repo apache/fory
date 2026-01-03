@@ -65,10 +65,10 @@ pub enum RefMode {
 }
 
 impl RefMode {
-    /// Create RefMode from nullable and ref_tracking flags.
+    /// Create RefMode from nullable and track_ref flags.
     #[inline]
-    pub const fn from_flags(nullable: bool, ref_tracking: bool) -> Self {
-        match (nullable, ref_tracking) {
+    pub const fn from_flags(nullable: bool, track_ref: bool) -> Self {
+        match (nullable, track_ref) {
             (false, false) => RefMode::None,
             (true, false) => RefMode::NullOnly,
             (_, true) => RefMode::Tracking,
@@ -405,9 +405,12 @@ pub const fn is_internal_type(type_id: u32) -> bool {
     )
 }
 
-/// Keep as const fn for compile time evaluation or constant folding
+/// Keep as const fn for compile time evaluation or constant folding.
+/// Returns true if this type needs type info written in compatible mode.
+/// Only user-defined types (struct, ext, unknown) need type info.
+/// Internal types (primitives, strings, collections, enums) don't need type info.
 #[inline(always)]
-pub(crate) const fn need_to_write_type_for_field(type_id: TypeId) -> bool {
+pub const fn need_to_write_type_for_field(type_id: TypeId) -> bool {
     matches!(
         type_id,
         TypeId::STRUCT

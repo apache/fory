@@ -95,8 +95,17 @@ pub fn write<T: Serializer>(
     ref_mode: RefMode,
     write_type_info: bool,
 ) -> Result<(), Error> {
-    if ref_mode != RefMode::None {
-        context.writer.write_i8(RefFlag::NotNullValue as i8);
+    match ref_mode {
+        RefMode::None => {}
+        RefMode::NullOnly => {
+            context.writer.write_i8(RefFlag::NotNullValue as i8);
+        }
+        RefMode::Tracking => {
+            // For ref tracking mode, write RefValue flag and reserve a ref_id
+            // so this struct participates in reference tracking.
+            context.writer.write_i8(RefFlag::RefValue as i8);
+            context.ref_writer.reserve_ref_id();
+        }
     }
     if write_type_info {
         T::fory_write_type_info(context)?;

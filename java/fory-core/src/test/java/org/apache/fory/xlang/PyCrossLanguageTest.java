@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.fory;
+package org.apache.fory.xlang;
 
 import static org.testng.Assert.assertEquals;
 
@@ -56,6 +56,8 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.Data;
+import org.apache.fory.Fory;
+import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
@@ -82,8 +84,8 @@ import org.testng.annotations.Test;
 
 /** Tests in this class need fory python installed. */
 @Test
-public class CrossLanguageTest extends ForyTestBase {
-  private static final Logger LOG = LoggerFactory.getLogger(CrossLanguageTest.class);
+public class PyCrossLanguageTest extends ForyTestBase {
+  private static final Logger LOG = LoggerFactory.getLogger(PyCrossLanguageTest.class);
   private static final String PYTHON_MODULE = "pyfory.tests.test_cross_language";
   private static final String PYTHON_EXECUTABLE = "python";
 

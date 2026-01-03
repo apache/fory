@@ -203,6 +203,11 @@ fn extract_option_inner_type(ty: &Type) -> Option<Type> {
     None
 }
 
+/// Returns true if the outer type is Option, regardless of inner type
+pub fn is_option_type(ty: &Type) -> bool {
+    extract_outer_type_name(ty) == "Option"
+}
+
 /// Classify a field type to determine default nullable/ref behavior
 pub fn classify_field_type(ty: &Type) -> FieldTypeClass {
     let type_name = extract_outer_type_name(ty);
