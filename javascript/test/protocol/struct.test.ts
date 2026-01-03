@@ -23,7 +23,7 @@ import { describe, expect, test } from '@jest/globals';
 
 describe('protocol', () => {
     test('should polymorphic work', () => {
-        
+
         const fory = new Fory({ refTracking: true });
         const { serialize, deserialize } = fory.registerSerializer(Type.struct({
             typeName: "example.foo"
@@ -67,6 +67,30 @@ describe('protocol', () => {
         const { serialize, deserialize } = fory.registerSerializer(nullableUnspecified);
         expect(deserialize(serialize({ a: null }))).toEqual({ a: null });
     });
+
+    test('should enforce nullable flag in schema-consistent mode', () => {
+        const fory = new Fory({ mode: 'SCHEMA_CONSISTENT' as any });
+
+        const schema = Type.struct(
+            { typeName: 'example.schemaConsistentNullable' },
+            {
+                a: Object.assign(Type.string(), { nullable: false }),
+                b: Type.string(),
+            }
+        );
+
+        const { serialize, deserialize } = fory.registerSerializer(schema);
+
+        // non-nullable field must throw
+        expect(() => serialize({ a: null, b: 'ok' }))
+            .toThrow(/Field 'a' is not nullable/);
+
+        // unspecified nullable field keeps old behavior
+        expect(deserialize(serialize({ a: 'ok', b: null })))
+            .toEqual({ a: 'ok', b: null });
+    });
 });
+
+
 
 
