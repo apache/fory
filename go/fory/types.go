@@ -98,6 +98,10 @@ const (
 	FLOAT32_ARRAY = 36
 	// FLOAT64_ARRAY one dimensional float64 array
 	FLOAT64_ARRAY = 37
+	// UNION a tagged union type that can hold one of several alternative types
+	UNION = 38
+	// NONE represents an empty/unit value with no data (e.g., for empty union alternatives)
+	NONE = 39
 
 	// UINT8 Unsigned 8-bit little-endian integer
 	UINT8 = 64
