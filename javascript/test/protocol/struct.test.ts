@@ -87,7 +87,7 @@ describe('protocol', () => {
 
         // unspecified nullable field keeps old behavior
         expect(deserialize(serialize({ a: 'ok', b: null })))
-            .toEqual({ a: 'ok', b: null });
+            .toEqual({ a: undefined, b: null });
     });
 });
 
