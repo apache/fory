@@ -1,0 +1,151 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+// Fory Options for FDL (Fory Definition Language)
+//
+// This file defines custom options that can be used in FDL schemas
+// to control Fory serialization behavior. Copy this file into your
+// project to use these options.
+//
+// Usage Examples:
+//
+// File-level options:
+//   option (fory).use_record_for_java_message = true;
+//
+// Message options:
+//   message MyMessage {
+//     option (fory).id = 100;
+//     option (fory).compatible = true;
+//     option (fory).use_record_for_java = true;
+//   }
+//
+// Enum options:
+//   enum Status {
+//     option (fory).id = 101;
+//   }
+//
+// Field options:
+//   message Example {
+//     MyType field = 1 [(fory).ref = true, (fory).nullable = true];
+//   }
+
+syntax = "proto3";
+
+package fory;
+
+import "google/protobuf/descriptor.proto";
+
+// ===========================================================================
+// File-Level Options
+// ===========================================================================
+// These options apply to the entire FDL file and affect all generated code.
+
+message ForyFileOptions {
+  // Generate Java records instead of classes for all messages in this file.
+  // Only applies to Java code generation.
+  // Default: false (generates traditional POJOs)
+  optional bool use_record_for_java_message = 1;
+
+  // Enable polymorphism support for all types in this file.
+  // When true, type metadata is included in serialization for polymorphic dispatch.
+  // Default: false
+  optional bool polymorphism = 2;
+}
+
+extend google.protobuf.FileOptions {
+  optional ForyFileOptions fory = 50001;
+}
+
+// ===========================================================================
+// Message-Level Options
+// ===========================================================================
+// These options apply to individual message definitions.
+
+message ForyMessageOptions {
+  // Unique type ID for cross-language registration.
+  // Used for efficient type lookup during deserialization.
+  // Must be a positive integer unique within the schema.
+  // If not specified, namespace-based registration is used.
+  optional int32 id = 1;
+
+  // Enable schema compatibility mode for this message.
+  // When true, fields can be added/removed without breaking compatibility.
+  // Default: false (strict schema matching)
+  optional bool compatible = 2;
+
+  // Generate a Java record instead of a class for this specific message.
+  // Overrides file-level use_record_for_java_message setting.
+  // Only applies to Java code generation.
+  optional bool use_record_for_java = 3;
+
+  // Mark this message as deprecated.
+  // Generates appropriate deprecation annotations in target languages.
+  optional bool deprecated = 4;
+
+  // Custom namespace for type registration.
+  // Overrides the default package-based namespace.
+  optional string namespace = 5;
+}
+
+extend google.protobuf.MessageOptions {
+  optional ForyMessageOptions fory = 50001;
+}
+
+// ===========================================================================
+// Enum-Level Options
+// ===========================================================================
+// These options apply to individual enum definitions.
+
+message ForyEnumOptions {
+  // Unique type ID for cross-language registration.
+  // Used for efficient type lookup during deserialization.
+  // Must be a positive integer unique within the schema.
+  optional int32 id = 1;
+
+  // Mark this enum as deprecated.
+  optional bool deprecated = 2;
+}
+
+extend google.protobuf.EnumOptions {
+  optional ForyEnumOptions fory = 50001;
+}
+
+// ===========================================================================
+// Field-Level Options
+// ===========================================================================
+// These options apply to individual field definitions.
+
+message ForyFieldOptions {
+  // Enable reference tracking for this field.
+  // When true, Fory tracks object references to handle:
+  // - Circular references (e.g., tree structures with parent pointers)
+  // - Shared references (same object referenced multiple times)
+  // Default: false
+  optional bool ref = 1;
+
+  // Mark this field as nullable.
+  // When true, the field can be null/None/nil.
+  // Default: false (field must have a value)
+  optional bool nullable = 2;
+
+  // Mark this field as deprecated.
+  optional bool deprecated = 3;
+}
+
+extend google.protobuf.FieldOptions {
+  optional ForyFieldOptions fory = 50001;
+}
