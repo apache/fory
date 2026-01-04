@@ -220,6 +220,46 @@ message Example {
 }
 ```
 
+### Fory Extension Options
+
+FDL supports protobuf-style extension options using the `(fory)` prefix:
+
+**File-level options:**
+
+```fdl
+option (fory).use_record_for_java_message = true;
+option (fory).polymorphism = true;
+```
+
+**Message/Enum options:**
+
+```fdl
+message MyMessage {
+    option (fory).id = 100;
+    option (fory).compatible = true;
+    option (fory).use_record_for_java = true;
+    string name = 1;
+}
+
+enum Status {
+    option (fory).id = 101;
+    UNKNOWN = 0;
+    ACTIVE = 1;
+}
+```
+
+**Field options:**
+
+```fdl
+message Example {
+    MyType friend = 1 [(fory).ref = true];
+    string nickname = 2 [(fory).nullable = true];
+    MyType data = 3 [(fory).ref = true, (fory).nullable = true];
+}
+```
+
+See `extension/fory_options.proto` for the complete list of available options.
+
 ## Architecture
 
 ```

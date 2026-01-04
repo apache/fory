@@ -257,6 +257,24 @@ message Payment {
 }
 ```
 
+### Fory Extension Options
+
+FDL supports protobuf-style extension options for Fory-specific configuration:
+
+```fdl
+option (fory).use_record_for_java_message = true;
+option (fory).polymorphism = true;
+```
+
+**Available File Options:**
+
+| Option                        | Type | Description                              |
+| ----------------------------- | ---- | ---------------------------------------- |
+| `use_record_for_java_message` | bool | Generate Java records instead of classes |
+| `polymorphism`                | bool | Enable polymorphism for all types        |
+
+See the [Fory Extension Options](#fory-extension-options) section for complete documentation of message, enum, and field options.
+
 ### Option Priority
 
 For language-specific packages:
@@ -969,6 +987,135 @@ message ShopConfig {
 }
 ```
 
+## Fory Extension Options
+
+FDL supports protobuf-style extension options for Fory-specific configuration. These use the `(fory)` prefix to indicate they are Fory extensions.
+
+### File-Level Fory Options
+
+```fdl
+option (fory).use_record_for_java_message = true;
+option (fory).polymorphism = true;
+```
+
+| Option                        | Type | Description                              |
+| ----------------------------- | ---- | ---------------------------------------- |
+| `use_record_for_java_message` | bool | Generate Java records instead of classes |
+| `polymorphism`                | bool | Enable polymorphism for all types        |
+
+### Message-Level Fory Options
+
+Options can be specified inside the message body:
+
+```fdl
+message MyMessage {
+    option (fory).id = 100;
+    option (fory).compatible = true;
+    option (fory).use_record_for_java = true;
+    string name = 1;
+}
+```
+
+| Option                | Type   | Description                                |
+| --------------------- | ------ | ------------------------------------------ |
+| `id`                  | int    | Type ID for serialization (sets type_id)   |
+| `compatible`          | bool   | Enable schema compatibility mode           |
+| `use_record_for_java` | bool   | Generate Java record for this message      |
+| `deprecated`          | bool   | Mark this message as deprecated            |
+| `namespace`           | string | Custom namespace for type registration     |
+
+**Note:** `option (fory).id = 100` is equivalent to the inline syntax `message MyMessage [id=100]`.
+
+### Enum-Level Fory Options
+
+```fdl
+enum Status {
+    option (fory).id = 101;
+    option (fory).deprecated = true;
+    UNKNOWN = 0;
+    ACTIVE = 1;
+}
+```
+
+| Option       | Type | Description                             |
+| ------------ | ---- | --------------------------------------- |
+| `id`         | int  | Type ID for serialization (sets type_id)|
+| `deprecated` | bool | Mark this enum as deprecated            |
+
+### Field-Level Fory Options
+
+Field options are specified in brackets after the field number:
+
+```fdl
+message Example {
+    MyType friend = 1 [(fory).ref = true];
+    string nickname = 2 [(fory).nullable = true];
+    MyType data = 3 [(fory).ref = true, (fory).nullable = true];
+}
+```
+
+| Option        | Type   | Description                                |
+| ------------- | ------ | ------------------------------------------ |
+| `ref`         | bool   | Enable reference tracking (sets ref flag)  |
+| `nullable`    | bool   | Mark field as nullable (sets optional flag)|
+| `deprecated`  | bool   | Mark this field as deprecated              |
+
+**Note:** `[(fory).ref = true]` is equivalent to using the `ref` modifier: `ref MyType friend = 1;`
+
+### Combining Standard and Fory Options
+
+You can combine standard options with Fory extension options:
+
+```fdl
+message User {
+    option deprecated = true;        // Standard option
+    option (fory).compatible = true; // Fory extension option
+
+    string name = 1;
+    MyType data = 2 [deprecated = true, (fory).ref = true];
+}
+```
+
+### Fory Options Proto File
+
+For reference, the Fory options are defined in `extension/fory_options.proto`:
+
+```proto
+// File-level options
+extend google.protobuf.FileOptions {
+    optional ForyFileOptions fory = 50001;
+}
+
+message ForyFileOptions {
+    optional bool use_record_for_java_message = 1;
+    optional bool polymorphism = 2;
+}
+
+// Message-level options
+extend google.protobuf.MessageOptions {
+    optional ForyMessageOptions fory = 50001;
+}
+
+message ForyMessageOptions {
+    optional int32 id = 1;
+    optional bool compatible = 2;
+    optional bool use_record_for_java = 3;
+    optional bool deprecated = 4;
+    optional string namespace = 5;
+}
+
+// Field-level options
+extend google.protobuf.FieldOptions {
+    optional ForyFieldOptions fory = 50001;
+}
+
+message ForyFieldOptions {
+    optional bool ref = 1;
+    optional bool nullable = 2;
+    optional bool deprecated = 3;
+}
+```
+
 ## Grammar Summary
 
 ```
@@ -977,7 +1124,9 @@ file         := [package_decl] file_option* import_decl* type_def*
 package_decl := 'package' package_name ';'
 package_name := IDENTIFIER ('.' IDENTIFIER)*
 
-file_option  := 'option' IDENTIFIER '=' option_value ';'
+file_option  := 'option' option_name '=' option_value ';'
+option_name  := IDENTIFIER | extension_name
+extension_name := '(' IDENTIFIER ')' '.' IDENTIFIER   // e.g., (fory).polymorphism
 
 import_decl  := 'import' STRING ';'
 
@@ -988,10 +1137,11 @@ enum_body    := (option_stmt | reserved_stmt | enum_value)*
 enum_value   := IDENTIFIER '=' INTEGER ';'
 
 message_def  := 'message' IDENTIFIER [type_options] '{' message_body '}'
-message_body := (option_stmt | reserved_stmt | field_def)*
+message_body := (option_stmt | reserved_stmt | nested_type | field_def)*
+nested_type  := enum_def | message_def
 field_def    := [modifiers] field_type IDENTIFIER '=' INTEGER [field_options] ';'
 
-option_stmt  := 'option' IDENTIFIER '=' option_value ';'
+option_stmt  := 'option' option_name '=' option_value ';'
 option_value := 'true' | 'false' | IDENTIFIER | INTEGER | STRING
 
 reserved_stmt := 'reserved' reserved_items ';'
@@ -1011,7 +1161,7 @@ map_type     := 'map' '<' field_type ',' field_type '>'
 type_options := '[' type_option (',' type_option)* ']'
 type_option  := IDENTIFIER '=' option_value         // e.g., id=100, deprecated=true
 field_options := '[' field_option (',' field_option)* ']'
-field_option := IDENTIFIER '=' option_value         // e.g., deprecated=true, json_name="foo"
+field_option := option_name '=' option_value        // e.g., deprecated=true, (fory).ref=true
 
 STRING       := '"' [^"\n]* '"' | "'" [^'\n]* "'"
 IDENTIFIER   := [a-zA-Z_][a-zA-Z0-9_]*

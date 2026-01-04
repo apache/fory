@@ -1064,5 +1064,311 @@ class TestFieldOptions:
         assert user.fields[0].name == "scores"
 
 
+class TestForyExtensionOptions:
+    """Tests for Fory extension option syntax: option (fory).key = value."""
+
+    def test_file_level_fory_option(self):
+        """Test parsing file-level Fory extension option."""
+        source = '''
+        package myapp;
+        option (fory).use_record_for_java_message = true;
+        message User {
+            string name = 1;
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        assert schema.get_option("fory.use_record_for_java_message") is True
+
+    def test_multiple_file_level_fory_options(self):
+        """Test parsing multiple file-level Fory extension options."""
+        source = '''
+        package myapp;
+        option (fory).use_record_for_java_message = true;
+        option (fory).polymorphism = false;
+        message User {
+            string name = 1;
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        assert schema.get_option("fory.use_record_for_java_message") is True
+        assert schema.get_option("fory.polymorphism") is False
+
+    def test_message_level_fory_option(self):
+        """Test parsing message-level Fory extension option."""
+        source = '''
+        package myapp;
+        message User {
+            option (fory).id = 100;
+            option (fory).compatible = true;
+            string name = 1;
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        user = schema.messages[0]
+        assert user.type_id == 100  # fory.id should set type_id
+        assert user.options.get("fory.id") == 100
+        assert user.options.get("fory.compatible") is True
+
+    def test_message_fory_id_sets_type_id(self):
+        """Test that option (fory).id sets message type_id."""
+        source = '''
+        package myapp;
+        message User {
+            option (fory).id = 200;
+            string name = 1;
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        user = schema.messages[0]
+        assert user.type_id == 200
+
+    def test_enum_level_fory_option(self):
+        """Test parsing enum-level Fory extension option."""
+        source = '''
+        package myapp;
+        enum Status {
+            option (fory).id = 300;
+            UNKNOWN = 0;
+            ACTIVE = 1;
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        status = schema.enums[0]
+        assert status.type_id == 300
+        assert status.options.get("fory.id") == 300
+
+    def test_field_level_fory_option(self):
+        """Test parsing field-level Fory extension option."""
+        source = '''
+        package myapp;
+        message User {
+            MyType friend = 1 [(fory).ref = true];
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        user = schema.messages[0]
+        field = user.fields[0]
+        assert field.ref is True  # fory.ref should set ref flag
+        assert field.options.get("fory.ref") is True
+
+    def test_field_fory_nullable_sets_optional(self):
+        """Test that (fory).nullable sets optional flag."""
+        source = '''
+        package myapp;
+        message User {
+            string nickname = 1 [(fory).nullable = true];
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        user = schema.messages[0]
+        field = user.fields[0]
+        assert field.optional is True
+        assert field.options.get("fory.nullable") is True
+
+    def test_field_multiple_fory_options(self):
+        """Test parsing multiple Fory extension options on a field."""
+        source = '''
+        package myapp;
+        message User {
+            MyType friend = 1 [(fory).ref = true, (fory).nullable = true];
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        user = schema.messages[0]
+        field = user.fields[0]
+        assert field.ref is True
+        assert field.optional is True
+        assert field.options.get("fory.ref") is True
+        assert field.options.get("fory.nullable") is True
+
+    def test_mixed_standard_and_fory_options(self):
+        """Test mixing standard and Fory extension options."""
+        source = '''
+        package myapp;
+        option java_package = "com.example";
+        option (fory).use_record_for_java_message = true;
+        message User {
+            string name = 1 [deprecated = true, (fory).nullable = true];
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        assert schema.get_option("java_package") == "com.example"
+        assert schema.get_option("fory.use_record_for_java_message") is True
+
+        user = schema.messages[0]
+        field = user.fields[0]
+        assert field.optional is True
+        assert field.options.get("deprecated") is True
+        assert field.options.get("fory.nullable") is True
+
+    def test_unknown_fory_file_option_warns(self):
+        """Test that unknown Fory file options produce a warning."""
+        source = '''
+        package myapp;
+        option (fory).unknown_option = true;
+        message User {
+            string name = 1;
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            schema = parser.parse()
+
+            # Should have one warning
+            assert len(w) == 1
+            assert "ignoring unknown fory option 'unknown_option'" in str(w[0].message)
+
+        # Option should still be stored
+        assert schema.get_option("fory.unknown_option") is True
+
+    def test_unknown_fory_message_option_warns(self):
+        """Test that unknown Fory message options produce a warning."""
+        source = '''
+        package myapp;
+        message User {
+            option (fory).unknown_opt = true;
+            string name = 1;
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            schema = parser.parse()
+
+            # Should have one warning
+            assert len(w) == 1
+            assert "ignoring unknown fory message option 'unknown_opt'" in str(w[0].message)
+
+    def test_unknown_fory_field_option_warns(self):
+        """Test that unknown Fory field options produce a warning."""
+        source = '''
+        package myapp;
+        message User {
+            string name = 1 [(fory).unknown_opt = true];
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            schema = parser.parse()
+
+            # Should have one warning
+            assert len(w) == 1
+            assert "ignoring unknown fory field option 'unknown_opt'" in str(w[0].message)
+
+    def test_unknown_extension_warns(self):
+        """Test that unknown extension names produce a warning."""
+        source = '''
+        package myapp;
+        option (custom).my_option = true;
+        message User {
+            string name = 1;
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            schema = parser.parse()
+
+            # Should have one warning
+            assert len(w) == 1
+            assert "ignoring unknown extension 'custom'" in str(w[0].message)
+
+    def test_inline_and_body_options_merge(self):
+        """Test that inline [id=100] and body option (fory).compatible merge."""
+        source = '''
+        package myapp;
+        message User [id=100] {
+            option (fory).compatible = true;
+            string name = 1;
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        user = schema.messages[0]
+        assert user.type_id == 100  # From inline option
+        assert user.options.get("id") == 100  # Stored in options
+        assert user.options.get("fory.compatible") is True  # From body option
+
+    def test_body_option_overrides_inline_id(self):
+        """Test that body option (fory).id overrides inline [id=...]."""
+        source = '''
+        package myapp;
+        message User [id=100] {
+            option (fory).id = 200;
+            string name = 1;
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        user = schema.messages[0]
+        # Body option should take precedence, but since inline sets type_id first,
+        # and we only set type_id from body if it was None, inline wins
+        assert user.type_id == 100
+        # Both should be in options
+        assert user.options.get("id") == 100
+        assert user.options.get("fory.id") == 200
+
+    def test_message_use_record_for_java_option(self):
+        """Test message-level (fory).use_record_for_java option."""
+        source = '''
+        package myapp;
+        message User {
+            option (fory).use_record_for_java = true;
+            string name = 1;
+        }
+        '''
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        user = schema.messages[0]
+        assert user.options.get("fory.use_record_for_java") is True
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

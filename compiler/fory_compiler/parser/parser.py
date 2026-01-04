@@ -22,7 +22,7 @@ from typing import List, Optional, Set
 
 from fory_compiler.parser.lexer import Lexer, Token, TokenType
 
-# Known file-level options
+# Known file-level options (standard protobuf options)
 KNOWN_FILE_OPTIONS: Set[str] = {
     "java_package",
     "java_outer_classname",
@@ -31,7 +31,13 @@ KNOWN_FILE_OPTIONS: Set[str] = {
     "deprecated",
 }
 
-# Known field-level options
+# Known Fory file-level options (extension options)
+KNOWN_FORY_FILE_OPTIONS: Set[str] = {
+    "use_record_for_java_message",
+    "polymorphism",
+}
+
+# Known field-level options (standard protobuf options)
 KNOWN_FIELD_OPTIONS: Set[str] = {
     "deprecated",
     "json_name",
@@ -46,8 +52,30 @@ KNOWN_FIELD_OPTIONS: Set[str] = {
     "features",
 }
 
-# Known type-level options (for messages and enums)
+# Known Fory field-level options (extension options)
+KNOWN_FORY_FIELD_OPTIONS: Set[str] = {
+    "ref",
+    "nullable",
+    "deprecated",
+}
+
+# Known type-level options for inline syntax: [id=100, deprecated=true]
 KNOWN_TYPE_OPTIONS: Set[str] = {
+    "id",
+    "deprecated",
+}
+
+# Known Fory message-level options (option statements inside message body)
+KNOWN_FORY_MESSAGE_OPTIONS: Set[str] = {
+    "id",
+    "compatible",
+    "use_record_for_java",
+    "deprecated",
+    "namespace",
+}
+
+# Known Fory enum-level options (option statements inside enum body)
+KNOWN_FORY_ENUM_OPTIONS: Set[str] = {
     "id",
     "deprecated",
 }
@@ -186,43 +214,79 @@ class Parser:
         self.consume(TokenType.SEMI, "Expected ';' after package name")
         return ".".join(parts)
 
-    def parse_file_option(self) -> tuple:
-        """Parse a file-level option: option java_package = "com.example";
-
-        Returns a tuple of (option_name, option_value).
-        Warns if the option name is not recognized.
-        """
-        option_token = self.consume(TokenType.OPTION)
-        name_token = self.consume(TokenType.IDENT, "Expected option name")
-        option_name = name_token.value
-        self.consume(TokenType.EQUALS, "Expected '=' after option name")
-
-        # Get the option value (can be string, bool, int, or identifier)
+    def parse_option_value(self):
+        """Parse an option value (string, bool, int, or identifier)."""
         if self.check(TokenType.STRING):
-            option_value = self.advance().value
+            return self.advance().value
         elif self.check(TokenType.TRUE):
             self.advance()
-            option_value = True
+            return True
         elif self.check(TokenType.FALSE):
             self.advance()
-            option_value = False
+            return False
         elif self.check(TokenType.INT):
-            option_value = int(self.advance().value)
+            return int(self.advance().value)
         elif self.check(TokenType.IDENT):
-            option_value = self.advance().value
+            return self.advance().value
         else:
             raise self.error(f"Expected option value, got {self.current().type.name}")
+
+    def parse_file_option(self) -> tuple:
+        """Parse a file-level option.
+
+        Supports two syntaxes:
+        1. Standard: option java_package = "com.example";
+        2. Extension: option (fory).use_record_for_java_message = true;
+
+        Returns a tuple of (option_name, option_value).
+        For extension options, the name is prefixed with the extension name: "fory.use_record_for_java_message"
+        """
+        option_token = self.consume(TokenType.OPTION)
+
+        # Check for extension syntax: (extension_name).option_name
+        extension_name = None
+        if self.check(TokenType.LPAREN):
+            self.advance()  # consume (
+            extension_name = self.consume(TokenType.IDENT, "Expected extension name").value
+            self.consume(TokenType.RPAREN, "Expected ')' after extension name")
+            self.consume(TokenType.DOT, "Expected '.' after extension name")
+
+        name_token = self.consume(TokenType.IDENT, "Expected option name")
+        option_name = name_token.value
+
+        # Build full option name for extension options
+        if extension_name:
+            full_option_name = f"{extension_name}.{option_name}"
+        else:
+            full_option_name = option_name
+
+        self.consume(TokenType.EQUALS, "Expected '=' after option name")
+
+        option_value = self.parse_option_value()
 
         self.consume(TokenType.SEMI, "Expected ';' after option statement")
 
         # Warn about unknown options
-        if option_name not in KNOWN_FILE_OPTIONS:
-            warnings.warn(
-                f"Line {name_token.line}: ignoring unknown option '{option_name}'",
-                stacklevel=2
-            )
+        if extension_name:
+            if extension_name == "fory":
+                if option_name not in KNOWN_FORY_FILE_OPTIONS:
+                    warnings.warn(
+                        f"Line {name_token.line}: ignoring unknown fory option '{option_name}'",
+                        stacklevel=2
+                    )
+            else:
+                warnings.warn(
+                    f"Line {name_token.line}: ignoring unknown extension '{extension_name}'",
+                    stacklevel=2
+                )
+        else:
+            if option_name not in KNOWN_FILE_OPTIONS:
+                warnings.warn(
+                    f"Line {name_token.line}: ignoring unknown option '{option_name}'",
+                    stacklevel=2
+                )
 
-        return (option_name, option_value)
+        return (full_option_name, option_value)
 
     def parse_import(self) -> Import:
         """Parse an import statement: import "path/to/file.fdl";"""
@@ -262,25 +326,37 @@ class Parser:
         )
 
     def parse_enum(self) -> Enum:
-        """Parse an enum: enum Color [id=101] { ... }"""
+        """Parse an enum: enum Color [id=101] { ... }
+
+        Supports:
+        - Inline type options: enum Color [id=101] { ... }
+        - Body option statements: option (fory).id = 100;
+        """
         start = self.current()
         self.consume(TokenType.ENUM)
         name = self.consume(TokenType.IDENT, "Expected enum name").value
 
-        # Optional type options: [id=101, deprecated=true]
+        # Optional inline type options: [id=101, deprecated=true]
         type_id = None
+        inline_options = {}
         if self.check(TokenType.LBRACKET):
-            options = self.parse_type_options(name)
-            if "id" in options:
-                type_id = options["id"]
+            inline_options = self.parse_type_options(name)
+            if "id" in inline_options:
+                type_id = inline_options["id"]
 
         self.consume(TokenType.LBRACE, "Expected '{' after enum name")
 
         values = []
+        body_options = {}
         while not self.check(TokenType.RBRACE):
             # Check for option statements
             if self.check(TokenType.OPTION):
-                self.parse_enum_option(name)
+                opt_name, opt_value = self.parse_enum_option(name)
+                body_options[opt_name] = opt_value
+                # Handle fory.id option to set type_id
+                if opt_name == "fory.id" and type_id is None:
+                    if isinstance(opt_value, int) and opt_value > 0:
+                        type_id = opt_value
             # Check for reserved statements
             elif self.check(TokenType.RESERVED):
                 self.parse_reserved()
@@ -289,39 +365,52 @@ class Parser:
 
         self.consume(TokenType.RBRACE, "Expected '}' after enum values")
 
+        # Merge inline options and body options (body options take precedence)
+        all_options = {**inline_options, **body_options}
+
         return Enum(
             name=name,
             type_id=type_id,
             values=values,
+            options=all_options,
             line=start.line,
             column=start.column,
         )
 
-    def parse_enum_option(self, enum_name: str):
+    def parse_enum_option(self, enum_name: str) -> tuple:
         """Parse and validate an enum option statement.
+
+        Supports two syntaxes:
+        1. Standard: option deprecated = true;
+        2. Extension: option (fory).id = 100;
 
         Forbidden options:
         - allow_alias = true: Enum aliases are not supported
+
+        Returns a tuple of (option_name, option_value).
         """
         option_token = self.consume(TokenType.OPTION)
-        option_name = self.consume(TokenType.IDENT, "Expected option name").value
+
+        # Check for extension syntax: (extension_name).option_name
+        extension_name = None
+        if self.check(TokenType.LPAREN):
+            self.advance()  # consume (
+            extension_name = self.consume(TokenType.IDENT, "Expected extension name").value
+            self.consume(TokenType.RPAREN, "Expected ')' after extension name")
+            self.consume(TokenType.DOT, "Expected '.' after extension name")
+
+        name_token = self.consume(TokenType.IDENT, "Expected option name")
+        option_name = name_token.value
+
+        # Build full option name for extension options
+        if extension_name:
+            full_option_name = f"{extension_name}.{option_name}"
+        else:
+            full_option_name = option_name
+
         self.consume(TokenType.EQUALS, "Expected '=' after option name")
 
-        # Get the option value
-        if self.check(TokenType.TRUE):
-            self.advance()
-            option_value = True
-        elif self.check(TokenType.FALSE):
-            self.advance()
-            option_value = False
-        elif self.check(TokenType.IDENT):
-            option_value = self.advance().value
-        elif self.check(TokenType.INT):
-            option_value = int(self.advance().value)
-        elif self.check(TokenType.STRING):
-            option_value = self.advance().value
-        else:
-            raise self.error(f"Expected option value, got {self.current().type.name}")
+        option_value = self.parse_option_value()
 
         self.consume(TokenType.SEMI, "Expected ';' after option statement")
 
@@ -334,28 +423,86 @@ class Parser:
                 option_token.column,
             )
 
-    def parse_message_option(self):
+        # Warn about unknown options
+        if extension_name:
+            if extension_name == "fory":
+                if option_name not in KNOWN_FORY_ENUM_OPTIONS:
+                    warnings.warn(
+                        f"Line {name_token.line}: ignoring unknown fory enum option '{option_name}' in '{enum_name}'",
+                        stacklevel=2
+                    )
+            else:
+                warnings.warn(
+                    f"Line {name_token.line}: ignoring unknown extension '{extension_name}'",
+                    stacklevel=2
+                )
+        else:
+            # Standard options - currently we only recognize deprecated and allow_alias
+            if option_name not in {"deprecated", "allow_alias"}:
+                warnings.warn(
+                    f"Line {name_token.line}: ignoring unknown enum option '{option_name}' in '{enum_name}'",
+                    stacklevel=2
+                )
+
+        return (full_option_name, option_value)
+
+    def parse_message_option(self, message_name: str) -> tuple:
         """Parse a message-level option statement.
 
-        Currently just parses and ignores the option.
+        Supports two syntaxes:
+        1. Standard: option deprecated = true;
+        2. Extension: option (fory).id = 100;
+
+        Returns a tuple of (option_name, option_value).
+        For extension options, the name is prefixed with the extension name.
         """
-        self.consume(TokenType.OPTION)
-        self.consume(TokenType.IDENT, "Expected option name")
+        option_token = self.consume(TokenType.OPTION)
+
+        # Check for extension syntax: (extension_name).option_name
+        extension_name = None
+        if self.check(TokenType.LPAREN):
+            self.advance()  # consume (
+            extension_name = self.consume(TokenType.IDENT, "Expected extension name").value
+            self.consume(TokenType.RPAREN, "Expected ')' after extension name")
+            self.consume(TokenType.DOT, "Expected '.' after extension name")
+
+        name_token = self.consume(TokenType.IDENT, "Expected option name")
+        option_name = name_token.value
+
+        # Build full option name for extension options
+        if extension_name:
+            full_option_name = f"{extension_name}.{option_name}"
+        else:
+            full_option_name = option_name
+
         self.consume(TokenType.EQUALS, "Expected '=' after option name")
 
-        # Get the option value (can be various types)
-        if self.check(TokenType.TRUE) or self.check(TokenType.FALSE):
-            self.advance()
-        elif self.check(TokenType.IDENT):
-            self.advance()
-        elif self.check(TokenType.INT):
-            self.advance()
-        elif self.check(TokenType.STRING):
-            self.advance()
-        else:
-            raise self.error(f"Expected option value, got {self.current().type.name}")
+        option_value = self.parse_option_value()
 
         self.consume(TokenType.SEMI, "Expected ';' after option statement")
+
+        # Warn about unknown options
+        if extension_name:
+            if extension_name == "fory":
+                if option_name not in KNOWN_FORY_MESSAGE_OPTIONS:
+                    warnings.warn(
+                        f"Line {name_token.line}: ignoring unknown fory message option '{option_name}' in '{message_name}'",
+                        stacklevel=2
+                    )
+            else:
+                warnings.warn(
+                    f"Line {name_token.line}: ignoring unknown extension '{extension_name}'",
+                    stacklevel=2
+                )
+        else:
+            # Standard options - currently we only recognize deprecated
+            if option_name not in {"deprecated"}:
+                warnings.warn(
+                    f"Line {name_token.line}: ignoring unknown message option '{option_name}' in '{message_name}'",
+                    stacklevel=2
+                )
+
+        return (full_option_name, option_value)
 
     def parse_reserved(self):
         """Parse a reserved statement.
@@ -417,7 +564,10 @@ class Parser:
     def parse_message(self) -> Message:
         """Parse a message: message Dog [id=102] { ... }
 
-        Supports nested messages and enums:
+        Supports:
+        - Inline type options: message Dog [id=102] { ... }
+        - Body option statements: option (fory).id = 100;
+        - Nested messages and enums:
             message Outer {
                 message Inner { ... }
                 enum Status { ... }
@@ -428,18 +578,20 @@ class Parser:
         self.consume(TokenType.MESSAGE)
         name = self.consume(TokenType.IDENT, "Expected message name").value
 
-        # Optional type options: [id=102, deprecated=true]
+        # Optional inline type options: [id=102, deprecated=true]
         type_id = None
+        inline_options = {}
         if self.check(TokenType.LBRACKET):
-            options = self.parse_type_options(name)
-            if "id" in options:
-                type_id = options["id"]
+            inline_options = self.parse_type_options(name)
+            if "id" in inline_options:
+                type_id = inline_options["id"]
 
         self.consume(TokenType.LBRACE, "Expected '{' after message name")
 
         fields = []
         nested_messages = []
         nested_enums = []
+        body_options = {}
 
         while not self.check(TokenType.RBRACE):
             # Check for reserved statements
@@ -447,7 +599,12 @@ class Parser:
                 self.parse_reserved()
             # Check for option statements (message-level options)
             elif self.check(TokenType.OPTION):
-                self.parse_message_option()
+                opt_name, opt_value = self.parse_message_option(name)
+                body_options[opt_name] = opt_value
+                # Handle fory.id option to set type_id
+                if opt_name == "fory.id" and type_id is None:
+                    if isinstance(opt_value, int) and opt_value > 0:
+                        type_id = opt_value
             # Check for nested message
             elif self.check(TokenType.MESSAGE):
                 nested_messages.append(self.parse_message())
@@ -459,18 +616,27 @@ class Parser:
 
         self.consume(TokenType.RBRACE, "Expected '}' after message fields")
 
+        # Merge inline options and body options (body options take precedence)
+        all_options = {**inline_options, **body_options}
+
         return Message(
             name=name,
             type_id=type_id,
             fields=fields,
             nested_messages=nested_messages,
             nested_enums=nested_enums,
+            options=all_options,
             line=start.line,
             column=start.column,
         )
 
     def parse_field(self) -> Field:
-        """Parse a field: optional ref repeated Type name = 1 [options];"""
+        """Parse a field: optional ref repeated Type name = 1 [options];
+
+        Supports:
+        - Keyword modifiers: optional ref repeated
+        - Bracket options: [deprecated=true, (fory).ref=true]
+        """
         start = self.current()
 
         # Parse modifiers
@@ -493,9 +659,18 @@ class Parser:
         number_token = self.consume(TokenType.INT, "Expected field number")
         number = int(number_token.value)
 
-        # Parse optional field options: [deprecated = true, json_name = "foo"]
+        # Parse optional field options: [deprecated=true, (fory).ref=true]
+        field_options = {}
         if self.check(TokenType.LBRACKET):
-            self.parse_field_options(name)
+            field_options = self.parse_field_options(name)
+            # Handle fory.ref or ref option to set ref flag
+            if field_options.get("fory.ref") is True or field_options.get("fory.tracking_ref") is True:
+                ref = True
+            if field_options.get("ref") is True or field_options.get("tracking_ref") is True:
+                ref = True
+            # Handle fory.nullable or nullable option to set optional flag
+            if field_options.get("fory.nullable") is True or field_options.get("nullable") is True:
+                optional = True
 
         self.consume(TokenType.SEMI, "Expected ';' after field declaration")
 
@@ -505,44 +680,96 @@ class Parser:
             number=number,
             optional=optional,
             ref=ref,
+            options=field_options,
             line=start.line,
             column=start.column,
         )
 
-    def parse_field_options(self, field_name: str):
-        """Parse field options: [deprecated = true, json_name = "foo"]
+    def parse_field_options(self, field_name: str) -> dict:
+        """Parse field options: [deprecated=true, (fory).ref=true]
 
-        Parses and warns about unknown options, then ignores all options.
+        Supports two syntaxes:
+        1. Standard: [deprecated=true, json_name="foo"]
+        2. Extension: [(fory).ref=true, (fory).nullable=true]
+
+        Returns a dict of option names to values.
+        For extension options, the name is prefixed: "fory.ref"
         """
         self.consume(TokenType.LBRACKET)
+        options = {}
 
         while True:
-            # Parse option name
-            name_token = self.consume(TokenType.IDENT, "Expected option name")
-            option_name = name_token.value
+            # Check for extension syntax: (extension_name).option_name
+            extension_name = None
+            if self.check(TokenType.LPAREN):
+                self.advance()  # consume (
+                extension_name = self.consume(TokenType.IDENT, "Expected extension name").value
+                self.consume(TokenType.RPAREN, "Expected ')' after extension name")
+                self.consume(TokenType.DOT, "Expected '.' after extension name")
+
+            # Parse option name (can be IDENT or keyword like 'ref', 'optional', etc.)
+            name_token = self.current()
+            if self.check(TokenType.IDENT):
+                self.advance()
+                option_name = name_token.value
+            elif self.check(TokenType.REF):
+                # 'ref' is a keyword but valid as option name
+                self.advance()
+                option_name = "ref"
+            elif self.check(TokenType.OPTIONAL):
+                # 'optional' is a keyword but valid as option name
+                self.advance()
+                option_name = "optional"
+            elif self.check(TokenType.REPEATED):
+                # 'repeated' is a keyword but valid as option name
+                self.advance()
+                option_name = "repeated"
+            elif self.check(TokenType.WEAK):
+                # 'weak' is a keyword but valid as option name
+                self.advance()
+                option_name = "weak"
+            elif self.check(TokenType.TRUE):
+                # 'true' can be used as option name in some contexts
+                self.advance()
+                option_name = "true"
+            elif self.check(TokenType.FALSE):
+                # 'false' can be used as option name in some contexts
+                self.advance()
+                option_name = "false"
+            else:
+                raise self.error(f"Expected option name, got {self.current().type.name}")
+
+            # Build full option name for extension options
+            if extension_name:
+                full_option_name = f"{extension_name}.{option_name}"
+            else:
+                full_option_name = option_name
 
             self.consume(TokenType.EQUALS, "Expected '=' after option name")
 
-            # Parse option value (can be string, bool, int, or identifier)
-            if self.check(TokenType.STRING):
-                self.advance()
-            elif self.check(TokenType.TRUE):
-                self.advance()
-            elif self.check(TokenType.FALSE):
-                self.advance()
-            elif self.check(TokenType.INT):
-                self.advance()
-            elif self.check(TokenType.IDENT):
-                self.advance()
-            else:
-                raise self.error(f"Expected option value, got {self.current().type.name}")
+            # Parse option value
+            option_value = self.parse_option_value()
+            options[full_option_name] = option_value
 
             # Warn about unknown field options
-            if option_name not in KNOWN_FIELD_OPTIONS:
-                warnings.warn(
-                    f"Line {name_token.line}: ignoring unknown field option '{option_name}' on field '{field_name}'",
-                    stacklevel=2
-                )
+            if extension_name:
+                if extension_name == "fory":
+                    if option_name not in KNOWN_FORY_FIELD_OPTIONS:
+                        warnings.warn(
+                            f"Line {name_token.line}: ignoring unknown fory field option '{option_name}' on field '{field_name}'",
+                            stacklevel=2
+                        )
+                else:
+                    warnings.warn(
+                        f"Line {name_token.line}: ignoring unknown extension '{extension_name}'",
+                        stacklevel=2
+                    )
+            else:
+                if option_name not in KNOWN_FIELD_OPTIONS:
+                    warnings.warn(
+                        f"Line {name_token.line}: ignoring unknown field option '{option_name}' on field '{field_name}'",
+                        stacklevel=2
+                    )
 
             # Check for comma (more options) or closing bracket (end)
             if self.check(TokenType.COMMA):
@@ -553,6 +780,7 @@ class Parser:
                 raise self.error("Expected ',' or ']' in field options")
 
         self.consume(TokenType.RBRACKET, "Expected ']' after field options")
+        return options
 
     def parse_type_options(self, type_name: str) -> dict:
         """Parse type options: [id=100, deprecated=true]

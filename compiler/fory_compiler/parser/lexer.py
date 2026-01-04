@@ -53,6 +53,8 @@ class TokenType(Enum):
     RBRACE = auto()  # }
     LBRACKET = auto()  # [
     RBRACKET = auto()  # ]
+    LPAREN = auto()  # (
+    RPAREN = auto()  # )
     LANGLE = auto()  # <
     RANGLE = auto()  # >
     SEMI = auto()  # ;
@@ -113,6 +115,8 @@ class Lexer:
         "}": TokenType.RBRACE,
         "[": TokenType.LBRACKET,
         "]": TokenType.RBRACKET,
+        "(": TokenType.LPAREN,
+        ")": TokenType.RPAREN,
         "<": TokenType.LANGLE,
         ">": TokenType.RANGLE,
         ";": TokenType.SEMI,

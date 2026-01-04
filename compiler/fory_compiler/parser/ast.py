@@ -108,6 +108,7 @@ class Field:
     number: int
     optional: bool = False
     ref: bool = False
+    options: dict = field(default_factory=dict)
     line: int = 0
     column: int = 0
 
@@ -118,7 +119,8 @@ class Field:
         if self.ref:
             modifiers.append("ref")
         mod_str = " ".join(modifiers) + " " if modifiers else ""
-        return f"Field({mod_str}{self.field_type} {self.name} = {self.number})"
+        opts_str = f" [{self.options}]" if self.options else ""
+        return f"Field({mod_str}{self.field_type} {self.name} = {self.number}{opts_str})"
 
 
 @dataclass
@@ -155,15 +157,17 @@ class Message:
     fields: List[Field] = field(default_factory=list)
     nested_messages: List["Message"] = field(default_factory=list)
     nested_enums: List["Enum"] = field(default_factory=list)
+    options: dict = field(default_factory=dict)
     line: int = 0
     column: int = 0
 
     def __repr__(self) -> str:
-        id_str = f" @{self.type_id}" if self.type_id is not None else ""
+        id_str = f" [id={self.type_id}]" if self.type_id is not None else ""
         nested_str = ""
         if self.nested_messages or self.nested_enums:
             nested_str = f", nested={len(self.nested_messages)}msg+{len(self.nested_enums)}enum"
-        return f"Message({self.name}{id_str}, fields={self.fields}{nested_str})"
+        opts_str = f", options={len(self.options)}" if self.options else ""
+        return f"Message({self.name}{id_str}, fields={self.fields}{nested_str}{opts_str})"
 
     def get_nested_type(self, name: str) -> Optional[Union["Message", "Enum"]]:
         """Look up a nested type by name."""
@@ -183,12 +187,14 @@ class Enum:
     name: str
     type_id: Optional[int]
     values: List[EnumValue] = field(default_factory=list)
+    options: dict = field(default_factory=dict)
     line: int = 0
     column: int = 0
 
     def __repr__(self) -> str:
-        id_str = f" @{self.type_id}" if self.type_id is not None else ""
-        return f"Enum({self.name}{id_str}, values={self.values})"
+        id_str = f" [id={self.type_id}]" if self.type_id is not None else ""
+        opts_str = f", options={len(self.options)}" if self.options else ""
+        return f"Enum({self.name}{id_str}, values={self.values}{opts_str})"
 
 
 @dataclass
