@@ -24,11 +24,10 @@ on:
     paths: [ci/**, python/**, .github/workflows/**]
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
+  build-windows:
+    runs-on: windows-latest
     strategy:
       matrix:
-        os: [macos-latest, windows-latest]
         python-version: ['3.13']
     steps:
       - uses: actions/checkout@v5
@@ -44,11 +43,7 @@ jobs:
             ~/.local/bin/bazel
             C:\bazel\bazel.exe
           key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
-      - name: Install bazel
-        if: runner.os != 'Windows'
-        run: ./ci/run_ci.sh install_bazel
       - name: Install bazel (Windows)
-        if: runner.os == 'Windows'
         run: ./ci/run_ci.sh install_bazel_windows
         shell: bash
       - name: Build wheel
@@ -63,5 +58,140 @@ jobs:
       - name: Upload wheels as artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: pyfory-wheels-native-${{ matrix.os }}-${{ matrix.python-version }}
+          name: pyfory-wheels-native-windows-${{ matrix.python-version }}
+          path: dist/*.whl
+
+  build-macos-arm64:
+    runs-on: macos-15
+    strategy:
+      matrix:
+        python-version: ['3.13']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - name: Cache Bazel binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/bin/bazel
+            ~/.local/bin/bazel
+          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
+      - name: Install bazel
+        run: ./ci/run_ci.sh install_bazel
+      - name: Build wheel
+        run: ./ci/deploy.sh build_pyfory
+        shell: bash
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+          PYFORY_WHEEL_PLAT: macosx_11_0_arm64
+      - name: Install and verify wheel
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install dist/*.whl
+          python -c "import pyfory; print(pyfory.__version__)"
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyfory-macos-arm64-wheel-${{ matrix.python-version }}
+          path: dist/*.whl
+
+  build-macos-x86_64:
+    runs-on: macos-15-intel
+    strategy:
+      matrix:
+        python-version: ['3.13']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - name: Cache Bazel binary
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/bin/bazel
+            ~/.local/bin/bazel
+          key: bazel-binary-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.bazelversion') }}
+      - name: Install bazel
+        run: ./ci/run_ci.sh install_bazel
+      - name: Build wheel
+        run: ./ci/deploy.sh build_pyfory
+        shell: bash
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+          PYFORY_WHEEL_PLAT: macosx_11_0_x86_64
+      - name: Install and verify wheel
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install dist/*.whl
+          python -c "import pyfory; print(pyfory.__version__)"
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyfory-macos-x86_64-wheel-${{ matrix.python-version }}
+          path: dist/*.whl
+
+  merge-macos-universal2:
+    runs-on: macos-15
+    needs: [build-macos-arm64, build-macos-x86_64]
+    strategy:
+      matrix:
+        python-version: ['3.13']
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install wheel tooling
+        run: python -m pip install --upgrade pip wheel
+      - name: Download arch wheels
+        uses: actions/download-artifact@v5
+        with:
+          pattern: pyfory-macos-*-wheel-${{ matrix.python-version }}
+          path: artifacts
+          merge-multiple: true
+      - name: Build universal2 wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p unpacked dist
+          ARM_WHL=$(ls artifacts/*arm64*.whl | head -n1)
+          X86_WHL=$(ls artifacts/*x86_64*.whl | head -n1)
+          python -m wheel unpack "$ARM_WHL" -d unpacked/arm64
+          python -m wheel unpack "$X86_WHL" -d unpacked/x86_64
+          ARM_DIR=$(ls -d unpacked/arm64/pyfory-*)
+          X86_DIR=$(ls -d unpacked/x86_64/pyfory-*)
+          UNIVERSAL_DIR="unpacked/pyfory-universal2"
+          cp -R "$ARM_DIR" "$UNIVERSAL_DIR"
+          for so in pyfory/_util.so pyfory/serialization.so pyfory/format/_format.so pyfory/lib/mmh3/mmh3.so; do
+            lipo -create "$ARM_DIR/$so" "$X86_DIR/$so" -output "$UNIVERSAL_DIR/$so"
+          done
+          WHEEL_FILE=$(ls "$UNIVERSAL_DIR"/pyfory-*.dist-info/WHEEL)
+          sed -i '' -e 's/macosx_11_0_arm64/macosx_11_0_universal2/g' \
+            -e 's/macosx_11_0_x86_64/macosx_11_0_universal2/g' \
+            "$WHEEL_FILE"
+          python -m wheel pack "$UNIVERSAL_DIR" -d dist
+      - name: Verify universal2 binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verify
+          for whl in dist/*.whl; do
+            python -m wheel unpack "$whl" -d verify
+          done
+          VERIFY_DIR=$(ls -d verify/pyfory-*)
+          WHEEL_FILE=$(ls "$VERIFY_DIR"/pyfory-*.dist-info/WHEEL)
+          grep -q "macosx_11_0_universal2" "$WHEEL_FILE"
+          for so in pyfory/_util.so pyfory/serialization.so pyfory/format/_format.so pyfory/lib/mmh3/mmh3.so; do
+            echo "$so: $(lipo -archs "$VERIFY_DIR/$so")"
+          done
+      - name: Upload universal2 wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyfory-wheels-native-macos-universal2-${{ matrix.python-version }}
           path: dist/*.whl

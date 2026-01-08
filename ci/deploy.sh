@@ -90,13 +90,18 @@ build_pyfory() {
   $PIP_CMD install setuptools -U
 
   if [[ "$OSTYPE" == "darwin"* ]]; then
-    MACOS_VERSION=$(sw_vers -productVersion | cut -d. -f1-2)
-    echo "MACOS_VERSION: $MACOS_VERSION"
-    if [[ "$MACOS_VERSION" == "13"* ]]; then
-      export MACOSX_DEPLOYMENT_TARGET=10.13
-      $PYTHON_CMD setup.py bdist_wheel --plat-name macosx_10_13_x86_64 --dist-dir="$ROOT/dist"
+    if [ -n "${PYFORY_WHEEL_PLAT:-}" ]; then
+      echo "PYFORY_WHEEL_PLAT: $PYFORY_WHEEL_PLAT"
+      $PYTHON_CMD setup.py bdist_wheel --plat-name "$PYFORY_WHEEL_PLAT" --dist-dir="$ROOT/dist"
     else
-      $PYTHON_CMD setup.py bdist_wheel --dist-dir="$ROOT/dist"
+      MACOS_VERSION=$(sw_vers -productVersion | cut -d. -f1-2)
+      echo "MACOS_VERSION: $MACOS_VERSION"
+      if [[ "$MACOS_VERSION" == "13"* ]]; then
+        export MACOSX_DEPLOYMENT_TARGET=10.13
+        $PYTHON_CMD setup.py bdist_wheel --plat-name macosx_10_13_x86_64 --dist-dir="$ROOT/dist"
+      else
+        $PYTHON_CMD setup.py bdist_wheel --dist-dir="$ROOT/dist"
+      fi
     fi
   elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
 
