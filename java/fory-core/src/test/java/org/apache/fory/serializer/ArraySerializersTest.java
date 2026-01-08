@@ -35,6 +35,7 @@ import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.config.ForyBuilder;
 import org.apache.fory.config.Language;
+import org.apache.fory.config.LongEncoding;
 import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.test.bean.ArraysData;
 import org.apache.fory.type.Descriptor;
@@ -375,6 +376,7 @@ public class ArraySerializersTest extends ForyTestBase {
     Fory fory = Fory.builder()
         .requireClassRegistration(false)
         .withLongArrayCompressed(true)
+        .withLongCompressed(LongEncoding.PVL)
         .build();
 
     // Test empty array
@@ -429,6 +431,7 @@ public class ArraySerializersTest extends ForyTestBase {
     Fory foryVariable = Fory.builder()
         .requireClassRegistration(false)
         .withLongArrayCompressed(true)
+        .withLongCompressed(LongEncoding.PVL)
         .build();
 
    // Create an array with many small values (0-127, which can be encoded in 1-2 bytes with varint)
