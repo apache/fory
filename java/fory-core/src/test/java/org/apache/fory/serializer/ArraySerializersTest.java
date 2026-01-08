@@ -363,4 +363,170 @@ public class ArraySerializersTest extends ForyTestBase {
     Assert.assertNotSame(copy.array, wrapper.array);
     Assert.assertNotSame(copy, wrapper);
   }
+
+  /**
+   * Test variable-length encoding for long arrays.
+   * This test verifies that long arrays can be serialized and deserialized
+   * using variable-length encoding when supportVarLenEncoding is enabled.
+   */
+  @Test
+  public void testVariableLengthLongArray() {
+    Fory fory = Fory.builder().requireClassRegistration(false).build();
+    
+    // Register LongArraySerializer with variable-length encoding support
+    ArraySerializers.LongArraySerializer serializer =
+        new ArraySerializers.LongArraySerializer(fory, true);
+    fory.getClassResolver().registerInternalSerializer(long[].class, serializer);
+
+    // Test empty array
+    long[] emptyArray = new long[0];
+    long[] deserializedEmpty = (long[]) serDe(fory, fory, emptyArray);
+    assertEquals(deserializedEmpty.length, 0);
+
+    // Test array with small values (benefits from variable-length encoding)
+    long[] smallValues = {1L, 2L, 3L, 127L, 128L, 255L};
+    long[] deserializedSmall = (long[]) serDe(fory, fory, smallValues);
+    assertTrue(Arrays.equals(deserializedSmall, smallValues));
+
+    // Test array with mixed small and large values
+    long[] mixedValues = {0L, 1L, -1L, 100L, -100L, Long.MAX_VALUE, Long.MIN_VALUE, 1000L};
+    long[] deserializedMixed = (long[]) serDe(fory, fory, mixedValues);
+    assertTrue(Arrays.equals(deserializedMixed, mixedValues));
+
+    // Test array with large values
+    long[] largeValues = {Long.MAX_VALUE, Long.MIN_VALUE, Long.MAX_VALUE / 2, Long.MIN_VALUE / 2};
+    long[] deserializedLarge = (long[]) serDe(fory, fory, largeValues);
+    assertTrue(Arrays.equals(deserializedLarge, largeValues));
+
+    // Test array with negative values
+    long[] negativeValues = {-1L, -100L, -1000L, -1000000L};
+    long[] deserializedNegative = (long[]) serDe(fory, fory, negativeValues);
+    assertTrue(Arrays.equals(deserializedNegative, negativeValues));
+
+    // Test large array with many small values
+    long[] largeArray = new long[1000];
+    for (int i = 0; i < largeArray.length; i++) {
+      largeArray[i] = i % 100; // Small values benefit from variable-length encoding
+    }
+    long[] deserializedLargeArray = (long[]) serDe(fory, fory, largeArray);
+    assertTrue(Arrays.equals(deserializedLargeArray, largeArray));
+  }
+
+  /**
+   * Test that variable-length encoding is more efficient (smaller size) than fixed-length encoding
+   * when the long array contains many small values.
+   * This demonstrates the space efficiency benefit of variable-length encoding for arrays with
+   * predominantly small values.
+   */
+  @Test
+  public void testVariableLengthEncodingEfficiencyForSmallValues() {
+    // Create a Fory instance with fixed-length encoding (default)
+    Fory foryFixed = Fory.builder().requireClassRegistration(false).build();
+    ArraySerializers.LongArraySerializer fixedSerializer =
+        new ArraySerializers.LongArraySerializer(foryFixed, false);
+    foryFixed.getClassResolver().registerInternalSerializer(long[].class, fixedSerializer);
+
+    // Create a Fory instance with variable-length encoding
+    Fory foryVariable = Fory.builder().requireClassRegistration(false).build();
+    ArraySerializers.LongArraySerializer variableSerializer =
+        new ArraySerializers.LongArraySerializer(foryVariable, true);
+    foryVariable.getClassResolver().registerInternalSerializer(long[].class, variableSerializer);
+
+    // Create an array with many small values (0-127, which can be encoded in 1-2 bytes with varint)
+    int arraySize = 10000;
+    long[] smallValuesArray = new long[arraySize];
+    for (int i = 0; i < arraySize; i++) {
+      // Use values from 0 to 127, which benefit most from variable-length encoding
+      smallValuesArray[i] = i % 128;
+    }
+
+    // Serialize with fixed-length encoding (8 bytes per element)
+    byte[] fixedBytes = foryFixed.serialize(smallValuesArray);
+    int fixedSize = fixedBytes.length;
+
+    // Serialize with variable-length encoding (1-2 bytes per small element)
+    byte[] variableBytes = foryVariable.serialize(smallValuesArray);
+    int variableSize = variableBytes.length;
+
+    // Verify both can be deserialized correctly
+    long[] deserializedFixed = (long[]) foryFixed.deserialize(fixedBytes);
+    long[] deserializedVariable = (long[]) foryVariable.deserialize(variableBytes);
+    assertTrue(Arrays.equals(deserializedFixed, smallValuesArray));
+    assertTrue(Arrays.equals(deserializedVariable, smallValuesArray));
+
+    // Calculate efficiency metrics
+    int sizeDifference = fixedSize - variableSize;
+    double percentageReduction = 100.0 * sizeDifference / fixedSize;
+
+    System.out.printf(
+        "Array size: %d elements (values 0-127)%n"
+            + "Fixed-length encoding: %d bytes (%.2f bytes/element)%n"
+            + "Variable-length encoding: %d bytes (%.2f bytes/element)%n"
+            + "Space savings: %d bytes (%.2f%% reduction)%n",
+        arraySize,
+        fixedSize,
+        (double) fixedSize / arraySize,
+        variableSize,
+        (double) variableSize / arraySize,
+        sizeDifference,
+        percentageReduction);
+
+    // Verify that variable-length encoding produces smaller or equal size
+    // For arrays with many small values, variable-length should be significantly smaller
+    assertTrue(
+        variableSize < fixedSize,
+        String.format(
+            "Expected variable-length encoding (%d bytes) to be smaller than fixed-length (%d bytes) "
+                + "for array with many small values",
+            variableSize, fixedSize));
+
+    // Verify significant space savings (at least 50% reduction for small values)
+    // Fixed-length: 8 bytes per element + overhead
+    // Variable-length: 1-2 bytes per small element + overhead
+    // For values 0-127, we expect at least 50% reduction
+    assertTrue(
+        percentageReduction >= 50.0,
+        String.format(
+            "Expected at least 50%% size reduction for small values, but got %.2f%%",
+            percentageReduction));
+
+    // Test with slightly larger values (0-1023) to show variable-length still helps
+    long[] mediumValuesArray = new long[arraySize];
+    for (int i = 0; i < arraySize; i++) {
+      mediumValuesArray[i] = i % 1024;
+    }
+
+    byte[] fixedBytesMedium = foryFixed.serialize(mediumValuesArray);
+    byte[] variableBytesMedium = foryVariable.serialize(mediumValuesArray);
+    int fixedSizeMedium = fixedBytesMedium.length;
+    int variableSizeMedium = variableBytesMedium.length;
+
+    // Verify deserialization
+    long[] deserializedFixedMedium = (long[]) foryFixed.deserialize(fixedBytesMedium);
+    long[] deserializedVariableMedium = (long[]) foryVariable.deserialize(variableBytesMedium);
+    assertTrue(Arrays.equals(deserializedFixedMedium, mediumValuesArray));
+    assertTrue(Arrays.equals(deserializedVariableMedium, mediumValuesArray));
+
+    int sizeDifferenceMedium = fixedSizeMedium - variableSizeMedium;
+    double percentageReductionMedium = 100.0 * sizeDifferenceMedium / fixedSizeMedium;
+
+    System.out.printf(
+        "Array size: %d elements (values 0-1023)%n"
+            + "Fixed-length encoding: %d bytes%n"
+            + "Variable-length encoding: %d bytes%n"
+            + "Space savings: %d bytes (%.2f%% reduction)%n",
+        arraySize,
+        fixedSizeMedium,
+        variableSizeMedium,
+        sizeDifferenceMedium,
+        percentageReductionMedium);
+
+    // For medium values (0-1023), variable-length should still be smaller
+    assertTrue(
+        variableSizeMedium < fixedSizeMedium,
+        String.format(
+            "Expected variable-length encoding (%d bytes) to be smaller than fixed-length (%d bytes) "
+                + "for array with medium values",
+            variableSizeMedium, fixedSizeMedium));
+  }
 }

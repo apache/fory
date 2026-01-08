@@ -488,13 +488,26 @@ public class ArraySerializers {
 
   public static final class LongArraySerializer extends PrimitiveArraySerializer<long[]> {
 
+     // Each element is encoded using variable-length encoding, which is more space-efficient
+     // for arrays containing many small values.
+    private boolean supportVarLenEncoding;
+
     public LongArraySerializer(Fory fory) {
-      super(fory, long[].class);
+      this(fory, false);
+    }
+
+    public LongArraySerializer(Fory fory, boolean supportVarLenEncoding) {
+        super(fory, long[].class);
+        this.supportVarLenEncoding = supportVarLenEncoding;
     }
 
     @Override
     public void write(MemoryBuffer buffer, long[] value) {
       if (fory.getBufferCallback() == null) {
+        if (supportVarLenEncoding) {
+            writeVarLongs(buffer, value);
+            return;
+        }
         int size = Math.multiplyExact(value.length, 8);
         buffer.writePrimitiveArrayWithSize(value, Platform.LONG_ARRAY_OFFSET, size);
       } else {
@@ -521,12 +534,31 @@ public class ArraySerializers {
         }
         return values;
       }
-
+      if(supportVarLenEncoding){
+          return readVarLongs(buffer);
+      }
       int size = buffer.readVarUint32Small7();
       int numElements = size / 8;
       long[] values = new long[numElements];
       if (size > 0) {
         buffer.readToUnsafe(values, Platform.LONG_ARRAY_OFFSET, size);
+      }
+      return values;
+    }
+
+    private void writeVarLongs(MemoryBuffer buffer, long[] value) {
+      int length = value.length;
+      buffer.writeVarUint32Small7(length);
+      for (int i = 0; i < length; i++) {
+        buffer.writeVarInt64(value[i]);
+      }
+    }
+
+    public long[] readVarLongs(MemoryBuffer buffer) {
+      int numElements = buffer.readVarUint32Small7();
+      long[] values = new long[numElements];
+      for (int i = 0; i < numElements; i++) {
+        values[i] = buffer.readVarInt64();
       }
       return values;
     }
