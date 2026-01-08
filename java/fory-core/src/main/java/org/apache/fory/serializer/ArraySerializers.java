@@ -488,23 +488,14 @@ public class ArraySerializers {
 
   public static final class LongArraySerializer extends PrimitiveArraySerializer<long[]> {
 
-     // Each element is encoded using variable-length encoding, which is more space-efficient
-     // for arrays containing many small values.
-    private boolean supportVarLenEncoding;
-
     public LongArraySerializer(Fory fory) {
-      this(fory, false);
-    }
-
-    public LongArraySerializer(Fory fory, boolean supportVarLenEncoding) {
         super(fory, long[].class);
-        this.supportVarLenEncoding = supportVarLenEncoding;
     }
 
     @Override
     public void write(MemoryBuffer buffer, long[] value) {
       if (fory.getBufferCallback() == null) {
-        if (supportVarLenEncoding) {
+        if (fory.getConfig().compressLongArray()) {
             writeVarLongs(buffer, value);
             return;
         }
@@ -534,7 +525,7 @@ public class ArraySerializers {
         }
         return values;
       }
-      if(supportVarLenEncoding){
+      if(fory.getConfig().compressLongArray()){
           return readVarLongs(buffer);
       }
       int size = buffer.readVarUint32Small7();

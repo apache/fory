@@ -367,16 +367,15 @@ public class ArraySerializersTest extends ForyTestBase {
   /**
    * Test variable-length encoding for long arrays.
    * This test verifies that long arrays can be serialized and deserialized
-   * using variable-length encoding when supportVarLenEncoding is enabled.
+   * using variable-length encoding when compressLongArray is enabled.
    */
   @Test
   public void testVariableLengthLongArray() {
-    Fory fory = Fory.builder().requireClassRegistration(false).build();
-
-    // Register LongArraySerializer with variable-length encoding support
-    ArraySerializers.LongArraySerializer serializer =
-        new ArraySerializers.LongArraySerializer(fory, true);
-    fory.getClassResolver().registerInternalSerializer(long[].class, serializer);
+    // Create Fory instance with variable-length encoding enabled for long arrays
+    Fory fory = Fory.builder()
+        .requireClassRegistration(false)
+        .withLongArrayCompressed(true)
+        .build();
 
     // Test empty array
     long[] emptyArray = new long[0];
@@ -420,16 +419,17 @@ public class ArraySerializersTest extends ForyTestBase {
    */
   @Test
   public void testVariableLengthEncodingEfficiencyForSmallValues() {
-   // Create a Fory instance with fixed-length encoding (default)
-   Fory foryFixed = Fory.builder().requireClassRegistration(false).build();
-   ArraySerializers.LongArraySerializer fixedSerializer = new ArraySerializers.LongArraySerializer(foryFixed, false);
-   foryFixed.getClassResolver().registerInternalSerializer(long[].class, fixedSerializer);
+    // Create a Fory instance with fixed-length encoding (compressLongArray disabled)
+    Fory foryFixed = Fory.builder()
+        .requireClassRegistration(false)
+        .withLongArrayCompressed(false)
+        .build();
 
-   // Create a Fory instance with variable-length encoding
-   Fory foryVariable = Fory.builder().requireClassRegistration(false).build();
-   ArraySerializers.LongArraySerializer variableSerializer =
-     new ArraySerializers.LongArraySerializer(foryVariable, true);
-   foryVariable.getClassResolver().registerInternalSerializer(long[].class, variableSerializer);
+    // Create a Fory instance with variable-length encoding (compressLongArray enabled)
+    Fory foryVariable = Fory.builder()
+        .requireClassRegistration(false)
+        .withLongArrayCompressed(true)
+        .build();
 
    // Create an array with many small values (0-127, which can be encoded in 1-2 bytes with varint)
    int arraySize = 10000;
