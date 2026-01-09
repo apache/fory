@@ -491,13 +491,13 @@ public class ArraySerializers {
   public static final class LongArraySerializer extends PrimitiveArraySerializer<long[]> {
 
     public LongArraySerializer(Fory fory) {
-        super(fory, long[].class);
+      super(fory, long[].class);
     }
 
     @Override
     public void write(MemoryBuffer buffer, long[] value) {
       if (fory.getBufferCallback() == null) {
-        if(compressArray(fory.getConfig())){
+        if (compressArray(fory.getConfig())) {
           writeInt64s(buffer, value, fory.getConfig().longEncoding());
           return;
         }
@@ -505,8 +505,8 @@ public class ArraySerializers {
         buffer.writePrimitiveArrayWithSize(value, Platform.LONG_ARRAY_OFFSET, size);
       } else {
         fory.writeBufferObject(
-          buffer,
-          new PrimitiveArrayBufferObject(value, Platform.LONG_ARRAY_OFFSET, 8, value.length));
+            buffer,
+            new PrimitiveArrayBufferObject(value, Platform.LONG_ARRAY_OFFSET, 8, value.length));
       }
     }
 
@@ -527,7 +527,7 @@ public class ArraySerializers {
         }
         return values;
       }
-      if(compressArray(fory.getConfig())){
+      if (compressArray(fory.getConfig())) {
         return readInt64s(buffer, fory.getConfig().longEncoding());
       }
       int size = buffer.readVarUint32Small7();
@@ -539,15 +539,15 @@ public class ArraySerializers {
       return values;
     }
 
-      private boolean compressArray(Config config) {
-        return config.compressLongArray() && config.longEncoding() != LongEncoding.LE_RAW_BYTES;
-      }
+    private boolean compressArray(Config config) {
+      return config.compressLongArray() && config.longEncoding() != LongEncoding.LE_RAW_BYTES;
+    }
 
     private void writeInt64s(MemoryBuffer buffer, long[] value, LongEncoding longEncoding) {
       int length = value.length;
       buffer.writeVarUint32Small7(length);
 
-      if(longEncoding == LongEncoding.SLI){
+      if (longEncoding == LongEncoding.SLI) {
         for (int i = 0; i < length; i++) {
           buffer.writeSliInt64(value[i]);
         }
@@ -562,7 +562,7 @@ public class ArraySerializers {
       int numElements = buffer.readVarUint32Small7();
       long[] values = new long[numElements];
 
-      if(longEncoding == LongEncoding.SLI){
+      if (longEncoding == LongEncoding.SLI) {
         for (int i = 0; i < numElements; i++) {
           values[i] = buffer.readSliInt64();
         }
