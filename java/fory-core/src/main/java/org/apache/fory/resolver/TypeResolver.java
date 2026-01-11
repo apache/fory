@@ -734,7 +734,7 @@ public abstract class TypeResolver {
   }
 
   final GraalvmSupport.GraalvmClassRegistry getGraalvmClassRegistry() {
-    return GraalvmSupport.getClassRegistry(fory.getConfig().getConfigHash());
+    return GraalvmSupport.getClassRegistry(fory.getConfigHash());
   }
 
   final Class<? extends Serializer> getGraalvmSerializerClass(Serializer serializer) {
