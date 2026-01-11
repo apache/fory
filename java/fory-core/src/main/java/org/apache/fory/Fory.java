@@ -27,8 +27,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -108,10 +106,7 @@ public final class Fory implements BaseFory {
   private static final boolean isLittleEndian = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
   private static final byte BITMAP = isLittleEndian ? isLittleEndianFlag : 0;
   private static final short MAGIC_NUMBER = 0x62D4;
-  private static final AtomicInteger counter = new AtomicInteger(0);
-  // Different config instance with equality will be hold only one instance, no memory
-  // leak will happen.
-  private static final ConcurrentMap<Config, Integer> configIdMap = new ConcurrentHashMap<>();
+  private static final AtomicInteger runtimeHashCounter = new AtomicInteger(0);
 
   private final Config config;
   private final boolean refTracking;
@@ -147,6 +142,7 @@ public final class Fory implements BaseFory {
     // Avoid set classLoader in `ForyBuilder`, which won't be clear when
     // `org.apache.fory.ThreadSafeFory.clearClassLoader` is called.
     config = new Config(builder);
+    this.configHash = runtimeHashCounter.incrementAndGet();
     crossLanguage = config.getLanguage() != Language.JAVA;
     this.refTracking = config.trackingRef();
     this.copyRefTracking = config.copyRef();
@@ -242,6 +238,7 @@ public final class Fory implements BaseFory {
   @Override
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
     _getTypeResolver().registerSerializer(type, serializerClass);
+    invalidateCodegenCache();
   }
 
   @Override
@@ -252,6 +249,14 @@ public final class Fory implements BaseFory {
   @Override
   public void registerSerializer(Class<?> type, Function<Fory, Serializer<?>> serializerCreator) {
     _getTypeResolver().registerSerializer(type, serializerCreator.apply(this));
+  }
+
+  public int getConfigHash() {
+    return configHash;
+  }
+
+  private void invalidateCodegenCache() {
+    this.configHash = runtimeHashCounter.incrementAndGet();
   }
 
   @Override
@@ -759,13 +764,6 @@ public final class Fory implements BaseFory {
         return stringSerializer.read(buffer);
       }
     }
-  }
-
-  public int getConfigHash() {
-    if (configHash == 0) {
-      configHash = configIdMap.computeIfAbsent(config, k -> counter.incrementAndGet());
-    }
-    return configHash;
   }
 
   public void writeJavaString(MemoryBuffer buffer, String str) {

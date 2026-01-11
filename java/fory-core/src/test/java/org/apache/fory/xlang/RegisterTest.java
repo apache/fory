@@ -143,11 +143,10 @@ public class RegisterTest extends ForyTestBase {
     foryA.registerSerializer(MyExt.class, MyExtSerializer.class);
     foryA.register(MyWrapper.class, 104);
 
-    MyWrapper wrapper = new MyWrapper();
-    wrapper.color = Color.Red;
-    wrapper.my_struct = new MyStruct(10);
-    wrapper.my_ext = new MyExt(20);
-    byte[] serializedByA = foryA.serialize(wrapper);
+    MyWrapper wrapperA = new MyWrapper();
+    wrapperA.color = Color.Red;
+    wrapperA.my_struct = new MyStruct(10);
+    wrapperA.my_ext = new MyExt(20);
 
     Fory foryB =
         Fory.builder()
@@ -161,16 +160,20 @@ public class RegisterTest extends ForyTestBase {
     // NO MyExtSerializer registered
     foryB.register(MyWrapper.class, 104);
 
+    MyWrapper wrapperB = new MyWrapper();
+    wrapperB.color = Color.Blue;
+    wrapperB.my_struct = new MyStruct(30);
+    wrapperB.my_ext = new MyExt(40);
+
     try {
-      MyWrapper result = (MyWrapper) foryB.deserialize(serializedByA);
-      Assert.assertNotNull(result);
+      byte[] serializedByB = foryB.serialize(wrapperB);
+      MyWrapper deserializedB = (MyWrapper) foryB.deserialize(serializedByB);
+
+      Assert.assertNotNull(deserializedB);
+      Assert.assertEquals(deserializedB.my_ext.id, 40);
 
     } catch (Exception e) {
-      Assert.fail(
-          "Codegen cache collision bug: foryB cannot deserialize data serialized by foryA "
-              + "because it's using foryA's codegen which expects MyExtSerializer. "
-              + "Exception: "
-              + e.getMessage());
+      Assert.fail("foryB tried to use foryA's codegen. Exception: " + e.getMessage());
     }
   }
 }
