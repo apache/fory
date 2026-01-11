@@ -250,7 +250,7 @@ public class ClassResolver extends TypeResolver {
     classInfoCache = NIL_CLASS_INFO;
     extRegistry.classIdGenerator = REPLACE_STUB_ID + 1;
     shimDispatcher = new ShimDispatcher(fory);
-    _addGraalvmClassRegistry(fory.getConfig().getConfigHash(), this);
+    _addGraalvmClassRegistry(fory.getConfigHash(), this);
   }
 
   @Override
@@ -505,7 +505,7 @@ public class ClassResolver extends TypeResolver {
     compositeNameBytes2ClassInfo.put(
         new TypeNameBytes(nsBytes.hashCode, nameBytes.hashCode), classInfo);
     extRegistry.registeredClasses.put(fullname, cls);
-    GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
+    GraalvmSupport.registerClass(cls, fory.getConfigHash());
   }
 
   /**
@@ -582,7 +582,7 @@ public class ClassResolver extends TypeResolver {
     // serializer will be set lazily in `addSerializer` method if it's null.
     registeredId2ClassInfo[id] = classInfo;
     extRegistry.registeredClasses.put(cls.getName(), cls);
-    GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
+    GraalvmSupport.registerClass(cls, fory.getConfigHash());
   }
 
   private void checkRegistration(Class<?> cls, short classId, String name) {
@@ -1968,7 +1968,7 @@ public class ClassResolver extends TypeResolver {
           fory, JdkProxySerializer.SUBT_PROXY.getClass(), JdkProxySerializer.class);
       classInfoMap.forEach(
           (cls, classInfo) -> {
-            GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
+            GraalvmSupport.registerClass(cls, fory.getConfigHash());
             if (classInfo.serializer == null) {
               if (isSerializable(classInfo.cls)) {
                 createSerializer0(cls);

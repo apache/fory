@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -105,6 +106,7 @@ public final class Fory implements BaseFory {
   private static final boolean isLittleEndian = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
   private static final byte BITMAP = isLittleEndian ? isLittleEndianFlag : 0;
   private static final short MAGIC_NUMBER = 0x62D4;
+  private static final AtomicInteger runtimeHashCounter = new AtomicInteger(0);
 
   private final Config config;
   private final boolean refTracking;
@@ -134,11 +136,13 @@ public final class Fory implements BaseFory {
   private final boolean copyRefTracking;
   private final IdentityMap<Object, Object> originToCopyMap;
   private int classDefEndOffset;
+  private transient int configHash;
 
   public Fory(ForyBuilder builder, ClassLoader classLoader) {
     // Avoid set classLoader in `ForyBuilder`, which won't be clear when
     // `org.apache.fory.ThreadSafeFory.clearClassLoader` is called.
     config = new Config(builder);
+    this.configHash = runtimeHashCounter.incrementAndGet();
     crossLanguage = config.getLanguage() != Language.JAVA;
     this.refTracking = config.trackingRef();
     this.copyRefTracking = config.copyRef();
@@ -234,6 +238,7 @@ public final class Fory implements BaseFory {
   @Override
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
     _getTypeResolver().registerSerializer(type, serializerClass);
+    invalidateCodegenCache();
   }
 
   @Override
@@ -244,6 +249,14 @@ public final class Fory implements BaseFory {
   @Override
   public void registerSerializer(Class<?> type, Function<Fory, Serializer<?>> serializerCreator) {
     _getTypeResolver().registerSerializer(type, serializerCreator.apply(this));
+  }
+
+  public int getConfigHash() {
+    return configHash;
+  }
+
+  private void invalidateCodegenCache() {
+    this.configHash = runtimeHashCounter.incrementAndGet();
   }
 
   @Override
