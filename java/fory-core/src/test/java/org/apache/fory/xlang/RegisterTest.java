@@ -128,4 +128,49 @@ public class RegisterTest extends ForyTestBase {
     EmptyWrapper newWrapper = (EmptyWrapper) fory2.deserialize(buffer2);
     Assert.assertEquals(newWrapper, new EmptyWrapper());
   }
+
+  @Test
+  public void testCodegenCacheIsolation() {
+    Fory foryA =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(true)
+            .build();
+    foryA.register(Color.class, 101);
+    foryA.register(MyStruct.class, 102);
+    foryA.register(MyExt.class, 103);
+    foryA.registerSerializer(MyExt.class, MyExtSerializer.class);
+    foryA.register(MyWrapper.class, 104);
+
+    MyWrapper wrapper = new MyWrapper();
+    wrapper.color = Color.Red;
+    wrapper.my_struct = new MyStruct(10);
+    wrapper.my_ext = new MyExt(20);
+    byte[] serializedByA = foryA.serialize(wrapper);
+
+    Fory foryB =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.COMPATIBLE)
+            .withCodegen(true)
+            .build();
+    foryB.register(Color.class, 101);
+    foryB.register(MyStruct.class, 102);
+    foryB.register(MyExt.class, 103);
+    // NO MyExtSerializer registered
+    foryB.register(MyWrapper.class, 104);
+
+    try {
+      MyWrapper result = (MyWrapper) foryB.deserialize(serializedByA);
+      Assert.assertNotNull(result);
+
+    } catch (Exception e) {
+      Assert.fail(
+          "Codegen cache collision bug: foryB cannot deserialize data serialized by foryA "
+              + "because it's using foryA's codegen which expects MyExtSerializer. "
+              + "Exception: "
+              + e.getMessage());
+    }
+  }
 }
