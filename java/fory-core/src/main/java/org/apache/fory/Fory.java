@@ -26,6 +26,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -99,6 +102,10 @@ public final class Fory implements BaseFory {
   private static final byte isNilFlag = 1;
   private static final byte isCrossLanguageFlag = 1 << 1;
   private static final byte isOutOfBandFlag = 1 << 2;
+    private static final AtomicInteger counter = new AtomicInteger(0);
+    // Different config instance with equality will be hold only one instance, no memory
+    // leak will happen.
+    private static final ConcurrentMap<Config, Integer> configIdMap = new ConcurrentHashMap<>();
 
   private final Config config;
   private final boolean refTracking;
@@ -127,6 +134,7 @@ public final class Fory implements BaseFory {
   private int copyDepth;
   private final boolean copyRefTracking;
   private final IdentityMap<Object, Object> originToCopyMap;
+  private transient int configHash;
 
   public Fory(ForyBuilder builder, ClassLoader classLoader) {
     // Avoid set classLoader in `ForyBuilder`, which won't be clear when
@@ -751,6 +759,13 @@ public final class Fory implements BaseFory {
         return stringSerializer.read(buffer);
       }
     }
+  }
+
+  public int getConfigHash() {
+    if (configHash == 0) {
+      configHash = configIdMap.computeIfAbsent(config, k -> counter.incrementAndGet());
+    }
+    return configHash;
   }
 
   public void writeJavaString(MemoryBuffer buffer, String str) {
