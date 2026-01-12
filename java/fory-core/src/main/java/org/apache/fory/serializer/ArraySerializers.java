@@ -442,6 +442,8 @@ public class ArraySerializers {
   }
 
   public static final class IntArraySerializer extends PrimitiveArraySerializer<int[]> {
+    // test rust ci
+    private boolean enableCompress = false;
 
     public IntArraySerializer(Fory fory) {
       super(fory, int[].class);
@@ -450,7 +452,7 @@ public class ArraySerializers {
     @Override
     public void write(MemoryBuffer buffer, int[] value) {
       if (fory.getBufferCallback() == null) {
-        if (fory.getConfig().compressIntArray()) {
+        if (fory.getConfig().compressIntArray() && enableCompress) {
           writeInt32Compressed(buffer, value);
           return;
         }
@@ -480,7 +482,7 @@ public class ArraySerializers {
         }
         return values;
       }
-      if (fory.getConfig().compressIntArray()) {
+      if (fory.getConfig().compressIntArray() && enableCompress) {
         return readInt32Compressed(buffer);
       }
       int size = buffer.readVarUint32Small7();
