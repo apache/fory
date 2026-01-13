@@ -24,6 +24,9 @@ import 'package:fory/src/datatype/fory_fixed_num.dart';
 import 'package:fory/src/datatype/int16.dart';
 import 'package:fory/src/datatype/int32.dart';
 import 'package:fory/src/datatype/int8.dart';
+import 'package:fory/src/datatype/uint8.dart';
+import 'package:fory/src/datatype/uint16.dart';
+import 'package:fory/src/datatype/uint32.dart';
 import 'package:fory/src/deserializer_pack.dart';
 import 'package:fory/src/memory/byte_reader.dart';
 import 'package:fory/src/memory/byte_writer.dart';
@@ -303,5 +306,236 @@ final class Float64Serializer extends Serializer<double>{
   @override
   void write(ByteWriter bw, double v, SerializerPack pack) {
     bw.writeFloat64(v);
+  }
+}
+
+final class _UInt8SerializerCache extends PrimitiveSerializerCache{
+  static UInt8Serializer? serRef;
+  static UInt8Serializer? serNoRef;
+
+  const _UInt8SerializerCache();
+
+  @override
+  Serializer getSerWithRef(bool writeRef) {
+    if (writeRef){
+      serRef ??= UInt8Serializer._(true);
+      return serRef!;
+    } else {
+      serNoRef ??= UInt8Serializer._(false);
+      return serNoRef!;
+    }
+  }
+}
+
+final class UInt8Serializer extends Serializer<FixedNum>{
+  static const SerializerCache cache = _UInt8SerializerCache();
+  UInt8Serializer._(bool writeRef): super(ObjType.UINT8, writeRef);
+
+  @override
+  UInt8 read(ByteReader br, int refId, DeserializerPack pack) {
+    return UInt8(br.readUint8());
+  }
+
+  @override
+  void write(ByteWriter bw, covariant UInt8 v, SerializerPack pack) {
+    bw.writeUint8(v.toInt());
+  }
+}
+
+final class _UInt16SerializerCache extends PrimitiveSerializerCache{
+  static UInt16Serializer? serRef;
+  static UInt16Serializer? serNoRef;
+
+  const _UInt16SerializerCache();
+
+  @override
+  Serializer getSerWithRef(bool writeRef) {
+    if (writeRef){
+      serRef ??= UInt16Serializer._(true);
+      return serRef!;
+    } else {
+      serNoRef ??= UInt16Serializer._(false);
+      return serNoRef!;
+    }
+  }
+}
+
+final class UInt16Serializer extends Serializer<FixedNum>{
+  static const SerializerCache cache = _UInt16SerializerCache();
+  UInt16Serializer._(bool writeRef): super(ObjType.UINT16, writeRef);
+
+  @override
+  UInt16 read(ByteReader br, int refId, DeserializerPack pack) {
+    return UInt16(br.readUint16());
+  }
+
+  @override
+  void write(ByteWriter bw, covariant UInt16 v, SerializerPack pack) {
+    bw.writeUint16(v.toInt());
+  }
+}
+
+final class _UInt32SerializerCache extends PrimitiveSerializerCache{
+  static UInt32Serializer? serRef;
+  static UInt32Serializer? serNoRef;
+
+  const _UInt32SerializerCache();
+
+  @override
+  Serializer getSerWithRef(bool writeRef) {
+    if (writeRef){
+      serRef ??= UInt32Serializer._(true);
+      return serRef!;
+    } else {
+      serNoRef ??= UInt32Serializer._(false);
+      return serNoRef!;
+    }
+  }
+}
+
+final class UInt32Serializer extends Serializer<FixedNum>{
+  static const SerializerCache cache = _UInt32SerializerCache();
+  UInt32Serializer._(bool writeRef): super(ObjType.UINT32, writeRef);
+
+  @override
+  UInt32 read(ByteReader br, int refId, DeserializerPack pack) {
+    return UInt32(br.readUint32());
+  }
+
+  @override
+  void write(ByteWriter bw, covariant UInt32 v, SerializerPack pack) {
+    bw.writeUint32(v.toInt());
+  }
+}
+
+final class _VarUInt32SerializerCache extends PrimitiveSerializerCache{
+  static VarUInt32Serializer? serRef;
+  static VarUInt32Serializer? serNoRef;
+
+  const _VarUInt32SerializerCache();
+
+  @override
+  Serializer getSerWithRef(bool writeRef) {
+    if (writeRef){
+      serRef ??= VarUInt32Serializer._(true);
+      return serRef!;
+    } else {
+      serNoRef ??= VarUInt32Serializer._(false);
+      return serNoRef!;
+    }
+  }
+}
+
+final class VarUInt32Serializer extends Serializer<FixedNum>{
+  static const SerializerCache cache = _VarUInt32SerializerCache();
+  VarUInt32Serializer._(bool writeRef): super(ObjType.VAR_UINT32, writeRef);
+
+  @override
+  UInt32 read(ByteReader br, int refId, DeserializerPack pack) {
+    return UInt32(br.readVarUint32());
+  }
+
+  @override
+  void write(ByteWriter bw, covariant UInt32 v, SerializerPack pack) {
+    bw.writeVarUint32(v.toInt());
+  }
+}
+
+final class _UInt64SerializerCache extends PrimitiveSerializerCache{
+  static UInt64Serializer? serRef;
+  static UInt64Serializer? serNoRef;
+
+  const _UInt64SerializerCache();
+
+  @override
+  Serializer getSerWithRef(bool writeRef) {
+    if (writeRef){
+      serRef ??= UInt64Serializer._(true);
+      return serRef!;
+    } else {
+      serNoRef ??= UInt64Serializer._(false);
+      return serNoRef!;
+    }
+  }
+}
+
+final class UInt64Serializer extends Serializer<int> {
+  static const SerializerCache cache = _UInt64SerializerCache();
+  UInt64Serializer._(bool writeRef): super(ObjType.UINT64, writeRef);
+
+  @override
+  int read(ByteReader br, int refId, DeserializerPack pack) {
+    return br.readUint64();
+  }
+
+  @override
+  void write(ByteWriter bw, int v, SerializerPack pack) {
+    bw.writeUint64(v);
+  }
+}
+
+final class _VarUInt64SerializerCache extends PrimitiveSerializerCache{
+  static VarUInt64Serializer? serRef;
+  static VarUInt64Serializer? serNoRef;
+
+  const _VarUInt64SerializerCache();
+
+  @override
+  Serializer getSerWithRef(bool writeRef) {
+    if (writeRef){
+      serRef ??= VarUInt64Serializer._(true);
+      return serRef!;
+    } else {
+      serNoRef ??= VarUInt64Serializer._(false);
+      return serNoRef!;
+    }
+  }
+}
+
+final class VarUInt64Serializer extends Serializer<int> {
+  static const SerializerCache cache = _VarUInt64SerializerCache();
+  VarUInt64Serializer._(bool writeRef): super(ObjType.VAR_UINT64, writeRef);
+
+  @override
+  int read(ByteReader br, int refId, DeserializerPack pack) {
+    return br.readVarInt64();
+  }
+
+  @override
+  void write(ByteWriter bw, int v, SerializerPack pack) {
+    bw.writeVarInt64(v);
+  }
+}
+
+final class _TaggedUInt64SerializerCache extends PrimitiveSerializerCache{
+  static TaggedUInt64Serializer? serRef;
+  static TaggedUInt64Serializer? serNoRef;
+
+  const _TaggedUInt64SerializerCache();
+
+  @override
+  Serializer getSerWithRef(bool writeRef) {
+    if (writeRef){
+      serRef ??= TaggedUInt64Serializer._(true);
+      return serRef!;
+    } else {
+      serNoRef ??= TaggedUInt64Serializer._(false);
+      return serNoRef!;
+    }
+  }
+}
+
+final class TaggedUInt64Serializer extends Serializer<int> {
+  static const SerializerCache cache = _TaggedUInt64SerializerCache();
+  TaggedUInt64Serializer._(bool writeRef): super(ObjType.TAGGED_UINT64, writeRef);
+
+  @override
+  int read(ByteReader br, int refId, DeserializerPack pack) {
+    return br.readVarInt64();
+  }
+
+  @override
+  void write(ByteWriter bw, int v, SerializerPack pack) {
+    bw.writeVarInt64(v);
   }
 }
