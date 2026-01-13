@@ -148,28 +148,49 @@ enum ObjType {
   INT8_ARRAY(31, true), // 31
 
   /// One dimensional int16 array.
-  INT16_ARRAY(32, true),
+  INT16_ARRAY(32, true), // 32
 
   /// One dimensional int32 array.
-  INT32_ARRAY(33, true),
+  INT32_ARRAY(33, true), // 33
 
   /// One dimensional int64 array.
-  INT64_ARRAY(34, true),
+  INT64_ARRAY(34, true), // 34
 
   /// One dimensional half_float_16 array.
-  FLOAT16_ARRAY(35, true),
+  FLOAT16_ARRAY(35, true), // 35
 
   /// One dimensional float32 array.
-  FLOAT32_ARRAY(36, true),
+  FLOAT32_ARRAY(36, true), // 36
 
   /// One dimensional float64 array.
-  FLOAT64_ARRAY(37, true),
+  FLOAT64_ARRAY(37, true), // 37
 
   /// An (arrow record batch) object.
-  ARROW_RECORD_BATCH(38, false),
+  ARROW_RECORD_BATCH(38, false), // 38
 
   /// An (arrow table) object.
-  ARROW_TABLE(39, false);
+  ARROW_TABLE(39, false), // 39
+
+  /// Unsigned 8-bit integer
+  UINT8(40, true), // 40
+
+  /// Unsigned 16-bit little-endian integer
+  UINT16(41, true), // 41
+
+  /// Unsigned 32-bit little-endian integer
+  UINT32(42, true), // 42
+
+  /// var_uint32: a 32-bit unsigned integer which uses fory var_uint32 encoding.
+  VAR_UINT32(43, true), // 43
+
+  /// Unsigned 64-bit little-endian integer
+  UINT64(44, true), // 44
+
+  /// var_uint64: a 64-bit unsigned integer which uses fory var_uint64 encoding.
+  VAR_UINT64(45, true), // 45
+
+  /// tagged_uint64: a 64-bit unsigned integer which uses fory tagged var_uint64 encoding.
+  TAGGED_UINT64(46, true); // 46
 
   final int id;
   final bool independent;
@@ -178,7 +199,7 @@ enum ObjType {
 
   static ObjType? fromId(int id) {
     // The current implementation is linear, so it's simpler here. If the id and ordinal become irregular in the future, this won't work.
-    if (id >= 1 && id <= 39) return ObjType.values[id];
+    if (id >= 1 && id <= 46) return ObjType.values[id];
     return null;
   }
 
