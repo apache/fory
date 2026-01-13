@@ -107,6 +107,90 @@ describe('number', () => {
     );
     expect(result.a).toBeCloseTo(1.2)
   });
+
+  test('should uint8 work', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.uint8()
+    })).serializer;
+    const input = fory.serialize({ a: 255 }, serializer);
+    const result = fory.deserialize(input);
+    expect(result).toEqual({ a: 255 });
+  });
+
+  test('should uint16 work', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.uint16()
+    })).serializer;
+    const input = fory.serialize({ a: 65535 }, serializer);
+    const result = fory.deserialize(input);
+    expect(result).toEqual({ a: 65535 });
+  });
+
+  test('should uint32 work', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.uint32()
+    })).serializer;
+    const input = fory.serialize({ a: 4294967295 }, serializer);
+    const result = fory.deserialize(input);
+    expect(result).toEqual({ a: 4294967295 });
+  });
+
+  test('should varUInt32 work', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.varUInt32()
+    })).serializer;
+    const input = fory.serialize({ a: 1000000 }, serializer);
+    const result = fory.deserialize(input);
+    expect(result).toEqual({ a: 1000000 });
+  });
+
+  test('should uint64 work', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.uint64()
+    })).serializer;
+    const input = fory.serialize({ a: 18446744073709551615n }, serializer);
+    const result = fory.deserialize(input);
+    expect(result).toEqual({ a: 18446744073709551615n });
+  });
+
+  test('should varUInt64 work', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.varUInt64()
+    })).serializer;
+    const input = fory.serialize({ a: 1n }, serializer);
+    const result = fory.deserialize(input);
+    expect(result).toEqual({ a: 1n });
+  });
+
+  test('should taggedUInt64 work', () => {
+    const fory = new Fory({ refTracking: true });
+    const serializer = fory.registerSerializer(Type.struct({
+      typeName: "example.foo"
+    }, {
+      a: Type.taggedUInt64()
+    })).serializer;
+    const input = fory.serialize({ a: 1n }, serializer);
+    const result = fory.deserialize(input);
+    expect(result).toEqual({ a: 1n });
+  });
 });
 
 
