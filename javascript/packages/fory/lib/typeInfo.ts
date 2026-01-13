@@ -29,12 +29,12 @@ const initMeta = (target: new () => any, typeInfo: TypeInfo) => {
       ...(
         TypeId.IS_NAMED_TYPE(typeInfo.typeId)
           ? {
-              namespace: typeInfo.namespace,
-              typeName: typeInfo.typeName,
-            }
+            namespace: typeInfo.namespace,
+            typeName: typeInfo.typeName,
+          }
           : {
-              typeId: typeInfo.typeId,
-            }
+            typeId: typeInfo.typeId,
+          }
       ),
     }, targetFields.get(target) || {}, {
       withConstructor: true,
@@ -253,8 +253,8 @@ type Props<T> = T extends {
   };
 }
   ? {
-      [P in keyof T2]?: (InputType<T2[P]> | null);
-    }
+    [P in keyof T2]?: (InputType<T2[P]> | null);
+  }
   : unknown;
 
 type InnerProps<T> = T extends {
@@ -298,8 +298,8 @@ type OneofProps<T> = T extends {
   };
 }
   ? {
-      [P in keyof T2]?: (InputType<T2[P]> | null);
-    }
+    [P in keyof T2]?: (InputType<T2[P]> | null);
+  }
   : unknown;
 
 type OneofResult<T> = T extends {
@@ -327,66 +327,74 @@ export type HintInput<T> = T extends unknown ? any : T extends {
   : T extends {
     type: InternalSerializerType.STRING;
   }
-    ? string
-    : T extends {
-      type: InternalSerializerType.TUPLE;
-    }
-      ? TupleProps<T>
-      : T extends {
-        type:
-          | InternalSerializerType.INT8
-          | InternalSerializerType.INT16
-          | InternalSerializerType.INT32
-          | InternalSerializerType.VARINT32
-          | InternalSerializerType.FLOAT16
-          | InternalSerializerType.FLOAT32
-          | InternalSerializerType.FLOAT64;
-      }
-        ? number
+  ? string
+  : T extends {
+    type: InternalSerializerType.TUPLE;
+  }
+  ? TupleProps<T>
+  : T extends {
+    type:
+    | InternalSerializerType.INT8
+    | InternalSerializerType.INT16
+    | InternalSerializerType.INT32
+    | InternalSerializerType.VARINT32
+    | InternalSerializerType.UINT8
+    | InternalSerializerType.UINT16
+    | InternalSerializerType.UINT32
+    | InternalSerializerType.VAR_UINT32
+    | InternalSerializerType.FLOAT16
+    | InternalSerializerType.FLOAT32
+    | InternalSerializerType.FLOAT64;
+  }
+  ? number
 
-        : T extends {
-          type: InternalSerializerType.VARINT64
-            | InternalSerializerType.TAGGED_INT64
-            | InternalSerializerType.INT64;
-        }
-          ? bigint
-          : T extends {
-            type: InternalSerializerType.MAP;
-          }
-            ? MapProps<T>
-            : T extends {
-              type: InternalSerializerType.SET;
-            }
-              ? SetProps<T>
-              : T extends {
-                type: InternalSerializerType.ARRAY;
-              }
-                ? InnerProps<T>
-                : T extends {
-                  type: InternalSerializerType.BOOL;
-                }
-                  ? boolean
-                  : T extends {
-                    type: InternalSerializerType.DURATION;
-                  }
-                    ? Date
-                    : T extends {
-                      type: InternalSerializerType.TIMESTAMP;
-                    }
-                      ? number
-                      : T extends {
-                        type: InternalSerializerType.ANY;
-                      }
-                        ? any
-                        : T extends { type: InternalSerializerType.BINARY;
-                        }
-                          ? Uint8Array
-                          : T extends {
-                            type: InternalSerializerType.ENUM;
-                          }
-                            ? EnumProps<T> : T extends {
-                              type: InternalSerializerType.ONEOF;
-                            } ? OneofProps<T> : unknown;
+  : T extends {
+    type: InternalSerializerType.VARINT64
+    | InternalSerializerType.TAGGED_INT64
+    | InternalSerializerType.INT64
+    | InternalSerializerType.UINT64
+    | InternalSerializerType.VAR_UINT64
+    | InternalSerializerType.TAGGED_UINT64;
+  }
+  ? bigint
+  : T extends {
+    type: InternalSerializerType.MAP;
+  }
+  ? MapProps<T>
+  : T extends {
+    type: InternalSerializerType.SET;
+  }
+  ? SetProps<T>
+  : T extends {
+    type: InternalSerializerType.ARRAY;
+  }
+  ? InnerProps<T>
+  : T extends {
+    type: InternalSerializerType.BOOL;
+  }
+  ? boolean
+  : T extends {
+    type: InternalSerializerType.DURATION;
+  }
+  ? Date
+  : T extends {
+    type: InternalSerializerType.TIMESTAMP;
+  }
+  ? number
+  : T extends {
+    type: InternalSerializerType.ANY;
+  }
+  ? any
+  : T extends {
+    type: InternalSerializerType.BINARY;
+  }
+  ? Uint8Array
+  : T extends {
+    type: InternalSerializerType.ENUM;
+  }
+  ? EnumProps<T> : T extends {
+    type: InternalSerializerType.ONEOF;
+  } ? OneofProps<T> : unknown;
 
 export type ResultType<T> = T extends TypeInfo<infer M> ? HintResult<M> : HintResult<T>;
 
@@ -397,64 +405,72 @@ export type HintResult<T> = T extends never ? any : T extends {
   : T extends {
     type: InternalSerializerType.STRING;
   }
-    ? string
-    : T extends {
-      type: InternalSerializerType.TUPLE;
-    }
-      ? TupleProps<T>
-      : T extends {
-        type:
-          | InternalSerializerType.INT8
-          | InternalSerializerType.INT16
-          | InternalSerializerType.INT32
-          | InternalSerializerType.VARINT32
-          | InternalSerializerType.FLOAT16
-          | InternalSerializerType.FLOAT32
-          | InternalSerializerType.FLOAT64;
-      }
-        ? number
+  ? string
+  : T extends {
+    type: InternalSerializerType.TUPLE;
+  }
+  ? TupleProps<T>
+  : T extends {
+    type:
+    | InternalSerializerType.INT8
+    | InternalSerializerType.INT16
+    | InternalSerializerType.INT32
+    | InternalSerializerType.VARINT32
+    | InternalSerializerType.UINT8
+    | InternalSerializerType.UINT16
+    | InternalSerializerType.UINT32
+    | InternalSerializerType.VAR_UINT32
+    | InternalSerializerType.FLOAT16
+    | InternalSerializerType.FLOAT32
+    | InternalSerializerType.FLOAT64;
+  }
+  ? number
 
-        : T extends {
-          type: InternalSerializerType.TAGGED_INT64
-            | InternalSerializerType.INT64;
-        }
-          ? bigint
-          : T extends {
-            type: InternalSerializerType.MAP;
-          }
-            ? MapProps<T>
-            : T extends {
-              type: InternalSerializerType.SET;
-            }
-              ? SetProps<T>
-              : T extends {
-                type: InternalSerializerType.ARRAY;
-              }
-                ? InnerProps<T>
-                : T extends {
-                  type: InternalSerializerType.BOOL;
-                }
-                  ? boolean
-                  : T extends {
-                    type: InternalSerializerType.DURATION;
-                  }
-                    ? Date
-                    : T extends {
-                      type: InternalSerializerType.TIMESTAMP;
-                    }
-                      ? number
-                      : T extends { type: InternalSerializerType.BINARY;
-                      }
-                        ? Uint8Array : T extends {
-                          type: InternalSerializerType.ANY;
-                        }
-                          ? any
-                          : T extends {
-                            type: InternalSerializerType.ENUM;
-                          }
-                            ? EnumProps<T> : T extends {
-                              type: InternalSerializerType.ONEOF;
-                            } ? OneofResult<T> : unknown;
+  : T extends {
+    type: InternalSerializerType.TAGGED_INT64
+    | InternalSerializerType.INT64
+    | InternalSerializerType.UINT64
+    | InternalSerializerType.VAR_UINT64
+    | InternalSerializerType.TAGGED_UINT64;
+  }
+  ? bigint
+  : T extends {
+    type: InternalSerializerType.MAP;
+  }
+  ? MapProps<T>
+  : T extends {
+    type: InternalSerializerType.SET;
+  }
+  ? SetProps<T>
+  : T extends {
+    type: InternalSerializerType.ARRAY;
+  }
+  ? InnerProps<T>
+  : T extends {
+    type: InternalSerializerType.BOOL;
+  }
+  ? boolean
+  : T extends {
+    type: InternalSerializerType.DURATION;
+  }
+  ? Date
+  : T extends {
+    type: InternalSerializerType.TIMESTAMP;
+  }
+  ? number
+  : T extends {
+    type: InternalSerializerType.BINARY;
+  }
+  ? Uint8Array : T extends {
+    type: InternalSerializerType.ANY;
+  }
+  ? any
+  : T extends {
+    type: InternalSerializerType.ENUM;
+  }
+  ? EnumProps<T> : T extends {
+    type: InternalSerializerType.ONEOF;
+  } ? OneofResult<T> : unknown;
 
 export const Type = {
   any() {
@@ -591,6 +607,48 @@ export const Type = {
       InternalSerializerType.FLOAT64 as const,
       (TypeId.FLOAT64),
 
+    );
+  },
+  uint8() {
+    return TypeInfo.fromNonParam(
+      InternalSerializerType.UINT8 as const,
+      (TypeId.UINT8),
+    );
+  },
+  uint16() {
+    return TypeInfo.fromNonParam(
+      InternalSerializerType.UINT16 as const,
+      (TypeId.UINT16),
+    );
+  },
+  uint32() {
+    return TypeInfo.fromNonParam(
+      InternalSerializerType.UINT32 as const,
+      (TypeId.UINT32),
+    );
+  },
+  varUInt32() {
+    return TypeInfo.fromNonParam(
+      InternalSerializerType.VAR_UINT32 as const,
+      (TypeId.VAR_UINT32),
+    );
+  },
+  uint64() {
+    return TypeInfo.fromNonParam(
+      InternalSerializerType.UINT64 as const,
+      (TypeId.UINT64),
+    );
+  },
+  varUInt64() {
+    return TypeInfo.fromNonParam(
+      InternalSerializerType.VAR_UINT64 as const,
+      (TypeId.VAR_UINT64),
+    );
+  },
+  taggedUInt64() {
+    return TypeInfo.fromNonParam(
+      InternalSerializerType.TAGGED_UINT64 as const,
+      (TypeId.TAGGED_UINT64),
     );
   },
   binary() {
