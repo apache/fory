@@ -26,6 +26,7 @@ export 'src/annotation/fory_key.dart';
 export 'src/annotation/fory_class.dart';
 export 'src/annotation/fory_enum.dart';
 export 'src/annotation/fory_constructor.dart';
+export 'src/annotation/uint_types.dart';
 
 // Analysis meta
 export 'src/meta/specs/class_spec.dart';
@@ -56,6 +57,9 @@ export 'src/datatype/fory_fixed_num.dart';
 export 'src/datatype/int8.dart';
 export 'src/datatype/int16.dart';
 export 'src/datatype/int32.dart';
+export 'src/datatype/uint8.dart';
+export 'src/datatype/uint16.dart';
+export 'src/datatype/uint32.dart';
 export 'src/datatype/float32.dart';
 export 'src/datatype/local_date.dart';
 export 'src/datatype/timestamp.dart';
