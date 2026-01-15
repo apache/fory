@@ -104,9 +104,9 @@ final class UInt32 extends FixedNum {
   int get hashCode => _value.hashCode;
 
   // Common num methods
-  int abs() => _value.abs();
-  int get sign => _value.sign;
-  bool get isNegative => _value < 0;
+  int abs() => _value;
+  int get sign => _value == 0 ? 0 : 1;
+  bool get isNegative => false;
 
   // Type conversions
   int toInt() => _value;
