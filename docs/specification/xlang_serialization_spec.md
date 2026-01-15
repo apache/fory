@@ -76,7 +76,7 @@ This specification defines the Fory xlang binary format. The format is dynamic r
 - binary: an variable-length array of bytes.
 - array: only allow 1d numeric components. Other arrays will be taken as List. The implementation should support the
   interoperability between array and list.
-  - bool_array: one dimensional int16 array.
+  - bool_array: one dimensional int8 array.
   - int8_array: one dimensional int8 array.
   - int16_array: one dimensional int16 array.
   - int32_array: one dimensional int32 array.
