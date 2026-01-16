@@ -25,8 +25,9 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -100,7 +101,6 @@ public final class Fory implements BaseFory {
   private static final byte isNilFlag = 1;
   private static final byte isCrossLanguageFlag = 1 << 1;
   private static final byte isOutOfBandFlag = 1 << 2;
-    private static final AtomicInteger runtimeHashCounter = new AtomicInteger(0);
 
   private final Config config;
   private final boolean refTracking;
@@ -129,13 +129,14 @@ public final class Fory implements BaseFory {
   private int copyDepth;
   private final boolean copyRefTracking;
   private final IdentityMap<Object, Object> originToCopyMap;
-  private transient int configHash;
+  private int configHash;
+  private final Set<String> registeredSerializers = new HashSet<>();
 
   public Fory(ForyBuilder builder, ClassLoader classLoader) {
     // Avoid set classLoader in `ForyBuilder`, which won't be clear when
     // `org.apache.fory.ThreadSafeFory.clearClassLoader` is called.
     config = new Config(builder);
-    this.configHash = runtimeHashCounter.incrementAndGet();
+    this.configHash = config.hashCode();
     crossLanguage = config.getLanguage() != Language.JAVA;
     this.refTracking = config.trackingRef();
     this.copyRefTracking = config.copyRef();
@@ -230,6 +231,7 @@ public final class Fory implements BaseFory {
   @Override
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
     _getTypeResolver().registerSerializer(type, serializerClass);
+    registeredSerializers.add(type.getName() + ":" + serializerClass.getName());
     invalidateCodegenCache();
   }
 
@@ -248,7 +250,11 @@ public final class Fory implements BaseFory {
   }
 
   private void invalidateCodegenCache() {
-    this.configHash = runtimeHashCounter.incrementAndGet();
+    int result = config.hashCode();
+    for (String serializerClassName : registeredSerializers) {
+      result = 31 * result + serializerClassName.hashCode();
+    }
+    this.configHash = result;
   }
 
   @Override
