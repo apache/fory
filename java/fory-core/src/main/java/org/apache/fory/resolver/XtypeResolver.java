@@ -1103,7 +1103,7 @@ public class XtypeResolver extends TypeResolver {
   public void ensureSerializersCompiled() {
     classInfoMap.forEach(
         (cls, classInfo) -> {
-          GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
+          GraalvmSupport.registerClass(cls, fory.getConfigHash());
           if (classInfo.serializer != null) {
             // Trigger serializer initialization and resolution for deferred serializers
             if (classInfo.serializer
