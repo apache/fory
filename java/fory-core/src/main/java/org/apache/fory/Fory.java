@@ -19,15 +19,14 @@
 
 package org.apache.fory;
 
+import com.google.common.base.Objects;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import javax.annotation.concurrent.NotThreadSafe;
@@ -130,7 +129,6 @@ public final class Fory implements BaseFory {
   private final boolean copyRefTracking;
   private final IdentityMap<Object, Object> originToCopyMap;
   private int configHash;
-  private final Set<String> registeredSerializers = new HashSet<>();
 
   public Fory(ForyBuilder builder, ClassLoader classLoader) {
     // Avoid set classLoader in `ForyBuilder`, which won't be clear when
@@ -231,13 +229,13 @@ public final class Fory implements BaseFory {
   @Override
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
     _getTypeResolver().registerSerializer(type, serializerClass);
-    registeredSerializers.add(type.getName() + ":" + serializerClass.getName());
-    invalidateCodegenCache();
+    this.configHash = Objects.hashCode(configHash, type, serializerClass);
   }
 
   @Override
   public void registerSerializer(Class<?> type, Serializer<?> serializer) {
     _getTypeResolver().registerSerializer(type, serializer);
+    this.configHash = Objects.hashCode(configHash, type, serializer.getClass());
   }
 
   @Override
@@ -247,14 +245,6 @@ public final class Fory implements BaseFory {
 
   public int getConfigHash() {
     return configHash;
-  }
-
-  private void invalidateCodegenCache() {
-    int result = config.hashCode();
-    for (String serializerClassName : registeredSerializers) {
-      result = 31 * result + serializerClassName.hashCode();
-    }
-    this.configHash = result;
   }
 
   @Override
