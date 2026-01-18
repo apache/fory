@@ -25,6 +25,9 @@ import 'package:fory/src/datatype/float32.dart';
 import 'package:fory/src/datatype/int16.dart';
 import 'package:fory/src/datatype/int32.dart';
 import 'package:fory/src/datatype/int8.dart';
+import 'package:fory/src/datatype/uint8.dart';
+import 'package:fory/src/datatype/uint16.dart';
+import 'package:fory/src/datatype/uint32.dart';
 
 import 'package:fory/src/const/obj_type.dart';
 import 'package:fory/src/datatype/local_date.dart';
@@ -41,6 +44,9 @@ enum DartTypeEnum{
   INT8(Int8, true, 'Int8', 'package', 'fory/src/datatype/int8.dart', ObjType.INT8, true, 'dart:core@Int8'),
   INT16(Int16, true, 'Int16', 'package', 'fory/src/datatype/int16.dart', ObjType.INT16, true, 'dart:core@Int16'),
   INT32(Int32, true, 'Int32', 'package', 'fory/src/datatype/int32.dart', ObjType.INT32, true, 'dart:core@Int32'),
+  UINT8(UInt8, true, 'UInt8', 'package', 'fory/src/datatype/uint8.dart', ObjType.UINT8, true, 'dart:core@UInt8'),
+  UINT16(UInt16, true, 'UInt16', 'package', 'fory/src/datatype/uint16.dart', ObjType.UINT16, true, 'dart:core@UInt16'),
+  UINT32(UInt32, true, 'UInt32', 'package', 'fory/src/datatype/uint32.dart', ObjType.UINT32, true, 'dart:core@UInt32'),
   INT(int,true, 'int', 'dart', 'core', ObjType.INT64, true, 'dart:core@int'),
   FLOAT32(Float32, true, 'Float32', 'package', 'fory/src/datatype/float32.dart', ObjType.FLOAT32, true, 'dart:core@Float32'),
   DOUBLE(double,true, 'double', 'dart', 'core', ObjType.FLOAT64, true, 'dart:core@double'),
