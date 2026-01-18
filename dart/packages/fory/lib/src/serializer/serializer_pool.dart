@@ -27,6 +27,9 @@ import 'package:fory/src/datatype/float32.dart';
 import 'package:fory/src/datatype/int16.dart';
 import 'package:fory/src/datatype/int32.dart';
 import 'package:fory/src/datatype/int8.dart';
+import 'package:fory/src/datatype/uint8.dart';
+import 'package:fory/src/datatype/uint16.dart';
+import 'package:fory/src/datatype/uint32.dart';
 import 'package:fory/src/datatype/local_date.dart';
 import 'package:fory/src/datatype/timestamp.dart';
 import 'package:fory/src/meta/type_info.dart';
@@ -63,6 +66,9 @@ class SerializerPool{
     type2Ser[Int8]!.ser = Int8Serializer.cache.getSerializer(conf);
     type2Ser[Int16]!.ser = Int16Serializer.cache.getSerializer(conf);
     type2Ser[Int32]!.ser = Int32Serializer.cache.getSerializer(conf);
+    type2Ser[UInt8]!.ser = UInt8Serializer.cache.getSerializer(conf);
+    type2Ser[UInt16]!.ser = UInt16Serializer.cache.getSerializer(conf);
+    type2Ser[UInt32]!.ser = UInt32Serializer.cache.getSerializer(conf);
     type2Ser[Float32]!.ser = Float32Serializer.cache.getSerializer(conf);
     type2Ser[String]!.ser = StringSerializer.cache.getSerializer(conf);
 
