@@ -604,7 +604,7 @@ Serialization security varies by protocol:
 - **Row Format**: Secure with predefined schemas
 - **Object Graph Serialization** (Java/Python native): More flexible but requires careful security configuration
 
-Dynamic serialization can deserialize arbitrary types, which may introduces risks. For example, the deserialization may invoke `init` constructor or `equals/hashCode` method, if the method body contains malicious code, the system will be at risk.
+Dynamic serialization can deserialize arbitrary types, which may introduce risks. For example, the deserialization may invoke `init` constructor or `equals/hashCode` method; If the method body contains malicious code, the system will be at risk.
 
 Fory enables class registration **by default** for dynamic protocols, allowing only trusted registered types.
 **Do not disable class registration unless you can ensure your environment is secure**.
