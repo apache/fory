@@ -261,10 +261,12 @@ format_changed() {
             git diff --name-only --diff-filter=ACRM "$MERGEBASE" -- '*.ts' | xargs -P 5 \
                   node ./javascript/node_modules/.bin/eslint
         fi
-        # Install prettier globally
-        npm install -g prettier
+        # Install prettier locally if not already installed
+        if [ ! -f "$ROOT/javascript/node_modules/.bin/prettier" ]; then
+            npm install --prefix "$ROOT/javascript" prettier
+        fi
         # Fix markdown files
-        prettier --write "**/*.md"
+        node ./javascript/node_modules/.bin/prettier --write "**/*.md"
         popd
     fi
 }
