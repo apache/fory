@@ -20,6 +20,7 @@
 import 'package:fory/src/codegen/analyze/impl/annotation/class_annotation_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/annotation/enum_annotation_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/annotation/key_annotation_analyzer.dart';
+import 'package:fory/src/codegen/analyze/impl/annotation/uint_annotation_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/constructor/constructor_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/field/access_info_analyzer.dart';
 import 'package:fory/src/codegen/analyze/impl/field/field_analyzer_impl.dart';
@@ -44,6 +45,7 @@ abstract class Analyzer {
   static const ClassAnnotationAnalyzer classAnnotationAnalyzer = ClassAnnotationAnalyzer();
   static const KeyAnnotationAnalyzer keyAnnotationAnalyzer = KeyAnnotationAnalyzer();
   static const EnumAnnotationAnalyzer enumAnnotationAnalyzer = EnumAnnotationAnalyzer();
+  static const UintAnnotationAnalyzer uintAnnotationAnalyzer = UintAnnotationAnalyzer();
 
   // Enum analyzers
   static const EnumAnalyzer enumAnalyzer = EnumAnalyzerImpl();
