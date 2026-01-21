@@ -35,7 +35,7 @@ class AnalysisTypeIdentifier{
   static int get dartCoreLibId => objectType.element.library.id;
 
 
-  static final List<int?> _ids = [null,null,null,null];
+  static final List<int?> _ids = [null,null,null,null,null,null,null,null];
   static final List<Type3StringKey> _keys = [
     Type3StringKey(
       'ForyClass',
@@ -56,6 +56,26 @@ class AnalysisTypeIdentifier{
       'ForyEnum',
       'package',
       'fory/src/annotation/fory_enum.dart',
+    ),
+    Type3StringKey(
+      'Uint8Type',
+      'package',
+      'fory/src/annotation/uint_types.dart',
+    ),
+    Type3StringKey(
+      'Uint16Type',
+      'package',
+      'fory/src/annotation/uint_types.dart',
+    ),
+    Type3StringKey(
+      'Uint32Type',
+      'package',
+      'fory/src/annotation/uint_types.dart',
+    ),
+    Type3StringKey(
+      'Uint64Type',
+      'package',
+      'fory/src/annotation/uint_types.dart',
     ),
   ];
 
@@ -98,6 +118,22 @@ class AnalysisTypeIdentifier{
 
   static void giveForyClassId(int id){
     _ids[0] = id;
+  }
+
+  static bool isUint8Type(ClassElement element){
+    return _check(element, 4);
+  }
+
+  static bool isUint16Type(ClassElement element){
+    return _check(element, 5);
+  }
+
+  static bool isUint32Type(ClassElement element){
+    return _check(element, 6);
+  }
+
+  static bool isUint64Type(ClassElement element){
+    return _check(element, 7);
   }
 
 }
