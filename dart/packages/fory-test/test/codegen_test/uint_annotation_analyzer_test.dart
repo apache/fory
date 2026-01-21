@@ -23,7 +23,6 @@ import 'package:analyzer/dart/element/element.dart';
 import 'package:build_test/build_test.dart';
 import 'package:fory/src/codegen/analyze/impl/annotation/uint_annotation_analyzer.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
-import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/const/obj_type.dart';
 import 'package:test/test.dart';
 
