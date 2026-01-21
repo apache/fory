@@ -29,6 +29,7 @@ import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/meta/impl/type_immutable.dart';
 import 'package:fory/src/codegen/meta/impl/type_spec_gen.dart';
+import 'package:fory/src/const/obj_type.dart';
 
 class TypeAnalyzerImpl extends TypeAnalyzer{
 
@@ -86,6 +87,41 @@ class TypeAnalyzerImpl extends TypeAnalyzer{
         objTypeRes.objType,
         objTypeRes.objType.independent,
         objTypeRes.certainForSer,
+      ),
+      nullable,
+      typeArgsTypes,
+    );
+  }
+
+  /// Version of getTypeImmutableAndTag that supports annotation-based ObjType override.
+  /// Used when uint annotations are present on int fields.
+  TypeSpecGen getTypeImmutableAndTagWithOverride(
+    TypeDecision typeDecision,
+    @LocationEnsure(LocationLevel.fieldLevel) LocationMark locationMark,
+    ObjType objTypeOverride,
+  ){
+    InterfaceType type = typeDecision.type;
+
+    InterfaceElement element = type.element;
+    int libId = element.library.id;
+    bool nullable = (typeDecision.forceNullable) ? true:  type.nullabilitySuffix == NullabilitySuffix.question;
+
+    List<TypeSpecGen> typeArgsTypes = [];
+    for (DartType arg in type.typeArguments){
+      typeArgsTypes.add(
+        _analyze(
+          Analyzer.typeSystemAnalyzer.decideInterfaceType(arg),
+          locationMark,
+        ),
+      );
+    }
+    return TypeSpecGen(
+      TypeImmutable(
+        element.name,
+        libId,
+        objTypeOverride,
+        objTypeOverride.independent,
+        true, // certainForSer is true for annotation-based types
       ),
       nullable,
       typeArgsTypes,
