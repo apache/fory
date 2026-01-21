@@ -22,6 +22,7 @@ import 'package:fory/src/codegen/analyze/annotation/location_level_ensure.dart';
 import 'package:fory/src/codegen/const/location_level.dart';
 import 'package:fory/src/codegen/entity/location_mark.dart';
 import 'package:fory/src/codegen/meta/impl/type_spec_gen.dart';
+import 'package:fory/src/const/obj_type.dart';
 
 abstract class TypeAnalyzer{
 
@@ -29,4 +30,13 @@ abstract class TypeAnalyzer{
     TypeDecision typeDecision,
     @LocationEnsure(LocationLevel.fieldLevel) LocationMark locationMark,
   );
+
+  /// Version of getTypeImmutableAndTag that supports annotation-based ObjType override.
+  /// Used when uint annotations are present on int fields.
+  TypeSpecGen getTypeImmutableAndTagWithOverride(
+    TypeDecision typeDecision,
+    @LocationEnsure(LocationLevel.fieldLevel) LocationMark locationMark,
+    ObjType objTypeOverride,
+  );
+
 }
