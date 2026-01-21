@@ -39,6 +39,9 @@ class TypeSpec{
   );
 
   @override
+  int get hashCode => Object.hash(type, objType, nullable, certainForSer, enumSpec, genericsArgs);
+
+  @override
   bool operator ==(Object other) {
     return identical(this, other) ||
       (other is TypeSpec &&

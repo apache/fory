@@ -46,6 +46,9 @@ class FieldSpec{
   /// it is difficult to compare whether the functions are the same. So for testing purposes, we use a simplified
   /// comparison by checking for null.
   @override
+  int get hashCode => Object.hash(name, typeSpec, includeFromFory, includeToFory, getter, setter);
+
+  @override
   bool operator ==(Object other) {
     return identical(this, other) ||
       (other is FieldSpec &&

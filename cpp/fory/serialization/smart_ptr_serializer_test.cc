@@ -337,16 +337,6 @@ struct NestedContainer {
 };
 FORY_STRUCT(NestedContainer, value, nested);
 
-inline bool operator==(const NestedContainer &a, const NestedContainer &b) {
-  if (a.value != b.value)
-    return false;
-  if (static_cast<bool>(a.nested) != static_cast<bool>(b.nested))
-    return false;
-  if (a.nested && b.nested)
-    return *a.nested == *b.nested;
-  return true;
-}
-
 // Holder struct to wrap nested container in a polymorphic shared_ptr
 struct NestedContainerHolder {
   std::shared_ptr<NestedContainer> ptr;

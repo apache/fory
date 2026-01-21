@@ -116,27 +116,6 @@ enum DartTypeEnum{
   /// Returning null indicates it is definitely a Dart built-in type, which is unsupported
   /// Returning UNKNOWN means uncertain
   // TODO: Attempt to record the Dart analyzer's ID to achieve a numerical comparison
-  static DartTypeEnum? _findDeprecated(String name, String scheme, String path){
-    int l = 0;
-    int r = DartTypeEnum.values.length - 1;
-    int mid;
-    while(l<=r){
-      mid = (l+r) ~/ 2;
-      int comp = name.compareTo(values[mid].typeName);
-      if (comp < 0){
-        r = mid -1;
-      }else if (comp > 0){
-        l = mid + 1;
-      }else{
-        if (values[mid].scheme == scheme && values[mid].path == path){
-          return values[mid];
-        }else{
-          return null;
-        }
-      }
-    }
-    return null;
-  }
 
   static DartTypeEnum? find(String name, String scheme, String path){
     DartTypeEnum? e = _typeName2Enum[name];

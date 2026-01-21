@@ -1,6 +1,6 @@
 ---
 title: Field Configuration
-sidebar_position: 5
+sidebar_position: 7
 id: field_configuration
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
@@ -23,16 +23,31 @@ This page explains how to configure field-level metadata for serialization.
 
 ## Overview
 
-Apache Fory™ provides two ways to specify field-level metadata at compile time:
+Apache Fory™ provides three ways to configure field-level metadata at compile time:
 
-1. **`fory::field<>` template** - Inline metadata in struct definition
-2. **`FORY_FIELD_TAGS` macro** - Non-invasive metadata added separately
+1. **`fory::field<>` template** - Inline metadata in struct definition with wrapper types
+2. **`FORY_FIELD_TAGS` macro** - Non-invasive metadata for basic field configuration
+3. **`FORY_FIELD_CONFIG` macro** - Advanced configuration with builder pattern and encoding control
 
 These enable:
 
 - **Tag IDs**: Assign compact numeric IDs for schema evolution
 - **Nullability**: Mark pointer fields as nullable
 - **Reference Tracking**: Enable reference tracking for shared pointers
+- **Encoding Control**: Specify wire format for integers (varint, fixed, tagged)
+- **Dynamic Dispatch**: Control polymorphic type info for smart pointers
+
+**Comparison:**
+
+| Feature                 | `fory::field<>`       | `FORY_FIELD_TAGS` | `FORY_FIELD_CONFIG`       |
+| ----------------------- | --------------------- | ----------------- | ------------------------- |
+| **Struct modification** | Required (wrap types) | None              | None                      |
+| **Encoding control**    | No                    | No                | Yes (varint/fixed/tagged) |
+| **Builder pattern**     | No                    | No                | Yes                       |
+| **Dynamic control**     | Yes                   | No                | Yes                       |
+| **Compile-time verify** | Yes                   | Limited           | Yes (member pointers)     |
+| **Cross-lang compat**   | Limited               | Limited           | Full                      |
+| **Recommended for**     | Simple structs        | Third-party types | Complex/xlang structs     |
 
 ## The fory::field Template
 
@@ -303,16 +318,6 @@ FORY_FIELD_TAGS(Document,
 | `std::shared_ptr<T>` | `(field, id)`, `(field, id, nullable)`, `(field, id, ref)`, `(field, id, nullable, ref)` |
 | `std::unique_ptr<T>` | `(field, id)`, `(field, id, nullable)`                                                   |
 
-### API Comparison
-
-| Aspect                  | `fory::field<>` Wrapper  | `FORY_FIELD_TAGS` Macro |
-| ----------------------- | ------------------------ | ----------------------- |
-| **Struct definition**   | Modified (wrapped types) | Unchanged (pure C++)    |
-| **IDE support**         | Template noise           | Excellent (clean types) |
-| **Third-party classes** | Not supported            | Supported               |
-| **Header dependencies** | Required everywhere      | Isolated to config      |
-| **Migration effort**    | High (change all fields) | Low (add one macro)     |
-
 ## FORY_FIELD_CONFIG Macro
 
 The `FORY_FIELD_CONFIG` macro is the most powerful and flexible way to configure field-level serialization. It provides:
@@ -515,17 +520,6 @@ FORY_FIELD_CONFIG(DataV2,
 | `.fixed()`        | Use fixed-size encoding                          | `uint32_t`, `uint64_t`     |
 | `.tagged()`       | Use tagged hybrid encoding                       | `uint64_t` only            |
 | `.compress(v)`    | Enable/disable field compression                 | All types                  |
-
-### Comparing Field Configuration Macros
-
-| Feature                 | `fory::field<>`       | `FORY_FIELD_TAGS` | `FORY_FIELD_CONFIG`       |
-| ----------------------- | --------------------- | ----------------- | ------------------------- |
-| **Struct modification** | Required (wrap types) | None              | None                      |
-| **Encoding control**    | No                    | No                | Yes (varint/fixed/tagged) |
-| **Builder pattern**     | No                    | No                | Yes                       |
-| **Compile-time verify** | Yes                   | Limited           | Yes (member pointers)     |
-| **Cross-lang compat**   | Limited               | Limited           | Full                      |
-| **Recommended for**     | Simple structs        | Third-party types | Complex/xlang structs     |
 
 ## Default Values
 

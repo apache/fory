@@ -1,7 +1,7 @@
 ---
-title: FDL Compiler Guide
-sidebar_position: 4
-id: fdl_compiler_guide
+title: Compiler Guide
+sidebar_position: 3
+id: compiler_guide
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -138,7 +138,7 @@ When compiling FDL files with imports, the compiler searches for imported files 
 
 **Same-directory imports work automatically:**
 
-```proto
+```protobuf
 // main.fdl
 import "common.fdl";  // Found if common.fdl is in the same directory
 ```
@@ -541,7 +541,7 @@ When modifying schemas:
 3. **Add new fields** - Use new field numbers
 4. **Use `optional`** - For backward compatibility
 
-```proto
+```protobuf
 message User [id=100] {
     string id = 1;
     string name = 2;

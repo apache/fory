@@ -15,7 +15,7 @@ Define cross-language data structures with FDL and generate native code for mult
 - [Type System](compiler/type-system.md) - Primitive types, collections, and mappings
 - [Compiler Guide](compiler/compiler-guide.md) - CLI usage and build integration
 - [Generated Code](compiler/generated-code.md) - Output format for each language
-- [Protocol Buffers vs FDL](compiler/proto-vs-fdl.md) - Feature comparison and migration
+- [Protocol Buffers vs FDL](compiler/protobuf-idl.md) - Feature comparison and migration
 
 ## Serialization Format
 

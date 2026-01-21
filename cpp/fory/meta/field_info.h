@@ -82,6 +82,15 @@ template <typename FieldInfo> constexpr bool IsValidFieldInfo() {
   static_assert(                                                               \
       fory::meta::IsValidFieldInfo<ForyFieldInfoImpl<type>>(),                 \
       "duplicated fields in FORY_FIELD_INFO arguments are detected");          \
+  static_assert(ForyFieldInfoImpl<type>::Name.data() != nullptr,               \
+                "ForyFieldInfoImpl name must be available");                   \
+  static_assert(ForyFieldInfoImpl<type>::Names.size() ==                       \
+                    ForyFieldInfoImpl<type>::Size,                             \
+                "ForyFieldInfoImpl names size mismatch");                      \
   inline constexpr auto ForyFieldInfo(const type &) noexcept {                 \
     return ForyFieldInfoImpl<type>{};                                          \
-  };
+  }                                                                            \
+  static_assert(                                                               \
+      static_cast<ForyFieldInfoImpl<type> (*)(const type &) noexcept>(         \
+          &ForyFieldInfo) != nullptr,                                          \
+      "ForyFieldInfo must be declared");

@@ -183,13 +183,6 @@ template <typename T> struct TypeIndex<SharedWeak<T>> {
 };
 
 // ============================================================================
-// requires_ref_metadata trait for SharedWeak<T>
-// ============================================================================
-
-template <typename T>
-struct requires_ref_metadata<SharedWeak<T>> : std::true_type {};
-
-// ============================================================================
 // is_nullable trait for SharedWeak<T>
 // ============================================================================
 

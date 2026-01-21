@@ -393,7 +393,6 @@ inline Container read_collection_data_slow(ReadContext &ctx, uint32_t length) {
   }
 
   constexpr bool elem_is_polymorphic = is_polymorphic_v<T>;
-  constexpr bool elem_is_shared_ref = is_shared_ref_v<T>;
 
   uint8_t bitmap = ctx.read_uint8(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {

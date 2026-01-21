@@ -120,7 +120,7 @@ void main() {
 
         expect(a == b, isTrue);
         expect(a == c, isFalse);
-        expect(a == 42, isTrue);
+        expect(a.value == 42, isTrue);
       });
 
       test('hashCode consistency', () {

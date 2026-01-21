@@ -1,6 +1,6 @@
 ---
 title: Supported Types
-sidebar_position: 6
+sidebar_position: 8
 id: supported_types
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more

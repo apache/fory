@@ -20,7 +20,6 @@
 // @Skip()
 library;
 
-import 'dart:convert';
 import 'dart:typed_data';
 import 'package:test/test.dart';
 import 'package:fory/fory.dart';
@@ -39,35 +38,6 @@ void _testPerfSer(Fory fory, Object? obj, int times, String testName){
   }
   stopwatch.stop();
   print('$testName\nserialize simple struct test $times times: ${stopwatch.elapsedMilliseconds} ms');
-}
-
-void _testPerfJson(Object? obj, int times, String testName){
-  // warm up
-  for (int i = 0; i < 10000; i++) {
-    jsonEncode(obj);
-  }
-  // measure
-  final stopwatch = Stopwatch()..start();
-  for (int i = 0; i < times; ++i) {
-    jsonEncode(obj);
-  }
-  stopwatch.stop();
-  print('[Json Serialization]$testName\nserialize simple struct test $times times: ${stopwatch.elapsedMilliseconds} ms');
-}
-
-void _testPerfJsonDeser(Object? obj, int times) {
-  String str = jsonEncode(obj);
-  // warm up
-  for (int i = 0; i < 10000; i++) {
-    jsonDecode(str);
-  }
-  // measure
-  final stopwatch = Stopwatch()..start();
-  for (int i = 0; i < 10000; ++i) {
-    jsonDecode(str);
-  }
-  stopwatch.stop();
-  print('[Json Deserialization]deserialize simple struct test $times times: ${stopwatch.elapsedMilliseconds} ms');
 }
 
 void _testPerfDeser(Fory fory, Object? obj,  int times, String testName){

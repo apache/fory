@@ -196,7 +196,7 @@ void skip_map(ReadContext &ctx, const FieldType &field_type) {
   }
 }
 
-void skip_struct(ReadContext &ctx, const FieldType &field_type) {
+void skip_struct(ReadContext &ctx, const FieldType &) {
   // Struct fields in compatible mode are serialized with type_id and
   // optionally meta_index, followed by field values. We use the loaded
   // TypeMeta to skip all fields for the remote struct.
@@ -269,7 +269,7 @@ void skip_struct(ReadContext &ctx, const FieldType &field_type) {
   }
 }
 
-void skip_ext(ReadContext &ctx, const FieldType &field_type) {
+void skip_ext(ReadContext &ctx, const FieldType &) {
   // EXT fields in compatible mode are serialized with type_id followed by
   // ext data. For named ext, meta_index is also written after type_id.
   // We read the type_id, look up the registered ext harness, and call its

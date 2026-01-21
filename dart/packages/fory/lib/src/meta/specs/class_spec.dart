@@ -49,6 +49,9 @@ class ClassSpec extends CustomTypeSpec{
   }
 
   @override
+  int get hashCode => Object.hash(fields, promiseAcyclic, noCyclicRisk, construct, noArgConstruct);
+
+  @override
   bool operator ==(Object other) {
     return identical(this, other) ||
       (other is ClassSpec &&

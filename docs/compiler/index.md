@@ -1,7 +1,7 @@
 ---
-title: FDL Schema Guide
+title: Overview
 sidebar_position: 1
-id: schema_index
+id: index
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -25,7 +25,7 @@ Fory Definition Language (FDL) is a schema definition language for Apache Fory t
 
 FDL provides a simple, intuitive syntax for defining cross-language data structures:
 
-```proto
+```protobuf
 package example;
 
 enum Status [id=100] {
@@ -92,7 +92,7 @@ pip install -e .
 
 Create `example.fdl`:
 
-```proto
+```protobuf
 package example;
 
 message Person [id=100] {
@@ -147,7 +147,7 @@ data = fory.serialize(person)
 | [Type System](type-system.md)              | Primitive types, collections, and type rules |
 | [Compiler Guide](compiler-guide.md)        | CLI options and build integration            |
 | [Generated Code](generated-code.md)        | Output format for each target language       |
-| [Protocol Buffers vs FDL](proto-vs-fdl.md) | Comparison with protobuf and migration guide |
+| [Protocol Buffers vs FDL](protobuf-idl.md) | Comparison with protobuf and migration guide |
 
 ## Key Concepts
 
@@ -157,13 +157,13 @@ FDL supports two registration modes:
 
 **Numeric Type IDs** - Fast and compact:
 
-```proto
+```protobuf
 message User [id=100] { ... }  // Registered with ID 100
 ```
 
 **Namespace-based** - Flexible and readable:
 
-```proto
+```protobuf
 message Config { ... }  // Registered as "package.Config"
 ```
 
@@ -173,7 +173,7 @@ message Config { ... }  // Registered as "package.Config"
 - **`ref`**: Enable reference tracking for shared/circular references
 - **`repeated`**: Field is a list/array
 
-```proto
+```protobuf
 message Example {
     optional string nullable = 1;
     ref Node parent = 2;

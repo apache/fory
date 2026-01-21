@@ -370,28 +370,6 @@ template <typename T>
 inline constexpr bool is_shared_ref_v = is_shared_ref<T>::value;
 
 // ============================================================================
-// Reference Metadata Requirements
-// ============================================================================
-
-/// Determine if a type requires reference metadata (null/ref flags) even when
-/// nested inside another structure.
-/// Note: std::string does NOT require ref metadata - it's written inline
-/// without ref tracking, matching Java/Rust xlang behavior.
-template <typename T> struct requires_ref_metadata : std::false_type {};
-
-template <typename T>
-struct requires_ref_metadata<std::optional<T>> : std::true_type {};
-
-template <typename T>
-struct requires_ref_metadata<std::shared_ptr<T>> : std::true_type {};
-
-template <typename T>
-struct requires_ref_metadata<std::unique_ptr<T>> : std::true_type {};
-
-template <typename T>
-inline constexpr bool requires_ref_metadata_v = requires_ref_metadata<T>::value;
-
-// ============================================================================
 // Element Type Extraction
 // ============================================================================
 

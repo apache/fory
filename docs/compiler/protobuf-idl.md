@@ -1,7 +1,7 @@
 ---
-title: Protocol Buffers vs FDL
-sidebar_position: 6
-id: proto_vs_fdl
+title: Protocol Buffers IDL
+sidebar_position: 10
+id: protobuf_idl_support
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -47,7 +47,7 @@ option go_package = "example.com/models";
 
 **FDL:**
 
-```proto
+```protobuf
 package example.models;
 ```
 
@@ -68,7 +68,7 @@ enum Status {
 
 **FDL:**
 
-```proto
+```protobuf
 enum Status [id=100] {
     PENDING = 0;
     ACTIVE = 1;
@@ -99,7 +99,7 @@ message User {
 
 **FDL:**
 
-```proto
+```protobuf
 message User [id=101] {
     string id = 1;
     string name = 2;
@@ -131,7 +131,7 @@ message Order {
 
 **FDL:**
 
-```proto
+```protobuf
 message OrderItem [id=200] {
     string product_id = 1;
     int32 quantity = 2;
@@ -165,7 +165,7 @@ FDL's killer feature is first-class reference tracking:
 
 **FDL:**
 
-```proto
+```protobuf
 message TreeNode [id=300] {
     string value = 1;
     ref TreeNode parent = 2;
@@ -291,17 +291,11 @@ user.setAge(30);
 
 ## Performance Comparison
 
-Benchmarks show Fory significantly outperforms Protocol Buffers:
+Benchmarks show Fory significantly outperforms Protocol Buffers, see more details from below links:
 
-| Benchmark                 | Protocol Buffers | Fory     | Improvement |
-| ------------------------- | ---------------- | -------- | ----------- |
-| Serialization (simple)    | 1x               | 10-20x   | 10-20x      |
-| Deserialization (simple)  | 1x               | 10-20x   | 10-20x      |
-| Serialization (complex)   | 1x               | 50-100x  | 50-100x     |
-| Deserialization (complex) | 1x               | 50-100x  | 50-100x     |
-| Memory allocation         | 1x               | 0.1-0.5x | 2-10x less  |
-
-_Benchmarks vary based on data structure and language. See [Fory benchmarks](../benchmarks/) for details._
+- Benchmark result: https://fory.apache.org/docs/introduction/benchmark
+- Benchmark code: https://github.com/apache/fory/tree/main/benchmarks
+- Benchmark docs: https://github.com/apache/fory/tree/main/benchmarks
 
 ## Migration Guide
 
@@ -330,7 +324,7 @@ message Address {
 
 **After (FDL):**
 
-```proto
+```protobuf
 package myapp;
 
 message Address [id=100] {
@@ -360,7 +354,7 @@ message Result {
 }
 ```
 
-```proto
+```protobuf
 // FDL - Use separate optional fields
 message Result [id=102] {
     optional Success success = 1;
@@ -379,7 +373,7 @@ message Event {
 }
 ```
 
-```proto
+```protobuf
 // FDL
 message Event [id=103] {
     timestamp created_at = 1;
@@ -390,7 +384,7 @@ message Event [id=103] {
 
 Assign unique type IDs for cross-language compatibility:
 
-```proto
+```protobuf
 // Reserve ranges for different domains
 // 100-199: Common types
 // 200-299: User domain

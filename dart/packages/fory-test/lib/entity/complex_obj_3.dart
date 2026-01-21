@@ -31,6 +31,9 @@ class ComplexObject3 with _$ComplexObject3Fory{
   late final LinkedHashMap<String, HashSet<Int8>> f3;
 
   @override
+  int get hashCode => Object.hash(f1, f2, f3);
+
+  @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;
     if (other is! ComplexObject3) return false;

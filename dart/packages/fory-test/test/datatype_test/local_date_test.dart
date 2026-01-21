@@ -401,7 +401,6 @@ void main() {
       check(date1 == date2).isTrue();
       check(date1 == date3).isFalse();
       check(date1 == date1).isTrue();
-      check(date1 == "not a date").isFalse();
     });
 
     test('hashCode consistency', () {

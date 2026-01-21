@@ -44,6 +44,9 @@ class TimeObj with _$TimeObjFory{
   );
 
   @override
+  int get hashCode => Object.hash(date1, date2, date3, date4, dateTime1, dateTime2, dateTime3, dateTime4);
+
+  @override
   bool operator ==(Object other) {
     return identical(this, other) ||
         (other is TimeObj &&

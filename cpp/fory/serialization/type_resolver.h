@@ -314,7 +314,7 @@ template <typename T> FieldType build_field_type(bool nullable = false) {
 template <typename T>
 struct FieldTypeBuilder<T, std::enable_if_t<is_optional_v<decay_t<T>>>> {
   using Inner = typename decay_t<T>::value_type;
-  static FieldType build(bool nullable) {
+  static FieldType build(bool) {
     FieldType inner = FieldTypeBuilder<Inner>::build(true);
     inner.nullable = true;
     return inner;
@@ -324,7 +324,7 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_optional_v<decay_t<T>>>> {
 template <typename T>
 struct FieldTypeBuilder<T, std::enable_if_t<is_shared_ptr_v<decay_t<T>>>> {
   using Inner = typename decay_t<T>::element_type;
-  static FieldType build(bool nullable) {
+  static FieldType build(bool) {
     FieldType inner = FieldTypeBuilder<Inner>::build(true);
     inner.nullable = true;
     return inner;
@@ -334,7 +334,7 @@ struct FieldTypeBuilder<T, std::enable_if_t<is_shared_ptr_v<decay_t<T>>>> {
 template <typename T>
 struct FieldTypeBuilder<T, std::enable_if_t<is_unique_ptr_v<decay_t<T>>>> {
   using Inner = typename decay_t<T>::element_type;
-  static FieldType build(bool nullable) {
+  static FieldType build(bool) {
     FieldType inner = FieldTypeBuilder<Inner>::build(true);
     inner.nullable = true;
     return inner;

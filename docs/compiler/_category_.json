@@ -1,4 +1,6 @@
 {
   "position": 3,
-  "label": "Schema IDL & Compiler"
+  "label": "Schema IDL & Compiler",
+  "collapsible": true,
+  "collapsed": true
 }

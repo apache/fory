@@ -258,8 +258,8 @@ void main() {
 
         expect(a == b, isTrue);
         expect(a == c, isFalse);
-        expect(a == 42, isTrue);
-        expect(a == 43, isFalse);
+        expect(a.value == 42, isTrue);
+        expect(a.value == 43, isFalse);
         expect(a == d, isTrue); // Different types but same value
       });
 

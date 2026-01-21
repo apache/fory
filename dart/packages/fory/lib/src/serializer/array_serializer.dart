@@ -28,7 +28,7 @@ import 'package:fory/src/serializer/serializer.dart';
 import 'package:fory/src/serializer/serializer_cache.dart';
 
 /// Whether the host machine is little-endian
-const bool isLittleEndian = Endian.host == Endian.little;
+final bool isLittleEndian = Endian.host == Endian.little;
 
 abstract base class ArraySerializerCache extends SerializerCache{
   const ArraySerializerCache();

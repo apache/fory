@@ -167,13 +167,6 @@ struct NodeWithParent {
 };
 FORY_STRUCT(NodeWithParent, value, parent, children);
 
-struct MultipleWeakRefs {
-  SharedWeak<SimpleStruct> weak1;
-  SharedWeak<SimpleStruct> weak2;
-  SharedWeak<SimpleStruct> weak3;
-};
-FORY_STRUCT(MultipleWeakRefs, weak1, weak2, weak3);
-
 // ============================================================================
 // Serialization Tests
 // ============================================================================
@@ -447,9 +440,9 @@ TEST(WeakPtrSerializerTest, RequiresTrackRef) {
 // ============================================================================
 
 TEST(WeakPtrSerializerTest, TypeTraits) {
-  // Test requires_ref_metadata
-  EXPECT_TRUE(requires_ref_metadata_v<SharedWeak<int32_t>>);
-  EXPECT_TRUE(requires_ref_metadata_v<SharedWeak<SimpleStruct>>);
+  // Test is_nullable
+  EXPECT_TRUE(is_nullable_v<SharedWeak<int32_t>>);
+  EXPECT_TRUE(is_nullable_v<SharedWeak<SimpleStruct>>);
 
   // Test is_nullable
   EXPECT_TRUE(is_nullable_v<SharedWeak<int32_t>>);

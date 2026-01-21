@@ -655,6 +655,42 @@ jobs:
       - name: Run Go IDL Tests
         run: ./integration_tests/idl_tests/run_go_tests.sh
 
+  dart:
+    name: Dart CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Dart SDK
+        run: |
+          # Download and install Dart SDK
+          DART_VERSION=3.6.1
+          wget -q https://storage.googleapis.com/dart-archive/channels/stable/release/${DART_VERSION}/sdk/dartsdk-linux-x64-release.zip
+          unzip -q dartsdk-linux-x64-release.zip
+          export PATH="$PATH:$PWD/dart-sdk/bin"
+          echo "$PWD/dart-sdk/bin" >> $GITHUB_PATH
+      - name: Display Dart version
+        run: dart --version
+      - name: Get dependencies
+        run: |
+          cd dart
+          dart pub get
+      - name: Generate code
+        run: |
+          cd dart/packages/fory-test
+          dart run build_runner build
+      - name: Run tests
+        run: |
+          cd dart/packages/fory-test
+          dart test
+      - name: Run code analysis
+        run: |
+          cd dart/packages/fory-test
+          dart analyze
+      - name: Analyze code
+        run: |
+          cd dart
+          dart analyze
+
   lint:
     name: Code Style Check
     runs-on: ubuntu-latest

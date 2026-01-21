@@ -19,7 +19,7 @@ For comprehensive documentation, see the [FDL Schema Guide](../docs/compiler/ind
 - [Type System](../docs/compiler/type-system.md) - Primitive types, collections, and language mappings
 - [Compiler Guide](../docs/compiler/compiler-guide.md) - CLI options and build integration
 - [Generated Code](../docs/compiler/generated-code.md) - Output format for each target language
-- [Protocol Buffers vs FDL](../docs/compiler/proto-vs-fdl.md) - Feature comparison and migration guide
+- [Protocol Buffers vs FDL](../docs/compiler/protobuf-idl.md) - Feature comparison and migration guide
 
 ## Installation
 

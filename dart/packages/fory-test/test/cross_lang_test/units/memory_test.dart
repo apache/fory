@@ -63,6 +63,6 @@ void main() {
         check(br.readVarUint32()).equals(100);
         Uint8List byteLis = br.copyBytes(br.readInt32());
         check(byteLis.memEquals(bytes2)).isTrue();
-      });
+      }, skip: 'Cross-language test requires Python installation');
   });
 }

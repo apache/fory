@@ -38,6 +38,9 @@ class ComplexObject1 with _$ComplexObject1Fory{
   late Int16List f11;
   late List<Int16> f12;
 
+  @override
+  int get hashCode => Object.hash(f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f11, f12);
+
   // define ==
   @override
   bool operator ==(Object other) {

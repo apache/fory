@@ -25,6 +25,9 @@ class SimpleStruct1 with _$SimpleStruct1Fory {
   late Int32 a;
 
   @override
+  int get hashCode => a.hashCode;
+
+  @override
   bool operator ==(Object other) {
     if (other is! SimpleStruct1) return false;
     return a == other.a;

@@ -1,7 +1,7 @@
 ---
-title: FDL Type System
-sidebar_position: 3
-id: fdl_type_system
+title: Type System
+sidebar_position: 4
+id: type_system
 license: |
   Licensed to the Apache Software Foundation (ASF) under one or more
   contributor license agreements.  See the NOTICE file distributed with
@@ -35,7 +35,7 @@ FDL provides a rich type system designed for cross-language compatibility:
 
 ### Boolean
 
-```proto
+```protobuf
 bool is_active = 1;
 ```
 
@@ -69,7 +69,7 @@ FDL provides fixed-width signed integers:
 
 **Examples:**
 
-```proto
+```protobuf
 message Counters {
     int8 tiny = 1;
     int16 small = 2;
@@ -109,7 +109,7 @@ class Counters:
 
 **Example:**
 
-```proto
+```protobuf
 message Coordinates {
     float64 latitude = 1;
     float64 longitude = 2;
@@ -121,7 +121,7 @@ message Coordinates {
 
 UTF-8 encoded text:
 
-```proto
+```protobuf
 string name = 1;
 ```
 
@@ -137,7 +137,7 @@ string name = 1;
 
 Raw binary data:
 
-```proto
+```protobuf
 bytes data = 1;
 ```
 
@@ -155,7 +155,7 @@ bytes data = 1;
 
 Calendar date without time:
 
-```proto
+```protobuf
 date birth_date = 1;
 ```
 
@@ -171,7 +171,7 @@ date birth_date = 1;
 
 Date and time with nanosecond precision:
 
-```proto
+```protobuf
 timestamp created_at = 1;
 ```
 
@@ -187,7 +187,7 @@ timestamp created_at = 1;
 
 Enums define named integer constants:
 
-```proto
+```protobuf
 enum Priority [id=100] {
     LOW = 0;
     MEDIUM = 1;
@@ -270,7 +270,7 @@ FORY_ENUM(Priority, LOW, MEDIUM, HIGH, CRITICAL);
 
 Messages are structured types composed of fields:
 
-```proto
+```protobuf
 message User [id=101] {
     string id = 1;
     string name = 2;
@@ -294,7 +294,7 @@ message User [id=101] {
 
 The `repeated` modifier creates a list:
 
-```proto
+```protobuf
 repeated string tags = 1;
 repeated User users = 2;
 ```
@@ -322,7 +322,7 @@ repeated User users = 2;
 
 Maps with typed keys and values:
 
-```proto
+```protobuf
 map<string, int32> counts = 1;
 map<string, User> users = 2;
 ```
@@ -348,7 +348,7 @@ Avoid using messages or complex types as keys.
 
 The `optional` modifier makes a field nullable:
 
-```proto
+```protobuf
 message Profile {
     string name = 1;              // Required
     optional string bio = 2;      // Nullable
@@ -376,7 +376,7 @@ message Profile {
 
 The `ref` modifier enables reference tracking:
 
-```proto
+```protobuf
 message TreeNode {
     string value = 1;
     ref TreeNode parent = 2;

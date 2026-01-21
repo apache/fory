@@ -20,3 +20,7 @@ include: package:lints/recommended.yaml
 analyzer:
   exclude:
     - vault/**
+  errors:
+    constant_identifier_names: ignore
+    unintended_html_in_doc_comment: ignore
+    deprecated_member_use_from_same_package: ignore

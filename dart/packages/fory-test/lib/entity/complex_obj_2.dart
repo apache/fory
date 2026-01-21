@@ -30,6 +30,9 @@ class ComplexObject2 with _$ComplexObject2Fory {
   const ComplexObject2(this.f1, this.f2);
 
   @override
+  int get hashCode => Object.hash(f1, f2);
+
+  @override
   bool operator ==(Object other) {
     return identical(this, other) ||
       (other is ComplexObject2 &&

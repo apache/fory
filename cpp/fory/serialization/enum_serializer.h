@@ -81,8 +81,7 @@ struct Serializer<E, std::enable_if_t<std::is_enum_v<E>>> {
     ctx.write_varuint32(static_cast<uint32_t>(ordinal));
   }
 
-  static inline void write_data_generic(E value, WriteContext &ctx,
-                                        bool has_generics) {
+  static inline void write_data_generic(E value, WriteContext &ctx, bool) {
     write_data(value, ctx);
   }
 
@@ -124,7 +123,7 @@ struct Serializer<E, std::enable_if_t<std::is_enum_v<E>>> {
   }
 
   static inline E read_with_type_info(ReadContext &ctx, RefMode ref_mode,
-                                      const TypeInfo &type_info) {
+                                      const TypeInfo &) {
     return read(ctx, ref_mode, false);
   }
 };
