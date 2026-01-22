@@ -197,3 +197,13 @@ class UnsupportedTypeException extends ForyCodegenException {
     return buf.toString();
   }
 }
+
+class ConstraintViolationException extends FieldException {
+  ConstraintViolationException(
+    String libPath,
+    String className,
+    String fieldName,
+    String constraint, [
+    String? where,
+  ]) : super(libPath, className, [fieldName], constraint, where);
+}
