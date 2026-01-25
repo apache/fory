@@ -1636,7 +1636,7 @@ Meta strings are required for enum and struct serialization (encoding field name
 
 ### C++
 
-- Compile-time reflection via macros (`FORY_STRUCT`, `FORY_FIELD_INFO`)
+- Compile-time reflection via macros (`FORY_STRUCT`)
 - Template meta programming for type dispatch and serializer selection
 - Uses `std::shared_ptr` for reference tracking
 - Compile-time field ordering

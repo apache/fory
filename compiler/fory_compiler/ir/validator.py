@@ -18,7 +18,7 @@
 """Schema validation for Fory IDL."""
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Union as TypingUnion
 
 from fory_compiler.ir.ast import (
     Schema,
@@ -57,6 +57,7 @@ class SchemaValidator:
         self.warnings: List[ValidationIssue] = []
 
     def validate(self) -> bool:
+        self._apply_field_defaults()
         self._check_duplicate_type_names()
         self._check_duplicate_type_ids()
         self._check_messages()
@@ -197,6 +198,69 @@ class SchemaValidator:
 
         for message in self.schema.messages:
             validate_message(message)
+
+    def _apply_field_defaults(self) -> None:
+        def apply_message_fields(
+            message: Message,
+            enclosing_messages: Optional[List[Message]] = None,
+        ) -> None:
+            lineage = (enclosing_messages or []) + [message]
+            for field in message.fields:
+                if self.schema.source_format == "fdl" and field.tag_id is None:
+                    field.tag_id = field.number
+                if self._is_message_type(field.field_type, lineage):
+                    explicit_optional = field.optional
+                    if self.schema.source_format == "fdl" and explicit_optional:
+                        self._error(
+                            "Message fields are always optional; remove the optional modifier",
+                            field.location,
+                        )
+                    field.optional = True
+            for nested_msg in message.nested_messages:
+                apply_message_fields(nested_msg, lineage)
+
+        for message in self.schema.messages:
+            apply_message_fields(message)
+
+    def _is_message_type(
+        self, field_type: FieldType, parent_stack: List[Message]
+    ) -> bool:
+        if not isinstance(field_type, NamedType):
+            return False
+        resolved = self._resolve_named_type(field_type.name, parent_stack)
+        return isinstance(resolved, Message)
+
+    def _resolve_named_type(
+        self, name: str, parent_stack: List[Message]
+    ) -> Optional[TypingUnion[Message, Enum, Union]]:
+        parts = name.split(".")
+        if len(parts) > 1:
+            current = self._find_top_level_type(parts[0])
+            for part in parts[1:]:
+                if isinstance(current, Message):
+                    current = current.get_nested_type(part)
+                else:
+                    return None
+            return current
+        for msg in reversed(parent_stack):
+            nested = msg.get_nested_type(name)
+            if nested is not None:
+                return nested
+        return self._find_top_level_type(name)
+
+    def _find_top_level_type(
+        self, name: str
+    ) -> Optional[TypingUnion[Message, Enum, Union]]:
+        for enum in self.schema.enums:
+            if enum.name == name:
+                return enum
+        for union in self.schema.unions:
+            if union.name == name:
+                return union
+        for message in self.schema.messages:
+            if message.name == name:
+                return message
+        return None
 
     def _check_type_references(self) -> None:
         def check_type_ref(

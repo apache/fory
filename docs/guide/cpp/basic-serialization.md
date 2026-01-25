@@ -177,30 +177,97 @@ Common error types:
 
 ## The FORY_STRUCT Macro
 
-The `FORY_STRUCT` macro registers a struct for serialization:
+The `FORY_STRUCT` macro registers a class for serialization (struct works the
+same way):
 
 ```cpp
-struct MyStruct {
+class MyStruct {
+public:
   int32_t x;
   std::string y;
   std::vector<int32_t> z;
+  FORY_STRUCT(MyStruct, x, y, z);
 };
+```
 
-// Must be in the same namespace as the struct
-FORY_STRUCT(MyStruct, x, y, z);
+Private fields are supported when the macro is placed in a `public:` section:
+
+```cpp
+class PrivateUser {
+public:
+  PrivateUser(int32_t id, std::string name) : id_(id), name_(std::move(name)) {}
+
+  bool operator==(const PrivateUser &other) const {
+    return id_ == other.id_ && name_ == other.name_;
+  }
+
+private:
+  int32_t id_ = 0;
+  std::string name_;
+
+public:
+  FORY_STRUCT(PrivateUser, id_, name_);
+};
 ```
 
 The macro:
 
 1. Generates compile-time field metadata
-2. Enables ADL (Argument-Dependent Lookup) for serialization
+2. Enables member or ADL (Argument-Dependent Lookup) discovery for serialization
 3. Creates efficient serialization code via template specialization
 
 **Requirements:**
 
-- Must be placed in the same namespace as the struct (for ADL)
+- Must be declared inside the class definition (struct works the same way) or
+  at namespace scope
+- Must be placed after all field declarations (when used inside the class)
+- When used inside a class, the macro must be placed in a `public:` section
 - All listed fields must be serializable types
-- Field order in the macro determines serialization order
+- Field order in the macro is not important
+
+## External / Third-Party Types
+
+When you cannot modify a third-party type, use `FORY_STRUCT` at namespace
+scope. This only works with **public** fields.
+
+```cpp
+namespace thirdparty {
+struct Foo {
+  int32_t id;
+  std::string name;
+};
+
+FORY_STRUCT(Foo, id, name);
+} // namespace thirdparty
+```
+
+**Limitations:**
+
+- Must be declared at namespace scope in the same namespace as the type
+- Only public fields are supported
+
+## Inherited Fields
+
+To include base-class fields in a derived type, use `FORY_BASE(Base)` inside
+`FORY_STRUCT`. The base must define its own `FORY_STRUCT` so its fields can be
+referenced.
+
+```cpp
+struct Base {
+  int32_t a;
+  FORY_STRUCT(Base, a);
+};
+
+struct Derived : Base {
+  int32_t b;
+  FORY_STRUCT(Derived, FORY_BASE(Base), b);
+};
+```
+
+**Notes:**
+
+- Base fields are serialized before derived fields.
+- Only fields visible from the derived type are supported.
 
 ## Nested Structs
 
@@ -209,14 +276,14 @@ Nested structs are fully supported:
 ```cpp
 struct Inner {
   int32_t value;
+  FORY_STRUCT(Inner, value);
 };
-FORY_STRUCT(Inner, value);
 
 struct Outer {
   Inner inner;
   std::string label;
+  FORY_STRUCT(Outer, inner, label);
 };
-FORY_STRUCT(Outer, inner, label);
 
 // Both must be registered
 fory.register_struct<Inner>(1);

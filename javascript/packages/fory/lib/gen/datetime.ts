@@ -21,7 +21,7 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { InternalSerializerType } from "../type";
+import { TypeId } from "../type";
 import { Scope } from "./scope";
 
 class TimestampSerializerGenerator extends BaseSerializerGenerator {
@@ -88,5 +88,5 @@ class DurationSerializerGenerator extends BaseSerializerGenerator {
   }
 }
 
-CodegenRegistry.register(InternalSerializerType.DURATION, DurationSerializerGenerator);
-CodegenRegistry.register(InternalSerializerType.TIMESTAMP, TimestampSerializerGenerator);
+CodegenRegistry.register(TypeId.DURATION, DurationSerializerGenerator);
+CodegenRegistry.register(TypeId.TIMESTAMP, TimestampSerializerGenerator);

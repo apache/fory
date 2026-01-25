@@ -21,7 +21,7 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator, RefState, SerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { InternalSerializerType, RefFlags, Serializer } from "../type";
+import { TypeId, RefFlags, Serializer } from "../type";
 import { Scope } from "./scope";
 import Fory from "../fory";
 
@@ -151,7 +151,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
   abstract genericTypeDescriptin(): TypeInfo;
 
   private isAny() {
-    return this.genericTypeDescriptin().type === InternalSerializerType.ANY;
+    return this.genericTypeDescriptin().typeId === TypeId.UNKNOWN;
   }
 
   abstract newCollection(lenAccessor: string): string;
@@ -187,7 +187,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     return `
             let ${flags} = 0;
             ${this.writeElementsHeader(accessor, flags)}
-            ${this.builder.writer.int16(this.typeInfo.type)}
+            ${this.builder.writer.int16(this.typeInfo.typeId)}
             ${this.builder.writer.varUInt32(`${accessor}.${this.sizeProp()}`)}
             ${this.builder.writer.reserve(`${this.innerGenerator.getFixedSize()} * ${accessor}.${this.sizeProp()}`)};
             if (${flags} & ${CollectionFlags.TRACKING_REF}) {

@@ -21,8 +21,8 @@ import { Type, TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator, RefState, SerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { InternalSerializerType } from "../type";
 import { Scope } from "./scope";
+import { TypeId } from "../type";
 
 function build(inner: TypeInfo) {
   return class TypedArraySerializerGenerator extends BaseSerializerGenerator {
@@ -72,15 +72,15 @@ function build(inner: TypeInfo) {
   };
 }
 
-CodegenRegistry.register(InternalSerializerType.BOOL_ARRAY, build(Type.bool()));
-CodegenRegistry.register(InternalSerializerType.INT8_ARRAY, build(Type.int8()));
-CodegenRegistry.register(InternalSerializerType.INT16_ARRAY, build(Type.int16()));
-CodegenRegistry.register(InternalSerializerType.INT32_ARRAY, build(Type.int32()));
-CodegenRegistry.register(InternalSerializerType.INT64_ARRAY, build(Type.int64()));
-CodegenRegistry.register(InternalSerializerType.UINT8_ARRAY, build(Type.uint8()));
-CodegenRegistry.register(InternalSerializerType.UINT16_ARRAY, build(Type.uint16()));
-CodegenRegistry.register(InternalSerializerType.UINT32_ARRAY, build(Type.uint32()));
-CodegenRegistry.register(InternalSerializerType.UINT64_ARRAY, build(Type.uint64()));
-CodegenRegistry.register(InternalSerializerType.FLOAT16_ARRAY, build(Type.float16()));
-CodegenRegistry.register(InternalSerializerType.FLOAT32_ARRAY, build(Type.float32()));
-CodegenRegistry.register(InternalSerializerType.FLOAT64_ARRAY, build(Type.float64()));
+CodegenRegistry.register(TypeId.BOOL_ARRAY, build(Type.bool()));
+CodegenRegistry.register(TypeId.INT8_ARRAY, build(Type.int8()));
+CodegenRegistry.register(TypeId.INT16_ARRAY, build(Type.int16()));
+CodegenRegistry.register(TypeId.INT32_ARRAY, build(Type.int32()));
+CodegenRegistry.register(TypeId.INT64_ARRAY, build(Type.int64()));
+CodegenRegistry.register(TypeId.UINT8_ARRAY, build(Type.uint8()));
+CodegenRegistry.register(TypeId.UINT16_ARRAY, build(Type.uint16()));
+CodegenRegistry.register(TypeId.UINT32_ARRAY, build(Type.uint32()));
+CodegenRegistry.register(TypeId.UINT64_ARRAY, build(Type.uint64()));
+CodegenRegistry.register(TypeId.FLOAT16_ARRAY, build(Type.float16()));
+CodegenRegistry.register(TypeId.FLOAT32_ARRAY, build(Type.float32()));
+CodegenRegistry.register(TypeId.FLOAT64_ARRAY, build(Type.float64()));

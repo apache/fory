@@ -173,7 +173,7 @@ export default class ClassResolver {
   }
 
   getSerializerById(id: number) {
-    if (id | 0xff) {
+    if (id <= 0xff) {
       return this.internalSerializer[id]!;
     } else {
       return this.customSerializer.get(id)!;

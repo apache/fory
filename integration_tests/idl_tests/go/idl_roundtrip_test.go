@@ -205,7 +205,7 @@ func runFilePrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes)
 }
 
 func buildMonster() monster.Monster {
-	pos := monster.Vec3{
+	pos := &monster.Vec3{
 		X: 1.0,
 		Y: 2.0,
 		Z: 3.0,
@@ -265,7 +265,7 @@ func runFileMonsterRoundTrip(t *testing.T, f *fory.Fory, monsterValue monster.Mo
 }
 
 func buildContainer() complexfbs.Container {
-	scalars := complexfbs.ScalarPack{
+	scalars := &complexfbs.ScalarPack{
 		B:  -8,
 		Ub: 200,
 		S:  -1234,

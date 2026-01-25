@@ -49,8 +49,8 @@ struct PersonV1 {
   bool operator==(const PersonV1 &other) const {
     return name == other.name && age == other.age;
   }
+  FORY_STRUCT(PersonV1, name, age);
 };
-FORY_STRUCT(PersonV1, name, age);
 
 // V2: Added email field
 struct PersonV2 {
@@ -61,8 +61,8 @@ struct PersonV2 {
   bool operator==(const PersonV2 &other) const {
     return name == other.name && age == other.age && email == other.email;
   }
+  FORY_STRUCT(PersonV2, name, age, email);
 };
-FORY_STRUCT(PersonV2, name, age, email);
 
 // V3: Added multiple fields
 struct PersonV3 {
@@ -76,8 +76,8 @@ struct PersonV3 {
     return name == other.name && age == other.age && email == other.email &&
            phone == other.phone && address == other.address;
   }
+  FORY_STRUCT(PersonV3, name, age, email, phone, address);
 };
-FORY_STRUCT(PersonV3, name, age, email, phone, address);
 
 // ============================================================================
 // Test Case 2: Removing Fields (Forward Compatibility)
@@ -96,8 +96,8 @@ struct UserFull {
            email == other.email && password_hash == other.password_hash &&
            login_count == other.login_count;
   }
+  FORY_STRUCT(UserFull, id, username, email, password_hash, login_count);
 };
-FORY_STRUCT(UserFull, id, username, email, password_hash, login_count);
 
 // Minimal schema (removed 3 fields)
 struct UserMinimal {
@@ -107,8 +107,8 @@ struct UserMinimal {
   bool operator==(const UserMinimal &other) const {
     return id == other.id && username == other.username;
   }
+  FORY_STRUCT(UserMinimal, id, username);
 };
-FORY_STRUCT(UserMinimal, id, username);
 
 // ============================================================================
 // Test Case 3: Field Reordering
@@ -124,8 +124,8 @@ struct ConfigOriginal {
     return host == other.host && port == other.port &&
            enable_ssl == other.enable_ssl && protocol == other.protocol;
   }
+  FORY_STRUCT(ConfigOriginal, host, port, enable_ssl, protocol);
 };
-FORY_STRUCT(ConfigOriginal, host, port, enable_ssl, protocol);
 
 // Reordered fields (different order)
 struct ConfigReordered {
@@ -138,8 +138,8 @@ struct ConfigReordered {
     return host == other.host && port == other.port &&
            enable_ssl == other.enable_ssl && protocol == other.protocol;
   }
+  FORY_STRUCT(ConfigReordered, enable_ssl, protocol, host, port);
 };
-FORY_STRUCT(ConfigReordered, enable_ssl, protocol, host, port);
 
 // ============================================================================
 // Test Case 4: Nested Struct Evolution
@@ -152,8 +152,8 @@ struct AddressV1 {
   bool operator==(const AddressV1 &other) const {
     return street == other.street && city == other.city;
   }
+  FORY_STRUCT(AddressV1, street, city);
 };
-FORY_STRUCT(AddressV1, street, city);
 
 struct AddressV2 {
   std::string street;
@@ -165,8 +165,8 @@ struct AddressV2 {
     return street == other.street && city == other.city &&
            country == other.country && zipcode == other.zipcode;
   }
+  FORY_STRUCT(AddressV2, street, city, country, zipcode);
 };
-FORY_STRUCT(AddressV2, street, city, country, zipcode);
 
 struct EmployeeV1 {
   std::string name;
@@ -175,8 +175,8 @@ struct EmployeeV1 {
   bool operator==(const EmployeeV1 &other) const {
     return name == other.name && home_address == other.home_address;
   }
+  FORY_STRUCT(EmployeeV1, name, home_address);
 };
-FORY_STRUCT(EmployeeV1, name, home_address);
 
 struct EmployeeV2 {
   std::string name;
@@ -187,8 +187,8 @@ struct EmployeeV2 {
     return name == other.name && home_address == other.home_address &&
            employee_id == other.employee_id;
   }
+  FORY_STRUCT(EmployeeV2, name, home_address, employee_id);
 };
-FORY_STRUCT(EmployeeV2, name, home_address, employee_id);
 
 // ============================================================================
 // Test Case 5: Collection Field Evolution
@@ -201,8 +201,8 @@ struct ProductV1 {
   bool operator==(const ProductV1 &other) const {
     return name == other.name && price == other.price;
   }
+  FORY_STRUCT(ProductV1, name, price);
 };
-FORY_STRUCT(ProductV1, name, price);
 
 struct ProductV2 {
   std::string name;
@@ -214,8 +214,8 @@ struct ProductV2 {
     return name == other.name && price == other.price && tags == other.tags &&
            attributes == other.attributes;
   }
+  FORY_STRUCT(ProductV2, name, price, tags, attributes);
 };
-FORY_STRUCT(ProductV2, name, price, tags, attributes);
 
 // ============================================================================
 // TESTS

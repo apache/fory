@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { TypeInfo, InternalSerializerType, Type } from '../packages/fory/index';
+import Fory, { Type, TypeInfo } from '../packages/fory/index';
 import { describe, expect, test } from '@jest/globals';
 
 describe('object', () => {
@@ -66,6 +66,7 @@ describe('object', () => {
         b: Type.string()
       })
     })
+
     const fory = new Fory({ refTracking: true });
     const { serialize, deserialize } = fory.registerSerializer(typeInfo);
     const input = serialize({ a: { b: "hel" } });

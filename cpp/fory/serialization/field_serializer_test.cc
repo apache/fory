@@ -54,8 +54,8 @@ struct FieldPerson {
            score.value == other.score.value &&
            active.value == other.active.value;
   }
+  FORY_STRUCT(FieldPerson, name, age, score, active);
 };
-FORY_STRUCT(FieldPerson, name, age, score, active);
 
 // Struct with optional fields
 struct FieldOptionalData {
@@ -68,8 +68,8 @@ struct FieldOptionalData {
            optional_age.value == other.optional_age.value &&
            optional_email.value == other.optional_email.value;
   }
+  FORY_STRUCT(FieldOptionalData, required_name, optional_age, optional_email);
 };
-FORY_STRUCT(FieldOptionalData, required_name, optional_age, optional_email);
 
 // Struct with shared_ptr fields (non-nullable by default)
 struct FieldSharedPtrHolder {
@@ -87,8 +87,8 @@ struct FieldSharedPtrHolder {
       return false;
     return true;
   }
+  FORY_STRUCT(FieldSharedPtrHolder, value, text);
 };
-FORY_STRUCT(FieldSharedPtrHolder, value, text);
 
 // Struct with nullable shared_ptr fields
 struct FieldNullableSharedPtr {
@@ -110,15 +110,15 @@ struct FieldNullableSharedPtr {
       return false;
     return true;
   }
+  FORY_STRUCT(FieldNullableSharedPtr, nullable_value, nullable_text);
 };
-FORY_STRUCT(FieldNullableSharedPtr, nullable_value, nullable_text);
 
 // Struct with unique_ptr fields
 struct FieldUniquePtrHolder {
   fory::field<std::unique_ptr<int32_t>, 0> value;
   fory::field<std::unique_ptr<int32_t>, 1, fory::nullable> nullable_value;
+  FORY_STRUCT(FieldUniquePtrHolder, value, nullable_value);
 };
-FORY_STRUCT(FieldUniquePtrHolder, value, nullable_value);
 
 // Nested struct for reference tracking tests
 struct FieldNode {
@@ -128,27 +128,27 @@ struct FieldNode {
   bool operator==(const FieldNode &other) const {
     return id.value == other.id.value && name.value == other.name.value;
   }
+  FORY_STRUCT(FieldNode, id, name);
 };
-FORY_STRUCT(FieldNode, id, name);
 
 // Struct with ref tracking for shared_ptr
 struct FieldRefTrackingHolder {
   fory::field<std::shared_ptr<FieldNode>, 0, fory::ref> first;
   fory::field<std::shared_ptr<FieldNode>, 1, fory::ref> second;
+  FORY_STRUCT(FieldRefTrackingHolder, first, second);
 };
-FORY_STRUCT(FieldRefTrackingHolder, first, second);
 
 // Struct with nullable + ref
 struct FieldNullableRefHolder {
   fory::field<std::shared_ptr<FieldNode>, 0, fory::nullable, fory::ref> node;
+  FORY_STRUCT(FieldNullableRefHolder, node);
 };
-FORY_STRUCT(FieldNullableRefHolder, node);
 
 // Struct with not_null + ref
 struct FieldNotNullRefHolder {
   fory::field<std::shared_ptr<FieldNode>, 0, fory::not_null, fory::ref> node;
+  FORY_STRUCT(FieldNotNullRefHolder, node);
 };
-FORY_STRUCT(FieldNotNullRefHolder, node);
 
 // Struct with vector of field-wrapped structs
 struct FieldVectorHolder {
@@ -157,8 +157,8 @@ struct FieldVectorHolder {
   bool operator==(const FieldVectorHolder &other) const {
     return nodes.value == other.nodes.value;
   }
+  FORY_STRUCT(FieldVectorHolder, nodes);
 };
-FORY_STRUCT(FieldVectorHolder, nodes);
 
 // Mixed struct: some fields with fory::field, some without
 struct MixedFieldStruct {
@@ -171,8 +171,8 @@ struct MixedFieldStruct {
            plain_age == other.plain_age &&
            field_score.value == other.field_score.value;
   }
+  FORY_STRUCT(MixedFieldStruct, field_name, plain_age, field_score);
 };
-FORY_STRUCT(MixedFieldStruct, field_name, plain_age, field_score);
 
 // ============================================================================
 // Test Implementation
@@ -669,7 +669,7 @@ TEST(FieldSerializerTest, FieldMetadataCompileTime) {
 
 // ============================================================================
 // FORY_FIELD_TAGS Serialization Tests
-// Structs defined in global namespace to allow template specialization
+// FORY_FIELD_TAGS remains namespace-scope, FORY_STRUCT is declared in-class
 // ============================================================================
 
 // Simple helper struct for testing FORY_FIELD_TAGS
@@ -680,9 +680,9 @@ struct TagsTestData {
   bool operator==(const TagsTestData &other) const {
     return content == other.content && value == other.value;
   }
+  FORY_STRUCT(TagsTestData, content, value);
 };
 
-FORY_STRUCT(TagsTestData, content, value);
 FORY_FIELD_TAGS(TagsTestData, (content, 0), (value, 1));
 
 // Pure C++ struct with FORY_FIELD_TAGS metadata (non-invasive)
@@ -706,9 +706,9 @@ struct TagsTestDocument {
     return title == other.title && version == other.version &&
            description == other.description && data_eq && opt_data_eq;
   }
+  FORY_STRUCT(TagsTestDocument, title, version, description, data,
+              optional_data);
 };
-
-FORY_STRUCT(TagsTestDocument, title, version, description, data, optional_data);
 
 FORY_FIELD_TAGS(TagsTestDocument, (title, 0), // string: non-nullable
                 (version, 1),                 // int: non-nullable
@@ -724,27 +724,27 @@ struct TagsRefNode {
   bool operator==(const TagsRefNode &other) const {
     return name == other.name && id == other.id;
   }
+  FORY_STRUCT(TagsRefNode, name, id);
 };
 
-FORY_STRUCT(TagsRefNode, name, id);
 FORY_FIELD_TAGS(TagsRefNode, (name, 0), (id, 1));
 
 // Struct with ref tracking via FORY_FIELD_TAGS
 struct TagsRefHolder {
   std::shared_ptr<TagsRefNode> first;
   std::shared_ptr<TagsRefNode> second;
+  FORY_STRUCT(TagsRefHolder, first, second);
 };
 
-FORY_STRUCT(TagsRefHolder, first, second);
 FORY_FIELD_TAGS(TagsRefHolder, (first, 0, ref), (second, 1, ref));
 
 // Struct with nullable + ref via FORY_FIELD_TAGS
 struct TagsNullableRefHolder {
   std::shared_ptr<TagsRefNode> required_node;
   std::shared_ptr<TagsRefNode> optional_node;
+  FORY_STRUCT(TagsNullableRefHolder, required_node, optional_node);
 };
 
-FORY_STRUCT(TagsNullableRefHolder, required_node, optional_node);
 FORY_FIELD_TAGS(TagsNullableRefHolder, (required_node, 0, ref),
                 (optional_node, 1, nullable, ref));
 
@@ -753,9 +753,9 @@ struct TagsTreeNode {
   std::string value;
   std::shared_ptr<TagsTreeNode> left;
   std::shared_ptr<TagsTreeNode> right;
+  FORY_STRUCT(TagsTreeNode, value, left, right);
 };
 
-FORY_STRUCT(TagsTreeNode, value, left, right);
 FORY_FIELD_TAGS(TagsTreeNode, (value, 0), (left, 1, nullable, ref),
                 (right, 2, nullable, ref));
 

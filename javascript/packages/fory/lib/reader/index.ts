@@ -132,14 +132,17 @@ export class BinaryReader {
     return result;
   }
 
-  stringOfVarUInt32() {
-    switch (this.uint8()) {
+  stringWithHeader() {
+    const header = this.readVarUint36Small();
+    const type = header & 0b11;
+    const len = header >>> 2;
+    switch (type) {
       case LATIN1:
-        return this.stringLatin1(this.varUInt32());
+        return this.stringLatin1(len);
       case UTF8:
-        return this.stringUtf8(this.varUInt32());
+        return this.stringUtf8(len);
       case UTF16:
-        return this.stringUtf16LE(this.varUInt32());
+        return this.stringUtf16LE(len);
       default:
         break;
     }
@@ -224,9 +227,110 @@ export class BinaryReader {
     return result;
   }
 
+  readVarUint32Small7(): number {
+    const readIdx = this.cursor;
+    if (this.byteLength - readIdx > 0) {
+      const v = this.dataView.getUint8(readIdx);
+      if ((v & 0x80) === 0) {
+        this.cursor = readIdx + 1;
+        return v;
+      }
+    }
+    return this.readVarUint32Small14();
+  }
+
+  private readVarUint32Small14(): number {
+    const readIdx = this.cursor;
+    if (this.byteLength - readIdx >= 5) {
+      const fourByteValue = this.dataView.getUint32(readIdx, true);
+      this.cursor = readIdx + 1;
+      let value = fourByteValue & 0x7F;
+      if ((fourByteValue & 0x80) !== 0) {
+        this.cursor++;
+        value |= (fourByteValue >>> 1) & 0x3f80;
+        if ((fourByteValue & 0x8000) !== 0) {
+          return this.continueReadVarUint32(readIdx + 2, fourByteValue, value);
+        }
+      }
+      return value;
+    } else {
+      return this.readVarUint36Slow();
+    }
+  }
+
+  private continueReadVarUint32(readIdx: number, bulkRead: number, value: number): number {
+    readIdx++;
+    value |= (bulkRead >>> 2) & 0x1fc000;
+    if ((bulkRead & 0x800000) !== 0) {
+      readIdx++;
+      value |= (bulkRead >>> 3) & 0xfe00000;
+      if ((bulkRead & 0x80000000) !== 0) {
+        value |= (this.dataView.getUint8(readIdx++) & 0x7F) << 28;
+      }
+    }
+    this.cursor = readIdx;
+    return value;
+  }
+
+  readVarUint36Small(): number {
+    const readIdx = this.cursor;
+    if (this.byteLength - readIdx >= 9) {
+      const bulkValue = this.dataView.getBigUint64(readIdx, true);
+      this.cursor = readIdx + 1;
+      let result = Number(bulkValue & 0x7Fn);
+      if ((bulkValue & 0x80n) !== 0n) {
+        this.cursor++;
+        result |= Number((bulkValue >> 1n) & 0x3f80n);
+        if ((bulkValue & 0x8000n) !== 0n) {
+          return this.continueReadVarInt36(readIdx + 2, bulkValue, result);
+        }
+      }
+      return result;
+    } else {
+      return this.readVarUint36Slow();
+    }
+  }
+
+  private continueReadVarInt36(readIdx: number, bulkValue: bigint, result: number): number {
+    readIdx++;
+    result |= Number((bulkValue >> 2n) & 0x1fc000n);
+    if ((bulkValue & 0x800000n) !== 0n) {
+      readIdx++;
+      result |= Number((bulkValue >> 3n) & 0xfe00000n);
+      if ((bulkValue & 0x80000000n) !== 0n) {
+        readIdx++;
+        result |= Number((bulkValue >> 4n) & 0xff0000000n);
+      }
+    }
+    this.cursor = readIdx;
+    return result;
+  }
+
+  private readVarUint36Slow(): number {
+    let b = this.uint8();
+    let result = b & 0x7F;
+    if ((b & 0x80) !== 0) {
+      b = this.uint8();
+      result |= (b & 0x7F) << 7;
+      if ((b & 0x80) !== 0) {
+        b = this.uint8();
+        result |= (b & 0x7F) << 14;
+        if ((b & 0x80) !== 0) {
+          b = this.uint8();
+          result |= (b & 0x7F) << 21;
+          if ((b & 0x80) !== 0) {
+            b = this.uint8();
+            result |= (b & 0xFF) << 28;
+          }
+        }
+      }
+    }
+    return result;
+  }
+
   varInt32() {
     const v = this.varUInt32();
-    return (v >> 1) ^ -(v & 1); // zigZag decode
+    return (v >>> 1) ^ -(v & 1); // zigZag decode
   }
 
   bigUInt8() {
@@ -277,15 +381,15 @@ export class BinaryReader {
     let rl28 = byte & 0x7f;
     let rh28 = 0;
     if ((byte & 0x80) != 0) {
-      byte = l32 & 0xff00 >> 8;
+      byte = (l32 >>> 8) & 0xff;
       this.cursor++;
       rl28 |= (byte & 0x7f) << 7;
       if ((byte & 0x80) != 0) {
-        byte = l32 & 0xff0000 >> 16;
+        byte = (l32 >>> 16) & 0xff;
         this.cursor++;
         rl28 |= (byte & 0x7f) << 14;
         if ((byte & 0x80) != 0) {
-          byte = l32 & 0xff000000 >> 24;
+          byte = l32 >>> 24;
           this.cursor++;
           rl28 |= (byte & 0x7f) << 21;
           if ((byte & 0x80) != 0) {
@@ -293,15 +397,15 @@ export class BinaryReader {
             byte = h32 & 0xff;
             rh28 |= (byte & 0x7f);
             if ((byte & 0x80) != 0) {
-              byte = h32 & 0xff00 >> 8;
+              byte = (h32 >>> 8) & 0xff;
               this.cursor++;
               rh28 |= (byte & 0x7f) << 7;
               if ((byte & 0x80) != 0) {
-                byte = h32 & 0xff0000 >> 16;
+                byte = (h32 >>> 16) & 0xff;
                 this.cursor++;
                 rh28 |= (byte & 0x7f) << 14;
                 if ((byte & 0x80) != 0) {
-                  byte = h32 & 0xff000000 >> 24;
+                  byte = h32 >>> 24;
                   this.cursor++;
                   rh28 |= (byte & 0x7f) << 21;
                   if ((byte & 0x80) != 0) {

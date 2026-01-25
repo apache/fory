@@ -142,18 +142,16 @@ print(foo_row.f4[100000].f1)
 struct Bar {
   std::string f1;
   std::vector<int64_t> f2;
+  FORY_STRUCT(Bar, f1, f2);
 };
-
-FORY_FIELD_INFO(Bar, f1, f2);
 
 struct Foo {
   int32_t f1;
   std::vector<int32_t> f2;
   std::map<std::string, int32_t> f3;
   std::vector<Bar> f4;
+  FORY_STRUCT(Foo, f1, f2, f3, f4);
 };
-
-FORY_FIELD_INFO(Foo, f1, f2, f3, f4);
 
 fory::encoder::RowEncoder<Foo> encoder;
 encoder.Encode(foo);

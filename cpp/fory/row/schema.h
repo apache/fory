@@ -89,7 +89,7 @@ public:
 
   virtual int num_fields() const { return 0; }
 
-  virtual FieldPtr field(int i) const { return nullptr; }
+  virtual FieldPtr field(int /*i*/) const { return nullptr; }
 
   virtual std::vector<FieldPtr> fields() const { return {}; }
 

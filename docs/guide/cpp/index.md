@@ -188,6 +188,24 @@ int main() {
 }
 ```
 
+### Inherited Fields
+
+To include base-class fields in a derived type, list `FORY_BASE(Base)` inside
+`FORY_STRUCT`. The base must define its own `FORY_STRUCT` so its fields can be
+referenced.
+
+```cpp
+struct Base {
+  int32_t id;
+  FORY_STRUCT(Base, id);
+};
+
+struct Derived : Base {
+  std::string name;
+  FORY_STRUCT(Derived, FORY_BASE(Base), name);
+};
+```
+
 ## Thread Safety
 
 Apache Fory™ C++ provides two variants for different threading needs:

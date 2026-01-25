@@ -29,24 +29,24 @@ namespace serialization {
 
 struct OptionalIntHolder {
   std::optional<int32_t> value;
+  FORY_STRUCT(OptionalIntHolder, value);
 };
-FORY_STRUCT(OptionalIntHolder, value);
 
 struct OptionalSharedHolder {
   std::optional<std::shared_ptr<int32_t>> value;
+  FORY_STRUCT(OptionalSharedHolder, value);
 };
-FORY_STRUCT(OptionalSharedHolder, value);
 
 struct SharedPair {
   std::shared_ptr<int32_t> first;
   std::shared_ptr<int32_t> second;
+  FORY_STRUCT(SharedPair, first, second);
 };
-FORY_STRUCT(SharedPair, first, second);
 
 struct UniqueHolder {
   std::unique_ptr<int32_t> value;
+  FORY_STRUCT(UniqueHolder, value);
 };
-FORY_STRUCT(UniqueHolder, value);
 
 namespace {
 
@@ -188,30 +188,30 @@ struct Base {
   virtual ~Base() = default;
   virtual std::string get_type() const = 0;
   int32_t base_value = 0;
+  FORY_STRUCT(Base, base_value);
 };
-FORY_STRUCT(Base, base_value);
 
 struct Derived1 : Base {
   std::string get_type() const override { return "Derived1"; }
   std::string derived1_data;
+  FORY_STRUCT(Derived1, FORY_BASE(Base), derived1_data);
 };
-FORY_STRUCT(Derived1, base_value, derived1_data);
 
 struct Derived2 : Base {
   std::string get_type() const override { return "Derived2"; }
   int32_t derived2_data = 0;
+  FORY_STRUCT(Derived2, FORY_BASE(Base), derived2_data);
 };
-FORY_STRUCT(Derived2, base_value, derived2_data);
 
 struct PolymorphicSharedHolder {
   std::shared_ptr<Base> ptr;
+  FORY_STRUCT(PolymorphicSharedHolder, ptr);
 };
-FORY_STRUCT(PolymorphicSharedHolder, ptr);
 
 struct PolymorphicUniqueHolder {
   std::unique_ptr<Base> ptr;
+  FORY_STRUCT(PolymorphicUniqueHolder, ptr);
 };
-FORY_STRUCT(PolymorphicUniqueHolder, ptr);
 
 TEST(SmartPtrSerializerTest, PolymorphicSharedPtrDerived1) {
   auto fory = create_serializer(true);
@@ -334,14 +334,14 @@ struct NestedContainer {
   virtual ~NestedContainer() = default;
   int32_t value = 0;
   std::shared_ptr<NestedContainer> nested;
+  FORY_STRUCT(NestedContainer, value, nested);
 };
-FORY_STRUCT(NestedContainer, value, nested);
 
 // Holder struct to wrap nested container in a polymorphic shared_ptr
 struct NestedContainerHolder {
   std::shared_ptr<NestedContainer> ptr;
+  FORY_STRUCT(NestedContainerHolder, ptr);
 };
-FORY_STRUCT(NestedContainerHolder, ptr);
 
 TEST(SmartPtrSerializerTest, MaxDynDepthExceeded) {
   // Create Fory with max_dyn_depth=2
@@ -443,8 +443,8 @@ struct PolymorphicBaseForMono {
   virtual std::string name() const { return "PolymorphicBaseForMono"; }
   int32_t value = 0;
   std::string data;
+  FORY_STRUCT(PolymorphicBaseForMono, value, data);
 };
-FORY_STRUCT(PolymorphicBaseForMono, value, data);
 
 // Holder with non-dynamic field using fory::field<>
 struct NonDynamicFieldHolder {
@@ -453,8 +453,8 @@ struct NonDynamicFieldHolder {
   fory::field<std::shared_ptr<PolymorphicBaseForMono>, 0, fory::nullable,
               fory::dynamic<false>>
       ptr;
+  FORY_STRUCT(NonDynamicFieldHolder, ptr);
 };
-FORY_STRUCT(NonDynamicFieldHolder, ptr);
 
 TEST(SmartPtrSerializerTest, NonDynamicFieldWithForyField) {
   NonDynamicFieldHolder original;

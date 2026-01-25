@@ -136,36 +136,36 @@ TEST(SharedWeakTest, OwnerEquals) {
 
 struct SimpleStruct {
   int32_t value;
+  FORY_STRUCT(SimpleStruct, value);
 };
-FORY_STRUCT(SimpleStruct, value);
 
 struct StructWithWeak {
   int32_t id;
   SharedWeak<SimpleStruct> weak_ref;
+  FORY_STRUCT(StructWithWeak, id, weak_ref);
 };
-FORY_STRUCT(StructWithWeak, id, weak_ref);
 
 struct StructWithBothRefs {
   int32_t id;
   std::shared_ptr<SimpleStruct> strong_ref;
   SharedWeak<SimpleStruct> weak_ref;
+  FORY_STRUCT(StructWithBothRefs, id, strong_ref, weak_ref);
 };
-FORY_STRUCT(StructWithBothRefs, id, strong_ref, weak_ref);
 
 struct MultipleWeakRefsWithOwner {
   std::shared_ptr<SimpleStruct> owner;
   SharedWeak<SimpleStruct> weak1;
   SharedWeak<SimpleStruct> weak2;
   SharedWeak<SimpleStruct> weak3;
+  FORY_STRUCT(MultipleWeakRefsWithOwner, owner, weak1, weak2, weak3);
 };
-FORY_STRUCT(MultipleWeakRefsWithOwner, owner, weak1, weak2, weak3);
 
 struct NodeWithParent {
   int32_t value;
   SharedWeak<NodeWithParent> parent;
   std::vector<std::shared_ptr<NodeWithParent>> children;
+  FORY_STRUCT(NodeWithParent, value, parent, children);
 };
-FORY_STRUCT(NodeWithParent, value, parent, children);
 
 // ============================================================================
 // Serialization Tests

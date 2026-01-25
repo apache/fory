@@ -63,6 +63,15 @@
 
 #define FORY_PP_TRIGGER_PARENTHESIS_(...) ,
 
+#define FORY_PP_EMPTY()
+
+#define FORY_PP_PROBE() ~, 1
+#define FORY_PP_CHECK_N(x, n, ...) n
+#define FORY_PP_CHECK(...) FORY_PP_CHECK_N(__VA_ARGS__, 0)
+
+#define FORY_PP_IS_PAREN(x) FORY_PP_CHECK(FORY_PP_IS_PAREN_PROBE x)
+#define FORY_PP_IS_PAREN_PROBE(...) FORY_PP_PROBE()
+
 #define FORY_PP_IS_EMPTY(...)                                                  \
   FORY_PP_IS_EMPTY_I(                                                          \
       FORY_PP_HAS_COMMA(__VA_ARGS__),                                          \
@@ -79,6 +88,15 @@
 #define FORY_PP_NOT_1 0
 #define FORY_PP_NOT(x) FORY_PP_CONCAT(FORY_PP_NOT_, x)
 #define FORY_PP_HAS_ARGS(...) FORY_PP_NOT(FORY_PP_IS_EMPTY(__VA_ARGS__))
+
+#define FORY_PP_IF(c) FORY_PP_CONCAT(FORY_PP_IF_, c)
+#define FORY_PP_IF_1(t, f) t
+#define FORY_PP_IF_0(t, f) f
+
+#define FORY_PP_TUPLE_FIRST(tuple) FORY_PP_TUPLE_FIRST_IMPL tuple
+#define FORY_PP_TUPLE_FIRST_IMPL(a, ...) a
+#define FORY_PP_TUPLE_SECOND(tuple) FORY_PP_TUPLE_SECOND_IMPL tuple
+#define FORY_PP_TUPLE_SECOND_IMPL(a, b, ...) b
 
 #define FORY_PP_INVOKE(X, ...) X(__VA_ARGS__)
 

@@ -23,14 +23,13 @@ import {
   ArrayTypeInfo,
   Type,
 } from "./lib/typeInfo";
-import { Serializer, InternalSerializerType, Mode } from "./lib/type";
+import { Serializer, Mode } from "./lib/type";
 import Fory from "./lib/fory";
 import { BinaryReader } from "./lib/reader";
 import { BinaryWriter } from "./lib/writer";
 
 export {
   Serializer,
-  InternalSerializerType,
   TypeInfo,
   ArrayTypeInfo,
   StructTypeInfo,

@@ -20,7 +20,7 @@
 import { ArrayTypeInfo, TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { CodegenRegistry } from "./router";
-import { InternalSerializerType } from "../type";
+import { TypeId } from "../type";
 import { Scope } from "./scope";
 import { CollectionSerializerGenerator } from "./collection";
 
@@ -57,4 +57,4 @@ class ArraySerializerGenerator extends CollectionSerializerGenerator {
   }
 }
 
-CodegenRegistry.register(InternalSerializerType.ARRAY, ArraySerializerGenerator);
+CodegenRegistry.register(TypeId.ARRAY, ArraySerializerGenerator);

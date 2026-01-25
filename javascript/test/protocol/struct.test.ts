@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { TypeInfo, InternalSerializerType, Type } from '../../packages/fory/index';
+import Fory, { Type } from '../../packages/fory/index';
 import { describe, expect, test } from '@jest/globals';
 
 
@@ -87,7 +87,7 @@ describe('protocol', () => {
 
         // unspecified nullable field keeps old behavior
         expect(deserialize(serialize({ a: 'ok', b: null })))
-            .toEqual({ a: undefined, b: null });
+            .toEqual({ a: 'ok', b: null });
     });
 });
 

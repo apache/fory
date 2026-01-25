@@ -98,7 +98,7 @@ fn build_monster() -> Monster {
         z: 3.0,
     };
     Monster {
-        pos,
+        pos: Some(pos),
         mana: 200,
         hp: 80,
         name: "Orc".to_string(),
@@ -132,7 +132,7 @@ fn build_container() -> Container {
         status: Status::Started,
         bytes: vec![1, 2, 3],
         numbers: vec![10, 20, 30],
-        scalars,
+        scalars: Some(scalars),
         names: vec!["alpha".to_string(), "beta".to_string()],
         flags: vec![true, false],
         payload,

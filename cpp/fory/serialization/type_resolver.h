@@ -62,6 +62,8 @@
 namespace fory {
 namespace serialization {
 
+using meta::ForyFieldInfo;
+
 // Forward declarations
 class Fory;
 class TypeResolver;
@@ -495,9 +497,10 @@ constexpr bool compute_is_nullable() {
   } else if constexpr (::fory::detail::has_field_tags_v<T>) {
     return ::fory::detail::GetFieldTagEntry<T, Index>::is_nullable;
   } else {
-    // Default: nullable if std::optional or std::shared_ptr
+    // Default: nullable if std::optional or smart pointers.
     return is_optional_v<UnwrappedFieldType> ||
-           is_shared_ptr_v<UnwrappedFieldType>;
+           is_shared_ptr_v<UnwrappedFieldType> ||
+           is_unique_ptr_v<UnwrappedFieldType>;
   }
 }
 
@@ -608,7 +611,7 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
   static FieldInfo build() {
     const auto meta = ForyFieldInfo(T{});
     const auto field_names = decltype(meta)::Names;
-    const auto field_ptrs = decltype(meta)::Ptrs;
+    const auto &field_ptrs = decltype(meta)::PtrsRef();
 
     // Convert camelCase field name to snake_case for cross-language
     // compatibility

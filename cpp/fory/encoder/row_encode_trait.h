@@ -192,7 +192,7 @@ private:
 
   template <size_t I> static FieldPtr GetField() {
     using FieldType = meta::RemoveMemberPointerCVRefT<
-        std::tuple_element_t<I, decltype(FieldInfo::Ptrs)>>;
+        std::tuple_element_t<I, decltype(FieldInfo::Ptrs())>>;
     return field(details::StringViewToString(FieldInfo::Names[I]),
                  RowEncodeTrait<FieldType>::Type());
   }
@@ -205,9 +205,9 @@ private:
   template <size_t I, typename V>
   static void WriteField(V &&visitor, const T &value, RowWriter &writer) {
     using FieldType = meta::RemoveMemberPointerCVRefT<
-        std::tuple_element_t<I, decltype(FieldInfo::Ptrs)>>;
+        std::tuple_element_t<I, decltype(FieldInfo::Ptrs())>>;
     RowEncodeTrait<FieldType>::Write(std::forward<V>(visitor),
-                                     value.*std::get<I>(FieldInfo::Ptrs),
+                                     value.*std::get<I>(FieldInfo::PtrsRef()),
                                      writer, I);
   }
 

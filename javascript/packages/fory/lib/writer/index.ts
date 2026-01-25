@@ -157,10 +157,10 @@ export class BinaryWriter {
     this.cursor += 8;
   }
 
-  buffer(v: Uint8Array) {
-    this.reserve(v.byteLength);
+  buffer(v: ArrayLike<number>) {
+    this.reserve(v.length);
     this.platformBuffer.set(v, this.cursor);
-    this.cursor += v.byteLength;
+    this.cursor += v.length;
   }
 
   uint64(v: bigint) {
@@ -207,17 +207,20 @@ export class BinaryWriter {
     }
   }
 
-  stringOfVarUInt32Fast(v: string) {
+  stringWithHeaderFast(v: string) {
     const { serializeString } = this.config.hps!;
     this.cursor = serializeString(v, this.platformBuffer, this.cursor);
   }
 
-  stringOfVarUInt32WithDetector(v: string) {
+  //   const header = this.readVarUint36Small();
+  // const type = header & 0b11;
+  // const len = header >>> 2;
+
+  stringWithHeaderWithDetector(v: string) {
     const isLatin1 = this.internalStringDetector!(v);
     if (isLatin1) {
       const len = v.length;
-      this.dataView.setUint8(this.cursor++, LATIN1);
-      this.varUInt32(len);
+      this.varUInt32((len << 2) | LATIN1);
       this.reserve(len);
       if (len < 40) {
         for (let index = 0; index < v.length; index++) {
@@ -229,19 +232,17 @@ export class BinaryWriter {
       this.cursor += len;
     } else {
       const len = v.length * 2;
-      this.dataView.setUint8(this.cursor++, UTF16);
-      this.varUInt32(len);
+      this.varUInt32((len << 2) | UTF16);
       this.reserve(len);
       this.platformBuffer.write(v, this.cursor, "utf16le");
       this.cursor += len;
     }
   }
 
-  stringOfVarUInt32Compatibly(v: string) {
+  stringWithHeaderCompatibly(v: string) {
     const len = strByteLength(v);
     const isLatin1 = len === v.length;
-    this.dataView.setUint8(this.cursor++, isLatin1 ? LATIN1 : UTF8);
-    this.varUInt32(len);
+    this.varUInt32((len << 2) | (isLatin1 ? LATIN1 : UTF8));
     this.reserve(len);
     if (isLatin1) {
       if (len < 40) {
@@ -291,6 +292,46 @@ export class BinaryWriter {
     this.dataView.setUint32(rawCursor, u32);
   }
 
+  writeVarUint32Small7(value: number) {
+    if (value >>> 7 === 0) {
+      this.platformBuffer[this.cursor++] = value;
+      return;
+    }
+    this.cursor += this.continueWriteVarUint32Small7(value);
+  }
+
+  private continueWriteVarUint32Small7(value: number) {
+    let encoded = (value & 0x7F);
+    encoded |= (((value & 0x3f80) << 1) | 0x80);
+    const writerIdx = this.cursor;
+    if (value >>> 14 === 0) {
+      this.dataView.setUint32(writerIdx, encoded, true);
+      return 2;
+    }
+    return this.continuePutVarInt36(writerIdx, encoded, value);
+  }
+
+  private continuePutVarInt36(index: number, encoded: number, value: number): number {
+    // 0x1fc000: 0b1111111 << 14
+    encoded |= (((value & 0x1fc000) << 2) | 0x8000);
+    if (value >>> 21 === 0) {
+      this.dataView.setUint32(index, encoded, true);
+      return 3;
+    }
+    // 0xfe00000: 0b1111111 << 21
+    encoded |= ((value & 0xfe00000) << 3) | 0x800000;
+    if (value >>> 28 === 0) {
+      this.dataView.setUint32(index, encoded, true);
+      return 4;
+    }
+    // 5-byte case: bits 28-31 go to the 5th byte
+    const encodedLong = (encoded >>> 0) | 0x80000000;
+    const highByte = value >>> 28;
+    this.dataView.setUint32(index, encodedLong, true);
+    this.dataView.setUint8(index + 4, highByte);
+    return 5;
+  }
+
   varInt64(v: bigint) {
     if (typeof v !== "bigint") {
       v = BigInt(v);
@@ -304,12 +345,18 @@ export class BinaryWriter {
     }
     val = val & 0xFFFFFFFFFFFFFFFFn; // keep only the lower 64 bits
 
-    while (val > 127) {
-      this.platformBuffer[this.cursor++] = Number(val & 127n | 128n);
+    // Match Java's 1-9 byte varuint64 encoding:
+    // - 7 bits per byte for the first 8 bytes
+    // - the 9th byte (if present) uses full 8 bits, allowing values with the 64th bit set
+    for (let i = 0; i < 8; i++) {
+      if ((val >> 7n) === 0n) {
+        this.platformBuffer[this.cursor++] = Number(val);
+        return;
+      }
+      this.platformBuffer[this.cursor++] = Number((val & 127n) | 128n);
       val >>= 7n;
     }
-    this.platformBuffer[this.cursor++] = Number(val);
-    return;
+    this.platformBuffer[this.cursor++] = Number(val & 255n);
   }
 
   tryFreePool() {
@@ -365,13 +412,13 @@ export class BinaryWriter {
     return this.reserved;
   }
 
-  stringOfVarUInt32(v: string) {
+  stringWithHeader(v: string) {
     if (this.hpsEnable) {
-      return this.stringOfVarUInt32Fast(v);
+      return this.stringWithHeaderFast(v);
     }
     if (this.internalStringDetector !== null) {
-      return this.stringOfVarUInt32WithDetector(v);
+      return this.stringWithHeaderWithDetector(v);
     }
-    return this.stringOfVarUInt32Compatibly(v);
+    return this.stringWithHeaderCompatibly(v);
   }
 }

@@ -1123,7 +1123,8 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
         if is_forward_field(&field.ty) {
             let raw_ident = get_field_name(field, idx);
             let ident = to_snake_case(&raw_ident);
-            other_fields.push((ident, "Forward".to_string(), TypeId::UNKNOWN as u32));
+            // Forward fields don't have explicit IDs; sort by name.
+            other_fields.push((ident.clone(), ident, TypeId::UNKNOWN as u32));
         }
     }
 
@@ -1136,8 +1137,13 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
             continue;
         }
 
-        // Parse field metadata to get encoding attributes
+        // Parse field metadata to get encoding attributes and field ID
         let meta = parse_field_meta(field).unwrap_or_default();
+        let sort_key = if meta.uses_tag_id() {
+            meta.effective_id().to_string()
+        } else {
+            ident.clone()
+        };
 
         let ty: String = field
             .ty
@@ -1148,27 +1154,28 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
             .collect::<String>();
 
         // Closure to group non-option fields, considering encoding attributes
-        let mut group_field = |ident: String, ty_str: &str, is_primitive: bool| {
-            let base_type_id = get_type_id_by_name(ty_str);
-            // Adjust type ID based on encoding attributes for u32/u64 fields
-            let type_id = adjust_type_id_for_encoding(base_type_id, &meta);
+        let mut group_field =
+            |ident: String, sort_key: String, ty_str: &str, is_primitive: bool| {
+                let base_type_id = get_type_id_by_name(ty_str);
+                // Adjust type ID based on encoding attributes for u32/u64 fields
+                let type_id = adjust_type_id_for_encoding(base_type_id, &meta);
 
-            // Categorize based on type_id
-            if is_primitive {
-                primitive_fields.push((ident, ty_str.to_string(), type_id));
-            } else if is_internal_type_id(type_id) {
-                internal_type_fields.push((ident, ty_str.to_string(), type_id));
-            } else if type_id == TypeId::LIST as u32 {
-                list_fields.push((ident, ty_str.to_string(), type_id));
-            } else if type_id == TypeId::SET as u32 {
-                set_fields.push((ident, ty_str.to_string(), type_id));
-            } else if type_id == TypeId::MAP as u32 {
-                map_fields.push((ident, ty_str.to_string(), type_id));
-            } else {
-                // User-defined type
-                other_fields.push((ident, ty_str.to_string(), type_id));
-            }
-        };
+                // Categorize based on type_id
+                if is_primitive {
+                    primitive_fields.push((ident, sort_key, type_id));
+                } else if is_internal_type_id(type_id) {
+                    internal_type_fields.push((ident, sort_key, type_id));
+                } else if type_id == TypeId::LIST as u32 {
+                    list_fields.push((ident, sort_key, type_id));
+                } else if type_id == TypeId::SET as u32 {
+                    set_fields.push((ident, sort_key, type_id));
+                } else if type_id == TypeId::MAP as u32 {
+                    map_fields.push((ident, sort_key, type_id));
+                } else {
+                    // User-defined type
+                    other_fields.push((ident, sort_key, type_id));
+                }
+            };
 
         // handle Option<Primitive> specially
         if let Some(inner) = extract_option_inner(&ty) {
@@ -1176,14 +1183,14 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
                 // Get base type ID and adjust for encoding attributes
                 let base_type_id = get_primitive_type_id(inner);
                 let type_id = adjust_type_id_for_encoding(base_type_id, &meta);
-                nullable_primitive_fields.push((ident, ty.to_string(), type_id));
+                nullable_primitive_fields.push((ident, sort_key, type_id));
             } else {
-                group_field(ident, inner, false);
+                group_field(ident, sort_key, inner, false);
             }
         } else if PRIMITIVE_TYPE_NAMES.contains(&ty.as_str()) {
-            group_field(ident, &ty, true);
+            group_field(ident, sort_key, &ty, true);
         } else {
-            group_field(ident, &ty, false);
+            group_field(ident, sort_key, &ty, false);
         }
     }
 
@@ -1197,6 +1204,9 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
             .then_with(|| size_b.cmp(&size_a))
             // Use descending type_id order to match Java's COMPARATOR_BY_PRIMITIVE_TYPE_ID
             .then_with(|| b.2.cmp(&a.2))
+            // Field identifier (tag ID or name) as tie-breaker
+            .then_with(|| a.1.cmp(&b.1))
+            // Deterministic fallback for duplicate identifiers
             .then_with(|| a.0.cmp(&b.0))
     }
 
@@ -1204,11 +1214,13 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
         a: &(String, String, u32),
         b: &(String, String, u32),
     ) -> std::cmp::Ordering {
-        a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0))
+        a.2.cmp(&b.2)
+            .then_with(|| a.1.cmp(&b.1))
+            .then_with(|| a.0.cmp(&b.0))
     }
 
     fn name_sorter(a: &(String, String, u32), b: &(String, String, u32)) -> std::cmp::Ordering {
-        a.0.cmp(&b.0)
+        a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0))
     }
 
     primitive_fields.sort_by(numeric_sorter);
@@ -1217,7 +1229,7 @@ fn group_fields_by_type(fields: &[&Field]) -> FieldGroups {
     list_fields.sort_by(name_sorter);
     set_fields.sort_by(name_sorter);
     map_fields.sort_by(name_sorter);
-    other_fields.sort_by(type_id_then_name_sorter);
+    other_fields.sort_by(name_sorter);
 
     (
         primitive_fields,

@@ -106,8 +106,8 @@ TEST(PoolTest, ConcurrentBorrow) {
   threads.reserve(kThreads);
 
   for (size_t t = 0; t < kThreads; ++t) {
-    threads.emplace_back([&pool, kIterations]() {
-      for (size_t i = 0; i < kIterations; ++i) {
+    threads.emplace_back([&pool, iterations = kIterations]() {
+      for (size_t i = 0; i < iterations; ++i) {
         auto value = pool.acquire();
         (*value)++;
       }

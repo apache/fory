@@ -56,8 +56,8 @@ namespace serialization {
 ///   int32_t value;
 ///   SharedWeak<Node> parent;              // Non-owning back-reference
 ///   std::vector<std::shared_ptr<Node>> children;  // Owning references
+///   FORY_STRUCT(Node, value, parent, children);
 /// };
-/// FORY_STRUCT(Node, value, parent, children);
 ///
 /// auto parent = std::make_shared<Node>();
 /// parent->value = 1;

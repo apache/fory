@@ -18,6 +18,7 @@
 """C++ code generator."""
 
 from typing import Dict, List, Optional, Set, Tuple
+import typing
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
 from fory_compiler.ir.ast import (
@@ -114,14 +115,15 @@ class CppGenerator(BaseGenerator):
         lines = []
         includes: Set[str] = set()
         enum_macros: List[str] = []
-        struct_macros: List[str] = []
         union_macros: List[str] = []
         field_config_macros: List[str] = []
         definition_items = self.get_definition_order()
 
         # Collect includes (including from nested types)
         includes.add("<cstdint>")
+        includes.add("<memory>")
         includes.add("<string>")
+        includes.add("<utility>")
         includes.add('"fory/serialization/fory.h"')
         if self.schema_has_unions():
             includes.add("<utility>")
@@ -173,9 +175,7 @@ class CppGenerator(BaseGenerator):
         # Generate top-level unions/messages in dependency order
         for kind, item in definition_items:
             if kind == "union":
-                lines.extend(
-                    self.generate_union_definition(item, [], struct_macros, "")
-                )
+                lines.extend(self.generate_union_definition(item, [], ""))
                 union_macros.extend(self.generate_union_macros(item, []))
                 lines.append("")
                 continue
@@ -183,17 +183,12 @@ class CppGenerator(BaseGenerator):
                 self.generate_message_definition(
                     item,
                     [],
-                    struct_macros,
                     enum_macros,
                     union_macros,
                     field_config_macros,
                     "",
                 )
             )
-            lines.append("")
-
-        if struct_macros:
-            lines.extend(struct_macros)
             lines.append("")
 
         if namespace:
@@ -392,18 +387,163 @@ class CppGenerator(BaseGenerator):
         qualified_name = self.get_namespaced_type_name(enum.name, parent_stack)
         return f"FORY_ENUM({qualified_name}, {value_names});"
 
+    def resolve_named_type(
+        self, name: str, parent_stack: Optional[List[Message]]
+    ) -> Optional[typing.Union[Message, Enum, Union]]:
+        """Resolve a named type to its schema definition."""
+        parts = name.split(".")
+        if len(parts) > 1:
+            current = self.find_top_level_type(parts[0])
+            for part in parts[1:]:
+                if isinstance(current, Message):
+                    current = current.get_nested_type(part)
+                else:
+                    return None
+            return current
+        if parent_stack:
+            for msg in reversed(parent_stack):
+                nested = msg.get_nested_type(name)
+                if nested is not None:
+                    return nested
+        return self.find_top_level_type(name)
+
+    def find_top_level_type(
+        self, name: str
+    ) -> Optional[typing.Union[Message, Enum, Union]]:
+        """Find a top-level type definition by name."""
+        for enum in self.schema.enums:
+            if enum.name == name:
+                return enum
+        for union in self.schema.unions:
+            if union.name == name:
+                return union
+        for message in self.schema.messages:
+            if message.name == name:
+                return message
+        return None
+
+    def is_message_type(
+        self, field_type: FieldType, parent_stack: Optional[List[Message]]
+    ) -> bool:
+        if not isinstance(field_type, NamedType):
+            return False
+        resolved = self.resolve_named_type(field_type.name, parent_stack)
+        return isinstance(resolved, Message)
+
+    def get_field_member_name(self, field: Field) -> str:
+        return f"{self.to_snake_case(field.name)}_"
+
+    def get_field_storage_type(
+        self, field: Field, parent_stack: Optional[List[Message]]
+    ) -> str:
+        if self.is_message_type(field.field_type, parent_stack):
+            type_name = self.resolve_nested_type_name(
+                field.field_type.name, parent_stack
+            )
+            return f"std::unique_ptr<{type_name}>"
+        return self.generate_type(
+            field.field_type,
+            field.optional,
+            field.ref,
+            field.element_optional,
+            field.element_ref,
+            parent_stack,
+        )
+
+    def get_field_value_type(
+        self, field: Field, parent_stack: Optional[List[Message]]
+    ) -> str:
+        if self.is_message_type(field.field_type, parent_stack):
+            return self.resolve_nested_type_name(field.field_type.name, parent_stack)
+        return self.generate_type(
+            field.field_type,
+            False,
+            field.ref,
+            field.element_optional,
+            field.element_ref,
+            parent_stack,
+        )
+
+    def get_field_eq_expression(
+        self, field: Field, parent_stack: Optional[List[Message]]
+    ) -> str:
+        member_name = self.get_field_member_name(field)
+        other_member = f"other.{member_name}"
+        if self.is_message_type(field.field_type, parent_stack):
+            return (
+                f"(({member_name} && {other_member}) ? "
+                f"(*{member_name} == *{other_member}) : "
+                f"({member_name} == {other_member}))"
+            )
+        return f"{member_name} == {other_member}"
+
+    def generate_field_accessors(
+        self, field: Field, parent_stack: Optional[List[Message]], indent: str
+    ) -> List[str]:
+        lines: List[str] = []
+        field_name = self.to_snake_case(field.name)
+        member_name = self.get_field_member_name(field)
+        value_type = self.get_field_value_type(field, parent_stack)
+
+        if self.is_message_type(field.field_type, parent_stack):
+            lines.append(f"{indent}bool has_{field_name}() const {{")
+            lines.append(f"{indent}  return {member_name} != nullptr;")
+            lines.append(f"{indent}}}")
+            lines.append("")
+            lines.append(f"{indent}const {value_type}& {field_name}() const {{")
+            lines.append(f"{indent}  return *{member_name};")
+            lines.append(f"{indent}}}")
+            lines.append("")
+            lines.append(f"{indent}{value_type}* mutable_{field_name}() {{")
+            lines.append(f"{indent}  if (!{member_name}) {{")
+            lines.append(
+                f"{indent}    {member_name} = std::make_unique<{value_type}>();"
+            )
+            lines.append(f"{indent}  }}")
+            lines.append(f"{indent}  return {member_name}.get();")
+            lines.append(f"{indent}}}")
+            lines.append("")
+            lines.append(f"{indent}void clear_{field_name}() {{")
+            lines.append(f"{indent}  {member_name}.reset();")
+            lines.append(f"{indent}}}")
+            return lines
+
+        if field.optional:
+            lines.append(f"{indent}bool has_{field_name}() const {{")
+            lines.append(f"{indent}  return {member_name}.has_value();")
+            lines.append(f"{indent}}}")
+            lines.append("")
+
+        lines.append(f"{indent}const {value_type}& {field_name}() const {{")
+        if field.optional:
+            lines.append(f"{indent}  return *{member_name};")
+        else:
+            lines.append(f"{indent}  return {member_name};")
+        lines.append(f"{indent}}}")
+        lines.append("")
+        lines.append(f"{indent}void set_{field_name}({value_type} value) {{")
+        lines.append(f"{indent}  {member_name} = std::move(value);")
+        lines.append(f"{indent}}}")
+
+        if field.optional:
+            lines.append("")
+            lines.append(f"{indent}void clear_{field_name}() {{")
+            lines.append(f"{indent}  {member_name}.reset();")
+            lines.append(f"{indent}}}")
+
+        return lines
+
     def generate_message_definition(
         self,
         message: Message,
         parent_stack: List[Message],
-        struct_macros: List[str],
         enum_macros: List[str],
         union_macros: List[str],
         field_config_macros: List[str],
         indent: str,
     ) -> List[str]:
         """Generate a C++ class definition with nested types."""
-        lines = []
+        lines: List[str] = []
         class_name = message.name
         lineage = parent_stack + [message]
         body_indent = f"{indent}  "
@@ -411,6 +551,11 @@ class CppGenerator(BaseGenerator):
 
         lines.append(f"{indent}class {class_name} final {{")
         lines.append(f"{body_indent}public:")
+        if message.fields:
+            lines.append(
+                f"{body_indent}  friend struct ::fory::detail::ForyFieldConfigImpl<{class_name}>;"
+            )
+            lines.append("")
 
         for nested_enum in message.nested_enums:
             lines.extend(self.generate_enum_definition(nested_enum, body_indent))
@@ -422,7 +567,6 @@ class CppGenerator(BaseGenerator):
                 self.generate_message_definition(
                     nested_msg,
                     lineage,
-                    struct_macros,
                     enum_macros,
                     union_macros,
                     field_config_macros,
@@ -436,46 +580,44 @@ class CppGenerator(BaseGenerator):
                 self.generate_union_definition(
                     nested_union,
                     lineage,
-                    struct_macros,
                     body_indent,
                 )
             )
             union_macros.extend(self.generate_union_macros(nested_union, lineage))
             lines.append("")
 
-        for field in message.fields:
-            cpp_type = self.generate_type(
-                field.field_type,
-                field.optional,
-                field.ref,
-                field.element_optional,
-                field.element_ref,
-                lineage,
-            )
-            field_name = self.to_snake_case(field.name)
-            lines.append(f"{field_indent}{cpp_type} {field_name};")
-
-        lines.append("")
+        if message.fields:
+            for index, field in enumerate(message.fields):
+                lines.extend(self.generate_field_accessors(field, lineage, body_indent))
+                if index + 1 < len(message.fields):
+                    lines.append("")
+            lines.append("")
 
         lines.append(
             f"{body_indent}bool operator==(const {class_name}& other) const {{"
         )
         if message.fields:
-            conditions = []
-            for field in message.fields:
-                field_name = self.to_snake_case(field.name)
-                conditions.append(f"{field_name} == other.{field_name}")
+            conditions = [
+                self.get_field_eq_expression(field, lineage) for field in message.fields
+            ]
             lines.append(f"{body_indent}  return {' && '.join(conditions)};")
         else:
             lines.append(f"{body_indent}  return true;")
         lines.append(f"{body_indent}}}")
 
-        lines.append(f"{indent}}};")
-
         struct_type_name = self.get_qualified_type_name(message.name, parent_stack)
         if message.fields:
-            field_names = ", ".join(self.to_snake_case(f.name) for f in message.fields)
-            struct_macros.append(f"FORY_STRUCT({struct_type_name}, {field_names});")
+            lines.append("")
+            lines.append(f"{body_indent}private:")
+            for field in message.fields:
+                field_type = self.get_field_storage_type(field, lineage)
+                member_name = self.get_field_member_name(field)
+                lines.append(f"{field_indent}{field_type} {member_name};")
+            lines.append("")
+            lines.append(f"{body_indent}public:")
+            field_members = ", ".join(
+                self.get_field_member_name(f) for f in message.fields
+            )
             field_config_type_name = self.get_field_config_type_and_alias(
                 message.name, parent_stack
             )
@@ -484,8 +626,13 @@ class CppGenerator(BaseGenerator):
                     message, field_config_type_name[0], field_config_type_name[1]
                 )
             )
+            lines.append(
+                f"{body_indent}FORY_STRUCT({struct_type_name}, {field_members});"
+            )
         else:
-            struct_macros.append(f"FORY_STRUCT({struct_type_name});")
+            lines.append(f"{body_indent}FORY_STRUCT({struct_type_name});")
+
+        lines.append(f"{indent}}};")
 
         return lines
 
@@ -493,7 +640,6 @@ class CppGenerator(BaseGenerator):
         self,
         union: Union,
         parent_stack: List[Message],
-        struct_macros: List[str],
         indent: str,
     ) -> List[str]:
         """Generate a C++ union class definition."""
@@ -1012,7 +1158,7 @@ class CppGenerator(BaseGenerator):
         """Generate FORY_FIELD_CONFIG macro for a message."""
         entries = []
         for field in message.fields:
-            field_name = self.to_snake_case(field.name)
+            field_name = self.get_field_member_name(field)
             meta = self.get_field_meta(field)
             entries.append(f"({field_name}, {meta})")
         joined = ", ".join(entries)

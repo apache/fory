@@ -42,9 +42,8 @@ struct UnsignedStruct {
     return u8_val == other.u8_val && u16_val == other.u16_val &&
            u32_val == other.u32_val && u64_val == other.u64_val;
   }
+  FORY_STRUCT(UnsignedStruct, u8_val, u16_val, u32_val, u64_val);
 };
-
-FORY_STRUCT(UnsignedStruct, u8_val, u16_val, u32_val, u64_val);
 
 struct UnsignedArrayStruct {
   std::vector<uint8_t> u8_vec;
@@ -56,9 +55,8 @@ struct UnsignedArrayStruct {
     return u8_vec == other.u8_vec && u16_vec == other.u16_vec &&
            u32_vec == other.u32_vec && u64_vec == other.u64_vec;
   }
+  FORY_STRUCT(UnsignedArrayStruct, u8_vec, u16_vec, u32_vec, u64_vec);
 };
-
-FORY_STRUCT(UnsignedArrayStruct, u8_vec, u16_vec, u32_vec, u64_vec);
 
 // ============================================================================
 // Test Helper for Native Mode (xlang=false)

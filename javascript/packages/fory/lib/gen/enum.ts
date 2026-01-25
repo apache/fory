@@ -21,7 +21,7 @@ import { EnumTypeInfo, TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { InternalSerializerType, MaxUInt32 } from "../type";
+import { TypeId, MaxUInt32 } from "../type";
 import { Scope } from "./scope";
 
 class EnumSerializerGenerator extends BaseSerializerGenerator {
@@ -93,4 +93,5 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
   }
 }
 
-CodegenRegistry.register(InternalSerializerType.ENUM, EnumSerializerGenerator);
+CodegenRegistry.register(TypeId.ENUM, EnumSerializerGenerator);
+CodegenRegistry.register(TypeId.NAMED_ENUM, EnumSerializerGenerator);

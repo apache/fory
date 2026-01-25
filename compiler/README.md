@@ -384,8 +384,10 @@ struct Cat {
     std::shared_ptr<Dog> friend;
     std::optional<std::string> name;
     std::vector<std::string> tags;
+    int32_t scores;
+    int32_t lives;
+    FORY_STRUCT(Cat, friend, name, tags, scores, lives);
 };
-FORY_STRUCT(Cat, friend, name, tags, scores, lives);
 ```
 
 ## CLI Reference

@@ -240,9 +240,8 @@ struct Person {
   field<std::optional<std::string>, 2> nickname;
   field<std::shared_ptr<Person>, 3, ref> parent;
   field<std::shared_ptr<Person>, 4, nullable> guardian;
+  FORY_STRUCT(Person, name, age, nickname, parent, guardian);
 };
-
-FORY_FIELD_INFO(Person, name, age, nickname, parent, guardian);
 
 TEST(FieldStruct, BasicUsage) {
   Person p;
@@ -262,7 +261,7 @@ TEST(FieldStruct, BasicUsage) {
 
 TEST(FieldStruct, FieldInfo) {
   Person p;
-  constexpr auto info = ForyFieldInfo(p);
+  constexpr auto info = meta::ForyFieldInfo(p);
 
   static_assert(info.Size == 5);
   static_assert(info.Name == "Person");
@@ -293,6 +292,8 @@ struct Document {
   std::shared_ptr<Document> reviewer;
   std::shared_ptr<Document> parent;
   std::unique_ptr<std::string> metadata;
+  FORY_STRUCT(Document, title, version, description, author, reviewer, parent,
+              metadata);
 };
 
 // Test struct with nullable + ref combined
@@ -300,18 +301,18 @@ struct Node {
   std::string name;
   std::shared_ptr<Node> left;
   std::shared_ptr<Node> right;
+  FORY_STRUCT(Node, name, left, right);
 };
 
 // Test with single field
 struct SingleField {
   int32_t value;
+  FORY_STRUCT(SingleField, value);
 };
 
 } // namespace field_tags_test
 
-// FORY_FIELD_INFO and FORY_FIELD_TAGS must be in global namespace
-FORY_FIELD_INFO(field_tags_test::Document, title, version, description, author,
-                reviewer, parent, metadata);
+// FORY_FIELD_TAGS must be in global namespace
 
 // Define field tags separately (non-invasive)
 FORY_FIELD_TAGS(field_tags_test::Document, (title, 0), // string: non-nullable
@@ -322,12 +323,9 @@ FORY_FIELD_TAGS(field_tags_test::Document, (title, 0), // string: non-nullable
                 (parent, 5, ref),         // shared_ptr: non-nullable, with ref
                 (metadata, 6, nullable)); // unique_ptr: nullable
 
-FORY_FIELD_INFO(field_tags_test::Node, name, left, right);
-
 FORY_FIELD_TAGS(field_tags_test::Node, (name, 0), (left, 1, nullable, ref),
                 (right, 2, nullable, ref));
 
-FORY_FIELD_INFO(field_tags_test::SingleField, value);
 FORY_FIELD_TAGS(field_tags_test::SingleField, (value, 0));
 
 namespace fory {

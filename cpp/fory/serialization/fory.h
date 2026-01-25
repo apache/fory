@@ -221,8 +221,10 @@ public:
   ///
   /// Example:
   /// ```cpp
-  /// struct MyStruct { int32_t value; };
-  /// FORY_STRUCT(MyStruct, value);
+  /// struct MyStruct {
+  ///   int32_t value;
+  ///   FORY_STRUCT(MyStruct, value);
+  /// };
   ///
   /// fory.register_struct<MyStruct>(1);
   /// ```
