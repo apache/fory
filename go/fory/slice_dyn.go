@@ -247,8 +247,12 @@ func (s sliceDynSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuff
 }
 
 func (s sliceDynSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(LIST) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected LIST (%d), got %d", LIST, typeId))
 		return
 	}
 	s.ReadData(ctx, value)
