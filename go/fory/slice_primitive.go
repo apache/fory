@@ -53,8 +53,12 @@ func (s byteSliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 }
 
 func (s byteSliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(BINARY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected BINARY (%d), got %d", BINARY, typeId))
 		return
 	}
 	s.ReadData(ctx, value)
@@ -114,8 +118,12 @@ func (s boolSliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 }
 
 func (s boolSliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(BOOL_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected BOOL_ARRAY (%d), got %d", BOOL_ARRAY, typeId))
 		return
 	}
 	s.ReadData(ctx, value)
@@ -148,8 +156,12 @@ func (s int8SliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 }
 
 func (s int8SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(INT8_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected INT8_ARRAY (%d), got %d", INT8_ARRAY, typeId))
 		return
 	}
 	s.ReadData(ctx, value)
@@ -182,8 +194,12 @@ func (s int16SliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeTyp
 }
 
 func (s int16SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(INT16_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected INT16_ARRAY (%d), got %d", INT16_ARRAY, typeId))
 		return
 	}
 	s.ReadData(ctx, value)
@@ -216,8 +232,12 @@ func (s int32SliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeTyp
 }
 
 func (s int32SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(INT32_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected INT32_ARRAY (%d), got %d", INT32_ARRAY, typeId))
 		return
 	}
 	s.ReadData(ctx, value)
@@ -250,8 +270,12 @@ func (s int64SliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeTyp
 }
 
 func (s int64SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(INT64_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected INT64_ARRAY (%d), got %d", INT64_ARRAY, typeId))
 		return
 	}
 	s.ReadData(ctx, value)
@@ -284,8 +308,12 @@ func (s float32SliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeT
 }
 
 func (s float32SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(FLOAT32_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected FLOAT32_ARRAY (%d), got %d", FLOAT32_ARRAY, typeId))
 		return
 	}
 	s.ReadData(ctx, value)
@@ -318,8 +346,12 @@ func (s float64SliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeT
 }
 
 func (s float64SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(FLOAT64_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected FLOAT64_ARRAY (%d), got %d", FLOAT64_ARRAY, typeId))
 		return
 	}
 	s.ReadData(ctx, value)
@@ -356,9 +388,19 @@ func (s intSliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType 
 }
 
 func (s intSliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
 		return
+	}
+	if readType {
+		var expected TypeId = INT32_ARRAY
+		if strconv.IntSize == 64 {
+			expected = INT64_ARRAY
+		}
+		if typeId != uint32(expected) {
+			ctx.SetError(DeserializationErrorf("slice type mismatch: expected %d, got %d", expected, typeId))
+			return
+		}
 	}
 	s.ReadData(ctx, value)
 }
@@ -396,9 +438,19 @@ func (s uintSliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType
 }
 
 func (s uintSliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
 		return
+	}
+	if readType {
+		var expected TypeId = INT32_ARRAY
+		if strconv.IntSize == 64 {
+			expected = INT64_ARRAY
+		}
+		if typeId != uint32(expected) {
+			ctx.SetError(DeserializationErrorf("slice type mismatch: expected %d, got %d", expected, typeId))
+			return
+		}
 	}
 	s.ReadData(ctx, value)
 }
@@ -455,8 +507,12 @@ func (s stringSliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeTy
 }
 
 func (s stringSliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(LIST) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected LIST (%d), got %d", LIST, typeId))
 		return
 	}
 	s.ReadData(ctx, value)
