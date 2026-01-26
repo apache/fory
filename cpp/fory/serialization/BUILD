@@ -144,6 +144,16 @@ cc_test(
 )
 
 cc_test(
+    name = "namespace_macro_test",
+    srcs = ["namespace_macro_test.cc"],
+    deps = [
+        ":fory_serialization",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "weak_ptr_serializer_test",
     srcs = ["weak_ptr_serializer_test.cc"],
     deps = [

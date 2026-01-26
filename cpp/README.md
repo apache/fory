@@ -232,6 +232,7 @@ enum class Color { Red, Green, Blue };
 // Non-continuous enum - needs FORY_ENUM
 enum class LegacyStatus { Active = 1, Inactive = 5, Pending = 10 };
 FORY_ENUM(LegacyStatus, Active, Inactive, Pending);
+// FORY_ENUM must be defined at namespace scope.
 
 struct Item {
   std::string name;

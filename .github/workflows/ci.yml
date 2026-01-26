@@ -458,7 +458,7 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Run JavaScript Xlang Test
         env:
-          # FORY_JAVASCRIPT_JAVA_CI: "1"
+          FORY_JAVASCRIPT_JAVA_CI: "0"
         run: |
           cd javascript
           npm install

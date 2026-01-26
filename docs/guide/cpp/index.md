@@ -141,7 +141,7 @@ See the [examples/cpp](https://github.com/apache/fory/tree/main/examples/cpp) di
 using namespace fory::serialization;
 
 // Define a struct
-struct Person {
+class Person {
   std::string name;
   int32_t age;
   std::vector<std::string> hobbies;
@@ -149,10 +149,13 @@ struct Person {
   bool operator==(const Person &other) const {
     return name == other.name && age == other.age && hobbies == other.hobbies;
   }
+
+public:
+  // Register the struct with Fory (FORY_STRUCT must be in public scope).
+  FORY_STRUCT(Person, name, age, hobbies);
 };
 
-// Register the struct with Fory (must be in the same namespace)
-FORY_STRUCT(Person, name, age, hobbies);
+
 
 int main() {
   // Create a Fory instance

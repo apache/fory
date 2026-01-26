@@ -191,10 +191,6 @@ class CppGenerator(BaseGenerator):
             )
             lines.append("")
 
-        if namespace:
-            lines.append(f"}} // namespace {namespace}")
-            lines.append("")
-
         if union_macros:
             lines.extend(union_macros)
             lines.append("")
@@ -205,10 +201,6 @@ class CppGenerator(BaseGenerator):
 
         if enum_macros:
             lines.extend(enum_macros)
-            lines.append("")
-
-        if namespace:
-            lines.append(f"namespace {namespace} {{")
             lines.append("")
 
         # Generate registration function (after FORY_STRUCT/FORY_ENUM)
@@ -548,13 +540,9 @@ class CppGenerator(BaseGenerator):
         lineage = parent_stack + [message]
         body_indent = f"{indent}  "
         field_indent = f"{indent}    "
-
         lines.append(f"{indent}class {class_name} final {{")
         lines.append(f"{body_indent}public:")
         if message.fields:
-            lines.append(
-                f"{body_indent}  friend struct ::fory::detail::ForyFieldConfigImpl<{class_name}>;"
-            )
             lines.append("")
 
         for nested_enum in message.nested_enums:
@@ -753,9 +741,9 @@ class CppGenerator(BaseGenerator):
         lines.append(f"{body_indent}  }}")
         lines.append("")
 
+        lines.append(f"{body_indent}private:")
         lines.append(f"{body_indent}  {variant_type} value_;")
         lines.append("")
-        lines.append(f"{body_indent}private:")
         lines.append(f"{body_indent}  template <class T, class... Args>")
         lines.append(
             f"{body_indent}  explicit {class_name}(std::in_place_type_t<T> tag, Args&&... args)"
@@ -777,8 +765,8 @@ class CppGenerator(BaseGenerator):
             return []
 
         lines: List[str] = []
-        union_type = self.get_namespaced_type_name(union.name, parent_stack)
         if len(union.fields) <= 16:
+            union_type = self.get_namespaced_type_name(union.name, parent_stack)
             lines.append(f"FORY_UNION({union_type},")
             for index, field in enumerate(union.fields):
                 case_type = self.generate_namespaced_type(
@@ -792,10 +780,11 @@ class CppGenerator(BaseGenerator):
                 case_ctor = self.to_snake_case(field.name)
                 meta = self.get_union_field_meta(field)
                 suffix = "," if index + 1 < len(union.fields) else ""
-                lines.append(f"    ({case_type}, {case_ctor}, {meta}){suffix}")
+                lines.append(f"  ({case_type}, {case_ctor}, {meta}){suffix}")
             lines.append(");")
             return lines
 
+        union_type = self.get_namespaced_type_name(union.name, parent_stack)
         case_ids = ", ".join(str(field.number) for field in union.fields)
         lines.append(f"FORY_UNION_IDS({union_type}, {case_ids});")
         for field in union.fields:

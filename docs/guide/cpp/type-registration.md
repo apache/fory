@@ -90,6 +90,7 @@ For enums with non-continuous values, use the `FORY_ENUM` macro to map values to
 // Non-continuous enum values - FORY_ENUM required
 enum class Priority { LOW = 10, MEDIUM = 50, HIGH = 100 };
 FORY_ENUM(Priority, LOW, MEDIUM, HIGH);
+// FORY_ENUM must be defined at namespace scope.
 
 // Global namespace enum (prefix with ::)
 enum LegacyStatus { UNKNOWN = -1, OK = 0, ERROR = 1 };

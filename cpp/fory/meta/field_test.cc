@@ -278,7 +278,6 @@ TEST(FieldStruct, FieldInfo) {
 
 // ============================================================================
 // FORY_FIELD_TAGS Macro Tests
-// Must be in global namespace to specialize fory::detail::ForyFieldTagsImpl
 // ============================================================================
 
 namespace field_tags_test {
@@ -310,23 +309,21 @@ struct SingleField {
   FORY_STRUCT(SingleField, value);
 };
 
-} // namespace field_tags_test
-
-// FORY_FIELD_TAGS must be in global namespace
-
-// Define field tags separately (non-invasive)
-FORY_FIELD_TAGS(field_tags_test::Document, (title, 0), // string: non-nullable
-                (version, 1),                          // int: non-nullable
+// Define field tags in the same namespace as the types.
+FORY_FIELD_TAGS(Document, (title, 0),     // string: non-nullable
+                (version, 1),             // int: non-nullable
                 (description, 2),         // optional: inherently nullable
                 (author, 3),              // shared_ptr: non-nullable (default)
                 (reviewer, 4, nullable),  // shared_ptr: nullable
                 (parent, 5, ref),         // shared_ptr: non-nullable, with ref
                 (metadata, 6, nullable)); // unique_ptr: nullable
 
-FORY_FIELD_TAGS(field_tags_test::Node, (name, 0), (left, 1, nullable, ref),
+FORY_FIELD_TAGS(Node, (name, 0), (left, 1, nullable, ref),
                 (right, 2, nullable, ref));
 
-FORY_FIELD_TAGS(field_tags_test::SingleField, (value, 0));
+FORY_FIELD_TAGS(SingleField, (value, 0));
+
+} // namespace field_tags_test
 
 namespace fory {
 namespace test {
@@ -342,7 +339,7 @@ TEST(FieldTags, HasTags) {
 }
 
 TEST(FieldTags, FieldCount) {
-  static_assert(detail::ForyFieldTagsImpl<Document>::field_count == 7);
+  static_assert(detail::FieldTagsInfo<Document>::field_count == 7);
 }
 
 TEST(FieldTags, TagIds) {
@@ -403,7 +400,7 @@ TEST(FieldTags, NullableWithRef) {
 
 TEST(FieldTags, SingleField) {
   static_assert(detail::has_field_tags_v<SingleField> == true);
-  static_assert(detail::ForyFieldTagsImpl<SingleField>::field_count == 1);
+  static_assert(detail::FieldTagsInfo<SingleField>::field_count == 1);
   static_assert(detail::GetFieldTagEntry<SingleField, 0>::id == 0);
   static_assert(detail::GetFieldTagEntry<SingleField, 0>::is_nullable == false);
   static_assert(detail::GetFieldTagEntry<SingleField, 0>::track_ref == false);

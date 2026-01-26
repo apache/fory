@@ -253,6 +253,7 @@ enum class Color { RED = 0, GREEN = 1, BLUE = 2 };
 // Unscoped enum with incontinuous values
 enum Priority : int32_t { LOW = -10, NORMAL = 0, HIGH = 10 };
 FORY_ENUM(Priority, LOW, NORMAL, HIGH);
+// FORY_ENUM must be defined at namespace scope.
 
 // Usage
 Color c = Color::GREEN;

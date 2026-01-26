@@ -547,7 +547,10 @@ template <typename T> struct CompileTimeFieldHelpers {
       }
       // Else if FORY_FIELD_TAGS is defined, use that metadata
       else if constexpr (::fory::detail::has_field_tags_v<T>) {
-        return ::fory::detail::GetFieldTagEntry<T, Index>::is_nullable;
+        if constexpr (::fory::detail::GetFieldTagEntry<T, Index>::has_entry) {
+          return ::fory::detail::GetFieldTagEntry<T, Index>::is_nullable;
+        }
+        return field_is_nullable_v<RawFieldType>;
       }
       // For non-wrapped types, use xlang defaults:
       // Only std::optional is nullable (field_is_nullable_v returns true for
