@@ -593,151 +593,6 @@ func (b *ByteBuffer) UnsafeWriteBool(v bool) {
 	b.writerIndex++
 }
 
-// UnsafeWriteVarint64 writes a varint64 without grow check.
-// Caller must have called Reserve(10) beforehand.
-//
-//go:inline
-func (b *ByteBuffer) UnsafeWriteVarint64(value int64) {
-	u := uint64((value << 1) ^ (value >> 63))
-	b.UnsafeWriteVaruint64(u)
-}
-
-// UnsafeWriteVaruint64 writes a varuint64 without grow check.
-// Caller must have called Reserve(16) beforehand (for bulk writes).
-func (b *ByteBuffer) UnsafeWriteVaruint64(value uint64) {
-	if value>>7 == 0 {
-		b.data[b.writerIndex] = byte(value)
-		b.writerIndex++
-		return
-	}
-	if value>>14 == 0 {
-		encoded := uint16((value&0x7F)|0x80) | uint16(value>>7)<<8
-		if isLittleEndian {
-			*(*uint16)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
-		} else {
-			b.data[b.writerIndex] = byte(encoded)
-			b.data[b.writerIndex+1] = byte(encoded >> 8)
-		}
-		b.writerIndex += 2
-		return
-	}
-	if value>>21 == 0 {
-		encoded := uint32((value&0x7F)|0x80) |
-			uint32(((value>>7)&0x7F)|0x80)<<8 |
-			uint32(value>>14)<<16
-		if isLittleEndian {
-			*(*uint32)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
-		} else {
-			b.data[b.writerIndex] = byte(encoded)
-			b.data[b.writerIndex+1] = byte(encoded >> 8)
-			b.data[b.writerIndex+2] = byte(encoded >> 16)
-		}
-		b.writerIndex += 3
-		return
-	}
-	if value>>28 == 0 {
-		encoded := uint32((value&0x7F)|0x80) |
-			uint32(((value>>7)&0x7F)|0x80)<<8 |
-			uint32(((value>>14)&0x7F)|0x80)<<16 |
-			uint32(value>>21)<<24
-		if isLittleEndian {
-			*(*uint32)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
-		} else {
-			binary.LittleEndian.PutUint32(b.data[b.writerIndex:], encoded)
-		}
-		b.writerIndex += 4
-		return
-	}
-	if value>>35 == 0 {
-		encoded := uint64((value&0x7F)|0x80) |
-			uint64(((value>>7)&0x7F)|0x80)<<8 |
-			uint64(((value>>14)&0x7F)|0x80)<<16 |
-			uint64(((value>>21)&0x7F)|0x80)<<24 |
-			uint64(value>>28)<<32
-		if isLittleEndian {
-			*(*uint64)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
-		} else {
-			binary.LittleEndian.PutUint64(b.data[b.writerIndex:], encoded)
-		}
-		b.writerIndex += 5
-		return
-	}
-	if value>>42 == 0 {
-		encoded := uint64((value&0x7F)|0x80) |
-			uint64(((value>>7)&0x7F)|0x80)<<8 |
-			uint64(((value>>14)&0x7F)|0x80)<<16 |
-			uint64(((value>>21)&0x7F)|0x80)<<24 |
-			uint64(((value>>28)&0x7F)|0x80)<<32 |
-			uint64(value>>35)<<40
-		if isLittleEndian {
-			*(*uint64)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
-		} else {
-			binary.LittleEndian.PutUint64(b.data[b.writerIndex:], encoded)
-		}
-		b.writerIndex += 6
-		return
-	}
-	if value>>49 == 0 {
-		encoded := uint64((value&0x7F)|0x80) |
-			uint64(((value>>7)&0x7F)|0x80)<<8 |
-			uint64(((value>>14)&0x7F)|0x80)<<16 |
-			uint64(((value>>21)&0x7F)|0x80)<<24 |
-			uint64(((value>>28)&0x7F)|0x80)<<32 |
-			uint64(((value>>35)&0x7F)|0x80)<<40 |
-			uint64(value>>42)<<48
-		if isLittleEndian {
-			*(*uint64)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
-		} else {
-			binary.LittleEndian.PutUint64(b.data[b.writerIndex:], encoded)
-		}
-		b.writerIndex += 7
-		return
-	}
-	if value>>56 == 0 {
-		encoded := uint64((value&0x7F)|0x80) |
-			uint64(((value>>7)&0x7F)|0x80)<<8 |
-			uint64(((value>>14)&0x7F)|0x80)<<16 |
-			uint64(((value>>21)&0x7F)|0x80)<<24 |
-			uint64(((value>>28)&0x7F)|0x80)<<32 |
-			uint64(((value>>35)&0x7F)|0x80)<<40 |
-			uint64(((value>>42)&0x7F)|0x80)<<48 |
-			uint64(value>>49)<<56
-		if isLittleEndian {
-			*(*uint64)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
-		} else {
-			binary.LittleEndian.PutUint64(b.data[b.writerIndex:], encoded)
-		}
-		b.writerIndex += 8
-		return
-	}
-	// 9 or 10 bytes needed - write 8 bytes bulk then remaining
-	encoded := uint64((value&0x7F)|0x80) |
-		uint64(((value>>7)&0x7F)|0x80)<<8 |
-		uint64(((value>>14)&0x7F)|0x80)<<16 |
-		uint64(((value>>21)&0x7F)|0x80)<<24 |
-		uint64(((value>>28)&0x7F)|0x80)<<32 |
-		uint64(((value>>35)&0x7F)|0x80)<<40 |
-		uint64(((value>>42)&0x7F)|0x80)<<48 |
-		uint64(((value>>49)&0x7F)|0x80)<<56
-	if isLittleEndian {
-		*(*uint64)(unsafe.Pointer(&b.data[b.writerIndex])) = encoded
-	} else {
-		binary.LittleEndian.PutUint64(b.data[b.writerIndex:], encoded)
-	}
-	b.writerIndex += 8
-
-	// Remaining 1-2 bytes
-	remaining := value >> 56
-	if remaining>>7 == 0 {
-		b.data[b.writerIndex] = byte(remaining)
-		b.writerIndex++
-	} else {
-		b.data[b.writerIndex] = byte(remaining) | 0x80
-		b.data[b.writerIndex+1] = byte(remaining >> 7)
-		b.writerIndex += 2
-	}
-}
-
 // UnsafePutVarInt32 writes a zigzag-encoded varint32 at the given offset without advancing writerIndex.
 // Caller must have called Reserve() to ensure capacity.
 // Returns the number of bytes written (1-5).
@@ -806,7 +661,7 @@ func (b *ByteBuffer) UnsafePutVaruint32(offset int, value uint32) int {
 
 // UnsafePutVarInt64 writes a zigzag-encoded varint64 at the given offset without advancing writerIndex.
 // Caller must have called Reserve() to ensure capacity.
-// Returns the number of bytes written (1-10).
+// Returns the number of bytes written (1-9).
 //
 //go:inline
 func (b *ByteBuffer) UnsafePutVarInt64(offset int, value int64) int {
@@ -816,7 +671,7 @@ func (b *ByteBuffer) UnsafePutVarInt64(offset int, value int64) int {
 
 // UnsafePutVaruint64 writes an unsigned varuint64 at the given offset without advancing writerIndex.
 // Caller must have called Reserve(16) to ensure capacity (for bulk writes).
-// Returns the number of bytes written (1-10).
+// Returns the number of bytes written (1-9).
 func (b *ByteBuffer) UnsafePutVaruint64(offset int, value uint64) int {
 	if value>>7 == 0 {
 		b.data[offset] = byte(value)
@@ -915,7 +770,7 @@ func (b *ByteBuffer) UnsafePutVaruint64(offset int, value uint64) int {
 		}
 		return 8
 	}
-	// 9 or 10 bytes needed
+	// 9 bytes needed
 	encoded := uint64((value&0x7F)|0x80) |
 		uint64(((value>>7)&0x7F)|0x80)<<8 |
 		uint64(((value>>14)&0x7F)|0x80)<<16 |
@@ -930,14 +785,8 @@ func (b *ByteBuffer) UnsafePutVaruint64(offset int, value uint64) int {
 		binary.LittleEndian.PutUint64(b.data[offset:], encoded)
 	}
 
-	remaining := value >> 56
-	if remaining>>7 == 0 {
-		b.data[offset+8] = byte(remaining)
-		return 9
-	}
-	b.data[offset+8] = byte(remaining) | 0x80
-	b.data[offset+9] = byte(remaining >> 7)
-	return 10
+	b.data[offset+8] = byte(value >> 56)
+	return 9
 }
 
 //go:inline
@@ -975,15 +824,17 @@ func (b *ByteBuffer) WriteVaruint64(value uint64) {
 	offset := b.writerIndex
 	data := b.data[offset : offset+9]
 
-	i := 0
-	for i < 8 && value >= 0x80 {
+	for i := 0; i < 8; i++ {
+		if value < 0x80 {
+			data[i] = byte(value)
+			b.writerIndex += i + 1
+			return
+		}
 		data[i] = byte(value&0x7F) | 0x80
 		value >>= 7
-		i++
 	}
-	data[i] = byte(value)
-	i++
-	b.writerIndex += i
+	data[8] = byte(value)
+	b.writerIndex += 9
 }
 
 // WriteVaruint36Small writes a varint optimized for small values (up to 36 bits)
@@ -1249,8 +1100,9 @@ func (b *ByteBuffer) readVaruint64Fast() uint64 {
 								result |= (bulk >> 7) & 0xFE000000000000
 								readLength = 8
 								if (bulk & 0x8000000000000000) != 0 {
-									// Need 9th byte
-									result |= uint64(b.data[b.readerIndex+8]) << 56
+									// Need 9th byte (full 8 bits)
+									b9 := b.data[b.readerIndex+8]
+									result |= uint64(b9) << 56
 									readLength = 9
 								}
 							}
@@ -1268,7 +1120,7 @@ func (b *ByteBuffer) readVaruint64Fast() uint64 {
 func (b *ByteBuffer) readVaruint64Slow(err *Error) uint64 {
 	var result uint64
 	var shift uint
-	for {
+	for i := 0; i < 8; i++ {
 		if b.readerIndex >= len(b.data) {
 			*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
 			return 0
@@ -1277,15 +1129,17 @@ func (b *ByteBuffer) readVaruint64Slow(err *Error) uint64 {
 		b.readerIndex++
 		result |= (uint64(byteVal) & 0x7F) << shift
 		if byteVal < 0x80 {
-			break
+			return result
 		}
 		shift += 7
-		if shift >= 64 {
-			*err = DeserializationError("varuint64 overflow")
-			return 0
-		}
 	}
-	return result
+	if b.readerIndex >= len(b.data) {
+		*err = BufferOutOfBoundError(b.readerIndex, 1, len(b.data))
+		return 0
+	}
+	byteVal := b.data[b.readerIndex]
+	b.readerIndex++
+	return result | (uint64(byteVal) << 56)
 }
 
 // Auxiliary function

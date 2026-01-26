@@ -143,6 +143,7 @@ dependencies = [
 name = "idl_tests"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "fory",
  "fory-core",
 ]

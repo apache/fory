@@ -200,7 +200,7 @@ public:
 /// Date stored as 32-bit integer (days since epoch).
 class LocalDateType : public FixedWidthType {
 public:
-  LocalDateType() : FixedWidthType(TypeId::LOCAL_DATE, 32) {}
+  LocalDateType() : FixedWidthType(TypeId::DATE, 32) {}
   std::string name() const override { return "date32"; }
 };
 

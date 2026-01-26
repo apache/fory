@@ -110,8 +110,9 @@ static void serializeString(const v8::FunctionCallbackInfo<v8::Value> &args) {
     int flags = String::HINT_MANY_WRITES_EXPECTED |
                 String::NO_NULL_TERMINATION | String::REPLACE_INVALID_UTF8;
     if (is_one_byte) {
-      offset += writeVarUint32(dst_data, offset,
-                               (str->Length() << 2) | Encoding::LATIN1); // length
+      offset +=
+          writeVarUint32(dst_data, offset,
+                         (str->Length() << 2) | Encoding::LATIN1); // length
       offset += str->WriteOneByte(isolate, dst_data + offset, 0, str->Length(),
                                   flags);
     } else {

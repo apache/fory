@@ -649,8 +649,8 @@ fn skip_value(
             <NaiveDateTime as Serializer>::fory_read_data(context)?;
         }
 
-        // ============ LOCAL_DATE (TypeId = 37) ============
-        types::LOCAL_DATE => {
+        // ============ DATE (TypeId = 37) ============
+        types::DATE => {
             <NaiveDate as Serializer>::fory_read_data(context)?;
         }
 

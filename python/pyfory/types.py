@@ -112,7 +112,7 @@ class TypeId:
     # to an epoch at UTC midnight on January 1, 1970.
     TIMESTAMP = 36
     # a naive date without timezone. The count is days relative to an epoch at UTC midnight on Jan 1, 1970.
-    LOCAL_DATE = 37
+    DATE = 37
     # exact decimal value represented as an integer value in two's complement.
     DECIMAL = 38
     # a variable-length array of bytes.

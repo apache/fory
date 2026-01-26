@@ -645,7 +645,7 @@ class JavaGenerator(BaseGenerator):
                 PrimitiveKind.FLOAT64: "Types.FLOAT64",
                 PrimitiveKind.STRING: "Types.STRING",
                 PrimitiveKind.BYTES: "Types.BINARY",
-                PrimitiveKind.DATE: "Types.LOCAL_DATE",
+                PrimitiveKind.DATE: "Types.DATE",
                 PrimitiveKind.TIMESTAMP: "Types.TIMESTAMP",
             }
             return primitive_type_ids.get(kind, "Types.UNKNOWN")

@@ -833,7 +833,7 @@ public class XtypeResolver extends TypeResolver {
     registerType(Types.TIMESTAMP, Timestamp.class, new TimeSerializers.TimestampSerializer(fory));
     registerType(
         Types.TIMESTAMP, LocalDateTime.class, new TimeSerializers.LocalDateTimeSerializer(fory));
-    registerType(Types.LOCAL_DATE, LocalDate.class, new TimeSerializers.LocalDateSerializer(fory));
+    registerType(Types.DATE, LocalDate.class, new TimeSerializers.LocalDateSerializer(fory));
 
     // Decimal types
     registerType(Types.DECIMAL, BigDecimal.class, new Serializers.BigDecimalSerializer(fory));

@@ -184,7 +184,7 @@ Result<DataTypePtr, Error> ReadType(Buffer &buffer) {
     return duration();
   case TypeId::TIMESTAMP:
     return timestamp();
-  case TypeId::LOCAL_DATE:
+  case TypeId::DATE:
     return date32();
   case TypeId::DECIMAL: {
     uint8_t precision = buffer.ReadUint8(error);

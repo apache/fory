@@ -126,7 +126,7 @@ enum ObjType {
   // TODO: here time
   /// A naive date without timezone. The count is days relative to an epoch at UTC midnight on Jan 1,
   /// 1970.
-  LOCAL_DATE(26, true), // 26
+  DATE(26, true), // 26
 
   /// Exact decimal value represented as an integer value in two's complement.
   DECIMAL(27, true), // 27
@@ -213,7 +213,7 @@ enum ObjType {
 
   bool isTimeType() {
     return this == TIMESTAMP
-        || this == LOCAL_DATE
+        || this == DATE
         || this == DURATION;
   }
 }

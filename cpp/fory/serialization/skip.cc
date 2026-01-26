@@ -520,10 +520,8 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     skip_map(ctx, field_type);
     return;
 
-  case TypeId::DURATION:
-  case TypeId::TIMESTAMP: {
-    // Duration/Timestamp are stored as fixed 8-byte
-    // nanosecond counts.
+  case TypeId::DURATION: {
+    // Duration is stored as fixed 8-byte nanosecond count.
     constexpr uint32_t kBytes = static_cast<uint32_t>(sizeof(int64_t));
     if (ctx.buffer().reader_index() + kBytes > ctx.buffer().size()) {
       ctx.set_error(Error::buffer_out_of_bound(ctx.buffer().reader_index(),
@@ -533,9 +531,21 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     ctx.buffer().IncreaseReaderIndex(kBytes);
     return;
   }
+  case TypeId::TIMESTAMP: {
+    // Timestamp is stored as int64 seconds + uint32 nanoseconds.
+    constexpr uint32_t kBytes =
+        static_cast<uint32_t>(sizeof(int64_t) + sizeof(uint32_t));
+    if (ctx.buffer().reader_index() + kBytes > ctx.buffer().size()) {
+      ctx.set_error(Error::buffer_out_of_bound(ctx.buffer().reader_index(),
+                                               kBytes, ctx.buffer().size()));
+      return;
+    }
+    ctx.buffer().IncreaseReaderIndex(kBytes);
+    return;
+  }
 
-  case TypeId::LOCAL_DATE: {
-    // LocalDate is stored as fixed 4-byte day count.
+  case TypeId::DATE: {
+    // Date is stored as fixed 4-byte day count.
     constexpr uint32_t kBytes = static_cast<uint32_t>(sizeof(int32_t));
     if (ctx.buffer().reader_index() + kBytes > ctx.buffer().size()) {
       ctx.set_error(Error::buffer_out_of_bound(ctx.buffer().reader_index(),

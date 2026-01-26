@@ -410,7 +410,7 @@ def get_reader(data_type, type_):
         return type_.get_float
     elif type_id == CTypeId.FLOAT64:
         return type_.get_double
-    elif type_id == CTypeId.LOCAL_DATE:
+    elif type_id == CTypeId.DATE:
         return type_.get_date
     elif type_id == CTypeId.TIMESTAMP:
         return type_.get_datetime

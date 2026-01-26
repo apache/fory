@@ -291,16 +291,22 @@ class TimestampSerializer(XlangCompatibleSerializer):
             is_dst = time.daylight and time.localtime().tm_isdst > 0
             seconds_offset = time.altzone if is_dst else time.timezone
             value = value.replace(tzinfo=datetime.timezone.utc)
-        return int((value.timestamp() + seconds_offset) * 1000000)
+        micros = int((value.timestamp() + seconds_offset) * 1_000_000)
+        seconds, micros_rem = divmod(micros, 1_000_000)
+        nanos = micros_rem * 1000
+        return seconds, nanos
 
     def write(self, buffer, value: datetime.datetime):
         if not isinstance(value, datetime.datetime):
             raise TypeError("{} should be {} instead of {}".format(value, datetime, type(value)))
-        # TimestampType represent micro seconds
-        buffer.write_int64(self._get_timestamp(value))
+        seconds, nanos = self._get_timestamp(value)
+        buffer.write_int64(seconds)
+        buffer.write_uint32(nanos)
 
     def read(self, buffer):
-        ts = buffer.read_int64() / 1000000
+        seconds = buffer.read_int64()
+        nanos = buffer.read_uint32()
+        ts = seconds + nanos / 1_000_000_000
         # TODO support timezone
         return datetime.datetime.fromtimestamp(ts)
 

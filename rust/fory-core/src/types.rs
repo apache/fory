@@ -140,7 +140,7 @@ pub enum TypeId {
     NONE = 34,
     DURATION = 35,
     TIMESTAMP = 36,
-    LOCAL_DATE = 37,
+    DATE = 37,
     DECIMAL = 38,
     BINARY = 39,
     ARRAY = 40,
@@ -207,7 +207,7 @@ pub const SET: u32 = TypeId::SET as u32;
 pub const MAP: u32 = TypeId::MAP as u32;
 pub const DURATION: u32 = TypeId::DURATION as u32;
 pub const TIMESTAMP: u32 = TypeId::TIMESTAMP as u32;
-pub const LOCAL_DATE: u32 = TypeId::LOCAL_DATE as u32;
+pub const DATE: u32 = TypeId::DATE as u32;
 pub const DECIMAL: u32 = TypeId::DECIMAL as u32;
 pub const BINARY: u32 = TypeId::BINARY as u32;
 pub const ARRAY: u32 = TypeId::ARRAY as u32;
@@ -280,7 +280,7 @@ pub static BASIC_TYPES: [TypeId; 33] = [
     TypeId::FLOAT32,
     TypeId::FLOAT64,
     TypeId::STRING,
-    TypeId::LOCAL_DATE,
+    TypeId::DATE,
     TypeId::TIMESTAMP,
     TypeId::BOOL_ARRAY,
     TypeId::BINARY,
@@ -591,7 +591,7 @@ pub fn format_type_id(type_id: u32) -> String {
         34 => "NONE",
         35 => "DURATION",
         36 => "TIMESTAMP",
-        37 => "LOCAL_DATE",
+        37 => "DATE",
         38 => "DECIMAL",
         39 => "BINARY",
         40 => "ARRAY",

@@ -211,15 +211,15 @@ auto bytes = fory.serialize(now).value();
 auto decoded = fory.deserialize<Timestamp>(bytes).value();
 ```
 
-### LocalDate
+### Date
 
 Days since Unix epoch:
 
 ```cpp
-LocalDate date{18628};  // Days since 1970-01-01
+Date date{18628};  // Days since 1970-01-01
 
 auto bytes = fory.serialize(date).value();
-auto decoded = fory.deserialize<LocalDate>(bytes).value();
+auto decoded = fory.deserialize<Date>(bytes).value();
 ```
 
 ## User-Defined Structs

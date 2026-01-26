@@ -604,7 +604,7 @@ impl TypeResolver {
         self.register_internal_serializer::<u128>(TypeId::U128)?;
         self.register_internal_serializer::<String>(TypeId::STRING)?;
         self.register_internal_serializer::<NaiveDateTime>(TypeId::TIMESTAMP)?;
-        self.register_internal_serializer::<NaiveDate>(TypeId::LOCAL_DATE)?;
+        self.register_internal_serializer::<NaiveDate>(TypeId::DATE)?;
 
         self.register_internal_serializer::<Vec<bool>>(TypeId::BOOL_ARRAY)?;
         self.register_internal_serializer::<Vec<i8>>(TypeId::INT8_ARRAY)?;

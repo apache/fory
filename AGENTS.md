@@ -35,6 +35,7 @@ While working on Fory, please remember:
 - Fory java needs JDK `17+` installed.
 - Modules target different bytecode levels (fory-core Java 8, fory-format Java 11); avoid using newer APIs in those modules.
 - Use '.\*' form of import is not allowed.
+- If you run temporary tests using `java -cp`, you must run `mvn -T16 install -DskipTests` to get latest jars for fory java library.
 
 ```bash
 # Clean the build
@@ -302,6 +303,10 @@ sbt scalafmt
 - All commands must be executed within the `integration_tests` directory.
 - For java related integration tests, please install the java libraries first by `cd ../java && mvn -T16 install -DskipTests`. If no code changes after installed fory java, you can skip the installation step.
 - For mac, graalvm is installed at `/Library/Java/JavaVirtualMachines/graalvm-xxx` by default.
+- For `integration_tests/idl_tests`:
+  - you must install fory java first before runing tests under this dir if any code changes under `java` dir.
+  - you must install fory python first before runing tests under this dir if any code cython code changes under `python` dir.
+- You are never allowed to manual edit generated code by fory compiler for `IDL` files, you must invoke fory compiler to regenerate code.
 
 ```bash
 it_dir=$(pwd)

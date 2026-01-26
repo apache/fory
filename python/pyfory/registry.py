@@ -317,7 +317,7 @@ class TypeResolver:
         register(str, type_id=TypeId.STRING, serializer=StringSerializer)
         # TODO(chaokunyang) DURATION DECIMAL
         register(datetime.datetime, type_id=TypeId.TIMESTAMP, serializer=TimestampSerializer)
-        register(datetime.date, type_id=TypeId.LOCAL_DATE, serializer=DateSerializer)
+        register(datetime.date, type_id=TypeId.DATE, serializer=DateSerializer)
         register(bytes, type_id=TypeId.BINARY, serializer=BytesSerializer)
         for itemsize, ftype, typeid in PyArraySerializer.typecode_dict.values():
             register(

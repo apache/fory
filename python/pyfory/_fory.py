@@ -154,12 +154,13 @@ class Fory:
         "serialization_context",
         "strict",
         "buffer",
-        "_buffer_callback",
+        "buffer_callback",
         "_buffers",
         "metastring_resolver",
         "_unsupported_callback",
         "_unsupported_objects",
         "_peer_language",
+        "is_peer_out_of_band_enabled",
         "max_depth",
         "depth",
         "field_nullable",
@@ -249,11 +250,12 @@ class Fory:
         self.type_resolver.initialize()
 
         self.buffer = Buffer.allocate(32)
-        self._buffer_callback = None
+        self.buffer_callback = None
         self._buffers = None
         self._unsupported_callback = None
         self._unsupported_objects = None
         self._peer_language = None
+        self.is_peer_out_of_band_enabled = False
         self.max_depth = max_depth
         self.depth = 0
 
@@ -467,7 +469,7 @@ class Fory:
     ) -> Union[Buffer, bytes]:
         assert self.depth == 0, "Nested serialization should use write_ref/write_no_ref/xwrite_ref/xwrite_no_ref."
         self.depth += 1
-        self._buffer_callback = buffer_callback
+        self.buffer_callback = buffer_callback
         self._unsupported_callback = unsupported_callback
         if buffer is None:
             self.buffer.writer_index = 0
@@ -489,7 +491,7 @@ class Fory:
         else:
             # set reader as native.
             clear_bit(buffer, mask_index, 1)
-        if self._buffer_callback is not None:
+        if self.buffer_callback is not None:
             set_bit(buffer, mask_index, 2)
         else:
             clear_bit(buffer, mask_index, 2)
@@ -618,8 +620,8 @@ class Fory:
             self._peer_language = Language(buffer.read_int8())
         else:
             self._peer_language = Language.PYTHON
-        is_out_of_band_serialization_enabled = get_bit(buffer, reader_index, 2)
-        if is_out_of_band_serialization_enabled:
+        self.is_peer_out_of_band_enabled = get_bit(buffer, reader_index, 2)
+        if self.is_peer_out_of_band_enabled:
             assert buffers is not None, "buffers shouldn't be null when the serialized stream is produced with buffer_callback not null."
             self._buffers = iter(buffers)
         else:
@@ -692,7 +694,17 @@ class Fory:
         return o
 
     def write_buffer_object(self, buffer, buffer_object: BufferObject):
-        if self._buffer_callback is None or self._buffer_callback(buffer_object):
+        if self.buffer_callback is None:
+            size = buffer_object.total_bytes()
+            # writer length.
+            buffer.write_varuint32(size)
+            writer_index = buffer.writer_index
+            buffer.ensure(writer_index + size)
+            buf = buffer.slice(buffer.writer_index, size)
+            buffer_object.write_to(buf)
+            buffer.writer_index += size
+            return
+        if self.buffer_callback(buffer_object):
             buffer.write_bool(True)
             size = buffer_object.total_bytes()
             # writer length.
@@ -706,15 +718,19 @@ class Fory:
             buffer.write_bool(False)
 
     def read_buffer_object(self, buffer) -> Buffer:
-        in_band = buffer.read_bool()
-        if in_band:
+        if not self.is_peer_out_of_band_enabled:
             size = buffer.read_varuint32()
             buf = buffer.slice(buffer.reader_index, size)
             buffer.reader_index += size
             return buf
-        else:
+        in_band = buffer.read_bool()
+        if not in_band:
             assert self._buffers is not None
             return next(self._buffers)
+        size = buffer.read_varuint32()
+        buf = buffer.slice(buffer.reader_index, size)
+        buffer.reader_index += size
+        return buf
 
     def handle_unsupported_write(self, buffer, obj):
         if self._unsupported_callback is None or self._unsupported_callback(obj):
@@ -747,7 +763,7 @@ class Fory:
         self.type_resolver.reset_write()
         self.serialization_context.reset_write()
         self.metastring_resolver.reset_write()
-        self._buffer_callback = None
+        self.buffer_callback = None
         self._unsupported_callback = None
 
     def reset_read(self):
@@ -764,6 +780,7 @@ class Fory:
         self.metastring_resolver.reset_write()
         self._buffers = None
         self._unsupported_objects = None
+        self.is_peer_out_of_band_enabled = False
 
     def reset(self):
         """

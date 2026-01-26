@@ -17,6 +17,7 @@
  * under the License.
  */
 
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -28,6 +29,7 @@
 #include "complex_fbs.h"
 #include "fory/serialization/fory.h"
 #include "monster.h"
+#include "optional_types.h"
 
 namespace {
 
@@ -68,6 +70,7 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   addressbook::RegisterTypes(fory);
   monster::RegisterTypes(fory);
   complex_fbs::RegisterTypes(fory);
+  optional_types::RegisterTypes(fory);
 
   addressbook::Person::PhoneNumber mobile;
   mobile.set_number("555-0100");
@@ -123,7 +126,6 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   types.set_uint64_value(9876543210ULL);
   types.set_var_uint64_value(12345678901ULL);
   types.set_tagged_uint64_value(2222222222ULL);
-  types.set_float16_value(1.5F);
   types.set_float32_value(2.5F);
   types.set_float64_value(3.5);
   types.set_contact(addressbook::PrimitiveTypes::Contact::email(
@@ -201,6 +203,52 @@ fory::Result<void, fory::Error> RunRoundTrip() {
         fory::Error::invalid("flatbuffers container roundtrip mismatch"));
   }
 
+  optional_types::AllOptionalTypes all_types;
+  all_types.set_bool_value(true);
+  all_types.set_int8_value(12);
+  all_types.set_int16_value(1234);
+  all_types.set_int32_value(-123456);
+  all_types.set_fixed_int32_value(-123456);
+  all_types.set_varint32_value(-12345);
+  all_types.set_int64_value(-123456789);
+  all_types.set_fixed_int64_value(-123456789);
+  all_types.set_varint64_value(-987654321);
+  all_types.set_tagged_int64_value(123456789);
+  all_types.set_uint8_value(200);
+  all_types.set_uint16_value(60000);
+  all_types.set_uint32_value(1234567890);
+  all_types.set_fixed_uint32_value(1234567890);
+  all_types.set_var_uint32_value(1234567890);
+  all_types.set_uint64_value(9876543210ULL);
+  all_types.set_fixed_uint64_value(9876543210ULL);
+  all_types.set_var_uint64_value(12345678901ULL);
+  all_types.set_tagged_uint64_value(2222222222ULL);
+  all_types.set_float32_value(2.5F);
+  all_types.set_float64_value(3.5);
+  all_types.set_string_value("optional");
+  all_types.set_bytes_value({static_cast<uint8_t>(1), static_cast<uint8_t>(2),
+                             static_cast<uint8_t>(3)});
+  all_types.set_date_value(fory::serialization::Date(19724));
+  all_types.set_timestamp_value(
+      fory::serialization::Timestamp(std::chrono::seconds(1704164645)));
+  all_types.set_int32_list({1, 2, 3});
+  all_types.set_string_list({"alpha", "beta"});
+  all_types.set_int64_map({{"alpha", 10}, {"beta", 20}});
+
+  optional_types::OptionalHolder holder;
+  *holder.mutable_all_types() = all_types;
+  holder.set_choice(optional_types::OptionalUnion::note("optional"));
+
+  FORY_TRY(optional_bytes, fory.serialize(holder));
+  FORY_TRY(optional_roundtrip,
+           fory.deserialize<optional_types::OptionalHolder>(
+               optional_bytes.data(), optional_bytes.size()));
+
+  if (!(optional_roundtrip == holder)) {
+    return fory::Unexpected(
+        fory::Error::invalid("optional types roundtrip mismatch"));
+  }
+
   const char *data_file = std::getenv("DATA_FILE");
   if (data_file != nullptr && data_file[0] != '\0') {
     FORY_TRY(payload, ReadFile(data_file));
@@ -250,6 +298,19 @@ fory::Result<void, fory::Error> RunRoundTrip() {
     }
     FORY_TRY(peer_bytes, fory.serialize(peer_container));
     FORY_RETURN_IF_ERROR(WriteFile(container_file, peer_bytes));
+  }
+
+  const char *optional_file = std::getenv("DATA_FILE_OPTIONAL_TYPES");
+  if (optional_file != nullptr && optional_file[0] != '\0') {
+    FORY_TRY(payload, ReadFile(optional_file));
+    FORY_TRY(peer_holder, fory.deserialize<optional_types::OptionalHolder>(
+                              payload.data(), payload.size()));
+    if (!(peer_holder == holder)) {
+      return fory::Unexpected(
+          fory::Error::invalid("peer optional payload mismatch"));
+    }
+    FORY_TRY(peer_bytes, fory.serialize(peer_holder));
+    FORY_RETURN_IF_ERROR(WriteFile(optional_file, peer_bytes));
   }
 
   return fory::Result<void, fory::Error>();

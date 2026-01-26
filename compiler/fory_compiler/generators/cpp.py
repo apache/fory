@@ -63,7 +63,7 @@ class CppGenerator(BaseGenerator):
         PrimitiveKind.FLOAT64: "double",
         PrimitiveKind.STRING: "std::string",
         PrimitiveKind.BYTES: "std::vector<uint8_t>",
-        PrimitiveKind.DATE: "fory::serialization::LocalDate",
+        PrimitiveKind.DATE: "fory::serialization::Date",
         PrimitiveKind.TIMESTAMP: "fory::serialization::Timestamp",
     }
 

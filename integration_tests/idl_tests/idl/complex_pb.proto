@@ -39,7 +39,6 @@ message PrimitiveTypes {
   fixed64 uint64_value = 13;
   uint64 var_uint64_value = 14;
   uint64 tagged_uint64_value = 15 [ (fory).type = "tagged_uint64" ];
-  float16 float16_value = 16;
   float float32_value = 17;
   double float64_value = 18;
 

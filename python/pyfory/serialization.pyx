@@ -943,6 +943,7 @@ cdef class Fory:
     cdef object _unsupported_callback
     cdef object _unsupported_objects  # iterator
     cdef object _peer_language
+    cdef public bint is_peer_out_of_band_enabled
     cdef int32_t max_depth
     cdef int32_t depth
 
@@ -1030,6 +1031,7 @@ cdef class Fory:
         self._unsupported_callback = None
         self._unsupported_objects = None
         self._peer_language = None
+        self.is_peer_out_of_band_enabled = False
         self.depth = 0
         self.max_depth = max_depth
 
@@ -1376,9 +1378,8 @@ cdef class Fory:
             self._peer_language = Language(buffer.read_int8())
         else:
             self._peer_language = Language.PYTHON
-        cdef c_bool is_out_of_band_serialization_enabled = \
-            get_bit(buffer, reader_index, 2)
-        if is_out_of_band_serialization_enabled:
+        self.is_peer_out_of_band_enabled = get_bit(buffer, reader_index, 2)
+        if self.is_peer_out_of_band_enabled:
             assert buffers is not None, (
                 "buffers shouldn't be null when the serialized stream is "
                 "produced with buffer_callback not null."
@@ -1495,7 +1496,17 @@ cdef class Fory:
         cdef int32_t size
         cdef int32_t writer_index
         cdef Buffer buf
-        if self.buffer_callback is None or self.buffer_callback(buffer_object):
+        if self.buffer_callback is None:
+            size = buffer_object.total_bytes()
+            # writer length.
+            buffer.write_varuint32(size)
+            writer_index = buffer.writer_index
+            buffer.ensure(writer_index + size)
+            buf = buffer.slice(buffer.writer_index, size)
+            buffer_object.write_to(buf)
+            buffer.writer_index += size
+            return
+        if self.buffer_callback(buffer_object):
             buffer.write_bool(True)
             size = buffer_object.total_bytes()
             # writer length.
@@ -1509,12 +1520,20 @@ cdef class Fory:
             buffer.write_bool(False)
 
     cpdef inline object read_buffer_object(self, Buffer buffer):
-        cdef c_bool in_band = buffer.read_bool()
+        cdef c_bool in_band
+        cdef int32_t size
+        cdef Buffer buf
+        if not self.is_peer_out_of_band_enabled:
+            size = buffer.read_varuint32()
+            buf = buffer.slice(buffer.reader_index, size)
+            buffer.reader_index += size
+            return buf
+        in_band = buffer.read_bool()
         if not in_band:
             assert self._buffers is not None
             return next(self._buffers)
-        cdef int32_t size = buffer.read_varuint32()
-        cdef Buffer buf = buffer.slice(buffer.reader_index, size)
+        size = buffer.read_varuint32()
+        buf = buffer.slice(buffer.reader_index, size)
         buffer.reader_index += size
         return buf
 
@@ -1576,6 +1595,7 @@ cdef class Fory:
         self.serialization_context.reset_read()
         self._buffers = None
         self._unsupported_objects = None
+        self.is_peer_out_of_band_enabled = False
 
     cpdef inline reset(self):
         """

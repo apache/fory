@@ -39,8 +39,8 @@ func writeString(buf *ByteBuffer, value string) {
 
 	// Reserve space for header (max 5 bytes) + data in one call
 	buf.Reserve(5 + dataLen)
-	// Write header inline without grow check
-	buf.UnsafeWriteVaruint64(header)
+	// Write header inline
+	buf.WriteVaruint36Small(header)
 	// Write data inline without grow check
 	if dataLen > 0 {
 		copy(buf.data[buf.writerIndex:], data)

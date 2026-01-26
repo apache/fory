@@ -101,7 +101,7 @@ enum class TypeId : int32_t {
   TIMESTAMP = 36,
   // a naive date without timezone. The count is days relative to an
   // epoch at UTC midnight on Jan 1, 1970.
-  LOCAL_DATE = 37,
+  DATE = 37,
   // exact decimal value represented as an integer value in two's
   // complement.
   DECIMAL = 38,

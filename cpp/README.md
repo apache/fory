@@ -333,7 +333,7 @@ cpp/fory/
 │   ├── collection_serializer.h  # vector, set serializers
 │   ├── map_serializer.h    # map serializers
 │   ├── smart_ptr_serializers.h  # optional, shared_ptr, unique_ptr
-│   ├── temporal_serializers.h   # Duration, Timestamp, LocalDate
+│   ├── temporal_serializers.h   # Duration, Timestamp, Date
 │   ├── variant_serializer.h     # std::variant support
 │   ├── type_resolver.h     # Type resolution and registration
 │   └── context.h           # Read/Write context

@@ -719,7 +719,7 @@ bool name_sorter(const FieldInfo &a, const FieldInfo &b) {
 }
 
 // Check if a type ID is a "final" type for field group 2 in field ordering.
-// Final types are STRING, DURATION, TIMESTAMP, LOCAL_DATE, DECIMAL, BINARY,
+// Final types are STRING, DURATION, TIMESTAMP, DATE, DECIMAL, BINARY,
 // ARRAY, and primitive arrays.
 // These are types with fixed serializers that don't need type info written.
 // Excludes: ENUM (13-14), STRUCT (15-18), EXT (19-20), LIST (21), SET (22), MAP
@@ -1371,7 +1371,7 @@ void TypeResolver::register_builtin_types() {
   register_type_id_only(TypeId::NONE);
   register_type_id_only(TypeId::DURATION);
   register_type_id_only(TypeId::TIMESTAMP);
-  register_type_id_only(TypeId::LOCAL_DATE);
+  register_type_id_only(TypeId::DATE);
   register_type_id_only(TypeId::DECIMAL);
   register_type_id_only(TypeId::ARRAY);
 }

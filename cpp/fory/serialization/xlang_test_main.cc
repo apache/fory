@@ -43,9 +43,9 @@
 using ::fory::Buffer;
 using ::fory::Error;
 using ::fory::Result;
+using ::fory::serialization::Date;
 using ::fory::serialization::Fory;
 using ::fory::serialization::ForyBuilder;
-using ::fory::serialization::LocalDate;
 using ::fory::serialization::Serializer;
 using ::fory::serialization::Timestamp;
 
@@ -1275,8 +1275,8 @@ void RunTestCrossLanguageSerializer(const std::string &data_file) {
   std::set<std::string> str_set = {"hello", "world"};
   std::map<std::string, std::string> str_map = {{"hello", "world"},
                                                 {"foo", "bar"}};
-  LocalDate day(18954); // 2021-11-23
-  Timestamp instant(std::chrono::nanoseconds(100000000));
+  Date day(18954); // 2021-11-23
+  Timestamp instant(std::chrono::seconds(100));
 
   std::vector<uint8_t> copy = bytes;
   Buffer buffer = MakeBuffer(copy);
@@ -1332,8 +1332,8 @@ void RunTestCrossLanguageSerializer(const std::string &data_file) {
   if (ReadNext<std::string>(fory, buffer) != "str") {
     Fail("String mismatch");
   }
-  if (ReadNext<LocalDate>(fory, buffer) != day) {
-    Fail("LocalDate mismatch");
+  if (ReadNext<Date>(fory, buffer) != day) {
+    Fail("Date mismatch");
   }
   if (ReadNext<Timestamp>(fory, buffer) != instant) {
     Fail("Timestamp mismatch");

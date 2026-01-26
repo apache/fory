@@ -167,7 +167,7 @@ print(f"Timestamp: {msg.timestamp}")
 | ----------- | ----------- | --------------- | --------------- |
 | `Timestamp` | `Instant`   | `datetime`      | `time.Time`     |
 | `Duration`  | `Duration`  | `timedelta`     | `time.Duration` |
-| `LocalDate` | `LocalDate` | `datetime.date` | `time.Time`     |
+| `Date`      | `LocalDate` | `datetime.date` | `time.Time`     |
 
 ## Field Order Requirements
 

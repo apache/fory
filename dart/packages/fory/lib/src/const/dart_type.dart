@@ -52,7 +52,7 @@ enum DartTypeEnum{
   DOUBLE(double,true, 'double', 'dart', 'core', ObjType.FLOAT64, true, 'dart:core@double'),
   STRING(String,true, 'String', 'dart', 'core', ObjType.STRING, true, 'dart:core@String'),
 
-  LOCALDATE(LocalDate, true, 'LocalDate', 'package', 'fory/src/datatype/local_date.dart', ObjType.LOCAL_DATE, true, 'dart:core@LocalDate'),
+  LOCALDATE(LocalDate, true, 'LocalDate', 'package', 'fory/src/datatype/local_date.dart', ObjType.DATE, true, 'dart:core@LocalDate'),
   TIMESTAMP(TimeStamp, false, 'TimeStamp', 'package', 'fory/src/datatype/timestamp.dart', ObjType.TIMESTAMP, true, 'dart:core@DateTime'),
 
   BOOLLIST(BoolList, true, 'BoolList', 'package', 'collection/src/boollist.dart', ObjType.BOOL_ARRAY, true, 'dart:typed_data@BoolList'),

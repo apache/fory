@@ -22,5 +22,6 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+chrono = "0.4"
 fory = { path = "../../../rust/fory" }
 fory-core = { path = "../../../rust/fory-core" }

@@ -77,7 +77,7 @@ cdef extern from "fory/type/type.h" namespace "fory" nogil:
         NONE = 34
         DURATION = 35
         TIMESTAMP = 36
-        LOCAL_DATE = 37
+        DATE = 37
         DECIMAL = 38
         BINARY = 39
         ARRAY = 40

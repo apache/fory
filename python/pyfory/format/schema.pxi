@@ -69,7 +69,7 @@ class TypeId:
     NONE = 34
     DURATION = 35
     TIMESTAMP = 36
-    LOCAL_DATE = 37
+    DATE = 37
     DECIMAL = 38
     BINARY = 39
 

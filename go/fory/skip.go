@@ -606,10 +606,11 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 		_ = ctx.buffer.ReadBinary(int(length), err)
 
 	// Date/Time types
-	case LOCAL_DATE:
+	case DATE:
 		_ = ctx.buffer.ReadVaruint32Small7(err)
 	case TIMESTAMP:
-		_ = ctx.buffer.ReadVarint64(err)
+		_ = ctx.buffer.ReadInt64(err)
+		_ = ctx.buffer.ReadUint32(err)
 
 	// Container types
 	case LIST, SET:

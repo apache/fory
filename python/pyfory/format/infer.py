@@ -350,7 +350,7 @@ def to_arrow_schema(fory_schema: Schema):
             return pa.string()
         elif type_id == TypeId.BINARY:
             return pa.binary()
-        elif type_id == TypeId.LOCAL_DATE:
+        elif type_id == TypeId.DATE:
             return pa.date32()
         elif type_id == TypeId.TIMESTAMP:
             return pa.timestamp("us")

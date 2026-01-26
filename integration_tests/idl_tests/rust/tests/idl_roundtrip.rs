@@ -18,6 +18,7 @@
 use std::collections::HashMap;
 use std::{env, fs};
 
+use chrono::NaiveDate;
 use fory::Fory;
 use idl_tests::addressbook::{
     self,
@@ -26,6 +27,7 @@ use idl_tests::addressbook::{
 };
 use idl_tests::complex_fbs::{self, Container, Note, Payload, ScalarPack, Status};
 use idl_tests::monster::{self, Color, Monster, Vec3};
+use idl_tests::optional_types::{self, AllOptionalTypes, OptionalHolder, OptionalUnion};
 
 fn build_address_book() -> AddressBook {
     let mobile = PhoneNumber {
@@ -84,7 +86,6 @@ fn build_primitive_types() -> addressbook::PrimitiveTypes {
         uint64_value: 9876543210,
         var_uint64_value: 12345678901,
         tagged_uint64_value: 2222222222,
-        float16_value: 1.5,
         float32_value: 2.5,
         float64_value: 3.5,
         contact: Some(contact),
@@ -139,12 +140,56 @@ fn build_container() -> Container {
     }
 }
 
+fn build_optional_holder() -> OptionalHolder {
+    let all_types = AllOptionalTypes {
+        bool_value: Some(true),
+        int8_value: Some(12),
+        int16_value: Some(1234),
+        int32_value: Some(-123456),
+        fixed_int32_value: Some(-123456),
+        varint32_value: Some(-12345),
+        int64_value: Some(-123456789),
+        fixed_int64_value: Some(-123456789),
+        varint64_value: Some(-987654321),
+        tagged_int64_value: Some(123456789),
+        uint8_value: Some(200),
+        uint16_value: Some(60000),
+        uint32_value: Some(1234567890),
+        fixed_uint32_value: Some(1234567890),
+        var_uint32_value: Some(1234567890),
+        uint64_value: Some(9876543210),
+        fixed_uint64_value: Some(9876543210),
+        var_uint64_value: Some(12345678901),
+        tagged_uint64_value: Some(2222222222),
+        float32_value: Some(2.5),
+        float64_value: Some(3.5),
+        string_value: Some("optional".to_string()),
+        bytes_value: Some(vec![1, 2, 3]),
+        date_value: Some(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap()),
+        timestamp_value: Some(
+            NaiveDate::from_ymd_opt(2024, 1, 2)
+                .unwrap()
+                .and_hms_opt(3, 4, 5)
+                .expect("timestamp"),
+        ),
+        int32_list: Some(vec![1, 2, 3]),
+        string_list: Some(vec!["alpha".to_string(), "beta".to_string()]),
+        int64_map: Some(HashMap::from([("alpha".to_string(), 10), ("beta".to_string(), 20)])),
+    };
+
+    OptionalHolder {
+        all_types: Some(all_types.clone()),
+        choice: Some(OptionalUnion::Note("optional".to_string())),
+    }
+}
+
 #[test]
 fn test_address_book_roundtrip() {
     let mut fory = Fory::default().xlang(true);
     addressbook::register_types(&mut fory).expect("register types");
     monster::register_types(&mut fory).expect("register monster types");
     complex_fbs::register_types(&mut fory).expect("register flatbuffers types");
+    optional_types::register_types(&mut fory).expect("register optional types");
 
     let book = build_address_book();
     let bytes = fory.serialize(&book).expect("serialize");
@@ -211,6 +256,23 @@ fn test_address_book_roundtrip() {
         assert_eq!(container, peer_container);
         let encoded = fory
             .serialize(&peer_container)
+            .expect("serialize peer payload");
+        fs::write(data_file, encoded).expect("write data file");
+    }
+
+    let holder = build_optional_holder();
+    let bytes = fory.serialize(&holder).expect("serialize");
+    let roundtrip: OptionalHolder = fory.deserialize(&bytes).expect("deserialize");
+    assert_eq!(holder, roundtrip);
+
+    if let Ok(data_file) = env::var("DATA_FILE_OPTIONAL_TYPES") {
+        let payload = fs::read(&data_file).expect("read data file");
+        let peer_holder: OptionalHolder = fory
+            .deserialize(&payload)
+            .expect("deserialize peer payload");
+        assert_eq!(holder, peer_holder);
+        let encoded = fory
+            .serialize(&peer_holder)
             .expect("serialize peer payload");
         fs::write(data_file, encoded).expect("write data file");
     }

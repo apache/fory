@@ -196,7 +196,7 @@ message Config { ... }  // Registered as "package.Config"
 | `float64`   | `double`    | `pyfory.float64`    | `float64`   | `f64`                   | `double`               |
 | `string`    | `String`    | `str`               | `string`    | `String`                | `std::string`          |
 | `bytes`     | `byte[]`    | `bytes`             | `[]byte`    | `Vec<u8>`               | `std::vector<uint8_t>` |
-| `date`      | `LocalDate` | `datetime.date`     | `time.Time` | `chrono::NaiveDate`     | `fory::LocalDate`      |
+| `date`      | `LocalDate` | `datetime.date`     | `time.Time` | `chrono::NaiveDate`     | `fory::Date`           |
 | `timestamp` | `Instant`   | `datetime.datetime` | `time.Time` | `chrono::NaiveDateTime` | `fory::Timestamp`      |
 
 ### Collection Types

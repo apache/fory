@@ -71,7 +71,7 @@ public class DataTypes {
   public static final int TYPE_MAP = Types.MAP;
   public static final int TYPE_DURATION = Types.DURATION;
   public static final int TYPE_TIMESTAMP = Types.TIMESTAMP;
-  public static final int TYPE_LOCAL_DATE = Types.LOCAL_DATE;
+  public static final int TYPE_LOCAL_DATE = Types.DATE;
   public static final int TYPE_DECIMAL = Types.DECIMAL;
   public static final int TYPE_BINARY = Types.BINARY;
 

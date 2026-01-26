@@ -157,7 +157,7 @@ public class Types {
    * A naive date without timezone. The count is days relative to an epoch at UTC midnight on Jan 1,
    * 1970.
    */
-  public static final int LOCAL_DATE = 37;
+  public static final int DATE = 37;
 
   /** Exact decimal value represented as an integer value in two's complement. */
   public static final int DECIMAL = 38;

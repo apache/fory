@@ -21,8 +21,13 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/apache/fory/go/fory/optional"
 	"github.com/stretchr/testify/require"
 )
+
+func ptr[T any](v T) *T {
+	return &v
+}
 
 func TestUnsignedTypeSerialization(t *testing.T) {
 	type TestStruct struct {
@@ -71,6 +76,226 @@ func TestUnsignedTypeSerialization(t *testing.T) {
 	if resultObj.U64Tagged != obj.U64Tagged {
 		t.Errorf("U64Tagged mismatch: expected %d, got %d", obj.U64Tagged, resultObj.U64Tagged)
 	}
+}
+
+func TestOptionFieldSerialization(t *testing.T) {
+	type Nested struct {
+		Name string
+	}
+	type OptionStruct struct {
+		OptInt    optional.Optional[int32]
+		OptZero   optional.Optional[int32]
+		OptString optional.Optional[string]
+		OptBool   optional.Optional[bool]
+	}
+
+	f := New(WithXlang(true), WithCompatible(false))
+	require.NoError(t, f.RegisterStruct(OptionStruct{}, 1100))
+
+	obj := OptionStruct{
+		OptInt:    optional.Some[int32](123),
+		OptZero:   optional.Some[int32](0),
+		OptString: optional.Some("hello"),
+		OptBool:   optional.Some(true),
+	}
+
+	data, err := f.Serialize(obj)
+	require.NoError(t, err)
+
+	var result any
+	err = f.Deserialize(data, &result)
+	require.NoError(t, err)
+
+	out := result.(*OptionStruct)
+	require.True(t, out.OptInt.IsSome())
+	require.Equal(t, int32(123), out.OptInt.Unwrap())
+	require.True(t, out.OptZero.IsSome())
+	require.Equal(t, int32(0), out.OptZero.Unwrap())
+	require.True(t, out.OptString.IsSome())
+	require.Equal(t, "hello", out.OptString.Unwrap())
+	require.True(t, out.OptBool.IsSome())
+	require.Equal(t, true, out.OptBool.Unwrap())
+}
+
+func TestOptionFieldUnsupportedTypes(t *testing.T) {
+	type Nested struct {
+		Name string
+	}
+	type OptionStruct struct {
+		OptStruct optional.Optional[Nested]
+	}
+	type OptionSlice struct {
+		OptSlice optional.Optional[[]int]
+	}
+	type OptionMap struct {
+		OptMap optional.Optional[map[string]int]
+	}
+
+	f := New(WithXlang(true), WithCompatible(false))
+	require.Error(t, f.RegisterStruct(OptionStruct{}, 1101))
+	require.Error(t, f.RegisterStruct(OptionSlice{}, 1102))
+	require.Error(t, f.RegisterStruct(OptionMap{}, 1103))
+}
+
+func TestNumericPointerOptionalInterop(t *testing.T) {
+	type NumericPtrStruct struct {
+		I8  *int8
+		I16 *int16
+		I32 *int32
+		I64 *int64
+		I   *int
+		U8  *uint8
+		U16 *uint16
+		U32 *uint32
+		U64 *uint64
+		U   *uint
+		F32 *float32
+		F64 *float64
+	}
+	type NumericOptStruct struct {
+		I8  optional.Optional[int8]
+		I16 optional.Optional[int16]
+		I32 optional.Optional[int32]
+		I64 optional.Optional[int64]
+		I   optional.Optional[int]
+		U8  optional.Optional[uint8]
+		U16 optional.Optional[uint16]
+		U32 optional.Optional[uint32]
+		U64 optional.Optional[uint64]
+		U   optional.Optional[uint]
+		F32 optional.Optional[float32]
+		F64 optional.Optional[float64]
+	}
+
+	ptrValues := NumericPtrStruct{
+		I8:  ptr(int8(-8)),
+		I16: ptr(int16(-16)),
+		I32: ptr(int32(-32)),
+		I64: ptr(int64(-64)),
+		I:   ptr(int(-7)),
+		U8:  ptr(uint8(8)),
+		U16: ptr(uint16(16)),
+		U32: ptr(uint32(32)),
+		U64: ptr(uint64(64)),
+		U:   ptr(uint(7)),
+		F32: ptr(float32(3.25)),
+		F64: ptr(float64(-6.5)),
+	}
+	optValues := NumericOptStruct{
+		I8:  optional.Some[int8](-8),
+		I16: optional.Some[int16](-16),
+		I32: optional.Some[int32](-32),
+		I64: optional.Some[int64](-64),
+		I:   optional.Some[int](-7),
+		U8:  optional.Some[uint8](8),
+		U16: optional.Some[uint16](16),
+		U32: optional.Some[uint32](32),
+		U64: optional.Some[uint64](64),
+		U:   optional.Some[uint](7),
+		F32: optional.Some[float32](3.25),
+		F64: optional.Some[float64](-6.5),
+	}
+
+	t.Run("PointerToOptionalNull", func(t *testing.T) {
+		writer := New(WithXlang(true), WithCompatible(true))
+		require.NoError(t, writer.RegisterNamedStruct(NumericPtrStruct{}, "NumericInterop"))
+		data, err := writer.Marshal(NumericPtrStruct{})
+		require.NoError(t, err)
+
+		reader := New(WithXlang(true), WithCompatible(true))
+		require.NoError(t, reader.RegisterNamedStruct(NumericOptStruct{}, "NumericInterop"))
+		var out NumericOptStruct
+		require.NoError(t, reader.Unmarshal(data, &out))
+
+		require.False(t, out.I8.IsSome())
+		require.False(t, out.I16.IsSome())
+		require.False(t, out.I32.IsSome())
+		require.False(t, out.I64.IsSome())
+		require.False(t, out.I.IsSome())
+		require.False(t, out.U8.IsSome())
+		require.False(t, out.U16.IsSome())
+		require.False(t, out.U32.IsSome())
+		require.False(t, out.U64.IsSome())
+		require.False(t, out.U.IsSome())
+		require.False(t, out.F32.IsSome())
+		require.False(t, out.F64.IsSome())
+	})
+
+	t.Run("PointerToOptionalValue", func(t *testing.T) {
+		writer := New(WithXlang(true), WithCompatible(true))
+		require.NoError(t, writer.RegisterNamedStruct(NumericPtrStruct{}, "NumericInterop"))
+		data, err := writer.Marshal(ptrValues)
+		require.NoError(t, err)
+
+		reader := New(WithXlang(true), WithCompatible(true))
+		require.NoError(t, reader.RegisterNamedStruct(NumericOptStruct{}, "NumericInterop"))
+		var out NumericOptStruct
+		require.NoError(t, reader.Unmarshal(data, &out))
+
+		require.Equal(t, optValues, out)
+	})
+
+	t.Run("OptionalToPointerNull", func(t *testing.T) {
+		writer := New(WithXlang(true), WithCompatible(true))
+		require.NoError(t, writer.RegisterNamedStruct(NumericOptStruct{}, "NumericInterop"))
+		data, err := writer.Marshal(NumericOptStruct{})
+		require.NoError(t, err)
+
+		reader := New(WithXlang(true), WithCompatible(true))
+		require.NoError(t, reader.RegisterNamedStruct(NumericPtrStruct{}, "NumericInterop"))
+		var out NumericPtrStruct
+		require.NoError(t, reader.Unmarshal(data, &out))
+
+		require.Nil(t, out.I8)
+		require.Nil(t, out.I16)
+		require.Nil(t, out.I32)
+		require.Nil(t, out.I64)
+		require.Nil(t, out.I)
+		require.Nil(t, out.U8)
+		require.Nil(t, out.U16)
+		require.Nil(t, out.U32)
+		require.Nil(t, out.U64)
+		require.Nil(t, out.U)
+		require.Nil(t, out.F32)
+		require.Nil(t, out.F64)
+	})
+
+	t.Run("OptionalToPointerValue", func(t *testing.T) {
+		writer := New(WithXlang(true), WithCompatible(true))
+		require.NoError(t, writer.RegisterNamedStruct(NumericOptStruct{}, "NumericInterop"))
+		data, err := writer.Marshal(optValues)
+		require.NoError(t, err)
+
+		reader := New(WithXlang(true), WithCompatible(true))
+		require.NoError(t, reader.RegisterNamedStruct(NumericPtrStruct{}, "NumericInterop"))
+		var out NumericPtrStruct
+		require.NoError(t, reader.Unmarshal(data, &out))
+
+		require.NotNil(t, out.I8)
+		require.Equal(t, *ptrValues.I8, *out.I8)
+		require.NotNil(t, out.I16)
+		require.Equal(t, *ptrValues.I16, *out.I16)
+		require.NotNil(t, out.I32)
+		require.Equal(t, *ptrValues.I32, *out.I32)
+		require.NotNil(t, out.I64)
+		require.Equal(t, *ptrValues.I64, *out.I64)
+		require.NotNil(t, out.I)
+		require.Equal(t, *ptrValues.I, *out.I)
+		require.NotNil(t, out.U8)
+		require.Equal(t, *ptrValues.U8, *out.U8)
+		require.NotNil(t, out.U16)
+		require.Equal(t, *ptrValues.U16, *out.U16)
+		require.NotNil(t, out.U32)
+		require.Equal(t, *ptrValues.U32, *out.U32)
+		require.NotNil(t, out.U64)
+		require.Equal(t, *ptrValues.U64, *out.U64)
+		require.NotNil(t, out.U)
+		require.Equal(t, *ptrValues.U, *out.U)
+		require.NotNil(t, out.F32)
+		require.Equal(t, *ptrValues.F32, *out.F32)
+		require.NotNil(t, out.F64)
+		require.Equal(t, *ptrValues.F64, *out.F64)
+	})
 }
 
 // Test struct for compatible mode tests (must be named struct at package level)
@@ -200,14 +425,14 @@ func TestSetFieldTypeId(t *testing.T) {
 			field.Meta.Name, field.Meta.Type, field.Meta.TypeId, field.Serializer)
 
 		if field.Meta.Name == "set_field" {
-			require.Equal(t, SET, field.Meta.TypeId, "SetField should have TypeId=SET(21)")
+			require.Equal(t, TypeId(SET), field.Meta.TypeId, "SetField should have TypeId=SET(21)")
 			require.NotNil(t, field.Serializer, "SetField serializer should not be nil")
 			_, isSetSerializer := field.Serializer.(setSerializer)
 			require.True(t, isSetSerializer, "SetField serializer should be setSerializer")
 		}
 
 		if field.Meta.Name == "map_field" {
-			require.Equal(t, MAP, field.Meta.TypeId, "MapField should have TypeId=MAP(22)")
+			require.Equal(t, TypeId(MAP), field.Meta.TypeId, "MapField should have TypeId=MAP(22)")
 			require.NotNil(t, field.Serializer, "MapField serializer should not be nil")
 		}
 	}

@@ -95,7 +95,7 @@ export const TypeId = {
   // a point in time, independent of any calendar/timezone, as a count of nanoseconds.
   TIMESTAMP: 36,
   // a naive date without timezone.
-  LOCAL_DATE: 37,
+  DATE: 37,
   // exact decimal value represented as an integer value in two's complement.
   DECIMAL: 38,
   // a variable-length array of bytes.

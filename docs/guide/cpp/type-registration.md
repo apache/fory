@@ -184,7 +184,7 @@ Built-in types have pre-assigned type IDs and don't need registration:
 | 15      | SET                  |
 | 16      | TIMESTAMP            |
 | 17      | DURATION             |
-| 18      | LOCAL_DATE           |
+| 18      | DATE                 |
 | 19      | DECIMAL              |
 | 20      | BINARY               |
 | 21      | ARRAY                |

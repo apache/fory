@@ -1044,7 +1044,7 @@ template <typename T> struct CompileTimeFieldHelpers {
   }
 
   /// Check if a type ID is an internal (built-in, final) type for group 2.
-  /// Internal types are STRING, DURATION, TIMESTAMP, LOCAL_DATE, DECIMAL,
+  /// Internal types are STRING, DURATION, TIMESTAMP, DATE, DECIMAL,
   /// BINARY, ARRAY, and primitive arrays. Java xlang DescriptorGrouper excludes
   /// enums from finals (line 897 in XtypeResolver). Excludes: ENUM (13-14),
   /// STRUCT (15-18), EXT (19-20), LIST (21), SET (22), MAP (23)

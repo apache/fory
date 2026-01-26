@@ -17,12 +17,14 @@
 
 from __future__ import annotations
 
+import datetime
 import os
 from pathlib import Path
 
 import addressbook
 import complex_fbs
 import monster
+import optional_types
 import numpy as np
 import pyfory
 
@@ -94,11 +96,45 @@ def build_primitive_types() -> "addressbook.PrimitiveTypes":
         uint64_value=9876543210,
         var_uint64_value=12345678901,
         tagged_uint64_value=2222222222,
-        float16_value=1.5,
         float32_value=2.5,
         float64_value=3.5,
         contact=contact,
     )
+
+
+def build_optional_holder() -> "optional_types.OptionalHolder":
+    all_types = optional_types.AllOptionalTypes(
+        bool_value=True,
+        int8_value=12,
+        int16_value=1234,
+        int32_value=-123456,
+        fixed_int32_value=-123456,
+        varint32_value=-12345,
+        int64_value=-123456789,
+        fixed_int64_value=-123456789,
+        varint64_value=-987654321,
+        tagged_int64_value=123456789,
+        uint8_value=200,
+        uint16_value=60000,
+        uint32_value=1234567890,
+        fixed_uint32_value=1234567890,
+        var_uint32_value=1234567890,
+        uint64_value=9876543210,
+        fixed_uint64_value=9876543210,
+        var_uint64_value=12345678901,
+        tagged_uint64_value=2222222222,
+        float32_value=2.5,
+        float64_value=3.5,
+        string_value="optional",
+        bytes_value=b"\x01\x02\x03",
+        date_value=datetime.date(2024, 1, 2),
+        timestamp_value=datetime.datetime.fromtimestamp(1704164645),
+        int32_list=np.array([1, 2, 3], dtype=np.int32),
+        string_list=["alpha", "beta"],
+        int64_map={"alpha": 10, "beta": 20},
+    )
+    union_value = optional_types.OptionalUnion.note("optional")
+    return optional_types.OptionalHolder(all_types=all_types, choice=union_value)
 
 
 def build_monster() -> "monster.Monster":
@@ -231,11 +267,91 @@ def file_roundtrip_primitives(
     Path(data_file).write_bytes(fory.serialize(decoded))
 
 
+def assert_optional_types_equal(
+    decoded: "optional_types.AllOptionalTypes",
+    expected: "optional_types.AllOptionalTypes",
+) -> None:
+    assert decoded.bool_value == expected.bool_value
+    assert decoded.int8_value == expected.int8_value
+    assert decoded.int16_value == expected.int16_value
+    assert decoded.int32_value == expected.int32_value
+    assert decoded.fixed_int32_value == expected.fixed_int32_value
+    assert decoded.varint32_value == expected.varint32_value
+    assert decoded.int64_value == expected.int64_value
+    assert decoded.fixed_int64_value == expected.fixed_int64_value
+    assert decoded.varint64_value == expected.varint64_value
+    assert decoded.tagged_int64_value == expected.tagged_int64_value
+    assert decoded.uint8_value == expected.uint8_value
+    assert decoded.uint16_value == expected.uint16_value
+    assert decoded.uint32_value == expected.uint32_value
+    assert decoded.fixed_uint32_value == expected.fixed_uint32_value
+    assert decoded.var_uint32_value == expected.var_uint32_value
+    assert decoded.uint64_value == expected.uint64_value
+    assert decoded.fixed_uint64_value == expected.fixed_uint64_value
+    assert decoded.var_uint64_value == expected.var_uint64_value
+    assert decoded.tagged_uint64_value == expected.tagged_uint64_value
+    assert decoded.float32_value == expected.float32_value
+    assert decoded.float64_value == expected.float64_value
+    assert decoded.string_value == expected.string_value
+    assert decoded.bytes_value == expected.bytes_value
+    assert decoded.date_value == expected.date_value
+    assert decoded.timestamp_value == expected.timestamp_value
+    if expected.int32_list is None:
+        assert decoded.int32_list is None
+    else:
+        np.testing.assert_array_equal(decoded.int32_list, expected.int32_list)
+    assert decoded.string_list == expected.string_list
+    assert decoded.int64_map == expected.int64_map
+
+
+def assert_optional_holder_equal(
+    decoded: "optional_types.OptionalHolder",
+    expected: "optional_types.OptionalHolder",
+) -> None:
+    assert decoded.all_types is not None
+    assert expected.all_types is not None
+    assert_optional_types_equal(decoded.all_types, expected.all_types)
+    assert decoded.choice is not None
+    assert expected.choice is not None
+    assert decoded.choice.case() == expected.choice.case()
+    if decoded.choice.is_payload():
+        assert_optional_types_equal(
+            decoded.choice.payload_value(), expected.choice.payload_value()
+        )
+    elif decoded.choice.is_note():
+        assert decoded.choice.note_value() == expected.choice.note_value()
+    else:
+        assert decoded.choice.code_value() == expected.choice.code_value()
+
+
+def local_roundtrip_optional_types(
+    fory: pyfory.Fory, holder: "optional_types.OptionalHolder"
+) -> None:
+    data = fory.serialize(holder)
+    decoded = fory.deserialize(data)
+    assert isinstance(decoded, optional_types.OptionalHolder)
+    assert_optional_holder_equal(decoded, holder)
+
+
+def file_roundtrip_optional_types(
+    fory: pyfory.Fory, holder: "optional_types.OptionalHolder"
+) -> None:
+    data_file = os.environ.get("DATA_FILE_OPTIONAL_TYPES")
+    if not data_file:
+        return
+    payload = Path(data_file).read_bytes()
+    decoded = fory.deserialize(payload)
+    assert isinstance(decoded, optional_types.OptionalHolder)
+    assert_optional_holder_equal(decoded, holder)
+    Path(data_file).write_bytes(fory.serialize(decoded))
+
+
 def main() -> int:
     fory = pyfory.Fory(xlang=True)
     addressbook.register_addressbook_types(fory)
     monster.register_monster_types(fory)
     complex_fbs.register_complex_fbs_types(fory)
+    optional_types.register_optional_types_types(fory)
 
     book = build_address_book()
     local_roundtrip(fory, book)
@@ -252,6 +368,10 @@ def main() -> int:
     container = build_container()
     local_roundtrip_container(fory, container)
     file_roundtrip_container(fory, container)
+
+    holder = build_optional_holder()
+    local_roundtrip_optional_types(fory, holder)
+    file_roundtrip_optional_types(fory, holder)
     return 0
 
 

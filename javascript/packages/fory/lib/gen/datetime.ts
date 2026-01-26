@@ -34,17 +34,41 @@ class TimestampSerializerGenerator extends BaseSerializerGenerator {
 
   writeStmt(accessor: string): string {
     if (/^-?[0-9]+$/.test(accessor)) {
-      return this.builder.writer.int64(`BigInt(${accessor})`);
+      const msVar = this.scope.uniqueName("ts_ms");
+      const secondsVar = this.scope.uniqueName("ts_sec");
+      const nanosVar = this.scope.uniqueName("ts_nanos");
+      return `
+            {
+              const ${msVar} = ${accessor};
+              const ${secondsVar} = Math.floor(${msVar} / 1000);
+              const ${nanosVar} = (${msVar} - ${secondsVar} * 1000) * 1000000;
+              ${this.builder.writer.int64(`BigInt(${secondsVar})`)}
+              ${this.builder.writer.uint32(`${nanosVar}`)}
+            }
+        `;
     }
-    return this.builder.writer.int64(`BigInt(${accessor}.getTime())`);
+    const msVar = this.scope.uniqueName("ts_ms");
+    const secondsVar = this.scope.uniqueName("ts_sec");
+    const nanosVar = this.scope.uniqueName("ts_nanos");
+    return `
+            {
+              const ${msVar} = ${accessor}.getTime();
+              const ${secondsVar} = Math.floor(${msVar} / 1000);
+              const ${nanosVar} = (${msVar} - ${secondsVar} * 1000) * 1000000;
+              ${this.builder.writer.int64(`BigInt(${secondsVar})`)}
+              ${this.builder.writer.uint32(`${nanosVar}`)}
+            }
+        `;
   }
 
   readStmt(accessor: (expr: string) => string): string {
-    return accessor(`new Date(Number(${this.builder.reader.int64()}))`);
+    const seconds = this.builder.reader.int64();
+    const nanos = this.builder.reader.uint32();
+    return accessor(`new Date(Number(${seconds}) * 1000 + Math.floor(${nanos} / 1000000))`);
   }
 
   getFixedSize(): number {
-    return 11;
+    return 12;
   }
 
   needToWriteRef(): boolean {
