@@ -1023,6 +1023,9 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 	case r.isXlang && !r.requireRegistration:
 		// Auto-assign IDs
 		typeID = 0
+	case type_.Kind() == reflect.Array || type_.Kind() == reflect.Slice || type_.Kind() == reflect.Map:
+		// Allow anonymous collection types to use dynamic type ID 0
+		typeID = 0
 	default:
 		panic(fmt.Errorf("type %v must be registered explicitly", type_))
 	}
@@ -1083,6 +1086,23 @@ func (r *TypeResolver) getTypeInfo(value reflect.Value, create bool) (*TypeInfo,
 			} else {
 				arrayTypeID = INT32_ARRAY
 				serializer = int32ArraySerializer{arrayType: type_}
+			}
+		case reflect.Uint16:
+			arrayTypeID = UINT16_ARRAY
+			serializer = uint16ArraySerializer{arrayType: type_}
+		case reflect.Uint32:
+			arrayTypeID = UINT32_ARRAY
+			serializer = uint32ArraySerializer{arrayType: type_}
+		case reflect.Uint64:
+			arrayTypeID = UINT64_ARRAY
+			serializer = uint64ArraySerializer{arrayType: type_}
+		case reflect.Uint:
+			if intSize == 8 {
+				arrayTypeID = UINT64_ARRAY
+				serializer = uint64ArraySerializer{arrayType: type_}
+			} else {
+				arrayTypeID = UINT32_ARRAY
+				serializer = uint32ArraySerializer{arrayType: type_}
 			}
 		default:
 			// Generic array - use LIST type ID
@@ -1496,7 +1516,21 @@ func (r *TypeResolver) createSerializer(type_ reflect.Type, mapInStruct bool) (s
 				return int64ArraySerializer{arrayType: type_}, nil
 			}
 			return int32ArraySerializer{arrayType: type_}, nil
+		case reflect.Uint16:
+			return uint16ArraySerializer{arrayType: type_}, nil
+		case reflect.Uint32:
+			return uint32ArraySerializer{arrayType: type_}, nil
+		case reflect.Uint64:
+			return uint64ArraySerializer{arrayType: type_}, nil
+		case reflect.Uint:
+			// Platform-dependent uint type - use uint32 or uint64 array serializer
+			// Wire format uses INT32_ARRAY or INT64_ARRAY respectively
+			if reflect.TypeOf(uint(0)).Size() == 8 {
+				return uint64ArraySerializer{arrayType: type_}, nil
+			}
+			return uint32ArraySerializer{arrayType: type_}, nil
 		}
+
 		if isDynamicType(elem) {
 			return arraySerializer{}, nil
 		} else {
@@ -2080,6 +2114,14 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 		return &TypeInfo{Type: int32Type, TypeID: typeID, Serializer: r.typeToSerializers[int32Type], DispatchId: PrimitiveInt32DispatchId}
 	case INT64, VARINT64, TAGGED_INT64:
 		return &TypeInfo{Type: int64Type, TypeID: typeID, Serializer: r.typeToSerializers[int64Type], DispatchId: PrimitiveInt64DispatchId}
+	case UINT8:
+		return &TypeInfo{Type: uint8Type, TypeID: typeID, Serializer: r.typeToSerializers[uint8Type], DispatchId: PrimitiveInt8DispatchId}
+	case UINT16:
+		return &TypeInfo{Type: uint16Type, TypeID: typeID, Serializer: r.typeToSerializers[uint16Type], DispatchId: PrimitiveInt16DispatchId}
+	case UINT32, VAR_UINT32:
+		return &TypeInfo{Type: uint32Type, TypeID: typeID, Serializer: r.typeToSerializers[uint32Type], DispatchId: PrimitiveInt32DispatchId}
+	case UINT64, VAR_UINT64, TAGGED_UINT64:
+		return &TypeInfo{Type: uint64Type, TypeID: typeID, Serializer: r.typeToSerializers[uint64Type], DispatchId: PrimitiveInt64DispatchId}
 	case FLOAT32:
 		return &TypeInfo{Type: float32Type, TypeID: typeID, Serializer: r.typeToSerializers[float32Type], DispatchId: PrimitiveFloat32DispatchId}
 	case FLOAT64:
