@@ -19,6 +19,7 @@
 
 package org.apache.fory;
 
+import com.google.common.base.Objects;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -127,11 +128,13 @@ public final class Fory implements BaseFory {
   private int copyDepth;
   private final boolean copyRefTracking;
   private final IdentityMap<Object, Object> originToCopyMap;
+  private int configHash;
 
   public Fory(ForyBuilder builder, ClassLoader classLoader) {
     // Avoid set classLoader in `ForyBuilder`, which won't be clear when
     // `org.apache.fory.ThreadSafeFory.clearClassLoader` is called.
     config = new Config(builder);
+    this.configHash = config.hashCode();
     crossLanguage = config.getLanguage() != Language.JAVA;
     this.refTracking = config.trackingRef();
     this.copyRefTracking = config.copyRef();
@@ -237,16 +240,22 @@ public final class Fory implements BaseFory {
   @Override
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
     _getTypeResolver().registerSerializer(type, serializerClass);
+    this.configHash = Objects.hashCode(configHash, type, serializerClass);
   }
 
   @Override
   public void registerSerializer(Class<?> type, Serializer<?> serializer) {
     _getTypeResolver().registerSerializer(type, serializer);
+    this.configHash = Objects.hashCode(configHash, type, serializer.getClass());
   }
 
   @Override
   public void registerSerializer(Class<?> type, Function<Fory, Serializer<?>> serializerCreator) {
     _getTypeResolver().registerSerializer(type, serializerCreator.apply(this));
+  }
+
+  public int getConfigHash() {
+    return configHash;
   }
 
   @Override
