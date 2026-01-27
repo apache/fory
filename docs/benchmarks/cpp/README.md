@@ -36,27 +36,27 @@ python benchmark_report.py --json-file build/benchmark_results.json --output-dir
 
 | Datatype     | Operation   | Fory (ns) | Protobuf (ns) | Faster      |
 | ------------ | ----------- | --------- | ------------- | ----------- |
-| Mediacontent | Serialize   | 89.7      | 870.1         | Fory (9.7x) |
-| Mediacontent | Deserialize | 368.4     | 1276.7        | Fory (3.5x) |
-| Sample       | Serialize   | 59.2      | 95.5          | Fory (1.6x) |
-| Sample       | Deserialize | 355.6     | 655.2         | Fory (1.8x) |
-| Struct       | Serialize   | 23.5      | 40.1          | Fory (1.7x) |
-| Struct       | Deserialize | 18.5      | 25.5          | Fory (1.4x) |
+| Mediacontent | Serialize   | 443.5     | 1982.5        | Fory (4.5x) |
+| Mediacontent | Deserialize | 1349.0    | 2525.2        | Fory (1.9x) |
+| Sample       | Serialize   | 235.4     | 309.7         | Fory (1.3x) |
+| Sample       | Deserialize | 1068.7    | 1397.0        | Fory (1.3x) |
+| Struct       | Serialize   | 109.4     | 170.0         | Fory (1.6x) |
+| Struct       | Deserialize | 129.1     | 161.2         | Fory (1.2x) |
 
 ### Throughput Results (ops/sec)
 
-| Datatype     | Operation   | Fory TPS   | Protobuf TPS | Faster      |
-| ------------ | ----------- | ---------- | ------------ | ----------- |
-| Mediacontent | Serialize   | 11,151,839 | 1,149,335    | Fory (9.7x) |
-| Mediacontent | Deserialize | 2,714,139  | 783,243      | Fory (3.5x) |
-| Sample       | Serialize   | 16,889,474 | 10,474,347   | Fory (1.6x) |
-| Sample       | Deserialize | 2,812,439  | 1,526,317    | Fory (1.8x) |
-| Struct       | Serialize   | 42,570,153 | 24,942,338   | Fory (1.7x) |
-| Struct       | Deserialize | 54,146,253 | 39,213,086   | Fory (1.4x) |
+| Datatype     | Operation   | Fory TPS  | Protobuf TPS | Faster      |
+| ------------ | ----------- | --------- | ------------ | ----------- |
+| Mediacontent | Serialize   | 2,254,915 | 504,410      | Fory (4.5x) |
+| Mediacontent | Deserialize | 741,303   | 396,013      | Fory (1.9x) |
+| Sample       | Serialize   | 4,248,973 | 3,229,102    | Fory (1.3x) |
+| Sample       | Deserialize | 935,709   | 715,837      | Fory (1.3x) |
+| Struct       | Serialize   | 9,143,618 | 5,881,005    | Fory (1.6x) |
+| Struct       | Deserialize | 7,746,787 | 6,202,164    | Fory (1.2x) |
 
 ### Serialized Data Sizes (bytes)
 
 | Datatype | Fory | Protobuf |
 | -------- | ---- | -------- |
-| Struct   | 34   | 61       |
-| Sample   | 394  | 375      |
+| Struct   | 32   | 61       |
+| Sample   | 384  | 375      |

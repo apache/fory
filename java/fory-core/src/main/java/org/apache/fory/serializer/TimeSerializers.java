@@ -174,12 +174,16 @@ public class TimeSerializers {
 
     @Override
     public void xwrite(MemoryBuffer buffer, Timestamp value) {
-      buffer.writeInt64(DateTimeUtils.fromJavaTimestamp(value));
+      Instant instant = value.toInstant();
+      buffer.writeInt64(instant.getEpochSecond());
+      buffer.writeInt32(instant.getNano());
     }
 
     @Override
     public Timestamp xread(MemoryBuffer buffer) {
-      return DateTimeUtils.toJavaTimestamp(buffer.readInt64());
+      long seconds = buffer.readInt64();
+      int nanos = buffer.readInt32();
+      return Timestamp.from(Instant.ofEpochSecond(seconds, nanos));
     }
 
     @Override
@@ -257,13 +261,15 @@ public class TimeSerializers {
 
     @Override
     public void xwrite(MemoryBuffer buffer, Instant value) {
-      // FIXME JDK17 may have higher precision than millisecond
-      buffer.writeInt64(DateTimeUtils.instantToMicros(value));
+      buffer.writeInt64(value.getEpochSecond());
+      buffer.writeInt32(value.getNano());
     }
 
     @Override
     public Instant xread(MemoryBuffer buffer) {
-      return DateTimeUtils.microsToInstant(buffer.readInt64());
+      long seconds = buffer.readInt64();
+      int nanos = buffer.readInt32();
+      return Instant.ofEpochSecond(seconds, nanos);
     }
 
     @Override

@@ -26,6 +26,7 @@ from fory_compiler.frontend.fbs.ast import (
     FbsSchema,
     FbsStruct,
     FbsTable,
+    FbsUnion,
     FbsTypeName,
     FbsTypeRef,
     FbsVectorType,
@@ -93,6 +94,7 @@ class Parser:
         includes: List[str] = []
         attributes: List[str] = []
         enums: List[FbsEnum] = []
+        unions: List[FbsUnion] = []
         tables: List[FbsTable] = []
         structs: List[FbsStruct] = []
         root_type: Optional[str] = None
@@ -119,8 +121,7 @@ class Parser:
             elif self.check(TokenType.FILE_EXTENSION):
                 self.parse_file_extension()
             elif self.check(TokenType.UNION):
-                token = self.current()
-                raise ParseError("union is not supported yet", token.line, token.column)
+                unions.append(self.parse_union())
             elif self.check(TokenType.SEMI):
                 self.advance()
             else:
@@ -131,6 +132,7 @@ class Parser:
             includes=includes,
             attributes=attributes,
             enums=enums,
+            unions=unions,
             tables=tables,
             structs=structs,
             root_type=root_type,
@@ -245,6 +247,37 @@ class Parser:
         return FbsStruct(
             name=name,
             fields=fields,
+            attributes=attributes,
+            line=start.line,
+            column=start.column,
+        )
+
+    def parse_union(self) -> FbsUnion:
+        start = self.current()
+        self.consume(TokenType.UNION, "Expected 'union'")
+        name = self.consume(TokenType.IDENT, "Expected union name").value
+        attributes = self.parse_metadata()
+        self.consume(TokenType.LBRACE, "Expected '{' after union name")
+
+        types: List[str] = []
+        while not self.check(TokenType.RBRACE):
+            if self.check(TokenType.COMMA):
+                self.advance()
+                continue
+            type_name = self.parse_qualified_ident()
+            types.append(type_name)
+            if self.match(TokenType.COMMA):
+                continue
+            if self.check(TokenType.RBRACE):
+                break
+            self.consume(TokenType.COMMA, "Expected ',' or '}' after union type")
+
+        self.consume(TokenType.RBRACE, "Expected '}' after union")
+        if self.check(TokenType.SEMI):
+            self.advance()
+        return FbsUnion(
+            name=name,
+            types=types,
             attributes=attributes,
             line=start.line,
             column=start.column,

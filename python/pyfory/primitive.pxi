@@ -252,17 +252,34 @@ cdef class TimestampSerializer(XlangCompatibleSerializer):
             is_dst = time.daylight and time.localtime().tm_isdst > 0
             seconds_offset = time.altzone if is_dst else time.timezone
             value = value.replace(tzinfo=datetime.timezone.utc)
-        return int((value.timestamp() + seconds_offset) * 1000000)
+        cdef long long micros = <long long>((value.timestamp() + seconds_offset) * 1000000)
+        cdef long long seconds
+        cdef long long micros_rem
+        if micros >= 0:
+            seconds = micros // 1000000
+            micros_rem = micros % 1000000
+        else:
+            seconds = -((-micros) // 1000000)
+            micros_rem = micros - seconds * 1000000
+        if micros_rem < 0:
+            seconds -= 1
+            micros_rem += 1000000
+        return seconds, <unsigned int>(micros_rem * 1000)
 
     cpdef inline write(self, Buffer buffer, value):
         if type(value) is not datetime.datetime:
             raise TypeError(
                 "{} should be {} instead of {}".format(value, datetime, type(value))
             )
-        # TimestampType represent micro seconds
-        buffer.write_int64(self._get_timestamp(value))
+        cdef long long seconds
+        cdef unsigned int nanos
+        seconds, nanos = self._get_timestamp(value)
+        buffer.write_int64(seconds)
+        buffer.write_uint32(nanos)
 
     cpdef inline read(self, Buffer buffer):
-        ts = buffer.read_int64() / 1000000
+        cdef long long seconds = buffer.read_int64()
+        cdef unsigned int nanos = buffer.read_uint32()
+        ts = seconds + (<double>nanos) / 1000000000.0
         # TODO support timezone
         return datetime.datetime.fromtimestamp(ts)

@@ -252,9 +252,10 @@ fn parse_type_id_tag(lit: &syn::LitStr) -> syn::Result<i16> {
     match value.as_str() {
         "int8_array" => Ok(TypeId::INT8_ARRAY as i16),
         "uint8_array" => Ok(TypeId::UINT8_ARRAY as i16),
+        "union" => Ok(TypeId::UNION as i16),
         _ => Err(syn::Error::new(
             lit.span(),
-            "type_id must be \"int8_array\" or \"uint8_array\"",
+            "type_id must be \"int8_array\", \"uint8_array\", or \"union\"",
         )),
     }
 }

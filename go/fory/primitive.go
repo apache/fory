@@ -17,10 +17,7 @@
 
 package fory
 
-import (
-	"reflect"
-	"unsafe"
-)
+import "reflect"
 
 // ============================================================================
 // Primitive Serializers - implement unified Serializer interface
@@ -303,6 +300,50 @@ func (s uint64Serializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, ty
 	s.Read(ctx, refMode, false, false, value)
 }
 
+// uintSerializer handles uint type with variable-length encoding (VAR_UINT64)
+type uintSerializer struct{}
+
+var globalUintSerializer = uintSerializer{}
+
+func (s uintSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	ctx.buffer.WriteVaruint64(value.Uint())
+}
+
+func (s uintSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	if refMode != RefModeNone {
+		ctx.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeType {
+		ctx.buffer.WriteVaruint32Small7(uint32(VAR_UINT64))
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s uintSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	err := ctx.Err()
+	value.SetUint(ctx.buffer.ReadVaruint64(err))
+}
+
+func (s uintSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	err := ctx.Err()
+	if refMode != RefModeNone {
+		if ctx.buffer.ReadInt8(err) == NullFlag {
+			return
+		}
+	}
+	if readType {
+		_ = ctx.buffer.ReadVaruint32Small7(err)
+	}
+	if ctx.HasError() {
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s uintSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
+
 // int16Serializer handles int16 type
 type int16Serializer struct{}
 
@@ -563,37 +604,4 @@ func (s float64Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 
 func (s float64Serializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
 	s.Read(ctx, refMode, false, false, value)
-}
-
-// ============================================================================
-// Notnull Pointer Helper Functions for Varint Types
-// These are used by struct serializer for the rare case of *T with nullable=false
-// ============================================================================
-
-// writeNotnullVarintPtrUnsafe writes a notnull pointer varint type at the given offset.
-// Used by struct serializer for rare notnull pointer types.
-// Returns the number of bytes written.
-//
-//go:inline
-func writeNotnullVarintPtrUnsafe(buf *ByteBuffer, offset int, fieldPtr unsafe.Pointer, dispatchId DispatchId) int {
-	switch dispatchId {
-	case NotnullVarint32PtrDispatchId:
-		return buf.UnsafePutVarInt32(offset, **(**int32)(fieldPtr))
-	case NotnullVarint64PtrDispatchId:
-		return buf.UnsafePutVarInt64(offset, **(**int64)(fieldPtr))
-	case NotnullIntPtrDispatchId:
-		return buf.UnsafePutVarInt64(offset, int64(**(**int)(fieldPtr)))
-	case NotnullVarUint32PtrDispatchId:
-		return buf.UnsafePutVaruint32(offset, **(**uint32)(fieldPtr))
-	case NotnullVarUint64PtrDispatchId:
-		return buf.UnsafePutVaruint64(offset, **(**uint64)(fieldPtr))
-	case NotnullUintPtrDispatchId:
-		return buf.UnsafePutVaruint64(offset, uint64(**(**uint)(fieldPtr)))
-	case NotnullTaggedInt64PtrDispatchId:
-		return buf.UnsafePutTaggedInt64(offset, **(**int64)(fieldPtr))
-	case NotnullTaggedUint64PtrDispatchId:
-		return buf.UnsafePutTaggedUint64(offset, **(**uint64)(fieldPtr))
-	default:
-		return 0
-	}
 }

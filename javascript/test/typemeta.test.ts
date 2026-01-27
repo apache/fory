@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { TypeInfo, InternalSerializerType, Type, Mode } from '../packages/fory/index';
+import Fory, { Type, Mode } from '../packages/fory/index';
 import {describe, expect, test} from '@jest/globals';
 import * as beautify from 'js-beautify';
 

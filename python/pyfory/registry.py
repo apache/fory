@@ -317,7 +317,7 @@ class TypeResolver:
         register(str, type_id=TypeId.STRING, serializer=StringSerializer)
         # TODO(chaokunyang) DURATION DECIMAL
         register(datetime.datetime, type_id=TypeId.TIMESTAMP, serializer=TimestampSerializer)
-        register(datetime.date, type_id=TypeId.LOCAL_DATE, serializer=DateSerializer)
+        register(datetime.date, type_id=TypeId.DATE, serializer=DateSerializer)
         register(bytes, type_id=TypeId.BINARY, serializer=BytesSerializer)
         for itemsize, ftype, typeid in PyArraySerializer.typecode_dict.values():
             register(
@@ -360,6 +360,42 @@ class TypeResolver:
             namespace=namespace,
             typename=typename,
             serializer=serializer,
+        )
+
+    def register_union(
+        self,
+        cls: Union[type, TypeVar],
+        *,
+        type_id: int = None,
+        namespace: str = None,
+        typename: str = None,
+        serializer=None,
+    ):
+        if serializer is None:
+            raise TypeError("register_union requires a serializer")
+        if serializer is not None and not isinstance(serializer, Serializer):
+            try:
+                serializer = serializer(self.fory, cls)
+            except BaseException:
+                try:
+                    serializer = serializer(self.fory)
+                except BaseException:
+                    serializer = serializer()
+        if typename is not None and type_id is not None:
+            raise TypeError(f"type name {typename} and id {type_id} should not be set at the same time")
+        if typename is None and type_id is None:
+            type_id = self._next_type_id()
+        if type_id not in {0, None}:
+            actual_type_id = (type_id << 8) + TypeId.TYPED_UNION
+        else:
+            actual_type_id = TypeId.NAMED_UNION
+        return self.__register_type(
+            cls,
+            type_id=actual_type_id,
+            namespace=namespace,
+            typename=typename,
+            serializer=serializer,
+            internal=False,
         )
 
     def _register_type(
@@ -742,6 +778,20 @@ class TypeResolver:
                 if typeinfo is not None:
                     self._ns_type_to_typeinfo[(ns_metabytes, type_metabytes)] = typeinfo
                     return typeinfo
+                if not ns and "." in typename:
+                    split_ns, split_typename = typename.rsplit(".", 1)
+                    typeinfo = self._named_type_to_typeinfo.get((split_ns, split_typename))
+                    if typeinfo is not None:
+                        self._ns_type_to_typeinfo[(ns_metabytes, type_metabytes)] = typeinfo
+                        return typeinfo
+                    typename = split_typename
+                    ns = split_ns
+                if typename:
+                    matches = [info for (reg_ns, reg_typename), info in self._named_type_to_typeinfo.items() if reg_typename == typename]
+                    if len(matches) == 1:
+                        typeinfo = matches[0]
+                        self._ns_type_to_typeinfo[(ns_metabytes, type_metabytes)] = typeinfo
+                        return typeinfo
                 name = ns + "." + typename if ns else typename
                 raise TypeUnregisteredError(f"{name} not registered")
             return typeinfo

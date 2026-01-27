@@ -221,8 +221,10 @@ public:
   ///
   /// Example:
   /// ```cpp
-  /// struct MyStruct { int32_t value; };
-  /// FORY_STRUCT(MyStruct, value);
+  /// struct MyStruct {
+  ///   int32_t value;
+  ///   FORY_STRUCT(MyStruct, value);
+  /// };
   ///
   /// fory.register_struct<MyStruct>(1);
   /// ```
@@ -323,6 +325,39 @@ public:
   template <typename T>
   Result<void, Error> register_enum(const std::string &type_name) {
     return type_resolver_->template register_by_name<T>("", type_name);
+  }
+
+  /// Register a union type with a numeric type ID.
+  ///
+  /// Use this method to register union types with generated custom serializers.
+  ///
+  /// @tparam T The union type to register (must provide Serializer<T>).
+  /// @param type_id Unique numeric identifier for this union type.
+  /// @return Success or error if registration fails.
+  template <typename T> Result<void, Error> register_union(uint32_t type_id) {
+    return type_resolver_->template register_union_by_id<T>(type_id);
+  }
+
+  /// Register a union type with namespace and type name.
+  ///
+  /// @tparam T The union type to register (must provide Serializer<T>).
+  /// @param ns Namespace for the type (can be empty string).
+  /// @param type_name Name of the type within the namespace.
+  /// @return Success or error if registration fails.
+  template <typename T>
+  Result<void, Error> register_union(const std::string &ns,
+                                     const std::string &type_name) {
+    return type_resolver_->template register_union_by_name<T>(ns, type_name);
+  }
+
+  /// Register a union type with type name only (no namespace).
+  ///
+  /// @tparam T The union type to register (must provide Serializer<T>).
+  /// @param type_name Name of the type.
+  /// @return Success or error if registration fails.
+  template <typename T>
+  Result<void, Error> register_union(const std::string &type_name) {
+    return type_resolver_->template register_union_by_name<T>("", type_name);
   }
 
   /// Register an extension type with a numeric type ID.

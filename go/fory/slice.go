@@ -62,8 +62,9 @@ func writeSliceRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, va
 }
 
 // readSliceRefAndType handles reference and type reading for slice serializers.
-// Returns true if a reference was resolved (value already set), false if data should be read.
-func readSliceRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value reflect.Value) bool {
+// Returns (true, 0) if a reference was resolved (value already set).
+// Returns (false, typeId) if data should be written and typeId was read (if readType=true).
+func readSliceRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value reflect.Value) (bool, uint32) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
 	switch refMode {
@@ -71,25 +72,26 @@ func readSliceRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value
 		refID, refErr := ctx.RefResolver().TryPreserveRefId(buf)
 		if refErr != nil {
 			ctx.SetError(FromError(refErr))
-			return true
+			return true, 0
 		}
 		if refID < int32(NotNullValueFlag) {
 			obj := ctx.RefResolver().GetReadObject(refID)
 			if obj.IsValid() {
 				value.Set(obj)
 			}
-			return true
+			return true, 0
 		}
 	case RefModeNullOnly:
 		flag := buf.ReadInt8(ctxErr)
 		if flag == NullFlag {
-			return true
+			return true, 0
 		}
 	}
+	var typeId uint32
 	if readType {
-		buf.ReadVaruint32Small7(ctxErr)
+		typeId = buf.ReadVaruint32Small7(ctxErr)
 	}
-	return false
+	return false, typeId
 }
 
 // Helper function to check if a value is null/nil
@@ -242,8 +244,12 @@ func (s *sliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bo
 }
 
 func (s *sliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
-	done := readSliceRefAndType(ctx, refMode, readType, value)
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
 	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(LIST) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected LIST (%d), got %d", LIST, typeId))
 		return
 	}
 	s.ReadData(ctx, value)

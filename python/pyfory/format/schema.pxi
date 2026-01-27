@@ -64,12 +64,14 @@ class TypeId:
     MAP = 22
     STRUCT = 25
     UNION = 31
-    NONE = 32
-    DURATION = 33
-    TIMESTAMP = 34
-    LOCAL_DATE = 35
-    DECIMAL = 36
-    BINARY = 37
+    TYPED_UNION = 32
+    NAMED_UNION = 33
+    NONE = 34
+    DURATION = 35
+    TIMESTAMP = 36
+    DATE = 37
+    DECIMAL = 38
+    BINARY = 39
 
 
 cdef class DataType:

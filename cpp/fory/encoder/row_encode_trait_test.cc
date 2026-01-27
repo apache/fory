@@ -34,9 +34,8 @@ struct A {
   int x;
   float y;
   bool z;
+  FORY_STRUCT(A, x, y, z);
 };
-
-FORY_FIELD_INFO(A, x, y, z);
 
 TEST(RowEncodeTrait, Basic) {
   auto field_vector = encoder::RowEncodeTrait<A>::FieldVector();
@@ -67,9 +66,8 @@ TEST(RowEncodeTrait, Basic) {
 struct B {
   int num;
   std::string str;
+  FORY_STRUCT(B, num, str);
 };
-
-FORY_FIELD_INFO(B, num, str);
 
 TEST(RowEncodeTrait, String) {
   RowWriter writer(encoder::RowEncodeTrait<B>::Schema());
@@ -89,9 +87,8 @@ struct C {
   const int a;
   volatile float b;
   bool c;
+  FORY_STRUCT(C, a, b, c);
 };
-
-FORY_FIELD_INFO(C, a, b, c);
 
 TEST(RowEncodeTrait, Const) {
   RowWriter writer(encoder::RowEncodeTrait<C>::Schema());
@@ -110,9 +107,8 @@ struct D {
   int x;
   A y;
   B z;
+  FORY_STRUCT(D, x, y, z);
 };
-
-FORY_FIELD_INFO(D, x, y, z);
 
 TEST(RowEncodeTrait, NestedStruct) {
   RowWriter writer(encoder::RowEncodeTrait<D>::Schema());
@@ -202,9 +198,8 @@ TEST(RowEncodeTrait, StructInArray) {
 struct E {
   int a;
   std::vector<int> b;
+  FORY_STRUCT(E, a, b);
 };
-
-FORY_FIELD_INFO(E, a, b);
 
 TEST(RowEncodeTrait, ArrayInStruct) {
   E e{233, {10, 20, 30}};
@@ -256,9 +251,8 @@ struct F {
   bool a;
   std::optional<int> b;
   int c;
+  FORY_STRUCT(F, a, b, c);
 };
-
-FORY_FIELD_INFO(F, a, b, c);
 
 TEST(RowEncodeTrait, Optional) {
   F x{false, 233, 111}, y{true, std::nullopt, 222};
@@ -301,9 +295,8 @@ TEST(RowEncodeTrait, Optional) {
 struct G {
   std::map<int, std::map<int, int>> a;
   std::map<std::string, A> b;
+  FORY_STRUCT(G, a, b);
 };
-
-FORY_FIELD_INFO(G, a, b);
 
 TEST(RowEncodeTrait, Map) {
   G v{{{1, {{3, 4}, {5, 6}}}, {2, {{7, 8}, {9, 10}, {11, 12}}}},

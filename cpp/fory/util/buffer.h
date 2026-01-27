@@ -549,6 +549,14 @@ public:
     IncreaseWriterIndex(4);
   }
 
+  /// Write uint32_t value as fixed 4 bytes to buffer at current writer index.
+  /// Automatically grows buffer and advances writer index.
+  FORY_ALWAYS_INLINE void WriteUint32(uint32_t value) {
+    Grow(4);
+    UnsafePut<uint32_t>(writer_index_, value);
+    IncreaseWriterIndex(4);
+  }
+
   /// Write int64_t value as fixed 8 bytes to buffer at current writer index.
   /// Automatically grows buffer and advances writer index.
   FORY_ALWAYS_INLINE void WriteInt64(int64_t value) {

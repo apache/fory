@@ -1230,6 +1230,8 @@ def group_fields(type_resolver, field_names, serializers, nullable_map=None, fie
                 )
             )
     for type_id, serializer, field_name, sort_key in type_ids:
+        if type_id in {TypeId.TYPED_UNION, TypeId.NAMED_UNION}:
+            type_id = TypeId.UNION
         is_nullable = nullable_map.get(field_name, False)
         if is_primitive_type(type_id):
             container = nullable_boxed_types if is_nullable else boxed_types
@@ -1242,6 +1244,7 @@ def group_fields(type_resolver, field_names, serializers, nullable_map=None, fie
         elif is_polymorphic_type(type_id) or type_id in {
             TypeId.ENUM,
             TypeId.NAMED_ENUM,
+            TypeId.UNION,
         }:
             container = other_types
         elif type_id >= TypeId.BOUND:
@@ -1327,10 +1330,15 @@ def compute_struct_fingerprint(type_resolver, field_names, serializers, nullable
             nullable_flag = "1" if nullable_map.get(field_name, False) else "0"
         else:
             type_id = type_resolver.get_typeinfo(serializer.type_).type_id & 0xFF
+            if type_id in {TypeId.TYPED_UNION, TypeId.NAMED_UNION}:
+                type_id = TypeId.UNION
             is_nullable = nullable_map.get(field_name, False)
 
             # For polymorphic or enum types, set type_id to UNKNOWN but preserve nullable from map
-            if is_polymorphic_type(type_id) or type_id in {TypeId.ENUM, TypeId.NAMED_ENUM}:
+            if is_polymorphic_type(type_id) or type_id in {
+                TypeId.ENUM,
+                TypeId.NAMED_ENUM,
+            }:
                 type_id = TypeId.UNKNOWN
 
             # Use nullable from map - for xlang, this is already computed correctly

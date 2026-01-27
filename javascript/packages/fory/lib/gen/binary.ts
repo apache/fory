@@ -21,7 +21,7 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator, RefState } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { InternalSerializerType } from "../type";
+import { TypeId } from "../type";
 import { Scope } from "./scope";
 
 class BinarySerializerGenerator extends BaseSerializerGenerator {
@@ -59,4 +59,4 @@ class BinarySerializerGenerator extends BaseSerializerGenerator {
   }
 }
 
-CodegenRegistry.register(InternalSerializerType.BINARY, BinarySerializerGenerator);
+CodegenRegistry.register(TypeId.BINARY, BinarySerializerGenerator);

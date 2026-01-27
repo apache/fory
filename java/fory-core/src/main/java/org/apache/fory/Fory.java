@@ -224,6 +224,17 @@ public final class Fory implements BaseFory {
   }
 
   @Override
+  public void registerUnion(Class<?> cls, int id, Serializer<?> serializer) {
+    _getTypeResolver().registerUnion(cls, id, serializer);
+  }
+
+  @Override
+  public void registerUnion(
+      Class<?> cls, String namespace, String typeName, Serializer<?> serializer) {
+    _getTypeResolver().registerUnion(cls, namespace, typeName, serializer);
+  }
+
+  @Override
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
     _getTypeResolver().registerSerializer(type, serializerClass);
   }

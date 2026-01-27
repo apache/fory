@@ -121,11 +121,11 @@ fn test_union_type_id() {
     assert_eq!(fory_core::types::UNION, 31);
 }
 
-/// Test that NONE TypeId matches xlang spec (32)
+/// Test that NONE TypeId matches xlang spec (34)
 #[test]
 fn test_none_type_id() {
-    assert_eq!(TypeId::NONE as i16, 32);
-    assert_eq!(fory_core::types::NONE, 32);
+    assert_eq!(TypeId::NONE as i16, 34);
+    assert_eq!(fory_core::types::NONE, 34);
 }
 
 /// Test that PhantomData uses NONE TypeId (no runtime data)

@@ -22,24 +22,28 @@ syntax = "proto3";
 package complex_pb;
 
 message PrimitiveTypes {
-    option (fory).id = 200;
+  option (fory).id = 200;
 
-    bool bool_value = 1;
-    int8 int8_value = 2;
-    int16 int16_value = 3;
-    sfixed32 int32_value = 4;
-    sint32 varint32_value = 5;
-    sfixed64 int64_value = 6;
-    sint64 varint64_value = 7;
-    int64 tagged_int64_value = 8 [(fory).type = "tagged_int64"];
-    uint8 uint8_value = 9;
-    uint16 uint16_value = 10;
-    fixed32 uint32_value = 11;
-    uint32 var_uint32_value = 12;
-    fixed64 uint64_value = 13;
-    uint64 var_uint64_value = 14;
-    uint64 tagged_uint64_value = 15 [(fory).type = "tagged_uint64"];
-    float16 float16_value = 16;
-    float float32_value = 17;
-    double float64_value = 18;
+  bool bool_value = 1;
+  int8 int8_value = 2;
+  int16 int16_value = 3;
+  sfixed32 int32_value = 4;
+  sint32 varint32_value = 5;
+  sfixed64 int64_value = 6;
+  sint64 varint64_value = 7;
+  int64 tagged_int64_value = 8 [ (fory).type = "tagged_int64" ];
+  uint8 uint8_value = 9;
+  uint16 uint16_value = 10;
+  fixed32 uint32_value = 11;
+  uint32 var_uint32_value = 12;
+  fixed64 uint64_value = 13;
+  uint64 var_uint64_value = 14;
+  uint64 tagged_uint64_value = 15 [ (fory).type = "tagged_uint64" ];
+  float float32_value = 17;
+  double float64_value = 18;
+
+  oneof Contact {
+    string email = 19;
+    int32 phone = 20;
+  }
 }

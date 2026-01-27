@@ -17,22 +17,27 @@
  * under the License.
  */
 
-import { InternalSerializerType, Mode, TypeId } from "../type";
+import { TypeId, Mode } from "../type";
 import { CodecBuilder } from "./builder";
 import { RefFlags } from "../type";
 import { Scope } from "./scope";
 import { TypeInfo, StructTypeInfo } from "../typeInfo";
 import { TypeMeta } from "../meta/TypeMeta";
+import { BinaryWriter } from "../writer";
 
 export const makeHead = (flag: RefFlags, typeId: number) => {
-  return (((typeId << 16) >>> 16) << 8) | ((flag << 24) >>> 24);
+  const writer = new BinaryWriter();
+  writer.uint8(flag);
+  writer.writeVarUint32Small7(typeId);
+  const buffer = writer.dump();
+  return buffer;
 };
 
 export interface SerializerGenerator {
   toSerializer(): string;
   getFixedSize(): number;
   needToWriteRef(): boolean;
-  getType(): InternalSerializerType;
+  getType(): number;
   getTypeId(): number | undefined;
   toWriteEmbed(accessor: string, excludeHead?: boolean): string;
   toReadEmbed(accessor: (expr: string) => string, excludeHead?: boolean, refState?: RefState): string;
@@ -119,7 +124,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
   abstract readStmt(accessor: (expr: string) => string, refState: RefState): string;
 
   getType() {
-    return this.typeInfo.type;
+    return this.typeInfo.typeId;
   }
 
   getTypeId() {
@@ -169,6 +174,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
 
     if (this.needToWriteRef()) {
       const head = makeHead(RefFlags.RefValueFlag, this.typeInfo.typeId);
+      const bytes = this.scope.declare("headBytes", `new Uint8Array([${head.join(",")}])`);
       const existsId = this.scope.uniqueName("existsId");
       return `
                 if (${accessor} !== null && ${accessor} !== undefined) {
@@ -178,7 +184,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
                         ${this.builder.writer.varUInt32(existsId)}
                     } else {
                         ${this.builder.referenceResolver.writeRef(accessor)}
-                        ${this.builder.writer.int24(head)};
+                        ${this.builder.writer.buffer(bytes)};
                         ${maybeNamed()}
                         ${maybeCompatiable()}
                         ${stmt(accessor)};
@@ -189,9 +195,10 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
                 `;
     } else {
       const head = makeHead(RefFlags.NotNullValueFlag, this.typeInfo.typeId);
+      const bytes = this.scope.declare("headBytes", `new Uint8Array([${head.join(",")}])`);
       return `
             if (${accessor} !== null && ${accessor} !== undefined) {
-                ${this.builder.writer.int24(head)};
+                ${this.builder.writer.buffer(bytes)};
                 ${maybeNamed()}
                 ${maybeCompatiable()}
                 ${stmt(accessor)};
@@ -218,7 +225,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
       switch (${refFlag}) {
           case ${RefFlags.NotNullValueFlag}:
           case ${RefFlags.RefValueFlag}:
-              const ${typeId} = ${this.builder.reader.int16()};
+              const ${typeId} = ${this.builder.reader.readVarUint32Small7()};
               let ${ns};
               let ${typeName};
               if (${typeId} === ${TypeId.NAMED_STRUCT} || ${typeId} === ${TypeId.NAMED_ENUM}) {

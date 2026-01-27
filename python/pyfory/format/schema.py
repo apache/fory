@@ -69,7 +69,7 @@ def arrow_type_to_fory_type_id(arrow_type):
 
     # Date/time types
     if pa_types.is_date32(arrow_type):
-        return 26  # LOCAL_DATE
+        return 26  # DATE
     if pa_types.is_timestamp(arrow_type):
         return 25  # TIMESTAMP
     if pa_types.is_duration(arrow_type):
@@ -121,7 +121,7 @@ def fory_type_id_to_arrow_type(type_id, precision=None, scale=None, list_type=No
         12: pa.utf8(),  # STRING
         24: pa.duration("ns"),  # DURATION
         25: pa.timestamp("us"),  # TIMESTAMP
-        26: pa.date32(),  # LOCAL_DATE
+        26: pa.date32(),  # DATE
         28: pa.binary(),  # BINARY
     }
 

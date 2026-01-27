@@ -104,6 +104,10 @@ public interface BaseFory {
    */
   void register(String className, String namespace, String typeName);
 
+  void registerUnion(Class<?> cls, int id, Serializer<?> serializer);
+
+  void registerUnion(Class<?> cls, String namespace, String typeName, Serializer<?> serializer);
+
   /**
    * Register a Serializer for a class, and allocate an auto-grown ID for this class if it's not
    * registered yet.

@@ -405,6 +405,25 @@ void skip_union(ReadContext &ctx) {
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return;
   }
+  // Read ref flag for the union value (Any-style)
+  int8_t ref_flag = ctx.read_int8(ctx.error());
+  if (FORY_PREDICT_FALSE(ctx.has_error())) {
+    return;
+  }
+  if (ref_flag == NULL_FLAG) {
+    return;
+  }
+  if (ref_flag == REF_FLAG) {
+    (void)ctx.read_varuint32(ctx.error());
+    return;
+  }
+  if (ref_flag != NOT_NULL_VALUE_FLAG && ref_flag != REF_VALUE_FLAG) {
+    ctx.set_error(
+        Error::invalid_data("Unknown reference flag: " +
+                            std::to_string(static_cast<int>(ref_flag))));
+    return;
+  }
+
   // Read and skip the alternative's type info
   const TypeInfo *type_info = ctx.read_any_typeinfo(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
@@ -501,10 +520,8 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     skip_map(ctx, field_type);
     return;
 
-  case TypeId::DURATION:
-  case TypeId::TIMESTAMP: {
-    // Duration/Timestamp are stored as fixed 8-byte
-    // nanosecond counts.
+  case TypeId::DURATION: {
+    // Duration is stored as fixed 8-byte nanosecond count.
     constexpr uint32_t kBytes = static_cast<uint32_t>(sizeof(int64_t));
     if (ctx.buffer().reader_index() + kBytes > ctx.buffer().size()) {
       ctx.set_error(Error::buffer_out_of_bound(ctx.buffer().reader_index(),
@@ -514,9 +531,21 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     ctx.buffer().IncreaseReaderIndex(kBytes);
     return;
   }
+  case TypeId::TIMESTAMP: {
+    // Timestamp is stored as int64 seconds + uint32 nanoseconds.
+    constexpr uint32_t kBytes =
+        static_cast<uint32_t>(sizeof(int64_t) + sizeof(uint32_t));
+    if (ctx.buffer().reader_index() + kBytes > ctx.buffer().size()) {
+      ctx.set_error(Error::buffer_out_of_bound(ctx.buffer().reader_index(),
+                                               kBytes, ctx.buffer().size()));
+      return;
+    }
+    ctx.buffer().IncreaseReaderIndex(kBytes);
+    return;
+  }
 
-  case TypeId::LOCAL_DATE: {
-    // LocalDate is stored as fixed 4-byte day count.
+  case TypeId::DATE: {
+    // Date is stored as fixed 4-byte day count.
     constexpr uint32_t kBytes = static_cast<uint32_t>(sizeof(int32_t));
     if (ctx.buffer().reader_index() + kBytes > ctx.buffer().size()) {
       ctx.set_error(Error::buffer_out_of_bound(ctx.buffer().reader_index(),
@@ -599,6 +628,10 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     return;
 
   case TypeId::UNION:
+    skip_union(ctx);
+    return;
+  case TypeId::TYPED_UNION:
+  case TypeId::NAMED_UNION:
     skip_union(ctx);
     return;
 

@@ -227,7 +227,7 @@ public class SchemaEncoder {
         return DataTypes.duration();
       case Types.TIMESTAMP:
         return DataTypes.timestamp();
-      case Types.LOCAL_DATE:
+      case Types.DATE:
         return DataTypes.date32();
       case Types.DECIMAL:
         int precision = buffer.readByte() & 0xFF;

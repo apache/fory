@@ -64,14 +64,12 @@ message ForyFileOptions {
   optional bool use_record_for_java_message = 1;
 
   // Enable polymorphism support for all types in this file.
-  // When true, type metadata is included in serialization for polymorphic dispatch.
-  // Default: false
+  // When true, type metadata is included in serialization for polymorphic
+  // dispatch. Default: false
   optional bool polymorphism = 2;
 }
 
-extend google.protobuf.FileOptions {
-  optional ForyFileOptions fory = 50001;
-}
+extend google.protobuf.FileOptions { optional ForyFileOptions fory = 50001; }
 
 // ===========================================================================
 // Message-Level Options
@@ -86,8 +84,9 @@ message ForyMessageOptions {
   optional int32 id = 1;
 
   // Enable schema evolution for this message.
-  // When true (default), fields can be added/removed with forward/backward compatibility.
-  // When false, schema is fixed like a struct - no changes allowed, better performance.
+  // When true (default), fields can be added/removed with forward/backward
+  // compatibility. When false, schema is fixed like a struct - no changes
+  // allowed, better performance.
   optional bool evolving = 2;
 
   // Generate a Java record instead of a class for this specific message.
@@ -123,9 +122,7 @@ message ForyEnumOptions {
   optional bool deprecated = 2;
 }
 
-extend google.protobuf.EnumOptions {
-  optional ForyEnumOptions fory = 50001;
-}
+extend google.protobuf.EnumOptions { optional ForyEnumOptions fory = 50001; }
 
 // ===========================================================================
 // Field-Level Options
@@ -149,6 +146,4 @@ message ForyFieldOptions {
   optional bool deprecated = 3;
 }
 
-extend google.protobuf.FieldOptions {
-  optional ForyFieldOptions fory = 50001;
-}
+extend google.protobuf.FieldOptions { optional ForyFieldOptions fory = 50001; }

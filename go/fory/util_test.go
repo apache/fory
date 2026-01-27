@@ -36,10 +36,9 @@ func TestSnake(t *testing.T) {
 
 func TestTime(t *testing.T) {
 	t1 := time.Now()
-	ts := GetUnixMicro(t1)
-	t2 := CreateTimeFromUnixMicro(ts)
+	seconds, nanos := GetUnixSecondsAndNanos(t1)
+	t2 := CreateTimeFromUnixSecondsAndNanos(seconds, nanos)
 	require.Equal(t, t1.Second(), t2.Second())
-	// Micro doesn't preserve Nanosecond precision.
-	require.Equal(t, t1.Nanosecond()/1000, t2.Nanosecond()/1000)
-	require.WithinDuration(t, t1, t2, 1000)
+	require.Equal(t, t1.Nanosecond(), t2.Nanosecond())
+	require.Equal(t, t1.Unix(), t2.Unix())
 }

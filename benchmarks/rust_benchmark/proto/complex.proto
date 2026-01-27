@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
- 
+
 syntax = "proto3";
 
 package complex;
@@ -24,42 +24,42 @@ package complex;
 import "google/protobuf/timestamp.proto";
 
 message Product {
-    string id = 1;
-    string name = 2;
-    double price = 3;
-    repeated string categories = 4;
-    map<string, string> attributes = 5;
+  string id = 1;
+  string name = 2;
+  double price = 3;
+  repeated string categories = 4;
+  map<string, string> attributes = 5;
 }
 
 message OrderItem {
-    Product product = 1;
-    int32 quantity = 2;
-    double unit_price = 3;
-    map<string, string> customizations = 4;
+  Product product = 1;
+  int32 quantity = 2;
+  double unit_price = 3;
+  map<string, string> customizations = 4;
 }
 
 message Customer {
-    string id = 1;
-    string name = 2;
-    string email = 3;
-    repeated string phone_numbers = 4;
-    map<string, string> preferences = 5;
-    google.protobuf.Timestamp member_since = 6;
+  string id = 1;
+  string name = 2;
+  string email = 3;
+  repeated string phone_numbers = 4;
+  map<string, string> preferences = 5;
+  google.protobuf.Timestamp member_since = 6;
 }
 
 message Order {
-    string id = 1;
-    Customer customer = 2;
-    repeated OrderItem items = 3;
-    double total_amount = 4;
-    string status = 5;
-    google.protobuf.Timestamp order_date = 6;
-    map<string, string> metadata = 7;
+  string id = 1;
+  Customer customer = 2;
+  repeated OrderItem items = 3;
+  double total_amount = 4;
+  string status = 5;
+  google.protobuf.Timestamp order_date = 6;
+  map<string, string> metadata = 7;
 }
 
 message ProtoECommerceData {
-    repeated Order orders = 1;
-    repeated Customer customers = 2;
-    repeated Product products = 3;
-    map<string, Order> order_lookup = 4;
+  repeated Order orders = 1;
+  repeated Customer customers = 2;
+  repeated Product products = 3;
+  map<string, Order> order_lookup = 4;
 }

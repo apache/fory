@@ -84,103 +84,62 @@ export const TypeId = {
   NAMED_EXT: 30,
   // a tagged union type that can hold one of several alternative types.
   UNION: 31,
+  // a union value with embedded numeric union type ID.
+  TYPED_UNION: 32,
+  // a union value with embedded union type name/TypeDef.
+  NAMED_UNION: 33,
   // represents an empty/unit value with no data.
-  NONE: 32,
+  NONE: 34,
   // an absolute length of time, independent of any calendar/timezone, as a count of nanoseconds.
-  DURATION: 33,
+  DURATION: 35,
   // a point in time, independent of any calendar/timezone, as a count of nanoseconds.
-  TIMESTAMP: 34,
+  TIMESTAMP: 36,
   // a naive date without timezone.
-  LOCAL_DATE: 35,
+  DATE: 37,
   // exact decimal value represented as an integer value in two's complement.
-  DECIMAL: 36,
+  DECIMAL: 38,
   // a variable-length array of bytes.
-  BINARY: 37,
+  BINARY: 39,
   // a multidimensional array which every sub-array can have different sizes but all have the same type.
-  ARRAY: 38,
+  ARRAY: 40,
   // one dimensional bool array.
-  BOOL_ARRAY: 39,
+  BOOL_ARRAY: 41,
   // one dimensional int8 array.
-  INT8_ARRAY: 40,
+  INT8_ARRAY: 42,
   // one dimensional int16 array.
-  INT16_ARRAY: 41,
+  INT16_ARRAY: 43,
   // one dimensional int32 array.
-  INT32_ARRAY: 42,
+  INT32_ARRAY: 44,
   // one dimensional int64 array.
-  INT64_ARRAY: 43,
+  INT64_ARRAY: 45,
   // one dimensional uint8 array.
-  UINT8_ARRAY: 44,
+  UINT8_ARRAY: 46,
   // one dimensional uint16 array.
-  UINT16_ARRAY: 45,
+  UINT16_ARRAY: 47,
   // one dimensional uint32 array.
-  UINT32_ARRAY: 46,
+  UINT32_ARRAY: 48,
   // one dimensional uint64 array.
-  UINT64_ARRAY: 47,
+  UINT64_ARRAY: 49,
   // one dimensional float16 array.
-  FLOAT16_ARRAY: 48,
+  FLOAT16_ARRAY: 50,
   // one dimensional float32 array.
-  FLOAT32_ARRAY: 49,
+  FLOAT32_ARRAY: 51,
   // one dimensional float64 array.
-  FLOAT64_ARRAY: 50,
+  FLOAT64_ARRAY: 52,
 
   // BOUND id remains at 64
   BOUND: 64,
 
   IS_NAMED_TYPE(id: number) {
-    return [TypeId.NAMED_COMPATIBLE_STRUCT, TypeId.NAMED_ENUM, TypeId.NAMED_EXT, TypeId.NAMED_STRUCT].includes(id);
+    return [
+      TypeId.NAMED_COMPATIBLE_STRUCT,
+      TypeId.NAMED_ENUM,
+      TypeId.NAMED_EXT,
+      TypeId.NAMED_STRUCT,
+      TypeId.NAMED_UNION,
+    ].includes((id & 0xff) as any);
   },
-
-};
-
-export enum InternalSerializerType {
-  // primitive type
-  BOOL,
-  INT8,
-  INT16,
-  INT32,
-  VARINT32,
-  INT64,
-  VARINT64,
-  TAGGED_INT64,
-  UINT8,
-  UINT16,
-  UINT32,
-  VAR_UINT32,
-  UINT64,
-  VAR_UINT64,
-  TAGGED_UINT64,
-  FLOAT16,
-  FLOAT32,
-  FLOAT64,
-  STRING,
-  ENUM,
-  LIST,
-  SET,
-  MAP,
-  DURATION,
-  TIMESTAMP,
-  DECIMAL,
-  BINARY,
-  ARRAY,
-  BOOL_ARRAY,
-  INT8_ARRAY,
-  INT16_ARRAY,
-  INT32_ARRAY,
-  INT64_ARRAY,
-  UINT8_ARRAY,
-  UINT16_ARRAY,
-  UINT32_ARRAY,
-  UINT64_ARRAY,
-  FLOAT16_ARRAY,
-  FLOAT32_ARRAY,
-  FLOAT64_ARRAY,
-  STRUCT,
-
-  // alias type, only use by javascript
-  ANY,
-  ONEOF,
-  TUPLE,
-}
+} as const;
 
 export enum ConfigFlags {
   isNullFlag = 1 << 0,
@@ -218,8 +177,8 @@ export const HalfMaxInt32 = MaxInt32 / 2;
 export const HalfMinInt32 = MinInt32 / 2;
 
 export const LATIN1 = 0;
-export const UTF8 = 1;
-export const UTF16 = 2;
+export const UTF8 = 2;
+export const UTF16 = 1;
 export interface Hps {
   serializeString: (str: string, dist: Uint8Array, offset: number) => number;
 }

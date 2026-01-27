@@ -198,7 +198,8 @@ WriteContext::write_any_typeinfo(uint32_t fory_type_id,
   }
   case static_cast<uint32_t>(TypeId::NAMED_ENUM):
   case static_cast<uint32_t>(TypeId::NAMED_EXT):
-  case static_cast<uint32_t>(TypeId::NAMED_STRUCT): {
+  case static_cast<uint32_t>(TypeId::NAMED_STRUCT):
+  case static_cast<uint32_t>(TypeId::NAMED_UNION): {
     if (config_->compatible) {
       // Write type meta inline using streaming protocol
       FORY_RETURN_NOT_OK(write_type_meta(concrete_type_id));
@@ -478,7 +479,8 @@ Result<const TypeInfo *, Error> ReadContext::read_any_typeinfo() {
   }
   case static_cast<uint32_t>(TypeId::NAMED_ENUM):
   case static_cast<uint32_t>(TypeId::NAMED_EXT):
-  case static_cast<uint32_t>(TypeId::NAMED_STRUCT): {
+  case static_cast<uint32_t>(TypeId::NAMED_STRUCT):
+  case static_cast<uint32_t>(TypeId::NAMED_UNION): {
     if (config_->compatible) {
       // Read type meta inline using streaming protocol
       return read_type_meta();

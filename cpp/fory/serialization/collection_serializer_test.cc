@@ -39,31 +39,31 @@ struct Animal {
   virtual ~Animal() = default;
   virtual std::string speak() const = 0;
   int32_t age = 0;
+  FORY_STRUCT(Animal, age);
 };
-FORY_STRUCT(Animal, age);
 
 struct Dog : Animal {
   std::string speak() const override { return "Woof"; }
   std::string name;
+  FORY_STRUCT(Dog, FORY_BASE(Animal), name);
 };
-FORY_STRUCT(Dog, age, name);
 
 struct Cat : Animal {
   std::string speak() const override { return "Meow"; }
   int32_t lives = 9;
+  FORY_STRUCT(Cat, FORY_BASE(Animal), lives);
 };
-FORY_STRUCT(Cat, age, lives);
 
 // Holder structs for testing collections as struct fields
 struct VectorPolymorphicHolder {
   std::vector<std::shared_ptr<Animal>> animals;
+  FORY_STRUCT(VectorPolymorphicHolder, animals);
 };
-FORY_STRUCT(VectorPolymorphicHolder, animals);
 
 struct VectorHomogeneousHolder {
   std::vector<std::shared_ptr<Dog>> dogs;
+  FORY_STRUCT(VectorHomogeneousHolder, dogs);
 };
-FORY_STRUCT(VectorHomogeneousHolder, dogs);
 
 namespace {
 
@@ -285,13 +285,13 @@ TEST(CollectionSerializerTest, VectorEmpty) {
 
 struct VectorStringHolder {
   std::vector<std::string> strings;
+  FORY_STRUCT(VectorStringHolder, strings);
 };
-FORY_STRUCT(VectorStringHolder, strings);
 
 struct VectorIntHolder {
   std::vector<int32_t> numbers;
+  FORY_STRUCT(VectorIntHolder, numbers);
 };
-FORY_STRUCT(VectorIntHolder, numbers);
 
 TEST(CollectionSerializerTest, VectorStringRoundTrip) {
   auto fory = Fory::builder().xlang(true).build();
@@ -342,8 +342,8 @@ TEST(CollectionSerializerTest, VectorIntRoundTrip) {
 
 struct VectorOptionalHolder {
   std::vector<std::optional<std::string>> values;
+  FORY_STRUCT(VectorOptionalHolder, values);
 };
-FORY_STRUCT(VectorOptionalHolder, values);
 
 TEST(CollectionSerializerTest, VectorOptionalWithNulls) {
   auto fory = Fory::builder().xlang(true).build();
@@ -377,13 +377,13 @@ TEST(CollectionSerializerTest, VectorOptionalWithNulls) {
 
 struct ListStringHolder {
   std::list<std::string> strings;
+  FORY_STRUCT(ListStringHolder, strings);
 };
-FORY_STRUCT(ListStringHolder, strings);
 
 struct ListIntHolder {
   std::list<int32_t> numbers;
+  FORY_STRUCT(ListIntHolder, numbers);
 };
-FORY_STRUCT(ListIntHolder, numbers);
 
 TEST(CollectionSerializerTest, ListStringRoundTrip) {
   auto fory = Fory::builder().xlang(true).build();
@@ -459,13 +459,13 @@ TEST(CollectionSerializerTest, ListEmptyRoundTrip) {
 
 struct DequeStringHolder {
   std::deque<std::string> strings;
+  FORY_STRUCT(DequeStringHolder, strings);
 };
-FORY_STRUCT(DequeStringHolder, strings);
 
 struct DequeIntHolder {
   std::deque<int32_t> numbers;
+  FORY_STRUCT(DequeIntHolder, numbers);
 };
-FORY_STRUCT(DequeIntHolder, numbers);
 
 TEST(CollectionSerializerTest, DequeStringRoundTrip) {
   auto fory = Fory::builder().xlang(true).build();
@@ -539,13 +539,13 @@ TEST(CollectionSerializerTest, DequeEmptyRoundTrip) {
 
 struct ForwardListStringHolder {
   std::forward_list<std::string> strings;
+  FORY_STRUCT(ForwardListStringHolder, strings);
 };
-FORY_STRUCT(ForwardListStringHolder, strings);
 
 struct ForwardListIntHolder {
   std::forward_list<int32_t> numbers;
+  FORY_STRUCT(ForwardListIntHolder, numbers);
 };
-FORY_STRUCT(ForwardListIntHolder, numbers);
 
 TEST(CollectionSerializerTest, ForwardListStringRoundTrip) {
   auto fory = Fory::builder().xlang(true).build();

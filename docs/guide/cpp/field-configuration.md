@@ -103,7 +103,7 @@ struct Node {
 FORY_STRUCT(Node, name, next);
 ```
 
-**Valid for:** `std::shared_ptr<T>`, `std::unique_ptr<T>`
+**Valid for:** `std::shared_ptr<T>`, `fory::serialization::SharedWeak<T>`, `std::unique_ptr<T>`
 
 **Note:** For nullable primitives or strings, use `std::optional<T>` instead:
 
@@ -123,7 +123,7 @@ Explicitly marks a pointer field as non-nullable. This is the default for smart 
 fory::field<std::shared_ptr<Data>, 0, fory::not_null> data;  // Must not be nullptr
 ```
 
-**Valid for:** `std::shared_ptr<T>`, `std::unique_ptr<T>`
+**Valid for:** `std::shared_ptr<T>`, `fory::serialization::SharedWeak<T>`, `std::unique_ptr<T>`
 
 ### fory::ref
 
@@ -138,7 +138,7 @@ struct Graph {
 FORY_STRUCT(Graph, name, left, right);
 ```
 
-**Valid for:** `std::shared_ptr<T>` only (requires shared ownership)
+**Valid for:** `std::shared_ptr<T>`, `fory::serialization::SharedWeak<T>` (requires shared ownership)
 
 ### fory::dynamic\<V\>
 
@@ -171,7 +171,7 @@ FORY_STRUCT(Zoo, animal, fixed_animal);
 
 ### Combining Tags
 
-Multiple tags can be combined for shared pointers:
+Multiple tags can be combined for shared pointers and SharedWeak:
 
 ```cpp
 // Nullable + ref tracking
@@ -180,12 +180,13 @@ fory::field<std::shared_ptr<Node>, 0, fory::nullable, fory::ref> link;
 
 ## Type Rules
 
-| Type                 | Allowed Options                 | Nullability                        |
-| -------------------- | ------------------------------- | ---------------------------------- |
-| Primitives, strings  | None                            | Use `std::optional<T>` if nullable |
-| `std::optional<T>`   | None                            | Inherently nullable                |
-| `std::shared_ptr<T>` | `nullable`, `ref`, `dynamic<V>` | Non-null by default                |
-| `std::unique_ptr<T>` | `nullable`, `dynamic<V>`        | Non-null by default                |
+| Type                                 | Allowed Options                 | Nullability                        |
+| ------------------------------------ | ------------------------------- | ---------------------------------- |
+| Primitives, strings                  | None                            | Use `std::optional<T>` if nullable |
+| `std::optional<T>`                   | None                            | Inherently nullable                |
+| `std::shared_ptr<T>`                 | `nullable`, `ref`, `dynamic<V>` | Non-null by default                |
+| `fory::serialization::SharedWeak<T>` | `nullable`, `ref`, `dynamic<V>` | Non-null by default                |
+| `std::unique_ptr<T>`                 | `nullable`, `dynamic<V>`        | Non-null by default                |
 
 ## Complete Example
 
@@ -510,21 +511,21 @@ FORY_FIELD_CONFIG(DataV2,
 
 ### FORY_FIELD_CONFIG Options Reference
 
-| Method            | Description                                      | Valid For                  |
-| ----------------- | ------------------------------------------------ | -------------------------- |
-| `.nullable()`     | Mark field as nullable                           | Smart pointers, primitives |
-| `.ref()`          | Enable reference tracking                        | `std::shared_ptr` only     |
-| `.dynamic(true)`  | Force type info to be written (dynamic dispatch) | Smart pointers             |
-| `.dynamic(false)` | Skip type info (use declared type directly)      | Smart pointers             |
-| `.varint()`       | Use variable-length encoding                     | `uint32_t`, `uint64_t`     |
-| `.fixed()`        | Use fixed-size encoding                          | `uint32_t`, `uint64_t`     |
-| `.tagged()`       | Use tagged hybrid encoding                       | `uint64_t` only            |
-| `.compress(v)`    | Enable/disable field compression                 | All types                  |
+| Method            | Description                                      | Valid For                                            |
+| ----------------- | ------------------------------------------------ | ---------------------------------------------------- |
+| `.nullable()`     | Mark field as nullable                           | Smart pointers, primitives                           |
+| `.ref()`          | Enable reference tracking                        | `std::shared_ptr`, `fory::serialization::SharedWeak` |
+| `.dynamic(true)`  | Force type info to be written (dynamic dispatch) | Smart pointers                                       |
+| `.dynamic(false)` | Skip type info (use declared type directly)      | Smart pointers                                       |
+| `.varint()`       | Use variable-length encoding                     | `uint32_t`, `uint64_t`                               |
+| `.fixed()`        | Use fixed-size encoding                          | `uint32_t`, `uint64_t`                               |
+| `.tagged()`       | Use tagged hybrid encoding                       | `uint64_t` only                                      |
+| `.compress(v)`    | Enable/disable field compression                 | All types                                            |
 
 ## Default Values
 
 - **Nullable**: Only `std::optional<T>` is nullable by default; all other types (including `std::shared_ptr`) are non-nullable
-- **Ref tracking**: Disabled by default for all types (including `std::shared_ptr`)
+- **Ref tracking**: Enabled by default for `std::shared_ptr<T>` and `fory::serialization::SharedWeak<T>`, disabled for other types unless configured
 
 You **need to configure fields** when:
 
@@ -552,12 +553,13 @@ FORY_FIELD_CONFIG(User,
 
 ### Default Values Summary
 
-| Type                 | Default Nullable | Default Ref Tracking |
-| -------------------- | ---------------- | -------------------- |
-| Primitives, `string` | `false`          | `false`              |
-| `std::optional<T>`   | `true`           | `false`              |
-| `std::shared_ptr<T>` | `false`          | `true`               |
-| `std::unique_ptr<T>` | `false`          | `false`              |
+| Type                                 | Default Nullable | Default Ref Tracking |
+| ------------------------------------ | ---------------- | -------------------- |
+| Primitives, `string`                 | `false`          | `false`              |
+| `std::optional<T>`                   | `true`           | `false`              |
+| `std::shared_ptr<T>`                 | `false`          | `true`               |
+| `fory::serialization::SharedWeak<T>` | `false`          | `true`               |
+| `std::unique_ptr<T>`                 | `false`          | `false`              |
 
 ## Related Topics
 

@@ -64,33 +64,33 @@ TEST(TupleSerializerTest, HomogeneityDetection) {
 // First test with vector to verify test setup
 struct VectorHolder {
   std::vector<int32_t> values;
+  FORY_STRUCT(VectorHolder, values);
 };
-FORY_STRUCT(VectorHolder, values);
 
 struct TupleHomogeneousHolder {
   std::tuple<int32_t, int32_t, int32_t> values;
+  FORY_STRUCT(TupleHomogeneousHolder, values);
 };
-FORY_STRUCT(TupleHomogeneousHolder, values);
 
 struct TupleHeterogeneousHolder {
   std::tuple<int32_t, std::string, double> values;
+  FORY_STRUCT(TupleHeterogeneousHolder, values);
 };
-FORY_STRUCT(TupleHeterogeneousHolder, values);
 
 struct TupleSingleHolder {
   std::tuple<std::string> value;
+  FORY_STRUCT(TupleSingleHolder, value);
 };
-FORY_STRUCT(TupleSingleHolder, value);
 
 struct TupleEmptyHolder {
   std::tuple<> value;
+  FORY_STRUCT(TupleEmptyHolder, value);
 };
-FORY_STRUCT(TupleEmptyHolder, value);
 
 struct TupleNestedHolder {
   std::tuple<std::tuple<int32_t, int32_t>, std::string> values;
+  FORY_STRUCT(TupleNestedHolder, values);
 };
-FORY_STRUCT(TupleNestedHolder, values);
 
 Fory create_fory() {
   return Fory::builder().xlang(true).track_ref(true).build();
@@ -232,8 +232,8 @@ struct TupleLargeHolder {
   std::tuple<int32_t, int32_t, int32_t, int32_t, int32_t, int32_t, int32_t,
              int32_t, int32_t, int32_t>
       values;
+  FORY_STRUCT(TupleLargeHolder, values);
 };
-FORY_STRUCT(TupleLargeHolder, values);
 
 TEST(TupleSerializerTest, LargeTupleRoundTrip) {
   auto fory = create_fory();

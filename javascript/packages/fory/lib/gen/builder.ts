@@ -91,8 +91,8 @@ export class BinaryReaderBuilder {
     return `${this.holder}.stringLatin1()`;
   }
 
-  stringOfVarUInt32() {
-    return `${this.holder}.stringOfVarUInt32()`;
+  stringWithHeader() {
+    return `${this.holder}.stringWithHeader()`;
   }
 
   float64() {
@@ -113,6 +113,10 @@ export class BinaryReaderBuilder {
 
   int16() {
     return `${this.holder}.int16()`;
+  }
+
+  readVarUint32Small7() {
+    return `${this.holder}.readVarUint32Small7()`;
   }
 
   uint64() {
@@ -189,6 +193,10 @@ class BinaryWriterBuilder {
     return `${this.holder}.varInt32(${v})`;
   }
 
+  writeVarUint32Small7(v: number | string) {
+    return `${this.holder}.writeVarUint32Small7(${v})`;
+  }
+
   varUInt32(v: number | string) {
     return `${this.holder}.varUInt32(${v})`;
   }
@@ -201,8 +209,8 @@ class BinaryWriterBuilder {
     return `${this.holder}.varInt64(${v})`;
   }
 
-  stringOfVarUInt32(str: string) {
-    return `${this.holder}.stringOfVarUInt32(${str})`;
+  stringWithHeader(str: string) {
+    return `${this.holder}.stringWithHeader(${str})`;
   }
 
   bufferWithoutMemCheck(v: string) {

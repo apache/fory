@@ -175,6 +175,34 @@ public class PrimitiveSerializers {
     }
   }
 
+  public static final class VarUint32Serializer extends Serializer<Integer> {
+    public VarUint32Serializer(Fory fory) {
+      super(fory, Integer.class);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, Integer value) {
+      Preconditions.checkArgument(value >= 0);
+      buffer.writeVarUint32(value);
+    }
+
+    @Override
+    public Integer read(MemoryBuffer buffer) {
+      return buffer.readVarUint32();
+    }
+
+    @Override
+    public void xwrite(MemoryBuffer buffer, Integer value) {
+      Preconditions.checkArgument(value >= 0);
+      buffer.writeVarUint32(value);
+    }
+
+    @Override
+    public Integer xread(MemoryBuffer buffer) {
+      return buffer.readVarUint32();
+    }
+  }
+
   public static final class LongSerializer
       extends Serializers.CrossLanguageCompatibleSerializer<Long> {
     private final LongEncoding longEncoding;
@@ -255,6 +283,34 @@ public class PrimitiveSerializers {
     @Override
     public Long xread(MemoryBuffer buffer) {
       return buffer.readVarInt64();
+    }
+  }
+
+  public static final class VarUint64Serializer extends Serializer<Long> {
+    public VarUint64Serializer(Fory fory) {
+      super(fory, Long.class);
+    }
+
+    @Override
+    public void write(MemoryBuffer buffer, Long value) {
+      Preconditions.checkArgument(value >= 0);
+      buffer.writeVarUint64(value);
+    }
+
+    @Override
+    public Long read(MemoryBuffer buffer) {
+      return buffer.readVarUint64();
+    }
+
+    @Override
+    public void xwrite(MemoryBuffer buffer, Long value) {
+      Preconditions.checkArgument(value >= 0);
+      buffer.writeVarUint64(value);
+    }
+
+    @Override
+    public Long xread(MemoryBuffer buffer) {
+      return buffer.readVarUint64();
     }
   }
 

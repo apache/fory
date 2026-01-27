@@ -25,11 +25,13 @@ from fory_compiler.frontend.proto.ast import (
     ProtoEnum,
     ProtoField,
     ProtoType,
+    ProtoOneof,
 )
 from fory_compiler.ir.ast import (
     Schema,
     Message,
     Enum,
+    Union,
     EnumValue,
     Field,
     FieldType,
@@ -137,11 +139,14 @@ class ProtoTranslator:
         )
 
     def _translate_message(self, proto_msg: ProtoMessage) -> Message:
-        if proto_msg.oneofs:
-            raise ValueError(f"oneof is not supported yet in '{proto_msg.name}'")
-
         type_id, options = self._translate_type_options(proto_msg.options)
         fields = [self._translate_field(f) for f in proto_msg.fields]
+        nested_unions = [self._translate_oneof(o, proto_msg) for o in proto_msg.oneofs]
+        for oneof in proto_msg.oneofs:
+            if not oneof.fields:
+                continue
+            union_field = self._translate_oneof_field_reference(oneof)
+            fields.append(union_field)
         nested_messages = [
             self._translate_message(m) for m in proto_msg.nested_messages
         ]
@@ -152,6 +157,7 @@ class ProtoTranslator:
             fields=fields,
             nested_messages=nested_messages,
             nested_enums=nested_enums,
+            nested_unions=nested_unions,
             options=options,
             line=proto_msg.line,
             column=proto_msg.column,
@@ -185,6 +191,56 @@ class ProtoTranslator:
             line=proto_field.line,
             column=proto_field.column,
             location=self._location(proto_field.line, proto_field.column),
+        )
+
+    def _translate_oneof(self, oneof: ProtoOneof, parent: ProtoMessage) -> Union:
+        fields = [self._translate_oneof_case(f) for f in oneof.fields]
+        return Union(
+            name=oneof.name,
+            type_id=None,
+            fields=fields,
+            options={},
+            line=oneof.line,
+            column=oneof.column,
+            location=self._location(oneof.line, oneof.column),
+        )
+
+    def _translate_oneof_case(self, proto_field: ProtoField) -> Field:
+        field_type = self._translate_field_type(proto_field.field_type)
+        ref, _nullable, options, type_override = self._translate_field_options(
+            proto_field.options
+        )
+        if type_override is not None:
+            field_type = self._apply_type_override(
+                field_type, type_override, proto_field.line, proto_field.column
+            )
+
+        return Field(
+            name=proto_field.name,
+            field_type=field_type,
+            number=proto_field.number,
+            optional=False,
+            ref=ref,
+            options=options,
+            line=proto_field.line,
+            column=proto_field.column,
+            location=self._location(proto_field.line, proto_field.column),
+        )
+
+    def _translate_oneof_field_reference(self, oneof: ProtoOneof) -> Field:
+        first_case = min(oneof.fields, key=lambda f: f.number)
+        return Field(
+            name=oneof.name,
+            field_type=NamedType(
+                oneof.name, location=self._location(oneof.line, oneof.column)
+            ),
+            number=first_case.number,
+            optional=True,
+            ref=False,
+            options={},
+            line=oneof.line,
+            column=oneof.column,
+            location=self._location(oneof.line, oneof.column),
         )
 
     def _translate_field_type(self, proto_type: ProtoType):

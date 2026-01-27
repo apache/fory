@@ -49,7 +49,7 @@ final $Person = ClassSpec(
       'dateOfBirth',
       TypeSpec(
         LocalDate,
-        ObjType.LOCAL_DATE,
+        ObjType.DATE,
         false,
         true,
         null,

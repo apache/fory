@@ -180,6 +180,16 @@ public:
     buffer().WriteUint16(value);
   }
 
+  /// Write uint32_t value to buffer.
+  FORY_ALWAYS_INLINE void write_uint32(uint32_t value) {
+    buffer().WriteUint32(value);
+  }
+
+  /// Write int64_t value to buffer.
+  FORY_ALWAYS_INLINE void write_int64(int64_t value) {
+    buffer().WriteInt64(value);
+  }
+
   /// Write uint32_t value as varint to buffer.
   FORY_ALWAYS_INLINE void write_varuint32(uint32_t value) {
     buffer().WriteVarUint32(value);

@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "fory/meta/field_info.h"
 #include "fory/meta/preprocessor.h"
 #include <array>
 #include <cstddef>
@@ -30,15 +31,30 @@
 namespace fory {
 namespace meta {
 
+namespace detail {
+
+template <typename Enum>
+using AdlEnumInfoDescriptor =
+    decltype(ForyEnumInfo(std::declval<Identity<Enum>>()));
+
+template <typename Enum, typename = void>
+struct HasAdlEnumInfo : std::false_type {};
+
+template <typename Enum>
+struct HasAdlEnumInfo<Enum, std::void_t<AdlEnumInfoDescriptor<Enum>>>
+    : std::true_type {};
+
+} // namespace detail
+
 /// Compile-time metadata for enums registered with FORY_ENUM.
 /// Default implementation assumes no metadata is available.
-template <typename Enum> struct EnumInfo {
+template <typename Enum, typename Enable = void> struct EnumInfo {
   using EnumType = Enum;
   static constexpr bool defined = false;
   static constexpr std::size_t size = 0;
 
-  static constexpr std::array<EnumType, 0> values = {};
-  static constexpr std::array<std::string_view, 0> names = {};
+  static inline constexpr std::array<EnumType, 0> values = {};
+  static inline constexpr std::array<std::string_view, 0> names = {};
 
   static constexpr bool contains(EnumType) { return false; }
 
@@ -52,11 +68,33 @@ template <typename Enum> struct EnumInfo {
 };
 
 template <typename Enum>
-constexpr std::array<typename EnumInfo<Enum>::EnumType, 0>
-    EnumInfo<Enum>::values;
+struct EnumInfo<Enum, std::enable_if_t<detail::HasAdlEnumInfo<Enum>::value>> {
+  using Descriptor = detail::AdlEnumInfoDescriptor<Enum>;
+  using EnumType = Enum;
+  static constexpr bool defined = Descriptor::defined;
+  static constexpr std::size_t size = Descriptor::size;
 
-template <typename Enum>
-constexpr std::array<std::string_view, 0> EnumInfo<Enum>::names;
+  static inline constexpr std::array<EnumType, size> values =
+      Descriptor::values;
+  static inline constexpr std::array<std::string_view, size> names =
+      Descriptor::names;
+
+  static constexpr bool contains(EnumType value) {
+    return Descriptor::contains(value);
+  }
+
+  static constexpr std::size_t ordinal(EnumType value) {
+    return Descriptor::ordinal(value);
+  }
+
+  static constexpr EnumType value_at(std::size_t index) {
+    return Descriptor::value_at(index);
+  }
+
+  static constexpr std::string_view name(EnumType value) {
+    return Descriptor::name(value);
+  }
+};
 
 /// Metadata helpers that map enums to contiguous ordinals when metadata is
 /// available, falling back to naive casts otherwise. All functions return
@@ -121,10 +159,14 @@ struct EnumMetadata<Enum, std::enable_if_t<EnumInfo<Enum>::defined>> {
 #define FORY_INTERNAL_ENUM_NAME_ENTRY(EnumType, value)                         \
   std::string_view(FORY_PP_STRINGIFY(EnumType::value)),
 
+#define FORY_ENUM_DESCRIPTOR_NAME(line)                                        \
+  FORY_PP_CONCAT(ForyEnumInfoDescriptor_, line)
+
 #define FORY_INTERNAL_ENUM_DEFINE(EnumType, ...)                               \
-  namespace fory {                                                             \
-  namespace meta {                                                             \
-  template <> struct EnumInfo<EnumType> {                                      \
+  FORY_INTERNAL_ENUM_DEFINE_IMPL(__LINE__, EnumType, __VA_ARGS__)
+
+#define FORY_INTERNAL_ENUM_DEFINE_IMPL(line, EnumType, ...)                    \
+  struct FORY_ENUM_DESCRIPTOR_NAME(line) {                                     \
     using Enum = EnumType;                                                     \
     static constexpr bool defined = true;                                      \
     static constexpr std::size_t size = FORY_PP_NARG(__VA_ARGS__);             \
@@ -166,7 +208,8 @@ struct EnumMetadata<Enum, std::enable_if_t<EnumInfo<Enum>::defined>> {
       return std::string_view();                                               \
     }                                                                          \
   };                                                                           \
-  }                                                                            \
+  constexpr auto ForyEnumInfo(::fory::meta::Identity<EnumType>) {              \
+    return FORY_ENUM_DESCRIPTOR_NAME(line){};                                  \
   }                                                                            \
   static_assert(true)
 

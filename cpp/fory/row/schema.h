@@ -89,7 +89,7 @@ public:
 
   virtual int num_fields() const { return 0; }
 
-  virtual FieldPtr field(int i) const { return nullptr; }
+  virtual FieldPtr field(int /*i*/) const { return nullptr; }
 
   virtual std::vector<FieldPtr> fields() const { return {}; }
 
@@ -200,7 +200,7 @@ public:
 /// Date stored as 32-bit integer (days since epoch).
 class LocalDateType : public FixedWidthType {
 public:
-  LocalDateType() : FixedWidthType(TypeId::LOCAL_DATE, 32) {}
+  LocalDateType() : FixedWidthType(TypeId::DATE, 32) {}
   std::string name() const override { return "date32"; }
 };
 

@@ -96,12 +96,6 @@ describe('fory', () => {
             testTypeInfo(typeinfo, [])
         })
 
-        test('can serialize and deserialize tuple', () => {
-            const typeinfo = Type.tuple([Type.int8(), Type.int16(), Type.timestamp()] as const)
-            testTypeInfo(typeinfo, [1, 2, new Date()])
-        })
-
-
         function testTypeInfo(typeinfo: TypeInfo, input: any, expected?: any) {
             const fory = new Fory();
             const serialize = fory.registerSerializer(typeinfo);

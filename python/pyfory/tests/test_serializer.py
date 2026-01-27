@@ -136,7 +136,7 @@ def test_basic_serializer(language):
     typeinfo = fory.type_resolver.get_typeinfo(datetime.date)
     assert isinstance(typeinfo.serializer, (DateSerializer, serialization.DateSerializer))
     if language == Language.XLANG:
-        assert typeinfo.type_id == TypeId.LOCAL_DATE
+        assert typeinfo.type_id == TypeId.DATE
     assert ser_de(fory, True) is True
     assert ser_de(fory, False) is False
     assert ser_de(fory, -1) == -1

@@ -32,6 +32,7 @@ class TokenType(Enum):
     WEAK = auto()
     MESSAGE = auto()
     ENUM = auto()
+    UNION = auto()
     OPTIONAL = auto()
     REF = auto()
     REPEATED = auto()
@@ -98,6 +99,7 @@ class Lexer:
         "weak": TokenType.WEAK,
         "message": TokenType.MESSAGE,
         "enum": TokenType.ENUM,
+        "union": TokenType.UNION,
         "optional": TokenType.OPTIONAL,
         "ref": TokenType.REF,
         "repeated": TokenType.REPEATED,

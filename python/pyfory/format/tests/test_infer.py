@@ -85,7 +85,7 @@ def test_infer_class_schema():
 
 def test_type_id():
     assert pyfory.format.infer.get_type_id(str) == TypeId.STRING
-    assert pyfory.format.infer.get_type_id(datetime.date) == TypeId.LOCAL_DATE
+    assert pyfory.format.infer.get_type_id(datetime.date) == TypeId.DATE
     assert pyfory.format.infer.get_type_id(datetime.datetime) == TypeId.TIMESTAMP
 
 

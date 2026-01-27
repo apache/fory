@@ -63,7 +63,7 @@ Note:
 | none                    | 32           | null            | None                     | null                | `std::monostate`               | nil              | `()`              |
 | duration                | 33           | Duration        | timedelta                | Number              | duration                       | Duration         | Duration          |
 | timestamp               | 34           | Instant         | datetime                 | Number              | std::chrono::nanoseconds       | Time             | DateTime          |
-| local_date              | 35           | Date            | datetime                 | Number              | std::chrono::nanoseconds       | Time             | DateTime          |
+| date                    | 35           | Date            | datetime                 | Number              | fory::serialization::Date      | Time             | DateTime          |
 | decimal                 | 36           | BigDecimal      | Decimal                  | bigint              | /                              | /                | /                 |
 | binary                  | 37           | byte[]          | bytes                    | /                   | `uint8_t[n]/vector<T>`         | `[n]uint8/[]T`   | `Vec<uint8_t>`    |
 | array                   | 38           | array           | np.ndarray               | /                   | /                              | array/slice      | Vec               |

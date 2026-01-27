@@ -152,6 +152,11 @@ public class FieldTypes {
       }
     }
 
+    boolean isUnionType = Types.isUnionType(typeId & 0xff);
+    if (isUnionType) {
+      typeId = Types.UNION;
+    }
+
     if (COLLECTION_TYPE.isSupertypeOf(genericType.getTypeRef())) {
       return new CollectionFieldType(
           typeId,
@@ -180,7 +185,7 @@ public class FieldTypes {
               genericType.getTypeParameter1() == null
                   ? GenericType.build(Object.class)
                   : genericType.getTypeParameter1()));
-    } else if (Union.class.isAssignableFrom(rawType)) {
+    } else if (isUnionType || Union.class.isAssignableFrom(rawType)) {
       return new UnionFieldType(nullable, trackingRef);
     } else if (TypeUtils.unwrap(rawType).isPrimitive()) {
       // unified basic types for xlang and native mode

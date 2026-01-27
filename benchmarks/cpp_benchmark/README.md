@@ -29,14 +29,14 @@ Note: Protobuf is fetched automatically via CMake FetchContent, so no manual ins
 <img src="../../docs/benchmarks/cpp/throughput.png" width="90%">
 </p>
 
-| Datatype     | Operation   | Fory TPS   | Protobuf TPS | Faster      |
-| ------------ | ----------- | ---------- | ------------ | ----------- |
-| Mediacontent | Serialize   | 11,319,876 | 1,181,595    | Fory (9.6x) |
-| Mediacontent | Deserialize | 2,729,388  | 835,956      | Fory (3.3x) |
-| Sample       | Serialize   | 16,899,403 | 10,575,760   | Fory (1.6x) |
-| Sample       | Deserialize | 3,079,241  | 1,450,789    | Fory (2.1x) |
-| Struct       | Serialize   | 43,184,198 | 29,359,454   | Fory (1.5x) |
-| Struct       | Deserialize | 54,599,691 | 38,796,674   | Fory (1.4x) |
+| Datatype     | Operation   | Fory TPS  | Protobuf TPS | Faster      |
+| ------------ | ----------- | --------- | ------------ | ----------- |
+| Mediacontent | Serialize   | 2,254,915 | 504,410      | Fory (4.5x) |
+| Mediacontent | Deserialize | 741,303   | 396,013      | Fory (1.9x) |
+| Sample       | Serialize   | 4,248,973 | 3,229,102    | Fory (1.3x) |
+| Sample       | Deserialize | 935,709   | 715,837      | Fory (1.3x) |
+| Struct       | Serialize   | 9,143,618 | 5,881,005    | Fory (1.6x) |
+| Struct       | Deserialize | 7,746,787 | 6,202,164    | Fory (1.2x) |
 
 ## Quick Start
 

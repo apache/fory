@@ -116,6 +116,4 @@ message Struct {
   int32 f8 = 8;
 }
 
-message StructList {
-  repeated Struct struct_list = 1;
-}
+message StructList { repeated Struct struct_list = 1; }

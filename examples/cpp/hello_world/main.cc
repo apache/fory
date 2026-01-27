@@ -40,10 +40,9 @@ struct Point {
   bool operator==(const Point &other) const {
     return x == other.x && y == other.y;
   }
-};
 
-// Register struct fields with Fory using FORY_STRUCT macro
-FORY_STRUCT(Point, x, y);
+  FORY_STRUCT(Point, x, y);
+};
 
 // Define a more complex struct with various field types
 struct Person {
@@ -54,9 +53,9 @@ struct Person {
   bool operator==(const Person &other) const {
     return name == other.name && age == other.age && hobbies == other.hobbies;
   }
-};
 
-FORY_STRUCT(Person, name, age, hobbies);
+  FORY_STRUCT(Person, name, age, hobbies);
+};
 
 // Define a nested struct
 struct Team {
@@ -68,9 +67,9 @@ struct Team {
     return team_name == other.team_name && members == other.members &&
            headquarters == other.headquarters;
   }
-};
 
-FORY_STRUCT(Team, team_name, members, headquarters);
+  FORY_STRUCT(Team, team_name, members, headquarters);
+};
 
 // Define an enum
 enum class Status { PENDING, ACTIVE, COMPLETED };

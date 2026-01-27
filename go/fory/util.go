@@ -118,17 +118,15 @@ const (
 	MaxUint64 = 1<<64 - 1
 )
 
-// GetUnixMicro returns t as a Unix time, the number of microseconds elapsed since
-// January 1, 1970 UTC. The result is undefined if the Unix time in
-// microseconds cannot be represented by an int64 (a date before year -290307 or
-// after year 294246). The result does not depend on the location associated
+// GetUnixSecondsAndNanos returns t as Unix seconds and nanoseconds since
+// January 1, 1970 UTC. The result does not depend on the location associated
 // with t.
-func GetUnixMicro(t time.Time) int64 {
-	return int64(t.Unix())*1e6 + int64(t.Nanosecond())/1e3
+func GetUnixSecondsAndNanos(t time.Time) (int64, uint32) {
+	return t.Unix(), uint32(t.Nanosecond())
 }
 
-// CreateTimeFromUnixMicro returns the local Time corresponding to the given Unix time,
-// usec microseconds since January 1, 1970 UTC.
-func CreateTimeFromUnixMicro(usec int64) time.Time {
-	return time.Unix(usec/1e6, (usec%1e6)*1e3)
+// CreateTimeFromUnixSecondsAndNanos returns the local Time corresponding to
+// the given Unix seconds and nanoseconds since January 1, 1970 UTC.
+func CreateTimeFromUnixSecondsAndNanos(seconds int64, nanos uint32) time.Time {
+	return time.Unix(seconds, int64(nanos))
 }

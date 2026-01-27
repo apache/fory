@@ -32,25 +32,25 @@ impl Serializer for NaiveDateTime {
     #[inline(always)]
     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
         let dt = self.and_utc();
-        let micros = dt.timestamp() * 1_000_000 + dt.timestamp_subsec_micros() as i64;
-        context.writer.write_i64(micros);
+        let seconds = dt.timestamp();
+        let nanos = dt.timestamp_subsec_nanos();
+        context.writer.write_i64(seconds);
+        context.writer.write_u32(nanos);
         Ok(())
     }
 
     #[inline(always)]
     fn fory_read_data(context: &mut ReadContext) -> Result<Self, Error> {
-        let micros = context.reader.read_i64()?;
-        use chrono::TimeDelta;
-        let duration = TimeDelta::microseconds(micros);
+        let seconds = context.reader.read_i64()?;
+        let nanos = context.reader.read_u32()?;
         #[allow(deprecated)]
-        let epoch_datetime = NaiveDateTime::from_timestamp(0, 0);
-        let result = epoch_datetime + duration;
+        let result = NaiveDateTime::from_timestamp(seconds, nanos);
         Ok(result)
     }
 
     #[inline(always)]
     fn fory_reserved_space() -> usize {
-        mem::size_of::<u64>()
+        mem::size_of::<i64>() + mem::size_of::<u32>()
     }
 
     #[inline(always)]
@@ -109,17 +109,17 @@ impl Serializer for NaiveDate {
 
     #[inline(always)]
     fn fory_get_type_id(_: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LOCAL_DATE as u32)
+        Ok(TypeId::DATE as u32)
     }
 
     #[inline(always)]
     fn fory_type_id_dyn(&self, _: &TypeResolver) -> Result<u32, Error> {
-        Ok(TypeId::LOCAL_DATE as u32)
+        Ok(TypeId::DATE as u32)
     }
 
     #[inline(always)]
     fn fory_static_type_id() -> TypeId {
-        TypeId::LOCAL_DATE
+        TypeId::DATE
     }
 
     #[inline(always)]
@@ -129,7 +129,7 @@ impl Serializer for NaiveDate {
 
     #[inline(always)]
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_varuint32(TypeId::LOCAL_DATE as u32);
+        context.writer.write_varuint32(TypeId::DATE as u32);
         Ok(())
     }
 

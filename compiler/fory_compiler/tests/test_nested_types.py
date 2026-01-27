@@ -125,6 +125,29 @@ class TestNestedMessageParsing:
         assert container.nested_enums[0].name == "Type"
         assert container.nested_messages[0].name == "Item"
 
+    def test_nested_union(self):
+        """Test parsing a nested union."""
+        source = """
+        message Container {
+            message Dog { string name = 1; }
+            message Cat { string name = 1; }
+            union Animal {
+                Dog dog = 1;
+                Cat cat = 2;
+            }
+            Animal pet = 1;
+        }
+        """
+        lexer = Lexer(source)
+        parser = Parser(lexer.tokenize())
+        schema = parser.parse()
+
+        container = schema.messages[0]
+        assert len(container.nested_unions) == 1
+        union = container.nested_unions[0]
+        assert union.name == "Animal"
+        assert container.fields[0].field_type.name == "Animal"
+
 
 class TestQualifiedTypeNames:
     """Tests for qualified type names (Parent.Child)."""

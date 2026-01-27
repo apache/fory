@@ -25,6 +25,7 @@ from fory_compiler.frontend.proto.ast import (
     ProtoEnum,
     ProtoEnumValue,
     ProtoField,
+    ProtoOneof,
     ProtoType,
 )
 from fory_compiler.frontend.proto.lexer import Token, TokenType
@@ -228,12 +229,7 @@ class Parser:
             elif self.check(TokenType.EXTENSIONS):
                 self.parse_extensions()
             elif self.check(TokenType.ONEOF):
-                token = self.current()
-                raise ParseError(
-                    "oneof is not supported yet",
-                    token.line,
-                    token.column,
-                )
+                oneofs.append(self.parse_oneof())
             elif self.check(TokenType.SEMI):
                 self.advance()
             else:
@@ -246,6 +242,66 @@ class Parser:
             nested_messages=nested_messages,
             nested_enums=nested_enums,
             oneofs=oneofs,
+            options=options,
+            line=start.line,
+            column=start.column,
+        )
+
+    def parse_oneof(self) -> ProtoOneof:
+        start = self.current()
+        self.consume(TokenType.ONEOF, "Expected 'oneof'")
+        name = self.consume(TokenType.IDENT, "Expected oneof name").value
+        self.consume(TokenType.LBRACE, "Expected '{' after oneof name")
+
+        fields: List[ProtoField] = []
+        while not self.check(TokenType.RBRACE):
+            if self.check(TokenType.SEMI):
+                self.advance()
+                continue
+            fields.append(self.parse_oneof_field())
+
+        self.consume(TokenType.RBRACE, "Expected '}' after oneof")
+        return ProtoOneof(
+            name=name,
+            fields=fields,
+            line=start.line,
+            column=start.column,
+        )
+
+    def parse_oneof_field(self) -> ProtoField:
+        start = self.current()
+        if self.check(TokenType.OPTIONAL) or self.check(TokenType.REPEATED):
+            token = self.current()
+            raise ParseError(
+                "oneof fields must not be labeled optional or repeated",
+                token.line,
+                token.column,
+            )
+        if self.check(TokenType.REQUIRED):
+            token = self.current()
+            raise ParseError(
+                "proto2 required fields are not supported", token.line, token.column
+            )
+
+        if self.check(TokenType.MAP):
+            field_type = self.parse_map_type()
+        else:
+            type_name = self.parse_type_name()
+            field_type = ProtoType(name=type_name, line=start.line, column=start.column)
+
+        name = self.consume(TokenType.IDENT, "Expected field name").value
+        self.consume(TokenType.EQUALS, "Expected '=' after field name")
+        number = int(self.consume(TokenType.INT, "Expected field number").value)
+        options = {}
+        if self.check(TokenType.LBRACKET):
+            options = self.parse_field_options()
+        self.consume(TokenType.SEMI, "Expected ';' after oneof field")
+
+        return ProtoField(
+            name=name,
+            field_type=field_type,
+            number=number,
+            label=None,
             options=options,
             line=start.line,
             column=start.column,

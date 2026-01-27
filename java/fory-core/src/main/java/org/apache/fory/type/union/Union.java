@@ -20,6 +20,7 @@
 package org.apache.fory.type.union;
 
 import java.util.Objects;
+import org.apache.fory.type.Types;
 
 /**
  * A general union that holds a value and an index. This is the base class for all typed unions
@@ -51,10 +52,13 @@ import java.util.Objects;
  */
 public class Union {
   /** The index indicating which alternative is active. */
-  protected final int index;
+  protected int index;
 
   /** The current value. */
-  protected final Object value;
+  protected Object value;
+
+  /** The type id of the current value (xlang type id). */
+  protected int typeId;
 
   /**
    * Creates a new Union with the specified index and value.
@@ -63,8 +67,20 @@ public class Union {
    * @param value the value
    */
   public Union(int index, Object value) {
+    this(index, value, Types.UNKNOWN);
+  }
+
+  /**
+   * Creates a new Union with the specified index, value and value type id.
+   *
+   * @param index the index of the active alternative
+   * @param value the value
+   * @param typeId the xlang type id of the value
+   */
+  public Union(int index, Object value, int typeId) {
     this.index = index;
     this.value = value;
+    this.typeId = typeId;
   }
 
   /**
@@ -96,6 +112,15 @@ public class Union {
   @SuppressWarnings("unchecked")
   public <T> T getValue(Class<T> type) {
     return (T) value;
+  }
+
+  /**
+   * Gets the xlang type id of the current value.
+   *
+   * @return the value type id
+   */
+  public int getValueTypeId() {
+    return typeId;
   }
 
   /**

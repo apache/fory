@@ -62,6 +62,8 @@
 namespace fory {
 namespace serialization {
 
+using meta::ForyFieldInfo;
+
 // Forward declarations
 class Fory;
 class TypeResolver;
@@ -495,9 +497,10 @@ constexpr bool compute_is_nullable() {
   } else if constexpr (::fory::detail::has_field_tags_v<T>) {
     return ::fory::detail::GetFieldTagEntry<T, Index>::is_nullable;
   } else {
-    // Default: nullable if std::optional or std::shared_ptr
+    // Default: nullable if std::optional or smart pointers.
     return is_optional_v<UnwrappedFieldType> ||
-           is_shared_ptr_v<UnwrappedFieldType>;
+           is_shared_ptr_v<UnwrappedFieldType> ||
+           is_unique_ptr_v<UnwrappedFieldType>;
   }
 }
 
@@ -508,7 +511,9 @@ constexpr bool compute_track_ref() {
   } else if constexpr (::fory::detail::has_field_tags_v<T>) {
     return ::fory::detail::GetFieldTagEntry<T, Index>::track_ref;
   } else {
-    return false;
+    using UnwrappedFieldType = fory::unwrap_field_t<ActualFieldType>;
+    return ::fory::detail::is_shared_ptr_v<UnwrappedFieldType> ||
+           ::fory::detail::is_shared_weak_v<UnwrappedFieldType>;
   }
 }
 
@@ -608,7 +613,7 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
   static FieldInfo build() {
     const auto meta = ForyFieldInfo(T{});
     const auto field_names = decltype(meta)::Names;
-    const auto field_ptrs = decltype(meta)::Ptrs;
+    const auto &field_ptrs = decltype(meta)::PtrsRef();
 
     // Convert camelCase field name to snake_case for cross-language
     // compatibility
@@ -781,6 +786,13 @@ private:
                                                 const std::string &type_name);
 
   template <typename T>
+  Result<void, Error> register_union_by_id(uint32_t type_id);
+
+  template <typename T>
+  Result<void, Error> register_union_by_name(const std::string &ns,
+                                             const std::string &type_name);
+
+  template <typename T>
   static Result<std::unique_ptr<TypeInfo>, Error>
   build_struct_type_info(uint32_t type_id, std::string ns,
                          std::string type_name, bool register_by_name);
@@ -794,6 +806,11 @@ private:
   static Result<std::unique_ptr<TypeInfo>, Error>
   build_ext_type_info(uint32_t type_id, std::string ns, std::string type_name,
                       bool register_by_name);
+
+  template <typename T>
+  static Result<std::unique_ptr<TypeInfo>, Error>
+  build_union_type_info(uint32_t type_id, std::string ns, std::string type_name,
+                        bool register_by_name);
 
   template <typename T> static Harness make_struct_harness();
 
@@ -1075,6 +1092,47 @@ TypeResolver::register_ext_type_by_name(const std::string &ns,
 }
 
 template <typename T>
+Result<void, Error> TypeResolver::register_union_by_id(uint32_t type_id) {
+  check_registration_thread();
+  if (type_id == 0) {
+    return Unexpected(
+        Error::invalid("type_id must be non-zero for register_union_by_id"));
+  }
+
+  constexpr uint64_t ctid = type_index<T>();
+  uint32_t actual_type_id =
+      (type_id << 8) + static_cast<uint32_t>(TypeId::TYPED_UNION);
+
+  FORY_TRY(info, build_union_type_info<T>(actual_type_id, "", "", false));
+
+  FORY_TRY(stored_ptr, register_type_internal(ctid, std::move(info)));
+  partial_type_infos_.put(ctid, stored_ptr);
+  register_type_internal_runtime(std::type_index(typeid(T)), stored_ptr);
+  return Result<void, Error>();
+}
+
+template <typename T>
+Result<void, Error>
+TypeResolver::register_union_by_name(const std::string &ns,
+                                     const std::string &type_name) {
+  check_registration_thread();
+  if (type_name.empty()) {
+    return Unexpected(Error::invalid(
+        "type_name must be non-empty for register_union_by_name"));
+  }
+
+  constexpr uint64_t ctid = type_index<T>();
+
+  uint32_t actual_type_id = static_cast<uint32_t>(TypeId::NAMED_UNION);
+  FORY_TRY(info, build_union_type_info<T>(actual_type_id, ns, type_name, true));
+
+  FORY_TRY(stored_ptr, register_type_internal(ctid, std::move(info)));
+  partial_type_infos_.put(ctid, stored_ptr);
+  register_type_internal_runtime(std::type_index(typeid(T)), stored_ptr);
+  return Result<void, Error>();
+}
+
+template <typename T>
 Result<std::unique_ptr<TypeInfo>, Error>
 TypeResolver::build_struct_type_info(uint32_t type_id, std::string ns,
                                      std::string type_name,
@@ -1229,6 +1287,34 @@ TypeResolver::build_ext_type_info(uint32_t type_id, std::string ns,
                             register_by_name, std::vector<FieldInfo>{});
   FORY_TRY(type_def, meta.to_bytes());
   entry->type_def = std::move(type_def);
+
+  return entry;
+}
+
+template <typename T>
+Result<std::unique_ptr<TypeInfo>, Error>
+TypeResolver::build_union_type_info(uint32_t type_id, std::string ns,
+                                    std::string type_name,
+                                    bool register_by_name) {
+  auto entry = std::make_unique<TypeInfo>();
+  entry->type_id = type_id;
+  entry->namespace_name = std::move(ns);
+  if (!type_name.empty()) {
+    entry->type_name = std::move(type_name);
+  } else {
+    entry->type_name = std::string(typeid(T).name());
+  }
+  entry->register_by_name = register_by_name;
+  entry->harness = make_serializer_harness<T>();
+
+  if (!entry->harness.valid()) {
+    return Unexpected(Error::invalid("Harness for union type is incomplete"));
+  }
+
+  FORY_TRY(enc_ns, encode_meta_string(entry->namespace_name, true));
+  entry->encoded_namespace = std::move(enc_ns);
+  FORY_TRY(enc_tn, encode_meta_string(entry->type_name, false));
+  entry->encoded_type_name = std::move(enc_tn);
 
   return entry;
 }

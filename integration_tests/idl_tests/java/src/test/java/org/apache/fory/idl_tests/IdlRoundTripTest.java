@@ -21,14 +21,24 @@ package org.apache.fory.idl_tests;
 
 import addressbook.AddressBook;
 import addressbook.AddressbookForyRegistration;
+import addressbook.Animal;
+import addressbook.Cat;
+import addressbook.Dog;
 import addressbook.Person;
 import addressbook.Person.PhoneNumber;
 import addressbook.Person.PhoneType;
 import addressbook.PrimitiveTypes;
 import complex_fbs.ComplexFbsForyRegistration;
 import complex_fbs.Container;
+import complex_fbs.Metric;
+import complex_fbs.Note;
+import complex_fbs.Payload;
 import complex_fbs.ScalarPack;
 import complex_fbs.Status;
+import optional_types.AllOptionalTypes;
+import optional_types.OptionalHolder;
+import optional_types.OptionalTypesForyRegistration;
+import optional_types.OptionalUnion;
 import monster.Color;
 import monster.Monster;
 import monster.MonsterForyRegistration;
@@ -38,6 +48,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -108,6 +120,35 @@ public class IdlRoundTripTest {
       Object roundTrip = fory.deserialize(peerBytes);
       Assert.assertTrue(roundTrip instanceof PrimitiveTypes);
       Assert.assertEquals(roundTrip, types);
+    }
+  }
+
+  @Test
+  public void testOptionalTypesRoundTrip() throws Exception {
+    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+    OptionalTypesForyRegistration.register(fory);
+
+    OptionalHolder holder = buildOptionalHolder();
+    byte[] bytes = fory.serialize(holder);
+    Object decoded = fory.deserialize(bytes);
+
+    Assert.assertTrue(decoded instanceof OptionalHolder);
+    Assert.assertEquals(decoded, holder);
+
+    for (String peer : resolvePeers()) {
+      Path dataFile = Files.createTempFile("idl-optional-" + peer + "-", ".bin");
+      dataFile.toFile().deleteOnExit();
+      Files.write(dataFile, bytes);
+
+      Map<String, String> env = new HashMap<>();
+      env.put("DATA_FILE_OPTIONAL_TYPES", dataFile.toAbsolutePath().toString());
+      PeerCommand command = buildPeerCommand(peer, env);
+      runPeer(command, peer);
+
+      byte[] peerBytes = Files.readAllBytes(dataFile);
+      Object roundTrip = fory.deserialize(peerBytes);
+      Assert.assertTrue(roundTrip instanceof OptionalHolder);
+      Assert.assertEquals(roundTrip, holder);
     }
   }
 
@@ -276,6 +317,15 @@ public class IdlRoundTripTest {
     person.setScores(scores);
     person.setSalary(120000.5);
     person.setPhones(phones);
+    Dog dog = new Dog();
+    dog.setName("Rex");
+    dog.setBarkVolume(5);
+    Animal pet = Animal.ofDog(dog);
+    Cat cat = new Cat();
+    cat.setName("Mimi");
+    cat.setLives(9);
+    pet.setCat(cat);
+    person.setPet(pet);
 
     AddressBook book = new AddressBook();
     List<Person> people = new ArrayList<>();
@@ -306,9 +356,11 @@ public class IdlRoundTripTest {
     types.setUint64Value(9876543210L);
     types.setVarUint64Value(12345678901L);
     types.setTaggedUint64Value(2222222222L);
-    types.setFloat16Value(1.5f);
     types.setFloat32Value(2.5f);
     types.setFloat64Value(3.5d);
+    PrimitiveTypes.Contact contact = PrimitiveTypes.Contact.ofEmail("alice@example.com");
+    contact.setPhone(12345);
+    types.setContact(contact);
     return types;
   }
 
@@ -327,6 +379,46 @@ public class IdlRoundTripTest {
     monster.setInventory(new byte[] {(byte) 1, (byte) 2, (byte) 3});
     monster.setColor(Color.Blue);
     return monster;
+  }
+
+  private OptionalHolder buildOptionalHolder() {
+    AllOptionalTypes allTypes = new AllOptionalTypes();
+    allTypes.setBoolValue(true);
+    allTypes.setInt8Value((byte) 12);
+    allTypes.setInt16Value((short) 1234);
+    allTypes.setInt32Value(-123456);
+    allTypes.setFixedInt32Value(-123456);
+    allTypes.setVarint32Value(-12345);
+    allTypes.setInt64Value(-123456789L);
+    allTypes.setFixedInt64Value(-123456789L);
+    allTypes.setVarint64Value(-987654321L);
+    allTypes.setTaggedInt64Value(123456789L);
+    allTypes.setUint8Value((byte) 200);
+    allTypes.setUint16Value((short) 60000);
+    allTypes.setUint32Value(1234567890);
+    allTypes.setFixedUint32Value(1234567890);
+    allTypes.setVarUint32Value(1234567890);
+    allTypes.setUint64Value(9876543210L);
+    allTypes.setFixedUint64Value(9876543210L);
+    allTypes.setVarUint64Value(12345678901L);
+    allTypes.setTaggedUint64Value(2222222222L);
+    allTypes.setFloat32Value(2.5f);
+    allTypes.setFloat64Value(3.5);
+    allTypes.setStringValue("optional");
+    allTypes.setBytesValue(new byte[] {1, 2, 3});
+    allTypes.setDateValue(LocalDate.of(2024, 1, 2));
+    allTypes.setTimestampValue(Instant.parse("2024-01-02T03:04:05Z"));
+    allTypes.setInt32List(new int[] {1, 2, 3});
+    allTypes.setStringList(Arrays.asList("alpha", "beta"));
+    Map<String, Long> int64Map = new HashMap<>();
+    int64Map.put("alpha", 10L);
+    int64Map.put("beta", 20L);
+    allTypes.setInt64Map(int64Map);
+
+    OptionalHolder holder = new OptionalHolder();
+    holder.setAllTypes(allTypes);
+    holder.setChoice(OptionalUnion.ofNote("optional"));
+    return holder;
   }
 
   private Container buildContainer() {
@@ -351,6 +443,13 @@ public class IdlRoundTripTest {
     container.setScalars(pack);
     container.setNames(Arrays.asList("alpha", "beta"));
     container.setFlags(new boolean[] {true, false});
+    Note note = new Note();
+    note.setText("alpha");
+    Payload payload = Payload.ofNote(note);
+    Metric metric = new Metric();
+    metric.setValue(42.0d);
+    payload.setMetric(metric);
+    container.setPayload(payload);
     return container;
   }
 

@@ -32,16 +32,48 @@ namespace test2 {
 struct A {
   float a;
   std::string b;
+  FORY_STRUCT(A, a, b);
 };
-
-FORY_FIELD_INFO(A, a, b);
 
 struct B {
   int x;
   A y;
+  FORY_STRUCT(B, x, y);
 };
 
-FORY_FIELD_INFO(B, x, y);
+namespace external_row {
+
+struct ExternalRow {
+  int32_t id;
+  std::string name;
+};
+
+FORY_STRUCT(ExternalRow, id, name);
+
+struct ExternalRowEmpty {};
+
+FORY_STRUCT(ExternalRowEmpty);
+
+} // namespace external_row
+
+namespace nested_row {
+namespace inner {
+
+struct InClassRow {
+  int32_t id;
+  std::string name;
+  FORY_STRUCT(InClassRow, id, name);
+};
+
+struct OutClassRow {
+  int32_t id;
+  std::string name;
+};
+
+FORY_STRUCT(OutClassRow, id, name);
+
+} // namespace inner
+} // namespace nested_row
 
 TEST(RowEncoder, Simple) {
   B v{233, {1.23, "hello"}};
@@ -66,12 +98,55 @@ TEST(RowEncoder, Simple) {
   ASSERT_FLOAT_EQ(y_row->GetFloat(0), 1.23);
 }
 
+TEST(RowEncoder, ExternalStruct) {
+  external_row::ExternalRow v{7, "external"};
+  encoder::RowEncoder<external_row::ExternalRow> enc;
+
+  auto &schema = enc.GetSchema();
+  ASSERT_EQ(schema.field_names(), (std::vector<std::string>{"id", "name"}));
+
+  enc.Encode(v);
+  auto row = enc.GetWriter().ToRow();
+  ASSERT_EQ(row->GetInt32(0), 7);
+  ASSERT_EQ(row->GetString(1), "external");
+}
+
+TEST(RowEncoder, ExternalEmptyStruct) {
+  external_row::ExternalRowEmpty v{};
+  encoder::RowEncoder<external_row::ExternalRowEmpty> enc;
+
+  auto &schema = enc.GetSchema();
+  ASSERT_TRUE(schema.field_names().empty());
+
+  enc.Encode(v);
+  auto row = enc.GetWriter().ToRow();
+  ASSERT_EQ(row->num_fields(), 0);
+}
+
+TEST(RowEncoder, NestedNamespaceStructs) {
+  nested_row::inner::InClassRow in{11, "in"};
+  nested_row::inner::OutClassRow out{22, "out"};
+
+  encoder::RowEncoder<nested_row::inner::InClassRow> in_enc;
+  encoder::RowEncoder<nested_row::inner::OutClassRow> out_enc;
+
+  in_enc.Encode(in);
+  out_enc.Encode(out);
+
+  auto in_row = in_enc.GetWriter().ToRow();
+  auto out_row = out_enc.GetWriter().ToRow();
+
+  ASSERT_EQ(in_row->GetInt32(0), 11);
+  ASSERT_EQ(in_row->GetString(1), "in");
+  ASSERT_EQ(out_row->GetInt32(0), 22);
+  ASSERT_EQ(out_row->GetString(1), "out");
+}
+
 struct C {
   std::vector<A> x;
   bool y;
+  FORY_STRUCT(C, x, y);
 };
-
-FORY_FIELD_INFO(C, x, y);
 
 TEST(RowEncoder, SimpleArray) {
   std::vector<C> v{C{{{1, "a"}, {2, "b"}}, false},

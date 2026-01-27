@@ -160,7 +160,11 @@ public class Fingerprint {
         return Types.UNKNOWN;
       }
       int typeId = Types.getDescriptorTypeId(fory, descriptor);
-      if (Types.isUserDefinedType((byte) (typeId & 0xff))) {
+      int internalTypeId = typeId & 0xff;
+      if (Types.isUnionType(internalTypeId)) {
+        return Types.UNION;
+      }
+      if (Types.isUserDefinedType((byte) internalTypeId)) {
         return Types.UNKNOWN;
       }
       return typeId;

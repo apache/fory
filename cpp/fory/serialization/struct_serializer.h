@@ -43,6 +43,8 @@
 namespace fory {
 namespace serialization {
 
+using meta::ForyFieldInfo;
+
 /// Field type markers for collection fields in compatible/evolution mode.
 /// These match Java's FieldResolver.FieldTypes values.
 constexpr int8_t FIELD_TYPE_OBJECT = 0;
@@ -54,86 +56,20 @@ constexpr int8_t FIELD_TYPE_MAP_KV_FINAL = 4;
 /// Serialization metadata for a type.
 ///
 /// This template is populated automatically when `FORY_STRUCT` is used to
-/// register a type. The registration macro defines an ADL-visible marker
-/// function which this trait detects in order to enable serialization. The
-/// field count is derived from the generated `ForyFieldInfo` metadata.
+/// register a type. The registration macro defines a constexpr metadata
+/// function that is discovered via member lookup or ADL. The field count is
+/// derived from the generated `ForyFieldInfo` metadata.
 template <typename T, typename Enable> struct SerializationMeta {
   static constexpr bool is_serializable = false;
   static constexpr size_t field_count = 0;
 };
 template <typename T>
-struct SerializationMeta<
-    T, std::void_t<decltype(ForyStructMarker(std::declval<const T &>()))>> {
+struct SerializationMeta<T,
+                         std::enable_if_t<meta::HasForyStructInfo<T>::value>> {
   static constexpr bool is_serializable = true;
   static constexpr size_t field_count =
       decltype(ForyFieldInfo(std::declval<const T &>()))::Size;
 };
-
-/// Main serialization registration macro.
-///
-/// This macro must be placed in the same namespace as the type for ADL
-/// (Argument-Dependent Lookup).
-///
-/// It builds upon FORY_FIELD_INFO to add serialization-specific metadata:
-/// - Marks the type as serializable
-/// - Provides compile-time metadata access
-///
-/// Example:
-/// ```cpp
-/// namespace myapp {
-///   struct Person {
-///     std::string name;
-///     int32_t age;
-///   };
-///   FORY_STRUCT(Person, name, age);
-/// }
-/// ```
-///
-/// After expansion, the type can be serialized using Fory:
-/// ```cpp
-/// fory::serialization::Fory fory;
-/// myapp::Person person{"Alice", 30};
-/// auto bytes = fory.serialize(person);
-/// ```
-/// Main struct registration macro.
-/// TypeIndex uses the fallback (type_fallback_hash based on PRETTY_FUNCTION)
-/// which provides unique type identification without namespace issues.
-#define FORY_STRUCT_TYPE_ONLY(Type)                                            \
-  static_assert(std::is_class_v<Type>, "it must be a class type");             \
-  template <typename> struct ForyFieldInfoImpl;                                \
-  template <> struct ForyFieldInfoImpl<Type> {                                 \
-    static inline constexpr size_t Size = 0;                                   \
-    static inline constexpr std::string_view Name = #Type;                     \
-    static inline constexpr std::array<std::string_view, Size> Names = {};     \
-    static inline constexpr auto Ptrs = std::tuple{};                          \
-  };                                                                           \
-  static_assert(                                                               \
-      fory::meta::IsValidFieldInfo<ForyFieldInfoImpl<Type>>(),                 \
-      "duplicated fields in FORY_FIELD_INFO arguments are detected");          \
-  inline constexpr auto ForyFieldInfo(const Type &) noexcept {                 \
-    return ForyFieldInfoImpl<Type>{};                                          \
-  }                                                                            \
-  inline constexpr std::true_type ForyStructMarker(const Type &) noexcept {    \
-    return {};                                                                 \
-  }                                                                            \
-  static_assert(static_cast<std::true_type (*)(const Type &) noexcept>(        \
-                    &ForyStructMarker) != nullptr,                             \
-                "ForyStructMarker must be declared");
-
-#define FORY_STRUCT_WITH_FIELDS(Type, ...)                                     \
-  FORY_FIELD_INFO(Type, __VA_ARGS__)                                           \
-  inline constexpr std::true_type ForyStructMarker(const Type &) noexcept {    \
-    return {};                                                                 \
-  }                                                                            \
-  static_assert(static_cast<std::true_type (*)(const Type &) noexcept>(        \
-                    &ForyStructMarker) != nullptr,                             \
-                "ForyStructMarker must be declared");
-
-#define FORY_STRUCT_1(Type, ...) FORY_STRUCT_TYPE_ONLY(Type)
-#define FORY_STRUCT_0(Type, ...) FORY_STRUCT_WITH_FIELDS(Type, __VA_ARGS__)
-
-#define FORY_STRUCT(Type, ...)                                                 \
-  FORY_PP_CONCAT(FORY_STRUCT_, FORY_PP_IS_EMPTY(__VA_ARGS__))(Type, __VA_ARGS__)
 
 namespace detail {
 
@@ -558,7 +494,7 @@ template <typename T> struct CompileTimeFieldHelpers {
   using FieldDescriptor = decltype(ForyFieldInfo(std::declval<const T &>()));
   static constexpr size_t FieldCount = FieldDescriptor::Size;
   static inline constexpr auto Names = FieldDescriptor::Names;
-  static inline constexpr auto Ptrs = FieldDescriptor::Ptrs;
+  static inline constexpr auto Ptrs = FieldDescriptor::Ptrs();
   using FieldPtrs = decltype(Ptrs);
 
   template <size_t Index> static constexpr uint32_t field_type_id() {
@@ -611,7 +547,10 @@ template <typename T> struct CompileTimeFieldHelpers {
       }
       // Else if FORY_FIELD_TAGS is defined, use that metadata
       else if constexpr (::fory::detail::has_field_tags_v<T>) {
-        return ::fory::detail::GetFieldTagEntry<T, Index>::is_nullable;
+        if constexpr (::fory::detail::GetFieldTagEntry<T, Index>::has_entry) {
+          return ::fory::detail::GetFieldTagEntry<T, Index>::is_nullable;
+        }
+        return field_is_nullable_v<RawFieldType>;
       }
       // For non-wrapped types, use xlang defaults:
       // Only std::optional is nullable (field_is_nullable_v returns true for
@@ -665,7 +604,7 @@ template <typename T> struct CompileTimeFieldHelpers {
   }
 
   /// Returns true if reference tracking is enabled for the field at Index.
-  /// Only valid for std::shared_ptr fields with fory::ref tag.
+  /// Defaults to true for std::shared_ptr/SharedWeak fields.
   template <size_t Index> static constexpr bool field_track_ref() {
     if constexpr (FieldCount == 0) {
       return false;
@@ -681,9 +620,9 @@ template <typename T> struct CompileTimeFieldHelpers {
       else if constexpr (::fory::detail::has_field_tags_v<T>) {
         return ::fory::detail::GetFieldTagEntry<T, Index>::track_ref;
       }
-      // Default: no reference tracking
+      // Default: shared_ptr/SharedWeak track refs
       else {
-        return false;
+        return field_track_ref_v<RawFieldType>;
       }
     }
   }
@@ -1105,7 +1044,7 @@ template <typename T> struct CompileTimeFieldHelpers {
   }
 
   /// Check if a type ID is an internal (built-in, final) type for group 2.
-  /// Internal types are STRING, DURATION, TIMESTAMP, LOCAL_DATE, DECIMAL,
+  /// Internal types are STRING, DURATION, TIMESTAMP, DATE, DECIMAL,
   /// BINARY, ARRAY, and primitive arrays. Java xlang DescriptorGrouper excludes
   /// enums from finals (line 897 in XtypeResolver). Excludes: ENUM (13-14),
   /// STRUCT (15-18), EXT (19-20), LIST (21), SET (22), MAP (23)
@@ -1590,7 +1529,8 @@ FORY_ALWAYS_INLINE void write_single_fixed_field(const T &obj, Buffer &buffer,
   constexpr size_t field_offset =
       compute_fixed_field_write_offset<T, SortedIdx>();
   const auto field_info = ForyFieldInfo(obj);
-  const auto field_ptr = std::get<original_index>(decltype(field_info)::Ptrs);
+  const auto field_ptr =
+      std::get<original_index>(decltype(field_info)::PtrsRef());
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
@@ -1631,7 +1571,8 @@ FORY_ALWAYS_INLINE void write_single_varint_field(const T &obj, Buffer &buffer,
   using Helpers = CompileTimeFieldHelpers<T>;
   constexpr size_t original_index = Helpers::sorted_indices[SortedPos];
   const auto field_info = ForyFieldInfo(obj);
-  const auto field_ptr = std::get<original_index>(decltype(field_info)::Ptrs);
+  const auto field_ptr =
+      std::get<original_index>(decltype(field_info)::PtrsRef());
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
@@ -1673,7 +1614,8 @@ write_single_remaining_field(const T &obj, Buffer &buffer, uint32_t &offset) {
   using Helpers = CompileTimeFieldHelpers<T>;
   constexpr size_t original_index = Helpers::sorted_indices[SortedPos];
   const auto field_info = ForyFieldInfo(obj);
-  const auto field_ptr = std::get<original_index>(decltype(field_info)::Ptrs);
+  const auto field_ptr =
+      std::get<original_index>(decltype(field_info)::PtrsRef());
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
@@ -1963,7 +1905,7 @@ void write_field_at_sorted_position(const T &obj, WriteContext &ctx,
   using Helpers = CompileTimeFieldHelpers<T>;
   constexpr size_t original_index = Helpers::sorted_indices[SortedPosition];
   const auto field_info = ForyFieldInfo(obj);
-  const auto field_ptrs = decltype(field_info)::Ptrs;
+  const auto &field_ptrs = decltype(field_info)::PtrsRef();
   write_single_field<T, original_index>(obj, ctx, field_ptrs, has_generics);
 }
 
@@ -2154,7 +2096,7 @@ template <size_t Index, typename T>
 void read_single_field_by_index(T &obj, ReadContext &ctx) {
   using Helpers = CompileTimeFieldHelpers<T>;
   const auto field_info = ForyFieldInfo(obj);
-  const auto field_ptrs = decltype(field_info)::Ptrs;
+  const auto &field_ptrs = decltype(field_info)::PtrsRef();
   const auto field_ptr = std::get<Index>(field_ptrs);
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
@@ -2339,7 +2281,7 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
                                            uint32_t remote_type_id) {
   using Helpers = CompileTimeFieldHelpers<T>;
   const auto field_info = ForyFieldInfo(obj);
-  const auto field_ptrs = decltype(field_info)::Ptrs;
+  const auto &field_ptrs = decltype(field_info)::PtrsRef();
   const auto field_ptr = std::get<Index>(field_ptrs);
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
@@ -2598,7 +2540,8 @@ FORY_ALWAYS_INLINE void read_single_fixed_field(T &obj, Buffer &buffer,
   constexpr size_t original_index = Helpers::sorted_indices[SortedIdx];
   constexpr size_t field_offset = compute_fixed_field_offset<T, SortedIdx>();
   const auto field_info = ForyFieldInfo(obj);
-  const auto field_ptr = std::get<original_index>(decltype(field_info)::Ptrs);
+  const auto field_ptr =
+      std::get<original_index>(decltype(field_info)::PtrsRef());
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;
@@ -2676,7 +2619,8 @@ FORY_ALWAYS_INLINE void read_single_varint_field(T &obj, Buffer &buffer,
   using Helpers = CompileTimeFieldHelpers<T>;
   constexpr size_t original_index = Helpers::sorted_indices[SortedPos];
   const auto field_info = ForyFieldInfo(obj);
-  const auto field_ptr = std::get<original_index>(decltype(field_info)::Ptrs);
+  const auto field_ptr =
+      std::get<original_index>(decltype(field_info)::PtrsRef());
   using RawFieldType =
       typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
   using FieldType = unwrap_field_t<RawFieldType>;

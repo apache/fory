@@ -17,9 +17,6 @@
 
 """Tests for the FlatBuffers frontend translation."""
 
-import pytest
-
-from fory_compiler.frontend.base import FrontendError
 from fory_compiler.frontend.fbs import FBSFrontend
 from fory_compiler.ir.ast import ListType, PrimitiveType
 from fory_compiler.ir.types import PrimitiveKind
@@ -74,10 +71,14 @@ def test_fbs_type_mapping_and_options():
     assert enum_values["Blue"] == 2
 
 
-def test_fbs_union_error():
+def test_fbs_union_translation():
     source = """
     namespace demo;
     union Event { Foo, Bar }
     """
-    with pytest.raises(FrontendError):
-        FBSFrontend().parse(source)
+    schema = FBSFrontend().parse(source)
+    assert len(schema.unions) == 1
+    union = schema.unions[0]
+    assert union.name == "Event"
+    assert [f.name for f in union.fields] == ["foo", "bar"]
+    assert [f.number for f in union.fields] == [0, 1]

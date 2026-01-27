@@ -51,10 +51,34 @@ else
 fi
 
 if command -v clang-format >/dev/null; then
-  CLANG_FORMAT_VERSION=$(clang-format --version | awk '{print $3}')
-  tool_version_check "clang-format" "$CLANG_FORMAT_VERSION" "12.0.0"
+  CLANG_FORMAT_OUTPUT=$(clang-format --version)
+  echo "Full clang-format version output: $CLANG_FORMAT_OUTPUT"
+  # Extract version number - handles both "clang-format version X.Y.Z" and "Ubuntu clang-format version X.Y.Z"
+  # Use sed instead of grep -P for macOS compatibility
+  CLANG_FORMAT_VERSION=$(echo "$CLANG_FORMAT_OUTPUT" | sed -n 's/.*\([0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}\).*/\1/p' | head -n1)
+  echo "clang-format installed: $CLANG_FORMAT_VERSION"
+  if [ "$CLANG_FORMAT_VERSION" != "18.1.8" ]; then
+    echo "WARNING: Fory uses clang-format 18.1.8, You currently are using $CLANG_FORMAT_VERSION."
+    echo "Installing clang-format 18.1.8..."
+    pip install clang-format==18.1.8
+    # Refresh command hash to find the newly installed version
+    hash -r
+    # Update PATH to prioritize pip-installed binaries
+    PYTHON_SCRIPTS_DIR=$(python3 -c "import sysconfig; print(sysconfig.get_path('scripts'))")
+    export PATH="$PYTHON_SCRIPTS_DIR:$PATH"
+    # Update the version after installation
+    CLANG_FORMAT_OUTPUT=$(clang-format --version)
+    echo "Full clang-format version output after install: $CLANG_FORMAT_OUTPUT"
+    CLANG_FORMAT_VERSION=$(echo "$CLANG_FORMAT_OUTPUT" | sed -n 's/.*\([0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}\).*/\1/p' | head -n1)
+    echo "clang-format updated to: $CLANG_FORMAT_VERSION"
+  fi
 else
     echo "WARNING: clang-format is not installed!"
+    echo "Installing clang-format 18.1.8..."
+    pip install clang-format==18.1.8
+    hash -r
+    PYTHON_SCRIPTS_DIR=$(python3 -c "import sysconfig; print(sysconfig.get_path('scripts'))")
+    export PATH="$PYTHON_SCRIPTS_DIR:$PATH"
 fi
 
 if ! command -v node >/dev/null; then
@@ -65,7 +89,7 @@ fi
 if [ ! -f "$ROOT/javascript/node_modules/.bin/eslint" ]; then
   echo "eslint is not installed, start to install it."
   pushd "$ROOT/javascript"
-  npm install --registry=https://registry.npmmirror.com
+  npm install
   popd
 fi
 

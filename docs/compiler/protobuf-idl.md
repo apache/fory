@@ -207,7 +207,7 @@ message TreeNode {
 | List       | `repeated T`                                                                                           | `repeated T`                      |
 | Map        | `map<K, V>`                                                                                            | `map<K, V>`                       |
 | Nullable   | `optional T` (proto3)                                                                                  | `optional T`                      |
-| Oneof      | `oneof`                                                                                                | Not supported                     |
+| Oneof      | `oneof`                                                                                                | `union` (case id = field number)  |
 | Any        | `google.protobuf.Any`                                                                                  | Not supported                     |
 | Extensions | `extend`                                                                                               | Not supported                     |
 
@@ -276,7 +276,7 @@ user.setAge(30);
 1. **Building gRPC services**: Protobuf is the native format for gRPC
 2. **Maximum backward compatibility**: Protobuf's unknown field handling is robust
 3. **Schema evolution is critical**: Adding/removing fields across versions
-4. **You need oneof/Any types**: Complex polymorphism requirements
+4. **You need Any types**: Protobuf-specific dynamic payloads
 5. **Human-readable debugging**: TextFormat and JSON transcoding available
 6. **Ecosystem integration**: Wide tooling support (linting, documentation)
 
@@ -346,21 +346,25 @@ message Person [id=101] {
 
 ```protobuf
 // Proto
-message Result {
-  oneof result {
-    Success success = 1;
-    Error error = 2;
+message Event {
+  oneof payload {
+    string text = 1;
+    int32 number = 2;
   }
 }
 ```
 
 ```protobuf
-// FDL - Use separate optional fields
-message Result [id=102] {
-    optional Success success = 1;
-    optional Error error = 2;
+// FDL - oneof becomes a nested union plus an optional field referencing it
+message Event [id=102] {
+    union payload {
+        string text = 1;
+        int32 number = 2;
+    }
+    optional payload payload = 1;
 }
-// Or model as sealed class hierarchy in generated code
+// Case ids are preserved from the oneof field numbers
+// The field number is the smallest case id in the oneof
 ```
 
 **Well-known types:**

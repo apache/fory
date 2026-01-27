@@ -76,6 +76,9 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	fmt.Fprintf(buf, "\t// Field: %s (%s)\n", field.GoName, field.Type.String())
 
 	fieldAccess := fmt.Sprintf("v.%s", field.GoName)
+	if field.IsOptional {
+		return generateOptionWriteTyped(buf, field, fieldAccess)
+	}
 
 	// Handle special named types first
 	// According to new spec, time types are "other internal types" and need WriteValue
@@ -224,6 +227,113 @@ func generateFieldWriteTyped(buf *bytes.Buffer, field *FieldInfo) error {
 	return nil
 }
 
+func generateOptionWriteTyped(buf *bytes.Buffer, field *FieldInfo, fieldAccess string) error {
+	elemType := field.OptionalElem
+	if elemType == nil {
+		fmt.Fprintf(buf, "\tctx.WriteValue(reflect.ValueOf(%s), fory.RefModeTracking, true)\n", fieldAccess)
+		return nil
+	}
+	fmt.Fprintf(buf, "\tif !%s.IsSome() {\n", fieldAccess)
+	fmt.Fprintf(buf, "\t\tbuf.WriteInt8(fory.NullFlag)\n")
+	fmt.Fprintf(buf, "\t} else {\n")
+	fmt.Fprintf(buf, "\t\toptValue := %s.Unwrap()\n", fieldAccess)
+	if isReferencableType(elemType) {
+		fmt.Fprintf(buf, "\t\tif ctx.TrackRef() {\n")
+		fmt.Fprintf(buf, "\t\t\trefWritten, err := ctx.RefResolver().WriteRefOrNull(buf, reflect.ValueOf(optValue))\n")
+		fmt.Fprintf(buf, "\t\t\tif err != nil {\n")
+		fmt.Fprintf(buf, "\t\t\t\treturn err\n")
+		fmt.Fprintf(buf, "\t\t\t}\n")
+		fmt.Fprintf(buf, "\t\t\tif refWritten {\n")
+		fmt.Fprintf(buf, "\t\t\t\treturn nil\n")
+		fmt.Fprintf(buf, "\t\t\t}\n")
+		fmt.Fprintf(buf, "\t\t} else {\n")
+		fmt.Fprintf(buf, "\t\t\tbuf.WriteInt8(fory.NotNullValueFlag)\n")
+		fmt.Fprintf(buf, "\t\t}\n")
+	} else {
+		fmt.Fprintf(buf, "\t\tbuf.WriteInt8(fory.NotNullValueFlag)\n")
+	}
+	if err := generateOptionValueWrite(buf, elemType, "optValue"); err != nil {
+		return err
+	}
+	fmt.Fprintf(buf, "\t}\n")
+	return nil
+}
+
+func generateOptionValueWrite(buf *bytes.Buffer, elemType types.Type, valueExpr string) error {
+	// Handle special named types first
+	if named, ok := elemType.(*types.Named); ok {
+		typeStr := named.String()
+		switch typeStr {
+		case "time.Time", "github.com/apache/fory/go/fory.Date":
+			fmt.Fprintf(buf, "\t\tctx.WriteValue(reflect.ValueOf(%s), fory.RefModeNone, true)\n", valueExpr)
+			return nil
+		}
+		if _, ok := named.Underlying().(*types.Struct); ok {
+			fmt.Fprintf(buf, "\t\tctx.WriteValue(reflect.ValueOf(%s), fory.RefModeNone, true)\n", valueExpr)
+			return nil
+		}
+	}
+
+	if basic, ok := elemType.Underlying().(*types.Basic); ok {
+		switch basic.Kind() {
+		case types.Bool:
+			fmt.Fprintf(buf, "\t\tbuf.WriteBool(%s)\n", valueExpr)
+		case types.Int8:
+			fmt.Fprintf(buf, "\t\tbuf.WriteByte_(byte(%s))\n", valueExpr)
+		case types.Int16:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt16(%s)\n", valueExpr)
+		case types.Int32:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarint32(%s)\n", valueExpr)
+		case types.Int:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarint64(int64(%s))\n", valueExpr)
+		case types.Int64:
+			fmt.Fprintf(buf, "\t\tbuf.WriteVarint64(%s)\n", valueExpr)
+		case types.Uint8:
+			fmt.Fprintf(buf, "\t\tbuf.WriteByte_(%s)\n", valueExpr)
+		case types.Uint16:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt16(int16(%s))\n", valueExpr)
+		case types.Uint32:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt32(int32(%s))\n", valueExpr)
+		case types.Uint:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt64(int64(%s))\n", valueExpr)
+		case types.Uint64:
+			fmt.Fprintf(buf, "\t\tbuf.WriteInt64(int64(%s))\n", valueExpr)
+		case types.Float32:
+			fmt.Fprintf(buf, "\t\tbuf.WriteFloat32(%s)\n", valueExpr)
+		case types.Float64:
+			fmt.Fprintf(buf, "\t\tbuf.WriteFloat64(%s)\n", valueExpr)
+		case types.String:
+			fmt.Fprintf(buf, "\t\tctx.WriteString(%s)\n", valueExpr)
+		default:
+			fmt.Fprintf(buf, "\t\t// TODO: unsupported basic type %s\n", basic.String())
+		}
+		return nil
+	}
+
+	if slice, ok := elemType.(*types.Slice); ok {
+		return generateSliceWriteInlineNoNull(buf, slice, valueExpr)
+	}
+	if mapType, ok := elemType.(*types.Map); ok {
+		return generateMapWriteInlineNoNull(buf, mapType, valueExpr)
+	}
+
+	unwrappedType := types.Unalias(elemType)
+	if iface, ok := unwrappedType.(*types.Interface); ok {
+		if iface.Empty() {
+			fmt.Fprintf(buf, "\t\tctx.WriteValue(reflect.ValueOf(%s), fory.RefModeNone, true)\n", valueExpr)
+			return nil
+		}
+	}
+
+	if _, ok := elemType.Underlying().(*types.Struct); ok {
+		fmt.Fprintf(buf, "\t\tctx.WriteValue(reflect.ValueOf(%s), fory.RefModeNone, true)\n", valueExpr)
+		return nil
+	}
+
+	fmt.Fprintf(buf, "\t\tctx.WriteValue(reflect.ValueOf(%s), fory.RefModeNone, true)\n", valueExpr)
+	return nil
+}
+
 // generateElementTypeIDWrite generates code to write the element type ID for slice serialization
 func generateElementTypeIDWrite(buf *bytes.Buffer, elemType types.Type) error {
 	// Handle basic types
@@ -267,7 +377,7 @@ func generateElementTypeIDWrite(buf *bytes.Buffer, elemType types.Type) error {
 			fmt.Fprintf(buf, "\t\tbuf.WriteVaruint32(%d) // TIMESTAMP\n", fory.TIMESTAMP)
 			return nil
 		case "github.com/apache/fory/go/fory.Date":
-			fmt.Fprintf(buf, "\t\tbuf.WriteVaruint32(%d) // LOCAL_DATE\n", fory.LOCAL_DATE)
+			fmt.Fprintf(buf, "\t\tbuf.WriteVaruint32(%d) // DATE\n", fory.DATE)
 			return nil
 		}
 		// Check if it's a struct
@@ -374,6 +484,63 @@ func generateSliceWriteInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAc
 	fmt.Fprintf(buf, "\t\t}\n")       // end else (native mode)
 	fmt.Fprintf(buf, "\t}\n")         // end block scope
 
+	return nil
+}
+
+func generateSliceWriteInlineNoNull(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess string) error {
+	elemType := sliceType.Elem()
+	indent := "\t\t"
+
+	// Dynamic slice []any handling (no null flag)
+	unwrappedElem := types.Unalias(elemType)
+	if iface, ok := unwrappedElem.(*types.Interface); ok && iface.Empty() {
+		fmt.Fprintf(buf, "%s// Dynamic slice []any handling - no null flag\n", indent)
+		fmt.Fprintf(buf, "%ssliceLen := 0\n", indent)
+		fmt.Fprintf(buf, "%sif %s != nil {\n", indent, fieldAccess)
+		fmt.Fprintf(buf, "%s\tsliceLen = len(%s)\n", indent, fieldAccess)
+		fmt.Fprintf(buf, "%s}\n", indent)
+		fmt.Fprintf(buf, "%sbuf.WriteVaruint32(uint32(sliceLen))\n", indent)
+		fmt.Fprintf(buf, "%sif sliceLen > 0 {\n", indent)
+		fmt.Fprintf(buf, "%s\tbuf.WriteInt8(1) // CollectionTrackingRef only\n", indent)
+		fmt.Fprintf(buf, "%s\tfor _, elem := range %s {\n", indent, fieldAccess)
+		fmt.Fprintf(buf, "%s\t\tctx.WriteValue(reflect.ValueOf(elem), fory.RefModeTracking, true)\n", indent)
+		fmt.Fprintf(buf, "%s\t}\n", indent)
+		fmt.Fprintf(buf, "%s}\n", indent)
+		return nil
+	}
+
+	// Primitive slice - use ARRAY protocol helpers without null flag
+	if isPrimitiveSliceElemType(elemType) {
+		basic := elemType.Underlying().(*types.Basic)
+		return writePrimitiveSliceCall(buf, basic, fieldAccess, indent)
+	}
+
+	// Non-primitive slices use LIST protocol, no null flag
+	elemIsReferencable := isReferencableType(elemType)
+	fmt.Fprintf(buf, "%ssliceLen := 0\n", indent)
+	fmt.Fprintf(buf, "%sif %s != nil {\n", indent, fieldAccess)
+	fmt.Fprintf(buf, "%s\tsliceLen = len(%s)\n", indent, fieldAccess)
+	fmt.Fprintf(buf, "%s}\n", indent)
+	fmt.Fprintf(buf, "%sbuf.WriteVaruint32(uint32(sliceLen))\n", indent)
+	fmt.Fprintf(buf, "%sif sliceLen > 0 {\n", indent)
+	fmt.Fprintf(buf, "%s\tcollectFlag := 12 // CollectionIsSameType | CollectionIsDeclElementType\n", indent)
+	if elemIsReferencable {
+		fmt.Fprintf(buf, "%s\tif ctx.TrackRef() {\n", indent)
+		fmt.Fprintf(buf, "%s\t\tcollectFlag |= 1 // CollectionTrackingRef\n", indent)
+		fmt.Fprintf(buf, "%s\t}\n", indent)
+	}
+	fmt.Fprintf(buf, "%s\tbuf.WriteInt8(int8(collectFlag))\n", indent)
+	fmt.Fprintf(buf, "%s\tfor _, elem := range %s {\n", indent, fieldAccess)
+	if elemIsReferencable {
+		fmt.Fprintf(buf, "%s\t\tif ctx.TrackRef() {\n", indent)
+		fmt.Fprintf(buf, "%s\t\t\tbuf.WriteInt8(-1) // NotNullValueFlag for element\n", indent)
+		fmt.Fprintf(buf, "%s\t\t}\n", indent)
+	}
+	if err := generateSliceElementWriteInlineIndented(buf, elemType, "elem", indent+"\t\t"); err != nil {
+		return err
+	}
+	fmt.Fprintf(buf, "%s\t}\n", indent)
+	fmt.Fprintf(buf, "%s}\n", indent)
 	return nil
 }
 
@@ -508,6 +675,36 @@ func generateMapWriteInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess s
 	fmt.Fprintf(buf, "\t\t\t}\n") // end else (not nil)
 	fmt.Fprintf(buf, "\t\t}\n")   // end else (native mode)
 	fmt.Fprintf(buf, "\t}\n")     // end block scope
+
+	return nil
+}
+
+func generateMapWriteInlineNoNull(buf *bytes.Buffer, mapType *types.Map, fieldAccess string) error {
+	keyType := mapType.Key()
+	valueType := mapType.Elem()
+
+	keyIsInterface := false
+	valueIsInterface := false
+	unwrappedKey := types.Unalias(keyType)
+	unwrappedValue := types.Unalias(valueType)
+	if iface, ok := unwrappedKey.(*types.Interface); ok && iface.Empty() {
+		keyIsInterface = true
+	}
+	if iface, ok := unwrappedValue.(*types.Interface); ok && iface.Empty() {
+		valueIsInterface = true
+	}
+
+	indent := "\t\t"
+	fmt.Fprintf(buf, "%smapLen := 0\n", indent)
+	fmt.Fprintf(buf, "%sif %s != nil {\n", indent, fieldAccess)
+	fmt.Fprintf(buf, "%s\tmapLen = len(%s)\n", indent, fieldAccess)
+	fmt.Fprintf(buf, "%s}\n", indent)
+	fmt.Fprintf(buf, "%sbuf.WriteVaruint32(uint32(mapLen))\n", indent)
+
+	// Write map chunks without null flag (xlang style)
+	if err := writeMapChunksCode(buf, keyType, valueType, fieldAccess, keyIsInterface, valueIsInterface, indent); err != nil {
+		return err
+	}
 
 	return nil
 }

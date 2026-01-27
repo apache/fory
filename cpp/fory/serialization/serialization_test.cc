@@ -31,7 +31,7 @@
 #include "fory/type/type.h"
 
 // ============================================================================
-// Test Struct Definitions (must be at global scope for FORY_STRUCT)
+// Test Struct Definitions (FORY_STRUCT is declared inside each struct)
 // ============================================================================
 
 struct SimpleStruct {
@@ -41,9 +41,8 @@ struct SimpleStruct {
   bool operator==(const SimpleStruct &other) const {
     return x == other.x && y == other.y;
   }
+  FORY_STRUCT(SimpleStruct, x, y);
 };
-
-FORY_STRUCT(SimpleStruct, x, y);
 
 struct ComplexStruct {
   std::string name;
@@ -53,9 +52,8 @@ struct ComplexStruct {
   bool operator==(const ComplexStruct &other) const {
     return name == other.name && age == other.age && hobbies == other.hobbies;
   }
+  FORY_STRUCT(ComplexStruct, name, age, hobbies);
 };
-
-FORY_STRUCT(ComplexStruct, name, age, hobbies);
 
 struct NestedStruct {
   SimpleStruct point;
@@ -64,9 +62,8 @@ struct NestedStruct {
   bool operator==(const NestedStruct &other) const {
     return point == other.point && label == other.label;
   }
+  FORY_STRUCT(NestedStruct, point, label);
 };
-
-FORY_STRUCT(NestedStruct, point, label);
 
 enum class Color { RED, GREEN, BLUE };
 enum class LegacyStatus : int32_t { NEG = -3, ZERO = 0, LARGE = 42 };

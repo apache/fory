@@ -455,7 +455,7 @@ cdef create_converter(Field field_, CWriter* writer):
         return create_atomic_encoder(FloatWriter, writer)
     elif type_id == CTypeId.FLOAT64:
         return create_atomic_encoder(DoubleWriter, writer)
-    elif type_id == CTypeId.LOCAL_DATE:
+    elif type_id == CTypeId.DATE:
         return create_atomic_encoder(DateWriter, writer)
     elif type_id == CTypeId.TIMESTAMP:
         return create_atomic_encoder(TimestampWriter, writer)

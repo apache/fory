@@ -106,9 +106,8 @@ Use the `FORY_STRUCT` macro to register struct fields for serialization:
 struct Point {
   int32_t x;
   int32_t y;
+  FORY_STRUCT(Point, x, y);
 };
-
-FORY_STRUCT(Point, x, y);
 ```
 
 ### Creating a Fory Instance

@@ -342,6 +342,8 @@ struct BaseKey {
   bool operator==(const BaseKey &other) const {
     return id == other.id && type_name() == other.type_name();
   }
+
+  FORY_STRUCT(BaseKey, id);
 };
 
 struct DerivedKeyA : public BaseKey {
@@ -352,6 +354,7 @@ struct DerivedKeyA : public BaseKey {
       : BaseKey(id), data(std::move(data)) {}
 
   std::string type_name() const override { return "DerivedKeyA"; }
+  FORY_STRUCT(DerivedKeyA, FORY_BASE(BaseKey), data);
 };
 
 struct DerivedKeyB : public BaseKey {
@@ -361,6 +364,7 @@ struct DerivedKeyB : public BaseKey {
   DerivedKeyB(int32_t id, double value) : BaseKey(id), value(value) {}
 
   std::string type_name() const override { return "DerivedKeyB"; }
+  FORY_STRUCT(DerivedKeyB, FORY_BASE(BaseKey), value);
 };
 
 // Base class for polymorphic values
@@ -378,6 +382,8 @@ struct BaseValue {
     return name == other.name && get_priority() == other.get_priority() &&
            type_name() == other.type_name();
   }
+
+  FORY_STRUCT(BaseValue, name);
 };
 
 struct DerivedValueX : public BaseValue {
@@ -389,6 +395,7 @@ struct DerivedValueX : public BaseValue {
 
   int32_t get_priority() const override { return priority; }
   std::string type_name() const override { return "DerivedValueX"; }
+  FORY_STRUCT(DerivedValueX, FORY_BASE(BaseValue), priority);
 };
 
 struct DerivedValueY : public BaseValue {
@@ -402,14 +409,8 @@ struct DerivedValueY : public BaseValue {
 
   int32_t get_priority() const override { return priority; }
   std::string type_name() const override { return "DerivedValueY"; }
+  FORY_STRUCT(DerivedValueY, FORY_BASE(BaseValue), priority, tags);
 };
-
-// FORY_STRUCT macro invocations for polymorphic DERIVED types only
-// Must be inside the namespace where the types are defined
-FORY_STRUCT(DerivedKeyA, id, data);
-FORY_STRUCT(DerivedKeyB, id, value);
-FORY_STRUCT(DerivedValueX, name, priority);
-FORY_STRUCT(DerivedValueY, name, priority, tags);
 
 } // namespace polymorphic_test
 

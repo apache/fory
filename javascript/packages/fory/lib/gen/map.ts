@@ -21,7 +21,7 @@ import { MapTypeInfo, TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator, RefState, SerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { InternalSerializerType, RefFlags, Serializer } from "../type";
+import { TypeId, RefFlags, Serializer } from "../type";
 import { Scope } from "./scope";
 import Fory from "../fory";
 
@@ -190,7 +190,7 @@ class MapAnySerializer {
       flag = this.fory.binaryReader.uint8();
     }
     if (!isSame) {
-      serializer = this.fory.classResolver.getSerializerById(this.fory.binaryReader.int16());
+      serializer = this.fory.classResolver.getSerializerById(this.fory.binaryReader.readVarUint32Small7());
     }
     switch (flag) {
       case RefFlags.RefValueFlag:
@@ -250,7 +250,7 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
   }
 
   private isAny() {
-    return this.typeInfo.options.key.type === InternalSerializerType.ANY || this.typeInfo.options.value.type === InternalSerializerType.ANY;
+    return this.typeInfo.options.key.typeId === TypeId.UNKNOWN || this.typeInfo.options.value.typeId === TypeId.UNKNOWN;
   }
 
   private writeStmtSpecificType(accessor: string) {
@@ -341,9 +341,9 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
       return this.writeStmtSpecificType(accessor);
     }
     return `new (${anySerializer})(${this.builder.getForyName()}, ${
-      this.typeInfo.options.key.type !== InternalSerializerType.ANY ? this.typeInfo.options.key.typeId : null
+      this.typeInfo.options.key.typeId !== TypeId.UNKNOWN ? this.typeInfo.options.key.typeId : null
     }, ${
-      this.typeInfo.options.value.type !== InternalSerializerType.ANY ? this.typeInfo.options.value.typeId : null
+      this.typeInfo.options.value.typeId !== TypeId.UNKNOWN ? this.typeInfo.options.value.typeId : null
     }).write(${accessor})`;
   }
 
@@ -424,9 +424,9 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
       return this.readStmtSpecificType(accessor, refState);
     }
     return accessor(`new (${anySerializer})(${this.builder.getForyName()}, ${
-      this.typeInfo.options.key.type !== InternalSerializerType.ANY ? (this.typeInfo.options.key.typeId) : null
+      this.typeInfo.options.key.typeId !== TypeId.UNKNOWN ? (this.typeInfo.options.key.typeId) : null
     }, ${
-      this.typeInfo.options.value.type !== InternalSerializerType.ANY ? (this.typeInfo.options.value.typeId) : null
+      this.typeInfo.options.value.typeId !== TypeId.UNKNOWN ? (this.typeInfo.options.value.typeId) : null
     }).read(${refState.toConditionExpr()})`);
   }
 
@@ -440,4 +440,4 @@ export class MapSerializerGenerator extends BaseSerializerGenerator {
 }
 
 CodegenRegistry.registerExternal(MapAnySerializer);
-CodegenRegistry.register(InternalSerializerType.MAP, MapSerializerGenerator);
+CodegenRegistry.register(TypeId.MAP, MapSerializerGenerator);

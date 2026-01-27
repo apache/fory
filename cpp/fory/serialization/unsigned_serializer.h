@@ -190,7 +190,7 @@ template <> struct Serializer<uint32_t> {
   }
 
   static inline void write_data(uint32_t value, WriteContext &ctx) {
-    ctx.write_bytes(&value, sizeof(uint32_t));
+    ctx.write_varuint32(value);
   }
 
   static inline void write_data_generic(uint32_t value, WriteContext &ctx,
@@ -211,11 +211,11 @@ template <> struct Serializer<uint32_t> {
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
-    return ctx.read_uint32(ctx.error());
+    return ctx.read_varuint32(ctx.error());
   }
 
   static inline uint32_t read_data(ReadContext &ctx) {
-    return ctx.read_uint32(ctx.error());
+    return ctx.read_varuint32(ctx.error());
   }
 
   static inline uint32_t read_data_generic(ReadContext &ctx, bool) {
@@ -254,7 +254,7 @@ template <> struct Serializer<uint64_t> {
   }
 
   static inline void write_data(uint64_t value, WriteContext &ctx) {
-    ctx.write_bytes(&value, sizeof(uint64_t));
+    ctx.write_varuint64(value);
   }
 
   static inline void write_data_generic(uint64_t value, WriteContext &ctx,
@@ -275,11 +275,11 @@ template <> struct Serializer<uint64_t> {
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
       }
     }
-    return ctx.read_uint64(ctx.error());
+    return ctx.read_varuint64(ctx.error());
   }
 
   static inline uint64_t read_data(ReadContext &ctx) {
-    return ctx.read_uint64(ctx.error());
+    return ctx.read_varuint64(ctx.error());
   }
 
   static inline uint64_t read_data_generic(ReadContext &ctx, bool) {

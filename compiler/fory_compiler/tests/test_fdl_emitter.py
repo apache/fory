@@ -76,3 +76,31 @@ def test_emit_from_proto_translation():
     assert "fixed_uint32 fixed_u32 = 3;" in emitted
     assert "fixed_int64 fixed_s64 = 4;" in emitted
     assert "uint64 uid = 5;" in emitted
+
+
+def test_emit_union_round_trip():
+    source = """
+    message Dog [id=10] {
+        string name = 1;
+    }
+
+    message Cat [id=11] {
+        string name = 1;
+    }
+
+    union Animal [id=0] {
+        Dog dog = 1;
+        Cat cat = 2;
+    }
+    """
+    schema = Parser(Lexer(source).tokenize()).parse()
+    emitted = FDLEmitter(schema).emit()
+
+    assert "union Animal [id=0]" in emitted
+    assert "Dog dog = 1;" in emitted
+    assert "Cat cat = 2;" in emitted
+
+    round_trip = Parser(Lexer(emitted).tokenize()).parse()
+    union = round_trip.unions[0]
+    assert union.name == "Animal"
+    assert [f.name for f in union.fields] == ["dog", "cat"]

@@ -113,13 +113,13 @@ By default, **most fields do not track references** even when global `refTrackin
 
 ### Default Behavior by Language
 
-| Language | Default Ref Tracking | Types That Track Refs by Default  |
-| -------- | -------------------- | --------------------------------- |
-| Java     | No                   | None (use annotation to enable)   |
-| Python   | No                   | None (use annotation to enable)   |
-| Go       | No                   | None (use `fory:"ref"` to enable) |
-| C++      | No                   | `std::shared_ptr<T>`              |
-| Rust     | No                   | `Rc<T>`, `Arc<T>`, `Weak<T>`      |
+| Language | Default Ref Tracking | Types That Track Refs by Default                           |
+| -------- | -------------------- | ---------------------------------------------------------- |
+| Java     | No                   | None (use annotation to enable)                            |
+| Python   | No                   | None (use annotation to enable)                            |
+| Go       | No                   | None (use `fory:"ref"` to enable)                          |
+| C++      | Yes                  | `std::shared_ptr<T>`, `fory::serialization::SharedWeak<T>` |
+| Rust     | No                   | `Rc<T>`, `Arc<T>`, `Weak<T>`                               |
 
 ### Customizing Per-Field Ref Tracking
 
@@ -146,17 +146,18 @@ public class Document {
 struct Document {
     std::string title;
 
-    // shared_ptr tracks refs by default
+    // shared_ptr/SharedWeak track refs by default
     std::shared_ptr<Author> author;
+    fory::serialization::SharedWeak<Data> data;
 
-    // Explicitly enable ref tracking
-    fory::field<std::vector<Tag>, 1, fory::track_ref<true>> tags;
-
-    // Explicitly disable ref tracking
-    fory::field<std::shared_ptr<Data>, 2, fory::track_ref<false>> data;
+    // Explicitly mark ref tracking when using field wrappers (optional)
+    fory::field<std::shared_ptr<Tag>, 1, fory::ref> tag_owner;
 };
-FORY_STRUCT(Document, title, author, tags, data);
+FORY_STRUCT(Document, title, author, data, tag_owner);
 ```
+
+To disable reference tracking for C++ entirely, set
+`Fory::builder().track_ref(false)` on the serializer.
 
 #### Rust: Field Attributes
 

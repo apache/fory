@@ -17,6 +17,7 @@
  * under the License.
  */
 
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -28,6 +29,7 @@
 #include "complex_fbs.h"
 #include "fory/serialization/fory.h"
 #include "monster.h"
+#include "optional_types.h"
 
 namespace {
 
@@ -68,27 +70,36 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   addressbook::RegisterTypes(fory);
   monster::RegisterTypes(fory);
   complex_fbs::RegisterTypes(fory);
+  optional_types::RegisterTypes(fory);
 
   addressbook::Person::PhoneNumber mobile;
-  mobile.number = "555-0100";
-  mobile.phone_type = addressbook::Person::PhoneType::MOBILE;
+  mobile.set_number("555-0100");
+  mobile.set_phone_type(addressbook::Person::PhoneType::MOBILE);
 
   addressbook::Person::PhoneNumber work;
-  work.number = "555-0111";
-  work.phone_type = addressbook::Person::PhoneType::WORK;
+  work.set_number("555-0111");
+  work.set_phone_type(addressbook::Person::PhoneType::WORK);
 
   addressbook::Person person;
-  person.name = "Alice";
-  person.id = 123;
-  person.email = "alice@example.com";
-  person.tags = {"friend", "colleague"};
-  person.scores = {{"math", 100}, {"science", 98}};
-  person.salary = 120000.5;
-  person.phones = {mobile, work};
+  person.set_name("Alice");
+  person.set_id(123);
+  person.set_email("alice@example.com");
+  person.set_tags({"friend", "colleague"});
+  person.set_scores({{"math", 100}, {"science", 98}});
+  person.set_salary(120000.5);
+  person.set_phones({mobile, work});
+  addressbook::Dog dog;
+  dog.set_name("Rex");
+  dog.set_bark_volume(5);
+  person.set_pet(addressbook::Animal::dog(dog));
+  addressbook::Cat cat;
+  cat.set_name("Mimi");
+  cat.set_lives(9);
+  person.set_pet(addressbook::Animal::cat(cat));
 
   addressbook::AddressBook book;
-  book.people = {person};
-  book.people_by_name = {{person.name, person}};
+  book.set_people({person});
+  book.set_people_by_name({{person.name(), person}});
 
   FORY_TRY(bytes, fory.serialize(book));
   FORY_TRY(roundtrip, fory.deserialize<addressbook::AddressBook>(bytes.data(),
@@ -100,24 +111,26 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   }
 
   addressbook::PrimitiveTypes types;
-  types.bool_value = true;
-  types.int8_value = 12;
-  types.int16_value = 1234;
-  types.int32_value = -123456;
-  types.varint32_value = -12345;
-  types.int64_value = -123456789;
-  types.varint64_value = -987654321;
-  types.tagged_int64_value = 123456789;
-  types.uint8_value = 200;
-  types.uint16_value = 60000;
-  types.uint32_value = 1234567890;
-  types.var_uint32_value = 1234567890;
-  types.uint64_value = 9876543210ULL;
-  types.var_uint64_value = 12345678901ULL;
-  types.tagged_uint64_value = 2222222222ULL;
-  types.float16_value = 1.5F;
-  types.float32_value = 2.5F;
-  types.float64_value = 3.5;
+  types.set_bool_value(true);
+  types.set_int8_value(12);
+  types.set_int16_value(1234);
+  types.set_int32_value(-123456);
+  types.set_varint32_value(-12345);
+  types.set_int64_value(-123456789);
+  types.set_varint64_value(-987654321);
+  types.set_tagged_int64_value(123456789);
+  types.set_uint8_value(200);
+  types.set_uint16_value(60000);
+  types.set_uint32_value(1234567890);
+  types.set_var_uint32_value(1234567890);
+  types.set_uint64_value(9876543210ULL);
+  types.set_var_uint64_value(12345678901ULL);
+  types.set_tagged_uint64_value(2222222222ULL);
+  types.set_float32_value(2.5F);
+  types.set_float64_value(3.5);
+  types.set_contact(addressbook::PrimitiveTypes::Contact::email(
+      std::string("alice@example.com")));
+  types.set_contact(addressbook::PrimitiveTypes::Contact::phone(12345));
 
   FORY_TRY(primitive_bytes, fory.serialize(types));
   FORY_TRY(primitive_roundtrip,
@@ -130,19 +143,19 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   }
 
   monster::Vec3 pos;
-  pos.x = 1.0F;
-  pos.y = 2.0F;
-  pos.z = 3.0F;
+  pos.set_x(1.0F);
+  pos.set_y(2.0F);
+  pos.set_z(3.0F);
 
   monster::Monster monster_value;
-  monster_value.pos = pos;
-  monster_value.mana = 200;
-  monster_value.hp = 80;
-  monster_value.name = "Orc";
-  monster_value.friendly = true;
-  monster_value.inventory = {static_cast<uint8_t>(1), static_cast<uint8_t>(2),
-                             static_cast<uint8_t>(3)};
-  monster_value.color = monster::Color::Blue;
+  *monster_value.mutable_pos() = pos;
+  monster_value.set_mana(200);
+  monster_value.set_hp(80);
+  monster_value.set_name("Orc");
+  monster_value.set_friendly(true);
+  monster_value.set_inventory({static_cast<uint8_t>(1), static_cast<uint8_t>(2),
+                               static_cast<uint8_t>(3)});
+  monster_value.set_color(monster::Color::Blue);
 
   FORY_TRY(monster_bytes, fory.serialize(monster_value));
   FORY_TRY(monster_roundtrip, fory.deserialize<monster::Monster>(
@@ -153,28 +166,32 @@ fory::Result<void, fory::Error> RunRoundTrip() {
         fory::Error::invalid("flatbuffers monster roundtrip mismatch"));
   }
 
-  complex_fbs::ScalarPack scalars;
-  scalars.b = -8;
-  scalars.ub = 200;
-  scalars.s = -1234;
-  scalars.us = 40000;
-  scalars.i = -123456;
-  scalars.ui = 123456;
-  scalars.l = -123456789;
-  scalars.ul = 987654321;
-  scalars.f = 1.5F;
-  scalars.d = 2.5;
-  scalars.ok = true;
-
   complex_fbs::Container container;
-  container.id = 9876543210ULL;
-  container.status = complex_fbs::Status::STARTED;
-  container.bytes = {static_cast<int8_t>(1), static_cast<int8_t>(2),
-                     static_cast<int8_t>(3)};
-  container.numbers = {10, 20, 30};
-  container.scalars = scalars;
-  container.names = {"alpha", "beta"};
-  container.flags = {true, false};
+  container.set_id(9876543210ULL);
+  container.set_status(complex_fbs::Status::STARTED);
+  container.set_bytes(
+      {static_cast<int8_t>(1), static_cast<int8_t>(2), static_cast<int8_t>(3)});
+  container.set_numbers({10, 20, 30});
+  auto *scalars = container.mutable_scalars();
+  scalars->set_b(-8);
+  scalars->set_ub(200);
+  scalars->set_s(-1234);
+  scalars->set_us(40000);
+  scalars->set_i(-123456);
+  scalars->set_ui(123456);
+  scalars->set_l(-123456789);
+  scalars->set_ul(987654321);
+  scalars->set_f(1.5F);
+  scalars->set_d(2.5);
+  scalars->set_ok(true);
+  container.set_names({"alpha", "beta"});
+  container.set_flags({true, false});
+  complex_fbs::Note note;
+  note.set_text("alpha");
+  container.set_payload(complex_fbs::Payload::note(note));
+  complex_fbs::Metric metric;
+  metric.set_value(42.0);
+  container.set_payload(complex_fbs::Payload::metric(metric));
 
   FORY_TRY(container_bytes, fory.serialize(container));
   FORY_TRY(container_roundtrip,
@@ -184,6 +201,52 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   if (!(container_roundtrip == container)) {
     return fory::Unexpected(
         fory::Error::invalid("flatbuffers container roundtrip mismatch"));
+  }
+
+  optional_types::AllOptionalTypes all_types;
+  all_types.set_bool_value(true);
+  all_types.set_int8_value(12);
+  all_types.set_int16_value(1234);
+  all_types.set_int32_value(-123456);
+  all_types.set_fixed_int32_value(-123456);
+  all_types.set_varint32_value(-12345);
+  all_types.set_int64_value(-123456789);
+  all_types.set_fixed_int64_value(-123456789);
+  all_types.set_varint64_value(-987654321);
+  all_types.set_tagged_int64_value(123456789);
+  all_types.set_uint8_value(200);
+  all_types.set_uint16_value(60000);
+  all_types.set_uint32_value(1234567890);
+  all_types.set_fixed_uint32_value(1234567890);
+  all_types.set_var_uint32_value(1234567890);
+  all_types.set_uint64_value(9876543210ULL);
+  all_types.set_fixed_uint64_value(9876543210ULL);
+  all_types.set_var_uint64_value(12345678901ULL);
+  all_types.set_tagged_uint64_value(2222222222ULL);
+  all_types.set_float32_value(2.5F);
+  all_types.set_float64_value(3.5);
+  all_types.set_string_value("optional");
+  all_types.set_bytes_value({static_cast<uint8_t>(1), static_cast<uint8_t>(2),
+                             static_cast<uint8_t>(3)});
+  all_types.set_date_value(fory::serialization::Date(19724));
+  all_types.set_timestamp_value(
+      fory::serialization::Timestamp(std::chrono::seconds(1704164645)));
+  all_types.set_int32_list({1, 2, 3});
+  all_types.set_string_list({"alpha", "beta"});
+  all_types.set_int64_map({{"alpha", 10}, {"beta", 20}});
+
+  optional_types::OptionalHolder holder;
+  *holder.mutable_all_types() = all_types;
+  holder.set_choice(optional_types::OptionalUnion::note("optional"));
+
+  FORY_TRY(optional_bytes, fory.serialize(holder));
+  FORY_TRY(optional_roundtrip,
+           fory.deserialize<optional_types::OptionalHolder>(
+               optional_bytes.data(), optional_bytes.size()));
+
+  if (!(optional_roundtrip == holder)) {
+    return fory::Unexpected(
+        fory::Error::invalid("optional types roundtrip mismatch"));
   }
 
   const char *data_file = std::getenv("DATA_FILE");
@@ -235,6 +298,19 @@ fory::Result<void, fory::Error> RunRoundTrip() {
     }
     FORY_TRY(peer_bytes, fory.serialize(peer_container));
     FORY_RETURN_IF_ERROR(WriteFile(container_file, peer_bytes));
+  }
+
+  const char *optional_file = std::getenv("DATA_FILE_OPTIONAL_TYPES");
+  if (optional_file != nullptr && optional_file[0] != '\0') {
+    FORY_TRY(payload, ReadFile(optional_file));
+    FORY_TRY(peer_holder, fory.deserialize<optional_types::OptionalHolder>(
+                              payload.data(), payload.size()));
+    if (!(peer_holder == holder)) {
+      return fory::Unexpected(
+          fory::Error::invalid("peer optional payload mismatch"));
+    }
+    FORY_TRY(peer_bytes, fory.serialize(peer_holder));
+    FORY_RETURN_IF_ERROR(WriteFile(optional_file, peer_bytes));
   }
 
   return fory::Result<void, fory::Error>();

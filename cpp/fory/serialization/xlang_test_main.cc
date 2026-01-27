@@ -43,9 +43,9 @@
 using ::fory::Buffer;
 using ::fory::Error;
 using ::fory::Result;
+using ::fory::serialization::Date;
 using ::fory::serialization::Fory;
 using ::fory::serialization::ForyBuilder;
-using ::fory::serialization::LocalDate;
 using ::fory::serialization::Serializer;
 using ::fory::serialization::Timestamp;
 
@@ -114,8 +114,8 @@ FORY_ENUM(Color, Green, Red, Blue, White);
 struct Item {
   std::string name;
   bool operator==(const Item &other) const { return name == other.name; }
+  FORY_STRUCT(Item, name);
 };
-FORY_STRUCT(Item, name);
 
 struct SimpleStruct {
   std::map<int32_t, double> f1;
@@ -132,8 +132,8 @@ struct SimpleStruct {
            f4 == other.f4 && f5 == other.f5 && f6 == other.f6 &&
            f7 == other.f7 && f8 == other.f8 && last == other.last;
   }
+  FORY_STRUCT(SimpleStruct, f1, f2, f3, f4, f5, f6, f7, f8, last);
 };
-FORY_STRUCT(SimpleStruct, f1, f2, f3, f4, f5, f6, f7, f8, last);
 
 // Integer struct used for cross-language boxed integer tests.
 // Java xlang mode: all fields are non-nullable by default.
@@ -148,16 +148,16 @@ struct Item1 {
     return f1 == other.f1 && f2 == other.f2 && f3 == other.f3 &&
            f4 == other.f4 && f5 == other.f5 && f6 == other.f6;
   }
+  FORY_STRUCT(Item1, f1, f2, f3, f4, f5, f6);
 };
-FORY_STRUCT(Item1, f1, f2, f3, f4, f5, f6);
 
 struct MyStruct {
   int32_t id;
   MyStruct() = default;
   explicit MyStruct(int32_t v) : id(v) {}
   bool operator==(const MyStruct &other) const { return id == other.id; }
+  FORY_STRUCT(MyStruct, id);
 };
-FORY_STRUCT(MyStruct, id);
 
 struct MyExt {
   int32_t id;
@@ -178,16 +178,16 @@ struct MyWrapper {
     return color == other.color && my_struct == other.my_struct &&
            my_ext == other.my_ext;
   }
+  FORY_STRUCT(MyWrapper, color, my_struct, my_ext);
 };
-FORY_STRUCT(MyWrapper, color, my_struct, my_ext);
 
 struct EmptyWrapper {
   bool operator==(const EmptyWrapper &other) const {
     (void)other;
     return true;
   }
+  FORY_STRUCT(EmptyWrapper);
 };
-FORY_STRUCT(EmptyWrapper);
 
 struct VersionCheckStruct {
   int32_t f1;
@@ -196,24 +196,24 @@ struct VersionCheckStruct {
   bool operator==(const VersionCheckStruct &other) const {
     return f1 == other.f1 && f2 == other.f2 && f3 == other.f3;
   }
+  FORY_STRUCT(VersionCheckStruct, f1, f2, f3);
 };
-FORY_STRUCT(VersionCheckStruct, f1, f2, f3);
 
 struct StructWithList {
   std::vector<std::string> items;
   bool operator==(const StructWithList &other) const {
     return items == other.items;
   }
+  FORY_STRUCT(StructWithList, items);
 };
-FORY_STRUCT(StructWithList, items);
 
 struct StructWithMap {
   std::map<std::string, std::string> data;
   bool operator==(const StructWithMap &other) const {
     return data == other.data;
   }
+  FORY_STRUCT(StructWithMap, data);
 };
-FORY_STRUCT(StructWithMap, data);
 
 // ============================================================================
 // Polymorphic Container Test Types - Using virtual base class
@@ -223,30 +223,30 @@ struct Animal {
   virtual ~Animal() = default;
   virtual std::string speak() const = 0;
   int32_t age = 0;
+  FORY_STRUCT(Animal, age);
 };
-FORY_STRUCT(Animal, age);
 
 struct Dog : Animal {
   std::string speak() const override { return "Woof"; }
   std::optional<std::string> name;
+  FORY_STRUCT(Dog, FORY_BASE(Animal), name);
 };
-FORY_STRUCT(Dog, age, name);
 
 struct Cat : Animal {
   std::string speak() const override { return "Meow"; }
   int32_t lives = 9;
+  FORY_STRUCT(Cat, FORY_BASE(Animal), lives);
 };
-FORY_STRUCT(Cat, age, lives);
 
 struct AnimalListHolder {
   std::vector<std::shared_ptr<Animal>> animals;
+  FORY_STRUCT(AnimalListHolder, animals);
 };
-FORY_STRUCT(AnimalListHolder, animals);
 
 struct AnimalMapHolder {
   std::map<std::string, std::shared_ptr<Animal>> animal_map;
+  FORY_STRUCT(AnimalMapHolder, animal_map);
 };
-FORY_STRUCT(AnimalMapHolder, animal_map);
 
 // ============================================================================
 // Schema Evolution Test Types
@@ -257,16 +257,16 @@ struct EmptyStructEvolution {
   bool operator==(const EmptyStructEvolution &other) const {
     return placeholder == other.placeholder;
   }
+  FORY_STRUCT(EmptyStructEvolution, placeholder);
 };
-FORY_STRUCT(EmptyStructEvolution, placeholder);
 
 struct OneStringFieldStruct {
   std::optional<std::string> f1;
   bool operator==(const OneStringFieldStruct &other) const {
     return f1 == other.f1;
   }
+  FORY_STRUCT(OneStringFieldStruct, f1);
 };
-FORY_STRUCT(OneStringFieldStruct, f1);
 
 struct TwoStringFieldStruct {
   std::string f1;
@@ -274,8 +274,8 @@ struct TwoStringFieldStruct {
   bool operator==(const TwoStringFieldStruct &other) const {
     return f1 == other.f1 && f2 == other.f2;
   }
+  FORY_STRUCT(TwoStringFieldStruct, f1, f2);
 };
-FORY_STRUCT(TwoStringFieldStruct, f1, f2);
 
 enum class TestEnum : int32_t { VALUE_A = 0, VALUE_B = 1, VALUE_C = 2 };
 FORY_ENUM(TestEnum, VALUE_A, VALUE_B, VALUE_C);
@@ -285,8 +285,8 @@ struct OneEnumFieldStruct {
   bool operator==(const OneEnumFieldStruct &other) const {
     return f1 == other.f1;
   }
+  FORY_STRUCT(OneEnumFieldStruct, f1);
 };
-FORY_STRUCT(OneEnumFieldStruct, f1);
 
 struct TwoEnumFieldStruct {
   TestEnum f1;
@@ -294,8 +294,8 @@ struct TwoEnumFieldStruct {
   bool operator==(const TwoEnumFieldStruct &other) const {
     return f1 == other.f1 && f2 == other.f2;
   }
+  FORY_STRUCT(TwoEnumFieldStruct, f1, f2);
 };
-FORY_STRUCT(TwoEnumFieldStruct, f1, f2);
 
 // ============================================================================
 // Nullable Field Test Types - Comprehensive versions matching Java structs
@@ -352,6 +352,12 @@ struct NullableComprehensiveSchemaConsistent {
            nullable_map == other.nullable_map;
   }
 
+  FORY_STRUCT(NullableComprehensiveSchemaConsistent, byte_field, short_field,
+              int_field, long_field, float_field, double_field, bool_field,
+              string_field, list_field, set_field, map_field, nullable_int,
+              nullable_long, nullable_float, nullable_double, nullable_bool,
+              nullable_string, nullable_list, nullable_set, nullable_map);
+
 private:
   static bool compare_optional_float(const std::optional<float> &a,
                                      const std::optional<float> &b) {
@@ -371,11 +377,6 @@ private:
     return std::abs(*a - *b) < 1e-9;
   }
 };
-FORY_STRUCT(NullableComprehensiveSchemaConsistent, byte_field, short_field,
-            int_field, long_field, float_field, double_field, bool_field,
-            string_field, list_field, set_field, map_field, nullable_int,
-            nullable_long, nullable_float, nullable_double, nullable_bool,
-            nullable_string, nullable_list, nullable_set, nullable_map);
 
 // NullableComprehensiveCompatible (type id 402)
 // Matches Java's NullableComprehensiveCompatible for COMPATIBLE mode
@@ -439,6 +440,13 @@ struct NullableComprehensiveCompatible {
            nullable_map2 == other.nullable_map2;
   }
 
+  FORY_STRUCT(NullableComprehensiveCompatible, byte_field, short_field,
+              int_field, long_field, float_field, double_field, bool_field,
+              boxed_int, boxed_long, boxed_float, boxed_double, boxed_bool,
+              string_field, list_field, set_field, map_field, nullable_int1,
+              nullable_long1, nullable_float1, nullable_double1, nullable_bool1,
+              nullable_string2, nullable_list2, nullable_set2, nullable_map2);
+
 private:
   static bool compare_optional_float(const std::optional<float> &a,
                                      const std::optional<float> &b) {
@@ -458,12 +466,6 @@ private:
     return std::abs(*a - *b) < 1e-9;
   }
 };
-FORY_STRUCT(NullableComprehensiveCompatible, byte_field, short_field, int_field,
-            long_field, float_field, double_field, bool_field, boxed_int,
-            boxed_long, boxed_float, boxed_double, boxed_bool, string_field,
-            list_field, set_field, map_field, nullable_int1, nullable_long1,
-            nullable_float1, nullable_double1, nullable_bool1, nullable_string2,
-            nullable_list2, nullable_set2, nullable_map2);
 
 // ============================================================================
 // Reference Tracking Test Types - Cross-language shared reference tests
@@ -480,8 +482,8 @@ struct RefInnerSchemaConsistent {
   bool operator!=(const RefInnerSchemaConsistent &other) const {
     return !(*this == other);
   }
+  FORY_STRUCT(RefInnerSchemaConsistent, id, name);
 };
-FORY_STRUCT(RefInnerSchemaConsistent, id, name);
 
 // Outer struct for reference tracking test (SCHEMA_CONSISTENT mode)
 // Contains two fields that both point to the same inner object.
@@ -499,8 +501,8 @@ struct RefOuterSchemaConsistent {
                       *inner2 == *other.inner2);
     return inner1_eq && inner2_eq;
   }
+  FORY_STRUCT(RefOuterSchemaConsistent, inner1, inner2);
 };
-FORY_STRUCT(RefOuterSchemaConsistent, inner1, inner2);
 FORY_FIELD_TAGS(RefOuterSchemaConsistent, (inner1, 0, nullable, ref),
                 (inner2, 1, nullable, ref));
 // Verify field tags are correctly parsed
@@ -529,8 +531,8 @@ struct RefInnerCompatible {
   bool operator!=(const RefInnerCompatible &other) const {
     return !(*this == other);
   }
+  FORY_STRUCT(RefInnerCompatible, id, name);
 };
-FORY_STRUCT(RefInnerCompatible, id, name);
 
 // Outer struct for reference tracking test (COMPATIBLE mode)
 // Contains two fields that both point to the same inner object.
@@ -548,8 +550,8 @@ struct RefOuterCompatible {
                       *inner2 == *other.inner2);
     return inner1_eq && inner2_eq;
   }
+  FORY_STRUCT(RefOuterCompatible, inner1, inner2);
 };
-FORY_STRUCT(RefOuterCompatible, inner1, inner2);
 FORY_FIELD_TAGS(RefOuterCompatible, (inner1, 0, nullable, ref),
                 (inner2, 1, nullable, ref));
 
@@ -577,8 +579,8 @@ struct CircularRefStruct {
                    (selfRef != nullptr && other.selfRef != nullptr);
     return self_eq;
   }
+  FORY_STRUCT(CircularRefStruct, name, selfRef);
 };
-FORY_STRUCT(CircularRefStruct, name, selfRef);
 FORY_FIELD_TAGS(CircularRefStruct, (name, 0), (selfRef, 1, nullable, ref));
 
 // ============================================================================
@@ -595,11 +597,12 @@ struct UnsignedSchemaConsistentSimple {
     return u64Tagged == other.u64Tagged &&
            u64TaggedNullable == other.u64TaggedNullable;
   }
+  FORY_STRUCT(UnsignedSchemaConsistentSimple, u64Tagged, u64TaggedNullable);
 };
-FORY_STRUCT(UnsignedSchemaConsistentSimple, u64Tagged, u64TaggedNullable);
 FORY_FIELD_CONFIG(UnsignedSchemaConsistentSimple,
-                  (u64Tagged, fory::FieldMeta{}.tagged()),
-                  (u64TaggedNullable, fory::FieldMeta{}.nullable().tagged()));
+                  UnsignedSchemaConsistentSimple,
+                  (u64Tagged, fory::F().tagged()),
+                  (u64TaggedNullable, fory::F().nullable().tagged()));
 
 // UnsignedSchemaConsistent (type id 501)
 // Test struct for unsigned numbers in SCHEMA_CONSISTENT mode.
@@ -639,28 +642,27 @@ struct UnsignedSchemaConsistent {
            u64FixedNullableField == other.u64FixedNullableField &&
            u64TaggedNullableField == other.u64TaggedNullableField;
   }
+  FORY_STRUCT(UnsignedSchemaConsistent, u8Field, u16Field, u32VarField,
+              u32FixedField, u64VarField, u64FixedField, u64TaggedField,
+              u8NullableField, u16NullableField, u32VarNullableField,
+              u32FixedNullableField, u64VarNullableField, u64FixedNullableField,
+              u64TaggedNullableField);
 };
-FORY_STRUCT(UnsignedSchemaConsistent, u8Field, u16Field, u32VarField,
-            u32FixedField, u64VarField, u64FixedField, u64TaggedField,
-            u8NullableField, u16NullableField, u32VarNullableField,
-            u32FixedNullableField, u64VarNullableField, u64FixedNullableField,
-            u64TaggedNullableField);
 // Use new FORY_FIELD_CONFIG with builder pattern for encoding specification
-FORY_FIELD_CONFIG(UnsignedSchemaConsistent, (u8Field, fory::FieldMeta{}),
-                  (u16Field, fory::FieldMeta{}),
-                  (u32VarField, fory::FieldMeta{}.varint()),
-                  (u32FixedField, fory::FieldMeta{}.fixed()),
-                  (u64VarField, fory::FieldMeta{}.varint()),
-                  (u64FixedField, fory::FieldMeta{}.fixed()),
-                  (u64TaggedField, fory::FieldMeta{}.tagged()),
-                  (u8NullableField, fory::FieldMeta{}.nullable()),
-                  (u16NullableField, fory::FieldMeta{}.nullable()),
-                  (u32VarNullableField, fory::FieldMeta{}.nullable().varint()),
-                  (u32FixedNullableField, fory::FieldMeta{}.nullable().fixed()),
-                  (u64VarNullableField, fory::FieldMeta{}.nullable().varint()),
-                  (u64FixedNullableField, fory::FieldMeta{}.nullable().fixed()),
-                  (u64TaggedNullableField,
-                   fory::FieldMeta{}.nullable().tagged()));
+FORY_FIELD_CONFIG(UnsignedSchemaConsistent, UnsignedSchemaConsistent,
+                  (u8Field, fory::F()), (u16Field, fory::F()),
+                  (u32VarField, fory::F().varint()),
+                  (u32FixedField, fory::F().fixed()),
+                  (u64VarField, fory::F().varint()),
+                  (u64FixedField, fory::F().fixed()),
+                  (u64TaggedField, fory::F().tagged()),
+                  (u8NullableField, fory::F().nullable()),
+                  (u16NullableField, fory::F().nullable()),
+                  (u32VarNullableField, fory::F().nullable().varint()),
+                  (u32FixedNullableField, fory::F().nullable().fixed()),
+                  (u64VarNullableField, fory::F().nullable().varint()),
+                  (u64FixedNullableField, fory::F().nullable().fixed()),
+                  (u64TaggedNullableField, fory::F().nullable().tagged()));
 
 // UnsignedSchemaCompatible (type id 502)
 // Test struct for unsigned numbers in COMPATIBLE mode.
@@ -700,28 +702,25 @@ struct UnsignedSchemaCompatible {
            u64FixedField2 == other.u64FixedField2 &&
            u64TaggedField2 == other.u64TaggedField2;
   }
+  FORY_STRUCT(UnsignedSchemaCompatible, u8Field1, u16Field1, u32VarField1,
+              u32FixedField1, u64VarField1, u64FixedField1, u64TaggedField1,
+              u8Field2, u16Field2, u32VarField2, u32FixedField2, u64VarField2,
+              u64FixedField2, u64TaggedField2);
 };
-FORY_STRUCT(UnsignedSchemaCompatible, u8Field1, u16Field1, u32VarField1,
-            u32FixedField1, u64VarField1, u64FixedField1, u64TaggedField1,
-            u8Field2, u16Field2, u32VarField2, u32FixedField2, u64VarField2,
-            u64FixedField2, u64TaggedField2);
 // Use new FORY_FIELD_CONFIG with builder pattern for encoding specification
 // Group 1: nullable in C++ (std::optional), non-nullable in Java
 // Group 2: non-nullable in C++, nullable in Java
-FORY_FIELD_CONFIG(UnsignedSchemaCompatible,
-                  (u8Field1, fory::FieldMeta{}.nullable()),
-                  (u16Field1, fory::FieldMeta{}.nullable()),
-                  (u32VarField1, fory::FieldMeta{}.nullable().varint()),
-                  (u32FixedField1, fory::FieldMeta{}.nullable().fixed()),
-                  (u64VarField1, fory::FieldMeta{}.nullable().varint()),
-                  (u64FixedField1, fory::FieldMeta{}.nullable().fixed()),
-                  (u64TaggedField1, fory::FieldMeta{}.nullable().tagged()),
-                  (u8Field2, fory::FieldMeta{}), (u16Field2, fory::FieldMeta{}),
-                  (u32VarField2, fory::FieldMeta{}.varint()),
-                  (u32FixedField2, fory::FieldMeta{}.fixed()),
-                  (u64VarField2, fory::FieldMeta{}.varint()),
-                  (u64FixedField2, fory::FieldMeta{}.fixed()),
-                  (u64TaggedField2, fory::FieldMeta{}.tagged()));
+FORY_FIELD_CONFIG(
+    UnsignedSchemaCompatible, UnsignedSchemaCompatible,
+    (u8Field1, fory::F().nullable()), (u16Field1, fory::F().nullable()),
+    (u32VarField1, fory::F().nullable().varint()),
+    (u32FixedField1, fory::F().nullable().fixed()),
+    (u64VarField1, fory::F().nullable().varint()),
+    (u64FixedField1, fory::F().nullable().fixed()),
+    (u64TaggedField1, fory::F().nullable().tagged()), (u8Field2, fory::F()),
+    (u16Field2, fory::F()), (u32VarField2, fory::F().varint()),
+    (u32FixedField2, fory::F().fixed()), (u64VarField2, fory::F().varint()),
+    (u64FixedField2, fory::F().fixed()), (u64TaggedField2, fory::F().tagged()));
 
 namespace fory {
 namespace serialization {
@@ -1276,8 +1275,8 @@ void RunTestCrossLanguageSerializer(const std::string &data_file) {
   std::set<std::string> str_set = {"hello", "world"};
   std::map<std::string, std::string> str_map = {{"hello", "world"},
                                                 {"foo", "bar"}};
-  LocalDate day(18954); // 2021-11-23
-  Timestamp instant(std::chrono::nanoseconds(100000000));
+  Date day(18954); // 2021-11-23
+  Timestamp instant(std::chrono::seconds(100));
 
   std::vector<uint8_t> copy = bytes;
   Buffer buffer = MakeBuffer(copy);
@@ -1333,8 +1332,8 @@ void RunTestCrossLanguageSerializer(const std::string &data_file) {
   if (ReadNext<std::string>(fory, buffer) != "str") {
     Fail("String mismatch");
   }
-  if (ReadNext<LocalDate>(fory, buffer) != day) {
-    Fail("LocalDate mismatch");
+  if (ReadNext<Date>(fory, buffer) != day) {
+    Fail("Date mismatch");
   }
   if (ReadNext<Timestamp>(fory, buffer) != instant) {
     Fail("Timestamp mismatch");

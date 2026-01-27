@@ -18,6 +18,7 @@
 package codegen
 
 import (
+	"fmt"
 	"go/types"
 	"sort"
 	"unicode"
@@ -33,9 +34,11 @@ type FieldInfo struct {
 	Index         int        // Original field index in struct
 	IsPrimitive   bool       // Whether it's a Fory primitive type
 	IsPointer     bool       // Whether it's a pointer type
+	IsOptional    bool       // Whether it's a fory optional.Optional[T]
 	Nullable      bool       // Whether the field can be null (pointer types)
 	TypeID        string     // Fory TypeID for sorting
 	PrimitiveSize int        // Size for primitive type sorting
+	OptionalElem  types.Type // Element type for optional.Optional[T]
 }
 
 // StructInfo contains metadata about a struct to generate code for
@@ -56,10 +59,33 @@ func toSnakeCase(s string) string {
 	return string(result)
 }
 
+func getOptionalElementType(t types.Type) (types.Type, bool) {
+	t = types.Unalias(t)
+	named, ok := t.(*types.Named)
+	if !ok {
+		return nil, false
+	}
+	obj := named.Obj()
+	if obj == nil || obj.Name() != "Optional" {
+		return nil, false
+	}
+	if obj.Pkg() == nil || obj.Pkg().Path() != "github.com/apache/fory/go/fory/optional" {
+		return nil, false
+	}
+	typeArgs := named.TypeArgs()
+	if typeArgs == nil || typeArgs.Len() != 1 {
+		return nil, false
+	}
+	return typeArgs.At(0), true
+}
+
 // isSupportedFieldType checks if a field type is supported
 func isSupportedFieldType(t types.Type) bool {
 	// Unwrap alias types (e.g., 'any' is an alias for 'interface{}')
 	t = types.Unalias(t)
+	if elem, ok := getOptionalElementType(t); ok {
+		t = elem
+	}
 
 	// Handle pointer types
 	if ptr, ok := t.(*types.Pointer); ok {
@@ -116,6 +142,9 @@ func isSupportedFieldType(t types.Type) bool {
 func isPrimitiveType(t types.Type) bool {
 	// Unwrap alias types
 	t = types.Unalias(t)
+	if elem, ok := getOptionalElementType(t); ok {
+		t = elem
+	}
 
 	// Handle pointer types
 	if ptr, ok := t.(*types.Pointer); ok {
@@ -142,6 +171,9 @@ func isPrimitiveType(t types.Type) bool {
 func getTypeID(t types.Type) string {
 	// Unwrap alias types
 	t = types.Unalias(t)
+	if elem, ok := getOptionalElementType(t); ok {
+		t = elem
+	}
 
 	// Handle pointer types
 	if ptr, ok := t.(*types.Pointer); ok {
@@ -205,7 +237,7 @@ func getTypeID(t types.Type) string {
 		case "time.Time":
 			return "TIMESTAMP"
 		case "github.com/apache/fory/go/fory.Date":
-			return "LOCAL_DATE"
+			return "DATE"
 		}
 		// Struct types
 		if _, ok := named.Underlying().(*types.Struct); ok {
@@ -250,6 +282,9 @@ func getTypeID(t types.Type) string {
 func getPrimitiveSize(t types.Type) int {
 	// Unwrap alias types
 	t = types.Unalias(t)
+	if elem, ok := getOptionalElementType(t); ok {
+		t = elem
+	}
 
 	// Handle pointer types
 	if ptr, ok := t.(*types.Pointer); ok {
@@ -320,8 +355,8 @@ func getTypeIDValue(typeID string) int {
 		return int(fory.MAP) // 22
 	case "TIMESTAMP":
 		return int(fory.TIMESTAMP) // 25
-	case "LOCAL_DATE":
-		return int(fory.LOCAL_DATE) // 26
+	case "DATE":
+		return int(fory.DATE) // 26
 	case "NAMED_STRUCT":
 		return int(fory.NAMED_STRUCT) // 17
 	// Primitive array types
@@ -483,6 +518,21 @@ func analyzeField(field *types.Var, index int) (*FieldInfo, error) {
 		return nil, nil // Skip unsupported types
 	}
 
+	optionalElem, isOptional := getOptionalElementType(fieldType)
+	if isOptional && optionalElem != nil {
+		if ptr, ok := optionalElem.(*types.Pointer); ok {
+			switch ptr.Elem().Underlying().(type) {
+			case *types.Slice, *types.Map:
+				return nil, fmt.Errorf("field %s: optional.Optional is not allowed for slice/map", goName)
+			}
+		} else {
+			switch optionalElem.Underlying().(type) {
+			case *types.Struct, *types.Slice, *types.Map:
+				return nil, fmt.Errorf("field %s: optional.Optional is not allowed for struct/slice/map", goName)
+			}
+		}
+	}
+
 	// Analyze type information
 	isPrimitive := isPrimitiveType(fieldType)
 	isPointer := false
@@ -505,8 +555,10 @@ func analyzeField(field *types.Var, index int) (*FieldInfo, error) {
 		Index:         index,
 		IsPrimitive:   isPrimitive,
 		IsPointer:     isPointer,
-		Nullable:      isPointer, // Pointer types are nullable, slices/maps are non-nullable in xlang mode
+		IsOptional:    isOptional,
+		Nullable:      isPointer || isOptional, // Pointer and optional types are nullable in xlang mode
 		TypeID:        typeID,
 		PrimitiveSize: primitiveSize,
+		OptionalElem:  optionalElem,
 	}, nil
 }

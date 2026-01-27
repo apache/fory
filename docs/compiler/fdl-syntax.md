@@ -672,6 +672,43 @@ message OtherMessage {
 - Within a message, you can reference nested types by simple name
 - From outside, use the qualified name (Parent.Child)
 
+## Union Definition
+
+Unions define a value that can hold exactly one of several case types.
+
+### Basic Syntax
+
+```protobuf
+union Animal [id=106] {
+    Dog dog = 1;
+    Cat cat = 2;
+}
+```
+
+### Using a Union in a Message
+
+```protobuf
+message Person [id=100] {
+    Animal pet = 1;
+    optional Animal favorite_pet = 2;
+}
+```
+
+### Rules
+
+- Case IDs must be unique within the union
+- Cases cannot be `optional`, `repeated`, or `ref`
+- Union cases do not support field options
+- Case types can be primitives, enums, messages, or other named types
+- Union type IDs (`[id=...]`) are optional but recommended for cross-language use
+
+**Grammar:**
+
+```
+union_def  := 'union' IDENTIFIER [type_options] '{' union_field* '}'
+union_field := field_type IDENTIFIER '=' INTEGER ';'
+```
+
 ## Field Definition
 
 Fields define the properties of a message.

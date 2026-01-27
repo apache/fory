@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import Fory, { TypeInfo, InternalSerializerType } from '../packages/fory/index';
+import Fory from '../packages/fory/index';
 import {describe, expect, test} from '@jest/globals';
 
 describe('bool', () => {

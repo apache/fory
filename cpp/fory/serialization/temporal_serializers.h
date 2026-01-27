@@ -36,18 +36,18 @@ using Duration = std::chrono::nanoseconds;
 using Timestamp = std::chrono::time_point<std::chrono::system_clock,
                                           std::chrono::nanoseconds>;
 
-/// LocalDate: naive date without timezone as days since Unix epoch
-struct LocalDate {
+/// Date: naive date without timezone as days since Unix epoch
+struct Date {
   int32_t days_since_epoch; // Days since Jan 1, 1970 UTC
 
-  LocalDate() : days_since_epoch(0) {}
-  explicit LocalDate(int32_t days) : days_since_epoch(days) {}
+  Date() : days_since_epoch(0) {}
+  explicit Date(int32_t days) : days_since_epoch(days) {}
 
-  bool operator==(const LocalDate &other) const {
+  bool operator==(const Date &other) const {
     return days_since_epoch == other.days_since_epoch;
   }
 
-  bool operator!=(const LocalDate &other) const { return !(*this == other); }
+  bool operator!=(const Date &other) const { return !(*this == other); }
 };
 
 // ============================================================================
@@ -131,7 +131,8 @@ template <> struct Serializer<Duration> {
 // ============================================================================
 
 /// Serializer for Timestamp
-/// Per xlang spec: serialized as int64 nanosecond count since Unix epoch
+/// Per xlang spec: serialized as int64 seconds + uint32 nanoseconds since Unix
+/// epoch
 template <> struct Serializer<Timestamp> {
   static constexpr TypeId type_id = TypeId::TIMESTAMP;
 
@@ -161,8 +162,17 @@ template <> struct Serializer<Timestamp> {
   }
 
   static inline void write_data(const Timestamp &timestamp, WriteContext &ctx) {
-    int64_t nanos = timestamp.time_since_epoch().count();
-    ctx.write_bytes(&nanos, sizeof(int64_t));
+    auto nanos = timestamp.time_since_epoch();
+    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(nanos);
+    auto remainder = nanos - seconds;
+    if (remainder.count() < 0) {
+      seconds -= std::chrono::seconds(1);
+      remainder += std::chrono::seconds(1);
+    }
+    int64_t seconds_count = seconds.count();
+    uint32_t nanos_count = static_cast<uint32_t>(remainder.count());
+    ctx.write_int64(seconds_count);
+    ctx.write_uint32(nanos_count);
   }
 
   static inline void write_data_generic(const Timestamp &timestamp,
@@ -174,26 +184,30 @@ template <> struct Serializer<Timestamp> {
                                bool read_type) {
     bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
-      return Timestamp(Duration(0));
+      return Timestamp(std::chrono::nanoseconds(0));
     }
     if (read_type) {
       uint32_t type_id_read = ctx.read_varuint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return Timestamp(Duration(0));
+        return Timestamp(std::chrono::nanoseconds(0));
       }
       if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
-        return Timestamp(Duration(0));
+        return Timestamp(std::chrono::nanoseconds(0));
       }
     }
     return read_data(ctx);
   }
 
   static inline Timestamp read_data(ReadContext &ctx) {
-    int64_t nanos;
-    ctx.read_bytes(&nanos, sizeof(int64_t), ctx.error());
-    return Timestamp(Duration(nanos));
+    int64_t seconds = ctx.read_int64(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return Timestamp(std::chrono::nanoseconds(0));
+    }
+    uint32_t nanos = ctx.read_uint32(ctx.error());
+    return Timestamp(std::chrono::seconds(seconds) +
+                     std::chrono::nanoseconds(nanos));
   }
 
   static inline Timestamp read_with_type_info(ReadContext &ctx,
@@ -204,13 +218,13 @@ template <> struct Serializer<Timestamp> {
 };
 
 // ============================================================================
-// LocalDate Serializer
+// Date Serializer
 // ============================================================================
 
-/// Serializer for LocalDate
+/// Serializer for Date
 /// Per xlang spec: serialized as int32 day count since Unix epoch
-template <> struct Serializer<LocalDate> {
-  static constexpr TypeId type_id = TypeId::LOCAL_DATE;
+template <> struct Serializer<Date> {
+  static constexpr TypeId type_id = TypeId::DATE;
 
   static inline void write_type_info(WriteContext &ctx) {
     ctx.write_varuint32(static_cast<uint32_t>(type_id));
@@ -227,7 +241,7 @@ template <> struct Serializer<LocalDate> {
     }
   }
 
-  static inline void write(const LocalDate &date, WriteContext &ctx,
+  static inline void write(const Date &date, WriteContext &ctx,
                            RefMode ref_mode, bool write_type,
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
@@ -237,44 +251,42 @@ template <> struct Serializer<LocalDate> {
     write_data(date, ctx);
   }
 
-  static inline void write_data(const LocalDate &date, WriteContext &ctx) {
+  static inline void write_data(const Date &date, WriteContext &ctx) {
     ctx.write_bytes(&date.days_since_epoch, sizeof(int32_t));
   }
 
-  static inline void write_data_generic(const LocalDate &date,
-                                        WriteContext &ctx, bool has_generics) {
+  static inline void write_data_generic(const Date &date, WriteContext &ctx,
+                                        bool has_generics) {
     write_data(date, ctx);
   }
 
-  static inline LocalDate read(ReadContext &ctx, RefMode ref_mode,
-                               bool read_type) {
+  static inline Date read(ReadContext &ctx, RefMode ref_mode, bool read_type) {
     bool has_value = read_null_only_flag(ctx, ref_mode);
     if (ctx.has_error() || !has_value) {
-      return LocalDate();
+      return Date();
     }
     if (read_type) {
       uint32_t type_id_read = ctx.read_varuint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
-        return LocalDate();
+        return Date();
       }
       if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
-        return LocalDate();
+        return Date();
       }
     }
     return read_data(ctx);
   }
 
-  static inline LocalDate read_data(ReadContext &ctx) {
-    LocalDate date;
+  static inline Date read_data(ReadContext &ctx) {
+    Date date;
     ctx.read_bytes(&date.days_since_epoch, sizeof(int32_t), ctx.error());
     return date;
   }
 
-  static inline LocalDate read_with_type_info(ReadContext &ctx,
-                                              RefMode ref_mode,
-                                              const TypeInfo &type_info) {
+  static inline Date read_with_type_info(ReadContext &ctx, RefMode ref_mode,
+                                         const TypeInfo &type_info) {
     return read(ctx, ref_mode, false);
   }
 };

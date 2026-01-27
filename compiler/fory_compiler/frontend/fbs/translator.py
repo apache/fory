@@ -27,6 +27,7 @@ from fory_compiler.frontend.fbs.ast import (
     FbsTypeName,
     FbsTypeRef,
     FbsVectorType,
+    FbsUnion,
 )
 from fory_compiler.ir.ast import (
     Enum,
@@ -39,6 +40,7 @@ from fory_compiler.ir.ast import (
     PrimitiveType,
     Schema,
     SourceLocation,
+    Union,
 )
 from fory_compiler.ir.types import PrimitiveKind
 
@@ -77,6 +79,7 @@ class FbsTranslator:
             package=self.schema.namespace,
             imports=[Import(path=inc) for inc in self.schema.includes],
             enums=[self._translate_enum(e) for e in self.schema.enums],
+            unions=[self._translate_union(u) for u in self.schema.unions],
             messages=self._translate_messages(),
             options={},
             source_file=self.schema.source_file,
@@ -148,7 +151,7 @@ class FbsTranslator:
 
     def _translate_fields(self, fields) -> List[Field]:
         translated: List[Field] = []
-        for index, field in enumerate(fields):
+        for index, field in enumerate(fields, start=1):
             field_type = self._translate_type(field.field_type)
             translated.append(
                 Field(
@@ -163,6 +166,51 @@ class FbsTranslator:
                 )
             )
         return translated
+
+    def _translate_union(self, fbs_union: FbsUnion) -> Union:
+        fields: List[Field] = []
+        for index, type_name in enumerate(fbs_union.types, start=1):
+            field_name = self._lower_name(type_name)
+            fields.append(
+                Field(
+                    name=field_name,
+                    field_type=NamedType(
+                        type_name,
+                        location=self._location(fbs_union.line, fbs_union.column),
+                    ),
+                    number=index,
+                    line=fbs_union.line,
+                    column=fbs_union.column,
+                    location=self._location(fbs_union.line, fbs_union.column),
+                )
+            )
+        return Union(
+            name=fbs_union.name,
+            type_id=None,
+            fields=fields,
+            options=dict(fbs_union.attributes),
+            line=fbs_union.line,
+            column=fbs_union.column,
+            location=self._location(fbs_union.line, fbs_union.column),
+        )
+
+    def _lower_name(self, name: str) -> str:
+        if not name:
+            return name
+        if "." in name:
+            name = name.split(".")[-1]
+        result = []
+        for i, char in enumerate(name):
+            if char.isupper():
+                if i > 0 and (
+                    name[i - 1].islower()
+                    or (i + 1 < len(name) and name[i + 1].islower())
+                ):
+                    result.append("_")
+                result.append(char.lower())
+            else:
+                result.append(char)
+        return "".join(result)
 
     def _translate_type(self, fbs_type: FbsTypeRef):
         if isinstance(fbs_type, FbsVectorType):

@@ -159,13 +159,13 @@ Calendar date without time:
 date birth_date = 1;
 ```
 
-| Language | Type                             | Notes                   |
-| -------- | -------------------------------- | ----------------------- |
-| Java     | `java.time.LocalDate`            |                         |
-| Python   | `datetime.date`                  |                         |
-| Go       | `time.Time`                      | Time portion ignored    |
-| Rust     | `chrono::NaiveDate`              | Requires `chrono` crate |
-| C++      | `fory::serialization::LocalDate` |                         |
+| Language | Type                        | Notes                   |
+| -------- | --------------------------- | ----------------------- |
+| Java     | `java.time.LocalDate`       |                         |
+| Python   | `datetime.date`             |                         |
+| Go       | `time.Time`                 | Time portion ignored    |
+| Rust     | `chrono::NaiveDate`         | Requires `chrono` crate |
+| C++      | `fory::serialization::Date` |                         |
 
 #### Timestamp
 

@@ -17,8 +17,8 @@
  * under the License.
  */
 
-import { InternalSerializerType, Serializer } from "../type";
-import { ArrayTypeInfo, MapTypeInfo, StructTypeInfo, OneofTypeInfo, SetTypeInfo, TupleTypeInfo, TypeInfo } from "../typeInfo";
+import { TypeId, Serializer } from "../type";
+import { ArrayTypeInfo, MapTypeInfo, StructTypeInfo, SetTypeInfo, TypeInfo } from "../typeInfo";
 import { CodegenRegistry } from "./router";
 import { CodecBuilder } from "./builder";
 import { Scope } from "./scope";
@@ -32,7 +32,6 @@ import "./map";
 import "./number";
 import "./set";
 import "./struct";
-import "./tuple";
 import "./typedArray";
 import "./enum";
 import Fory from "../fory";
@@ -47,9 +46,9 @@ export class Gen {
   }
 
   private generate(typeInfo: TypeInfo) {
-    const InnerGeneratorClass = CodegenRegistry.get(typeInfo.type);
+    const InnerGeneratorClass = CodegenRegistry.get(typeInfo.typeId);
     if (!InnerGeneratorClass) {
-      throw new Error(`${typeInfo.type} generator not exists`);
+      throw new Error(`${typeInfo.typeId} generator not exists`);
     }
     const scope = new Scope();
     const generator = new InnerGeneratorClass(typeInfo, new CodecBuilder(scope, this.fory), scope);
@@ -73,7 +72,7 @@ export class Gen {
   }
 
   private traversalContainer(typeInfo: TypeInfo) {
-    if (typeInfo.type === InternalSerializerType.STRUCT) {
+    if (typeInfo.typeId === TypeId.STRUCT || typeInfo.typeId === TypeId.NAMED_STRUCT) {
       if (this.isRegistered(typeInfo) && !this.replace) {
         return;
       }
@@ -87,28 +86,15 @@ export class Gen {
         this.register(<StructTypeInfo>typeInfo, func()(this.fory, Gen.external, typeInfo, this.regOptions));
       }
     }
-    if (typeInfo.type === InternalSerializerType.ARRAY) {
+    if (typeInfo.typeId === TypeId.ARRAY) {
       this.traversalContainer((<ArrayTypeInfo>typeInfo).options.inner);
     }
-    if (typeInfo.type === InternalSerializerType.SET) {
+    if (typeInfo.typeId === TypeId.SET) {
       this.traversalContainer((<SetTypeInfo>typeInfo).options.key);
     }
-    if (typeInfo.type === InternalSerializerType.MAP) {
+    if (typeInfo.typeId === TypeId.MAP) {
       this.traversalContainer((<MapTypeInfo>typeInfo).options.key);
       this.traversalContainer((<MapTypeInfo>typeInfo).options.value);
-    }
-    if (typeInfo.type === InternalSerializerType.TUPLE) {
-      (<TupleTypeInfo>typeInfo).options.inner.forEach((x) => {
-        this.traversalContainer(x);
-      });
-    }
-    if (typeInfo.type === InternalSerializerType.ONEOF) {
-      const options = (<OneofTypeInfo>typeInfo).options;
-      if (options.inner) {
-        Object.values(options.inner).forEach((x) => {
-          this.traversalContainer(x);
-        });
-      }
     }
   }
 

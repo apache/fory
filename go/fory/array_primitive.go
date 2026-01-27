@@ -580,3 +580,217 @@ func (s uint8ArraySerializer) Read(ctx *ReadContext, refMode RefMode, readType b
 func (s uint8ArraySerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
 	s.Read(ctx, refMode, false, false, value)
 }
+
+// ============================================================================
+// uint16ArraySerializer - optimized [N]uint16 serialization
+// ============================================================================
+
+type uint16ArraySerializer struct {
+	arrayType reflect.Type
+}
+
+func (s uint16ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	buf := ctx.Buffer()
+	length := value.Len()
+	size := length * 2
+	buf.WriteLength(size)
+	if length > 0 {
+		if value.CanAddr() && isLittleEndian {
+			// Fast path: direct memory copy - little-endian only
+			ptr := value.Addr().UnsafePointer()
+			buf.WriteBinary(unsafe.Slice((*byte)(ptr), size))
+		} else {
+			// Slow path for non-addressable arrays or big-endian
+			for i := 0; i < length; i++ {
+				// Cast to int16 to match INT16_ARRAY wire format (bits are preserved)
+				buf.WriteInt16(int16(value.Index(i).Uint()))
+			}
+		}
+	}
+}
+
+func (s uint16ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	writeArrayRefAndType(ctx, refMode, writeType, value, UINT16_ARRAY)
+	if ctx.HasError() {
+		return
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s uint16ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	buf := ctx.Buffer()
+	err := ctx.Err()
+	size := buf.ReadLength(err)
+	length := size / 2
+	if ctx.HasError() {
+		return
+	}
+	if length != value.Type().Len() {
+		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+		return
+	}
+	if length > 0 {
+		if isLittleEndian {
+			ptr := value.Addr().UnsafePointer()
+			raw := buf.ReadBinary(size, err)
+			copy(unsafe.Slice((*byte)(ptr), size), raw)
+		} else {
+			for i := 0; i < length; i++ {
+				value.Index(i).SetUint(uint64(uint16(buf.ReadInt16(err))))
+			}
+		}
+	}
+}
+
+func (s uint16ArraySerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	done := readArrayRefAndType(ctx, refMode, readType, value)
+	if done || ctx.HasError() {
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s uint16ArraySerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
+
+// ============================================================================
+// uint32ArraySerializer - optimized [N]uint32 serialization
+// ============================================================================
+
+type uint32ArraySerializer struct {
+	arrayType reflect.Type
+}
+
+func (s uint32ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	buf := ctx.Buffer()
+	length := value.Len()
+	size := length * 4
+	buf.WriteLength(size)
+	if length > 0 {
+		if value.CanAddr() && isLittleEndian {
+			ptr := value.Addr().UnsafePointer()
+			buf.WriteBinary(unsafe.Slice((*byte)(ptr), size))
+		} else {
+			for i := 0; i < length; i++ {
+				// Cast to int32 (bits preserved)
+				buf.WriteInt32(int32(value.Index(i).Uint()))
+			}
+		}
+	}
+}
+
+func (s uint32ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	writeArrayRefAndType(ctx, refMode, writeType, value, UINT32_ARRAY)
+	if ctx.HasError() {
+		return
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s uint32ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	buf := ctx.Buffer()
+	err := ctx.Err()
+	size := buf.ReadLength(err)
+	length := size / 4
+	if ctx.HasError() {
+		return
+	}
+	if length != value.Type().Len() {
+		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+		return
+	}
+	if length > 0 {
+		if isLittleEndian {
+			ptr := value.Addr().UnsafePointer()
+			raw := buf.ReadBinary(size, err)
+			copy(unsafe.Slice((*byte)(ptr), size), raw)
+		} else {
+			for i := 0; i < length; i++ {
+				value.Index(i).SetUint(uint64(uint32(buf.ReadInt32(err))))
+			}
+		}
+	}
+}
+
+func (s uint32ArraySerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	done := readArrayRefAndType(ctx, refMode, readType, value)
+	if done || ctx.HasError() {
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s uint32ArraySerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
+
+// ============================================================================
+// uint64ArraySerializer - optimized [N]uint64 serialization
+// ============================================================================
+
+type uint64ArraySerializer struct {
+	arrayType reflect.Type
+}
+
+func (s uint64ArraySerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	buf := ctx.Buffer()
+	length := value.Len()
+	size := length * 8
+	buf.WriteLength(size)
+	if length > 0 {
+		if value.CanAddr() && isLittleEndian {
+			ptr := value.Addr().UnsafePointer()
+			buf.WriteBinary(unsafe.Slice((*byte)(ptr), size))
+		} else {
+			for i := 0; i < length; i++ {
+				buf.WriteInt64(int64(value.Index(i).Uint()))
+			}
+		}
+	}
+}
+
+func (s uint64ArraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	writeArrayRefAndType(ctx, refMode, writeType, value, UINT64_ARRAY)
+	if ctx.HasError() {
+		return
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s uint64ArraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	buf := ctx.Buffer()
+	err := ctx.Err()
+	size := buf.ReadLength(err)
+	length := size / 8
+	if ctx.HasError() {
+		return
+	}
+	if length != value.Type().Len() {
+		ctx.SetError(DeserializationErrorf("array length %d does not match type %v", length, value.Type()))
+		return
+	}
+	if length > 0 {
+		if isLittleEndian {
+			ptr := value.Addr().UnsafePointer()
+			raw := buf.ReadBinary(size, err)
+			copy(unsafe.Slice((*byte)(ptr), size), raw)
+		} else {
+			for i := 0; i < length; i++ {
+				value.Index(i).SetUint(uint64(buf.ReadInt64(err)))
+			}
+		}
+	}
+}
+
+func (s uint64ArraySerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	done := readArrayRefAndType(ctx, refMode, readType, value)
+	if done || ctx.HasError() {
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s uint64ArraySerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}

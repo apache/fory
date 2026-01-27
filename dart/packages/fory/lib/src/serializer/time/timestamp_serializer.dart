@@ -53,13 +53,23 @@ final class TimestampSerializer extends Serializer<TimeStamp> {
 
   @override
   TimeStamp read(ByteReader br, int refId, DeserializerPack pack) {
-    int microseconds = br.readInt64();
+    final int seconds = br.readInt64();
+    final int nanos = br.readUint32();
+    final int microseconds = seconds * 1000000 + (nanos ~/ 1000);
     // attention: UTC
     return TimeStamp(microseconds);
   }
 
   @override
   void write(ByteWriter bw, TimeStamp v, SerializerPack pack) {
-    bw.writeInt64(v.microsecondsSinceEpoch);
+    int seconds = v.microsecondsSinceEpoch ~/ 1000000;
+    int microsRem = v.microsecondsSinceEpoch % 1000000;
+    if (microsRem < 0) {
+      seconds -= 1;
+      microsRem += 1000000;
+    }
+    final int nanos = microsRem * 1000;
+    bw.writeInt64(seconds);
+    bw.writeUint32(nanos);
   }
 }

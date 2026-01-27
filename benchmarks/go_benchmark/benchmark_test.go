@@ -37,13 +37,27 @@ func newFory() *fory.Fory {
 		fory.WithTrackRef(false),
 	)
 	// Register types with IDs matching C++ benchmark
-	f.Register(NumericStruct{}, 1)
-	f.Register(Sample{}, 2)
-	f.Register(Media{}, 3)
-	f.Register(Image{}, 4)
-	f.Register(MediaContent{}, 5)
-	f.RegisterEnum(Player(0), 6)
-	f.RegisterEnum(Size(0), 7)
+	if err := f.RegisterStruct(NumericStruct{}, 1); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(Sample{}, 2); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(Media{}, 3); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(Image{}, 4); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterStruct(MediaContent{}, 5); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterEnum(Player(0), 6); err != nil {
+		panic(err)
+	}
+	if err := f.RegisterEnum(Size(0), 7); err != nil {
+		panic(err)
+	}
 	return f
 }
 

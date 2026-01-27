@@ -132,6 +132,7 @@ def resolve_imports(
     # Process imports
     imported_enums = []
     imported_messages = []
+    imported_unions = []
 
     for imp in schema.imports:
         # Resolve import path using search paths
@@ -157,6 +158,7 @@ def resolve_imports(
         # Collect types from imported schema
         imported_enums.extend(imported_schema.enums)
         imported_messages.extend(imported_schema.messages)
+        imported_unions.extend(imported_schema.unions)
 
     # Create merged schema with imported types first (so they can be referenced)
     merged_schema = Schema(
@@ -164,6 +166,7 @@ def resolve_imports(
         imports=schema.imports,
         enums=imported_enums + schema.enums,
         messages=imported_messages + schema.messages,
+        unions=imported_unions + schema.unions,
         options=schema.options,
         source_file=schema.source_file,
         source_format=schema.source_format,

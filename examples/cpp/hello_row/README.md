@@ -107,18 +107,17 @@ This example demonstrates:
 
 ## Key Concepts
 
-### Registering Field Info
+### Registering Struct Metadata
 
-Use the `FORY_FIELD_INFO` macro to enable automatic encoding:
+Use the `FORY_STRUCT` macro to enable automatic encoding:
 
 ```cpp
 struct Employee {
   std::string name;
   int32_t id;
   float salary;
+  FORY_STRUCT(Employee, name, id, salary);
 };
-
-FORY_FIELD_INFO(Employee, name, id, salary);
 ```
 
 ### Manual Row Writing

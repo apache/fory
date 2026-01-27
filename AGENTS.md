@@ -14,7 +14,7 @@ While working on Fory, please remember:
 - **Cross-Language Consistency**: Maintain consistency across language implementations while respecting language-specific idioms.
 - **GraalVM support using fory codegen**: For GraalVM, use `fory codegen` to generate the serializer when building a native image. Do not use GraalVM reflect-related configuration unless for JDK `proxy`.
 - **Xlang Type System**: Java `native mode(xlang=false)` shares same type systems between type id from `Types.BOOL~Types.STRING` with `xlang mode(xlang=true)`, but for other types, java `native mode` has different type ids.
-- **Remote git repository**: `git@github.com:apache/fory.git` is remote repository, do not use other remote repository when you want to check code under `main` branch.
+- **Remote git repository**: `git@github.com:apache/fory.git` is remote repository, do not use other remote repository when you want to check code under `main` branch, **`apache/main`** is the only target main branch instead of `origin/main`
 - **Contributor git repository**: A contributor should fork the `git@github.com:apache/fory.git` repo, and git push the code changes into their forked repo, then create a pull request from the branch in their forked repo into `git@github.com:apache/fory.git`.
 - **Debug Test Errors**: always set environment variable `ENABLE_FORY_DEBUG_OUTPUT` to `1` to see debug output.
 
@@ -35,6 +35,7 @@ While working on Fory, please remember:
 - Fory java needs JDK `17+` installed.
 - Modules target different bytecode levels (fory-core Java 8, fory-format Java 11); avoid using newer APIs in those modules.
 - Use '.\*' form of import is not allowed.
+- If you run temporary tests using `java -cp`, you must run `mvn -T16 install -DskipTests` to get latest jars for fory java library.
 
 ```bash
 # Clean the build
@@ -302,6 +303,10 @@ sbt scalafmt
 - All commands must be executed within the `integration_tests` directory.
 - For java related integration tests, please install the java libraries first by `cd ../java && mvn -T16 install -DskipTests`. If no code changes after installed fory java, you can skip the installation step.
 - For mac, graalvm is installed at `/Library/Java/JavaVirtualMachines/graalvm-xxx` by default.
+- For `integration_tests/idl_tests`:
+  - you must install fory java first before runing tests under this dir if any code changes under `java` dir.
+  - you must install fory python first before runing tests under this dir if any code cython code changes under `python` dir.
+- You are never allowed to manual edit generated code by fory compiler for `IDL` files, you must invoke fory compiler to regenerate code.
 
 ```bash
 it_dir=$(pwd)

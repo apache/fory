@@ -39,6 +39,22 @@ message Person [id=100] {
     }
 
     repeated PhoneNumber phones = 7;
+    Animal pet = 8;
+}
+
+message Dog [id=104] {
+    string name = 1;
+    int32 bark_volume = 2;
+}
+
+message Cat [id=105] {
+    string name = 1;
+    int32 lives = 2;
+}
+
+union Animal [id=106] {
+    Dog dog = 1;
+    Cat cat = 2;
 }
 
 message AddressBook [id=103] {

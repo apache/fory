@@ -21,7 +21,7 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { InternalSerializerType, RefFlags, Serializer, TypeId } from "../type";
+import { RefFlags, Serializer, TypeId } from "../type";
 import { Scope } from "./scope";
 import Fory from "../fory";
 
@@ -38,7 +38,7 @@ export class AnySerializer {
   }
 
   detectSerializer() {
-    const typeId = this.fory.binaryReader.int16();
+    const typeId = this.fory.binaryReader.readVarUint32Small7();
     let serializer: Serializer | undefined;
     if (TypeId.IS_NAMED_TYPE(typeId)) {
       const ns = this.fory.metaStringResolver.readNamespace(this.fory.binaryReader);
@@ -170,5 +170,5 @@ class AnySerializerGenerator extends BaseSerializerGenerator {
   }
 }
 
-CodegenRegistry.register(InternalSerializerType.ANY, AnySerializerGenerator);
+CodegenRegistry.register(TypeId.UNKNOWN, AnySerializerGenerator);
 CodegenRegistry.registerExternal(AnySerializer);

@@ -21,42 +21,42 @@ syntax = "proto3";
 
 message SomeMessage {
 
-    message Address {
-        string street = 1;
-        string city = 2;
-        string state = 3;
-        string zip = 4;
-    }
+  message Address {
+    string street = 1;
+    string city = 2;
+    string state = 3;
+    string zip = 4;
+  }
 
-    message Phonenumbers {
-        string type = 1;
-        string number = 2;
-    }
+  message Phonenumbers {
+    string type = 1;
+    string number = 2;
+  }
 
-    message Education {
-        string degree = 1;
-        string major = 2;
-        string university = 3;
-        uint32 graduationYear = 4;
-    }
+  message Education {
+    string degree = 1;
+    string major = 2;
+    string university = 3;
+    uint32 graduationYear = 4;
+  }
 
-    message Workexperience {
-        string company = 1;
-        string position = 2;
-        string startDate = 3;
-        string endDate = 4;
-    }
+  message Workexperience {
+    string company = 1;
+    string position = 2;
+    string startDate = 3;
+    string endDate = 4;
+  }
 
-    uint32 id = 1;
-    string name = 2;
-    string email = 3;
-    uint32 age = 4;
-    Address address = 5;
-    repeated Phonenumbers phoneNumbers = 6;
-    bool isMarried = 7;
-    bool hasChildren = 8;
-    repeated string interests = 9;
-    repeated Education education = 10;
-    repeated Workexperience workExperience = 11;
-    string selfIntroduction = 12;
+  uint32 id = 1;
+  string name = 2;
+  string email = 3;
+  uint32 age = 4;
+  Address address = 5;
+  repeated Phonenumbers phoneNumbers = 6;
+  bool isMarried = 7;
+  bool hasChildren = 8;
+  repeated string interests = 9;
+  repeated Education education = 10;
+  repeated Workexperience workExperience = 11;
+  string selfIntroduction = 12;
 }

@@ -40,6 +40,19 @@ struct ScalarPack (priority: 2) {
   ok: bool;
 }
 
+table Note {
+  text: string;
+}
+
+table Metric {
+  value: double;
+}
+
+union Payload {
+  Note,
+  Metric
+}
+
 table Container (custom_note: "extra") {
   id: ulong;
   status: Status = STARTED;
@@ -48,6 +61,7 @@ table Container (custom_note: "extra") {
   scalars: ScalarPack;
   names: [string];
   flags: [bool] (deprecated);
+  payload: Payload;
 }
 
 root_type Container;

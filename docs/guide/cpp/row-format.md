@@ -51,15 +51,12 @@ Apache Fory™ Row Format is a binary format optimized for:
 using namespace fory::row;
 using namespace fory::row::encoder;
 
-// Define a struct
 struct Person {
   int32_t id;
   std::string name;
   float score;
+  FORY_STRUCT(Person, id, name, score);
 };
-
-// Register field metadata (required for row encoding)
-FORY_FIELD_INFO(Person, id, name, score);
 
 int main() {
   // Create encoder
@@ -94,12 +91,11 @@ The `RowEncoder<T>` template class provides type-safe encoding:
 ```cpp
 #include "fory/encoder/row_encoder.h"
 
-// Define struct with FORY_FIELD_INFO
 struct Point {
   double x;
   double y;
+  FORY_STRUCT(Point, x, y);
 };
-FORY_FIELD_INFO(Point, x, y);
 
 // Create encoder
 RowEncoder<Point> encoder;
@@ -122,14 +118,14 @@ auto row = encoder.GetWriter().ToRow();
 struct Address {
   std::string city;
   std::string country;
+  FORY_STRUCT(Address, city, country);
 };
-FORY_FIELD_INFO(Address, city, country);
 
 struct Person {
   std::string name;
   Address address;
+  FORY_STRUCT(Person, name, address);
 };
-FORY_FIELD_INFO(Person, name, address);
 
 // Encode nested struct
 RowEncoder<Person> encoder;
@@ -151,8 +147,8 @@ std::string country = address_row->GetString(1);
 struct Record {
   std::vector<int32_t> values;
   std::string label;
+  FORY_STRUCT(Record, values, label);
 };
-FORY_FIELD_INFO(Record, values, label);
 
 RowEncoder<Record> encoder;
 Record record{{1, 2, 3, 4, 5}, "test"};
@@ -339,7 +335,7 @@ RowEncodeTrait<std::vector<int32_t>>::Type();  // Returns list(int32())
 RowEncodeTrait<std::map<std::string, int32_t>>::Type();
 // Returns map(utf8(), int32())
 
-// Type inference for structs (requires FORY_FIELD_INFO)
+// Type inference for structs (requires FORY_STRUCT)
 RowEncodeTrait<Person>::Type();  // Returns struct_({...})
 RowEncodeTrait<Person>::Schema();  // Returns schema({...})
 ```
@@ -494,20 +490,20 @@ int32_t id = row.GetInt32(0);
 
 ## Supported Types Summary
 
-| C++ Type                 | Row Type         | Fixed Size |
-| ------------------------ | ---------------- | ---------- |
-| `bool`                   | `boolean()`      | 1 byte     |
-| `int8_t`                 | `int8()`         | 1 byte     |
-| `int16_t`                | `int16()`        | 2 bytes    |
-| `int32_t`                | `int32()`        | 4 bytes    |
-| `int64_t`                | `int64()`        | 8 bytes    |
-| `float`                  | `float32()`      | 4 bytes    |
-| `double`                 | `float64()`      | 8 bytes    |
-| `std::string`            | `utf8()`         | Variable   |
-| `std::vector<T>`         | `list(T)`        | Variable   |
-| `std::map<K,V>`          | `map(K,V)`       | Variable   |
-| `std::optional<T>`       | Inner type       | Nullable   |
-| Struct (FORY_FIELD_INFO) | `struct_({...})` | Variable   |
+| C++ Type             | Row Type         | Fixed Size |
+| -------------------- | ---------------- | ---------- |
+| `bool`               | `boolean()`      | 1 byte     |
+| `int8_t`             | `int8()`         | 1 byte     |
+| `int16_t`            | `int16()`        | 2 bytes    |
+| `int32_t`            | `int32()`        | 4 bytes    |
+| `int64_t`            | `int64()`        | 8 bytes    |
+| `float`              | `float32()`      | 4 bytes    |
+| `double`             | `float64()`      | 8 bytes    |
+| `std::string`        | `utf8()`         | Variable   |
+| `std::vector<T>`     | `list(T)`        | Variable   |
+| `std::map<K,V>`      | `map(K,V)`       | Variable   |
+| `std::optional<T>`   | Inner type       | Nullable   |
+| Struct (FORY_STRUCT) | `struct_({...})` | Variable   |
 
 ## Related Topics
 

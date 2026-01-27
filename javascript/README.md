@@ -7,7 +7,7 @@ The Cross-Language part of the protocol is not stable, so the output of this lib
 ## Usage
 
 ```Javascript
-import Fory, { Type, InternalSerializerType } from '@apache-fory/fory';
+import Fory, { Type } from '@apache-fory/fory';
 
 /**
  * @apache-fory/hps use v8's fast-calls-api that can be called directly by jit, ensure that the version of Node is 20 or above.

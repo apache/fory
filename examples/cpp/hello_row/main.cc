@@ -45,19 +45,16 @@ struct Employee {
   std::string name;
   int32_t id;
   float salary;
+  FORY_STRUCT(Employee, name, id, salary);
 };
-
-// Register field info for automatic encoding
-FORY_FIELD_INFO(Employee, name, id, salary);
 
 // Define a nested struct
 struct Department {
   std::string dept_name;
   Employee manager;
   std::vector<Employee> employees;
+  FORY_STRUCT(Department, dept_name, manager, employees);
 };
-
-FORY_FIELD_INFO(Department, dept_name, manager, employees);
 
 int main() {
   std::cout << "=== Fory C++ Row Format Example ===" << std::endl << std::endl;

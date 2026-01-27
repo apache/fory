@@ -69,9 +69,9 @@ This specification defines the Fory xlang binary format. The format is dynamic r
 - set: an unordered set of unique elements.
 - map: a map of key-value pairs. Mutable types such as `list/map/set/array` are not allowed as key of map.
 - duration: an absolute length of time, independent of any calendar/timezone, as a count of nanoseconds.
-- timestamp: a point in time, independent of any calendar/timezone, as a count of nanoseconds. The count is relative
-  to an epoch at UTC midnight on January 1, 1970.
-- local_date: a naive date without timezone. The count is days relative to an epoch at UTC midnight on Jan 1, 1970.
+- timestamp: a point in time, independent of any calendar/timezone, encoded as seconds (int64) and nanoseconds
+  (uint32) since the epoch at UTC midnight on January 1, 1970.
+- date: a naive date without timezone. The count is days relative to an epoch at UTC midnight on Jan 1, 1970.
 - decimal: exact decimal value represented as an integer value in two's complement.
 - binary: an variable-length array of bytes.
 - array: only allow 1d numeric components. Other arrays will be taken as List. The implementation should support the
@@ -85,6 +85,8 @@ This specification defines the Fory xlang binary format. The format is dynamic r
   - float32_array: one dimensional float32 array.
   - float64_array: one dimensional float64 array.
 - union: a tagged union type that can hold one of several alternative types. The active alternative is identified by an index.
+- typed_union: a union value with embedded numeric union type ID.
+- named_union: a union value with embedded union type name or shared TypeDef.
 - none: represents an empty/unit value with no data (e.g., for empty union alternatives).
 
 Note:
@@ -190,30 +192,32 @@ Named types (`NAMED_*`) do not embed a user ID; their names are carried in metad
 | 28      | NAMED_COMPATIBLE_STRUCT | Struct with schema evolution (by name)              |
 | 29      | EXT                     | Extension type registered by numeric ID             |
 | 30      | NAMED_EXT               | Extension type registered by namespace + type name  |
-| 31      | UNION                   | Tagged union type (one of several alternatives)     |
-| 32      | NONE                    | Empty/unit type (no data)                           |
-| 33      | DURATION                | Time duration (seconds + nanoseconds)               |
-| 34      | TIMESTAMP               | Point in time (nanoseconds since epoch)             |
-| 35      | LOCAL_DATE              | Date without timezone (days since epoch)            |
-| 36      | DECIMAL                 | Arbitrary precision decimal                         |
-| 37      | BINARY                  | Raw binary data                                     |
-| 38      | ARRAY                   | Generic array type                                  |
-| 39      | BOOL_ARRAY              | 1D boolean array                                    |
-| 40      | INT8_ARRAY              | 1D int8 array                                       |
-| 41      | INT16_ARRAY             | 1D int16 array                                      |
-| 42      | INT32_ARRAY             | 1D int32 array                                      |
-| 43      | INT64_ARRAY             | 1D int64 array                                      |
-| 44      | UINT8_ARRAY             | 1D uint8 array                                      |
-| 45      | UINT16_ARRAY            | 1D uint16 array                                     |
-| 46      | UINT32_ARRAY            | 1D uint32 array                                     |
-| 47      | UINT64_ARRAY            | 1D uint64 array                                     |
-| 48      | FLOAT16_ARRAY           | 1D float16 array                                    |
-| 49      | FLOAT32_ARRAY           | 1D float32 array                                    |
-| 50      | FLOAT64_ARRAY           | 1D float64 array                                    |
+| 31      | UNION                   | Union value, schema identity not embedded           |
+| 32      | TYPED_UNION             | Union with embedded numeric union type ID           |
+| 33      | NAMED_UNION             | Union with embedded union type name/TypeDef         |
+| 34      | NONE                    | Empty/unit type (no data)                           |
+| 35      | DURATION                | Time duration (seconds + nanoseconds)               |
+| 36      | TIMESTAMP               | Point in time (seconds + nanoseconds since epoch)   |
+| 37      | DATE                    | Date without timezone (days since epoch)            |
+| 38      | DECIMAL                 | Arbitrary precision decimal                         |
+| 39      | BINARY                  | Raw binary data                                     |
+| 40      | ARRAY                   | Generic array type                                  |
+| 41      | BOOL_ARRAY              | 1D boolean array                                    |
+| 42      | INT8_ARRAY              | 1D int8 array                                       |
+| 43      | INT16_ARRAY             | 1D int16 array                                      |
+| 44      | INT32_ARRAY             | 1D int32 array                                      |
+| 45      | INT64_ARRAY             | 1D int64 array                                      |
+| 46      | UINT8_ARRAY             | 1D uint8 array                                      |
+| 47      | UINT16_ARRAY            | 1D uint16 array                                     |
+| 48      | UINT32_ARRAY            | 1D uint32 array                                     |
+| 49      | UINT64_ARRAY            | 1D uint64 array                                     |
+| 50      | FLOAT16_ARRAY           | 1D float16 array                                    |
+| 51      | FLOAT32_ARRAY           | 1D float32 array                                    |
+| 52      | FLOAT64_ARRAY           | 1D float64 array                                    |
 
 #### Type ID Encoding for User Types
 
-When registering user types (struct/ext/enum), the full type ID combines user ID and internal type ID:
+When registering user types (struct/ext/enum/union), the full type ID combines user ID and internal type ID:
 
 ```
 Full Type ID = (user_type_id << 8) | internal_type_id
@@ -415,7 +419,7 @@ followed by optional type-specific metadata.
 - Internal types use their internal type ID directly (low 8 bits).
 - User-registered types use a full type ID: `(user_type_id << 8) | internal_type_id`.
   - `user_type_id` is a numeric ID (0-4095 in current implementations).
-  - `internal_type_id` is one of `ENUM`, `STRUCT`, `COMPATIBLE_STRUCT`, or `EXT`.
+  - `internal_type_id` is one of `ENUM`, `STRUCT`, `COMPATIBLE_STRUCT`, `EXT`, or `UNION`.
 - Named types do not embed a user ID. They use `NAMED_*` internal type IDs and carry a namespace
   and type name (or shared TypeDef) instead.
 
@@ -423,13 +427,14 @@ followed by optional type-specific metadata.
 
 After the type ID:
 
-- **ENUM / STRUCT / EXT**: no extra bytes (registration by ID required on both sides).
+- **ENUM / STRUCT / EXT / TYPED_UNION**: no extra bytes (registration by ID required on both sides).
 - **COMPATIBLE_STRUCT**:
   - If meta share is enabled, write a shared TypeDef entry (see below).
   - If meta share is disabled, no extra bytes.
-- **NAMED_ENUM / NAMED_STRUCT / NAMED_COMPATIBLE_STRUCT / NAMED_EXT**:
+- **NAMED_ENUM / NAMED_STRUCT / NAMED_COMPATIBLE_STRUCT / NAMED_EXT / NAMED_UNION**:
   - If meta share is disabled, write `namespace` and `type_name` as meta strings.
   - If meta share is enabled, write a shared TypeDef entry (see below).
+- **UNION**: no extra bytes at this layer.
 - **LIST / SET / MAP / ARRAY / primitives**: no extra bytes at this layer.
 
 Unregistered types are serialized as named types:
@@ -437,6 +442,7 @@ Unregistered types are serialized as named types:
 - Enums -> `NAMED_ENUM`
 - Struct-like classes -> `NAMED_STRUCT` (or `NAMED_COMPATIBLE_STRUCT` when meta share is enabled)
 - Custom extension types -> `NAMED_EXT`
+- Unions -> `NAMED_UNION`
 
 The namespace is the package/module name and the type name is the simple class name.
 
@@ -1214,6 +1220,21 @@ Enums are serialized as an unsigned var int. If the order of enum values change,
 the value users expect. In such cases, users must register enum serializer by make it write enum value as an enumerated
 string with unique hash disabled.
 
+### timestamp
+
+Timestamp represents a point in time independent of any calendar/timezone. It is encoded as:
+
+- `seconds` (int64): seconds since Unix epoch (1970-01-01T00:00:00Z)
+- `nanos` (uint32): nanosecond adjustment within the second
+
+On write, implementations must normalize negative timestamps so that `nanos` is always in `[0, 1_000_000_000)`.
+This is a fixed-size 12-byte payload (8 bytes seconds + 4 bytes nanos).
+
+### date
+
+Date represents a date without timezone. It is encoded as an `int32` count of days since the Unix epoch
+(1970-01-01). This is a fixed-size 4-byte payload.
+
 ### decimal
 
 Not supported for now.
@@ -1246,7 +1267,8 @@ Assign each field to exactly one group in the following order:
 1. **Primitive (non-nullable)**: primitive or boxed numeric/boolean types with `nullable=false`.
 2. **Primitive (nullable)**: primitive or boxed numeric/boolean types with `nullable=true`.
 3. **Built-in (non-container)**: internal type IDs that are not user-defined and not UNKNOWN,
-   excluding collections and maps (for example: STRING, TIME types, UNION, primitive arrays).
+   excluding collections and maps (for example: STRING, TIME types, UNION/TYPED_UNION/NAMED_UNION,
+   primitive arrays).
 4. **Collection**: list/set/object-array fields. Non-primitive arrays are treated as LIST for
    ordering purposes.
 5. **Map**: map fields.
@@ -1311,6 +1333,100 @@ The field value layout is the same as schema-consistent mode, but the type meta 
 `COMPATIBLE_STRUCT` and `NAMED_COMPATIBLE_STRUCT` uses shared TypeDef entries. Deserializers use
 TypeDef to map fields by name or tag ID and to honor nullable/ref flags from metadata; unknown fields
 are skipped.
+
+### Union
+
+Union values are encoded using three union type IDs so the union schema identity lives in type meta (like
+`STRUCT/ENUM/EXT`) and is easy to carry inside `Any`.
+
+#### IDL syntax
+
+```fdl
+union Contact [id=0] {
+  string email = 1;
+  int32  phone = 2;
+}
+```
+
+Rules:
+
+- Each union alternative MUST have a stable tag number (`= 1`, `= 2`, ...).
+- Tag numbers MUST be unique within the union and MUST NOT be reused.
+
+#### Type IDs and type meta
+
+| Type ID | Name        | Meaning                                              |
+| ------: | ----------- | ---------------------------------------------------- |
+|      31 | UNION       | Union value, schema identity not embedded            |
+|      32 | TYPED_UNION | Union value with embedded registered numeric type ID |
+|      33 | NAMED_UNION | Union value with embedded type name / shared TypeDef |
+
+Type meta encoding:
+
+- `UNION (31)`: no additional type meta payload.
+- `TYPED_UNION (32)`: no additional type meta payload (numeric ID is carried in the full type ID itself).
+- `NAMED_UNION (33)`: followed by named type meta (namespace + type name, or shared TypeDef marker/body).
+
+#### Union value payload
+
+A union payload is:
+
+```
+| case_id (varuint32) | case_value (Any-style value) |
+```
+
+`case_id` is the union alternative tag number.
+
+`case_value` MUST be encoded as a full xlang value:
+
+```
+| field_ref_meta | field_value_type_meta | field_value_bytes |
+```
+
+This is required even for primitives so unknown alternatives can be skipped safely.
+
+#### Wire layouts
+
+**UNION (schema known from context)**
+
+```
+| ... outer ref meta ... | type_id=UNION(31) | case_id | case_value |
+```
+
+**TYPED_UNION (schema embedded by numeric id)**
+
+```
+| ... outer ref meta ... | embedded type id | case_id | case_value |
+```
+
+embedded type id: `type_id=(user_type_id << 8) | TYPED_UNION(32)`
+
+**NAMED_UNION (schema embedded by name/typedef)**
+
+```
+| ... outer ref meta ... | type_id=NAMED_UNION(33) | name_or_typedef | case_id | case_value |
+```
+
+#### Decoding rules
+
+1. Read outer ref meta and `type_id`.
+2. If `TYPED_UNION`, resolve the union schema from the full type ID.
+3. If `NAMED_UNION`, read named type meta and resolve the union schema.
+4. Read `case_id`.
+5. Read `case_value` as Any-style value (ref meta + type meta + value).
+
+If `case_id` is unknown, the decoder MUST still consume the case value using `field_value_type_meta` and
+standard `skipValue(type_id)`.
+
+#### When to use each type ID
+
+- Use `UNION` when the union schema is known from context.
+- Use `TYPED_UNION` for dynamic containers when numeric registration is available.
+- Use `NAMED_UNION` when name-based resolution is preferred or required.
+
+#### Compatibility notes
+
+- `case_id` is a stable identifier; added alternatives are forward compatible and unknown cases can be skipped.
 
 ### Type
 
@@ -1431,8 +1547,8 @@ This section provides a step-by-step guide for implementing Fory xlang serializa
 
 6. **Temporal Types**
    - [ ] Duration (seconds + nanoseconds)
-   - [ ] Timestamp (nanoseconds since epoch)
-   - [ ] LocalDate (days since epoch)
+   - [ ] Timestamp (seconds + nanoseconds since epoch)
+   - [ ] Date (days since epoch)
 
 7. **Reference Tracking**
    - [ ] Implement write-side object tracking (object → ref_id map)
@@ -1535,7 +1651,7 @@ Meta strings are required for enum and struct serialization (encoding field name
 
 ### C++
 
-- Compile-time reflection via macros (`FORY_STRUCT`, `FORY_FIELD_INFO`)
+- Compile-time reflection via macros (`FORY_STRUCT`)
 - Template meta programming for type dispatch and serializer selection
 - Uses `std::shared_ptr` for reference tracking
 - Compile-time field ordering

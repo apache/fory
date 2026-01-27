@@ -140,7 +140,7 @@ auto bytes = fory.serialize(shared).value();
 auto decoded = fory.deserialize<std::shared_ptr<Person>>(bytes).value();
 ```
 
-**With reference tracking enabled (`track_ref(true)`):**
+**With reference tracking enabled (default, `track_ref(true)`):**
 
 - Shared objects are serialized once
 - References to the same object are preserved
@@ -211,15 +211,15 @@ auto bytes = fory.serialize(now).value();
 auto decoded = fory.deserialize<Timestamp>(bytes).value();
 ```
 
-### LocalDate
+### Date
 
 Days since Unix epoch:
 
 ```cpp
-LocalDate date{18628};  // Days since 1970-01-01
+Date date{18628};  // Days since 1970-01-01
 
 auto bytes = fory.serialize(date).value();
-auto decoded = fory.deserialize<LocalDate>(bytes).value();
+auto decoded = fory.deserialize<Date>(bytes).value();
 ```
 
 ## User-Defined Structs
@@ -253,6 +253,7 @@ enum class Color { RED = 0, GREEN = 1, BLUE = 2 };
 // Unscoped enum with incontinuous values
 enum Priority : int32_t { LOW = -10, NORMAL = 0, HIGH = 10 };
 FORY_ENUM(Priority, LOW, NORMAL, HIGH);
+// FORY_ENUM must be defined at namespace scope.
 
 // Usage
 Color c = Color::GREEN;

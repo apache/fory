@@ -18,12 +18,13 @@
 """Schema validation for Fory IDL."""
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Union as TypingUnion
 
 from fory_compiler.ir.ast import (
     Schema,
     Message,
     Enum,
+    Union,
     Field,
     FieldType,
     NamedType,
@@ -56,6 +57,7 @@ class SchemaValidator:
         self.warnings: List[ValidationIssue] = []
 
     def validate(self) -> bool:
+        self._apply_field_defaults()
         self._check_duplicate_type_names()
         self._check_duplicate_type_ids()
         self._check_messages()
@@ -74,6 +76,13 @@ class SchemaValidator:
                     enum.location or names[enum.name],
                 )
             names.setdefault(enum.name, enum.location)
+        for union in self.schema.unions:
+            if union.name in names:
+                self._error(
+                    f"Duplicate type name: {union.name}",
+                    union.location or names[union.name],
+                )
+            names.setdefault(union.name, union.location)
         for message in self.schema.messages:
             if message.name in names:
                 self._error(
@@ -106,6 +115,13 @@ class SchemaValidator:
                         nested_enum.location,
                     )
                 nested_names.setdefault(nested_enum.name, nested_enum.location)
+            for nested_union in message.nested_unions:
+                if nested_union.name in nested_names:
+                    self._error(
+                        f"Duplicate nested type name in {full_name}: {nested_union.name}",
+                        nested_union.location,
+                    )
+                nested_names.setdefault(nested_union.name, nested_union.location)
             for nested_msg in message.nested_messages:
                 if nested_msg.name in nested_names:
                     self._error(
@@ -132,6 +148,9 @@ class SchemaValidator:
             for nested_enum in message.nested_enums:
                 validate_enum(nested_enum, full_name)
 
+            for nested_union in message.nested_unions:
+                validate_union(nested_union, full_name)
+
             for nested_msg in message.nested_messages:
                 validate_message(nested_msg, full_name)
 
@@ -153,11 +172,95 @@ class SchemaValidator:
                     )
                 value_names.setdefault(v.name, v)
 
+        def validate_union(union: Union, parent_path: str = ""):
+            full_name = f"{parent_path}.{union.name}" if parent_path else union.name
+            case_numbers = {}
+            case_names = {}
+            for f in union.fields:
+                if f.number in case_numbers:
+                    self._error(
+                        f"Duplicate union case id {f.number} in {full_name}: {f.name} and {case_numbers[f.number].name}",
+                        f.location,
+                    )
+                case_numbers.setdefault(f.number, f)
+                if f.name in case_names:
+                    self._error(
+                        f"Duplicate union case name in {full_name}: {f.name}",
+                        f.location,
+                    )
+                case_names.setdefault(f.name, f)
+
         for enum in self.schema.enums:
             validate_enum(enum)
 
+        for union in self.schema.unions:
+            validate_union(union)
+
         for message in self.schema.messages:
             validate_message(message)
+
+    def _apply_field_defaults(self) -> None:
+        def apply_message_fields(
+            message: Message,
+            enclosing_messages: Optional[List[Message]] = None,
+        ) -> None:
+            lineage = (enclosing_messages or []) + [message]
+            for field in message.fields:
+                if self.schema.source_format == "fdl" and field.tag_id is None:
+                    field.tag_id = field.number
+                if self._is_message_type(field.field_type, lineage):
+                    explicit_optional = field.optional
+                    if self.schema.source_format == "fdl" and explicit_optional:
+                        self._error(
+                            "Message fields are always optional; remove the optional modifier",
+                            field.location,
+                        )
+                    field.optional = True
+            for nested_msg in message.nested_messages:
+                apply_message_fields(nested_msg, lineage)
+
+        for message in self.schema.messages:
+            apply_message_fields(message)
+
+    def _is_message_type(
+        self, field_type: FieldType, parent_stack: List[Message]
+    ) -> bool:
+        if not isinstance(field_type, NamedType):
+            return False
+        resolved = self._resolve_named_type(field_type.name, parent_stack)
+        return isinstance(resolved, Message)
+
+    def _resolve_named_type(
+        self, name: str, parent_stack: List[Message]
+    ) -> Optional[TypingUnion[Message, Enum, Union]]:
+        parts = name.split(".")
+        if len(parts) > 1:
+            current = self._find_top_level_type(parts[0])
+            for part in parts[1:]:
+                if isinstance(current, Message):
+                    current = current.get_nested_type(part)
+                else:
+                    return None
+            return current
+        for msg in reversed(parent_stack):
+            nested = msg.get_nested_type(name)
+            if nested is not None:
+                return nested
+        return self._find_top_level_type(name)
+
+    def _find_top_level_type(
+        self, name: str
+    ) -> Optional[TypingUnion[Message, Enum, Union]]:
+        for enum in self.schema.enums:
+            if enum.name == name:
+                return enum
+        for union in self.schema.unions:
+            if union.name == name:
+                return union
+        for message in self.schema.messages:
+            if message.name == name:
+                return message
+        return None
 
     def _check_type_references(self) -> None:
         def check_type_ref(
@@ -196,8 +299,16 @@ class SchemaValidator:
             for nested_msg in message.nested_messages:
                 check_message_refs(nested_msg, lineage)
 
+            for nested_union in message.nested_unions:
+                for f in nested_union.fields:
+                    check_type_ref(f.field_type, f, lineage)
+
         for message in self.schema.messages:
             check_message_refs(message)
+
+        for union in self.schema.unions:
+            for f in union.fields:
+                check_type_ref(f.field_type, f, None)
 
 
 def validate_schema(schema: Schema) -> List[str]:

@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
- 
+
 syntax = "proto3";
 
 package realworld;
@@ -24,50 +24,50 @@ package realworld;
 import "google/protobuf/timestamp.proto";
 
 message LogLevel {
-    enum Level {
-        UNKNOWN = 0;
-        DEBUG = 1;
-        INFO = 2;
-        WARN = 3;
-        ERROR = 4;
-        FATAL = 5;
-    }
-    Level level = 1;
+  enum Level {
+    UNKNOWN = 0;
+    DEBUG = 1;
+    INFO = 2;
+    WARN = 3;
+    ERROR = 4;
+    FATAL = 5;
+  }
+  Level level = 1;
 }
 
 message LogEntry {
-    string id = 1;
-    LogLevel.Level level = 2;
-    string message = 3;
-    string service = 4;
-    google.protobuf.Timestamp timestamp = 5;
-    map<string, string> context = 6;
-    repeated string tags = 7;
-    double duration_ms = 8;
+  string id = 1;
+  LogLevel.Level level = 2;
+  string message = 3;
+  string service = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  map<string, string> context = 6;
+  repeated string tags = 7;
+  double duration_ms = 8;
 }
 
 message UserProfile {
-    string user_id = 1;
-    string username = 2;
-    string email = 3;
-    map<string, string> preferences = 4;
-    repeated string permissions = 5;
-    google.protobuf.Timestamp last_login = 6;
-    bool is_active = 7;
+  string user_id = 1;
+  string username = 2;
+  string email = 3;
+  map<string, string> preferences = 4;
+  repeated string permissions = 5;
+  google.protobuf.Timestamp last_login = 6;
+  bool is_active = 7;
 }
 
 message APIMetrics {
-    string endpoint = 1;
-    int64 request_count = 2;
-    double avg_response_time = 3;
-    int64 error_count = 4;
-    map<string, int64> status_codes = 5;
-    google.protobuf.Timestamp measured_at = 6;
+  string endpoint = 1;
+  int64 request_count = 2;
+  double avg_response_time = 3;
+  int64 error_count = 4;
+  map<string, int64> status_codes = 5;
+  google.protobuf.Timestamp measured_at = 6;
 }
 
 message ProtoSystemData {
-    repeated LogEntry logs = 1;
-    repeated UserProfile users = 2;
-    repeated APIMetrics metrics = 3;
-    map<string, string> system_info = 4;
+  repeated LogEntry logs = 1;
+  repeated UserProfile users = 2;
+  repeated APIMetrics metrics = 3;
+  map<string, string> system_info = 4;
 }

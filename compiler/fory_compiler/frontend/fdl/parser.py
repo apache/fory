@@ -24,6 +24,7 @@ from fory_compiler.ir.ast import (
     Schema,
     Message,
     Enum,
+    Union,
     Field,
     EnumValue,
     Import,
@@ -80,6 +81,11 @@ KNOWN_MESSAGE_OPTIONS: Set[str] = {
     "use_record_for_java",
     "deprecated",
     "namespace",
+}
+
+KNOWN_UNION_OPTIONS: Set[str] = {
+    "id",
+    "deprecated",
 }
 
 
@@ -169,6 +175,7 @@ class Parser:
         imports = []
         enums = []
         messages = []
+        unions = []
         options = {}
 
         while not self.at_end():
@@ -184,6 +191,8 @@ class Parser:
                 options[name] = value
             elif self.check(TokenType.ENUM):
                 enums.append(self.parse_enum())
+            elif self.check(TokenType.UNION):
+                unions.append(self.parse_union())
             elif self.check(TokenType.MESSAGE):
                 messages.append(self.parse_message())
             else:
@@ -194,6 +203,7 @@ class Parser:
             imports=imports,
             enums=enums,
             messages=messages,
+            unions=unions,
             options=options,
             source_file=self.filename,
             source_format=self.source_format,
@@ -429,6 +439,7 @@ class Parser:
         fields = []
         nested_messages = []
         nested_enums = []
+        nested_unions = []
         body_options = {}
 
         while not self.check(TokenType.RBRACE):
@@ -440,6 +451,8 @@ class Parser:
                 nested_messages.append(self.parse_message())
             elif self.check(TokenType.ENUM):
                 nested_enums.append(self.parse_enum())
+            elif self.check(TokenType.UNION):
+                nested_unions.append(self.parse_union())
             else:
                 fields.append(self.parse_field())
 
@@ -454,7 +467,73 @@ class Parser:
             fields=fields,
             nested_messages=nested_messages,
             nested_enums=nested_enums,
+            nested_unions=nested_unions,
             options=all_options,
+            line=start.line,
+            column=start.column,
+            location=self.make_location(start),
+        )
+
+    def parse_union(self) -> Union:
+        """Parse a union: union Media [id=101] { ... }"""
+        start = self.current()
+        self.consume(TokenType.UNION)
+        name = self.consume(TokenType.IDENT, "Expected union name").value
+
+        type_id = None
+        inline_options = {}
+        if self.check(TokenType.LBRACKET):
+            inline_options = self.parse_type_options(
+                name, KNOWN_UNION_OPTIONS, allow_zero_id=True
+            )
+            if "id" in inline_options:
+                type_id = inline_options["id"]
+
+        self.consume(TokenType.LBRACE, "Expected '{' after union name")
+
+        fields = []
+        while not self.check(TokenType.RBRACE):
+            if self.check(TokenType.RESERVED):
+                self.parse_reserved()
+            else:
+                fields.append(self.parse_union_field())
+
+        self.consume(TokenType.RBRACE, "Expected '}' after union cases")
+
+        return Union(
+            name=name,
+            type_id=type_id,
+            fields=fields,
+            options=inline_options,
+            line=start.line,
+            column=start.column,
+            location=self.make_location(start),
+        )
+
+    def parse_union_field(self) -> Field:
+        """Parse a union case: Type name = 1;"""
+        start = self.current()
+
+        if self.check(TokenType.OPTIONAL) or self.check(TokenType.REF):
+            raise self.error("Union cases do not support optional/ref modifiers")
+        if self.check(TokenType.REPEATED):
+            raise self.error("Union cases do not support repeated modifiers")
+
+        field_type = self.parse_type()
+        name = self.consume(TokenType.IDENT, "Expected union case name").value
+        self.consume(TokenType.EQUALS, "Expected '=' after union case name")
+        number_token = self.consume(TokenType.INT, "Expected union case id")
+        number = int(number_token.value)
+
+        if self.check(TokenType.LBRACKET):
+            raise self.error("Union cases do not support field options")
+
+        self.consume(TokenType.SEMI, "Expected ';' after union case")
+
+        return Field(
+            name=name,
+            field_type=field_type,
+            number=number,
             line=start.line,
             column=start.column,
             location=self.make_location(start),
@@ -588,7 +667,9 @@ class Parser:
         self.consume(TokenType.RBRACKET, "Expected ']' after field options")
         return options
 
-    def parse_type_options(self, type_name: str, known_options: Set[str]) -> dict:
+    def parse_type_options(
+        self, type_name: str, known_options: Set[str], allow_zero_id: bool = False
+    ) -> dict:
         """Parse type options: [id=100, deprecated=true]."""
         self.consume(TokenType.LBRACKET)
         options = {}
@@ -618,13 +699,18 @@ class Parser:
                     f"Expected option value, got {self.current().type.name}"
                 )
 
-            # Validate 'id' option must be a positive integer
+            # Validate 'id' option must be a non-negative integer (positive by default)
             if option_name == "id":
                 if not isinstance(option_value, int):
                     raise self.error(
                         f"Type option 'id' must be an integer, got {type(option_value).__name__}"
                     )
-                if option_value <= 0:
+                if allow_zero_id:
+                    if option_value < 0:
+                        raise self.error(
+                            f"Type option 'id' must be a non-negative integer, got {option_value}"
+                        )
+                elif option_value <= 0:
                     raise self.error(
                         f"Type option 'id' must be a positive integer, got {option_value}"
                     )

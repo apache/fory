@@ -226,6 +226,58 @@ func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
 	return f.typeResolver.RegisterStruct(t, fullTypeID)
 }
 
+// RegisterUnion registers a union type with a numeric ID for cross-language serialization.
+// type_ can be either a reflect.Type or an instance of the union type.
+// typeID should be the user type ID in the range 0-8192 (the internal type ID will be added automatically).
+// serializer must implement union payload encoding/decoding.
+func (f *Fory) RegisterUnion(type_ any, typeID uint32, serializer Serializer) error {
+	if serializer == nil {
+		return fmt.Errorf("RegisterUnion requires a non-nil serializer")
+	}
+	var t reflect.Type
+	if rt, ok := type_.(reflect.Type); ok {
+		t = rt
+	} else {
+		t = reflect.TypeOf(type_)
+		if t.Kind() == reflect.Ptr {
+			t = t.Elem()
+		}
+	}
+	if t.Kind() != reflect.Struct {
+		return fmt.Errorf("RegisterUnion only supports struct types; got: %v", t.Kind())
+	}
+	fullTypeID := (typeID << 8) | uint32(TYPED_UNION)
+	return f.typeResolver.RegisterUnion(t, fullTypeID, serializer)
+}
+
+// RegisterNamedUnion registers a union type with a namespace + type name for cross-language serialization.
+// type_ can be either a reflect.Type or an instance of the union type.
+// serializer must implement union payload encoding/decoding.
+func (f *Fory) RegisterNamedUnion(type_ any, typeName string, serializer Serializer) error {
+	if serializer == nil {
+		return fmt.Errorf("RegisterNamedUnion requires a non-nil serializer")
+	}
+	var t reflect.Type
+	if rt, ok := type_.(reflect.Type); ok {
+		t = rt
+	} else {
+		t = reflect.TypeOf(type_)
+		if t.Kind() == reflect.Ptr {
+			t = t.Elem()
+		}
+	}
+	if t.Kind() != reflect.Struct {
+		return fmt.Errorf("RegisterNamedUnion only supports struct types; got: %v", t.Kind())
+	}
+	namespace := ""
+	name := typeName
+	if lastDot := strings.LastIndex(typeName, "."); lastDot >= 0 {
+		namespace = typeName[:lastDot]
+		name = typeName[lastDot+1:]
+	}
+	return f.typeResolver.RegisterNamedUnion(t, namespace, name, serializer)
+}
+
 // RegisterNamedStruct registers a named struct type for cross-language serialization
 // type_ can be either a reflect.Type or an instance of the type
 // typeName can include a namespace prefix separated by "." (e.g., "example.Foo")

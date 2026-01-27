@@ -51,7 +51,7 @@ final class DateSerializer extends Serializer<LocalDate> {
 
   static const SerializerCache cache = _DateSerializerCache();
 
-  DateSerializer._(bool writeRef) : super(ObjType.LOCAL_DATE, writeRef);
+  DateSerializer._(bool writeRef) : super(ObjType.DATE, writeRef);
 
   @override
   LocalDate read(ByteReader br, int refId, DeserializerPack pack) {

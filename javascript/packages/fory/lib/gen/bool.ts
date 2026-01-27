@@ -21,7 +21,7 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { InternalSerializerType } from "../type";
+import { TypeId } from "../type";
 import { Scope } from "./scope";
 
 class BoolSerializerGenerator extends BaseSerializerGenerator {
@@ -49,4 +49,4 @@ class BoolSerializerGenerator extends BaseSerializerGenerator {
   }
 }
 
-CodegenRegistry.register(InternalSerializerType.BOOL, BoolSerializerGenerator);
+CodegenRegistry.register(TypeId.BOOL, BoolSerializerGenerator);

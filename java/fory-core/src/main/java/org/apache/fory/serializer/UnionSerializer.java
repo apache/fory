@@ -19,9 +19,16 @@
 
 package org.apache.fory.serializer;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.util.function.BiFunction;
 import org.apache.fory.Fory;
 import org.apache.fory.memory.MemoryBuffer;
+import org.apache.fory.resolver.ClassInfo;
+import org.apache.fory.resolver.RefResolver;
+import org.apache.fory.resolver.TypeResolver;
+import org.apache.fory.resolver.XtypeResolver;
+import org.apache.fory.type.Types;
 import org.apache.fory.type.union.Union;
 import org.apache.fory.type.union.Union2;
 import org.apache.fory.type.union.Union3;
@@ -50,11 +57,11 @@ public class UnionSerializer extends Serializer<Union> {
   private static final BiFunction<Integer, Object, Union>[] FACTORIES =
       new BiFunction[] {
         (BiFunction<Integer, Object, Union>) Union::new,
-        (BiFunction<Integer, Object, Union>) (index, value) -> Union2.of(index, value),
-        (BiFunction<Integer, Object, Union>) (index, value) -> Union3.of(index, value),
-        (BiFunction<Integer, Object, Union>) (index, value) -> Union4.of(index, value),
-        (BiFunction<Integer, Object, Union>) (index, value) -> Union5.of(index, value),
-        (BiFunction<Integer, Object, Union>) (index, value) -> Union6.of(index, value)
+        (BiFunction<Integer, Object, Union>) Union2::of,
+        (BiFunction<Integer, Object, Union>) Union3::of,
+        (BiFunction<Integer, Object, Union>) Union4::of,
+        (BiFunction<Integer, Object, Union>) Union5::of,
+        (BiFunction<Integer, Object, Union>) Union6::of
       };
 
   private final BiFunction<Integer, Object, Union> factory;
@@ -62,7 +69,12 @@ public class UnionSerializer extends Serializer<Union> {
   @SuppressWarnings("unchecked")
   public UnionSerializer(Fory fory, Class<? extends Union> cls) {
     super(fory, (Class<Union>) cls);
-    this.factory = FACTORIES[getTypeIndex(cls)];
+    int typeIndex = getTypeIndex(cls);
+    if (typeIndex >= 0) {
+      this.factory = FACTORIES[typeIndex];
+    } else {
+      this.factory = createFactory(cls);
+    }
   }
 
   private static int getTypeIndex(Class<? extends Union> cls) {
@@ -79,8 +91,29 @@ public class UnionSerializer extends Serializer<Union> {
     } else if (cls == Union6.class) {
       return 5;
     } else {
-      // Default to base Union for unknown subclasses
-      return 0;
+      return -1;
+    }
+  }
+
+  private static BiFunction<Integer, Object, Union> createFactory(Class<? extends Union> cls) {
+    try {
+      java.lang.reflect.Constructor<? extends Union> ctor =
+          cls.getDeclaredConstructor(int.class, Object.class);
+      ctor.setAccessible(true);
+      MethodHandle handle = MethodHandles.lookup().unreflectConstructor(ctor);
+      return (index, value) -> {
+        try {
+          return (Union) handle.invoke(index.intValue(), value);
+        } catch (Throwable t) {
+          throw new IllegalStateException("Failed to construct union type " + cls.getName(), t);
+        }
+      };
+    } catch (Throwable t) {
+      throw new IllegalStateException(
+          "Union class "
+              + cls.getName()
+              + " must declare a constructor (int, Object) for UnionSerializer",
+          t);
     }
   }
 
@@ -95,11 +128,16 @@ public class UnionSerializer extends Serializer<Union> {
     buffer.writeVarUint32(index);
 
     Object value = union.getValue();
-    if (value != null) {
-      fory.xwriteRef(buffer, value);
-    } else {
-      buffer.writeByte(Fory.NULL_FLAG);
+    int valueTypeId = union.getValueTypeId();
+    if (valueTypeId == Types.UNKNOWN) {
+      if (value != null) {
+        fory.xwriteRef(buffer, value);
+      } else {
+        buffer.writeByte(Fory.NULL_FLAG);
+      }
+      return;
     }
+    writeCaseValue(buffer, value, valueTypeId);
   }
 
   @Override
@@ -122,5 +160,165 @@ public class UnionSerializer extends Serializer<Union> {
     Object value = union.getValue();
     Object copiedValue = value != null ? fory.copyObject(value) : null;
     return factory.apply(union.getIndex(), copiedValue);
+  }
+
+  private void writeCaseValue(MemoryBuffer buffer, Object value, int typeId) {
+    Serializer serializer = null;
+    if (value != null) {
+      serializer = getSerializer(typeId, value);
+    }
+    RefResolver refResolver = fory.getRefResolver();
+    if (serializer != null && serializer.needToWriteRef()) {
+      if (refResolver.writeRefOrNull(buffer, value)) {
+        return;
+      }
+    } else {
+      if (value == null) {
+        buffer.writeByte(Fory.NULL_FLAG);
+        return;
+      }
+      buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
+    }
+    writeTypeInfo(buffer, typeId, value);
+    writeValue(buffer, value, typeId, serializer);
+  }
+
+  private Serializer getSerializer(int typeId, Object value) {
+    int internalTypeId = typeId & 0xff;
+    if (isPrimitiveType(internalTypeId)) {
+      return null;
+    }
+    ClassInfo classInfo = getClassInfo(typeId, value);
+    return classInfo == null ? null : classInfo.getSerializer();
+  }
+
+  private void writeTypeInfo(MemoryBuffer buffer, int typeId, Object value) {
+    ClassInfo classInfo = getClassInfo(typeId, value);
+    if (classInfo == null) {
+      buffer.writeVarUint32Small7(typeId);
+      return;
+    }
+    fory._getTypeResolver().writeClassInfo(buffer, classInfo);
+  }
+
+  private ClassInfo getClassInfo(int typeId, Object value) {
+    TypeResolver resolver = fory._getTypeResolver();
+    int internalTypeId = typeId & 0xff;
+    if (typeId >= 256 && resolver instanceof XtypeResolver) {
+      ClassInfo classInfo = ((XtypeResolver) resolver).getUserTypeInfo(typeId >>> 8);
+      if (classInfo != null) {
+        if ((classInfo.getTypeId() & 0xff) == internalTypeId) {
+          return classInfo;
+        }
+      }
+    }
+    if (isNamedType(internalTypeId)) {
+      return resolver.getClassInfo(value.getClass());
+    }
+    if (resolver instanceof XtypeResolver) {
+      ClassInfo classInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
+      if (classInfo != null) {
+        return classInfo;
+      }
+    }
+    return resolver.getClassInfo(value.getClass());
+  }
+
+  private void writeValue(MemoryBuffer buffer, Object value, int typeId, Serializer serializer) {
+    int internalTypeId = typeId & 0xff;
+    switch (internalTypeId) {
+      case Types.BOOL:
+        buffer.writeBoolean((Boolean) value);
+        return;
+      case Types.INT8:
+      case Types.UINT8:
+        buffer.writeByte(((Number) value).byteValue());
+        return;
+      case Types.INT16:
+      case Types.UINT16:
+        buffer.writeInt16(((Number) value).shortValue());
+        return;
+      case Types.INT32:
+      case Types.UINT32:
+        buffer.writeInt32(((Number) value).intValue());
+        return;
+      case Types.VARINT32:
+        buffer.writeVarInt32(((Number) value).intValue());
+        return;
+      case Types.VAR_UINT32:
+        buffer.writeVarUint32(((Number) value).intValue());
+        return;
+      case Types.FLOAT32:
+        buffer.writeFloat32(((Number) value).floatValue());
+        return;
+      case Types.INT64:
+      case Types.UINT64:
+        buffer.writeInt64(((Number) value).longValue());
+        return;
+      case Types.VARINT64:
+        buffer.writeVarInt64(((Number) value).longValue());
+        return;
+      case Types.TAGGED_INT64:
+        buffer.writeTaggedInt64(((Number) value).longValue());
+        return;
+      case Types.VAR_UINT64:
+        buffer.writeVarUint64(((Number) value).longValue());
+        return;
+      case Types.TAGGED_UINT64:
+        buffer.writeTaggedUint64(((Number) value).longValue());
+        return;
+      case Types.FLOAT64:
+        buffer.writeFloat64(((Number) value).doubleValue());
+        return;
+      case Types.STRING:
+        fory.writeString(buffer, (String) value);
+        return;
+      case Types.BINARY:
+        buffer.writeBytes((byte[]) value);
+        return;
+      default:
+        break;
+    }
+    if (serializer != null) {
+      serializer.xwrite(buffer, value);
+      return;
+    }
+    throw new IllegalStateException("Missing serializer for union type id " + typeId);
+  }
+
+  private static boolean isNamedType(int internalTypeId) {
+    return internalTypeId == Types.NAMED_ENUM
+        || internalTypeId == Types.NAMED_STRUCT
+        || internalTypeId == Types.NAMED_EXT
+        || internalTypeId == Types.NAMED_UNION
+        || internalTypeId == Types.NAMED_COMPATIBLE_STRUCT;
+  }
+
+  private static boolean isPrimitiveType(int internalTypeId) {
+    switch (internalTypeId) {
+      case Types.BOOL:
+      case Types.INT8:
+      case Types.INT16:
+      case Types.INT32:
+      case Types.VARINT32:
+      case Types.INT64:
+      case Types.VARINT64:
+      case Types.TAGGED_INT64:
+      case Types.UINT8:
+      case Types.UINT16:
+      case Types.UINT32:
+      case Types.VAR_UINT32:
+      case Types.UINT64:
+      case Types.VAR_UINT64:
+      case Types.TAGGED_UINT64:
+      case Types.FLOAT16:
+      case Types.FLOAT32:
+      case Types.FLOAT64:
+      case Types.STRING:
+      case Types.BINARY:
+        return true;
+      default:
+        return false;
+    }
   }
 }

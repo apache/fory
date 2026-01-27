@@ -17,6 +17,10 @@
 
 name: Fory CI
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
@@ -380,6 +384,15 @@ jobs:
           key: bazel-build-cpp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('cpp/**', 'BUILD', 'WORKSPACE') }}
       - name: Run C++ CI with Bazel
         run: python ./ci/run_ci.py cpp
+      - name: Upload Bazel Test Logs
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: bazel-test-logs-${{ matrix.os }}
+          path: |
+            bazel-out/*/testlogs/**/*.log
+            bazel-out/*/testlogs/**/*.xml
+          if-no-files-found: ignore
 
   cpp_xlang:
     name: C++ Xlang Test
@@ -449,9 +462,11 @@ jobs:
             ${{ runner.os }}-maven-
       - name: Run JavaScript Xlang Test
         env:
-          FORY_JavaScript_JAVA_CI: "1"
+          FORY_JAVASCRIPT_JAVA_CI: "0"
         run: |
-          cd java
+          cd javascript
+          npm install
+          cd ../java
           mvn -T16 --no-transfer-progress clean install -DskipTests
           cd fory-core
           mvn -T16 --no-transfer-progress test -Dtest=org.apache.fory.xlang.JavaScriptXlangTest

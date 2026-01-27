@@ -29,6 +29,7 @@ cc_library(
         "type_info.h",
         "type_resolver.h",
         "unsigned_serializer.h",
+        "union_serializer.h",
         "variant_serializer.h",
         "weak_ptr_serializer.h",
     ],
@@ -139,6 +140,16 @@ cc_test(
     deps = [
         ":fory_serialization",
         "@googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "namespace_macro_test",
+    srcs = ["namespace_macro_test.cc"],
+    deps = [
+        ":fory_serialization",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
     ],
 )
 

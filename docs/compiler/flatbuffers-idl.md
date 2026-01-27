@@ -26,7 +26,7 @@ already have FlatBuffers schemas but want Fory-native serialization and codegen.
 ## Key Differences vs FDL
 
 - **Field numbering**: FlatBuffers fields have no explicit IDs; Fory assigns
-  sequential field numbers based on declaration order.
+  sequential field numbers based on declaration order, starting at 1.
 - **Tables vs structs**: FlatBuffers `table` maps to a Fory message with
   `evolving=true`; `struct` maps to `evolving=false`.
 - **Default values**: Parsed for compatibility but ignored in generated Fory
@@ -35,7 +35,8 @@ already have FlatBuffers schemas but want Fory-native serialization and codegen.
   fields; FDL uses `[option=value]` inline syntax.
 - **Root type**: `root_type` is ignored because Fory does not require a root
   message to serialize.
-- **Unions**: FlatBuffers `union` is not supported yet and raises an error.
+- **Unions**: FlatBuffers `union` is translated into an FDL `union`. Case IDs
+  follow declaration order, starting at 1.
 
 ## Scalar Type Mapping
 
@@ -55,6 +56,41 @@ already have FlatBuffers schemas but want Fory-native serialization and codegen.
 | `string`    | `string`       |
 
 Vectors (`[T]`) map to Fory list types.
+
+## Union Mapping
+
+FlatBuffers unions are converted to FDL unions and then to native union APIs in
+each target language.
+
+**FlatBuffers:**
+
+```fbs
+union Payload {
+  Note,
+  Metric
+}
+
+table Container {
+  payload: Payload;
+}
+```
+
+**FDL (conceptual):**
+
+```protobuf
+union Payload {
+    Note note = 1;
+    Metric metric = 2;
+}
+
+message Container {
+    Payload payload = 1;
+}
+```
+
+Case IDs are derived from the declaration order in the `union`. The generated
+case names are based on the type names (converted to each language's naming
+convention).
 
 ## Usage
 

@@ -34,15 +34,15 @@ struct OldStruct {
   int id;
   VariantType field1;
   VariantType field2;
+  FORY_STRUCT(OldStruct, id, field1, field2);
 };
-FORY_STRUCT(OldStruct, id, field1, field2);
 
 // New schema: struct with only one variant field
 struct NewStruct {
   int id;
   VariantType field1;
+  FORY_STRUCT(NewStruct, id, field1);
 };
-FORY_STRUCT(NewStruct, id, field1);
 } // namespace
 
 // Helper to create a Fory instance

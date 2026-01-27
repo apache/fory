@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
- 
+
 syntax = "proto3";
 
 package medium;
@@ -24,24 +24,24 @@ package medium;
 import "google/protobuf/timestamp.proto";
 
 message Address {
-    string street = 1;
-    string city = 2;
-    string country = 3;
-    string zip_code = 4;
+  string street = 1;
+  string city = 2;
+  string country = 3;
+  string zip_code = 4;
 }
 
 message ProtoPerson {
-    string name = 1;
-    int32 age = 2;
-    Address address = 3;
-    repeated string hobbies = 4;
-    map<string, string> metadata = 5;
-    google.protobuf.Timestamp created_at = 6;
+  string name = 1;
+  int32 age = 2;
+  Address address = 3;
+  repeated string hobbies = 4;
+  map<string, string> metadata = 5;
+  google.protobuf.Timestamp created_at = 6;
 }
 
 message ProtoCompany {
-    string name = 1;
-    repeated ProtoPerson employees = 2;
-    map<string, Address> offices = 3;
-    bool is_public = 4;
+  string name = 1;
+  repeated ProtoPerson employees = 2;
+  map<string, Address> offices = 3;
+  bool is_public = 4;
 }

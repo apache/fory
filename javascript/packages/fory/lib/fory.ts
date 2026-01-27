@@ -90,6 +90,7 @@ export default class {
     } else {
       const typeInfo = constructor;
       serializer = new Gen(this, replace).generateSerializer(typeInfo);
+      this.classResolver.registerSerializer(typeInfo, serializer);
     }
     return {
       serializer,
@@ -124,8 +125,6 @@ export default class {
     }
 
     this.binaryReader.uint8(); // skip language
-    this.binaryReader.int32(); // native object offset. should skip.  javascript support cross mode only
-    this.binaryReader.int32(); // native object size. should skip.
     return serializer.read();
   }
 
@@ -146,14 +145,10 @@ export default class {
     bitmap |= ConfigFlags.isCrossLanguageFlag;
     this.binaryWriter.uint8(bitmap);
     this.binaryWriter.uint8(Language.JAVASCRIPT);
-    const cursor = this.binaryWriter.getCursor();
-    this.binaryWriter.skip(4); // preserve 4-byte for nativeObjects start offsets.
-    this.binaryWriter.uint32(0); // nativeObjects length.
     // reserve fixed size
     this.binaryWriter.reserve(serializer.fixedSize);
     // start write
     serializer.write(data);
-    this.binaryWriter.setUint32Position(cursor, this.binaryWriter.getCursor()); // nativeObjects start offsets;
     return this.binaryWriter;
   }
 

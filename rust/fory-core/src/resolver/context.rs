@@ -248,7 +248,7 @@ impl<'a> WriteContext<'a> {
                     &self.type_resolver,
                 )?;
             }
-            types::NAMED_ENUM | types::NAMED_EXT | types::NAMED_STRUCT => {
+            types::NAMED_ENUM | types::NAMED_EXT | types::NAMED_STRUCT | types::NAMED_UNION => {
                 if self.is_share_meta() {
                     // Write type meta inline using streaming protocol
                     self.meta_resolver.write_type_meta(
@@ -419,7 +419,7 @@ impl<'a> ReadContext<'a> {
                 // Read type meta inline using streaming protocol
                 self.read_type_meta()
             }
-            types::NAMED_ENUM | types::NAMED_EXT | types::NAMED_STRUCT => {
+            types::NAMED_ENUM | types::NAMED_EXT | types::NAMED_STRUCT | types::NAMED_UNION => {
                 if self.is_share_meta() {
                     // Read type meta inline using streaming protocol
                     self.read_type_meta()

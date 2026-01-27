@@ -283,12 +283,16 @@ func generateCodeForFile(pkg *packages.Package, structs []*StructInfo, sourceFil
 	// Determine which imports are needed
 	needsTime := false
 	needsReflect := false
+	needsOptional := false
 
 	for _, s := range structs {
 		for _, field := range s.Fields {
 			typeStr := field.Type.String()
 			if typeStr == "time.Time" || typeStr == "github.com/apache/fory/go/fory.Date" {
 				needsTime = true
+			}
+			if field.IsOptional {
+				needsOptional = true
 			}
 			// We need reflect for the interface compatibility methods
 			needsReflect = true
@@ -305,6 +309,9 @@ func generateCodeForFile(pkg *packages.Package, structs []*StructInfo, sourceFil
 		fmt.Fprintf(&buf, "\t\"time\"\n")
 	}
 	fmt.Fprintf(&buf, "\t\"github.com/apache/fory/go/fory\"\n")
+	if needsOptional {
+		fmt.Fprintf(&buf, "\t\"github.com/apache/fory/go/fory/optional\"\n")
+	}
 	fmt.Fprintf(&buf, ")\n\n")
 
 	// Generate init function to register serializer factories
@@ -536,12 +543,16 @@ func generateCode(pkg *packages.Package, structs []*StructInfo) error {
 	// Determine which imports are needed
 	needsTime := false
 	needsReflect := false
+	needsOptional := false
 
 	for _, s := range structs {
 		for _, field := range s.Fields {
 			typeStr := field.Type.String()
 			if typeStr == "time.Time" || typeStr == "github.com/apache/fory/go/fory.Date" {
 				needsTime = true
+			}
+			if field.IsOptional {
+				needsOptional = true
 			}
 			// We need reflect for the interface compatibility methods
 			needsReflect = true
@@ -558,6 +569,9 @@ func generateCode(pkg *packages.Package, structs []*StructInfo) error {
 		fmt.Fprintf(&buf, "\t\"time\"\n")
 	}
 	fmt.Fprintf(&buf, "\t\"github.com/apache/fory/go/fory\"\n")
+	if needsOptional {
+		fmt.Fprintf(&buf, "\t\"github.com/apache/fory/go/fory/optional\"\n")
+	}
 	fmt.Fprintf(&buf, ")\n\n")
 
 	// Generate init function to register serializer factories

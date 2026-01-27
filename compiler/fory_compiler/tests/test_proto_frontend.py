@@ -17,9 +17,6 @@
 
 """Tests for the proto frontend translation."""
 
-import pytest
-
-from fory_compiler.frontend.base import FrontendError
 from fory_compiler.frontend.proto import ProtoFrontend
 from fory_compiler.ir.ast import PrimitiveType
 from fory_compiler.ir.types import PrimitiveKind
@@ -47,7 +44,7 @@ def test_proto_type_mapping():
     assert fields["balance"].kind == PrimitiveKind.INT64
 
 
-def test_proto_oneof_error():
+def test_proto_oneof_translation():
     source = """
     syntax = "proto3";
 
@@ -58,5 +55,17 @@ def test_proto_oneof_error():
         }
     }
     """
-    with pytest.raises(FrontendError):
-        ProtoFrontend().parse(source)
+    schema = ProtoFrontend().parse(source)
+    event = schema.messages[0]
+
+    assert len(event.nested_unions) == 1
+    union = event.nested_unions[0]
+    assert union.name == "payload"
+    case_names = [f.name for f in union.fields]
+    case_numbers = [f.number for f in union.fields]
+    assert case_names == ["text", "number"]
+    assert case_numbers == [1, 2]
+
+    payload_field = [f for f in event.fields if f.name == "payload"][0]
+    assert payload_field.optional is True
+    assert payload_field.field_type.name == "payload"

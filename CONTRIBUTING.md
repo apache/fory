@@ -111,6 +111,7 @@ ruff format
 ### C++
 
 ```bash
+pip install clang-format==18.1.8
 git ls-files -- '*.cc' '*.h' | xargs -P 5 clang-format -i
 ```
 

@@ -154,6 +154,20 @@ func SkipAnyValue(ctx *ReadContext, readRefFlag bool) {
 			fieldType: NewMapFieldType(TypeId(typeID), NewSimpleFieldType(UNKNOWN), NewSimpleFieldType(UNKNOWN)),
 			nullable:  true,
 		}
+	case NAMED_UNION:
+		resolver := ctx.TypeResolver()
+		_, _ = resolver.metaStringResolver.ReadMetaStringBytes(ctx.buffer, err)
+		if ctx.HasError() {
+			return
+		}
+		_, _ = resolver.metaStringResolver.ReadMetaStringBytes(ctx.buffer, err)
+		if ctx.HasError() {
+			return
+		}
+		fieldDef = FieldDef{
+			fieldType: NewSimpleFieldType(TypeId(typeID)),
+			nullable:  true,
+		}
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT, STRUCT, NAMED_STRUCT:
 		// Read type info using the shared meta reader when enabled.
 		typeInfo = ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeID, err)
@@ -592,16 +606,27 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 		_ = ctx.buffer.ReadBinary(int(length), err)
 
 	// Date/Time types
-	case LOCAL_DATE:
+	case DATE:
 		_ = ctx.buffer.ReadVaruint32Small7(err)
 	case TIMESTAMP:
-		_ = ctx.buffer.ReadVarint64(err)
+		_ = ctx.buffer.ReadInt64(err)
+		_ = ctx.buffer.ReadUint32(err)
 
 	// Container types
 	case LIST, SET:
 		skipCollection(ctx, fieldDef)
 	case MAP:
 		skipMap(ctx, fieldDef)
+
+	case UNION, TYPED_UNION, NAMED_UNION:
+		_ = ctx.buffer.ReadVaruint32(err) // case_id
+		if ctx.HasError() {
+			return
+		}
+		SkipAnyValue(ctx, true)
+
+	case NONE:
+		return
 
 	// Struct types
 	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT, STRUCT, NAMED_STRUCT:

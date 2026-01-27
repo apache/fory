@@ -20,7 +20,7 @@
 import { SetTypeInfo, TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { CodegenRegistry } from "./router";
-import { InternalSerializerType } from "../type";
+import { TypeId } from "../type";
 import { Scope } from "./scope";
 import { CollectionSerializerGenerator } from "./collection";
 
@@ -57,4 +57,4 @@ class SetSerializerGenerator extends CollectionSerializerGenerator {
   }
 }
 
-CodegenRegistry.register(InternalSerializerType.SET, SetSerializerGenerator);
+CodegenRegistry.register(TypeId.SET, SetSerializerGenerator);

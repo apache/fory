@@ -17,7 +17,7 @@
  * under the License.
  */
 
-import { InternalSerializerType, MaxInt32, Mode, TypeId } from "../type";
+import { TypeId, MaxInt32, Mode } from "../type";
 import { Scope } from "./scope";
 import { CodecBuilder } from "./builder";
 import { StructTypeInfo, TypeInfo } from "../typeInfo";
@@ -71,15 +71,15 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     return `
       ${this.builder.fory.config.mode === Mode.SchemaConsistent ? this.builder.writer.varUInt32(computeStructHash(this.typeInfo)) : ""}
       ${Object.entries(options.props!).sort().map(([key, inner]) => {
-        const InnerGeneratorClass = CodegenRegistry.get(inner.type);
+        const InnerGeneratorClass = CodegenRegistry.get(inner.typeId);
         if (!InnerGeneratorClass) {
-            throw new Error(`${inner.type} generator not exists`);
+            throw new Error(`${inner.typeId} generator not exists`);
         }
         const innerGenerator = new InnerGeneratorClass(inner, this.builder, this.scope);
 
         const fieldAccessor = `${accessor}${CodecBuilder.safePropAccessor(key)}`;
         return (inner as any).nullable === false
-          ? `if (${fieldAccessor} === null || ${fieldAccessor} === undefined) { throw new Error("Field '${CodecBuilder.replaceBackslashAndQuote(key)}' is not nullable"); }\n${innerGenerator.toWriteEmbed(fieldAccessor, true)}`
+          ? `if (${fieldAccessor} === null || ${fieldAccessor} === undefined) { throw new Error("Field '${CodecBuilder.replaceBackslashAndQuote(key)}' is not nullable"); }\n${innerGenerator.toWriteEmbed(fieldAccessor)}`
           : innerGenerator.toWriteEmbed(fieldAccessor);
       }).join(";\n")}
     `;
@@ -114,9 +114,9 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       }
       ${this.maybeReference(result, refState)}
       ${Object.entries(options.props!).sort().map(([key, inner]) => {
-        const InnerGeneratorClass = CodegenRegistry.get(inner.type);
+        const InnerGeneratorClass = CodegenRegistry.get(inner.typeId);
         if (!InnerGeneratorClass) {
-          throw new Error(`${inner.type} generator not exists`);
+          throw new Error(`${inner.typeId} generator not exists`);
         }
         const innerGenerator = new InnerGeneratorClass(inner, this.builder, this.scope);
         return innerGenerator.toReadEmbed(expr => `${result}${CodecBuilder.safePropAccessor(key)} = ${expr}`);
@@ -157,7 +157,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
     let fixedSize = 8;
     if (options.props) {
       Object.values(options.props).forEach((x) => {
-        const propGenerator = new (CodegenRegistry.get(x.type)!)(x, this.builder, this.scope);
+        const propGenerator = new (CodegenRegistry.get(x.typeId)!)(x, this.builder, this.scope);
         fixedSize += propGenerator.getFixedSize();
       });
     } else {
@@ -171,4 +171,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
   }
 }
 
-CodegenRegistry.register(InternalSerializerType.STRUCT, StructSerializerGenerator);
+CodegenRegistry.register(TypeId.STRUCT, StructSerializerGenerator);
+CodegenRegistry.register(TypeId.NAMED_STRUCT, StructSerializerGenerator);
+CodegenRegistry.register(TypeId.COMPATIBLE_STRUCT, StructSerializerGenerator);
+CodegenRegistry.register(TypeId.NAMED_COMPATIBLE_STRUCT, StructSerializerGenerator);

@@ -427,6 +427,13 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 
 		nameEncoding := fory.typeResolver.typeNameEncoder.ComputeEncodingWith(fieldName, fieldNameEncodings)
 
+		fieldType := field.Type
+		optionalInfo, isOptional := getOptionalInfo(fieldType)
+		baseType := fieldType
+		if isOptional {
+			baseType = optionalInfo.valueType
+		}
+
 		ft, err := buildFieldType(fory, fieldValue)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build field type for field %s: %w", fieldName, err)
@@ -434,10 +441,10 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 
 		// Apply encoding override from struct tags if set
 		// This works for both direct types and pointer-wrapped types
-		baseKind := field.Type.Kind()
+		baseKind := baseType.Kind()
 		// Handle pointer types - get the element kind
 		if baseKind == reflect.Ptr {
-			baseKind = field.Type.Elem().Kind()
+			baseKind = baseType.Elem().Kind()
 		}
 
 		// Check if we need to override the TypeID based on compress/encoding tags
@@ -512,16 +519,16 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 		if fory.config.IsXlang {
 			// xlang mode: only pointer types are nullable by default per xlang spec
 			// Slices and maps are NOT nullable - they serialize as empty when nil
-			nullableFlag = field.Type.Kind() == reflect.Ptr
+			nullableFlag = isOptional || field.Type.Kind() == reflect.Ptr
 		} else {
 			// Native mode: Go's natural semantics - all nil-able types are nullable
-			nullableFlag = field.Type.Kind() == reflect.Ptr ||
+			nullableFlag = isOptional || field.Type.Kind() == reflect.Ptr ||
 				field.Type.Kind() == reflect.Slice ||
 				field.Type.Kind() == reflect.Map ||
 				field.Type.Kind() == reflect.Interface
 		}
 		// Override nullable flag if explicitly set in fory tag
-		if foryTag.NullableSet {
+		if foryTag.NullableSet && !isOptional {
 			nullableFlag = foryTag.Nullable
 		}
 		// Primitives are never nullable, regardless of tag
@@ -968,6 +975,10 @@ func (d *DynamicFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (Type
 // buildFieldType builds field type from reflect.Type, handling collection, map recursively
 func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 	fieldType := fieldValue.Type()
+	if info, ok := getOptionalInfo(fieldType); ok {
+		fieldType = info.valueType
+		fieldValue = reflect.Zero(fieldType)
+	}
 	// Handle Interface type, we can't determine the actual type here, so leave it as dynamic type
 	if fieldType.Kind() == reflect.Interface {
 		return NewDynamicFieldType(UNKNOWN), nil

@@ -23,6 +23,7 @@ from fory_compiler.ir.ast import (
     Schema,
     Message,
     Enum,
+    Union,
     EnumValue,
     Field,
     FieldType,
@@ -61,6 +62,10 @@ class FDLEmitter:
 
         for enum in self.schema.enums:
             lines.extend(self._emit_enum(enum))
+            lines.append("")
+
+        for union in self.schema.unions:
+            lines.extend(self._emit_union(union))
             lines.append("")
 
         for message in self.schema.messages:
@@ -102,6 +107,9 @@ class FDLEmitter:
         for enum in msg.nested_enums:
             lines.extend(self._emit_enum(enum, level + 1))
 
+        for union in msg.nested_unions:
+            lines.extend(self._emit_union(union, level + 1))
+
         for nested in msg.nested_messages:
             lines.extend(self._emit_message(nested, level + 1))
 
@@ -110,6 +118,24 @@ class FDLEmitter:
 
         lines.append(f"{indent}}}")
         return lines
+
+    def _emit_union(self, union: Union, level: int = 0) -> List[str]:
+        indent = self.indent * level
+        lines: List[str] = []
+
+        header_opts = self._collect_type_options(union.type_id, union.options)
+        lines.append(
+            f"{indent}union {union.name}{self._emit_inline_options(header_opts)} {{"
+        )
+
+        for field in union.fields:
+            lines.append(f"{indent}{self.indent}{self._emit_union_field(field)}")
+
+        lines.append(f"{indent}}}")
+        return lines
+
+    def _emit_union_field(self, field: Field) -> str:
+        return f"{self._emit_type(field.field_type)} {field.name} = {field.number};"
 
     def _emit_field(self, field: Field) -> str:
         parts: List[str] = []

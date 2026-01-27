@@ -38,10 +38,10 @@ enum LegacyEnum : int32_t {
   LEGACY_THIRD = 25
 };
 
-} // namespace fory
-
 FORY_ENUM(::fory::RegisteredEnum, FIRST, SECOND, THIRD);
 FORY_ENUM(::fory::LegacyEnum, LEGACY_FIRST, LEGACY_SECOND, LEGACY_THIRD);
+
+} // namespace fory
 
 namespace fory {
 namespace test {

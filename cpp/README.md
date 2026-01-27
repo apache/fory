@@ -23,7 +23,9 @@ The C++ implementation provides high-performance serialization with compile-time
 ```cpp
 #include "fory/serialization/fory.h"
 
-// Define your struct with FORY_STRUCT macro
+// Define your class with FORY_STRUCT macro (struct works the same way).
+// Place it after all fields.
+// When used inside a class, it must be placed in a public: section.
 struct Person {
   std::string name;
   int32_t age;
@@ -84,14 +86,16 @@ Apache Fory™ provides automatic serialization of complex object graphs, preser
 ```cpp
 #include "fory/serialization/fory.h"
 
-struct Address {
+class Address {
+public:
   std::string street;
   std::string city;
   std::string country;
   FORY_STRUCT(Address, street, city, country);
 };
 
-struct Person {
+class Person {
+public:
   std::string name;
   int32_t age;
   Address address;
@@ -114,6 +118,43 @@ Person person{
 
 auto bytes = fory->serialize(person).value();
 auto decoded = fory->deserialize<Person>(bytes).value();
+```
+
+### 1.1 External/Third-Party Types
+
+For third-party types where you cannot modify the class definition, use
+`FORY_STRUCT` at namespace scope. This works for public fields only.
+
+```cpp
+namespace thirdparty {
+struct Foo {
+  int32_t id;
+  std::string name;
+};
+
+FORY_STRUCT(Foo, id, name);
+} // namespace thirdparty
+
+auto fory = apache::fory::ForyBuilder().build();
+fory->register_struct<thirdparty::Foo>(1);
+```
+
+### 1.2 Inherited Fields
+
+To include base-class fields in a derived type, use `FORY_BASE(Base)` inside
+`FORY_STRUCT`. The base must define its own `FORY_STRUCT` so its fields can be
+referenced.
+
+```cpp
+struct Base {
+  int32_t id;
+  FORY_STRUCT(Base, id);
+};
+
+struct Derived : Base {
+  std::string name;
+  FORY_STRUCT(Derived, FORY_BASE(Base), name);
+};
 ```
 
 ### 2. Shared References
@@ -191,6 +232,7 @@ enum class Color { Red, Green, Blue };
 // Non-continuous enum - needs FORY_ENUM
 enum class LegacyStatus { Active = 1, Inactive = 5, Pending = 10 };
 FORY_ENUM(LegacyStatus, Active, Inactive, Pending);
+// FORY_ENUM must be defined at namespace scope.
 
 struct Item {
   std::string name;
@@ -230,7 +272,7 @@ struct UserProfile {
   std::string email;
   std::vector<int32_t> scores;
   bool is_active;
-  FORY_FIELD_INFO(UserProfile, id, username, email, scores, is_active);
+  FORY_STRUCT(UserProfile, id, username, email, scores, is_active);
 };
 
 apache::fory::RowEncoder<UserProfile> encoder;
@@ -291,7 +333,7 @@ cpp/fory/
 │   ├── collection_serializer.h  # vector, set serializers
 │   ├── map_serializer.h    # map serializers
 │   ├── smart_ptr_serializers.h  # optional, shared_ptr, unique_ptr
-│   ├── temporal_serializers.h   # Duration, Timestamp, LocalDate
+│   ├── temporal_serializers.h   # Duration, Timestamp, Date
 │   ├── variant_serializer.h     # std::variant support
 │   ├── type_resolver.h     # Type resolution and registration
 │   └── context.h           # Read/Write context

@@ -507,6 +507,60 @@ public class ClassResolver extends TypeResolver {
     GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
   }
 
+  @Override
+  public void registerUnion(Class<?> cls, int userId, Serializer<?> serializer) {
+    checkRegisterAllowed();
+    Preconditions.checkArgument(userId >= 0 && userId < Short.MAX_VALUE);
+    Preconditions.checkNotNull(serializer);
+    short id = (short) userId;
+    checkRegistration(cls, id, cls.getName(), false);
+    extRegistry.registeredClassIdMap.put(cls, id);
+    int typeId = (userId << 8) | Types.TYPED_UNION;
+    ClassInfo classInfo = classInfoMap.get(cls);
+    if (classInfo == null) {
+      classInfo = new ClassInfo(this, cls, serializer, typeId);
+      classInfoMap.put(cls, classInfo);
+    } else {
+      classInfo.typeId = typeId;
+      classInfo.setSerializer(this, serializer);
+    }
+    putUserTypeInfo(id, classInfo);
+    extRegistry.registeredClasses.put(cls.getName(), cls);
+    GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
+  }
+
+  @Override
+  public void registerUnion(Class<?> cls, String namespace, String name, Serializer<?> serializer) {
+    checkRegisterAllowed();
+    Preconditions.checkNotNull(serializer);
+    Preconditions.checkArgument(!Functions.isLambda(cls));
+    Preconditions.checkArgument(!ReflectionUtils.isJdkProxy(cls));
+    Preconditions.checkArgument(!cls.isArray());
+    String fullname = name;
+    if (namespace == null) {
+      namespace = "";
+    }
+    if (!StringUtils.isBlank(namespace)) {
+      fullname = namespace + "." + name;
+    }
+    checkRegistration(cls, (short) -1, fullname, false);
+    MetaStringBytes fullNameBytes =
+        metaStringResolver.getOrCreateMetaStringBytes(
+            GENERIC_ENCODER.encode(fullname, MetaString.Encoding.UTF_8));
+    MetaStringBytes nsBytes =
+        metaStringResolver.getOrCreateMetaStringBytes(encodePackage(namespace));
+    MetaStringBytes nameBytes = metaStringResolver.getOrCreateMetaStringBytes(encodeTypeName(name));
+    int typeId = Types.NAMED_UNION;
+    ClassInfo classInfo =
+        new ClassInfo(cls, fullNameBytes, nsBytes, nameBytes, false, serializer, typeId);
+    classInfo.setSerializer(this, serializer);
+    classInfoMap.put(cls, classInfo);
+    compositeNameBytes2ClassInfo.put(
+        new TypeNameBytes(nsBytes.hashCode, nameBytes.hashCode), classInfo);
+    extRegistry.registeredClasses.put(fullname, cls);
+    GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
+  }
+
   /**
    * Registers multiple classes for internal use with auto-assigned internal IDs.
    *

@@ -182,6 +182,92 @@ FORY_STRUCT(SearchResponse, results);
 | Rust     | Nested module             | `search_response::Result` |
 | C++      | Nested classes            | `SearchResponse::Result`  |
 
+## Union Generation
+
+FDL unions generate type-safe APIs with an explicit active case. This example is
+based on `integration_tests/idl_tests/idl/addressbook.fdl`:
+
+```protobuf
+package addressbook;
+
+message Dog [id=104] {
+    string name = 1;
+    int32 bark_volume = 2;
+}
+
+message Cat [id=105] {
+    string name = 1;
+    int32 lives = 2;
+}
+
+union Animal [id=106] {
+    Dog dog = 1;
+    Cat cat = 2;
+}
+
+message Person [id=100] {
+    Animal pet = 8;
+}
+```
+
+### Java
+
+```java
+Animal pet = Animal.ofDog(new Dog());
+if (pet.hasDog()) {
+    Dog dog = pet.getDog();
+}
+Animal.AnimalCase caseId = pet.getAnimalCase();
+```
+
+### Python
+
+```python
+pet = Animal.dog(Dog(name="Rex", bark_volume=5))
+if pet.is_dog():
+    dog = pet.dog_value()
+case_id = pet.case_id()
+```
+
+### Go
+
+```go
+pet := DogAnimal(&Dog{Name: "Rex", BarkVolume: 5})
+if dog, ok := pet.AsDog(); ok {
+    _ = dog
+}
+_ = pet.Visit(AnimalVisitor{
+    Dog: func(d *Dog) error { return nil },
+})
+```
+
+### Rust
+
+```rust
+let pet = Animal::Dog(Dog {
+    name: "Rex".into(),
+    bark_volume: 5,
+});
+```
+
+### C++
+
+```cpp
+addressbook::Animal pet = addressbook::Animal::dog(
+    addressbook::Dog{"Rex", 5});
+if (pet.is_dog()) {
+  const addressbook::Dog& dog = pet.dog();
+}
+```
+
+Generated registration helpers also register union types, for example:
+
+- Java: `fory.registerUnion(Animal.class, 106, new UnionSerializer(...))`
+- Python: `fory.register_union(Animal, type_id=106, serializer=AnimalSerializer(fory))`
+- Go: `f.RegisterUnion(...)`
+- Rust: `fory.register_union::<Animal>(106)?`
+- C++: `FORY_UNION(addressbook::Animal, ...)`
+
 ## Java
 
 ### Enum Generation
