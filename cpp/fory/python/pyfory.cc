@@ -143,14 +143,19 @@ static inline uint32_t ReadVarint64ZigZag(const uint8_t *arr, int64_t *result) {
   uint32_t bytes_read = 0;
 
   // Read up to 9 bytes for varint64
-  for (int i = 0; i < 9; i++) {
+  for (int i = 0; i < 8; i++) {
     uint8_t b = arr[bytes_read++];
     v |= static_cast<uint64_t>(b & 0x7F) << shift;
     if ((b & 0x80) == 0) {
-      break;
+      // ZigZag decoding: (v >> 1) ^ -(v & 1)
+      *result = static_cast<int64_t>((v >> 1) ^ (~(v & 1) + 1));
+      return bytes_read;
     }
     shift += 7;
   }
+  // 9th byte: use all 8 bits (no continuation bit masking)
+  uint8_t b = arr[bytes_read++];
+  v |= static_cast<uint64_t>(b) << 56;
 
   // ZigZag decoding: (v >> 1) ^ -(v & 1)
   *result = static_cast<int64_t>((v >> 1) ^ (~(v & 1) + 1));
