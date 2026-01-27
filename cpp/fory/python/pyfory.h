@@ -26,16 +26,11 @@ int Fory_PyBooleanSequenceWriteToBuffer(PyObject *collection, Buffer *buffer,
                                         Py_ssize_t start_index);
 int Fory_PyFloatSequenceWriteToBuffer(PyObject *collection, Buffer *buffer,
                                       Py_ssize_t start_index);
-// Write a sequence of Python integers to buffer using varint64 encoding with
-// ZigZag. Returns number of bytes written on success, -1 on error.
-// start_index is the offset in the buffer where writing begins.
+
 Py_ssize_t Fory_PyInt64SequenceWriteToBuffer(PyObject *collection,
                                              Buffer *buffer,
                                              Py_ssize_t start_index);
 
-// Read a sequence of integers from buffer into a pre-allocated Python list.
-// Uses varint64 encoding with ZigZag decoding.
-// Returns number of bytes read on success, -1 on error.
 Py_ssize_t Fory_PyInt64SequenceReadFromBuffer(PyObject *list, Buffer *buffer,
                                               Py_ssize_t start_index,
                                               Py_ssize_t count);
