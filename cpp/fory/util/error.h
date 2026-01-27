@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <string>
