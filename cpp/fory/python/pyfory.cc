@@ -111,14 +111,13 @@ static inline uint32_t WriteVarint64ZigZag(uint8_t *arr, int64_t value) {
 }
 
 Py_ssize_t Fory_PyInt64SequenceWriteToBuffer(PyObject *collection,
-                                             Buffer *buffer,
-                                             Py_ssize_t start_index) {
+                                             Buffer *buffer) {
   PyObject **items = PySequenceGetItems(collection);
   if (items == nullptr) {
     return -1;
   }
   Py_ssize_t size = Py_SIZE(collection);
-
+  uint32_t start_index = buffer->writer_index();
   uint8_t *data = buffer->data() + start_index;
   Py_ssize_t total_bytes = 0;
 
@@ -132,6 +131,7 @@ Py_ssize_t Fory_PyInt64SequenceWriteToBuffer(PyObject *collection,
     total_bytes += bytes_written;
   }
 
+  buffer->IncreaseWriterIndex(total_bytes);
   return total_bytes;
 }
 
@@ -172,15 +172,14 @@ ReadVarint64ZigZag(const uint8_t *arr, Py_ssize_t remaining, int64_t *result) {
 }
 
 Py_ssize_t Fory_PyInt64SequenceReadFromBuffer(PyObject *list, Buffer *buffer,
-                                              Py_ssize_t start_index,
-                                              Py_ssize_t count,
-                                              Py_ssize_t buffer_len) {
+                                              Py_ssize_t count) {
   if (!PyList_CheckExact(list)) {
     return -1;
   }
 
+  uint32_t start_index = buffer->reader_index();
   const uint8_t *data = buffer->data() + start_index;
-  Py_ssize_t remaining = buffer_len - start_index;
+  Py_ssize_t remaining = buffer->size() - start_index;
   Py_ssize_t total_bytes = 0;
 
   for (Py_ssize_t i = 0; i < count; i++) {
@@ -200,6 +199,7 @@ Py_ssize_t Fory_PyInt64SequenceReadFromBuffer(PyObject *list, Buffer *buffer,
     PyList_SET_ITEM(list, i, py_int);
   }
 
+  buffer->IncreaseReaderIndex(total_bytes);
   return total_bytes;
 }
 } // namespace fory
