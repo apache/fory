@@ -200,7 +200,7 @@ cdef class CollectionSerializer(Serializer):
             buffer.grow(<int32_t>max_size)
             # Try batch write, fall back to slow path on error (e.g., int overflow)
             try:
-                bytes_written = Fory_PyInt64SequenceWriteToBuffer(value, buffer.c_buffer.get(), buffer.writer_index)
+                bytes_written = Fory_PyInt64SequenceWriteToBuffer(value, &buffer.c_buffer, buffer.writer_index)
                 if bytes_written >= 0:
                     buffer.writer_index += bytes_written
                     return
@@ -215,7 +215,7 @@ cdef class CollectionSerializer(Serializer):
         if type(collection_) is list:
             # Pass buffer size for bounds checking
             bytes_read = Fory_PyInt64SequenceReadFromBuffer(
-                collection_, buffer.c_buffer.get(), buffer.reader_index, len_, buffer.size())
+                collection_, &buffer.c_buffer, buffer.reader_index, len_, buffer.size())
             if bytes_read >= 0:
                 buffer.reader_index += bytes_read
                 return
