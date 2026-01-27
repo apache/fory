@@ -136,52 +136,67 @@ Py_ssize_t Fory_PyInt64SequenceWriteToBuffer(PyObject *collection,
 }
 
 // Read varint64 with ZigZag decoding inline
-// Returns the number of bytes read
-static inline uint32_t ReadVarint64ZigZag(const uint8_t *arr, int64_t *result) {
+// Returns the number of bytes read, or 0 on buffer overflow
+static inline uint32_t
+ReadVarint64ZigZag(const uint8_t *arr, Py_ssize_t remaining, int64_t *result) {
+  if (remaining <= 0) {
+    return 0;
+  }
+
   uint64_t v = 0;
   uint32_t shift = 0;
   uint32_t bytes_read = 0;
 
-  // Read up to 9 bytes for varint64
+  // Read up to 8 bytes with continuation bit
   for (int i = 0; i < 8; i++) {
+    if (bytes_read >= static_cast<uint32_t>(remaining)) {
+      return 0; // Buffer overflow
+    }
     uint8_t b = arr[bytes_read++];
     v |= static_cast<uint64_t>(b & 0x7F) << shift;
     if ((b & 0x80) == 0) {
-      // ZigZag decoding: (v >> 1) ^ -(v & 1)
       *result = static_cast<int64_t>((v >> 1) ^ (~(v & 1) + 1));
       return bytes_read;
     }
     shift += 7;
   }
   // 9th byte: use all 8 bits (no continuation bit masking)
+  if (bytes_read >= static_cast<uint32_t>(remaining)) {
+    return 0; // Buffer overflow
+  }
   uint8_t b = arr[bytes_read++];
   v |= static_cast<uint64_t>(b) << 56;
 
-  // ZigZag decoding: (v >> 1) ^ -(v & 1)
   *result = static_cast<int64_t>((v >> 1) ^ (~(v & 1) + 1));
   return bytes_read;
 }
 
 Py_ssize_t Fory_PyInt64SequenceReadFromBuffer(PyObject *list, Buffer *buffer,
                                               Py_ssize_t start_index,
-                                              Py_ssize_t count) {
+                                              Py_ssize_t count,
+                                              Py_ssize_t buffer_len) {
   if (!PyList_CheckExact(list)) {
     return -1;
   }
 
   const uint8_t *data = buffer->data() + start_index;
+  Py_ssize_t remaining = buffer_len - start_index;
   Py_ssize_t total_bytes = 0;
 
   for (Py_ssize_t i = 0; i < count; i++) {
     int64_t value;
-    uint32_t bytes_read = ReadVarint64ZigZag(data + total_bytes, &value);
+    uint32_t bytes_read =
+        ReadVarint64ZigZag(data + total_bytes, remaining - total_bytes, &value);
+    if (bytes_read == 0) {
+      PyErr_SetString(PyExc_ValueError, "Buffer overflow reading varint64");
+      return -1;
+    }
     total_bytes += bytes_read;
 
     PyObject *py_int = PyLong_FromLongLong(value);
     if (py_int == nullptr) {
       return -1;
     }
-    // Use PyList_SET_ITEM which steals the reference
     PyList_SET_ITEM(list, i, py_int);
   }
 

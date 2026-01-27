@@ -33,5 +33,6 @@ Py_ssize_t Fory_PyInt64SequenceWriteToBuffer(PyObject *collection,
 
 Py_ssize_t Fory_PyInt64SequenceReadFromBuffer(PyObject *list, Buffer *buffer,
                                               Py_ssize_t start_index,
-                                              Py_ssize_t count);
+                                              Py_ssize_t count,
+                                              Py_ssize_t buffer_len);
 } // namespace fory
