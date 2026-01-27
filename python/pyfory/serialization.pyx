@@ -1615,12 +1615,40 @@ cpdef inline write_nullable_pybool(Buffer buffer, value):
         buffer.write_int8(NOT_NULL_VALUE_FLAG)
         buffer.write_bool(value)
 
+cpdef inline write_nullable_int8(Buffer buffer, value):
+    if value is None:
+        buffer.write_int8(NULL_FLAG)
+    else:
+        buffer.write_int8(NOT_NULL_VALUE_FLAG)
+        buffer.write_int8(value)
+
+cpdef inline write_nullable_int16(Buffer buffer, value):
+    if value is None:
+        buffer.write_int8(NULL_FLAG)
+    else:
+        buffer.write_int8(NOT_NULL_VALUE_FLAG)
+        buffer.write_int16(value)
+
+cpdef inline write_nullable_int32(Buffer buffer, value):
+    if value is None:
+        buffer.write_int8(NULL_FLAG)
+    else:
+        buffer.write_int8(NOT_NULL_VALUE_FLAG)
+        buffer.write_varint32(value)
+
 cpdef inline write_nullable_pyint64(Buffer buffer, value):
     if value is None:
         buffer.write_int8(NULL_FLAG)
     else:
         buffer.write_int8(NOT_NULL_VALUE_FLAG)
         buffer.write_varint64(value)
+
+cpdef inline write_nullable_float32(Buffer buffer, value):
+    if value is None:
+        buffer.write_int8(NULL_FLAG)
+    else:
+        buffer.write_int8(NOT_NULL_VALUE_FLAG)
+        buffer.write_float32(value)
 
 cpdef inline write_nullable_pyfloat64(Buffer buffer, value):
     if value is None:
@@ -1642,9 +1670,33 @@ cpdef inline read_nullable_pybool(Buffer buffer):
     else:
         return None
 
+cpdef inline read_nullable_int8(Buffer buffer):
+    if buffer.read_int8() == NOT_NULL_VALUE_FLAG:
+        return buffer.read_int8()
+    else:
+        return None
+
+cpdef inline read_nullable_int16(Buffer buffer):
+    if buffer.read_int8() == NOT_NULL_VALUE_FLAG:
+        return buffer.read_int16()
+    else:
+        return None
+
+cpdef inline read_nullable_int32(Buffer buffer):
+    if buffer.read_int8() == NOT_NULL_VALUE_FLAG:
+        return buffer.read_varint32()
+    else:
+        return None
+
 cpdef inline read_nullable_pyint64(Buffer buffer):
     if buffer.read_int8() == NOT_NULL_VALUE_FLAG:
         return buffer.read_varint64()
+    else:
+        return None
+
+cpdef inline read_nullable_float32(Buffer buffer):
+    if buffer.read_int8() == NOT_NULL_VALUE_FLAG:
+        return buffer.read_float32()
     else:
         return None
 

@@ -43,7 +43,8 @@ import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.Utils;
 
 /**
- * A decoder which decode binary into {@link ClassDef}. See spec documentation:
+ * A decoder which decode binary into {@link ClassDef}. Global header layout follows the xlang spec
+ * with an 8-bit meta size and flags at bits 8/9. See spec documentation:
  * docs/specification/fory_xlang_serialization_spec.md <a
  * href="https://fory.apache.org/docs/specification/fory_xlang_serialization_spec">...</a>
  */

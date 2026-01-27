@@ -84,22 +84,22 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   person.set_name("Alice");
   person.set_id(123);
   person.set_email("alice@example.com");
-  person.set_tags({"friend", "colleague"});
-  person.set_scores({{"math", 100}, {"science", 98}});
+  *person.mutable_tags() = {"friend", "colleague"};
+  *person.mutable_scores() = {{"math", 100}, {"science", 98}};
   person.set_salary(120000.5);
-  person.set_phones({mobile, work});
+  *person.mutable_phones() = {mobile, work};
   addressbook::Dog dog;
   dog.set_name("Rex");
   dog.set_bark_volume(5);
-  person.set_pet(addressbook::Animal::dog(dog));
+  *person.mutable_pet() = addressbook::Animal::dog(dog);
   addressbook::Cat cat;
   cat.set_name("Mimi");
   cat.set_lives(9);
-  person.set_pet(addressbook::Animal::cat(cat));
+  *person.mutable_pet() = addressbook::Animal::cat(cat);
 
   addressbook::AddressBook book;
-  book.set_people({person});
-  book.set_people_by_name({{person.name(), person}});
+  *book.mutable_people() = {person};
+  *book.mutable_people_by_name() = {{person.name(), person}};
 
   FORY_TRY(bytes, fory.serialize(book));
   FORY_TRY(roundtrip, fory.deserialize<addressbook::AddressBook>(bytes.data(),
@@ -128,9 +128,9 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   types.set_tagged_uint64_value(2222222222ULL);
   types.set_float32_value(2.5F);
   types.set_float64_value(3.5);
-  types.set_contact(addressbook::PrimitiveTypes::Contact::email(
-      std::string("alice@example.com")));
-  types.set_contact(addressbook::PrimitiveTypes::Contact::phone(12345));
+  *types.mutable_contact() =
+      addressbook::PrimitiveTypes::Contact::email("alice@example.com");
+  *types.mutable_contact() = addressbook::PrimitiveTypes::Contact::phone(12345);
 
   FORY_TRY(primitive_bytes, fory.serialize(types));
   FORY_TRY(primitive_roundtrip,
@@ -153,8 +153,9 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   monster_value.set_hp(80);
   monster_value.set_name("Orc");
   monster_value.set_friendly(true);
-  monster_value.set_inventory({static_cast<uint8_t>(1), static_cast<uint8_t>(2),
-                               static_cast<uint8_t>(3)});
+  *monster_value.mutable_inventory() = {static_cast<uint8_t>(1),
+                                        static_cast<uint8_t>(2),
+                                        static_cast<uint8_t>(3)};
   monster_value.set_color(monster::Color::Blue);
 
   FORY_TRY(monster_bytes, fory.serialize(monster_value));
@@ -169,9 +170,9 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   complex_fbs::Container container;
   container.set_id(9876543210ULL);
   container.set_status(complex_fbs::Status::STARTED);
-  container.set_bytes(
-      {static_cast<int8_t>(1), static_cast<int8_t>(2), static_cast<int8_t>(3)});
-  container.set_numbers({10, 20, 30});
+  *container.mutable_bytes() = {static_cast<int8_t>(1), static_cast<int8_t>(2),
+                                static_cast<int8_t>(3)};
+  *container.mutable_numbers() = {10, 20, 30};
   auto *scalars = container.mutable_scalars();
   scalars->set_b(-8);
   scalars->set_ub(200);
@@ -184,14 +185,14 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   scalars->set_f(1.5F);
   scalars->set_d(2.5);
   scalars->set_ok(true);
-  container.set_names({"alpha", "beta"});
-  container.set_flags({true, false});
+  *container.mutable_names() = {"alpha", "beta"};
+  *container.mutable_flags() = {true, false};
   complex_fbs::Note note;
   note.set_text("alpha");
-  container.set_payload(complex_fbs::Payload::note(note));
+  *container.mutable_payload() = complex_fbs::Payload::note(note);
   complex_fbs::Metric metric;
   metric.set_value(42.0);
-  container.set_payload(complex_fbs::Payload::metric(metric));
+  *container.mutable_payload() = complex_fbs::Payload::metric(metric);
 
   FORY_TRY(container_bytes, fory.serialize(container));
   FORY_TRY(container_roundtrip,
@@ -226,18 +227,19 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   all_types.set_float32_value(2.5F);
   all_types.set_float64_value(3.5);
   all_types.set_string_value("optional");
-  all_types.set_bytes_value({static_cast<uint8_t>(1), static_cast<uint8_t>(2),
-                             static_cast<uint8_t>(3)});
+  *all_types.mutable_bytes_value() = {static_cast<uint8_t>(1),
+                                      static_cast<uint8_t>(2),
+                                      static_cast<uint8_t>(3)};
   all_types.set_date_value(fory::serialization::Date(19724));
   all_types.set_timestamp_value(
       fory::serialization::Timestamp(std::chrono::seconds(1704164645)));
-  all_types.set_int32_list({1, 2, 3});
-  all_types.set_string_list({"alpha", "beta"});
-  all_types.set_int64_map({{"alpha", 10}, {"beta", 20}});
+  *all_types.mutable_int32_list() = {1, 2, 3};
+  *all_types.mutable_string_list() = {"alpha", "beta"};
+  *all_types.mutable_int64_map() = {{"alpha", 10}, {"beta", 20}};
 
   optional_types::OptionalHolder holder;
   *holder.mutable_all_types() = all_types;
-  holder.set_choice(optional_types::OptionalUnion::note("optional"));
+  *holder.mutable_choice() = optional_types::OptionalUnion::note("optional");
 
   FORY_TRY(optional_bytes, fory.serialize(holder));
   FORY_TRY(optional_roundtrip,

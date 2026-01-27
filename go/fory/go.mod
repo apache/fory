@@ -20,7 +20,6 @@ module github.com/apache/fory/go/fory
 go 1.24.0
 
 require (
-	github.com/spaolacci/murmur3 v1.1.0
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/tools v0.39.0
 )

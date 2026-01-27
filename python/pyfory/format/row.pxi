@@ -24,6 +24,7 @@ from pyfory.includes.libformat cimport (
     CSchema, CListType, CMapType, fory_schema
 )
 from pyfory.buffer cimport Buffer
+from pyfory.includes.libutil cimport CBuffer
 from libcpp.memory cimport shared_ptr
 from libcpp.vector cimport vector
 from datetime import datetime, date
@@ -280,7 +281,12 @@ cdef class RowData(Getter):
         cdef:
             Buffer buf = <Buffer>buffer
             shared_ptr[CRow] row = make_shared[CRow]((<Schema>schema).c_schema)
-        deref(row).PointTo(buf.c_buffer, offset, size_in_bytes)
+            shared_ptr[CBuffer] shared_buf = make_shared[CBuffer](
+                buf.c_buffer.data(),
+                buf.c_buffer.size(),
+                False,
+            )
+        deref(row).PointTo(shared_buf, offset, size_in_bytes)
         self.data = row
         self.getter = row.get()
         self.schema_ = schema

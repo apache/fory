@@ -66,6 +66,26 @@ class CppGenerator(BaseGenerator):
         PrimitiveKind.DATE: "fory::serialization::Date",
         PrimitiveKind.TIMESTAMP: "fory::serialization::Timestamp",
     }
+    NUMERIC_PRIMITIVES = {
+        PrimitiveKind.BOOL,
+        PrimitiveKind.INT8,
+        PrimitiveKind.INT16,
+        PrimitiveKind.INT32,
+        PrimitiveKind.VARINT32,
+        PrimitiveKind.INT64,
+        PrimitiveKind.VARINT64,
+        PrimitiveKind.TAGGED_INT64,
+        PrimitiveKind.UINT8,
+        PrimitiveKind.UINT16,
+        PrimitiveKind.UINT32,
+        PrimitiveKind.VAR_UINT32,
+        PrimitiveKind.UINT64,
+        PrimitiveKind.VAR_UINT64,
+        PrimitiveKind.TAGGED_UINT64,
+        PrimitiveKind.FLOAT16,
+        PrimitiveKind.FLOAT32,
+        PrimitiveKind.FLOAT64,
+    }
 
     def generate(self) -> List[GeneratedFile]:
         """Generate C++ files for the schema."""
@@ -422,6 +442,22 @@ class CppGenerator(BaseGenerator):
         resolved = self.resolve_named_type(field_type.name, parent_stack)
         return isinstance(resolved, Message)
 
+    def is_union_type(
+        self, field_type: FieldType, parent_stack: Optional[List[Message]]
+    ) -> bool:
+        if not isinstance(field_type, NamedType):
+            return False
+        resolved = self.resolve_named_type(field_type.name, parent_stack)
+        return isinstance(resolved, Union)
+
+    def is_enum_type(
+        self, field_type: FieldType, parent_stack: Optional[List[Message]]
+    ) -> bool:
+        if not isinstance(field_type, NamedType):
+            return False
+        resolved = self.resolve_named_type(field_type.name, parent_stack)
+        return isinstance(resolved, Enum)
+
     def get_field_member_name(self, field: Field) -> str:
         return f"{self.to_snake_case(field.name)}_"
 
@@ -469,6 +505,21 @@ class CppGenerator(BaseGenerator):
             )
         return f"{member_name} == {other_member}"
 
+    def is_numeric_field(self, field: Field) -> bool:
+        if not isinstance(field.field_type, PrimitiveType):
+            return False
+        return field.field_type.kind in self.NUMERIC_PRIMITIVES
+
+    def is_string_field(self, field: Field) -> bool:
+        return isinstance(field.field_type, PrimitiveType) and (
+            field.field_type.kind == PrimitiveKind.STRING
+        )
+
+    def is_bytes_field(self, field: Field) -> bool:
+        return isinstance(field.field_type, PrimitiveType) and (
+            field.field_type.kind == PrimitiveKind.BYTES
+        )
+
     def generate_field_accessors(
         self, field: Field, parent_stack: Optional[List[Message]], indent: str
     ) -> List[str]:
@@ -476,6 +527,14 @@ class CppGenerator(BaseGenerator):
         field_name = self.to_snake_case(field.name)
         member_name = self.get_field_member_name(field)
         value_type = self.get_field_value_type(field, parent_stack)
+        is_union = self.is_union_type(field.field_type, parent_stack)
+        is_enum = self.is_enum_type(field.field_type, parent_stack)
+        is_collection = isinstance(field.field_type, (ListType, MapType))
+        is_bytes = self.is_bytes_field(field)
+        is_string = self.is_string_field(field)
+        needs_mutable = is_string or is_collection or is_bytes or is_union
+        no_setter = is_collection or is_bytes or is_union
+        value_getter = self.is_numeric_field(field) or is_enum
 
         if self.is_message_type(field.field_type, parent_stack):
             lines.append(f"{indent}bool has_{field_name}() const {{")
@@ -506,16 +565,48 @@ class CppGenerator(BaseGenerator):
             lines.append(f"{indent}}}")
             lines.append("")
 
-        lines.append(f"{indent}const {value_type}& {field_name}() const {{")
+        if value_getter:
+            lines.append(f"{indent}{value_type} {field_name}() const {{")
+        else:
+            lines.append(f"{indent}const {value_type}& {field_name}() const {{")
         if field.optional:
             lines.append(f"{indent}  return *{member_name};")
         else:
             lines.append(f"{indent}  return {member_name};")
         lines.append(f"{indent}}}")
-        lines.append("")
-        lines.append(f"{indent}void set_{field_name}({value_type} value) {{")
-        lines.append(f"{indent}  {member_name} = std::move(value);")
-        lines.append(f"{indent}}}")
+
+        if needs_mutable:
+            lines.append("")
+            lines.append(f"{indent}{value_type}* mutable_{field_name}() {{")
+            if field.optional:
+                lines.append(f"{indent}  if (!{member_name}) {{")
+                lines.append(f"{indent}    {member_name}.emplace();")
+                lines.append(f"{indent}  }}")
+                lines.append(f"{indent}  return &{member_name}.value();")
+            else:
+                lines.append(f"{indent}  return &{member_name};")
+            lines.append(f"{indent}}}")
+
+        if not no_setter:
+            lines.append("")
+            if is_string:
+                lines.append(f"{indent}template <class Arg, class... Args>")
+                lines.append(
+                    f"{indent}void set_{field_name}(Arg&& arg, Args&&... args) {{"
+                )
+                if field.optional:
+                    lines.append(
+                        f"{indent}  {member_name}.emplace(std::forward<Arg>(arg), std::forward<Args>(args)...);"
+                    )
+                else:
+                    lines.append(
+                        f"{indent}  {member_name} = {value_type}(std::forward<Arg>(arg), std::forward<Args>(args)...);"
+                    )
+                lines.append(f"{indent}}}")
+            else:
+                lines.append(f"{indent}void set_{field_name}({value_type} value) {{")
+                lines.append(f"{indent}  {member_name} = std::move(value);")
+                lines.append(f"{indent}}}")
 
         if field.optional:
             lines.append("")

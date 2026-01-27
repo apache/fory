@@ -24,20 +24,19 @@ import (
 	"reflect"
 
 	"github.com/apache/fory/go/fory/meta"
-	"github.com/spaolacci/murmur3"
 )
 
 const (
-	META_SIZE_MASK       = 0xFFF
-	COMPRESS_META_FLAG   = 0b1 << 13
-	HAS_FIELDS_META_FLAG = 0b1 << 12
+	META_SIZE_MASK       = 0xFF
+	COMPRESS_META_FLAG   = 0b1 << 9
+	HAS_FIELDS_META_FLAG = 0b1 << 8
 	NUM_HASH_BITS        = 50
 )
 
 /*
 TypeDef represents a transportable value object containing type information and field definitions.
 typeDef are layout as following:
-  - first 8 bytes: global header (50 bits hash + 1 bit compress flag + write fields meta + 12 bits meta size)
+  - first 8 bytes: global header (50 bits hash + 1 bit compress flag + write fields meta + 8 bits meta size)
   - next 1 byte: meta header (2 bits reserved + 1 bit register by name flag + 5 bits num fields)
   - next variable bytes: type id (varint) or ns name + type name
   - next variable bytes: field definitions (see below)
@@ -1101,7 +1100,7 @@ func getFieldNameEncodingIndex(encoding meta.Encoding) int {
 /*
 encodingTypeDef encodes a TypeDef into binary format according to the specification
 typeDef are layout as following:
-- first 8 bytes: global header (50 bits hash + 1 bit compress flag + write fields meta + 12 bits meta size)
+- first 8 bytes: global header (50 bits hash + 1 bit compress flag + write fields meta + 8 bits meta size)
 - next 1 byte: meta header (2 bits reserved + 1 bit register by name flag + 5 bits num fields)
 - next variable bytes: type id (varint) or ns name + type name
 - next variable bytes: field defs (see below)
@@ -1233,7 +1232,7 @@ func prependGlobalHeader(buffer *ByteBuffer, isCompressed bool, hasFieldsMeta bo
 	var header uint64
 	metaSize := buffer.WriterIndex()
 
-	hashValue := murmur3.Sum64WithSeed(buffer.GetByteSlice(0, metaSize), 47)
+	hashValue := Murmur3Sum64WithSeed(buffer.GetByteSlice(0, metaSize), 47)
 	header |= hashValue << (64 - NUM_HASH_BITS)
 
 	if hasFieldsMeta {
@@ -1245,9 +1244,9 @@ func prependGlobalHeader(buffer *ByteBuffer, isCompressed bool, hasFieldsMeta bo
 	}
 
 	if metaSize < META_SIZE_MASK {
-		header |= uint64(metaSize) & 0xFFF
+		header |= uint64(metaSize) & META_SIZE_MASK
 	} else {
-		header |= 0xFFF // Set to max value, actual size will follow
+		header |= META_SIZE_MASK // Set to max value, actual size will follow
 	}
 
 	result := NewByteBuffer(make([]byte, metaSize+8))
@@ -1362,7 +1361,7 @@ func writeFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer, field FieldDe
 /*
 decodeTypeDef decodes a TypeDef from the buffer
 typeDef are layout as following:
-  - first 8 bytes: global header (50 bits hash + 1 bit compress flag + write fields meta + 12 bits meta size)
+  - first 8 bytes: global header (50 bits hash + 1 bit compress flag + write fields meta + 8 bits meta size)
   - next 1 byte: meta header (2 bits reserved + 1 bit register by name flag + 5 bits num fields)
   - next variable bytes: type id (varint) or ns name + type name
   - next variable bytes: field definitions (see below)

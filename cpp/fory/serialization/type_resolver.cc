@@ -37,9 +37,9 @@ constexpr size_t SMALL_NUM_FIELDS_THRESHOLD = 0b11111;
 constexpr uint8_t REGISTER_BY_NAME_FLAG = 0b100000;
 constexpr size_t FIELD_NAME_SIZE_THRESHOLD = 0b1111;
 constexpr size_t BIG_NAME_THRESHOLD = 0b111111;
-constexpr int64_t META_SIZE_MASK = 0xfff;
-// constexpr int64_t COMPRESS_META_FLAG = 0b1 << 13;
-constexpr int64_t HAS_FIELDS_META_FLAG = 0b1 << 12;
+constexpr int64_t META_SIZE_MASK = 0xff;
+// constexpr int64_t COMPRESS_META_FLAG = 0b1 << 9;
+constexpr int64_t HAS_FIELDS_META_FLAG = 0b1 << 8;
 constexpr int8_t NUM_HASH_BITS = 50;
 
 // ============================================================================

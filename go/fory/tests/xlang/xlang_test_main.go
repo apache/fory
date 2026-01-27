@@ -25,7 +25,6 @@ import (
 	"runtime"
 
 	"github.com/apache/fory/go/fory"
-	"github.com/spaolacci/murmur3"
 )
 
 // ============================================================================
@@ -181,13 +180,6 @@ func assertEqualFloat64(expected, actual float64, name string) {
 	if diff > 0.000001 {
 		panic(fmt.Sprintf("%s: expected %v, got %v", name, expected, actual))
 	}
-}
-
-func murmurHash3_x64_128(data []byte, seed int64) (uint64, uint64) {
-	h := murmur3.New128WithSeed(uint32(seed))
-	h.Write(data)
-	h1, h2 := h.Sum128()
-	return h1, h2
 }
 
 // ============================================================================
@@ -559,8 +551,8 @@ func testMurmurHash3() {
 		_ = buf.ReadInt64(&bufErr)
 		_ = buf.ReadInt64(&bufErr)
 
-		h1_1, h1_2 := murmurHash3_x64_128([]byte{1, 2, 8}, 47)
-		h2_1, h2_2 := murmurHash3_x64_128([]byte("01234567890123456789"), 47)
+		h1_1, h1_2 := fory.MurmurHash3_x64_128([]byte{1, 2, 8}, 47)
+		h2_1, h2_2 := fory.MurmurHash3_x64_128([]byte("01234567890123456789"), 47)
 
 		outBuf := fory.NewByteBuffer(make([]byte, 0, 32))
 		outBuf.WriteInt64(int64(h1_1))
@@ -575,7 +567,7 @@ func testMurmurHash3() {
 		h2 := buf.ReadInt64(&bufErr)
 
 		// Compute expected values
-		expected1, expected2 := murmurHash3_x64_128([]byte{1, 2, 8}, 47)
+		expected1, expected2 := fory.MurmurHash3_x64_128([]byte{1, 2, 8}, 47)
 
 		if h1 != int64(expected1) || h2 != int64(expected2) {
 			panic(fmt.Sprintf("MurmurHash3 mismatch: got (%d, %d), expected (%d, %d)",

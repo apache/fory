@@ -42,13 +42,29 @@ _type_mapping = {
         "read_nullable_pyfloat64",
     ),
     str: ("write_string", "read_string", "write_nullable_pystr", "read_nullable_pystr"),
+    "int8": ("write_int8", "read_int8", "write_nullable_int8", "read_nullable_int8"),
+    "int16": ("write_int16", "read_int16", "write_nullable_int16", "read_nullable_int16"),
+    "int32": ("write_varint32", "read_varint32", "write_nullable_int32", "read_nullable_int32"),
+    "int64": (
+        "write_varint64",
+        "read_varint64",
+        "write_nullable_pyint64",
+        "read_nullable_pyint64",
+    ),
+    "float32": ("write_float32", "read_float32", "write_nullable_float32", "read_nullable_float32"),
+    "float64": (
+        "write_double",
+        "read_double",
+        "write_nullable_pyfloat64",
+        "read_nullable_pyfloat64",
+    ),
 }
 
 
 def gen_write_nullable_basic_stmts(
     buffer: str,
     value: str,
-    type_: type,
+    type_: Union[type, str],
 ) -> List[str]:
     methods = _type_mapping[type_]
     from pyfory import ENABLE_FORY_CYTHON_SERIALIZATION
@@ -66,7 +82,7 @@ def gen_write_nullable_basic_stmts(
 
 def gen_read_nullable_basic_stmts(
     buffer: str,
-    type_: type,
+    type_: Union[type, str],
     set_action: Callable[[str], str],
 ) -> List[str]:
     methods = _type_mapping[type_]
@@ -114,8 +130,16 @@ def compile_function(
 
         context["write_nullable_pybool"] = serialization.write_nullable_pybool
         context["read_nullable_pybool"] = serialization.read_nullable_pybool
+        context["write_nullable_int8"] = serialization.write_nullable_int8
+        context["read_nullable_int8"] = serialization.read_nullable_int8
+        context["write_nullable_int16"] = serialization.write_nullable_int16
+        context["read_nullable_int16"] = serialization.read_nullable_int16
+        context["write_nullable_int32"] = serialization.write_nullable_int32
+        context["read_nullable_int32"] = serialization.read_nullable_int32
         context["write_nullable_pyint64"] = serialization.write_nullable_pyint64
         context["read_nullable_pyint64"] = serialization.read_nullable_pyint64
+        context["write_nullable_float32"] = serialization.write_nullable_float32
+        context["read_nullable_float32"] = serialization.read_nullable_float32
         context["write_nullable_pyfloat64"] = serialization.write_nullable_pyfloat64
         context["read_nullable_pyfloat64"] = serialization.read_nullable_pyfloat64
         context["write_nullable_pystr"] = serialization.write_nullable_pystr

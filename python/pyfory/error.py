@@ -20,6 +20,78 @@ class ForyError(Exception):
     pass
 
 
+class ForyOutOfMemoryError(ForyError):
+    pass
+
+
+class ForyOutOfBoundError(ForyError):
+    pass
+
+
+class ForyKeyError(ForyError):
+    pass
+
+
+class ForyTypeError(ForyError):
+    pass
+
+
+class ForyInvalidError(ForyError):
+    pass
+
+
+class ForyIOError(ForyError):
+    pass
+
+
+class ForyUnknownError(ForyError):
+    pass
+
+
+class ForyEncodeError(ForyError):
+    pass
+
+
+class ForyInvalidDataError(ForyError):
+    pass
+
+
+class ForyInvalidRefError(ForyError):
+    pass
+
+
+class ForyUnknownEnumError(ForyError):
+    pass
+
+
+class ForyEncodingError(ForyError):
+    pass
+
+
+class ForyDepthExceedError(ForyError):
+    pass
+
+
+class ForyUnsupportedError(ForyError):
+    pass
+
+
+class ForyNotAllowedError(ForyError):
+    pass
+
+
+class ForyStructVersionMismatchError(ForyError):
+    pass
+
+
+class ForyTypeMismatchError(ForyError):
+    pass
+
+
+class ForyBufferOutOfBoundError(ForyError):
+    pass
+
+
 class TypeNotCompatibleError(ForyError):
     pass
 
@@ -30,3 +102,32 @@ class TypeUnregisteredError(ForyError):
 
 class CompileError(ForyError):
     pass
+
+
+_ERROR_CODE_TO_EXCEPTION = {
+    1: ForyOutOfMemoryError,
+    2: ForyOutOfBoundError,
+    3: ForyKeyError,
+    4: ForyTypeError,
+    5: ForyInvalidError,
+    6: ForyIOError,
+    7: ForyUnknownError,
+    8: ForyEncodeError,
+    9: ForyInvalidDataError,
+    10: ForyInvalidRefError,
+    11: ForyUnknownEnumError,
+    12: ForyEncodingError,
+    13: ForyDepthExceedError,
+    14: ForyUnsupportedError,
+    15: ForyNotAllowedError,
+    16: ForyStructVersionMismatchError,
+    17: ForyTypeMismatchError,
+    18: ForyBufferOutOfBoundError,
+}
+
+
+def raise_fory_error(code, message):
+    if isinstance(message, bytes):
+        message = message.decode("utf-8", "replace")
+    exc_cls = _ERROR_CODE_TO_EXCEPTION.get(int(code), ForyError)
+    raise exc_cls(message)

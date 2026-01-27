@@ -69,10 +69,10 @@ import org.apache.fory.util.StringUtils;
 public class ClassDef implements Serializable {
   private static final Logger LOG = LoggerFactory.getLogger(ClassDef.class);
 
-  static final int COMPRESS_META_FLAG = 0b1 << 13;
-  static final int HAS_FIELDS_META_FLAG = 0b1 << 12;
-  // low 12 bits
-  static final int META_SIZE_MASKS = 0xfff;
+  static final int COMPRESS_META_FLAG = 0b1 << 9;
+  static final int HAS_FIELDS_META_FLAG = 0b1 << 8;
+  // low 8 bits
+  static final int META_SIZE_MASKS = 0xff;
   static final int NUM_HASH_BITS = 50;
 
   // TODO use field offset to sort field, which will hit l1-cache more. Since

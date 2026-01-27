@@ -136,6 +136,12 @@ public:
     memcpy(data_ + offset, data, (size_t)length);
   }
 
+  FORY_ALWAYS_INLINE void PutInt24(uint32_t offset, int32_t value) {
+    data_[offset] = static_cast<uint8_t>(value);
+    data_[offset + 1] = static_cast<uint8_t>(value >> 8);
+    data_[offset + 2] = static_cast<uint8_t>(value >> 16);
+  }
+
   template <typename T> FORY_ALWAYS_INLINE T Get(uint32_t relative_offset) {
     FORY_CHECK(relative_offset < size_) << "Out of range " << relative_offset
                                         << " should be less than " << size_;
@@ -162,6 +168,15 @@ public:
 
   FORY_ALWAYS_INLINE int16_t GetInt16(uint32_t offset) {
     return Get<int16_t>(offset);
+  }
+
+  FORY_ALWAYS_INLINE int32_t GetInt24(uint32_t offset) {
+    FORY_CHECK(offset + 3 <= size_)
+        << "Out of range " << offset << " should be less than " << size_;
+    int32_t b0 = data_[offset];
+    int32_t b1 = data_[offset + 1];
+    int32_t b2 = data_[offset + 2];
+    return (b0 & 0xFF) | ((b1 & 0xFF) << 8) | ((b2 & 0xFF) << 16);
   }
 
   FORY_ALWAYS_INLINE int32_t GetInt32(uint32_t offset) {
@@ -541,6 +556,14 @@ public:
     IncreaseWriterIndex(2);
   }
 
+  /// Write int24 value as fixed 3 bytes to buffer at current writer index.
+  /// Automatically grows buffer and advances writer index.
+  FORY_ALWAYS_INLINE void WriteInt24(int32_t value) {
+    Grow(3);
+    PutInt24(writer_index_, value);
+    IncreaseWriterIndex(3);
+  }
+
   /// Write int32_t value as fixed 4 bytes to buffer at current writer index.
   /// Automatically grows buffer and advances writer index.
   FORY_ALWAYS_INLINE void WriteInt32(int32_t value) {
@@ -711,6 +734,19 @@ public:
     int16_t value = reinterpret_cast<const int16_t *>(data_ + reader_index_)[0];
     reader_index_ += 2;
     return value;
+  }
+
+  /// Read int24 value from buffer. Sets error on bounds violation.
+  FORY_ALWAYS_INLINE int32_t ReadInt24(Error &error) {
+    if (FORY_PREDICT_FALSE(reader_index_ + 3 > size_)) {
+      error.set_buffer_out_of_bound(reader_index_, 3, size_);
+      return 0;
+    }
+    int32_t b0 = data_[reader_index_];
+    int32_t b1 = data_[reader_index_ + 1];
+    int32_t b2 = data_[reader_index_ + 2];
+    reader_index_ += 3;
+    return (b0 & 0xFF) | ((b1 & 0xFF) << 8) | ((b2 & 0xFF) << 16);
   }
 
   /// Read uint32_t value from buffer (fixed 4 bytes). Sets error on bounds

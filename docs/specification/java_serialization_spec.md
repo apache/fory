@@ -232,12 +232,13 @@ when shared meta is enabled, or referenced by index when already seen.
 Header layout (lower bits on the right):
 
 ```
-| 50-bit hash | 1 bit compress | 1 bit has_fields_meta | 12-bit size |
+| 50-bit hash | 4 bits reserved | 1 bit compress | 1 bit has_fields_meta | 8-bit size |
 ```
 
-- size: lower 12 bits. If size equals the mask (0xFFF), write extra size as varuint32 and add it.
+- size: lower 8 bits. If size equals the mask (0xFF), write extra size as varuint32 and add it.
 - compress: set when payload is compressed.
 - has_fields_meta: set when field metadata is present.
+- reserved: bits 10-13 are reserved for future use and must be zero.
 - hash: 50-bit hash of the payload and flags.
 
 ### Class meta bytes

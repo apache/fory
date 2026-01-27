@@ -134,10 +134,10 @@ jobs:
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-
-      - name: Set up Python 3.8
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: 3.8
+          python-version: 3.11
       - name: Run CI with Maven
         shell: bash
         run: python ./ci/run_ci.py java --version windows_java21
@@ -272,11 +272,12 @@ jobs:
       # The distutils module has been removed starting from python 3.12
       # (see https://docs.python.org/3.10/library/distutils.html). Some
       # OS (such as macos-latest) uses python3.12 by default, so python 3.8
-      # is used here to avoid this problem.
-      - name: Set up Python3.8
+      # is used here to avoid this problem. On Windows, use 3.11 to avoid
+      # the slower 3.8 download on hosted runners.
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: 3.8
+          python-version: ${{ runner.os == 'Windows' && '3.11' || '3.8' }}
       - name: Run CI with NodeJS
         run: python ./ci/run_ci.py javascript
 

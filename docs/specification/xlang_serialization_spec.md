@@ -489,11 +489,12 @@ resolution. It is encoded as:
 
 The 8-byte header is a little-endian uint64:
 
-- Low 12 bits: meta size (number of bytes in the TypeDef body).
-  - If meta size >= 0xFFF, the low 12 bits are set to 0xFFF and an extra
-    `varuint32(meta_size - 0xFFF)` follows immediately after the header.
-- Bit 12: `HAS_FIELDS_META` (1 = fields metadata present).
-- Bit 13: `COMPRESS_META` (1 = body is compressed; decompress before parsing).
+- Low 8 bits: meta size (number of bytes in the TypeDef body).
+  - If meta size >= 0xFF, the low 8 bits are set to 0xFF and an extra
+    `varuint32(meta_size - 0xFF)` follows immediately after the header.
+- Bit 8: `HAS_FIELDS_META` (1 = fields metadata present).
+- Bit 9: `COMPRESS_META` (1 = body is compressed; decompress before parsing).
+- Bits 10-13: reserved for future extension (must be zero).
 - High 50 bits: hash of the TypeDef body.
 
 #### TypeDef body

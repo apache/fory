@@ -27,8 +27,6 @@ import (
 	"unicode"
 	"unicode/utf8"
 	"unsafe"
-
-	"github.com/spaolacci/murmur3"
 )
 
 // GetStructHash returns the struct hash for a given type using the provided TypeResolver.
@@ -970,7 +968,7 @@ func (s *structSerializer) computeHash() int32 {
 
 	hashString := ComputeStructFingerprint(fields)
 	data := []byte(hashString)
-	h1, _ := murmur3.Sum128WithSeed(data, 47)
+	h1, _ := Murmur3Sum128WithSeed(data, 47)
 	hash := int32(h1 & 0xFFFFFFFF)
 
 	if DebugOutputEnabled() {

@@ -227,7 +227,7 @@ cdef class CollectionSerializer(Serializer):
         if value_type is list or value_type is tuple:
             size = sizeof(bool) * Py_SIZE(value)
             buffer.grow(<int32_t>size)
-            Fory_PyBooleanSequenceWriteToBuffer(value, buffer.c_buffer.get(), buffer.writer_index)
+            Fory_PyBooleanSequenceWriteToBuffer(value, &buffer.c_buffer, buffer.writer_index)
             buffer.writer_index += size
         else:
             for s in value:
@@ -242,7 +242,7 @@ cdef class CollectionSerializer(Serializer):
         if value_type is list or value_type is tuple:
             size = sizeof(double) * Py_SIZE(value)
             buffer.grow(<int32_t>size)
-            Fory_PyFloatSequenceWriteToBuffer(value, buffer.c_buffer.get(), buffer.writer_index)
+            Fory_PyFloatSequenceWriteToBuffer(value, &buffer.c_buffer, buffer.writer_index)
             buffer.writer_index += size
         else:
             for s in value:

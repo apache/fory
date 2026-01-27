@@ -227,7 +227,7 @@ public class ClassDefEncoder {
     header |= Math.min(metaSize, META_SIZE_MASKS);
     MemoryBuffer result = MemoryUtils.buffer(metaSize + 8);
     result.writeInt64(header);
-    if (metaSize > META_SIZE_MASKS) {
+    if (metaSize >= META_SIZE_MASKS) {
       result.writeVarUint32(metaSize - META_SIZE_MASKS);
     }
     result.writeBytes(buffer.getHeapMemory(), 0, metaSize);

@@ -68,9 +68,9 @@ const SMALL_FIELD_ID_THRESHOLD: i16 = 0b1111;
 
 const BIG_NAME_THRESHOLD: usize = 0b111111;
 
-const META_SIZE_MASK: i64 = 0xfff;
-const COMPRESS_META_FLAG: i64 = 0b1 << 13;
-const HAS_FIELDS_META_FLAG: i64 = 0b1 << 12;
+const META_SIZE_MASK: i64 = 0xff;
+const COMPRESS_META_FLAG: i64 = 0b1 << 9;
+const HAS_FIELDS_META_FLAG: i64 = 0b1 << 8;
 const NUM_HASH_BITS: i8 = 50;
 
 pub static NAMESPACE_ENCODINGS: &[Encoding] = &[
@@ -922,7 +922,7 @@ impl TypeMeta {
         let mut meta_buffer = vec![];
         let mut meta_writer = Writer::from_buffer(&mut meta_buffer);
         meta_writer.write_bytes(self.to_meta_bytes()?.as_slice());
-        // global_binary_header:| hash:50bits | is_compressed:1bit | write_fields_meta:1bit | meta_size:12bits |
+        // global_binary_header:| hash:50bits | reserved:4bits | is_compressed:1bit | write_fields_meta:1bit | meta_size:8bits |
         let meta_size = meta_writer.len() as i64;
         let mut header: i64 = min(META_SIZE_MASK, meta_size);
         let write_meta_fields_flag = !self.get_field_infos().is_empty();

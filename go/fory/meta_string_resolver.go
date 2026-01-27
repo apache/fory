@@ -22,7 +22,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/apache/fory/go/fory/meta"
-	"github.com/spaolacci/murmur3"
 )
 
 // Constants for string handling
@@ -221,7 +220,7 @@ func (r *MetaStringResolver) GetMetaStrBytes(metastr *meta.MetaString) *MetaStri
 		hashcode = ((v1*31 + v2) >> 8 << 8) | int64(metastr.GetEncoding())
 	} else {
 		// Large string: use MurmurHash3
-		h64 := murmur3.Sum64WithSeed(data, 47)
+		h64 := Murmur3Sum64WithSeed(data, 47)
 		hashcode = int64((h64 >> 8) << 8)
 		hashcode |= int64(metastr.GetEncoding())
 	}
@@ -249,7 +248,7 @@ func ComputeMetaStringHash(data []byte, encoding meta.Encoding) int64 {
 		hashcode = ((v1*31 + v2) >> 8 << 8) | int64(encoding)
 	} else {
 		// Large string: use MurmurHash3
-		h64 := murmur3.Sum64WithSeed(data, 47)
+		h64 := Murmur3Sum64WithSeed(data, 47)
 		hashcode = int64((h64 >> 8) << 8)
 		hashcode |= int64(encoding)
 	}
