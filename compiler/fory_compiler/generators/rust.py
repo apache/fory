@@ -64,6 +64,7 @@ class RustGenerator(BaseGenerator):
         PrimitiveKind.BYTES: "Vec<u8>",
         PrimitiveKind.DATE: "chrono::NaiveDate",
         PrimitiveKind.TIMESTAMP: "chrono::NaiveDateTime",
+        PrimitiveKind.ANY: "Box<dyn Any>",
     }
 
     def generate(self) -> List[GeneratedFile]:
@@ -146,7 +147,7 @@ class RustGenerator(BaseGenerator):
     def collect_union_uses(self, union: Union, uses: Set[str]):
         """Collect uses for a union and its cases."""
         for field in union.fields:
-            if field.ref or field.element_ref:
+            if self.field_uses_pointer(field):
                 uses.add("use std::sync::Arc")
             self.collect_uses(field.field_type, uses)
 
@@ -233,7 +234,13 @@ class RustGenerator(BaseGenerator):
         """Generate a Rust tagged union."""
         lines: List[str] = []
 
-        lines.append("#[derive(ForyObject, Debug, Clone, PartialEq)]")
+        has_any = any(
+            self.field_type_has_any(field.field_type) for field in union.fields
+        )
+        derives = ["ForyObject", "Debug"]
+        if not has_any:
+            derives.extend(["Clone", "PartialEq"])
+        lines.append(f"#[derive({', '.join(derives)})]")
         lines.append(f"pub enum {union.name} {{")
 
         for field in union.fields:
@@ -275,7 +282,10 @@ class RustGenerator(BaseGenerator):
         type_name = message.name
 
         # Derive macros
-        lines.append("#[derive(ForyObject, Debug, Clone, PartialEq, Default)]")
+        derives = ["ForyObject", "Debug"]
+        if not self.message_has_any(message):
+            derives.extend(["Clone", "PartialEq", "Default"])
+        lines.append(f"#[derive({', '.join(derives)})]")
 
         lines.append(f"pub struct {type_name} {{")
 
@@ -289,6 +299,24 @@ class RustGenerator(BaseGenerator):
         lines.append("}")
 
         return lines
+
+    def message_has_any(self, message: Message) -> bool:
+        """Return True if a message contains any type fields."""
+        return any(
+            self.field_type_has_any(field.field_type) for field in message.fields
+        )
+
+    def field_type_has_any(self, field_type: FieldType) -> bool:
+        """Return True if field type or its children is any."""
+        if isinstance(field_type, PrimitiveType):
+            return field_type.kind == PrimitiveKind.ANY
+        if isinstance(field_type, ListType):
+            return self.field_type_has_any(field_type.element_type)
+        if isinstance(field_type, MapType):
+            return self.field_type_has_any(
+                field_type.key_type
+            ) or self.field_type_has_any(field_type.value_type)
+        return False
 
     def generate_nested_module(
         self,
@@ -354,8 +382,14 @@ class RustGenerator(BaseGenerator):
         attrs = []
         if field.tag_id is not None:
             attrs.append(f"id = {field.tag_id}")
-        if field.optional:
+        is_any = (
+            isinstance(field.field_type, PrimitiveType)
+            and field.field_type.kind == PrimitiveKind.ANY
+        )
+        if field.optional or is_any:
             attrs.append("nullable = true")
+        if field.ref:
+            attrs.append("ref = true")
         encoding = self.get_encoding_attr(field.field_type)
         if encoding:
             attrs.append(encoding)
@@ -367,7 +401,16 @@ class RustGenerator(BaseGenerator):
         if attrs:
             lines.append(f"#[fory({', '.join(attrs)})]")
 
-        pointer_type = self.get_pointer_type(field)
+        if isinstance(field.field_type, ListType) and field.element_ref:
+            ref_options = field.element_ref_options
+            weak_ref = ref_options.get("weak_ref") is True
+        elif isinstance(field.field_type, MapType) and field.field_type.value_ref:
+            ref_options = field.field_type.value_ref_options
+            weak_ref = ref_options.get("weak_ref") is True
+        else:
+            ref_options = field.ref_options
+            weak_ref = ref_options.get("weak_ref") is True
+        pointer_type = self.get_pointer_type(ref_options, weak_ref)
         rust_type = self.generate_type(
             field.field_type,
             nullable=field.optional,
@@ -443,6 +486,8 @@ class RustGenerator(BaseGenerator):
     ) -> str:
         """Generate Rust type string."""
         if isinstance(field_type, PrimitiveType):
+            if field_type.kind == PrimitiveKind.ANY:
+                return "Box<dyn Any>"
             base_type = self.PRIMITIVE_MAP[field_type.kind]
             if nullable:
                 return f"Option<{base_type}>"
@@ -482,7 +527,7 @@ class RustGenerator(BaseGenerator):
             value_type = self.generate_type(
                 field_type.value_type,
                 nullable=False,
-                ref=False,
+                ref=field_type.value_ref,
                 parent_stack=parent_stack,
                 pointer_type=pointer_type,
             )
@@ -527,6 +572,8 @@ class RustGenerator(BaseGenerator):
         if isinstance(field_type, PrimitiveType):
             if field_type.kind in (PrimitiveKind.DATE, PrimitiveKind.TIMESTAMP):
                 uses.add("use chrono")
+            if field_type.kind == PrimitiveKind.ANY:
+                uses.add("use std::any::Any")
 
         elif isinstance(field_type, NamedType):
             pass  # No additional uses needed
@@ -541,20 +588,43 @@ class RustGenerator(BaseGenerator):
 
     def collect_uses_for_field(self, field: Field, uses: Set[str]):
         """Collect uses for a field, including ref tracking."""
-        pointer_type = self.get_pointer_type(field)
-        if field.ref or field.element_ref:
+        if isinstance(field.field_type, ListType) and field.element_ref:
+            ref_options = field.element_ref_options
+            weak_ref = ref_options.get("weak_ref") is True
+        elif isinstance(field.field_type, MapType) and field.field_type.value_ref:
+            ref_options = field.field_type.value_ref_options
+            weak_ref = ref_options.get("weak_ref") is True
+        else:
+            ref_options = field.ref_options
+            weak_ref = ref_options.get("weak_ref") is True
+        pointer_type = self.get_pointer_type(ref_options, weak_ref)
+        if weak_ref and self.field_uses_pointer(field):
+            if pointer_type == "RcWeak":
+                uses.add("use fory::RcWeak")
+            else:
+                uses.add("use fory::ArcWeak")
+        elif self.field_uses_pointer(field):
             if pointer_type == "Rc":
                 uses.add("use std::rc::Rc")
             else:
                 uses.add("use std::sync::Arc")
         self.collect_uses(field.field_type, uses)
 
-    def get_pointer_type(self, field: Field) -> str:
+    def field_uses_pointer(self, field: Field) -> bool:
+        if field.ref:
+            return True
+        if isinstance(field.field_type, ListType) and field.element_ref:
+            return True
+        if isinstance(field.field_type, MapType) and field.field_type.value_ref:
+            return True
+        return False
+
+    def get_pointer_type(self, ref_options: dict, weak_ref: bool = False) -> str:
         """Determine pointer type for ref tracking based on field options."""
-        thread_safe = field.options.get("thread_safe_pointer")
+        thread_safe = ref_options.get("thread_safe_pointer")
         if thread_safe is False:
-            return "Rc"
-        return "Arc"
+            return "RcWeak" if weak_ref else "Rc"
+        return "ArcWeak" if weak_ref else "Arc"
 
     def generate_registration(self) -> List[str]:
         """Generate the Fory registration function."""

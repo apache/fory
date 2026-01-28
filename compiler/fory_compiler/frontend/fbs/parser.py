@@ -345,11 +345,15 @@ class Parser:
             return attributes
 
         while True:
-            name_token = self.consume(TokenType.IDENT, "Expected attribute name")
+            name = self.consume(TokenType.IDENT, "Expected attribute name").value
+            if name.startswith("fory_"):
+                name = name.removeprefix("fory_")
+            elif name.startswith("fory."):
+                name = name.removeprefix("fory.")
             value: object = True
             if self.match(TokenType.COLON):
                 value = self.parse_value()
-            attributes[name_token.value] = value
+            attributes[name] = value
             if self.match(TokenType.COMMA):
                 if self.check(TokenType.RPAREN):
                     break

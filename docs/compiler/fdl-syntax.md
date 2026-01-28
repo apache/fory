@@ -815,7 +815,7 @@ message Document {
 
 Modifiers can be combined:
 
-```protobuf
+```fdl
 message Example {
     optional repeated string tags = 1;  // Nullable list
     repeated optional string aliases = 2; // Elements may be null
@@ -832,21 +832,46 @@ Modifiers before `repeated` apply to the field/collection. Modifiers after
 
 ### Primitive Types
 
-| Type        | Description                 | Size     |
-| ----------- | --------------------------- | -------- |
-| `bool`      | Boolean value               | 1 byte   |
-| `int8`      | Signed 8-bit integer        | 1 byte   |
-| `int16`     | Signed 16-bit integer       | 2 bytes  |
-| `int32`     | Signed 32-bit integer       | 4 bytes  |
-| `int64`     | Signed 64-bit integer       | 8 bytes  |
-| `float32`   | 32-bit floating point       | 4 bytes  |
-| `float64`   | 64-bit floating point       | 8 bytes  |
-| `string`    | UTF-8 string                | Variable |
-| `bytes`     | Binary data                 | Variable |
-| `date`      | Calendar date               | Variable |
-| `timestamp` | Date and time with timezone | Variable |
+| Type            | Description                               | Size     |
+| --------------- | ----------------------------------------- | -------- |
+| `bool`          | Boolean value                             | 1 byte   |
+| `int8`          | Signed 8-bit integer                      | 1 byte   |
+| `int16`         | Signed 16-bit integer                     | 2 bytes  |
+| `int32`         | Signed 32-bit integer (varint encoding)   | 4 bytes  |
+| `int64`         | Signed 64-bit integer (varint encoding)   | 8 bytes  |
+| `uint8`         | Unsigned 8-bit integer                    | 1 byte   |
+| `uint16`        | Unsigned 16-bit integer                   | 2 bytes  |
+| `uint32`        | Unsigned 32-bit integer (varint encoding) | 4 bytes  |
+| `uint64`        | Unsigned 64-bit integer (varint encoding) | 8 bytes  |
+| `fixed_int32`   | Signed 32-bit integer (fixed encoding)    | 4 bytes  |
+| `fixed_int64`   | Signed 64-bit integer (fixed encoding)    | 8 bytes  |
+| `fixed_uint32`  | Unsigned 32-bit integer (fixed encoding)  | 4 bytes  |
+| `fixed_uint64`  | Unsigned 64-bit integer (fixed encoding)  | 8 bytes  |
+| `tagged_int64`  | Signed 64-bit integer (tagged encoding)   | 8 bytes  |
+| `tagged_uint64` | Unsigned 64-bit integer (tagged encoding) | 8 bytes  |
+| `float16`       | 16-bit floating point                     | 2 bytes  |
+| `float32`       | 32-bit floating point                     | 4 bytes  |
+| `float64`       | 64-bit floating point                     | 8 bytes  |
+| `string`        | UTF-8 string                              | Variable |
+| `bytes`         | Binary data                               | Variable |
+| `date`          | Calendar date                             | Variable |
+| `timestamp`     | Date and time with timezone               | Variable |
+| `duration`      | Duration                                  | Variable |
+| `decimal`       | Decimal value                             | Variable |
+| `any`           | Dynamic value (runtime type)              | Variable |
 
 See [Type System](type-system.md) for complete type mappings.
+
+**Encoding notes:**
+
+- `int32`/`int64` and `uint32`/`uint64` use varint encoding by default.
+- Use `fixed_*` for fixed-width integer encoding.
+- Use `tagged_*` for tagged/hybrid encoding (64-bit only).
+
+**Any type notes:**
+
+- `any` always writes a null flag (same as `nullable`) because the value may be empty.
+- `ref` is not allowed on `any` fields. Wrap `any` in a message if you need reference tracking.
 
 ### Named Types
 
@@ -1089,32 +1114,38 @@ enum Status {
 
 ### Field-Level Fory Options
 
-Field options are specified in brackets after the field number:
+Field options are specified in brackets after the field number (FDL uses `ref` modifiers instead
+of bracket options for reference settings):
 
 ```protobuf
 message Example {
-    MyType friend = 1 [(fory).ref = true];
-    string nickname = 2 [(fory).nullable = true];
-    MyType data = 3 [(fory).ref = true, (fory).nullable = true];
+    ref MyType friend = 1;
+    string nickname = 2 [nullable = true];
+    ref MyType data = 3 [nullable = true];
+    ref(weak = true) MyType parent = 4;
 }
 ```
 
 | Option                | Type | Description                                               |
 | --------------------- | ---- | --------------------------------------------------------- |
-| `ref`                 | bool | Enable reference tracking (sets ref flag)                 |
+| `ref`                 | bool | Enable reference tracking (protobuf extension option)     |
 | `nullable`            | bool | Mark field as nullable (sets optional flag)               |
 | `deprecated`          | bool | Mark this field as deprecated                             |
 | `thread_safe_pointer` | bool | Rust only: use `Arc` (true) or `Rc` (false) for ref types |
+| `weak_ref`            | bool | C++/Rust only: generate weak pointers for `ref` fields    |
 
-**Note:** `[(fory).ref = true]` is equivalent to using the `ref` modifier: `ref MyType friend = 1;`
-Field-level options always apply to the field/collection; use modifiers after
-`repeated` to control element behavior.
+**Note:** For FDL, use `ref` (and optional `ref(...)`) modifiers:
+`ref MyType friend = 1;`, `repeated ref(weak = true) Child children = 2;`,
+`map<string, ref(weak = true) Node> nodes = 3;`. For protobuf, use
+`[(fory).ref = true]` and `[(fory).weak_ref = true]`. `weak_ref` is a codegen
+hint for C++/Rust and is ignored by Java/Python/Go. It must be used with `ref`
+(`repeated ref` for collections, or `map<..., ref T>` for map values).
 
 To use `Rc` instead of `Arc` in Rust for a specific field:
 
-```protobuf
+```fdl
 message Graph {
-    ref Node root = 1 [(fory).thread_safe_pointer = false];
+    ref(thread_safe = false) Node root = 1;
 }
 ```
 
@@ -1169,6 +1200,7 @@ message ForyFieldOptions {
     optional bool ref = 1;
     optional bool nullable = 2;
     optional bool deprecated = 3;
+    optional bool weak_ref = 4;
 }
 ```
 
@@ -1207,9 +1239,15 @@ reserved_item := INTEGER | INTEGER 'to' INTEGER | INTEGER 'to' 'max' | STRING
 modifiers    := { 'optional' | 'ref' } ['repeated' { 'optional' | 'ref' }]
 
 field_type   := primitive_type | named_type | map_type
-primitive_type := 'bool' | 'int8' | 'int16' | 'int32' | 'int64'
-               | 'float32' | 'float64' | 'string' | 'bytes'
-               | 'date' | 'timestamp'
+primitive_type := 'bool'
+               | 'int8' | 'int16' | 'int32' | 'int64'
+               | 'uint8' | 'uint16' | 'uint32' | 'uint64'
+               | 'fixed_int32' | 'fixed_int64' | 'fixed_uint32' | 'fixed_uint64'
+               | 'tagged_int64' | 'tagged_uint64'
+               | 'float16' | 'float32' | 'float64'
+               | 'string' | 'bytes'
+               | 'date' | 'timestamp' | 'duration' | 'decimal'
+               | 'any'
 named_type   := qualified_name
 qualified_name := IDENTIFIER ('.' IDENTIFIER)*   // e.g., Parent.Child
 map_type     := 'map' '<' field_type ',' field_type '>'

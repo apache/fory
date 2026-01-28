@@ -22,6 +22,7 @@ set(FORY_SERIALIZATION_SOURCES
 )
 
 set(FORY_SERIALIZATION_HEADERS
+    any_serializer.h
     array_serializer.h
     basic_serializer.h
     collection_serializer.h
@@ -108,6 +109,10 @@ if(FORY_BUILD_TESTS)
     add_executable(fory_serialization_weak_ptr_test weak_ptr_serializer_test.cc)
     target_link_libraries(fory_serialization_weak_ptr_test fory_serialization GTest::gtest GTest::gtest_main)
     gtest_discover_tests(fory_serialization_weak_ptr_test)
+
+    add_executable(fory_serialization_any_test any_serializer_test.cc)
+    target_link_libraries(fory_serialization_any_test fory_serialization GTest::gtest GTest::gtest_main)
+    gtest_discover_tests(fory_serialization_any_test)
 endif()
 
 # xlang test binary

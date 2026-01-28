@@ -1073,7 +1073,7 @@ class DataClassSerializer(Serializer):
                 if ref_id == -3:
                     field_value = None
                 else:
-                    buffer.reader_index -= 1
+                    buffer.set_reader_index(buffer.get_reader_index() - 1)
                     # dynamic=True: don't pass serializer, read type info from buffer
                     # dynamic=False: pass serializer, use declared type
                     field_value = self.fory.xread_ref(buffer, serializer=None if is_dynamic else serializer)

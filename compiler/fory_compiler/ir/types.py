@@ -47,6 +47,7 @@ class PrimitiveKind(PyEnum):
     TIMESTAMP = "timestamp"
     DURATION = "duration"
     DECIMAL = "decimal"
+    ANY = "any"
 
 
 PRIMITIVE_TYPES = {
@@ -57,8 +58,6 @@ PRIMITIVE_TYPES = {
     "int64": PrimitiveKind.VARINT64,
     "fixed_int32": PrimitiveKind.INT32,
     "fixed_int64": PrimitiveKind.INT64,
-    "varint32": PrimitiveKind.VARINT32,
-    "varint64": PrimitiveKind.VARINT64,
     "tagged_int64": PrimitiveKind.TAGGED_INT64,
     "uint8": PrimitiveKind.UINT8,
     "uint16": PrimitiveKind.UINT16,
@@ -66,8 +65,6 @@ PRIMITIVE_TYPES = {
     "uint64": PrimitiveKind.VAR_UINT64,
     "fixed_uint32": PrimitiveKind.UINT32,
     "fixed_uint64": PrimitiveKind.UINT64,
-    "var_uint32": PrimitiveKind.VAR_UINT32,
-    "var_uint64": PrimitiveKind.VAR_UINT64,
     "tagged_uint64": PrimitiveKind.TAGGED_UINT64,
     "float16": PrimitiveKind.FLOAT16,
     "float32": PrimitiveKind.FLOAT32,
@@ -78,6 +75,7 @@ PRIMITIVE_TYPES = {
     "timestamp": PrimitiveKind.TIMESTAMP,
     "duration": PrimitiveKind.DURATION,
     "decimal": PrimitiveKind.DECIMAL,
+    "any": PrimitiveKind.ANY,
 }
 
 

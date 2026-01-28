@@ -22,9 +22,12 @@ import os
 from pathlib import Path
 
 import addressbook
+import any_example
 import complex_fbs
 import monster
 import optional_types
+import graph
+import tree
 import numpy as np
 import pyfory
 
@@ -135,6 +138,28 @@ def build_optional_holder() -> "optional_types.OptionalHolder":
     )
     union_value = optional_types.OptionalUnion.note("optional")
     return optional_types.OptionalHolder(all_types=all_types, choice=union_value)
+
+
+def build_any_holder() -> "any_example.AnyHolder":
+    inner = any_example.AnyInner(name="inner")
+    union_value = any_example.AnyUnion.text("union")
+    return any_example.AnyHolder(
+        bool_value=True,
+        string_value="hello",
+        date_value=datetime.date(2024, 1, 2),
+        timestamp_value=datetime.datetime.fromtimestamp(1704164645),
+        message_value=inner,
+        union_value=union_value,
+        list_value=["alpha", "beta"],
+        map_value={"k1": "v1", "k2": "v2"},
+    )
+
+
+def local_roundtrip_any(fory: pyfory.Fory, holder: "any_example.AnyHolder") -> None:
+    data = fory.serialize(holder)
+    decoded = fory.deserialize(data)
+    assert isinstance(decoded, any_example.AnyHolder)
+    assert decoded == holder
 
 
 def build_monster() -> "monster.Monster":
@@ -346,12 +371,94 @@ def file_roundtrip_optional_types(
     Path(data_file).write_bytes(fory.serialize(decoded))
 
 
+def build_tree() -> "tree.TreeNode":
+    child_a = tree.TreeNode(id="child-a", name="child-a")
+    child_b = tree.TreeNode(id="child-b", name="child-b")
+    child_a.parent = child_b
+    child_b.parent = child_a
+
+    root = tree.TreeNode(id="root", name="root")
+    root.children = [child_a, child_a, child_b]
+    return root
+
+
+def assert_tree(root: "tree.TreeNode") -> None:
+    children = root.children
+    assert len(children) == 3
+    assert children[0] is children[1]
+    assert children[0] is not children[2]
+    assert children[0].parent is children[2]
+    assert children[2].parent is children[0]
+
+
+def local_roundtrip_tree(fory: pyfory.Fory, root: "tree.TreeNode") -> None:
+    data = fory.serialize(root)
+    decoded = fory.deserialize(data)
+    assert isinstance(decoded, tree.TreeNode)
+    assert_tree(decoded)
+
+
+def file_roundtrip_tree(fory: pyfory.Fory, root: "tree.TreeNode") -> None:
+    data_file = os.environ.get("DATA_FILE_TREE")
+    if not data_file:
+        return
+    payload = Path(data_file).read_bytes()
+    decoded = fory.deserialize(payload)
+    assert isinstance(decoded, tree.TreeNode)
+    assert_tree(decoded)
+    Path(data_file).write_bytes(fory.serialize(decoded))
+
+
+def build_graph() -> "graph.Graph":
+    node_a = graph.Node(id="node-a")
+    node_b = graph.Node(id="node-b")
+    edge = graph.Edge(id="edge-1", weight=1.5, from_=node_a, to=node_b)
+
+    node_a.out_edges = [edge]
+    node_a.in_edges = [edge]
+    node_b.in_edges = [edge]
+    node_b.out_edges = []
+
+    return graph.Graph(nodes=[node_a, node_b], edges=[edge])
+
+
+def assert_graph(value: "graph.Graph") -> None:
+    assert len(value.nodes) == 2
+    assert len(value.edges) == 1
+    node_a = value.nodes[0]
+    node_b = value.nodes[1]
+    edge = value.edges[0]
+    assert edge is node_a.out_edges[0]
+    assert edge is node_a.in_edges[0]
+    assert edge.from_ is node_a
+    assert edge.to is node_b
+
+
+def local_roundtrip_graph(fory: pyfory.Fory, graph_value: "graph.Graph") -> None:
+    data = fory.serialize(graph_value)
+    decoded = fory.deserialize(data)
+    assert isinstance(decoded, graph.Graph)
+    assert_graph(decoded)
+
+
+def file_roundtrip_graph(fory: pyfory.Fory, graph_value: "graph.Graph") -> None:
+    data_file = os.environ.get("DATA_FILE_GRAPH")
+    if not data_file:
+        return
+    payload = Path(data_file).read_bytes()
+    decoded = fory.deserialize(payload)
+    assert isinstance(decoded, graph.Graph)
+    assert_graph(decoded)
+    Path(data_file).write_bytes(fory.serialize(decoded))
+
+
 def main() -> int:
     fory = pyfory.Fory(xlang=True)
     addressbook.register_addressbook_types(fory)
     monster.register_monster_types(fory)
     complex_fbs.register_complex_fbs_types(fory)
     optional_types.register_optional_types_types(fory)
+    any_example.register_any_example_types(fory)
 
     book = build_address_book()
     local_roundtrip(fory, book)
@@ -372,6 +479,19 @@ def main() -> int:
     holder = build_optional_holder()
     local_roundtrip_optional_types(fory, holder)
     file_roundtrip_optional_types(fory, holder)
+
+    any_holder = build_any_holder()
+    local_roundtrip_any(fory, any_holder)
+
+    ref_fory = pyfory.Fory(xlang=True, ref=True)
+    tree.register_tree_types(ref_fory)
+    graph.register_graph_types(ref_fory)
+    tree_root = build_tree()
+    local_roundtrip_tree(ref_fory, tree_root)
+    file_roundtrip_tree(ref_fory, tree_root)
+    graph_value = build_graph()
+    local_roundtrip_graph(ref_fory, graph_value)
+    file_roundtrip_graph(ref_fory, graph_value)
     return 0
 
 

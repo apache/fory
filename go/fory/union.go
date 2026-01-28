@@ -365,7 +365,7 @@ func writeUnionOverrideValue(ctx *WriteContext, info *unionCaseInfo, value refle
 			return
 		}
 		if isRefKind(value.Elem().Kind()) {
-			ctx.SetError(SerializationErrorf("pointer to reference type %s is not supported", value.Type()))
+			ctx.SetError(SerializationErrorf("pointer to reference type %s is not allowed", value.Type()))
 			return
 		}
 	}

@@ -34,7 +34,7 @@ class Encoder:
         buffer.write_int64(self.schema_hash)
         row_bytes = row.to_bytes()
         buffer.write_bytes(row_bytes)
-        return buffer.to_bytes(0, buffer.writer_index)
+        return buffer.to_bytes(0, buffer.get_writer_index())
 
     def decode(self, binary: bytes):
         buf = pyfory.Buffer(binary, 0, len(binary))

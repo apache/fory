@@ -1002,7 +1002,7 @@ public class CollectionSerializers {
   // TODO Support ArraySubListSerializer, SubListSerializer
 
   public static void registerDefaultSerializers(Fory fory) {
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     resolver.registerInternalSerializer(ArrayList.class, new ArrayListSerializer(fory));
     Class arrayAsListClass = Arrays.asList(1, 2).getClass();
     resolver.registerInternalSerializer(

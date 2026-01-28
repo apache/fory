@@ -48,7 +48,7 @@ abstract class SerializationBinding {
   SerializationBinding(Fory fory) {
     this.fory = fory;
     this.refResolver = fory.getRefResolver();
-    typeResolver = fory._getTypeResolver();
+    typeResolver = fory.getTypeResolver();
   }
 
   abstract <T> void writeRef(MemoryBuffer buffer, T obj);

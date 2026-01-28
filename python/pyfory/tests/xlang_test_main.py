@@ -342,7 +342,7 @@ def test_string_serializer():
         fory.serialize(s, buffer=new_buffer)
 
     with open(data_file, "wb") as f:
-        f.write(new_buffer.get_bytes(0, new_buffer.writer_index))
+        f.write(new_buffer.get_bytes(0, new_buffer.get_writer_index()))
 
 
 def test_simple_struct():
@@ -498,7 +498,7 @@ def test_consistent_named():
         fory.serialize(my_ext, buffer=new_buffer)
 
     with open(data_file, "wb") as f:
-        f.write(new_buffer.get_bytes(0, new_buffer.writer_index))
+        f.write(new_buffer.get_bytes(0, new_buffer.get_writer_index()))
 
 
 def test_struct_version_check():
@@ -565,7 +565,7 @@ def test_polymorphic_list():
     fory.serialize(holder, buffer=new_buffer)
 
     with open(data_file, "wb") as f:
-        f.write(new_buffer.get_bytes(0, new_buffer.writer_index))
+        f.write(new_buffer.get_bytes(0, new_buffer.get_writer_index()))
 
 
 def test_polymorphic_map():
@@ -612,7 +612,7 @@ def test_polymorphic_map():
     fory.serialize(holder, buffer=new_buffer)
 
     with open(data_file, "wb") as f:
-        f.write(new_buffer.get_bytes(0, new_buffer.writer_index))
+        f.write(new_buffer.get_bytes(0, new_buffer.get_writer_index()))
 
 
 def test_one_string_field_schema():

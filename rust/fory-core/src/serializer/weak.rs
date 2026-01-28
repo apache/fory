@@ -197,6 +197,14 @@ impl<T: ?Sized> RcWeak<T> {
     }
 }
 
+impl<T: ?Sized> PartialEq for RcWeak<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr_eq(other)
+    }
+}
+
+impl<T: ?Sized> Eq for RcWeak<T> {}
+
 impl<T> Default for RcWeak<T> {
     fn default() -> Self {
         Self::new()
@@ -282,6 +290,14 @@ impl<T: ?Sized> ArcWeak<T> {
         }
     }
 }
+
+impl<T: ?Sized> PartialEq for ArcWeak<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr_eq(other)
+    }
+}
+
+impl<T: ?Sized> Eq for ArcWeak<T> {}
 
 impl<T> Default for ArcWeak<T> {
     fn default() -> Self {

@@ -284,7 +284,7 @@ def test_buffer(data_file_path):
         buffer.write_int32(len(binary))
         buffer.write_bytes(binary)
     with open(data_file_path, "wb+") as f:
-        f.write(buffer.get_bytes(0, buffer.writer_index))
+        f.write(buffer.get_bytes(0, buffer.get_writer_index()))
 
 
 @cross_language_test
@@ -360,7 +360,7 @@ def test_cross_language_serializer(data_file_path):
         for obj in objects:
             fory.serialize(obj, buffer=new_buf)
     with open(data_file_path, "wb+") as f:
-        f.write(new_buf.get_bytes(0, new_buf.writer_index))
+        f.write(new_buf.get_bytes(0, new_buf.get_writer_index()))
 
 
 @cross_language_test
@@ -391,7 +391,7 @@ def test_cross_language_reference(data_file_path):
         new_buf = pyfory.Buffer.allocate(32)
         fory.serialize(new_list, buffer=new_buf)
     with open(data_file_path, "wb+") as f:
-        f.write(new_buf.get_bytes(0, new_buf.writer_index))
+        f.write(new_buf.get_bytes(0, new_buf.get_writer_index()))
 
 
 @dataclass
@@ -661,7 +661,7 @@ def test_register_serializer(data_file_path):
     assert fory.deserialize(fory.serialize(new_obj)) == new_obj, new_obj
     print(f"test_register_serializer: {new_obj}")
     with open(data_file_path, "wb+") as f:
-        f.write(new_buf.get_bytes(0, new_buf.writer_index))
+        f.write(new_buf.get_bytes(0, new_buf.get_writer_index()))
 
 
 @cross_language_test
@@ -675,9 +675,9 @@ def test_oob_buffer(in_band_file_path, out_of_band_file_path):
     buffers = []
     for i in range(n_buffers):
         length = out_of_band_buffer.read_int32()
-        reader_index = out_of_band_buffer.reader_index
+        reader_index = out_of_band_buffer.get_reader_index()
         buffers.append(out_of_band_buffer.slice(reader_index, length))
-        out_of_band_buffer.reader_index += length
+        out_of_band_buffer.set_reader_index(out_of_band_buffer.get_reader_index() + length)
     new_obj = fory.deserialize(in_band_bytes, buffers)
     obj = [bytes(bytearray([0, 1])) for _ in range(10)]
     assert new_obj == obj, (obj, new_obj)
@@ -707,7 +707,7 @@ def test_oob_buffer(in_band_file_path, out_of_band_file_path):
         out_of_band_buffer.write_int32(buffer_object.total_bytes())
         buffer_object.write_to(out_of_band_buffer)
     with open(out_of_band_file_path, "wb+") as f:
-        f.write(out_of_band_buffer.to_bytes(0, out_of_band_buffer.writer_index))
+        f.write(out_of_band_buffer.to_bytes(0, out_of_band_buffer.get_writer_index()))
 
 
 @cross_language_test

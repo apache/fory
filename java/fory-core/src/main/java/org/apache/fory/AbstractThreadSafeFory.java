@@ -130,7 +130,7 @@ public abstract class AbstractThreadSafeFory implements ThreadSafeFory {
 
   @Override
   public void setTypeChecker(TypeChecker typeChecker) {
-    registerCallback(fory -> fory._getTypeResolver().setTypeChecker(typeChecker));
+    registerCallback(fory -> fory.getTypeResolver().setTypeChecker(typeChecker));
   }
 
   @Override

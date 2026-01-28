@@ -102,7 +102,7 @@ public class UnsignedSerializers {
   public static void registerDefaultSerializers(Fory fory) {
     // Note: Classes are already registered in ClassResolver.initialize()
     // We only need to register serializers here
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     resolver.registerInternalSerializer(Uint8.class, new Uint8Serializer(fory));
     resolver.registerInternalSerializer(Uint16.class, new Uint16Serializer(fory));
     resolver.registerInternalSerializer(Uint32.class, new Uint32Serializer(fory));

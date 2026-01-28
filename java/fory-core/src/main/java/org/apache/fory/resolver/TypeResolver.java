@@ -427,6 +427,8 @@ public abstract class TypeResolver {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
+      case Types.UNION:
+      case Types.TYPED_UNION:
         classInfo = requireUserTypeInfoByTypeId(header);
         break;
       case Types.LIST:
@@ -475,6 +477,8 @@ public abstract class TypeResolver {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
+      case Types.UNION:
+      case Types.TYPED_UNION:
         classInfo = requireUserTypeInfoByTypeId(header);
         break;
       case Types.LIST:
@@ -529,6 +533,8 @@ public abstract class TypeResolver {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
+      case Types.UNION:
+      case Types.TYPED_UNION:
         classInfo = requireUserTypeInfoByTypeId(header);
         break;
       case Types.LIST:
@@ -583,6 +589,8 @@ public abstract class TypeResolver {
       case Types.ENUM:
       case Types.STRUCT:
       case Types.EXT:
+      case Types.UNION:
+      case Types.TYPED_UNION:
         classInfo = requireUserTypeInfoByTypeId(header);
         break;
       case Types.LIST:
@@ -968,15 +976,7 @@ public abstract class TypeResolver {
     if (!fory.isCrossLanguage()) {
       return getSerializer(typeRef.getRawType());
     }
-    TypeExtMeta extMeta = typeRef.getTypeExtMeta();
-    if (extMeta != null) {
-      return getSerializerByTypeId(extMeta.typeId());
-    }
     Class<?> rawType = typeRef.getRawType();
-    int typeId = Types.getTypeId(fory, rawType);
-    if (typeId != Types.UNKNOWN) {
-      return getSerializerByTypeId(typeId);
-    }
     return getSerializer(rawType);
   }
 

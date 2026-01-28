@@ -142,14 +142,14 @@ class FDLEmitter:
         if field.optional:
             parts.append("optional")
         if field.ref:
-            parts.append("ref")
+            parts.append(self._emit_ref_modifier(field.ref_options))
         is_list = isinstance(field.field_type, ListType)
         if is_list:
             parts.append("repeated")
             if field.element_optional:
                 parts.append("optional")
             if field.element_ref:
-                parts.append("ref")
+                parts.append(self._emit_ref_modifier(field.element_ref_options))
         parts.append(self._emit_type(field.field_type))
         parts.append(field.name)
         parts.append("=")
@@ -170,8 +170,24 @@ class FDLEmitter:
         if isinstance(field_type, MapType):
             key = self._emit_type(field_type.key_type)
             value = self._emit_type(field_type.value_type)
+            if field_type.value_ref:
+                value = (
+                    f"{self._emit_ref_modifier(field_type.value_ref_options)} {value}"
+                )
             return f"map<{key}, {value}>"
         return "unknown"
+
+    def _emit_ref_modifier(self, options: Dict[str, object]) -> str:
+        if not options:
+            return "ref"
+        name_map = {
+            "weak_ref": "weak",
+            "thread_safe_pointer": "thread_safe",
+        }
+        parts = [
+            f"{name_map.get(k, k)}={self._format_value(v)}" for k, v in options.items()
+        ]
+        return f"ref({', '.join(parts)})"
 
     def _emit_primitive_name(self, kind: PrimitiveKind) -> str:
         if kind == PrimitiveKind.VARINT32:

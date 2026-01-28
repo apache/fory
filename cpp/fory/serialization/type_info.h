@@ -25,6 +25,7 @@
 
 #include "absl/container/flat_hash_map.h"
 
+#include <any>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -65,6 +66,8 @@ struct Harness {
                                      const struct TypeInfo *type_info);
   using SortedFieldInfosFn =
       Result<std::vector<FieldInfo>, Error> (*)(TypeResolver &);
+  using AnyWriteFn = void (*)(const std::any &value, WriteContext &ctx);
+  using AnyReadFn = std::any (*)(ReadContext &ctx);
 
   Harness() = default;
   Harness(WriteFn write, ReadFn read, WriteDataFn write_data,
@@ -86,6 +89,8 @@ struct Harness {
   ReadDataFn read_data_fn = nullptr;
   SortedFieldInfosFn sorted_field_infos_fn = nullptr;
   ReadCompatibleFn read_compatible_fn = nullptr;
+  AnyWriteFn any_write_fn = nullptr;
+  AnyReadFn any_read_fn = nullptr;
 };
 
 // ============================================================================

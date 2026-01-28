@@ -131,7 +131,7 @@ public final class OptionalSerializers {
   }
 
   public static void registerDefaultSerializers(Fory fory) {
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     resolver.registerInternalSerializer(Optional.class, new OptionalSerializer(fory));
     resolver.registerInternalSerializer(OptionalInt.class, new OptionalIntSerializer(fory));
     resolver.registerInternalSerializer(OptionalLong.class, new OptionalLongSerializer(fory));

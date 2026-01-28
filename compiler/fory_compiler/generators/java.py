@@ -98,6 +98,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.TIMESTAMP: "java.time.Instant",
         PrimitiveKind.DURATION: "java.time.Duration",
         PrimitiveKind.DECIMAL: "java.math.BigDecimal",
+        PrimitiveKind.ANY: "Object",
     }
 
     # Boxed versions for nullable primitives
@@ -120,6 +121,7 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.FLOAT16: "Float",
         PrimitiveKind.FLOAT32: "Float",
         PrimitiveKind.FLOAT64: "Double",
+        PrimitiveKind.ANY: "Object",
     }
 
     # Primitive array types for repeated numeric fields
@@ -647,6 +649,7 @@ class JavaGenerator(BaseGenerator):
                 PrimitiveKind.BYTES: "Types.BINARY",
                 PrimitiveKind.DATE: "Types.DATE",
                 PrimitiveKind.TIMESTAMP: "Types.TIMESTAMP",
+                PrimitiveKind.ANY: "Types.UNKNOWN",
             }
             return primitive_type_ids.get(kind, "Types.UNKNOWN")
         if isinstance(field.field_type, ListType):
@@ -791,9 +794,14 @@ class JavaGenerator(BaseGenerator):
 
         # Generate @ForyField annotation if needed
         annotations = []
+        is_any = (
+            isinstance(field.field_type, PrimitiveType)
+            and field.field_type.kind == PrimitiveKind.ANY
+        )
+        nullable = field.optional or is_any
         if field.tag_id is not None:
             annotations.append(f"id = {field.tag_id}")
-        if field.optional:
+        if nullable:
             annotations.append("nullable = true")
         if field.ref:
             annotations.append("ref = true")
@@ -812,7 +820,7 @@ class JavaGenerator(BaseGenerator):
         # Field type
         java_type = self.generate_type(
             field.field_type,
-            field.optional,
+            nullable,
             field.element_optional,
             field.element_ref,
         )
@@ -825,9 +833,14 @@ class JavaGenerator(BaseGenerator):
     def generate_getter_setter(self, field: Field) -> List[str]:
         """Generate getter and setter for a field."""
         lines = []
+        is_any = (
+            isinstance(field.field_type, PrimitiveType)
+            and field.field_type.kind == PrimitiveKind.ANY
+        )
+        nullable = field.optional or is_any
         java_type = self.generate_type(
             field.field_type,
-            field.optional,
+            nullable,
             field.element_optional,
             field.element_ref,
         )
@@ -916,6 +929,10 @@ class JavaGenerator(BaseGenerator):
 
     def collect_field_imports(self, field: Field, imports: Set[str]):
         """Collect imports for a field, including list modifiers."""
+        is_any = (
+            isinstance(field.field_type, PrimitiveType)
+            and field.field_type.kind == PrimitiveKind.ANY
+        )
         self.collect_type_imports(
             field.field_type,
             imports,
@@ -924,7 +941,7 @@ class JavaGenerator(BaseGenerator):
         )
         self.collect_integer_imports(field.field_type, imports)
         self.collect_array_imports(field, imports)
-        if field.optional or field.ref or field.tag_id is not None:
+        if field.optional or field.ref or field.tag_id is not None or is_any:
             imports.add("org.apache.fory.annotation.ForyField")
 
     def collect_array_imports(self, field: Field, imports: Set[str]) -> None:

@@ -472,12 +472,12 @@ class Fory:
         self.buffer_callback = buffer_callback
         self._unsupported_callback = unsupported_callback
         if buffer is None:
-            self.buffer.writer_index = 0
+            self.buffer.set_writer_index(0)
             buffer = self.buffer
-        mask_index = buffer.writer_index
+        mask_index = buffer.get_writer_index()
         # 1byte used for bit mask
         buffer.grow(1)
-        buffer.writer_index = mask_index + 1
+        buffer.set_writer_index(mask_index + 1)
         if obj is None:
             set_bit(buffer, mask_index, 0)
         else:
@@ -504,7 +504,7 @@ class Fory:
         if buffer is not self.buffer:
             return buffer
         else:
-            return buffer.to_bytes(0, buffer.writer_index)
+            return buffer.to_bytes(0, buffer.get_writer_index())
 
     def write_ref(self, buffer, obj, typeinfo=None):
         cls = type(obj)
@@ -611,8 +611,8 @@ class Fory:
             buffer = Buffer(buffer)
         if unsupported_objects is not None:
             self._unsupported_objects = iter(unsupported_objects)
-        reader_index = buffer.reader_index
-        buffer.reader_index = reader_index + 1
+        reader_index = buffer.get_reader_index()
+        buffer.set_reader_index(reader_index + 1)
         if get_bit(buffer, reader_index, 0):
             return None
         is_target_x_lang = get_bit(buffer, reader_index, 1)
@@ -698,38 +698,40 @@ class Fory:
             size = buffer_object.total_bytes()
             # writer length.
             buffer.write_varuint32(size)
-            writer_index = buffer.writer_index
+            writer_index = buffer.get_writer_index()
             buffer.ensure(writer_index + size)
-            buf = buffer.slice(buffer.writer_index, size)
+            buf = buffer.slice(writer_index, size)
             buffer_object.write_to(buf)
-            buffer.writer_index += size
+            buffer.set_writer_index(writer_index + size)
             return
         if self.buffer_callback(buffer_object):
             buffer.write_bool(True)
             size = buffer_object.total_bytes()
             # writer length.
             buffer.write_varuint32(size)
-            writer_index = buffer.writer_index
+            writer_index = buffer.get_writer_index()
             buffer.ensure(writer_index + size)
-            buf = buffer.slice(buffer.writer_index, size)
+            buf = buffer.slice(writer_index, size)
             buffer_object.write_to(buf)
-            buffer.writer_index += size
+            buffer.set_writer_index(writer_index + size)
         else:
             buffer.write_bool(False)
 
     def read_buffer_object(self, buffer) -> Buffer:
         if not self.is_peer_out_of_band_enabled:
             size = buffer.read_varuint32()
-            buf = buffer.slice(buffer.reader_index, size)
-            buffer.reader_index += size
+            reader_index = buffer.get_reader_index()
+            buf = buffer.slice(reader_index, size)
+            buffer.set_reader_index(reader_index + size)
             return buf
         in_band = buffer.read_bool()
         if not in_band:
             assert self._buffers is not None
             return next(self._buffers)
         size = buffer.read_varuint32()
-        buf = buffer.slice(buffer.reader_index, size)
-        buffer.reader_index += size
+        reader_index = buffer.get_reader_index()
+        buf = buffer.slice(reader_index, size)
+        buffer.set_reader_index(reader_index + size)
         return buf
 
     def handle_unsupported_write(self, buffer, obj):

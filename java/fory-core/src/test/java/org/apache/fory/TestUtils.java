@@ -345,7 +345,7 @@ public class TestUtils {
   public static Map<String, Object> objectToMap(Fory fory, Object obj) {
     Class<?> cls = obj.getClass();
     ClassDef classDef = fory.getClassResolver().getTypeDef(cls, true);
-    List<Descriptor> descriptors = classDef.getDescriptors(fory._getTypeResolver(), cls);
+    List<Descriptor> descriptors = classDef.getDescriptors(fory.getTypeResolver(), cls);
     Map<String, Object> result = new LinkedHashMap<>();
     for (Descriptor descriptor : descriptors) {
       Field field = descriptor.getField();

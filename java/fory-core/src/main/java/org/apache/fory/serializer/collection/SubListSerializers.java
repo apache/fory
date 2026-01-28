@@ -64,7 +64,7 @@ public class SubListSerializers {
   }
 
   public static void registerSerializers(Fory fory, boolean preserveView) {
-    TypeResolver classResolver = fory._getTypeResolver();
+    TypeResolver classResolver = fory.getTypeResolver();
     // java.util.ImmutableCollections$SubList is already registered in
     // ImmutableCollectionSerializers
     for (Class<?> cls :

@@ -16,10 +16,11 @@
 // under the License.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::{env, fs};
 
 use chrono::NaiveDate;
-use fory::Fory;
+use fory::{ArcWeak, Fory};
 use idl_tests::addressbook::{
     self,
     person::{PhoneNumber, PhoneType},
@@ -28,6 +29,8 @@ use idl_tests::addressbook::{
 use idl_tests::complex_fbs::{self, Container, Note, Payload, ScalarPack, Status};
 use idl_tests::monster::{self, Color, Monster, Vec3};
 use idl_tests::optional_types::{self, AllOptionalTypes, OptionalHolder, OptionalUnion};
+use idl_tests::any_example::{self, AnyHolder, AnyInner, AnyUnion};
+use idl_tests::{graph, tree};
 
 fn build_address_book() -> AddressBook {
     let mobile = PhoneNumber {
@@ -183,6 +186,195 @@ fn build_optional_holder() -> OptionalHolder {
     }
 }
 
+fn build_any_holder() -> AnyHolder {
+    AnyHolder {
+        bool_value: Box::new(true),
+        string_value: Box::new("hello".to_string()),
+        date_value: Box::new(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap()),
+        timestamp_value: Box::new(
+            NaiveDate::from_ymd_opt(2024, 1, 2)
+                .unwrap()
+                .and_hms_opt(3, 4, 5)
+                .expect("timestamp"),
+        ),
+        message_value: Box::new(AnyInner {
+            name: "inner".to_string(),
+        }),
+        union_value: Box::new(AnyUnion::Text("union".to_string())),
+        list_value: Box::new("list-placeholder".to_string()),
+        map_value: Box::new("map-placeholder".to_string()),
+    }
+}
+
+fn build_any_holder_with_collections() -> AnyHolder {
+    AnyHolder {
+        bool_value: Box::new(true),
+        string_value: Box::new("hello".to_string()),
+        date_value: Box::new(NaiveDate::from_ymd_opt(2024, 1, 2).unwrap()),
+        timestamp_value: Box::new(
+            NaiveDate::from_ymd_opt(2024, 1, 2)
+                .unwrap()
+                .and_hms_opt(3, 4, 5)
+                .expect("timestamp"),
+        ),
+        message_value: Box::new(AnyInner {
+            name: "inner".to_string(),
+        }),
+        union_value: Box::new(AnyUnion::Text("union".to_string())),
+        list_value: Box::new(vec!["alpha".to_string(), "beta".to_string()]),
+        map_value: Box::new(HashMap::from([
+            ("k1".to_string(), "v1".to_string()),
+            ("k2".to_string(), "v2".to_string()),
+        ])),
+    }
+}
+
+fn assert_any_holder(holder: &AnyHolder) {
+    let bool_value = holder.bool_value.downcast_ref::<bool>().expect("bool any");
+    assert_eq!(*bool_value, true);
+    let string_value = holder
+        .string_value
+        .downcast_ref::<String>()
+        .expect("string any");
+    assert_eq!(string_value, "hello");
+    let date_value = holder
+        .date_value
+        .downcast_ref::<NaiveDate>()
+        .expect("date any");
+    assert_eq!(*date_value, NaiveDate::from_ymd_opt(2024, 1, 2).unwrap());
+    let timestamp_value = holder
+        .timestamp_value
+        .downcast_ref::<chrono::NaiveDateTime>()
+        .expect("timestamp any");
+    assert_eq!(
+        *timestamp_value,
+        NaiveDate::from_ymd_opt(2024, 1, 2)
+            .unwrap()
+            .and_hms_opt(3, 4, 5)
+            .expect("timestamp")
+    );
+    let message_value = holder
+        .message_value
+        .downcast_ref::<AnyInner>()
+        .expect("message any");
+    assert_eq!(message_value.name, "inner");
+    let union_value = holder
+        .union_value
+        .downcast_ref::<AnyUnion>()
+        .expect("union any");
+    assert_eq!(*union_value, AnyUnion::Text("union".to_string()));
+}
+
+fn build_tree() -> tree::TreeNode {
+    let mut child_a = Arc::new(tree::TreeNode {
+        id: "child-a".to_string(),
+        name: "child-a".to_string(),
+        children: vec![],
+        parent: None,
+    });
+    let mut child_b = Arc::new(tree::TreeNode {
+        id: "child-b".to_string(),
+        name: "child-b".to_string(),
+        children: vec![],
+        parent: None,
+    });
+
+    let child_a_weak = ArcWeak::from(&child_a);
+    let child_b_weak = ArcWeak::from(&child_b);
+    Arc::get_mut(&mut child_a)
+        .expect("child a unique")
+        .parent = Some(child_b_weak);
+    Arc::get_mut(&mut child_b)
+        .expect("child b unique")
+        .parent = Some(child_a_weak);
+
+    tree::TreeNode {
+        id: "root".to_string(),
+        name: "root".to_string(),
+        children: vec![Arc::clone(&child_a), Arc::clone(&child_a), Arc::clone(&child_b)],
+        parent: None,
+    }
+}
+
+fn assert_tree(root: &tree::TreeNode) {
+    assert_eq!(root.children.len(), 3);
+    assert!(Arc::ptr_eq(&root.children[0], &root.children[1]));
+    assert!(!Arc::ptr_eq(&root.children[0], &root.children[2]));
+    let parent_a = root.children[0]
+        .parent
+        .as_ref()
+        .expect("child a parent")
+        .upgrade()
+        .expect("upgrade child a parent");
+    let parent_b = root.children[2]
+        .parent
+        .as_ref()
+        .expect("child b parent")
+        .upgrade()
+        .expect("upgrade child b parent");
+    assert!(Arc::ptr_eq(&parent_a, &root.children[2]));
+    assert!(Arc::ptr_eq(&parent_b, &root.children[0]));
+}
+
+fn build_graph() -> graph::Graph {
+    let mut node_a = Arc::new(graph::Node {
+        id: "node-a".to_string(),
+        out_edges: vec![],
+        in_edges: vec![],
+    });
+    let mut node_b = Arc::new(graph::Node {
+        id: "node-b".to_string(),
+        out_edges: vec![],
+        in_edges: vec![],
+    });
+
+    let edge = Arc::new(graph::Edge {
+        id: "edge-1".to_string(),
+        weight: 1.5_f32,
+        from: Some(ArcWeak::from(&node_a)),
+        to: Some(ArcWeak::from(&node_b)),
+    });
+
+    Arc::get_mut(&mut node_a)
+        .expect("node a unique")
+        .out_edges = vec![Arc::clone(&edge)];
+    Arc::get_mut(&mut node_a)
+        .expect("node a unique")
+        .in_edges = vec![Arc::clone(&edge)];
+    Arc::get_mut(&mut node_b)
+        .expect("node b unique")
+        .in_edges = vec![Arc::clone(&edge)];
+
+    graph::Graph {
+        nodes: vec![Arc::clone(&node_a), Arc::clone(&node_b)],
+        edges: vec![Arc::clone(&edge)],
+    }
+}
+
+fn assert_graph(value: &graph::Graph) {
+    assert_eq!(value.nodes.len(), 2);
+    assert_eq!(value.edges.len(), 1);
+    let node_a = &value.nodes[0];
+    let node_b = &value.nodes[1];
+    let edge = &value.edges[0];
+    assert!(Arc::ptr_eq(&node_a.out_edges[0], &node_a.in_edges[0]));
+    assert!(Arc::ptr_eq(&node_a.out_edges[0], edge));
+    let from = edge
+        .from
+        .as_ref()
+        .expect("edge from")
+        .upgrade()
+        .expect("upgrade from");
+    let to = edge
+        .to
+        .as_ref()
+        .expect("edge to")
+        .upgrade()
+        .expect("upgrade to");
+    assert!(Arc::ptr_eq(&from, node_a));
+    assert!(Arc::ptr_eq(&to, node_b));
+}
+
 #[test]
 fn test_address_book_roundtrip() {
     let mut fory = Fory::default().xlang(true);
@@ -190,6 +382,7 @@ fn test_address_book_roundtrip() {
     monster::register_types(&mut fory).expect("register monster types");
     complex_fbs::register_types(&mut fory).expect("register flatbuffers types");
     optional_types::register_types(&mut fory).expect("register optional types");
+    any_example::register_types(&mut fory).expect("register any example types");
 
     let book = build_address_book();
     let bytes = fory.serialize(&book).expect("serialize");
@@ -275,5 +468,55 @@ fn test_address_book_roundtrip() {
             .serialize(&peer_holder)
             .expect("serialize peer payload");
         fs::write(data_file, encoded).expect("write data file");
+    }
+
+    let any_holder = build_any_holder();
+    let bytes = fory.serialize(&any_holder).expect("serialize any");
+    let roundtrip: AnyHolder = fory.deserialize(&bytes).expect("deserialize any");
+    assert_any_holder(&roundtrip);
+
+    let any_holder_collections = build_any_holder_with_collections();
+    let bytes = fory
+        .serialize(&any_holder_collections)
+        .expect("serialize any collections");
+    let result: Result<AnyHolder, _> = fory.deserialize(&bytes);
+    assert!(result.is_err());
+
+    let mut ref_fory = Fory::default().xlang(true).track_ref(true);
+    tree::register_types(&mut ref_fory).expect("register tree types");
+    graph::register_types(&mut ref_fory).expect("register graph types");
+
+    let tree_root = build_tree();
+    let bytes = ref_fory.serialize(&tree_root).expect("serialize tree");
+    let roundtrip: tree::TreeNode = ref_fory.deserialize(&bytes).expect("deserialize");
+    assert_tree(&roundtrip);
+
+    if let Ok(data_file) = env::var("DATA_FILE_TREE") {
+        let payload = fs::read(&data_file).expect("read tree data file");
+        let peer_tree: tree::TreeNode = ref_fory
+            .deserialize(&payload)
+            .expect("deserialize peer tree payload");
+        assert_tree(&peer_tree);
+        let encoded = ref_fory
+            .serialize(&peer_tree)
+            .expect("serialize peer tree payload");
+        fs::write(data_file, encoded).expect("write tree data file");
+    }
+
+    let graph_value = build_graph();
+    let bytes = ref_fory.serialize(&graph_value).expect("serialize graph");
+    let roundtrip: graph::Graph = ref_fory.deserialize(&bytes).expect("deserialize");
+    assert_graph(&roundtrip);
+
+    if let Ok(data_file) = env::var("DATA_FILE_GRAPH") {
+        let payload = fs::read(&data_file).expect("read graph data file");
+        let peer_graph: graph::Graph = ref_fory
+            .deserialize(&payload)
+            .expect("deserialize peer graph payload");
+        assert_graph(&peer_graph);
+        let encoded = ref_fory
+            .serialize(&peer_graph)
+            .expect("serialize peer graph payload");
+        fs::write(data_file, encoded).expect("write graph data file");
     }
 }

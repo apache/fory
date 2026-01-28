@@ -49,7 +49,7 @@ bool is_active = 1;
 
 ### Integer Types
 
-FDL provides fixed-width signed integers:
+FDL provides fixed-width signed integers (varint encoding for 32/64-bit):
 
 | FDL Type | Size   | Range             |
 | -------- | ------ | ----------------- |
@@ -66,6 +66,24 @@ FDL provides fixed-width signed integers:
 | `int16` | `short` | `pyfory.int16` | `int16` | `i16` | `int16_t` |
 | `int32` | `int`   | `pyfory.int32` | `int32` | `i32` | `int32_t` |
 | `int64` | `long`  | `pyfory.int64` | `int64` | `i64` | `int64_t` |
+
+FDL provides fixed-width unsigned integers (varint encoding for 32/64-bit):
+
+| FDL      | Size   | Range         |
+| -------- | ------ | ------------- |
+| `uint8`  | 8-bit  | 0 to 255      |
+| `uint16` | 16-bit | 0 to 65,535   |
+| `uint32` | 32-bit | 0 to 2^32 - 1 |
+| `uint64` | 64-bit | 0 to 2^64 - 1 |
+
+**Language Mapping (Unsigned):**
+
+| FDL      | Java    | Python          | Go       | Rust  | C++        |
+| -------- | ------- | --------------- | -------- | ----- | ---------- |
+| `uint8`  | `short` | `pyfory.uint8`  | `uint8`  | `u8`  | `uint8_t`  |
+| `uint16` | `int`   | `pyfory.uint16` | `uint16` | `u16` | `uint16_t` |
+| `uint32` | `long`  | `pyfory.uint32` | `uint32` | `u32` | `uint32_t` |
+| `uint64` | `long`  | `pyfory.uint64` | `uint64` | `u64` | `uint64_t` |
 
 **Examples:**
 
@@ -92,6 +110,20 @@ class Counters:
     medium: int32
     large: int  # int64 maps to native int
 ```
+
+### Integer Encoding Variants
+
+For 32/64-bit integers, FDL uses varint encoding by default. Use explicit
+types when you need fixed-width or tagged encoding:
+
+| FDL Type        | Encoding | Notes                    |
+| --------------- | -------- | ------------------------ |
+| `fixed_int32`   | fixed    | Signed 32-bit            |
+| `fixed_int64`   | fixed    | Signed 64-bit            |
+| `fixed_uint32`  | fixed    | Unsigned 32-bit          |
+| `fixed_uint64`  | fixed    | Unsigned 64-bit          |
+| `tagged_int64`  | tagged   | Signed 64-bit (hybrid)   |
+| `tagged_uint64` | tagged   | Unsigned 64-bit (hybrid) |
 
 ### Floating-Point Types
 
@@ -182,6 +214,29 @@ timestamp created_at = 1;
 | Go       | `time.Time`                      |                         |
 | Rust     | `chrono::NaiveDateTime`          | Requires `chrono` crate |
 | C++      | `fory::serialization::Timestamp` |                         |
+
+### Any
+
+Dynamic value with runtime type information:
+
+```protobuf
+any payload = 1;
+```
+
+| Language | Type           | Notes                |
+| -------- | -------------- | -------------------- |
+| Java     | `Object`       | Runtime type written |
+| Python   | `Any`          | Runtime type written |
+| Go       | `any`          | Runtime type written |
+| Rust     | `Box<dyn Any>` | Runtime type written |
+| C++      | `std::any`     | Runtime type written |
+
+**Notes:**
+
+- `any` always writes a null flag (same as `nullable`) because values may be empty; codegen treats `any` as nullable even without `optional`.
+- Allowed runtime values are limited to `bool`, `string`, `enum`, `message`, and `union`. Other primitives (numeric, bytes, date/time) and list/map are not supported; wrap them in a message or use explicit fields instead.
+- `ref` is not allowed on `any` fields (including repeated/map values). Wrap `any` in a message if you need reference tracking.
+- The runtime type must be registered in the target language schema/IDL registration; unknown types fail to deserialize.
 
 ## Enum Types
 
@@ -398,7 +453,11 @@ message TreeNode {
 
 \*Java uses `@ForyField(ref = true)` annotation.
 
-Rust uses `Arc` by default; set `[(fory).thread_safe_pointer = false]` to use `Rc`.
+Rust uses `Arc` by default; set `ref(thread_safe = false)` in FDL (or
+`[(fory).thread_safe_pointer = false]` in protobuf) to use `Rc`. Use
+`ref(weak = true)` in FDL (or `[(fory).weak_ref = true]` in protobuf) with `ref`
+to generate weak pointer types: `ArcWeak`/`RcWeak` in Rust and
+`fory::serialization::SharedWeak<T>` in C++. Java/Python/Go ignore `weak_ref`.
 
 ## Type Compatibility Matrix
 

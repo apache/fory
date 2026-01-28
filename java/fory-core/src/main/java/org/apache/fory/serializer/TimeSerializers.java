@@ -714,7 +714,7 @@ public class TimeSerializers {
   }
 
   public static void registerDefaultSerializers(Fory fory) {
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     resolver.registerInternalSerializer(Date.class, new DateSerializer(fory));
     resolver.registerInternalSerializer(java.sql.Date.class, new SqlDateSerializer(fory));
     resolver.registerInternalSerializer(Time.class, new SqlTimeSerializer(fory));

@@ -169,24 +169,24 @@ public final class Fory implements BaseFory {
 
   @Override
   public void register(Class<?> cls) {
-    _getTypeResolver().register(cls);
+    getTypeResolver().register(cls);
   }
 
   @Override
   public void register(Class<?> cls, int id) {
-    _getTypeResolver().register(cls, id);
+    getTypeResolver().register(cls, id);
   }
 
   @Deprecated
   @Override
   public void register(Class<?> cls, boolean createSerializer) {
-    _getTypeResolver().register(cls);
+    getTypeResolver().register(cls);
   }
 
   @Deprecated
   @Override
   public void register(Class<?> cls, int id, boolean createSerializer) {
-    _getTypeResolver().register(cls, id);
+    getTypeResolver().register(cls, id);
   }
 
   /**
@@ -205,65 +205,65 @@ public final class Fory implements BaseFory {
   }
 
   public void register(Class<?> cls, String namespace, String typeName) {
-    _getTypeResolver().register(cls, namespace, typeName);
+    getTypeResolver().register(cls, namespace, typeName);
   }
 
   @Override
   public void register(String className) {
-    _getTypeResolver().register(className);
+    getTypeResolver().register(className);
   }
 
   @Override
   public void register(String className, int classId) {
-    _getTypeResolver().register(className, classId);
+    getTypeResolver().register(className, classId);
   }
 
   @Override
   public void register(String className, String namespace, String typeName) {
-    _getTypeResolver().register(className, namespace, typeName);
+    getTypeResolver().register(className, namespace, typeName);
   }
 
   @Override
   public void registerUnion(Class<?> cls, int id, Serializer<?> serializer) {
-    _getTypeResolver().registerUnion(cls, id, serializer);
+    getTypeResolver().registerUnion(cls, id, serializer);
   }
 
   @Override
   public void registerUnion(
       Class<?> cls, String namespace, String typeName, Serializer<?> serializer) {
-    _getTypeResolver().registerUnion(cls, namespace, typeName, serializer);
+    getTypeResolver().registerUnion(cls, namespace, typeName, serializer);
   }
 
   @Override
   public <T> void registerSerializer(Class<T> type, Class<? extends Serializer> serializerClass) {
-    _getTypeResolver().registerSerializer(type, serializerClass);
+    getTypeResolver().registerSerializer(type, serializerClass);
   }
 
   @Override
   public void registerSerializer(Class<?> type, Serializer<?> serializer) {
-    _getTypeResolver().registerSerializer(type, serializer);
+    getTypeResolver().registerSerializer(type, serializer);
   }
 
   @Override
   public void registerSerializer(Class<?> type, Function<Fory, Serializer<?>> serializerCreator) {
-    _getTypeResolver().registerSerializer(type, serializerCreator.apply(this));
+    getTypeResolver().registerSerializer(type, serializerCreator.apply(this));
   }
 
   @Override
   public <T> void registerSerializerAndType(
       Class<T> type, Class<? extends Serializer> serializerClass) {
-    _getTypeResolver().registerSerializerAndType(type, serializerClass);
+    getTypeResolver().registerSerializerAndType(type, serializerClass);
   }
 
   @Override
   public void registerSerializerAndType(Class<?> type, Serializer<?> serializer) {
-    _getTypeResolver().registerSerializerAndType(type, serializer);
+    getTypeResolver().registerSerializerAndType(type, serializer);
   }
 
   @Override
   public void registerSerializerAndType(
       Class<?> type, Function<Fory, Serializer<?>> serializerCreator) {
-    _getTypeResolver().registerSerializerAndType(type, serializerCreator.apply(this));
+    getTypeResolver().registerSerializerAndType(type, serializerCreator.apply(this));
   }
 
   @Override
@@ -1631,7 +1631,7 @@ public final class Fory implements BaseFory {
 
   @Override
   public void ensureSerializersCompiled() {
-    _getTypeResolver().ensureSerializersCompiled();
+    getTypeResolver().ensureSerializersCompiled();
   }
 
   public JITContext getJITContext() {
@@ -1664,7 +1664,7 @@ public final class Fory implements BaseFory {
    */
   @Internal
   // CHECKSTYLE.OFF:MethodName
-  public TypeResolver _getTypeResolver() {
+  public TypeResolver getTypeResolver() {
     // CHECKSTYLE.ON:MethodName
     return crossLanguage ? xtypeResolver : classResolver;
   }

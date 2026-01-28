@@ -502,7 +502,7 @@ public class PyCrossLanguageTest extends ForyTestBase {
         ObjectSerializer.class.getDeclaredMethod(
             "computeStructHash", Fory.class, DescriptorGrouper.class);
     method.setAccessible(true);
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     Collection<Descriptor> descriptors = resolver.getFieldDescriptors(ComplexObject1.class, false);
     DescriptorGrouper grouper = resolver.createDescriptorGrouper(descriptors, false);
     Integer hash = (Integer) method.invoke(objSerializer, fory, grouper);

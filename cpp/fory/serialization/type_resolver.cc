@@ -1220,6 +1220,7 @@ TypeResolver::build_final_type_resolver() {
   for (const auto &[key, old_ptr] : type_info_by_runtime_type_) {
     final_resolver->type_info_by_runtime_type_[key] = ptr_map[old_ptr];
   }
+
   for (const auto &[key, old_ptr] : partial_type_infos_) {
     final_resolver->partial_type_infos_.put(key, ptr_map[old_ptr]);
   }

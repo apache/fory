@@ -569,7 +569,7 @@ public class Serializers {
   }
 
   public static void registerDefaultSerializers(Fory fory) {
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     resolver.registerInternalSerializer(Class.class, new ClassSerializer(fory));
     resolver.registerInternalSerializer(StringBuilder.class, new StringBuilderSerializer(fory));
     resolver.registerInternalSerializer(StringBuffer.class, new StringBufferSerializer(fory));

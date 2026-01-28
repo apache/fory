@@ -201,6 +201,16 @@ struct VectorStruct {
   FORY_STRUCT(VectorStruct, numbers, strings, points);
 };
 
+struct NamedItem {
+  int32_t id;
+  std::string name;
+
+  bool operator==(const NamedItem &other) const {
+    return id == other.id && name == other.name;
+  }
+  FORY_STRUCT(NamedItem, id, name);
+};
+
 struct MapStruct {
   std::map<std::string, int32_t> str_to_int;
   std::map<int32_t, std::string> int_to_str;
@@ -505,6 +515,25 @@ TEST(StructComprehensiveTest, VectorStructEmpty) {
 
 TEST(StructComprehensiveTest, VectorStructMultiple) {
   test_roundtrip(VectorStruct{{1, 2, 3}, {"foo", "bar"}, {{0, 0}, {10, 10}}});
+}
+
+TEST(StructComprehensiveTest, NamedStructElementTypeInfo) {
+  std::vector<NamedItem> items{{1, "alpha"}, {2, "beta"}};
+
+  auto fory = Fory::builder().xlang(true).track_ref(false).build();
+  ASSERT_TRUE(fory.register_struct<NamedItem>("test", "NamedItem").ok());
+
+  auto ser_result = fory.serialize(items);
+  ASSERT_TRUE(ser_result.ok())
+      << "Serialization failed: " << ser_result.error().to_string();
+
+  std::vector<uint8_t> bytes = std::move(ser_result).value();
+  auto deser_result =
+      fory.deserialize<std::vector<NamedItem>>(bytes.data(), bytes.size());
+  ASSERT_TRUE(deser_result.ok())
+      << "Deserialization failed: " << deser_result.error().to_string();
+
+  EXPECT_EQ(items, deser_result.value());
 }
 
 TEST(StructComprehensiveTest, MapStructEmpty) {

@@ -64,9 +64,23 @@ KNOWN_FIELD_OPTIONS: Set[str] = {
     "edition_defaults",
     "features",
     "ref",
-    "tracking_ref",
     "nullable",
     "thread_safe_pointer",
+    "weak_ref",
+}
+
+KNOWN_REF_OPTIONS: Set[str] = {
+    "weak",
+    "weak_ref",
+    "thread_safe",
+    "thread_safe_pointer",
+}
+
+REF_OPTION_ALIASES = {
+    "weak": "weak_ref",
+    "weak_ref": "weak_ref",
+    "thread_safe": "thread_safe_pointer",
+    "thread_safe_pointer": "thread_safe_pointer",
 }
 
 # Known type-level options for inline syntax
@@ -534,6 +548,7 @@ class Parser:
             name=name,
             field_type=field_type,
             number=number,
+            tag_id=number,
             line=start.line,
             column=start.column,
             location=self.make_location(start),
@@ -552,8 +567,10 @@ class Parser:
         # optional/ref after repeated apply to elements)
         optional = False
         ref = False
+        ref_options = {}
         element_optional = False
         element_ref = False
+        element_ref_options = {}
         repeated = False
         while True:
             if self.match(TokenType.OPTIONAL):
@@ -563,10 +580,13 @@ class Parser:
                     optional = True
                 continue
             if self.match(TokenType.REF):
+                options = self.parse_ref_options(name="ref")
                 if repeated:
                     element_ref = True
+                    element_ref_options = options
                 else:
                     ref = True
+                    ref_options = options
                 continue
             if self.match(TokenType.REPEATED):
                 if repeated:
@@ -583,7 +603,10 @@ class Parser:
             field_type = ListType(field_type, location=self.make_location(start))
 
         # Parse field name
-        name = self.consume(TokenType.IDENT, "Expected field name").value
+        if self.check(TokenType.IDENT) or self.check(TokenType.TO):
+            name = self.advance().value
+        else:
+            raise self.error("Expected field name")
 
         # Parse field number
         self.consume(TokenType.EQUALS, "Expected '=' after field name")
@@ -594,15 +617,25 @@ class Parser:
         field_options = {}
         if self.check(TokenType.LBRACKET):
             field_options = self.parse_field_options(name)
-            # Handle ref/tracking_ref options to set ref flag
-            if (
-                field_options.get("ref") is True
-                or field_options.get("tracking_ref") is True
-            ):
-                ref = True
+            # Handle ref option to set ref flag
+            if field_options.get("ref") is True:
+                if isinstance(field_type, ListType):
+                    element_ref = True
+                elif isinstance(field_type, MapType):
+                    field_type.value_ref = True
+                else:
+                    ref = True
             # Handle nullable option to set optional flag
             if field_options.get("nullable") is True:
                 optional = True
+            self.merge_ref_options(
+                field_type,
+                ref,
+                element_ref,
+                field_options,
+                ref_options,
+                element_ref_options,
+            )
 
         self.consume(TokenType.SEMI, "Expected ';' after field declaration")
 
@@ -610,10 +643,13 @@ class Parser:
             name=name,
             field_type=field_type,
             number=number,
+            tag_id=number,
             optional=optional,
             ref=ref,
+            ref_options=ref_options,
             element_optional=element_optional,
             element_ref=element_ref,
+            element_ref_options=element_ref_options,
             options=field_options,
             line=start.line,
             column=start.column,
@@ -666,6 +702,77 @@ class Parser:
 
         self.consume(TokenType.RBRACKET, "Expected ']' after field options")
         return options
+
+    def parse_ref_options(self, name: str) -> dict:
+        """Parse ref keyword options: ref(weak=true, thread_safe=false)."""
+        if not self.check(TokenType.LPAREN):
+            return {}
+        self.consume(TokenType.LPAREN, "Expected '(' after ref")
+        options = {}
+        while True:
+            name_token = self.current()
+            if self.check(TokenType.IDENT):
+                self.advance()
+                option_name = name_token.value
+            elif self.check(TokenType.WEAK):
+                self.advance()
+                option_name = "weak"
+            else:
+                raise self.error(
+                    f"Expected ref option name, got {self.current().type.name}"
+                )
+
+            self.consume(TokenType.EQUALS, "Expected '=' after ref option name")
+            option_value = self.parse_option_value()
+            canonical = REF_OPTION_ALIASES.get(option_name, option_name)
+            options[canonical] = option_value
+
+            if option_name not in KNOWN_REF_OPTIONS:
+                warnings.warn(
+                    f"Line {name_token.line}: ignoring unknown ref option '{option_name}' on {name}",
+                    stacklevel=2,
+                )
+
+            if self.check(TokenType.COMMA):
+                self.advance()
+            elif self.check(TokenType.RPAREN):
+                break
+            else:
+                raise self.error("Expected ',' or ')' in ref options")
+
+        self.consume(TokenType.RPAREN, "Expected ')' after ref options")
+        return options
+
+    def merge_ref_options(
+        self,
+        field_type: FieldType,
+        ref: bool,
+        element_ref: bool,
+        field_options: dict,
+        ref_options: dict,
+        element_ref_options: dict,
+    ) -> None:
+        weak_ref = field_options.get("weak_ref")
+        if weak_ref is None and field_options.get("weak") is not None:
+            weak_ref = field_options.get("weak")
+        thread_safe = field_options.get("thread_safe_pointer")
+        if thread_safe is None and field_options.get("thread_safe") is not None:
+            thread_safe = field_options.get("thread_safe")
+
+        if weak_ref is None and thread_safe is None:
+            return
+
+        if isinstance(field_type, MapType):
+            target = field_type.value_ref_options
+        elif isinstance(field_type, ListType):
+            target = element_ref_options
+        else:
+            target = ref_options
+
+        if weak_ref is not None:
+            target["weak_ref"] = weak_ref
+        if thread_safe is not None:
+            target["thread_safe_pointer"] = thread_safe
 
     def parse_type_options(
         self, type_name: str, known_options: Set[str], allow_zero_id: bool = False
@@ -765,15 +872,28 @@ class Parser:
         start = self.consume(TokenType.MAP)
         self.consume(TokenType.LANGLE, "Expected '<' after 'map'")
 
+        if self.check(TokenType.REF):
+            raise self.error("Map keys do not support ref modifier")
         key_type = self.parse_type()
 
         self.consume(TokenType.COMMA, "Expected ',' between map key and value types")
 
+        value_ref = False
+        value_ref_options = {}
+        if self.match(TokenType.REF):
+            value_ref = True
+            value_ref_options = self.parse_ref_options(name="map value")
         value_type = self.parse_type()
 
         self.consume(TokenType.RANGLE, "Expected '>' after map value type")
 
-        return MapType(key_type, value_type, location=self.make_location(start))
+        return MapType(
+            key_type,
+            value_type,
+            value_ref=value_ref,
+            value_ref_options=value_ref_options,
+            location=self.make_location(start),
+        )
 
 
 def parse(source: str, filename: str = "<input>") -> Schema:

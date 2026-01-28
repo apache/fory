@@ -509,7 +509,16 @@ func runCompatibilityCase(t *testing.T, tc compatibilityCase) {
 	err := writer.RegisterNamedStruct(tc.writeType, tc.tag)
 	assert.NoError(t, err)
 
-	data, err := writer.Marshal(tc.input)
+	marshalInput := tc.input
+	if tc.input != nil {
+		value := reflect.ValueOf(tc.input)
+		if value.Kind() == reflect.Struct {
+			ptr := reflect.New(value.Type())
+			ptr.Elem().Set(value)
+			marshalInput = ptr.Interface()
+		}
+	}
+	data, err := writer.Marshal(marshalInput)
 	assert.NoError(t, err)
 
 	reader := NewForyWithOptions(WithXlang(true), WithCompatible(true))

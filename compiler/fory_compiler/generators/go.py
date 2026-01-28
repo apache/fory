@@ -184,6 +184,7 @@ class GoGenerator(BaseGenerator):
         PrimitiveKind.BYTES: "[]byte",
         PrimitiveKind.DATE: "fory.Date",
         PrimitiveKind.TIMESTAMP: "time.Time",
+        PrimitiveKind.ANY: "any",
     }
 
     def generate(self) -> List[GeneratedFile]:
@@ -462,6 +463,7 @@ class GoGenerator(BaseGenerator):
                 PrimitiveKind.BYTES: "fory.BINARY",
                 PrimitiveKind.DATE: "fory.DATE",
                 PrimitiveKind.TIMESTAMP: "fory.TIMESTAMP",
+                PrimitiveKind.ANY: "fory.UNKNOWN",
             }
             return primitive_type_ids.get(kind, "fory.UNKNOWN")
         if isinstance(field.field_type, ListType):
@@ -473,15 +475,15 @@ class GoGenerator(BaseGenerator):
             if isinstance(type_def, Enum):
                 if type_def.type_id is None:
                     return "fory.NAMED_ENUM"
-                return f"({type_def.type_id} << 8) | fory.ENUM"
+                return "fory.ENUM"
             if isinstance(type_def, Union):
                 if type_def.type_id is None:
                     return "fory.NAMED_UNION"
-                return f"({type_def.type_id} << 8) | fory.UNION"
+                return "fory.UNION"
             if isinstance(type_def, Message):
                 if type_def.type_id is None:
                     return "fory.NAMED_STRUCT"
-                return f"({type_def.type_id} << 8) | fory.STRUCT"
+                return "fory.STRUCT"
         return "fory.UNKNOWN"
 
     def get_union_case_reflect_type_expr(
@@ -605,11 +607,15 @@ class GoGenerator(BaseGenerator):
         is_list = isinstance(field.field_type, ListType)
         is_map = isinstance(field.field_type, MapType)
         is_collection = is_list or is_map
+        is_any = (
+            isinstance(field.field_type, PrimitiveType)
+            and field.field_type.kind == PrimitiveKind.ANY
+        )
         nullable_tag: Optional[bool] = None
         ref_tag: Optional[bool] = None
         if field.tag_id is not None:
             tags.append(f"id={field.tag_id}")
-        if field.optional:
+        if field.optional or is_any:
             nullable_tag = True
         elif is_collection and (
             field.ref or (is_list and (field.element_optional or field.element_ref))
@@ -618,8 +624,6 @@ class GoGenerator(BaseGenerator):
 
         if field.ref:
             ref_tag = True
-        elif is_list and field.element_ref:
-            ref_tag = False
 
         if nullable_tag is True:
             tags.append("nullable")
@@ -684,6 +688,8 @@ class GoGenerator(BaseGenerator):
         if not field.optional or field.ref:
             return False
         if isinstance(field.field_type, PrimitiveType):
+            if field.field_type.kind == PrimitiveKind.ANY:
+                return False
             base_type = self.PRIMITIVE_MAP[field.field_type.kind]
             return base_type not in ("[]byte", "time.Time", "fory.Date")
         if isinstance(field.field_type, NamedType):
@@ -703,6 +709,8 @@ class GoGenerator(BaseGenerator):
     ) -> str:
         """Generate Go type string."""
         if isinstance(field_type, PrimitiveType):
+            if field_type.kind == PrimitiveKind.ANY:
+                return "any"
             base_type = self.PRIMITIVE_MAP[field_type.kind]
             if nullable and base_type not in ("[]byte",):
                 if (
@@ -750,7 +758,7 @@ class GoGenerator(BaseGenerator):
             value_type = self.generate_type(
                 field_type.value_type,
                 False,
-                False,
+                field_type.value_ref,
                 False,
                 False,
                 parent_stack,

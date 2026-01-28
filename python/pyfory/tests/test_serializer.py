@@ -212,12 +212,12 @@ def test_tmp_ref(language):
     #  address of released tmp object.
     fory = Fory(language=language, ref=True)
     buffer = Buffer.allocate(128)
-    writer_index = buffer.writer_index
+    writer_index = buffer.get_writer_index()
     x = 1
     fory.serialize([x], buffer)
     fory.serialize([x], buffer)
     fory.serialize([x], buffer)
-    assert buffer.writer_index > writer_index + 15
+    assert buffer.get_writer_index() > writer_index + 15
 
     l1 = fory.deserialize(buffer)
     l2 = fory.deserialize(buffer)
@@ -320,15 +320,15 @@ def test_pickle():
     pickler.dump(b"abc")
     buf.write_int32(-1)
     pickler.dump("abcd")
-    assert buf.writer_index - 4 == len(pickle.dumps(b"abc")) + len(pickle.dumps("abcd"))
-    print(f"writer_index {buf.writer_index}")
+    assert buf.get_writer_index() - 4 == len(pickle.dumps(b"abc")) + len(pickle.dumps("abcd"))
+    print(f"writer_index {buf.get_writer_index()}")
 
     bytes_io_ = io.BytesIO(buf)
     unpickler = pickle.Unpickler(bytes_io_)
     assert unpickler.load() == b"abc"
     bytes_io_.seek(bytes_io_.tell() + 4)
     assert unpickler.load() == "abcd"
-    print(f"reader_index {buf.reader_index} {bytes_io_.tell()}")
+    print(f"reader_index {buf.get_reader_index()} {bytes_io_.tell()}")
 
     if pa:
         pa_buf = pa.BufferReader(buf)
@@ -336,13 +336,13 @@ def test_pickle():
         assert unpickler.load() == b"abc"
         pa_buf.seek(pa_buf.tell() + 4)
         assert unpickler.load() == "abcd"
-        print(f"reader_index {buf.reader_index} {pa_buf.tell()} {buf.reader_index}")
+        print(f"reader_index {buf.get_reader_index()} {pa_buf.tell()} {buf.get_reader_index()}")
 
     unpickler = pickle.Unpickler(buf)
     assert unpickler.load() == b"abc"
-    buf.reader_index = buf.reader_index + 4
+    buf.set_reader_index(buf.get_reader_index() + 4)
     assert unpickler.load() == "abcd"
-    print(f"reader_index {buf.reader_index}")
+    print(f"reader_index {buf.get_reader_index()}")
 
 
 @dataclass

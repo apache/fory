@@ -495,7 +495,7 @@ public class MapSerializers {
 
   // TODO(chaokunyang) support ConcurrentSkipListMap.SubMap mo efficiently.
   public static void registerDefaultSerializers(Fory fory) {
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     resolver.registerInternalSerializer(HashMap.class, new HashMapSerializer(fory));
     resolver.registerInternalSerializer(LinkedHashMap.class, new LinkedHashMapSerializer(fory));
     resolver.registerInternalSerializer(

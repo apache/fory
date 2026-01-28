@@ -15,10 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod addressbook;
-pub mod any_example;
-pub mod complex_fbs;
-pub mod monster;
-pub mod optional_types;
-pub mod graph;
-pub mod tree;
+package tree;
+
+message TreeNode {
+    string id = 1;
+    string name = 2;
+
+    repeated ref TreeNode children = 3;
+    ref(weak=true) TreeNode parent = 4; // back-pointer
+}

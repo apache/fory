@@ -600,7 +600,6 @@ struct UnsignedSchemaConsistentSimple {
   FORY_STRUCT(UnsignedSchemaConsistentSimple, u64Tagged, u64TaggedNullable);
 };
 FORY_FIELD_CONFIG(UnsignedSchemaConsistentSimple,
-                  UnsignedSchemaConsistentSimple,
                   (u64Tagged, fory::F().tagged()),
                   (u64TaggedNullable, fory::F().nullable().tagged()));
 
@@ -649,9 +648,8 @@ struct UnsignedSchemaConsistent {
               u64TaggedNullableField);
 };
 // Use new FORY_FIELD_CONFIG with builder pattern for encoding specification
-FORY_FIELD_CONFIG(UnsignedSchemaConsistent, UnsignedSchemaConsistent,
-                  (u8Field, fory::F()), (u16Field, fory::F()),
-                  (u32VarField, fory::F().varint()),
+FORY_FIELD_CONFIG(UnsignedSchemaConsistent, (u8Field, fory::F()),
+                  (u16Field, fory::F()), (u32VarField, fory::F().varint()),
                   (u32FixedField, fory::F().fixed()),
                   (u64VarField, fory::F().varint()),
                   (u64FixedField, fory::F().fixed()),
@@ -710,17 +708,19 @@ struct UnsignedSchemaCompatible {
 // Use new FORY_FIELD_CONFIG with builder pattern for encoding specification
 // Group 1: nullable in C++ (std::optional), non-nullable in Java
 // Group 2: non-nullable in C++, nullable in Java
-FORY_FIELD_CONFIG(
-    UnsignedSchemaCompatible, UnsignedSchemaCompatible,
-    (u8Field1, fory::F().nullable()), (u16Field1, fory::F().nullable()),
-    (u32VarField1, fory::F().nullable().varint()),
-    (u32FixedField1, fory::F().nullable().fixed()),
-    (u64VarField1, fory::F().nullable().varint()),
-    (u64FixedField1, fory::F().nullable().fixed()),
-    (u64TaggedField1, fory::F().nullable().tagged()), (u8Field2, fory::F()),
-    (u16Field2, fory::F()), (u32VarField2, fory::F().varint()),
-    (u32FixedField2, fory::F().fixed()), (u64VarField2, fory::F().varint()),
-    (u64FixedField2, fory::F().fixed()), (u64TaggedField2, fory::F().tagged()));
+FORY_FIELD_CONFIG(UnsignedSchemaCompatible, (u8Field1, fory::F().nullable()),
+                  (u16Field1, fory::F().nullable()),
+                  (u32VarField1, fory::F().nullable().varint()),
+                  (u32FixedField1, fory::F().nullable().fixed()),
+                  (u64VarField1, fory::F().nullable().varint()),
+                  (u64FixedField1, fory::F().nullable().fixed()),
+                  (u64TaggedField1, fory::F().nullable().tagged()),
+                  (u8Field2, fory::F()), (u16Field2, fory::F()),
+                  (u32VarField2, fory::F().varint()),
+                  (u32FixedField2, fory::F().fixed()),
+                  (u64VarField2, fory::F().varint()),
+                  (u64FixedField2, fory::F().fixed()),
+                  (u64TaggedField2, fory::F().tagged()));
 
 namespace fory {
 namespace serialization {

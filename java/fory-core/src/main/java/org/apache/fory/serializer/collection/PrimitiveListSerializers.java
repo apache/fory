@@ -542,7 +542,7 @@ public class PrimitiveListSerializers {
   public static void registerDefaultSerializers(Fory fory) {
     // Note: Classes are already registered in ClassResolver.initialize()
     // We only need to register serializers here
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     resolver.registerInternalSerializer(BoolList.class, new BoolListSerializer(fory));
     resolver.registerInternalSerializer(Int8List.class, new Int8ListSerializer(fory));
     resolver.registerInternalSerializer(Int16List.class, new Int16ListSerializer(fory));

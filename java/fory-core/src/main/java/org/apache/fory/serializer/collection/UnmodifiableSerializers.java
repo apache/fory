@@ -210,7 +210,7 @@ public class UnmodifiableSerializers {
    */
   public static void registerSerializers(Fory fory) {
     try {
-      TypeResolver resolver = fory._getTypeResolver();
+      TypeResolver resolver = fory.getTypeResolver();
       for (Tuple2<Class<?>, Function> factory : unmodifiableFactories()) {
         resolver.registerInternalSerializer(factory.f0, createSerializer(fory, factory));
       }

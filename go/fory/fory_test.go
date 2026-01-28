@@ -496,8 +496,22 @@ func TestSerializeZeroCopy(t *testing.T) {
 }
 */
 
+func marshalTestValue(value any) any {
+	if value == nil {
+		return value
+	}
+	valueRef := reflect.ValueOf(value)
+	if valueRef.Kind() == reflect.Struct {
+		ptr := reflect.New(valueRef.Type())
+		ptr.Elem().Set(valueRef)
+		return ptr.Interface()
+	}
+	return value
+}
+
 func serDeserializeTo(t *testing.T, fory *Fory, value any, to any) {
-	bytes, err := fory.Marshal(value)
+	marshalValue := marshalTestValue(value)
+	bytes, err := fory.Marshal(marshalValue)
 	require.Nil(t, err, fmt.Sprintf("serialize value %s with type %s failed: %s",
 		reflect.ValueOf(value), reflect.TypeOf(value), err))
 	require.Nil(t, fory.Unmarshal(bytes, to),
@@ -507,7 +521,8 @@ func serDeserializeTo(t *testing.T, fory *Fory, value any, to any) {
 }
 
 func serde(t *testing.T, fory *Fory, value any) {
-	bytes, err := fory.Marshal(value)
+	marshalValue := marshalTestValue(value)
+	bytes, err := fory.Marshal(marshalValue)
 	require.Nil(t, err, fmt.Sprintf("serialize value %s with type %s failed: %s",
 		reflect.ValueOf(value), reflect.TypeOf(value), err))
 	var newValue any

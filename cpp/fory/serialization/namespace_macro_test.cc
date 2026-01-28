@@ -125,9 +125,9 @@ public:
 
 FORY_ENUM(EnumContainer::Kind, Alpha, Beta);
 
-FORY_FIELD_CONFIG(Configured, Configured, (id_, fory::F().id(1).varint()));
+FORY_FIELD_CONFIG(Configured, (id_, fory::F().id(1).varint()));
 FORY_FIELD_TAGS(OptionalHolder, (name_, 1));
-FORY_FIELD_CONFIG(Partial, Partial, (count_, fory::F().id(7).varint()));
+FORY_FIELD_CONFIG(Partial, (count_, fory::F().id(7).varint()));
 FORY_FIELD_TAGS(Partial, (id_, 5));
 
 FORY_UNION(Choice, (std::string, text, fory::F(1)),

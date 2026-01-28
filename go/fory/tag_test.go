@@ -256,7 +256,7 @@ func TestSerializationWithTags(t *testing.T) {
 	}
 
 	// Serialize
-	data, err := fory.Marshal(person)
+	data, err := fory.Marshal(&person)
 	require.NoError(t, err)
 
 	// Deserialize
@@ -282,7 +282,7 @@ func TestSerializationWithoutTags(t *testing.T) {
 	}
 
 	// Serialize
-	data, err := fory.Marshal(person)
+	data, err := fory.Marshal(&person)
 	require.NoError(t, err)
 
 	// Deserialize
@@ -317,10 +317,10 @@ func TestTagIDReducesPayloadSize(t *testing.T) {
 	}
 
 	// Serialize both
-	dataWithTags, err := fory1.Marshal(personWithTags)
+	dataWithTags, err := fory1.Marshal(&personWithTags)
 	require.NoError(t, err)
 
-	dataWithoutTags, err := fory2.Marshal(personWithoutTags)
+	dataWithoutTags, err := fory2.Marshal(&personWithoutTags)
 	require.NoError(t, err)
 
 	// Tag IDs should produce smaller or equal payload
@@ -375,10 +375,10 @@ func TestNumericStructTagIDReducesSize(t *testing.T) {
 	}
 
 	// Serialize both
-	dataWithTags, err := fory1.Marshal(objWithTags)
+	dataWithTags, err := fory1.Marshal(&objWithTags)
 	require.NoError(t, err)
 
-	dataWithoutTags, err := fory2.Marshal(objWithoutTags)
+	dataWithoutTags, err := fory2.Marshal(&objWithoutTags)
 	require.NoError(t, err)
 
 	t.Logf("Numeric with tags: %d bytes, without tags: %d bytes, saved: %d bytes",
@@ -440,10 +440,10 @@ func TestNullableRefFlagsRespected(t *testing.T) {
 	objNoFlags := TestStructNoNull{A: &v1, B: &v2, C: &v3, D: &v4, E: &v5}
 	objDefault := TestStructDefalt{A: &v1, B: &v2, C: &v3, D: &v4, E: &v5}
 
-	dataNoFlags, err := fory1.Marshal(objNoFlags)
+	dataNoFlags, err := fory1.Marshal(&objNoFlags)
 	require.NoError(t, err)
 
-	dataDefault, err := fory2.Marshal(objDefault)
+	dataDefault, err := fory2.Marshal(&objDefault)
 	require.NoError(t, err)
 
 	// With nullable=false, we should save 5 bytes (1 null flag per field)
@@ -523,7 +523,7 @@ func TestLargeTagIDs(t *testing.T) {
 	}
 
 	// Serialize
-	data, err := fory.Marshal(obj)
+	data, err := fory.Marshal(&obj)
 	require.NoError(t, err)
 
 	// Deserialize
@@ -556,7 +556,7 @@ func TestMixedTagFields(t *testing.T) {
 	}
 
 	// Serialize
-	data, err := fory.Marshal(obj)
+	data, err := fory.Marshal(&obj)
 	require.NoError(t, err)
 
 	// Deserialize
@@ -598,7 +598,7 @@ func TestNestedStructWithTags(t *testing.T) {
 	}
 
 	// Serialize
-	data, err := fory.Marshal(obj)
+	data, err := fory.Marshal(&obj)
 	require.NoError(t, err)
 
 	// Deserialize

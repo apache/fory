@@ -351,7 +351,7 @@ public class Types {
   }
 
   private static int getUnionDescriptorTypeId(Fory fory, Class<?> rawType) {
-    ClassInfo classInfo = fory._getTypeResolver().getClassInfo(rawType, false);
+    ClassInfo classInfo = fory.getTypeResolver().getClassInfo(rawType, false);
     if (classInfo == null) {
       return -1;
     }
@@ -385,7 +385,7 @@ public class Types {
         return Types.FLOAT64;
       }
     }
-    ClassInfo classInfo = fory._getTypeResolver().getClassInfo(clz, false);
+    ClassInfo classInfo = fory.getTypeResolver().getClassInfo(clz, false);
     if (classInfo != null) {
       return classInfo.getTypeId();
     }

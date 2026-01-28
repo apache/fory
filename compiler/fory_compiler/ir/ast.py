@@ -72,10 +72,17 @@ class MapType:
 
     key_type: "FieldType"
     value_type: "FieldType"
+    value_ref: bool = False
+    value_ref_options: dict = field(default_factory=dict)
     location: Optional[SourceLocation] = None
 
     def __repr__(self) -> str:
-        return f"MapType({self.key_type}, {self.value_type})"
+        suffix = ""
+        if self.value_ref:
+            suffix = ", value_ref=True"
+            if self.value_ref_options:
+                suffix += f", value_ref_options={self.value_ref_options}"
+        return f"MapType({self.key_type}, {self.value_type}{suffix})"
 
 
 # Union of all field types
@@ -92,8 +99,10 @@ class Field:
     tag_id: Optional[int] = None
     optional: bool = False
     ref: bool = False
+    ref_options: dict = field(default_factory=dict)
     element_optional: bool = False
     element_ref: bool = False
+    element_ref_options: dict = field(default_factory=dict)
     options: dict = field(default_factory=dict)
     line: int = 0
     column: int = 0

@@ -178,7 +178,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   public BaseObjectCodecBuilder(TypeRef<?> beanType, Fory fory, Class<?> parentSerializerClass) {
     super(new CodegenContext(), beanType);
     this.fory = fory;
-    typeResolver = fory._getTypeResolver();
+    typeResolver = fory.getTypeResolver();
     this.parentSerializerClass = parentSerializerClass;
     if (fory.isCrossLanguage()) {
       writeMethodName = "xwrite";
@@ -204,7 +204,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
     typeResolverRef = fieldRef(TYPE_RESOLVER_NAME, typeResolverType);
     Expression typeResolverExpr =
         cast(
-            inlineInvoke(foryRef, "_getTypeResolver", TypeRef.of(TypeResolver.class)),
+            inlineInvoke(foryRef, "getTypeResolver", TypeRef.of(TypeResolver.class)),
             typeResolverType);
     ctx.addField(ctx.type(typeResolverType), TYPE_RESOLVER_NAME, typeResolverExpr);
     ctx.reserveName(STRING_SERIALIZER_NAME);
@@ -269,7 +269,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
   }
 
   protected static <T> T typeResolver(Fory fory, Function<TypeResolver, T> function) {
-    return fory.getJITContext().asyncVisitFory(f -> function.apply(f._getTypeResolver()));
+    return fory.getJITContext().asyncVisitFory(f -> function.apply(f.getTypeResolver()));
   }
 
   private boolean needWriteRef(TypeRef<?> type) {
@@ -292,7 +292,7 @@ public abstract class BaseObjectCodecBuilder extends CodecBuilder {
             ""
                 + "super(${fory}, ${cls});\n"
                 + "this.${fory} = ${fory};\n"
-                + "${fory}._getTypeResolver().setSerializerIfAbsent(${cls}, this);\n",
+                + "${fory}.getTypeResolver().setSerializerIfAbsent(${cls}, this);\n",
             "fory",
             FORY_NAME,
             "cls",

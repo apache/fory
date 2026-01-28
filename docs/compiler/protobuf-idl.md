@@ -192,24 +192,35 @@ message TreeNode {
 }
 ```
 
+When using protobuf IDL with the Fory compiler, you can opt into reference
+tracking via Fory extension options. `weak_ref` implies `ref`, while
+`thread_safe_pointer` does not:
+
+```protobuf
+message TreeNode {
+  TreeNode parent = 1 [(fory).weak_ref = true];
+  TreeNode child = 2 [(fory).ref = true, (fory).thread_safe_pointer = false];
+}
+```
+
 ### Type System
 
-| Type       | Protocol Buffers                                                                                       | FDL                               |
-| ---------- | ------------------------------------------------------------------------------------------------------ | --------------------------------- |
-| Boolean    | `bool`                                                                                                 | `bool`                            |
-| Integers   | `int32`, `int64`, `sint32`, `sint64`, `uint32`, `uint64`, `fixed32`, `fixed64`, `sfixed32`, `sfixed64` | `int8`, `int16`, `int32`, `int64` |
-| Floats     | `float`, `double`                                                                                      | `float32`, `float64`              |
-| String     | `string`                                                                                               | `string`                          |
-| Binary     | `bytes`                                                                                                | `bytes`                           |
-| Timestamp  | `google.protobuf.Timestamp`                                                                            | `timestamp`                       |
-| Date       | Not built-in                                                                                           | `date`                            |
-| Duration   | `google.protobuf.Duration`                                                                             | Not built-in                      |
-| List       | `repeated T`                                                                                           | `repeated T`                      |
-| Map        | `map<K, V>`                                                                                            | `map<K, V>`                       |
-| Nullable   | `optional T` (proto3)                                                                                  | `optional T`                      |
-| Oneof      | `oneof`                                                                                                | `union` (case id = field number)  |
-| Any        | `google.protobuf.Any`                                                                                  | Not supported                     |
-| Extensions | `extend`                                                                                               | Not supported                     |
+| Type       | Protocol Buffers                                                                                       | FDL                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Boolean    | `bool`                                                                                                 | `bool`                                                                                          |
+| Integers   | `int32`, `int64`, `sint32`, `sint64`, `uint32`, `uint64`, `fixed32`, `fixed64`, `sfixed32`, `sfixed64` | `int8`, `int16`, `int32`, `int64`, `uint8`, `uint16`, `uint32`, `uint64`, `fixed_*`, `tagged_*` |
+| Floats     | `float`, `double`                                                                                      | `float32`, `float64`                                                                            |
+| String     | `string`                                                                                               | `string`                                                                                        |
+| Binary     | `bytes`                                                                                                | `bytes`                                                                                         |
+| Timestamp  | `google.protobuf.Timestamp`                                                                            | `timestamp`                                                                                     |
+| Date       | Not built-in                                                                                           | `date`                                                                                          |
+| Duration   | `google.protobuf.Duration`                                                                             | Not built-in                                                                                    |
+| List       | `repeated T`                                                                                           | `repeated T`                                                                                    |
+| Map        | `map<K, V>`                                                                                            | `map<K, V>`                                                                                     |
+| Nullable   | `optional T` (proto3)                                                                                  | `optional T`                                                                                    |
+| Oneof      | `oneof`                                                                                                | `union` (case id = field number)                                                                |
+| Any        | `google.protobuf.Any`                                                                                  | `any`                                                                                           |
+| Extensions | `extend`                                                                                               | Not supported                                                                                   |
 
 ### Wire Format
 

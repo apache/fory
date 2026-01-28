@@ -144,6 +144,11 @@ message ForyFieldOptions {
 
   // Mark this field as deprecated.
   optional bool deprecated = 3;
+
+  // Generate a weak reference for ref fields in C++/Rust codegen.
+  // Requires ref=true or a ref modifier. Ignored by Java/Python/Go.
+  // Default: false
+  optional bool weak_ref = 4;
 }
 
 extend google.protobuf.FieldOptions { optional ForyFieldOptions fory = 50001; }

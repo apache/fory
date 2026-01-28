@@ -17,19 +17,25 @@
  * under the License.
  */
 
+#include <any>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "addressbook.h"
+#include "any_example.h"
 #include "complex_fbs.h"
+#include "fory/serialization/any_serializer.h"
 #include "fory/serialization/fory.h"
+#include "graph.h"
 #include "monster.h"
 #include "optional_types.h"
+#include "tree.h"
 
 namespace {
 
@@ -60,6 +66,96 @@ fory::Result<void, fory::Error> WriteFile(const std::string &path,
   return fory::Result<void, fory::Error>();
 }
 
+tree::TreeNode BuildTree() {
+  auto child_a = std::make_shared<tree::TreeNode>();
+  child_a->set_id("child-a");
+  child_a->set_name("child-a");
+
+  auto child_b = std::make_shared<tree::TreeNode>();
+  child_b->set_id("child-b");
+  child_b->set_name("child-b");
+
+  child_a->set_parent(
+      fory::serialization::SharedWeak<tree::TreeNode>::from(child_b));
+  child_b->set_parent(
+      fory::serialization::SharedWeak<tree::TreeNode>::from(child_a));
+
+  tree::TreeNode root;
+  root.set_id("root");
+  root.set_name("root");
+  *root.mutable_children() = {child_a, child_a, child_b};
+  return root;
+}
+
+fory::Result<void, fory::Error> ValidateTree(const tree::TreeNode &root) {
+  const auto &children = root.children();
+  if (children.size() != 3 || children[0] != children[1] ||
+      children[0] == children[2]) {
+    return fory::Unexpected(fory::Error::invalid("tree children mismatch"));
+  }
+  auto parent_a = children[0]->parent().upgrade();
+  auto parent_b = children[2]->parent().upgrade();
+  if (!parent_a || !parent_b) {
+    return fory::Unexpected(fory::Error::invalid("tree parent upgrade failed"));
+  }
+  if (parent_a != children[2] || parent_b != children[0]) {
+    return fory::Unexpected(fory::Error::invalid("tree parent mismatch"));
+  }
+  return fory::Result<void, fory::Error>();
+}
+
+graph::Graph BuildGraph() {
+  auto node_a = std::make_shared<graph::Node>();
+  node_a->set_id("node-a");
+  auto node_b = std::make_shared<graph::Node>();
+  node_b->set_id("node-b");
+
+  auto edge = std::make_shared<graph::Edge>();
+  edge->set_id("edge-1");
+  edge->set_weight(1.5F);
+  edge->set_from(fory::serialization::SharedWeak<graph::Node>::from(node_a));
+  edge->set_to(fory::serialization::SharedWeak<graph::Node>::from(node_b));
+
+  *node_a->mutable_out_edges() = {edge};
+  *node_a->mutable_in_edges() = {edge};
+  *node_b->mutable_in_edges() = {edge};
+
+  graph::Graph graph_value;
+  *graph_value.mutable_nodes() = {node_a, node_b};
+  *graph_value.mutable_edges() = {edge};
+  return graph_value;
+}
+
+fory::Result<void, fory::Error> ValidateGraph(const graph::Graph &graph_value) {
+  const auto &nodes = graph_value.nodes();
+  const auto &edges = graph_value.edges();
+  if (nodes.size() != 2 || edges.size() != 1) {
+    return fory::Unexpected(fory::Error::invalid("graph size mismatch"));
+  }
+  const auto &node_a = nodes[0];
+  const auto &node_b = nodes[1];
+  const auto &edge = edges[0];
+  if (node_a->out_edges().empty() || node_a->in_edges().empty()) {
+    return fory::Unexpected(fory::Error::invalid("graph edge list empty"));
+  }
+  if (node_a->out_edges()[0] != node_a->in_edges()[0] ||
+      node_a->out_edges()[0] != edge) {
+    return fory::Unexpected(fory::Error::invalid("graph shared edge mismatch"));
+  }
+  auto from = edge->from().upgrade();
+  auto to = edge->to().upgrade();
+  if (!from || !to) {
+    return fory::Unexpected(fory::Error::invalid("graph weak upgrade failed"));
+  }
+  if (from != node_a || to != node_b) {
+    return fory::Unexpected(
+        fory::Error::invalid("graph edge endpoints mismatch"));
+  }
+  return fory::Result<void, fory::Error>();
+}
+
+using StringMap = std::map<std::string, std::string>;
+
 fory::Result<void, fory::Error> RunRoundTrip() {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
@@ -71,6 +167,29 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   monster::RegisterTypes(fory);
   complex_fbs::RegisterTypes(fory);
   optional_types::RegisterTypes(fory);
+  any_example::RegisterTypes(fory);
+
+  FORY_RETURN_IF_ERROR(
+      fory::serialization::register_any_type<bool>(fory.type_resolver()));
+  FORY_RETURN_IF_ERROR(fory::serialization::register_any_type<std::string>(
+      fory.type_resolver()));
+  FORY_RETURN_IF_ERROR(
+      fory::serialization::register_any_type<fory::serialization::Date>(
+          fory.type_resolver()));
+  FORY_RETURN_IF_ERROR(
+      fory::serialization::register_any_type<fory::serialization::Timestamp>(
+          fory.type_resolver()));
+  FORY_RETURN_IF_ERROR(
+      fory::serialization::register_any_type<any_example::AnyInner>(
+          fory.type_resolver()));
+  FORY_RETURN_IF_ERROR(
+      fory::serialization::register_any_type<any_example::AnyUnion>(
+          fory.type_resolver()));
+  FORY_RETURN_IF_ERROR(
+      fory::serialization::register_any_type<std::vector<std::string>>(
+          fory.type_resolver()));
+  FORY_RETURN_IF_ERROR(
+      fory::serialization::register_any_type<StringMap>(fory.type_resolver()));
 
   addressbook::Person::PhoneNumber mobile;
   mobile.set_number("555-0100");
@@ -251,6 +370,30 @@ fory::Result<void, fory::Error> RunRoundTrip() {
         fory::Error::invalid("optional types roundtrip mismatch"));
   }
 
+  any_example::AnyInner any_inner;
+  any_inner.set_name("inner");
+
+  any_example::AnyHolder any_holder;
+  any_holder.set_bool_value(std::any(true));
+  any_holder.set_string_value(std::any(std::string("hello")));
+  any_holder.set_date_value(std::any(fory::serialization::Date(19724)));
+  any_holder.set_timestamp_value(std::any(
+      fory::serialization::Timestamp(std::chrono::seconds(1704164645))));
+  any_holder.set_message_value(std::any(any_inner));
+  any_holder.set_union_value(std::any(any_example::AnyUnion::text("union")));
+  any_holder.set_list_value(
+      std::any(std::vector<std::string>{"alpha", "beta"}));
+  any_holder.set_map_value(std::any(StringMap{{"k1", "v1"}, {"k2", "v2"}}));
+
+  FORY_TRY(any_bytes, fory.serialize(any_holder));
+  FORY_TRY(any_roundtrip, fory.deserialize<any_example::AnyHolder>(
+                              any_bytes.data(), any_bytes.size()));
+
+  if (!(any_roundtrip == any_holder)) {
+    return fory::Unexpected(
+        fory::Error::invalid("any holder roundtrip mismatch"));
+  }
+
   const char *data_file = std::getenv("DATA_FILE");
   if (data_file != nullptr && data_file[0] != '\0') {
     FORY_TRY(payload, ReadFile(data_file));
@@ -313,6 +456,46 @@ fory::Result<void, fory::Error> RunRoundTrip() {
     }
     FORY_TRY(peer_bytes, fory.serialize(peer_holder));
     FORY_RETURN_IF_ERROR(WriteFile(optional_file, peer_bytes));
+  }
+
+  auto ref_fory = fory::serialization::Fory::builder()
+                      .xlang(true)
+                      .check_struct_version(true)
+                      .track_ref(true)
+                      .build();
+  tree::RegisterTypes(ref_fory);
+  graph::RegisterTypes(ref_fory);
+
+  tree::TreeNode tree_root = BuildTree();
+  FORY_TRY(tree_bytes, ref_fory.serialize(tree_root));
+  FORY_TRY(tree_roundtrip, ref_fory.deserialize<tree::TreeNode>(
+                               tree_bytes.data(), tree_bytes.size()));
+  FORY_RETURN_IF_ERROR(ValidateTree(tree_roundtrip));
+
+  const char *tree_file = std::getenv("DATA_FILE_TREE");
+  if (tree_file != nullptr && tree_file[0] != '\0') {
+    FORY_TRY(payload, ReadFile(tree_file));
+    FORY_TRY(peer_tree, ref_fory.deserialize<tree::TreeNode>(payload.data(),
+                                                             payload.size()));
+    FORY_RETURN_IF_ERROR(ValidateTree(peer_tree));
+    FORY_TRY(peer_bytes, ref_fory.serialize(peer_tree));
+    FORY_RETURN_IF_ERROR(WriteFile(tree_file, peer_bytes));
+  }
+
+  graph::Graph graph_value = BuildGraph();
+  FORY_TRY(graph_bytes, ref_fory.serialize(graph_value));
+  FORY_TRY(graph_roundtrip, ref_fory.deserialize<graph::Graph>(
+                                graph_bytes.data(), graph_bytes.size()));
+  FORY_RETURN_IF_ERROR(ValidateGraph(graph_roundtrip));
+
+  const char *graph_file = std::getenv("DATA_FILE_GRAPH");
+  if (graph_file != nullptr && graph_file[0] != '\0') {
+    FORY_TRY(payload, ReadFile(graph_file));
+    FORY_TRY(peer_graph, ref_fory.deserialize<graph::Graph>(payload.data(),
+                                                            payload.size()));
+    FORY_RETURN_IF_ERROR(ValidateGraph(peer_graph));
+    FORY_TRY(peer_bytes, ref_fory.serialize(peer_graph));
+    FORY_RETURN_IF_ERROR(WriteFile(graph_file, peer_bytes));
   }
 
   return fory::Result<void, fory::Error>();

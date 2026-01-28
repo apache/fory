@@ -144,7 +144,7 @@ public class Fingerprint {
 
   private static int getTypeId(Fory fory, Descriptor descriptor) {
     Class<?> cls = descriptor.getTypeRef().getRawType();
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     if (resolver.isSet(cls)) {
       return Types.SET;
     } else if (resolver.isCollection(cls)) {

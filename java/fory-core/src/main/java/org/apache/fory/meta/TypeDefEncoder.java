@@ -67,7 +67,7 @@ class TypeDefEncoder {
                 fory.getXtypeResolver().getFieldDescriptors(type, true),
                 false,
                 Function.identity());
-    ClassInfo classInfo = fory._getTypeResolver().getClassInfo(type);
+    ClassInfo classInfo = fory.getTypeResolver().getClassInfo(type);
     List<Field> fields;
     int typeId = classInfo.getTypeId();
     if (Types.isStructType(typeId & 0xff)) {

@@ -142,7 +142,7 @@ public class FieldGroups {
       this.descriptor = d;
       this.typeRef = d.getTypeRef();
       this.dispatchId = DispatchId.getDispatchId(fory, d);
-      TypeResolver resolver = fory._getTypeResolver();
+      TypeResolver resolver = fory.getTypeResolver();
       // invoke `copy` to avoid ObjectSerializer construct clear serializer by `clearSerializer`.
       if (resolver.isMonomorphic(descriptor)) {
         classInfo = SerializationUtils.getClassInfo(fory, typeRef.getRawType());

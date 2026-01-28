@@ -102,23 +102,21 @@ cdef class Buffer:
             self._error.reset()
             raise_fory_error(code, message)
 
-    property reader_index:
-        def __get__(self):
-            return self.c_buffer.reader_index()
+    cpdef inline int32_t get_reader_index(self):
+        return <int32_t>self.c_buffer.reader_index()
 
-        def __set__(self, int32_t value):
-            if value < 0:
-                raise ValueError("reader_index must be >= 0")
-            self.c_buffer.ReaderIndex(<uint32_t>value)
+    cpdef inline void set_reader_index(self, int32_t value):
+        if value < 0:
+            raise ValueError("reader_index must be >= 0")
+        self.c_buffer.ReaderIndex(<uint32_t>value)
 
-    property writer_index:
-        def __get__(self):
-            return self.c_buffer.writer_index()
+    cpdef inline int32_t get_writer_index(self):
+        return <int32_t>self.c_buffer.writer_index()
 
-        def __set__(self, int32_t value):
-            if value < 0:
-                raise ValueError("writer_index must be >= 0")
-            self.c_buffer.WriterIndex(<uint32_t>value)
+    cpdef inline void set_writer_index(self, int32_t value):
+        if value < 0:
+            raise ValueError("writer_index must be >= 0")
+        self.c_buffer.WriterIndex(<uint32_t>value)
 
     cpdef c_bool own_data(self):
         return self.c_buffer.own_data()
@@ -625,7 +623,7 @@ cdef class Buffer:
 
     def __repr__(self):
         return "Buffer(reader_index={}, writer_index={}, size={})".format(
-            self.reader_index, self.writer_index, self.size()
+            self.get_reader_index(), self.get_writer_index(), self.size()
         )
 
 

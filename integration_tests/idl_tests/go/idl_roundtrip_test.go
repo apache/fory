@@ -25,9 +25,12 @@ import (
 
 	fory "github.com/apache/fory/go/fory"
 	"github.com/apache/fory/go/fory/optional"
+	anyexample "github.com/apache/fory/integration_tests/idl_tests/go/any_example"
 	complexfbs "github.com/apache/fory/integration_tests/idl_tests/go/complex_fbs"
+	graphpkg "github.com/apache/fory/integration_tests/idl_tests/go/graph"
 	monster "github.com/apache/fory/integration_tests/idl_tests/go/monster"
 	optionaltypes "github.com/apache/fory/integration_tests/idl_tests/go/optional_types"
+	treepkg "github.com/apache/fory/integration_tests/idl_tests/go/tree"
 )
 
 func buildAddressBook() AddressBook {
@@ -80,6 +83,9 @@ func TestAddressBookRoundTrip(t *testing.T) {
 	if err := optionaltypes.RegisterTypes(f); err != nil {
 		t.Fatalf("register optional types: %v", err)
 	}
+	if err := anyexample.RegisterTypes(f); err != nil {
+		t.Fatalf("register any example types: %v", err)
+	}
 
 	book := buildAddressBook()
 	runLocalRoundTrip(t, f, book)
@@ -100,10 +106,225 @@ func TestAddressBookRoundTrip(t *testing.T) {
 	holder := buildOptionalHolder()
 	runLocalOptionalRoundTrip(t, f, holder)
 	runFileOptionalRoundTrip(t, f, holder)
+
+	anyHolder := buildAnyHolder()
+	runLocalAnyRoundTrip(t, f, anyHolder)
+
+	refFory := fory.NewFory(fory.WithXlang(true), fory.WithRefTracking(true))
+	if err := treepkg.RegisterTypes(refFory); err != nil {
+		t.Fatalf("register tree types: %v", err)
+	}
+	if err := graphpkg.RegisterTypes(refFory); err != nil {
+		t.Fatalf("register graph types: %v", err)
+	}
+	treeRoot := buildTree()
+	runLocalTreeRoundTrip(t, refFory, treeRoot)
+	runFileTreeRoundTrip(t, refFory, treeRoot)
+	graphValue := buildGraph()
+	runLocalGraphRoundTrip(t, refFory, graphValue)
+	runFileGraphRoundTrip(t, refFory, graphValue)
+}
+
+func buildAnyHolder() anyexample.AnyHolder {
+	inner := anyexample.AnyInner{Name: "inner"}
+	unionValue := anyexample.TextAnyUnion("union")
+	return anyexample.AnyHolder{
+		BoolValue:      true,
+		StringValue:    "hello",
+		DateValue:      fory.Date{Year: 2024, Month: time.January, Day: 2},
+		TimestampValue: time.Unix(1704164645, 0).UTC(),
+		MessageValue:   &inner,
+		UnionValue:     unionValue,
+		ListValue:      []string{"alpha", "beta"},
+		MapValue:       map[string]string{"k1": "v1", "k2": "v2"},
+	}
+}
+
+func runLocalAnyRoundTrip(t *testing.T, f *fory.Fory, holder anyexample.AnyHolder) {
+	data, err := f.Serialize(&holder)
+	if err != nil {
+		t.Fatalf("serialize any: %v", err)
+	}
+
+	var out anyexample.AnyHolder
+	if err := f.Deserialize(data, &out); err != nil {
+		t.Fatalf("deserialize any: %v", err)
+	}
+
+	assertAnyHolderEqual(t, holder, out)
+}
+
+func assertAnyHolderEqual(t *testing.T, expected, actual anyexample.AnyHolder) {
+	t.Helper()
+
+	if !anyBoolEqual(expected.BoolValue, actual.BoolValue) {
+		t.Fatalf("any bool mismatch: %#v != %#v", expected.BoolValue, actual.BoolValue)
+	}
+	if !anyStringEqual(expected.StringValue, actual.StringValue) {
+		t.Fatalf("any string mismatch: %#v != %#v", expected.StringValue, actual.StringValue)
+	}
+	if !anyDateEqual(expected.DateValue, actual.DateValue) {
+		t.Fatalf("any date mismatch: %#v != %#v", expected.DateValue, actual.DateValue)
+	}
+	if !anyTimeEqual(expected.TimestampValue, actual.TimestampValue) {
+		t.Fatalf("any timestamp mismatch: %#v != %#v", expected.TimestampValue, actual.TimestampValue)
+	}
+	if !anyInnerEqual(expected.MessageValue, actual.MessageValue) {
+		t.Fatalf("any message mismatch: %#v != %#v", expected.MessageValue, actual.MessageValue)
+	}
+	if !reflect.DeepEqual(expected.UnionValue, actual.UnionValue) {
+		t.Fatalf("any union mismatch: %#v != %#v", expected.UnionValue, actual.UnionValue)
+	}
+	if !anyStringSliceEqual(expected.ListValue, actual.ListValue) {
+		t.Fatalf("any list mismatch: %#v != %#v", expected.ListValue, actual.ListValue)
+	}
+	if !anyStringMapEqual(expected.MapValue, actual.MapValue) {
+		t.Fatalf("any map mismatch: %#v != %#v", expected.MapValue, actual.MapValue)
+	}
+}
+
+func anyBoolEqual(expected, actual any) bool {
+	expectedValue, ok := expected.(bool)
+	if !ok {
+		return false
+	}
+	actualValue, ok := actual.(bool)
+	if !ok {
+		return false
+	}
+	return expectedValue == actualValue
+}
+
+func anyStringEqual(expected, actual any) bool {
+	expectedValue, ok := expected.(string)
+	if !ok {
+		return false
+	}
+	actualValue, ok := actual.(string)
+	if !ok {
+		return false
+	}
+	return expectedValue == actualValue
+}
+
+func anyDateEqual(expected, actual any) bool {
+	expectedValue, ok := expected.(fory.Date)
+	if !ok {
+		return false
+	}
+	actualValue, ok := actual.(fory.Date)
+	if !ok {
+		return false
+	}
+	return expectedValue == actualValue
+}
+
+func anyTimeEqual(expected, actual any) bool {
+	expectedValue, ok := expected.(time.Time)
+	if !ok {
+		return false
+	}
+	actualValue, ok := actual.(time.Time)
+	if !ok {
+		return false
+	}
+	return expectedValue.Equal(actualValue)
+}
+
+func anyInnerEqual(expected, actual any) bool {
+	expectedValue, ok := normalizeAnyInner(expected)
+	if !ok {
+		return false
+	}
+	actualValue, ok := normalizeAnyInner(actual)
+	if !ok {
+		return false
+	}
+	return expectedValue == actualValue
+}
+
+func normalizeAnyInner(value any) (string, bool) {
+	switch typed := value.(type) {
+	case *anyexample.AnyInner:
+		if typed == nil {
+			return "", true
+		}
+		return typed.Name, true
+	case anyexample.AnyInner:
+		return typed.Name, true
+	default:
+		return "", false
+	}
+}
+
+func anyStringSliceEqual(expected, actual any) bool {
+	expectedValue, ok := normalizeStringSlice(expected)
+	if !ok {
+		return false
+	}
+	actualValue, ok := normalizeStringSlice(actual)
+	if !ok {
+		return false
+	}
+	return reflect.DeepEqual(expectedValue, actualValue)
+}
+
+func normalizeStringSlice(value any) ([]string, bool) {
+	switch typed := value.(type) {
+	case []string:
+		return typed, true
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			str, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			out = append(out, str)
+		}
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
+func anyStringMapEqual(expected, actual any) bool {
+	expectedValue, ok := normalizeStringMap(expected)
+	if !ok {
+		return false
+	}
+	actualValue, ok := normalizeStringMap(actual)
+	if !ok {
+		return false
+	}
+	return reflect.DeepEqual(expectedValue, actualValue)
+}
+
+func normalizeStringMap(value any) (map[string]string, bool) {
+	switch typed := value.(type) {
+	case map[string]string:
+		return typed, true
+	case map[any]any:
+		out := make(map[string]string, len(typed))
+		for k, v := range typed {
+			key, ok := k.(string)
+			if !ok {
+				return nil, false
+			}
+			val, ok := v.(string)
+			if !ok {
+				return nil, false
+			}
+			out[key] = val
+		}
+		return out, true
+	default:
+		return nil, false
+	}
 }
 
 func runLocalRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
-	data, err := f.Serialize(book)
+	data, err := f.Serialize(&book)
 	if err != nil {
 		t.Fatalf("serialize: %v", err)
 	}
@@ -136,7 +357,7 @@ func runFileRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
 		t.Fatalf("peer payload mismatch: %#v != %#v", book, decoded)
 	}
 
-	out, err := f.Serialize(decoded)
+	out, err := f.Serialize(&decoded)
 	if err != nil {
 		t.Fatalf("serialize peer payload: %v", err)
 	}
@@ -171,7 +392,7 @@ func buildPrimitiveTypes() PrimitiveTypes {
 }
 
 func runLocalPrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes) {
-	data, err := f.Serialize(types)
+	data, err := f.Serialize(&types)
 	if err != nil {
 		t.Fatalf("serialize: %v", err)
 	}
@@ -204,7 +425,7 @@ func runFilePrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes)
 		t.Fatalf("peer payload mismatch: %#v != %#v", types, decoded)
 	}
 
-	out, err := f.Serialize(decoded)
+	out, err := f.Serialize(&decoded)
 	if err != nil {
 		t.Fatalf("serialize peer payload: %v", err)
 	}
@@ -231,7 +452,7 @@ func buildMonster() monster.Monster {
 }
 
 func runLocalMonsterRoundTrip(t *testing.T, f *fory.Fory, monsterValue monster.Monster) {
-	data, err := f.Serialize(monsterValue)
+	data, err := f.Serialize(&monsterValue)
 	if err != nil {
 		t.Fatalf("serialize: %v", err)
 	}
@@ -264,7 +485,7 @@ func runFileMonsterRoundTrip(t *testing.T, f *fory.Fory, monsterValue monster.Mo
 		t.Fatalf("peer payload mismatch: %#v != %#v", monsterValue, decoded)
 	}
 
-	out, err := f.Serialize(decoded)
+	out, err := f.Serialize(&decoded)
 	if err != nil {
 		t.Fatalf("serialize peer payload: %v", err)
 	}
@@ -302,7 +523,7 @@ func buildContainer() complexfbs.Container {
 }
 
 func runLocalContainerRoundTrip(t *testing.T, f *fory.Fory, container complexfbs.Container) {
-	data, err := f.Serialize(container)
+	data, err := f.Serialize(&container)
 	if err != nil {
 		t.Fatalf("serialize: %v", err)
 	}
@@ -335,7 +556,7 @@ func runFileContainerRoundTrip(t *testing.T, f *fory.Fory, container complexfbs.
 		t.Fatalf("peer payload mismatch: %#v != %#v", container, decoded)
 	}
 
-	out, err := f.Serialize(decoded)
+	out, err := f.Serialize(&decoded)
 	if err != nil {
 		t.Fatalf("serialize peer payload: %v", err)
 	}
@@ -385,7 +606,7 @@ func buildOptionalHolder() optionaltypes.OptionalHolder {
 }
 
 func runLocalOptionalRoundTrip(t *testing.T, f *fory.Fory, holder optionaltypes.OptionalHolder) {
-	data, err := f.Serialize(holder)
+	data, err := f.Serialize(&holder)
 	if err != nil {
 		t.Fatalf("serialize: %v", err)
 	}
@@ -414,12 +635,150 @@ func runFileOptionalRoundTrip(t *testing.T, f *fory.Fory, holder optionaltypes.O
 	}
 	assertOptionalHolderEqual(t, holder, decoded)
 
-	out, err := f.Serialize(decoded)
+	out, err := f.Serialize(&decoded)
 	if err != nil {
 		t.Fatalf("serialize peer payload: %v", err)
 	}
 	if err := os.WriteFile(dataFile, out, 0o644); err != nil {
 		t.Fatalf("write data file: %v", err)
+	}
+}
+
+func buildTree() treepkg.TreeNode {
+	childA := &treepkg.TreeNode{Id: "child-a", Name: "child-a"}
+	childB := &treepkg.TreeNode{Id: "child-b", Name: "child-b"}
+	childA.Children = []*treepkg.TreeNode{}
+	childB.Children = []*treepkg.TreeNode{}
+	childA.Parent = childB
+	childB.Parent = childA
+
+	return treepkg.TreeNode{
+		Id:       "root",
+		Name:     "root",
+		Children: []*treepkg.TreeNode{childA, childA, childB},
+	}
+}
+
+func runLocalTreeRoundTrip(t *testing.T, f *fory.Fory, root treepkg.TreeNode) {
+	data, err := f.Serialize(&root)
+	if err != nil {
+		t.Fatalf("serialize tree: %v", err)
+	}
+	var out treepkg.TreeNode
+	if err := f.Deserialize(data, &out); err != nil {
+		t.Fatalf("deserialize tree: %v", err)
+	}
+	assertTree(t, out)
+}
+
+func runFileTreeRoundTrip(t *testing.T, f *fory.Fory, root treepkg.TreeNode) {
+	dataFile := os.Getenv("DATA_FILE_TREE")
+	if dataFile == "" {
+		return
+	}
+	payload, err := os.ReadFile(dataFile)
+	if err != nil {
+		t.Fatalf("read tree payload: %v", err)
+	}
+	var decoded treepkg.TreeNode
+	if err := f.Deserialize(payload, &decoded); err != nil {
+		t.Fatalf("deserialize tree payload: %v", err)
+	}
+	assertTree(t, decoded)
+	out, err := f.Serialize(&decoded)
+	if err != nil {
+		t.Fatalf("serialize tree payload: %v", err)
+	}
+	if err := os.WriteFile(dataFile, out, 0o644); err != nil {
+		t.Fatalf("write tree payload: %v", err)
+	}
+}
+
+func assertTree(t *testing.T, root treepkg.TreeNode) {
+	t.Helper()
+	if len(root.Children) != 3 {
+		t.Fatalf("tree children size mismatch")
+	}
+	if root.Children[0] != root.Children[1] {
+		t.Fatalf("tree shared child mismatch")
+	}
+	if root.Children[0] == root.Children[2] {
+		t.Fatalf("tree distinct child mismatch")
+	}
+	if root.Children[0].Parent != root.Children[2] {
+		t.Fatalf("tree parent back-pointer mismatch")
+	}
+	if root.Children[2].Parent != root.Children[0] {
+		t.Fatalf("tree parent reverse mismatch")
+	}
+}
+
+func buildGraph() graphpkg.Graph {
+	nodeA := &graphpkg.Node{Id: "node-a"}
+	nodeB := &graphpkg.Node{Id: "node-b"}
+	edge := &graphpkg.Edge{Id: "edge-1", Weight: 1.5, From: nodeA, To: nodeB}
+	nodeA.OutEdges = []*graphpkg.Edge{edge}
+	nodeA.InEdges = []*graphpkg.Edge{edge}
+	nodeB.InEdges = []*graphpkg.Edge{edge}
+	nodeB.OutEdges = []*graphpkg.Edge{}
+
+	return graphpkg.Graph{
+		Nodes: []*graphpkg.Node{nodeA, nodeB},
+		Edges: []*graphpkg.Edge{edge},
+	}
+}
+
+func runLocalGraphRoundTrip(t *testing.T, f *fory.Fory, graphValue graphpkg.Graph) {
+	data, err := f.Serialize(&graphValue)
+	if err != nil {
+		t.Fatalf("serialize graph: %v", err)
+	}
+	var out graphpkg.Graph
+	if err := f.Deserialize(data, &out); err != nil {
+		t.Fatalf("deserialize graph: %v", err)
+	}
+	assertGraph(t, out)
+}
+
+func runFileGraphRoundTrip(t *testing.T, f *fory.Fory, graphValue graphpkg.Graph) {
+	dataFile := os.Getenv("DATA_FILE_GRAPH")
+	if dataFile == "" {
+		return
+	}
+	payload, err := os.ReadFile(dataFile)
+	if err != nil {
+		t.Fatalf("read graph payload: %v", err)
+	}
+	var decoded graphpkg.Graph
+	if err := f.Deserialize(payload, &decoded); err != nil {
+		t.Fatalf("deserialize graph payload: %v", err)
+	}
+	assertGraph(t, decoded)
+	out, err := f.Serialize(&decoded)
+	if err != nil {
+		t.Fatalf("serialize graph payload: %v", err)
+	}
+	if err := os.WriteFile(dataFile, out, 0o644); err != nil {
+		t.Fatalf("write graph payload: %v", err)
+	}
+}
+
+func assertGraph(t *testing.T, graphValue graphpkg.Graph) {
+	t.Helper()
+	if len(graphValue.Nodes) != 2 || len(graphValue.Edges) != 1 {
+		t.Fatalf("graph size mismatch")
+	}
+	nodeA := graphValue.Nodes[0]
+	nodeB := graphValue.Nodes[1]
+	edge := graphValue.Edges[0]
+	if nodeA.OutEdges[0] != nodeA.InEdges[0] {
+		t.Fatalf("graph shared edge mismatch")
+	}
+	if edge != nodeA.OutEdges[0] {
+		t.Fatalf("graph edge link mismatch")
+	}
+	if edge.From != nodeA || edge.To != nodeB {
+		t.Fatalf("graph edge endpoints mismatch")
 	}
 }
 

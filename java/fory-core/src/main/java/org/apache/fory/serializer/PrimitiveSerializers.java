@@ -350,7 +350,7 @@ public class PrimitiveSerializers {
 
   public static void registerDefaultSerializers(Fory fory) {
     // primitive types will be boxed.
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     resolver.registerInternalSerializer(boolean.class, new BooleanSerializer(fory, boolean.class));
     resolver.registerInternalSerializer(byte.class, new ByteSerializer(fory, byte.class));
     resolver.registerInternalSerializer(short.class, new ShortSerializer(fory, short.class));

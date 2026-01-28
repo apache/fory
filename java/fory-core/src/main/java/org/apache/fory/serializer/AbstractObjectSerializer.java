@@ -70,7 +70,7 @@ public abstract class AbstractObjectSerializer<T> extends Serializer<T> {
     super(fory, type);
     this.refResolver = fory.getRefResolver();
     this.classResolver = fory.getClassResolver();
-    this.typeResolver = fory._getTypeResolver();
+    this.typeResolver = fory.getTypeResolver();
     this.isRecord = RecordUtils.isRecord(type);
     this.objectCreator = objectCreator;
   }

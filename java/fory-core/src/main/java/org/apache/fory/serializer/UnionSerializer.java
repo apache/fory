@@ -198,11 +198,11 @@ public class UnionSerializer extends Serializer<Union> {
       buffer.writeVarUint32Small7(typeId);
       return;
     }
-    fory._getTypeResolver().writeClassInfo(buffer, classInfo);
+    fory.getTypeResolver().writeClassInfo(buffer, classInfo);
   }
 
   private ClassInfo getClassInfo(int typeId, Object value) {
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     int internalTypeId = typeId & 0xff;
     if (typeId >= 256 && resolver instanceof XtypeResolver) {
       ClassInfo classInfo = ((XtypeResolver) resolver).getUserTypeInfo(typeId >>> 8);

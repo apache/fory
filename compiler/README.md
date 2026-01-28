@@ -250,9 +250,10 @@ enum Status [id=101] {
 
 ```fdl
 message Example {
-    MyType friend = 1 [ref=true];
+    ref MyType friend = 1;
     string nickname = 2 [nullable=true];
-    MyType data = 3 [ref=true, nullable=true];
+    ref MyType data = 3 [nullable=true];
+    ref(weak=true) MyType parent = 4;
 }
 ```
 

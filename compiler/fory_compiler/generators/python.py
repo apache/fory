@@ -17,6 +17,7 @@
 
 """Python code generator."""
 
+import keyword
 from typing import List, Optional, Set
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
@@ -64,6 +65,7 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.BYTES: "bytes",
         PrimitiveKind.DATE: "datetime.date",
         PrimitiveKind.TIMESTAMP: "datetime.datetime",
+        PrimitiveKind.ANY: "Any",
     }
 
     # Numpy dtype strings for primitive arrays
@@ -133,7 +135,14 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.BYTES: 'b""',
         PrimitiveKind.DATE: "None",
         PrimitiveKind.TIMESTAMP: "None",
+        PrimitiveKind.ANY: "None",
     }
+
+    def safe_name(self, name: str) -> str:
+        """Return a Python-safe identifier."""
+        if keyword.iskeyword(name):
+            return f"{name}_"
+        return name
 
     def generate(self) -> List[GeneratedFile]:
         """Generate Python files for the schema."""
@@ -328,7 +337,7 @@ class PythonGenerator(BaseGenerator):
         lines.append("")
 
         for field in union.fields:
-            method_name = self.to_snake_case(field.name)
+            method_name = self.safe_name(self.to_snake_case(field.name))
             case_name = self.to_upper_snake_case(field.name)
             case_type = self.get_union_case_type(field, parent_stack)
             lines.append(f"{ind}    @classmethod")
@@ -366,8 +375,9 @@ class PythonGenerator(BaseGenerator):
                 lines.append(
                     f"{ind}        if self._case == {case_enum_ref}.{case_name} and not {check_expr}:"
                 )
+                safe_case = self.safe_name(self.to_snake_case(field.name))
                 lines.append(
-                    f'{ind}            raise TypeError("{union.name}.{self.to_snake_case(field.name)}(...) requires {case_type}")'
+                    f'{ind}            raise TypeError("{union.name}.{safe_case}(...) requires {case_type}")'
                 )
         if not union.fields or not has_checks:
             lines.append(f"{ind}        pass")
@@ -389,7 +399,7 @@ class PythonGenerator(BaseGenerator):
 
         for field in union.fields:
             case_name = self.to_upper_snake_case(field.name)
-            method_name = self.to_snake_case(field.name)
+            method_name = self.safe_name(self.to_snake_case(field.name))
             case_type = self.get_union_case_type(field, parent_stack)
             lines.append(f"{ind}    def is_{method_name}(self) -> bool:")
             lines.append(
@@ -453,13 +463,18 @@ class PythonGenerator(BaseGenerator):
         """Generate a dataclass field."""
         lines = []
 
+        is_any = (
+            isinstance(field.field_type, PrimitiveType)
+            and field.field_type.kind == PrimitiveKind.ANY
+        )
+        nullable = field.optional or is_any
         python_type = self.generate_type(
             field.field_type,
-            field.optional,
+            nullable,
             field.element_optional,
             parent_stack,
         )
-        field_name = self.to_snake_case(field.name)
+        field_name = self.safe_name(self.to_snake_case(field.name))
         default_factory = self.get_default_factory(field)
         default = self.get_default_value(field.field_type, field.optional)
         default_expr = default
@@ -469,11 +484,11 @@ class PythonGenerator(BaseGenerator):
             trailing_comment = f"  # {comment}"
 
         tag_id = field.tag_id
-        if tag_id is not None or field.ref:
+        if tag_id is not None or field.ref or nullable:
             field_args = []
             if tag_id is not None:
                 field_args.append(f"id={tag_id}")
-            if field.optional:
+            if nullable:
                 field_args.append("nullable=True")
             if field.ref:
                 field_args.append("ref=True")
@@ -522,6 +537,8 @@ class PythonGenerator(BaseGenerator):
     ) -> str:
         """Generate Python type hint."""
         if isinstance(field_type, PrimitiveType):
+            if field_type.kind == PrimitiveKind.ANY:
+                return "Any"
             base_type = self.PRIMITIVE_MAP[field_type.kind]
             if nullable:
                 return f"Optional[{base_type}]"
@@ -677,6 +694,8 @@ class PythonGenerator(BaseGenerator):
         if isinstance(field_type, PrimitiveType):
             if field_type.kind in (PrimitiveKind.DATE, PrimitiveKind.TIMESTAMP):
                 imports.add("import datetime")
+            elif field_type.kind == PrimitiveKind.ANY:
+                imports.add("from typing import Any")
 
         elif isinstance(field_type, ListType):
             # Add numpy import for primitive arrays

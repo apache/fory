@@ -15,10 +15,24 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod addressbook;
-pub mod any_example;
-pub mod complex_fbs;
-pub mod monster;
-pub mod optional_types;
-pub mod graph;
-pub mod tree;
+package graph;
+
+message Node {
+    string id = 1;
+
+    repeated ref Edge out_edges = 2;
+    repeated ref Edge in_edges = 3;
+}
+
+message Edge {
+    string id = 1;
+    float32 weight = 2;
+
+    ref(weak=true) Node from = 3;
+    ref(weak=true) Node to = 4;
+}
+
+message Graph {
+    repeated ref Node nodes = 1;
+    repeated ref Edge edges = 2;
+}

@@ -585,11 +585,11 @@ func (c *WriteContext) WriteValue(value reflect.Value, refMode RefMode, writeTyp
 		return
 	}
 
-	// Check for pointer to reference type (not supported)
+	// Check for pointer to reference type (not allowed)
 	if value.Kind() == reflect.Ptr {
 		switch value.Elem().Kind() {
 		case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Interface:
-			c.SetError(SerializationErrorf("pointer to reference type %s is not supported", value.Type()))
+			c.SetError(SerializationErrorf("pointer to reference type %s is not allowed", value.Type()))
 			return
 		}
 	}

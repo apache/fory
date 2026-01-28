@@ -98,7 +98,7 @@ def encode_typedef(type_resolver, cls):
     write_fields_info(type_resolver, buffer, field_infos)
 
     # Get the encoded binary (only the written portion, not the full buffer)
-    binary = buffer.to_bytes(0, buffer.writer_index)
+    binary = buffer.to_bytes(0, buffer.get_writer_index())
 
     # Compress if beneficial
     compressed_binary = type_resolver.get_meta_compressor().compress(binary)
@@ -139,7 +139,7 @@ def prepend_header(buffer: bytes, is_compressed: bool, has_fields_meta: bool):
         result.write_varuint32(meta_size - META_SIZE_MASKS)
 
     result.write_bytes(buffer)
-    return result.to_bytes(0, result.writer_index)
+    return result.to_bytes(0, result.get_writer_index())
 
 
 def write_namespace(buffer: Buffer, namespace: str):

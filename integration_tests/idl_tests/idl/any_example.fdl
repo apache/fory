@@ -15,10 +15,25 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod addressbook;
-pub mod any_example;
-pub mod complex_fbs;
-pub mod monster;
-pub mod optional_types;
-pub mod graph;
-pub mod tree;
+package any_example;
+
+message AnyInner [id=300] {
+    string name = 1;
+}
+
+union AnyUnion [id=301] {
+    string text = 1;
+    bool flag = 2;
+    AnyInner inner = 3;
+}
+
+message AnyHolder [id=302] {
+    any bool_value = 1;
+    any string_value = 2;
+    any date_value = 3;
+    any timestamp_value = 4;
+    any message_value = 5;
+    any union_value = 6;
+    any list_value = 7;
+    any map_value = 8;
+}

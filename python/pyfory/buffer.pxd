@@ -52,6 +52,14 @@ cdef class Buffer:
 
     cpdef inline reserve(self, int32_t new_size)
 
+    cpdef inline int32_t get_reader_index(self)
+
+    cpdef inline void set_reader_index(self, int32_t value)
+
+    cpdef inline int32_t get_writer_index(self)
+
+    cpdef inline void set_writer_index(self, int32_t value)
+
     cpdef inline int32_t size(self)
 
     cpdef inline grow(self, int32_t needed_size)

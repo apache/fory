@@ -17,7 +17,7 @@
 
 """Translate FlatBuffers AST into Fory IR."""
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from fory_compiler.frontend.fbs.ast import (
     FbsEnum,
@@ -153,19 +153,68 @@ class FbsTranslator:
         translated: List[Field] = []
         for index, field in enumerate(fields, start=1):
             field_type = self._translate_type(field.field_type)
+            options, ref, optional, ref_options = self._translate_field_attributes(
+                field.attributes
+            )
+            element_ref = False
+            field_ref_options: Dict[str, object] = {}
+            element_ref_options: Dict[str, object] = {}
+            if ref and isinstance(field_type, ListType):
+                element_ref = True
+                element_ref_options = ref_options
+                ref = False
+            elif ref_options:
+                field_ref_options = ref_options
             translated.append(
                 Field(
                     name=field.name,
                     field_type=field_type,
                     number=index,
                     tag_id=index,
-                    options=dict(field.attributes),
+                    optional=optional,
+                    ref=ref,
+                    ref_options=field_ref_options,
+                    element_ref=element_ref,
+                    element_ref_options=element_ref_options,
+                    options=options,
                     line=field.line,
                     column=field.column,
                     location=self._location(field.line, field.column),
                 )
             )
         return translated
+
+    def _translate_field_attributes(
+        self, attributes: Dict[str, object]
+    ) -> Tuple[Dict[str, object], bool, bool, Dict[str, object]]:
+        fory_keys = {
+            "ref",
+            "nullable",
+            "weak_ref",
+            "thread_safe_pointer",
+        }
+        options: Dict[str, object] = {
+            name: value for name, value in attributes.items() if name not in fory_keys
+        }
+        ref = False
+        optional = False
+        ref_options: Dict[str, object] = {}
+
+        if attributes.get("ref") is True:
+            ref = True
+        if attributes.get("nullable") is True:
+            optional = True
+
+        weak_ref = attributes.get("weak_ref")
+        if weak_ref is True:
+            ref = True
+            ref_options["weak_ref"] = True
+
+        thread_safe = attributes.get("thread_safe_pointer")
+        if thread_safe is not None and ref:
+            ref_options["thread_safe_pointer"] = thread_safe
+
+        return options, ref, optional, ref_options
 
     def _translate_union(self, fbs_union: FbsUnion) -> Union:
         fields: List[Field] = []

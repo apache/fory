@@ -60,7 +60,7 @@ public class DeferedLazySerializer extends Serializer {
       Tuple2<Boolean, Serializer> tuple2 = serializerSupplier.get();
       if (tuple2.f0) {
         serializer = tuple2.f1;
-        fory._getTypeResolver().setSerializer(type, serializer);
+        fory.getTypeResolver().setSerializer(type, serializer);
       } else {
         return tuple2.f1;
       }

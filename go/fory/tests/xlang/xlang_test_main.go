@@ -663,7 +663,7 @@ func testSimpleStruct() {
 		panic(fmt.Sprintf("Failed to deserialize: %v", err))
 	}
 	fmt.Printf("Deserialized obj: %+v\n", obj)
-	serialized, err := f.Serialize(obj)
+	serialized, err := f.Serialize(&obj)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -685,7 +685,7 @@ func testNamedSimpleStruct() {
 		panic(fmt.Sprintf("Failed to deserialize: %v", err))
 	}
 	fmt.Printf("Deserialized obj: %+v\n", obj)
-	serialized, err := f.Serialize(obj)
+	serialized, err := f.Serialize(&obj)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -983,7 +983,7 @@ func testSkipIdCustom() {
 		panic(fmt.Sprintf("Failed to deserialize: %v", err))
 	}
 
-	serialized, err := f.Serialize(obj)
+	serialized, err := f.Serialize(&obj)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1004,7 +1004,7 @@ func testSkipNameCustom() {
 		panic(fmt.Sprintf("Failed to deserialize: %v", err))
 	}
 
-	serialized, err := f.Serialize(obj)
+	serialized, err := f.Serialize(&obj)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1063,7 +1063,7 @@ func testStructVersionCheck() {
 		panic(fmt.Sprintf("Failed to deserialize: %v", err))
 	}
 
-	serialized, err := f.Serialize(obj)
+	serialized, err := f.Serialize(&obj)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1180,7 +1180,7 @@ func testOneFieldStructCompatible() {
 	result := obj.(OneFieldStruct)
 	assertEqual(int32(42), result.Value, "value")
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1219,7 +1219,7 @@ func testOneFieldStructSchema() {
 	result := obj.(OneFieldStruct)
 	assertEqual(int32(42), result.Value, "value")
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1253,7 +1253,7 @@ func testOneStringFieldSchemaConsistent() {
 		panic(fmt.Sprintf("f1 mismatch: expected 'hello', got '%v'", result.F1))
 	}
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1280,7 +1280,7 @@ func testOneStringFieldCompatible() {
 		panic(fmt.Sprintf("f1 mismatch: expected 'hello', got '%v'", result.F1))
 	}
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1306,7 +1306,7 @@ func testTwoStringFieldCompatible() {
 	assertEqual("first", result.F1, "f1")
 	assertEqual("second", result.F2, "f2")
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1360,7 +1360,7 @@ func testSchemaEvolutionCompatibleReverse() {
 	assertEqual("", result.F2, "f2")
 
 	// SerializeWithCallback back
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1389,7 +1389,7 @@ func testOneEnumFieldSchemaConsistent() {
 		panic(fmt.Sprintf("Expected VALUE_B (1), got %v", result.F1))
 	}
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1417,7 +1417,7 @@ func testOneEnumFieldCompatible() {
 		panic(fmt.Sprintf("Expected VALUE_A (0), got %v", result.F1))
 	}
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1448,7 +1448,7 @@ func testTwoEnumFieldCompatible() {
 		panic(fmt.Sprintf("Expected F2=VALUE_C (2), got %v", result.F2))
 	}
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1508,7 +1508,7 @@ func testEnumSchemaEvolutionCompatibleReverse() {
 	}
 
 	// SerializeWithCallback back
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1590,7 +1590,7 @@ func testNullableFieldSchemaConsistentNotNull() {
 		panic(fmt.Sprintf("NullableMap mismatch: expected {nk1:nv1}, got %v", result.NullableMap))
 	}
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1666,7 +1666,7 @@ func testNullableFieldSchemaConsistentNull() {
 		panic(fmt.Sprintf("NullableMap mismatch: expected nil, got %v", result.NullableMap))
 	}
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1769,7 +1769,7 @@ func testNullableFieldCompatibleNotNull() {
 		panic(fmt.Sprintf("NullableMap2 mismatch: expected {nk1:nv1}, got %v", result.NullableMap2))
 	}
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -1875,7 +1875,7 @@ func testNullableFieldCompatibleNull() {
 		panic(fmt.Sprintf("NullableMap2 mismatch: expected empty/nil, got %v", result.NullableMap2))
 	}
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -2226,7 +2226,7 @@ func testUnsignedSchemaConsistentSimple() {
 		panic(fmt.Sprintf("U64TaggedNullable mismatch: expected 500000000, got %v", result.U64TaggedNullable))
 	}
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -2284,7 +2284,7 @@ func testUnsignedSchemaConsistent() {
 		panic(fmt.Sprintf("U64TaggedNullableField mismatch: expected 500000000, got %v", result.U64TaggedNullableField))
 	}
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}
@@ -2342,7 +2342,7 @@ func testUnsignedSchemaCompatible() {
 	assertEqual(uint64(12000000000), result.U64FixedField2, "U64FixedField2")
 	assertEqual(uint64(500000000), result.U64TaggedField2, "U64TaggedField2")
 
-	serialized, err := f.Serialize(result)
+	serialized, err := f.Serialize(&result)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to serialize: %v", err))
 	}

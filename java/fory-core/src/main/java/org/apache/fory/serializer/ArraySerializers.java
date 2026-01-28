@@ -982,7 +982,7 @@ public class ArraySerializers {
   }
 
   public static void registerDefaultSerializers(Fory fory) {
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     resolver.registerInternalSerializer(
         Object[].class, new ObjectArraySerializer<>(fory, Object[].class));
     resolver.registerInternalSerializer(

@@ -450,7 +450,7 @@ class MapSerializer(Serializer):
             key_cls = type(key)
             value_cls = type(value)
             buffer.write_int16(-1)
-            chunk_size_offset = buffer.writer_index - 1
+            chunk_size_offset = buffer.get_writer_index() - 1
             chunk_header = 0
 
             if key_serializer is not None:

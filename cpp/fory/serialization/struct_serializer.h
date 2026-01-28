@@ -2791,11 +2791,9 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
       return;
     }
     const TypeInfo *type_info = type_info_res.value();
-    ctx.write_varuint32(type_info->type_id);
-
-    // In compatible mode, write type meta inline (streaming protocol)
-    if (ctx.is_compatible() && type_info->type_meta) {
-      ctx.write_type_meta(type_info);
+    auto write_result = ctx.write_struct_type_info(type_info);
+    if (FORY_PREDICT_FALSE(!write_result.ok())) {
+      ctx.set_error(std::move(write_result).error());
     }
   }
 

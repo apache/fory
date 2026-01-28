@@ -43,8 +43,8 @@ def test_buffer():
     binary = b"b" * 100
     buffer.write_bytes(binary)
     buffer.write_bytes_and_size(binary)
-    print(f"buffer size {buffer.size()}, writer_index {buffer.writer_index}")
-    new_buffer = Buffer(buffer.get_bytes(0, buffer.writer_index))
+    print(f"buffer size {buffer.size()}, writer_index {buffer.get_writer_index()}")
+    new_buffer = Buffer(buffer.get_bytes(0, buffer.get_writer_index()))
     assert new_buffer.read_bool() is True
     assert new_buffer.read_int8() == -1
     assert new_buffer.read_int8() == 2**7 - 1
@@ -120,19 +120,19 @@ def test_write_varint32():
 
 
 def check_varuint32(buf: Buffer, value: int, bytes_written: int):
-    assert buf.writer_index == buf.reader_index
+    assert buf.get_writer_index() == buf.get_reader_index()
     actual_bytes_written = buf.write_varuint32(value)
     assert actual_bytes_written == bytes_written
     varint = buf.read_varuint32()
-    assert buf.writer_index == buf.reader_index
+    assert buf.get_writer_index() == buf.get_reader_index()
     assert value == varint
 
 
 def check_varint32(buf: Buffer, value: int):
-    assert buf.writer_index == buf.reader_index
+    assert buf.get_writer_index() == buf.get_reader_index()
     buf.write_varint32(value)
     varint = buf.read_varint32()
-    assert buf.writer_index == buf.reader_index
+    assert buf.get_writer_index() == buf.get_reader_index()
     assert value == varint
 
 
@@ -210,15 +210,15 @@ def test_write_varuint64():
 
 
 def check_varuint64(buf: Buffer, value: int, bytes_written: int):
-    reader_index = buf.reader_index
-    assert buf.writer_index == buf.reader_index
+    reader_index = buf.get_reader_index()
+    assert buf.get_writer_index() == buf.get_reader_index()
     actual_bytes_written = buf.write_varuint64(value)
     assert actual_bytes_written == bytes_written
     varint = buf.read_varuint64()
-    assert buf.writer_index == buf.reader_index
+    assert buf.get_writer_index() == buf.get_reader_index()
     assert value == varint
     # test slow read branch in `read_varint64`
-    assert buf.slice(reader_index, buf.reader_index - reader_index).read_varuint64() == value
+    assert buf.slice(reader_index, buf.get_reader_index() - reader_index).read_varuint64() == value
 
 
 def test_write_buffer():
@@ -226,7 +226,7 @@ def test_write_buffer():
     buf.write(b"")
     buf.write(b"123")
     buf.write(Buffer.allocate(32))
-    assert buf.writer_index == 35
+    assert buf.get_writer_index() == 35
     assert buf.read(0) == b""
     assert buf.read(3) == b"123"
 

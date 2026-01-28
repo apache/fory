@@ -260,7 +260,7 @@ public class ImmutableCollectionSerializers {
   }
 
   public static void registerSerializers(Fory fory) {
-    TypeResolver resolver = fory._getTypeResolver();
+    TypeResolver resolver = fory.getTypeResolver();
     resolver.registerInternalSerializer(List12, new ImmutableListSerializer(fory, List12));
     resolver.registerInternalSerializer(ListN, new ImmutableListSerializer(fory, ListN));
     resolver.registerInternalSerializer(SubList, new ImmutableListSerializer(fory, SubList));

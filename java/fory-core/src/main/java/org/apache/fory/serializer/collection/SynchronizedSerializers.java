@@ -212,7 +212,7 @@ public class SynchronizedSerializers {
    */
   public static void registerSerializers(Fory fory) {
     try {
-      TypeResolver resolver = fory._getTypeResolver();
+      TypeResolver resolver = fory.getTypeResolver();
       for (Tuple2<Class<?>, Function> factory : synchronizedFactories()) {
         resolver.registerInternalSerializer(factory.f0, createSerializer(fory, factory));
       }

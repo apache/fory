@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include "fory/serialization/any_serializer.h"
 #include "fory/serialization/array_serializer.h"
 #include "fory/serialization/collection_serializer.h"
 #include "fory/serialization/config.h"

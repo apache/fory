@@ -49,7 +49,7 @@ func TestUnsignedTypeSerialization(t *testing.T) {
 		U64Tagged: 1000000000,
 	}
 
-	data, err := f.Serialize(obj)
+	data, err := f.Serialize(&obj)
 	if err != nil {
 		t.Fatalf("Serialize failed: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestOptionFieldSerialization(t *testing.T) {
 		OptBool:   optional.Some(true),
 	}
 
-	data, err := f.Serialize(obj)
+	data, err := f.Serialize(&obj)
 	require.NoError(t, err)
 
 	var result any
@@ -199,7 +199,7 @@ func TestNumericPointerOptionalInterop(t *testing.T) {
 	t.Run("PointerToOptionalNull", func(t *testing.T) {
 		writer := New(WithXlang(true), WithCompatible(true))
 		require.NoError(t, writer.RegisterNamedStruct(NumericPtrStruct{}, "NumericInterop"))
-		data, err := writer.Marshal(NumericPtrStruct{})
+		data, err := writer.Marshal(&NumericPtrStruct{})
 		require.NoError(t, err)
 
 		reader := New(WithXlang(true), WithCompatible(true))
@@ -224,7 +224,7 @@ func TestNumericPointerOptionalInterop(t *testing.T) {
 	t.Run("PointerToOptionalValue", func(t *testing.T) {
 		writer := New(WithXlang(true), WithCompatible(true))
 		require.NoError(t, writer.RegisterNamedStruct(NumericPtrStruct{}, "NumericInterop"))
-		data, err := writer.Marshal(ptrValues)
+		data, err := writer.Marshal(&ptrValues)
 		require.NoError(t, err)
 
 		reader := New(WithXlang(true), WithCompatible(true))
@@ -238,7 +238,7 @@ func TestNumericPointerOptionalInterop(t *testing.T) {
 	t.Run("OptionalToPointerNull", func(t *testing.T) {
 		writer := New(WithXlang(true), WithCompatible(true))
 		require.NoError(t, writer.RegisterNamedStruct(NumericOptStruct{}, "NumericInterop"))
-		data, err := writer.Marshal(NumericOptStruct{})
+		data, err := writer.Marshal(&NumericOptStruct{})
 		require.NoError(t, err)
 
 		reader := New(WithXlang(true), WithCompatible(true))
@@ -263,7 +263,7 @@ func TestNumericPointerOptionalInterop(t *testing.T) {
 	t.Run("OptionalToPointerValue", func(t *testing.T) {
 		writer := New(WithXlang(true), WithCompatible(true))
 		require.NoError(t, writer.RegisterNamedStruct(NumericOptStruct{}, "NumericInterop"))
-		data, err := writer.Marshal(optValues)
+		data, err := writer.Marshal(&optValues)
 		require.NoError(t, err)
 
 		reader := New(WithXlang(true), WithCompatible(true))
@@ -322,7 +322,7 @@ func TestSetFieldSerializationSchemaConsistent(t *testing.T) {
 	obj.NullableSet.Add("m", "n")
 
 	// Serialize
-	data, err := f.Serialize(obj)
+	data, err := f.Serialize(&obj)
 	require.NoError(t, err, "Serialize failed")
 	t.Logf("Serialized %d bytes", len(data))
 
@@ -369,7 +369,7 @@ func TestSetFieldSerializationCompatible(t *testing.T) {
 	obj.NullableSet.Add("m", "n")
 
 	// Serialize
-	data, err := f.Serialize(obj)
+	data, err := f.Serialize(&obj)
 	require.NoError(t, err, "Serialize failed")
 	t.Logf("Serialized %d bytes", len(data))
 

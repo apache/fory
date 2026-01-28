@@ -104,7 +104,10 @@ class Parser:
                     raise self.error("Duplicate package declaration")
                 package = self.parse_package()
             elif self.check(TokenType.IMPORT):
-                imports.append(self.parse_import())
+                path = self.parse_import()
+                normalized_path = path.lstrip("/")
+                if not normalized_path.startswith("google/protobuf/"):
+                    imports.append(path)
             elif self.check(TokenType.OPTION):
                 name, value = self.parse_option_statement()
                 options[name] = value

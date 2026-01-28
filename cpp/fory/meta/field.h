@@ -1389,11 +1389,11 @@ public:
 // ============================================================================
 //
 // Usage:
-//   FORY_FIELD_CONFIG(MyStruct, MyStruct,
-//       (field1, F(0)),                        // Simple: just ID
-//       (field2, F(1).nullable()),             // With nullable
-//       (field3, F(2).varint()),               // With encoding
-//       (field4, F(3).nullable().ref()),       // Multiple options
+//   FORY_FIELD_CONFIG(MyStruct,
+//       (field1, fory::F(0)),                  // Simple: just ID
+//       (field2, fory::F(1).nullable()),       // With nullable
+//       (field3, fory::F(2).varint()),         // With encoding
+//       (field4, fory::F(3).nullable().ref()), // Multiple options
 //       (field5, 4)                            // Backward compatible: integer
 //       ID
 //   );
@@ -1908,11 +1908,13 @@ public:
 
 // Main FORY_FIELD_CONFIG macro
 // Creates a constexpr tuple of FieldEntry objects with member pointer
-// verification. Alias is a token-safe name without '::'.
-#define FORY_FC_DESCRIPTOR_NAME(Alias)                                         \
-  FORY_PP_CONCAT(ForyFieldConfigDescriptor_, Alias)
-#define FORY_FIELD_CONFIG(Type, Alias, ...)                                    \
-  struct FORY_FC_DESCRIPTOR_NAME(Alias) {                                      \
+// verification. Descriptor name uses a unique line-based token.
+#define FORY_FC_DESCRIPTOR_NAME(line)                                          \
+  FORY_PP_CONCAT(ForyFieldConfigDescriptor_, line)
+#define FORY_FIELD_CONFIG(Type, ...)                                           \
+  FORY_FIELD_CONFIG_IMPL(__LINE__, Type, __VA_ARGS__)
+#define FORY_FIELD_CONFIG_IMPL(line, Type, ...)                                \
+  struct FORY_FC_DESCRIPTOR_NAME(line) {                                       \
     static constexpr bool has_config = true;                                   \
     static inline constexpr auto entries =                                     \
         std::make_tuple(FORY_FC_ENTRIES(Type, __VA_ARGS__));                   \
@@ -1920,6 +1922,6 @@ public:
         std::tuple_size_v<std::decay_t<decltype(entries)>>;                    \
   };                                                                           \
   constexpr auto ForyFieldConfig(::fory::meta::Identity<Type>) {               \
-    return FORY_FC_DESCRIPTOR_NAME(Alias){};                                   \
+    return FORY_FC_DESCRIPTOR_NAME(line){};                                    \
   }                                                                            \
   static_assert(true)

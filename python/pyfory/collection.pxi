@@ -219,12 +219,14 @@ cdef class CollectionSerializer(Serializer):
             self._add_element(collection_, i, buffer.read_varint64())
 
     cdef inline _write_bool(self, Buffer buffer, value):
+        cdef int32_t writer_index
         value_type = type(value)
         if value_type is list or value_type is tuple:
             size = sizeof(bool) * Py_SIZE(value)
             buffer.grow(<int32_t>size)
-            Fory_PyBooleanSequenceWriteToBuffer(value, &buffer.c_buffer, buffer.writer_index)
-            buffer.writer_index += size
+            writer_index = buffer.get_writer_index()
+            Fory_PyBooleanSequenceWriteToBuffer(value, &buffer.c_buffer, writer_index)
+            buffer.set_writer_index(writer_index + size)
         else:
             for s in value:
                 buffer.write_bool(s)
@@ -234,12 +236,14 @@ cdef class CollectionSerializer(Serializer):
             self._add_element(collection_, i, buffer.read_bool())
 
     cdef inline _write_float(self, Buffer buffer, value):
+        cdef int32_t writer_index
         value_type = type(value)
         if value_type is list or value_type is tuple:
             size = sizeof(double) * Py_SIZE(value)
             buffer.grow(<int32_t>size)
-            Fory_PyFloatSequenceWriteToBuffer(value, &buffer.c_buffer, buffer.writer_index)
-            buffer.writer_index += size
+            writer_index = buffer.get_writer_index()
+            Fory_PyFloatSequenceWriteToBuffer(value, &buffer.c_buffer, writer_index)
+            buffer.set_writer_index(writer_index + size)
         else:
             for s in value:
                 buffer.write_double(s)
@@ -815,7 +819,7 @@ cdef class MapSerializer(Serializer):
             key_cls = type(key)
             value_cls = type(value)
             buffer.write_int16(-1)
-            chunk_size_offset = buffer.writer_index - 1
+            chunk_size_offset = buffer.get_writer_index() - 1
             chunk_header = 0
             if key_serializer is not None:
                 chunk_header |= KEY_DECL_TYPE

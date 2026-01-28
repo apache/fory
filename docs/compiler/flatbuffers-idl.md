@@ -38,6 +38,27 @@ already have FlatBuffers schemas but want Fory-native serialization and codegen.
 - **Unions**: FlatBuffers `union` is translated into an FDL `union`. Case IDs
   follow declaration order, starting at 1.
 
+## Fory-Specific Attributes
+
+FlatBuffers attributes use `key:value` syntax. To avoid conflicts with
+FlatBuffers tooling, Fory options use the `fory_` prefix and are stripped during
+parsing:
+
+- `fory_ref:true` enables reference tracking for the field.
+- `fory_nullable:true` marks the field optional.
+- `fory_weak_ref:true` marks a weak reference and implies `ref`.
+- `fory_thread_safe_pointer:false` selects the non-thread-safe pointer flavor
+  for ref fields (it does not imply `ref`).
+
+Example:
+
+```fbs
+table TreeNode {
+  children: [TreeNode] (fory_ref: true);
+  parent: TreeNode (fory_weak_ref: true);
+}
+```
+
 ## Scalar Type Mapping
 
 | FlatBuffers | Fory Primitive |
@@ -46,10 +67,10 @@ already have FlatBuffers schemas but want Fory-native serialization and codegen.
 | `ubyte`     | `uint8`        |
 | `short`     | `int16`        |
 | `ushort`    | `uint16`       |
-| `int`       | `varint32`     |
-| `uint`      | `var_uint32`   |
-| `long`      | `varint64`     |
-| `ulong`     | `var_uint64`   |
+| `int`       | `int32`        |
+| `uint`      | `uint32`       |
+| `long`      | `int64`        |
+| `ulong`     | `uint64`       |
 | `float`     | `float32`      |
 | `double`    | `float64`      |
 | `bool`      | `bool`         |

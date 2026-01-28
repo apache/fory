@@ -8,6 +8,7 @@ cc_library(
         "skip.cc",
     ],
     hdrs = [
+        "any_serializer.h",
         "array_serializer.h",
         "basic_serializer.h",
         "collection_serializer.h",
@@ -127,6 +128,16 @@ cc_test(
 cc_test(
     name = "unsigned_serializer_test",
     srcs = ["unsigned_serializer_test.cc"],
+    deps = [
+        ":fory_serialization",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "any_serializer_test",
+    srcs = ["any_serializer_test.cc"],
     deps = [
         ":fory_serialization",
         "@googletest//:gtest",

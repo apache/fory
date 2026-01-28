@@ -29,6 +29,8 @@ type Date struct {
 	Day   int
 }
 
+var dateReflectType = reflect.TypeFor[Date]()
+
 type dateSerializer struct{}
 
 func (s dateSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
@@ -76,6 +78,8 @@ func (s dateSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, type
 }
 
 type timeSerializer struct{}
+
+var timeReflectType = reflect.TypeFor[time.Time]()
 
 func (s timeSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	seconds, nanos := GetUnixSecondsAndNanos(value.Interface().(time.Time))
