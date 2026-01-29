@@ -1188,6 +1188,17 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				} else {
 					binary.LittleEndian.PutUint64(data[bufOffset:], math.Float64bits(v))
 				}
+			case PrimitiveFloat16DispatchId:
+				v, ok := loadFieldValue[uint16](field.Kind, fieldPtr, optInfo)
+				if !ok {
+					v = 0
+				}
+				if isLittleEndian {
+					*(*uint16)(unsafe.Pointer(&data[bufOffset])) = v
+				} else {
+					binary.LittleEndian.PutUint16(data[bufOffset:], v)
+				}
+
 			}
 		}
 		// Update writer index ONCE after all fixed fields
@@ -2303,6 +2314,16 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 					v = math.Float64frombits(binary.LittleEndian.Uint64(data[bufOffset:]))
 				}
 				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+			case PrimitiveFloat16DispatchId:
+				var v uint16
+				if isLittleEndian {
+					v = *(*uint16)(unsafe.Pointer(&data[bufOffset]))
+				} else {
+					v = binary.LittleEndian.Uint16(data[bufOffset:])
+				}
+				// Float16 is underlying uint16, so we can store it directly
+				storeFieldValue(field.Kind, fieldPtr, optInfo, v)
+
 			}
 		}
 		// Update reader index ONCE after all fixed fields
