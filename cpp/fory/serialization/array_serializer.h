@@ -61,11 +61,11 @@ struct Serializer<
   }();
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -80,7 +80,7 @@ struct Serializer<
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
     write_data_generic(arr, ctx, has_generics);
   }
@@ -90,27 +90,27 @@ struct Serializer<
     Buffer &buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     constexpr size_t max_size = 8 + N * sizeof(T);
-    buffer.Grow(static_cast<uint32_t>(max_size));
+    buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
-    // Write array length in bytes
-    writer_index +=
-        buffer.PutVarUint32(writer_index, static_cast<uint32_t>(N * sizeof(T)));
+    // write array length in bytes
+    writer_index += buffer.put_var_uint32(writer_index,
+                                          static_cast<uint32_t>(N * sizeof(T)));
 
-    // Write data
+    // write data
     if constexpr (N > 0) {
       if constexpr (FORY_LITTLE_ENDIAN || sizeof(T) == 1) {
         // Fast path: direct memory copy on little-endian or for single-byte
         // types
-        buffer.UnsafePut(writer_index, arr.data(), N * sizeof(T));
+        buffer.unsafe_put(writer_index, arr.data(), N * sizeof(T));
       } else {
         // Slow path: element-by-element write on big-endian machines
         for (size_t i = 0; i < N; ++i) {
-          T value = util::ToLittleEndian(arr[i]);
-          buffer.UnsafePut(writer_index + i * sizeof(T), &value, sizeof(T));
+          T value = util::to_little_endian(arr[i]);
+          buffer.unsafe_put(writer_index + i * sizeof(T), &value, sizeof(T));
         }
       }
     }
-    buffer.WriterIndex(writer_index + N * sizeof(T));
+    buffer.writer_index(writer_index + N * sizeof(T));
   }
 
   static inline void write_data_generic(const std::array<T, N> &arr,
@@ -125,7 +125,7 @@ struct Serializer<
       return std::array<T, N>();
     }
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::array<T, N>();
       }
@@ -140,7 +140,7 @@ struct Serializer<
 
   static inline std::array<T, N> read_data(ReadContext &ctx) {
     // Read array length in bytes
-    uint32_t size_bytes = ctx.read_varuint32(ctx.error());
+    uint32_t size_bytes = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::array<T, N>();
     }
@@ -167,7 +167,8 @@ struct Serializer<
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
             return arr;
           }
-          arr[i] = util::ToLittleEndian(value); // ToLittleEndian swaps on BE
+          arr[i] =
+              util::to_little_endian(value); // to_little_endian swaps on BE
         }
       }
     }
@@ -187,11 +188,11 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
   static constexpr TypeId type_id = TypeId::BOOL_ARRAY;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -206,7 +207,7 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
                            bool has_generics = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
     write_data_generic(arr, ctx, has_generics);
   }
@@ -216,17 +217,18 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
     Buffer &buffer = ctx.buffer();
     // bulk write may write 8 bytes for varint32
     constexpr size_t max_size = 8 + N;
-    buffer.Grow(static_cast<uint32_t>(max_size));
+    buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
-    // Write array length
-    writer_index += buffer.PutVarUint32(writer_index, static_cast<uint32_t>(N));
+    // write array length
+    writer_index +=
+        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(N));
 
-    // Write each boolean as a byte
+    // write each boolean as a byte
     for (size_t i = 0; i < N; ++i) {
-      buffer.UnsafePutByte(writer_index + i,
-                           static_cast<uint8_t>(arr[i] ? 1 : 0));
+      buffer.unsafe_put_byte(writer_index + i,
+                             static_cast<uint8_t>(arr[i] ? 1 : 0));
     }
-    buffer.WriterIndex(writer_index + N);
+    buffer.writer_index(writer_index + N);
   }
 
   static inline void write_data_generic(const std::array<bool, N> &arr,
@@ -241,7 +243,7 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
       return std::array<bool, N>();
     }
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::array<bool, N>();
       }
@@ -256,7 +258,7 @@ template <size_t N> struct Serializer<std::array<bool, N>> {
 
   static inline std::array<bool, N> read_data(ReadContext &ctx) {
     // Read array length
-    uint32_t length = ctx.read_varuint32(ctx.error());
+    uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::array<bool, N>();
     }

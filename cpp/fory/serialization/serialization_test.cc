@@ -449,14 +449,14 @@ TEST(SerializationTest, ThreadSafeForyMultiThread) {
   auto fory = Fory::builder().xlang(true).track_ref(false).build_thread_safe();
   fory.register_struct<::ComplexStruct>(1);
 
-  constexpr int kNumThreads = 8;
-  constexpr int kIterationsPerThread = 100;
+  constexpr int k_num_threads = 8;
+  constexpr int k_iterations_per_thread = 100;
   std::vector<std::thread> threads;
   std::atomic<int> success_count{0};
 
-  for (int t = 0; t < kNumThreads; ++t) {
+  for (int t = 0; t < k_num_threads; ++t) {
     threads.emplace_back([&, t]() {
-      for (int i = 0; i < kIterationsPerThread; ++i) {
+      for (int i = 0; i < k_iterations_per_thread; ++i) {
         ::ComplexStruct original{"thread" + std::to_string(t) + "_iter" +
                                      std::to_string(i),
                                  t * 1000 + i,
@@ -479,7 +479,7 @@ TEST(SerializationTest, ThreadSafeForyMultiThread) {
     t.join();
   }
 
-  EXPECT_EQ(success_count.load(), kNumThreads * kIterationsPerThread);
+  EXPECT_EQ(success_count.load(), k_num_threads * k_iterations_per_thread);
 }
 
 } // namespace test

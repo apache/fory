@@ -38,7 +38,7 @@ namespace fory {
 #define ERROR_CODE_INVALID "Invalid"
 #define ERROR_CODE_IO_ERROR "IOError"
 #define ERROR_CODE_UNKNOWN_ERROR "Unknown error"
-#define ERROR_CODE_ENCODE_ERROR "Encode error"
+#define ERROR_CODE_ENCODE_ERROR "encode error"
 #define ERROR_CODE_INVALID_DATA "Invalid data"
 #define ERROR_CODE_INVALID_REF "Invalid ref"
 #define ERROR_CODE_UNKNOWN_ENUM "Unknown enum"

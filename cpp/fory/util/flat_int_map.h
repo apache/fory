@@ -77,8 +77,8 @@ template <typename K, typename V> class FlatIntMap {
                 "FlatIntMap value type must be trivially copyable");
 
 public:
-  static constexpr K kEmpty = std::numeric_limits<K>::max();
-  static constexpr float kDefaultLoadFactor = 0.5f; // Low for fast lookup
+  static constexpr K k_empty = std::numeric_limits<K>::max();
+  static constexpr float k_default_load_factor = 0.5f; // Low for fast lookup
 
   struct Entry {
     K key;
@@ -89,7 +89,7 @@ public:
   public:
     Iterator(Entry *entries, size_t capacity, size_t index)
         : entries_(entries), capacity_(capacity), index_(index) {
-      while (index_ < capacity_ && entries_[index_].key == kEmpty)
+      while (index_ < capacity_ && entries_[index_].key == k_empty)
         ++index_;
     }
     std::pair<K, V> operator*() const {
@@ -98,7 +98,7 @@ public:
     const Entry *operator->() const { return &entries_[index_]; }
     Iterator &operator++() {
       ++index_;
-      while (index_ < capacity_ && entries_[index_].key == kEmpty)
+      while (index_ < capacity_ && entries_[index_].key == k_empty)
         ++index_;
       return *this;
     }
@@ -114,7 +114,7 @@ public:
   };
 
   explicit FlatIntMap(size_t initial_capacity = 64,
-                      float load_factor = kDefaultLoadFactor)
+                      float load_factor = k_default_load_factor)
       : load_factor_(load_factor) {
     capacity_ = next_power_of_2(initial_capacity < 8 ? 8 : initial_capacity);
     mask_ = capacity_ - 1;
@@ -178,16 +178,16 @@ public:
   }
 
   /// Insert or update a key-value pair. May trigger grow.
-  /// @param key Must not be kEmpty (max value of K)
+  /// @param key Must not be k_empty (max value of K)
   /// @param value The value to store
   /// @return Previous value if key existed, otherwise default-constructed V
   V put(K key, V value) {
-    FORY_CHECK(key != kEmpty) << "Cannot use max value as key (reserved)";
+    FORY_CHECK(key != k_empty) << "Cannot use max value as key (reserved)";
     if (size_ >= grow_threshold_) {
       grow();
     }
     size_t idx = find_slot_for_insert(key);
-    if (entries_[idx].key == kEmpty) {
+    if (entries_[idx].key == k_empty) {
       entries_[idx].key = key;
       entries_[idx].value = value;
       ++size_;
@@ -199,15 +199,15 @@ public:
   }
 
   /// Insert or update via subscript operator. May trigger grow.
-  /// @param key Must not be kEmpty (max value of K)
+  /// @param key Must not be k_empty (max value of K)
   /// @return Reference to the value (existing or newly inserted)
   V &operator[](K key) {
-    FORY_CHECK(key != kEmpty) << "Cannot use max value as key (reserved)";
+    FORY_CHECK(key != k_empty) << "Cannot use max value as key (reserved)";
     if (size_ >= grow_threshold_) {
       grow();
     }
     size_t idx = find_slot_for_insert(key);
-    if (entries_[idx].key == kEmpty) {
+    if (entries_[idx].key == k_empty) {
       entries_[idx].key = key;
       ++size_;
     }
@@ -216,7 +216,7 @@ public:
 
   /// Ultra-fast lookup. Returns pointer to Entry or nullptr.
   FORY_ALWAYS_INLINE Entry *find(K key) {
-    if (FORY_PREDICT_FALSE(key == kEmpty))
+    if (FORY_PREDICT_FALSE(key == k_empty))
       return nullptr;
     Entry *entries = entries_.get();
     size_t mask = mask_;
@@ -226,7 +226,7 @@ public:
       K k = entry->key;
       if (k == key)
         return entry;
-      if (k == kEmpty)
+      if (k == k_empty)
         return nullptr;
       idx = (idx + 1) & mask;
     }
@@ -236,12 +236,12 @@ public:
     return const_cast<FlatIntMap *>(this)->find(key);
   }
 
-  /// Get value if found, otherwise return default_value.
+  /// get value if found, otherwise return default_value.
   /// @param key The key to look up
   /// @param default_value Value to return if key not found
   /// @return The stored value or default_value
   FORY_ALWAYS_INLINE V get_or_default(K key, V default_value) const {
-    if (FORY_PREDICT_FALSE(key == kEmpty))
+    if (FORY_PREDICT_FALSE(key == k_empty))
       return default_value;
     Entry *entries = entries_.get();
     size_t mask = mask_;
@@ -251,14 +251,14 @@ public:
       K k = entry->key;
       if (k == key)
         return entry->value;
-      if (k == kEmpty)
+      if (k == k_empty)
         return default_value;
       idx = (idx + 1) & mask;
     }
   }
 
   FORY_ALWAYS_INLINE bool contains(K key) const {
-    if (FORY_PREDICT_FALSE(key == kEmpty))
+    if (FORY_PREDICT_FALSE(key == k_empty))
       return false;
     Entry *entries = entries_.get();
     size_t mask = mask_;
@@ -267,7 +267,7 @@ public:
       K k = entries[idx].key;
       if (k == key)
         return true;
-      if (k == kEmpty)
+      if (k == k_empty)
         return false;
       idx = (idx + 1) & mask;
     }
@@ -293,7 +293,7 @@ public:
 private:
   static void clear_entries(Entry *entries, size_t count) {
     for (size_t i = 0; i < count; ++i) {
-      entries[i].key = kEmpty;
+      entries[i].key = k_empty;
     }
   }
 
@@ -306,9 +306,9 @@ private:
 
     // Rehash all existing entries
     for (size_t i = 0; i < capacity_; ++i) {
-      if (entries_[i].key != kEmpty) {
+      if (entries_[i].key != k_empty) {
         size_t idx = place(entries_[i].key, new_shift);
-        while (new_entries[idx].key != kEmpty) {
+        while (new_entries[idx].key != k_empty) {
           idx = (idx + 1) & new_mask;
         }
         new_entries[idx] = entries_[i];
@@ -325,7 +325,7 @@ private:
   size_t find_slot_for_insert(K key) {
     size_t mask = mask_;
     size_t idx = place(key);
-    while (entries_[idx].key != kEmpty && entries_[idx].key != key) {
+    while (entries_[idx].key != k_empty && entries_[idx].key != key) {
       idx = (idx + 1) & mask;
     }
     return idx;
@@ -333,15 +333,15 @@ private:
 
   // Fibonacci hashing: multiply by golden ratio, use high bits.
   // Same as Java LongMap - single multiply, no mask needed for index.
-  static constexpr uint64_t kGoldenRatio = 0x9E3779B97F4A7C15ULL;
+  static constexpr uint64_t k_golden_ratio = 0x9E3779B97F4A7C15ULL;
 
   FORY_ALWAYS_INLINE size_t place(K key) const {
-    return static_cast<size_t>((static_cast<uint64_t>(key) * kGoldenRatio) >>
+    return static_cast<size_t>((static_cast<uint64_t>(key) * k_golden_ratio) >>
                                shift_);
   }
 
   FORY_ALWAYS_INLINE static size_t place(K key, int shift) {
-    return static_cast<size_t>((static_cast<uint64_t>(key) * kGoldenRatio) >>
+    return static_cast<size_t>((static_cast<uint64_t>(key) * k_golden_ratio) >>
                                shift);
   }
 

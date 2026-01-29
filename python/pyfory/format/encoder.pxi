@@ -26,7 +26,7 @@ from pyfory.includes.libformat cimport (
     CWriter, CRowWriter, CArrayWriter, CBuffer, CTypeId,
     CSchema, CField, CListType, CMapType, fory_schema, fory_list
 )
-from pyfory.includes.libutil cimport AllocateBuffer
+from pyfory.includes.libutil cimport allocate_buffer
 
 cimport pyfory.includes.libformat as libformat
 
@@ -93,10 +93,10 @@ cdef class RowEncoder(Encoder):
             raise ValueError("value shouldn't be None")
 
         cdef shared_ptr[CBuffer] buf
-        if not AllocateBuffer(self.initial_buffer_size, &buf):
+        if not allocate_buffer(self.initial_buffer_size, &buf):
             raise MemoryError("out of memory")
-        self.row_writer.SetBuffer(buf)
-        self.row_writer.Reset()
+        self.row_writer.set_buffer(buf)
+        self.row_writer.reset()
         return self.write_row(value)
 
     cpdef from_row(self, RowData row):
@@ -116,20 +116,20 @@ cdef class RowEncoder(Encoder):
                 field_ = self.schema_.field(i)
                 field_value = getattr(value, field_.name, None)
                 if field_value is None:
-                    self.row_writer.SetNullAt(i)
+                    self.row_writer.set_null_at(i)
                 else:
-                    self.row_writer.SetNotNullAt(i)
+                    self.row_writer.set_not_null_at(i)
                     (<Encoder>self.encoders[i]).write(i, field_value)
         else:
             for i in range(num_fields):
                 field_ = self.schema_.field(i)
                 field_value = value.get(field_.name)
                 if field_value is None:
-                    self.row_writer.SetNullAt(i)
+                    self.row_writer.set_null_at(i)
                 else:
-                    self.row_writer.SetNotNullAt(i)
+                    self.row_writer.set_not_null_at(i)
                     (<Encoder>self.encoders[i]).write(i, field_value)
-        cdef shared_ptr[libformat.CRow] row = self.row_writer.ToRow()
+        cdef shared_ptr[libformat.CRow] row = self.row_writer.to_row()
         return RowData.wrap(row, self.schema_)
 
     cdef decode(self, RowData row):
@@ -150,10 +150,10 @@ cdef class RowEncoder(Encoder):
 
     cdef write(self, int i, value):
         cdef int offset = self.parent_writer.cursor()
-        self.row_writer.Reset()
+        self.row_writer.reset()
         self.write_row(value)
         cdef int size = self.parent_writer.cursor() - offset
-        self.parent_writer.SetOffsetAndSize(i, offset, size)
+        self.parent_writer.set_offset_and_size(i, offset, size)
 
     cdef read(self, Getter data, int i):
         struct_data = data.get_struct(i)
@@ -201,14 +201,14 @@ cdef class ArrayWriter(Encoder):
         cdef:
             int length = len(value)
             int i
-        self.array_writer.Reset(length)
+        self.array_writer.reset(length)
         it = iter(value)
         for i in range(length):
             elem = next(it)
             if elem is None:
-                self.array_writer.SetNullAt(i)
+                self.array_writer.set_null_at(i)
             else:
-                self.array_writer.SetNotNullAt(i)
+                self.array_writer.set_not_null_at(i)
                 (<Encoder>self.elem_encoder).write(i, elem)
 
     cdef decode(self, ArrayData array_data):
@@ -227,7 +227,7 @@ cdef class ArrayWriter(Encoder):
         cdef int offset = self.parent_writer.cursor()
         self.write_array(value)
         cdef int size = self.parent_writer.cursor() - offset
-        self.parent_writer.SetOffsetAndSize(i, offset, size)
+        self.parent_writer.set_offset_and_size(i, offset, size)
 
     cdef read(self, Getter data, int i):
         array_data = data.get_array_data(i)
@@ -265,10 +265,10 @@ cdef class MapWriter(Encoder):
         if value is None:
             raise ValueError("value shouldn't be None")
         cdef int offset = self.parent_writer.cursor()
-        self.parent_writer.WriteDirectly(-1)  # increase cursor by 8
+        self.parent_writer.write_directly(-1)  # increase cursor by 8
         self.keys_encoder.write_array(value.keys())
         cdef int keys_size_bytes = self.parent_writer.cursor() - offset - 8
-        self.parent_writer.WriteDirectly(offset, keys_size_bytes)
+        self.parent_writer.write_directly(offset, keys_size_bytes)
         self.values_encoder.write_array(value.values())
 
     cdef decode(self, MapData map_data):
@@ -286,7 +286,7 @@ cdef class MapWriter(Encoder):
         cdef int offset = self.parent_writer.cursor()
         self.write_map(value)
         cdef int size = self.parent_writer.cursor() - offset
-        self.parent_writer.SetOffsetAndSize(i, offset, size)
+        self.parent_writer.set_offset_and_size(i, offset, size)
 
     cdef read(self, Getter data, int i):
         map_data = data.get_map_data(i)
@@ -309,7 +309,7 @@ cdef class MapWriter(Encoder):
 cdef class BooleanWriter(Encoder):
     cdef write(self, int i, value):
         cdef c_bool v = value
-        self.writer.Write(i, v)
+        self.writer.write(i, v)
 
     cdef read(self, Getter data, int i):
         return data.get_boolean(i)
@@ -319,7 +319,7 @@ cdef class BooleanWriter(Encoder):
 cdef class Int8Writer(Encoder):
     cdef write(self, int i, value):
         cdef int8_t v = value
-        self.writer.Write(i, v)
+        self.writer.write(i, v)
 
     cdef read(self, Getter data, int i):
         return data.get_int8(i)
@@ -329,7 +329,7 @@ cdef class Int8Writer(Encoder):
 cdef class Int16Writer(Encoder):
     cdef write(self, int i, value):
         cdef int16_t v = value
-        self.writer.Write(i, v)
+        self.writer.write(i, v)
 
     cdef read(self, Getter data, int i):
         return data.get_int16(i)
@@ -339,7 +339,7 @@ cdef class Int16Writer(Encoder):
 cdef class Int32Writer(Encoder):
     cdef write(self, int i, value):
         cdef int32_t v = value
-        self.writer.Write(i, v)
+        self.writer.write(i, v)
 
     cdef read(self, Getter data, int i):
         return data.get_int32(i)
@@ -349,7 +349,7 @@ cdef class Int32Writer(Encoder):
 cdef class Int64Writer(Encoder):
     cdef write(self, int i, value):
         cdef int64_t v = value
-        self.writer.Write(i, v)
+        self.writer.write(i, v)
 
     cdef read(self, Getter data, int i):
         return data.get_int64(i)
@@ -359,7 +359,7 @@ cdef class Int64Writer(Encoder):
 cdef class FloatWriter(Encoder):
     cdef write(self, int i, value):
         cdef float v = value
-        self.writer.Write(i, v)
+        self.writer.write(i, v)
 
     cdef read(self, Getter data, int i):
         return data.get_float(i)
@@ -369,7 +369,7 @@ cdef class FloatWriter(Encoder):
 cdef class DoubleWriter(Encoder):
     cdef write(self, int i, value):
         cdef double v = value
-        self.writer.Write(i, v)
+        self.writer.write(i, v)
 
     cdef read(self, Getter data, int i):
         return data.get_double(i)
@@ -382,7 +382,7 @@ cdef class DateWriter(Encoder):
             raise TypeError("{} should be {} instead of {}".format(
                 value, date, type(value)))
         cdef int32_t days = (value - date(1970, 1, 1)).days
-        self.writer.Write(i, days)
+        self.writer.write(i, days)
 
     cdef read(self, Getter data, int i):
         return data.get_date(i)
@@ -396,7 +396,7 @@ cdef class TimestampWriter(Encoder):
                 value, datetime, type(value)))
         # TimestampType represent micro seconds
         cdef int64_t timestamp = int(value.timestamp() * 1000000)
-        self.writer.Write(i, timestamp)
+        self.writer.write(i, timestamp)
 
     cdef read(self, Getter data, int i):
         return data.get_datetime(i)
@@ -408,7 +408,7 @@ cdef class BinaryWriter(Encoder):
         # support bytes, bytearray, array of unsigned char
         cdef const unsigned char[:] data = value
         cdef int32_t length = data.nbytes
-        self.writer.WriteBytes(i, &data[0], length)
+        self.writer.write_bytes(i, &data[0], length)
 
     cdef read(self, Getter data, int i):
         return data.get_binary(i)
@@ -421,7 +421,7 @@ cdef class StrWriter(Encoder):
         if PyUnicode_Check(value):
             encoded = PyUnicode_AsEncodedString(value, "UTF-8", "encode to utf-8 error")
             data = encoded
-            self.writer.WriteBytes(i, data, len(encoded))
+            self.writer.write_bytes(i, data, len(encoded))
         else:
             raise TypeError("value should be unicode, but get type of {}"
                             .format(type(value)))

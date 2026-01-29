@@ -137,7 +137,7 @@ public:
   // Destructor
   ~Result() { destroy(); }
 
-  // Copy constructor
+  // copy constructor
   Result(const Result &other) : has_value_(other.has_value_) {
     if (has_value_) {
       new (&storage_.value_) T(other.storage_.value_);
@@ -158,7 +158,7 @@ public:
     }
   }
 
-  // Copy assignment
+  // copy assignment
   Result &operator=(const Result &other) {
     if (this != &other) {
       if (has_value_ == other.has_value_) {
@@ -357,7 +357,7 @@ public:
   // Destructor
   ~Result() { destroy(); }
 
-  // Copy constructor
+  // copy constructor
   Result(const Result &other) : has_value_(other.has_value_) {
     if (!has_value_) {
       new (&storage_.error_) E(other.storage_.error_);
@@ -376,7 +376,7 @@ public:
     }
   }
 
-  // Copy assignment
+  // copy assignment
   Result &operator=(const Result &other) {
     if (this != &other) {
       if (has_value_ == other.has_value_) {
@@ -461,7 +461,7 @@ public:
 /// IMPORTANT: The referenced object must outlive this Result.
 /// This is the same lifetime contract as raw C++ references.
 ///
-/// Copy/move semantics re-seat the pointer (like std::reference_wrapper),
+/// copy/move semantics re-seat the pointer (like std::reference_wrapper),
 /// rather than copying the referenced object.
 ///
 /// ## Usage Example
@@ -517,7 +517,7 @@ public:
 
   ~Result() { destroy(); }
 
-  // Copy constructor - copies pointer (shallow, like reference_wrapper)
+  // copy constructor - copies pointer (shallow, like reference_wrapper)
   Result(const Result &other) : has_value_(other.has_value_) {
     if (has_value_) {
       storage_.value_ptr_ = other.storage_.value_ptr_;
@@ -536,7 +536,7 @@ public:
     }
   }
 
-  // Copy assignment - re-seats pointer (like reference_wrapper)
+  // copy assignment - re-seats pointer (like reference_wrapper)
   Result &operator=(const Result &other) {
     if (this != &other) {
       if (has_value_ == other.has_value_) {
@@ -730,27 +730,27 @@ template <typename T, typename E> class Result<T &&, E> {
 template <typename T, typename E>
 inline std::ostream &operator<<(std::ostream &os, const Result<T, E> &r) {
   if (r.ok()) {
-    return os << "Ok(" << r.value() << ")";
+    return os << "ok(" << r.value() << ")";
   } else {
-    return os << "Err(" << r.error() << ")";
+    return os << "err(" << r.error() << ")";
   }
 }
 
 template <typename E>
 inline std::ostream &operator<<(std::ostream &os, const Result<void, E> &r) {
   if (r.ok()) {
-    return os << "Ok()";
+    return os << "ok()";
   } else {
-    return os << "Err(" << r.error() << ")";
+    return os << "err(" << r.error() << ")";
   }
 }
 
 template <typename T, typename E>
 inline std::ostream &operator<<(std::ostream &os, const Result<T &, E> &r) {
   if (r.ok()) {
-    return os << "Ok(&" << r.value() << ")";
+    return os << "ok(&" << r.value() << ")";
   } else {
-    return os << "Err(" << r.error() << ")";
+    return os << "err(" << r.error() << ")";
   }
 }
 

@@ -33,9 +33,9 @@ template <> struct hash<fory::ForyLogLevel> {
 
 namespace fory {
 
-const ForyLogLevel fory_severity_threshold = ForyLog::GetLogLevel();
+const ForyLogLevel fory_severity_threshold = ForyLog::get_log_level();
 
-std::string GetCallTrace() {
+std::string get_call_trace() {
   std::vector<void *> local_stack;
   local_stack.resize(100);
   absl::GetStackTrace(local_stack.data(), 100, 0);
@@ -58,7 +58,7 @@ std::unordered_map<ForyLogLevel, std::string> log_level_to_str = {
     {ForyLogLevel::FORY_FATAL, "FATAL"},
 };
 
-std::string LogLevelAsString(ForyLogLevel level) {
+std::string log_level_as_string(ForyLogLevel level) {
   auto it = log_level_to_str.find(level);
   if (it == log_level_to_str.end()) {
     return "UNKNOWN";
@@ -66,7 +66,7 @@ std::string LogLevelAsString(ForyLogLevel level) {
   return it->second;
 }
 
-ForyLogLevel ForyLog::GetLogLevel() {
+ForyLogLevel ForyLog::get_log_level() {
   ForyLogLevel severity_threshold = ForyLogLevel::FORY_INFO;
   const char *var_value = std::getenv("FORY_LOG_LEVEL");
   if (var_value != nullptr) {
@@ -95,24 +95,25 @@ ForyLogLevel ForyLog::GetLogLevel() {
 
 ForyLog::ForyLog(const char *file_name, int line_number, ForyLogLevel severity)
     : severity_(severity) {
-  Stream() << "[" << FormatTimePoint(std::chrono::system_clock::now()) << "] "
-           << LogLevelAsString(severity) << " " << file_name << ":"
+  stream() << "[" << format_time_point(std::chrono::system_clock::now()) << "] "
+           << log_level_as_string(severity) << " " << file_name << ":"
            << line_number << ": ";
 }
 
 ForyLog::~ForyLog() {
   if (severity_ == ForyLogLevel::FORY_FATAL) {
-    Stream() << "\n*** StackTrace Information ***\n" << ::fory::GetCallTrace();
-    Stream() << std::endl;
-    Stream().flush();
+    stream() << "\n*** StackTrace Information ***\n"
+             << ::fory::get_call_trace();
+    stream() << std::endl;
+    stream().flush();
     std::cerr.flush();
     std::cout.flush();
     std::_Exit(EXIT_FAILURE);
   }
-  Stream() << "\n" << std::endl;
+  stream() << "\n" << std::endl;
 }
 
-bool ForyLog::IsLevelEnabled(ForyLogLevel log_level) {
+bool ForyLog::is_level_enabled(ForyLogLevel log_level) {
   return log_level >= fory_severity_threshold;
 }
 

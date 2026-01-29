@@ -78,43 +78,43 @@ int main() {
 
     // Create a row writer
     RowWriter writer(row_schema);
-    writer.Reset();
+    writer.reset();
 
-    // Write primitive fields
-    writer.WriteString(0, "Alice");
-    writer.Write(1, static_cast<int32_t>(25));
-    writer.Write(2, 95.5f);
+    // write primitive fields
+    writer.write_string(0, "Alice");
+    writer.write(1, static_cast<int32_t>(25));
+    writer.write(2, 95.5f);
 
-    // Write array field
-    writer.SetNotNullAt(3);
+    // write array field
+    writer.set_not_null_at(3);
     int array_start = writer.cursor();
     auto list_type = std::dynamic_pointer_cast<ListType>(utf8());
     ArrayWriter array_writer(list(utf8()), &writer);
-    array_writer.Reset(3);
-    array_writer.WriteString(0, "developer");
-    array_writer.WriteString(1, "team-lead");
-    array_writer.WriteString(2, "mentor");
-    writer.SetOffsetAndSize(3, array_start, writer.cursor() - array_start);
+    array_writer.reset(3);
+    array_writer.write_string(0, "developer");
+    array_writer.write_string(1, "team-lead");
+    array_writer.write_string(2, "mentor");
+    writer.set_offset_and_size(3, array_start, writer.cursor() - array_start);
 
     // Convert to row and read back
-    auto row = writer.ToRow();
+    auto row = writer.to_row();
 
     std::cout << "Written row:" << std::endl;
-    std::cout << "  name: " << row->GetString(0) << std::endl;
-    std::cout << "  age: " << row->GetInt32(1) << std::endl;
-    std::cout << "  score: " << row->GetFloat(2) << std::endl;
+    std::cout << "  name: " << row->get_string(0) << std::endl;
+    std::cout << "  age: " << row->get_int32(1) << std::endl;
+    std::cout << "  score: " << row->get_float(2) << std::endl;
 
-    auto tags_array = row->GetArray(3);
+    auto tags_array = row->get_array(3);
     std::cout << "  tags: [";
     for (int i = 0; i < tags_array->num_elements(); ++i) {
-      std::cout << tags_array->GetString(i);
+      std::cout << tags_array->get_string(i);
       if (i < tags_array->num_elements() - 1)
         std::cout << ", ";
     }
     std::cout << "]" << std::endl;
 
     // Print full row string representation
-    std::cout << "  Full row: " << row->ToString() << std::endl;
+    std::cout << "  Full row: " << row->to_string() << std::endl;
   }
   std::cout << std::endl;
 
@@ -131,10 +131,10 @@ int main() {
 
     // Create encoder and encode
     encoder::RowEncoder<Employee> enc;
-    enc.Encode(emp);
+    enc.encode(emp);
 
-    // Get the schema (automatically generated from struct)
-    auto &schema = enc.GetSchema();
+    // get the schema (automatically generated from struct)
+    auto &schema = enc.get_schema();
     std::cout << "Generated schema fields: ";
     for (const auto &name : schema.field_names()) {
       std::cout << name << " ";
@@ -142,11 +142,11 @@ int main() {
     std::cout << std::endl;
 
     // Read back from encoded row
-    auto row = enc.GetWriter().ToRow();
+    auto row = enc.get_writer().to_row();
     std::cout << "Encoded employee:" << std::endl;
-    std::cout << "  name: " << row->GetString(0) << std::endl;
-    std::cout << "  id: " << row->GetInt32(1) << std::endl;
-    std::cout << "  salary: " << row->GetFloat(2) << std::endl;
+    std::cout << "  name: " << row->get_string(0) << std::endl;
+    std::cout << "  id: " << row->get_int32(1) << std::endl;
+    std::cout << "  salary: " << row->get_float(2) << std::endl;
   }
   std::cout << std::endl;
 
@@ -166,11 +166,11 @@ int main() {
                         {"Dave", 1003, 70000.0f},
                     }};
 
-    // Encode using RowEncoder
+    // encode using RowEncoder
     encoder::RowEncoder<Department> enc;
-    enc.Encode(dept);
+    enc.encode(dept);
 
-    auto &schema = enc.GetSchema();
+    auto &schema = enc.get_schema();
     std::cout << "Department schema fields: ";
     for (const auto &name : schema.field_names()) {
       std::cout << name << " ";
@@ -178,25 +178,25 @@ int main() {
     std::cout << std::endl;
 
     // Read back
-    auto row = enc.GetWriter().ToRow();
+    auto row = enc.get_writer().to_row();
     std::cout << "Encoded department:" << std::endl;
-    std::cout << "  dept_name: " << row->GetString(0) << std::endl;
+    std::cout << "  dept_name: " << row->get_string(0) << std::endl;
 
     // Access nested manager struct
-    auto manager_row = row->GetStruct(1);
-    std::cout << "  manager: {name=" << manager_row->GetString(0)
-              << ", id=" << manager_row->GetInt32(1)
-              << ", salary=" << manager_row->GetFloat(2) << "}" << std::endl;
+    auto manager_row = row->get_struct(1);
+    std::cout << "  manager: {name=" << manager_row->get_string(0)
+              << ", id=" << manager_row->get_int32(1)
+              << ", salary=" << manager_row->get_float(2) << "}" << std::endl;
 
     // Access employees array
-    auto employees_array = row->GetArray(2);
+    auto employees_array = row->get_array(2);
     std::cout << "  employees (" << employees_array->num_elements()
               << " total):" << std::endl;
     for (int i = 0; i < employees_array->num_elements(); ++i) {
-      auto emp_row = employees_array->GetStruct(i);
-      std::cout << "    - {name=" << emp_row->GetString(0)
-                << ", id=" << emp_row->GetInt32(1)
-                << ", salary=" << emp_row->GetFloat(2) << "}" << std::endl;
+      auto emp_row = employees_array->get_struct(i);
+      std::cout << "    - {name=" << emp_row->get_string(0)
+                << ", id=" << emp_row->get_int32(1)
+                << ", salary=" << emp_row->get_float(2) << "}" << std::endl;
     }
   }
   std::cout << std::endl;
@@ -208,28 +208,28 @@ int main() {
   {
     using namespace fory::row;
 
-    // Encode a vector of employees
+    // encode a vector of employees
     std::vector<Employee> employees = {
         {"Eve", 2001, 65000.0f},
         {"Frank", 2002, 68000.0f},
     };
 
     encoder::RowEncoder<decltype(employees)> enc;
-    enc.Encode(employees);
+    enc.encode(employees);
 
-    auto &type = enc.GetType();
+    auto &type = enc.get_type();
     std::cout << "Type name: " << type.name() << std::endl;
 
-    // Get array data
-    auto array_data = enc.GetWriter().CopyToArrayData();
+    // get array data
+    auto array_data = enc.get_writer().copy_to_array_data();
     std::cout << "Encoded " << array_data->num_elements()
               << " employees:" << std::endl;
 
     for (int i = 0; i < array_data->num_elements(); ++i) {
-      auto emp_row = array_data->GetStruct(i);
-      std::cout << "  [" << i << "] {name=" << emp_row->GetString(0)
-                << ", id=" << emp_row->GetInt32(1)
-                << ", salary=" << emp_row->GetFloat(2) << "}" << std::endl;
+      auto emp_row = array_data->get_struct(i);
+      std::cout << "  [" << i << "] {name=" << emp_row->get_string(0)
+                << ", id=" << emp_row->get_int32(1)
+                << ", salary=" << emp_row->get_float(2) << "}" << std::endl;
     }
   }
   std::cout << std::endl;
@@ -243,11 +243,11 @@ int main() {
 
     // Create array directly from vector
     std::vector<int32_t> numbers = {10, 20, 30, 40, 50};
-    auto array = ArrayData::From(numbers);
+    auto array = ArrayData::from(numbers);
 
     std::cout << "Created array with " << array->num_elements()
               << " elements:" << std::endl;
-    std::cout << "  " << array->ToString() << std::endl;
+    std::cout << "  " << array->to_string() << std::endl;
   }
   std::cout << std::endl;
 

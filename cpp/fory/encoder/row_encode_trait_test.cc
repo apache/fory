@@ -52,15 +52,15 @@ TEST(RowEncodeTrait, Basic) {
   ASSERT_EQ(field_vector[2]->type()->name(), "bool");
 
   RowWriter writer(schema(field_vector));
-  writer.Reset();
+  writer.reset();
 
   A a{233, 3.14, true};
-  encoder::RowEncodeTrait<A>::Write(encoder::EmptyWriteVisitor{}, a, writer);
+  encoder::RowEncodeTrait<A>::write(encoder::EmptyWriteVisitor{}, a, writer);
 
-  auto row = writer.ToRow();
-  ASSERT_EQ(row->GetInt32(0), 233);
-  ASSERT_FLOAT_EQ(row->GetFloat(1), 3.14);
-  ASSERT_EQ(row->GetBoolean(2), true);
+  auto row = writer.to_row();
+  ASSERT_EQ(row->get_int32(0), 233);
+  ASSERT_FLOAT_EQ(row->get_float(1), 3.14);
+  ASSERT_EQ(row->get_boolean(2), true);
 }
 
 struct B {
@@ -71,14 +71,14 @@ struct B {
 
 TEST(RowEncodeTrait, String) {
   RowWriter writer(encoder::RowEncodeTrait<B>::Schema());
-  writer.Reset();
+  writer.reset();
 
   B b{233, "hello"};
-  encoder::RowEncodeTrait<B>::Write(encoder::EmptyWriteVisitor{}, b, writer);
+  encoder::RowEncodeTrait<B>::write(encoder::EmptyWriteVisitor{}, b, writer);
 
-  auto row = writer.ToRow();
-  ASSERT_EQ(row->GetString(1), "hello");
-  ASSERT_EQ(row->GetInt32(0), 233);
+  auto row = writer.to_row();
+  ASSERT_EQ(row->get_string(1), "hello");
+  ASSERT_EQ(row->get_int32(0), 233);
 
   ASSERT_EQ(writer.schema()->field(1)->type()->name(), "utf8");
 }
@@ -92,15 +92,15 @@ struct C {
 
 TEST(RowEncodeTrait, Const) {
   RowWriter writer(encoder::RowEncodeTrait<C>::Schema());
-  writer.Reset();
+  writer.reset();
 
   C c{233, 1.1, true};
-  encoder::RowEncodeTrait<C>::Write(encoder::EmptyWriteVisitor{}, c, writer);
+  encoder::RowEncodeTrait<C>::write(encoder::EmptyWriteVisitor{}, c, writer);
 
-  auto row = writer.ToRow();
-  ASSERT_EQ(row->GetInt32(0), 233);
-  ASSERT_FLOAT_EQ(row->GetFloat(1), 1.1);
-  ASSERT_EQ(row->GetBoolean(2), true);
+  auto row = writer.to_row();
+  ASSERT_EQ(row->get_int32(0), 233);
+  ASSERT_FLOAT_EQ(row->get_float(1), 1.1);
+  ASSERT_EQ(row->get_boolean(2), true);
 }
 
 struct D {
@@ -113,23 +113,23 @@ struct D {
 TEST(RowEncodeTrait, NestedStruct) {
   RowWriter writer(encoder::RowEncodeTrait<D>::Schema());
   std::vector<std::unique_ptr<RowWriter>> children;
-  writer.Reset();
+  writer.reset();
 
   D d{233, {234, 3.14, true}, {235, "hi"}};
-  encoder::RowEncodeTrait<D>::Write(
+  encoder::RowEncodeTrait<D>::write(
       encoder::DefaultWriteVisitor<decltype(children)>{children}, d, writer);
 
-  auto row = writer.ToRow();
-  ASSERT_EQ(row->GetInt32(0), 233);
+  auto row = writer.to_row();
+  ASSERT_EQ(row->get_int32(0), 233);
 
-  auto y_row = row->GetStruct(1);
-  ASSERT_EQ(y_row->GetInt32(0), 234);
-  ASSERT_FLOAT_EQ(y_row->GetFloat(1), 3.14);
-  ASSERT_EQ(y_row->GetBoolean(2), true);
+  auto y_row = row->get_struct(1);
+  ASSERT_EQ(y_row->get_int32(0), 234);
+  ASSERT_FLOAT_EQ(y_row->get_float(1), 3.14);
+  ASSERT_EQ(y_row->get_boolean(2), true);
 
-  auto z_row = row->GetStruct(2);
-  ASSERT_EQ(z_row->GetString(1), "hi");
-  ASSERT_EQ(z_row->GetInt32(0), 235);
+  auto z_row = row->get_struct(2);
+  ASSERT_EQ(z_row->get_string(1), "hi");
+  ASSERT_EQ(z_row->get_int32(0), 235);
 
   ASSERT_EQ(writer.schema()->field(0)->type()->name(), "int32");
   ASSERT_EQ(writer.schema()->field(1)->type()->name(), "struct");
@@ -157,15 +157,15 @@ TEST(RowEncodeTrait, SimpleArray) {
   ASSERT_EQ(type->field(0)->type()->name(), "int32");
 
   ArrayWriter writer(std::dynamic_pointer_cast<ListType>(type));
-  writer.Reset(a.size());
+  writer.reset(a.size());
 
-  encoder::RowEncodeTrait<decltype(a)>::Write(encoder::EmptyWriteVisitor{}, a,
+  encoder::RowEncodeTrait<decltype(a)>::write(encoder::EmptyWriteVisitor{}, a,
                                               writer);
 
-  auto array = writer.CopyToArrayData();
-  ASSERT_EQ(array->GetInt32(0), 10);
-  ASSERT_EQ(array->GetInt32(1), 20);
-  ASSERT_EQ(array->GetInt32(2), 30);
+  auto array = writer.copy_to_array_data();
+  ASSERT_EQ(array->get_int32(0), 10);
+  ASSERT_EQ(array->get_int32(1), 20);
+  ASSERT_EQ(array->get_int32(2), 30);
 }
 
 TEST(RowEncodeTrait, StructInArray) {
@@ -177,22 +177,22 @@ TEST(RowEncodeTrait, StructInArray) {
   ASSERT_EQ(type->field(0)->type()->name(), "struct");
 
   ArrayWriter writer(std::dynamic_pointer_cast<ListType>(type));
-  writer.Reset(a.size());
+  writer.reset(a.size());
 
-  encoder::RowEncodeTrait<decltype(a)>::Write(encoder::EmptyWriteVisitor{}, a,
+  encoder::RowEncodeTrait<decltype(a)>::write(encoder::EmptyWriteVisitor{}, a,
                                               writer);
 
-  auto array = writer.CopyToArrayData();
+  auto array = writer.copy_to_array_data();
 
-  auto row1 = array->GetStruct(0);
-  ASSERT_EQ(row1->GetInt32(0), 233);
-  ASSERT_FLOAT_EQ(row1->GetFloat(1), 1.1);
-  ASSERT_EQ(row1->GetBoolean(2), false);
+  auto row1 = array->get_struct(0);
+  ASSERT_EQ(row1->get_int32(0), 233);
+  ASSERT_FLOAT_EQ(row1->get_float(1), 1.1);
+  ASSERT_EQ(row1->get_boolean(2), false);
 
-  auto row2 = array->GetStruct(1);
-  ASSERT_EQ(row2->GetInt32(0), 234);
-  ASSERT_FLOAT_EQ(row2->GetFloat(1), 3.14);
-  ASSERT_EQ(row2->GetBoolean(2), true);
+  auto row2 = array->get_struct(1);
+  ASSERT_EQ(row2->get_int32(0), 234);
+  ASSERT_FLOAT_EQ(row2->get_float(1), 3.14);
+  ASSERT_EQ(row2->get_boolean(2), true);
 }
 
 struct E {
@@ -211,17 +211,17 @@ TEST(RowEncodeTrait, ArrayInStruct) {
   ASSERT_EQ(type->field(1)->type()->name(), "list");
 
   RowWriter writer(encoder::RowEncodeTrait<decltype(e)>::Schema());
-  writer.Reset();
+  writer.reset();
 
-  encoder::RowEncodeTrait<decltype(e)>::Write(encoder::EmptyWriteVisitor{}, e,
+  encoder::RowEncodeTrait<decltype(e)>::write(encoder::EmptyWriteVisitor{}, e,
                                               writer);
 
-  auto row = writer.ToRow();
-  ASSERT_EQ(row->GetInt32(0), 233);
+  auto row = writer.to_row();
+  ASSERT_EQ(row->get_int32(0), 233);
 
-  ASSERT_EQ(row->GetArray(1)->GetInt32(0), 10);
-  ASSERT_EQ(row->GetArray(1)->GetInt32(1), 20);
-  ASSERT_EQ(row->GetArray(1)->GetInt32(2), 30);
+  ASSERT_EQ(row->get_array(1)->get_int32(0), 10);
+  ASSERT_EQ(row->get_array(1)->get_int32(1), 20);
+  ASSERT_EQ(row->get_array(1)->get_int32(2), 30);
 }
 
 TEST(RowEncodeTrait, ArrayInArray) {
@@ -233,18 +233,18 @@ TEST(RowEncodeTrait, ArrayInArray) {
   ASSERT_EQ(type->field(0)->type()->name(), "list");
 
   ArrayWriter writer(std::dynamic_pointer_cast<ListType>(type));
-  writer.Reset(a.size());
+  writer.reset(a.size());
 
-  encoder::RowEncodeTrait<decltype(a)>::Write(encoder::EmptyWriteVisitor{}, a,
+  encoder::RowEncodeTrait<decltype(a)>::write(encoder::EmptyWriteVisitor{}, a,
                                               writer);
 
-  auto array = writer.CopyToArrayData();
-  ASSERT_EQ(array->GetArray(0)->GetInt32(0), 10);
-  ASSERT_EQ(array->GetArray(1)->GetInt32(0), 20);
-  ASSERT_EQ(array->GetArray(1)->GetInt32(1), 30);
-  ASSERT_EQ(array->GetArray(2)->GetInt32(0), 40);
-  ASSERT_EQ(array->GetArray(2)->GetInt32(1), 50);
-  ASSERT_EQ(array->GetArray(2)->GetInt32(2), 60);
+  auto array = writer.copy_to_array_data();
+  ASSERT_EQ(array->get_array(0)->get_int32(0), 10);
+  ASSERT_EQ(array->get_array(1)->get_int32(0), 20);
+  ASSERT_EQ(array->get_array(1)->get_int32(1), 30);
+  ASSERT_EQ(array->get_array(2)->get_int32(0), 40);
+  ASSERT_EQ(array->get_array(2)->get_int32(1), 50);
+  ASSERT_EQ(array->get_array(2)->get_int32(2), 60);
 }
 
 struct F {
@@ -264,31 +264,31 @@ TEST(RowEncodeTrait, Optional) {
 
   {
     RowWriter writer(encoder::RowEncodeTrait<F>::Schema());
-    writer.Reset();
+    writer.reset();
 
-    encoder::RowEncodeTrait<F>::Write(encoder::EmptyWriteVisitor{}, x, writer);
+    encoder::RowEncodeTrait<F>::write(encoder::EmptyWriteVisitor{}, x, writer);
 
-    auto row = writer.ToRow();
-    ASSERT_EQ(row->IsNullAt(0), false);
-    ASSERT_EQ(row->IsNullAt(1), false);
-    ASSERT_EQ(row->IsNullAt(2), false);
+    auto row = writer.to_row();
+    ASSERT_EQ(row->is_null_at(0), false);
+    ASSERT_EQ(row->is_null_at(1), false);
+    ASSERT_EQ(row->is_null_at(2), false);
 
-    ASSERT_EQ(row->GetInt32(1), 233);
-    ASSERT_EQ(row->GetInt32(2), 111);
+    ASSERT_EQ(row->get_int32(1), 233);
+    ASSERT_EQ(row->get_int32(2), 111);
   }
 
   {
     RowWriter writer(encoder::RowEncodeTrait<F>::Schema());
-    writer.Reset();
+    writer.reset();
 
-    encoder::RowEncodeTrait<F>::Write(encoder::EmptyWriteVisitor{}, y, writer);
+    encoder::RowEncodeTrait<F>::write(encoder::EmptyWriteVisitor{}, y, writer);
 
-    auto row = writer.ToRow();
-    ASSERT_EQ(row->IsNullAt(0), false);
-    ASSERT_EQ(row->IsNullAt(1), true);
-    ASSERT_EQ(row->IsNullAt(2), false);
+    auto row = writer.to_row();
+    ASSERT_EQ(row->is_null_at(0), false);
+    ASSERT_EQ(row->is_null_at(1), true);
+    ASSERT_EQ(row->is_null_at(2), false);
 
-    ASSERT_EQ(row->GetInt32(2), 222);
+    ASSERT_EQ(row->get_int32(2), 222);
   }
 }
 
@@ -324,33 +324,35 @@ TEST(RowEncodeTrait, Map) {
   ASSERT_EQ(b_map->item_type()->field(2)->type()->name(), "bool");
 
   RowWriter writer(encoder::RowEncodeTrait<G>::Schema());
-  writer.Reset();
+  writer.reset();
 
-  encoder::RowEncodeTrait<G>::Write(encoder::EmptyWriteVisitor{}, v, writer);
+  encoder::RowEncodeTrait<G>::write(encoder::EmptyWriteVisitor{}, v, writer);
 
-  auto map_a = writer.ToRow()->GetMap(0);
-  ASSERT_EQ(map_a->keys_array()->GetInt32(0), 1);
-  ASSERT_EQ(map_a->keys_array()->GetInt32(1), 2);
-  ASSERT_EQ(map_a->values_array()->GetMap(0)->keys_array()->GetInt32(0), 3);
-  ASSERT_EQ(map_a->values_array()->GetMap(0)->keys_array()->GetInt32(1), 5);
-  ASSERT_EQ(map_a->values_array()->GetMap(0)->values_array()->GetInt32(0), 4);
-  ASSERT_EQ(map_a->values_array()->GetMap(0)->values_array()->GetInt32(1), 6);
-  ASSERT_EQ(map_a->values_array()->GetMap(1)->keys_array()->GetInt32(0), 7);
-  ASSERT_EQ(map_a->values_array()->GetMap(1)->keys_array()->GetInt32(1), 9);
-  ASSERT_EQ(map_a->values_array()->GetMap(1)->keys_array()->GetInt32(2), 11);
-  ASSERT_EQ(map_a->values_array()->GetMap(1)->values_array()->GetInt32(0), 8);
-  ASSERT_EQ(map_a->values_array()->GetMap(1)->values_array()->GetInt32(1), 10);
-  ASSERT_EQ(map_a->values_array()->GetMap(1)->values_array()->GetInt32(2), 12);
+  auto map_a = writer.to_row()->get_map(0);
+  ASSERT_EQ(map_a->keys_array()->get_int32(0), 1);
+  ASSERT_EQ(map_a->keys_array()->get_int32(1), 2);
+  ASSERT_EQ(map_a->values_array()->get_map(0)->keys_array()->get_int32(0), 3);
+  ASSERT_EQ(map_a->values_array()->get_map(0)->keys_array()->get_int32(1), 5);
+  ASSERT_EQ(map_a->values_array()->get_map(0)->values_array()->get_int32(0), 4);
+  ASSERT_EQ(map_a->values_array()->get_map(0)->values_array()->get_int32(1), 6);
+  ASSERT_EQ(map_a->values_array()->get_map(1)->keys_array()->get_int32(0), 7);
+  ASSERT_EQ(map_a->values_array()->get_map(1)->keys_array()->get_int32(1), 9);
+  ASSERT_EQ(map_a->values_array()->get_map(1)->keys_array()->get_int32(2), 11);
+  ASSERT_EQ(map_a->values_array()->get_map(1)->values_array()->get_int32(0), 8);
+  ASSERT_EQ(map_a->values_array()->get_map(1)->values_array()->get_int32(1),
+            10);
+  ASSERT_EQ(map_a->values_array()->get_map(1)->values_array()->get_int32(2),
+            12);
 
-  auto map_b = writer.ToRow()->GetMap(1);
-  ASSERT_EQ(map_b->keys_array()->GetString(0), "a");
-  ASSERT_EQ(map_b->keys_array()->GetString(1), "b");
-  ASSERT_EQ(map_b->values_array()->GetStruct(0)->GetInt32(0), 1);
-  ASSERT_EQ(map_b->values_array()->GetStruct(1)->GetInt32(0), 2);
-  ASSERT_FLOAT_EQ(map_b->values_array()->GetStruct(0)->GetFloat(1), 1.1);
-  ASSERT_FLOAT_EQ(map_b->values_array()->GetStruct(1)->GetFloat(1), 3.3);
-  ASSERT_EQ(map_b->values_array()->GetStruct(0)->GetBoolean(2), true);
-  ASSERT_EQ(map_b->values_array()->GetStruct(1)->GetBoolean(2), false);
+  auto map_b = writer.to_row()->get_map(1);
+  ASSERT_EQ(map_b->keys_array()->get_string(0), "a");
+  ASSERT_EQ(map_b->keys_array()->get_string(1), "b");
+  ASSERT_EQ(map_b->values_array()->get_struct(0)->get_int32(0), 1);
+  ASSERT_EQ(map_b->values_array()->get_struct(1)->get_int32(0), 2);
+  ASSERT_FLOAT_EQ(map_b->values_array()->get_struct(0)->get_float(1), 1.1);
+  ASSERT_FLOAT_EQ(map_b->values_array()->get_struct(1)->get_float(1), 3.3);
+  ASSERT_EQ(map_b->values_array()->get_struct(0)->get_boolean(2), true);
+  ASSERT_EQ(map_b->values_array()->get_struct(1)->get_boolean(2), false);
 }
 
 } // namespace test

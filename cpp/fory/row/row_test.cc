@@ -29,7 +29,7 @@
 namespace fory {
 namespace row {
 
-TEST(RowTest, Write) {
+TEST(RowTest, write) {
   auto f1 = field("f1", utf8());
   auto f2 = field("f2", int32());
   auto arr_type = list(int32());
@@ -43,56 +43,57 @@ TEST(RowTest, Write) {
   auto s = schema(fields);
 
   RowWriter row_writer(s);
-  row_writer.Reset();
-  row_writer.WriteString(0, std::string("str"));
-  row_writer.Write(1, static_cast<int32_t>(1));
+  row_writer.reset();
+  row_writer.write_string(0, std::string("str"));
+  row_writer.write(1, static_cast<int32_t>(1));
 
   // array
-  row_writer.SetNotNullAt(2);
+  row_writer.set_not_null_at(2);
   int start = row_writer.cursor();
   ArrayWriter array_writer(arr_type, &row_writer);
-  array_writer.Reset(2);
-  array_writer.Write(0, static_cast<int32_t>(2));
-  array_writer.Write(1, static_cast<int32_t>(2));
-  EXPECT_EQ(array_writer.CopyToArrayData()->ToString(), std::string("[2, 2]"));
-  row_writer.SetOffsetAndSize(2, start, row_writer.cursor() - start);
+  array_writer.reset(2);
+  array_writer.write(0, static_cast<int32_t>(2));
+  array_writer.write(1, static_cast<int32_t>(2));
+  EXPECT_EQ(array_writer.copy_to_array_data()->to_string(),
+            std::string("[2, 2]"));
+  row_writer.set_offset_and_size(2, start, row_writer.cursor() - start);
 
   // map
-  row_writer.SetNotNullAt(3);
+  row_writer.set_not_null_at(3);
   int offset = row_writer.cursor();
-  row_writer.WriteDirectly(-1);
+  row_writer.write_directly(-1);
   ArrayWriter key_array_writer(list(utf8()), &row_writer);
-  key_array_writer.Reset(2);
-  key_array_writer.WriteString(0, "key1");
-  key_array_writer.WriteString(1, "key2");
-  EXPECT_EQ(key_array_writer.CopyToArrayData()->ToString(),
+  key_array_writer.reset(2);
+  key_array_writer.write_string(0, "key1");
+  key_array_writer.write_string(1, "key2");
+  EXPECT_EQ(key_array_writer.copy_to_array_data()->to_string(),
             std::string("[key1, key2]"));
-  row_writer.WriteDirectly(offset, key_array_writer.size());
+  row_writer.write_directly(offset, key_array_writer.size());
   ArrayWriter value_array_writer(list(float32()), &row_writer);
-  value_array_writer.Reset(2);
-  value_array_writer.Write(0, 1.0f);
-  value_array_writer.Write(1, 1.0f);
-  EXPECT_EQ(value_array_writer.CopyToArrayData()->ToString(),
+  value_array_writer.reset(2);
+  value_array_writer.write(0, 1.0f);
+  value_array_writer.write(1, 1.0f);
+  EXPECT_EQ(value_array_writer.copy_to_array_data()->to_string(),
             std::string("[1, 1]"));
   int size = row_writer.cursor() - offset;
-  row_writer.SetOffsetAndSize(3, offset, size);
+  row_writer.set_offset_and_size(3, offset, size);
 
   // struct
   RowWriter struct_writer(schema(struct_type->fields()), &row_writer);
-  row_writer.SetNotNullAt(4);
+  row_writer.set_not_null_at(4);
   offset = row_writer.cursor();
-  struct_writer.Reset();
-  struct_writer.WriteString(0, "str");
-  struct_writer.Write(1, 1);
+  struct_writer.reset();
+  struct_writer.write_string(0, "str");
+  struct_writer.write(1, 1);
   size = row_writer.cursor() - offset;
-  row_writer.SetOffsetAndSize(4, offset, size);
+  row_writer.set_offset_and_size(4, offset, size);
 
-  auto row = row_writer.ToRow();
-  EXPECT_EQ(row->GetString(0), std::string("str"));
-  EXPECT_EQ(row->GetInt32(1), 1);
-  EXPECT_EQ(row->GetArray(2)->GetInt32(0), 2);
-  EXPECT_EQ(row->GetArray(2)->GetInt32(1), 2);
-  EXPECT_EQ(row->ToString(),
+  auto row = row_writer.to_row();
+  EXPECT_EQ(row->get_string(0), std::string("str"));
+  EXPECT_EQ(row->get_int32(1), 1);
+  EXPECT_EQ(row->get_array(2)->get_int32(0), 2);
+  EXPECT_EQ(row->get_array(2)->get_int32(1), 2);
+  EXPECT_EQ(row->to_string(),
             "{f1=str, f2=1, f3=[2, 2], "
             "f4=Map([key1, key2], [1, 1]), f5={n1=str, n2=1}}");
 }
@@ -107,29 +108,29 @@ TEST(RowTest, WriteNestedRepeately) {
   ArrayWriter array_writer(list_type, &row_writer);
   for (int i = 0; i < row_nums; ++i) {
     std::shared_ptr<Buffer> buffer;
-    AllocateBuffer(16, &buffer);
-    row_writer.SetBuffer(buffer);
-    row_writer.Reset();
-    row_writer.Write(0, std::numeric_limits<int32_t>::max());
+    allocate_buffer(16, &buffer);
+    row_writer.set_buffer(buffer);
+    row_writer.reset();
+    row_writer.write(0, std::numeric_limits<int32_t>::max());
 
     int start = row_writer.cursor();
     int array_elements = 50;
-    array_writer.Reset(array_elements);
+    array_writer.reset(array_elements);
     for (int j = 0; j < array_elements; ++j) {
-      array_writer.Write(j, std::numeric_limits<int32_t>::min());
+      array_writer.write(j, std::numeric_limits<int32_t>::min());
     }
-    row_writer.SetOffsetAndSize(1, start, row_writer.cursor() - start);
-    auto row = row_writer.ToRow();
-    EXPECT_EQ(row->GetInt32(0), 2147483647);
-    EXPECT_EQ(row->GetArray(1)->num_elements(), array_elements);
-    EXPECT_EQ(row->GetArray(1)->GetInt32(0), -2147483648);
+    row_writer.set_offset_and_size(1, start, row_writer.cursor() - start);
+    auto row = row_writer.to_row();
+    EXPECT_EQ(row->get_int32(0), 2147483647);
+    EXPECT_EQ(row->get_array(1)->num_elements(), array_elements);
+    EXPECT_EQ(row->get_array(1)->get_int32(0), -2147483648);
   }
 }
 
-TEST(ArrayTest, From) {
+TEST(ArrayTest, from) {
   std::vector<int32_t> vec = {1, 2, 3, 4};
-  auto array = ArrayData::From(vec);
-  // std::cout << array->ToString() << std::endl;
+  auto array = ArrayData::from(vec);
+  // std::cout << array->to_string() << std::endl;
   EXPECT_EQ(array->num_elements(), vec.size());
 }
 

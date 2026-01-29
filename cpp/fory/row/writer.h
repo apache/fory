@@ -46,79 +46,79 @@ public:
 
   inline std::vector<Writer *> &children() { return children_; }
 
-  inline void IncreaseCursor(uint32_t val) {
-    buffer_->IncreaseWriterIndex(val);
+  inline void increase_cursor(uint32_t val) {
+    buffer_->increase_writer_index(val);
   }
 
-  inline void Grow(uint32_t needed_size) { buffer_->Grow(needed_size); }
+  inline void grow(uint32_t needed_size) { buffer_->grow(needed_size); }
 
-  virtual int GetOffset(int i) const = 0;
+  virtual int get_offset(int i) const = 0;
 
-  void SetOffsetAndSize(int i, uint32_t size) {
-    SetOffsetAndSize(i, buffer_->writer_index(), size);
+  void set_offset_and_size(int i, uint32_t size) {
+    set_offset_and_size(i, buffer_->writer_index(), size);
   }
 
-  void SetOffsetAndSize(int i, uint32_t absolute_offset, uint32_t size);
+  void set_offset_and_size(int i, uint32_t absolute_offset, uint32_t size);
 
-  void ZeroOutPaddingBytes(uint32_t num_bytes);
+  void zero_out_padding_bytes(uint32_t num_bytes);
 
-  void SetNullAt(int i) {
-    util::SetBit(buffer_->data() + starting_offset_ + bytes_before_bitmap_, i);
+  void set_null_at(int i) {
+    util::set_bit(buffer_->data() + starting_offset_ + bytes_before_bitmap_, i);
   }
 
-  void SetNotNullAt(int i) {
-    util::ClearBit(buffer_->data() + starting_offset_ + bytes_before_bitmap_,
-                   i);
+  void set_not_null_at(int i) {
+    util::clear_bit(buffer_->data() + starting_offset_ + bytes_before_bitmap_,
+                    i);
   }
 
-  bool IsNullAt(int i) const;
+  bool is_null_at(int i) const;
 
-  virtual void Write(int i, int8_t value) = 0;
+  virtual void write(int i, int8_t value) = 0;
 
-  virtual void Write(int i, bool value) = 0;
+  virtual void write(int i, bool value) = 0;
 
-  virtual void Write(int i, int16_t value) = 0;
+  virtual void write(int i, int16_t value) = 0;
 
-  virtual void Write(int i, int32_t value) = 0;
+  virtual void write(int i, int32_t value) = 0;
 
-  virtual void Write(int i, float value) = 0;
+  virtual void write(int i, float value) = 0;
 
-  virtual void Write(int i, int64_t value) = 0;
+  virtual void write(int i, int64_t value) = 0;
 
-  virtual void Write(int i, double value) = 0;
+  virtual void write(int i, double value) = 0;
 
-  void WriteLong(int i, int64_t value) {
-    buffer_->UnsafePut(GetOffset(i), value);
+  void write_long(int i, int64_t value) {
+    buffer_->unsafe_put(get_offset(i), value);
   }
 
-  void WriteDouble(int i, double value) {
-    buffer_->UnsafePut(GetOffset(i), value);
+  void write_double(int i, double value) {
+    buffer_->unsafe_put(get_offset(i), value);
   }
 
-  void WriteString(int i, std::string_view value);
+  void write_string(int i, std::string_view value);
 
-  void WriteBytes(int i, const uint8_t *input, uint32_t length);
+  void write_bytes(int i, const uint8_t *input, uint32_t length);
 
-  void WriteUnaligned(int i, const uint8_t *input, uint32_t offset,
-                      uint32_t num_bytes);
+  void write_unaligned(int i, const uint8_t *input, uint32_t offset,
+                       uint32_t num_bytes);
 
-  void WriteRow(int i, const std::shared_ptr<Row> &row_data);
+  void write_row(int i, const std::shared_ptr<Row> &row_data);
 
-  void WriteArray(int i, const std::shared_ptr<ArrayData> &array_data);
+  void write_array(int i, const std::shared_ptr<ArrayData> &array_data);
 
-  void WriteMap(int i, const std::shared_ptr<MapData> &map_data);
+  void write_map(int i, const std::shared_ptr<MapData> &map_data);
 
-  void WriteAligned(int i, const uint8_t *input, uint32_t offset,
-                    uint32_t num_bytes);
+  void write_aligned(int i, const uint8_t *input, uint32_t offset,
+                     uint32_t num_bytes);
 
-  void WriteDirectly(int64_t value);
+  void write_directly(int64_t value);
 
-  void WriteDirectly(uint32_t offset, int64_t value);
+  void write_directly(uint32_t offset, int64_t value);
 
-  void SetBuffer(std::shared_ptr<Buffer> buffer) {
+  void set_buffer(std::shared_ptr<Buffer> buffer) {
     buffer_ = buffer;
     for (auto child : children_) {
-      child->SetBuffer(buffer);
+      child->set_buffer(buffer);
     }
   }
 
@@ -131,12 +131,12 @@ protected:
 
   std::shared_ptr<Buffer> buffer_;
 
-  // The offset of the global buffer where we start to WriteString this
+  // The offset of the global buffer where we start to write_string this
   // structure.
   uint32_t starting_offset_;
 
-  // avoid polymorphic setNullAt/setNotNullAt to inline for performance.
-  // array use 8 byte for numElements
+  // avoid polymorphic set_null_at/set_not_null_at to inline for performance.
+  // array use 8 byte for num_elements
   int bytes_before_bitmap_;
   // hold children writer to update buffer recursively.
   std::vector<Writer *> children_;
@@ -151,27 +151,27 @@ public:
 
   SchemaPtr schema() { return schema_; }
 
-  void Reset();
+  void reset();
 
-  int GetOffset(int i) const override {
+  int get_offset(int i) const override {
     return starting_offset_ + header_in_bytes_ + 8 * i;
   }
 
-  void Write(int i, int8_t value) override;
+  void write(int i, int8_t value) override;
 
-  void Write(int i, bool value) override;
+  void write(int i, bool value) override;
 
-  void Write(int i, int16_t value) override;
+  void write(int i, int16_t value) override;
 
-  void Write(int i, int32_t value) override;
+  void write(int i, int32_t value) override;
 
-  void Write(int i, int64_t value) override;
+  void write(int i, int64_t value) override;
 
-  void Write(int i, float value) override;
+  void write(int i, float value) override;
 
-  void Write(int i, double value) override;
+  void write(int i, double value) override;
 
-  std::shared_ptr<Row> ToRow();
+  std::shared_ptr<Row> to_row();
 
 private:
   SchemaPtr schema_;
@@ -179,37 +179,37 @@ private:
   uint32_t fixed_size_;
 };
 
-/// Must call reset(numElements) before use this writer to writer an array every
-/// time.
+/// Must call reset(num_elements) before use this writer to writer an array
+/// every time.
 class ArrayWriter : public Writer {
 public:
   explicit ArrayWriter(ListTypePtr type);
 
   explicit ArrayWriter(ListTypePtr type, Writer *writer);
 
-  void Reset(uint32_t num_elements);
+  void reset(uint32_t num_elements);
 
-  int GetOffset(int i) const override {
+  int get_offset(int i) const override {
     return starting_offset_ + header_in_bytes_ + i * element_size_;
   }
 
-  void Write(int i, int8_t value) override;
+  void write(int i, int8_t value) override;
 
-  void Write(int i, bool value) override;
+  void write(int i, bool value) override;
 
-  void Write(int i, int16_t value) override;
+  void write(int i, int16_t value) override;
 
-  void Write(int i, int32_t value) override;
+  void write(int i, int32_t value) override;
 
-  void Write(int i, int64_t value) override;
+  void write(int i, int64_t value) override;
 
-  void Write(int i, float value) override;
+  void write(int i, float value) override;
 
-  void Write(int i, double value) override;
+  void write(int i, double value) override;
 
   /// note: this will create a new buffer, won't take ownership of writer's
   /// buffer
-  std::shared_ptr<ArrayData> CopyToArrayData();
+  std::shared_ptr<ArrayData> copy_to_array_data();
 
   int size() { return cursor() - starting_offset_; }
 

@@ -41,12 +41,12 @@ template <> struct Serializer<std::monostate> {
       TypeId::NONE; // Use NONE for empty/not-applicable type
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
     // Read and validate type_id for monostate
-    ctx.read_varuint32(ctx.error());
+    ctx.read_var_uint32(ctx.error());
     // Accept any type since monostate is just a marker with no data
   }
 
@@ -174,13 +174,13 @@ template <typename... Ts> struct Serializer<std::variant<Ts...>> {
   using VariantType = std::variant<Ts...>;
 
   static inline void write_type_info(WriteContext &ctx) {
-    // Write UNION type_id to indicate variant/sum type
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    // write UNION type_id to indicate variant/sum type
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
     // Read and validate UNION type_id
-    uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+    uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -202,9 +202,9 @@ template <typename... Ts> struct Serializer<std::variant<Ts...>> {
   }
 
   static inline void write_data(const VariantType &variant, WriteContext &ctx) {
-    // Write the active variant index
+    // write the active variant index
     size_t active_index = variant.index();
-    ctx.write_varuint32(static_cast<uint32_t>(active_index));
+    ctx.write_var_uint32(static_cast<uint32_t>(active_index));
 
     // Dispatch to the appropriate alternative's serializer
     // In xlang/compatible mode, write type info for the alternative
@@ -233,7 +233,7 @@ template <typename... Ts> struct Serializer<std::variant<Ts...>> {
 
   static inline VariantType read_data(ReadContext &ctx) {
     // Read the stored variant index
-    uint32_t stored_index = ctx.read_varuint32(ctx.error());
+    uint32_t stored_index = ctx.read_var_uint32(ctx.error());
     // Validate index is within bounds
     if (FORY_PREDICT_FALSE(stored_index >= std::variant_size_v<VariantType>)) {
       ctx.set_error(Error::invalid_data(

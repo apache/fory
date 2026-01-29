@@ -28,7 +28,7 @@
 
 namespace fory {
 
-static inline bool isAsciiFallback(const char *data, size_t size) {
+static inline bool is_ascii_fallback(const char *data, size_t size) {
   size_t i = 0;
   // Loop through 8-byte chunks
   for (; i + 7 < size; i += 8) {
@@ -48,7 +48,7 @@ static inline bool isAsciiFallback(const char *data, size_t size) {
   return true;
 }
 
-static inline bool isLatin1Fallback(const uint16_t *data, size_t size) {
+static inline bool is_latin1_fallback(const uint16_t *data, size_t size) {
   for (size_t i = 0; i < size; ++i) {
     if (data[i] > 0xFF) {
       return false;
@@ -57,18 +57,18 @@ static inline bool isLatin1Fallback(const uint16_t *data, size_t size) {
   return true;
 }
 
-std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian);
+std::string utf16_to_utf8(const std::u16string &utf16, bool is_little_endian);
 
-std::u16string utf8ToUtf16(const std::string &utf8, bool is_little_endian);
+std::u16string utf8_to_utf16(const std::string &utf8, bool is_little_endian);
 
 // inline
 
 // Swap bytes to convert from big endian to little endian
-inline uint16_t swapBytes(uint16_t value) {
+inline uint16_t swap_bytes(uint16_t value) {
   return (value >> 8) | (value << 8);
 }
 
-inline void utf16ToUtf8(uint16_t code_unit, char *&output) {
+inline void utf16_to_utf8(uint16_t code_unit, char *&output) {
   if (code_unit < 0x80) {
     *output++ = static_cast<char>(code_unit);
   } else if (code_unit < 0x800) {
@@ -81,7 +81,8 @@ inline void utf16ToUtf8(uint16_t code_unit, char *&output) {
   }
 }
 
-inline void utf16SurrogatePairToUtf8(uint16_t high, uint16_t low, char *&utf8) {
+inline void utf16_surrogate_pair_to_utf8(uint16_t high, uint16_t low,
+                                         char *&utf8) {
   uint32_t code_point = 0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00);
   *utf8++ = static_cast<char>((code_point >> 18) | 0xF0);
   *utf8++ = static_cast<char>(((code_point >> 12) & 0x3F) | 0x80);
@@ -92,13 +93,13 @@ inline void utf16SurrogatePairToUtf8(uint16_t high, uint16_t low, char *&utf8) {
 // Convert Latin1 encoded bytes to UTF-8 string.
 // Latin1 (ISO-8859-1) maps bytes 0-127 to ASCII and bytes 128-255 to
 // Unicode code points U+0080 to U+00FF.
-inline std::string latin1ToUtf8(const uint8_t *data, size_t length) {
+inline std::string latin1_to_utf8(const uint8_t *data, size_t length) {
   if (length == 0) {
     return std::string();
   }
 
   // Fast path: if all bytes are ASCII, direct copy
-  if (isAsciiFallback(reinterpret_cast<const char *>(data), length)) {
+  if (is_ascii_fallback(reinterpret_cast<const char *>(data), length)) {
     return std::string(reinterpret_cast<const char *>(data), length);
   }
 
@@ -130,7 +131,7 @@ inline std::string latin1ToUtf8(const uint8_t *data, size_t length) {
 
 // Convert UTF-16 code units to UTF-8 string.
 // Handles surrogate pairs for characters outside BMP.
-inline std::string utf16ToUtf8(const uint16_t *data, size_t char_count) {
+inline std::string utf16_to_utf8(const uint16_t *data, size_t char_count) {
   if (char_count == 0) {
     return std::string();
   }
@@ -169,19 +170,20 @@ inline std::string utf16ToUtf8(const uint16_t *data, size_t char_count) {
     if (ch >= 0xD800 && ch <= 0xDBFF && i + 1 < char_count) {
       uint16_t low = data[i + 1];
       if (low >= 0xDC00 && low <= 0xDFFF) {
-        utf16SurrogatePairToUtf8(ch, low, out);
+        utf16_surrogate_pair_to_utf8(ch, low, out);
         ++i;
         continue;
       }
     }
 
-    utf16ToUtf8(ch, out);
+    utf16_to_utf8(ch, out);
   }
 
   return result;
 }
 
-static inline bool hasSurrogatePairFallback(const uint16_t *data, size_t size) {
+static inline bool has_surrogate_pair_fallback(const uint16_t *data,
+                                               size_t size) {
   for (size_t i = 0; i < size; ++i) {
     auto c = data[i];
     if (c >= 0xD800 && c <= 0xDFFF) {
@@ -271,7 +273,7 @@ constexpr size_t snake_case_length(std::string_view name) {
 }
 #if defined(FORY_HAS_IMMINTRIN)
 
-inline bool isAscii(const char *data, size_t length) {
+inline bool is_ascii(const char *data, size_t length) {
   constexpr size_t VECTOR_SIZE = 32;
   const auto *ptr = reinterpret_cast<const __m256i *>(data);
   const auto *end = ptr + length / VECTOR_SIZE;
@@ -284,11 +286,11 @@ inline bool isAscii(const char *data, size_t length) {
       return false;
   }
 
-  return isAsciiFallback(data + (length / VECTOR_SIZE) * VECTOR_SIZE,
-                         length % VECTOR_SIZE);
+  return is_ascii_fallback(data + (length / VECTOR_SIZE) * VECTOR_SIZE,
+                           length % VECTOR_SIZE);
 }
 
-inline bool isLatin1(const uint16_t *data, size_t length) {
+inline bool is_latin1(const uint16_t *data, size_t length) {
   constexpr size_t VECTOR_SIZE = 16;
   const auto *ptr = reinterpret_cast<const __m256i *>(data);
   const auto *end = ptr + length / VECTOR_SIZE;
@@ -303,116 +305,116 @@ inline bool isLatin1(const uint16_t *data, size_t length) {
     }
   }
 
-  return isLatin1Fallback(data + (length / VECTOR_SIZE) * VECTOR_SIZE,
-                          length % VECTOR_SIZE);
+  return is_latin1_fallback(data + (length / VECTOR_SIZE) * VECTOR_SIZE,
+                            length % VECTOR_SIZE);
 }
-inline bool utf16HasSurrogatePairs(const uint16_t *data, size_t length) {
+inline bool utf16_has_surrogate_pairs(const uint16_t *data, size_t length) {
   // Direct fallback implementation - SIMD versions were consistently slower
   // due to early-exit characteristics: surrogate pairs are rare and when
   // present, often appear early in strings, making SIMD setup overhead
   // outweigh any vectorization benefits.
-  return hasSurrogatePairFallback(data, length);
+  return has_surrogate_pair_fallback(data, length);
 }
 
 #elif defined(FORY_HAS_NEON)
-inline bool isAscii(const char *data, size_t length) {
+inline bool is_ascii(const char *data, size_t length) {
   size_t i = 0;
-  uint8x16_t mostSignificantBit = vdupq_n_u8(0x80);
+  uint8x16_t most_significant_bit = vdupq_n_u8(0x80);
   for (; i + 15 < length; i += 16) {
     uint8x16_t chunk = vld1q_u8(reinterpret_cast<const uint8_t *>(&data[i]));
-    uint8x16_t result = vandq_u8(chunk, mostSignificantBit);
+    uint8x16_t result = vandq_u8(chunk, most_significant_bit);
     if (vmaxvq_u8(result) != 0) {
       return false;
     }
   }
   // Check the remaining characters
-  return isAsciiFallback(data + i, length - i);
+  return is_ascii_fallback(data + i, length - i);
 }
 
-inline bool isLatin1(const uint16_t *data, size_t length) {
+inline bool is_latin1(const uint16_t *data, size_t length) {
   size_t i = 0;
-  uint16x8_t maxAllowed = vdupq_n_u16(0xFF);
+  uint16x8_t max_allowed = vdupq_n_u16(0xFF);
   for (; i + 7 < length; i += 8) {
     uint16x8_t chunk = vld1q_u16(&data[i]);
-    uint16x8_t cmp = vcgtq_u16(chunk, maxAllowed);
+    uint16x8_t cmp = vcgtq_u16(chunk, max_allowed);
     if (vmaxvq_u16(cmp) != 0) {
       return false;
     }
   }
   // Check the remaining elements
-  return isLatin1Fallback(data + i, length - i);
+  return is_latin1_fallback(data + i, length - i);
 }
 
-inline bool utf16HasSurrogatePairs(const uint16_t *data, size_t length) {
+inline bool utf16_has_surrogate_pairs(const uint16_t *data, size_t length) {
   // Direct fallback implementation - SIMD versions were consistently slower
   // due to early-exit characteristics: surrogate pairs are rare and when
   // present, often appear early in strings, making SIMD setup overhead
   // outweigh any vectorization benefits.
-  return hasSurrogatePairFallback(data, length);
+  return has_surrogate_pair_fallback(data, length);
 }
 #elif defined(FORY_HAS_SSE2)
-inline bool isAscii(const char *data, size_t length) {
-  const __m128i mostSignificantBit = _mm_set1_epi8(static_cast<char>(0x80));
+inline bool is_ascii(const char *data, size_t length) {
+  const __m128i most_significant_bit = _mm_set1_epi8(static_cast<char>(0x80));
   size_t i = 0;
   for (; i + 15 < length; i += 16) {
     __m128i chunk =
         _mm_loadu_si128(reinterpret_cast<const __m128i *>(&data[i]));
-    __m128i result = _mm_and_si128(chunk, mostSignificantBit);
+    __m128i result = _mm_and_si128(chunk, most_significant_bit);
     if (_mm_movemask_epi8(result) != 0) {
       return false;
     }
   }
   // Check the remaining characters
-  return isAsciiFallback(data + i, length - i);
+  return is_ascii_fallback(data + i, length - i);
 }
 
-inline bool isLatin1(const uint16_t *data, size_t length) {
-  const __m128i maxAllowed = _mm_set1_epi16(0xFF);
+inline bool is_latin1(const uint16_t *data, size_t length) {
+  const __m128i max_allowed = _mm_set1_epi16(0xFF);
   size_t i = 0;
   for (; i + 7 < length; i += 8) {
     __m128i chunk =
         _mm_loadu_si128(reinterpret_cast<const __m128i *>(&data[i]));
-    __m128i cmp = _mm_cmpgt_epi16(chunk, maxAllowed);
+    __m128i cmp = _mm_cmpgt_epi16(chunk, max_allowed);
     if (_mm_movemask_epi8(cmp) != 0) {
       return false;
     }
   }
   // Check the remaining elements
-  return isLatin1Fallback(data + i, length - i);
+  return is_latin1_fallback(data + i, length - i);
 }
 
-inline bool utf16HasSurrogatePairs(const uint16_t *data, size_t length) {
+inline bool utf16_has_surrogate_pairs(const uint16_t *data, size_t length) {
   // Direct fallback implementation - SIMD versions were consistently slower
   // due to early-exit characteristics: surrogate pairs are rare and when
   // present, often appear early in strings, making SIMD setup overhead
   // outweigh any vectorization benefits.
-  return hasSurrogatePairFallback(data, length);
+  return has_surrogate_pair_fallback(data, length);
 }
 #else
-inline bool isAscii(const char *data, size_t length) {
-  return isAsciiFallback(data, length);
+inline bool is_ascii(const char *data, size_t length) {
+  return is_ascii_fallback(data, length);
 }
 
-inline bool isLatin1(const uint16_t *data, size_t length) {
-  return isLatin1Fallback(data, length);
+inline bool is_latin1(const uint16_t *data, size_t length) {
+  return is_latin1_fallback(data, length);
 }
 
-inline bool utf16HasSurrogatePairs(const uint16_t *data, size_t length) {
-  return hasSurrogatePairFallback(data, length);
+inline bool utf16_has_surrogate_pairs(const uint16_t *data, size_t length) {
+  return has_surrogate_pair_fallback(data, length);
 }
 #endif
 
-inline bool isAscii(const std::string &str) {
-  return isAscii(str.data(), str.size());
+inline bool is_ascii(const std::string &str) {
+  return is_ascii(str.data(), str.size());
 }
 
-inline bool isLatin1(const std::u16string &str) {
+inline bool is_latin1(const std::u16string &str) {
   const std::uint16_t *data =
       reinterpret_cast<const std::uint16_t *>(str.data());
-  return isLatin1(data, str.size());
+  return is_latin1(data, str.size());
 }
 
-inline bool utf16HasSurrogatePairs(const std::u16string &str) {
+inline bool utf16_has_surrogate_pairs(const std::u16string &str) {
   // Inline implementation for best performance
   for (size_t i = 0; i < str.size(); ++i) {
     auto c = str[i];

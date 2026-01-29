@@ -40,53 +40,53 @@ cdef class Getter:
         CGetter* getter
 
     cdef inline c_bool is_null_at(self, int i):
-        return self.getter.IsNullAt(i)
+        return self.getter.is_null_at(i)
 
     cpdef get_boolean(self, int i):
         if self.is_null_at(i):
             return None
-        return self.getter.GetBoolean(i)
+        return self.getter.get_boolean(i)
 
     cpdef get_int8(self, int i):
         if self.is_null_at(i):
             return None
-        return self.getter.GetInt8(i)
+        return self.getter.get_int8(i)
 
     cpdef get_int16(self, int i):
         if self.is_null_at(i):
             return None
-        return self.getter.GetInt16(i)
+        return self.getter.get_int16(i)
 
     cpdef get_int32(self, int i):
         if self.is_null_at(i):
             return None
-        return self.getter.GetInt32(i)
+        return self.getter.get_int32(i)
 
     cpdef get_int64(self, int i):
         if self.is_null_at(i):
             return None
-        return self.getter.GetInt64(i)
+        return self.getter.get_int64(i)
 
     cpdef get_float(self, int i):
         if self.is_null_at(i):
             return None
-        return self.getter.GetFloat(i)
+        return self.getter.get_float(i)
 
     cpdef get_double(self, int i):
         if self.is_null_at(i):
             return None
-        return self.getter.GetDouble(i)
+        return self.getter.get_double(i)
 
     cpdef get_date(self, int i):
         if self.is_null_at(i):
             return None
-        cdef int32_t days = self.getter.GetInt32(i)
+        cdef int32_t days = self.getter.get_int32(i)
         return date(1970, 1, 1) + timedelta(days=days)
 
     cpdef get_datetime(self, int i):
         if self.is_null_at(i):
             return None
-        cdef int64_t timestamp = self.getter.GetInt64(i)
+        cdef int64_t timestamp = self.getter.get_int64(i)
         # TimestampType represent micro seconds
         return datetime.fromtimestamp(float(timestamp) / 1000000)
 
@@ -94,14 +94,14 @@ cdef class Getter:
         if self.is_null_at(i):
             return None
         cdef unsigned char* binary_data
-        cdef int32_t size = self.getter.GetBinary(i, &binary_data)
+        cdef int32_t size = self.getter.get_binary(i, &binary_data)
         return binary_data[:size]
 
     cpdef get_str(self, int i):
         if self.is_null_at(i):
             return None
         cdef unsigned char* binary_data
-        cdef int32_t size = self.getter.GetBinary(i, &binary_data)
+        cdef int32_t size = self.getter.get_binary(i, &binary_data)
         return binary_data[:size].decode("UTF-8")
 
     cpdef RowData get_struct(self, int i):
@@ -150,7 +150,7 @@ cdef class ArrayData(Getter):
             return None
         # Create schema from struct type fields
         cdef Schema struct_schema = _struct_type_to_schema(data_type)
-        return RowData.wrap(self.data.get().GetStruct(i), struct_schema)
+        return RowData.wrap(self.data.get().get_struct(i), struct_schema)
 
     cpdef ArrayData get_array_data(self, int i):
         cdef DataType data_type = self.type_.value_type
@@ -158,13 +158,13 @@ cdef class ArrayData(Getter):
             return None
         # data_type should be a ListType
         cdef ListType list_type = <ListType>data_type
-        return ArrayData.wrap(self.data.get().GetArray(i), list_type)
+        return ArrayData.wrap(self.data.get().get_array(i), list_type)
 
     cpdef MapData get_map_data(self, int i):
         cdef DataType data_type = self.type_.value_type
         if self.is_null_at(i):
             return None
-        cdef shared_ptr[CMapData] v = self.data.get().GetMap(i)
+        cdef shared_ptr[CMapData] v = self.data.get().get_map(i)
         cdef MapType map_type = <MapType>data_type
         return MapData.wrap(v, map_type)
 
@@ -286,7 +286,7 @@ cdef class RowData(Getter):
                 buf.c_buffer.size(),
                 False,
             )
-        deref(row).PointTo(shared_buf, offset, size_in_bytes)
+        deref(row).point_to(shared_buf, offset, size_in_bytes)
         self.data = row
         self.getter = row.get()
         self.schema_ = schema
@@ -325,20 +325,20 @@ cdef class RowData(Getter):
             return None
         cdef DataType data_type = self.schema_.field(i).type
         cdef Schema struct_schema = _struct_type_to_schema(data_type)
-        return RowData.wrap(self.data.get().GetStruct(i), struct_schema)
+        return RowData.wrap(self.data.get().get_struct(i), struct_schema)
 
     cpdef ArrayData get_array_data(self, int i):
         if self.is_null_at(i):
             return None
         cdef DataType data_type = self.schema_.field(i).type
         cdef ListType list_type = <ListType>data_type
-        return ArrayData.wrap(self.data.get().GetArray(i), list_type)
+        return ArrayData.wrap(self.data.get().get_array(i), list_type)
 
     cpdef MapData get_map_data(self, int i):
         if self.is_null_at(i):
             return None
         cdef DataType data_type = self.schema_.field(i).type
-        cdef shared_ptr[CMapData] v = self.data.get().GetMap(i)
+        cdef shared_ptr[CMapData] v = self.data.get().get_map(i)
         cdef MapType map_type = <MapType>data_type
         return MapData.wrap(v, map_type)
 
@@ -400,7 +400,7 @@ def assert_type(i, data_type, type_cls):
 
 
 def get_reader(data_type, type_):
-    """Get the appropriate reader method based on the Fory data type."""
+    """get the appropriate reader method based on the Fory data type."""
     cdef CTypeId type_id = (<DataType>data_type).id
     if type_id == CTypeId.BOOL:
         return type_.get_boolean

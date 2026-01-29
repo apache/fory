@@ -25,9 +25,10 @@
 
 namespace fory {
 
-std::u16string utf8ToUtf16SIMD(const std::string &utf8, bool is_little_endian) {
+std::u16string utf8_to_utf16_simd(const std::string &utf8,
+                                  bool is_little_endian) {
   std::u16string utf16;
-  utf16.reserve(utf8.size()); // Reserve space to avoid frequent reallocations
+  utf16.reserve(utf8.size()); // reserve space to avoid frequent reallocations
 
   char buffer[64]; // Buffer to hold temporary UTF-16 results
   char16_t *output =
@@ -92,7 +93,7 @@ std::u16string utf8ToUtf16SIMD(const std::string &utf8, bool is_little_endian) {
     utf16.append(reinterpret_cast<char16_t *>(buffer),
                  output - reinterpret_cast<char16_t *>(buffer));
     output =
-        reinterpret_cast<char16_t *>(buffer); // Reset output buffer pointer
+        reinterpret_cast<char16_t *>(buffer); // reset output buffer pointer
     i += 32;
   }
 
@@ -150,11 +151,11 @@ std::u16string utf8ToUtf16SIMD(const std::string &utf8, bool is_little_endian) {
 
 #if defined(FORY_HAS_IMMINTRIN)
 
-FORY_TARGET_AVX2_ATTR std::string utf16ToUtf8(const std::u16string &utf16,
-                                              bool is_little_endian) {
+FORY_TARGET_AVX2_ATTR std::string utf16_to_utf8(const std::u16string &utf16,
+                                                bool is_little_endian) {
   std::string utf8;
   utf8.reserve(utf16.size() *
-               3); // Reserve enough space to avoid frequent reallocations
+               3); // reserve enough space to avoid frequent reallocations
 
   const __m256i limit1 = _mm256_set1_epi16(0x80);
   const __m256i limit2 = _mm256_set1_epi16(0x800);
@@ -196,7 +197,7 @@ FORY_TARGET_AVX2_ATTR std::string utf16ToUtf8(const std::u16string &utf16,
     } else if (_mm256_testz_si256(mask2, mask2)) {
       // All values < 0x800, 2 bytes per character
       for (int j = 0; j < 16; ++j) {
-        utf16ToUtf8(utf16[i + j], output);
+        utf16_to_utf8(utf16[i + j], output);
       }
     } else {
       // Mix of 1, 2, and 3 byte characters
@@ -205,16 +206,16 @@ FORY_TARGET_AVX2_ATTR std::string utf16ToUtf8(const std::u16string &utf16,
             j + 1 < 16 &&
             !_mm256_testz_si256(low_surrogate_mask, low_surrogate_mask)) {
           // Surrogate pair
-          utf16SurrogatePairToUtf8(utf16[i + j], utf16[i + j + 1], output);
+          utf16_surrogate_pair_to_utf8(utf16[i + j], utf16[i + j + 1], output);
           ++j;
         } else {
-          utf16ToUtf8(utf16[i + j], output);
+          utf16_to_utf8(utf16[i + j], output);
         }
       }
     }
 
     utf8.append(buffer, output - buffer);
-    output = buffer; // Reset output buffer pointer
+    output = buffer; // reset output buffer pointer
     i += 16;
   }
 
@@ -223,10 +224,10 @@ FORY_TARGET_AVX2_ATTR std::string utf16ToUtf8(const std::u16string &utf16,
     if (i + 1 < n && utf16[i] >= 0xD800 && utf16[i] <= 0xDBFF &&
         utf16[i + 1] >= 0xDC00 && utf16[i + 1] <= 0xDFFF) {
       // Surrogate pair
-      utf16SurrogatePairToUtf8(utf16[i], utf16[i + 1], output);
+      utf16_surrogate_pair_to_utf8(utf16[i], utf16[i + 1], output);
       ++i;
     } else {
-      utf16ToUtf8(utf16[i], output);
+      utf16_to_utf8(utf16[i], output);
     }
     ++i;
   }
@@ -235,13 +236,13 @@ FORY_TARGET_AVX2_ATTR std::string utf16ToUtf8(const std::u16string &utf16,
   return utf8;
 }
 
-std::u16string utf8ToUtf16(const std::string &utf8, bool is_little_endian) {
-  return utf8ToUtf16SIMD(utf8, is_little_endian);
+std::u16string utf8_to_utf16(const std::string &utf8, bool is_little_endian) {
+  return utf8_to_utf16_simd(utf8, is_little_endian);
 }
 
 #elif defined(FORY_HAS_NEON)
 
-std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
+std::string utf16_to_utf8(const std::u16string &utf16, bool is_little_endian) {
   std::string utf8;
   utf8.reserve(utf16.size() * 3);
 
@@ -278,16 +279,16 @@ std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
       }
     } else if (vmaxvq_u16(mask2) == 0) {
       for (int j = 0; j < 8; ++j) {
-        utf16ToUtf8(utf16[i + j], output);
+        utf16_to_utf8(utf16[i + j], output);
       }
     } else {
       for (int j = 0; j < 8; ++j) {
         if (vmaxvq_u16(high_surrogate_mask) == 0 && j + 1 < 8 &&
             vmaxvq_u16(low_surrogate_mask) != 0) {
-          utf16SurrogatePairToUtf8(utf16[i + j], utf16[i + j + 1], output);
+          utf16_surrogate_pair_to_utf8(utf16[i + j], utf16[i + j + 1], output);
           ++j;
         } else {
-          utf16ToUtf8(utf16[i + j], output);
+          utf16_to_utf8(utf16[i + j], output);
         }
       }
     }
@@ -300,10 +301,10 @@ std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
   while (i < n) {
     if (i + 1 < n && utf16[i] >= 0xD800 && utf16[i] <= 0xDBFF &&
         utf16[i + 1] >= 0xDC00 && utf16[i + 1] <= 0xDFFF) {
-      utf16SurrogatePairToUtf8(utf16[i], utf16[i + 1], output);
+      utf16_surrogate_pair_to_utf8(utf16[i], utf16[i + 1], output);
       ++i;
     } else {
-      utf16ToUtf8(utf16[i], output);
+      utf16_to_utf8(utf16[i], output);
     }
     ++i;
   }
@@ -312,13 +313,13 @@ std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
   return utf8;
 }
 
-std::u16string utf8ToUtf16(const std::string &utf8, bool is_little_endian) {
-  return utf8ToUtf16SIMD(utf8, is_little_endian);
+std::u16string utf8_to_utf16(const std::string &utf8, bool is_little_endian) {
+  return utf8_to_utf16_simd(utf8, is_little_endian);
 }
 
 #elif defined(FORY_HAS_RISCV_VECTOR)
 
-std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
+std::string utf16_to_utf8(const std::u16string &utf16, bool is_little_endian) {
   std::string utf8;
   utf8.reserve(utf16.size() * 3);
 
@@ -354,7 +355,7 @@ std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
       }
     } else if (vmslt_vx_u16m1(mask2, 0, 8)) {
       for (int j = 0; j < 8; ++j) {
-        utf16ToUtf8(vget_vx_u16m1(in, j), output);
+        utf16_to_utf8(vget_vx_u16m1(in, j), output);
       }
     } else {
       for (int j = 0; j < 8; ++j) {
@@ -365,11 +366,11 @@ std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
             vfirst_m_b8(
                 vmand_vv_b8(low_surrogate_mask,
                             vmsne_vx_u8m1_b8(vmv_v_x_u8m1(0, 8), 0, 8)))) {
-          utf16SurrogatePairToUtf8(vget_vx_u16m1(in, j),
-                                   vget_vx_u16m1(in, j + 1), output);
+          utf16_surrogate_pair_to_utf8(vget_vx_u16m1(in, j),
+                                       vget_vx_u16m1(in, j + 1), output);
           ++j;
         } else {
-          utf16ToUtf8(vget_vx_u16m1(in, j), output);
+          utf16_to_utf8(vget_vx_u16m1(in, j), output);
         }
       }
     }
@@ -382,10 +383,10 @@ std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
   while (i < n) {
     if (i + 1 < n && utf16[i] >= 0xD800 && utf16[i] <= 0xDBFF &&
         utf16[i + 1] >= 0xDC00 && utf16[i + 1] <= 0xDFFF) {
-      utf16SurrogatePairToUtf8(utf16[i], utf16[i + 1], output);
+      utf16_surrogate_pair_to_utf8(utf16[i], utf16[i + 1], output);
       ++i;
     } else {
-      utf16ToUtf8(utf16[i], output);
+      utf16_to_utf8(utf16[i], output);
     }
     ++i;
   }
@@ -394,17 +395,17 @@ std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
   return utf8;
 }
 
-std::u16string utf8ToUtf16(const std::string &utf8, bool is_little_endian) {
-  return utf8ToUtf16SIMD(utf8, is_little_endian);
+std::u16string utf8_to_utf16(const std::string &utf8, bool is_little_endian) {
+  return utf8_to_utf16_simd(utf8, is_little_endian);
 }
 
 #else
 
 // Fallback implementation without SIMD acceleration
-std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
+std::string utf16_to_utf8(const std::u16string &utf16, bool is_little_endian) {
   std::string utf8;
   utf8.reserve(utf16.size() *
-               3); // Reserve enough space to avoid frequent reallocations
+               3); // reserve enough space to avoid frequent reallocations
 
   size_t i = 0;
   size_t n = utf16.size();
@@ -414,7 +415,7 @@ std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
   while (i < n) {
     uint16_t code_unit = utf16[i];
     if (!is_little_endian) {
-      code_unit = swapBytes(code_unit);
+      code_unit = swap_bytes(code_unit);
     }
     if (i + 1 < n && code_unit >= 0xD800 && code_unit <= 0xDBFF &&
         utf16[i + 1] >= 0xDC00 && utf16[i + 1] <= 0xDFFF) {
@@ -422,14 +423,14 @@ std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
       uint16_t high = code_unit;
       uint16_t low = utf16[i + 1];
       if (!is_little_endian) {
-        low = swapBytes(low);
+        low = swap_bytes(low);
       }
-      utf16SurrogatePairToUtf8(high, low, output);
+      utf16_surrogate_pair_to_utf8(high, low, output);
       utf8.append(buffer, output - buffer);
       output = buffer;
       ++i;
     } else {
-      utf16ToUtf8(code_unit, output);
+      utf16_to_utf8(code_unit, output);
       utf8.append(buffer, output - buffer);
       output = buffer;
     }
@@ -439,7 +440,7 @@ std::string utf16ToUtf8(const std::u16string &utf16, bool is_little_endian) {
 }
 
 // Fallback implementation without SIMD acceleration
-std::u16string utf8ToUtf16(const std::string &utf8, bool is_little_endian) {
+std::u16string utf8_to_utf16(const std::string &utf8, bool is_little_endian) {
   std::u16string utf16;   // Resulting UTF-16 string
   size_t i = 0;           // Index for traversing the UTF-8 string
   size_t n = utf8.size(); // Total length of the UTF-8 string

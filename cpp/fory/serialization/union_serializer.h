@@ -54,7 +54,7 @@ struct has_union_case_ids<T, std::void_t<decltype(UnionCaseIds<T>::case_count)>>
 
 template <typename T>
 using AdlUnionInfoDescriptor =
-    decltype(ForyUnionInfo(std::declval<::fory::meta::Identity<T>>()));
+    decltype(fory_union_info(std::declval<::fory::meta::Identity<T>>()));
 
 template <typename T, typename = void>
 struct has_adl_union_info : std::false_type {};
@@ -65,7 +65,7 @@ struct has_adl_union_info<T, std::void_t<AdlUnionInfoDescriptor<T>>>
 
 template <typename T>
 using AdlUnionCaseIdsDescriptor =
-    decltype(ForyUnionCaseIds(std::declval<::fory::meta::Identity<T>>()));
+    decltype(fory_union_case_ids(std::declval<::fory::meta::Identity<T>>()));
 
 template <typename T, typename = void>
 struct has_adl_union_case_ids : std::false_type {};
@@ -76,8 +76,8 @@ struct has_adl_union_case_ids<T, std::void_t<AdlUnionCaseIdsDescriptor<T>>>
 
 template <typename T, uint32_t CaseId>
 using AdlUnionCaseMetaDescriptor =
-    decltype(ForyUnionCaseMeta(std::declval<::fory::meta::Identity<T>>(),
-                               std::integral_constant<uint32_t, CaseId>{}));
+    decltype(fory_union_case_meta(std::declval<::fory::meta::Identity<T>>(),
+                                  std::integral_constant<uint32_t, CaseId>{}));
 
 template <typename T>
 inline constexpr bool is_union_type_v =
@@ -269,7 +269,7 @@ inline bool read_union_ref_flag(ReadContext &ctx, RefMode ref_mode,
     return false;
   }
   if (ref_flag == REF_FLAG) {
-    (void)ctx.read_varuint32(ctx.error());
+    (void)ctx.read_var_uint32(ctx.error());
     ctx.set_error(Error::invalid_ref("Unexpected reference flag for union"));
     return false;
   }
@@ -312,16 +312,16 @@ inline void write_union_value_data(const T &value, WriteContext &ctx,
   if constexpr (std::is_integral_v<Inner> || std::is_enum_v<Inner>) {
     switch (static_cast<TypeId>(type_id)) {
     case TypeId::VAR_UINT32:
-      ctx.write_varuint32(static_cast<uint32_t>(inner));
+      ctx.write_var_uint32(static_cast<uint32_t>(inner));
       return;
     case TypeId::UINT32:
-      ctx.buffer().WriteInt32(static_cast<int32_t>(inner));
+      ctx.buffer().write_int32(static_cast<int32_t>(inner));
       return;
     case TypeId::VAR_UINT64:
-      ctx.write_varuint64(static_cast<uint64_t>(inner));
+      ctx.write_var_uint64(static_cast<uint64_t>(inner));
       return;
     case TypeId::UINT64:
-      ctx.buffer().WriteInt64(static_cast<int64_t>(inner));
+      ctx.buffer().write_int64(static_cast<int64_t>(inner));
       return;
     case TypeId::TAGGED_UINT64:
       ctx.write_tagged_uint64(static_cast<uint64_t>(inner));
@@ -330,13 +330,13 @@ inline void write_union_value_data(const T &value, WriteContext &ctx,
       ctx.write_varint32(static_cast<int32_t>(inner));
       return;
     case TypeId::INT32:
-      ctx.buffer().WriteInt32(static_cast<int32_t>(inner));
+      ctx.buffer().write_int32(static_cast<int32_t>(inner));
       return;
     case TypeId::VARINT64:
       ctx.write_varint64(static_cast<int64_t>(inner));
       return;
     case TypeId::INT64:
-      ctx.buffer().WriteInt64(static_cast<int64_t>(inner));
+      ctx.buffer().write_int64(static_cast<int64_t>(inner));
       return;
     case TypeId::TAGGED_INT64:
       ctx.write_tagged_int64(static_cast<int64_t>(inner));
@@ -355,13 +355,13 @@ inline T read_union_value_data(ReadContext &ctx, uint32_t type_id) {
   if constexpr (std::is_integral_v<Inner> || std::is_enum_v<Inner>) {
     switch (static_cast<TypeId>(type_id)) {
     case TypeId::VAR_UINT32:
-      value = static_cast<Inner>(ctx.read_varuint32(ctx.error()));
+      value = static_cast<Inner>(ctx.read_var_uint32(ctx.error()));
       break;
     case TypeId::UINT32:
       value = static_cast<Inner>(ctx.read_uint32(ctx.error()));
       break;
     case TypeId::VAR_UINT64:
-      value = static_cast<Inner>(ctx.read_varuint64(ctx.error()));
+      value = static_cast<Inner>(ctx.read_var_uint64(ctx.error()));
       break;
     case TypeId::UINT64:
       value = static_cast<Inner>(ctx.read_uint64(ctx.error()));
@@ -465,7 +465,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
 
   static inline void write_data(const T &obj, WriteContext &ctx) {
     uint32_t case_id = obj.fory_case_id();
-    ctx.write_varuint32(case_id);
+    ctx.write_var_uint32(case_id);
 
     bool matched = detail::dispatch_union_case<T>(case_id, [&](auto tag) {
       constexpr size_t index = decltype(tag)::value;
@@ -488,7 +488,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
                                               nullable)) {
               return;
             }
-            ctx.write_varuint32(field_type_id);
+            ctx.write_var_uint32(field_type_id);
             detail::write_union_value_data(value, ctx, field_type_id);
             return;
           }
@@ -543,7 +543,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
   }
 
   static inline T read_data(ReadContext &ctx) {
-    uint32_t case_id = ctx.read_varuint32(ctx.error());
+    uint32_t case_id = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return default_value();
     }
@@ -574,7 +574,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
               detail::default_union_case_value<CaseT>());
           return;
         }
-        uint32_t actual_type_id = ctx.read_varuint32(ctx.error());
+        uint32_t actual_type_id = ctx.read_var_uint32(ctx.error());
         if (FORY_PREDICT_FALSE(ctx.has_error())) {
           result = default_value();
           return;
@@ -602,7 +602,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
     });
 
     if (FORY_PREDICT_FALSE(!matched)) {
-      // Skip unknown case value (Any-style)
+      // skip unknown case value (Any-style)
       int8_t ref_flag = ctx.read_int8(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return default_value();
@@ -612,7 +612,7 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
         return default_value();
       }
       if (ref_flag == REF_FLAG) {
-        (void)ctx.read_varuint32(ctx.error());
+        (void)ctx.read_var_uint32(ctx.error());
         ctx.set_error(Error::invalid_data("Unknown union case id"));
         return default_value();
       }
@@ -829,7 +829,7 @@ private:
     static constexpr size_t case_count =                                       \
         sizeof(case_ids) / sizeof(case_ids[0]);                                \
   };                                                                           \
-  constexpr auto ForyUnionCaseIds(::fory::meta::Identity<Type>) {              \
+  constexpr auto fory_union_case_ids(::fory::meta::Identity<Type>) {           \
     return FORY_UNION_IDS_DESCRIPTOR_NAME(__LINE__){};                         \
   }                                                                            \
   static_assert(true)
@@ -840,8 +840,9 @@ private:
     static constexpr ::fory::FieldMeta meta = MetaExpr;                        \
     static inline Type make(CaseT value) { return Factory(std::move(value)); } \
   };                                                                           \
-  constexpr auto ForyUnionCaseMeta(::fory::meta::Identity<Type>,               \
-                                   std::integral_constant<uint32_t, CaseId>) { \
+  constexpr auto fory_union_case_meta(                                         \
+      ::fory::meta::Identity<Type>,                                            \
+      std::integral_constant<uint32_t, CaseId>) {                              \
     return FORY_UNION_CASE_DESCRIPTOR_NAME(__LINE__){};                        \
   }                                                                            \
   static_assert(true)
@@ -866,7 +867,7 @@ private:
         std::make_tuple(FORY_UNION_PP_FOREACH_2_COMMA(                         \
             FORY_UNION_CASE_FACTORY_VALUE, Type, __VA_ARGS__));                \
   };                                                                           \
-  constexpr auto ForyUnionInfo(::fory::meta::Identity<Type>) {                 \
+  constexpr auto fory_union_info(::fory::meta::Identity<Type>) {               \
     return FORY_UNION_DESCRIPTOR_NAME(__LINE__){};                             \
   }                                                                            \
   static_assert(true)

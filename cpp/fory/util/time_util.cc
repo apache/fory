@@ -27,7 +27,7 @@ namespace fory {
 
 using std::chrono::system_clock;
 
-std::string FormatTimePoint(system_clock::time_point tp) {
+std::string format_time_point(system_clock::time_point tp) {
   time_t raw_time = system_clock::to_time_t(tp);
   // unnecessary to release tm, it's created by localtime and every thread will
   // have one.

@@ -33,8 +33,8 @@ TEST(TimeTest, TestFormatTimePoint) {
   tm.tm_isdst = 0; // Not daylight saving
   std::time_t t = std::mktime(&tm);
   auto tp = std::chrono::system_clock::from_time_t(t);
-  EXPECT_EQ(FormatTimePoint(tp), "2022-07-02 10:20:20,000");
-  FormatTimePoint(std::chrono::system_clock::now());
+  EXPECT_EQ(format_time_point(tp), "2022-07-02 10:20:20,000");
+  format_time_point(std::chrono::system_clock::now());
 }
 
 } // namespace fory

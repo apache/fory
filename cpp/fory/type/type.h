@@ -145,7 +145,7 @@ enum class TypeId : int32_t {
   BOUND = 67
 };
 
-inline bool IsUserType(int32_t type_id) {
+inline bool is_user_type(int32_t type_id) {
   switch (static_cast<TypeId>(type_id)) {
   case TypeId::ENUM:
   case TypeId::NAMED_ENUM:
@@ -163,7 +163,7 @@ inline bool IsUserType(int32_t type_id) {
   }
 }
 
-inline bool IsNamespacedType(int32_t type_id) {
+inline bool is_namespaced_type(int32_t type_id) {
   switch (static_cast<TypeId>(type_id)) {
   case TypeId::NAMED_ENUM:
   case TypeId::NAMED_STRUCT:
@@ -176,7 +176,7 @@ inline bool IsNamespacedType(int32_t type_id) {
   }
 }
 
-inline bool IsTypeShareMeta(int32_t type_id) {
+inline bool is_type_share_meta(int32_t type_id) {
   switch (static_cast<TypeId>(type_id)) {
   case TypeId::NAMED_ENUM:
   case TypeId::NAMED_STRUCT:

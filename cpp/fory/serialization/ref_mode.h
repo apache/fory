@@ -33,17 +33,17 @@ namespace serialization {
 /// - `NullOnly` = nullable, no circular ref tracking
 /// - `Tracking` = nullable, with circular ref tracking (std::shared_ptr)
 enum class RefMode : uint8_t {
-  /// Skip ref handling entirely. No ref/null flags are written/read.
+  /// skip ref handling entirely. No ref/null flags are written/read.
   /// Used for non-nullable primitives or when caller handles ref externally.
   None = 0,
 
   /// Only null check without reference tracking.
-  /// Write: NullFlag (-3) for null, NotNullValueFlag (-1) for non-null.
+  /// write: NullFlag (-3) for null, NotNullValueFlag (-1) for non-null.
   /// Read: Read flag and return default on null.
   NullOnly = 1,
 
   /// Full reference tracking with circular reference support.
-  /// Write: Uses RefWriter which writes NullFlag, RefFlag+refId, or
+  /// write: Uses RefWriter which writes NullFlag, RefFlag+ref_id, or
   /// RefValueFlag. Read: Uses RefReader with full reference resolution.
   Tracking = 2,
 };
