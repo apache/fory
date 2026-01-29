@@ -413,8 +413,8 @@ Fory uses binary protocols for efficient serialization and deserialization. Fory
 - **Location**: `compiler/` contains the Fory compiler, parser, IR, and code generators.
 - **Install & CLI**:
   - `cd compiler && pip install -e .`
-  - `fory compile --help`
-  - `fory compile schema.fdl --lang <langs> --output <dir>`
+  - `foryc --help`
+  - `foryc schema.fdl --lang <langs> --output <dir>`
 - **Generated code**: Never edit generated files manually; update the `.fdl`/`.proto`/`.fbs` and re-run the compiler.
 - **IDL tests**: Use `integration_tests/idl_tests/generate_idl.py` for test codegen.
   - In `integration_tests/idl_tests`, keep package names aligned with the IDL filename.

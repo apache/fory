@@ -118,13 +118,13 @@ convention).
 Compile a FlatBuffers schema directly:
 
 ```bash
-fory compile schema.fbs --lang java,python --output ./generated
+foryc schema.fbs --lang java,python --output ./generated
 ```
 
 To inspect the translated FDL for debugging:
 
 ```bash
-fory compile schema.fbs --emit-fdl --emit-fdl-path ./translated
+foryc schema.fbs --emit-fdl --emit-fdl-path ./translated
 ```
 
 ## Generated Code Differences
