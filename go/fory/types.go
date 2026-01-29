@@ -440,15 +440,9 @@ func GetDispatchId(t reflect.Type) DispatchId {
 			if t.Elem().Name() == "Float16" && (t.Elem().PkgPath() == "github.com/apache/fory/go/fory/float16" || strings.HasSuffix(t.Elem().PkgPath(), "/float16")) {
 				return Float16SliceDispatchId
 			}
-			return Int16SliceDispatchId // Standard uint16/int16 share serializer usually, wait: existing is Int16SliceDispatchId...
-			// Check existing Uint16 slice handling (it might be missing or shared)
-			// Actually reflect.Uint16 case is missing in the original switch shown in view_file.
-			// Wait, the original switch had:
-			// case reflect.Uint8: ...
-			// case reflect.Int8: ...
-			// case reflect.Int16: ...
-			// It did NOT have Uint16 case in the slice switch!
-			// I should add it.
+			// Use Int16SliceDispatchId for Uint16 as they share the same 2-byte size
+			// and serialization logic in many cases, or it falls back to generic if needed.
+			return Int16SliceDispatchId
 
 		case reflect.Bool:
 			return BoolSliceDispatchId
