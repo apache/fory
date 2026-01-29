@@ -345,7 +345,7 @@ func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
 	}
 
 	typeDef.encoded = encoded
-	if DebugOutputEnabled() {
+	if DebugOutputEnabled {
 		fmt.Printf("[Go TypeDef BUILT] %s\n", typeDef.String())
 	}
 	return typeDef, nil
@@ -1552,7 +1552,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 	typeDef.encoded = encoded
 	typeDef.type_ = type_
 
-	if DebugOutputEnabled() {
+	if DebugOutputEnabled {
 		fmt.Printf("[Go TypeDef DECODED] %s\n", typeDef.String())
 		// Compute and print diff with local TypeDef
 		if type_ != nil {

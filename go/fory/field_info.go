@@ -126,7 +126,7 @@ func (g *FieldGroup) ForEachField(fn func(*FieldInfo)) {
 
 // DebugPrint prints field group information for debugging.
 func (g *FieldGroup) DebugPrint(typeName string) {
-	if !DebugOutputEnabled() {
+	if !DebugOutputEnabled {
 		return
 	}
 	fmt.Printf("[Go] ========== Sorted fields for %s ==========\n", typeName)
