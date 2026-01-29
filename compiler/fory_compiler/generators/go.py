@@ -449,9 +449,12 @@ class GoGenerator(BaseGenerator):
         lines.extend(self.generate_fory_helpers())
         lines.append("")
 
+        # Wrap long lines at 80 characters
+        wrapped_lines = self.wrap_lines(lines, max_width=80)
+
         return GeneratedFile(
             path=f"{self.get_file_name()}.go",
-            content="\n".join(lines),
+            content="\n".join(wrapped_lines),
         )
 
     def collect_message_imports(self, message: Message, imports: Set[str]):

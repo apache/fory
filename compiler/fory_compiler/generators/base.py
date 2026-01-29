@@ -206,3 +206,121 @@ class BaseGenerator(ABC):
         return "\n".join(
             f"{comment_prefix} {line}" if line else comment_prefix for line in lines
         )
+
+    def wrap_line(
+        self,
+        line: str,
+        max_width: int = 80,
+        indent: str = "",
+        continuation_indent: str = None,
+    ) -> List[str]:
+        """Wrap a long line into multiple lines with max_width characters.
+
+        Args:
+            line: The line to wrap
+            max_width: Maximum width per line (default 80)
+            indent: The indentation to preserve for the first line
+            continuation_indent: Extra indentation for continuation lines.
+                                If None, uses indent + 4 spaces.
+
+        Returns:
+            List of wrapped lines
+        """
+        if continuation_indent is None:
+            continuation_indent = indent + "    "
+
+        # If line is already short enough, return as is
+        if len(line) <= max_width:
+            return [line]
+
+        # Don't wrap C++ preprocessor directives (macros)
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            return [line]
+
+        # Don't wrap comment lines (license headers, etc.)
+        if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*") or stripped.startswith("#"):
+            return [line]
+
+        # Extract the leading indent
+        leading_spaces = line[: len(line) - len(line.lstrip())]
+
+        # Get the content without indent
+        content = line[len(leading_spaces) :]
+
+        # If it's still too short after considering indent, don't wrap
+        if len(leading_spaces) + len(content) <= max_width:
+            return [line]
+
+        # Find good break points (prefer breaking at spaces, commas, operators)
+        result = []
+        current = content
+        first_line = True
+
+        while len(leading_spaces) + len(current) > max_width:
+            # Calculate available width
+            if first_line:
+                available = max_width - len(leading_spaces)
+            else:
+                available = max_width - len(continuation_indent)
+
+            if available <= 0:
+                # Can't wrap reasonably, return original
+                return [line]
+
+            # Find the best break point
+            break_point = -1
+
+            # Look for break points in order of preference
+            search_text = current[:available]
+
+            # Try to break at common delimiters (working backwards)
+            for delimiter in [", ", " && ", " || ", " + ", " - ", " * ", " / ", " = ", " ", ","]:
+                idx = search_text.rfind(delimiter)
+                if idx > 0:
+                    break_point = idx + len(delimiter)
+                    break
+
+            # If no good break point found, just break at max width
+            if break_point <= 0:
+                break_point = available
+
+            # Add the line segment
+            if first_line:
+                result.append(leading_spaces + current[:break_point].rstrip())
+                first_line = False
+            else:
+                result.append(continuation_indent + current[:break_point].rstrip())
+
+            # Continue with the rest
+            current = current[break_point:].lstrip()
+
+        # Add the remaining content
+        if current:
+            if first_line:
+                result.append(leading_spaces + current)
+            else:
+                result.append(continuation_indent + current)
+
+        return result if result else [line]
+
+    def wrap_lines(
+        self, lines: List[str], max_width: int = 80, preserve_blank: bool = True
+    ) -> List[str]:
+        """Wrap multiple lines, handling each line's indentation.
+
+        Args:
+            lines: List of lines to wrap
+            max_width: Maximum width per line
+            preserve_blank: If True, preserve blank lines as-is
+
+        Returns:
+            List of wrapped lines
+        """
+        result = []
+        for line in lines:
+            if preserve_blank and not line.strip():
+                result.append(line)
+            else:
+                result.extend(self.wrap_line(line, max_width))
+        return result

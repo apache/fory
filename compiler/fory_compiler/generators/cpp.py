@@ -370,9 +370,12 @@ class CppGenerator(BaseGenerator):
         lines.append(f"#endif // {guard_name}")
         lines.append("")
 
+        # Wrap long lines at 80 characters (careful with C++ macros)
+        wrapped_lines = self.wrap_lines(lines, max_width=80)
+
         return GeneratedFile(
             path=f"{self.get_header_name()}.h",
-            content="\n".join(lines),
+            content="\n".join(wrapped_lines),
         )
 
     def collect_message_includes(self, message: Message, includes: Set[str]):

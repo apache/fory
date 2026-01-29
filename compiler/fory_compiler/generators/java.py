@@ -366,7 +366,9 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{enum.name}.java"
 
-        return GeneratedFile(path=path, content="\n".join(lines))
+        # Wrap long lines at 80 characters
+        wrapped_lines = self.wrap_lines(lines, max_width=80)
+        return GeneratedFile(path=path, content="\n".join(wrapped_lines))
 
     def generate_union_file(self, union: Union) -> GeneratedFile:
         """Generate a Java union class file."""
@@ -397,7 +399,9 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{union.name}.java"
 
-        return GeneratedFile(path=path, content="\n".join(lines))
+        # Wrap long lines at 80 characters
+        wrapped_lines = self.wrap_lines(lines, max_width=80)
+        return GeneratedFile(path=path, content="\n".join(wrapped_lines))
 
     def generate_message_file(self, message: Message) -> GeneratedFile:
         """Generate a Java class file for a message."""
@@ -486,7 +490,9 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{message.name}.java"
 
-        return GeneratedFile(path=path, content="\n".join(lines))
+        # Wrap long lines at 80 characters
+        wrapped_lines = self.wrap_lines(lines, max_width=80)
+        return GeneratedFile(path=path, content="\n".join(wrapped_lines))
 
     def generate_outer_class_file(self, outer_classname: str) -> GeneratedFile:
         """Generate a single Java file with all types as inner classes of an outer class.
@@ -559,7 +565,9 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{outer_classname}.java"
 
-        return GeneratedFile(path=path, content="\n".join(lines))
+        # Wrap long lines at 80 characters
+        wrapped_lines = self.wrap_lines(lines, max_width=80)
+        return GeneratedFile(path=path, content="\n".join(wrapped_lines))
 
     def collect_message_imports(self, message: Message, imports: Set[str]):
         """Collect imports for a message and all its nested types recursively."""
@@ -1447,7 +1455,9 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{class_name}.java"
 
-        return GeneratedFile(path=path, content="\n".join(lines))
+        # Wrap long lines at 80 characters
+        wrapped_lines = self.wrap_lines(lines, max_width=80)
+        return GeneratedFile(path=path, content="\n".join(wrapped_lines))
 
     def generate_enum_registration(
         self, lines: List[str], enum: Enum, parent_path: str
