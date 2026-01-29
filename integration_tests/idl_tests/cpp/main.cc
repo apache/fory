@@ -30,6 +30,7 @@
 #include "addressbook.h"
 #include "any_example.h"
 #include "complex_fbs.h"
+#include "complex_pb.h"
 #include "fory/serialization/any_serializer.h"
 #include "fory/serialization/fory.h"
 #include "graph.h"
@@ -164,6 +165,7 @@ fory::Result<void, fory::Error> RunRoundTrip() {
                   .track_ref(false)
                   .build();
 
+  complex_pb::register_types(fory);
   addressbook::register_types(fory);
   monster::register_types(fory);
   complex_fbs::register_types(fory);
@@ -237,19 +239,19 @@ fory::Result<void, fory::Error> RunRoundTrip() {
         fory::Error::invalid("animal to_bytes roundtrip mismatch"));
   }
 
-  root::Person multi_owner;
+  addressbook::Person multi_owner;
   multi_owner.set_name("Alice");
   multi_owner.set_id(123);
-  root::Dog multi_dog;
+  addressbook::Dog multi_dog;
   multi_dog.set_name("Rex");
   multi_dog.set_bark_volume(5);
-  *multi_owner.mutable_pet() = root::Animal::dog(multi_dog);
+  *multi_owner.mutable_pet() = addressbook::Animal::dog(multi_dog);
 
-  root::AddressBook multi_book;
+  addressbook::AddressBook multi_book;
   *multi_book.mutable_people() = {multi_owner};
   *multi_book.mutable_people_by_name() = {{multi_owner.name(), multi_owner}};
 
-  root::TreeNode multi_root;
+  tree::TreeNode multi_root;
   multi_root.set_id("root");
   multi_root.set_name("root");
 
@@ -274,7 +276,7 @@ fory::Result<void, fory::Error> RunRoundTrip() {
         fory::Error::invalid("addressbook roundtrip mismatch"));
   }
 
-  addressbook::PrimitiveTypes types;
+  complex_pb::PrimitiveTypes types;
   types.set_bool_value(true);
   types.set_int8_value(12);
   types.set_int16_value(1234);
@@ -293,12 +295,12 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   types.set_float32_value(2.5F);
   types.set_float64_value(3.5);
   *types.mutable_contact() =
-      addressbook::PrimitiveTypes::Contact::email("alice@example.com");
-  *types.mutable_contact() = addressbook::PrimitiveTypes::Contact::phone(12345);
+      complex_pb::PrimitiveTypes::Contact::email("alice@example.com");
+  *types.mutable_contact() = complex_pb::PrimitiveTypes::Contact::phone(12345);
 
   FORY_TRY(primitive_bytes, fory.serialize(types));
   FORY_TRY(primitive_roundtrip,
-           fory.deserialize<addressbook::PrimitiveTypes>(
+           fory.deserialize<complex_pb::PrimitiveTypes>(
                primitive_bytes.data(), primitive_bytes.size()));
 
   if (!(primitive_roundtrip == types)) {
@@ -454,7 +456,7 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   const char *primitive_file = std::getenv("DATA_FILE_PRIMITIVES");
   if (primitive_file != nullptr && primitive_file[0] != '\0') {
     FORY_TRY(payload, ReadFile(primitive_file));
-    FORY_TRY(peer_types, fory.deserialize<addressbook::PrimitiveTypes>(
+    FORY_TRY(peer_types, fory.deserialize<complex_pb::PrimitiveTypes>(
                              payload.data(), payload.size()));
     if (!(peer_types == types)) {
       return fory::Unexpected(

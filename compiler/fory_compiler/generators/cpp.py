@@ -268,6 +268,14 @@ class CppGenerator(BaseGenerator):
             includes.add("<memory>")
             includes.add("<typeindex>")
             includes.add('"fory/serialization/union_serializer.h"')
+        if self.schema.source_file:
+            base_dir = Path(self.schema.source_file).resolve().parent
+            for imp in self.schema.imports:
+                candidate = (base_dir / imp.path).resolve()
+                schema = self._load_schema(str(candidate))
+                if schema is None:
+                    continue
+                includes.add(f'"{self._header_for_schema(schema)}"')
 
         for message in self.schema.messages:
             if self.is_imported_type(message):
@@ -306,6 +314,10 @@ class CppGenerator(BaseGenerator):
         self.generate_forward_declarations(lines)
         if self.schema.messages:
             lines.append("")
+        lines.append("namespace detail {")
+        lines.append("fory::serialization::ThreadSafeFory& get_fory();")
+        lines.append("} // namespace detail")
+        lines.append("")
 
         # Generate enums (top-level)
         for enum in self.schema.enums:
@@ -626,8 +638,15 @@ class CppGenerator(BaseGenerator):
         if self.is_message_type(field.field_type, parent_stack) and not (
             field.ref or weak_ref
         ):
-            type_name = self.resolve_nested_type_name(
-                field.field_type.name, parent_stack
+            type_name = self.generate_type(
+                field.field_type,
+                False,
+                False,
+                False,
+                False,
+                weak_ref,
+                element_weak_ref,
+                parent_stack,
             )
             return f"std::unique_ptr<{type_name}>"
         return self.generate_type(
@@ -656,7 +675,16 @@ class CppGenerator(BaseGenerator):
         if self.is_message_type(field.field_type, parent_stack) and not (
             field.ref or weak_ref
         ):
-            return self.resolve_nested_type_name(field.field_type.name, parent_stack)
+            return self.generate_type(
+                field.field_type,
+                False,
+                False,
+                False,
+                False,
+                weak_ref,
+                element_weak_ref,
+                parent_stack,
+            )
         return self.generate_type(
             field.field_type,
             False,
@@ -1805,16 +1833,18 @@ class CppGenerator(BaseGenerator):
         lines.append("")
         lines.append("namespace detail {")
         lines.append("inline fory::serialization::ThreadSafeFory& get_fory() {")
-        lines.append("  static fory::serialization::ThreadSafeFory fory = []() {")
         lines.append(
-            "    auto fory = fory::serialization::Fory::builder()"
-            ".xlang(true).track_ref(true).compatible(true).build_thread_safe();"
+            "  static fory::serialization::ThreadSafeFory fory = "
+            "fory::serialization::Fory::builder().xlang(true).track_ref(true)"
+            ".compatible(true).build_thread_safe();"
         )
+        lines.append("  static const bool initialized = []() {")
         for ns in self._collect_imported_namespaces():
             lines.append(f"    {ns}::register_types(fory);")
         lines.append("    register_types(fory);")
-        lines.append("    return fory;")
+        lines.append("    return true;")
         lines.append("  }();")
+        lines.append("  (void)initialized;")
         lines.append("  return fory;")
         lines.append("}")
         lines.append("} // namespace detail")
