@@ -262,7 +262,7 @@ func fieldHasNonPrimitiveSerializer(field *FieldInfo) bool {
 	}
 	// ENUM (numeric ID), NAMED_ENUM (namespace/typename), NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT
 	// all require special serialization and should not use the primitive fast path
-	// Note: ENUM uses unsigned Varuint32Small7 for ordinals, not signed zigzag varint
+	// Note: ENUM uses unsigned VarUint32Small7 for ordinals, not signed zigzag varint
 	// Use internal type ID (low 8 bits) since registered types have composite TypeIds like (userID << 8) | internalID
 	internalTypeId := TypeId(field.Meta.TypeId & 0xFF)
 	switch internalTypeId {

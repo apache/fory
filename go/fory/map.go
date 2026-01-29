@@ -64,7 +64,7 @@ func (s mapSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	value = unwrapInterface(value)
 	length := value.Len()
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -305,7 +305,7 @@ func (s mapSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	}
 	refResolver.Reference(value)
 
-	size := int(buf.ReadVaruint32(ctxErr))
+	size := int(buf.ReadVarUint32(ctxErr))
 	if size == 0 || ctx.HasError() {
 		return
 	}
@@ -583,7 +583,7 @@ func writeMapRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, valu
 		ctx.buffer.WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.buffer.WriteVaruint32Small7(uint32(MAP))
+		ctx.buffer.WriteVarUint32Small7(uint32(MAP))
 	}
 	return false
 }
@@ -614,7 +614,7 @@ func readMapRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value r
 		}
 	}
 	if readType {
-		buf.ReadVaruint32Small7(ctxErr)
+		buf.ReadVarUint32Small7(ctxErr)
 	}
 	return false
 }

@@ -56,7 +56,7 @@ func (g *DynamicSliceDemo_ForyGenSerializer) Write(ctx *fory.WriteContext, refMo
 		ctx.Buffer().WriteInt8(-1) // NotNullValueFlag
 	}
 	if writeType {
-		ctx.Buffer().WriteVaruint32(uint32(fory.NAMED_STRUCT))
+		ctx.Buffer().WriteVarUint32(uint32(fory.NAMED_STRUCT))
 	}
 	g.WriteData(ctx, value)
 }
@@ -78,7 +78,7 @@ func (g *DynamicSliceDemo_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, 
 			if v.DynamicSlice != nil {
 				sliceLen = len(v.DynamicSlice)
 			}
-			buf.WriteVaruint32(uint32(sliceLen))
+			buf.WriteVarUint32(uint32(sliceLen))
 			if sliceLen > 0 {
 				// WriteData collection flags for dynamic slice []any
 				// Only CollectionTrackingRef is set (no declared type, may have different types)
@@ -95,7 +95,7 @@ func (g *DynamicSliceDemo_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, 
 			} else {
 				buf.WriteInt8(-1) // NotNullValueFlag
 				sliceLen := len(v.DynamicSlice)
-				buf.WriteVaruint32(uint32(sliceLen))
+				buf.WriteVarUint32(uint32(sliceLen))
 				if sliceLen > 0 {
 					// WriteData collection flags for dynamic slice []any
 					// Only CollectionTrackingRef is set (no declared type, may have different types)
@@ -180,7 +180,7 @@ func (g *DynamicSliceDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v 
 		isXlang := ctx.TypeResolver().IsXlang()
 		if isXlang {
 			// xlang mode: slices are not nullable, read directly without null flag
-			sliceLen := int(buf.ReadVaruint32(err))
+			sliceLen := int(buf.ReadVarUint32(err))
 			if sliceLen == 0 {
 				v.DynamicSlice = make([]any, 0)
 			} else {
@@ -199,7 +199,7 @@ func (g *DynamicSliceDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v 
 			if nullFlag == -3 {
 				v.DynamicSlice = nil
 			} else {
-				sliceLen := int(buf.ReadVaruint32(err))
+				sliceLen := int(buf.ReadVarUint32(err))
 				if sliceLen == 0 {
 					v.DynamicSlice = make([]any, 0)
 				} else {
@@ -289,7 +289,7 @@ func (g *MapDemo_ForyGenSerializer) Write(ctx *fory.WriteContext, refMode fory.R
 		ctx.Buffer().WriteInt8(-1) // NotNullValueFlag
 	}
 	if writeType {
-		ctx.Buffer().WriteVaruint32(uint32(fory.NAMED_STRUCT))
+		ctx.Buffer().WriteVarUint32(uint32(fory.NAMED_STRUCT))
 	}
 	g.WriteData(ctx, value)
 }
@@ -310,7 +310,7 @@ func (g *MapDemo_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, v *MapDem
 			if v.IntMap != nil {
 				mapLen = len(v.IntMap)
 			}
-			buf.WriteVaruint32(uint32(mapLen))
+			buf.WriteVarUint32(uint32(mapLen))
 			if mapLen > 0 {
 				// Calculate KV header flags
 				kvHeader := uint8(0)
@@ -348,7 +348,7 @@ func (g *MapDemo_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, v *MapDem
 			} else {
 				buf.WriteInt8(-1) // NotNullValueFlag
 				mapLen := len(v.IntMap)
-				buf.WriteVaruint32(uint32(mapLen))
+				buf.WriteVarUint32(uint32(mapLen))
 				if mapLen > 0 {
 					// Calculate KV header flags
 					kvHeader := uint8(0)
@@ -391,7 +391,7 @@ func (g *MapDemo_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, v *MapDem
 			if v.MixedMap != nil {
 				mapLen = len(v.MixedMap)
 			}
-			buf.WriteVaruint32(uint32(mapLen))
+			buf.WriteVarUint32(uint32(mapLen))
 			if mapLen > 0 {
 				// Calculate KV header flags
 				kvHeader := uint8(0)
@@ -432,7 +432,7 @@ func (g *MapDemo_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, v *MapDem
 			} else {
 				buf.WriteInt8(-1) // NotNullValueFlag
 				mapLen := len(v.MixedMap)
-				buf.WriteVaruint32(uint32(mapLen))
+				buf.WriteVarUint32(uint32(mapLen))
 				if mapLen > 0 {
 					// Calculate KV header flags
 					kvHeader := uint8(0)
@@ -478,7 +478,7 @@ func (g *MapDemo_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, v *MapDem
 			if v.StringMap != nil {
 				mapLen = len(v.StringMap)
 			}
-			buf.WriteVaruint32(uint32(mapLen))
+			buf.WriteVarUint32(uint32(mapLen))
 			if mapLen > 0 {
 				// Calculate KV header flags
 				kvHeader := uint8(0)
@@ -522,7 +522,7 @@ func (g *MapDemo_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, v *MapDem
 			} else {
 				buf.WriteInt8(-1) // NotNullValueFlag
 				mapLen := len(v.StringMap)
-				buf.WriteVaruint32(uint32(mapLen))
+				buf.WriteVarUint32(uint32(mapLen))
 				if mapLen > 0 {
 					// Calculate KV header flags
 					kvHeader := uint8(0)
@@ -633,7 +633,7 @@ func (g *MapDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *MapDemo)
 		isXlang := ctx.TypeResolver().IsXlang()
 		if isXlang {
 			// xlang mode: maps are not nullable, read directly without null flag
-			mapLen := int(buf.ReadVaruint32(err))
+			mapLen := int(buf.ReadVarUint32(err))
 			if mapLen == 0 {
 				v.IntMap = make(map[int]int)
 			} else {
@@ -667,7 +667,7 @@ func (g *MapDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *MapDemo)
 			if nullFlag == -3 {
 				v.IntMap = nil
 			} else {
-				mapLen := int(buf.ReadVaruint32(err))
+				mapLen := int(buf.ReadVarUint32(err))
 				if mapLen == 0 {
 					v.IntMap = make(map[int]int)
 				} else {
@@ -703,7 +703,7 @@ func (g *MapDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *MapDemo)
 		isXlang := ctx.TypeResolver().IsXlang()
 		if isXlang {
 			// xlang mode: maps are not nullable, read directly without null flag
-			mapLen := int(buf.ReadVaruint32(err))
+			mapLen := int(buf.ReadVarUint32(err))
 			if mapLen == 0 {
 				v.MixedMap = make(map[string]int)
 			} else {
@@ -737,7 +737,7 @@ func (g *MapDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *MapDemo)
 			if nullFlag == -3 {
 				v.MixedMap = nil
 			} else {
-				mapLen := int(buf.ReadVaruint32(err))
+				mapLen := int(buf.ReadVarUint32(err))
 				if mapLen == 0 {
 					v.MixedMap = make(map[string]int)
 				} else {
@@ -773,7 +773,7 @@ func (g *MapDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *MapDemo)
 		isXlang := ctx.TypeResolver().IsXlang()
 		if isXlang {
 			// xlang mode: maps are not nullable, read directly without null flag
-			mapLen := int(buf.ReadVaruint32(err))
+			mapLen := int(buf.ReadVarUint32(err))
 			if mapLen == 0 {
 				v.StringMap = make(map[string]string)
 			} else {
@@ -807,7 +807,7 @@ func (g *MapDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *MapDemo)
 			if nullFlag == -3 {
 				v.StringMap = nil
 			} else {
-				mapLen := int(buf.ReadVaruint32(err))
+				mapLen := int(buf.ReadVarUint32(err))
 				if mapLen == 0 {
 					v.StringMap = make(map[string]string)
 				} else {
@@ -912,7 +912,7 @@ func (g *SliceDemo_ForyGenSerializer) Write(ctx *fory.WriteContext, refMode fory
 		ctx.Buffer().WriteInt8(-1) // NotNullValueFlag
 	}
 	if writeType {
-		ctx.Buffer().WriteVaruint32(uint32(fory.NAMED_STRUCT))
+		ctx.Buffer().WriteVarUint32(uint32(fory.NAMED_STRUCT))
 	}
 	g.WriteData(ctx, value)
 }
@@ -981,7 +981,7 @@ func (g *SliceDemo_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, v *Slic
 			if v.StringSlice != nil {
 				sliceLen = len(v.StringSlice)
 			}
-			buf.WriteVaruint32(uint32(sliceLen))
+			buf.WriteVarUint32(uint32(sliceLen))
 			if sliceLen > 0 {
 				collectFlag := 12 // CollectionIsSameType | CollectionIsDeclElementType
 				if ctx.TrackRef() {
@@ -1002,7 +1002,7 @@ func (g *SliceDemo_ForyGenSerializer) WriteTyped(ctx *fory.WriteContext, v *Slic
 			} else {
 				buf.WriteInt8(-1) // NotNullValueFlag
 				sliceLen := len(v.StringSlice)
-				buf.WriteVaruint32(uint32(sliceLen))
+				buf.WriteVarUint32(uint32(sliceLen))
 				if sliceLen > 0 {
 					collectFlag := 12 // CollectionIsSameType | CollectionIsDeclElementType
 					if ctx.TrackRef() {
@@ -1138,7 +1138,7 @@ func (g *SliceDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *SliceD
 		isXlang := ctx.TypeResolver().IsXlang()
 		if isXlang {
 			// xlang mode: slices are not nullable, read directly without null flag
-			sliceLen := int(buf.ReadVaruint32(err))
+			sliceLen := int(buf.ReadVarUint32(err))
 			if sliceLen == 0 {
 				v.StringSlice = make([]string, 0)
 			} else {
@@ -1160,7 +1160,7 @@ func (g *SliceDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *SliceD
 					// Need to read type ID once if CollectionIsSameType is set
 					if (collectFlag & 8) != 0 {
 						// ReadData element type ID once for all elements
-						_ = buf.ReadVaruint32(err)
+						_ = buf.ReadVarUint32(err)
 					}
 					for i := 0; i < sliceLen; i++ {
 						if trackRefs {
@@ -1176,7 +1176,7 @@ func (g *SliceDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *SliceD
 			if nullFlag == -3 {
 				v.StringSlice = nil
 			} else {
-				sliceLen := int(buf.ReadVaruint32(err))
+				sliceLen := int(buf.ReadVarUint32(err))
 				if sliceLen == 0 {
 					v.StringSlice = make([]string, 0)
 				} else {
@@ -1198,7 +1198,7 @@ func (g *SliceDemo_ForyGenSerializer) ReadTyped(ctx *fory.ReadContext, v *SliceD
 						// Need to read type ID once if CollectionIsSameType is set
 						if (collectFlag & 8) != 0 {
 							// ReadData element type ID once for all elements
-							_ = buf.ReadVaruint32(err)
+							_ = buf.ReadVarUint32(err)
 						}
 						for i := 0; i < sliceLen; i++ {
 							if trackRefs {
@@ -1285,7 +1285,7 @@ func (g *ValidationDemo_ForyGenSerializer) Write(ctx *fory.WriteContext, refMode
 		ctx.Buffer().WriteInt8(-1) // NotNullValueFlag
 	}
 	if writeType {
-		ctx.Buffer().WriteVaruint32(uint32(fory.NAMED_STRUCT))
+		ctx.Buffer().WriteVarUint32(uint32(fory.NAMED_STRUCT))
 	}
 	g.WriteData(ctx, value)
 }

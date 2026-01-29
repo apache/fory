@@ -44,14 +44,14 @@ func SkipFieldValueWithTypeFlag(ctx *ReadContext, fieldDef FieldDef, readRefFlag
 			}
 			if refFlag == RefFlag {
 				// Reference to already-seen object, skip the reference index
-				_ = ctx.buffer.ReadVaruint32(err)
+				_ = ctx.buffer.ReadVarUint32(err)
 				return
 			}
 			// RefValueFlag (0) or NotNullValueFlag (-1) means we need to read the actual object
 		}
 
 		// Read type info (typeID + meta_index)
-		wroteTypeID := ctx.buffer.ReadVaruint32Small7(err)
+		wroteTypeID := ctx.buffer.ReadVarUint32Small7(err)
 		internalID := wroteTypeID & 0xff
 
 		// Check if it's an EXT type first - EXT types don't have meta info like structs
@@ -126,14 +126,14 @@ func SkipAnyValue(ctx *ReadContext, readRefFlag bool) {
 		}
 		if refFlag == RefFlag {
 			// Reference to already-seen object, skip the reference index
-			_ = ctx.buffer.ReadVaruint32(err)
+			_ = ctx.buffer.ReadVarUint32(err)
 			return
 		}
 		// RefValueFlag (0) or NotNullValueFlag (-1) means we need to read the actual object
 	}
 
 	// ReadData type_id first
-	typeID := ctx.buffer.ReadVaruint32Small7(err)
+	typeID := ctx.buffer.ReadVarUint32Small7(err)
 	if ctx.HasError() {
 		return
 	}
@@ -195,7 +195,7 @@ func SkipAnyValue(ctx *ReadContext, readRefFlag bool) {
 func readTypeInfoForSkip(ctx *ReadContext, fieldTypeId TypeId) *TypeInfo {
 	err := ctx.Err()
 	// Read the actual typeID from buffer (Java writes typeID for struct fields)
-	typeID := ctx.buffer.ReadVaruint32Small7(err)
+	typeID := ctx.buffer.ReadVarUint32Small7(err)
 	if ctx.HasError() {
 		return nil
 	}
@@ -207,7 +207,7 @@ func readTypeInfoForSkip(ctx *ReadContext, fieldTypeId TypeId) *TypeInfo {
 // Uses context error state for deferred error checking.
 func skipCollection(ctx *ReadContext, fieldDef FieldDef) {
 	err := ctx.Err()
-	length := ctx.buffer.ReadVaruint32(err)
+	length := ctx.buffer.ReadVarUint32(err)
 	if ctx.HasError() || length == 0 {
 		return
 	}
@@ -226,7 +226,7 @@ func skipCollection(ctx *ReadContext, fieldDef FieldDef) {
 	var elemTypeInfo *TypeInfo
 	if isSameType && !isDeclared {
 		// ReadData element type info - first read the typeID from buffer
-		typeID := ctx.buffer.ReadVaruint32Small7(err)
+		typeID := ctx.buffer.ReadVarUint32Small7(err)
 		if ctx.HasError() {
 			return
 		}
@@ -277,7 +277,7 @@ func skipCollection(ctx *ReadContext, fieldDef FieldDef) {
 // Uses context error state for deferred error checking.
 func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 	bufErr := ctx.Err()
-	length := ctx.buffer.ReadVaruint32(bufErr)
+	length := ctx.buffer.ReadVarUint32(bufErr)
 	if ctx.HasError() || length == 0 {
 		return
 	}
@@ -326,7 +326,7 @@ func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 			var valueDef FieldDef
 			var valueTypeInfo *TypeInfo
 			if !valueDeclared {
-				typeID := ctx.buffer.ReadVaruint32Small7(bufErr)
+				typeID := ctx.buffer.ReadVarUint32Small7(bufErr)
 				if ctx.HasError() {
 					return
 				}
@@ -358,7 +358,7 @@ func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 			var keyDef FieldDef
 			var keyTypeInfo *TypeInfo
 			if !keyDeclared {
-				typeID := ctx.buffer.ReadVaruint32Small7(bufErr)
+				typeID := ctx.buffer.ReadVarUint32Small7(bufErr)
 				if ctx.HasError() {
 					return
 				}
@@ -396,7 +396,7 @@ func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 		var keyDef, valueDef FieldDef
 		var keyTypeInfo, valueTypeInfo *TypeInfo
 		if !keyDeclared {
-			typeID := ctx.buffer.ReadVaruint32Small7(bufErr)
+			typeID := ctx.buffer.ReadVarUint32Small7(bufErr)
 			if ctx.HasError() {
 				return
 			}
@@ -410,7 +410,7 @@ func skipMap(ctx *ReadContext, fieldDef FieldDef) {
 		}
 
 		if !valueDeclared {
-			typeID := ctx.buffer.ReadVaruint32Small7(bufErr)
+			typeID := ctx.buffer.ReadVarUint32Small7(bufErr)
 			if ctx.HasError() {
 				return
 			}
@@ -510,7 +510,7 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 		}
 		if refFlag == RefFlag {
 			// Reference to already-seen object, skip the reference index
-			_ = ctx.buffer.ReadVaruint32(err)
+			_ = ctx.buffer.ReadVarUint32(err)
 			return
 		}
 		// RefValueFlag (0) or NotNullValueFlag (-1) means we need to read the actual object
@@ -535,7 +535,7 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 			skipStruct(ctx, ti)
 			return
 		} else if internalID == uint32(ENUM) || internalID == uint32(NAMED_ENUM) {
-			_ = ctx.buffer.ReadVaruint32(err)
+			_ = ctx.buffer.ReadVarUint32(err)
 			return
 		} else if internalID == uint32(EXT) || internalID == uint32(NAMED_EXT) {
 			// EXT types use custom serializers - try to find the registered serializer
@@ -569,9 +569,9 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 	case INT16:
 		_ = ctx.buffer.ReadInt16(err)
 	case INT32:
-		_ = ctx.buffer.ReadVaruint32Small7(err)
+		_ = ctx.buffer.ReadVarUint32Small7(err)
 	case VARINT32:
-		_ = ctx.buffer.ReadVaruint32Small7(err)
+		_ = ctx.buffer.ReadVarUint32Small7(err)
 	case INT64, VARINT64, TAGGED_INT64:
 		_ = ctx.buffer.ReadVarint64(err)
 
@@ -583,8 +583,8 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 
 	// String types
 	case STRING:
-		// String format: varuint64 header (size << 2 | encoding) + data bytes
-		header := ctx.buffer.ReadVaruint64(err)
+		// String format: VarUint64 header (size << 2 | encoding) + data bytes
+		header := ctx.buffer.ReadVarUint64(err)
 		if ctx.HasError() {
 			return
 		}
@@ -599,7 +599,7 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 			_ = ctx.buffer.ReadBinary(int(size), err)
 		}
 	case BINARY:
-		length := ctx.buffer.ReadVaruint32(err)
+		length := ctx.buffer.ReadVarUint32(err)
 		if ctx.HasError() {
 			return
 		}
@@ -607,7 +607,7 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 
 	// Date/Time types
 	case DATE:
-		_ = ctx.buffer.ReadVaruint32Small7(err)
+		_ = ctx.buffer.ReadVarUint32Small7(err)
 	case TIMESTAMP:
 		_ = ctx.buffer.ReadInt64(err)
 		_ = ctx.buffer.ReadUint32(err)
@@ -619,7 +619,7 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 		skipMap(ctx, fieldDef)
 
 	case UNION, TYPED_UNION, NAMED_UNION:
-		_ = ctx.buffer.ReadVaruint32(err) // case_id
+		_ = ctx.buffer.ReadVarUint32(err) // case_id
 		if ctx.HasError() {
 			return
 		}
@@ -643,7 +643,7 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 
 	// Enum types
 	case ENUM, NAMED_ENUM:
-		_ = ctx.buffer.ReadVaruint32(err)
+		_ = ctx.buffer.ReadVarUint32(err)
 
 	// Unsigned integer types
 	case UINT8:
@@ -653,11 +653,11 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 	case UINT32:
 		_ = ctx.buffer.ReadUint32(err)
 	case VAR_UINT32:
-		_ = ctx.buffer.ReadVaruint32(err)
+		_ = ctx.buffer.ReadVarUint32(err)
 	case UINT64:
 		_ = ctx.buffer.ReadUint64(err)
 	case VAR_UINT64:
-		_ = ctx.buffer.ReadVaruint64(err)
+		_ = ctx.buffer.ReadVarUint64(err)
 	case TAGGED_UINT64:
 		firstInt32 := ctx.buffer.ReadInt32(err)
 		if (firstInt32 & 1) != 0 {

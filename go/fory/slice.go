@@ -56,7 +56,7 @@ func writeSliceRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, va
 		ctx.Buffer().WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.Buffer().WriteVaruint32Small7(uint32(typeId))
+		ctx.Buffer().WriteVarUint32Small7(uint32(typeId))
 	}
 	return false
 }
@@ -89,7 +89,7 @@ func readSliceRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value
 	}
 	var typeId uint32
 	if readType {
-		typeId = buf.ReadVaruint32Small7(ctxErr)
+		typeId = buf.ReadVarUint32Small7(ctxErr)
 	}
 	return false, typeId
 }
@@ -151,7 +151,7 @@ func (s *sliceSerializer) writeDataWithGenerics(ctx *WriteContext, value reflect
 	buf := ctx.Buffer()
 
 	// WriteData length
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -264,7 +264,7 @@ func (s *sliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, ty
 func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	length := int(buf.ReadVaruint32(ctxErr))
+	length := int(buf.ReadVarUint32(ctxErr))
 	isArrayType := value.Type().Kind() == reflect.Array
 
 	if length == 0 {
@@ -281,7 +281,7 @@ func (s *sliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// We must consume these bytes for protocol compliance
 	if (collectFlag & CollectionIsSameType) != 0 {
 		if (collectFlag & CollectionIsDeclElementType) == 0 {
-			typeID := buf.ReadVaruint32Small7(ctxErr)
+			typeID := buf.ReadVarUint32Small7(ctxErr)
 			// ReadData additional metadata for namespaced types
 			ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
 		}

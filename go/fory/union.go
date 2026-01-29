@@ -174,7 +174,7 @@ func (s *UnionSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 		return
 	}
 
-	ctx.Buffer().WriteVaruint32(uint32(caseID))
+	ctx.Buffer().WriteVarUint32(uint32(caseID))
 	if info.needsOverride {
 		writeUnionOverrideValue(ctx, info, reflect.ValueOf(caseValue))
 	} else {
@@ -222,7 +222,7 @@ func (s *UnionSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 		return
 	}
 	err := ctx.Err()
-	caseID := ctx.Buffer().ReadVaruint32(err)
+	caseID := ctx.Buffer().ReadVarUint32(err)
 	if ctx.HasError() {
 		return
 	}
@@ -382,7 +382,7 @@ func writeUnionOverrideValue(ctx *WriteContext, info *unionCaseInfo, value refle
 	if refWritten {
 		return
 	}
-	ctx.Buffer().WriteVaruint32Small7(uint32(info.typeID))
+	ctx.Buffer().WriteVarUint32Small7(uint32(info.typeID))
 	if value.Kind() == reflect.Ptr {
 		value = value.Elem()
 	}
@@ -404,7 +404,7 @@ func readUnionOverrideValue(ctx *ReadContext, info *unionCaseInfo) (any, bool) {
 		return nil, true
 	}
 
-	typeID := TypeId(buf.ReadVaruint32Small7(ctx.Err()))
+	typeID := TypeId(buf.ReadVarUint32Small7(ctx.Err()))
 	if ctx.HasError() {
 		return nil, false
 	}
@@ -433,7 +433,7 @@ func writeNumericValueByTypeID(ctx *WriteContext, typeID TypeId, value reflect.V
 	case UINT32:
 		buf.WriteUint32(uint32(value.Uint()))
 	case VAR_UINT32:
-		buf.WriteVaruint32(uint32(value.Uint()))
+		buf.WriteVarUint32(uint32(value.Uint()))
 	case INT64:
 		buf.WriteInt64(value.Int())
 	case VARINT64:
@@ -443,7 +443,7 @@ func writeNumericValueByTypeID(ctx *WriteContext, typeID TypeId, value reflect.V
 	case UINT64:
 		buf.WriteUint64(value.Uint())
 	case VAR_UINT64:
-		buf.WriteVaruint64(value.Uint())
+		buf.WriteVarUint64(value.Uint())
 	case TAGGED_UINT64:
 		buf.WriteTaggedUint64(value.Uint())
 	default:
@@ -483,7 +483,7 @@ func readNumericValueByTypeID(ctx *ReadContext, targetType reflect.Type, typeID 
 		case UINT32:
 			value = buf.ReadUint32(ctx.Err())
 		case VAR_UINT32:
-			value = buf.ReadVaruint32(ctx.Err())
+			value = buf.ReadVarUint32(ctx.Err())
 		default:
 			ctx.SetError(DeserializationErrorf("unsupported union uint32 type id: %d", typeID))
 			return reflect.Value{}, false
@@ -517,7 +517,7 @@ func readNumericValueByTypeID(ctx *ReadContext, targetType reflect.Type, typeID 
 		case UINT64:
 			value = buf.ReadUint64(ctx.Err())
 		case VAR_UINT64:
-			value = buf.ReadVaruint64(ctx.Err())
+			value = buf.ReadVarUint64(ctx.Err())
 		case TAGGED_UINT64:
 			value = buf.ReadTaggedUint64(ctx.Err())
 		default:

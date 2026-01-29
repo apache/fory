@@ -461,8 +461,8 @@ func testBuffer() {
 	float64Val := buf.ReadFloat64(&bufErr)
 	assertEqualFloat64(-1.1, float64Val, "float64")
 
-	varUint32Val := buf.ReadVaruint32(&bufErr)
-	assertEqual(uint32(100), varUint32Val, "varuint32")
+	VarUint32Val := buf.ReadVarUint32(&bufErr)
+	assertEqual(uint32(100), VarUint32Val, "VarUint32")
 
 	length := buf.ReadInt32(&bufErr)
 	bytes := buf.ReadBinary(int(length), &bufErr)
@@ -478,7 +478,7 @@ func testBuffer() {
 	outBuf.WriteInt64(9223372036854775807)
 	outBuf.WriteFloat32(-1.1)
 	outBuf.WriteFloat64(-1.1)
-	outBuf.WriteVaruint32(100)
+	outBuf.WriteVarUint32(100)
 	outBuf.WriteInt32(2)
 	outBuf.WriteBinary([]byte("ab"))
 
@@ -501,24 +501,24 @@ func testBufferVar() {
 		assertEqual(expected, val, fmt.Sprintf("varint32 %d", expected))
 	}
 
-	varUint32Values := []uint32{
+	VarUint32Values := []uint32{
 		0, 1, 127, 128, 16383, 16384, 2097151, 2097152,
 		268435455, 268435456, 2147483646, 2147483647,
 	}
-	for _, expected := range varUint32Values {
-		val := buf.ReadVaruint32(&bufErr)
-		assertEqual(expected, val, fmt.Sprintf("varuint32 %d", expected))
+	for _, expected := range VarUint32Values {
+		val := buf.ReadVarUint32(&bufErr)
+		assertEqual(expected, val, fmt.Sprintf("VarUint32 %d", expected))
 	}
 
-	varUint64Values := []uint64{
+	VarUint64Values := []uint64{
 		0, 1, 127, 128, 16383, 16384, 2097151, 2097152,
 		268435455, 268435456, 34359738367, 34359738368,
 		4398046511103, 4398046511104, 562949953421311, 562949953421312,
 		72057594037927935, 72057594037927936, 9223372036854775807,
 	}
-	for _, expected := range varUint64Values {
-		val := buf.ReadVaruint64(&bufErr)
-		assertEqual(expected, val, fmt.Sprintf("varuint64 %d", expected))
+	for _, expected := range VarUint64Values {
+		val := buf.ReadVarUint64(&bufErr)
+		assertEqual(expected, val, fmt.Sprintf("VarUint64 %d", expected))
 	}
 
 	varInt64Values := []int64{
@@ -535,11 +535,11 @@ func testBufferVar() {
 	for _, val := range varInt32Values {
 		outBuf.WriteVarint32(val)
 	}
-	for _, val := range varUint32Values {
-		outBuf.WriteVaruint32(val)
+	for _, val := range VarUint32Values {
+		outBuf.WriteVarUint32(val)
 	}
-	for _, val := range varUint64Values {
-		outBuf.WriteVaruint64(val)
+	for _, val := range VarUint64Values {
+		outBuf.WriteVarUint64(val)
 	}
 	for _, val := range varInt64Values {
 		outBuf.WriteVarint64(val)
