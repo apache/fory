@@ -17,7 +17,10 @@
 
 package fory
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // ErrorKind represents categories of serialization errors for fast dispatch.
 // Using an enum allows for efficient error checking on the hot path.
@@ -63,6 +66,7 @@ type Error struct {
 	// For hash mismatch
 	actualHash   int32
 	expectedHash int32
+	stack        []string
 }
 
 // Ok returns true if no error occurred
@@ -80,31 +84,43 @@ func (e Error) Kind() ErrorKind {
 	return e.kind
 }
 
+func (e Error) reverseStackString() string {
+	if len(e.stack) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i := len(e.stack) - 1; i >= 0; i-- {
+		b.WriteString(e.stack[i])
+	}
+	return b.String()
+}
+
 // Error implements the error interface with lazy formatting
 func (e Error) Error() string {
+	stack := e.reverseStackString()
 	switch e.kind {
 	case ErrKindOK:
 		return ""
 	case ErrKindBufferOutOfBound:
 		if e.message != "" {
-			return e.message
+			return e.message + stack
 		}
-		return fmt.Sprintf("buffer out of bound: offset=%d, need=%d, size=%d", e.offset, e.need, e.size)
+		return fmt.Sprintf("buffer out of bound: offset=%d, need=%d, size=%d", e.offset, e.need, e.size) + stack
 	case ErrKindTypeMismatch:
 		if e.message != "" {
-			return e.message
+			return e.message + stack
 		}
-		return fmt.Sprintf("type mismatch: actual=%d, expected=%d", e.actualType, e.expectedType)
+		return fmt.Sprintf("type mismatch: actual=%d, expected=%d", e.actualType, e.expectedType) + stack
 	case ErrKindHashMismatch:
 		if e.message != "" {
-			return e.message
+			return e.message + stack
 		}
-		return fmt.Sprintf("hash mismatch: actual=%d, expected=%d", e.actualHash, e.expectedHash)
+		return fmt.Sprintf("hash mismatch: actual=%d, expected=%d", e.actualHash, e.expectedHash) + stack
 	default:
 		if e.message != "" {
-			return e.message
+			return e.message + stack
 		}
-		return fmt.Sprintf("fory error: kind=%d", e.kind)
+		return fmt.Sprintf("fory error: kind=%d", e.kind) + stack
 	}
 }
 

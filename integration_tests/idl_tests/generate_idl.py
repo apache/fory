@@ -45,6 +45,7 @@ LANG_OUTPUTS = {
 }
 
 GO_OUTPUT_OVERRIDES = {
+    "addressbook.fdl": IDL_DIR / "go" / "addressbook",
     "monster.fbs": IDL_DIR / "go" / "monster",
     "complex_fbs.fbs": IDL_DIR / "go" / "complex_fbs",
     "optional_types.fdl": IDL_DIR / "go" / "optional_types",

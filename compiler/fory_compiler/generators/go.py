@@ -1242,7 +1242,7 @@ class GoGenerator(BaseGenerator):
             cases.append(
                 f"fory.UnionCase{{ID: {field.number}, Type: {type_expr}, TypeID: {type_id_expr}}}"
             )
-        serializer_expr = f"fory.NewUnionSerializer(f, {', '.join(cases)})"
+        serializer_expr = f"fory.NewUnionSerializer({', '.join(cases)})"
 
         if union.type_id is not None:
             lines.append(

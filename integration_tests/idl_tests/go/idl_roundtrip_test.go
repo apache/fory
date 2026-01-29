@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package addressbook
+package idl_test
 
 import (
 	"os"
@@ -25,79 +25,59 @@ import (
 
 	fory "github.com/apache/fory/go/fory"
 	"github.com/apache/fory/go/fory/optional"
+	addressbook "github.com/apache/fory/integration_tests/idl_tests/go/addressbook"
 	anyexample "github.com/apache/fory/integration_tests/idl_tests/go/any_example"
 	complexfbs "github.com/apache/fory/integration_tests/idl_tests/go/complex_fbs"
+	complexpb "github.com/apache/fory/integration_tests/idl_tests/go/complex_pb"
 	graphpkg "github.com/apache/fory/integration_tests/idl_tests/go/graph"
 	monster "github.com/apache/fory/integration_tests/idl_tests/go/monster"
 	optionaltypes "github.com/apache/fory/integration_tests/idl_tests/go/optional_types"
-	rootpkg "github.com/apache/fory/integration_tests/idl_tests/go/root"
 	treepkg "github.com/apache/fory/integration_tests/idl_tests/go/tree"
 )
 
-func buildAddressBook() AddressBook {
-	mobile := Person_PhoneNumber{
+func buildAddressBook() addressbook.AddressBook {
+	mobile := addressbook.Person_PhoneNumber{
 		Number:    "555-0100",
-		PhoneType: Person_PhoneTypeMobile,
+		PhoneType: addressbook.Person_PhoneTypeMobile,
 	}
-	work := Person_PhoneNumber{
+	work := addressbook.Person_PhoneNumber{
 		Number:    "555-0111",
-		PhoneType: Person_PhoneTypeWork,
+		PhoneType: addressbook.Person_PhoneTypeWork,
 	}
 
-	pet := DogAnimal(&Dog{
+	pet := addressbook.DogAnimal(&addressbook.Dog{
 		Name:       "Rex",
 		BarkVolume: 5,
 	})
-	pet = CatAnimal(&Cat{
+	pet = addressbook.CatAnimal(&addressbook.Cat{
 		Name:  "Mimi",
 		Lives: 9,
 	})
 
-	person := Person{
+	person := addressbook.Person{
 		Name:   "Alice",
 		Id:     123,
 		Email:  "alice@example.com",
 		Tags:   []string{"friend", "colleague"},
 		Scores: map[string]int32{"math": 100, "science": 98},
 		Salary: 120000.5,
-		Phones: []Person_PhoneNumber{mobile, work},
+		Phones: []addressbook.Person_PhoneNumber{mobile, work},
 		Pet:    pet,
 	}
 
-	return AddressBook{
-		People:       []Person{person},
-		PeopleByName: map[string]Person{person.Name: person},
-	}
-}
-
-func buildRootHolder() rootpkg.MultiHolder {
-	owner := rootpkg.Person{
-		Name: "Alice",
-		Id:   123,
-		Pet: rootpkg.DogAnimal(&rootpkg.Dog{
-			Name:       "Rex",
-			BarkVolume: 5,
-		}),
-	}
-	book := rootpkg.AddressBook{
-		People:       []rootpkg.Person{owner},
-		PeopleByName: map[string]rootpkg.Person{owner.Name: owner},
-	}
-	root := rootpkg.TreeNode{
-		Id:   "root",
-		Name: "root",
-	}
-	return rootpkg.MultiHolder{
-		Book:  book,
-		Root:  root,
-		Owner: owner,
+	return addressbook.AddressBook{
+		People:       []addressbook.Person{person},
+		PeopleByName: map[string]addressbook.Person{person.Name: person},
 	}
 }
 
 func TestAddressBookRoundTrip(t *testing.T) {
 	f := fory.NewFory(fory.WithXlang(true), fory.WithRefTracking(false))
-	if err := RegisterTypes(f); err != nil {
+	if err := addressbook.RegisterTypes(f); err != nil {
 		t.Fatalf("register types: %v", err)
+	}
+	if err := complexpb.RegisterTypes(f); err != nil {
+		t.Fatalf("register complex pb types: %v", err)
 	}
 	if err := monster.RegisterTypes(f); err != nil {
 		t.Fatalf("register monster types: %v", err)
@@ -156,7 +136,7 @@ func TestToBytesFromBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("addressbook to_bytes: %v", err)
 	}
-	var decodedBook AddressBook
+	var decodedBook addressbook.AddressBook
 	if err := decodedBook.FromBytes(data); err != nil {
 		t.Fatalf("addressbook from_bytes: %v", err)
 	}
@@ -164,31 +144,18 @@ func TestToBytesFromBytes(t *testing.T) {
 		t.Fatalf("addressbook to_bytes roundtrip mismatch")
 	}
 
-	dog := Dog{Name: "Rex", BarkVolume: 5}
-	animal := DogAnimal(&dog)
+	dog := addressbook.Dog{Name: "Rex", BarkVolume: 5}
+	animal := addressbook.DogAnimal(&dog)
 	animalBytes, err := animal.ToBytes()
 	if err != nil {
 		t.Fatalf("animal to_bytes: %v", err)
 	}
-	var decodedAnimal Animal
+	var decodedAnimal addressbook.Animal
 	if err := decodedAnimal.FromBytes(animalBytes); err != nil {
 		t.Fatalf("animal from_bytes: %v", err)
 	}
 	if !reflect.DeepEqual(animal, decodedAnimal) {
 		t.Fatalf("animal to_bytes roundtrip mismatch")
-	}
-
-	multi := buildRootHolder()
-	multiBytes, err := multi.ToBytes()
-	if err != nil {
-		t.Fatalf("root to_bytes: %v", err)
-	}
-	var decodedMulti rootpkg.MultiHolder
-	if err := decodedMulti.FromBytes(multiBytes); err != nil {
-		t.Fatalf("root from_bytes: %v", err)
-	}
-	if !reflect.DeepEqual(multi, decodedMulti) {
-		t.Fatalf("root to_bytes roundtrip mismatch")
 	}
 }
 
@@ -390,13 +357,13 @@ func normalizeStringMap(value any) (map[string]string, bool) {
 	}
 }
 
-func runLocalRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
+func runLocalRoundTrip(t *testing.T, f *fory.Fory, book addressbook.AddressBook) {
 	data, err := f.Serialize(&book)
 	if err != nil {
 		t.Fatalf("serialize: %v", err)
 	}
 
-	var out AddressBook
+	var out addressbook.AddressBook
 	if err := f.Deserialize(data, &out); err != nil {
 		t.Fatalf("deserialize: %v", err)
 	}
@@ -406,7 +373,7 @@ func runLocalRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
 	}
 }
 
-func runFileRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
+func runFileRoundTrip(t *testing.T, f *fory.Fory, book addressbook.AddressBook) {
 	dataFile := os.Getenv("DATA_FILE")
 	if dataFile == "" {
 		return
@@ -416,7 +383,7 @@ func runFileRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
 		t.Fatalf("read data file: %v", err)
 	}
 
-	var decoded AddressBook
+	var decoded addressbook.AddressBook
 	if err := f.Deserialize(payload, &decoded); err != nil {
 		t.Fatalf("deserialize peer payload: %v", err)
 	}
@@ -433,10 +400,10 @@ func runFileRoundTrip(t *testing.T, f *fory.Fory, book AddressBook) {
 	}
 }
 
-func buildPrimitiveTypes() PrimitiveTypes {
-	contact := EmailPrimitiveTypes_Contact("alice@example.com")
-	contact = PhonePrimitiveTypes_Contact(12345)
-	return PrimitiveTypes{
+func buildPrimitiveTypes() complexpb.PrimitiveTypes {
+	contact := complexpb.EmailPrimitiveTypes_Contact("alice@example.com")
+	contact = complexpb.PhonePrimitiveTypes_Contact(12345)
+	return complexpb.PrimitiveTypes{
 		BoolValue:         true,
 		Int8Value:         12,
 		Int16Value:        1234,
@@ -458,13 +425,13 @@ func buildPrimitiveTypes() PrimitiveTypes {
 	}
 }
 
-func runLocalPrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes) {
+func runLocalPrimitiveRoundTrip(t *testing.T, f *fory.Fory, types complexpb.PrimitiveTypes) {
 	data, err := f.Serialize(&types)
 	if err != nil {
 		t.Fatalf("serialize: %v", err)
 	}
 
-	var out PrimitiveTypes
+	var out complexpb.PrimitiveTypes
 	if err := f.Deserialize(data, &out); err != nil {
 		t.Fatalf("deserialize: %v", err)
 	}
@@ -474,7 +441,7 @@ func runLocalPrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes
 	}
 }
 
-func runFilePrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes) {
+func runFilePrimitiveRoundTrip(t *testing.T, f *fory.Fory, types complexpb.PrimitiveTypes) {
 	dataFile := os.Getenv("DATA_FILE_PRIMITIVES")
 	if dataFile == "" {
 		return
@@ -484,7 +451,7 @@ func runFilePrimitiveRoundTrip(t *testing.T, f *fory.Fory, types PrimitiveTypes)
 		t.Fatalf("read data file: %v", err)
 	}
 
-	var decoded PrimitiveTypes
+	var decoded complexpb.PrimitiveTypes
 	if err := f.Deserialize(payload, &decoded); err != nil {
 		t.Fatalf("deserialize peer payload: %v", err)
 	}
