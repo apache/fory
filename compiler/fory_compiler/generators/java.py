@@ -658,7 +658,8 @@ class JavaGenerator(BaseGenerator):
             lines.append(f"{ind}                return {type_id_expr};")
         lines.append(f"{ind}            default:")
         lines.append(
-            f'{ind}                throw new IllegalStateException("Unknown {union.name} case id: " + caseId);'
+            f'{ind}                throw new IllegalStateException("Unknown " + '
+            f'"{union.name} case id: " + caseId);'
         )
         lines.append(f"{ind}        }}")
         lines.append(f"{ind}    }}")
@@ -694,7 +695,8 @@ class JavaGenerator(BaseGenerator):
             lines.append(f"{ind}                return {case_enum}.{case_enum_name};")
         lines.append(f"{ind}            default:")
         lines.append(
-            f'{ind}                throw new IllegalStateException("Unknown {union.name} case id: " + index);'
+            f'{ind}                throw new IllegalStateException("Unknown " + '
+            f'"{union.name} case id: " + index);'
         )
         lines.append(f"{ind}        }}")
         lines.append(f"{ind}    }}")

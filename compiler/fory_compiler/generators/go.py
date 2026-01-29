@@ -199,6 +199,45 @@ class GoGenerator(BaseGenerator):
         PrimitiveKind.ANY: "any",
     }
 
+    def wrap_line(
+        self,
+        line: str,
+        max_width: int = 80,
+        indent: str = "",
+        continuation_indent: str = None,
+    ) -> List[str]:
+        """Override base wrap_line to handle Go-specific syntax.
+        
+        Go has specific constructs that should not be wrapped:
+        1. Function signatures - must not split between params and return type
+        2. Struct field tags - backtick strings must not be split
+        3. Single-line function bodies - must not split "{ return ... }"
+        """
+        if continuation_indent is None:
+            continuation_indent = indent + "    "
+        
+        # If line is already short enough, return as is
+        if len(line) <= max_width:
+            return [line]
+        
+        stripped = line.lstrip()
+        
+        # Don't wrap comments
+        if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
+            return [line]
+        
+        # Don't wrap lines with backticks (struct tags)
+        if "`" in line:
+            return [line]
+        
+        # Don't wrap function definitions (including one-liners like "func Foo() Type { return ... }")
+        # Detect by checking if line starts with "func " and contains "{"
+        if stripped.startswith("func ") and "{" in line:
+            return [line]
+        
+        # For all other cases, use base class wrapping
+        return super().wrap_line(line, max_width, indent, continuation_indent)
+
     def generate(self) -> List[GeneratedFile]:
         """Generate Go files for the schema."""
         files = []
@@ -586,15 +625,13 @@ class GoGenerator(BaseGenerator):
             lines.append(f"\tcase {case_type}{case_name}:")
             lines.append(f"\t\tv, ok := u.value.({case_type_name})")
             lines.append("\t\tif !ok {")
-            lines.append(
-                f'\t\t\treturn fmt.Errorf("corrupted {type_name}: case={case_name} but invalid value")'
-            )
+            lines.append(f'\t\t\treturn fmt.Errorf("corrupted {type_name}: " +')
+            lines.append(f'\t\t\t\t"case={case_name} but invalid value")')
             lines.append("\t\t}")
             if case_type_name.startswith("*"):
                 lines.append("\t\tif v == nil {")
-                lines.append(
-                    f'\t\t\treturn fmt.Errorf("corrupted {type_name}: case={case_name} but nil value")'
-                )
+                lines.append(f'\t\t\treturn fmt.Errorf("corrupted {type_name}: " +')
+                lines.append(f'\t\t\t\t"case={case_name} but nil value")')
                 lines.append("\t\t}")
             lines.append(f"\t\tif visitor.{case_name} != nil {{")
             lines.append(f"\t\t\treturn visitor.{case_name}(v)")
@@ -864,7 +901,8 @@ class GoGenerator(BaseGenerator):
 
         if tags:
             tag_str = ",".join(tags)
-            lines.append(f'{field_name} {go_type} `fory:"{tag_str}"`')
+            # Concatenate parts to ensure single line in output
+            lines.append(f"{field_name} {go_type} `fory:\"{tag_str}\"`")
         else:
             lines.append(f"{field_name} {go_type}")
 
