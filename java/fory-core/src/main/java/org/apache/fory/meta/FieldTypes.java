@@ -478,6 +478,18 @@ public class FieldTypes {
         }
         return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
       }
+      if (Types.isPrimitiveArray(internalTypeId)) {
+        if (declared != null) {
+          Class<?> declaredRaw = declared.getRawType();
+          if (declaredRaw.isArray()) {
+            return TypeRef.of(declaredRaw, new TypeExtMeta(typeId, nullable, trackingRef));
+          }
+        }
+        cls = getPrimitiveArrayClass(internalTypeId);
+        if (cls != null) {
+          return TypeRef.of(cls, new TypeExtMeta(typeId, nullable, trackingRef));
+        }
+      }
       if (resolver instanceof XtypeResolver) {
         ClassInfo xtypeInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
         Preconditions.checkNotNull(xtypeInfo);
@@ -540,6 +552,31 @@ public class FieldTypes {
           + ", typeId="
           + typeId
           + '}';
+    }
+  }
+
+  private static Class<?> getPrimitiveArrayClass(int typeId) {
+    switch (typeId) {
+      case Types.BOOL_ARRAY:
+        return boolean[].class;
+      case Types.INT8_ARRAY:
+      case Types.UINT8_ARRAY:
+        return byte[].class;
+      case Types.INT16_ARRAY:
+      case Types.UINT16_ARRAY:
+        return short[].class;
+      case Types.INT32_ARRAY:
+      case Types.UINT32_ARRAY:
+        return int[].class;
+      case Types.INT64_ARRAY:
+      case Types.UINT64_ARRAY:
+        return long[].class;
+      case Types.FLOAT32_ARRAY:
+        return float[].class;
+      case Types.FLOAT64_ARRAY:
+        return double[].class;
+      default:
+        return null;
     }
   }
 

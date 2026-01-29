@@ -520,6 +520,7 @@ public class XtypeResolver extends TypeResolver {
     switch (typeId) {
       case Types.NAMED_COMPATIBLE_STRUCT:
       case Types.NAMED_ENUM:
+      case Types.NAMED_UNION:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
         return false;
@@ -538,6 +539,7 @@ public class XtypeResolver extends TypeResolver {
     switch (typeId) {
       case Types.NAMED_COMPATIBLE_STRUCT:
       case Types.NAMED_ENUM:
+      case Types.NAMED_UNION:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
         return true;

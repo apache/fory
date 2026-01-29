@@ -18,6 +18,7 @@
  */
 
 #include <any>
+#include <cctype>
 #include <chrono>
 #include <cstdlib>
 #include <fstream>
@@ -158,10 +159,11 @@ fory::Result<void, fory::Error> ValidateGraph(const graph::Graph &graph_value) {
 
 using StringMap = std::map<std::string, std::string>;
 
-fory::Result<void, fory::Error> RunRoundTrip() {
+fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
   auto fory = fory::serialization::Fory::builder()
                   .xlang(true)
-                  .check_struct_version(true)
+                  .compatible(compatible)
+                  .check_struct_version(!compatible)
                   .track_ref(false)
                   .build();
 
@@ -507,7 +509,8 @@ fory::Result<void, fory::Error> RunRoundTrip() {
 
   auto ref_fory = fory::serialization::Fory::builder()
                       .xlang(true)
-                      .check_struct_version(true)
+                      .compatible(compatible)
+                      .check_struct_version(!compatible)
                       .track_ref(true)
                       .build();
   tree::register_types(ref_fory);
@@ -548,10 +551,52 @@ fory::Result<void, fory::Error> RunRoundTrip() {
   return fory::Result<void, fory::Error>();
 }
 
+bool ParseCompatibleMode(const char *value, bool *compatible) {
+  if (value == nullptr || value[0] == '\0') {
+    return false;
+  }
+  std::string normalized(value);
+  for (char &ch : normalized) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  if (normalized == "1" || normalized == "true" || normalized == "yes") {
+    *compatible = true;
+    return true;
+  }
+  if (normalized == "0" || normalized == "false" || normalized == "no") {
+    *compatible = false;
+    return true;
+  }
+  return false;
+}
+
 } // namespace
 
 int main() {
-  auto result = RunRoundTrip();
+  const char *compat_env = std::getenv("IDL_COMPATIBLE");
+  bool compatible = false;
+  if (compat_env != nullptr && compat_env[0] != '\0') {
+    if (!ParseCompatibleMode(compat_env, &compatible)) {
+      std::cerr << "Unsupported IDL_COMPATIBLE value: " << compat_env
+                << std::endl;
+      return 1;
+    }
+    auto result = RunRoundTrip(compatible);
+    if (!result.ok()) {
+      std::cerr << "IDL roundtrip failed: " << result.error().message()
+                << std::endl;
+      return 1;
+    }
+    return 0;
+  }
+
+  auto result = RunRoundTrip(false);
+  if (!result.ok()) {
+    std::cerr << "IDL roundtrip failed: " << result.error().message()
+              << std::endl;
+    return 1;
+  }
+  result = RunRoundTrip(true);
   if (!result.ok()) {
     std::cerr << "IDL roundtrip failed: " << result.error().message()
               << std::endl;
