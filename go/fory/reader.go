@@ -669,9 +669,10 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		return
 	}
 
-	// For struct types, use optimized ReadStruct path when using full ref tracking and type info
+	// For struct types, use optimized ReadStruct path when using full ref tracking and type info.
+	// Unions use a custom serializer and must bypass ReadStruct.
 	valueType := value.Type()
-	if refMode == RefModeTracking && readType {
+	if refMode == RefModeTracking && readType && !isUnionType(valueType) {
 		if valueType.Kind() == reflect.Struct {
 			c.ReadStruct(value)
 			return

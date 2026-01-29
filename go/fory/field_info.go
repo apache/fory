@@ -126,7 +126,7 @@ func (g *FieldGroup) ForEachField(fn func(*FieldInfo)) {
 
 // DebugPrint prints field group information for debugging.
 func (g *FieldGroup) DebugPrint(typeName string) {
-	if !DebugOutputEnabled() {
+	if !DebugOutputEnabled {
 		return
 	}
 	fmt.Printf("[Go] ========== Sorted fields for %s ==========\n", typeName)
@@ -445,6 +445,7 @@ func isInternalTypeWithoutTypeMeta(t reflect.Type) bool {
 }
 
 var (
+	unionMarkerType = reflect.TypeOf((*UnionMarker)(nil)).Elem()
 	unionGetterType = reflect.TypeOf((*UnionGetter)(nil)).Elem()
 	unionSetterType = reflect.TypeOf((*UnionSetter)(nil)).Elem()
 )
@@ -456,6 +457,9 @@ func isUnionType(t reflect.Type) bool {
 	}
 	if info, ok := getOptionalInfo(t); ok {
 		t = info.valueType
+	}
+	if t.Implements(unionMarkerType) || reflect.PtrTo(t).Implements(unionMarkerType) {
+		return true
 	}
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()

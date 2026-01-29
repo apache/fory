@@ -15,14 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package tree;
+package root;
 
-option go_package = "github.com/apache/fory/integration_tests/idl_tests/go/tree;tree";
+import "addressbook.fdl";
+import "tree.fdl";
 
-message TreeNode {
-    string id = 1;
-    string name = 2;
-
-    repeated ref TreeNode children = 3;
-    ref(weak=true) TreeNode parent = 4; // back-pointer
+message MultiHolder [id=300] {
+    AddressBook book = 1;
+    TreeNode root = 2;
+    Person owner = 3;
 }

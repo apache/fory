@@ -26,6 +26,7 @@ from fory_compiler.generators.java import JavaGenerator
 from fory_compiler.generators.go import GoGenerator
 from fory_compiler.generators.base import GeneratorOptions
 from fory_compiler.ir.validator import SchemaValidator
+from fory_compiler.cli import resolve_imports
 
 
 class TestDottedPackageName:
@@ -377,6 +378,19 @@ class TestGoPackageGeneration:
         import_path, package_name = generator.get_go_package_info()
         assert import_path is None
         assert package_name == "models"
+
+    def test_go_package_used_in_imports(self):
+        """Test that go_package drives imports for referenced types."""
+        repo_root = Path(__file__).resolve().parents[3]
+        idl_dir = repo_root / "integration_tests" / "idl_tests" / "idl"
+        schema = resolve_imports(idl_dir / "root.idl", [idl_dir])
+
+        options = GeneratorOptions(output_dir=Path("/tmp"))
+        generator = GoGenerator(schema, options)
+        files = generator.generate()
+        go_file = files[0]
+
+        assert '"github.com/apache/fory/integration_tests/idl_tests/go"' in go_file.content
 
 
 class TestNamespaceConsistency:

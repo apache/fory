@@ -868,14 +868,15 @@ class ThreadSafeFory:
         - Both Python and Cython modes are supported automatically
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, fory_factory=None, **kwargs):
         import threading
 
         self._config = kwargs
+        self._fory_factory = fory_factory
         self._callbacks = []
         self._lock = threading.Lock()
         self._pool = []
-        self._fory_class = self._get_fory_class()
+        self._fory_class = None if fory_factory is not None else self._get_fory_class()
         self._instances_created = False
 
     def _get_fory_class(self):
@@ -895,7 +896,10 @@ class ThreadSafeFory:
             if self._pool:
                 return self._pool.pop()
             self._instances_created = True
-            fory = self._fory_class(**self._config)
+            if self._fory_factory is not None:
+                fory = self._fory_factory()
+            else:
+                fory = self._fory_class(**self._config)
             for callback in self._callbacks:
                 callback(fory)
             return fory

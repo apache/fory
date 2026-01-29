@@ -1004,6 +1004,14 @@ std::string ToSnakeCase(const std::string &name) {
   return result;
 }
 
+std::string NormalizeFieldName(const std::string &name) {
+  std::string normalized = ToSnakeCase(name);
+  while (!normalized.empty() && normalized.back() == '_') {
+    normalized.pop_back();
+  }
+  return normalized;
+}
+
 } // anonymous namespace
 
 std::string TypeMeta::compute_struct_fingerprint(
@@ -1032,10 +1040,12 @@ std::string TypeMeta::compute_struct_fingerprint(
   std::vector<FieldInfo> sorted_fields = field_infos;
   std::sort(sorted_fields.begin(), sorted_fields.end(),
             [](const FieldInfo &a, const FieldInfo &b) {
-              std::string a_id = a.field_id >= 0 ? std::to_string(a.field_id)
-                                                 : ToSnakeCase(a.field_name);
-              std::string b_id = b.field_id >= 0 ? std::to_string(b.field_id)
-                                                 : ToSnakeCase(b.field_name);
+              std::string a_id = a.field_id >= 0
+                                     ? std::to_string(a.field_id)
+                                     : NormalizeFieldName(a.field_name);
+              std::string b_id = b.field_id >= 0
+                                     ? std::to_string(b.field_id)
+                                     : NormalizeFieldName(b.field_name);
               return a_id < b_id;
             });
 
@@ -1046,7 +1056,7 @@ std::string TypeMeta::compute_struct_fingerprint(
   for (const auto &fi : sorted_fields) {
     std::string field_id_or_name = fi.field_id >= 0
                                        ? std::to_string(fi.field_id)
-                                       : ToSnakeCase(fi.field_name);
+                                       : NormalizeFieldName(fi.field_name);
     fingerprint.append(field_id_or_name);
     fingerprint.push_back(',');
 

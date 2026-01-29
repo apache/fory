@@ -2063,7 +2063,7 @@ func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
 		}
 	}
 
-	err.SetError(fmt.Errorf("unknown type id: %d", typeID))
+	err.SetError(DeserializationErrorf("unknown type id: %d", typeID))
 	return nil
 }
 

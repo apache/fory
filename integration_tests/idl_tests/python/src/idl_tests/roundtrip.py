@@ -24,10 +24,12 @@ from pathlib import Path
 import addressbook
 import any_example
 import complex_fbs
+import complex_pb
 import monster
 import optional_types
 import graph
 import tree
+import root
 import numpy as np
 import pyfory
 
@@ -62,11 +64,57 @@ def build_address_book() -> "addressbook.AddressBook":
     )
 
 
+def build_root_holder() -> "root.MultiHolder":
+    owner = addressbook.Person(
+        name="Alice",
+        id=123,
+        email="",
+        tags=[],
+        scores={},
+        salary=0.0,
+        phones=[],
+        pet=addressbook.Animal.dog(addressbook.Dog(name="Rex", bark_volume=5)),
+    )
+    book = addressbook.AddressBook(
+        people=[owner],
+        people_by_name={owner.name: owner},
+    )
+    root_node = tree.TreeNode(
+        id="root",
+        name="root",
+        children=[],
+        parent=None,
+    )
+    return root.MultiHolder(
+        book=book,
+        root=root_node,
+        owner=owner,
+    )
+
+
 def local_roundtrip(fory: pyfory.Fory, book: "addressbook.AddressBook") -> None:
     data = fory.serialize(book)
     decoded = fory.deserialize(data)
     assert isinstance(decoded, addressbook.AddressBook)
     assert decoded == book
+
+
+def bytes_roundtrip_addressbook(book: "addressbook.AddressBook") -> None:
+    payload = book.to_bytes()
+    decoded = addressbook.AddressBook.from_bytes(payload)
+    assert decoded == book
+
+    dog = addressbook.Dog(name="Rex", bark_volume=5)
+    animal = addressbook.Animal.dog(dog)
+    animal_payload = animal.to_bytes()
+    decoded_animal = addressbook.Animal.from_bytes(animal_payload)
+    assert decoded_animal == animal
+
+
+def bytes_roundtrip_root(multi: "root.MultiHolder") -> None:
+    payload = multi.to_bytes()
+    decoded = root.MultiHolder.from_bytes(payload)
+    assert decoded == multi
 
 
 def file_roundtrip(fory: pyfory.Fory, book: "addressbook.AddressBook") -> None:
@@ -80,10 +128,10 @@ def file_roundtrip(fory: pyfory.Fory, book: "addressbook.AddressBook") -> None:
     Path(data_file).write_bytes(fory.serialize(decoded))
 
 
-def build_primitive_types() -> "addressbook.PrimitiveTypes":
-    contact = addressbook.PrimitiveTypes.Contact.email("alice@example.com")
-    contact = addressbook.PrimitiveTypes.Contact.phone(12345)
-    return addressbook.PrimitiveTypes(
+def build_primitive_types() -> "complex_pb.PrimitiveTypes":
+    contact = complex_pb.PrimitiveTypes.Contact.email("alice@example.com")
+    contact = complex_pb.PrimitiveTypes.Contact.phone(12345)
+    return complex_pb.PrimitiveTypes(
         bool_value=True,
         int8_value=12,
         int16_value=1234,
@@ -271,23 +319,23 @@ def file_roundtrip_container(
 
 
 def local_roundtrip_primitives(
-    fory: pyfory.Fory, types: "addressbook.PrimitiveTypes"
+    fory: pyfory.Fory, types: "complex_pb.PrimitiveTypes"
 ) -> None:
     data = fory.serialize(types)
     decoded = fory.deserialize(data)
-    assert isinstance(decoded, addressbook.PrimitiveTypes)
+    assert isinstance(decoded, complex_pb.PrimitiveTypes)
     assert decoded == types
 
 
 def file_roundtrip_primitives(
-    fory: pyfory.Fory, types: "addressbook.PrimitiveTypes"
+    fory: pyfory.Fory, types: "complex_pb.PrimitiveTypes"
 ) -> None:
     data_file = os.environ.get("DATA_FILE_PRIMITIVES")
     if not data_file:
         return
     payload = Path(data_file).read_bytes()
     decoded = fory.deserialize(payload)
-    assert isinstance(decoded, addressbook.PrimitiveTypes)
+    assert isinstance(decoded, complex_pb.PrimitiveTypes)
     assert decoded == types
     Path(data_file).write_bytes(fory.serialize(decoded))
 
@@ -454,6 +502,7 @@ def file_roundtrip_graph(fory: pyfory.Fory, graph_value: "graph.Graph") -> None:
 
 def main() -> int:
     fory = pyfory.Fory(xlang=True)
+    complex_pb.register_complex_pb_types(fory)
     addressbook.register_addressbook_types(fory)
     monster.register_monster_types(fory)
     complex_fbs.register_complex_fbs_types(fory)
@@ -461,6 +510,8 @@ def main() -> int:
     any_example.register_any_example_types(fory)
 
     book = build_address_book()
+    bytes_roundtrip_addressbook(book)
+    bytes_roundtrip_root(build_root_holder())
     local_roundtrip(fory, book)
     file_roundtrip(fory, book)
 

@@ -367,8 +367,23 @@ public class Order {
 package demo;
 
 import org.apache.fory.Fory;
+import org.apache.fory.ThreadSafeFory;
+import org.apache.fory.pool.SimpleForyPool;
 
 public class DemoForyRegistration {
+
+    private static ThreadSafeFory createFory() {
+        ThreadSafeFory fory = new SimpleForyPool(c -> Fory.builder()
+            .withXlang(true)
+            .withRefTracking(true)
+            .build());
+        fory.registerCallback(f -> registerAllTypes(f));
+        return fory;
+    }
+
+    private static void registerAllTypes(Fory fory) {
+        register(fory);
+    }
 
     public static void register(Fory fory) {
         fory.register(Status.class, 100);
@@ -378,22 +393,16 @@ public class DemoForyRegistration {
 }
 ```
 
+`register` only contains types defined in the current file. The generated
+`registerAllTypes` registers imported types first and then calls `register`.
+
 ### Usage
 
 ```java
 import demo.*;
-import org.apache.fory.Fory;
-import org.apache.fory.config.Language;
 
 public class Example {
     public static void main(String[] args) {
-        Fory fory = Fory.builder()
-            .withLanguage(Language.XLANG)
-            .withRefTracking(true)
-            .build();
-
-        DemoForyRegistration.register(fory);
-
         User user = new User();
         user.setId("u123");
         user.setName("Alice");
@@ -404,8 +413,8 @@ public class Example {
         order.setCustomer(user);
         order.setStatus(Status.ACTIVE);
 
-        byte[] bytes = fory.serialize(order);
-        Order restored = (Order) fory.deserialize(bytes);
+        byte[] bytes = order.toBytes();
+        Order restored = Order.fromBytes(bytes);
     }
 }
 ```
@@ -450,16 +459,20 @@ def register_demo_types(fory: pyfory.Fory):
     fory.register_type(Status, type_id=100)
     fory.register_type(User, type_id=101)
     fory.register_type(Order, type_id=102)
+
+
+def _register_all_types(fory: pyfory.Fory):
+    register_demo_types(fory)
 ```
+
+`register_demo_types` only contains types defined in the current file. The
+generated `_register_all_types` registers imported types first and then calls
+`register_demo_types`.
 
 ### Usage
 
 ```python
-import pyfory
-from demo import User, Order, Status, register_demo_types
-
-fory = pyfory.Fory(ref_tracking=True)
-register_demo_types(fory)
+from demo import User, Order, Status
 
 user = User(id="u123", name="Alice", age=30)
 order = Order(
@@ -470,8 +483,8 @@ order = Order(
     status=Status.ACTIVE
 )
 
-data = fory.serialize(order)
-restored = fory.deserialize(data)
+data = order.to_bytes()
+restored = Order.from_bytes(data)
 ```
 
 ## Go
@@ -522,7 +535,17 @@ func RegisterTypes(f *fory.Fory) error {
     }
     return nil
 }
+
+func registerAllTypes(f *fory.Fory) error {
+    if err := RegisterTypes(f); err != nil {
+        return err
+    }
+    return nil
+}
 ```
+
+`RegisterTypes` only contains types defined in the current file. The generated
+`registerAllTypes` registers imported types first and then calls `RegisterTypes`.
 
 ### Usage
 
@@ -531,16 +554,9 @@ package main
 
 import (
     "demo"
-    fory "github.com/apache/fory/go/fory"
 )
 
 func main() {
-    f := fory.NewFory(true) // Enable ref tracking
-
-    if err := demo.RegisterTypes(f); err != nil {
-        panic(err)
-    }
-
     email := "alice@example.com"
     user := &demo.User{
         Id:    "u123",
@@ -559,14 +575,12 @@ func main() {
         },
         Status: demo.StatusActive,
     }
-
-    bytes, err := f.Marshal(order)
+    bytes, err := order.ToBytes()
     if err != nil {
         panic(err)
     }
-
     var restored demo.Order
-    if err := f.Unmarshal(bytes, &restored); err != nil {
+    if err := restored.FromBytes(bytes); err != nil {
         panic(err)
     }
 }
@@ -616,7 +630,16 @@ pub fn register_types(fory: &mut Fory) -> Result<(), fory::Error> {
     fory.register::<Order>(102)?;
     Ok(())
 }
+
+fn register_all_types(fory: &mut Fory) -> Result<(), fory::Error> {
+    register_types(fory)?;
+    Ok(())
+}
 ```
+
+`register_types` only contains types defined in the current file. The generated
+`register_all_types` registers imported types first and then calls
+`register_types`.
 
 **Note:** Rust uses `Arc` by default for `ref` fields. In FDL, use
 `ref(thread_safe = false)` to generate `Rc`, and `ref(weak = true)` to generate
@@ -626,15 +649,11 @@ pub fn register_types(fory: &mut Fory) -> Result<(), fory::Error> {
 ### Usage
 
 ```rust
-use demo::{User, Order, Status, register_types};
-use fory::Fory;
+use demo::{User, Order, Status};
 use std::sync::Arc;
 use std::collections::HashMap;
 
 fn main() -> Result<(), fory::Error> {
-    let mut fory = Fory::default();
-    register_types(&mut fory)?;
-
     let user = Arc::new(User {
         id: "u123".to_string(),
         name: "Alice".to_string(),
@@ -654,8 +673,8 @@ fn main() -> Result<(), fory::Error> {
         status: Status::Active,
     };
 
-    let bytes = fory.serialize(&order)?;
-    let restored: Order = fory.deserialize(&bytes)?;
+    let bytes = order.to_bytes()?;
+    let restored = Order::from_bytes(&bytes)?;
 
     Ok(())
 }
@@ -721,16 +740,24 @@ struct Order {
 };
 FORY_STRUCT(Order, id, customer, items, quantities, status);
 
-inline void RegisterTypes(fory::serialization::Fory& fory) {
+inline void register_types(fory::serialization::BaseFory& fory) {
     fory.register_enum<Status>(100);
     fory.register_struct<User>(101);
     fory.register_struct<Order>(102);
+}
+
+inline void register_all_types(fory::serialization::BaseFory& fory) {
+    register_types(fory);
 }
 
 } // namespace demo
 
 #endif // DEMO_H_
 ```
+
+`register_types` only contains types defined in the current file. The generated
+`register_all_types` registers imported types first and then calls
+`register_types`.
 
 ### Usage
 
@@ -739,13 +766,6 @@ inline void RegisterTypes(fory::serialization::Fory& fory) {
 #include <iostream>
 
 int main() {
-    fory::serialization::Fory fory = fory::serialization::Fory::builder()
-        .xlang(true)
-        .ref_tracking(true)
-        .build();
-
-    demo::RegisterTypes(fory);
-
     auto user = std::make_shared<demo::User>();
     user->id = "u123";
     user->name = "Alice";
@@ -759,8 +779,8 @@ int main() {
     order.quantities = {{"item1", 2}, {"item2", 1}};
     order.status = demo::Status::ACTIVE;
 
-    auto bytes = fory.serialize(order);
-    auto restored = fory.deserialize<demo::Order>(bytes);
+    auto bytes = order.to_bytes();
+    auto restored = demo::Order::from_bytes(bytes.value());
 
     return 0;
 }

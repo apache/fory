@@ -150,6 +150,7 @@ FORY_PYTHON_JAVA_CI=1 ENABLE_FORY_CYTHON_SERIALIZATION=1 ENABLE_FORY_DEBUG_OUTPU
 - All commands must be executed within the `go/fory` directory.
 - All changes to `go` must pass the format check and tests.
 - Go implementation focuses on reflection-based and codegen-based serialization.
+- Set `FORY_PANIC_ON_ERROR=1` when debugging test errors to see full callstack.
 
 ```bash
 # Format code

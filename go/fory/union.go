@@ -28,6 +28,11 @@ type UnionGetter interface {
 	ForyUnionGet() (uint32, any)
 }
 
+// UnionMarker marks generated union types for fast union detection.
+type UnionMarker interface {
+	ForyUnionMarker()
+}
+
 // UnionSetter allows setting union case data during deserialization.
 // Generated union types implement this method on pointer receivers.
 type UnionSetter interface {

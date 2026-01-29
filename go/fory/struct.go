@@ -377,13 +377,20 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 		if foryTag.RefSet {
 			trackRef = foryTag.Ref
 		}
+		// Align trackingRef with TypeDef rules in xlang mode:
+		// disable ref tracking for simple value types (primitives/string/time/none),
+		// keep it for collections, structs, unions, enums, etc.
+		trackingRef := trackRef
+		if typeResolver.fory.config.IsXlang && trackingRef {
+			if !NeedWriteRef(fieldTypeId) {
+				trackingRef = false
+			}
+		}
 
-		// Pre-compute RefMode based on (possibly overridden) trackRef and nullable
-		// For pointer-to-struct fields, enable ref tracking when trackRef is enabled,
-		// regardless of nullable flag. This is necessary to detect circular references.
+		// Pre-compute RefMode based on trackingRef and nullable.
+		// When trackingRef is true, we must write ref flags even for non-nullable fields.
 		refMode := RefModeNone
-		isStructPointer := fieldType.Kind() == reflect.Ptr && fieldType.Elem().Kind() == reflect.Struct
-		if trackRef && (nullableFlag || isStructPointer) {
+		if trackingRef {
 			refMode = RefModeTracking
 		} else if nullableFlag {
 			refMode = RefModeNullOnly
@@ -409,7 +416,7 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 				}
 			}
 		}
-		if DebugOutputEnabled() {
+		if DebugOutputEnabled {
 			fmt.Printf("[Go][fory-debug] initFields: field=%s type=%v dispatchId=%d refMode=%v nullableFlag=%v serializer=%T\n",
 				SnakeCase(field.Name), fieldType, dispatchId, refMode, nullableFlag, fieldSerializer)
 		}
@@ -732,7 +739,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 				if isEnumField && localType.Kind() == reflect.Ptr {
 					baseType := localType.Elem()
 					fieldSerializer, _ = typeResolver.getSerializerByType(baseType, true)
-					if DebugOutputEnabled() {
+					if DebugOutputEnabled {
 						fmt.Printf("[fory-debug] pointer enum field %s: localType=%v baseType=%v serializer=%T\n",
 							def.name, localType, baseType, fieldSerializer)
 					}
@@ -887,7 +894,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 	s.fieldGroup = GroupFields(s.fields)
 
 	// Debug output for field order comparison with Java MetaSharedSerializer
-	if DebugOutputEnabled() && s.type_ != nil {
+	if DebugOutputEnabled && s.type_ != nil {
 		fmt.Printf("[Go] Remote TypeDef order (%d fields):\n", len(s.fieldDefs))
 		for i, def := range s.fieldDefs {
 			fmt.Printf("[Go]   [%d] %s -> typeId=%d, nullable=%v\n", i, def.name, def.fieldType.TypeId(), def.nullable)
@@ -919,7 +926,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 		}
 	}
 
-	if DebugOutputEnabled() && s.type_ != nil {
+	if DebugOutputEnabled && s.type_ != nil {
 		fmt.Printf("[Go] typeDefDiffers=%v for %s\n", s.typeDefDiffers, s.type_.Name())
 	}
 
@@ -1036,7 +1043,7 @@ func (s *structSerializer) computeHash() int32 {
 	h1, _ := Murmur3Sum128WithSeed(data, 47)
 	hash := int32(h1 & 0xFFFFFFFF)
 
-	if DebugOutputEnabled() {
+	if DebugOutputEnabled {
 		fmt.Printf("[Go][fory-debug] struct %v version fingerprint=\"%s\" version hash=%d\n", s.type_, hashString, hash)
 	}
 
@@ -1700,6 +1707,10 @@ func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Poi
 		return
 	}
 
+	if DebugOutputEnabled {
+		fmt.Printf("[fory-debug] write normal field %s: fieldInfo=%v typeId=%v serializer=%T, buffer writerIndex=%d\n",
+			field.Meta.Name, field.Meta.FieldDef, field.Meta.TypeId, field.Serializer, buf.writerIndex)
+	}
 	// Fall back to serializer for other types
 	fieldValue := value.Field(field.Meta.FieldIndex)
 	if field.Serializer != nil {
@@ -2412,6 +2423,9 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	for i := range s.fieldGroup.RemainingFields {
 		s.readRemainingField(ctx, ptr, &s.fieldGroup.RemainingFields[i], value)
 	}
+	if ctx.HasError() {
+		ctx.Err().stack = append(ctx.Err().stack, fmt.Sprintf(" [struct %s]", s.name))
+	}
 }
 
 // readRemainingField reads a non-primitive field (string, slice, map, struct, enum)
@@ -2749,6 +2763,10 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 		}
 	}
 
+	if DebugOutputEnabled {
+		fmt.Printf("[fory-debug] read normal field %s: fieldInfo=%v typeId=%v serializer=%T, buffer readerIndex=%d\n",
+			field.Meta.Name, field.Meta.FieldDef, field.Meta.TypeId, field.Serializer, buf.readerIndex)
+	}
 	// Slow path for RefModeTracking cases that break from the switch above
 	fieldValue := value.Field(field.Meta.FieldIndex)
 	if field.Serializer != nil {
@@ -3243,7 +3261,7 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 // Uses context error state for deferred error checking.
 func (s *structSerializer) skipField(ctx *ReadContext, field *FieldInfo) {
 	if field.Meta.FieldDef.name != "" {
-		if DebugOutputEnabled() {
+		if DebugOutputEnabled {
 			fmt.Printf("[Go][fory-debug] skipField name=%s typeId=%d fieldType=%s\n",
 				field.Meta.FieldDef.name,
 				field.Meta.FieldDef.fieldType.TypeId(),
@@ -3299,6 +3317,10 @@ func writeEnumField(ctx *WriteContext, field *FieldInfo, fieldValue reflect.Valu
 		}
 	}
 
+	if DebugOutputEnabled {
+		fmt.Printf("[fory-debug] write field %s: fieldInfo=%v typeId=%v serializer=%T, buffer writerIndex=%d\n",
+			field.Meta.Name, field.Meta.FieldDef, field.Meta.TypeId, field.Serializer, buf.writerIndex)
+	}
 	// For pointer enum fields, the serializer is ptrToValueSerializer wrapping enumSerializer.
 	// We need to call the inner enumSerializer directly with the dereferenced value.
 	if ptrSer, ok := field.Serializer.(*ptrToValueSerializer); ok {

@@ -21,6 +21,8 @@ syntax = "proto3";
 
 package complex_pb;
 
+option go_package = "github.com/apache/fory/integration_tests/idl_tests/go/complex_pb;complex_pb";
+
 message PrimitiveTypes {
   option (fory).id = 200;
 

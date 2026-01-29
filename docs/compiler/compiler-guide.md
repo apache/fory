@@ -44,6 +44,10 @@ fory compile --help
 fory compile [OPTIONS] FILES...
 ```
 
+```bash
+fory scan-generated [OPTIONS]
+```
+
 ### Options
 
 | Option                                | Description                                           | Default       |
@@ -58,6 +62,29 @@ fory compile [OPTIONS] FILES...
 | `--go_out=DST_DIR`                    | Generate Go code in DST_DIR                           | (none)        |
 | `--rust_out=DST_DIR`                  | Generate Rust code in DST_DIR                         | (none)        |
 | `--go_nested_type_style`              | Go nested type naming: `camelcase` or `underscore`    | (none)        |
+
+### Scan Generated Files
+
+Use `scan-generated` to find files produced by the Fory compiler. The scanner walks
+the tree recursively, skips `build/`, `target/`, and hidden directories, and prints
+each generated file as it is found.
+
+```bash
+# Scan current directory
+fory scan-generated
+
+# Scan a specific root
+fory scan-generated --root ./src
+
+# Print paths relative to the scan root
+fory scan-generated --root ./src --relative
+
+# Delete scanned generated files
+fory scan-generated --root ./src --delete
+
+# Dry-run (scan and print only)
+fory scan-generated --root ./src --dry-run
+```
 
 ### Examples
 
