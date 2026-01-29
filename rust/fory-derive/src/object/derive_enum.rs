@@ -208,7 +208,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                         // Union-compatible: write tag + null flag (matches Java/C++ Union with null value)
                         quote! {
                             Self::#ident => {
-                                context.writer.write_varuint32(#tag_value);
+                                context.writer.write_var_uint32(#tag_value);
                                 // Write null flag for unit variant (no value)
                                 context.writer.write_i8(fory_core::types::RefFlag::Null as i8);
                             }
@@ -216,7 +216,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                     } else {
                         quote! {
                             Self::#ident => {
-                                context.writer.write_varuint32(#tag_value);
+                                context.writer.write_var_uint32(#tag_value);
                             }
                         }
                     }
@@ -226,7 +226,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                         // Union-compatible single field: write tag + value with type info (like xwriteRef)
                         quote! {
                             Self::#ident(ref value) => {
-                                context.writer.write_varuint32(#tag_value);
+                                context.writer.write_var_uint32(#tag_value);
                                 use fory_core::serializer::Serializer;
                                 value.fory_write(context, fory_core::types::RefMode::Tracking, true, false)?;
                             }
@@ -234,7 +234,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                     } else {
                         quote! {
                             Self::#ident(..) => {
-                                context.writer.write_varuint32(#tag_value);
+                                context.writer.write_var_uint32(#tag_value);
                             }
                         }
                     }
@@ -246,7 +246,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                             fields_named.named.first().unwrap().ident.as_ref().unwrap();
                         quote! {
                             Self::#ident { ref #field_ident } => {
-                                context.writer.write_varuint32(#tag_value);
+                                context.writer.write_var_uint32(#tag_value);
                                 use fory_core::serializer::Serializer;
                                 #field_ident.fory_write(context, fory_core::types::RefMode::Tracking, true, false)?;
                             }
@@ -254,7 +254,7 @@ fn xlang_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> V
                     } else {
                         quote! {
                             Self::#ident { .. } => {
-                                context.writer.write_varuint32(#tag_value);
+                                context.writer.write_var_uint32(#tag_value);
                             }
                         }
                     }
@@ -280,7 +280,7 @@ fn rust_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> Ve
                 Fields::Unit => {
                     quote! {
                         Self::#ident => {
-                            context.writer.write_varuint32(#tag_value);
+                            context.writer.write_var_uint32(#tag_value);
                         }
                     }
                 }
@@ -298,7 +298,7 @@ fn rust_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> Ve
 
                     quote! {
                         Self::#ident( #(#field_idents),* ) => {
-                            context.writer.write_varuint32(#tag_value);
+                            context.writer.write_var_uint32(#tag_value);
                             #(#write_fields)*
                         }
                     }
@@ -322,7 +322,7 @@ fn rust_variant_branches(data_enum: &DataEnum, default_variant_value: u32) -> Ve
 
                     quote! {
                         Self::#ident { #(#field_idents),* } => {
-                            context.writer.write_varuint32(#tag_value) ;
+                            context.writer.write_var_uint32(#tag_value) ;
                             #(#write_fields)*
                         }
                     }
@@ -354,7 +354,7 @@ fn rust_compatible_variant_write_branches(
                 Fields::Unit => {
                     quote! {
                         Self::#ident => {
-                            context.writer.write_varuint32((#tag_value << 2) | 0b0);
+                            context.writer.write_var_uint32((#tag_value << 2) | 0b0);
                         }
                     }
                 }
@@ -368,9 +368,9 @@ fn rust_compatible_variant_write_branches(
 
                     quote! {
                         Self::#ident( #(ref #field_idents),* ) => {
-                            context.writer.write_varuint32((#tag_value << 2) | 0b1);
+                            context.writer.write_var_uint32((#tag_value << 2) | 0b1);
                             // Write as collection format (same as tuple)
-                            context.writer.write_varuint32(#field_count as u32);
+                            context.writer.write_var_uint32(#field_count as u32);
                             let header = 0u8; // No IS_SAME_TYPE flag
                             context.writer.write_u8(header);
                             use fory_core::serializer::Serializer;
@@ -401,7 +401,7 @@ fn rust_compatible_variant_write_branches(
 
                     quote! {
                         Self::#ident { #(#field_idents),* } => {
-                            context.writer.write_varuint32((#tag_value << 2) | 0b10);
+                            context.writer.write_var_uint32((#tag_value << 2) | 0b10);
                             // Write type meta inline using streaming protocol
                             context.write_type_meta(std::any::TypeId::of::<#meta_type_ident>())?;
                             // Write fields same as struct

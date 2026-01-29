@@ -1285,7 +1285,7 @@ class CppGenerator(BaseGenerator):
         lines.append(
             f"  static inline void write_data(const {qualified_name} &obj, WriteContext &ctx) {{"
         )
-        lines.append(f"    ctx.write_varuint32(obj.{case_id_method}());")
+        lines.append(f"    ctx.write_var_uint32(obj.{case_id_method}());")
         lines.append("    obj.visit([&](const auto &value) {")
         lines.append("      using Alt = std::decay_t<decltype(value)>;")
         lines.append(

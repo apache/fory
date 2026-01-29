@@ -114,7 +114,7 @@ impl<'a> Writer<'a> {
     #[inline(always)]
     pub fn write_varint32(&mut self, value: i32) {
         let zigzag = ((value as i64) << 1) ^ ((value as i64) >> 31);
-        self._write_varuint32(zigzag as u32)
+        self._write_var_uint32(zigzag as u32)
     }
 
     // ============ INT64 (TypeId = 6) ============
@@ -129,7 +129,7 @@ impl<'a> Writer<'a> {
     #[inline(always)]
     pub fn write_varint64(&mut self, value: i64) {
         let zigzag = ((value << 1) ^ (value >> 63)) as u64;
-        self._write_varuint64(zigzag);
+        self._write_var_uint64(zigzag);
     }
 
     // ============ TAGGED_INT64 (TypeId = 8) ============
@@ -193,12 +193,12 @@ impl<'a> Writer<'a> {
     // ============ VAR_UINT32 (TypeId = 12) ============
 
     #[inline(always)]
-    pub fn write_varuint32(&mut self, value: u32) {
-        self._write_varuint32(value)
+    pub fn write_var_uint32(&mut self, value: u32) {
+        self._write_var_uint32(value)
     }
 
     #[inline(always)]
-    fn _write_varuint32(&mut self, value: u32) {
+    fn _write_var_uint32(&mut self, value: u32) {
         if value < 0x80 {
             self.bf.push(value as u8);
         } else if value < 0x4000 {
@@ -254,12 +254,12 @@ impl<'a> Writer<'a> {
     // ============ VAR_UINT64 (TypeId = 14) ============
 
     #[inline(always)]
-    pub fn write_varuint64(&mut self, value: u64) {
-        self._write_varuint64(value);
+    pub fn write_var_uint64(&mut self, value: u64) {
+        self._write_var_uint64(value);
     }
 
     #[inline(always)]
-    fn _write_varuint64(&mut self, value: u64) {
+    fn _write_var_uint64(&mut self, value: u64) {
         if value < 0x80 {
             self.bf.push(value as u8);
         } else if value < 0x4000 {
@@ -451,8 +451,8 @@ impl<'a> Writer<'a> {
         const SIZE: usize = std::mem::size_of::<usize>();
         match SIZE {
             2 => self.write_u16(value as u16),
-            4 => self.write_varuint32(value as u32),
-            8 => self.write_varuint64(value as u64),
+            4 => self.write_var_uint32(value as u32),
+            8 => self.write_var_uint64(value as u64),
             _ => unreachable!("unsupported usize size"),
         }
     }
@@ -460,7 +460,7 @@ impl<'a> Writer<'a> {
     // ============ Other helper methods ============
 
     #[inline(always)]
-    pub fn write_varuint36_small(&mut self, value: u64) {
+    pub fn write_var_uint36_small(&mut self, value: u64) {
         assert!(value < (1u64 << 36), "value too large for 36-bit varint");
         if value < 0x80 {
             self.bf.push(value as u8);

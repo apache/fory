@@ -65,7 +65,7 @@ macro_rules! impl_num_serializer {
 
             #[inline(always)]
             fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-                context.writer.write_varuint32($field_type as u32);
+                context.writer.write_var_uint32($field_type as u32);
                 Ok(())
             }
 

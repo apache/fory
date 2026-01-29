@@ -49,7 +49,7 @@ where
     V: Serializer,
     I: Iterator<Item = (&'a K, &'a V)>,
 {
-    context.writer.write_varuint32(length as u32);
+    context.writer.write_var_uint32(length as u32);
     if length == 0 {
         return Ok(());
     }
@@ -666,7 +666,7 @@ impl<K: Serializer + ForyDefault + Eq + std::hash::Hash, V: Serializer + ForyDef
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_varuint32(TypeId::MAP as u32);
+        context.writer.write_var_uint32(TypeId::MAP as u32);
         Ok(())
     }
 
@@ -816,7 +816,7 @@ impl<K: Serializer + ForyDefault + Ord + std::hash::Hash, V: Serializer + ForyDe
     }
 
     fn fory_write_type_info(context: &mut WriteContext) -> Result<(), Error> {
-        context.writer.write_varuint32(TypeId::MAP as u32);
+        context.writer.write_var_uint32(TypeId::MAP as u32);
         Ok(())
     }
 

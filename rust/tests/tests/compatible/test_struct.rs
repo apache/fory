@@ -628,7 +628,7 @@ fn test_struct_with_generic() {
 
     impl<T: 'static + Serializer + ForyDefault> Serializer for Wrapper<T> {
         fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
-            context.writer.write_varuint32(self.value.len() as u32);
+            context.writer.write_var_uint32(self.value.len() as u32);
             context.writer.write_utf8_string(&self.value);
             self.data.fory_write_data(context)?;
             Ok(())

@@ -41,7 +41,7 @@ pub fn actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) ->
 #[inline(always)]
 pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
     let type_id = T::fory_get_type_id(context.get_type_resolver())?;
-    context.writer.write_varuint32(type_id);
+    context.writer.write_var_uint32(type_id);
     let rs_type_id = std::any::TypeId::of::<T>();
 
     if type_id & 0xff == TypeId::NAMED_STRUCT as u32 {

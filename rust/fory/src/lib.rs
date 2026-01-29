@@ -827,7 +827,7 @@
 //! impl Serializer for CustomType {
 //!     fn fory_write_data(&self, context: &mut WriteContext) -> Result<(), Error> {
 //!         context.writer.write_i32(self.value);
-//!         context.writer.write_varuint32(self.name.len() as u32);
+//!         context.writer.write_var_uint32(self.name.len() as u32);
 //!         context.writer.write_utf8_string(&self.name);
 //!         Ok(())
 //!     }

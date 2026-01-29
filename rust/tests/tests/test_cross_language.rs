@@ -95,7 +95,7 @@ fn test_buffer() {
     writer.write_i64(i64::MAX);
     writer.write_f32(-1.1);
     writer.write_f64(-1.1);
-    writer.write_varuint32(100);
+    writer.write_var_uint32(100);
     writer.write_i32(binary.len() as i32);
     writer.write_bytes(binary);
 
@@ -204,10 +204,10 @@ fn test_buffer_var() {
         writer.write_varint32(value);
     }
     for &value in &varuint32_values {
-        writer.write_varuint32(value as u32);
+        writer.write_var_uint32(value as u32);
     }
     for &value in &varuint64_values {
-        writer.write_varuint64(value);
+        writer.write_var_uint64(value);
     }
     for &value in &varint64_values {
         writer.write_varint64(value);

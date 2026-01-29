@@ -135,7 +135,7 @@ impl FieldType {
                 header |= 1;
             }
         }
-        writer.write_varuint32(header);
+        writer.write_var_uint32(header);
         match self.type_id {
             x if x == TypeId::LIST as u32 || x == TypeId::SET as u32 => {
                 if let Some(generic) = self.generics.first() {
@@ -312,7 +312,7 @@ impl FieldInfo {
             header |= FIELD_ID_ENCODING_MARKER << 6;
             writer.write_u8(header);
             if field_id >= SMALL_FIELD_ID_THRESHOLD {
-                writer.write_varuint32((field_id - SMALL_FIELD_ID_THRESHOLD) as u32);
+                writer.write_var_uint32((field_id - SMALL_FIELD_ID_THRESHOLD) as u32);
             }
             self.field_type.to_bytes(&mut writer, false, nullable)?;
             // No field name written in ID mode
@@ -338,7 +338,7 @@ impl FieldInfo {
             header |= encoding_idx << 6;
             writer.write_u8(header);
             if name_size >= FIELD_NAME_SIZE_THRESHOLD {
-                writer.write_varuint32((name_size - FIELD_NAME_SIZE_THRESHOLD) as u32);
+                writer.write_var_uint32((name_size - FIELD_NAME_SIZE_THRESHOLD) as u32);
             }
             self.field_type.to_bytes(&mut writer, false, nullable)?;
             // write field_name
@@ -513,7 +513,7 @@ impl TypeMeta {
         let bytes = name.bytes.as_slice();
         if bytes.len() >= BIG_NAME_THRESHOLD {
             writer.write_u8((BIG_NAME_THRESHOLD << 2) as u8 | encoding_idx);
-            writer.write_varuint32((bytes.len() - BIG_NAME_THRESHOLD) as u32);
+            writer.write_var_uint32((bytes.len() - BIG_NAME_THRESHOLD) as u32);
         } else {
             writer.write_u8((bytes.len() << 2) as u8 | encoding_idx);
         }
@@ -567,13 +567,13 @@ impl TypeMeta {
         }
         writer.write_u8(meta_header);
         if num_fields >= SMALL_NUM_FIELDS_THRESHOLD {
-            writer.write_varuint32((num_fields - SMALL_NUM_FIELDS_THRESHOLD) as u32);
+            writer.write_var_uint32((num_fields - SMALL_NUM_FIELDS_THRESHOLD) as u32);
         }
         if self.register_by_name {
             self.write_namespace(&mut writer);
             self.write_type_name(&mut writer);
         } else {
-            writer.write_varuint32(self.type_id);
+            writer.write_var_uint32(self.type_id);
         }
         for field in self.field_infos.iter() {
             writer.write_bytes(field.to_bytes()?.as_slice());
@@ -939,7 +939,7 @@ impl TypeMeta {
         header |= meta_hash_shifted;
         result.write_i64(header);
         if meta_size >= META_SIZE_MASK {
-            result.write_varuint32((meta_size - META_SIZE_MASK) as u32);
+            result.write_var_uint32((meta_size - META_SIZE_MASK) as u32);
         }
         result.write_bytes(meta_buffer.as_slice());
         Ok((buffer, meta_hash))

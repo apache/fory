@@ -36,7 +36,7 @@ pub fn write_collection_type_info(
     context: &mut WriteContext,
     collection_type_id: u32,
 ) -> Result<(), Error> {
-    context.writer.write_varuint32(collection_type_id);
+    context.writer.write_var_uint32(collection_type_id);
     Ok(())
 }
 
@@ -52,7 +52,7 @@ where
 {
     let iter = iter.into_iter();
     let len = iter.len();
-    context.writer.write_varuint32(len as u32);
+    context.writer.write_var_uint32(len as u32);
     if len == 0 {
         return Ok(());
     }
