@@ -204,6 +204,8 @@ func (c *ReadContext) readFast(ptr unsafe.Pointer, ct DispatchId) {
 		*(*float32)(ptr) = c.buffer.ReadFloat32(err)
 	case PrimitiveFloat64DispatchId:
 		*(*float64)(ptr) = c.buffer.ReadFloat64(err)
+	case PrimitiveFloat16DispatchId:
+		*(*uint16)(ptr) = c.buffer.ReadUint16(err)
 	case StringDispatchId:
 		*(*string)(ptr) = readString(c.buffer, err)
 	}

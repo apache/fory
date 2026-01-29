@@ -203,6 +203,9 @@ func (c *WriteContext) writeFast(ptr unsafe.Pointer, ct DispatchId) {
 		c.buffer.WriteFloat32(*(*float32)(ptr))
 	case PrimitiveFloat64DispatchId:
 		c.buffer.WriteFloat64(*(*float64)(ptr))
+	case PrimitiveFloat16DispatchId:
+		// Float16 is uint16 in Go
+		c.buffer.WriteUint16(*(*uint16)(ptr))
 	case StringDispatchId:
 		writeString(c.buffer, *(*string)(ptr))
 	}
