@@ -19,7 +19,6 @@
 
 package org.apache.fory.xlang;
 
-import com.google.common.collect.ImmutableMap;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -28,6 +27,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import org.apache.fory.Fory;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
@@ -61,7 +61,7 @@ public class PythonXlangTest extends XlangTestBase {
   protected CommandContext buildCommandContext(String caseName, Path dataFile) {
     List<String> command = new ArrayList<>(PYTHON_BASE_COMMAND);
     command.set(PYTHON_TESTCASE_INDEX, caseName);
-    ImmutableMap<String, String> env = envBuilder(dataFile).build();
+    Map<String, String> env = envBuilder(dataFile);
     return new CommandContext(command, env, new File("../../python"));
   }
 

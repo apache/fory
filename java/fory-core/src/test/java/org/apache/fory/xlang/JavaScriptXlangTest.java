@@ -19,13 +19,13 @@
 
 package org.apache.fory.xlang;
 
-import com.google.common.collect.ImmutableMap;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 
@@ -69,7 +69,7 @@ public class JavaScriptXlangTest extends XlangTestBase {
     List<String> command = new ArrayList<>(RUST_BASE_COMMAND);
     // jest use regexp to match the castName. And '$' at end to ignore matching error.
     command.set(NODE_TESTCASE_INDEX, caseName + "$");
-    ImmutableMap<String, String> env = envBuilder(dataFile).build();
+    Map<String, String> env = envBuilder(dataFile);
     return new CommandContext(command, env, new File("../../javascript"));
   }
 

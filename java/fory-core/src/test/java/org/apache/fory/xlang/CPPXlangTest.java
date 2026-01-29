@@ -19,7 +19,6 @@
 
 package org.apache.fory.xlang;
 
-import com.google.common.collect.ImmutableMap;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -28,6 +27,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.fory.Fory;
 import org.apache.fory.config.CompatibleMode;
@@ -83,7 +83,7 @@ public class CPPXlangTest extends XlangTestBase {
     command.add(binaryPath);
     command.add("--case");
     command.add(caseName);
-    ImmutableMap<String, String> env = envBuilder(dataFile).build();
+    Map<String, String> env = envBuilder(dataFile);
     return new CommandContext(command, env, repoRoot());
   }
 
