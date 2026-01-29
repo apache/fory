@@ -19,6 +19,7 @@ package fory
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -67,6 +68,28 @@ type Error struct {
 	actualHash   int32
 	expectedHash int32
 	stack        []string
+}
+
+var panicOnError = parsePanicOnError()
+
+func parsePanicOnError() bool {
+	value, ok := os.LookupEnv("FORY_PANIC_ON_ERROR")
+	if !ok {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "t", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func panicIfEnabled(err Error) Error {
+	if panicOnError && err.kind != ErrKindOK {
+		panic(err.Error())
+	}
+	return err
 }
 
 // Ok returns true if no error occurred
@@ -126,112 +149,112 @@ func (e Error) Error() string {
 
 // BufferOutOfBoundError creates a buffer out of bound error
 func BufferOutOfBoundError(offset, need, size int) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:   ErrKindBufferOutOfBound,
 		offset: offset,
 		need:   need,
 		size:   size,
-	}
+	})
 }
 
 // TypeMismatchError creates a type mismatch error
 func TypeMismatchError(actual, expected TypeId) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:         ErrKindTypeMismatch,
 		actualType:   actual,
 		expectedType: expected,
-	}
+	})
 }
 
 // UnknownTypeError creates an unknown type error
 func UnknownTypeError(typeId TypeId) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:       ErrKindUnknownType,
 		actualType: typeId,
 		message:    fmt.Sprintf("unknown type: typeId=%d", typeId),
-	}
+	})
 }
 
 // HashMismatchError creates a struct hash mismatch error
 func HashMismatchError(actual, expected int32, typeName string) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:         ErrKindHashMismatch,
 		actualHash:   actual,
 		expectedHash: expected,
 		message:      fmt.Sprintf("hash %d is not consistent with %d for type %s", actual, expected, typeName),
-	}
+	})
 }
 
 // SerializationError creates a general serialization error
 func SerializationError(msg string) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:    ErrKindSerializationFailed,
 		message: msg,
-	}
+	})
 }
 
 // SerializationErrorf creates a formatted serialization error
 func SerializationErrorf(format string, args ...any) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:    ErrKindSerializationFailed,
 		message: fmt.Sprintf(format, args...),
-	}
+	})
 }
 
 // DeserializationError creates a general deserialization error
 func DeserializationError(msg string) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:    ErrKindDeserializationFailed,
 		message: msg,
-	}
+	})
 }
 
 // DeserializationErrorf creates a formatted deserialization error
 func DeserializationErrorf(format string, args ...any) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:    ErrKindDeserializationFailed,
 		message: fmt.Sprintf(format, args...),
-	}
+	})
 }
 
 // MaxDepthExceededError creates a max depth exceeded error
 func MaxDepthExceededError(depth int) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:    ErrKindMaxDepthExceeded,
 		message: fmt.Sprintf("max depth exceeded: depth=%d", depth),
-	}
+	})
 }
 
 // NilPointerError creates a nil pointer error
 func NilPointerError(msg string) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:    ErrKindNilPointer,
 		message: msg,
-	}
+	})
 }
 
 // InvalidRefIdError creates an invalid reference ID error
 func InvalidRefIdError(refId int32) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:    ErrKindInvalidRefId,
 		message: fmt.Sprintf("invalid reference id: %d", refId),
-	}
+	})
 }
 
 // InvalidTagError creates an invalid fory struct tag error
 func InvalidTagError(msg string) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:    ErrKindInvalidTag,
 		message: msg,
-	}
+	})
 }
 
 // InvalidTagErrorf creates a formatted invalid fory struct tag error
 func InvalidTagErrorf(format string, args ...any) Error {
-	return Error{
+	return panicIfEnabled(Error{
 		kind:    ErrKindInvalidTag,
 		message: fmt.Sprintf(format, args...),
-	}
+	})
 }
 
 // WrapError wraps a standard error into a fory Error
@@ -239,10 +262,10 @@ func WrapError(err error, kind ErrorKind) Error {
 	if err == nil {
 		return Error{kind: ErrKindOK}
 	}
-	return Error{
+	return panicIfEnabled(Error{
 		kind:    kind,
 		message: err.Error(),
-	}
+	})
 }
 
 // FromError converts a standard error to a fory Error
@@ -255,10 +278,10 @@ func FromError(err error) Error {
 	if e, ok := err.(Error); ok {
 		return e
 	}
-	return Error{
+	return panicIfEnabled(Error{
 		kind:    ErrKindDeserializationFailed,
 		message: err.Error(),
-	}
+	})
 }
 
 // Pointer receiver methods for *Error (used for error accumulation)

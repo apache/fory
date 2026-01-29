@@ -71,7 +71,7 @@ func (f *Fory) release(inner *fory.Fory) {
 // Serialize serializes a value using a pooled Fory instance
 func (f *Fory) Serialize(v any) ([]byte, error) {
 	inner := f.acquire()
-	data, err := inner.Marshal(v)
+	data, err := inner.Serialize(v)
 	if err != nil {
 		f.release(inner)
 		return nil, err
@@ -87,7 +87,7 @@ func (f *Fory) Serialize(v any) ([]byte, error) {
 func (f *Fory) Deserialize(data []byte, v any) error {
 	inner := f.acquire()
 	defer f.release(inner)
-	return inner.Unmarshal(data, v)
+	return inner.Deserialize(data, v)
 }
 
 // RegisterNamedStruct registers a named struct type for cross-language serialization
