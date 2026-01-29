@@ -271,6 +271,9 @@ class FieldType:
             TypeId.NAMED_STRUCT,
             TypeId.COMPATIBLE_STRUCT,
             TypeId.NAMED_COMPATIBLE_STRUCT,
+            TypeId.UNION,
+            TypeId.TYPED_UNION,
+            TypeId.NAMED_UNION,
             TypeId.UNKNOWN,
         ]:
             return None
@@ -562,7 +565,17 @@ def build_field_type_from_type_ids_with_ref(
         if value_ref_override is not None:
             value_type.tracking_ref_override = value_ref_override
         return MapFieldType(type_id, morphic, is_nullable, is_tracking_ref, key_type, value_type)
-    elif type_id in [TypeId.UNKNOWN, TypeId.EXT, TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT]:
+    elif type_id in [
+        TypeId.UNKNOWN,
+        TypeId.EXT,
+        TypeId.STRUCT,
+        TypeId.NAMED_STRUCT,
+        TypeId.COMPATIBLE_STRUCT,
+        TypeId.NAMED_COMPATIBLE_STRUCT,
+        TypeId.UNION,
+        TypeId.TYPED_UNION,
+        TypeId.NAMED_UNION,
+    ]:
         return DynamicFieldType(type_id, False, is_nullable, is_tracking_ref)
     else:
         if type_id <= 0 or type_id >= TypeId.BOUND:
@@ -594,7 +607,17 @@ def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, vis
         key_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor, is_nullable=False)
         value_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[2], visitor, is_nullable=False)
         return MapFieldType(type_id, morphic, is_nullable, tracking_ref, key_type, value_type)
-    elif type_id in [TypeId.UNKNOWN, TypeId.EXT, TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT]:
+    elif type_id in [
+        TypeId.UNKNOWN,
+        TypeId.EXT,
+        TypeId.STRUCT,
+        TypeId.NAMED_STRUCT,
+        TypeId.COMPATIBLE_STRUCT,
+        TypeId.NAMED_COMPATIBLE_STRUCT,
+        TypeId.UNION,
+        TypeId.TYPED_UNION,
+        TypeId.NAMED_UNION,
+    ]:
         return DynamicFieldType(type_id, False, is_nullable, tracking_ref)
     else:
         if type_id <= 0 or type_id >= TypeId.BOUND:

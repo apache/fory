@@ -273,6 +273,8 @@ class PythonGenerator(BaseGenerator):
         imports.add("import threading")
         if self.schema_has_ref_elements():
             imports.add("from pyfory import Ref")
+        for module in self._collect_imported_modules():
+            imports.add(f"import {module}")
 
         for message in self.schema.messages:
             self.collect_message_imports(message, imports)
