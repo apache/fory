@@ -239,7 +239,12 @@ class BaseGenerator(ABC):
             return [line]
 
         # Don't wrap comment lines (license headers, etc.)
-        if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*") or stripped.startswith("#"):
+        if (
+            stripped.startswith("//")
+            or stripped.startswith("/*")
+            or stripped.startswith("*")
+            or stripped.startswith("#")
+        ):
             return [line]
 
         # Extract the leading indent
@@ -275,7 +280,18 @@ class BaseGenerator(ABC):
             search_text = current[:available]
 
             # Try to break at common delimiters (working backwards)
-            for delimiter in [", ", " && ", " || ", " + ", " - ", " * ", " / ", " = ", " ", ","]:
+            for delimiter in [
+                ", ",
+                " && ",
+                " || ",
+                " + ",
+                " - ",
+                " * ",
+                " / ",
+                " = ",
+                " ",
+                ",",
+            ]:
                 idx = search_text.rfind(delimiter)
                 if idx > 0:
                     break_point = idx + len(delimiter)

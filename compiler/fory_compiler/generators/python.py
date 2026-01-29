@@ -149,7 +149,7 @@ class PythonGenerator(BaseGenerator):
         continuation_indent: str = None,
     ) -> List[str]:
         """Override base wrap_line to handle Python-specific syntax.
-        
+
         Python has specific constructs that should not be wrapped:
         1. Assignment statements - must not split between variable and value
         2. Conditional statements with logical operators (and, or, not)
@@ -157,25 +157,30 @@ class PythonGenerator(BaseGenerator):
         """
         if continuation_indent is None:
             continuation_indent = indent + "    "
-        
+
         # If line is already short enough, return as is
         if len(line) <= max_width:
             return [line]
-        
+
         stripped = line.lstrip()
-        
+
         # Don't wrap comments
         if stripped.startswith("#"):
             return [line]
-        
+
         # Don't wrap raise statements (they often have long string literals)
         if stripped.startswith("raise "):
             return [line]
-        
+
         # Don't wrap assignment statements (lines containing " = " at the statement level)
         # This prevents splitting like: _threadsafe_fory = pyfory.ThreadSafeFory(...)
         # Only check for simple assignments (not comparisons or keyword args)
-        if " = " in line and not line.strip().startswith("if ") and not line.strip().startswith("elif ") and not line.strip().startswith("while "):
+        if (
+            " = " in line
+            and not line.strip().startswith("if ")
+            and not line.strip().startswith("elif ")
+            and not line.strip().startswith("while ")
+        ):
             # Check if this looks like a simple assignment (has = but not == or <= or >=)
             # and the = comes before any opening parentheses
             eq_pos = line.find(" = ")
@@ -183,12 +188,14 @@ class PythonGenerator(BaseGenerator):
             if eq_pos > 0 and (paren_pos < 0 or eq_pos < paren_pos):
                 # This is likely an assignment statement, don't wrap it
                 return [line]
-        
+
         # Don't wrap conditional statements (if/elif/while) with logical operators
         # This prevents splitting like: if condition and not\n    isinstance(...)
-        if stripped.startswith(("if ", "elif ", "while ")) and (" and " in line or " or " in line):
+        if stripped.startswith(("if ", "elif ", "while ")) and (
+            " and " in line or " or " in line
+        ):
             return [line]
-        
+
         # For all other cases, use base class wrapping
         return super().wrap_line(line, max_width, indent, continuation_indent)
 

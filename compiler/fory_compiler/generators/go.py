@@ -207,7 +207,7 @@ class GoGenerator(BaseGenerator):
         continuation_indent: str = None,
     ) -> List[str]:
         """Override base wrap_line to handle Go-specific syntax.
-        
+
         Go has specific constructs that should not be wrapped:
         1. Function signatures - must not split between params and return type
         2. Struct field tags - backtick strings must not be split
@@ -215,26 +215,30 @@ class GoGenerator(BaseGenerator):
         """
         if continuation_indent is None:
             continuation_indent = indent + "    "
-        
+
         # If line is already short enough, return as is
         if len(line) <= max_width:
             return [line]
-        
+
         stripped = line.lstrip()
-        
+
         # Don't wrap comments
-        if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
+        if (
+            stripped.startswith("//")
+            or stripped.startswith("/*")
+            or stripped.startswith("*")
+        ):
             return [line]
-        
+
         # Don't wrap lines with backticks (struct tags)
         if "`" in line:
             return [line]
-        
+
         # Don't wrap function definitions (including one-liners like "func Foo() Type { return ... }")
         # Detect by checking if line starts with "func " and contains "{"
         if stripped.startswith("func ") and "{" in line:
             return [line]
-        
+
         # For all other cases, use base class wrapping
         return super().wrap_line(line, max_width, indent, continuation_indent)
 
@@ -902,7 +906,7 @@ class GoGenerator(BaseGenerator):
         if tags:
             tag_str = ",".join(tags)
             # Concatenate parts to ensure single line in output
-            lines.append(f"{field_name} {go_type} `fory:\"{tag_str}\"`")
+            lines.append(f'{field_name} {go_type} `fory:"{tag_str}"`')
         else:
             lines.append(f"{field_name} {go_type}")
 
