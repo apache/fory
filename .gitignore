@@ -51,6 +51,7 @@ integration_tests/idl_tests/go/tree/
 integration_tests/idl_tests/go/graph/
 integration_tests/idl_tests/java/src/main/
 integration_tests/idl_tests/go/root/
+integration_tests/idl_tests/go/addressbook/
 integration_tests/idl_tests/java/src/main/java/addressbook/
 integration_tests/idl_tests/java/src/main/java/complex_fbs/
 integration_tests/idl_tests/java/src/main/java/complex_pb/

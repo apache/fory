@@ -542,15 +542,13 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 		if foryTag.RefSet {
 			trackingRef = foryTag.Ref
 		}
+		if trackingRef && !NeedWriteRef(ft.TypeId()) {
+			trackingRef = false
+		}
 		// Disable ref tracking for simple types (primitives, strings) in xlang mode.
 		// Collection fields only write ref flags when explicitly tagged.
-		if fory.config.IsXlang && trackingRef {
-			// SimpleFieldType represents built-in types that don't need ref tracking.
-			if _, ok := ft.(*SimpleFieldType); ok {
-				trackingRef = false
-			} else if isCollectionType(ft.TypeId()) && !foryTag.RefSet {
-				trackingRef = false
-			}
+		if fory.config.IsXlang && trackingRef && isCollectionType(ft.TypeId()) && !foryTag.RefSet {
+			trackingRef = false
 		}
 
 		fieldInfo := FieldDef{

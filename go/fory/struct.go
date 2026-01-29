@@ -377,16 +377,15 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 		if foryTag.RefSet {
 			trackRef = foryTag.Ref
 		}
+		trackingRef := trackRef
+		if trackingRef && !NeedWriteRef(fieldTypeId) {
+			trackingRef = false
+		}
 		// Align trackingRef with xlang rules for field ref flags:
 		// - simple value types never write ref flags
 		// - collection fields only write ref flags when explicitly tagged
-		trackingRef := trackRef
-		if typeResolver.fory.config.IsXlang && trackingRef {
-			if !NeedWriteRef(fieldTypeId) {
-				trackingRef = false
-			} else if isCollectionType(fieldTypeId) && !foryTag.RefSet {
-				trackingRef = false
-			}
+		if typeResolver.fory.config.IsXlang && trackingRef && isCollectionType(fieldTypeId) && !foryTag.RefSet {
+			trackingRef = false
 		}
 
 		// Pre-compute RefMode based on trackingRef and nullable.
