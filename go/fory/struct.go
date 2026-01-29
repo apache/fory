@@ -377,13 +377,20 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 		if foryTag.RefSet {
 			trackRef = foryTag.Ref
 		}
+		// Align trackingRef with TypeDef rules in xlang mode:
+		// disable ref tracking for simple value types (primitives/string/time/none),
+		// keep it for collections, structs, unions, enums, etc.
+		trackingRef := trackRef
+		if typeResolver.fory.config.IsXlang && trackingRef {
+			if !NeedWriteRef(fieldTypeId) {
+				trackingRef = false
+			}
+		}
 
-		// Pre-compute RefMode based on (possibly overridden) trackRef and nullable
-		// For pointer-to-struct fields, enable ref tracking when trackRef is enabled,
-		// regardless of nullable flag. This is necessary to detect circular references.
+		// Pre-compute RefMode based on trackingRef and nullable.
+		// When trackingRef is true, we must write ref flags even for non-nullable fields.
 		refMode := RefModeNone
-		isStructPointer := fieldType.Kind() == reflect.Ptr && fieldType.Elem().Kind() == reflect.Struct
-		if trackRef && (nullableFlag || isStructPointer) {
+		if trackingRef {
 			refMode = RefModeTracking
 		} else if nullableFlag {
 			refMode = RefModeNullOnly

@@ -616,6 +616,8 @@ class GoGenerator(BaseGenerator):
 
         lines.append("")
 
+        lines.append(f"func (u {type_name}) ForyUnionMarker() {{}}")
+        lines.append("")
         lines.append(
             f"func (u {type_name}) ForyUnionGet() (uint32, any) {{ return uint32(u.case_), u.value }}"
         )
