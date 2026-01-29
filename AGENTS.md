@@ -151,6 +151,7 @@ FORY_PYTHON_JAVA_CI=1 ENABLE_FORY_CYTHON_SERIALIZATION=1 ENABLE_FORY_DEBUG_OUTPU
 - All changes to `go` must pass the format check and tests.
 - Go implementation focuses on reflection-based and codegen-based serialization.
 - Set `FORY_PANIC_ON_ERROR=1` when debugging test errors to see full callstack.
+- You must not set `FORY_PANIC_ON_ERROR=1` when running all go tests to check whether all tests pass, some tests will check Error content, which will fail if error just panic.
 
 ```bash
 # Format code

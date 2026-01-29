@@ -187,6 +187,9 @@ type TypeResolver struct {
 
 	// Fast type cache for O(1) lookup using type pointer
 	typePointerCache map[uintptr]*TypeInfo
+
+	// Cache for union type detection to avoid repeated reflect.Implements in hot paths.
+	unionTypeCache map[reflect.Type]bool
 }
 
 func newTypeResolver(fory *Fory) *TypeResolver {
@@ -226,6 +229,7 @@ func newTypeResolver(fory *Fory) *TypeResolver {
 		typeToTypeDef:    make(map[reflect.Type]*TypeDef),
 		defIdToTypeDef:   make(map[int64]*TypeDef),
 		typePointerCache: make(map[uintptr]*TypeInfo),
+		unionTypeCache:   make(map[reflect.Type]bool),
 	}
 	// base type info for encode/decode types.
 	// composite types info will be constructed dynamically.
@@ -307,6 +311,58 @@ func (r *TypeResolver) Compatible() bool {
 // IsXlang returns whether xlang (cross-language) mode is enabled
 func (r *TypeResolver) IsXlang() bool {
 	return r.isXlang
+}
+
+func (r *TypeResolver) getTypeInfoByType(type_ reflect.Type) *TypeInfo {
+	if type_ == nil {
+		return nil
+	}
+	typePtr := typePointer(type_)
+	if cachedInfo, ok := r.typePointerCache[typePtr]; ok {
+		return cachedInfo
+	}
+	info, ok := r.typesInfo[type_]
+	if !ok {
+		return nil
+	}
+	if info.Serializer == nil {
+		serializer, err := r.createSerializer(type_, false)
+		if err != nil {
+			return nil
+		}
+		info.Serializer = serializer
+	}
+	r.typePointerCache[typePtr] = info
+	return info
+}
+
+// IsUnionType returns true if the type is a union, using a local cache for performance.
+// Note: Fory/TypeResolver are expected to be used single-threaded.
+func (r *TypeResolver) IsUnionType(t reflect.Type) bool {
+	if t == nil {
+		return false
+	}
+	if v, ok := r.unionTypeCache[t]; ok {
+		return v
+	}
+	base := t
+	if info, ok := getOptionalInfo(t); ok {
+		base = info.valueType
+	}
+	if v, ok := r.unionTypeCache[base]; ok {
+		r.unionTypeCache[t] = v
+		return v
+	}
+
+	v := isUnionType(base)
+	r.unionTypeCache[t] = v
+	r.unionTypeCache[base] = v
+	if base.Kind() == reflect.Ptr {
+		r.unionTypeCache[base.Elem()] = v
+	} else {
+		r.unionTypeCache[reflect.PtrTo(base)] = v
+	}
+	return v
 }
 
 // GetTypeInfo returns TypeInfo for the given value. This is exported for generated serializers.
@@ -1235,6 +1291,9 @@ func (r *TypeResolver) registerType(
 		DispatchId:   GetDispatchId(type_), // Static type ID for fast path
 		hashValue:    calcTypeHash(type_),  // Precomputed hash for fast lookups
 		NeedWriteRef: NeedWriteRef(TypeId(typeID)),
+	}
+	if structSer, ok := serializer.(*structSerializer); ok {
+		structSer.typeID = typeID
 	}
 	// Update resolver caches:
 	r.typesInfo[type_] = typeInfo // Cache by type string

@@ -41,6 +41,8 @@ type ReadContext struct {
 	depth            int           // Current nesting depth for cycle detection
 	maxDepth         int           // Maximum allowed nesting depth
 	err              Error         // Accumulated error state for deferred checking
+	lastTypePtr      uintptr
+	lastTypeInfo     *TypeInfo
 }
 
 // IsXlang returns whether cross-language serialization mode is enabled
@@ -178,6 +180,22 @@ func (c *ReadContext) ReadBinary() []byte {
 func (c *ReadContext) ReadTypeId() TypeId {
 	// Use Varuint32Small7 encoding to match Java's xlang serialization
 	return TypeId(c.buffer.ReadVaruint32Small7(c.Err()))
+}
+
+func (c *ReadContext) getTypeInfoByType(type_ reflect.Type) *TypeInfo {
+	if type_ == nil {
+		return nil
+	}
+	typePtr := typePointer(type_)
+	if typePtr == c.lastTypePtr && c.lastTypeInfo != nil {
+		return c.lastTypeInfo
+	}
+	info := c.typeResolver.getTypeInfoByType(type_)
+	if info != nil {
+		c.lastTypePtr = typePtr
+		c.lastTypeInfo = info
+	}
+	return info
 }
 
 // readFast reads a value using fast path based on DispatchId
@@ -669,10 +687,15 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		return
 	}
 
+	if typeInfo := c.getTypeInfoByType(value.Type()); typeInfo != nil && typeInfo.Serializer != nil {
+		typeInfo.Serializer.Read(c, refMode, readType, false, value)
+		return
+	}
+
 	// For struct types, use optimized ReadStruct path when using full ref tracking and type info.
 	// Unions use a custom serializer and must bypass ReadStruct.
 	valueType := value.Type()
-	if refMode == RefModeTracking && readType && !isUnionType(valueType) {
+	if refMode == RefModeTracking && readType && !c.typeResolver.IsUnionType(valueType) {
 		if valueType.Kind() == reflect.Struct {
 			c.ReadStruct(value)
 			return

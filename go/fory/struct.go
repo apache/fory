@@ -44,6 +44,7 @@ type structSerializer struct {
 	name       string
 	type_      reflect.Type
 	structHash int32
+	typeID     uint32
 
 	// Pre-sorted and categorized fields (embedded for cache locality)
 	fieldGroup FieldGroup
@@ -2253,14 +2254,64 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 		}
 	}
 	if readType {
-		// Read type info - in compatible mode this returns the serializer with remote fieldDefs
+		if !ctx.Compatible() && s.type_ != nil {
+			typeID := buf.ReadVaruint32Small7(ctxErr)
+			if ctxErr.HasError() {
+				return
+			}
+			if s.typeID != 0 && typeID == s.typeID && !IsNamespacedType(TypeId(typeID)) {
+				s.ReadData(ctx, value)
+				return
+			}
+			if IsNamespacedType(TypeId(typeID)) {
+				// Expected type is known: skip namespace/type meta and read data directly.
+				ctx.TypeResolver().metaStringResolver.ReadMetaStringBytes(buf, ctxErr)
+				ctx.TypeResolver().metaStringResolver.ReadMetaStringBytes(buf, ctxErr)
+				if ctxErr.HasError() {
+					return
+				}
+				s.ReadData(ctx, value)
+				return
+			}
+			internalTypeID := TypeId(typeID & 0xFF)
+			if internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
+				typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
+				if ctxErr.HasError() {
+					return
+				}
+				if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
+					structSer.ReadData(ctx, value)
+					return
+				}
+				if s.typeID != 0 && typeID == s.typeID {
+					s.ReadData(ctx, value)
+					return
+				}
+			}
+			ctx.SetError(DeserializationError("unexpected type id for struct"))
+			return
+		}
+		if s.type_ != nil {
+			serializer := ctx.TypeResolver().ReadTypeInfoForType(buf, s.type_, ctxErr)
+			if ctxErr.HasError() {
+				return
+			}
+			if serializer == nil {
+				ctx.SetError(DeserializationError("unexpected type id for struct"))
+				return
+			}
+			if structSer, ok := serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
+				structSer.ReadData(ctx, value)
+				return
+			}
+			s.ReadData(ctx, value)
+			return
+		}
+		// Fallback: read type info based on typeID when expected type is unknown
 		typeID := buf.ReadVaruint32Small7(ctxErr)
 		internalTypeID := TypeId(typeID & 0xFF)
-		// Check if this is a struct type that needs type meta reading
 		if IsNamespacedType(TypeId(typeID)) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
-			// For struct types in compatible mode, use the serializer from TypeInfo
 			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
-			// Use the serializer from TypeInfo which has the remote field definitions
 			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
 				structSer.ReadData(ctx, value)
 				return
@@ -2419,31 +2470,61 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	// Note: For tagged int64/uint64, we can't use unsafe reads because they need bounds checking
 	if len(s.fieldGroup.PrimitiveVarintFields) > 0 {
 		err := ctx.Err()
-		for _, field := range s.fieldGroup.PrimitiveVarintFields {
-			fieldPtr := unsafe.Add(ptr, field.Offset)
-			optInfo := optionalInfo{}
-			if field.Kind == FieldKindOptional && field.Meta != nil {
-				optInfo = field.Meta.OptionalInfo
+		if buf.remaining() >= s.fieldGroup.MaxVarintSize {
+			for _, field := range s.fieldGroup.PrimitiveVarintFields {
+				fieldPtr := unsafe.Add(ptr, field.Offset)
+				optInfo := optionalInfo{}
+				if field.Kind == FieldKindOptional && field.Meta != nil {
+					optInfo = field.Meta.OptionalInfo
+				}
+				switch field.DispatchId {
+				case PrimitiveVarint32DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarint32())
+				case PrimitiveVarint64DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarint64())
+				case PrimitiveIntDispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.UnsafeReadVarint64()))
+				case PrimitiveVarUint32DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVaruint32())
+				case PrimitiveVarUint64DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVaruint64())
+				case PrimitiveUintDispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.UnsafeReadVaruint64()))
+				case PrimitiveTaggedInt64DispatchId:
+					// Tagged INT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
+				case PrimitiveTaggedUint64DispatchId:
+					// Tagged UINT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedUint64(err))
+				}
 			}
-			switch field.DispatchId {
-			case PrimitiveVarint32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint32(err))
-			case PrimitiveVarint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint64(err))
-			case PrimitiveIntDispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.ReadVarint64(err)))
-			case PrimitiveVarUint32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint32(err))
-			case PrimitiveVarUint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint64(err))
-			case PrimitiveUintDispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVaruint64(err)))
-			case PrimitiveTaggedInt64DispatchId:
-				// Tagged INT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
-			case PrimitiveTaggedUint64DispatchId:
-				// Tagged UINT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedUint64(err))
+		} else {
+			for _, field := range s.fieldGroup.PrimitiveVarintFields {
+				fieldPtr := unsafe.Add(ptr, field.Offset)
+				optInfo := optionalInfo{}
+				if field.Kind == FieldKindOptional && field.Meta != nil {
+					optInfo = field.Meta.OptionalInfo
+				}
+				switch field.DispatchId {
+				case PrimitiveVarint32DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint32(err))
+				case PrimitiveVarint64DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint64(err))
+				case PrimitiveIntDispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.ReadVarint64(err)))
+				case PrimitiveVarUint32DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint32(err))
+				case PrimitiveVarUint64DispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint64(err))
+				case PrimitiveUintDispatchId:
+					storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVaruint64(err)))
+				case PrimitiveTaggedInt64DispatchId:
+					// Tagged INT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
+				case PrimitiveTaggedUint64DispatchId:
+					// Tagged UINT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedUint64(err))
+				}
 			}
 		}
 	}
