@@ -16,6 +16,7 @@
 # under the License.
 
 """Java code generator."""
+
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
 

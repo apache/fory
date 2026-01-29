@@ -390,7 +390,9 @@ class TestGoPackageGeneration:
         files = generator.generate()
         go_file = files[0]
 
-        assert '"github.com/apache/fory/integration_tests/idl_tests/go"' in go_file.content
+        assert (
+            '"github.com/apache/fory/integration_tests/idl_tests/go"' in go_file.content
+        )
 
 
 class TestNamespaceConsistency:

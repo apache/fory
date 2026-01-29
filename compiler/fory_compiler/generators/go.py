@@ -16,6 +16,7 @@
 # under the License.
 
 """Go code generator."""
+
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
 
@@ -334,9 +335,7 @@ class GoGenerator(BaseGenerator):
             return "_".join(parts)
         return "".join(parts)
 
-    def _import_info_for_file(
-        self, file_path: str
-    ) -> Optional[Tuple[str, str, str]]:
+    def _import_info_for_file(self, file_path: str) -> Optional[Tuple[str, str, str]]:
         if not file_path:
             return None
         if not hasattr(self, "_import_info_cache"):
@@ -368,9 +367,7 @@ class GoGenerator(BaseGenerator):
         cache[normalized] = (alias, import_path, package_name)
         return cache[normalized]
 
-    def _import_info_for_type(
-        self, type_def: object
-    ) -> Optional[Tuple[str, str, str]]:
+    def _import_info_for_type(self, type_def: object) -> Optional[Tuple[str, str, str]]:
         location = getattr(type_def, "location", None)
         file_path = getattr(location, "file", None) if location else None
         if not file_path:
@@ -406,9 +403,9 @@ class GoGenerator(BaseGenerator):
             if not import_path:
                 continue
             if alias == package_name:
-                imports.add(f"\"{import_path}\"")
+                imports.add(f'"{import_path}"')
             else:
-                imports.add(f"{alias} \"{import_path}\"")
+                imports.add(f'{alias} "{import_path}"')
 
         # License header
         lines.append(self.get_license_header("//"))
@@ -969,9 +966,7 @@ class GoGenerator(BaseGenerator):
                     getattr(getattr(named_type, "location", None), "file", None)
                 )
                 if schema is not None:
-                    type_name = self._format_imported_type_name(
-                        field_type.name, schema
-                    )
+                    type_name = self._format_imported_type_name(field_type.name, schema)
                 if info is not None:
                     alias, _, _ = info
                     type_name = f"{alias}.{type_name}"
@@ -1098,9 +1093,9 @@ class GoGenerator(BaseGenerator):
                     alias, import_path, package_name = info
                     if import_path:
                         if alias == package_name:
-                            imports.add(f"\"{import_path}\"")
+                            imports.add(f'"{import_path}"')
                         else:
-                            imports.add(f"{alias} \"{import_path}\"")
+                            imports.add(f'{alias} "{import_path}"')
 
     def generate_registration(self) -> List[str]:
         """Generate the Fory registration function."""

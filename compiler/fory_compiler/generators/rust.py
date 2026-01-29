@@ -626,9 +626,7 @@ class RustGenerator(BaseGenerator):
             if named_type is not None and self.is_imported_type(named_type):
                 module = self._module_name_for_type(named_type)
                 if module:
-                    type_name = self._format_imported_type_name(
-                        field_type.name, module
-                    )
+                    type_name = self._format_imported_type_name(field_type.name, module)
             if ref:
                 type_name = f"{pointer_type}<{type_name}>"
             if nullable:
