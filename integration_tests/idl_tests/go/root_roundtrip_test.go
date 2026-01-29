@@ -28,8 +28,11 @@ import (
 
 func buildRootHolder() rootpkg.MultiHolder {
 	owner := addressbook.Person{
-		Name: "Alice",
-		Id:   123,
+		Name:   "Alice",
+		Id:     123,
+		Tags:   []string{},
+		Scores: map[string]int32{},
+		Phones: []addressbook.Person_PhoneNumber{},
 		Pet: addressbook.DogAnimal(&addressbook.Dog{
 			Name:       "Rex",
 			BarkVolume: 5,
@@ -40,8 +43,9 @@ func buildRootHolder() rootpkg.MultiHolder {
 		PeopleByName: map[string]addressbook.Person{owner.Name: owner},
 	}
 	root := treepkg.TreeNode{
-		Id:   "root",
-		Name: "root",
+		Id:       "root",
+		Name:     "root",
+		Children: []*treepkg.TreeNode{},
 	}
 	return rootpkg.MultiHolder{
 		Book:  &book,
@@ -61,6 +65,6 @@ func TestRootToBytesFromBytes(t *testing.T) {
 		t.Fatalf("root from_bytes: %v", err)
 	}
 	if !reflect.DeepEqual(multi, decodedMulti) {
-		t.Fatalf("root to_bytes roundtrip mismatch")
+		t.Fatalf("root to_bytes roundtrip mismatch:\noriginal=%#v\ndecoded=%#v", multi, decodedMulti)
 	}
 }

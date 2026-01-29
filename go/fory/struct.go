@@ -377,12 +377,14 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 		if foryTag.RefSet {
 			trackRef = foryTag.Ref
 		}
-		// Align trackingRef with TypeDef rules in xlang mode:
-		// disable ref tracking for simple value types (primitives/string/time/none),
-		// keep it for collections, structs, unions, enums, etc.
+		// Align trackingRef with xlang rules for field ref flags:
+		// - simple value types never write ref flags
+		// - collection fields only write ref flags when explicitly tagged
 		trackingRef := trackRef
 		if typeResolver.fory.config.IsXlang && trackingRef {
 			if !NeedWriteRef(fieldTypeId) {
+				trackingRef = false
+			} else if isCollectionType(fieldTypeId) && !foryTag.RefSet {
 				trackingRef = false
 			}
 		}
@@ -695,11 +697,36 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 					shouldRead = true
 					fieldType = localType // Use local type for struct fields
 				}
-			} else if typeLookupFailed && (defTypeId == LIST || defTypeId == SET) {
-				// For collection fields with failed type lookup (e.g., List<Animal> with interface element type),
-				// check if local type is a slice with interface element type (e.g., []Animal)
-				// The type lookup fails because sliceSerializer doesn't support interface elements
-				if localType.Kind() == reflect.Slice && localType.Elem().Kind() == reflect.Interface {
+			} else if typeLookupFailed && defTypeId == LIST {
+				// For list fields with failed type lookup (e.g., named struct element types),
+				// allow reading using the local slice type.
+				if localType.Kind() == reflect.Slice {
+					elemKind := localType.Elem().Kind()
+					if elemKind == reflect.Interface ||
+						elemKind == reflect.Struct ||
+						(elemKind == reflect.Ptr && localType.Elem().Elem().Kind() == reflect.Struct) {
+						shouldRead = true
+						fieldType = localType
+					}
+				}
+			} else if typeLookupFailed && defTypeId == MAP {
+				// For map fields with failed type lookup (e.g., named struct key/value types),
+				// allow reading using the local map type.
+				if localType.Kind() == reflect.Map {
+					keyKind := localType.Key().Kind()
+					valueKind := localType.Elem().Kind()
+					if keyKind == reflect.Interface ||
+						keyKind == reflect.Struct ||
+						(keyKind == reflect.Ptr && localType.Key().Elem().Kind() == reflect.Struct) ||
+						valueKind == reflect.Interface ||
+						valueKind == reflect.Struct ||
+						(valueKind == reflect.Ptr && localType.Elem().Elem().Kind() == reflect.Struct) {
+						shouldRead = true
+						fieldType = localType
+					}
+				}
+			} else if typeLookupFailed && defTypeId == SET {
+				if isSetReflectType(localType) {
 					shouldRead = true
 					fieldType = localType
 				}
@@ -724,6 +751,10 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 					if localType.Kind() == reflect.Slice && localType.Elem().Kind() == reflect.Interface {
 						fieldSerializer = mustNewSliceDynSerializer(localType.Elem())
 					}
+				}
+				// If serializer is still nil, fall back to local type serializer.
+				if fieldSerializer == nil {
+					fieldSerializer, _ = typeResolver.getSerializerByType(localType, true)
 				}
 				// For Set fields (fory.Set[T] = map[T]struct{}), get the setSerializer
 				if defTypeId == SET && isSetReflectType(localType) && fieldSerializer == nil {

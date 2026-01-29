@@ -542,12 +542,13 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 		if foryTag.RefSet {
 			trackingRef = foryTag.Ref
 		}
-		// Disable ref tracking for simple types (primitives, strings) in xlang mode
-		// These types don't benefit from ref tracking and Java doesn't expect ref flags for them
+		// Disable ref tracking for simple types (primitives, strings) in xlang mode.
+		// Collection fields only write ref flags when explicitly tagged.
 		if fory.config.IsXlang && trackingRef {
-			// Check if this is a simple field type (primitives, strings, enums, etc.)
-			// SimpleFieldType represents built-in types that don't need ref tracking
+			// SimpleFieldType represents built-in types that don't need ref tracking.
 			if _, ok := ft.(*SimpleFieldType); ok {
+				trackingRef = false
+			} else if isCollectionType(ft.TypeId()) && !foryTag.RefSet {
 				trackingRef = false
 			}
 		}

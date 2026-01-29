@@ -293,6 +293,12 @@ func (r *RefResolver) SetReadObject(refId int32, value reflect.Value) {
 	}
 	if refId >= 0 {
 		r.readObjects[refId] = value
+		// Consume the preserved ref id if it's the most recent.
+		// This keeps the readRefIds stack in sync for serializers that
+		// set the object directly instead of calling Reference().
+		if n := len(r.readRefIds); n > 0 && r.readRefIds[n-1] == refId {
+			r.readRefIds = r.readRefIds[:n-1]
+		}
 	}
 }
 
