@@ -1977,22 +1977,22 @@ void run_test_polymorphic_map(const std::string &data_file) {
     fail("AnimalMapHolder size mismatch");
   }
 
-  auto my_dog_it = holder.animal_map.find(std::string("my_dog"));
+  auto my_dog_it = holder.animal_map.find(std::string("myDog"));
   if (my_dog_it == holder.animal_map.end()) {
-    fail("my_dog not found in holder map");
+    fail("myDog not found in holder map");
   }
   auto *my_dog = dynamic_cast<Dog *>(my_dog_it->second.get());
   if (my_dog == nullptr || my_dog->name != std::string("Fido")) {
-    fail("AnimalMapHolder my_dog mismatch");
+    fail("AnimalMapHolder myDog mismatch");
   }
 
-  auto my_cat_it = holder.animal_map.find(std::string("my_cat"));
+  auto my_cat_it = holder.animal_map.find(std::string("myCat"));
   if (my_cat_it == holder.animal_map.end()) {
-    fail("my_cat not found in holder map");
+    fail("myCat not found in holder map");
   }
   auto *my_cat = dynamic_cast<Cat *>(my_cat_it->second.get());
   if (my_cat == nullptr || my_cat->lives != 8) {
-    fail("AnimalMapHolder my_cat mismatch");
+    fail("AnimalMapHolder myCat mismatch");
   }
 
   // write back
