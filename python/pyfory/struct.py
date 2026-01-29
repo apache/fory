@@ -441,7 +441,7 @@ class DataClassSerializer(Serializer):
         if not self.fory.compatible:
             buffer.write_int32(self._hash)
         else:
-            buffer.write_varuint32(len(self._field_names))
+            buffer.write_var_uint32(len(self._field_names))
 
     def _read_header(self, buffer):
         """Read serialization header and return number of fields written.
@@ -459,7 +459,7 @@ class DataClassSerializer(Serializer):
                 raise TypeNotCompatibleError(f"Hash {hash_} is not consistent with {expected_hash} for type {self.type_}")
             return len(self._field_names)
         else:
-            return buffer.read_varuint32()
+            return buffer.read_var_uint32()
 
     def _get_write_stmt_for_codegen(self, serializer, buffer, field_value):
         """Generate write statement for code generation based on serializer type."""
@@ -582,7 +582,7 @@ class DataClassSerializer(Serializer):
         if not self.fory.compatible:
             stmts.append(f"{buffer}.write_int32({self._hash})")
         else:
-            stmts.append(f"{buffer}.write_varuint32({len(self._field_names)})")
+            stmts.append(f"{buffer}.write_var_uint32({len(self._field_names)})")
 
         if not self._has_slots:
             stmts.append(f"{value_dict} = {value}.__dict__")
@@ -680,7 +680,7 @@ class DataClassSerializer(Serializer):
                 ]
             )
         else:
-            stmts.append(f"num_fields_written = {buffer}.read_varuint32()")
+            stmts.append(f"num_fields_written = {buffer}.read_var_uint32()")
 
         stmts.extend(
             [
@@ -834,7 +834,7 @@ class DataClassSerializer(Serializer):
                         stmts.extend(
                             [
                                 f"if {field_value} is None:",
-                                f"    {buffer}.write_varuint32(0)",
+                                f"    {buffer}.write_var_uint32(0)",
                                 "else:",
                                 f"    {stmt}",
                             ]

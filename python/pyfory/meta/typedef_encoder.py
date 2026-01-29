@@ -76,7 +76,7 @@ def encode_typedef(type_resolver, cls):
         if type_resolver.is_registered_by_name(cls):
             header |= REGISTER_BY_NAME_FLAG
         buffer.write_uint8(header)
-        buffer.write_varuint32(len(field_infos) - SMALL_NUM_FIELDS_THRESHOLD)
+        buffer.write_var_uint32(len(field_infos) - SMALL_NUM_FIELDS_THRESHOLD)
     else:
         if type_resolver.is_registered_by_name(cls):
             header |= REGISTER_BY_NAME_FLAG
@@ -92,7 +92,7 @@ def encode_typedef(type_resolver, cls):
     else:
         assert type_resolver.is_registered_by_id(cls=cls), "Class must be registered by name or id"
         type_id = type_resolver.get_registered_id(cls)
-        buffer.write_varuint32(type_id)
+        buffer.write_var_uint32(type_id)
 
     # Write fields info
     write_fields_info(type_resolver, buffer, field_infos)
@@ -136,7 +136,7 @@ def prepend_header(buffer: bytes, is_compressed: bool, has_fields_meta: bool):
     result = Buffer.allocate(meta_size + 8)
     result.write_int64(header)
     if meta_size >= META_SIZE_MASKS:
-        result.write_varuint32(meta_size - META_SIZE_MASKS)
+        result.write_var_uint32(meta_size - META_SIZE_MASKS)
 
     result.write_bytes(buffer)
     return result.to_bytes(0, result.get_writer_index())
@@ -174,7 +174,7 @@ def write_meta_string(buffer: Buffer, meta_string, encoding_value: int):
         # Use threshold value and write additional length
         header = (BIG_NAME_THRESHOLD << 2) | encoding_value
         buffer.write_uint8(header)
-        buffer.write_varuint32(length - BIG_NAME_THRESHOLD)
+        buffer.write_var_uint32(length - BIG_NAME_THRESHOLD)
     else:
         # Combine length and encoding in single byte
         header = (length << 2) | encoding_value
@@ -224,7 +224,7 @@ def write_field_info(buffer: Buffer, field_info: FieldInfo):
             # Overflow: use 0b1111 and write extra varint
             header |= TAG_ID_SIZE_THRESHOLD << 2
             buffer.write_uint8(header)
-            buffer.write_varuint32(tag_id - TAG_ID_SIZE_THRESHOLD)
+            buffer.write_var_uint32(tag_id - TAG_ID_SIZE_THRESHOLD)
         else:
             # Inline tag_id (0-14)
             header |= tag_id << 2
@@ -244,7 +244,7 @@ def write_field_info(buffer: Buffer, field_info: FieldInfo):
         if field_name_binary_size >= FIELD_NAME_SIZE_THRESHOLD:
             header |= FIELD_NAME_SIZE_THRESHOLD << 2
             buffer.write_uint8(header)
-            buffer.write_varuint32(field_name_binary_size - FIELD_NAME_SIZE_THRESHOLD)
+            buffer.write_var_uint32(field_name_binary_size - FIELD_NAME_SIZE_THRESHOLD)
         else:
             header |= field_name_binary_size << 2
             buffer.write_uint8(header)

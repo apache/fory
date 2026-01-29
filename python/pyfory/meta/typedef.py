@@ -226,7 +226,7 @@ class FieldType:
                 xtype_id |= 0b10
             if self.is_tracking_ref:
                 xtype_id |= 0b1
-        buffer.write_varuint32(xtype_id)
+        buffer.write_var_uint32(xtype_id)
         # Handle nested types
         if self.type_id in [TypeId.LIST, TypeId.SET]:
             self.element_type.xwrite(buffer, True)
@@ -236,7 +236,7 @@ class FieldType:
 
     @classmethod
     def xread(cls, buffer: Buffer, resolver):
-        xtype_id = buffer.read_varuint32()
+        xtype_id = buffer.read_var_uint32()
         is_tracking_ref = (xtype_id & 0b1) != 0
         is_nullable = (xtype_id & 0b10) != 0
         xtype_id = xtype_id >> 2

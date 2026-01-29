@@ -530,15 +530,15 @@ class Fory:
     def write_no_ref(self, buffer, obj):
         cls = type(obj)
         if cls is str:
-            buffer.write_varuint32(STRING_TYPE_ID)
+            buffer.write_var_uint32(STRING_TYPE_ID)
             buffer.write_string(obj)
             return
         elif cls is int:
-            buffer.write_varuint32(INT64_TYPE_ID)
+            buffer.write_var_uint32(INT64_TYPE_ID)
             buffer.write_varint64(obj)
             return
         elif cls is bool:
-            buffer.write_varuint32(BOOL_TYPE_ID)
+            buffer.write_var_uint32(BOOL_TYPE_ID)
             buffer.write_bool(obj)
             return
         else:
@@ -697,7 +697,7 @@ class Fory:
         if self.buffer_callback is None:
             size = buffer_object.total_bytes()
             # writer length.
-            buffer.write_varuint32(size)
+            buffer.write_var_uint32(size)
             writer_index = buffer.get_writer_index()
             buffer.ensure(writer_index + size)
             buf = buffer.slice(writer_index, size)
@@ -708,7 +708,7 @@ class Fory:
             buffer.write_bool(True)
             size = buffer_object.total_bytes()
             # writer length.
-            buffer.write_varuint32(size)
+            buffer.write_var_uint32(size)
             writer_index = buffer.get_writer_index()
             buffer.ensure(writer_index + size)
             buf = buffer.slice(writer_index, size)
@@ -719,7 +719,7 @@ class Fory:
 
     def read_buffer_object(self, buffer) -> Buffer:
         if not self.is_peer_out_of_band_enabled:
-            size = buffer.read_varuint32()
+            size = buffer.read_var_uint32()
             reader_index = buffer.get_reader_index()
             buf = buffer.slice(reader_index, size)
             buffer.set_reader_index(reader_index + size)
@@ -728,7 +728,7 @@ class Fory:
         if not in_band:
             assert self._buffers is not None
             return next(self._buffers)
-        size = buffer.read_varuint32()
+        size = buffer.read_var_uint32()
         reader_index = buffer.get_reader_index()
         buf = buffer.slice(reader_index, size)
         buffer.set_reader_index(reader_index + size)

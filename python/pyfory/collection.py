@@ -104,7 +104,7 @@ class CollectionSerializer(Serializer):
             elif self.elem_tracking_ref == -1:
                 if not has_same_type or elem_typeinfo.serializer.need_to_write_ref:
                     collect_flag |= COLL_TRACKING_REF
-        buffer.write_varuint32(len(value))
+        buffer.write_var_uint32(len(value))
         buffer.write_int8(collect_flag)
         if has_same_type and (collect_flag & COLL_IS_DECL_ELEMENT_TYPE) == 0:
             self.type_resolver.write_typeinfo(buffer, elem_typeinfo)
@@ -112,7 +112,7 @@ class CollectionSerializer(Serializer):
 
     def write(self, buffer, value):
         if len(value) == 0:
-            buffer.write_varuint32(0)
+            buffer.write_var_uint32(0)
             return
         collect_flag, typeinfo = self.write_header(buffer, value)
         if (collect_flag & COLL_IS_SAME_TYPE) != 0:
@@ -196,7 +196,7 @@ class CollectionSerializer(Serializer):
                         typeinfo.serializer.xwrite(buffer, s)
 
     def read(self, buffer):
-        len_ = buffer.read_varuint32()
+        len_ = buffer.read_var_uint32()
         collection_ = self.new_instance(self.type_)
         if len_ == 0:
             return collection_
@@ -418,7 +418,7 @@ class MapSerializer(Serializer):
     def write(self, buffer, o):
         obj = o
         length = len(obj)
-        buffer.write_varuint32(length)
+        buffer.write_var_uint32(length)
         if length == 0:
             return
         fory = self.fory
@@ -534,7 +534,7 @@ class MapSerializer(Serializer):
         fory = self.fory
         ref_resolver = self.ref_resolver
         type_resolver = self.type_resolver
-        size = buffer.read_varuint32()
+        size = buffer.read_var_uint32()
         map_ = {}
         ref_resolver.reference(map_)
         chunk_header = 0

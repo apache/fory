@@ -155,7 +155,7 @@ class MapRefResolver(RefResolver):
             # The obj has been written previously.
             if written_id is not None:
                 buffer.write_int8(REF_FLAG)
-                buffer.write_varuint32(written_id[0])
+                buffer.write_var_uint32(written_id[0])
                 return True
             else:
                 written_id = len(self.written_objects)
@@ -169,7 +169,7 @@ class MapRefResolver(RefResolver):
         head_flag = buffer.read_int8()
         if head_flag == REF_FLAG:
             # read reference id and get object from reference resolver
-            ref_id = buffer.read_varuint32()
+            ref_id = buffer.read_var_uint32()
             self.read_object = self.get_read_object(ref_id)
             return REF_FLAG
         else:
@@ -186,7 +186,7 @@ class MapRefResolver(RefResolver):
         head_flag = buffer.read_int8()
         if head_flag == REF_FLAG:
             # read reference id and get object from reference resolver
-            ref_id = buffer.read_varuint32()
+            ref_id = buffer.read_var_uint32()
             self.read_object = self.get_read_object(id_=ref_id)
         else:
             self.read_object = None

@@ -270,7 +270,7 @@ def test_buffer(data_file_path):
         assert buffer.read_int64() == 2**63 - 1
         assert math.isclose(buffer.read_float(), -1.1, rel_tol=1e-03)
         assert math.isclose(buffer.read_double(), -1.1, rel_tol=1e-03)
-        assert buffer.read_varuint32() == 100
+        assert buffer.read_var_uint32() == 100
         binary = b"ab"
         assert buffer.read_bytes(buffer.read_int32()) == binary
         buffer.write_bool(True)
@@ -280,7 +280,7 @@ def test_buffer(data_file_path):
         buffer.write_int64(2**63 - 1)
         buffer.write_float(-1.1)
         buffer.write_double(-1.1)
-        buffer.write_varuint32(100)
+        buffer.write_var_uint32(100)
         buffer.write_int32(len(binary))
         buffer.write_bytes(binary)
     with open(data_file_path, "wb+") as f:

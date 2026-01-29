@@ -752,7 +752,7 @@ class TypeResolver:
             return
         type_id = typeinfo.type_id
         internal_type_id = type_id & 0xFF
-        buffer.write_varuint32(type_id)
+        buffer.write_var_uint32(type_id)
         if TypeId.is_namespaced_type(internal_type_id):
             self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.namespace_bytes)
             self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.typename_bytes)
@@ -762,7 +762,7 @@ class TypeResolver:
         if self.meta_share:
             return self.read_shared_type_meta(buffer)
 
-        type_id = buffer.read_varuint32()
+        type_id = buffer.read_var_uint32()
         internal_type_id = type_id & 0xFF
         if TypeId.is_namespaced_type(internal_type_id):
             ns_metabytes = self.metastring_resolver.read_meta_string_bytes(buffer)

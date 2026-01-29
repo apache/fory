@@ -31,7 +31,8 @@ from libcpp.string cimport string as c_string
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
 from pyfory.includes.libutil cimport(
-    CBuffer, allocate_buffer, get_bit, set_bit, clear_bit, set_bit_to, CError, CErrorCode, CResultVoidError, utf16_has_surrogate_pairs
+    CBuffer, allocate_buffer, get_bit as c_get_bit, set_bit as c_set_bit, clear_bit as c_clear_bit,
+    set_bit_to as c_set_bit_to, CError, CErrorCode, CResultVoidError, utf16_has_surrogate_pairs
 )
 import os
 from pyfory.error import raise_fory_error
@@ -739,20 +740,20 @@ cdef Py_ssize_t _normalize_index(Py_ssize_t index,
 
 
 def get_bit(Buffer buffer, uint32_t base_offset, uint32_t index) -> bool:
-    return get_bit(buffer.c_buffer.data() + base_offset, index)
+    return c_get_bit(buffer.c_buffer.data() + base_offset, index)
 
 
 def set_bit(Buffer buffer, uint32_t base_offset, uint32_t index):
-    return set_bit(buffer.c_buffer.data() + base_offset, index)
+    return c_set_bit(buffer.c_buffer.data() + base_offset, index)
 
 
 def clear_bit(Buffer buffer, uint32_t base_offset, uint32_t index):
-    return clear_bit(buffer.c_buffer.data() + base_offset, index)
+    return c_clear_bit(buffer.c_buffer.data() + base_offset, index)
 
 
 def set_bit_to(Buffer buffer,
                uint32_t base_offset,
                uint32_t index,
                c_bool bit_is_set):
-    return set_bit_to(
+    return c_set_bit_to(
         buffer.c_buffer.data() + base_offset, index, bit_is_set)
