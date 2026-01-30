@@ -27,6 +27,7 @@ import (
 	"github.com/apache/fory/go/fory/optional"
 	addressbook "github.com/apache/fory/integration_tests/idl_tests/go/addressbook"
 	anyexample "github.com/apache/fory/integration_tests/idl_tests/go/any_example"
+	collection "github.com/apache/fory/integration_tests/idl_tests/go/collection"
 	complexfbs "github.com/apache/fory/integration_tests/idl_tests/go/complex_fbs"
 	complexpb "github.com/apache/fory/integration_tests/idl_tests/go/complex_pb"
 	graphpkg "github.com/apache/fory/integration_tests/idl_tests/go/graph"
@@ -97,6 +98,9 @@ func runAddressBookRoundTrip(t *testing.T, compatible bool) {
 	if err := complexfbs.RegisterTypes(f); err != nil {
 		t.Fatalf("register flatbuffers types: %v", err)
 	}
+	if err := collection.RegisterTypes(f); err != nil {
+		t.Fatalf("register collection types: %v", err)
+	}
 	if err := optionaltypes.RegisterTypes(f); err != nil {
 		t.Fatalf("register optional types: %v", err)
 	}
@@ -111,6 +115,13 @@ func runAddressBookRoundTrip(t *testing.T, compatible bool) {
 	types := buildPrimitiveTypes()
 	runLocalPrimitiveRoundTrip(t, f, types)
 	runFilePrimitiveRoundTrip(t, f, types)
+
+	collections := buildNumericCollections()
+	collectionUnion := buildNumericCollectionUnion()
+	collectionsArray := buildNumericCollectionsArray()
+	collectionArrayUnion := buildNumericCollectionArrayUnion()
+	runLocalCollectionRoundTrip(t, f, collections, collectionUnion, collectionsArray, collectionArrayUnion)
+	runFileCollectionRoundTrip(t, f, collections, collectionUnion, collectionsArray, collectionArrayUnion)
 
 	monster := buildMonster()
 	runLocalMonsterRoundTrip(t, f, monster)
@@ -441,6 +452,44 @@ func buildPrimitiveTypes() complexpb.PrimitiveTypes {
 	}
 }
 
+func buildNumericCollections() collection.NumericCollections {
+	return collection.NumericCollections{
+		Int8Values:    []int8{1, -2, 3},
+		Int16Values:   []int16{100, -200, 300},
+		Int32Values:   []int32{1000, -2000, 3000},
+		Int64Values:   []int64{10000, -20000, 30000},
+		Uint8Values:   []uint8{200, 250},
+		Uint16Values:  []uint16{50000, 60000},
+		Uint32Values:  []uint32{2000000000, 2100000000},
+		Uint64Values:  []uint64{9000000000, 12000000000},
+		Float32Values: []float32{1.5, 2.5},
+		Float64Values: []float64{3.5, 4.5},
+	}
+}
+
+func buildNumericCollectionUnion() collection.NumericCollectionUnion {
+	return collection.Int32ValuesNumericCollectionUnion([]int32{7, 8, 9})
+}
+
+func buildNumericCollectionsArray() collection.NumericCollectionsArray {
+	return collection.NumericCollectionsArray{
+		Int8Values:    []int8{1, -2, 3},
+		Int16Values:   []int16{100, -200, 300},
+		Int32Values:   []int32{1000, -2000, 3000},
+		Int64Values:   []int64{10000, -20000, 30000},
+		Uint8Values:   []uint8{200, 250},
+		Uint16Values:  []uint16{50000, 60000},
+		Uint32Values:  []uint32{2000000000, 2100000000},
+		Uint64Values:  []uint64{9000000000, 12000000000},
+		Float32Values: []float32{1.5, 2.5},
+		Float64Values: []float64{3.5, 4.5},
+	}
+}
+
+func buildNumericCollectionArrayUnion() collection.NumericCollectionArrayUnion {
+	return collection.Uint16ValuesNumericCollectionArrayUnion([]uint16{1000, 2000, 3000})
+}
+
 func runLocalPrimitiveRoundTrip(t *testing.T, f *fory.Fory, types complexpb.PrimitiveTypes) {
 	data, err := f.Serialize(&types)
 	if err != nil {
@@ -481,6 +530,162 @@ func runFilePrimitiveRoundTrip(t *testing.T, f *fory.Fory, types complexpb.Primi
 	}
 	if err := os.WriteFile(dataFile, out, 0o644); err != nil {
 		t.Fatalf("write data file: %v", err)
+	}
+}
+
+func runLocalCollectionRoundTrip(
+	t *testing.T,
+	f *fory.Fory,
+	collections collection.NumericCollections,
+	unionValue collection.NumericCollectionUnion,
+	collectionsArray collection.NumericCollectionsArray,
+	arrayUnion collection.NumericCollectionArrayUnion,
+) {
+	data, err := f.Serialize(&collections)
+	if err != nil {
+		t.Fatalf("serialize collections: %v", err)
+	}
+
+	var out collection.NumericCollections
+	if err := f.Deserialize(data, &out); err != nil {
+		t.Fatalf("deserialize collections: %v", err)
+	}
+
+	if !reflect.DeepEqual(collections, out) {
+		t.Fatalf("collection roundtrip mismatch: %#v != %#v", collections, out)
+	}
+
+	unionData, err := f.Serialize(&unionValue)
+	if err != nil {
+		t.Fatalf("serialize collection union: %v", err)
+	}
+	var unionOut collection.NumericCollectionUnion
+	if err := f.Deserialize(unionData, &unionOut); err != nil {
+		t.Fatalf("deserialize collection union: %v", err)
+	}
+	if !reflect.DeepEqual(unionValue, unionOut) {
+		t.Fatalf("collection union mismatch: %#v != %#v", unionValue, unionOut)
+	}
+
+	arrayData, err := f.Serialize(&collectionsArray)
+	if err != nil {
+		t.Fatalf("serialize collection array: %v", err)
+	}
+	var arrayOut collection.NumericCollectionsArray
+	if err := f.Deserialize(arrayData, &arrayOut); err != nil {
+		t.Fatalf("deserialize collection array: %v", err)
+	}
+	if !reflect.DeepEqual(collectionsArray, arrayOut) {
+		t.Fatalf("collection array mismatch: %#v != %#v", collectionsArray, arrayOut)
+	}
+
+	arrayUnionData, err := f.Serialize(&arrayUnion)
+	if err != nil {
+		t.Fatalf("serialize collection array union: %v", err)
+	}
+	var arrayUnionOut collection.NumericCollectionArrayUnion
+	if err := f.Deserialize(arrayUnionData, &arrayUnionOut); err != nil {
+		t.Fatalf("deserialize collection array union: %v", err)
+	}
+	if !reflect.DeepEqual(arrayUnion, arrayUnionOut) {
+		t.Fatalf("collection array union mismatch: %#v != %#v", arrayUnion, arrayUnionOut)
+	}
+}
+
+func runFileCollectionRoundTrip(
+	t *testing.T,
+	f *fory.Fory,
+	collections collection.NumericCollections,
+	unionValue collection.NumericCollectionUnion,
+	collectionsArray collection.NumericCollectionsArray,
+	arrayUnion collection.NumericCollectionArrayUnion,
+) {
+	dataFile := os.Getenv("DATA_FILE_COLLECTION")
+	if dataFile != "" {
+		payload, err := os.ReadFile(dataFile)
+		if err != nil {
+			t.Fatalf("read collection file: %v", err)
+		}
+		var decoded collection.NumericCollections
+		if err := f.Deserialize(payload, &decoded); err != nil {
+			t.Fatalf("deserialize collection file: %v", err)
+		}
+		if !reflect.DeepEqual(collections, decoded) {
+			t.Fatalf("collection file mismatch: %#v != %#v", collections, decoded)
+		}
+		out, err := f.Serialize(&decoded)
+		if err != nil {
+			t.Fatalf("serialize collection file: %v", err)
+		}
+		if err := os.WriteFile(dataFile, out, 0o644); err != nil {
+			t.Fatalf("write collection file: %v", err)
+		}
+	}
+
+	unionFile := os.Getenv("DATA_FILE_COLLECTION_UNION")
+	if unionFile != "" {
+		payload, err := os.ReadFile(unionFile)
+		if err != nil {
+			t.Fatalf("read collection union file: %v", err)
+		}
+		var decoded collection.NumericCollectionUnion
+		if err := f.Deserialize(payload, &decoded); err != nil {
+			t.Fatalf("deserialize collection union file: %v", err)
+		}
+		if !reflect.DeepEqual(unionValue, decoded) {
+			t.Fatalf("collection union file mismatch: %#v != %#v", unionValue, decoded)
+		}
+		out, err := f.Serialize(&decoded)
+		if err != nil {
+			t.Fatalf("serialize collection union file: %v", err)
+		}
+		if err := os.WriteFile(unionFile, out, 0o644); err != nil {
+			t.Fatalf("write collection union file: %v", err)
+		}
+	}
+
+	arrayFile := os.Getenv("DATA_FILE_COLLECTION_ARRAY")
+	if arrayFile != "" {
+		payload, err := os.ReadFile(arrayFile)
+		if err != nil {
+			t.Fatalf("read collection array file: %v", err)
+		}
+		var decoded collection.NumericCollectionsArray
+		if err := f.Deserialize(payload, &decoded); err != nil {
+			t.Fatalf("deserialize collection array file: %v", err)
+		}
+		if !reflect.DeepEqual(collectionsArray, decoded) {
+			t.Fatalf("collection array file mismatch: %#v != %#v", collectionsArray, decoded)
+		}
+		out, err := f.Serialize(&decoded)
+		if err != nil {
+			t.Fatalf("serialize collection array file: %v", err)
+		}
+		if err := os.WriteFile(arrayFile, out, 0o644); err != nil {
+			t.Fatalf("write collection array file: %v", err)
+		}
+	}
+
+	arrayUnionFile := os.Getenv("DATA_FILE_COLLECTION_ARRAY_UNION")
+	if arrayUnionFile != "" {
+		payload, err := os.ReadFile(arrayUnionFile)
+		if err != nil {
+			t.Fatalf("read collection array union file: %v", err)
+		}
+		var decoded collection.NumericCollectionArrayUnion
+		if err := f.Deserialize(payload, &decoded); err != nil {
+			t.Fatalf("deserialize collection array union file: %v", err)
+		}
+		if !reflect.DeepEqual(arrayUnion, decoded) {
+			t.Fatalf("collection array union file mismatch: %#v != %#v", arrayUnion, decoded)
+		}
+		out, err := f.Serialize(&decoded)
+		if err != nil {
+			t.Fatalf("serialize collection array union file: %v", err)
+		}
+		if err := os.WriteFile(arrayUnionFile, out, 0o644); err != nil {
+			t.Fatalf("write collection array union file: %v", err)
+		}
 	}
 }
 

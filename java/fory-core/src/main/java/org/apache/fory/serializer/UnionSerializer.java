@@ -21,8 +21,24 @@ package org.apache.fory.serializer;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.BiFunction;
 import org.apache.fory.Fory;
+import org.apache.fory.collection.BoolList;
+import org.apache.fory.collection.Float32List;
+import org.apache.fory.collection.Float64List;
+import org.apache.fory.collection.Int16List;
+import org.apache.fory.collection.Int32List;
+import org.apache.fory.collection.Int64List;
+import org.apache.fory.collection.Int8List;
+import org.apache.fory.collection.Uint16List;
+import org.apache.fory.collection.Uint32List;
+import org.apache.fory.collection.Uint64List;
+import org.apache.fory.collection.Uint8List;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
@@ -69,6 +85,7 @@ public class UnionSerializer extends Serializer<Union> {
       };
 
   private final BiFunction<Integer, Object, Union> factory;
+  private final Map<Integer, Class<?>> caseValueTypes;
 
   @SuppressWarnings("unchecked")
   public UnionSerializer(Fory fory, Class<? extends Union> cls) {
@@ -79,6 +96,7 @@ public class UnionSerializer extends Serializer<Union> {
     } else {
       this.factory = createFactory(cls);
     }
+    this.caseValueTypes = resolveCaseValueTypes(cls);
   }
 
   private static int getTypeIndex(Class<? extends Union> cls) {
@@ -153,6 +171,15 @@ public class UnionSerializer extends Serializer<Union> {
   public Union xread(MemoryBuffer buffer) {
     int index = buffer.readVarUint32();
     Object value = fory.xreadRef(buffer);
+    if (value != null && !caseValueTypes.isEmpty()) {
+      Class<?> expectedType = caseValueTypes.get(index);
+      if (expectedType != null && !expectedType.isInstance(value)) {
+        Object converted = convertUnionValue(expectedType, value);
+        if (converted != null) {
+          value = converted;
+        }
+      }
+    }
     return factory.apply(index, value);
   }
 
@@ -167,9 +194,16 @@ public class UnionSerializer extends Serializer<Union> {
   }
 
   private void writeCaseValue(MemoryBuffer buffer, Object value, int typeId) {
+    int internalTypeId = typeId & 0xff;
+    boolean primitiveArray = Types.isPrimitiveArray(internalTypeId);
     Serializer serializer = null;
     if (value != null) {
-      serializer = getSerializer(typeId, value);
+      if (primitiveArray) {
+        ClassInfo classInfo = fory.getTypeResolver().getClassInfo(value.getClass());
+        serializer = classInfo == null ? null : classInfo.getSerializer();
+      } else {
+        serializer = getSerializer(typeId, value);
+      }
     }
     RefResolver refResolver = fory.getRefResolver();
     if (serializer != null && serializer.needToWriteRef()) {
@@ -183,7 +217,11 @@ public class UnionSerializer extends Serializer<Union> {
       }
       buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
     }
-    writeTypeInfo(buffer, typeId, value);
+    if (primitiveArray) {
+      buffer.writeVarUint32Small7(typeId);
+    } else {
+      writeTypeInfo(buffer, typeId, value);
+    }
     writeValue(buffer, value, typeId, serializer);
   }
 
@@ -222,6 +260,9 @@ public class UnionSerializer extends Serializer<Union> {
     if (resolver instanceof XtypeResolver) {
       ClassInfo classInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
       if (classInfo != null) {
+        if (Types.isPrimitiveArray(internalTypeId) && !classInfo.getCls().isInstance(value)) {
+          return resolver.getClassInfo(value.getClass());
+        }
         return classInfo;
       }
     }
@@ -324,5 +365,156 @@ public class UnionSerializer extends Serializer<Union> {
       default:
         return false;
     }
+  }
+
+  private Map<Integer, Class<?>> resolveCaseValueTypes(Class<? extends Union> unionClass) {
+    Map<Integer, Class<?>> mapping = new HashMap<>();
+    Class<? extends Enum<?>> caseEnum = null;
+    Field idField = null;
+    for (Class<?> nested : unionClass.getDeclaredClasses()) {
+      if (nested.isEnum() && nested.getSimpleName().endsWith("Case")) {
+        @SuppressWarnings("unchecked")
+        Class<? extends Enum<?>> enumClass = (Class<? extends Enum<?>>) nested;
+        try {
+          Field field = enumClass.getDeclaredField("id");
+          if (field.getType() == int.class) {
+            caseEnum = enumClass;
+            idField = field;
+            idField.setAccessible(true);
+            break;
+          }
+        } catch (NoSuchFieldException ignored) {
+          // try next enum
+        }
+      }
+    }
+    if (caseEnum == null || idField == null) {
+      return mapping;
+    }
+    for (Enum<?> constant : caseEnum.getEnumConstants()) {
+      int caseId;
+      try {
+        caseId = (int) idField.get(constant);
+      } catch (IllegalAccessException e) {
+        continue;
+      }
+      String suffix = toPascalCase(constant.name());
+      Class<?> expected = findCaseValueType(unionClass, suffix);
+      if (expected != null) {
+        mapping.put(caseId, expected);
+      }
+    }
+    return mapping;
+  }
+
+  private static Class<?> findCaseValueType(Class<? extends Union> unionClass, String suffix) {
+    String setterName = "set" + suffix;
+    for (Method method : unionClass.getMethods()) {
+      if (!Modifier.isPublic(method.getModifiers())) {
+        continue;
+      }
+      if (method.getName().equals(setterName) && method.getParameterCount() == 1) {
+        return method.getParameterTypes()[0];
+      }
+    }
+    String getterName = "get" + suffix;
+    for (Method method : unionClass.getMethods()) {
+      if (!Modifier.isPublic(method.getModifiers())) {
+        continue;
+      }
+      if (method.getName().equals(getterName) && method.getParameterCount() == 0) {
+        Class<?> returnType = method.getReturnType();
+        if (returnType != void.class) {
+          return returnType;
+        }
+      }
+    }
+    return null;
+  }
+
+  private static String toPascalCase(String upperSnake) {
+    StringBuilder builder = new StringBuilder();
+    String[] parts = upperSnake.split("_");
+    for (String part : parts) {
+      if (part.isEmpty()) {
+        continue;
+      }
+      String lower = part.toLowerCase();
+      builder.append(Character.toUpperCase(lower.charAt(0)));
+      if (lower.length() > 1) {
+        builder.append(lower.substring(1));
+      }
+    }
+    return builder.toString();
+  }
+
+  private static Object convertUnionValue(Class<?> expectedType, Object value) {
+    if (expectedType == Int8List.class && value instanceof byte[]) {
+      return new Int8List((byte[]) value);
+    }
+    if (expectedType == Int16List.class && value instanceof short[]) {
+      return new Int16List((short[]) value);
+    }
+    if (expectedType == Int32List.class && value instanceof int[]) {
+      return new Int32List((int[]) value);
+    }
+    if (expectedType == Int64List.class && value instanceof long[]) {
+      return new Int64List((long[]) value);
+    }
+    if (expectedType == Uint8List.class && value instanceof byte[]) {
+      return new Uint8List((byte[]) value);
+    }
+    if (expectedType == Uint16List.class && value instanceof short[]) {
+      return new Uint16List((short[]) value);
+    }
+    if (expectedType == Uint32List.class && value instanceof int[]) {
+      return new Uint32List((int[]) value);
+    }
+    if (expectedType == Uint64List.class && value instanceof long[]) {
+      return new Uint64List((long[]) value);
+    }
+    if (expectedType == BoolList.class && value instanceof boolean[]) {
+      return new BoolList((boolean[]) value);
+    }
+    if (expectedType == Float32List.class && value instanceof float[]) {
+      return new Float32List((float[]) value);
+    }
+    if (expectedType == Float64List.class && value instanceof double[]) {
+      return new Float64List((double[]) value);
+    }
+    if (expectedType == byte[].class && value instanceof Int8List) {
+      return ((Int8List) value).copyArray();
+    }
+    if (expectedType == short[].class && value instanceof Int16List) {
+      return ((Int16List) value).copyArray();
+    }
+    if (expectedType == int[].class && value instanceof Int32List) {
+      return ((Int32List) value).copyArray();
+    }
+    if (expectedType == long[].class && value instanceof Int64List) {
+      return ((Int64List) value).copyArray();
+    }
+    if (expectedType == byte[].class && value instanceof Uint8List) {
+      return ((Uint8List) value).copyArray();
+    }
+    if (expectedType == short[].class && value instanceof Uint16List) {
+      return ((Uint16List) value).copyArray();
+    }
+    if (expectedType == int[].class && value instanceof Uint32List) {
+      return ((Uint32List) value).copyArray();
+    }
+    if (expectedType == long[].class && value instanceof Uint64List) {
+      return ((Uint64List) value).copyArray();
+    }
+    if (expectedType == boolean[].class && value instanceof BoolList) {
+      return ((BoolList) value).copyArray();
+    }
+    if (expectedType == float[].class && value instanceof Float32List) {
+      return ((Float32List) value).copyArray();
+    }
+    if (expectedType == double[].class && value instanceof Float64List) {
+      return ((Float64List) value).copyArray();
+    }
+    return null;
   }
 }

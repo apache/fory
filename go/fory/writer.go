@@ -307,6 +307,51 @@ func (c *WriteContext) WriteInt64Slice(value []int64, refMode RefMode, writeType
 	WriteInt64Slice(c.buffer, value)
 }
 
+// WriteUint16Slice writes []uint16 with ref/type info
+func (c *WriteContext) WriteUint16Slice(value []uint16, refMode RefMode, writeTypeInfo bool) {
+	if refMode != RefModeNone {
+		if value == nil {
+			c.buffer.WriteInt8(NullFlag)
+			return
+		}
+		c.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeTypeInfo {
+		c.WriteTypeId(UINT16_ARRAY)
+	}
+	WriteUint16Slice(c.buffer, value)
+}
+
+// WriteUint32Slice writes []uint32 with ref/type info
+func (c *WriteContext) WriteUint32Slice(value []uint32, refMode RefMode, writeTypeInfo bool) {
+	if refMode != RefModeNone {
+		if value == nil {
+			c.buffer.WriteInt8(NullFlag)
+			return
+		}
+		c.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeTypeInfo {
+		c.WriteTypeId(UINT32_ARRAY)
+	}
+	WriteUint32Slice(c.buffer, value)
+}
+
+// WriteUint64Slice writes []uint64 with ref/type info
+func (c *WriteContext) WriteUint64Slice(value []uint64, refMode RefMode, writeTypeInfo bool) {
+	if refMode != RefModeNone {
+		if value == nil {
+			c.buffer.WriteInt8(NullFlag)
+			return
+		}
+		c.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeTypeInfo {
+		c.WriteTypeId(UINT64_ARRAY)
+	}
+	WriteUint64Slice(c.buffer, value)
+}
+
 // WriteIntSlice writes []int with ref/type info
 func (c *WriteContext) WriteIntSlice(value []int, refMode RefMode, writeTypeInfo bool) {
 	if refMode != RefModeNone {

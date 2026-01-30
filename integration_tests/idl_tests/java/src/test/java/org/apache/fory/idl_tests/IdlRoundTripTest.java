@@ -27,6 +27,11 @@ import addressbook.Dog;
 import addressbook.Person;
 import addressbook.Person.PhoneNumber;
 import addressbook.Person.PhoneType;
+import collection.CollectionForyRegistration;
+import collection.NumericCollectionArrayUnion;
+import collection.NumericCollectionUnion;
+import collection.NumericCollections;
+import collection.NumericCollectionsArray;
 import complex_pb.ComplexPbForyRegistration;
 import complex_pb.PrimitiveTypes;
 import any_example.AnyExampleForyRegistration;
@@ -71,6 +76,14 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
+import org.apache.fory.collection.Int16List;
+import org.apache.fory.collection.Int32List;
+import org.apache.fory.collection.Int64List;
+import org.apache.fory.collection.Int8List;
+import org.apache.fory.collection.Uint16List;
+import org.apache.fory.collection.Uint32List;
+import org.apache.fory.collection.Uint64List;
+import org.apache.fory.collection.Uint8List;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.testng.Assert;
@@ -201,6 +214,93 @@ public class IdlRoundTripTest {
       Object roundTrip = fory.deserialize(peerBytes);
       Assert.assertTrue(roundTrip instanceof PrimitiveTypes);
       Assert.assertEquals(roundTrip, types);
+    }
+  }
+
+  @Test
+  public void testCollectionRoundTripCompatible() throws Exception {
+    runCollectionRoundTrip(true);
+  }
+
+  @Test
+  public void testCollectionRoundTripSchemaConsistent() throws Exception {
+    runCollectionRoundTrip(false);
+  }
+
+  private void runCollectionRoundTrip(boolean compatible) throws Exception {
+    Fory fory = buildFory(compatible);
+    CollectionForyRegistration.register(fory);
+
+    NumericCollections collections = buildNumericCollections();
+    NumericCollectionUnion collectionUnion = buildNumericCollectionUnion();
+    NumericCollectionsArray collectionsArray = buildNumericCollectionsArray();
+    NumericCollectionArrayUnion collectionArrayUnion = buildNumericCollectionArrayUnion();
+
+    byte[] collectionsBytes = fory.serialize(collections);
+    Object collectionsDecoded = fory.deserialize(collectionsBytes);
+    Assert.assertTrue(collectionsDecoded instanceof NumericCollections);
+    Assert.assertEquals(collectionsDecoded, collections);
+
+    byte[] unionBytes = fory.serialize(collectionUnion);
+    Object unionDecoded = fory.deserialize(unionBytes);
+    assertNumericCollectionUnion(unionDecoded, collectionUnion);
+
+    byte[] arrayBytes = fory.serialize(collectionsArray);
+    Object arrayDecoded = fory.deserialize(arrayBytes);
+    Assert.assertTrue(arrayDecoded instanceof NumericCollectionsArray);
+    Assert.assertEquals(arrayDecoded, collectionsArray);
+
+    byte[] arrayUnionBytes = fory.serialize(collectionArrayUnion);
+    Object arrayUnionDecoded = fory.deserialize(arrayUnionBytes);
+    assertNumericCollectionArrayUnion(arrayUnionDecoded, collectionArrayUnion);
+
+    for (String peer : resolvePeers()) {
+      Path collectionsFile =
+          Files.createTempFile("idl-collections-" + peer + "-", ".bin");
+      collectionsFile.toFile().deleteOnExit();
+      Files.write(collectionsFile, collectionsBytes);
+
+      Path unionFile =
+          Files.createTempFile("idl-collection-union-" + peer + "-", ".bin");
+      unionFile.toFile().deleteOnExit();
+      Files.write(unionFile, unionBytes);
+
+      Path arrayFile =
+          Files.createTempFile("idl-collections-array-" + peer + "-", ".bin");
+      arrayFile.toFile().deleteOnExit();
+      Files.write(arrayFile, arrayBytes);
+
+      Path arrayUnionFile =
+          Files.createTempFile("idl-collection-array-union-" + peer + "-", ".bin");
+      arrayUnionFile.toFile().deleteOnExit();
+      Files.write(arrayUnionFile, arrayUnionBytes);
+
+      Map<String, String> env = new HashMap<>();
+      env.put("DATA_FILE_COLLECTION", collectionsFile.toAbsolutePath().toString());
+      env.put("DATA_FILE_COLLECTION_UNION", unionFile.toAbsolutePath().toString());
+      env.put("DATA_FILE_COLLECTION_ARRAY", arrayFile.toAbsolutePath().toString());
+      env.put(
+          "DATA_FILE_COLLECTION_ARRAY_UNION", arrayUnionFile.toAbsolutePath().toString());
+      PeerCommand command = buildPeerCommand(peer, env, compatible);
+      runPeer(command, peer);
+
+      byte[] peerCollectionsBytes = Files.readAllBytes(collectionsFile);
+      Object collectionsRoundTrip = fory.deserialize(peerCollectionsBytes);
+      Assert.assertTrue(collectionsRoundTrip instanceof NumericCollections);
+      Assert.assertEquals(collectionsRoundTrip, collections);
+
+      byte[] peerUnionBytes = Files.readAllBytes(unionFile);
+      Object unionRoundTrip = fory.deserialize(peerUnionBytes);
+      assertNumericCollectionUnion(unionRoundTrip, collectionUnion);
+
+      byte[] peerArrayBytes = Files.readAllBytes(arrayFile);
+      Object arrayRoundTrip = fory.deserialize(peerArrayBytes);
+      Assert.assertTrue(arrayRoundTrip instanceof NumericCollectionsArray);
+      Assert.assertEquals(arrayRoundTrip, collectionsArray);
+
+      byte[] peerArrayUnionBytes = Files.readAllBytes(arrayUnionFile);
+      Object arrayUnionRoundTrip = fory.deserialize(peerArrayUnionBytes);
+      assertNumericCollectionArrayUnion(arrayUnionRoundTrip, collectionArrayUnion);
     }
   }
 
@@ -591,6 +691,76 @@ public class IdlRoundTripTest {
     return types;
   }
 
+  private NumericCollections buildNumericCollections() {
+    NumericCollections collections = new NumericCollections();
+    collections.setInt8Values(new Int8List(new byte[] {1, -2, 3}));
+    collections.setInt16Values(new Int16List(new short[] {100, -200, 300}));
+    collections.setInt32Values(new Int32List(new int[] {1000, -2000, 3000}));
+    collections.setInt64Values(new Int64List(new long[] {10000L, -20000L, 30000L}));
+    collections.setUint8Values(new Uint8List(new byte[] {(byte) 200, (byte) 250}));
+    collections.setUint16Values(new Uint16List(new short[] {(short) 50000, (short) 60000}));
+    collections.setUint32Values(new Uint32List(new int[] {2000000000, 2100000000}));
+    collections.setUint64Values(new Uint64List(new long[] {9000000000L, 12000000000L}));
+    collections.setFloat32Values(new float[] {1.5f, 2.5f});
+    collections.setFloat64Values(new double[] {3.5d, 4.5d});
+    return collections;
+  }
+
+  private NumericCollectionUnion buildNumericCollectionUnion() {
+    return NumericCollectionUnion.ofInt32Values(new Int32List(new int[] {7, 8, 9}));
+  }
+
+  private NumericCollectionsArray buildNumericCollectionsArray() {
+    NumericCollectionsArray collections = new NumericCollectionsArray();
+    collections.setInt8Values(new byte[] {1, -2, 3});
+    collections.setInt16Values(new short[] {100, -200, 300});
+    collections.setInt32Values(new int[] {1000, -2000, 3000});
+    collections.setInt64Values(new long[] {10000L, -20000L, 30000L});
+    collections.setUint8Values(new byte[] {(byte) 200, (byte) 250});
+    collections.setUint16Values(new short[] {(short) 50000, (short) 60000});
+    collections.setUint32Values(new int[] {2000000000, 2100000000});
+    collections.setUint64Values(new long[] {9000000000L, 12000000000L});
+    collections.setFloat32Values(new float[] {1.5f, 2.5f});
+    collections.setFloat64Values(new double[] {3.5d, 4.5d});
+    return collections;
+  }
+
+  private NumericCollectionArrayUnion buildNumericCollectionArrayUnion() {
+    return NumericCollectionArrayUnion.ofUint16Values(new short[] {1000, 2000, 3000});
+  }
+
+  private void assertNumericCollectionUnion(
+      Object decoded, NumericCollectionUnion expected) {
+    Assert.assertTrue(decoded instanceof NumericCollectionUnion);
+    NumericCollectionUnion union = (NumericCollectionUnion) decoded;
+    Assert.assertEquals(union.getNumericCollectionUnionCase(), expected.getNumericCollectionUnionCase());
+    switch (union.getNumericCollectionUnionCase()) {
+      case INT32_VALUES:
+        Assert.assertEquals(union.getInt32Values(), expected.getInt32Values());
+        break;
+      default:
+        Assert.fail("Unexpected union case: " + union.getNumericCollectionUnionCase());
+    }
+  }
+
+  private void assertNumericCollectionArrayUnion(
+      Object decoded, NumericCollectionArrayUnion expected) {
+    Assert.assertTrue(decoded instanceof NumericCollectionArrayUnion);
+    NumericCollectionArrayUnion union = (NumericCollectionArrayUnion) decoded;
+    Assert.assertEquals(
+        union.getNumericCollectionArrayUnionCase(),
+        expected.getNumericCollectionArrayUnionCase());
+    switch (union.getNumericCollectionArrayUnionCase()) {
+      case UINT16_VALUES:
+        Assert.assertTrue(
+            Arrays.equals(union.getUint16Values(), expected.getUint16Values()));
+        break;
+      default:
+        Assert.fail(
+            "Unexpected array union case: " + union.getNumericCollectionArrayUnionCase());
+    }
+  }
+
   private Monster buildMonster() {
     Vec3 pos = new Vec3();
     pos.setX(1.0f);
@@ -603,7 +773,7 @@ public class IdlRoundTripTest {
     monster.setHp((short) 80);
     monster.setName("Orc");
     monster.setFriendly(true);
-    monster.setInventory(new byte[] {(byte) 1, (byte) 2, (byte) 3});
+    monster.setInventory(new Uint8List(new byte[] {(byte) 1, (byte) 2, (byte) 3}));
     monster.setColor(Color.Blue);
     return monster;
   }
@@ -635,7 +805,7 @@ public class IdlRoundTripTest {
     allTypes.setBytesValue(new byte[] {1, 2, 3});
     allTypes.setDateValue(LocalDate.of(2024, 1, 2));
     allTypes.setTimestampValue(Instant.parse("2024-01-02T03:04:05Z"));
-    allTypes.setInt32List(new int[] {1, 2, 3});
+    allTypes.setInt32List(new Int32List(new int[] {1, 2, 3}));
     allTypes.setStringList(Arrays.asList("alpha", "beta"));
     Map<String, Long> int64Map = new HashMap<>();
     int64Map.put("alpha", 10L);
@@ -749,8 +919,8 @@ public class IdlRoundTripTest {
     Container container = new Container();
     container.setId(9876543210L);
     container.setStatus(Status.STARTED);
-    container.setBytes(new byte[] {(byte) 1, (byte) 2, (byte) 3});
-    container.setNumbers(new int[] {10, 20, 30});
+    container.setBytes(new Int8List(new byte[] {(byte) 1, (byte) 2, (byte) 3}));
+    container.setNumbers(new Int32List(new int[] {10, 20, 30}));
     container.setScalars(pack);
     container.setNames(Arrays.asList("alpha", "beta"));
     container.setFlags(new boolean[] {true, false});

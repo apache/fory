@@ -1590,6 +1590,24 @@ func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Poi
 			}
 			ctx.WriteInt64Slice(*(*[]int64)(fieldPtr), field.RefMode, false)
 			return
+		case Uint16SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			ctx.WriteUint16Slice(*(*[]uint16)(fieldPtr), field.RefMode, false)
+			return
+		case Uint32SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			ctx.WriteUint32Slice(*(*[]uint32)(fieldPtr), field.RefMode, false)
+			return
+		case Uint64SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			ctx.WriteUint64Slice(*(*[]uint64)(fieldPtr), field.RefMode, false)
+			return
 		case IntSliceDispatchId:
 			if field.RefMode == RefModeTracking {
 				break
@@ -2768,6 +2786,24 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 				break
 			}
 			*(*[]int64)(fieldPtr) = ctx.ReadInt64Slice(field.RefMode, false)
+			return
+		case Uint16SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			*(*[]uint16)(fieldPtr) = ctx.ReadUint16Slice(field.RefMode, false)
+			return
+		case Uint32SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			*(*[]uint32)(fieldPtr) = ctx.ReadUint32Slice(field.RefMode, false)
+			return
+		case Uint64SliceDispatchId:
+			if field.RefMode == RefModeTracking {
+				break
+			}
+			*(*[]uint64)(fieldPtr) = ctx.ReadUint64Slice(field.RefMode, false)
 			return
 		case IntSliceDispatchId:
 			if field.RefMode == RefModeTracking {

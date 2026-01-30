@@ -325,6 +325,48 @@ func (c *ReadContext) ReadInt64Slice(refMode RefMode, readType bool) []int64 {
 	return ReadInt64Slice(c.buffer, err)
 }
 
+// ReadUint16Slice reads []uint16 with optional ref/type info
+func (c *ReadContext) ReadUint16Slice(refMode RefMode, readType bool) []uint16 {
+	err := c.Err()
+	if refMode != RefModeNone {
+		if c.buffer.ReadInt8(err) == NullFlag {
+			return nil
+		}
+	}
+	if readType {
+		_ = c.buffer.ReadVarUint32Small7(err)
+	}
+	return ReadUint16Slice(c.buffer, err)
+}
+
+// ReadUint32Slice reads []uint32 with optional ref/type info
+func (c *ReadContext) ReadUint32Slice(refMode RefMode, readType bool) []uint32 {
+	err := c.Err()
+	if refMode != RefModeNone {
+		if c.buffer.ReadInt8(err) == NullFlag {
+			return nil
+		}
+	}
+	if readType {
+		_ = c.buffer.ReadVarUint32Small7(err)
+	}
+	return ReadUint32Slice(c.buffer, err)
+}
+
+// ReadUint64Slice reads []uint64 with optional ref/type info
+func (c *ReadContext) ReadUint64Slice(refMode RefMode, readType bool) []uint64 {
+	err := c.Err()
+	if refMode != RefModeNone {
+		if c.buffer.ReadInt8(err) == NullFlag {
+			return nil
+		}
+	}
+	if readType {
+		_ = c.buffer.ReadVarUint32Small7(err)
+	}
+	return ReadUint64Slice(c.buffer, err)
+}
+
 // ReadIntSlice reads []int with optional ref/type info
 func (c *ReadContext) ReadIntSlice(refMode RefMode, readType bool) []int {
 	err := c.Err()

@@ -353,6 +353,9 @@ const (
 	Int64SliceDispatchId
 	IntSliceDispatchId
 	UintSliceDispatchId
+	Uint16SliceDispatchId
+	Uint32SliceDispatchId
+	Uint64SliceDispatchId
 	Float32SliceDispatchId
 	Float64SliceDispatchId
 	Float16SliceDispatchId
@@ -432,19 +435,20 @@ func GetDispatchId(t reflect.Type) DispatchId {
 			return IntSliceDispatchId
 		case reflect.Uint:
 			return UintSliceDispatchId
-		case reflect.Float32:
-			return Float32SliceDispatchId
-		case reflect.Float64:
-			return Float64SliceDispatchId
 		case reflect.Uint16:
 			// Check if it's float16 slice
 			if t.Elem().Name() == "Float16" && (t.Elem().PkgPath() == "github.com/apache/fory/go/fory/float16" || strings.HasSuffix(t.Elem().PkgPath(), "/float16")) {
 				return Float16SliceDispatchId
 			}
-			// Use Int16SliceDispatchId for Uint16 as they share the same 2-byte size
-			// and serialization logic in many cases, or it falls back to generic if needed.
-			return Int16SliceDispatchId
-
+			return Uint16SliceDispatchId
+		case reflect.Uint32:
+			return Uint32SliceDispatchId
+		case reflect.Uint64:
+			return Uint64SliceDispatchId
+		case reflect.Float32:
+			return Float32SliceDispatchId
+		case reflect.Float64:
+			return Float64SliceDispatchId
 		case reflect.Bool:
 			return BoolSliceDispatchId
 		case reflect.String:

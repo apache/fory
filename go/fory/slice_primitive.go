@@ -59,8 +59,8 @@ func (s byteSliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bo
 	if done || ctx.HasError() {
 		return
 	}
-	if readType && typeId != uint32(BINARY) {
-		ctx.SetError(DeserializationErrorf("slice type mismatch: expected BINARY (%d), got %d", BINARY, typeId))
+	if readType && typeId != uint32(BINARY) && typeId != uint32(UINT8_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected BINARY (%d) or UINT8_ARRAY (%d), got %d", BINARY, UINT8_ARRAY, typeId))
 		return
 	}
 	s.ReadData(ctx, value)
@@ -289,6 +289,120 @@ func (s int64SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode
 
 func (s int64SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	*(*[]int64)(value.Addr().UnsafePointer()) = ReadInt64Slice(ctx.Buffer(), ctx.Err())
+}
+
+// ============================================================================
+// uint16SliceSerializer - optimized []uint16 serialization
+// ============================================================================
+
+type uint16SliceSerializer struct{}
+
+func (s uint16SliceSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	WriteUint16Slice(ctx.Buffer(), value.Interface().([]uint16))
+}
+
+func (s uint16SliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	done := writeSliceRefAndType(ctx, refMode, writeType, value, UINT16_ARRAY)
+	if done || ctx.HasError() {
+		return
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s uint16SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
+	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(UINT16_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected UINT16_ARRAY (%d), got %d", UINT16_ARRAY, typeId))
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s uint16SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
+
+func (s uint16SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	*(*[]uint16)(value.Addr().UnsafePointer()) = ReadUint16Slice(ctx.Buffer(), ctx.Err())
+}
+
+// ============================================================================
+// uint32SliceSerializer - optimized []uint32 serialization
+// ============================================================================
+
+type uint32SliceSerializer struct{}
+
+func (s uint32SliceSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	WriteUint32Slice(ctx.Buffer(), value.Interface().([]uint32))
+}
+
+func (s uint32SliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	done := writeSliceRefAndType(ctx, refMode, writeType, value, UINT32_ARRAY)
+	if done || ctx.HasError() {
+		return
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s uint32SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
+	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(UINT32_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected UINT32_ARRAY (%d), got %d", UINT32_ARRAY, typeId))
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s uint32SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
+
+func (s uint32SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	*(*[]uint32)(value.Addr().UnsafePointer()) = ReadUint32Slice(ctx.Buffer(), ctx.Err())
+}
+
+// ============================================================================
+// uint64SliceSerializer - optimized []uint64 serialization
+// ============================================================================
+
+type uint64SliceSerializer struct{}
+
+func (s uint64SliceSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	WriteUint64Slice(ctx.Buffer(), value.Interface().([]uint64))
+}
+
+func (s uint64SliceSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	done := writeSliceRefAndType(ctx, refMode, writeType, value, UINT64_ARRAY)
+	if done || ctx.HasError() {
+		return
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s uint64SliceSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	done, typeId := readSliceRefAndType(ctx, refMode, readType, value)
+	if done || ctx.HasError() {
+		return
+	}
+	if readType && typeId != uint32(UINT64_ARRAY) {
+		ctx.SetError(DeserializationErrorf("slice type mismatch: expected UINT64_ARRAY (%d), got %d", UINT64_ARRAY, typeId))
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s uint64SliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
+
+func (s uint64SliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	*(*[]uint64)(value.Addr().UnsafePointer()) = ReadUint64Slice(ctx.Buffer(), ctx.Err())
 }
 
 // ============================================================================
@@ -749,6 +863,120 @@ func ReadInt64Slice(buf *ByteBuffer, err *Error) []int64 {
 	} else {
 		for i := 0; i < length; i++ {
 			result[i] = buf.ReadInt64(err)
+		}
+	}
+	return result
+}
+
+// WriteUint16Slice writes []uint16 to buffer using ARRAY protocol
+//
+//go:inline
+func WriteUint16Slice(buf *ByteBuffer, value []uint16) {
+	size := len(value) * 2
+	buf.WriteLength(size)
+	if len(value) > 0 {
+		if isLittleEndian {
+			buf.WriteBinary(unsafe.Slice((*byte)(unsafe.Pointer(&value[0])), size))
+		} else {
+			for i := 0; i < len(value); i++ {
+				buf.WriteInt16(int16(value[i]))
+			}
+		}
+	}
+}
+
+// ReadUint16Slice reads []uint16 from buffer using ARRAY protocol
+//
+//go:inline
+func ReadUint16Slice(buf *ByteBuffer, err *Error) []uint16 {
+	size := buf.ReadLength(err)
+	length := size / 2
+	if length == 0 {
+		return make([]uint16, 0)
+	}
+	result := make([]uint16, length)
+	if isLittleEndian {
+		raw := buf.ReadBinary(size, err)
+		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+	} else {
+		for i := 0; i < length; i++ {
+			result[i] = uint16(buf.ReadInt16(err))
+		}
+	}
+	return result
+}
+
+// WriteUint32Slice writes []uint32 to buffer using ARRAY protocol
+//
+//go:inline
+func WriteUint32Slice(buf *ByteBuffer, value []uint32) {
+	size := len(value) * 4
+	buf.WriteLength(size)
+	if len(value) > 0 {
+		if isLittleEndian {
+			buf.WriteBinary(unsafe.Slice((*byte)(unsafe.Pointer(&value[0])), size))
+		} else {
+			for i := 0; i < len(value); i++ {
+				buf.WriteInt32(int32(value[i]))
+			}
+		}
+	}
+}
+
+// ReadUint32Slice reads []uint32 from buffer using ARRAY protocol
+//
+//go:inline
+func ReadUint32Slice(buf *ByteBuffer, err *Error) []uint32 {
+	size := buf.ReadLength(err)
+	length := size / 4
+	if length == 0 {
+		return make([]uint32, 0)
+	}
+	result := make([]uint32, length)
+	if isLittleEndian {
+		raw := buf.ReadBinary(size, err)
+		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+	} else {
+		for i := 0; i < length; i++ {
+			result[i] = uint32(buf.ReadInt32(err))
+		}
+	}
+	return result
+}
+
+// WriteUint64Slice writes []uint64 to buffer using ARRAY protocol
+//
+//go:inline
+func WriteUint64Slice(buf *ByteBuffer, value []uint64) {
+	size := len(value) * 8
+	buf.WriteLength(size)
+	if len(value) > 0 {
+		if isLittleEndian {
+			buf.WriteBinary(unsafe.Slice((*byte)(unsafe.Pointer(&value[0])), size))
+		} else {
+			for i := 0; i < len(value); i++ {
+				buf.WriteInt64(int64(value[i]))
+			}
+		}
+	}
+}
+
+// ReadUint64Slice reads []uint64 from buffer using ARRAY protocol
+//
+//go:inline
+func ReadUint64Slice(buf *ByteBuffer, err *Error) []uint64 {
+	size := buf.ReadLength(err)
+	length := size / 8
+	if length == 0 {
+		return make([]uint64, 0)
+	}
+	result := make([]uint64, length)
+	if isLittleEndian {
+		raw := buf.ReadBinary(size, err)
+		copy(unsafe.Slice((*byte)(unsafe.Pointer(&result[0])), size), raw)
+	} else {
+		for i := 0; i < length; i++ {
+			result[i] = uint64(buf.ReadInt64(err))
 		}
 	}
 	return result

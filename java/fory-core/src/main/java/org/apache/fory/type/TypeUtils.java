@@ -70,6 +70,17 @@ import java.util.TimeZone;
 import java.util.WeakHashMap;
 import java.util.stream.Collectors;
 import org.apache.fory.annotation.Ref;
+import org.apache.fory.collection.BoolList;
+import org.apache.fory.collection.Float32List;
+import org.apache.fory.collection.Float64List;
+import org.apache.fory.collection.Int16List;
+import org.apache.fory.collection.Int32List;
+import org.apache.fory.collection.Int64List;
+import org.apache.fory.collection.Int8List;
+import org.apache.fory.collection.Uint16List;
+import org.apache.fory.collection.Uint32List;
+import org.apache.fory.collection.Uint64List;
+import org.apache.fory.collection.Uint8List;
 import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.meta.TypeExtMeta;
@@ -655,7 +666,24 @@ public class TypeUtils {
   }
 
   public static boolean isCollection(Class<?> cls) {
+    if (isPrimitiveListClass(cls)) {
+      return false;
+    }
     return cls == ArrayList.class || Collection.class.isAssignableFrom(cls);
+  }
+
+  private static boolean isPrimitiveListClass(Class<?> cls) {
+    return cls == BoolList.class
+        || cls == Int8List.class
+        || cls == Int16List.class
+        || cls == Int32List.class
+        || cls == Int64List.class
+        || cls == Uint8List.class
+        || cls == Uint16List.class
+        || cls == Uint32List.class
+        || cls == Uint64List.class
+        || cls == Float32List.class
+        || cls == Float64List.class;
   }
 
   public static boolean isMap(Class<?> cls) {

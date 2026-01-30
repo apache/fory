@@ -561,6 +561,9 @@ public class XtypeResolver extends TypeResolver {
         return true;
       default:
         Class<?> rawType = descriptor.getRawType();
+        if (isPrimitiveListClass(rawType)) {
+          return true;
+        }
         if (rawType == Object.class) {
           return false;
         }
@@ -583,6 +586,9 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public boolean isMonomorphic(Class<?> clz) {
+    if (isPrimitiveListClass(clz)) {
+      return true;
+    }
     if (clz == Object.class) {
       return false;
     }
@@ -618,11 +624,28 @@ public class XtypeResolver extends TypeResolver {
 
   public boolean isBuildIn(Descriptor descriptor) {
     Class<?> rawType = descriptor.getRawType();
+    if (isPrimitiveListClass(rawType)) {
+      return true;
+    }
     byte typeIdByte = getInternalTypeId(descriptor);
     if (NonexistentClass.class.isAssignableFrom(rawType)) {
       return false;
     }
     return !Types.isUserDefinedType(typeIdByte) && typeIdByte != Types.UNKNOWN;
+  }
+
+  private static boolean isPrimitiveListClass(Class<?> cls) {
+    return cls == BoolList.class
+        || cls == Int8List.class
+        || cls == Int16List.class
+        || cls == Int32List.class
+        || cls == Int64List.class
+        || cls == Uint8List.class
+        || cls == Uint16List.class
+        || cls == Uint32List.class
+        || cls == Uint64List.class
+        || cls == Float32List.class
+        || cls == Float64List.class;
   }
 
   @Override

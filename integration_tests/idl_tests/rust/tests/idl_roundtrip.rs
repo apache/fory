@@ -28,6 +28,7 @@ use idl_tests::addressbook::{
 };
 use idl_tests::complex_pb::{self, PrimitiveTypes};
 use idl_tests::complex_fbs::{self, Container, Note, Payload, ScalarPack, Status};
+use idl_tests::collection::{self, NumericCollectionArrayUnion, NumericCollectionUnion, NumericCollections, NumericCollectionsArray};
 use idl_tests::monster::{self, Color, Monster, Vec3};
 use idl_tests::optional_types::{self, AllOptionalTypes, OptionalHolder, OptionalUnion};
 use idl_tests::any_example::{self, AnyHolder, AnyInner, AnyUnion};
@@ -153,6 +154,44 @@ fn build_primitive_types() -> PrimitiveTypes {
         float64_value: 3.5,
         contact: Some(contact),
     }
+}
+
+fn build_numeric_collections() -> NumericCollections {
+    NumericCollections {
+        int8_values: vec![1, -2, 3],
+        int16_values: vec![100, -200, 300],
+        int32_values: vec![1000, -2000, 3000],
+        int64_values: vec![10000, -20000, 30000],
+        uint8_values: vec![200, 250],
+        uint16_values: vec![50000, 60000],
+        uint32_values: vec![2000000000, 2100000000],
+        uint64_values: vec![9000000000, 12000000000],
+        float32_values: vec![1.5, 2.5],
+        float64_values: vec![3.5, 4.5],
+    }
+}
+
+fn build_numeric_collection_union() -> NumericCollectionUnion {
+    NumericCollectionUnion::Int32Values(vec![7, 8, 9])
+}
+
+fn build_numeric_collections_array() -> NumericCollectionsArray {
+    NumericCollectionsArray {
+        int8_values: vec![1, -2, 3],
+        int16_values: vec![100, -200, 300],
+        int32_values: vec![1000, -2000, 3000],
+        int64_values: vec![10000, -20000, 30000],
+        uint8_values: vec![200, 250],
+        uint16_values: vec![50000, 60000],
+        uint32_values: vec![2000000000, 2100000000],
+        uint64_values: vec![9000000000, 12000000000],
+        float32_values: vec![1.5, 2.5],
+        float64_values: vec![3.5, 4.5],
+    }
+}
+
+fn build_numeric_collection_array_union() -> NumericCollectionArrayUnion {
+    NumericCollectionArrayUnion::Uint16Values(vec![1000, 2000, 3000])
 }
 
 fn build_monster() -> Monster {
@@ -451,6 +490,7 @@ fn run_address_book_roundtrip(compatible: bool) {
     addressbook::register_types(&mut fory).expect("register types");
     monster::register_types(&mut fory).expect("register monster types");
     complex_fbs::register_types(&mut fory).expect("register flatbuffers types");
+    collection::register_types(&mut fory).expect("register collection types");
     optional_types::register_types(&mut fory).expect("register optional types");
     any_example::register_types(&mut fory).expect("register any example types");
 
@@ -488,6 +528,81 @@ fn run_address_book_roundtrip(compatible: bool) {
     assert_eq!(types, peer_types);
     let encoded = fory.serialize(&peer_types).expect("serialize peer payload");
     fs::write(primitive_file, encoded).expect("write data file");
+
+    let collections = build_numeric_collections();
+    let bytes = fory.serialize(&collections).expect("serialize collections");
+    let roundtrip: NumericCollections = fory.deserialize(&bytes).expect("deserialize");
+    assert_eq!(collections, roundtrip);
+
+    if let Ok(data_file) = env::var("DATA_FILE_COLLECTION") {
+        let payload = fs::read(&data_file).expect("read data file");
+        let peer_collections: NumericCollections = fory
+            .deserialize(&payload)
+            .expect("deserialize peer payload");
+        assert_eq!(collections, peer_collections);
+        let encoded = fory
+            .serialize(&peer_collections)
+            .expect("serialize peer payload");
+        fs::write(data_file, encoded).expect("write data file");
+    }
+
+    let collection_union = build_numeric_collection_union();
+    let bytes = fory
+        .serialize(&collection_union)
+        .expect("serialize collection union");
+    let roundtrip: NumericCollectionUnion = fory.deserialize(&bytes).expect("deserialize");
+    assert_eq!(collection_union, roundtrip);
+
+    if let Ok(data_file) = env::var("DATA_FILE_COLLECTION_UNION") {
+        let payload = fs::read(&data_file).expect("read data file");
+        let peer_union: NumericCollectionUnion = fory
+            .deserialize(&payload)
+            .expect("deserialize peer payload");
+        assert_eq!(collection_union, peer_union);
+        let encoded = fory
+            .serialize(&peer_union)
+            .expect("serialize peer payload");
+        fs::write(data_file, encoded).expect("write data file");
+    }
+
+    let collections_array = build_numeric_collections_array();
+    let bytes = fory
+        .serialize(&collections_array)
+        .expect("serialize collection array");
+    let roundtrip: NumericCollectionsArray = fory.deserialize(&bytes).expect("deserialize");
+    assert_eq!(collections_array, roundtrip);
+
+    if let Ok(data_file) = env::var("DATA_FILE_COLLECTION_ARRAY") {
+        let payload = fs::read(&data_file).expect("read data file");
+        let peer_array: NumericCollectionsArray = fory
+            .deserialize(&payload)
+            .expect("deserialize peer payload");
+        assert_eq!(collections_array, peer_array);
+        let encoded = fory
+            .serialize(&peer_array)
+            .expect("serialize peer payload");
+        fs::write(data_file, encoded).expect("write data file");
+    }
+
+    let collection_array_union = build_numeric_collection_array_union();
+    let bytes = fory
+        .serialize(&collection_array_union)
+        .expect("serialize collection array union");
+    let roundtrip: NumericCollectionArrayUnion =
+        fory.deserialize(&bytes).expect("deserialize");
+    assert_eq!(collection_array_union, roundtrip);
+
+    if let Ok(data_file) = env::var("DATA_FILE_COLLECTION_ARRAY_UNION") {
+        let payload = fs::read(&data_file).expect("read data file");
+        let peer_union: NumericCollectionArrayUnion = fory
+            .deserialize(&payload)
+            .expect("deserialize peer payload");
+        assert_eq!(collection_array_union, peer_union);
+        let encoded = fory
+            .serialize(&peer_union)
+            .expect("serialize peer payload");
+        fs::write(data_file, encoded).expect("write data file");
+    }
 
     let monster = build_monster();
     let bytes = fory.serialize(&monster).expect("serialize");

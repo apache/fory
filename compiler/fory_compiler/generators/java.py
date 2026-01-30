@@ -283,6 +283,24 @@ class JavaGenerator(BaseGenerator):
         PrimitiveKind.FLOAT64: "double[]",
     }
 
+    # Primitive list types for repeated integer fields (default mode)
+    PRIMITIVE_LIST_MAP = {
+        PrimitiveKind.INT8: "Int8List",
+        PrimitiveKind.INT16: "Int16List",
+        PrimitiveKind.INT32: "Int32List",
+        PrimitiveKind.VARINT32: "Int32List",
+        PrimitiveKind.INT64: "Int64List",
+        PrimitiveKind.VARINT64: "Int64List",
+        PrimitiveKind.TAGGED_INT64: "Int64List",
+        PrimitiveKind.UINT8: "Uint8List",
+        PrimitiveKind.UINT16: "Uint16List",
+        PrimitiveKind.UINT32: "Uint32List",
+        PrimitiveKind.VAR_UINT32: "Uint32List",
+        PrimitiveKind.UINT64: "Uint64List",
+        PrimitiveKind.VAR_UINT64: "Uint64List",
+        PrimitiveKind.TAGGED_UINT64: "Uint64List",
+    }
+
     def generate(self) -> List[GeneratedFile]:
         """Generate Java files for the schema.
 
@@ -588,6 +606,7 @@ class JavaGenerator(BaseGenerator):
                 imports,
                 field.element_optional,
                 field.element_ref,
+                field,
             )
 
     def has_array_field_recursive(self, message: Message) -> bool:
@@ -701,6 +720,17 @@ class JavaGenerator(BaseGenerator):
             case_enum_name = self.to_upper_snake_case(field.name)
             case_type = self.get_union_case_type(field)
             cast_type = self.get_union_case_cast_type(field)
+            wrap_array_type: Optional[str] = None
+            wrap_list_type: Optional[str] = None
+            if (
+                isinstance(field.field_type, ListType)
+                and isinstance(field.field_type.element_type, PrimitiveType)
+                and field.field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
+                and not self.use_java_array(field)
+            ):
+                kind = field.field_type.element_type.kind
+                wrap_list_type = self.PRIMITIVE_LIST_MAP[kind]
+                wrap_array_type = self.PRIMITIVE_ARRAY_MAP[kind]
 
             lines.append(f"{ind}    public boolean has{case_name}() {{")
             lines.append(
@@ -716,6 +746,12 @@ class JavaGenerator(BaseGenerator):
                 f'{ind}            throw new IllegalStateException("{union.name} is not {case_enum_name}");'
             )
             lines.append(f"{ind}        }}")
+            if wrap_array_type and wrap_list_type:
+                lines.append(f"{ind}        if (value instanceof {wrap_array_type}) {{")
+                lines.append(
+                    f"{ind}            value = new {wrap_list_type}(({wrap_array_type}) value);"
+                )
+                lines.append(f"{ind}        }}")
             lines.append(f"{ind}        return ({cast_type}) value;")
             lines.append(f"{ind}    }}")
             lines.append("")
@@ -765,6 +801,7 @@ class JavaGenerator(BaseGenerator):
             False,
             field.element_optional,
             field.element_ref,
+            field,
         )
 
     def get_union_case_cast_type(self, field: Field) -> str:
@@ -809,6 +846,34 @@ class JavaGenerator(BaseGenerator):
             }
             return primitive_type_ids.get(kind, "Types.UNKNOWN")
         if isinstance(field.field_type, ListType):
+            if (
+                isinstance(field.field_type.element_type, PrimitiveType)
+                and not field.element_optional
+                and not field.element_ref
+            ):
+                kind = field.field_type.element_type.kind
+                array_type_ids = {
+                    PrimitiveKind.BOOL: "Types.BOOL_ARRAY",
+                    PrimitiveKind.INT8: "Types.INT8_ARRAY",
+                    PrimitiveKind.INT16: "Types.INT16_ARRAY",
+                    PrimitiveKind.INT32: "Types.INT32_ARRAY",
+                    PrimitiveKind.VARINT32: "Types.INT32_ARRAY",
+                    PrimitiveKind.INT64: "Types.INT64_ARRAY",
+                    PrimitiveKind.VARINT64: "Types.INT64_ARRAY",
+                    PrimitiveKind.TAGGED_INT64: "Types.INT64_ARRAY",
+                    PrimitiveKind.UINT8: "Types.UINT8_ARRAY",
+                    PrimitiveKind.UINT16: "Types.UINT16_ARRAY",
+                    PrimitiveKind.UINT32: "Types.UINT32_ARRAY",
+                    PrimitiveKind.VAR_UINT32: "Types.UINT32_ARRAY",
+                    PrimitiveKind.UINT64: "Types.UINT64_ARRAY",
+                    PrimitiveKind.VAR_UINT64: "Types.UINT64_ARRAY",
+                    PrimitiveKind.TAGGED_UINT64: "Types.UINT64_ARRAY",
+                    PrimitiveKind.FLOAT16: "Types.FLOAT16_ARRAY",
+                    PrimitiveKind.FLOAT32: "Types.FLOAT32_ARRAY",
+                    PrimitiveKind.FLOAT64: "Types.FLOAT64_ARRAY",
+                }
+                if kind in array_type_ids:
+                    return array_type_ids[kind]
             return "Types.LIST"
         if isinstance(field.field_type, MapType):
             return "Types.MAP"
@@ -983,6 +1048,7 @@ class JavaGenerator(BaseGenerator):
             nullable,
             field.element_optional,
             field.element_ref,
+            field,
         )
 
         lines.append(f"private {java_type} {self.to_camel_case(field.name)};")
@@ -1003,6 +1069,7 @@ class JavaGenerator(BaseGenerator):
             nullable,
             field.element_optional,
             field.element_ref,
+            field,
         )
         field_name = self.to_camel_case(field.name)
         pascal_name = self.to_pascal_case(field.name)
@@ -1027,6 +1094,7 @@ class JavaGenerator(BaseGenerator):
         nullable: bool = False,
         element_optional: bool = False,
         element_ref: bool = False,
+        field: Optional[Field] = None,
     ) -> str:
         """Generate Java type string."""
         if isinstance(field_type, PrimitiveType):
@@ -1043,13 +1111,18 @@ class JavaGenerator(BaseGenerator):
             return field_type.name
 
         elif isinstance(field_type, ListType):
-            # Use primitive arrays for numeric types
+            # Use primitive arrays for numeric types, or primitive lists by default for integers
             if isinstance(field_type.element_type, PrimitiveType):
                 if (
                     field_type.element_type.kind in self.PRIMITIVE_ARRAY_MAP
                     and not element_optional
                     and not element_ref
                 ):
+                    if (
+                        field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
+                        and not self.use_java_array(field)
+                    ):
+                        return self.PRIMITIVE_LIST_MAP[field_type.element_type.kind]
                     return self.PRIMITIVE_ARRAY_MAP[field_type.element_type.kind]
             element_type = self.generate_type(field_type.element_type, True)
             if self.is_ref_target_type(field_type.element_type):
@@ -1075,6 +1148,7 @@ class JavaGenerator(BaseGenerator):
         imports: Set[str],
         element_optional: bool = False,
         element_ref: bool = False,
+        field: Optional[Field] = None,
     ):
         """Collect required imports for a field type."""
         if isinstance(field_type, PrimitiveType):
@@ -1091,7 +1165,15 @@ class JavaGenerator(BaseGenerator):
                     and not element_optional
                     and not element_ref
                 ):
-                    return  # No import needed for primitive arrays
+                    if (
+                        field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
+                        and not self.use_java_array(field)
+                    ):
+                        imports.add(
+                            "org.apache.fory.collection."
+                            + self.PRIMITIVE_LIST_MAP[field_type.element_type.kind]
+                        )
+                    return  # No import needed for primitive arrays or primitive lists
             imports.add("java.util.List")
             if self.is_ref_target_type(field_type.element_type):
                 imports.add("org.apache.fory.annotation.Ref")
@@ -1115,6 +1197,7 @@ class JavaGenerator(BaseGenerator):
             imports,
             field.element_optional,
             field.element_ref,
+            field,
         )
         self.collect_integer_imports(field.field_type, imports)
         self.collect_array_imports(field, imports)
@@ -1127,9 +1210,16 @@ class JavaGenerator(BaseGenerator):
         resolved = self.schema.get_type(field_type.name)
         return isinstance(resolved, (Message, Union))
 
+    def use_java_array(self, field: Optional[Field]) -> bool:
+        if field is None:
+            return False
+        return bool(field.options.get("use_java_array"))
+
     def collect_array_imports(self, field: Field, imports: Set[str]) -> None:
         """Collect imports for primitive array type annotations."""
         if not isinstance(field.field_type, ListType):
+            return
+        if not self.use_java_array(field):
             return
         if field.element_optional or field.element_ref:
             return
@@ -1207,6 +1297,8 @@ class JavaGenerator(BaseGenerator):
         """Return array type annotation for primitive list fields."""
         if not isinstance(field.field_type, ListType):
             return None
+        if not self.use_java_array(field):
+            return None
         if field.element_optional or field.element_ref:
             return None
         element_type = field.field_type.element_type
@@ -1245,6 +1337,11 @@ class JavaGenerator(BaseGenerator):
             return field.field_type.kind == PrimitiveKind.BYTES
         if isinstance(field.field_type, ListType):
             if isinstance(field.field_type.element_type, PrimitiveType):
+                if (
+                    field.field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
+                    and not self.use_java_array(field)
+                ):
+                    return False
                 return (
                     field.field_type.element_type.kind in self.PRIMITIVE_ARRAY_MAP
                     and not field.element_optional

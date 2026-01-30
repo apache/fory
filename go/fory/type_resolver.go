@@ -67,6 +67,9 @@ var (
 	int64SliceType       = reflect.TypeOf((*[]int64)(nil)).Elem()
 	intSliceType         = reflect.TypeOf((*[]int)(nil)).Elem()
 	uintSliceType        = reflect.TypeOf((*[]uint)(nil)).Elem()
+	uint16SliceType      = reflect.TypeOf((*[]uint16)(nil)).Elem()
+	uint32SliceType      = reflect.TypeOf((*[]uint32)(nil)).Elem()
+	uint64SliceType      = reflect.TypeOf((*[]uint64)(nil)).Elem()
 	float32SliceType     = reflect.TypeOf((*[]float32)(nil)).Elem()
 	float64SliceType     = reflect.TypeOf((*[]float64)(nil)).Elem()
 	float16SliceType     = reflect.TypeOf((*[]float16.Float16)(nil)).Elem()
@@ -398,6 +401,9 @@ func (r *TypeResolver) initialize() {
 		{int64SliceType, INT64_ARRAY, int64SliceSerializer{}},
 		{intSliceType, INT64_ARRAY, intSliceSerializer{}}, // int is typically 64-bit
 		{uintSliceType, INT64_ARRAY, uintSliceSerializer{}},
+		{uint16SliceType, UINT16_ARRAY, uint16SliceSerializer{}},
+		{uint32SliceType, UINT32_ARRAY, uint32SliceSerializer{}},
+		{uint64SliceType, UINT64_ARRAY, uint64SliceSerializer{}},
 		{float32SliceType, FLOAT32_ARRAY, float32SliceSerializer{}},
 		{float64SliceType, FLOAT64_ARRAY, float64SliceSerializer{}},
 		{float16SliceType, FLOAT16_ARRAY, float16SliceSerializer{}},
@@ -444,6 +450,8 @@ func (r *TypeResolver) initialize() {
 		typeId TypeId
 		goType reflect.Type
 	}{
+		// Byte slice can be encoded as BINARY or UINT8_ARRAY
+		{UINT8_ARRAY, byteSliceType},
 		// Fixed-size integer encodings (in addition to varint defaults)
 		{UINT32, uint32Type},        // Fixed UINT32 (11) → uint32
 		{UINT64, uint64Type},        // Fixed UINT64 (13) → uint64
