@@ -23,6 +23,8 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 import java.util.function.BiFunction;
 import org.apache.fory.Fory;
+import org.apache.fory.logging.Logger;
+import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.RefResolver;
@@ -52,6 +54,8 @@ import org.apache.fory.type.union.Union6;
  * union types in other languages like C++'s std::variant, Rust's enum, or Python's typing.Union.
  */
 public class UnionSerializer extends Serializer<Union> {
+  private static final Logger LOG = LoggerFactory.getLogger(UnionSerializer.class);
+
   /** Array of factories for creating Union instances by type tag. */
   @SuppressWarnings("unchecked")
   private static final BiFunction<Integer, Object, Union>[] FACTORIES =

@@ -500,8 +500,8 @@ def file_roundtrip_graph(fory: pyfory.Fory, graph_value: "graph.Graph") -> None:
     Path(data_file).write_bytes(fory.serialize(decoded))
 
 
-def main() -> int:
-    fory = pyfory.Fory(xlang=True)
+def run_roundtrip(compatible: bool) -> None:
+    fory = pyfory.Fory(xlang=True, compatible=compatible)
     complex_pb.register_complex_pb_types(fory)
     addressbook.register_addressbook_types(fory)
     monster.register_monster_types(fory)
@@ -534,7 +534,7 @@ def main() -> int:
     any_holder = build_any_holder()
     local_roundtrip_any(fory, any_holder)
 
-    ref_fory = pyfory.Fory(xlang=True, ref=True)
+    ref_fory = pyfory.Fory(xlang=True, ref=True, compatible=compatible)
     tree.register_tree_types(ref_fory)
     graph.register_graph_types(ref_fory)
     tree_root = build_tree()
@@ -543,6 +543,23 @@ def main() -> int:
     graph_value = build_graph()
     local_roundtrip_graph(ref_fory, graph_value)
     file_roundtrip_graph(ref_fory, graph_value)
+
+
+def resolve_compatible_modes() -> list[bool]:
+    value = os.environ.get("IDL_COMPATIBLE")
+    if value is None or value.strip() == "":
+        return [False, True]
+    normalized = value.strip().lower()
+    if normalized in ("1", "true", "yes"):
+        return [True]
+    if normalized in ("0", "false", "no"):
+        return [False]
+    raise ValueError(f"Unsupported IDL_COMPATIBLE value: {value}")
+
+
+def main() -> int:
+    for compatible in resolve_compatible_modes():
+        run_roundtrip(compatible)
     return 0
 
 

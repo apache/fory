@@ -481,13 +481,20 @@ func isStructField(t reflect.Type) bool {
 	if info, ok := getOptionalInfo(t); ok {
 		t = info.valueType
 	}
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
 	if isUnionType(t) {
+		return false
+	}
+	// Date/Timestamp are built-in types with dedicated encodings, not user structs.
+	if t == dateType || t == timestampType {
 		return false
 	}
 	if t.Kind() == reflect.Struct {
 		return true
 	}
-	return t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Struct
+	return false
 }
 
 // isSetReflectType checks if a reflect.Type is a Set type (map[T]struct{})

@@ -212,6 +212,13 @@ public class FieldGroups {
       }
     }
 
+    public String getName() {
+      if (fieldAccessor != null) {
+        return fieldAccessor.getField().getName();
+      }
+      return qualifiedFieldName;
+    }
+
     @Override
     public String toString() {
       String[] rsplit = StringUtils.rsplit(qualifiedFieldName, ".", 1);

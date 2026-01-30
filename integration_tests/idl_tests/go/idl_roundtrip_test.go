@@ -71,8 +71,20 @@ func buildAddressBook() addressbook.AddressBook {
 	}
 }
 
-func TestAddressBookRoundTrip(t *testing.T) {
-	f := fory.NewFory(fory.WithXlang(true), fory.WithRefTracking(false))
+func TestAddressBookRoundTripCompatible(t *testing.T) {
+	runAddressBookRoundTrip(t, true)
+}
+
+func TestAddressBookRoundTripSchemaConsistent(t *testing.T) {
+	runAddressBookRoundTrip(t, false)
+}
+
+func runAddressBookRoundTrip(t *testing.T, compatible bool) {
+	f := fory.NewFory(
+		fory.WithXlang(true),
+		fory.WithRefTracking(false),
+		fory.WithCompatible(compatible),
+	)
 	if err := addressbook.RegisterTypes(f); err != nil {
 		t.Fatalf("register types: %v", err)
 	}
@@ -115,7 +127,11 @@ func TestAddressBookRoundTrip(t *testing.T) {
 	anyHolder := buildAnyHolder()
 	runLocalAnyRoundTrip(t, f, anyHolder)
 
-	refFory := fory.NewFory(fory.WithXlang(true), fory.WithRefTracking(true))
+	refFory := fory.NewFory(
+		fory.WithXlang(true),
+		fory.WithRefTracking(true),
+		fory.WithCompatible(compatible),
+	)
 	if err := treepkg.RegisterTypes(refFory); err != nil {
 		t.Fatalf("register tree types: %v", err)
 	}

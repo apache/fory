@@ -552,6 +552,15 @@ template <typename T> struct CompileTimeFieldHelpers {
         }
         return field_is_nullable_v<RawFieldType>;
       }
+      // Else if FORY_FIELD_CONFIG is defined, use nullable from config
+      else if constexpr (::fory::detail::has_field_config_v<T>) {
+        if constexpr (::fory::detail::GetFieldConfigEntry<T,
+                                                          Index>::has_entry &&
+                      ::fory::detail::GetFieldConfigEntry<T, Index>::nullable) {
+          return true;
+        }
+        return field_is_nullable_v<RawFieldType>;
+      }
       // For non-wrapped types, use xlang defaults:
       // Only std::optional is nullable (field_is_nullable_v returns true for
       // optional). For xlang consistency, shared_ptr/unique_ptr are NOT
@@ -620,6 +629,15 @@ template <typename T> struct CompileTimeFieldHelpers {
       else if constexpr (::fory::detail::has_field_tags_v<T>) {
         return ::fory::detail::GetFieldTagEntry<T, Index>::track_ref;
       }
+      // Else if FORY_FIELD_CONFIG is defined, use ref from config
+      else if constexpr (::fory::detail::has_field_config_v<T>) {
+        if constexpr (::fory::detail::GetFieldConfigEntry<T,
+                                                          Index>::has_entry &&
+                      ::fory::detail::GetFieldConfigEntry<T, Index>::ref) {
+          return true;
+        }
+        return field_track_ref_v<RawFieldType>;
+      }
       // Default: shared_ptr/SharedWeak track refs
       else {
         return field_track_ref_v<RawFieldType>;
@@ -645,6 +663,15 @@ template <typename T> struct CompileTimeFieldHelpers {
       // Else if FORY_FIELD_TAGS is defined, use that metadata
       else if constexpr (::fory::detail::has_field_tags_v<T>) {
         return ::fory::detail::GetFieldTagEntry<T, Index>::dynamic_value;
+      }
+      // Else if FORY_FIELD_CONFIG is defined, use dynamic_value from config
+      else if constexpr (::fory::detail::has_field_config_v<T>) {
+        constexpr int dynamic_value =
+            ::fory::detail::GetFieldConfigEntry<T, Index>::dynamic_value;
+        if constexpr (dynamic_value != -1) {
+          return dynamic_value;
+        }
+        return -1;
       }
       // Default: AUTO (use std::is_polymorphic to decide)
       else {
@@ -1802,7 +1829,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
   }
 
   // Per Rust implementation: primitives are written directly without ref/type
-  if constexpr (is_primitive_field && !field_type_is_nullable) {
+  if constexpr (is_primitive_field && !field_type_is_nullable && !is_nullable) {
     if constexpr (::fory::detail::has_field_config_v<T> &&
                   (std::is_same_v<FieldType, uint32_t> ||
                    std::is_same_v<FieldType, uint64_t> ||
@@ -1890,7 +1917,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
   // - TRUE (1): always write type info
   // - FALSE (0): never write type info for this field
   // - AUTO (-1): write type info if is_polymorphic (auto-detected)
-  bool polymorphic_write_type =
+  constexpr bool polymorphic_write_type =
       (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic);
   bool write_type =
       polymorphic_write_type || ((is_struct || is_ext) && ctx.is_compatible());
@@ -2123,22 +2150,14 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   // - TRUE (1): always read type info
   // - FALSE (0): never read type info for this field
   // - AUTO (-1): read type info if is_polymorphic_field (auto-detected)
-  bool read_type =
-      (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic_field);
+  // Struct/EXT fields need type info in compatible mode for TypeMeta.
+  bool read_type = (dynamic_val == 1) ||
+                   (dynamic_val == -1 && is_polymorphic_field) ||
+                   ((is_struct_field || is_ext_field) && ctx.is_compatible());
 
   // get field metadata from fory::field<> or FORY_FIELD_TAGS or defaults
   constexpr bool is_nullable = Helpers::template field_nullable<Index>();
   constexpr bool track_ref = Helpers::template field_track_ref<Index>();
-
-  // In compatible mode, nested struct fields always carry type metadata
-  // (xtype_id + meta index). We must read this metadata so that
-  // `Serializer<T>::read` can dispatch to `read_compatible` with the correct
-  // remote TypeMeta instead of treating the bytes as part of the first field
-  // value.
-  if (!is_polymorphic_field && (is_struct_field || is_ext_field) &&
-      ctx.is_compatible()) {
-    read_type = true;
-  }
 
   // Per xlang spec, all non-primitive fields have ref flags.
   // Primitive types: bool, int8-64, var_int32/64, sli_int64, float16/32/64
@@ -2154,7 +2173,8 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   // shared_ptr) that don't need ref metadata, bypass Serializer<T>::read
   // and use direct buffer reads with Error&.
   constexpr bool is_raw_prim = is_raw_primitive_v<FieldType>;
-  if constexpr (is_raw_prim && is_primitive_field && !field_type_is_nullable) {
+  if constexpr (is_raw_prim && is_primitive_field && !field_type_is_nullable &&
+                !is_nullable) {
     auto read_value = [&ctx]() -> FieldType {
       if constexpr (is_configurable_int_v<FieldType>) {
         return read_configurable_int<FieldType, T, Index>(ctx);
@@ -2303,18 +2323,10 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
   // - TRUE (1): always read type info
   // - FALSE (0): never read type info for this field
   // - AUTO (-1): read type info if is_polymorphic_field (auto-detected)
-  bool read_type =
-      (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic_field);
-
-  // In compatible mode, nested struct fields always carry type metadata
-  // (xtype_id + meta index). We must read this metadata so that
-  // `Serializer<T>::read` can dispatch to `read_compatible` with the correct
-  // remote TypeMeta instead of treating the bytes as part of the first field
-  // value.
-  if (!is_polymorphic_field && (is_struct_field || is_ext_field) &&
-      ctx.is_compatible()) {
-    read_type = true;
-  }
+  // Struct/EXT fields need type info in compatible mode for TypeMeta.
+  bool read_type = (dynamic_val == 1) ||
+                   (dynamic_val == -1 && is_polymorphic_field) ||
+                   ((is_struct_field || is_ext_field) && ctx.is_compatible());
 
   // In compatible mode, trust the remote field metadata (remote_ref_mode)
   // to tell us whether a ref/null flag was written before the value payload.
@@ -2937,41 +2949,22 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
             return T{};
           }
-
-          // Check LOCAL type to decide if we should read meta_index (matches
-          // Rust logic)
-          auto local_type_info_res =
-              ctx.type_resolver().template get_type_info<T>();
-          if (!local_type_info_res.ok()) {
-            ctx.set_error(std::move(local_type_info_res).error());
-            return T{};
-          }
-          const TypeInfo *local_type_info = local_type_info_res.value();
-          uint32_t local_type_id = local_type_info->type_id;
-          uint8_t local_type_id_low = local_type_id & 0xff;
-
-          if (local_type_id_low ==
+          uint8_t remote_type_id_low = remote_type_id & 0xff;
+          const bool remote_has_meta =
+              remote_type_id_low ==
                   static_cast<uint8_t>(TypeId::COMPATIBLE_STRUCT) ||
-              local_type_id_low ==
-                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT)) {
+              remote_type_id_low ==
+                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT);
+          if (remote_has_meta) {
             // Read TypeMeta inline using streaming protocol
             auto remote_type_info_res = ctx.read_type_meta();
             if (!remote_type_info_res.ok()) {
               ctx.set_error(std::move(remote_type_info_res).error());
               return T{};
             }
-
             return read_compatible(ctx, remote_type_info_res.value());
-          } else {
-            // Local type is not compatible struct - verify type match and read
-            // data
-            if (remote_type_id != local_type_id) {
-              ctx.set_error(
-                  Error::type_mismatch(remote_type_id, local_type_id));
-              return T{};
-            }
-            return read_data(ctx);
           }
+          return read_data(ctx);
         } else {
           // read_type=false in compatible mode: same version, use sorted order
           // (fast path)

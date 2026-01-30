@@ -71,6 +71,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
+import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.config.Language;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -78,8 +79,17 @@ import org.testng.annotations.Test;
 public class IdlRoundTripTest {
 
   @Test
-  public void testAddressBookRoundTrip() throws Exception {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+  public void testAddressBookRoundTripCompatible() throws Exception {
+    runAddressBookRoundTrip(true);
+  }
+
+  @Test
+  public void testAddressBookRoundTripSchemaConsistent() throws Exception {
+    runAddressBookRoundTrip(false);
+  }
+
+  private void runAddressBookRoundTrip(boolean compatible) throws Exception {
+    Fory fory = buildFory(compatible);
     AddressbookForyRegistration.register(fory);
 
     AddressBook book = buildAddressBook();
@@ -96,7 +106,7 @@ public class IdlRoundTripTest {
 
       Map<String, String> env = new HashMap<>();
       env.put("DATA_FILE", dataFile.toAbsolutePath().toString());
-      PeerCommand command = buildPeerCommand(peer, env);
+      PeerCommand command = buildPeerCommand(peer, env, compatible);
       runPeer(command, peer);
 
       byte[] peerBytes = Files.readAllBytes(dataFile);
@@ -156,8 +166,17 @@ public class IdlRoundTripTest {
   }
 
   @Test
-  public void testPrimitiveTypesRoundTrip() throws Exception {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+  public void testPrimitiveTypesRoundTripCompatible() throws Exception {
+    runPrimitiveTypesRoundTrip(true);
+  }
+
+  @Test
+  public void testPrimitiveTypesRoundTripSchemaConsistent() throws Exception {
+    runPrimitiveTypesRoundTrip(false);
+  }
+
+  private void runPrimitiveTypesRoundTrip(boolean compatible) throws Exception {
+    Fory fory = buildFory(compatible);
     AddressbookForyRegistration.register(fory);
     ComplexPbForyRegistration.register(fory);
 
@@ -175,7 +194,7 @@ public class IdlRoundTripTest {
 
       Map<String, String> env = new HashMap<>();
       env.put("DATA_FILE_PRIMITIVES", dataFile.toAbsolutePath().toString());
-      PeerCommand command = buildPeerCommand(peer, env);
+      PeerCommand command = buildPeerCommand(peer, env, compatible);
       runPeer(command, peer);
 
       byte[] peerBytes = Files.readAllBytes(dataFile);
@@ -186,8 +205,17 @@ public class IdlRoundTripTest {
   }
 
   @Test
-  public void testOptionalTypesRoundTrip() throws Exception {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+  public void testOptionalTypesRoundTripCompatible() throws Exception {
+    runOptionalTypesRoundTrip(true);
+  }
+
+  @Test
+  public void testOptionalTypesRoundTripSchemaConsistent() throws Exception {
+    runOptionalTypesRoundTrip(false);
+  }
+
+  private void runOptionalTypesRoundTrip(boolean compatible) throws Exception {
+    Fory fory = buildFory(compatible);
     OptionalTypesForyRegistration.register(fory);
 
     OptionalHolder holder = buildOptionalHolder();
@@ -204,7 +232,7 @@ public class IdlRoundTripTest {
 
       Map<String, String> env = new HashMap<>();
       env.put("DATA_FILE_OPTIONAL_TYPES", dataFile.toAbsolutePath().toString());
-      PeerCommand command = buildPeerCommand(peer, env);
+      PeerCommand command = buildPeerCommand(peer, env, compatible);
       runPeer(command, peer);
 
       byte[] peerBytes = Files.readAllBytes(dataFile);
@@ -215,8 +243,17 @@ public class IdlRoundTripTest {
   }
 
   @Test
-  public void testAnyRoundTrip() {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+  public void testAnyRoundTripCompatible() {
+    runAnyRoundTrip(true);
+  }
+
+  @Test
+  public void testAnyRoundTripSchemaConsistent() {
+    runAnyRoundTrip(false);
+  }
+
+  private void runAnyRoundTrip(boolean compatible) {
+    Fory fory = buildFory(compatible);
     AnyExampleForyRegistration.register(fory);
 
     AnyHolder holder = buildAnyHolder();
@@ -228,8 +265,17 @@ public class IdlRoundTripTest {
   }
 
   @Test
-  public void testTreeRoundTrip() throws Exception {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).withRefTracking(true).build();
+  public void testTreeRoundTripCompatible() throws Exception {
+    runTreeRoundTrip(true);
+  }
+
+  @Test
+  public void testTreeRoundTripSchemaConsistent() throws Exception {
+    runTreeRoundTrip(false);
+  }
+
+  private void runTreeRoundTrip(boolean compatible) throws Exception {
+    Fory fory = buildRefFory(compatible);
     TreeForyRegistration.register(fory);
 
     TreeNode tree = buildTree();
@@ -247,7 +293,7 @@ public class IdlRoundTripTest {
 
       Map<String, String> env = new HashMap<>();
       env.put("DATA_FILE_TREE", dataFile.toAbsolutePath().toString());
-      PeerCommand command = buildPeerCommand(peer, env);
+      PeerCommand command = buildPeerCommand(peer, env, compatible);
       runPeer(command, peer);
 
       byte[] peerBytes = Files.readAllBytes(dataFile);
@@ -258,8 +304,17 @@ public class IdlRoundTripTest {
   }
 
   @Test
-  public void testGraphRoundTrip() throws Exception {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).withRefTracking(true).build();
+  public void testGraphRoundTripCompatible() throws Exception {
+    runGraphRoundTrip(true);
+  }
+
+  @Test
+  public void testGraphRoundTripSchemaConsistent() throws Exception {
+    runGraphRoundTrip(false);
+  }
+
+  private void runGraphRoundTrip(boolean compatible) throws Exception {
+    Fory fory = buildRefFory(compatible);
     GraphForyRegistration.register(fory);
 
     Graph graph = buildGraph();
@@ -277,7 +332,7 @@ public class IdlRoundTripTest {
 
       Map<String, String> env = new HashMap<>();
       env.put("DATA_FILE_GRAPH", dataFile.toAbsolutePath().toString());
-      PeerCommand command = buildPeerCommand(peer, env);
+      PeerCommand command = buildPeerCommand(peer, env, compatible);
       runPeer(command, peer);
 
       byte[] peerBytes = Files.readAllBytes(dataFile);
@@ -288,8 +343,17 @@ public class IdlRoundTripTest {
   }
 
   @Test
-  public void testFlatbuffersRoundTrip() throws Exception {
-    Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
+  public void testFlatbuffersRoundTripCompatible() throws Exception {
+    runFlatbuffersRoundTrip(true);
+  }
+
+  @Test
+  public void testFlatbuffersRoundTripSchemaConsistent() throws Exception {
+    runFlatbuffersRoundTrip(false);
+  }
+
+  private void runFlatbuffersRoundTrip(boolean compatible) throws Exception {
+    Fory fory = buildFory(compatible);
     MonsterForyRegistration.register(fory);
     ComplexFbsForyRegistration.register(fory);
 
@@ -319,7 +383,7 @@ public class IdlRoundTripTest {
       Map<String, String> env = new HashMap<>();
       env.put("DATA_FILE_FLATBUFFERS_MONSTER", monsterFile.toAbsolutePath().toString());
       env.put("DATA_FILE_FLATBUFFERS_TEST2", containerFile.toAbsolutePath().toString());
-      PeerCommand command = buildPeerCommand(peer, env);
+      PeerCommand command = buildPeerCommand(peer, env, compatible);
       runPeer(command, peer);
 
       byte[] peerMonsterBytes = Files.readAllBytes(monsterFile);
@@ -332,6 +396,23 @@ public class IdlRoundTripTest {
       Assert.assertTrue(containerRoundTrip instanceof Container);
       Assert.assertEquals(containerRoundTrip, container);
     }
+  }
+
+  private Fory buildFory(boolean compatible) {
+    return Fory.builder()
+        .withLanguage(Language.XLANG)
+        .withCompatibleMode(
+            compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+        .build();
+  }
+
+  private Fory buildRefFory(boolean compatible) {
+    return Fory.builder()
+        .withLanguage(Language.XLANG)
+        .withCompatibleMode(
+            compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT)
+        .withRefTracking(true)
+        .build();
   }
 
   private List<String> resolvePeers() {
@@ -350,13 +431,15 @@ public class IdlRoundTripTest {
     return peers;
   }
 
-  private PeerCommand buildPeerCommand(String peer, Map<String, String> environment) {
+  private PeerCommand buildPeerCommand(
+      String peer, Map<String, String> environment, boolean compatible) {
     Path repoRoot = repoRoot();
     Path idlRoot = repoRoot.resolve("integration_tests").resolve("idl_tests");
     Path workDir = idlRoot;
     List<String> command;
     PeerCommand peerCommand = new PeerCommand();
     peerCommand.environment.putAll(environment);
+    peerCommand.environment.put("IDL_COMPATIBLE", Boolean.toString(compatible));
 
     switch (peer) {
       case "python":
@@ -374,11 +457,19 @@ public class IdlRoundTripTest {
         break;
       case "go":
         workDir = idlRoot.resolve("go");
-        command = Arrays.asList("go", "test", "-run", "TestAddressBookRoundTrip", "-v");
+        String goTest =
+            compatible
+                ? "TestAddressBookRoundTripCompatible"
+                : "TestAddressBookRoundTripSchemaConsistent";
+        command = Arrays.asList("go", "test", "-run", goTest, "-v");
         break;
       case "rust":
         workDir = idlRoot.resolve("rust");
-        command = Arrays.asList("cargo", "test", "--test", "idl_roundtrip");
+        String rustTest =
+            compatible
+                ? "test_address_book_roundtrip_compatible"
+                : "test_address_book_roundtrip_schema_consistent";
+        command = Arrays.asList("cargo", "test", "--test", "idl_roundtrip", rustTest);
         break;
       case "cpp":
         command = Collections.singletonList("./cpp/run.sh");
@@ -394,6 +485,7 @@ public class IdlRoundTripTest {
 
   private void runPeer(PeerCommand command, String peer) throws IOException, InterruptedException {
     ProcessBuilder builder = new ProcessBuilder(command.command);
+    builder.inheritIO();
     builder.directory(command.workDir.toFile());
     builder.environment().putAll(command.environment);
 

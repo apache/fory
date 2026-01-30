@@ -436,8 +436,17 @@ fn assert_graph(value: &graph::Graph) {
 }
 
 #[test]
-fn test_address_book_roundtrip() {
-    let mut fory = Fory::default().xlang(true);
+fn test_address_book_roundtrip_compatible() {
+    run_address_book_roundtrip(true);
+}
+
+#[test]
+fn test_address_book_roundtrip_schema_consistent() {
+    run_address_book_roundtrip(false);
+}
+
+fn run_address_book_roundtrip(compatible: bool) {
+    let mut fory = Fory::default().xlang(true).compatible(compatible);
     complex_pb::register_types(&mut fory).expect("register complex pb types");
     addressbook::register_types(&mut fory).expect("register types");
     monster::register_types(&mut fory).expect("register monster types");
@@ -543,7 +552,10 @@ fn test_address_book_roundtrip() {
     let result: Result<AnyHolder, _> = fory.deserialize(&bytes);
     assert!(result.is_err());
 
-    let mut ref_fory = Fory::default().xlang(true).track_ref(true);
+    let mut ref_fory = Fory::default()
+        .xlang(true)
+        .compatible(compatible)
+        .track_ref(true);
     tree::register_types(&mut ref_fory).expect("register tree types");
     graph::register_types(&mut ref_fory).expect("register graph types");
 
