@@ -149,10 +149,41 @@ func computeLocalNullable(typeResolver *TypeResolver, field reflect.StructField,
 	if foryTag.NullableSet {
 		nullableFlag = foryTag.Nullable
 	}
-	if isNonNullablePrimitiveKind(fieldType.Kind()) && !isEnum {
+	if isNonNullablePrimitiveKind(fieldType.Kind()) && !isEnum && !isOptional {
 		nullableFlag = false
 	}
 	return nullableFlag
+}
+
+func primitiveTypeIdMatchesKind(typeId TypeId, kind reflect.Kind) bool {
+	switch typeId {
+	case BOOL:
+		return kind == reflect.Bool
+	case INT8:
+		return kind == reflect.Int8
+	case INT16:
+		return kind == reflect.Int16
+	case INT32, VARINT32:
+		return kind == reflect.Int32 || kind == reflect.Int
+	case INT64, VARINT64, TAGGED_INT64:
+		return kind == reflect.Int64 || kind == reflect.Int
+	case UINT8:
+		return kind == reflect.Uint8
+	case UINT16:
+		return kind == reflect.Uint16
+	case UINT32, VAR_UINT32:
+		return kind == reflect.Uint32 || kind == reflect.Uint
+	case UINT64, VAR_UINT64, TAGGED_UINT64:
+		return kind == reflect.Uint64 || kind == reflect.Uint
+	case FLOAT32:
+		return kind == reflect.Float32
+	case FLOAT64:
+		return kind == reflect.Float64
+	case STRING:
+		return kind == reflect.String
+	default:
+		return false
+	}
 }
 
 func applyNestedRefOverride(serializer Serializer, fieldType reflect.Type, foryTag ForyTag) Serializer {
@@ -697,6 +728,33 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 					shouldRead = true
 					fieldType = localType // Use local type for struct fields
 				}
+			} else if typeLookupFailed && (internalDefTypeId == UNION || internalDefTypeId == TYPED_UNION || internalDefTypeId == NAMED_UNION) {
+				// For union fields with failed type lookup (named unions aren't in typeIDToTypeInfo),
+				// allow reading if the local type is a union.
+				if isUnionType(localType) {
+					shouldRead = true
+					fieldType = localType
+				}
+			} else if typeLookupFailed && isPrimitiveType(int16(internalDefTypeId)) {
+				baseLocal := localType
+				if optInfo, ok := getOptionalInfo(baseLocal); ok {
+					baseLocal = optInfo.valueType
+				}
+				if baseLocal.Kind() == reflect.Ptr {
+					baseLocal = baseLocal.Elem()
+				}
+				if primitiveTypeIdMatchesKind(internalDefTypeId, baseLocal.Kind()) {
+					shouldRead = true
+					fieldType = localType
+				}
+			} else if typeLookupFailed && isPrimitiveArrayType(int16(internalDefTypeId)) {
+				// Primitive arrays/slices use array type IDs but may not be registered in typeIDToTypeInfo.
+				// Allow reading using the local slice/array type when the type IDs match.
+				localTypeId := typeIdFromKind(localType)
+				if TypeId(localTypeId&0xFF) == internalDefTypeId {
+					shouldRead = true
+					fieldType = localType
+				}
 			} else if typeLookupFailed && defTypeId == LIST {
 				// For list fields with failed type lookup (e.g., named struct element types),
 				// allow reading using the local slice type.
@@ -940,6 +998,10 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 	for i, field := range fields {
 		if field.Meta.FieldIndex < 0 {
 			// Field exists in remote TypeDef but not locally
+			if DebugOutputEnabled && s.type_ != nil {
+				fmt.Printf("[Go][fory-debug] typeDefDiffers: missing local field for remote def idx=%d name=%q tagID=%d typeId=%d\n",
+					i, s.fieldDefs[i].name, s.fieldDefs[i].tagID, s.fieldDefs[i].fieldType.TypeId())
+			}
 			s.typeDefDiffers = true
 			break
 		}
@@ -951,6 +1013,10 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			// Check if local Go field is nullable based on local field definitions
 			localNullable := localNullableByIndex[field.Meta.FieldIndex]
 			if remoteNullable != localNullable {
+				if DebugOutputEnabled && s.type_ != nil {
+					fmt.Printf("[Go][fory-debug] typeDefDiffers: nullable mismatch idx=%d name=%q tagID=%d remote=%v local=%v\n",
+						i, s.fieldDefs[i].name, s.fieldDefs[i].tagID, remoteNullable, localNullable)
+				}
 				s.typeDefDiffers = true
 				break
 			}
@@ -3371,7 +3437,7 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 // skipField skips a field that doesn't exist or is incompatible
 // Uses context error state for deferred error checking.
 func (s *structSerializer) skipField(ctx *ReadContext, field *FieldInfo) {
-	if field.Meta.FieldDef.name != "" {
+	if field.Meta.FieldDef.name != "" || field.Meta.FieldDef.tagID >= 0 {
 		if DebugOutputEnabled {
 			fmt.Printf("[Go][fory-debug] skipField name=%s typeId=%d fieldType=%s\n",
 				field.Meta.FieldDef.name,

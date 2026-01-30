@@ -1016,12 +1016,20 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 			return NewSimpleFieldType(BOOL_ARRAY), nil
 		case reflect.Int8:
 			return NewSimpleFieldType(INT8_ARRAY), nil
+		case reflect.Uint8:
+			return NewSimpleFieldType(BINARY), nil
 		case reflect.Int16:
 			return NewSimpleFieldType(INT16_ARRAY), nil
+		case reflect.Uint16:
+			return NewSimpleFieldType(UINT16_ARRAY), nil
 		case reflect.Int32:
 			return NewSimpleFieldType(INT32_ARRAY), nil
+		case reflect.Uint32:
+			return NewSimpleFieldType(UINT32_ARRAY), nil
 		case reflect.Int64, reflect.Int:
 			return NewSimpleFieldType(INT64_ARRAY), nil
+		case reflect.Uint64, reflect.Uint:
+			return NewSimpleFieldType(UINT64_ARRAY), nil
 		case reflect.Float32:
 			return NewSimpleFieldType(FLOAT32_ARRAY), nil
 		case reflect.Float64:
@@ -1079,6 +1087,10 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 	typeId = TypeId(typeInfo.TypeID)
 
 	if isUserDefinedType(typeId) {
+		internalTypeId := TypeId(typeId & 0xFF)
+		if internalTypeId == UNION || internalTypeId == TYPED_UNION || internalTypeId == NAMED_UNION {
+			return NewSimpleFieldType(typeId), nil
+		}
 		return NewDynamicFieldType(typeId), nil
 	}
 
