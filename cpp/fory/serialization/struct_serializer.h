@@ -1917,7 +1917,7 @@ void write_single_field(const T &obj, WriteContext &ctx,
   // - TRUE (1): always write type info
   // - FALSE (0): never write type info for this field
   // - AUTO (-1): write type info if is_polymorphic (auto-detected)
-  bool polymorphic_write_type =
+  constexpr bool polymorphic_write_type =
       (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic);
   bool write_type =
       polymorphic_write_type || ((is_struct || is_ext) && ctx.is_compatible());
@@ -2949,75 +2949,22 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
             return T{};
           }
-
-          // Check LOCAL and REMOTE type to decide if we should read meta_index
-          // (matches Rust logic, and tolerates non-compatible wire type ids)
-          auto local_type_info_res =
-              ctx.type_resolver().template get_type_info<T>();
-          if (!local_type_info_res.ok()) {
-            ctx.set_error(std::move(local_type_info_res).error());
-            return T{};
-          }
-          const TypeInfo *local_type_info = local_type_info_res.value();
-          uint32_t local_type_id = local_type_info->type_id;
-          uint8_t local_type_id_low = local_type_id & 0xff;
           uint8_t remote_type_id_low = remote_type_id & 0xff;
-
-          auto normalize_struct_type_id = [](uint32_t type_id) {
-            uint32_t low = type_id & 0xffu;
-            uint32_t high = type_id & 0xffffff00u;
-            switch (static_cast<TypeId>(low)) {
-            case TypeId::COMPATIBLE_STRUCT:
-              return high | static_cast<uint32_t>(TypeId::STRUCT);
-            case TypeId::NAMED_COMPATIBLE_STRUCT:
-              return static_cast<uint32_t>(TypeId::NAMED_STRUCT);
-            default:
-              return type_id;
-            }
-          };
-
           const bool remote_has_meta =
               remote_type_id_low ==
                   static_cast<uint8_t>(TypeId::COMPATIBLE_STRUCT) ||
               remote_type_id_low ==
                   static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT);
-
-          if (local_type_id_low ==
-                  static_cast<uint8_t>(TypeId::COMPATIBLE_STRUCT) ||
-              local_type_id_low ==
-                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT)) {
-            if (remote_has_meta) {
-              // Read TypeMeta inline using streaming protocol
-              auto remote_type_info_res = ctx.read_type_meta();
-              if (!remote_type_info_res.ok()) {
-                ctx.set_error(std::move(remote_type_info_res).error());
-                return T{};
-              }
-
-              return read_compatible(ctx, remote_type_info_res.value());
-            }
-            // Remote sent non-compatible type id (STRUCT/NAMED_STRUCT) without
-            // TypeMeta. Fall back to schema-consistent read after validating
-            // type id equivalence.
-            uint32_t normalized_remote =
-                normalize_struct_type_id(remote_type_id);
-            uint32_t normalized_local = normalize_struct_type_id(local_type_id);
-            if (normalized_remote != normalized_local) {
-              ctx.set_error(
-                  Error::type_mismatch(normalized_remote, normalized_local));
+          if (remote_has_meta) {
+            // Read TypeMeta inline using streaming protocol
+            auto remote_type_info_res = ctx.read_type_meta();
+            if (!remote_type_info_res.ok()) {
+              ctx.set_error(std::move(remote_type_info_res).error());
               return T{};
             }
-            return read_data(ctx);
-          } else {
-            // Local type is not compatible struct - verify type match and read
-            // data
-            if (remote_type_id != local_type_id) {
-              ctx.set_error(
-                  Error::type_mismatch(remote_type_id, local_type_id));
-              return T{};
-            }
-            return read_data(ctx);
+            return read_compatible(ctx, remote_type_info_res.value());
           }
+          return read_data(ctx);
         } else {
           // read_type=false in compatible mode: same version, use sorted order
           // (fast path)
