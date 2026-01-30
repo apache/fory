@@ -485,6 +485,7 @@ public class IdlRoundTripTest {
 
   private void runPeer(PeerCommand command, String peer) throws IOException, InterruptedException {
     ProcessBuilder builder = new ProcessBuilder(command.command);
+    builder.inheritIO();
     builder.directory(command.workDir.toFile());
     builder.environment().putAll(command.environment);
 
