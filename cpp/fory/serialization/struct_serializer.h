@@ -2151,7 +2151,7 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   // - FALSE (0): never read type info for this field
   // - AUTO (-1): read type info if is_polymorphic_field (auto-detected)
   // Struct/EXT fields need type info in compatible mode for TypeMeta.
-  bool read_type = (dynamic_val == 1) ||
+  constexpr bool read_type = (dynamic_val == 1) ||
                    (dynamic_val == -1 && is_polymorphic_field) ||
                    ((is_struct_field || is_ext_field) && ctx.is_compatible());
 
@@ -2324,7 +2324,7 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
   // - FALSE (0): never read type info for this field
   // - AUTO (-1): read type info if is_polymorphic_field (auto-detected)
   // Struct/EXT fields need type info in compatible mode for TypeMeta.
-  bool read_type = (dynamic_val == 1) ||
+  constexpr bool read_type = (dynamic_val == 1) ||
                    (dynamic_val == -1 && is_polymorphic_field) ||
                    ((is_struct_field || is_ext_field) && ctx.is_compatible());
 
