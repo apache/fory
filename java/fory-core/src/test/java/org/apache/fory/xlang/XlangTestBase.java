@@ -36,6 +36,7 @@ import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
 import org.apache.fory.annotation.ForyField;
+import org.apache.fory.annotation.Ref;
 import org.apache.fory.annotation.Uint16Type;
 import org.apache.fory.annotation.Uint32Type;
 import org.apache.fory.annotation.Uint64Type;
@@ -168,19 +169,24 @@ public abstract class XlangTestBase extends ForyTestBase {
   protected abstract CommandContext buildCommandContext(String caseName, Path dataFile)
       throws IOException;
 
-  protected ImmutableMap.Builder<String, String> envBuilder(Path dataFile) {
-    ImmutableMap.Builder<String, String> builder =
-        ImmutableMap.<String, String>builder()
-            .put("DATA_FILE", dataFile.toAbsolutePath().toString());
+  protected Map<String, String> envBuilder(Path dataFile) {
+    Map<String, String> envMap = new HashMap<>();
+    envMap.put("DATA_FILE", dataFile.toAbsolutePath().toString());
     String dumpCase = System.getenv("FORY_CPP_DUMP_CASE");
     if (dumpCase != null) {
-      builder.put("FORY_CPP_DUMP_CASE", dumpCase);
+      envMap.put("FORY_CPP_DUMP_CASE", dumpCase);
     }
     String dumpDir = System.getenv("FORY_CPP_DUMP_DIR");
     if (dumpDir != null) {
-      builder.put("FORY_CPP_DUMP_DIR", dumpDir);
+      envMap.put("FORY_CPP_DUMP_DIR", dumpDir);
     }
-    return builder;
+    Map<String, String> env = System.getenv();
+    for (Map.Entry<String, String> entry : env.entrySet()) {
+      if (entry.getKey().toLowerCase().contains("fory")) {
+        envMap.put(entry.getKey(), entry.getValue());
+      }
+    }
+    return envMap;
   }
 
   protected ExecutionContext prepareExecution(String caseName, byte[] payload) throws IOException {
@@ -2352,6 +2358,77 @@ public abstract class XlangTestBase extends ForyTestBase {
         "After xlang round-trip: inner1 and inner2 should be same object");
     Assert.assertEquals(result.inner1.id, 99);
     Assert.assertEquals(result.inner1.name, "compatible_shared");
+  }
+
+  // ============================================================================
+  // Collection Element Reference Override Tests
+  // ============================================================================
+
+  @Data
+  static class RefOverrideElement {
+    int id;
+    String name;
+  }
+
+  @Data
+  static class RefOverrideContainer {
+    List<@Ref(enable = false) RefOverrideElement> listField;
+    Map<String, @Ref(enable = false) RefOverrideElement> mapField;
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testCollectionElementRefOverride(boolean enableCodegen) throws java.io.IOException {
+    String caseName = "test_collection_element_ref_override";
+    Fory fory =
+        Fory.builder()
+            .withLanguage(Language.XLANG)
+            .withCompatibleMode(CompatibleMode.SCHEMA_CONSISTENT)
+            .withRefTracking(true)
+            .withCodegen(enableCodegen)
+            .build();
+    fory.register(RefOverrideElement.class, 701);
+    fory.register(RefOverrideContainer.class, 702);
+
+    RefOverrideElement element = new RefOverrideElement();
+    element.id = 7;
+    element.name = "shared_element";
+
+    RefOverrideContainer container = new RefOverrideContainer();
+    container.listField = Arrays.asList(element, element);
+    container.mapField = new HashMap<>();
+    container.mapField.put("k1", element);
+    container.mapField.put("k2", element);
+
+    // Java round-trip should not preserve element identity due to @Ref(enable=false)
+    byte[] javaBytes = fory.serialize(container);
+    RefOverrideContainer javaResult = (RefOverrideContainer) fory.deserialize(javaBytes);
+    Assert.assertNotSame(
+        javaResult.listField.get(0),
+        javaResult.listField.get(1),
+        "Java: list elements should not share ref when disabled");
+    Assert.assertNotSame(
+        javaResult.mapField.get("k1"),
+        javaResult.mapField.get("k2"),
+        "Java: map values should not share ref when disabled");
+
+    MemoryBuffer buffer = MemoryBuffer.newHeapBuffer(256);
+    fory.serialize(buffer, container);
+
+    ExecutionContext ctx = prepareExecution(caseName, buffer.getBytes(0, buffer.writerIndex()));
+    runPeer(ctx);
+
+    MemoryBuffer buffer2 = readBuffer(ctx.dataFile());
+    RefOverrideContainer result = (RefOverrideContainer) fory.deserialize(buffer2);
+
+    RefOverrideElement shared = result.listField.get(0);
+    Assert.assertSame(
+        result.listField.get(1), shared, "After xlang round-trip: list elements should share ref");
+    Assert.assertSame(
+        result.mapField.get("k1"), shared, "After xlang round-trip: map value k1 should share ref");
+    Assert.assertSame(
+        result.mapField.get("k2"), shared, "After xlang round-trip: map value k2 should share ref");
+    Assert.assertEquals(shared.id, 7);
+    Assert.assertEquals(shared.name, "shared_element");
   }
 
   // ============================================================================

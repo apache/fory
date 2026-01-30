@@ -62,7 +62,7 @@ def skip_typedef(buffer: Buffer, header) -> None:
     meta_size = header & META_SIZE_MASKS
     # If meta size is at maximum, read additional size
     if meta_size == META_SIZE_MASKS:
-        meta_size += buffer.read_varuint32()
+        meta_size += buffer.read_var_uint32()
     # Read meta data
     buffer.read_bytes(meta_size)
 
@@ -91,7 +91,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
 
     # If meta size is at maximum, read additional size
     if meta_size == META_SIZE_MASKS:
-        meta_size += buffer.read_varuint32()
+        meta_size += buffer.read_var_uint32()
 
     # Read meta data
     meta_data = buffer.read_bytes(meta_size)
@@ -109,7 +109,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
     # Extract number of fields
     num_fields = meta_header & 0b11111
     if num_fields == SMALL_NUM_FIELDS_THRESHOLD:
-        num_fields += meta_buffer.read_varuint32()
+        num_fields += meta_buffer.read_var_uint32()
 
     # Check field count limit
     if num_fields > MAX_FIELDS_PER_CLASS:
@@ -134,7 +134,7 @@ def decode_typedef(buffer: Buffer, resolver, header=None) -> TypeDef:
             # Fallback to COMPATIBLE_STRUCT if not found
             type_id = TypeId.COMPATIBLE_STRUCT
     else:
-        type_id = meta_buffer.read_varuint32()
+        type_id = meta_buffer.read_var_uint32()
         if resolver.is_registered_by_id(type_id=type_id):
             type_info = resolver.get_typeinfo_by_id(type_id)
             type_cls = type_info.cls
@@ -191,7 +191,7 @@ def read_meta_string(buffer: Buffer, decoder: MetaStringDecoder, encodings: List
     # Read length - same logic as encoder
     length = 0
     if size_value >= BIG_NAME_THRESHOLD:
-        length = size_value - BIG_NAME_THRESHOLD + buffer.read_varuint32()
+        length = size_value - BIG_NAME_THRESHOLD + buffer.read_var_uint32()
     else:
         length = size_value
 
@@ -243,12 +243,12 @@ def read_field_info(buffer: Buffer, resolver, defined_class: str) -> FieldInfo:
     if encoding_type == FIELD_NAME_ENCODING_TAG_ID:
         # TAG_ID encoding
         if size_or_tag >= TAG_ID_SIZE_THRESHOLD:
-            tag_id = TAG_ID_SIZE_THRESHOLD + buffer.read_varuint32()
+            tag_id = TAG_ID_SIZE_THRESHOLD + buffer.read_var_uint32()
         else:
             tag_id = size_or_tag
 
         # Read field type info (no field name to read for TAG_ID)
-        xtype_id = buffer.read_varuint32()
+        xtype_id = buffer.read_var_uint32()
         field_type = FieldType.xread_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
 
         # For TAG_ID encoding, use tag_id as field name placeholder
@@ -258,12 +258,12 @@ def read_field_info(buffer: Buffer, resolver, defined_class: str) -> FieldInfo:
         # Field name encoding
         field_name_size = size_or_tag
         if field_name_size >= FIELD_NAME_SIZE_THRESHOLD:
-            field_name_size = FIELD_NAME_SIZE_THRESHOLD + buffer.read_varuint32()
+            field_name_size = FIELD_NAME_SIZE_THRESHOLD + buffer.read_var_uint32()
         field_name_size += 1  # Add 1 to convert from (size-1) to actual size
         encoding = FIELD_NAME_ENCODINGS[encoding_type]
 
         # Read field type info BEFORE field name (matching Java TypeDefDecoder order)
-        xtype_id = buffer.read_varuint32()
+        xtype_id = buffer.read_var_uint32()
         field_type = FieldType.xread_with_type(buffer, resolver, xtype_id, is_nullable, is_tracking_ref)
 
         # Read field name meta string

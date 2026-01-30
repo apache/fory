@@ -223,7 +223,7 @@ export class MetaStringDecoder {
         builder.push(chars[i]);
       }
     }
-    return builder.toString();
+    return builder.join("");
   }
 }
 
@@ -372,7 +372,7 @@ export class MetaStringEncoder {
     }
 
     // Use a regular expression to check whether all alphabetic characters are uppercase
-    return /^[^a-z]*$/.test(str);
+    return /^[A-Z]+$/.test(str);
   }
 
   isDigit(str: string) {
@@ -382,7 +382,7 @@ export class MetaStringEncoder {
     }
 
     // Use a regular expression to check whether all alphabetic characters are uppercase
-    return /^[^0-9]*$/.test(str);
+    return /^[0-9]+$/.test(str);
   }
 
   private computeStatistics(chars: string[]) {

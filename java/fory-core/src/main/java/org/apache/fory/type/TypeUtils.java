@@ -19,6 +19,8 @@
 
 package org.apache.fory.type;
 
+import java.lang.reflect.AnnotatedParameterizedType;
+import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.GenericArrayType;
@@ -67,6 +69,7 @@ import java.util.Set;
 import java.util.TimeZone;
 import java.util.WeakHashMap;
 import java.util.stream.Collectors;
+import org.apache.fory.annotation.Ref;
 import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.collection.Tuple2;
 import org.apache.fory.meta.TypeExtMeta;
@@ -493,6 +496,15 @@ public class TypeUtils {
 
   /** Returns element type of iterable. */
   public static TypeRef<?> getElementType(TypeRef<?> typeRef) {
+    if (typeRef.hasTypeExtMeta() && typeRef.hasExplicitTypeArguments()) {
+      List<TypeRef<?>> typeArguments = typeRef.getTypeArguments();
+      if (typeArguments.size() == 1) {
+        Class<?> rawType = getRawType(typeRef);
+        if (Iterable.class.isAssignableFrom(rawType) && rawType.getTypeParameters().length == 1) {
+          return typeArguments.get(0);
+        }
+      }
+    }
     Type type = typeRef.getType();
     if (type instanceof ParameterizedType) {
       ParameterizedType parameterizedType = (ParameterizedType) type;
@@ -520,6 +532,15 @@ public class TypeUtils {
 
   /** Returns key/value type of map. */
   public static Tuple2<TypeRef<?>, TypeRef<?>> getMapKeyValueType(TypeRef<?> typeRef) {
+    if (typeRef.hasTypeExtMeta() && typeRef.hasExplicitTypeArguments()) {
+      List<TypeRef<?>> typeArguments = typeRef.getTypeArguments();
+      if (typeArguments.size() == 2) {
+        Class<?> rawType = getRawType(typeRef);
+        if (Map.class.isAssignableFrom(rawType) && rawType.getTypeParameters().length == 2) {
+          return Tuple2.of(typeArguments.get(0), typeArguments.get(1));
+        }
+      }
+    }
     Type type = typeRef.getType();
     if (type instanceof ParameterizedType) {
       ParameterizedType parameterizedType = (ParameterizedType) type;
@@ -541,6 +562,26 @@ public class TypeUtils {
     TypeRef<?> keyType = getElementType(supertype.resolveType(KEY_SET_RETURN_TYPE));
     TypeRef<?> valueType = getElementType(supertype.resolveType(VALUES_RETURN_TYPE));
     return Tuple2.of(keyType, valueType);
+  }
+
+  public static void applyRefTrackingOverride(
+      GenericType genericType, AnnotatedType annotatedType, boolean globalTrackingRef) {
+    if (genericType == null || annotatedType == null) {
+      return;
+    }
+    Ref ref = annotatedType.getAnnotation(Ref.class);
+    if (ref != null) {
+      genericType.setTrackingRefOverride(ref.enable() && globalTrackingRef);
+    }
+    if (annotatedType instanceof AnnotatedParameterizedType) {
+      AnnotatedType[] annotatedArgs =
+          ((AnnotatedParameterizedType) annotatedType).getAnnotatedActualTypeArguments();
+      GenericType[] typeParameters = genericType.getTypeParameters();
+      int len = Math.min(annotatedArgs.length, typeParameters.length);
+      for (int i = 0; i < len; i++) {
+        applyRefTrackingOverride(typeParameters[i], annotatedArgs[i], globalTrackingRef);
+      }
+    }
   }
 
   public static <E> TypeRef<ArrayList<E>> arrayListOf(Class<E> elemType) {
@@ -843,6 +884,9 @@ public class TypeUtils {
 
   /** Returns generic type arguments of <code>typeToken</code>. */
   public static List<TypeRef<?>> getTypeArguments(TypeRef<?> typeRef) {
+    if (typeRef.hasExplicitTypeArguments()) {
+      return typeRef.getTypeArguments();
+    }
     if (typeRef.getType() instanceof ParameterizedType) {
       ParameterizedType parameterizedType = (ParameterizedType) typeRef.getType();
       return Arrays.stream(parameterizedType.getActualTypeArguments())

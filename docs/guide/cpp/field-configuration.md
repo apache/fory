@@ -145,7 +145,7 @@ FORY_STRUCT(Graph, name, left, right);
 Controls whether type info is written for polymorphic smart pointer fields:
 
 - `fory::dynamic<true>`: Force type info to be written (enable runtime subtype support)
-- `fory::dynamic<false>`: Skip type info (use declared type directly, no dynamic dispatch)
+- `fory::dynamic<false>`: skip type info (use declared type directly, no dynamic dispatch)
 
 By default, Fory auto-detects polymorphism via `std::is_polymorphic<T>`. Use this tag to override:
 
@@ -351,7 +351,7 @@ fory::F(0)                    // Create with field ID 0
     .varint()                 // Use variable-length encoding
     .fixed()                  // Use fixed-size encoding
     .tagged()                 // Use tagged encoding
-    .dynamic(false)           // Skip type info (no dynamic dispatch)
+    .dynamic(false)           // skip type info (no dynamic dispatch)
     .dynamic(true)            // Force type info (enable dynamic dispatch)
     .compress(false)          // Disable compression
 ```
@@ -389,40 +389,40 @@ using namespace fory::serialization;
 // Define struct with unsigned integer fields
 struct MetricsData {
   // Counters - often small values, use varint for space efficiency
-  uint32_t requestCount;
-  uint64_t bytesSent;
+  uint32_t request_count;
+  uint64_t bytes_sent;
 
   // IDs - uniformly distributed, use fixed for consistent performance
-  uint32_t userId;
-  uint64_t sessionId;
+  uint32_t user_id;
+  uint64_t session_id;
 
   // Timestamps - use tagged encoding for mixed value ranges
-  uint64_t createdAt;
+  uint64_t created_at;
 
   // Nullable fields
-  std::optional<uint32_t> errorCount;
-  std::optional<uint64_t> lastAccessTime;
+  std::optional<uint32_t> error_count;
+  std::optional<uint64_t> last_access_time;
 };
 
-FORY_STRUCT(MetricsData, requestCount, bytesSent, userId, sessionId,
-            createdAt, errorCount, lastAccessTime);
+FORY_STRUCT(MetricsData, request_count, bytes_sent, user_id, session_id,
+            created_at, error_count, last_access_time);
 
 // Configure field encoding
 FORY_FIELD_CONFIG(MetricsData,
     // Small counters - varint saves space
-    (requestCount, fory::F(0).varint()),
-    (bytesSent, fory::F(1).varint()),
+    (request_count, fory::F(0).varint()),
+    (bytes_sent, fory::F(1).varint()),
 
     // IDs - fixed for consistent performance
-    (userId, fory::F(2).fixed()),
-    (sessionId, fory::F(3).fixed()),
+    (user_id, fory::F(2).fixed()),
+    (session_id, fory::F(3).fixed()),
 
     // Timestamp - tagged encoding
-    (createdAt, fory::F(4).tagged()),
+    (created_at, fory::F(4).tagged()),
 
     // Nullable fields
-    (errorCount, fory::F(5).nullable().varint()),
-    (lastAccessTime, fory::F(6).nullable().tagged())
+    (error_count, fory::F(5).nullable().varint()),
+    (last_access_time, fory::F(6).nullable().tagged())
 );
 
 int main() {
@@ -430,13 +430,13 @@ int main() {
   fory.register_struct<MetricsData>(100);
 
   MetricsData data{
-      .requestCount = 42,
-      .bytesSent = 1024,
-      .userId = 12345678,
-      .sessionId = 9876543210,
-      .createdAt = 1704067200000000000ULL, // 2024-01-01 in nanoseconds
-      .errorCount = 3,
-      .lastAccessTime = std::nullopt
+      .request_count = 42,
+      .bytes_sent = 1024,
+      .user_id = 12345678,
+      .session_id = 9876543210,
+      .created_at = 1704067200000000000ULL, // 2024-01-01 in nanoseconds
+      .error_count = 3,
+      .last_access_time = std::nullopt
   };
 
   auto bytes = fory.serialize(data).value();
@@ -458,24 +458,24 @@ When serializing data to be read by other languages, use `FORY_FIELD_CONFIG` to 
 // - Long (u64): VAR_UINT64 (varint), UINT64 (fixed), or TAGGED_UINT64
 
 struct JavaCompatible {
-  uint8_t byteField;      // Maps to Java Byte
-  uint16_t shortField;    // Maps to Java Short
-  uint32_t intVarField;   // Maps to Java Integer with varint
-  uint32_t intFixedField; // Maps to Java Integer with fixed
-  uint64_t longVarField;  // Maps to Java Long with varint
-  uint64_t longTagged;    // Maps to Java Long with tagged
+  uint8_t byte_field;      // Maps to Java Byte
+  uint16_t short_field;    // Maps to Java Short
+  uint32_t int_var_field;   // Maps to Java Integer with varint
+  uint32_t int_fixed_field; // Maps to Java Integer with fixed
+  uint64_t long_var_field;  // Maps to Java Long with varint
+  uint64_t long_tagged;    // Maps to Java Long with tagged
 };
 
-FORY_STRUCT(JavaCompatible, byteField, shortField, intVarField,
-            intFixedField, longVarField, longTagged);
+FORY_STRUCT(JavaCompatible, byte_field, short_field, int_var_field,
+            int_fixed_field, long_var_field, long_tagged);
 
 FORY_FIELD_CONFIG(JavaCompatible,
-    (byteField, fory::F(0)),                    // UINT8 (auto)
-    (shortField, fory::F(1)),                   // UINT16 (auto)
-    (intVarField, fory::F(2).varint()),         // VAR_UINT32
-    (intFixedField, fory::F(3).fixed()),        // UINT32
-    (longVarField, fory::F(4).varint()),        // VAR_UINT64
-    (longTagged, fory::F(5).tagged())           // TAGGED_UINT64
+    (byte_field, fory::F(0)),                    // UINT8 (auto)
+    (short_field, fory::F(1)),                   // UINT16 (auto)
+    (int_var_field, fory::F(2).varint()),         // VAR_UINT32
+    (int_fixed_field, fory::F(3).fixed()),        // UINT32
+    (long_var_field, fory::F(4).varint()),        // VAR_UINT64
+    (long_tagged, fory::F(5).tagged())           // TAGGED_UINT64
 );
 ```
 
@@ -516,7 +516,7 @@ FORY_FIELD_CONFIG(DataV2,
 | `.nullable()`     | Mark field as nullable                           | Smart pointers, primitives                           |
 | `.ref()`          | Enable reference tracking                        | `std::shared_ptr`, `fory::serialization::SharedWeak` |
 | `.dynamic(true)`  | Force type info to be written (dynamic dispatch) | Smart pointers                                       |
-| `.dynamic(false)` | Skip type info (use declared type directly)      | Smart pointers                                       |
+| `.dynamic(false)` | skip type info (use declared type directly)      | Smart pointers                                       |
 | `.varint()`       | Use variable-length encoding                     | `uint32_t`, `uint64_t`                               |
 | `.fixed()`        | Use fixed-size encoding                          | `uint32_t`, `uint64_t`                               |
 | `.tagged()`       | Use tagged hybrid encoding                       | `uint64_t` only                                      |

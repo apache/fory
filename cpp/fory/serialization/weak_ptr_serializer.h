@@ -130,13 +130,13 @@ public:
   /// @return true if the target has been destroyed or was never set.
   bool expired() const { return inner_->weak.expired(); }
 
-  /// Get the use count of the target object.
+  /// get the use count of the target object.
   ///
   /// @return The number of shared_ptr instances pointing to the target,
   ///         or 0 if the target has been destroyed.
   long use_count() const { return inner_->weak.use_count(); }
 
-  /// Get the underlying weak_ptr.
+  /// get the underlying weak_ptr.
   ///
   /// @return A copy of the internal weak_ptr.
   std::weak_ptr<T> get_weak() const { return inner_->weak; }
@@ -150,13 +150,13 @@ public:
            !other.inner_->weak.owner_before(inner_->weak);
   }
 
-  /// Copy constructor - shares the internal storage.
+  /// copy constructor - shares the internal storage.
   SharedWeak(const SharedWeak &other) = default;
 
   /// Move constructor.
   SharedWeak(SharedWeak &&other) noexcept = default;
 
-  /// Copy assignment - shares the internal storage.
+  /// copy assignment - shares the internal storage.
   SharedWeak &operator=(const SharedWeak &other) = default;
 
   /// Move assignment.
@@ -338,7 +338,7 @@ template <typename T> struct Serializer<SharedWeak<T>> {
 
     case REF_FLAG: {
       // Reference to existing object
-      uint32_t ref_id = ctx.read_varuint32(ctx.error());
+      uint32_t ref_id = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return SharedWeak<T>();
       }
@@ -405,7 +405,7 @@ template <typename T> struct Serializer<SharedWeak<T>> {
     }
 
     case REF_FLAG: {
-      uint32_t ref_id = ctx.read_varuint32(ctx.error());
+      uint32_t ref_id = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return SharedWeak<T>();
       }

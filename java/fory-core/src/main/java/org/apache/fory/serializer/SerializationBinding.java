@@ -298,6 +298,10 @@ abstract class SerializationBinding {
 
     @Override
     public Object read(MemoryBuffer buffer, Serializer serializer) {
+      if (fory.trackingRef() && serializer.needToWriteRef()) {
+        // Preserve a dummy ref ID so serializer.read() can call reference() safely.
+        refResolver.preserveRefId(-1);
+      }
       return serializer.read(buffer);
     }
 
@@ -627,6 +631,10 @@ abstract class SerializationBinding {
 
     @Override
     public Object read(MemoryBuffer buffer, Serializer serializer) {
+      if (fory.trackingRef() && serializer.needToWriteRef()) {
+        // Preserve a dummy ref ID so serializer.xread() can call reference() safely.
+        refResolver.preserveRefId(-1);
+      }
       return serializer.xread(buffer);
     }
 

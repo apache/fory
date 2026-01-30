@@ -24,6 +24,10 @@ public class TypeExtMeta {
   private final boolean nullable;
   private final boolean trackingRef;
 
+  public static TypeExtMeta of(int typeId, boolean nullable, boolean trackingRef) {
+    return new TypeExtMeta(typeId, nullable, trackingRef);
+  }
+
   TypeExtMeta(int typeId, boolean nullable, boolean trackingRef) {
     this.typeId = typeId;
     this.nullable = nullable;

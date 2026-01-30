@@ -35,6 +35,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -276,7 +277,16 @@ public class ReflectionUtils {
       throw new IllegalArgumentException(msg);
     }
     Set<? extends Class<?>> returnTypes =
-        methods.stream().map(Method::getReturnType).collect(Collectors.toSet());
+        methods.stream().map(Method::getReturnType).collect(Collectors.toCollection(HashSet::new));
+    if (returnTypes.size() == 2) {
+      returnTypes.remove(Object.class);
+      if (returnTypes.size() == 1) {
+        return returnTypes.iterator().next();
+      } else {
+        throw new IllegalStateException(
+            String.format("Methods %s has incompatible return types: %s", methods, returnTypes));
+      }
+    }
     Preconditions.checkArgument(returnTypes.size() == 1);
     return methods.get(0).getReturnType();
   }

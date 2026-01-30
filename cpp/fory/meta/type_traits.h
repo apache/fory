@@ -84,9 +84,9 @@ template <typename T,
               decltype(*begin(std::declval<T &>()),
                        ++std::declval<decltype(begin(std::declval<T &>())) &>(),
                        begin(std::declval<T &>()) != end(std::declval<T &>()))>>
-std::true_type IsIterableImpl(int);
+std::true_type is_iterable_impl(int);
 
-template <typename T> std::false_type IsIterableImpl(...);
+template <typename T> std::false_type is_iterable_impl(...);
 
 template <typename T> struct GetValueTypeImpl {
   using type = std::remove_reference_t<decltype(*begin(std::declval<T &>()))>;
@@ -95,7 +95,7 @@ template <typename T> struct GetValueTypeImpl {
 
 template <typename T>
 constexpr inline bool IsIterable =
-    decltype(details::IsIterableImpl<T>(0))::value;
+    decltype(details::is_iterable_impl<T>(0))::value;
 
 template <typename T>
 using GetValueType = typename details::GetValueTypeImpl<T>::type;
@@ -107,18 +107,18 @@ template <typename> constexpr inline bool IsPair = false;
 template <typename T1, typename T2>
 constexpr inline bool IsPair<std::pair<T1, T2>> = true;
 
-template <typename> std::false_type IsPairIterableImpl(...);
+template <typename> std::false_type is_pair_iterable_impl(...);
 
 template <
     typename T,
     std::enable_if_t<IsIterable<T> && IsPair<typename T::value_type>, int> = 0>
-std::true_type IsPairIterableImpl(int);
+std::true_type is_pair_iterable_impl(int);
 
 } // namespace details
 
 template <typename T>
 constexpr inline bool IsPairIterable =
-    decltype(details::IsPairIterableImpl<T>(0))::value;
+    decltype(details::is_pair_iterable_impl<T>(0))::value;
 
 } // namespace meta
 

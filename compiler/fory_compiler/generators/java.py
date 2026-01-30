@@ -17,9 +17,11 @@
 
 """Java code generator."""
 
-from typing import List, Optional, Set, Union as TypingUnion
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple, Union as TypingUnion
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.ir.ast import (
     Message,
     Enum,
@@ -30,6 +32,7 @@ from fory_compiler.ir.ast import (
     NamedType,
     ListType,
     MapType,
+    Schema,
 )
 from fory_compiler.ir.types import PrimitiveKind
 
@@ -55,6 +58,14 @@ class JavaGenerator(BaseGenerator):
             return java_package
         return self.schema.package
 
+    def get_registration_class_name(self) -> str:
+        """Get the generated registration class name."""
+        java_package = self.get_java_package()
+        if java_package:
+            parts = java_package.split(".")
+            return self.to_pascal_case(parts[-1]) + "ForyRegistration"
+        return "ForyRegistration"
+
     def get_java_outer_classname(self) -> Optional[str]:
         """Get the Java outer classname if specified.
 
@@ -71,6 +82,132 @@ class JavaGenerator(BaseGenerator):
         """
         value = self.schema.get_option("java_multiple_files")
         return value is True
+
+    def is_imported_type(self, type_def: object) -> bool:
+        """Return True if a type definition comes from an imported IDL file."""
+        if not self.schema.source_file:
+            return False
+        location = getattr(type_def, "location", None)
+        if location is None or not location.file:
+            return False
+        try:
+            return (
+                Path(location.file).resolve() != Path(self.schema.source_file).resolve()
+            )
+        except Exception:
+            return location.file != self.schema.source_file
+
+    def split_imported_types(
+        self, items: List[object]
+    ) -> Tuple[List[object], List[object]]:
+        imported: List[object] = []
+        local: List[object] = []
+        for item in items:
+            if self.is_imported_type(item):
+                imported.append(item)
+            else:
+                local.append(item)
+        return imported, local
+
+    def _normalize_import_path(self, path_str: str) -> str:
+        if not path_str:
+            return path_str
+        try:
+            return str(Path(path_str).resolve())
+        except Exception:
+            return path_str
+
+    def _load_schema(self, file_path: str) -> Optional[Schema]:
+        if not file_path:
+            return None
+        if not hasattr(self, "_schema_cache"):
+            self._schema_cache = {}
+        cache: Dict[Path, Schema] = self._schema_cache
+        path = Path(file_path).resolve()
+        if path in cache:
+            return cache[path]
+        try:
+            schema = parse_idl_file(path)
+        except Exception:
+            return None
+        cache[path] = schema
+        return schema
+
+    def _java_package_for_schema(self, schema: Schema) -> Optional[str]:
+        java_package = schema.get_option("java_package")
+        if java_package:
+            return java_package
+        return schema.package
+
+    def _registration_class_name_for_schema(self, schema: Schema) -> str:
+        java_package = self._java_package_for_schema(schema)
+        if java_package:
+            parts = java_package.split(".")
+            return self.to_pascal_case(parts[-1]) + "ForyRegistration"
+        return "ForyRegistration"
+
+    def _java_package_for_type(self, type_def: object) -> Optional[str]:
+        location = getattr(type_def, "location", None)
+        file_path = getattr(location, "file", None) if location else None
+        schema = self._load_schema(file_path)
+        if schema is None:
+            return None
+        return self._java_package_for_schema(schema)
+
+    def _collect_imported_packages(self) -> List[Tuple[str, str]]:
+        packages: Dict[str, str] = {}
+        for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
+            if not self.is_imported_type(type_def):
+                continue
+            java_package = self._java_package_for_type(type_def)
+            if not java_package:
+                continue
+            if java_package in packages:
+                continue
+            schema = self._load_schema(
+                getattr(getattr(type_def, "location", None), "file", None)
+            )
+            if schema is None:
+                continue
+            packages[java_package] = self._registration_class_name_for_schema(schema)
+
+        ordered: List[Tuple[str, str]] = []
+        used: Set[str] = set()
+        if self.schema.source_file:
+            base_dir = Path(self.schema.source_file).resolve().parent
+            for imp in self.schema.imports:
+                candidate = self._normalize_import_path(
+                    str((base_dir / imp.path).resolve())
+                )
+                schema = self._load_schema(candidate)
+                if schema is None:
+                    continue
+                java_package = self._java_package_for_schema(schema)
+                if not java_package or java_package in used:
+                    continue
+                reg_class = self._registration_class_name_for_schema(schema)
+                ordered.append((java_package, reg_class))
+                used.add(java_package)
+        for pkg, reg in sorted(packages.items()):
+            if pkg in used:
+                continue
+            ordered.append((pkg, reg))
+        return ordered
+
+    def generate_bytes_methods(self, class_name: str) -> List[str]:
+        reg_class = self.get_registration_class_name()
+        lines = []
+        lines.append("public byte[] toBytes() {")
+        lines.append(f"    return {reg_class}.getFory().serialize(this);")
+        lines.append("}")
+        lines.append("")
+        lines.append(f"public static {class_name} fromBytes(byte[] bytes) {{")
+        lines.append(
+            f"    return {reg_class}.getFory().deserialize(bytes, {class_name}.class);"
+        )
+        lines.append("}")
+        lines.append("")
+        return lines
 
     # Mapping from FDL primitive types to Java types
     PRIMITIVE_MAP = {
@@ -168,14 +305,20 @@ class JavaGenerator(BaseGenerator):
             # Generate separate files for each type
             # Generate enum files (top-level only, nested enums go inside message files)
             for enum in self.schema.enums:
+                if self.is_imported_type(enum):
+                    continue
                 files.append(self.generate_enum_file(enum))
 
             # Generate union files (top-level only, nested unions go inside message files)
             for union in self.schema.unions:
+                if self.is_imported_type(union):
+                    continue
                 files.append(self.generate_union_file(union))
 
             # Generate message files (includes nested types as inner classes)
             for message in self.schema.messages:
+                if self.is_imported_type(message):
+                    continue
                 files.append(self.generate_message_file(message))
 
             # Generate registration helper
@@ -321,6 +464,10 @@ class JavaGenerator(BaseGenerator):
             for line in getter_setter:
                 lines.append(f"    {line}")
 
+        # toBytes/fromBytes
+        for line in self.generate_bytes_methods(message.name):
+            lines.append(f"    {line}")
+
         # equals method
         for line in self.generate_equals_method(message):
             lines.append(f"    {line}")
@@ -383,16 +530,22 @@ class JavaGenerator(BaseGenerator):
 
         # Generate all top-level enums as static inner classes
         for enum in self.schema.enums:
+            if self.is_imported_type(enum):
+                continue
             for line in self.generate_nested_enum(enum):
                 lines.append(f"    {line}")
 
         # Generate all top-level unions as static inner classes
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             for line in self.generate_union_class(union, indent=0, nested=True):
                 lines.append(f"    {line}")
 
         # Generate all top-level messages as static inner classes
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             for line in self.generate_nested_message(message, indent=1):
                 lines.append(f"    {line}")
 
@@ -598,6 +751,9 @@ class JavaGenerator(BaseGenerator):
         lines.append(f"{ind}    }}")
         lines.append("")
 
+        for line in self.generate_bytes_methods(union.name):
+            lines.append(f"{ind}    {line}")
+
         lines.append(f"{ind}}}")
         lines.append("")
         return lines
@@ -776,6 +932,10 @@ class JavaGenerator(BaseGenerator):
             for line in getter_setter:
                 lines.append(f"    {line}")
 
+        # toBytes/fromBytes
+        for line in self.generate_bytes_methods(message.name):
+            lines.append(f"    {line}")
+
         # equals method
         for line in self.generate_equals_method(message):
             lines.append(f"    {line}")
@@ -875,6 +1035,11 @@ class JavaGenerator(BaseGenerator):
             return self.PRIMITIVE_MAP[field_type.kind]
 
         elif isinstance(field_type, NamedType):
+            named_type = self.schema.get_type(field_type.name)
+            if named_type is not None and self.is_imported_type(named_type):
+                java_package = self._java_package_for_type(named_type)
+                if java_package:
+                    return f"{java_package}.{field_type.name}"
             return field_type.name
 
         elif isinstance(field_type, ListType):
@@ -887,11 +1052,19 @@ class JavaGenerator(BaseGenerator):
                 ):
                     return self.PRIMITIVE_ARRAY_MAP[field_type.element_type.kind]
             element_type = self.generate_type(field_type.element_type, True)
+            if self.is_ref_target_type(field_type.element_type):
+                ref_annotation = "@Ref" if element_ref else "@Ref(enable=false)"
+                element_type = f"{ref_annotation} {element_type}"
             return f"List<{element_type}>"
 
         elif isinstance(field_type, MapType):
             key_type = self.generate_type(field_type.key_type, True)
             value_type = self.generate_type(field_type.value_type, True)
+            if self.is_ref_target_type(field_type.value_type):
+                ref_annotation = (
+                    "@Ref" if field_type.value_ref else "@Ref(enable=false)"
+                )
+                value_type = f"{ref_annotation} {value_type}"
             return f"Map<{key_type}, {value_type}>"
 
         return "Object"
@@ -920,10 +1093,14 @@ class JavaGenerator(BaseGenerator):
                 ):
                     return  # No import needed for primitive arrays
             imports.add("java.util.List")
+            if self.is_ref_target_type(field_type.element_type):
+                imports.add("org.apache.fory.annotation.Ref")
             self.collect_type_imports(field_type.element_type, imports)
 
         elif isinstance(field_type, MapType):
             imports.add("java.util.Map")
+            if self.is_ref_target_type(field_type.value_type):
+                imports.add("org.apache.fory.annotation.Ref")
             self.collect_type_imports(field_type.key_type, imports)
             self.collect_type_imports(field_type.value_type, imports)
 
@@ -943,6 +1120,12 @@ class JavaGenerator(BaseGenerator):
         self.collect_array_imports(field, imports)
         if field.optional or field.ref or field.tag_id is not None or is_any:
             imports.add("org.apache.fory.annotation.ForyField")
+
+    def is_ref_target_type(self, field_type: FieldType) -> bool:
+        if not isinstance(field_type, NamedType):
+            return False
+        resolved = self.schema.get_type(field_type.name)
+        return isinstance(resolved, (Message, Union))
 
     def collect_array_imports(self, field: Field, imports: Set[str]) -> None:
         """Collect imports for primitive array type annotations."""
@@ -1187,11 +1370,7 @@ class JavaGenerator(BaseGenerator):
         java_package = self.get_java_package()
 
         # Determine class name
-        if java_package:
-            parts = java_package.split(".")
-            class_name = self.to_pascal_case(parts[-1]) + "ForyRegistration"
-        else:
-            class_name = "ForyRegistration"
+        class_name = self.get_registration_class_name()
 
         # License header
         lines.append(self.get_license_header())
@@ -1204,26 +1383,57 @@ class JavaGenerator(BaseGenerator):
 
         # Imports
         lines.append("import org.apache.fory.Fory;")
+        lines.append("import org.apache.fory.ThreadSafeFory;")
+        lines.append("import org.apache.fory.pool.SimpleForyPool;")
         lines.append("")
 
         # Class
         lines.append(f"public class {class_name} {{")
         lines.append("")
-        lines.append("    public static void register(Fory fory) {")
-
+        lines.append("    static ThreadSafeFory getFory() {")
+        lines.append("        return Holder.FORY;")
+        lines.append("    }")
+        lines.append("")
+        lines.append("    private static ThreadSafeFory createFory() {")
+        lines.append(
+            "        ThreadSafeFory fory = new SimpleForyPool(c -> Fory.builder().withXlang(true).withRefTracking(true).build());"
+        )
+        imported_packages = self._collect_imported_packages()
+        if imported_packages:
+            lines.append("        fory.registerCallback(f -> {")
+            for java_package, reg_class in imported_packages:
+                lines.append(f"            {java_package}.{reg_class}.register(f);")
+            lines.append("            register(f);")
+            lines.append("        });")
+        else:
+            lines.append("        fory.registerCallback(f -> register(f));")
+        lines.append("        return fory;")
+        lines.append("    }")
+        lines.append("")
+        lines.append("    private static class Holder {")
+        lines.append("        private static final ThreadSafeFory FORY = createFory();")
+        lines.append("    }")
+        lines.append("")
         # When outer_classname is set, all top-level types become inner classes
         type_prefix = outer_classname if outer_classname else ""
 
+        local_enums = [e for e in self.schema.enums if not self.is_imported_type(e)]
+        local_unions = [u for u in self.schema.unions if not self.is_imported_type(u)]
+        local_messages = [
+            m for m in self.schema.messages if not self.is_imported_type(m)
+        ]
+        lines.append("    public static void register(Fory fory) {")
+
         # Register enums (top-level)
-        for enum in self.schema.enums:
+        for enum in local_enums:
             self.generate_enum_registration(lines, enum, type_prefix)
 
         # Register unions (top-level)
-        for union in self.schema.unions:
+        for union in local_unions:
             self.generate_union_registration(lines, union, type_prefix)
 
         # Register messages (top-level and nested)
-        for message in self.schema.messages:
+        for message in local_messages:
             self.generate_message_registration(lines, message, type_prefix)
 
         lines.append("    }")

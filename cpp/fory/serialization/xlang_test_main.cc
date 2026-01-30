@@ -49,21 +49,21 @@ using ::fory::serialization::ForyBuilder;
 using ::fory::serialization::Serializer;
 using ::fory::serialization::Timestamp;
 
-[[noreturn]] void Fail(const std::string &message) {
+[[noreturn]] void fail(const std::string &message) {
   throw std::runtime_error(message);
 }
 
-std::string GetDataFilePath() {
+std::string get_data_file_path() {
   const char *env = std::getenv("DATA_FILE");
   if (env == nullptr) {
-    Fail("DATA_FILE environment variable is not set");
+    fail("DATA_FILE environment variable is not set");
   }
   return std::string(env);
 }
 
 thread_local std::string g_current_case;
 
-void MaybeDumpInput(const std::vector<uint8_t> &data) {
+void maybe_dump_input(const std::vector<uint8_t> &data) {
   const char *dump_env = std::getenv("FORY_CPP_DUMP_CASE");
   if (dump_env == nullptr || g_current_case != dump_env) {
     return;
@@ -82,21 +82,21 @@ void MaybeDumpInput(const std::vector<uint8_t> &data) {
             << std::endl;
 }
 
-std::vector<uint8_t> ReadFile(const std::string &path) {
+std::vector<uint8_t> read_file(const std::string &path) {
   std::ifstream input(path, std::ios::binary);
   if (!input) {
-    Fail("Failed to open file for reading: " + path);
+    fail("Failed to open file for reading: " + path);
   }
   std::vector<uint8_t> data((std::istreambuf_iterator<char>(input)),
                             std::istreambuf_iterator<char>());
-  MaybeDumpInput(data);
+  maybe_dump_input(data);
   return data;
 }
 
-void WriteFile(const std::string &path, const std::vector<uint8_t> &data) {
+void write_file(const std::string &path, const std::vector<uint8_t> &data) {
   std::ofstream output(path, std::ios::binary | std::ios::trunc);
   if (!output) {
-    Fail("Failed to open file for writing: " + path);
+    fail("Failed to open file for writing: " + path);
   }
   output.write(reinterpret_cast<const char *>(data.data()),
                static_cast<std::streamsize>(data.size()));
@@ -325,7 +325,7 @@ struct NullableComprehensiveSchemaConsistent {
   std::optional<int64_t> nullable_long;
   std::optional<float> nullable_float;
 
-  // Nullable fields - second half using @ForyField annotation
+  // Nullable fields - second half using @fory_field annotation
   std::optional<double> nullable_double;
   std::optional<bool> nullable_bool;
   std::optional<std::string> nullable_string;
@@ -403,14 +403,14 @@ struct NullableComprehensiveCompatible {
   std::set<std::string> set_field;
   std::map<std::string, std::string> map_field;
 
-  // Nullable group 1 - boxed types with @ForyField(nullable=true)
+  // Nullable group 1 - boxed types with @fory_field(nullable=true)
   std::optional<int32_t> nullable_int1;
   std::optional<int64_t> nullable_long1;
   std::optional<float> nullable_float1;
   std::optional<double> nullable_double1;
   std::optional<bool> nullable_bool1;
 
-  // Nullable group 2 - reference types with @ForyField(nullable=true)
+  // Nullable group 2 - reference types with @fory_field(nullable=true)
   std::optional<std::string> nullable_string2;
   std::optional<std::vector<std::string>> nullable_list2;
   std::optional<std::set<std::string>> nullable_set2;
@@ -555,33 +555,55 @@ struct RefOuterCompatible {
 FORY_FIELD_TAGS(RefOuterCompatible, (inner1, 0, nullable, ref),
                 (inner2, 1, nullable, ref));
 
+// Element struct for collection element ref override test
+// Matches Java RefOverrideElement with type ID 701
+struct RefOverrideElement {
+  int32_t id;
+  std::string name;
+  bool operator==(const RefOverrideElement &other) const {
+    return id == other.id && name == other.name;
+  }
+  FORY_STRUCT(RefOverrideElement, id, name);
+};
+
+// Container struct for collection element ref override test
+// Matches Java RefOverrideContainer with type ID 702
+struct RefOverrideContainer {
+  std::vector<std::shared_ptr<RefOverrideElement>> list_field;
+  std::map<std::string, std::shared_ptr<RefOverrideElement>> map_field;
+  bool operator==(const RefOverrideContainer &other) const {
+    return list_field == other.list_field && map_field == other.map_field;
+  }
+  FORY_STRUCT(RefOverrideContainer, list_field, map_field);
+};
+
 // ============================================================================
 // Circular Reference Test Types - Self-referencing struct tests
 // ============================================================================
 
 // Struct for circular reference tests.
 // Contains a self-referencing field and a string field.
-// The 'selfRef' field points back to the same object, creating a circular
-// reference. Note: Using 'selfRef' instead of 'self' because 'self' is a
+// The 'self_ref' field points back to the same object, creating a circular
+// reference. Note: Using 'self_ref' instead of 'self' because 'self' is a
 // reserved keyword in Rust.
 // Matches Java CircularRefStruct with type ID 601 (schema consistent)
 // and 602 (compatible)
 struct CircularRefStruct {
   std::string name;
-  std::shared_ptr<CircularRefStruct> selfRef;
+  std::shared_ptr<CircularRefStruct> self_ref;
 
   bool operator==(const CircularRefStruct &other) const {
     if (name != other.name)
       return false;
-    // Compare selfRef by checking if both are null or both point to same
+    // Compare self_ref by checking if both are null or both point to same
     // object (for circular refs, we just check if both have values)
-    bool self_eq = (selfRef == nullptr && other.selfRef == nullptr) ||
-                   (selfRef != nullptr && other.selfRef != nullptr);
+    bool self_eq = (self_ref == nullptr && other.self_ref == nullptr) ||
+                   (self_ref != nullptr && other.self_ref != nullptr);
     return self_eq;
   }
-  FORY_STRUCT(CircularRefStruct, name, selfRef);
+  FORY_STRUCT(CircularRefStruct, name, self_ref);
 };
-FORY_FIELD_TAGS(CircularRefStruct, (name, 0), (selfRef, 1, nullable, ref));
+FORY_FIELD_TAGS(CircularRefStruct, (name, 0), (self_ref, 1, nullable, ref));
 
 // ============================================================================
 // Unsigned Number Test Types
@@ -590,18 +612,18 @@ FORY_FIELD_TAGS(CircularRefStruct, (name, 0), (selfRef, 1, nullable, ref));
 // UnsignedSchemaConsistentSimple (type id 1)
 // A simple test struct for unsigned numbers with tagged encoding.
 struct UnsignedSchemaConsistentSimple {
-  uint64_t u64Tagged;                        // TAGGED_UINT64
-  std::optional<uint64_t> u64TaggedNullable; // TAGGED_UINT64, nullable
+  uint64_t u64_tagged;                         // TAGGED_UINT64
+  std::optional<uint64_t> u64_tagged_nullable; // TAGGED_UINT64, nullable
 
   bool operator==(const UnsignedSchemaConsistentSimple &other) const {
-    return u64Tagged == other.u64Tagged &&
-           u64TaggedNullable == other.u64TaggedNullable;
+    return u64_tagged == other.u64_tagged &&
+           u64_tagged_nullable == other.u64_tagged_nullable;
   }
-  FORY_STRUCT(UnsignedSchemaConsistentSimple, u64Tagged, u64TaggedNullable);
+  FORY_STRUCT(UnsignedSchemaConsistentSimple, u64_tagged, u64_tagged_nullable);
 };
 FORY_FIELD_CONFIG(UnsignedSchemaConsistentSimple,
-                  (u64Tagged, fory::F().tagged()),
-                  (u64TaggedNullable, fory::F().nullable().tagged()));
+                  (u64_tagged, fory::F().tagged()),
+                  (u64_tagged_nullable, fory::F().nullable().tagged()));
 
 // UnsignedSchemaConsistent (type id 501)
 // Test struct for unsigned numbers in SCHEMA_CONSISTENT mode.
@@ -609,58 +631,58 @@ FORY_FIELD_CONFIG(UnsignedSchemaConsistentSimple,
 // Note: C++ uses std::optional for nullable fields.
 struct UnsignedSchemaConsistent {
   // Primitive unsigned fields (non-nullable)
-  uint8_t u8Field;
-  uint16_t u16Field;
-  uint32_t u32VarField;    // VAR_UINT32 - variable-length
-  uint32_t u32FixedField;  // UINT32 - fixed 4-byte
-  uint64_t u64VarField;    // VAR_UINT64 - variable-length
-  uint64_t u64FixedField;  // UINT64 - fixed 8-byte
-  uint64_t u64TaggedField; // TAGGED_UINT64
+  uint8_t u8_field;
+  uint16_t u16_field;
+  uint32_t u32_var_field;    // VAR_UINT32 - variable-length
+  uint32_t u32_fixed_field;  // UINT32 - fixed 4-byte
+  uint64_t u64_var_field;    // VAR_UINT64 - variable-length
+  uint64_t u64_fixed_field;  // UINT64 - fixed 8-byte
+  uint64_t u64_tagged_field; // TAGGED_UINT64
 
   // Nullable unsigned fields (using std::optional)
-  std::optional<uint8_t> u8NullableField;
-  std::optional<uint16_t> u16NullableField;
-  std::optional<uint32_t> u32VarNullableField;
-  std::optional<uint32_t> u32FixedNullableField;
-  std::optional<uint64_t> u64VarNullableField;
-  std::optional<uint64_t> u64FixedNullableField;
-  std::optional<uint64_t> u64TaggedNullableField;
+  std::optional<uint8_t> u8_nullable_field;
+  std::optional<uint16_t> u16_nullable_field;
+  std::optional<uint32_t> u32_var_nullable_field;
+  std::optional<uint32_t> u32_fixed_nullable_field;
+  std::optional<uint64_t> u64_var_nullable_field;
+  std::optional<uint64_t> u64_fixed_nullable_field;
+  std::optional<uint64_t> u64_tagged_nullable_field;
 
   bool operator==(const UnsignedSchemaConsistent &other) const {
-    return u8Field == other.u8Field && u16Field == other.u16Field &&
-           u32VarField == other.u32VarField &&
-           u32FixedField == other.u32FixedField &&
-           u64VarField == other.u64VarField &&
-           u64FixedField == other.u64FixedField &&
-           u64TaggedField == other.u64TaggedField &&
-           u8NullableField == other.u8NullableField &&
-           u16NullableField == other.u16NullableField &&
-           u32VarNullableField == other.u32VarNullableField &&
-           u32FixedNullableField == other.u32FixedNullableField &&
-           u64VarNullableField == other.u64VarNullableField &&
-           u64FixedNullableField == other.u64FixedNullableField &&
-           u64TaggedNullableField == other.u64TaggedNullableField;
+    return u8_field == other.u8_field && u16_field == other.u16_field &&
+           u32_var_field == other.u32_var_field &&
+           u32_fixed_field == other.u32_fixed_field &&
+           u64_var_field == other.u64_var_field &&
+           u64_fixed_field == other.u64_fixed_field &&
+           u64_tagged_field == other.u64_tagged_field &&
+           u8_nullable_field == other.u8_nullable_field &&
+           u16_nullable_field == other.u16_nullable_field &&
+           u32_var_nullable_field == other.u32_var_nullable_field &&
+           u32_fixed_nullable_field == other.u32_fixed_nullable_field &&
+           u64_var_nullable_field == other.u64_var_nullable_field &&
+           u64_fixed_nullable_field == other.u64_fixed_nullable_field &&
+           u64_tagged_nullable_field == other.u64_tagged_nullable_field;
   }
-  FORY_STRUCT(UnsignedSchemaConsistent, u8Field, u16Field, u32VarField,
-              u32FixedField, u64VarField, u64FixedField, u64TaggedField,
-              u8NullableField, u16NullableField, u32VarNullableField,
-              u32FixedNullableField, u64VarNullableField, u64FixedNullableField,
-              u64TaggedNullableField);
+  FORY_STRUCT(UnsignedSchemaConsistent, u8_field, u16_field, u32_var_field,
+              u32_fixed_field, u64_var_field, u64_fixed_field, u64_tagged_field,
+              u8_nullable_field, u16_nullable_field, u32_var_nullable_field,
+              u32_fixed_nullable_field, u64_var_nullable_field,
+              u64_fixed_nullable_field, u64_tagged_nullable_field);
 };
 // Use new FORY_FIELD_CONFIG with builder pattern for encoding specification
-FORY_FIELD_CONFIG(UnsignedSchemaConsistent, (u8Field, fory::F()),
-                  (u16Field, fory::F()), (u32VarField, fory::F().varint()),
-                  (u32FixedField, fory::F().fixed()),
-                  (u64VarField, fory::F().varint()),
-                  (u64FixedField, fory::F().fixed()),
-                  (u64TaggedField, fory::F().tagged()),
-                  (u8NullableField, fory::F().nullable()),
-                  (u16NullableField, fory::F().nullable()),
-                  (u32VarNullableField, fory::F().nullable().varint()),
-                  (u32FixedNullableField, fory::F().nullable().fixed()),
-                  (u64VarNullableField, fory::F().nullable().varint()),
-                  (u64FixedNullableField, fory::F().nullable().fixed()),
-                  (u64TaggedNullableField, fory::F().nullable().tagged()));
+FORY_FIELD_CONFIG(UnsignedSchemaConsistent, (u8_field, fory::F()),
+                  (u16_field, fory::F()), (u32_var_field, fory::F().varint()),
+                  (u32_fixed_field, fory::F().fixed()),
+                  (u64_var_field, fory::F().varint()),
+                  (u64_fixed_field, fory::F().fixed()),
+                  (u64_tagged_field, fory::F().tagged()),
+                  (u8_nullable_field, fory::F().nullable()),
+                  (u16_nullable_field, fory::F().nullable()),
+                  (u32_var_nullable_field, fory::F().nullable().varint()),
+                  (u32_fixed_nullable_field, fory::F().nullable().fixed()),
+                  (u64_var_nullable_field, fory::F().nullable().varint()),
+                  (u64_fixed_nullable_field, fory::F().nullable().fixed()),
+                  (u64_tagged_nullable_field, fory::F().nullable().tagged()));
 
 // UnsignedSchemaCompatible (type id 502)
 // Test struct for unsigned numbers in COMPATIBLE mode.
@@ -669,58 +691,59 @@ FORY_FIELD_CONFIG(UnsignedSchemaConsistent, (u8Field, fory::F()),
 // in Java)
 struct UnsignedSchemaCompatible {
   // Group 1: Nullable in C++ (std::optional), non-nullable in Java
-  std::optional<uint8_t> u8Field1;
-  std::optional<uint16_t> u16Field1;
-  std::optional<uint32_t> u32VarField1;
-  std::optional<uint32_t> u32FixedField1;
-  std::optional<uint64_t> u64VarField1;
-  std::optional<uint64_t> u64FixedField1;
-  std::optional<uint64_t> u64TaggedField1;
+  std::optional<uint8_t> u8_field1;
+  std::optional<uint16_t> u16_field1;
+  std::optional<uint32_t> u32_var_field1;
+  std::optional<uint32_t> u32_fixed_field1;
+  std::optional<uint64_t> u64_var_field1;
+  std::optional<uint64_t> u64_fixed_field1;
+  std::optional<uint64_t> u64_tagged_field1;
 
   // Group 2: Non-nullable in C++, nullable in Java
-  uint8_t u8Field2;
-  uint16_t u16Field2;
-  uint32_t u32VarField2;
-  uint32_t u32FixedField2;
-  uint64_t u64VarField2;
-  uint64_t u64FixedField2;
-  uint64_t u64TaggedField2;
+  uint8_t u8_field2;
+  uint16_t u16_field2;
+  uint32_t u32_var_field2;
+  uint32_t u32_fixed_field2;
+  uint64_t u64_var_field2;
+  uint64_t u64_fixed_field2;
+  uint64_t u64_tagged_field2;
 
   bool operator==(const UnsignedSchemaCompatible &other) const {
-    return u8Field1 == other.u8Field1 && u16Field1 == other.u16Field1 &&
-           u32VarField1 == other.u32VarField1 &&
-           u32FixedField1 == other.u32FixedField1 &&
-           u64VarField1 == other.u64VarField1 &&
-           u64FixedField1 == other.u64FixedField1 &&
-           u64TaggedField1 == other.u64TaggedField1 &&
-           u8Field2 == other.u8Field2 && u16Field2 == other.u16Field2 &&
-           u32VarField2 == other.u32VarField2 &&
-           u32FixedField2 == other.u32FixedField2 &&
-           u64VarField2 == other.u64VarField2 &&
-           u64FixedField2 == other.u64FixedField2 &&
-           u64TaggedField2 == other.u64TaggedField2;
+    return u8_field1 == other.u8_field1 && u16_field1 == other.u16_field1 &&
+           u32_var_field1 == other.u32_var_field1 &&
+           u32_fixed_field1 == other.u32_fixed_field1 &&
+           u64_var_field1 == other.u64_var_field1 &&
+           u64_fixed_field1 == other.u64_fixed_field1 &&
+           u64_tagged_field1 == other.u64_tagged_field1 &&
+           u8_field2 == other.u8_field2 && u16_field2 == other.u16_field2 &&
+           u32_var_field2 == other.u32_var_field2 &&
+           u32_fixed_field2 == other.u32_fixed_field2 &&
+           u64_var_field2 == other.u64_var_field2 &&
+           u64_fixed_field2 == other.u64_fixed_field2 &&
+           u64_tagged_field2 == other.u64_tagged_field2;
   }
-  FORY_STRUCT(UnsignedSchemaCompatible, u8Field1, u16Field1, u32VarField1,
-              u32FixedField1, u64VarField1, u64FixedField1, u64TaggedField1,
-              u8Field2, u16Field2, u32VarField2, u32FixedField2, u64VarField2,
-              u64FixedField2, u64TaggedField2);
+  FORY_STRUCT(UnsignedSchemaCompatible, u8_field1, u16_field1, u32_var_field1,
+              u32_fixed_field1, u64_var_field1, u64_fixed_field1,
+              u64_tagged_field1, u8_field2, u16_field2, u32_var_field2,
+              u32_fixed_field2, u64_var_field2, u64_fixed_field2,
+              u64_tagged_field2);
 };
 // Use new FORY_FIELD_CONFIG with builder pattern for encoding specification
 // Group 1: nullable in C++ (std::optional), non-nullable in Java
 // Group 2: non-nullable in C++, nullable in Java
-FORY_FIELD_CONFIG(UnsignedSchemaCompatible, (u8Field1, fory::F().nullable()),
-                  (u16Field1, fory::F().nullable()),
-                  (u32VarField1, fory::F().nullable().varint()),
-                  (u32FixedField1, fory::F().nullable().fixed()),
-                  (u64VarField1, fory::F().nullable().varint()),
-                  (u64FixedField1, fory::F().nullable().fixed()),
-                  (u64TaggedField1, fory::F().nullable().tagged()),
-                  (u8Field2, fory::F()), (u16Field2, fory::F()),
-                  (u32VarField2, fory::F().varint()),
-                  (u32FixedField2, fory::F().fixed()),
-                  (u64VarField2, fory::F().varint()),
-                  (u64FixedField2, fory::F().fixed()),
-                  (u64TaggedField2, fory::F().tagged()));
+FORY_FIELD_CONFIG(UnsignedSchemaCompatible, (u8_field1, fory::F().nullable()),
+                  (u16_field1, fory::F().nullable()),
+                  (u32_var_field1, fory::F().nullable().varint()),
+                  (u32_fixed_field1, fory::F().nullable().fixed()),
+                  (u64_var_field1, fory::F().nullable().varint()),
+                  (u64_fixed_field1, fory::F().nullable().fixed()),
+                  (u64_tagged_field1, fory::F().nullable().tagged()),
+                  (u8_field2, fory::F()), (u16_field2, fory::F()),
+                  (u32_var_field2, fory::F().varint()),
+                  (u32_fixed_field2, fory::F().fixed()),
+                  (u64_var_field2, fory::F().varint()),
+                  (u64_fixed_field2, fory::F().fixed()),
+                  (u64_tagged_field2, fory::F().tagged()));
 
 namespace fory {
 namespace serialization {
@@ -807,48 +830,48 @@ template <> struct Serializer<MyExt> {
 // ---------------------------------------------------------------------------
 
 template <typename T>
-T Unwrap(Result<T, Error> result, const std::string &context) {
+T unwrap(Result<T, Error> result, const std::string &context) {
   if (!result.ok()) {
-    Fail(context + ": " + result.error().message());
+    fail(context + ": " + result.error().message());
   }
   return std::move(result).value();
 }
 
-void EnsureOk(Result<void, Error> result, const std::string &context) {
+void ensure_ok(Result<void, Error> result, const std::string &context) {
   if (!result.ok()) {
-    Fail(context + ": " + result.error().message());
+    fail(context + ": " + result.error().message());
   }
 }
 
-Buffer MakeBuffer(std::vector<uint8_t> &bytes) {
+Buffer make_buffer(std::vector<uint8_t> &bytes) {
   Buffer buffer(bytes.data(), static_cast<uint32_t>(bytes.size()), false);
-  buffer.WriterIndex(static_cast<uint32_t>(bytes.size()));
-  buffer.ReaderIndex(0);
+  buffer.writer_index(static_cast<uint32_t>(bytes.size()));
+  buffer.reader_index(0);
   return buffer;
 }
 
-template <typename T> T ReadNext(Fory &fory, Buffer &buffer) {
+template <typename T> T read_next(Fory &fory, Buffer &buffer) {
   // Use Buffer-based deserialize API which updates buffer's reader_index
   auto result = fory.deserialize<T>(buffer);
   if (!result.ok()) {
-    Fail("Failed to deserialize value: " + result.error().message());
+    fail("Failed to deserialize value: " + result.error().message());
   }
   return std::move(result).value();
 }
 
 template <typename T>
-void AppendSerialized(Fory &fory, const T &value, std::vector<uint8_t> &out) {
+void append_serialized(Fory &fory, const T &value, std::vector<uint8_t> &out) {
   auto result = fory.serialize(value);
   if (!result.ok()) {
-    Fail("Failed to serialize value: " + result.error().message());
+    fail("Failed to serialize value: " + result.error().message());
   }
   const auto &bytes = result.value();
   out.insert(out.end(), bytes.begin(), bytes.end());
 }
 
-Fory BuildFory(bool compatible = true, bool xlang = true,
-               bool check_struct_version = false, bool track_ref = false) {
-  // In Java xlang mode, checkClassVersion is automatically set to true for
+Fory build_fory(bool compatible = true, bool xlang = true,
+                bool check_struct_version = false, bool track_ref = false) {
+  // In Java xlang mode, check_class_version is automatically set to true for
   // SCHEMA_CONSISTENT mode (compatible=false). Match this behavior in C++.
   bool actual_check_version = check_struct_version;
   if (xlang && !compatible) {
@@ -862,60 +885,64 @@ Fory BuildFory(bool compatible = true, bool xlang = true,
       .build();
 }
 
-void RegisterBasicStructs(Fory &fory) {
-  EnsureOk(fory.register_enum<Color>(101), "register Color");
-  EnsureOk(fory.register_struct<Item>(102), "register Item");
-  EnsureOk(fory.register_struct<SimpleStruct>(103), "register SimpleStruct");
+void register_basic_structs(Fory &fory) {
+  ensure_ok(fory.register_enum<Color>(101), "register Color");
+  ensure_ok(fory.register_struct<Item>(102), "register Item");
+  ensure_ok(fory.register_struct<SimpleStruct>(103), "register SimpleStruct");
 }
 
 // Forward declarations for test handlers
 namespace {
-void RunTestBuffer(const std::string &data_file);
-void RunTestBufferVar(const std::string &data_file);
-void RunTestMurmurHash3(const std::string &data_file);
-void RunTestStringSerializer(const std::string &data_file);
-void RunTestCrossLanguageSerializer(const std::string &data_file);
-void RunTestSimpleStruct(const std::string &data_file);
-void RunTestSimpleNamedStruct(const std::string &data_file);
-void RunTestList(const std::string &data_file);
-void RunTestMap(const std::string &data_file);
-void RunTestInteger(const std::string &data_file);
-void RunTestItem(const std::string &data_file);
-void RunTestColor(const std::string &data_file);
-void RunTestStructWithList(const std::string &data_file);
-void RunTestStructWithMap(const std::string &data_file);
-void RunTestSkipIdCustom(const std::string &data_file);
-void RunTestSkipNameCustom(const std::string &data_file);
-void RunTestConsistentNamed(const std::string &data_file);
-void RunTestStructVersionCheck(const std::string &data_file);
-void RunTestPolymorphicList(const std::string &data_file);
-void RunTestPolymorphicMap(const std::string &data_file);
-void RunTestOneStringFieldSchema(const std::string &data_file);
-void RunTestOneStringFieldCompatible(const std::string &data_file);
-void RunTestTwoStringFieldCompatible(const std::string &data_file);
-void RunTestSchemaEvolutionCompatible(const std::string &data_file);
-void RunTestSchemaEvolutionCompatibleReverse(const std::string &data_file);
-void RunTestOneEnumFieldSchema(const std::string &data_file);
-void RunTestOneEnumFieldCompatible(const std::string &data_file);
-void RunTestTwoEnumFieldCompatible(const std::string &data_file);
-void RunTestEnumSchemaEvolutionCompatible(const std::string &data_file);
-void RunTestEnumSchemaEvolutionCompatibleReverse(const std::string &data_file);
-void RunTestNullableFieldSchemaConsistentNotNull(const std::string &data_file);
-void RunTestNullableFieldSchemaConsistentNull(const std::string &data_file);
-void RunTestNullableFieldCompatibleNotNull(const std::string &data_file);
-void RunTestNullableFieldCompatibleNull(const std::string &data_file);
-void RunTestRefSchemaConsistent(const std::string &data_file);
-void RunTestRefCompatible(const std::string &data_file);
-void RunTestCircularRefSchemaConsistent(const std::string &data_file);
-void RunTestCircularRefCompatible(const std::string &data_file);
-void RunTestUnsignedSchemaConsistentSimple(const std::string &data_file);
-void RunTestUnsignedSchemaConsistent(const std::string &data_file);
-void RunTestUnsignedSchemaCompatible(const std::string &data_file);
+void run_test_buffer(const std::string &data_file);
+void run_test_buffer_var(const std::string &data_file);
+void run_test_murmur_hash3(const std::string &data_file);
+void run_test_string_serializer(const std::string &data_file);
+void run_test_cross_language_serializer(const std::string &data_file);
+void run_test_simple_struct(const std::string &data_file);
+void run_test_simple_named_struct(const std::string &data_file);
+void run_test_list(const std::string &data_file);
+void run_test_map(const std::string &data_file);
+void run_test_integer(const std::string &data_file);
+void run_test_item(const std::string &data_file);
+void run_test_color(const std::string &data_file);
+void run_test_struct_with_list(const std::string &data_file);
+void run_test_struct_with_map(const std::string &data_file);
+void run_test_skip_id_custom(const std::string &data_file);
+void run_test_skip_name_custom(const std::string &data_file);
+void run_test_consistent_named(const std::string &data_file);
+void run_test_struct_version_check(const std::string &data_file);
+void run_test_polymorphic_list(const std::string &data_file);
+void run_test_polymorphic_map(const std::string &data_file);
+void run_test_one_string_field_schema(const std::string &data_file);
+void run_test_one_string_field_compatible(const std::string &data_file);
+void run_test_two_string_field_compatible(const std::string &data_file);
+void run_test_schema_evolution_compatible(const std::string &data_file);
+void run_test_schema_evolution_compatible_reverse(const std::string &data_file);
+void run_test_one_enum_field_schema(const std::string &data_file);
+void run_test_one_enum_field_compatible(const std::string &data_file);
+void run_test_two_enum_field_compatible(const std::string &data_file);
+void run_test_enum_schema_evolution_compatible(const std::string &data_file);
+void run_test_enum_schema_evolution_compatible_reverse(
+    const std::string &data_file);
+void run_test_nullable_field_schema_consistent_not_null(
+    const std::string &data_file);
+void run_test_nullable_field_schema_consistent_null(
+    const std::string &data_file);
+void run_test_nullable_field_compatible_not_null(const std::string &data_file);
+void run_test_nullable_field_compatible_null(const std::string &data_file);
+void run_test_ref_schema_consistent(const std::string &data_file);
+void run_test_ref_compatible(const std::string &data_file);
+void run_test_collection_element_ref_override(const std::string &data_file);
+void run_test_circular_ref_schema_consistent(const std::string &data_file);
+void run_test_circular_ref_compatible(const std::string &data_file);
+void run_test_unsigned_schema_consistent_simple(const std::string &data_file);
+void run_test_unsigned_schema_consistent(const std::string &data_file);
+void run_test_unsigned_schema_compatible(const std::string &data_file);
 } // namespace
 
 int main(int argc, char **argv) {
   if (argc < 2) {
-    Fail("Usage: xlang_test_main --case <test_name>");
+    fail("Usage: xlang_test_main --case <test_name>");
   }
   std::string case_name;
   for (int i = 1; i < argc; ++i) {
@@ -927,97 +954,99 @@ int main(int argc, char **argv) {
     }
   }
   if (case_name.empty()) {
-    Fail("Missing --case argument");
+    fail("Missing --case argument");
   }
 
   g_current_case = case_name;
 
-  const std::string data_file = GetDataFilePath();
+  const std::string data_file = get_data_file_path();
   try {
     if (case_name == "test_buffer") {
-      RunTestBuffer(data_file);
+      run_test_buffer(data_file);
     } else if (case_name == "test_buffer_var") {
-      RunTestBufferVar(data_file);
+      run_test_buffer_var(data_file);
     } else if (case_name == "test_murmurhash3") {
-      RunTestMurmurHash3(data_file);
+      run_test_murmur_hash3(data_file);
     } else if (case_name == "test_string_serializer") {
-      RunTestStringSerializer(data_file);
+      run_test_string_serializer(data_file);
     } else if (case_name == "test_cross_language_serializer") {
-      RunTestCrossLanguageSerializer(data_file);
+      run_test_cross_language_serializer(data_file);
     } else if (case_name == "test_simple_struct") {
-      RunTestSimpleStruct(data_file);
+      run_test_simple_struct(data_file);
     } else if (case_name == "test_named_simple_struct") {
-      RunTestSimpleNamedStruct(data_file);
+      run_test_simple_named_struct(data_file);
     } else if (case_name == "test_list") {
-      RunTestList(data_file);
+      run_test_list(data_file);
     } else if (case_name == "test_map") {
-      RunTestMap(data_file);
+      run_test_map(data_file);
     } else if (case_name == "test_integer") {
-      RunTestInteger(data_file);
+      run_test_integer(data_file);
     } else if (case_name == "test_item") {
-      RunTestItem(data_file);
+      run_test_item(data_file);
     } else if (case_name == "test_color") {
-      RunTestColor(data_file);
+      run_test_color(data_file);
     } else if (case_name == "test_struct_with_list") {
-      RunTestStructWithList(data_file);
+      run_test_struct_with_list(data_file);
     } else if (case_name == "test_struct_with_map") {
-      RunTestStructWithMap(data_file);
+      run_test_struct_with_map(data_file);
     } else if (case_name == "test_skip_id_custom") {
-      RunTestSkipIdCustom(data_file);
+      run_test_skip_id_custom(data_file);
     } else if (case_name == "test_skip_name_custom") {
-      RunTestSkipNameCustom(data_file);
+      run_test_skip_name_custom(data_file);
     } else if (case_name == "test_consistent_named") {
-      RunTestConsistentNamed(data_file);
+      run_test_consistent_named(data_file);
     } else if (case_name == "test_struct_version_check") {
-      RunTestStructVersionCheck(data_file);
+      run_test_struct_version_check(data_file);
     } else if (case_name == "test_polymorphic_list") {
-      RunTestPolymorphicList(data_file);
+      run_test_polymorphic_list(data_file);
     } else if (case_name == "test_polymorphic_map") {
-      RunTestPolymorphicMap(data_file);
+      run_test_polymorphic_map(data_file);
     } else if (case_name == "test_one_string_field_schema") {
-      RunTestOneStringFieldSchema(data_file);
+      run_test_one_string_field_schema(data_file);
     } else if (case_name == "test_one_string_field_compatible") {
-      RunTestOneStringFieldCompatible(data_file);
+      run_test_one_string_field_compatible(data_file);
     } else if (case_name == "test_two_string_field_compatible") {
-      RunTestTwoStringFieldCompatible(data_file);
+      run_test_two_string_field_compatible(data_file);
     } else if (case_name == "test_schema_evolution_compatible") {
-      RunTestSchemaEvolutionCompatible(data_file);
+      run_test_schema_evolution_compatible(data_file);
     } else if (case_name == "test_schema_evolution_compatible_reverse") {
-      RunTestSchemaEvolutionCompatibleReverse(data_file);
+      run_test_schema_evolution_compatible_reverse(data_file);
     } else if (case_name == "test_one_enum_field_schema") {
-      RunTestOneEnumFieldSchema(data_file);
+      run_test_one_enum_field_schema(data_file);
     } else if (case_name == "test_one_enum_field_compatible") {
-      RunTestOneEnumFieldCompatible(data_file);
+      run_test_one_enum_field_compatible(data_file);
     } else if (case_name == "test_two_enum_field_compatible") {
-      RunTestTwoEnumFieldCompatible(data_file);
+      run_test_two_enum_field_compatible(data_file);
     } else if (case_name == "test_enum_schema_evolution_compatible") {
-      RunTestEnumSchemaEvolutionCompatible(data_file);
+      run_test_enum_schema_evolution_compatible(data_file);
     } else if (case_name == "test_enum_schema_evolution_compatible_reverse") {
-      RunTestEnumSchemaEvolutionCompatibleReverse(data_file);
+      run_test_enum_schema_evolution_compatible_reverse(data_file);
     } else if (case_name == "test_nullable_field_schema_consistent_not_null") {
-      RunTestNullableFieldSchemaConsistentNotNull(data_file);
+      run_test_nullable_field_schema_consistent_not_null(data_file);
     } else if (case_name == "test_nullable_field_schema_consistent_null") {
-      RunTestNullableFieldSchemaConsistentNull(data_file);
+      run_test_nullable_field_schema_consistent_null(data_file);
     } else if (case_name == "test_nullable_field_compatible_not_null") {
-      RunTestNullableFieldCompatibleNotNull(data_file);
+      run_test_nullable_field_compatible_not_null(data_file);
     } else if (case_name == "test_nullable_field_compatible_null") {
-      RunTestNullableFieldCompatibleNull(data_file);
+      run_test_nullable_field_compatible_null(data_file);
     } else if (case_name == "test_ref_schema_consistent") {
-      RunTestRefSchemaConsistent(data_file);
+      run_test_ref_schema_consistent(data_file);
     } else if (case_name == "test_ref_compatible") {
-      RunTestRefCompatible(data_file);
+      run_test_ref_compatible(data_file);
+    } else if (case_name == "test_collection_element_ref_override") {
+      run_test_collection_element_ref_override(data_file);
     } else if (case_name == "test_circular_ref_schema_consistent") {
-      RunTestCircularRefSchemaConsistent(data_file);
+      run_test_circular_ref_schema_consistent(data_file);
     } else if (case_name == "test_circular_ref_compatible") {
-      RunTestCircularRefCompatible(data_file);
+      run_test_circular_ref_compatible(data_file);
     } else if (case_name == "test_unsigned_schema_consistent_simple") {
-      RunTestUnsignedSchemaConsistentSimple(data_file);
+      run_test_unsigned_schema_consistent_simple(data_file);
     } else if (case_name == "test_unsigned_schema_consistent") {
-      RunTestUnsignedSchemaConsistent(data_file);
+      run_test_unsigned_schema_consistent(data_file);
     } else if (case_name == "test_unsigned_schema_compatible") {
-      RunTestUnsignedSchemaCompatible(data_file);
+      run_test_unsigned_schema_compatible(data_file);
     } else {
-      Fail("Unknown test case: " + case_name);
+      fail("Unknown test case: " + case_name);
     }
   } catch (const std::exception &ex) {
     std::cerr << "xlang_test_main failed: " << ex.what() << std::endl;
@@ -1028,57 +1057,57 @@ int main(int argc, char **argv) {
 
 namespace {
 
-void RunTestBuffer(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_buffer(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   Buffer buffer(bytes.data(), static_cast<uint32_t>(bytes.size()), false);
 
   Error error;
-  uint8_t bool_val_raw = buffer.ReadUint8(error);
+  uint8_t bool_val_raw = buffer.read_uint8(error);
   if (!error.ok())
-    Fail("Failed to read bool: " + error.message());
+    fail("Failed to read bool: " + error.message());
   bool bool_val = bool_val_raw != 0;
 
-  int8_t int8_val = buffer.ReadInt8(error);
+  int8_t int8_val = buffer.read_int8(error);
   if (!error.ok())
-    Fail("Failed to read int8: " + error.message());
+    fail("Failed to read int8: " + error.message());
 
-  int16_t int16_val = buffer.ReadInt16(error);
+  int16_t int16_val = buffer.read_int16(error);
   if (!error.ok())
-    Fail("Failed to read int16: " + error.message());
+    fail("Failed to read int16: " + error.message());
 
-  int32_t int32_val = buffer.ReadInt32(error);
+  int32_t int32_val = buffer.read_int32(error);
   if (!error.ok())
-    Fail("Failed to read int32: " + error.message());
+    fail("Failed to read int32: " + error.message());
 
-  int64_t int64_val = buffer.ReadInt64(error);
+  int64_t int64_val = buffer.read_int64(error);
   if (!error.ok())
-    Fail("Failed to read int64: " + error.message());
+    fail("Failed to read int64: " + error.message());
 
-  float float_val = buffer.ReadFloat(error);
+  float float_val = buffer.read_float(error);
   if (!error.ok())
-    Fail("Failed to read float: " + error.message());
+    fail("Failed to read float: " + error.message());
 
-  double double_val = buffer.ReadDouble(error);
+  double double_val = buffer.read_double(error);
   if (!error.ok())
-    Fail("Failed to read double: " + error.message());
+    fail("Failed to read double: " + error.message());
 
-  uint32_t varint = buffer.ReadVarUint32(error);
+  uint32_t varint = buffer.read_var_uint32(error);
   if (!error.ok())
-    Fail("Failed to read varint: " + error.message());
+    fail("Failed to read varint: " + error.message());
 
-  int32_t payload_len = buffer.ReadInt32(error);
+  int32_t payload_len = buffer.read_int32(error);
   if (!error.ok())
-    Fail("Failed to read payload len: " + error.message());
+    fail("Failed to read payload len: " + error.message());
 
   if (payload_len < 0 || buffer.reader_index() + payload_len > buffer.size()) {
-    Fail("Invalid payload length in buffer test");
+    fail("Invalid payload length in buffer test");
   }
   std::vector<uint8_t> payload(bytes.begin() + buffer.reader_index(),
                                bytes.begin() + buffer.reader_index() +
                                    payload_len);
-  buffer.Skip(payload_len, error);
+  buffer.skip(payload_len, error);
   if (!error.ok())
-    Fail("Failed to skip payload: " + error.message());
+    fail("Failed to skip payload: " + error.message());
 
   if (!bool_val || int8_val != std::numeric_limits<int8_t>::max() ||
       int16_val != std::numeric_limits<int16_t>::max() ||
@@ -1086,28 +1115,28 @@ void RunTestBuffer(const std::string &data_file) {
       int64_val != std::numeric_limits<int64_t>::max() ||
       std::abs(float_val + 1.1f) > 1e-6 || std::abs(double_val + 1.1) > 1e-9 ||
       varint != 100 || payload != std::vector<uint8_t>({'a', 'b'})) {
-    Fail("Buffer test validation failed");
+    fail("Buffer test validation failed");
   }
 
   Buffer out_buffer;
-  out_buffer.WriteUint8(1);
-  out_buffer.WriteInt8(std::numeric_limits<int8_t>::max());
-  out_buffer.WriteInt16(std::numeric_limits<int16_t>::max());
-  out_buffer.WriteInt32(std::numeric_limits<int32_t>::max());
-  out_buffer.WriteInt64(std::numeric_limits<int64_t>::max());
-  out_buffer.WriteFloat(-1.1f);
-  out_buffer.WriteDouble(-1.1);
-  out_buffer.WriteVarUint32(100);
-  out_buffer.WriteInt32(static_cast<int32_t>(payload.size()));
-  out_buffer.WriteBytes(payload.data(), static_cast<uint32_t>(payload.size()));
+  out_buffer.write_uint8(1);
+  out_buffer.write_int8(std::numeric_limits<int8_t>::max());
+  out_buffer.write_int16(std::numeric_limits<int16_t>::max());
+  out_buffer.write_int32(std::numeric_limits<int32_t>::max());
+  out_buffer.write_int64(std::numeric_limits<int64_t>::max());
+  out_buffer.write_float(-1.1f);
+  out_buffer.write_double(-1.1);
+  out_buffer.write_var_uint32(100);
+  out_buffer.write_int32(static_cast<int32_t>(payload.size()));
+  out_buffer.write_bytes(payload.data(), static_cast<uint32_t>(payload.size()));
 
   std::vector<uint8_t> out(out_buffer.data(),
                            out_buffer.data() + out_buffer.writer_index());
-  WriteFile(data_file, out);
+  write_file(data_file, out);
 }
 
-void RunTestBufferVar(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_buffer_var(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   Buffer buffer(bytes.data(), static_cast<uint32_t>(bytes.size()), false);
 
   Error error;
@@ -1131,9 +1160,9 @@ void RunTestBufferVar(const std::string &data_file) {
       std::numeric_limits<int32_t>::max() - 1,
       std::numeric_limits<int32_t>::max()};
   for (int32_t value : expected_varint32) {
-    int32_t result = buffer.ReadVarInt32(error);
+    int32_t result = buffer.read_var_int32(error);
     if (!error.ok() || result != value) {
-      Fail("VarInt32 mismatch");
+      fail("VarInt32 mismatch");
     }
   }
 
@@ -1141,9 +1170,9 @@ void RunTestBufferVar(const std::string &data_file) {
       0u,       1u,       127u,       128u,       16383u,      16384u,
       2097151u, 2097152u, 268435455u, 268435456u, 2147483646u, 2147483647u};
   for (uint32_t value : expected_varuint32) {
-    uint32_t result = buffer.ReadVarUint32(error);
+    uint32_t result = buffer.read_var_uint32(error);
     if (!error.ok() || result != value) {
-      Fail("VarUint32 mismatch");
+      fail("VarUint32 mismatch");
     }
   }
 
@@ -1168,9 +1197,9 @@ void RunTestBufferVar(const std::string &data_file) {
       72057594037927936ull,
       static_cast<uint64_t>(std::numeric_limits<int64_t>::max())};
   for (uint64_t value : expected_varuint64) {
-    uint64_t result = buffer.ReadVarUint64(error);
+    uint64_t result = buffer.read_var_uint64(error);
     if (!error.ok() || result != value) {
-      Fail("VarUint64 mismatch");
+      fail("VarUint64 mismatch");
     }
   }
 
@@ -1191,57 +1220,57 @@ void RunTestBufferVar(const std::string &data_file) {
       std::numeric_limits<int64_t>::max() - 1,
       std::numeric_limits<int64_t>::max()};
   for (int64_t value : expected_varint64) {
-    int64_t result = buffer.ReadVarInt64(error);
+    int64_t result = buffer.read_var_int64(error);
     if (!error.ok() || result != value) {
-      Fail("VarInt64 mismatch");
+      fail("VarInt64 mismatch");
     }
   }
 
   Buffer out_buffer;
   for (int32_t value : expected_varint32) {
-    out_buffer.WriteVarInt32(value);
+    out_buffer.write_var_int32(value);
   }
   for (uint32_t value : expected_varuint32) {
-    out_buffer.WriteVarUint32(value);
+    out_buffer.write_var_uint32(value);
   }
   for (uint64_t value : expected_varuint64) {
-    out_buffer.WriteVarUint64(value);
+    out_buffer.write_var_uint64(value);
   }
   for (int64_t value : expected_varint64) {
-    out_buffer.WriteVarInt64(value);
+    out_buffer.write_var_int64(value);
   }
 
   std::vector<uint8_t> out(out_buffer.data(),
                            out_buffer.data() + out_buffer.writer_index());
-  WriteFile(data_file, out);
+  write_file(data_file, out);
 }
 
-void RunTestMurmurHash3(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_murmur_hash3(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   if (bytes.size() < 16) {
-    Fail("Not enough bytes for murmurhash test");
+    fail("Not enough bytes for murmurhash test");
   }
   Buffer buffer(bytes.data(), static_cast<uint32_t>(bytes.size()), false);
 
   Error error;
-  int64_t first = buffer.ReadInt64(error);
+  int64_t first = buffer.read_int64(error);
   if (!error.ok())
-    Fail("Failed to read first int64: " + error.message());
+    fail("Failed to read first int64: " + error.message());
 
-  int64_t second = buffer.ReadInt64(error);
+  int64_t second = buffer.read_int64(error);
   if (!error.ok())
-    Fail("Failed to read second int64: " + error.message());
+    fail("Failed to read second int64: " + error.message());
 
   int64_t hash_out[2] = {0, 0};
   MurmurHash3_x64_128("\x01\x02\x08", 3, 47, hash_out);
   if (first != hash_out[0] || second != hash_out[1]) {
-    Fail("MurmurHash3 mismatch");
+    fail("MurmurHash3 mismatch");
   }
 }
 
-void RunTestStringSerializer(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
+void run_test_string_serializer(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
   std::vector<std::string> test_strings = {
       "ab",     "Rust123", "Çüéâäàåçêëèïî", "こんにちは",
       "Привет", "𝄞🎵🎶",   "Hello, 世界",
@@ -1249,11 +1278,11 @@ void RunTestStringSerializer(const std::string &data_file) {
 
   {
     std::vector<uint8_t> copy = bytes;
-    Buffer buffer = MakeBuffer(copy);
+    Buffer buffer = make_buffer(copy);
     for (const auto &expected : test_strings) {
-      auto actual = ReadNext<std::string>(fory, buffer);
+      auto actual = read_next<std::string>(fory, buffer);
       if (actual != expected) {
-        Fail("String serializer mismatch");
+        fail("String serializer mismatch");
       }
     }
   }
@@ -1261,15 +1290,15 @@ void RunTestStringSerializer(const std::string &data_file) {
   std::vector<uint8_t> out;
   out.reserve(bytes.size());
   for (const auto &s : test_strings) {
-    AppendSerialized(fory, s, out);
+    append_serialized(fory, s, out);
   }
-  WriteFile(data_file, out);
+  write_file(data_file, out);
 }
 
-void RunTestCrossLanguageSerializer(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  RegisterBasicStructs(fory);
+void run_test_cross_language_serializer(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  register_basic_structs(fory);
 
   std::vector<std::string> str_list = {"hello", "world"};
   std::set<std::string> str_set = {"hello", "world"};
@@ -1279,146 +1308,146 @@ void RunTestCrossLanguageSerializer(const std::string &data_file) {
   Timestamp instant(std::chrono::seconds(100));
 
   std::vector<uint8_t> copy = bytes;
-  Buffer buffer = MakeBuffer(copy);
+  Buffer buffer = make_buffer(copy);
 
   auto expect_bool = [&](bool expected) {
-    if (ReadNext<bool>(fory, buffer) != expected) {
-      Fail("Boolean mismatch in cross-language serializer test");
+    if (read_next<bool>(fory, buffer) != expected) {
+      fail("Boolean mismatch in cross-language serializer test");
     }
   };
 
   expect_bool(true);
   expect_bool(false);
 
-  int32_t v1 = ReadNext<int32_t>(fory, buffer);
+  int32_t v1 = read_next<int32_t>(fory, buffer);
   if (v1 != -1)
-    Fail("int32 -1 mismatch, got: " + std::to_string(v1));
+    fail("int32 -1 mismatch, got: " + std::to_string(v1));
 
-  int8_t v2 = ReadNext<int8_t>(fory, buffer);
+  int8_t v2 = read_next<int8_t>(fory, buffer);
   if (v2 != std::numeric_limits<int8_t>::max())
-    Fail("int8 max mismatch, got: " + std::to_string(v2));
+    fail("int8 max mismatch, got: " + std::to_string(v2));
 
-  int8_t v3 = ReadNext<int8_t>(fory, buffer);
+  int8_t v3 = read_next<int8_t>(fory, buffer);
   if (v3 != std::numeric_limits<int8_t>::min())
-    Fail("int8 min mismatch, got: " + std::to_string(v3));
+    fail("int8 min mismatch, got: " + std::to_string(v3));
 
-  int16_t v4 = ReadNext<int16_t>(fory, buffer);
+  int16_t v4 = read_next<int16_t>(fory, buffer);
   if (v4 != std::numeric_limits<int16_t>::max())
-    Fail("int16 max mismatch, got: " + std::to_string(v4));
+    fail("int16 max mismatch, got: " + std::to_string(v4));
 
-  int16_t v5 = ReadNext<int16_t>(fory, buffer);
+  int16_t v5 = read_next<int16_t>(fory, buffer);
   if (v5 != std::numeric_limits<int16_t>::min())
-    Fail("int16 min mismatch, got: " + std::to_string(v5));
+    fail("int16 min mismatch, got: " + std::to_string(v5));
 
-  int32_t v6 = ReadNext<int32_t>(fory, buffer);
+  int32_t v6 = read_next<int32_t>(fory, buffer);
   if (v6 != std::numeric_limits<int32_t>::max())
-    Fail("int32 max mismatch, got: " + std::to_string(v6));
+    fail("int32 max mismatch, got: " + std::to_string(v6));
 
-  int32_t v7 = ReadNext<int32_t>(fory, buffer);
+  int32_t v7 = read_next<int32_t>(fory, buffer);
   if (v7 != std::numeric_limits<int32_t>::min())
-    Fail("int32 min mismatch, got: " + std::to_string(v7));
+    fail("int32 min mismatch, got: " + std::to_string(v7));
 
-  int64_t v8 = ReadNext<int64_t>(fory, buffer);
+  int64_t v8 = read_next<int64_t>(fory, buffer);
   if (v8 != std::numeric_limits<int64_t>::max())
-    Fail("int64 max mismatch, got: " + std::to_string(v8));
+    fail("int64 max mismatch, got: " + std::to_string(v8));
 
-  int64_t v9 = ReadNext<int64_t>(fory, buffer);
+  int64_t v9 = read_next<int64_t>(fory, buffer);
   if (v9 != std::numeric_limits<int64_t>::min())
-    Fail("int64 min mismatch, got: " + std::to_string(v9));
-  if (std::abs(ReadNext<float>(fory, buffer) + 1.0f) > 1e-6 ||
-      std::abs(ReadNext<double>(fory, buffer) + 1.0) > 1e-9) {
-    Fail("Float mismatch");
+    fail("int64 min mismatch, got: " + std::to_string(v9));
+  if (std::abs(read_next<float>(fory, buffer) + 1.0f) > 1e-6 ||
+      std::abs(read_next<double>(fory, buffer) + 1.0) > 1e-9) {
+    fail("Float mismatch");
   }
-  if (ReadNext<std::string>(fory, buffer) != "str") {
-    Fail("String mismatch");
+  if (read_next<std::string>(fory, buffer) != "str") {
+    fail("String mismatch");
   }
-  if (ReadNext<Date>(fory, buffer) != day) {
-    Fail("Date mismatch");
+  if (read_next<Date>(fory, buffer) != day) {
+    fail("Date mismatch");
   }
-  if (ReadNext<Timestamp>(fory, buffer) != instant) {
-    Fail("Timestamp mismatch");
+  if (read_next<Timestamp>(fory, buffer) != instant) {
+    fail("Timestamp mismatch");
   }
-  if (ReadNext<std::vector<bool>>(fory, buffer) !=
+  if (read_next<std::vector<bool>>(fory, buffer) !=
       std::vector<bool>({true, false})) {
-    Fail("Boolean array mismatch");
+    fail("Boolean array mismatch");
   }
-  if (ReadNext<std::vector<uint8_t>>(fory, buffer) !=
+  if (read_next<std::vector<uint8_t>>(fory, buffer) !=
       std::vector<uint8_t>({1, static_cast<uint8_t>(127)})) {
-    Fail("Byte array mismatch");
+    fail("Byte array mismatch");
   }
-  if (ReadNext<std::vector<int16_t>>(fory, buffer) !=
+  if (read_next<std::vector<int16_t>>(fory, buffer) !=
       std::vector<int16_t>({1, std::numeric_limits<int16_t>::max()})) {
-    Fail("Short array mismatch");
+    fail("Short array mismatch");
   }
-  if (ReadNext<std::vector<int32_t>>(fory, buffer) !=
+  if (read_next<std::vector<int32_t>>(fory, buffer) !=
       std::vector<int32_t>({1, std::numeric_limits<int32_t>::max()})) {
-    Fail("Int array mismatch");
+    fail("Int array mismatch");
   }
-  if (ReadNext<std::vector<int64_t>>(fory, buffer) !=
+  if (read_next<std::vector<int64_t>>(fory, buffer) !=
       std::vector<int64_t>({1, std::numeric_limits<int64_t>::max()})) {
-    Fail("Long array mismatch");
+    fail("Long array mismatch");
   }
-  if (ReadNext<std::vector<float>>(fory, buffer) !=
+  if (read_next<std::vector<float>>(fory, buffer) !=
       std::vector<float>({1.0f, 2.0f})) {
-    Fail("Float array mismatch");
+    fail("Float array mismatch");
   }
-  if (ReadNext<std::vector<double>>(fory, buffer) !=
+  if (read_next<std::vector<double>>(fory, buffer) !=
       std::vector<double>({1.0, 2.0})) {
-    Fail("Double array mismatch");
+    fail("Double array mismatch");
   }
-  if (ReadNext<std::vector<std::string>>(fory, buffer) != str_list) {
-    Fail("List mismatch");
+  if (read_next<std::vector<std::string>>(fory, buffer) != str_list) {
+    fail("List mismatch");
   }
-  if (ReadNext<std::set<std::string>>(fory, buffer) != str_set) {
-    Fail("Set mismatch");
+  if (read_next<std::set<std::string>>(fory, buffer) != str_set) {
+    fail("Set mismatch");
   }
-  if (ReadNext<std::map<std::string, std::string>>(fory, buffer) != str_map) {
-    Fail("Map mismatch");
+  if (read_next<std::map<std::string, std::string>>(fory, buffer) != str_map) {
+    fail("Map mismatch");
   }
-  if (ReadNext<Color>(fory, buffer) != Color::White) {
-    Fail("Color mismatch");
+  if (read_next<Color>(fory, buffer) != Color::White) {
+    fail("Color mismatch");
   }
 
   std::vector<uint8_t> out;
   out.reserve(bytes.size());
-  AppendSerialized(fory, true, out);
-  AppendSerialized(fory, false, out);
-  AppendSerialized(fory, -1, out);
-  AppendSerialized(fory, std::numeric_limits<int8_t>::max(), out);
-  AppendSerialized(fory, std::numeric_limits<int8_t>::min(), out);
-  AppendSerialized(fory, std::numeric_limits<int16_t>::max(), out);
-  AppendSerialized(fory, std::numeric_limits<int16_t>::min(), out);
-  AppendSerialized(fory, std::numeric_limits<int32_t>::max(), out);
-  AppendSerialized(fory, std::numeric_limits<int32_t>::min(), out);
-  AppendSerialized(fory, std::numeric_limits<int64_t>::max(), out);
-  AppendSerialized(fory, std::numeric_limits<int64_t>::min(), out);
-  AppendSerialized(fory, -1.0f, out);
-  AppendSerialized(fory, -1.0, out);
-  AppendSerialized(fory, std::string("str"), out);
-  AppendSerialized(fory, day, out);
-  AppendSerialized(fory, instant, out);
-  AppendSerialized(fory, std::vector<bool>({true, false}), out);
-  AppendSerialized(fory, std::vector<uint8_t>({1, 127}), out);
-  AppendSerialized(
+  append_serialized(fory, true, out);
+  append_serialized(fory, false, out);
+  append_serialized(fory, -1, out);
+  append_serialized(fory, std::numeric_limits<int8_t>::max(), out);
+  append_serialized(fory, std::numeric_limits<int8_t>::min(), out);
+  append_serialized(fory, std::numeric_limits<int16_t>::max(), out);
+  append_serialized(fory, std::numeric_limits<int16_t>::min(), out);
+  append_serialized(fory, std::numeric_limits<int32_t>::max(), out);
+  append_serialized(fory, std::numeric_limits<int32_t>::min(), out);
+  append_serialized(fory, std::numeric_limits<int64_t>::max(), out);
+  append_serialized(fory, std::numeric_limits<int64_t>::min(), out);
+  append_serialized(fory, -1.0f, out);
+  append_serialized(fory, -1.0, out);
+  append_serialized(fory, std::string("str"), out);
+  append_serialized(fory, day, out);
+  append_serialized(fory, instant, out);
+  append_serialized(fory, std::vector<bool>({true, false}), out);
+  append_serialized(fory, std::vector<uint8_t>({1, 127}), out);
+  append_serialized(
       fory, std::vector<int16_t>({1, std::numeric_limits<int16_t>::max()}),
       out);
-  AppendSerialized(
+  append_serialized(
       fory, std::vector<int32_t>({1, std::numeric_limits<int32_t>::max()}),
       out);
-  AppendSerialized(
+  append_serialized(
       fory, std::vector<int64_t>({1, std::numeric_limits<int64_t>::max()}),
       out);
-  AppendSerialized(fory, std::vector<float>({1.0f, 2.0f}), out);
-  AppendSerialized(fory, std::vector<double>({1.0, 2.0}), out);
-  AppendSerialized(fory, str_list, out);
-  AppendSerialized(fory, str_set, out);
-  AppendSerialized(fory, str_map, out);
-  AppendSerialized(fory, Color::White, out);
+  append_serialized(fory, std::vector<float>({1.0f, 2.0f}), out);
+  append_serialized(fory, std::vector<double>({1.0, 2.0}), out);
+  append_serialized(fory, str_list, out);
+  append_serialized(fory, str_set, out);
+  append_serialized(fory, str_map, out);
+  append_serialized(fory, Color::White, out);
 
-  WriteFile(data_file, out);
+  write_file(data_file, out);
 }
 
-SimpleStruct BuildSimpleStruct() {
+SimpleStruct build_simple_struct() {
   SimpleStruct obj;
   obj.f1 = {{1, 1.0}, {2, 2.0}};
   obj.f2 = 39;
@@ -1432,10 +1461,10 @@ SimpleStruct BuildSimpleStruct() {
   return obj;
 }
 
-void RunTestSimpleStruct(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  RegisterBasicStructs(fory);
+void run_test_simple_struct(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  register_basic_structs(fory);
 #ifdef FORY_DEBUG
   {
     const auto &local_meta = fory.type_resolver().struct_meta<SimpleStruct>();
@@ -1450,40 +1479,40 @@ void RunTestSimpleStruct(const std::string &data_file) {
     }
   }
 #endif
-  auto expected = BuildSimpleStruct();
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<SimpleStruct>(fory, buffer);
+  auto expected = build_simple_struct();
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<SimpleStruct>(fory, buffer);
   if (!(value == expected)) {
-    Fail("SimpleStruct mismatch");
+    fail("SimpleStruct mismatch");
   }
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestSimpleNamedStruct(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_enum<Color>("demo", "color"), "register color");
-  EnsureOk(fory.register_struct<Item>("demo", "item"), "register item");
-  EnsureOk(fory.register_struct<SimpleStruct>("demo", "simple_struct"),
-           "register simple_struct");
-  auto expected = BuildSimpleStruct();
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<SimpleStruct>(fory, buffer);
+void run_test_simple_named_struct(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  ensure_ok(fory.register_enum<Color>("demo", "color"), "register color");
+  ensure_ok(fory.register_struct<Item>("demo", "item"), "register item");
+  ensure_ok(fory.register_struct<SimpleStruct>("demo", "simple_struct"),
+            "register simple_struct");
+  auto expected = build_simple_struct();
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<SimpleStruct>(fory, buffer);
   if (!(value == expected)) {
-    Fail("Named SimpleStruct mismatch");
+    fail("Named SimpleStruct mismatch");
   }
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestList(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_struct<Item>(102), "register Item");
-  Buffer buffer = MakeBuffer(bytes);
+void run_test_list(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  ensure_ok(fory.register_struct<Item>(102), "register Item");
+  Buffer buffer = make_buffer(bytes);
 
   std::vector<std::optional<std::string>> expected1 = {std::string("a"),
                                                        std::string("b")};
@@ -1498,36 +1527,36 @@ void RunTestList(const std::string &data_file) {
   std::vector<std::optional<Item>> expected_items1 = {item_a, item_b};
   std::vector<std::optional<Item>> expected_items2 = {std::nullopt, item_c};
 
-  if (ReadNext<std::vector<std::optional<std::string>>>(fory, buffer) !=
+  if (read_next<std::vector<std::optional<std::string>>>(fory, buffer) !=
       expected1) {
-    Fail("List string mismatch");
+    fail("List string mismatch");
   }
-  if (ReadNext<std::vector<std::optional<std::string>>>(fory, buffer) !=
+  if (read_next<std::vector<std::optional<std::string>>>(fory, buffer) !=
       expected2) {
-    Fail("List string with null mismatch");
+    fail("List string with null mismatch");
   }
-  if (ReadNext<std::vector<std::optional<Item>>>(fory, buffer) !=
+  if (read_next<std::vector<std::optional<Item>>>(fory, buffer) !=
       expected_items1) {
-    Fail("List item mismatch");
+    fail("List item mismatch");
   }
-  if (ReadNext<std::vector<std::optional<Item>>>(fory, buffer) !=
+  if (read_next<std::vector<std::optional<Item>>>(fory, buffer) !=
       expected_items2) {
-    Fail("List item with null mismatch");
+    fail("List item with null mismatch");
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, expected1, out);
-  AppendSerialized(fory, expected2, out);
-  AppendSerialized(fory, expected_items1, out);
-  AppendSerialized(fory, expected_items2, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, expected1, out);
+  append_serialized(fory, expected2, out);
+  append_serialized(fory, expected_items1, out);
+  append_serialized(fory, expected_items2, out);
+  write_file(data_file, out);
 }
 
-void RunTestMap(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_struct<Item>(102), "register Item");
-  Buffer buffer = MakeBuffer(bytes);
+void run_test_map(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  ensure_ok(fory.register_struct<Item>(102), "register Item");
+  Buffer buffer = make_buffer(bytes);
 
   using OptStr = std::optional<std::string>;
   using OptItem = std::optional<Item>;
@@ -1543,24 +1572,24 @@ void RunTestMap(const std::string &data_file) {
                                         {std::string("k3"), std::nullopt},
                                         {std::string("k4"), item3}};
 
-  if (ReadNext<std::map<OptStr, OptStr>>(fory, buffer) != str_map) {
-    Fail("Map<string,string> mismatch");
+  if (read_next<std::map<OptStr, OptStr>>(fory, buffer) != str_map) {
+    fail("Map<string,string> mismatch");
   }
-  if (ReadNext<std::map<OptStr, OptItem>>(fory, buffer) != item_map) {
-    Fail("Map<string,item> mismatch");
+  if (read_next<std::map<OptStr, OptItem>>(fory, buffer) != item_map) {
+    fail("Map<string,item> mismatch");
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, str_map, out);
-  AppendSerialized(fory, item_map, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, str_map, out);
+  append_serialized(fory, item_map, out);
+  write_file(data_file, out);
 }
 
-void RunTestInteger(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_struct<Item1>(101), "register Item1");
-  Buffer buffer = MakeBuffer(bytes);
+void run_test_integer(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  ensure_ok(fory.register_struct<Item1>(101), "register Item1");
+  Buffer buffer = make_buffer(bytes);
 
   Item1 expected;
   expected.f1 = 1;
@@ -1570,9 +1599,9 @@ void RunTestInteger(const std::string &data_file) {
   expected.f5 = 0;
   expected.f6 = 0;
 
-  auto item_value = ReadNext<Item1>(fory, buffer);
+  auto item_value = read_next<Item1>(fory, buffer);
   if (!(item_value == expected)) {
-    Fail("Item1 mismatch");
+    fail("Item1 mismatch");
   }
   // Note: we do not consume the trailing primitive integers from the
   // Java-produced payload here. They are validated on the Java and Rust
@@ -1580,23 +1609,23 @@ void RunTestInteger(const std::string &data_file) {
   // round-trip.
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, item_value, out);
-  AppendSerialized(fory, 1, out);
-  AppendSerialized(fory, 2, out);
-  AppendSerialized(fory, std::optional<int32_t>(3), out);
-  AppendSerialized(fory, std::optional<int32_t>(4), out);
+  append_serialized(fory, item_value, out);
+  append_serialized(fory, 1, out);
+  append_serialized(fory, 2, out);
+  append_serialized(fory, std::optional<int32_t>(3), out);
+  append_serialized(fory, std::optional<int32_t>(4), out);
   // xlang mode uses nullable=false by default, so write 0 not null
-  AppendSerialized(fory, 0, out);
-  AppendSerialized(fory, 0, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, 0, out);
+  append_serialized(fory, 0, out);
+  write_file(data_file, out);
 }
 
-void RunTestItem(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_struct<Item>(102), "register Item");
+void run_test_item(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  ensure_ok(fory.register_struct<Item>(102), "register Item");
 
-  Buffer buffer = MakeBuffer(bytes);
+  Buffer buffer = make_buffer(bytes);
 
   Item expected1;
   expected1.name = std::string("test_item_1");
@@ -1605,61 +1634,61 @@ void RunTestItem(const std::string &data_file) {
   Item expected3;
   expected3.name = std::string(""); // Empty string for non-nullable field
 
-  Item item1 = ReadNext<Item>(fory, buffer);
+  Item item1 = read_next<Item>(fory, buffer);
   if (!(item1 == expected1)) {
-    Fail("Item 1 mismatch");
+    fail("Item 1 mismatch");
   }
-  Item item2 = ReadNext<Item>(fory, buffer);
+  Item item2 = read_next<Item>(fory, buffer);
   if (!(item2 == expected2)) {
-    Fail("Item 2 mismatch");
+    fail("Item 2 mismatch");
   }
-  Item item3 = ReadNext<Item>(fory, buffer);
+  Item item3 = read_next<Item>(fory, buffer);
   if (!(item3 == expected3)) {
-    Fail("Item 3 mismatch");
+    fail("Item 3 mismatch");
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, expected1, out);
-  AppendSerialized(fory, expected2, out);
-  AppendSerialized(fory, expected3, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, expected1, out);
+  append_serialized(fory, expected2, out);
+  append_serialized(fory, expected3, out);
+  write_file(data_file, out);
 }
 
-void RunTestColor(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_enum<Color>(101), "register Color");
+void run_test_color(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  ensure_ok(fory.register_enum<Color>(101), "register Color");
 
-  Buffer buffer = MakeBuffer(bytes);
+  Buffer buffer = make_buffer(bytes);
 
-  if (ReadNext<Color>(fory, buffer) != Color::Green) {
-    Fail("Color Green mismatch");
+  if (read_next<Color>(fory, buffer) != Color::Green) {
+    fail("Color Green mismatch");
   }
-  if (ReadNext<Color>(fory, buffer) != Color::Red) {
-    Fail("Color Red mismatch");
+  if (read_next<Color>(fory, buffer) != Color::Red) {
+    fail("Color Red mismatch");
   }
-  if (ReadNext<Color>(fory, buffer) != Color::Blue) {
-    Fail("Color Blue mismatch");
+  if (read_next<Color>(fory, buffer) != Color::Blue) {
+    fail("Color Blue mismatch");
   }
-  if (ReadNext<Color>(fory, buffer) != Color::White) {
-    Fail("Color White mismatch");
+  if (read_next<Color>(fory, buffer) != Color::White) {
+    fail("Color White mismatch");
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, Color::Green, out);
-  AppendSerialized(fory, Color::Red, out);
-  AppendSerialized(fory, Color::Blue, out);
-  AppendSerialized(fory, Color::White, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, Color::Green, out);
+  append_serialized(fory, Color::Red, out);
+  append_serialized(fory, Color::Blue, out);
+  append_serialized(fory, Color::White, out);
+  write_file(data_file, out);
 }
 
-void RunTestStructWithList(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_struct<StructWithList>(201),
-           "register StructWithList");
+void run_test_struct_with_list(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  ensure_ok(fory.register_struct<StructWithList>(201),
+            "register StructWithList");
 
-  Buffer buffer = MakeBuffer(bytes);
+  Buffer buffer = make_buffer(bytes);
 
   StructWithList expected1;
   expected1.items = {std::string("a"), std::string("b"), std::string("c")};
@@ -1668,28 +1697,28 @@ void RunTestStructWithList(const std::string &data_file) {
   expected2.items = {std::string("x"), std::string(""),
                      std::string("z")}; // Empty string instead of null
 
-  StructWithList struct1 = ReadNext<StructWithList>(fory, buffer);
+  StructWithList struct1 = read_next<StructWithList>(fory, buffer);
   if (!(struct1 == expected1)) {
-    Fail("StructWithList 1 mismatch");
+    fail("StructWithList 1 mismatch");
   }
 
-  StructWithList struct2 = ReadNext<StructWithList>(fory, buffer);
+  StructWithList struct2 = read_next<StructWithList>(fory, buffer);
   if (!(struct2 == expected2)) {
-    Fail("StructWithList 2 mismatch");
+    fail("StructWithList 2 mismatch");
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, expected1, out);
-  AppendSerialized(fory, expected2, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, expected1, out);
+  append_serialized(fory, expected2, out);
+  write_file(data_file, out);
 }
 
-void RunTestStructWithMap(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_struct<StructWithMap>(202), "register StructWithMap");
+void run_test_struct_with_map(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  ensure_ok(fory.register_struct<StructWithMap>(202), "register StructWithMap");
 
-  Buffer buffer = MakeBuffer(bytes);
+  Buffer buffer = make_buffer(bytes);
 
   StructWithMap expected1;
   expected1.data = {{std::string("key1"), std::string("value1")},
@@ -1701,40 +1730,40 @@ void RunTestStructWithMap(const std::string &data_file) {
   expected2.data = {{std::string("k1"), std::string("")},
                     {std::string(""), std::string("v2")}};
 
-  StructWithMap struct1 = ReadNext<StructWithMap>(fory, buffer);
+  StructWithMap struct1 = read_next<StructWithMap>(fory, buffer);
   if (!(struct1 == expected1)) {
-    Fail("StructWithMap 1 mismatch");
+    fail("StructWithMap 1 mismatch");
   }
 
-  StructWithMap struct2 = ReadNext<StructWithMap>(fory, buffer);
+  StructWithMap struct2 = read_next<StructWithMap>(fory, buffer);
   if (!(struct2 == expected2)) {
-    Fail("StructWithMap 2 mismatch");
+    fail("StructWithMap 2 mismatch");
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, expected1, out);
-  AppendSerialized(fory, expected2, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, expected1, out);
+  append_serialized(fory, expected2, out);
+  write_file(data_file, out);
 }
 
-void RunTestSkipIdCustom(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto limited = BuildFory(true, true);
-  EnsureOk(limited.register_extension_type<MyExt>(103),
-           "register MyExt limited");
-  EnsureOk(limited.register_struct<EmptyWrapper>(104),
-           "register EmptyWrapper limited");
+void run_test_skip_id_custom(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto limited = build_fory(true, true);
+  ensure_ok(limited.register_extension_type<MyExt>(103),
+            "register MyExt limited");
+  ensure_ok(limited.register_struct<EmptyWrapper>(104),
+            "register EmptyWrapper limited");
   {
     std::vector<uint8_t> copy = bytes;
-    Buffer buffer = MakeBuffer(copy);
-    (void)ReadNext<EmptyWrapper>(limited, buffer);
+    Buffer buffer = make_buffer(copy);
+    (void)read_next<EmptyWrapper>(limited, buffer);
   }
 
-  auto full = BuildFory(true, true);
-  EnsureOk(full.register_enum<Color>(101), "register Color full");
-  EnsureOk(full.register_struct<MyStruct>(102), "register MyStruct full");
-  EnsureOk(full.register_extension_type<MyExt>(103), "register MyExt full");
-  EnsureOk(full.register_struct<MyWrapper>(104), "register MyWrapper full");
+  auto full = build_fory(true, true);
+  ensure_ok(full.register_enum<Color>(101), "register Color full");
+  ensure_ok(full.register_struct<MyStruct>(102), "register MyStruct full");
+  ensure_ok(full.register_extension_type<MyExt>(103), "register MyExt full");
+  ensure_ok(full.register_struct<MyWrapper>(104), "register MyWrapper full");
 
   MyWrapper wrapper;
   wrapper.color = Color::White;
@@ -1742,34 +1771,34 @@ void RunTestSkipIdCustom(const std::string &data_file) {
   wrapper.my_ext = MyExt{43};
 
   std::vector<uint8_t> out;
-  AppendSerialized(full, wrapper, out);
-  WriteFile(data_file, out);
+  append_serialized(full, wrapper, out);
+  write_file(data_file, out);
 }
 
-void RunTestSkipNameCustom(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto limited = BuildFory(true, true);
-  EnsureOk(limited.register_extension_type<MyExt>("my_ext"),
-           "register named MyExt");
-  EnsureOk(limited.register_struct<EmptyWrapper>("my_wrapper"),
-           "register named EmptyWrapper");
+void run_test_skip_name_custom(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto limited = build_fory(true, true);
+  ensure_ok(limited.register_extension_type<MyExt>("my_ext"),
+            "register named MyExt");
+  ensure_ok(limited.register_struct<EmptyWrapper>("my_wrapper"),
+            "register named EmptyWrapper");
   {
     std::vector<uint8_t> copy = bytes;
-    Buffer buffer = MakeBuffer(copy);
+    Buffer buffer = make_buffer(copy);
     auto result = limited.deserialize<EmptyWrapper>(buffer);
     if (!result.ok()) {
-      Fail("Failed to deserialize EmptyWrapper: " + result.error().message());
+      fail("Failed to deserialize EmptyWrapper: " + result.error().message());
     }
   }
 
-  auto full = BuildFory(true, true);
-  EnsureOk(full.register_enum<Color>("color"), "register named Color");
-  EnsureOk(full.register_struct<MyStruct>("my_struct"),
-           "register named MyStruct");
-  EnsureOk(full.register_extension_type<MyExt>("my_ext"),
-           "register named MyExt");
-  EnsureOk(full.register_struct<MyWrapper>("my_wrapper"),
-           "register named MyWrapper");
+  auto full = build_fory(true, true);
+  ensure_ok(full.register_enum<Color>("color"), "register named Color");
+  ensure_ok(full.register_struct<MyStruct>("my_struct"),
+            "register named MyStruct");
+  ensure_ok(full.register_extension_type<MyExt>("my_ext"),
+            "register named MyExt");
+  ensure_ok(full.register_struct<MyWrapper>("my_wrapper"),
+            "register named MyWrapper");
 
   MyWrapper wrapper;
   wrapper.color = Color::White;
@@ -1777,442 +1806,445 @@ void RunTestSkipNameCustom(const std::string &data_file) {
   wrapper.my_ext = MyExt{43};
 
   std::vector<uint8_t> out;
-  AppendSerialized(full, wrapper, out);
-  WriteFile(data_file, out);
+  append_serialized(full, wrapper, out);
+  write_file(data_file, out);
 }
 
-void RunTestConsistentNamed(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_consistent_named(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // Java uses SCHEMA_CONSISTENT mode which does NOT enable meta sharing
-  auto fory = BuildFory(false, true, true);
-  EnsureOk(fory.register_enum<Color>("color"), "register named color");
-  EnsureOk(fory.register_struct<MyStruct>("my_struct"),
-           "register named MyStruct");
-  EnsureOk(fory.register_extension_type<MyExt>("my_ext"),
-           "register named MyExt");
+  auto fory = build_fory(false, true, true);
+  ensure_ok(fory.register_enum<Color>("color"), "register named color");
+  ensure_ok(fory.register_struct<MyStruct>("my_struct"),
+            "register named MyStruct");
+  ensure_ok(fory.register_extension_type<MyExt>("my_ext"),
+            "register named MyExt");
 
   MyStruct my_struct(42);
   MyExt my_ext{43};
 
-  Buffer buffer = MakeBuffer(bytes);
+  Buffer buffer = make_buffer(bytes);
   for (int i = 0; i < 3; ++i) {
-    if (ReadNext<Color>(fory, buffer) != Color::White) {
-      Fail("Consistent named color mismatch");
+    if (read_next<Color>(fory, buffer) != Color::White) {
+      fail("Consistent named color mismatch");
     }
   }
   for (int i = 0; i < 3; ++i) {
-    if (!(ReadNext<MyStruct>(fory, buffer) == my_struct)) {
-      Fail("Consistent named struct mismatch");
+    if (!(read_next<MyStruct>(fory, buffer) == my_struct)) {
+      fail("Consistent named struct mismatch");
     }
   }
   for (int i = 0; i < 3; ++i) {
-    if (!(ReadNext<MyExt>(fory, buffer) == my_ext)) {
-      Fail("Consistent named ext mismatch");
+    if (!(read_next<MyExt>(fory, buffer) == my_ext)) {
+      fail("Consistent named ext mismatch");
     }
   }
 
   std::vector<uint8_t> out;
   for (int i = 0; i < 3; ++i) {
-    AppendSerialized(fory, Color::White, out);
+    append_serialized(fory, Color::White, out);
   }
   for (int i = 0; i < 3; ++i) {
-    AppendSerialized(fory, my_struct, out);
+    append_serialized(fory, my_struct, out);
   }
   for (int i = 0; i < 3; ++i) {
-    AppendSerialized(fory, my_ext, out);
+    append_serialized(fory, my_ext, out);
   }
-  WriteFile(data_file, out);
+  write_file(data_file, out);
 }
 
-void RunTestStructVersionCheck(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_struct_version_check(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // Java uses SCHEMA_CONSISTENT mode which does NOT enable meta sharing
-  auto fory = BuildFory(false, true, true);
-  EnsureOk(fory.register_struct<VersionCheckStruct>(201),
-           "register VersionCheckStruct");
+  auto fory = build_fory(false, true, true);
+  ensure_ok(fory.register_struct<VersionCheckStruct>(201),
+            "register VersionCheckStruct");
 
   VersionCheckStruct expected;
   expected.f1 = 10;
   expected.f2 = std::string("test");
   expected.f3 = 3.2;
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<VersionCheckStruct>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<VersionCheckStruct>(fory, buffer);
   if (!(value == expected)) {
-    Fail("VersionCheckStruct mismatch");
+    fail("VersionCheckStruct mismatch");
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestPolymorphicList(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_struct<Dog>(302), "register Dog");
-  EnsureOk(fory.register_struct<Cat>(303), "register Cat");
-  EnsureOk(fory.register_struct<AnimalListHolder>(304),
-           "register AnimalListHolder");
+void run_test_polymorphic_list(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  ensure_ok(fory.register_struct<Dog>(302), "register Dog");
+  ensure_ok(fory.register_struct<Cat>(303), "register Cat");
+  ensure_ok(fory.register_struct<AnimalListHolder>(304),
+            "register AnimalListHolder");
 
-  Buffer buffer = MakeBuffer(bytes);
+  Buffer buffer = make_buffer(bytes);
 
   // Part 1: Read List<Animal> with polymorphic elements (Dog, Cat)
-  auto animals = ReadNext<std::vector<std::shared_ptr<Animal>>>(fory, buffer);
+  auto animals = read_next<std::vector<std::shared_ptr<Animal>>>(fory, buffer);
   if (animals.size() != 2) {
-    Fail("Animal list size mismatch, got: " + std::to_string(animals.size()));
+    fail("Animal list size mismatch, got: " + std::to_string(animals.size()));
   }
 
   // First element should be Dog
   auto *dog = dynamic_cast<Dog *>(animals[0].get());
   if (dog == nullptr) {
-    Fail("First element is not a Dog");
+    fail("First element is not a Dog");
   }
   if (dog->age != 3 || dog->name != std::string("Buddy")) {
-    Fail("First Dog mismatch: age=" + std::to_string(dog->age) +
+    fail("First Dog mismatch: age=" + std::to_string(dog->age) +
          ", name=" + dog->name.value_or("null"));
   }
 
   // Second element should be Cat
   auto *cat = dynamic_cast<Cat *>(animals[1].get());
   if (cat == nullptr) {
-    Fail("Second element is not a Cat");
+    fail("Second element is not a Cat");
   }
   if (cat->age != 5 || cat->lives != 9) {
-    Fail("Cat mismatch: age=" + std::to_string(cat->age) +
+    fail("Cat mismatch: age=" + std::to_string(cat->age) +
          ", lives=" + std::to_string(cat->lives));
   }
 
   // Part 2: Read AnimalListHolder (List<Animal> as struct field)
-  auto holder = ReadNext<AnimalListHolder>(fory, buffer);
+  auto holder = read_next<AnimalListHolder>(fory, buffer);
   if (holder.animals.size() != 2) {
-    Fail("AnimalListHolder size mismatch");
+    fail("AnimalListHolder size mismatch");
   }
 
   auto *dog2 = dynamic_cast<Dog *>(holder.animals[0].get());
   if (dog2 == nullptr || dog2->name != std::string("Rex")) {
-    Fail("AnimalListHolder first animal (Dog) mismatch");
+    fail("AnimalListHolder first animal (Dog) mismatch");
   }
 
   auto *cat2 = dynamic_cast<Cat *>(holder.animals[1].get());
   if (cat2 == nullptr || cat2->lives != 7) {
-    Fail("AnimalListHolder second animal (Cat) mismatch");
+    fail("AnimalListHolder second animal (Cat) mismatch");
   }
 
-  // Write back
+  // write back
   std::vector<uint8_t> out;
-  AppendSerialized(fory, animals, out);
-  AppendSerialized(fory, holder, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, animals, out);
+  append_serialized(fory, holder, out);
+  write_file(data_file, out);
 }
 
-void RunTestPolymorphicMap(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true);
-  EnsureOk(fory.register_struct<Dog>(302), "register Dog");
-  EnsureOk(fory.register_struct<Cat>(303), "register Cat");
-  EnsureOk(fory.register_struct<AnimalMapHolder>(305),
-           "register AnimalMapHolder");
+void run_test_polymorphic_map(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true);
+  ensure_ok(fory.register_struct<Dog>(302), "register Dog");
+  ensure_ok(fory.register_struct<Cat>(303), "register Cat");
+  ensure_ok(fory.register_struct<AnimalMapHolder>(305),
+            "register AnimalMapHolder");
 
-  Buffer buffer = MakeBuffer(bytes);
+  Buffer buffer = make_buffer(bytes);
 
   // Part 1: Read Map<String, Animal> with polymorphic values
   using OptStr = std::optional<std::string>;
-  auto animalMap =
-      ReadNext<std::map<OptStr, std::shared_ptr<Animal>>>(fory, buffer);
-  if (animalMap.size() != 2) {
-    Fail("Animal map size mismatch, got: " + std::to_string(animalMap.size()));
+  auto animal_map =
+      read_next<std::map<OptStr, std::shared_ptr<Animal>>>(fory, buffer);
+  if (animal_map.size() != 2) {
+    fail("Animal map size mismatch, got: " + std::to_string(animal_map.size()));
   }
 
-  auto dog1It = animalMap.find(std::string("dog1"));
-  if (dog1It == animalMap.end()) {
-    Fail("Dog1 not found in map");
+  auto dog1_it = animal_map.find(std::string("dog1"));
+  if (dog1_it == animal_map.end()) {
+    fail("Dog1 not found in map");
   }
-  auto *dog = dynamic_cast<Dog *>(dog1It->second.get());
+  auto *dog = dynamic_cast<Dog *>(dog1_it->second.get());
   if (dog == nullptr || dog->age != 2 || dog->name != std::string("Rex")) {
-    Fail("Animal map dog1 mismatch");
+    fail("Animal map dog1 mismatch");
   }
 
-  auto cat1It = animalMap.find(std::string("cat1"));
-  if (cat1It == animalMap.end()) {
-    Fail("Cat1 not found in map");
+  auto cat1_it = animal_map.find(std::string("cat1"));
+  if (cat1_it == animal_map.end()) {
+    fail("Cat1 not found in map");
   }
-  auto *cat = dynamic_cast<Cat *>(cat1It->second.get());
+  auto *cat = dynamic_cast<Cat *>(cat1_it->second.get());
   if (cat == nullptr || cat->age != 4 || cat->lives != 9) {
-    Fail("Animal map cat1 mismatch");
+    fail("Animal map cat1 mismatch");
   }
 
   // Part 2: Read AnimalMapHolder (Map<String, Animal> as struct field)
-  auto holder = ReadNext<AnimalMapHolder>(fory, buffer);
+  auto holder = read_next<AnimalMapHolder>(fory, buffer);
   if (holder.animal_map.size() != 2) {
-    Fail("AnimalMapHolder size mismatch");
+    fail("AnimalMapHolder size mismatch");
   }
 
-  auto myDogIt = holder.animal_map.find(std::string("myDog"));
-  if (myDogIt == holder.animal_map.end()) {
-    Fail("myDog not found in holder map");
+  auto my_dog_it = holder.animal_map.find(std::string("myDog"));
+  if (my_dog_it == holder.animal_map.end()) {
+    fail("myDog not found in holder map");
   }
-  auto *myDog = dynamic_cast<Dog *>(myDogIt->second.get());
-  if (myDog == nullptr || myDog->name != std::string("Fido")) {
-    Fail("AnimalMapHolder myDog mismatch");
-  }
-
-  auto myCatIt = holder.animal_map.find(std::string("myCat"));
-  if (myCatIt == holder.animal_map.end()) {
-    Fail("myCat not found in holder map");
-  }
-  auto *myCat = dynamic_cast<Cat *>(myCatIt->second.get());
-  if (myCat == nullptr || myCat->lives != 8) {
-    Fail("AnimalMapHolder myCat mismatch");
+  auto *my_dog = dynamic_cast<Dog *>(my_dog_it->second.get());
+  if (my_dog == nullptr || my_dog->name != std::string("Fido")) {
+    fail("AnimalMapHolder myDog mismatch");
   }
 
-  // Write back
+  auto my_cat_it = holder.animal_map.find(std::string("myCat"));
+  if (my_cat_it == holder.animal_map.end()) {
+    fail("myCat not found in holder map");
+  }
+  auto *my_cat = dynamic_cast<Cat *>(my_cat_it->second.get());
+  if (my_cat == nullptr || my_cat->lives != 8) {
+    fail("AnimalMapHolder myCat mismatch");
+  }
+
+  // write back
   std::vector<uint8_t> out;
-  AppendSerialized(fory, animalMap, out);
-  AppendSerialized(fory, holder, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, animal_map, out);
+  append_serialized(fory, holder, out);
+  write_file(data_file, out);
 }
 
 // ============================================================================
 // Schema Evolution Tests - String Fields
 // ============================================================================
 
-void RunTestOneStringFieldSchema(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_one_string_field_schema(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // SCHEMA_CONSISTENT mode: compatible=false, xlang=true,
   // check_struct_version=true
-  auto fory = BuildFory(false, true, true);
-  EnsureOk(fory.register_struct<OneStringFieldStruct>(200),
-           "register OneStringFieldStruct");
+  auto fory = build_fory(false, true, true);
+  ensure_ok(fory.register_struct<OneStringFieldStruct>(200),
+            "register OneStringFieldStruct");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<OneStringFieldStruct>(fory, buffer);
-
-  OneStringFieldStruct expected;
-  expected.f1 = std::string("hello");
-  if (!(value == expected)) {
-    Fail("OneStringFieldStruct schema mismatch: got f1=" +
-         value.f1.value_or("null"));
-  }
-
-  std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
-}
-
-void RunTestOneStringFieldCompatible(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_struct<OneStringFieldStruct>(200),
-           "register OneStringFieldStruct");
-
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<OneStringFieldStruct>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<OneStringFieldStruct>(fory, buffer);
 
   OneStringFieldStruct expected;
   expected.f1 = std::string("hello");
   if (!(value == expected)) {
-    Fail("OneStringFieldStruct compatible mismatch: got f1=" +
+    fail("OneStringFieldStruct schema mismatch: got f1=" +
          value.f1.value_or("null"));
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestTwoStringFieldCompatible(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_struct<TwoStringFieldStruct>(201),
-           "register TwoStringFieldStruct");
+void run_test_one_string_field_compatible(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true); // COMPATIBLE mode
+  ensure_ok(fory.register_struct<OneStringFieldStruct>(200),
+            "register OneStringFieldStruct");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<TwoStringFieldStruct>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<OneStringFieldStruct>(fory, buffer);
+
+  OneStringFieldStruct expected;
+  expected.f1 = std::string("hello");
+  if (!(value == expected)) {
+    fail("OneStringFieldStruct compatible mismatch: got f1=" +
+         value.f1.value_or("null"));
+  }
+
+  std::vector<uint8_t> out;
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
+}
+
+void run_test_two_string_field_compatible(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true); // COMPATIBLE mode
+  ensure_ok(fory.register_struct<TwoStringFieldStruct>(201),
+            "register TwoStringFieldStruct");
+
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<TwoStringFieldStruct>(fory, buffer);
 
   TwoStringFieldStruct expected;
   expected.f1 = std::string("first");
   expected.f2 = std::string("second");
   if (!(value == expected)) {
-    Fail("TwoStringFieldStruct compatible mismatch: got f1=" + value.f1 +
+    fail("TwoStringFieldStruct compatible mismatch: got f1=" + value.f1 +
          ", f2=" + value.f2);
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestSchemaEvolutionCompatible(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_schema_evolution_compatible(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // Read TwoStringFieldStruct data as EmptyStructEvolution
-  auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_struct<EmptyStructEvolution>(200),
-           "register EmptyStructEvolution");
+  auto fory = build_fory(true, true); // COMPATIBLE mode
+  ensure_ok(fory.register_struct<EmptyStructEvolution>(200),
+            "register EmptyStructEvolution");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<EmptyStructEvolution>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<EmptyStructEvolution>(fory, buffer);
 
   // Serialize back as EmptyStructEvolution
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestSchemaEvolutionCompatibleReverse(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_schema_evolution_compatible_reverse(
+    const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // Read OneStringFieldStruct data as TwoStringFieldStruct (missing f2)
-  auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_struct<TwoStringFieldStruct>(200),
-           "register TwoStringFieldStruct");
+  auto fory = build_fory(true, true); // COMPATIBLE mode
+  ensure_ok(fory.register_struct<TwoStringFieldStruct>(200),
+            "register TwoStringFieldStruct");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<TwoStringFieldStruct>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<TwoStringFieldStruct>(fory, buffer);
 
   // f1 should be "only_one", f2 should be empty (default value)
   if (value.f1 != "only_one") {
-    Fail("Schema evolution reverse mismatch: expected f1='only_one', got f1=" +
+    fail("Schema evolution reverse mismatch: expected f1='only_one', got f1=" +
          value.f1);
   }
   // f2 should be empty (not present in source data, default initialized)
   if (!value.f2.empty()) {
-    Fail("Schema evolution reverse mismatch: expected f2='', got f2=" +
+    fail("Schema evolution reverse mismatch: expected f2='', got f2=" +
          value.f2);
   }
 
   // Serialize back
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
 // ============================================================================
 // Schema Evolution Tests - Enum Fields
 // ============================================================================
 
-void RunTestOneEnumFieldSchema(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_one_enum_field_schema(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // SCHEMA_CONSISTENT mode: compatible=false, xlang=true,
   // check_struct_version=true
-  auto fory = BuildFory(false, true, true);
-  EnsureOk(fory.register_enum<TestEnum>(210), "register TestEnum");
-  EnsureOk(fory.register_struct<OneEnumFieldStruct>(211),
-           "register OneEnumFieldStruct");
+  auto fory = build_fory(false, true, true);
+  ensure_ok(fory.register_enum<TestEnum>(210), "register TestEnum");
+  ensure_ok(fory.register_struct<OneEnumFieldStruct>(211),
+            "register OneEnumFieldStruct");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<OneEnumFieldStruct>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<OneEnumFieldStruct>(fory, buffer);
 
   if (value.f1 != TestEnum::VALUE_B) {
-    Fail("OneEnumFieldStruct schema mismatch: expected VALUE_B, got " +
+    fail("OneEnumFieldStruct schema mismatch: expected VALUE_B, got " +
          std::to_string(static_cast<int32_t>(value.f1)));
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestOneEnumFieldCompatible(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_enum<TestEnum>(210), "register TestEnum");
-  EnsureOk(fory.register_struct<OneEnumFieldStruct>(211),
-           "register OneEnumFieldStruct");
+void run_test_one_enum_field_compatible(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true); // COMPATIBLE mode
+  ensure_ok(fory.register_enum<TestEnum>(210), "register TestEnum");
+  ensure_ok(fory.register_struct<OneEnumFieldStruct>(211),
+            "register OneEnumFieldStruct");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<OneEnumFieldStruct>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<OneEnumFieldStruct>(fory, buffer);
 
   if (value.f1 != TestEnum::VALUE_A) {
-    Fail("OneEnumFieldStruct compatible mismatch: expected VALUE_A, got " +
+    fail("OneEnumFieldStruct compatible mismatch: expected VALUE_A, got " +
          std::to_string(static_cast<int32_t>(value.f1)));
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestTwoEnumFieldCompatible(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_enum<TestEnum>(210), "register TestEnum");
-  EnsureOk(fory.register_struct<TwoEnumFieldStruct>(212),
-           "register TwoEnumFieldStruct");
+void run_test_two_enum_field_compatible(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true); // COMPATIBLE mode
+  ensure_ok(fory.register_enum<TestEnum>(210), "register TestEnum");
+  ensure_ok(fory.register_struct<TwoEnumFieldStruct>(212),
+            "register TwoEnumFieldStruct");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<TwoEnumFieldStruct>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<TwoEnumFieldStruct>(fory, buffer);
 
   if (value.f1 != TestEnum::VALUE_A) {
-    Fail("TwoEnumFieldStruct compatible mismatch: expected f1=VALUE_A, got " +
+    fail("TwoEnumFieldStruct compatible mismatch: expected f1=VALUE_A, got " +
          std::to_string(static_cast<int32_t>(value.f1)));
   }
   if (value.f2 != TestEnum::VALUE_C) {
-    Fail("TwoEnumFieldStruct compatible mismatch: expected f2=VALUE_C, got " +
+    fail("TwoEnumFieldStruct compatible mismatch: expected f2=VALUE_C, got " +
          std::to_string(static_cast<int32_t>(value.f2)));
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestEnumSchemaEvolutionCompatible(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_enum_schema_evolution_compatible(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // Read TwoEnumFieldStruct data as EmptyStructEvolution
-  auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_enum<TestEnum>(210), "register TestEnum");
-  EnsureOk(fory.register_struct<EmptyStructEvolution>(211),
-           "register EmptyStructEvolution");
+  auto fory = build_fory(true, true); // COMPATIBLE mode
+  ensure_ok(fory.register_enum<TestEnum>(210), "register TestEnum");
+  ensure_ok(fory.register_struct<EmptyStructEvolution>(211),
+            "register EmptyStructEvolution");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<EmptyStructEvolution>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<EmptyStructEvolution>(fory, buffer);
 
   // Serialize back as EmptyStructEvolution
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestEnumSchemaEvolutionCompatibleReverse(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_enum_schema_evolution_compatible_reverse(
+    const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // Read OneEnumFieldStruct data as TwoEnumFieldStruct (missing f2)
-  auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_enum<TestEnum>(210), "register TestEnum");
-  EnsureOk(fory.register_struct<TwoEnumFieldStruct>(211),
-           "register TwoEnumFieldStruct");
+  auto fory = build_fory(true, true); // COMPATIBLE mode
+  ensure_ok(fory.register_enum<TestEnum>(210), "register TestEnum");
+  ensure_ok(fory.register_struct<TwoEnumFieldStruct>(211),
+            "register TwoEnumFieldStruct");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<TwoEnumFieldStruct>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<TwoEnumFieldStruct>(fory, buffer);
 
   // f1 should be VALUE_C
   if (value.f1 != TestEnum::VALUE_C) {
-    Fail("Enum schema evolution reverse mismatch: expected f1=VALUE_C, got " +
+    fail("Enum schema evolution reverse mismatch: expected f1=VALUE_C, got " +
          std::to_string(static_cast<int32_t>(value.f1)));
   }
   // f2 should be default (VALUE_A = 0, not present in source data)
   if (value.f2 != TestEnum::VALUE_A) {
-    Fail("Enum schema evolution reverse mismatch: expected f2=VALUE_A "
+    fail("Enum schema evolution reverse mismatch: expected f2=VALUE_A "
          "(default), got " +
          std::to_string(static_cast<int32_t>(value.f2)));
   }
 
   // Serialize back
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
 // ============================================================================
 // Nullable Field Tests - Comprehensive versions
 // ============================================================================
 
-void RunTestNullableFieldSchemaConsistentNotNull(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_nullable_field_schema_consistent_not_null(
+    const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // SCHEMA_CONSISTENT mode: compatible=false, xlang=true,
   // check_struct_version=true
-  auto fory = BuildFory(false, true, true);
-  EnsureOk(fory.register_struct<NullableComprehensiveSchemaConsistent>(401),
-           "register NullableComprehensiveSchemaConsistent");
+  auto fory = build_fory(false, true, true);
+  ensure_ok(fory.register_struct<NullableComprehensiveSchemaConsistent>(401),
+            "register NullableComprehensiveSchemaConsistent");
 
   NullableComprehensiveSchemaConsistent expected;
   // Base non-nullable primitive fields
@@ -2236,7 +2268,7 @@ void RunTestNullableFieldSchemaConsistentNotNull(const std::string &data_file) {
   expected.nullable_long = 200;
   expected.nullable_float = 1.5f;
 
-  // Nullable fields - all have values (second half - @ForyField)
+  // Nullable fields - all have values (second half - @fory_field)
   expected.nullable_double = 2.5;
   expected.nullable_bool = false;
   expected.nullable_string = std::string("nullable_value");
@@ -2247,24 +2279,25 @@ void RunTestNullableFieldSchemaConsistentNotNull(const std::string &data_file) {
   expected.nullable_map = std::map<std::string, std::string>{
       {std::string("nk1"), std::string("nv1")}};
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<NullableComprehensiveSchemaConsistent>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<NullableComprehensiveSchemaConsistent>(fory, buffer);
   if (!(value == expected)) {
-    Fail("NullableComprehensiveSchemaConsistent not null mismatch");
+    fail("NullableComprehensiveSchemaConsistent not null mismatch");
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestNullableFieldSchemaConsistentNull(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_nullable_field_schema_consistent_null(
+    const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // SCHEMA_CONSISTENT mode: compatible=false, xlang=true,
   // check_struct_version=true
-  auto fory = BuildFory(false, true, true);
-  EnsureOk(fory.register_struct<NullableComprehensiveSchemaConsistent>(401),
-           "register NullableComprehensiveSchemaConsistent");
+  auto fory = build_fory(false, true, true);
+  ensure_ok(fory.register_struct<NullableComprehensiveSchemaConsistent>(401),
+            "register NullableComprehensiveSchemaConsistent");
 
   NullableComprehensiveSchemaConsistent expected;
   // Base non-nullable primitive fields - must have values
@@ -2288,7 +2321,7 @@ void RunTestNullableFieldSchemaConsistentNull(const std::string &data_file) {
   expected.nullable_long = std::nullopt;
   expected.nullable_float = std::nullopt;
 
-  // Nullable fields - all null (second half - @ForyField)
+  // Nullable fields - all null (second half - @fory_field)
   expected.nullable_double = std::nullopt;
   expected.nullable_bool = std::nullopt;
   expected.nullable_string = std::nullopt;
@@ -2296,22 +2329,22 @@ void RunTestNullableFieldSchemaConsistentNull(const std::string &data_file) {
   expected.nullable_set = std::nullopt;
   expected.nullable_map = std::nullopt;
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<NullableComprehensiveSchemaConsistent>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<NullableComprehensiveSchemaConsistent>(fory, buffer);
   if (!(value == expected)) {
-    Fail("NullableComprehensiveSchemaConsistent null mismatch");
+    fail("NullableComprehensiveSchemaConsistent null mismatch");
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestNullableFieldCompatibleNotNull(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_struct<NullableComprehensiveCompatible>(402),
-           "register NullableComprehensiveCompatible");
+void run_test_nullable_field_compatible_not_null(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true); // COMPATIBLE mode
+  ensure_ok(fory.register_struct<NullableComprehensiveCompatible>(402),
+            "register NullableComprehensiveCompatible");
 
   NullableComprehensiveCompatible expected;
   // Base non-nullable primitive fields
@@ -2353,22 +2386,22 @@ void RunTestNullableFieldCompatibleNotNull(const std::string &data_file) {
   expected.nullable_map2 = std::map<std::string, std::string>{
       {std::string("nk1"), std::string("nv1")}};
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<NullableComprehensiveCompatible>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<NullableComprehensiveCompatible>(fory, buffer);
   if (!(value == expected)) {
-    Fail("NullableComprehensiveCompatible not null mismatch");
+    fail("NullableComprehensiveCompatible not null mismatch");
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
-void RunTestNullableFieldCompatibleNull(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
-  auto fory = BuildFory(true, true); // COMPATIBLE mode
-  EnsureOk(fory.register_struct<NullableComprehensiveCompatible>(402),
-           "register NullableComprehensiveCompatible");
+void run_test_nullable_field_compatible_null(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(true, true); // COMPATIBLE mode
+  ensure_ok(fory.register_struct<NullableComprehensiveCompatible>(402),
+            "register NullableComprehensiveCompatible");
 
   NullableComprehensiveCompatible expected;
   // Base non-nullable primitive fields - must have values
@@ -2407,54 +2440,54 @@ void RunTestNullableFieldCompatibleNull(const std::string &data_file) {
   expected.nullable_set2 = std::nullopt;
   expected.nullable_map2 = std::nullopt;
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto value = ReadNext<NullableComprehensiveCompatible>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto value = read_next<NullableComprehensiveCompatible>(fory, buffer);
   if (!(value == expected)) {
-    Fail("NullableComprehensiveCompatible null mismatch");
+    fail("NullableComprehensiveCompatible null mismatch");
   }
 
   std::vector<uint8_t> out;
-  AppendSerialized(fory, value, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, value, out);
+  write_file(data_file, out);
 }
 
 // ============================================================================
 // Reference Tracking Tests - Cross-language shared reference tests
 // ============================================================================
 
-void RunTestRefSchemaConsistent(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_ref_schema_consistent(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // SCHEMA_CONSISTENT mode: compatible=false, xlang=true,
   // check_struct_version=true, track_ref=true
-  auto fory = BuildFory(false, true, true, true);
-  EnsureOk(fory.register_struct<RefInnerSchemaConsistent>(501),
-           "register RefInnerSchemaConsistent");
-  EnsureOk(fory.register_struct<RefOuterSchemaConsistent>(502),
-           "register RefOuterSchemaConsistent");
+  auto fory = build_fory(false, true, true, true);
+  ensure_ok(fory.register_struct<RefInnerSchemaConsistent>(501),
+            "register RefInnerSchemaConsistent");
+  ensure_ok(fory.register_struct<RefOuterSchemaConsistent>(502),
+            "register RefOuterSchemaConsistent");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto outer = ReadNext<RefOuterSchemaConsistent>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto outer = read_next<RefOuterSchemaConsistent>(fory, buffer);
 
   // Both inner1 and inner2 should have values
   if (outer.inner1 == nullptr) {
-    Fail("RefOuterSchemaConsistent: inner1 should not be null");
+    fail("RefOuterSchemaConsistent: inner1 should not be null");
   }
   if (outer.inner2 == nullptr) {
-    Fail("RefOuterSchemaConsistent: inner2 should not be null");
+    fail("RefOuterSchemaConsistent: inner2 should not be null");
   }
 
   // Both should have the same values (they reference the same object in Java)
   if (outer.inner1->id != 42) {
-    Fail("RefOuterSchemaConsistent: inner1.id should be 42, got " +
+    fail("RefOuterSchemaConsistent: inner1.id should be 42, got " +
          std::to_string(outer.inner1->id));
   }
   if (outer.inner1->name != "shared_inner") {
-    Fail(
+    fail(
         "RefOuterSchemaConsistent: inner1.name should be 'shared_inner', got " +
         outer.inner1->name);
   }
   if (*outer.inner1 != *outer.inner2) {
-    Fail("RefOuterSchemaConsistent: inner1 and inner2 should be equal (same "
+    fail("RefOuterSchemaConsistent: inner1 and inner2 should be equal (same "
          "reference)");
   }
 
@@ -2464,138 +2497,162 @@ void RunTestRefSchemaConsistent(const std::string &data_file) {
 
   // Re-serialize and write back
   std::vector<uint8_t> out;
-  AppendSerialized(fory, outer, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, outer, out);
+  write_file(data_file, out);
 }
 
-void RunTestRefCompatible(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_ref_compatible(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // COMPATIBLE mode: compatible=true, xlang=true, check_struct_version=false,
   // track_ref=true
-  auto fory = BuildFory(true, true, false, true);
-  EnsureOk(fory.register_struct<RefInnerCompatible>(503),
-           "register RefInnerCompatible");
-  EnsureOk(fory.register_struct<RefOuterCompatible>(504),
-           "register RefOuterCompatible");
+  auto fory = build_fory(true, true, false, true);
+  ensure_ok(fory.register_struct<RefInnerCompatible>(503),
+            "register RefInnerCompatible");
+  ensure_ok(fory.register_struct<RefOuterCompatible>(504),
+            "register RefOuterCompatible");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto outer = ReadNext<RefOuterCompatible>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto outer = read_next<RefOuterCompatible>(fory, buffer);
 
   // Both inner1 and inner2 should have values
   if (outer.inner1 == nullptr) {
-    Fail("RefOuterCompatible: inner1 should not be null");
+    fail("RefOuterCompatible: inner1 should not be null");
   }
   if (outer.inner2 == nullptr) {
-    Fail("RefOuterCompatible: inner2 should not be null");
+    fail("RefOuterCompatible: inner2 should not be null");
   }
 
   // Both should have the same values (they reference the same object in Java)
   if (outer.inner1->id != 99) {
-    Fail("RefOuterCompatible: inner1.id should be 99, got " +
+    fail("RefOuterCompatible: inner1.id should be 99, got " +
          std::to_string(outer.inner1->id));
   }
   if (outer.inner1->name != "compatible_shared") {
-    Fail("RefOuterCompatible: inner1.name should be 'compatible_shared', got " +
+    fail("RefOuterCompatible: inner1.name should be 'compatible_shared', got " +
          outer.inner1->name);
   }
   if (*outer.inner1 != *outer.inner2) {
-    Fail("RefOuterCompatible: inner1 and inner2 should be equal (same "
+    fail("RefOuterCompatible: inner1 and inner2 should be equal (same "
          "reference)");
   }
 
   // Re-serialize and write back
   std::vector<uint8_t> out;
-  AppendSerialized(fory, outer, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, outer, out);
+  write_file(data_file, out);
+}
+
+void run_test_collection_element_ref_override(const std::string &data_file) {
+  auto bytes = read_file(data_file);
+  auto fory = build_fory(false, true, true, true);
+  ensure_ok(fory.register_struct<RefOverrideElement>(701),
+            "register RefOverrideElement");
+  ensure_ok(fory.register_struct<RefOverrideContainer>(702),
+            "register RefOverrideContainer");
+
+  Buffer buffer = make_buffer(bytes);
+  auto outer = read_next<RefOverrideContainer>(fory, buffer);
+  if (outer.list_field.empty()) {
+    fail("RefOverrideContainer: list_field should not be empty");
+  }
+
+  auto shared = outer.list_field.front();
+  RefOverrideContainer out_container;
+  out_container.list_field = {shared, shared};
+  out_container.map_field = {{"k1", shared}, {"k2", shared}};
+
+  std::vector<uint8_t> out;
+  append_serialized(fory, out_container, out);
+  write_file(data_file, out);
 }
 
 // ============================================================================
 // Circular Reference Tests - Self-referencing struct tests
 // ============================================================================
 
-void RunTestCircularRefSchemaConsistent(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_circular_ref_schema_consistent(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // SCHEMA_CONSISTENT mode: compatible=false, xlang=true,
   // check_struct_version=true, track_ref=true
-  auto fory = BuildFory(false, true, true, true);
-  EnsureOk(fory.register_struct<CircularRefStruct>(601),
-           "register CircularRefStruct");
+  auto fory = build_fory(false, true, true, true);
+  ensure_ok(fory.register_struct<CircularRefStruct>(601),
+            "register CircularRefStruct");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto obj = ReadNext<std::shared_ptr<CircularRefStruct>>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto obj = read_next<std::shared_ptr<CircularRefStruct>>(fory, buffer);
 
   // The object should not be null
   if (obj == nullptr) {
-    Fail("CircularRefStruct: obj should not be null");
+    fail("CircularRefStruct: obj should not be null");
   }
 
   // Verify the name field
   if (obj->name != "circular_test") {
-    Fail("CircularRefStruct: name should be 'circular_test', got " + obj->name);
+    fail("CircularRefStruct: name should be 'circular_test', got " + obj->name);
   }
 
-  // selfRef should point to the same object (circular reference)
-  if (obj->selfRef == nullptr) {
-    Fail("CircularRefStruct: selfRef should not be null");
+  // self_ref should point to the same object (circular reference)
+  if (obj->self_ref == nullptr) {
+    fail("CircularRefStruct: self_ref should not be null");
   }
 
-  // The key test: selfRef should point back to the same object
-  if (obj->selfRef.get() != obj.get()) {
-    Fail("CircularRefStruct: selfRef should point to same object (circular "
+  // The key test: self_ref should point back to the same object
+  if (obj->self_ref.get() != obj.get()) {
+    fail("CircularRefStruct: self_ref should point to same object (circular "
          "reference)");
   }
 
   // Re-serialize and write back
   std::vector<uint8_t> out;
-  AppendSerialized(fory, obj, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, obj, out);
+  write_file(data_file, out);
 }
 
-void RunTestCircularRefCompatible(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_circular_ref_compatible(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // COMPATIBLE mode: compatible=true, xlang=true, check_struct_version=false,
   // track_ref=true
-  auto fory = BuildFory(true, true, false, true);
-  EnsureOk(fory.register_struct<CircularRefStruct>(602),
-           "register CircularRefStruct");
+  auto fory = build_fory(true, true, false, true);
+  ensure_ok(fory.register_struct<CircularRefStruct>(602),
+            "register CircularRefStruct");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto obj = ReadNext<std::shared_ptr<CircularRefStruct>>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto obj = read_next<std::shared_ptr<CircularRefStruct>>(fory, buffer);
 
   // The object should not be null
   if (obj == nullptr) {
-    Fail("CircularRefStruct: obj should not be null");
+    fail("CircularRefStruct: obj should not be null");
   }
 
   // Verify the name field
   if (obj->name != "compatible_circular") {
-    Fail("CircularRefStruct: name should be 'compatible_circular', got " +
+    fail("CircularRefStruct: name should be 'compatible_circular', got " +
          obj->name);
   }
 
-  // selfRef should point to the same object (circular reference)
-  if (obj->selfRef == nullptr) {
-    Fail("CircularRefStruct: selfRef should not be null");
+  // self_ref should point to the same object (circular reference)
+  if (obj->self_ref == nullptr) {
+    fail("CircularRefStruct: self_ref should not be null");
   }
 
-  // The key test: selfRef should point back to the same object
-  if (obj->selfRef.get() != obj.get()) {
-    Fail("CircularRefStruct: selfRef should point to same object (circular "
+  // The key test: self_ref should point back to the same object
+  if (obj->self_ref.get() != obj.get()) {
+    fail("CircularRefStruct: self_ref should point to same object (circular "
          "reference)");
   }
 
   // Re-serialize and write back
   std::vector<uint8_t> out;
-  AppendSerialized(fory, obj, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, obj, out);
+  write_file(data_file, out);
 }
 
 // ============================================================================
 // Unsigned Number Tests
 // ============================================================================
 
-void RunTestUnsignedSchemaConsistentSimple(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_unsigned_schema_consistent_simple(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   std::cerr << "[DEBUG] test_unsigned_schema_consistent_simple: read "
             << bytes.size() << " bytes from " << data_file << std::endl;
   // Print first 32 bytes as hex
@@ -2607,207 +2664,216 @@ void RunTestUnsignedSchemaConsistentSimple(const std::string &data_file) {
   std::cerr << std::dec << std::endl;
 
   // SCHEMA_CONSISTENT mode: compatible=false, xlang=true
-  auto fory = BuildFory(false, true, false, false);
-  EnsureOk(fory.register_struct<UnsignedSchemaConsistentSimple>(1),
-           "register UnsignedSchemaConsistentSimple");
+  auto fory = build_fory(false, true, false, false);
+  ensure_ok(fory.register_struct<UnsignedSchemaConsistentSimple>(1),
+            "register UnsignedSchemaConsistentSimple");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto obj = ReadNext<UnsignedSchemaConsistentSimple>(fory, buffer);
-  std::cerr << "[DEBUG] Deserialized: u64Tagged=" << obj.u64Tagged
-            << ", u64TaggedNullable="
-            << (obj.u64TaggedNullable.has_value()
-                    ? std::to_string(obj.u64TaggedNullable.value())
+  Buffer buffer = make_buffer(bytes);
+  auto obj = read_next<UnsignedSchemaConsistentSimple>(fory, buffer);
+  std::cerr << "[DEBUG] Deserialized: u64_tagged=" << obj.u64_tagged
+            << ", u64_tagged_nullable="
+            << (obj.u64_tagged_nullable.has_value()
+                    ? std::to_string(obj.u64_tagged_nullable.value())
                     : "null")
             << std::endl;
 
   // Verify fields
-  if (obj.u64Tagged != 1000000000) {
-    Fail(
-        "UnsignedSchemaConsistentSimple: u64Tagged should be 1000000000, got " +
-        std::to_string(obj.u64Tagged));
+  if (obj.u64_tagged != 1000000000) {
+    fail("UnsignedSchemaConsistentSimple: u64_tagged should be 1000000000, "
+         "got " +
+         std::to_string(obj.u64_tagged));
   }
-  if (!obj.u64TaggedNullable.has_value() ||
-      obj.u64TaggedNullable.value() != 500000000) {
-    Fail("UnsignedSchemaConsistentSimple: u64TaggedNullable should be "
+  if (!obj.u64_tagged_nullable.has_value() ||
+      obj.u64_tagged_nullable.value() != 500000000) {
+    fail("UnsignedSchemaConsistentSimple: u64_tagged_nullable should be "
          "500000000");
   }
 
   // Re-serialize and write back
   std::vector<uint8_t> out;
-  AppendSerialized(fory, obj, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, obj, out);
+  write_file(data_file, out);
 }
 
-void RunTestUnsignedSchemaConsistent(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_unsigned_schema_consistent(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // SCHEMA_CONSISTENT mode: compatible=false, xlang=true
-  auto fory = BuildFory(false, true, false, false);
-  EnsureOk(fory.register_struct<UnsignedSchemaConsistent>(501),
-           "register UnsignedSchemaConsistent");
+  auto fory = build_fory(false, true, false, false);
+  ensure_ok(fory.register_struct<UnsignedSchemaConsistent>(501),
+            "register UnsignedSchemaConsistent");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto obj = ReadNext<UnsignedSchemaConsistent>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto obj = read_next<UnsignedSchemaConsistent>(fory, buffer);
 
   // Verify primitive unsigned fields
-  if (obj.u8Field != 200) {
-    Fail("UnsignedSchemaConsistent: u8Field should be 200, got " +
-         std::to_string(obj.u8Field));
+  if (obj.u8_field != 200) {
+    fail("UnsignedSchemaConsistent: u8_field should be 200, got " +
+         std::to_string(obj.u8_field));
   }
-  if (obj.u16Field != 60000) {
-    Fail("UnsignedSchemaConsistent: u16Field should be 60000, got " +
-         std::to_string(obj.u16Field));
+  if (obj.u16_field != 60000) {
+    fail("UnsignedSchemaConsistent: u16_field should be 60000, got " +
+         std::to_string(obj.u16_field));
   }
-  if (obj.u32VarField != 3000000000) {
-    Fail("UnsignedSchemaConsistent: u32VarField should be 3000000000, got " +
-         std::to_string(obj.u32VarField));
+  if (obj.u32_var_field != 3000000000) {
+    fail("UnsignedSchemaConsistent: u32_var_field should be 3000000000, got " +
+         std::to_string(obj.u32_var_field));
   }
-  if (obj.u32FixedField != 4000000000) {
-    Fail("UnsignedSchemaConsistent: u32FixedField should be 4000000000, got " +
-         std::to_string(obj.u32FixedField));
+  if (obj.u32_fixed_field != 4000000000) {
+    fail(
+        "UnsignedSchemaConsistent: u32_fixed_field should be 4000000000, got " +
+        std::to_string(obj.u32_fixed_field));
   }
-  if (obj.u64VarField != 10000000000) {
-    Fail("UnsignedSchemaConsistent: u64VarField should be 10000000000, got " +
-         std::to_string(obj.u64VarField));
+  if (obj.u64_var_field != 10000000000) {
+    fail("UnsignedSchemaConsistent: u64_var_field should be 10000000000, got " +
+         std::to_string(obj.u64_var_field));
   }
-  if (obj.u64FixedField != 15000000000) {
-    Fail("UnsignedSchemaConsistent: u64FixedField should be 15000000000, got " +
-         std::to_string(obj.u64FixedField));
+  if (obj.u64_fixed_field != 15000000000) {
+    fail("UnsignedSchemaConsistent: u64_fixed_field should be 15000000000, "
+         "got " +
+         std::to_string(obj.u64_fixed_field));
   }
-  if (obj.u64TaggedField != 1000000000) {
-    Fail("UnsignedSchemaConsistent: u64TaggedField should be 1000000000, got " +
-         std::to_string(obj.u64TaggedField));
+  if (obj.u64_tagged_field != 1000000000) {
+    fail("UnsignedSchemaConsistent: u64_tagged_field should be 1000000000, "
+         "got " +
+         std::to_string(obj.u64_tagged_field));
   }
 
   // Verify nullable unsigned fields
-  if (!obj.u8NullableField.has_value() || obj.u8NullableField.value() != 128) {
-    Fail("UnsignedSchemaConsistent: u8NullableField should be 128");
+  if (!obj.u8_nullable_field.has_value() ||
+      obj.u8_nullable_field.value() != 128) {
+    fail("UnsignedSchemaConsistent: u8_nullable_field should be 128");
   }
-  if (!obj.u16NullableField.has_value() ||
-      obj.u16NullableField.value() != 40000) {
-    Fail("UnsignedSchemaConsistent: u16NullableField should be 40000");
+  if (!obj.u16_nullable_field.has_value() ||
+      obj.u16_nullable_field.value() != 40000) {
+    fail("UnsignedSchemaConsistent: u16_nullable_field should be 40000");
   }
-  if (!obj.u32VarNullableField.has_value() ||
-      obj.u32VarNullableField.value() != 2500000000) {
-    Fail("UnsignedSchemaConsistent: u32VarNullableField should be 2500000000");
+  if (!obj.u32_var_nullable_field.has_value() ||
+      obj.u32_var_nullable_field.value() != 2500000000) {
+    fail("UnsignedSchemaConsistent: u32_var_nullable_field should be "
+         "2500000000");
   }
-  if (!obj.u32FixedNullableField.has_value() ||
-      obj.u32FixedNullableField.value() != 3500000000) {
-    Fail(
-        "UnsignedSchemaConsistent: u32FixedNullableField should be 3500000000");
+  if (!obj.u32_fixed_nullable_field.has_value() ||
+      obj.u32_fixed_nullable_field.value() != 3500000000) {
+    fail("UnsignedSchemaConsistent: u32_fixed_nullable_field should be "
+         "3500000000");
   }
-  if (!obj.u64VarNullableField.has_value() ||
-      obj.u64VarNullableField.value() != 8000000000) {
-    Fail("UnsignedSchemaConsistent: u64VarNullableField should be 8000000000");
+  if (!obj.u64_var_nullable_field.has_value() ||
+      obj.u64_var_nullable_field.value() != 8000000000) {
+    fail("UnsignedSchemaConsistent: u64_var_nullable_field should be "
+         "8000000000");
   }
-  if (!obj.u64FixedNullableField.has_value() ||
-      obj.u64FixedNullableField.value() != 12000000000) {
-    Fail("UnsignedSchemaConsistent: u64FixedNullableField should be "
+  if (!obj.u64_fixed_nullable_field.has_value() ||
+      obj.u64_fixed_nullable_field.value() != 12000000000) {
+    fail("UnsignedSchemaConsistent: u64_fixed_nullable_field should be "
          "12000000000");
   }
-  if (!obj.u64TaggedNullableField.has_value() ||
-      obj.u64TaggedNullableField.value() != 500000000) {
-    Fail(
-        "UnsignedSchemaConsistent: u64TaggedNullableField should be 500000000");
+  if (!obj.u64_tagged_nullable_field.has_value() ||
+      obj.u64_tagged_nullable_field.value() != 500000000) {
+    fail("UnsignedSchemaConsistent: u64_tagged_nullable_field should be "
+         "500000000");
   }
 
   // Debug: print field values before re-serialization
   std::cerr << "[DEBUG] Before re-serialization:\n";
-  std::cerr << "  u8Field=" << static_cast<int>(obj.u8Field)
-            << " u16Field=" << obj.u16Field
-            << " u32VarField=" << obj.u32VarField
-            << " u32FixedField=" << obj.u32FixedField << "\n";
-  std::cerr << "  u64VarField=" << obj.u64VarField
-            << " u64FixedField=" << obj.u64FixedField
-            << " u64TaggedField=" << obj.u64TaggedField << "\n";
+  std::cerr << "  u8_field=" << static_cast<int>(obj.u8_field)
+            << " u16_field=" << obj.u16_field
+            << " u32_var_field=" << obj.u32_var_field
+            << " u32_fixed_field=" << obj.u32_fixed_field << "\n";
+  std::cerr << "  u64_var_field=" << obj.u64_var_field
+            << " u64_fixed_field=" << obj.u64_fixed_field
+            << " u64_tagged_field=" << obj.u64_tagged_field << "\n";
 
   // Re-serialize and write back
   std::vector<uint8_t> out;
-  AppendSerialized(fory, obj, out);
+  append_serialized(fory, obj, out);
 
   // Debug: print output bytes for inspection
   std::cerr << "[DEBUG] Serialized " << out.size() << " bytes:\n";
-  std::cerr << "[DEBUG] Hex: ";
+  std::cerr << "[DEBUG] hex: ";
   for (size_t i = 0; i < std::min(out.size(), size_t(80)); ++i) {
     std::cerr << std::hex << std::setw(2) << std::setfill('0')
               << static_cast<int>(out[i]);
   }
   std::cerr << std::dec << "\n";
 
-  WriteFile(data_file, out);
+  write_file(data_file, out);
 }
 
-void RunTestUnsignedSchemaCompatible(const std::string &data_file) {
-  auto bytes = ReadFile(data_file);
+void run_test_unsigned_schema_compatible(const std::string &data_file) {
+  auto bytes = read_file(data_file);
   // COMPATIBLE mode: compatible=true, xlang=true
-  auto fory = BuildFory(true, true, false, false);
-  EnsureOk(fory.register_struct<UnsignedSchemaCompatible>(502),
-           "register UnsignedSchemaCompatible");
+  auto fory = build_fory(true, true, false, false);
+  ensure_ok(fory.register_struct<UnsignedSchemaCompatible>(502),
+            "register UnsignedSchemaCompatible");
 
-  Buffer buffer = MakeBuffer(bytes);
-  auto obj = ReadNext<UnsignedSchemaCompatible>(fory, buffer);
+  Buffer buffer = make_buffer(bytes);
+  auto obj = read_next<UnsignedSchemaCompatible>(fory, buffer);
 
   // Verify Group 1: Nullable fields (values from Java's non-nullable fields)
-  if (!obj.u8Field1.has_value() || obj.u8Field1.value() != 200) {
-    Fail("UnsignedSchemaCompatible: u8Field1 should be 200");
+  if (!obj.u8_field1.has_value() || obj.u8_field1.value() != 200) {
+    fail("UnsignedSchemaCompatible: u8_field1 should be 200");
   }
-  if (!obj.u16Field1.has_value() || obj.u16Field1.value() != 60000) {
-    Fail("UnsignedSchemaCompatible: u16Field1 should be 60000");
+  if (!obj.u16_field1.has_value() || obj.u16_field1.value() != 60000) {
+    fail("UnsignedSchemaCompatible: u16_field1 should be 60000");
   }
-  if (!obj.u32VarField1.has_value() || obj.u32VarField1.value() != 3000000000) {
-    Fail("UnsignedSchemaCompatible: u32VarField1 should be 3000000000");
+  if (!obj.u32_var_field1.has_value() ||
+      obj.u32_var_field1.value() != 3000000000) {
+    fail("UnsignedSchemaCompatible: u32_var_field1 should be 3000000000");
   }
-  if (!obj.u32FixedField1.has_value() ||
-      obj.u32FixedField1.value() != 4000000000) {
-    Fail("UnsignedSchemaCompatible: u32FixedField1 should be 4000000000");
+  if (!obj.u32_fixed_field1.has_value() ||
+      obj.u32_fixed_field1.value() != 4000000000) {
+    fail("UnsignedSchemaCompatible: u32_fixed_field1 should be 4000000000");
   }
-  if (!obj.u64VarField1.has_value() ||
-      obj.u64VarField1.value() != 10000000000) {
-    Fail("UnsignedSchemaCompatible: u64VarField1 should be 10000000000");
+  if (!obj.u64_var_field1.has_value() ||
+      obj.u64_var_field1.value() != 10000000000) {
+    fail("UnsignedSchemaCompatible: u64_var_field1 should be 10000000000");
   }
-  if (!obj.u64FixedField1.has_value() ||
-      obj.u64FixedField1.value() != 15000000000) {
-    Fail("UnsignedSchemaCompatible: u64FixedField1 should be 15000000000");
+  if (!obj.u64_fixed_field1.has_value() ||
+      obj.u64_fixed_field1.value() != 15000000000) {
+    fail("UnsignedSchemaCompatible: u64_fixed_field1 should be 15000000000");
   }
-  if (!obj.u64TaggedField1.has_value() ||
-      obj.u64TaggedField1.value() != 1000000000) {
-    Fail("UnsignedSchemaCompatible: u64TaggedField1 should be 1000000000");
+  if (!obj.u64_tagged_field1.has_value() ||
+      obj.u64_tagged_field1.value() != 1000000000) {
+    fail("UnsignedSchemaCompatible: u64_tagged_field1 should be 1000000000");
   }
 
   // Verify Group 2: Non-nullable fields (values from Java's nullable fields)
-  if (obj.u8Field2 != 128) {
-    Fail("UnsignedSchemaCompatible: u8Field2 should be 128, got " +
-         std::to_string(obj.u8Field2));
+  if (obj.u8_field2 != 128) {
+    fail("UnsignedSchemaCompatible: u8_field2 should be 128, got " +
+         std::to_string(obj.u8_field2));
   }
-  if (obj.u16Field2 != 40000) {
-    Fail("UnsignedSchemaCompatible: u16Field2 should be 40000, got " +
-         std::to_string(obj.u16Field2));
+  if (obj.u16_field2 != 40000) {
+    fail("UnsignedSchemaCompatible: u16_field2 should be 40000, got " +
+         std::to_string(obj.u16_field2));
   }
-  if (obj.u32VarField2 != 2500000000) {
-    Fail("UnsignedSchemaCompatible: u32VarField2 should be 2500000000, got " +
-         std::to_string(obj.u32VarField2));
+  if (obj.u32_var_field2 != 2500000000) {
+    fail("UnsignedSchemaCompatible: u32_var_field2 should be 2500000000, got " +
+         std::to_string(obj.u32_var_field2));
   }
-  if (obj.u32FixedField2 != 3500000000) {
-    Fail("UnsignedSchemaCompatible: u32FixedField2 should be 3500000000, got " +
-         std::to_string(obj.u32FixedField2));
+  if (obj.u32_fixed_field2 != 3500000000) {
+    fail("UnsignedSchemaCompatible: u32_fixed_field2 should be 3500000000, "
+         "got " +
+         std::to_string(obj.u32_fixed_field2));
   }
-  if (obj.u64VarField2 != 8000000000) {
-    Fail("UnsignedSchemaCompatible: u64VarField2 should be 8000000000, got " +
-         std::to_string(obj.u64VarField2));
+  if (obj.u64_var_field2 != 8000000000) {
+    fail("UnsignedSchemaCompatible: u64_var_field2 should be 8000000000, got " +
+         std::to_string(obj.u64_var_field2));
   }
-  if (obj.u64FixedField2 != 12000000000) {
-    Fail(
-        "UnsignedSchemaCompatible: u64FixedField2 should be 12000000000, got " +
-        std::to_string(obj.u64FixedField2));
+  if (obj.u64_fixed_field2 != 12000000000) {
+    fail("UnsignedSchemaCompatible: u64_fixed_field2 should be 12000000000, "
+         "got " +
+         std::to_string(obj.u64_fixed_field2));
   }
-  if (obj.u64TaggedField2 != 500000000) {
-    Fail("UnsignedSchemaCompatible: u64TaggedField2 should be 500000000, got " +
-         std::to_string(obj.u64TaggedField2));
+  if (obj.u64_tagged_field2 != 500000000) {
+    fail("UnsignedSchemaCompatible: u64_tagged_field2 should be 500000000, "
+         "got " +
+         std::to_string(obj.u64_tagged_field2));
   }
 
   // Re-serialize and write back
   std::vector<uint8_t> out;
-  AppendSerialized(fory, obj, out);
-  WriteFile(data_file, out);
+  append_serialized(fory, obj, out);
+  write_file(data_file, out);
 }
 
 } // namespace

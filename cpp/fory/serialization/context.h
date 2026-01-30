@@ -57,7 +57,7 @@ private:
   ReadContext &ctx_;
 };
 
-/// Write context for serialization operations.
+/// write context for serialization operations.
 ///
 /// This class maintains the state during serialization, including:
 /// - Internal buffer for writing data (owned by context)
@@ -100,29 +100,29 @@ public:
     }
   }
 
-  /// Get the accumulated error (moved out).
+  /// get the accumulated error (moved out).
   FORY_ALWAYS_INLINE Error take_error() { return std::move(error_); }
 
-  /// Get const reference to the error.
+  /// get const reference to the error.
   FORY_ALWAYS_INLINE const Error &error() const { return error_; }
 
-  /// Get mutable reference to the error for buffer read operations.
+  /// get mutable reference to the error for buffer read operations.
   /// The buffer read methods use Error& pattern for performance.
   FORY_ALWAYS_INLINE Error &error() { return error_; }
 
-  /// Get reference to internal output buffer.
+  /// get reference to internal output buffer.
   inline Buffer &buffer() { return buffer_; }
 
-  /// Get const reference to internal output buffer.
+  /// get const reference to internal output buffer.
   inline const Buffer &buffer() const { return buffer_; }
 
-  /// Get reference writer for tracking shared references.
+  /// get reference writer for tracking shared references.
   inline RefWriter &ref_writer() { return ref_writer_; }
 
-  /// Get associated type resolver.
+  /// get associated type resolver.
   inline TypeResolver &type_resolver() { return *type_resolver_; }
 
-  /// Get associated type resolver (const).
+  /// get associated type resolver (const).
   inline const TypeResolver &type_resolver() const { return *type_resolver_; }
 
   /// Check if compatible mode is enabled.
@@ -139,10 +139,10 @@ public:
   /// Check if reference tracking is enabled.
   inline bool track_ref() const { return config_->track_ref; }
 
-  /// Get maximum allowed dynamic nesting depth for polymorphic types.
+  /// get maximum allowed dynamic nesting depth for polymorphic types.
   inline uint32_t max_dyn_depth() const { return config_->max_dyn_depth; }
 
-  /// Get current dynamic nesting depth.
+  /// get current dynamic nesting depth.
   inline uint32_t current_dyn_depth() const { return current_dyn_depth_; }
 
   /// Increase dynamic nesting depth by 1.
@@ -165,83 +165,83 @@ public:
     }
   }
 
-  /// Write uint8_t value to buffer.
+  /// write uint8_t value to buffer.
   FORY_ALWAYS_INLINE void write_uint8(uint8_t value) {
-    buffer().WriteUint8(value);
+    buffer().write_uint8(value);
   }
 
-  /// Write int8_t value to buffer.
+  /// write int8_t value to buffer.
   FORY_ALWAYS_INLINE void write_int8(int8_t value) {
-    buffer().WriteInt8(value);
+    buffer().write_int8(value);
   }
 
-  /// Write uint16_t value to buffer.
+  /// write uint16_t value to buffer.
   FORY_ALWAYS_INLINE void write_uint16(uint16_t value) {
-    buffer().WriteUint16(value);
+    buffer().write_uint16(value);
   }
 
-  /// Write uint32_t value to buffer.
+  /// write uint32_t value to buffer.
   FORY_ALWAYS_INLINE void write_uint32(uint32_t value) {
-    buffer().WriteUint32(value);
+    buffer().write_uint32(value);
   }
 
-  /// Write int64_t value to buffer.
+  /// write int64_t value to buffer.
   FORY_ALWAYS_INLINE void write_int64(int64_t value) {
-    buffer().WriteInt64(value);
+    buffer().write_int64(value);
   }
 
-  /// Write uint32_t value as varint to buffer.
-  FORY_ALWAYS_INLINE void write_varuint32(uint32_t value) {
-    buffer().WriteVarUint32(value);
+  /// write uint32_t value as varint to buffer.
+  FORY_ALWAYS_INLINE void write_var_uint32(uint32_t value) {
+    buffer().write_var_uint32(value);
   }
 
-  /// Write int32_t value as zigzag varint to buffer.
+  /// write int32_t value as zigzag varint to buffer.
   FORY_ALWAYS_INLINE void write_varint32(int32_t value) {
-    buffer().WriteVarInt32(value);
+    buffer().write_var_int32(value);
   }
 
-  /// Write uint64_t value as varint to buffer.
-  FORY_ALWAYS_INLINE void write_varuint64(uint64_t value) {
-    buffer().WriteVarUint64(value);
+  /// write uint64_t value as varint to buffer.
+  FORY_ALWAYS_INLINE void write_var_uint64(uint64_t value) {
+    buffer().write_var_uint64(value);
   }
 
-  /// Write int64_t value as zigzag varint to buffer.
+  /// write int64_t value as zigzag varint to buffer.
   FORY_ALWAYS_INLINE void write_varint64(int64_t value) {
-    buffer().WriteVarInt64(value);
+    buffer().write_var_int64(value);
   }
 
-  /// Write uint64_t value using tagged encoding to buffer.
+  /// write uint64_t value using tagged encoding to buffer.
   FORY_ALWAYS_INLINE void write_tagged_uint64(uint64_t value) {
-    buffer().WriteTaggedUint64(value);
+    buffer().write_tagged_uint64(value);
   }
 
-  /// Write int64_t value using tagged encoding to buffer.
+  /// write int64_t value using tagged encoding to buffer.
   FORY_ALWAYS_INLINE void write_tagged_int64(int64_t value) {
-    buffer().WriteTaggedInt64(value);
+    buffer().write_tagged_int64(value);
   }
 
-  /// Write uint64_t value as varuint36small to buffer.
+  /// write uint64_t value as varuint36small to buffer.
   /// This is the special variable-length encoding used for string headers.
-  FORY_ALWAYS_INLINE void write_varuint36small(uint64_t value) {
-    buffer().WriteVarUint36Small(value);
+  FORY_ALWAYS_INLINE void write_var_uint36_small(uint64_t value) {
+    buffer().write_var_uint36_small(value);
   }
 
-  /// Write raw bytes to buffer.
+  /// write raw bytes to buffer.
   FORY_ALWAYS_INLINE void write_bytes(const void *data, uint32_t length) {
-    buffer().WriteBytes(data, length);
+    buffer().write_bytes(data, length);
   }
 
-  /// Write TypeMeta inline using streaming protocol.
+  /// write TypeMeta inline using streaming protocol.
   /// First occurrence: writes (index << 1) | 0 followed by TypeDef bytes.
   /// Subsequent occurrences: writes (index << 1) | 1 as reference.
   Result<void, Error> write_type_meta(const std::type_index &type_id);
 
-  /// Write TypeMeta inline using TypeInfo pointer (fast path).
+  /// write TypeMeta inline using TypeInfo pointer (fast path).
   /// First occurrence: writes (index << 1) | 0 followed by TypeDef bytes.
   /// Subsequent occurrences: writes (index << 1) | 1 as reference.
   void write_type_meta(const TypeInfo *type_info);
 
-  /// Write type information for polymorphic types.
+  /// write type information for polymorphic types.
   /// Handles different type categories:
   /// - Internal types: just write type_id
   /// - COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT: write type_id and meta_index
@@ -278,26 +278,26 @@ public:
   ///
   /// @param type_id The pre-computed Fory type_id
   inline void write_struct_type_id_direct(uint32_t type_id) {
-    buffer_.WriteVarUint32(type_id);
+    buffer_.write_var_uint32(type_id);
   }
 
-  /// Get the type_id for a type. Used to cache type_id for fast writes.
+  /// get the type_id for a type. Used to cache type_id for fast writes.
   /// Returns 0 if type is not registered.
   uint32_t get_type_id_for_cache(const std::type_index &type_idx);
 
-  /// Write type info for a registered enum type.
+  /// write type info for a registered enum type.
   /// Looks up the type info and delegates to write_any_typeinfo.
   Result<void, Error> write_enum_typeinfo(const std::type_index &type);
 
-  /// Write type info for a registered enum type using TypeInfo pointer.
+  /// write type info for a registered enum type using TypeInfo pointer.
   /// Avoids type_index creation and lookup overhead.
   Result<void, Error> write_enum_typeinfo(const TypeInfo *type_info);
 
-  /// Write type info for a registered enum type using compile-time type lookup.
+  /// write type info for a registered enum type using compile-time type lookup.
   /// Faster than the std::type_index version - uses type_index<E>().
   template <typename E> Result<void, Error> write_enum_typeinfo();
 
-  /// Reset context for reuse.
+  /// reset context for reuse.
   void reset();
 
 private:
@@ -359,13 +359,13 @@ public:
     }
   }
 
-  /// Get the accumulated error (moved out).
+  /// get the accumulated error (moved out).
   FORY_ALWAYS_INLINE Error take_error() { return std::move(error_); }
 
-  /// Get const reference to the error.
+  /// get const reference to the error.
   FORY_ALWAYS_INLINE const Error &error() const { return error_; }
 
-  /// Get mutable reference to the error for buffer read operations.
+  /// get mutable reference to the error for buffer read operations.
   /// The buffer read methods use Error& pattern for performance.
   FORY_ALWAYS_INLINE Error &error() { return error_; }
 
@@ -375,25 +375,25 @@ public:
   /// Detach the buffer after deserialization is complete.
   inline void detach() { buffer_ = nullptr; }
 
-  /// Get reference to input buffer.
+  /// get reference to input buffer.
   inline Buffer &buffer() {
     assert(buffer_ != nullptr);
     return *buffer_;
   }
 
-  /// Get const reference to input buffer.
+  /// get const reference to input buffer.
   inline const Buffer &buffer() const {
     assert(buffer_ != nullptr);
     return *buffer_;
   }
 
-  /// Get reference reader for reconstructing shared references.
+  /// get reference reader for reconstructing shared references.
   inline RefReader &ref_reader() { return ref_reader_; }
 
-  /// Get associated type resolver.
+  /// get associated type resolver.
   inline TypeResolver &type_resolver() { return *type_resolver_; }
 
-  /// Get associated type resolver (const).
+  /// get associated type resolver (const).
   inline const TypeResolver &type_resolver() const { return *type_resolver_; }
 
   /// Check if compatible mode is enabled.
@@ -410,10 +410,10 @@ public:
   /// Check if reference tracking is enabled.
   inline bool track_ref() const { return config_->track_ref; }
 
-  /// Get maximum allowed dynamic nesting depth for polymorphic types.
+  /// get maximum allowed dynamic nesting depth for polymorphic types.
   inline uint32_t max_dyn_depth() const { return config_->max_dyn_depth; }
 
-  /// Get current dynamic nesting depth.
+  /// get current dynamic nesting depth.
   inline uint32_t current_dyn_depth() const { return current_dyn_depth_; }
 
   /// Increase dynamic nesting depth by 1.
@@ -444,100 +444,100 @@ public:
 
   /// Read uint8_t value from buffer. Sets error on failure.
   FORY_ALWAYS_INLINE uint8_t read_uint8(Error &error) {
-    return buffer().ReadUint8(error);
+    return buffer().read_uint8(error);
   }
 
   /// Read int8_t value from buffer. Sets error on failure.
   FORY_ALWAYS_INLINE int8_t read_int8(Error &error) {
-    return buffer().ReadInt8(error);
+    return buffer().read_int8(error);
   }
 
   /// Read uint16_t value from buffer. Sets error on failure.
   FORY_ALWAYS_INLINE uint16_t read_uint16(Error &error) {
-    return buffer().ReadUint16(error);
+    return buffer().read_uint16(error);
   }
 
   /// Read int16_t value from buffer. Sets error on failure.
   FORY_ALWAYS_INLINE int16_t read_int16(Error &error) {
-    return buffer().ReadInt16(error);
+    return buffer().read_int16(error);
   }
 
   /// Read uint32_t value from buffer (fixed 4 bytes). Sets error on failure.
   FORY_ALWAYS_INLINE uint32_t read_uint32(Error &error) {
-    return buffer().ReadUint32(error);
+    return buffer().read_uint32(error);
   }
 
   /// Read int32_t value from buffer (fixed 4 bytes). Sets error on failure.
   FORY_ALWAYS_INLINE int32_t read_int32(Error &error) {
-    return buffer().ReadInt32(error);
+    return buffer().read_int32(error);
   }
 
   /// Read uint64_t value from buffer (fixed 8 bytes). Sets error on failure.
   FORY_ALWAYS_INLINE uint64_t read_uint64(Error &error) {
-    return buffer().ReadUint64(error);
+    return buffer().read_uint64(error);
   }
 
   /// Read int64_t value from buffer (fixed 8 bytes). Sets error on failure.
   FORY_ALWAYS_INLINE int64_t read_int64(Error &error) {
-    return buffer().ReadInt64(error);
+    return buffer().read_int64(error);
   }
 
   /// Read float value from buffer. Sets error on failure.
   FORY_ALWAYS_INLINE float read_float(Error &error) {
-    return buffer().ReadFloat(error);
+    return buffer().read_float(error);
   }
 
   /// Read double value from buffer. Sets error on failure.
   FORY_ALWAYS_INLINE double read_double(Error &error) {
-    return buffer().ReadDouble(error);
+    return buffer().read_double(error);
   }
 
   /// Read uint32_t value as varint from buffer. Sets error on failure.
-  FORY_ALWAYS_INLINE uint32_t read_varuint32(Error &error) {
-    return buffer().ReadVarUint32(error);
+  FORY_ALWAYS_INLINE uint32_t read_var_uint32(Error &error) {
+    return buffer().read_var_uint32(error);
   }
 
   /// Read int32_t value as zigzag varint from buffer. Sets error on failure.
   FORY_ALWAYS_INLINE int32_t read_varint32(Error &error) {
-    return buffer().ReadVarInt32(error);
+    return buffer().read_var_int32(error);
   }
 
   /// Read uint64_t value as varint from buffer. Sets error on failure.
-  FORY_ALWAYS_INLINE uint64_t read_varuint64(Error &error) {
-    return buffer().ReadVarUint64(error);
+  FORY_ALWAYS_INLINE uint64_t read_var_uint64(Error &error) {
+    return buffer().read_var_uint64(error);
   }
 
   /// Read int64_t value as zigzag varint from buffer. Sets error on failure.
   FORY_ALWAYS_INLINE int64_t read_varint64(Error &error) {
-    return buffer().ReadVarInt64(error);
+    return buffer().read_var_int64(error);
   }
 
   /// Read uint64_t value using tagged encoding from buffer. Sets error on
   /// failure.
   FORY_ALWAYS_INLINE uint64_t read_tagged_uint64(Error &error) {
-    return buffer().ReadTaggedUint64(error);
+    return buffer().read_tagged_uint64(error);
   }
 
   /// Read int64_t value using tagged encoding from buffer. Sets error on
   /// failure.
   FORY_ALWAYS_INLINE int64_t read_tagged_int64(Error &error) {
-    return buffer().ReadTaggedInt64(error);
+    return buffer().read_tagged_int64(error);
   }
 
   /// Read uint64_t value as varuint36small from buffer. Sets error on failure.
-  FORY_ALWAYS_INLINE uint64_t read_varuint36small(Error &error) {
-    return buffer().ReadVarUint36Small(error);
+  FORY_ALWAYS_INLINE uint64_t read_var_uint36_small(Error &error) {
+    return buffer().read_var_uint36_small(error);
   }
 
   /// Read raw bytes from buffer. Sets error on failure.
   FORY_ALWAYS_INLINE void read_bytes(void *data, uint32_t length,
                                      Error &error) {
-    buffer().ReadBytes(data, length, error);
+    buffer().read_bytes(data, length, error);
   }
 
-  /// Skip bytes in buffer. Sets error on failure.
+  /// skip bytes in buffer. Sets error on failure.
   FORY_ALWAYS_INLINE void skip(uint32_t length, Error &error) {
-    buffer().Skip(length, error);
+    buffer().skip(length, error);
   }
 
   Result<const TypeInfo *, Error>
@@ -552,7 +552,7 @@ public:
   /// @return const pointer to TypeInfo, or error
   Result<const TypeInfo *, Error> read_type_meta();
 
-  /// Get TypeInfo by meta index (internal use for reference lookups).
+  /// get TypeInfo by meta index (internal use for reference lookups).
   /// @return const pointer to TypeInfo if found, error otherwise
   Result<const TypeInfo *, Error> get_type_info_by_index(size_t index) const;
 
@@ -574,7 +574,7 @@ public:
   /// @return const pointer to TypeInfo for the read type, or nullptr on error
   const TypeInfo *read_any_typeinfo(Error &error);
 
-  /// Reset context for reuse.
+  /// reset context for reuse.
   void reset();
 
 private:

@@ -28,7 +28,7 @@
 namespace fory {
 namespace serialization {
 
-/// Skip a field value in the buffer based on type information
+/// skip a field value in the buffer based on type information
 /// This is used during schema evolution to skip fields that don't exist in the
 /// local type
 ///
@@ -38,31 +38,31 @@ namespace serialization {
 void skip_field_value(ReadContext &ctx, const FieldType &field_type,
                       RefMode ref_mode);
 
-/// Skip a varint value
+/// skip a varint value
 void skip_varint(ReadContext &ctx);
 
-/// Skip a string value
+/// skip a string value
 void skip_string(ReadContext &ctx);
 
-/// Skip a list value
+/// skip a list value
 void skip_list(ReadContext &ctx, const FieldType &field_type);
 
-/// Skip a set value
+/// skip a set value
 void skip_set(ReadContext &ctx, const FieldType &field_type);
 
-/// Skip a map value
+/// skip a map value
 void skip_map(ReadContext &ctx, const FieldType &field_type);
 
-/// Skip a union (variant) value
+/// skip a union (variant) value
 void skip_union(ReadContext &ctx);
 
-/// Skip a struct value
+/// skip a struct value
 void skip_struct(ReadContext &ctx, const FieldType &field_type);
 
-/// Skip an ext (extension) value
+/// skip an ext (extension) value
 void skip_ext(ReadContext &ctx, const FieldType &field_type);
 
-/// Skip an unknown (polymorphic) value
+/// skip an unknown (polymorphic) value
 /// The actual type info is written inline in the buffer
 void skip_unknown(ReadContext &ctx);
 

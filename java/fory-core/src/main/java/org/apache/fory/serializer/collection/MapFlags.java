@@ -21,39 +21,39 @@ package org.apache.fory.serializer.collection;
 
 public class MapFlags {
   /** Whether track key ref. */
-  public static int TRACKING_KEY_REF = 0b1;
+  public static final int TRACKING_KEY_REF = 0b1;
 
   /** Whether key has null. */
-  public static int KEY_HAS_NULL = 0b10;
+  public static final int KEY_HAS_NULL = 0b10;
 
   /** Whether key is declared type. */
-  public static int KEY_DECL_TYPE = 0b100;
+  public static final int KEY_DECL_TYPE = 0b100;
 
   /** Whether track value ref. */
-  public static int TRACKING_VALUE_REF = 0b1000;
+  public static final int TRACKING_VALUE_REF = 0b1000;
 
   /** Whether value has null. */
-  public static int VALUE_HAS_NULL = 0b10000;
+  public static final int VALUE_HAS_NULL = 0b10000;
 
   /** Whether value is declared type. */
-  public static int VALUE_DECL_TYPE = 0b100000;
+  public static final int VALUE_DECL_TYPE = 0b100000;
 
   // When key or value is null that entry will be serialized as a new chunk with size 1.
   // In such cases, chunk size will be skipped writing.
   /** Both key and value are null. */
-  public static int KV_NULL = KEY_HAS_NULL | VALUE_HAS_NULL;
+  public static final int KV_NULL = KEY_HAS_NULL | VALUE_HAS_NULL;
 
   /** Key is null, value type is declared type, and ref tracking for value is disabled. */
-  public static int NULL_KEY_VALUE_DECL_TYPE = KEY_HAS_NULL | VALUE_DECL_TYPE;
+  public static final int NULL_KEY_VALUE_DECL_TYPE = KEY_HAS_NULL | VALUE_DECL_TYPE;
 
   /** Key is null, value type is declared type, and ref tracking for value is enabled. */
-  public static int NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF =
+  public static final int NULL_KEY_VALUE_DECL_TYPE_TRACKING_REF =
       KEY_HAS_NULL | VALUE_DECL_TYPE | TRACKING_VALUE_REF;
 
   /** Value is null, key type is declared type, and ref tracking for key is disabled. */
-  public static int NULL_VALUE_KEY_DECL_TYPE = VALUE_HAS_NULL | KEY_DECL_TYPE;
+  public static final int NULL_VALUE_KEY_DECL_TYPE = VALUE_HAS_NULL | KEY_DECL_TYPE;
 
   /** Value is null, key type is declared type, and ref tracking for key is enabled. */
-  public static int NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF =
+  public static final int NULL_VALUE_KEY_DECL_TYPE_TRACKING_REF =
       VALUE_HAS_NULL | KEY_DECL_TYPE | TRACKING_KEY_REF;
 }

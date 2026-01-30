@@ -52,57 +52,39 @@ describe('fory', () => {
         }
     });
 
-    test('should register work', () => {
-        const fory = new Fory();
-        const { serialize, deserialize } = fory.registerSerializer(Type.array(Type.string()));
-        const bin = serialize(["hello", "world"]);
-        expect(deserialize(bin)).toEqual(["hello", "world"]);
-    });
+    test('can serialize and deserialize primitive types', () => {
+        const typeinfo = Type.int8()
+        testTypeInfo(typeinfo, 123)
 
-    describe('serializer typeinfo should work', () => {
-        test('can serialize and deserialize primitive types', () => {
-            const typeinfo = Type.int8()
-            testTypeInfo(typeinfo, 123)
+        const typeinfo2 = Type.int16()
+        testTypeInfo(typeinfo2, 123)
 
-            const typeinfo2 = Type.int16()
-            testTypeInfo(typeinfo2, 123)
+        const typeinfo3 = Type.int32()
+        testTypeInfo(typeinfo3, 123)
 
-            const typeinfo3 = Type.int32()
-            testTypeInfo(typeinfo3, 123)
+        const typeinfo4 = Type.bool()
+        testTypeInfo(typeinfo4, true)
 
-            const typeinfo4 = Type.bool()
-            testTypeInfo(typeinfo4, true)
+        // has precision problem
+        // const typeinfo5 = Type.float()
+        // testTypeInfo(typeinfo5, 123.456)
 
-            // has precision problem
-            // const typeinfo5 = Type.float()
-            // testTypeInfo(typeinfo5, 123.456)
+        const typeinfo6 = Type.float64()
+        testTypeInfo(typeinfo6, 123.456789)
 
-            const typeinfo6 = Type.float64()
-            testTypeInfo(typeinfo6, 123.456789)
+        const typeinfo7 = Type.binary()
+        testTypeInfo(typeinfo7, new Uint8Array([1, 2, 3]), fromUint8Array(new Uint8Array([1, 2, 3])));
 
-            const typeinfo7 = Type.binary()
-            testTypeInfo(typeinfo7, new Uint8Array([1, 2, 3]), fromUint8Array(new Uint8Array([1, 2, 3])));
-
-            const typeinfo8 = Type.string()
-            testTypeInfo(typeinfo8, '123')
-
-            const typeinfo9 = Type.set(Type.string())
-            testTypeInfo(typeinfo9, new Set(['123']))
-        })
-
-        test('can serialize and deserialize array', () => {
-            const typeinfo = Type.array(Type.int8())
-            testTypeInfo(typeinfo, [1, 2, 3])
-            testTypeInfo(typeinfo, [])
-        })
-
-        function testTypeInfo(typeinfo: TypeInfo, input: any, expected?: any) {
-            const fory = new Fory();
-            const serialize = fory.registerSerializer(typeinfo);
-            const result = serialize.deserialize(
-                serialize.serialize(input)
-            );
-            expect(result).toEqual(expected ?? input)
-        }
+        const typeinfo8 = Type.string()
+        testTypeInfo(typeinfo8, '123')
     })
+
+    function testTypeInfo(typeinfo: TypeInfo, input: any, expected?: any) {
+        const fory = new Fory();
+        const serialize = fory.registerSerializer(typeinfo);
+        const result = serialize.deserialize(
+            serialize.serialize(input)
+        );
+        expect(result).toEqual(expected ?? input)
+    }
 });

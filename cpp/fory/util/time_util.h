@@ -24,6 +24,6 @@
 
 namespace fory {
 
-std::string FormatTimePoint(std::chrono::system_clock::time_point tp);
+std::string format_time_point(std::chrono::system_clock::time_point tp);
 
 }

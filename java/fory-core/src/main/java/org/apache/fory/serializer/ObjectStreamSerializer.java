@@ -167,12 +167,14 @@ public class ObjectStreamSerializer extends AbstractObjectSerializer {
       throw new IllegalArgumentException(
           String.format("Class %s should implement %s.", type, Serializable.class));
     }
-    LOG.warn(
-        "{} customized jdk serialization, which is inefficient. "
-            + "Please replace it with a {} or implements {}",
-        type,
-        Serializer.class.getName(),
-        Externalizable.class.getName());
+    if (!Throwable.class.isAssignableFrom(type)) {
+      LOG.warn(
+          "{} customized jdk serialization, which is inefficient. "
+              + "Please replace it with a {} or implements {}",
+          type,
+          Serializer.class.getName(),
+          Externalizable.class.getName());
+    }
     // stream serializer may be data serializer of ReplaceResolver serializer.
     fory.getClassResolver().setSerializerIfAbsent(type, this);
     List<SlotInfo> slotsInfoList = new ArrayList<>();

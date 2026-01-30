@@ -38,6 +38,7 @@ import org.apache.fory.type.Descriptor;
 import org.apache.fory.type.DescriptorGrouper;
 import org.apache.fory.type.DispatchId;
 import org.apache.fory.type.GenericType;
+import org.apache.fory.type.TypeUtils;
 import org.apache.fory.util.StringUtils;
 
 public class FieldGroups {
@@ -70,7 +71,7 @@ public class FieldGroups {
     List<Descriptor> descriptors = new ArrayList<>();
     for (Field field : fields) {
       if (!Modifier.isTransient(field.getModifiers()) && !Modifier.isStatic(field.getModifiers())) {
-        descriptors.add(new Descriptor(field, TypeRef.of(field.getGenericType()), null, null));
+        descriptors.add(new Descriptor(field, TypeRef.of(field.getAnnotatedType()), null, null));
       }
     }
     DescriptorGrouper descriptorGrouper =
@@ -194,6 +195,10 @@ public class FieldGroups {
         }
       }
       genericType = t;
+      Field field = descriptor.getField();
+      if (field != null) {
+        TypeUtils.applyRefTrackingOverride(t, field.getAnnotatedType(), fory.trackingRef());
+      }
       classInfoHolder = resolver.nilClassInfoHolder();
       isArray = cls.isArray();
       if (!fory.isCrossLanguage()) {

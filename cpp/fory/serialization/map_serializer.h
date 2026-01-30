@@ -49,7 +49,7 @@ constexpr uint8_t DECL_VALUE_TYPE = 0b100000;
 // Type Info Methods
 // ============================================================================
 
-/// Write type info for a type to buffer.
+/// write type info for a type to buffer.
 template <typename T> inline void write_type_info(WriteContext &ctx) {
   Serializer<T>::write_type_info(ctx);
 }
@@ -81,11 +81,11 @@ struct MapReserver<MapType,
   static void reserve(MapType &map, uint32_t size) { map.reserve(size); }
 };
 
-/// Write chunk size at header offset
+/// write chunk size at header offset
 inline void write_chunk_size(WriteContext &ctx, size_t header_offset,
                              uint8_t size) {
   // header_offset points to the header byte, size is at offset + 1
-  ctx.buffer().UnsafePutByte(header_offset + 1, size);
+  ctx.buffer().unsafe_put_byte(header_offset + 1, size);
 }
 
 /// Check if we need to write type info for a field type
@@ -105,7 +105,7 @@ template <typename T> inline constexpr bool need_to_write_type_for_field() {
 // Map Data Writing - Fast Path (Non-Polymorphic)
 // ============================================================================
 
-/// Write map data for non-polymorphic, non-shared-ref maps
+/// write map data for non-polymorphic, non-shared-ref maps
 /// This is the optimized fast path for common cases like map<string, int>
 template <typename K, typename V, typename MapType>
 inline void write_map_data_fast(const MapType &map, WriteContext &ctx,
@@ -115,8 +115,8 @@ inline void write_map_data_fast(const MapType &map, WriteContext &ctx,
   static_assert(!is_shared_ref_v<K> && !is_shared_ref_v<V>,
                 "Fast path is for non-shared-ref types only");
 
-  // Write total length
-  ctx.write_varuint32(static_cast<uint32_t>(map.size()));
+  // write total length
+  ctx.write_var_uint32(static_cast<uint32_t>(map.size()));
 
   if (map.empty()) {
     return;
@@ -138,7 +138,7 @@ inline void write_map_data_fast(const MapType &map, WriteContext &ctx,
     // If nullability is needed, use the slow path
 
     if (need_write_header) {
-      // Reserve space for header (1 byte) + chunk size (1 byte)
+      // reserve space for header (1 byte) + chunk size (1 byte)
       header_offset = ctx.buffer().writer_index();
       ctx.write_uint16(0); // Placeholder for header and chunk size
       uint8_t chunk_header = 0;
@@ -153,12 +153,12 @@ inline void write_map_data_fast(const MapType &map, WriteContext &ctx,
         write_type_info<V>(ctx);
       }
 
-      // Write chunk header at reserved position
-      ctx.buffer().UnsafePutByte(header_offset, chunk_header);
+      // write chunk header at reserved position
+      ctx.buffer().unsafe_put_byte(header_offset, chunk_header);
       need_write_header = false;
     }
 
-    // Write key and value data
+    // write key and value data
     if (has_generics && is_generic_type_v<K>) {
       Serializer<K>::write_data_generic(key, ctx, true);
     } else {
@@ -179,7 +179,7 @@ inline void write_map_data_fast(const MapType &map, WriteContext &ctx,
     }
   }
 
-  // Write final chunk size
+  // write final chunk size
   if (pair_counter > 0) {
     write_chunk_size(ctx, header_offset, pair_counter);
   }
@@ -189,13 +189,13 @@ inline void write_map_data_fast(const MapType &map, WriteContext &ctx,
 // Map Data Writing - Slow Path (Polymorphic/Shared-Ref)
 // ============================================================================
 
-/// Write map data for polymorphic or shared-ref maps
+/// write map data for polymorphic or shared-ref maps
 /// This is the versatile slow path that handles all edge cases
 template <typename K, typename V, typename MapType>
 inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
                                 bool has_generics) {
-  // Write total length
-  ctx.write_varuint32(static_cast<uint32_t>(map.size()));
+  // write total length
+  ctx.write_var_uint32(static_cast<uint32_t>(map.size()));
 
   if (map.empty()) {
     return;
@@ -259,7 +259,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         }
         ctx.write_uint8(chunk_header);
 
-        // Write ref flag first if tracking refs
+        // write ref flag first if tracking refs
         if (write_ref) {
           write_not_null_ref_flag(ctx, RefMode::NullOnly);
         }
@@ -285,7 +285,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
           }
         }
 
-        // Write key data (ref flag and type info already written)
+        // write key data (ref flag and type info already written)
         if (has_generics && is_generic_type_v<K>) {
           Serializer<K>::write_data_generic(key, ctx, has_generics);
         } else {
@@ -306,7 +306,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         }
         ctx.write_uint8(chunk_header);
 
-        // Write ref flag first if tracking refs
+        // write ref flag first if tracking refs
         if (write_ref) {
           write_not_null_ref_flag(ctx, RefMode::NullOnly);
         }
@@ -332,7 +332,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
           }
         }
 
-        // Write value data (ref flag and type info already written)
+        // write value data (ref flag and type info already written)
         if (has_generics && is_generic_type_v<V>) {
           Serializer<V>::write_data_generic(value, ctx, has_generics);
         } else {
@@ -342,7 +342,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       }
     }
 
-    // Get type IDs for polymorphic types
+    // get type IDs for polymorphic types
     uint32_t key_type_id = 0;
     uint32_t val_type_id = 0;
     if constexpr (key_is_polymorphic) {
@@ -380,7 +380,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         pair_counter = 0;
       }
 
-      // Write new chunk header
+      // write new chunk header
       header_offset = ctx.buffer().writer_index();
       ctx.write_uint16(0); // Placeholder for header and chunk size
 
@@ -403,10 +403,10 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
         chunk_header |= DECL_VALUE_TYPE;
       }
 
-      // Write chunk header at reserved position
-      ctx.buffer().UnsafePutByte(header_offset, chunk_header);
+      // write chunk header at reserved position
+      ctx.buffer().unsafe_put_byte(header_offset, chunk_header);
 
-      // Write type info if needed
+      // write type info if needed
       // Matches Rust: write type info here in map, then call serializer with
       // write_type=false
       if (!is_key_declared || key_is_polymorphic) {
@@ -444,7 +444,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
       current_val_type_id = val_type_id;
     }
 
-    // Write key-value pair
+    // write key-value pair
     // For shared_ptr with ref tracking: write ref flag + data
     // For other types: null cases already handled via KEY_NULL/VALUE_NULL,
     // so just write data directly
@@ -487,7 +487,7 @@ inline void write_map_data_slow(const MapType &map, WriteContext &ctx,
     }
   }
 
-  // Write final chunk size
+  // write final chunk size
   if (pair_counter > 0) {
     write_chunk_size(ctx, header_offset, pair_counter);
   }
@@ -894,7 +894,7 @@ struct Serializer<std::map<K, V, Args...>> {
   using MapType = std::map<K, V, Args...>;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
@@ -916,7 +916,7 @@ struct Serializer<std::map<K, V, Args...>> {
     write_not_null_ref_flag(ctx, ref_mode);
 
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
 
     write_data_generic(map, ctx, has_generics);
@@ -958,7 +958,7 @@ struct Serializer<std::map<K, V, Args...>> {
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return MapType{};
       }
@@ -969,7 +969,7 @@ struct Serializer<std::map<K, V, Args...>> {
       }
     }
 
-    uint32_t length = ctx.read_varuint32(ctx.error());
+    uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return MapType{};
     }
@@ -992,7 +992,7 @@ struct Serializer<std::map<K, V, Args...>> {
   }
 
   static inline MapType read_data(ReadContext &ctx) {
-    uint32_t length = ctx.read_varuint32(ctx.error());
+    uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return MapType{};
     }
@@ -1023,7 +1023,7 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
     write_not_null_ref_flag(ctx, ref_mode);
 
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
 
     constexpr bool is_fast_path =
@@ -1073,7 +1073,7 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
     }
 
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return MapType{};
       }
@@ -1084,7 +1084,7 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
       }
     }
 
-    uint32_t length = ctx.read_varuint32(ctx.error());
+    uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return MapType{};
     }
@@ -1107,7 +1107,7 @@ struct Serializer<std::unordered_map<K, V, Args...>> {
   }
 
   static inline MapType read_data(ReadContext &ctx) {
-    uint32_t length = ctx.read_varuint32(ctx.error());
+    uint32_t length = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return MapType{};
     }

@@ -187,10 +187,6 @@ public class Serializers {
       super(fory, cls, needToWriteRef, immutable);
     }
 
-    public CrossLanguageCompatibleSerializer(Fory fory, Class<T> cls, boolean needToWriteRef) {
-      super(fory, cls, needToWriteRef);
-    }
-
     @Override
     public void xwrite(MemoryBuffer buffer, T value) {
       write(buffer, value);

@@ -45,7 +45,7 @@ enum class StringEncoding : uint8_t {
 
 namespace detail {
 
-/// Write string data with UTF-8 encoding
+/// write string data with UTF-8 encoding
 inline void write_string_data(const char *data, size_t size,
                               WriteContext &ctx) {
   // Always use UTF-8 encoding for cross-language compatibility.
@@ -54,42 +54,42 @@ inline void write_string_data(const char *data, size_t size,
   uint64_t length = static_cast<uint64_t>(size);
   uint64_t size_with_encoding =
       (length << 2) | static_cast<uint64_t>(StringEncoding::UTF8);
-  ctx.write_varuint36small(size_with_encoding);
+  ctx.write_var_uint36_small(size_with_encoding);
 
-  // Write string bytes
+  // write string bytes
   if (size > 0) {
     ctx.write_bytes(data, size);
   }
 }
 
-/// Write UTF-16 string data, converting to UTF-8 or using native encoding
+/// write UTF-16 string data, converting to UTF-8 or using native encoding
 inline void write_u16string_data(const char16_t *data, size_t size,
                                  WriteContext &ctx) {
   if (size == 0) {
     // Empty string: write zero length with UTF8 encoding
-    ctx.write_varuint36small(static_cast<uint64_t>(StringEncoding::UTF8));
+    ctx.write_var_uint36_small(static_cast<uint64_t>(StringEncoding::UTF8));
     return;
   }
 
   const uint16_t *u16_data = reinterpret_cast<const uint16_t *>(data);
 
   // Check if string can be encoded as Latin1 (more compact)
-  if (isLatin1(u16_data, size)) {
-    // Encode as Latin1 for compactness
+  if (is_latin1(u16_data, size)) {
+    // encode as Latin1 for compactness
     uint64_t size_with_encoding = (static_cast<uint64_t>(size) << 2) |
                                   static_cast<uint64_t>(StringEncoding::LATIN1);
-    ctx.write_varuint36small(size_with_encoding);
+    ctx.write_var_uint36_small(size_with_encoding);
 
-    // Write each char16_t as a single byte
+    // write each char16_t as a single byte
     for (size_t i = 0; i < size; ++i) {
       ctx.write_uint8(static_cast<uint8_t>(data[i]));
     }
   } else {
     // Convert to UTF-8
-    std::string utf8 = utf16ToUtf8(u16_data, size);
+    std::string utf8 = utf16_to_utf8(u16_data, size);
     uint64_t size_with_encoding = (static_cast<uint64_t>(utf8.size()) << 2) |
                                   static_cast<uint64_t>(StringEncoding::UTF8);
-    ctx.write_varuint36small(size_with_encoding);
+    ctx.write_var_uint36_small(size_with_encoding);
     if (!utf8.empty()) {
       ctx.write_bytes(utf8.data(), utf8.size());
     }
@@ -99,7 +99,7 @@ inline void write_u16string_data(const char16_t *data, size_t size,
 /// Read string data and return as std::string
 inline std::string read_string_data(ReadContext &ctx) {
   // Read size with encoding using varuint36small
-  uint64_t size_with_encoding = ctx.read_varuint36small(ctx.error());
+  uint64_t size_with_encoding = ctx.read_var_uint36_small(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return std::string();
   }
@@ -127,7 +127,7 @@ inline std::string read_string_data(ReadContext &ctx) {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::string();
     }
-    return latin1ToUtf8(bytes.data(), length);
+    return latin1_to_utf8(bytes.data(), length);
   }
   case StringEncoding::UTF16: {
     if (length % 2 != 0) {
@@ -140,7 +140,7 @@ inline std::string read_string_data(ReadContext &ctx) {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::string();
     }
-    return utf16ToUtf8(utf16_chars.data(), utf16_chars.size());
+    return utf16_to_utf8(utf16_chars.data(), utf16_chars.size());
   }
   case StringEncoding::UTF8: {
     // UTF-8: read bytes directly
@@ -162,7 +162,7 @@ inline std::string read_string_data(ReadContext &ctx) {
 /// Read string data and return as std::u16string
 inline std::u16string read_u16string_data(ReadContext &ctx) {
   // Read size with encoding using varuint36small
-  uint64_t size_with_encoding = ctx.read_varuint36small(ctx.error());
+  uint64_t size_with_encoding = ctx.read_var_uint36_small(ctx.error());
   if (FORY_PREDICT_FALSE(ctx.has_error())) {
     return std::u16string();
   }
@@ -215,7 +215,7 @@ inline std::u16string read_u16string_data(ReadContext &ctx) {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::u16string();
     }
-    return utf8ToUtf16(utf8, true /* little endian */);
+    return utf8_to_utf16(utf8, true /* little endian */);
   }
   default:
     ctx.set_error(
@@ -236,11 +236,11 @@ template <> struct Serializer<std::string> {
   static constexpr TypeId type_id = TypeId::STRING;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -254,7 +254,7 @@ template <> struct Serializer<std::string> {
                            RefMode ref_mode, bool write_type, bool = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
     write_data(value, ctx);
   }
@@ -275,7 +275,7 @@ template <> struct Serializer<std::string> {
       return std::string();
     }
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::string();
       }
@@ -313,14 +313,14 @@ template <> struct Serializer<std::string_view> {
   static constexpr TypeId type_id = TypeId::STRING;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void write(std::string_view value, WriteContext &ctx,
                            RefMode ref_mode, bool write_type, bool = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
     write_data(value, ctx);
   }
@@ -344,11 +344,11 @@ template <> struct Serializer<std::u16string> {
   static constexpr TypeId type_id = TypeId::STRING;
 
   static inline void write_type_info(WriteContext &ctx) {
-    ctx.write_varuint32(static_cast<uint32_t>(type_id));
+    ctx.write_var_uint32(static_cast<uint32_t>(type_id));
   }
 
   static inline void read_type_info(ReadContext &ctx) {
-    uint32_t actual = ctx.read_varuint32(ctx.error());
+    uint32_t actual = ctx.read_var_uint32(ctx.error());
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return;
     }
@@ -362,7 +362,7 @@ template <> struct Serializer<std::u16string> {
                            RefMode ref_mode, bool write_type, bool = false) {
     write_not_null_ref_flag(ctx, ref_mode);
     if (write_type) {
-      ctx.write_varuint32(static_cast<uint32_t>(type_id));
+      ctx.write_var_uint32(static_cast<uint32_t>(type_id));
     }
     write_data(value, ctx);
   }
@@ -384,7 +384,7 @@ template <> struct Serializer<std::u16string> {
       return std::u16string();
     }
     if (read_type) {
-      uint32_t type_id_read = ctx.read_varuint32(ctx.error());
+      uint32_t type_id_read = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::u16string();
       }

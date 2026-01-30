@@ -42,7 +42,7 @@ classifiers = [
 keywords = ["fory", "serialization", "codegen", "idl", "compiler"]
 
 [project.scripts]
-fory = "fory_compiler.cli:main"
+foryc = "fory_compiler.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/apache/fory"

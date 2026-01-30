@@ -208,6 +208,12 @@ public class ExpressionVisitor {
     SerializedLambda serializedLambda = (SerializedLambda) writeReplace.invoke(closure);
     for (int i = 0; i < serializedLambda.getCapturedArgCount(); i++) {
       Object capturedArg = serializedLambda.getCapturedArg(i);
+      if (capturedArg instanceof Expression.Literal) {
+        continue;
+      }
+      if (capturedArg instanceof Expression.EnumExpression) {
+        continue;
+      }
       if (capturedArg instanceof Expression || capturedArg == Expression[].class) {
         // FIXME may need to check list/container values types?
         throw new IllegalStateException(
@@ -267,6 +273,10 @@ public class ExpressionVisitor {
       Expression expr, Expression[] expressions, Function<ExprSite, Boolean> func) {
     for (int i = 0; i < expressions.length; i++) {
       Expression childExpr = expressions[i];
+      if (childExpr == null) {
+        throw new IllegalStateException(
+            String.format("Expression [%s] of type %s has null elements", expr, expr.getClass()));
+      }
       int index = i;
       Boolean continueVisit =
           func.apply(

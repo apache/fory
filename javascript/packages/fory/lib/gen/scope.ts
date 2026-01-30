@@ -19,6 +19,7 @@
 
 export class Scope {
   private declares: Map<string, string> = new Map();
+  private varDeclares: Map<string, string> = new Map();
   private idx = 0;
 
   private addDeclar(stmt: string, name: string) {
@@ -37,10 +38,21 @@ export class Scope {
     return this.addDeclar(stmt, name);
   }
 
+  declareVar(name: string, stmt: string) {
+    name = this.uniqueName(name);
+    this.varDeclares.set(name, stmt);
+    return name;
+  }
+
   assertNameNotDuplicate(name: string) {
     for (const item of this.declares.values()) {
       if (item === name) {
         throw new Error(`const ${name} declare duplicate`);
+      }
+    }
+    for (const item of this.varDeclares.keys()) {
+      if (item === name) {
+        throw new Error(`let ${name} declare duplicate`);
       }
     }
   }
@@ -50,6 +62,9 @@ export class Scope {
   }
 
   generate() {
-    return Array.from(this.declares.entries()).map(x => `const ${x[1]} = ${x[0]};`).join("\n");
+    return `
+      ${Array.from(this.declares.entries()).map(x => `const ${x[1]} = ${x[0]};`).join("\n")}
+      ${Array.from(this.varDeclares.entries()).map(x => `let ${x[0]} = ${x[1]};`).join("\n")}
+    `;
   }
 }

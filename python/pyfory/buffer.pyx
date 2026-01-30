@@ -31,7 +31,8 @@ from libcpp.string cimport string as c_string
 from libc.stdint cimport *
 from libcpp cimport bool as c_bool
 from pyfory.includes.libutil cimport(
-    CBuffer, AllocateBuffer, GetBit, SetBit, ClearBit, SetBitTo, CError, CErrorCode, CResultVoidError, utf16HasSurrogatePairs
+    CBuffer, allocate_buffer, get_bit as c_get_bit, set_bit as c_set_bit, clear_bit as c_clear_bit,
+    set_bit_to as c_set_bit_to, CError, CErrorCode, CResultVoidError, utf16_has_surrogate_pairs
 )
 import os
 from pyfory.error import raise_fory_error
@@ -65,8 +66,8 @@ cdef class Buffer:
         else:
             address = NULL
         self.c_buffer = CBuffer(address, length_, False)
-        self.c_buffer.ReaderIndex(0)
-        self.c_buffer.WriterIndex(0)
+        self.c_buffer.reader_index(0)
+        self.c_buffer.writer_index(0)
 
     @staticmethod
     cdef Buffer wrap(shared_ptr[CBuffer] c_buffer):
@@ -76,21 +77,21 @@ cdef class Buffer:
         cdef _SharedBufferOwner owner = _SharedBufferOwner.__new__(_SharedBufferOwner)
         owner.buffer = c_buffer
         buffer.data = owner
-        buffer.c_buffer.ReaderIndex(0)
-        buffer.c_buffer.WriterIndex(0)
+        buffer.c_buffer.reader_index(0)
+        buffer.c_buffer.writer_index(0)
         return buffer
 
     @classmethod
     def allocate(cls, int32_t size):
-        cdef CBuffer* buf = AllocateBuffer(size)
+        cdef CBuffer* buf = allocate_buffer(size)
         if buf == NULL:
             raise MemoryError("out of memory")
         cdef Buffer buffer = Buffer.__new__(Buffer)
         buffer.c_buffer = move(deref(buf))
         del buf
         buffer.data = None
-        buffer.c_buffer.ReaderIndex(0)
-        buffer.c_buffer.WriterIndex(0)
+        buffer.c_buffer.reader_index(0)
+        buffer.c_buffer.writer_index(0)
         return buffer
 
     cdef inline void _raise_if_error(self):
@@ -108,7 +109,7 @@ cdef class Buffer:
     cpdef inline void set_reader_index(self, int32_t value):
         if value < 0:
             raise ValueError("reader_index must be >= 0")
-        self.c_buffer.ReaderIndex(<uint32_t>value)
+        self.c_buffer.reader_index(<uint32_t>value)
 
     cpdef inline int32_t get_writer_index(self):
         return <int32_t>self.c_buffer.writer_index()
@@ -116,82 +117,82 @@ cdef class Buffer:
     cpdef inline void set_writer_index(self, int32_t value):
         if value < 0:
             raise ValueError("writer_index must be >= 0")
-        self.c_buffer.WriterIndex(<uint32_t>value)
+        self.c_buffer.writer_index(<uint32_t>value)
 
     cpdef c_bool own_data(self):
         return self.c_buffer.own_data()
 
     cpdef inline reserve(self, int32_t new_size):
         assert 0 < new_size < max_buffer_size
-        self.c_buffer.Reserve(new_size)
+        self.c_buffer.reserve(new_size)
 
     cpdef inline put_bool(self, uint32_t offset, c_bool v):
         self.check_bound(offset, <int32_t>1)
-        self.c_buffer.UnsafePutByte(offset, v)
+        self.c_buffer.unsafe_put_byte(offset, v)
 
     cpdef inline put_uint8(self, uint32_t offset, uint8_t v):
         self.check_bound(offset, <int32_t>1)
-        self.c_buffer.UnsafePutByte(offset, v)
+        self.c_buffer.unsafe_put_byte(offset, v)
 
     cpdef inline put_int8(self, uint32_t offset, int8_t v):
         self.check_bound(offset, <int32_t>1)
-        self.c_buffer.UnsafePutByte(offset, v)
+        self.c_buffer.unsafe_put_byte(offset, v)
 
     cpdef inline put_int16(self, uint32_t offset, int16_t v):
         self.check_bound(offset, <int32_t>2)
-        self.c_buffer.UnsafePut(offset, v)
+        self.c_buffer.unsafe_put(offset, v)
 
     cpdef inline put_int24(self, uint32_t offset, int32_t v):
         self.check_bound(offset, <int32_t>3)
-        self.c_buffer.PutInt24(offset, v)
+        self.c_buffer.put_int24(offset, v)
 
     cpdef inline put_int32(self, uint32_t offset, int32_t v):
         self.check_bound(offset, <int32_t>4)
-        self.c_buffer.UnsafePut(offset, v)
+        self.c_buffer.unsafe_put(offset, v)
 
     cpdef inline put_int64(self, uint32_t offset, int64_t v):
         self.check_bound(offset, <int32_t>8)
-        self.c_buffer.UnsafePut(offset, v)
+        self.c_buffer.unsafe_put(offset, v)
 
     cpdef inline put_float(self, uint32_t offset, float v):
         self.check_bound(offset, <int32_t>4)
-        self.c_buffer.UnsafePut(offset, v)
+        self.c_buffer.unsafe_put(offset, v)
 
     cpdef inline put_double(self, uint32_t offset, double v):
         self.check_bound(offset, <int32_t>8)
-        self.c_buffer.UnsafePut(offset, v)
+        self.c_buffer.unsafe_put(offset, v)
 
     cpdef inline c_bool get_bool(self, uint32_t offset):
         self.check_bound(offset, <int32_t>1)
-        return self.c_buffer.GetBool(offset)
+        return self.c_buffer.get_bool(offset)
 
     cpdef inline int8_t get_int8(self, uint32_t offset):
         self.check_bound(offset, <int32_t>1)
-        return self.c_buffer.GetInt8(offset)
+        return self.c_buffer.get_int8(offset)
 
     cpdef inline int16_t get_int16(self, uint32_t offset):
         self.check_bound(offset, <int32_t>2)
-        return self.c_buffer.GetInt16(offset)
+        return self.c_buffer.get_int16(offset)
 
     cpdef inline int32_t get_int24(self, uint32_t offset):
         self.check_bound(offset, <int32_t>3)
-        return self.c_buffer.GetInt24(offset)
+        return self.c_buffer.get_int24(offset)
 
     cpdef inline int32_t get_int32(self, uint32_t offset):
         self.check_bound(offset, <int32_t>4)
-        return self.c_buffer.GetInt32(offset)
+        return self.c_buffer.get_int32(offset)
 
     cpdef inline int64_t get_int64(self, uint32_t offset):
         self.check_bound(offset, <int32_t>8)
-        return self.c_buffer.GetInt64(offset)
+        return self.c_buffer.get_int64(offset)
 
     cpdef inline float get_float(self, uint32_t offset):
         self.check_bound(offset, <int32_t>4)
-        return self.c_buffer.GetFloat(offset)
+        return self.c_buffer.get_float(offset)
 
     cpdef inline double get_double(self, uint32_t offset):
         self.check_bound(offset, <int32_t>8)
-        return self.c_buffer.GetDouble(offset)
+        return self.c_buffer.get_double(offset)
 
     cpdef inline check_bound(self, int32_t offset, int32_t length):
         cdef int32_t size_ = self.c_buffer.size()
@@ -202,46 +203,46 @@ cdef class Buffer:
             )
 
     cpdef inline write_bool(self, c_bool value):
-        self.c_buffer.WriteUint8(<uint8_t>value)
+        self.c_buffer.write_uint8(<uint8_t>value)
     
     cpdef inline write_uint8(self, uint8_t value):
-        self.c_buffer.WriteUint8(value)
+        self.c_buffer.write_uint8(value)
 
     cpdef inline write_int8(self, int8_t value):
-        self.c_buffer.WriteInt8(value)
+        self.c_buffer.write_int8(value)
 
     cpdef inline write_int16(self, int16_t value):
-        self.c_buffer.WriteInt16(value)
+        self.c_buffer.write_int16(value)
 
     cpdef inline write_int24(self, int32_t value):
-        self.c_buffer.WriteInt24(value)
+        self.c_buffer.write_int24(value)
 
     cpdef inline write_int32(self, int32_t value):
-        self.c_buffer.WriteInt32(value)
+        self.c_buffer.write_int32(value)
 
     cpdef inline write_int64(self, int64_t value):
-        self.c_buffer.WriteInt64(value)
+        self.c_buffer.write_int64(value)
 
     cpdef inline write_uint16(self, uint16_t value):
-        self.c_buffer.WriteUint16(value)
+        self.c_buffer.write_uint16(value)
 
     cpdef inline write_uint32(self, uint32_t value):
-        self.c_buffer.WriteUint32(value)
+        self.c_buffer.write_uint32(value)
 
     cpdef inline write_uint64(self, uint64_t value):
-        self.c_buffer.WriteInt64(<int64_t>value)
+        self.c_buffer.write_int64(<int64_t>value)
 
     cpdef inline write_float(self, float value):
-        self.c_buffer.WriteFloat(value)
+        self.c_buffer.write_float(value)
 
     cpdef inline write_float32(self, float value):
-        self.c_buffer.WriteFloat(value)
+        self.c_buffer.write_float(value)
 
     cpdef inline write_double(self, double value):
-        self.c_buffer.WriteDouble(value)
+        self.c_buffer.write_double(value)
 
     cpdef inline write_float64(self, double value):
-        self.c_buffer.WriteDouble(value)
+        self.c_buffer.write_double(value)
 
     cpdef put_buffer(self, uint32_t offset, v, int32_t src_index, int32_t length):
         if length == 0:  # access an emtpy buffer may raise out-of-bound exception.
@@ -253,24 +254,24 @@ cdef class Buffer:
         self.check_bound(offset, size)
         src_offset = src_index * itemsize
         cdef uint8_t* ptr = get_address(v)
-        self.c_buffer.CopyFrom(offset, ptr, src_offset, size)
+        self.c_buffer.copy_from(offset, ptr, src_offset, size)
 
     cpdef inline write_bytes_and_size(self, bytes value):
         cdef const unsigned char[:] data = value
         cdef int32_t length = data.nbytes
-        self.write_varuint32(length)
+        self.write_var_uint32(length)
         if length > 0:
-            self.c_buffer.WriteBytes(&data[0], length)
+            self.c_buffer.write_bytes(&data[0], length)
 
     cpdef inline bytes read_bytes_and_size(self):
-        cdef int32_t length = self.read_varuint32()
+        cdef int32_t length = self.read_var_uint32()
         return self.read_bytes(length)
 
     cpdef inline write_bytes(self, bytes value):
         cdef const unsigned char[:] data = value
         cdef int32_t length = data.nbytes
         if length > 0:
-            self.c_buffer.WriteBytes(&data[0], length)
+            self.c_buffer.write_bytes(&data[0], length)
 
     cpdef inline bytes read_bytes(self, int32_t length):
         if length == 0:
@@ -279,7 +280,7 @@ cdef class Buffer:
         if py_bytes is None:
             raise MemoryError("out of memory")
         cdef char* buf = PyBytes_AS_STRING(py_bytes)
-        self.c_buffer.ReadBytes(buf, length, self._error)
+        self.c_buffer.read_bytes(buf, length, self._error)
         if not self._error.ok():
             self._raise_if_error()
         return py_bytes
@@ -287,10 +288,10 @@ cdef class Buffer:
     cpdef inline int64_t read_bytes_as_int64(self, int32_t length):
         cdef int64_t result = 0
         cdef uint32_t offset = self.c_buffer.reader_index()
-        cdef CResultVoidError res = self.c_buffer.GetBytesAsInt64(offset, length,  &result)
+        cdef CResultVoidError res = self.c_buffer.get_bytes_as_int64(offset, length,  &result)
         if not res.ok():
             raise_fory_error(res.error().code(), res.error().message())
-        self.c_buffer.IncreaseReaderIndex(length)
+        self.c_buffer.increase_reader_index(length)
         return result
 
     cpdef inline put_bytes(self, uint32_t offset, bytes value):
@@ -298,7 +299,7 @@ cdef class Buffer:
         cdef int32_t length = data.nbytes
         if length > 0:
             self.grow(length)
-            self.c_buffer.CopyFrom(offset, &data[0], 0, length)
+            self.c_buffer.copy_from(offset, &data[0], 0, length)
 
     cpdef inline bytes get_bytes(self, uint32_t offset, uint32_t nbytes):
         if nbytes == 0:
@@ -319,94 +320,94 @@ cdef class Buffer:
         if length <= 0:
             return
         cdef uint32_t offset = self.c_buffer.writer_index()
-        self.c_buffer.Grow(length * itemsize)
+        self.c_buffer.grow(length * itemsize)
         self.put_buffer(offset, value, src_index, length)
-        self.c_buffer.IncreaseWriterIndex(length * itemsize)
+        self.c_buffer.increase_writer_index(length * itemsize)
 
     cpdef inline write(self, value):
         cdef const unsigned char[:] data = value
         cdef int32_t length = data.nbytes
         if length > 0:
-            self.c_buffer.WriteBytes(&data[0], length)
+            self.c_buffer.write_bytes(&data[0], length)
 
     cpdef inline grow(self, int32_t needed_size):
-        self.c_buffer.Grow(needed_size)
+        self.c_buffer.grow(needed_size)
 
     cpdef inline ensure(self, int32_t length):
         if length > self.c_buffer.size():
             self.reserve(length * 2)
 
     cpdef inline skip(self, int32_t length):
-        self.c_buffer.Skip(length, self._error)
+        self.c_buffer.skip(length, self._error)
         self._raise_if_error()
 
     cpdef inline c_bool read_bool(self):
-        cdef uint8_t value = self.c_buffer.ReadUint8(self._error)
+        cdef uint8_t value = self.c_buffer.read_uint8(self._error)
         self._raise_if_error()
         return value != 0
 
     cpdef inline uint8_t read_uint8(self):
-        cdef uint8_t value = self.c_buffer.ReadUint8(self._error)
+        cdef uint8_t value = self.c_buffer.read_uint8(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline int8_t read_int8(self):
-        cdef int8_t value = self.c_buffer.ReadInt8(self._error)
+        cdef int8_t value = self.c_buffer.read_int8(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline int16_t read_int16(self):
-        cdef int16_t value = self.c_buffer.ReadInt16(self._error)
+        cdef int16_t value = self.c_buffer.read_int16(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline int16_t read_int24(self):
-        cdef int32_t value = self.c_buffer.ReadInt24(self._error)
+        cdef int32_t value = self.c_buffer.read_int24(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline int32_t read_int32(self):
-        cdef int32_t value = self.c_buffer.ReadInt32(self._error)
+        cdef int32_t value = self.c_buffer.read_int32(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline int64_t read_int64(self):
-        cdef int64_t value = self.c_buffer.ReadInt64(self._error)
+        cdef int64_t value = self.c_buffer.read_int64(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline uint16_t read_uint16(self):
-        cdef uint16_t value = self.c_buffer.ReadUint16(self._error)
+        cdef uint16_t value = self.c_buffer.read_uint16(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline uint32_t read_uint32(self):
-        cdef uint32_t value = self.c_buffer.ReadUint32(self._error)
+        cdef uint32_t value = self.c_buffer.read_uint32(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline uint64_t read_uint64(self):
-        cdef uint64_t value = self.c_buffer.ReadUint64(self._error)
+        cdef uint64_t value = self.c_buffer.read_uint64(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline float read_float(self):
-        cdef float value = self.c_buffer.ReadFloat(self._error)
+        cdef float value = self.c_buffer.read_float(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline float read_float32(self):
-        cdef float value = self.c_buffer.ReadFloat(self._error)
+        cdef float value = self.c_buffer.read_float(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline double read_double(self):
-        cdef double value = self.c_buffer.ReadDouble(self._error)
+        cdef double value = self.c_buffer.read_double(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline double read_float64(self):
-        cdef double value = self.c_buffer.ReadDouble(self._error)
+        cdef double value = self.c_buffer.read_double(self._error)
         self._raise_if_error()
         return value
 
@@ -424,90 +425,90 @@ cdef class Buffer:
         while arr[target_index] != sep and target_index < buffer_size:
             target_index += <int32_t>1
         cdef bytes data = arr[start_index:target_index]
-        self.c_buffer.ReaderIndex(target_index)
+        self.c_buffer.reader_index(target_index)
         return data
 
     cpdef inline write_varint32(self, int32_t value):
         cdef uint32_t before = self.c_buffer.writer_index()
-        self.c_buffer.WriteVarInt32(value)
+        self.c_buffer.write_var_int32(value)
         cdef uint32_t after = self.c_buffer.writer_index()
         return after - before
 
-    cpdef inline write_varuint32(self, uint32_t value):
+    cpdef inline write_var_uint32(self, uint32_t value):
         cdef uint32_t before = self.c_buffer.writer_index()
-        self.c_buffer.WriteVarUint32(value)
+        self.c_buffer.write_var_uint32(value)
         cdef uint32_t after = self.c_buffer.writer_index()
         return after - before
 
     cpdef inline int32_t read_varint32(self):
-        cdef int32_t value = self.c_buffer.ReadVarInt32(self._error)
+        cdef int32_t value = self.c_buffer.read_var_int32(self._error)
         self._raise_if_error()
         return value
 
-    cpdef inline uint32_t read_varuint32(self):
-        cdef uint32_t value = self.c_buffer.ReadVarUint32(self._error)
+    cpdef inline uint32_t read_var_uint32(self):
+        cdef uint32_t value = self.c_buffer.read_var_uint32(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline write_varint64(self, int64_t value):
         cdef uint32_t before = self.c_buffer.writer_index()
-        self.c_buffer.WriteVarInt64(value)
+        self.c_buffer.write_var_int64(value)
         cdef uint32_t after = self.c_buffer.writer_index()
         return after - before
 
-    cpdef inline write_varuint64(self, int64_t v):
+    cpdef inline write_var_uint64(self, int64_t v):
         cdef uint32_t before = self.c_buffer.writer_index()
-        self.c_buffer.WriteVarUint64(<uint64_t>v)
+        self.c_buffer.write_var_uint64(<uint64_t>v)
         cdef uint32_t after = self.c_buffer.writer_index()
         return after - before
 
     cpdef inline int64_t read_varint64(self):
-        cdef int64_t value = self.c_buffer.ReadVarInt64(self._error)
+        cdef int64_t value = self.c_buffer.read_var_int64(self._error)
         self._raise_if_error()
         return value
 
-    cpdef inline int64_t read_varuint64(self):
-        cdef uint64_t value = self.c_buffer.ReadVarUint64(self._error)
+    cpdef inline int64_t read_var_uint64(self):
+        cdef uint64_t value = self.c_buffer.read_var_uint64(self._error)
         self._raise_if_error()
         return <int64_t>value
 
     cpdef inline write_tagged_int64(self, int64_t value):
-        """Write signed int64 using fory Tagged(Small long as int) encoding."""
-        self.c_buffer.WriteTaggedInt64(value)
+        """write signed int64 using fory Tagged(Small long as int) encoding."""
+        self.c_buffer.write_tagged_int64(value)
 
     cpdef inline int64_t read_tagged_int64(self):
         """Read signed fory Tagged(Small long as int) encoded int64."""
-        cdef int64_t value = self.c_buffer.ReadTaggedInt64(self._error)
+        cdef int64_t value = self.c_buffer.read_tagged_int64(self._error)
         self._raise_if_error()
         return value
 
     cpdef inline write_tagged_uint64(self, uint64_t value):
-        """Write unsigned uint64 using fory Tagged(Small long as int) encoding."""
-        self.c_buffer.WriteTaggedUint64(value)
+        """write unsigned uint64 using fory Tagged(Small long as int) encoding."""
+        self.c_buffer.write_tagged_uint64(value)
 
     cpdef inline uint64_t read_tagged_uint64(self):
         """Read unsigned fory Tagged(Small long as int) encoded uint64."""
-        cdef uint64_t value = self.c_buffer.ReadTaggedUint64(self._error)
+        cdef uint64_t value = self.c_buffer.read_tagged_uint64(self._error)
         self._raise_if_error()
         return value
 
     cdef inline write_c_buffer(self, const uint8_t* value, int32_t length):
-        self.write_varuint32(length)
+        self.write_var_uint32(length)
         if length <= 0:  # access an emtpy buffer may raise out-of-bound exception.
             return
         cdef uint32_t offset = self.c_buffer.writer_index()
-        self.c_buffer.Grow(length)
+        self.c_buffer.grow(length)
         self.check_bound(offset, length)
-        self.c_buffer.CopyFrom(offset, value, 0, length)
-        self.c_buffer.IncreaseWriterIndex(length)
+        self.c_buffer.copy_from(offset, value, 0, length)
+        self.c_buffer.increase_writer_index(length)
 
     cdef inline int32_t read_c_buffer(self, uint8_t** buf):
-        cdef int32_t length = self.read_varuint32()
+        cdef int32_t length = self.read_var_uint32()
         cdef uint8_t* binary_data = self.c_buffer.data()
         cdef uint32_t offset = self.c_buffer.reader_index()
         self.check_bound(offset, length)
         buf[0] = binary_data + offset
-        self.c_buffer.IncreaseReaderIndex(length)
+        self.c_buffer.increase_reader_index(length)
         return length
 
     cpdef inline write_string(self, str value):
@@ -527,28 +528,28 @@ cdef class Buffer:
             buffer = <void *>(PyUnicode_AsUTF8AndSize(value, &length))
             buffer_size = length
             header = (buffer_size << 2) | 2
-        self.write_varuint64(header)
+        self.write_var_uint64(header)
         if buffer_size == 0:  # access an emtpy buffer may raise out-of-bound exception.
             return
         cdef uint32_t offset = self.c_buffer.writer_index()
-        self.c_buffer.Grow(buffer_size)
+        self.c_buffer.grow(buffer_size)
         self.check_bound(offset, buffer_size)
-        self.c_buffer.CopyFrom(offset, <const uint8_t *>buffer, 0, buffer_size)
-        self.c_buffer.IncreaseWriterIndex(buffer_size)
+        self.c_buffer.copy_from(offset, <const uint8_t *>buffer, 0, buffer_size)
+        self.c_buffer.increase_writer_index(buffer_size)
 
     cpdef inline str read_string(self):
-        cdef uint64_t header = self.read_varuint64()
+        cdef uint64_t header = self.read_var_uint64()
         cdef uint32_t size = header >> 2
         cdef uint32_t offset = self.c_buffer.reader_index()
         self.check_bound(offset, size)
         cdef const char * buf = <const char *>(self.c_buffer.data() + offset)
-        self.c_buffer.IncreaseReaderIndex(size)
+        self.c_buffer.increase_reader_index(size)
         cdef uint32_t encoding = header & <uint32_t>0b11
         if encoding == 0:
             # PyUnicode_FromASCII
             return PyUnicode_DecodeLatin1(buf, size, "strict")
         elif encoding == 1:
-            if utf16HasSurrogatePairs(<const uint16_t *>buf, size >> 1):
+            if utf16_has_surrogate_pairs(<const uint16_t *>buf, size >> 1):
                 return PyUnicode_DecodeUTF16(
                     buf,
                     size,  # len of string in bytes
@@ -600,7 +601,7 @@ cdef class Buffer:
         -------
         : bytes
         """
-        return self.c_buffer.Hex().decode("UTF-8")
+        return self.c_buffer.hex().decode("UTF-8")
 
     def __getbuffer__(self, Py_buffer *buffer, int flags):
         cdef Py_ssize_t itemsize = 1
@@ -739,20 +740,20 @@ cdef Py_ssize_t _normalize_index(Py_ssize_t index,
 
 
 def get_bit(Buffer buffer, uint32_t base_offset, uint32_t index) -> bool:
-    return GetBit(buffer.c_buffer.data() + base_offset, index)
+    return c_get_bit(buffer.c_buffer.data() + base_offset, index)
 
 
 def set_bit(Buffer buffer, uint32_t base_offset, uint32_t index):
-    return SetBit(buffer.c_buffer.data() + base_offset, index)
+    return c_set_bit(buffer.c_buffer.data() + base_offset, index)
 
 
 def clear_bit(Buffer buffer, uint32_t base_offset, uint32_t index):
-    return ClearBit(buffer.c_buffer.data() + base_offset, index)
+    return c_clear_bit(buffer.c_buffer.data() + base_offset, index)
 
 
 def set_bit_to(Buffer buffer,
                uint32_t base_offset,
                uint32_t index,
                c_bool bit_is_set):
-    return SetBitTo(
+    return c_set_bit_to(
         buffer.c_buffer.data() + base_offset, index, bit_is_set)

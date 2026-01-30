@@ -58,23 +58,23 @@ TEST(PrintLogTest, TestCheckOp) {
   ASSERT_DEATH(FORY_CHECK_EQ(i, j), "1 vs 0");
 }
 
-std::string TestFunctionLevel0() {
-  std::string call_trace = GetCallTrace();
+std::string test_function_level0() {
+  std::string call_trace = get_call_trace();
   return call_trace;
 }
 
-std::string TestFunctionLevel1() { return TestFunctionLevel0(); }
+std::string test_function_level1() { return test_function_level0(); }
 
-std::string TestFunctionLevel2() { return TestFunctionLevel1(); }
+std::string test_function_level2() { return test_function_level1(); }
 
 #ifndef _WIN32
 TEST(PrintLogTest, CallstackTraceTest) {
-  auto ret = TestFunctionLevel2();
+  auto ret = test_function_level2();
   FORY_LOG(FORY_INFO) << "stack trace:\n" << ret;
   // work for linux
-  // EXPECT_TRUE(ret.find("TestFunctionLevel0") != std::string::npos);
+  // EXPECT_TRUE(ret.find("test_function_level0") != std::string::npos);
   // work for mac
-  // EXPECT_TRUE(ret.find("GetCallTrace") != std::string::npos);
+  // EXPECT_TRUE(ret.find("get_call_trace") != std::string::npos);
   EXPECT_TRUE(ret.find("fory") != std::string::npos);
   EXPECT_TRUE(ret.find("PrintLogTest") != std::string::npos);
 }

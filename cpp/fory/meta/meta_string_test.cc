@@ -32,20 +32,21 @@ protected:
 };
 
 // ============================================================================
-// ToMetaEncoding tests
+// to_meta_encoding tests
 // ============================================================================
 
 TEST_F(MetaStringTest, ToMetaEncodingValidValues) {
-  EXPECT_EQ(ToMetaEncoding(0x00).value(), MetaEncoding::UTF8);
-  EXPECT_EQ(ToMetaEncoding(0x01).value(), MetaEncoding::LOWER_SPECIAL);
-  EXPECT_EQ(ToMetaEncoding(0x02).value(),
+  EXPECT_EQ(to_meta_encoding(0x00).value(), MetaEncoding::UTF8);
+  EXPECT_EQ(to_meta_encoding(0x01).value(), MetaEncoding::LOWER_SPECIAL);
+  EXPECT_EQ(to_meta_encoding(0x02).value(),
             MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL);
-  EXPECT_EQ(ToMetaEncoding(0x03).value(), MetaEncoding::FIRST_TO_LOWER_SPECIAL);
-  EXPECT_EQ(ToMetaEncoding(0x04).value(), MetaEncoding::ALL_TO_LOWER_SPECIAL);
+  EXPECT_EQ(to_meta_encoding(0x03).value(),
+            MetaEncoding::FIRST_TO_LOWER_SPECIAL);
+  EXPECT_EQ(to_meta_encoding(0x04).value(), MetaEncoding::ALL_TO_LOWER_SPECIAL);
 }
 
 TEST_F(MetaStringTest, ToMetaEncodingInvalidValue) {
-  auto result = ToMetaEncoding(0x05);
+  auto result = to_meta_encoding(0x05);
   EXPECT_FALSE(result.ok());
 }
 
@@ -188,7 +189,7 @@ TEST_F(MetaStringTest, DecodeUTF8) {
 }
 
 // ============================================================================
-// Roundtrip tests - Encode then Decode
+// Roundtrip tests - encode then Decode
 // ============================================================================
 
 TEST_F(MetaStringTest, RoundtripLowerSpecial) {
@@ -334,20 +335,21 @@ TEST_F(MetaStringTest, MetaStringTableReadSmallString) {
   MetaStringTable table;
   Buffer buffer;
 
-  // Encode a small string (len <= 16)
+  // encode a small string (len <= 16)
   const std::string input = "test";
   auto encoded = encoder_.encode(input);
   ASSERT_TRUE(encoded.ok());
 
-  // Write header: (len << 1) | 0 (not a reference)
+  // write header: (len << 1) | 0 (not a reference)
   uint32_t header = static_cast<uint32_t>(encoded.value().bytes.size()) << 1;
-  buffer.WriteVarUint32(header);
-  // Write encoding byte
-  buffer.WriteInt8(static_cast<int8_t>(encoded.value().encoding));
-  // Write data
-  buffer.WriteBytes(encoded.value().bytes.data(), encoded.value().bytes.size());
+  buffer.write_var_uint32(header);
+  // write encoding byte
+  buffer.write_int8(static_cast<int8_t>(encoded.value().encoding));
+  // write data
+  buffer.write_bytes(encoded.value().bytes.data(),
+                     encoded.value().bytes.size());
 
-  buffer.ReaderIndex(0);
+  buffer.reader_index(0);
   auto result = table.read_string(buffer, decoder_);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result.value(), input);
@@ -363,15 +365,16 @@ TEST_F(MetaStringTest, MetaStringTableReadReference) {
   ASSERT_TRUE(encoded.ok());
 
   uint32_t header = static_cast<uint32_t>(encoded.value().bytes.size()) << 1;
-  buffer.WriteVarUint32(header);
-  buffer.WriteInt8(static_cast<int8_t>(encoded.value().encoding));
-  buffer.WriteBytes(encoded.value().bytes.data(), encoded.value().bytes.size());
+  buffer.write_var_uint32(header);
+  buffer.write_int8(static_cast<int8_t>(encoded.value().encoding));
+  buffer.write_bytes(encoded.value().bytes.data(),
+                     encoded.value().bytes.size());
 
   // Then write a reference to it (id=1, is_ref=true)
   uint32_t ref_header = (1 << 1) | 1;
-  buffer.WriteVarUint32(ref_header);
+  buffer.write_var_uint32(ref_header);
 
-  buffer.ReaderIndex(0);
+  buffer.reader_index(0);
 
   // Read the first string
   auto result1 = table.read_string(buffer, decoder_);
@@ -388,11 +391,11 @@ TEST_F(MetaStringTest, MetaStringTableInvalidReference) {
   MetaStringTable table;
   Buffer buffer;
 
-  // Write a reference to non-existent entry (id=1, is_ref=true)
+  // write a reference to non-existent entry (id=1, is_ref=true)
   uint32_t ref_header = (1 << 1) | 1;
-  buffer.WriteVarUint32(ref_header);
+  buffer.write_var_uint32(ref_header);
 
-  buffer.ReaderIndex(0);
+  buffer.reader_index(0);
   auto result = table.read_string(buffer, decoder_);
   EXPECT_FALSE(result.ok());
 }
@@ -403,10 +406,10 @@ TEST_F(MetaStringTest, MetaStringTableEmptyString) {
 
   // Empty string: len=0, encoding=UTF8
   uint32_t header = 0 << 1; // len=0, not a reference
-  buffer.WriteVarUint32(header);
-  buffer.WriteInt8(0); // UTF8 encoding
+  buffer.write_var_uint32(header);
+  buffer.write_int8(0); // UTF8 encoding
 
-  buffer.ReaderIndex(0);
+  buffer.reader_index(0);
   auto result = table.read_string(buffer, decoder_);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result.value(), "");

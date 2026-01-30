@@ -65,7 +65,7 @@ template <> struct ForySchemaBasicType<double> {
   static inline DataTypePtr value() { return float64(); }
 };
 
-inline std::string StringViewToString(std::string_view s) {
+inline std::string string_view_to_string(std::string_view s) {
   return {s.begin(), s.end()};
 }
 
@@ -88,11 +88,11 @@ inline constexpr bool IsClassButNotBuiltin =
     std::is_class_v<T> &&
     !(IsString<T> || IsArray<T> || IsOptional<T> || IsMap<T>);
 
-inline decltype(auto) GetChildType(RowWriter &writer, int index) {
+inline decltype(auto) get_child_type(RowWriter &writer, int index) {
   return writer.schema()->field(index)->type();
 }
 
-inline decltype(auto) GetChildType(ArrayWriter &writer, int index) {
+inline decltype(auto) get_child_type(ArrayWriter &writer, int index) {
   return writer.type()->field(0)->type();
 }
 
@@ -107,13 +107,13 @@ struct HasForySchemaBasicType<
 
 } // namespace details
 
-using meta::ForyFieldInfo;
+using meta::fory_field_info;
 
 // Type alias for field vector
 using FieldVector = std::vector<FieldPtr>;
 
 struct EmptyWriteVisitor {
-  template <typename, typename T> void Visit(T &&) {}
+  template <typename, typename T> void visit(T &&) {}
 };
 
 template <typename C> struct DefaultWriteVisitor {
@@ -121,7 +121,7 @@ template <typename C> struct DefaultWriteVisitor {
 
   DefaultWriteVisitor(C &cont) : cont(cont) {}
 
-  template <typename, typename T> void Visit(std::unique_ptr<T> writer) {
+  template <typename, typename T> void visit(std::unique_ptr<T> writer) {
     cont.push_back(std::move(writer));
   }
 };
@@ -130,7 +130,7 @@ template <typename C> struct DefaultWriteVisitor {
 // it includes:
 // - Type(): construct fory format type of type `T`
 // - Schema(): construct schema of type `T` (only for class types)
-// - Write(auto&& visitor, const T& value, ...):
+// - write(auto&& visitor, const T& value, ...):
 //     encode `T` via the provided writer
 template <typename T, typename Enable = void> struct RowEncodeTrait {
   static_assert(meta::AlwaysFalse<T>,
@@ -148,8 +148,8 @@ struct RowEncodeTrait<T, std::enable_if_t<details::HasForySchemaBasicType<
   template <typename V, typename W,
             std::enable_if_t<meta::IsOneOf<W, RowWriter, ArrayWriter>::value,
                              int> = 0>
-  static void Write(V &&, const T &value, W &writer, int index) {
-    writer.Write(index, value);
+  static void write(V &&, const T &value, W &writer, int index) {
+    writer.write(index, value);
   }
 };
 
@@ -161,8 +161,8 @@ struct RowEncodeTrait<
   template <typename V, typename W,
             std::enable_if_t<meta::IsOneOf<W, RowWriter, ArrayWriter>::value,
                              int> = 0>
-  static void Write(V &&, const T &value, W &writer, int index) {
-    writer.WriteString(index, value);
+  static void write(V &&, const T &value, W &writer, int index) {
+    writer.write_string(index, value);
   }
 };
 
@@ -174,12 +174,12 @@ struct RowEncodeTrait<
   template <typename V, typename W,
             std::enable_if_t<meta::IsOneOf<W, RowWriter, ArrayWriter>::value,
                              int> = 0>
-  static void Write(V &&visitor, const T &value, W &writer, int index) {
+  static void write(V &&visitor, const T &value, W &writer, int index) {
     if (value) {
-      RowEncodeTrait<typename T::value_type>::Write(std::forward<V>(visitor),
+      RowEncodeTrait<typename T::value_type>::write(std::forward<V>(visitor),
                                                     *value, writer, index);
     } else {
-      writer.SetNullAt(index);
+      writer.set_null_at(index);
     }
   }
 };
@@ -188,38 +188,38 @@ template <typename T>
 struct RowEncodeTrait<
     T, std::enable_if_t<details::IsClassButNotBuiltin<std::remove_cv_t<T>>>> {
 private:
-  using FieldInfo = decltype(ForyFieldInfo(std::declval<T>()));
+  using FieldInfo = decltype(fory_field_info(std::declval<T>()));
 
-  template <size_t I> static FieldPtr GetField() {
+  template <size_t I> static FieldPtr get_field() {
     using FieldType = meta::RemoveMemberPointerCVRefT<
-        std::tuple_element_t<I, decltype(FieldInfo::Ptrs())>>;
-    return field(details::StringViewToString(FieldInfo::Names[I]),
+        std::tuple_element_t<I, decltype(FieldInfo::ptrs())>>;
+    return field(details::string_view_to_string(FieldInfo::Names[I]),
                  RowEncodeTrait<FieldType>::Type());
   }
 
   template <size_t... I>
-  static encoder::FieldVector FieldVectorImpl(std::index_sequence<I...>) {
-    return {GetField<I>()...};
+  static encoder::FieldVector field_vector_impl(std::index_sequence<I...>) {
+    return {get_field<I>()...};
   }
 
   template <size_t I, typename V>
-  static void WriteField(V &&visitor, const T &value, RowWriter &writer) {
+  static void write_field(V &&visitor, const T &value, RowWriter &writer) {
     using FieldType = meta::RemoveMemberPointerCVRefT<
-        std::tuple_element_t<I, decltype(FieldInfo::Ptrs())>>;
-    RowEncodeTrait<FieldType>::Write(std::forward<V>(visitor),
-                                     value.*std::get<I>(FieldInfo::PtrsRef()),
+        std::tuple_element_t<I, decltype(FieldInfo::ptrs())>>;
+    RowEncodeTrait<FieldType>::write(std::forward<V>(visitor),
+                                     value.*std::get<I>(FieldInfo::ptrs_ref()),
                                      writer, I);
   }
 
   template <typename V, size_t... I>
-  static void WriteImpl(V &&visitor, const T &value, RowWriter &writer,
-                        std::index_sequence<I...>) {
-    (WriteField<I>(std::forward<V>(visitor), value, writer), ...);
+  static void write_impl(V &&visitor, const T &value, RowWriter &writer,
+                         std::index_sequence<I...>) {
+    (write_field<I>(std::forward<V>(visitor), value, writer), ...);
   }
 
 public:
   static encoder::FieldVector FieldVector() {
-    return FieldVectorImpl(std::make_index_sequence<FieldInfo::Size>());
+    return field_vector_impl(std::make_index_sequence<FieldInfo::Size>());
   }
 
   static auto Type() { return struct_(FieldVector()); }
@@ -227,29 +227,29 @@ public:
   static auto Schema() { return schema(FieldVector()); }
 
   template <typename V>
-  static void Write(V &&visitor, const T &value, RowWriter &writer) {
-    WriteImpl(std::forward<V>(visitor), value, writer,
-              std::make_index_sequence<FieldInfo::Size>());
+  static void write(V &&visitor, const T &value, RowWriter &writer) {
+    write_impl(std::forward<V>(visitor), value, writer,
+               std::make_index_sequence<FieldInfo::Size>());
   }
 
   template <typename V, typename W,
             std::enable_if_t<meta::IsOneOf<W, RowWriter, ArrayWriter>::value,
                              int> = 0>
-  static void Write(V &&visitor, const T &value, W &writer, int index) {
+  static void write(V &&visitor, const T &value, W &writer, int index) {
     auto offset = writer.cursor();
 
     auto child_type = std::dynamic_pointer_cast<StructType>(
-        details::GetChildType(writer, index));
+        details::get_child_type(writer, index));
     auto inner_writer =
         std::make_unique<RowWriter>(schema(child_type->fields()), &writer);
 
-    inner_writer->Reset();
-    RowEncodeTrait<T>::Write(std::forward<V>(visitor), value,
+    inner_writer->reset();
+    RowEncodeTrait<T>::write(std::forward<V>(visitor), value,
                              *inner_writer.get());
 
-    writer.SetOffsetAndSize(index, offset, writer.cursor() - offset);
+    writer.set_offset_and_size(index, offset, writer.cursor() - offset);
 
-    std::forward<V>(visitor).template Visit<std::remove_cv_t<T>>(
+    std::forward<V>(visitor).template visit<std::remove_cv_t<T>>(
         std::move(inner_writer));
   }
 };
@@ -262,10 +262,10 @@ struct RowEncodeTrait<T,
   }
 
   template <typename V>
-  static void Write(V &&visitor, const T &value, ArrayWriter &writer) {
+  static void write(V &&visitor, const T &value, ArrayWriter &writer) {
     int index = 0;
     for (const auto &v : value) {
-      RowEncodeTrait<meta::GetValueType<T>>::Write(std::forward<V>(visitor), v,
+      RowEncodeTrait<meta::GetValueType<T>>::write(std::forward<V>(visitor), v,
                                                    writer, index);
       ++index;
     }
@@ -274,21 +274,21 @@ struct RowEncodeTrait<T,
   template <typename V, typename W,
             std::enable_if_t<meta::IsOneOf<W, RowWriter, ArrayWriter>::value,
                              int> = 0>
-  static void Write(V &&visitor, const T &value, W &writer, int index) {
+  static void write(V &&visitor, const T &value, W &writer, int index) {
     auto offset = writer.cursor();
 
-    auto inner_writer =
-        std::make_unique<ArrayWriter>(std::dynamic_pointer_cast<ListType>(
-                                          details::GetChildType(writer, index)),
-                                      &writer);
+    auto inner_writer = std::make_unique<ArrayWriter>(
+        std::dynamic_pointer_cast<ListType>(
+            details::get_child_type(writer, index)),
+        &writer);
 
-    inner_writer->Reset(value.size());
-    RowEncodeTrait<T>::Write(std::forward<V>(visitor), value,
+    inner_writer->reset(value.size());
+    RowEncodeTrait<T>::write(std::forward<V>(visitor), value,
                              *inner_writer.get());
 
-    writer.SetOffsetAndSize(index, offset, writer.cursor() - offset);
+    writer.set_offset_and_size(index, offset, writer.cursor() - offset);
 
-    std::forward<V>(visitor).template Visit<std::remove_cv_t<T>>(
+    std::forward<V>(visitor).template visit<std::remove_cv_t<T>>(
         std::move(inner_writer));
   }
 };
@@ -302,20 +302,20 @@ struct RowEncodeTrait<T,
   }
 
   template <typename V>
-  static void WriteKey(V &&visitor, const T &value, ArrayWriter &writer) {
+  static void write_key(V &&visitor, const T &value, ArrayWriter &writer) {
     int index = 0;
     for (const auto &v : value) {
-      RowEncodeTrait<typename T::value_type::first_type>::Write(
+      RowEncodeTrait<typename T::value_type::first_type>::write(
           std::forward<V>(visitor), v.first, writer, index);
       ++index;
     }
   }
 
   template <typename V>
-  static void WriteValue(V &&visitor, const T &value, ArrayWriter &writer) {
+  static void write_value(V &&visitor, const T &value, ArrayWriter &writer) {
     int index = 0;
     for (const auto &v : value) {
-      RowEncodeTrait<typename T::value_type::second_type>::Write(
+      RowEncodeTrait<typename T::value_type::second_type>::write(
           std::forward<V>(visitor), v.second, writer, index);
       ++index;
     }
@@ -324,34 +324,34 @@ struct RowEncodeTrait<T,
   template <typename V, typename W,
             std::enable_if_t<meta::IsOneOf<W, RowWriter, ArrayWriter>::value,
                              int> = 0>
-  static void Write(V &&visitor, const T &value, W &writer, int index) {
+  static void write(V &&visitor, const T &value, W &writer, int index) {
     auto offset = writer.cursor();
-    writer.WriteDirectly(-1);
+    writer.write_directly(-1);
 
     auto map_type = std::dynamic_pointer_cast<MapType>(
-        details::GetChildType(writer, index));
+        details::get_child_type(writer, index));
 
     auto key_writer =
         std::make_unique<ArrayWriter>(list(map_type->key_type()), &writer);
 
-    key_writer->Reset(value.size());
-    RowEncodeTrait<T>::WriteKey(std::forward<V>(visitor), value,
-                                *key_writer.get());
+    key_writer->reset(value.size());
+    RowEncodeTrait<T>::write_key(std::forward<V>(visitor), value,
+                                 *key_writer.get());
 
-    writer.WriteDirectly(offset, key_writer->size());
+    writer.write_directly(offset, key_writer->size());
 
     auto value_writer =
         std::make_unique<ArrayWriter>(list(map_type->item_type()), &writer);
 
-    value_writer->Reset(value.size());
-    RowEncodeTrait<T>::WriteValue(std::forward<V>(visitor), value,
-                                  *value_writer.get());
+    value_writer->reset(value.size());
+    RowEncodeTrait<T>::write_value(std::forward<V>(visitor), value,
+                                   *value_writer.get());
 
-    writer.SetOffsetAndSize(index, offset, writer.cursor() - offset);
+    writer.set_offset_and_size(index, offset, writer.cursor() - offset);
 
-    std::forward<V>(visitor).template Visit<std::remove_cv_t<T>>(
+    std::forward<V>(visitor).template visit<std::remove_cv_t<T>>(
         std::move(key_writer));
-    std::forward<V>(visitor).template Visit<std::remove_cv_t<T>>(
+    std::forward<V>(visitor).template visit<std::remove_cv_t<T>>(
         std::move(value_writer));
   }
 };

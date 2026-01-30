@@ -46,7 +46,7 @@ export class CodegenRegistry {
   static newGeneratorByTypeInfo(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     const constructor = CodegenRegistry.get(typeInfo.typeId);
     if (!constructor) {
-      throw new Error("type not registered // todo");
+      throw new Error("type not registered");
     }
     return new constructor(typeInfo, builder, scope);
   }

@@ -62,7 +62,7 @@
 namespace fory {
 namespace serialization {
 
-using meta::ForyFieldInfo;
+using meta::fory_field_info;
 
 // Forward declarations
 class Fory;
@@ -115,7 +115,7 @@ public:
       : type_id(tid), nullable(null), ref_tracking(ref_track),
         ref_mode(make_ref_mode(null, ref_track)), generics(std::move(gens)) {}
 
-  /// Write field type to buffer
+  /// write field type to buffer
   /// @param buffer Target buffer
   /// @param write_flag Whether to write nullability flag (for nested types)
   /// @param nullable_val Nullability to write if write_flag is true
@@ -156,7 +156,7 @@ public:
       : field_id(-1), field_name(std::move(name)), field_type(std::move(type)) {
   }
 
-  /// Write field info to buffer (for serialization)
+  /// write field info to buffer (for serialization)
   Result<std::vector<uint8_t>, Error> to_bytes() const;
 
   /// Read field info from buffer (for deserialization)
@@ -191,7 +191,7 @@ public:
                               const std::string &name, bool by_name,
                               std::vector<FieldInfo> fields);
 
-  /// Write type meta to buffer (for serialization)
+  /// write type meta to buffer (for serialization)
   Result<std::vector<uint8_t>, Error> to_bytes() const;
 
   /// Read type meta from buffer (for deserialization)
@@ -206,7 +206,7 @@ public:
   static Result<std::unique_ptr<TypeMeta>, Error>
   from_bytes_with_header(Buffer &buffer, int64_t header);
 
-  /// Skip type meta in buffer without parsing
+  /// skip type meta in buffer without parsing
   static Result<void, Error> skip_bytes(Buffer &buffer, int64_t header);
 
   /// Check struct version consistency
@@ -214,7 +214,7 @@ public:
                                                   int32_t local_version,
                                                   const std::string &type_name);
 
-  /// Get sorted field infos (sorted according to xlang spec)
+  /// get sorted field infos (sorted according to xlang spec)
   static std::vector<FieldInfo> sort_field_infos(std::vector<FieldInfo> fields);
 
   /// Assign field IDs by comparing with local type
@@ -466,7 +466,7 @@ struct FieldTypeBuilder<T, std::enable_if_t<std::is_enum_v<decay_t<T>>>> {
   using Decayed = decay_t<T>;
   static FieldType build(bool nullable) {
     // In xlang mode, enum fields are non-nullable by default (like primitives).
-    // This matches Java's ObjectSerializer.computeStructFingerprint behavior.
+    // This matches Java's ObjectSerializer.compute_struct_fingerprint behavior.
     return FieldType(to_type_id(Serializer<Decayed>::type_id), nullable);
   }
 };
@@ -622,11 +622,11 @@ constexpr uint32_t compute_signed_type_id() {
 
 template <typename T, size_t Index> struct FieldInfoBuilder {
   static FieldInfo build() {
-    const auto meta = ForyFieldInfo(T{});
+    const auto meta = fory_field_info(T{});
     const auto field_names = decltype(meta)::Names;
-    const auto &field_ptrs = decltype(meta)::PtrsRef();
+    const auto &field_ptrs = decltype(meta)::ptrs_ref();
 
-    // Convert camelCase field name to snake_case for cross-language
+    // Convert camel_case field name to snake_case for cross-language
     // compatibility
     std::string_view original_name = field_names[Index];
     constexpr size_t max_snake_len = 128; // Reasonable max for field names
@@ -639,10 +639,10 @@ template <typename T, size_t Index> struct FieldInfoBuilder {
         typename meta::RemoveMemberPointerCVRefT<decltype(field_ptr)>;
     using ActualFieldType =
         std::remove_cv_t<std::remove_reference_t<RawFieldType>>;
-    // Unwrap fory::field<> to get the underlying type for FieldTypeBuilder
+    // unwrap fory::field<> to get the underlying type for FieldTypeBuilder
     using UnwrappedFieldType = fory::unwrap_field_t<ActualFieldType>;
 
-    // Get nullable and track_ref from field tags (FORY_FIELD_TAGS or
+    // get nullable and track_ref from field tags (FORY_FIELD_TAGS or
     // fory::field<>)
     constexpr bool is_nullable =
         compute_is_nullable<ActualFieldType, T, Index, UnwrappedFieldType>();
@@ -708,7 +708,7 @@ std::vector<FieldInfo> build_field_infos(std::index_sequence<Indices...>) {
 // Helper function to encode meta strings at registration time
 // ============================================================================
 
-/// Encode a meta string for namespace or type_name using the appropriate
+/// encode a meta string for namespace or type_name using the appropriate
 /// encoder. This is called during registration to pre-compute the encoded form.
 Result<std::unique_ptr<CachedMetaString>, Error>
 encode_meta_string(const std::string &value, bool is_namespace);
@@ -733,22 +733,22 @@ public:
   template <typename T> TypeMeta clone_struct_meta();
   template <typename T> const std::vector<size_t> &sorted_indices();
 
-  /// Get type info by type ID (for non-namespaced types)
+  /// get type info by type ID (for non-namespaced types)
   /// @return const pointer to TypeInfo if found, error otherwise
   Result<const TypeInfo *, Error> get_type_info_by_id(uint32_t type_id) const;
 
-  /// Get type info by namespace and type name (for namespaced types)
+  /// get type info by namespace and type name (for namespaced types)
   /// @return const pointer to TypeInfo if found, error otherwise
   Result<const TypeInfo *, Error>
   get_type_info_by_name(const std::string &ns,
                         const std::string &type_name) const;
 
-  /// Get TypeInfo by type_index (used for looking up registered types)
+  /// get TypeInfo by type_index (used for looking up registered types)
   /// @return const pointer to TypeInfo if found, error otherwise
   Result<const TypeInfo *, Error>
   get_type_info(const std::type_index &type_index) const;
 
-  /// Get TypeInfo by compile-time type ID (fast path for template types)
+  /// get TypeInfo by compile-time type ID (fast path for template types)
   /// Works for enums, structs, and any registered type.
   /// @return const pointer to TypeInfo if found, error otherwise
   template <typename T> Result<const TypeInfo *, Error> get_type_info() const;
@@ -1032,7 +1032,7 @@ Result<void, Error> TypeResolver::register_by_id(uint32_t type_id) {
   constexpr uint64_t ctid = type_index<T>();
 
   if constexpr (is_fory_serializable_v<T>) {
-    // Encode type_id: shift left by 8 bits and add type category in low byte
+    // encode type_id: shift left by 8 bits and add type category in low byte
     uint32_t actual_type_id =
         compatible_
             ? (type_id << 8) + static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT)
@@ -1131,7 +1131,7 @@ Result<void, Error> TypeResolver::register_ext_type_by_id(uint32_t type_id) {
 
   constexpr uint64_t ctid = type_index<T>();
 
-  // Encode type_id: shift left by 8 bits and add type category in low byte
+  // encode type_id: shift left by 8 bits and add type category in low byte
   uint32_t actual_type_id = (type_id << 8) + static_cast<uint32_t>(TypeId::EXT);
 
   FORY_TRY(info, build_ext_type_info<T>(actual_type_id, "", "", false));
@@ -1222,7 +1222,7 @@ TypeResolver::build_struct_type_info(uint32_t type_id, std::string ns,
   entry->register_by_name = register_by_name;
   entry->is_external = false;
 
-  const auto meta_desc = ForyFieldInfo(T{});
+  const auto meta_desc = fory_field_info(T{});
   constexpr size_t field_count = decltype(meta_desc)::Size;
   const auto field_names = decltype(meta_desc)::Names;
 
@@ -1238,7 +1238,7 @@ TypeResolver::build_struct_type_info(uint32_t type_id, std::string ns,
 
   entry->name_to_index.reserve(field_count);
   for (size_t i = 0; i < field_count; ++i) {
-    // Convert camelCase field name to snake_case for cross-language
+    // Convert camel_case field name to snake_case for cross-language
     // compatibility
     constexpr size_t max_snake_len = 128;
     auto [snake_buffer, snake_len] =
@@ -1270,7 +1270,7 @@ TypeResolver::build_struct_type_info(uint32_t type_id, std::string ns,
 
   Buffer buffer(entry->type_def.data(),
                 static_cast<uint32_t>(entry->type_def.size()), false);
-  buffer.WriterIndex(static_cast<uint32_t>(entry->type_def.size()));
+  buffer.writer_index(static_cast<uint32_t>(entry->type_def.size()));
   FORY_TRY(parsed_meta, TypeMeta::from_bytes(buffer, nullptr));
   entry->type_meta = std::move(parsed_meta);
   entry->harness = make_struct_harness<T>();
@@ -1304,9 +1304,9 @@ TypeResolver::build_enum_type_info(uint32_t type_id, std::string ns,
 
   // When a user explicitly provides a type_name via registration, Java stores
   // and writes that exact name. The ENUM_PREFIX "2" is only added when Java
-  // auto-generates the type name from the class itself (via encodePkgAndClass).
-  // Since C++ users always explicitly provide the type name, we should NOT
-  // add the prefix.
+  // auto-generates the type name from the class itself (via
+  // encode_pkg_and_class). Since C++ users always explicitly provide the type
+  // name, we should NOT add the prefix.
   if (!type_name.empty()) {
     entry->type_name = std::move(type_name);
   } else {
@@ -1465,7 +1465,7 @@ Result<std::vector<FieldInfo>, Error>
 TypeResolver::harness_struct_sorted_fields(TypeResolver &) {
   static_assert(is_fory_serializable_v<T>,
                 "harness_struct_sorted_fields requires FORY_STRUCT types");
-  const auto meta_desc = ForyFieldInfo(T{});
+  const auto meta_desc = fory_field_info(T{});
   constexpr size_t field_count = decltype(meta_desc)::Size;
   auto fields =
       detail::build_field_infos<T>(std::make_index_sequence<field_count>{});

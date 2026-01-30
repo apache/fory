@@ -83,7 +83,7 @@ public:
   MetaStringTable();
 
   // Decode a meta string from buffer using the provided decoder.
-  // This mirrors MetaStringResolver#readMetaStringBytes.
+  // This mirrors MetaStringResolver#read_meta_string_bytes.
   Result<std::string, Error> read_string(Buffer &buffer,
                                          const MetaStringDecoder &decoder);
 
@@ -98,7 +98,7 @@ private:
 };
 
 // Helper to map raw encoding byte to MetaEncoding.
-Result<MetaEncoding, Error> ToMetaEncoding(uint8_t value);
+Result<MetaEncoding, Error> to_meta_encoding(uint8_t value);
 
 // Result of encoding a string to meta string format.
 struct EncodedMetaString {
@@ -112,7 +112,7 @@ class MetaStringEncoder {
 public:
   MetaStringEncoder(char special_char1, char special_char2);
 
-  // Encode a string using the best available encoding from the given options.
+  // encode a string using the best available encoding from the given options.
   // If encodings is empty, uses all available encodings.
   Result<EncodedMetaString, Error>
   encode(const std::string &input,

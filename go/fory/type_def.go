@@ -252,7 +252,7 @@ func readTypeDef(fory *Fory, buffer *ByteBuffer, header int64, err *Error) *Type
 func skipTypeDef(buffer *ByteBuffer, header int64, err *Error) {
 	sz := int(header & META_SIZE_MASK)
 	if sz == META_SIZE_MASK {
-		sz += int(buffer.ReadVaruint32(err))
+		sz += int(buffer.ReadVarUint32(err))
 	}
 	buffer.IncreaseReaderIndex(sz)
 }
@@ -267,7 +267,7 @@ func readPkgName(buffer *ByteBuffer, namespaceDecoder *meta.Decoder, err *Error)
 	encodingFlags := header & 0b11 // 2 bits for encoding
 	size := header >> 2            // 6 bits for size
 	if size == BIG_NAME_THRESHOLD {
-		size = int(buffer.ReadVaruint32Small7(err)) + BIG_NAME_THRESHOLD
+		size = int(buffer.ReadVarUint32Small7(err)) + BIG_NAME_THRESHOLD
 	}
 
 	var encoding meta.Encoding
@@ -298,7 +298,7 @@ func readTypeName(buffer *ByteBuffer, typeNameDecoder *meta.Decoder, err *Error)
 	encodingFlags := header & 0b11 // 2 bits for encoding
 	size := header >> 2            // 6 bits for size
 	if size == BIG_NAME_THRESHOLD {
-		size = int(buffer.ReadVaruint32Small7(err)) + BIG_NAME_THRESHOLD
+		size = int(buffer.ReadVarUint32Small7(err)) + BIG_NAME_THRESHOLD
 	}
 
 	var encoding meta.Encoding
@@ -345,7 +345,7 @@ func buildTypeDef(fory *Fory, value reflect.Value) (*TypeDef, error) {
 	}
 
 	typeDef.encoded = encoded
-	if DebugOutputEnabled() {
+	if DebugOutputEnabled {
 		fmt.Printf("[Go TypeDef BUILT] %s\n", typeDef.String())
 	}
 	return typeDef, nil
@@ -542,14 +542,13 @@ func buildFieldDefs(fory *Fory, value reflect.Value) ([]FieldDef, error) {
 		if foryTag.RefSet {
 			trackingRef = foryTag.Ref
 		}
-		// Disable ref tracking for simple types (primitives, strings) in xlang mode
-		// These types don't benefit from ref tracking and Java doesn't expect ref flags for them
-		if fory.config.IsXlang && trackingRef {
-			// Check if this is a simple field type (primitives, strings, enums, etc.)
-			// SimpleFieldType represents built-in types that don't need ref tracking
-			if _, ok := ft.(*SimpleFieldType); ok {
-				trackingRef = false
-			}
+		if trackingRef && !NeedWriteRef(ft.TypeId()) {
+			trackingRef = false
+		}
+		// Disable ref tracking for simple types (primitives, strings) in xlang mode.
+		// Collection fields only write ref flags when explicitly tagged.
+		if fory.config.IsXlang && trackingRef && isCollectionType(ft.TypeId()) && !foryTag.RefSet {
+			trackingRef = false
 		}
 
 		fieldInfo := FieldDef{
@@ -626,7 +625,7 @@ func (b *BaseFieldType) String() string {
 	return fmt.Sprintf("FieldType{typeId=%d}", b.typeId)
 }
 func (b *BaseFieldType) write(buffer *ByteBuffer) {
-	buffer.WriteVaruint32Small7(uint32(b.typeId))
+	buffer.WriteVarUint32Small7(uint32(b.typeId))
 }
 
 // writeWithFlags writes the typeId with nullable and trackingRef flags packed into the value.
@@ -639,7 +638,7 @@ func (b *BaseFieldType) writeWithFlags(buffer *ByteBuffer, nullable bool, tracki
 	if trackingRef {
 		value |= 0b01
 	}
-	buffer.WriteVaruint32Small7(value)
+	buffer.WriteVarUint32Small7(value)
 }
 
 func getFieldTypeSerializer(fory *Fory, ft FieldType) (Serializer, error) {
@@ -683,7 +682,7 @@ func (b *BaseFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInf
 // readFieldType reads field type info from the buffer according to the TypeId
 // This is called for top-level field types where flags are NOT embedded in the type ID
 func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
-	typeId := buffer.ReadVaruint32Small7(err)
+	typeId := buffer.ReadVarUint32Small7(err)
 	// Use internal type ID (low byte) for switch, but store the full typeId
 	internalTypeId := TypeId(typeId & 0xFF)
 
@@ -715,7 +714,7 @@ func readFieldType(buffer *ByteBuffer, err *Error) (FieldType, error) {
 // readFieldTypeWithFlags reads field type info where flags are embedded in the type ID
 // Format: (typeId << 2) | (nullable ? 0b10 : 0) | (trackingRef ? 0b1 : 0)
 func readFieldTypeWithFlags(buffer *ByteBuffer, err *Error) (FieldType, error) {
-	rawValue := buffer.ReadVaruint32Small7(err)
+	rawValue := buffer.ReadVarUint32Small7(err)
 	// Extract flags (lower 2 bits)
 	// trackingRef := (rawValue & 0b1) != 0  // Not used currently
 	// nullable := (rawValue & 0b10) != 0    // Not used currently
@@ -875,10 +874,20 @@ func (m *MapFieldType) getTypeInfo(f *Fory) (TypeInfo, error) {
 	if keyInfo.Type != nil && valueInfo.Type != nil {
 		mapType = reflect.MapOf(keyInfo.Type, valueInfo.Type)
 	}
+	keyReferencable := true
+	if keyInfo.Type != nil {
+		keyReferencable = isRefType(keyInfo.Type, f.config.IsXlang)
+	}
+	valueReferencable := true
+	if valueInfo.Type != nil {
+		valueReferencable = isRefType(valueInfo.Type, f.config.IsXlang)
+	}
 	mapSerializer := &mapSerializer{
-		keySerializer:   keyInfo.Serializer,
-		valueSerializer: valueInfo.Serializer,
-		hasGenerics:     true,
+		keySerializer:     keyInfo.Serializer,
+		valueSerializer:   valueInfo.Serializer,
+		keyReferencable:   keyReferencable,
+		valueReferencable: valueReferencable,
+		hasGenerics:       true,
 	}
 	return TypeInfo{Type: mapType, Serializer: mapSerializer}, nil
 }
@@ -896,10 +905,20 @@ func (m *MapFieldType) getTypeInfoWithResolver(resolver *TypeResolver) (TypeInfo
 	if keyInfo.Type != nil && valueInfo.Type != nil {
 		mapType = reflect.MapOf(keyInfo.Type, valueInfo.Type)
 	}
+	keyReferencable := true
+	if keyInfo.Type != nil {
+		keyReferencable = isRefType(keyInfo.Type, resolver.isXlang)
+	}
+	valueReferencable := true
+	if valueInfo.Type != nil {
+		valueReferencable = isRefType(valueInfo.Type, resolver.isXlang)
+	}
 	mapSerializer := &mapSerializer{
-		keySerializer:   keyInfo.Serializer,
-		valueSerializer: valueInfo.Serializer,
-		hasGenerics:     true,
+		keySerializer:     keyInfo.Serializer,
+		valueSerializer:   valueInfo.Serializer,
+		keyReferencable:   keyReferencable,
+		valueReferencable: valueReferencable,
+		hasGenerics:       true,
 	}
 	return TypeInfo{Type: mapType, Serializer: mapSerializer}, nil
 }
@@ -1137,7 +1156,7 @@ func writeSimpleName(buffer *ByteBuffer, metaBytes *MetaStringBytes, encoder *me
 		// Size doesn't fit in 6 bits, write BIG_NAME_THRESHOLD and then varuint
 		header := byte((BIG_NAME_THRESHOLD << 2) | int(encodingFlags))
 		buffer.WriteByte(header)
-		buffer.WriteVaruint32Small7(uint32(size - BIG_NAME_THRESHOLD))
+		buffer.WriteVarUint32Small7(uint32(size - BIG_NAME_THRESHOLD))
 	} else {
 		// Size fits in 6 bits (6 bits for size, 2 bits for encoding)
 		header := byte((size << 2) | int(encodingFlags))
@@ -1182,7 +1201,7 @@ func writeSimpleTypeName(buffer *ByteBuffer, metaBytes *MetaStringBytes, encoder
 		// Size doesn't fit in 6 bits, write BIG_NAME_THRESHOLD and then varuint
 		header := byte((BIG_NAME_THRESHOLD << 2) | int(encodingFlags))
 		buffer.WriteByte(header)
-		buffer.WriteVaruint32Small7(uint32(size - BIG_NAME_THRESHOLD))
+		buffer.WriteVarUint32Small7(uint32(size - BIG_NAME_THRESHOLD))
 	} else {
 		// Size fits in 6 bits (6 bits for size, 2 bits for encoding)
 		header := byte((size << 2) | int(encodingFlags))
@@ -1210,9 +1229,9 @@ func encodingTypeDef(typeResolver *TypeResolver, typeDef *TypeDef) ([]byte, erro
 			return nil, fmt.Errorf("failed to write typename: %w", err)
 		}
 	} else {
-		// Java uses writeVaruint32 for type ID (unsigned varint)
+		// Java uses WriteVarUint32 for type ID (unsigned varint)
 		// typeDef.typeId is already int32, no need for conversion
-		buffer.WriteVaruint32(uint32(typeDef.typeId))
+		buffer.WriteVarUint32(uint32(typeDef.typeId))
 	}
 
 	if err := writeFieldDefs(typeResolver, buffer, typeDef.fieldDefs); err != nil {
@@ -1253,7 +1272,7 @@ func prependGlobalHeader(buffer *ByteBuffer, isCompressed bool, hasFieldsMeta bo
 	result.WriteInt64(int64(header))
 
 	if metaSize >= META_SIZE_MASK {
-		result.WriteVaruint32(uint32(metaSize - META_SIZE_MASK))
+		result.WriteVarUint32(uint32(metaSize - META_SIZE_MASK))
 	}
 	result.WriteBinary(buffer.GetByteSlice(0, metaSize))
 
@@ -1271,7 +1290,7 @@ func writeMetaHeader(buffer *ByteBuffer, typeDef *TypeDef) error {
 	header := len(fieldInfos)
 	if header > SmallNumFieldsThreshold {
 		header = SmallNumFieldsThreshold
-		buffer.WriteVaruint32(uint32(len(fieldInfos) - SmallNumFieldsThreshold))
+		buffer.WriteVarUint32(uint32(len(fieldInfos) - SmallNumFieldsThreshold))
 	}
 	if typeDef.registerByName {
 		header |= REGISTER_BY_NAME_FLAG
@@ -1325,7 +1344,7 @@ func writeFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer, field FieldDe
 
 		// Write extra varint for large tag IDs
 		if field.tagID >= FieldNameSizeThreshold {
-			buffer.WriteVaruint32(uint32(field.tagID - FieldNameSizeThreshold))
+			buffer.WriteVarUint32(uint32(field.tagID - FieldNameSizeThreshold))
 		}
 
 		// Write field type
@@ -1343,7 +1362,7 @@ func writeFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer, field FieldDe
 			header |= uint8((nameLen-1)&0x0F) << 2 // 1-based encoding
 		} else {
 			header |= 0x0F << 2 // Max value, actual length will follow
-			buffer.WriteVaruint32(uint32(nameLen - FieldNameSizeThreshold))
+			buffer.WriteVarUint32(uint32(nameLen - FieldNameSizeThreshold))
 		}
 		buffer.PutUint8(offset, header)
 
@@ -1374,7 +1393,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 	isCompressed := (globalHeader & COMPRESS_META_FLAG) != 0
 	metaSize := int(globalHeader & META_SIZE_MASK)
 	if metaSize == META_SIZE_MASK {
-		metaSize += int(buffer.ReadVaruint32(&bufErr))
+		metaSize += int(buffer.ReadVarUint32(&bufErr))
 	}
 
 	// Store the encoded bytes for the TypeDef (including meta header and metadata)
@@ -1393,7 +1412,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 	// Extract field count from lower 5 bits
 	fieldCount := int(metaHeaderByte & SmallNumFieldsThreshold)
 	if fieldCount == SmallNumFieldsThreshold {
-		fieldCount += int(metaBuffer.ReadVaruint32(&metaErr))
+		fieldCount += int(metaBuffer.ReadVarUint32(&metaErr))
 	}
 	registeredByName := (metaHeaderByte & REGISTER_BY_NAME_FLAG) != 0
 
@@ -1410,7 +1429,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		nsEncodingFlags := nsHeader & 0b11 // 2 bits for encoding
 		nsSize := nsHeader >> 2            // 6 bits for size
 		if nsSize == BIG_NAME_THRESHOLD {
-			nsSize = int(metaBuffer.ReadVaruint32Small7(&metaErr)) + BIG_NAME_THRESHOLD
+			nsSize = int(metaBuffer.ReadVarUint32Small7(&metaErr)) + BIG_NAME_THRESHOLD
 		}
 
 		// Java pkg encoding: 0=UTF8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL
@@ -1436,7 +1455,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		typeEncodingFlags := typeHeader & 0b11 // 2 bits for encoding
 		typeSize := typeHeader >> 2            // 6 bits for size
 		if typeSize == BIG_NAME_THRESHOLD {
-			typeSize = int(metaBuffer.ReadVaruint32Small7(&metaErr)) + BIG_NAME_THRESHOLD
+			typeSize = int(metaBuffer.ReadVarUint32Small7(&metaErr)) + BIG_NAME_THRESHOLD
 		}
 
 		// Java typename encoding: 0=UTF8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL, 3=FIRST_TO_LOWER_SPECIAL
@@ -1503,9 +1522,9 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 			type_ = nil
 		}
 	} else {
-		// Java uses writeVaruint32 for type ID in TypeDef
+		// Java uses WriteVarUint32 for type ID in TypeDef
 		// The type ID is a composite: (userID << 8) | internalTypeID
-		typeId = metaBuffer.ReadVaruint32(&metaErr)
+		typeId = metaBuffer.ReadVarUint32(&metaErr)
 		// Try to get the type from registry using the full type ID
 		if info, exists := fory.typeResolver.typeIDToTypeInfo[typeId]; exists {
 			type_ = info.Type
@@ -1532,7 +1551,7 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 	typeDef.encoded = encoded
 	typeDef.type_ = type_
 
-	if DebugOutputEnabled() {
+	if DebugOutputEnabled {
 		fmt.Printf("[Go TypeDef DECODED] %s\n", typeDef.String())
 		// Compute and print diff with local TypeDef
 		if type_ != nil {
@@ -1577,7 +1596,7 @@ func readFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer) (FieldDef, err
 		// Read tag ID
 		tagID := sizeBits
 		if sizeBits == 0x0F {
-			tagID = FieldNameSizeThreshold + int(buffer.ReadVaruint32(&bufErr))
+			tagID = FieldNameSizeThreshold + int(buffer.ReadVarUint32(&bufErr))
 		}
 
 		// Read field type
@@ -1600,7 +1619,7 @@ func readFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer) (FieldDef, err
 	nameEncoding := fieldNameEncodings[nameEncodingFlag]
 	nameLen := sizeBits
 	if nameLen == 0x0F {
-		nameLen = FieldNameSizeThreshold + int(buffer.ReadVaruint32(&bufErr))
+		nameLen = FieldNameSizeThreshold + int(buffer.ReadVarUint32(&bufErr))
 	} else {
 		nameLen++ // Adjust for 1-based encoding
 	}

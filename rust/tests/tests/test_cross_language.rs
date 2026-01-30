@@ -95,7 +95,7 @@ fn test_buffer() {
     writer.write_i64(i64::MAX);
     writer.write_f32(-1.1);
     writer.write_f64(-1.1);
-    writer.write_varuint32(100);
+    writer.write_var_uint32(100);
     writer.write_i32(binary.len() as i32);
     writer.write_bytes(binary);
 
@@ -204,10 +204,10 @@ fn test_buffer_var() {
         writer.write_varint32(value);
     }
     for &value in &varuint32_values {
-        writer.write_varuint32(value as u32);
+        writer.write_var_uint32(value as u32);
     }
     for &value in &varuint64_values {
-        writer.write_varuint64(value);
+        writer.write_var_uint64(value);
     }
     for &value in &varint64_values {
         writer.write_varint64(value);
@@ -1690,6 +1690,22 @@ struct RefOuterCompatible {
     inner2: Option<Rc<RefInnerCompatible>>,
 }
 
+/// Element struct for collection element ref override test
+/// Matches Java RefOverrideElement with type ID 701
+#[derive(ForyObject, Debug, PartialEq, Clone)]
+struct RefOverrideElement {
+    id: i32,
+    name: String,
+}
+
+/// Container struct for collection element ref override test
+/// Matches Java RefOverrideContainer with type ID 702
+#[derive(ForyObject, Debug, PartialEq)]
+struct RefOverrideContainer {
+    list_field: Vec<Rc<RefOverrideElement>>,
+    map_field: HashMap<String, Rc<RefOverrideElement>>,
+}
+
 /// Test cross-language reference tracking in SCHEMA_CONSISTENT mode (compatible=false).
 ///
 /// This test verifies that when Java serializes an object where two fields point to
@@ -1778,6 +1794,39 @@ fn test_ref_compatible() {
 
     // Re-serialize and write back
     let new_bytes = fory.serialize(&outer).unwrap();
+    fs::write(&data_file_path, new_bytes).unwrap();
+}
+
+/// Test collection element ref override round-trip.
+#[test]
+#[ignore]
+fn test_collection_element_ref_override() {
+    let data_file_path = get_data_file();
+    let bytes = fs::read(&data_file_path).unwrap();
+
+    let mut fory = Fory::default()
+        .compatible(false)
+        .xlang(true)
+        .track_ref(true);
+    fory.register::<RefOverrideElement>(701).unwrap();
+    fory.register::<RefOverrideContainer>(702).unwrap();
+
+    let outer: RefOverrideContainer = fory.deserialize(&bytes).unwrap();
+    assert!(
+        !outer.list_field.is_empty(),
+        "list_field should not be empty"
+    );
+
+    let shared = outer.list_field[0].clone();
+    let mut map = HashMap::new();
+    map.insert("k1".to_string(), shared.clone());
+    map.insert("k2".to_string(), shared.clone());
+    let new_outer = RefOverrideContainer {
+        list_field: vec![shared.clone(), shared],
+        map_field: map,
+    };
+
+    let new_bytes = fory.serialize(&new_outer).unwrap();
     fs::write(&data_file_path, new_bytes).unwrap();
 }
 

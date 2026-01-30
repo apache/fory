@@ -21,31 +21,59 @@ import { TypeInfo } from "../typeInfo";
 import { CodecBuilder } from "./builder";
 import { BaseSerializerGenerator } from "./serializer";
 import { CodegenRegistry } from "./router";
-import { RefFlags, Serializer, TypeId } from "../type";
+import { Mode, RefFlags, Serializer, TypeId } from "../type";
 import { Scope } from "./scope";
 import Fory from "../fory";
 
-export class AnySerializer {
-  constructor(private fory: Fory) {
-  }
-
-  readInner() {
-    throw new Error("Anonymous serializer can't call directly");
-  }
-
-  writeInner() {
-    throw new Error("Anonymous serializer can't call directly");
-  }
-
-  detectSerializer() {
-    const typeId = this.fory.binaryReader.readVarUint32Small7();
+class AnyHelper {
+  static detectSerializer(fory: Fory) {
+    const typeId = fory.binaryReader.readVarUint32Small7();
     let serializer: Serializer | undefined;
-    if (TypeId.IS_NAMED_TYPE(typeId)) {
-      const ns = this.fory.metaStringResolver.readNamespace(this.fory.binaryReader);
-      const typeName = this.fory.metaStringResolver.readTypeName(this.fory.binaryReader);
-      serializer = this.fory.classResolver.getSerializerByName(`${ns}$${typeName}`);
-    } else {
-      serializer = this.fory.classResolver.getSerializerById(typeId);
+    const internalTypeId = typeId & 0xff;
+
+    switch (internalTypeId) {
+      case TypeId.NAMED_ENUM:
+      case TypeId.NAMED_STRUCT:
+      case TypeId.NAMED_EXT:
+      case TypeId.NAMED_UNION:
+      case TypeId.NAMED_COMPATIBLE_STRUCT:
+        if (fory.config.mode === Mode.Compatible) {
+          const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
+          const ns = typeMeta.getNs();
+          const typeName = typeMeta.getTypeName();
+          const named = `${ns}$${typeName}`;
+          serializer = fory.classResolver.getSerializerByName(named);
+          if (!serializer) {
+            throw new Error(`can't find implements of typeId: ${typeId}`);
+          }
+          const hash = serializer.getHash();
+          if (hash !== typeMeta.getHash()) {
+            serializer = fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
+          }
+        } else {
+          const ns = fory.metaStringResolver.readNamespace(fory.binaryReader);
+          const typeName = fory.metaStringResolver.readTypeName(fory.binaryReader);
+          serializer = fory.classResolver.getSerializerByName(`${ns}$${typeName}`);
+        }
+        break;
+      case TypeId.COMPATIBLE_STRUCT:
+        if (fory.config.mode === Mode.Compatible) {
+          const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
+          serializer = fory.classResolver.getSerializerById(typeId);
+          if (!serializer) {
+            throw new Error(`can't find implements of typeId: ${typeId}`);
+          }
+          const hash = serializer.getHash();
+          if (hash !== typeMeta.getHash()) {
+            serializer = fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
+          }
+        } else {
+          serializer = fory.classResolver.getSerializerById(typeId);
+        }
+        break;
+      default:
+        serializer = fory.classResolver.getSerializerById(typeId);
+        break;
     }
     if (!serializer) {
       throw new Error(`can't find implements of typeId: ${typeId}`);
@@ -53,122 +81,58 @@ export class AnySerializer {
     return serializer;
   }
 
-  read() {
-    const flag = this.fory.referenceResolver.readRefFlag();
-    switch (flag) {
-      case RefFlags.RefValueFlag:
-        return this.detectSerializer().readInner(true);
-      case RefFlags.RefFlag:
-        return this.fory.referenceResolver.getReadObject(this.fory.binaryReader.varUInt32());
-      case RefFlags.NullFlag:
-        return null;
-      case RefFlags.NotNullValueFlag:
-        return this.detectSerializer().readInner(false);
-    }
-  }
-
-  write(v: any) {
+  static getSerializer(fory: Fory, v: any) {
     if (v === null || v === undefined) {
-      this.fory.binaryWriter.reserve(1);
-      this.fory.binaryWriter.int8(RefFlags.NullFlag); // null
-      return;
+      throw new Error("can not guess the type of null or undefined");
     }
 
-    const serializer = this.fory.classResolver.getSerializerByData(v);
+    const serializer = fory.classResolver.getSerializerByData(v);
     if (!serializer) {
       throw new Error(`Failed to detect the Fory serializer from JavaScript type: ${typeof v}`);
     }
-    this.fory.binaryWriter.reserve(serializer.fixedSize);
-    serializer.write(v);
-  }
-
-  fixedSize = 11;
-
-  needToWriteRef(): boolean {
-    throw new Error("//todo unreachable code");
-  }
-
-  getTypeId(): number {
-    throw new Error("//todo unreachable code");
+    fory.binaryWriter.reserve(serializer.fixedSize);
+    return serializer;
   }
 }
 
 class AnySerializerGenerator extends BaseSerializerGenerator {
   typeInfo: TypeInfo;
-
+  detectedSerializer: string;
+  writerSerializer: string;
   constructor(typeInfo: TypeInfo, builder: CodecBuilder, scope: Scope) {
     super(typeInfo, builder, scope);
     this.typeInfo = typeInfo;
+    this.detectedSerializer = this.scope.declareVar("detectedSerializer", "null");
+    this.writerSerializer = this.scope.declareVar("writerSerializer", "null");
   }
 
-  writeStmt(): string {
-    throw new Error("Type Any writeStmt can't inline");
-  }
-
-  readStmt(): string {
-    throw new Error("Type Any readStmt can't inline");
-  }
-
-  toReadEmbed(accessor: (expr: string) => string, excludeHead = false): string {
-    if (excludeHead) {
-      throw new Error("Anonymous can't excludeHead");
-    }
-    return accessor(`${this.builder.getForyName()}.anySerializer.read()`);
-  }
-
-  toWriteEmbed(accessor: string, excludeHead = false): string {
-    if (excludeHead) {
-      throw new Error("Anonymous can't excludeHead");
-    }
-    return `${this.builder.getForyName()}.anySerializer.write(${accessor})`;
-  }
-
-  toSerializer() {
-    this.scope.assertNameNotDuplicate("read");
-    this.scope.assertNameNotDuplicate("readInner");
-    this.scope.assertNameNotDuplicate("write");
-    this.scope.assertNameNotDuplicate("writeInner");
-
-    const declare = `
-      const readInner = (fromRef) => {
-        throw new Error("Type Any readInner can't call directly");
-      };
-      const read = () => {
-        ${this.toReadEmbed(expr => `return ${expr}`)}
-      };
-      const writeInner = (v) => {
-        throw new Error("Type Any writeInner can't call directly");
-      };
-      const write = (v) => {
-        ${this.toWriteEmbed("v")}
-      };
-    `;
+  write(accessor: string): string {
     return `
-        return function (fory, external, options) {
-            ${this.scope.generate()}
-            ${declare}
-            return {
-              read,
-              readInner,
-              write,
-              writeInner,
-              fixedSize: ${this.getFixedSize()},
-              needToWriteRef() {
-                throw new Error("//todo unreachable code");
-              }
-            };
-        }
-        `;
+      ${this.writerSerializer}.write(${accessor});;
+    `;
+  }
+
+  writeClassInfo(accessor: string): string {
+    return `
+      ${this.writerSerializer} = ${this.builder.getExternal(AnyHelper.name)}.getSerializer(${this.builder.getForyName()}, ${accessor});
+      ${this.writerSerializer}.writeClassInfo();
+    `;
+  }
+
+  readClassInfo(): string {
+    return `
+      ${this.detectedSerializer} = ${this.builder.getExternal(AnyHelper.name)}.detectSerializer(${this.builder.getForyName()});
+    `;
+  }
+
+  read(assignStmt: (v: string) => string, refState: string): string {
+    return assignStmt(`${this.detectedSerializer}.read(${refState});`);
   }
 
   getFixedSize(): number {
     return 11;
   }
-
-  needToWriteRef(): boolean {
-    throw new Error("//todo unreachable code");
-  }
 }
 
 CodegenRegistry.register(TypeId.UNKNOWN, AnySerializerGenerator);
-CodegenRegistry.registerExternal(AnySerializer);
+CodegenRegistry.registerExternal(AnyHelper);

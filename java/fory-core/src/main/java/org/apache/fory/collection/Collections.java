@@ -144,12 +144,20 @@ public class Collections {
   }
 
   public static <E> HashSet<E> ofHashSet(E e1, E e2, E e3, E e4, E e5) {
-    HashSet<E> set = new HashSet<>(5);
-    set.add(e1);
-    set.add(e2);
-    set.add(e3);
-    set.add(e4);
+    HashSet<E> set = ofHashSet(e1, e2, e3, e4);
     set.add(e5);
+    return set;
+  }
+
+  public static <E> HashSet<E> ofHashSet(E e1, E e2, E e3, E e4, E e5, E e6) {
+    HashSet<E> set = ofHashSet(e1, e2, e3, e4, e5);
+    set.add(e6);
+    return set;
+  }
+
+  public static <E> HashSet<E> ofHashSet(E e1, E e2, E e3, E e4, E e5, E e6, E e7) {
+    HashSet<E> set = ofHashSet(e1, e2, e3, e4, e5, e6);
+    set.add(e7);
     return set;
   }
 

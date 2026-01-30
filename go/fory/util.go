@@ -27,9 +27,7 @@ import (
 )
 
 // DebugOutputEnabled checks if ENABLE_FORY_DEBUG_OUTPUT env var is set to "1"
-func DebugOutputEnabled() bool {
-	return os.Getenv("ENABLE_FORY_DEBUG_OUTPUT") == "1"
-}
+var DebugOutputEnabled = os.Getenv("ENABLE_FORY_DEBUG_OUTPUT") == "1"
 
 var nativeEndian binary.ByteOrder
 

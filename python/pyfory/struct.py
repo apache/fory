@@ -57,6 +57,7 @@ from pyfory.type_util import (
     TypeVisitor,
     infer_field,
     is_subclass,
+    get_type_hints,
     unwrap_optional,
 )
 from pyfory.buffer import Buffer
@@ -312,7 +313,7 @@ class DataClassSerializer(Serializer):
         super().__init__(fory, clz)
         self._xlang = xlang
 
-        self._type_hints = typing.get_type_hints(clz)
+        self._type_hints = get_type_hints(clz)
         self._has_slots = hasattr(clz, "__slots__")
 
         # When field_names is explicitly passed (from TypeDef.create_serializer during schema evolution),
@@ -440,7 +441,7 @@ class DataClassSerializer(Serializer):
         if not self.fory.compatible:
             buffer.write_int32(self._hash)
         else:
-            buffer.write_varuint32(len(self._field_names))
+            buffer.write_var_uint32(len(self._field_names))
 
     def _read_header(self, buffer):
         """Read serialization header and return number of fields written.
@@ -458,7 +459,7 @@ class DataClassSerializer(Serializer):
                 raise TypeNotCompatibleError(f"Hash {hash_} is not consistent with {expected_hash} for type {self.type_}")
             return len(self._field_names)
         else:
-            return buffer.read_varuint32()
+            return buffer.read_var_uint32()
 
     def _get_write_stmt_for_codegen(self, serializer, buffer, field_value):
         """Generate write statement for code generation based on serializer type."""
@@ -581,7 +582,7 @@ class DataClassSerializer(Serializer):
         if not self.fory.compatible:
             stmts.append(f"{buffer}.write_int32({self._hash})")
         else:
-            stmts.append(f"{buffer}.write_varuint32({len(self._field_names)})")
+            stmts.append(f"{buffer}.write_var_uint32({len(self._field_names)})")
 
         if not self._has_slots:
             stmts.append(f"{value_dict} = {value}.__dict__")
@@ -679,7 +680,7 @@ class DataClassSerializer(Serializer):
                 ]
             )
         else:
-            stmts.append(f"num_fields_written = {buffer}.read_varuint32()")
+            stmts.append(f"num_fields_written = {buffer}.read_var_uint32()")
 
         stmts.extend(
             [
@@ -833,7 +834,7 @@ class DataClassSerializer(Serializer):
                         stmts.extend(
                             [
                                 f"if {field_value} is None:",
-                                f"    {buffer}.write_varuint32(0)",
+                                f"    {buffer}.write_var_uint32(0)",
                                 "else:",
                                 f"    {stmt}",
                             ]
@@ -1164,25 +1165,39 @@ class StructFieldSerializerVisitor(TypeVisitor):
 
     def visit_list(self, field_name, elem_type, types_path=None):
         from pyfory.serializer import ListSerializer  # Local import
+        from pyfory.type_util import unwrap_ref
 
         # Infer type recursively for type such as List[Dict[str, str]]
+        elem_type, elem_ref_override = unwrap_ref(elem_type)
         elem_serializer = infer_field("item", elem_type, self, types_path=types_path)
-        return ListSerializer(self.fory, list, elem_serializer)
+        return ListSerializer(self.fory, list, elem_serializer, elem_ref_override)
 
     def visit_set(self, field_name, elem_type, types_path=None):
         from pyfory.serializer import SetSerializer  # Local import
+        from pyfory.type_util import unwrap_ref
 
         # Infer type recursively for type such as Set[Dict[str, str]]
+        elem_type, elem_ref_override = unwrap_ref(elem_type)
         elem_serializer = infer_field("item", elem_type, self, types_path=types_path)
-        return SetSerializer(self.fory, set, elem_serializer)
+        return SetSerializer(self.fory, set, elem_serializer, elem_ref_override)
 
     def visit_dict(self, field_name, key_type, value_type, types_path=None):
         from pyfory.serializer import MapSerializer  # Local import
+        from pyfory.type_util import unwrap_ref
 
         # Infer type recursively for type such as Dict[str, Dict[str, str]]
+        key_type, key_ref_override = unwrap_ref(key_type)
+        value_type, value_ref_override = unwrap_ref(value_type)
         key_serializer = infer_field("key", key_type, self, types_path=types_path)
         value_serializer = infer_field("value", value_type, self, types_path=types_path)
-        return MapSerializer(self.fory, dict, key_serializer, value_serializer)
+        return MapSerializer(
+            self.fory,
+            dict,
+            key_serializer,
+            value_serializer,
+            key_ref_override,
+            value_ref_override,
+        )
 
     def visit_customized(self, field_name, type_, types_path=None):
         if issubclass(type_, enum.Enum):
@@ -1496,7 +1511,7 @@ def get_field_names(clz, type_hints=None):
         # Regular object with __dict__
         # We can't know the fields without an instance, so we rely on type hints
         if type_hints is None:
-            type_hints = typing.get_type_hints(clz)
+            type_hints = get_type_hints(clz)
         return sorted(type_hints.keys())
     elif hasattr(clz, "__slots__"):
         # Object with __slots__

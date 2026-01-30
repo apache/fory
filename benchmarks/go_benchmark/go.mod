@@ -25,9 +25,6 @@ require (
 	google.golang.org/protobuf v1.36.0
 )
 
-require (
-	github.com/spaolacci/murmur3 v1.1.0 // indirect
-	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-)
+require github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 
 replace github.com/apache/fory/go/fory => ../../go/fory

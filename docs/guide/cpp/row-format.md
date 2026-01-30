@@ -26,7 +26,7 @@ This page covers the row-based serialization format for high-performance, cache-
 Apache Fory™ Row Format is a binary format optimized for:
 
 - **Random Access**: Read any field without deserializing the entire object
-- **Zero-Copy**: Direct memory access without data copying
+- **Zero-copy**: Direct memory access without data copying
 - **Cache-Friendly**: Contiguous memory layout for CPU cache efficiency
 - **Columnar Conversion**: Easy conversion to Apache Arrow format
 - **Partial Serialization**: Serialize only needed fields
@@ -62,17 +62,17 @@ int main() {
   // Create encoder
   RowEncoder<Person> encoder;
 
-  // Encode a person
+  // encode a person
   Person person{1, "Alice", 95.5f};
-  encoder.Encode(person);
+  encoder.encode(person);
 
-  // Get the encoded row
-  auto row = encoder.GetWriter().ToRow();
+  // get the encoded row
+  auto row = encoder.get_writer().to_row();
 
   // Random access to fields
-  int32_t id = row->GetInt32(0);
-  std::string name = row->GetString(1);
-  float score = row->GetFloat(2);
+  int32_t id = row->get_int32(0);
+  std::string name = row->get_string(1);
+  float score = row->get_float(2);
 
   assert(id == 1);
   assert(name == "Alice");
@@ -101,15 +101,15 @@ struct Point {
 RowEncoder<Point> encoder;
 
 // Access schema (for inspection)
-const Schema& schema = encoder.GetSchema();
+const Schema& schema = encoder.get_schema();
 std::cout << "Fields: " << schema.field_names().size() << std::endl;
 
-// Encode value
+// encode value
 Point p{1.0, 2.0};
-encoder.Encode(p);
+encoder.encode(p);
 
-// Get result as Row
-auto row = encoder.GetWriter().ToRow();
+// get result as Row
+auto row = encoder.get_writer().to_row();
 ```
 
 ### Nested Structs
@@ -127,18 +127,18 @@ struct Person {
   FORY_STRUCT(Person, name, address);
 };
 
-// Encode nested struct
+// encode nested struct
 RowEncoder<Person> encoder;
 Person person{"Alice", {"New York", "USA"}};
-encoder.Encode(person);
+encoder.encode(person);
 
-auto row = encoder.GetWriter().ToRow();
-std::string name = row->GetString(0);
+auto row = encoder.get_writer().to_row();
+std::string name = row->get_string(0);
 
 // Access nested struct
-auto address_row = row->GetStruct(1);
-std::string city = address_row->GetString(0);
-std::string country = address_row->GetString(1);
+auto address_row = row->get_struct(1);
+std::string city = address_row->get_string(0);
+std::string country = address_row->get_string(1);
 ```
 
 ### Arrays / Lists
@@ -152,33 +152,33 @@ struct Record {
 
 RowEncoder<Record> encoder;
 Record record{{1, 2, 3, 4, 5}, "test"};
-encoder.Encode(record);
+encoder.encode(record);
 
-auto row = encoder.GetWriter().ToRow();
-auto array = row->GetArray(0);
+auto row = encoder.get_writer().to_row();
+auto array = row->get_array(0);
 
 int count = array->num_elements();
 for (int i = 0; i < count; i++) {
-  int32_t value = array->GetInt32(i);
+  int32_t value = array->get_int32(i);
 }
 ```
 
 ### Encoding Arrays Directly
 
 ```cpp
-// Encode a vector directly (not inside a struct)
+// encode a vector directly (not inside a struct)
 std::vector<Person> people{
     {"Alice", {"NYC", "USA"}},
     {"Bob", {"London", "UK"}}
 };
 
 RowEncoder<decltype(people)> encoder;
-encoder.Encode(people);
+encoder.encode(people);
 
-// Get array data
-auto array = encoder.GetWriter().CopyToArrayData();
-auto first_person = array->GetStruct(0);
-std::string first_name = first_person->GetString(0);
+// get array data
+auto array = encoder.get_writer().copy_to_array_data();
+auto first_person = array->get_struct(0);
+std::string first_name = first_person->get_string(0);
 ```
 
 ## Row Data Access
@@ -191,32 +191,32 @@ The `Row` class provides random access to struct fields:
 class Row {
 public:
   // Null check
-  bool IsNullAt(int i) const;
+  bool is_null_at(int i) const;
 
   // Primitive getters
-  bool GetBoolean(int i) const;
-  int8_t GetInt8(int i) const;
-  int16_t GetInt16(int i) const;
-  int32_t GetInt32(int i) const;
-  int64_t GetInt64(int i) const;
-  float GetFloat(int i) const;
-  double GetDouble(int i) const;
+  bool get_boolean(int i) const;
+  int8_t get_int8(int i) const;
+  int16_t get_int16(int i) const;
+  int32_t get_int32(int i) const;
+  int64_t get_int64(int i) const;
+  float get_float(int i) const;
+  double get_double(int i) const;
 
   // String/binary getter
-  std::string GetString(int i) const;
-  std::vector<uint8_t> GetBinary(int i) const;
+  std::string get_string(int i) const;
+  std::vector<uint8_t> get_binary(int i) const;
 
   // Nested types
-  std::shared_ptr<Row> GetStruct(int i) const;
-  std::shared_ptr<ArrayData> GetArray(int i) const;
-  std::shared_ptr<MapData> GetMap(int i) const;
+  std::shared_ptr<Row> get_struct(int i) const;
+  std::shared_ptr<ArrayData> get_array(int i) const;
+  std::shared_ptr<MapData> get_map(int i) const;
 
   // Metadata
   int num_fields() const;
   SchemaPtr schema() const;
 
   // Debug
-  std::string ToString() const;
+  std::string to_string() const;
 };
 ```
 
@@ -228,22 +228,22 @@ The `ArrayData` class provides access to list/array elements:
 class ArrayData {
 public:
   // Null check
-  bool IsNullAt(int i) const;
+  bool is_null_at(int i) const;
 
   // Element count
   int num_elements() const;
 
   // Primitive getters (same as Row)
-  int32_t GetInt32(int i) const;
+  int32_t get_int32(int i) const;
   // ... other primitives
 
   // String getter
-  std::string GetString(int i) const;
+  std::string get_string(int i) const;
 
   // Nested types
-  std::shared_ptr<Row> GetStruct(int i) const;
-  std::shared_ptr<ArrayData> GetArray(int i) const;
-  std::shared_ptr<MapData> GetMap(int i) const;
+  std::shared_ptr<Row> get_struct(int i) const;
+  std::shared_ptr<ArrayData> get_array(int i) const;
+  std::shared_ptr<MapData> get_map(int i) const;
 
   // Type info
   ListTypePtr type() const;
@@ -358,15 +358,15 @@ auto my_schema = schema({
 
 // Create writer
 RowWriter writer(my_schema);
-writer.Reset();
+writer.reset();
 
-// Write fields
-writer.Write(0, 42);          // x = 42
-writer.Write(1, 3.14);        // y = 3.14
-writer.WriteString(2, "test"); // name = "test"
+// write fields
+writer.write(0, 42);          // x = 42
+writer.write(1, 3.14);        // y = 3.14
+writer.write_string(2, "test"); // name = "test"
 
-// Get result
-auto row = writer.ToRow();
+// get result
+auto row = writer.to_row();
 ```
 
 ### ArrayWriter
@@ -379,26 +379,26 @@ auto array_type = list(int32());
 
 // Create writer
 ArrayWriter writer(array_type);
-writer.Reset(5);  // 5 elements
+writer.reset(5);  // 5 elements
 
-// Write elements
+// write elements
 for (int i = 0; i < 5; i++) {
-  writer.Write(i, i * 10);
+  writer.write(i, i * 10);
 }
 
-// Get result
-auto array = writer.CopyToArrayData();
+// get result
+auto array = writer.copy_to_array_data();
 ```
 
 ### Null Values
 
 ```cpp
 // Set null at specific index
-writer.SetNullAt(2);  // Field 2 is null
+writer.set_null_at(2);  // Field 2 is null
 
 // Check null when reading
-if (!row->IsNullAt(2)) {
-  std::string value = row->GetString(2);
+if (!row->is_null_at(2)) {
+  std::string value = row->get_string(2);
 }
 ```
 
@@ -443,10 +443,10 @@ if (!row->IsNullAt(2)) {
 ```cpp
 RowEncoder<Person> encoder;
 
-// Encode multiple records
+// encode multiple records
 for (const auto& person : people) {
-  encoder.Encode(person);
-  auto row = encoder.GetWriter().ToRow();
+  encoder.encode(person);
+  auto row = encoder.get_writer().to_row();
   // Process row...
 }
 ```
@@ -454,9 +454,9 @@ for (const auto& person : people) {
 ### 2. Pre-allocate Buffer
 
 ```cpp
-// Get buffer reference for pre-allocation
-auto& buffer = encoder.GetWriter().buffer();
-buffer->Reserve(expected_size);
+// get buffer reference for pre-allocation
+auto& buffer = encoder.get_writer().buffer();
+buffer->reserve(expected_size);
 ```
 
 ### 3. Batch Processing
@@ -466,26 +466,26 @@ buffer->Reserve(expected_size);
 std::vector<Person> batch;
 batch.reserve(BATCH_SIZE);
 
-while (hasMore()) {
+while (has_more()) {
   batch.clear();
-  fillBatch(batch);
+  fill_batch(batch);
 
   for (const auto& person : batch) {
-    encoder.Encode(person);
-    process(encoder.GetWriter().ToRow());
+    encoder.encode(person);
+    process(encoder.get_writer().to_row());
   }
 }
 ```
 
-### 4. Zero-Copy Reading
+### 4. Zero-copy Reading
 
 ```cpp
 // Point to existing buffer (zero-copy)
 Row row(schema);
-row.PointTo(buffer, offset, size);
+row.point_to(buffer, offset, size);
 
 // Access fields directly from buffer
-int32_t id = row.GetInt32(0);
+int32_t id = row.get_int32(0);
 ```
 
 ## Supported Types Summary

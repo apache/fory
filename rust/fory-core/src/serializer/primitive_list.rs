@@ -50,7 +50,7 @@ pub fn fory_write_data<T: Serializer>(this: &[T], context: &mut WriteContext) ->
         }
     }
     let len_bytes = std::mem::size_of_val(this);
-    context.writer.write_varuint32(len_bytes as u32);
+    context.writer.write_var_uint32(len_bytes as u32);
 
     if !this.is_empty() {
         #[cfg(target_endian = "little")]
@@ -74,7 +74,7 @@ pub fn fory_write_data<T: Serializer>(this: &[T], context: &mut WriteContext) ->
 }
 
 pub fn fory_write_type_info(context: &mut WriteContext, type_id: TypeId) -> Result<(), Error> {
-    context.writer.write_varuint32(type_id as u32);
+    context.writer.write_var_uint32(type_id as u32);
     Ok(())
 }
 

@@ -72,7 +72,7 @@ enum class ErrorCode : char {
 /// pointer:
 /// ```cpp
 /// Error error;  // Default: ok_ = true
-/// buffer.ReadInt32(error);
+/// buffer.read_int32(error);
 /// if (FORY_PREDICT_FALSE(!error.ok())) {
 ///   return Unexpected(std::move(error));
 /// }
@@ -238,7 +238,7 @@ public:
             std::to_string(length) + " > " + std::to_string(capacity)));
   }
 
-  /// Reset to OK state.
+  /// reset to OK state.
   void reset() {
     ok_ = true;
     state_.reset();
@@ -253,7 +253,7 @@ public:
   /// Converts a string to an ErrorCode.
   static ErrorCode string_to_code(const std::string &str);
 
-  // Copy and move semantics
+  // copy and move semantics
   Error(const Error &other) : ok_(other.ok_) {
     if (!ok_ && other.state_) {
       state_.reset(new ErrorState(*other.state_));

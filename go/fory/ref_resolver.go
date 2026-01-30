@@ -177,7 +177,7 @@ func (r *RefResolver) WriteRefOrNull(buffer *ByteBuffer, value reflect.Value) (r
 		if writtenId, ok := r.writtenObjects[refKey]; ok {
 			// The obj has been written previously.
 			buffer.WriteInt8(RefFlag)
-			buffer.WriteVaruint32(uint32(writtenId))
+			buffer.WriteVarUint32(uint32(writtenId))
 			return true, nil
 		} else {
 			// The id should be consistent with `nextReadRefId`
@@ -202,7 +202,7 @@ func (r *RefResolver) ReadRefOrNull(buffer *ByteBuffer, ctxErr *Error) int8 {
 	}
 	if refTag == RefFlag {
 		// read ref id and get object from ref resolver
-		refId := buffer.ReadVaruint32(ctxErr)
+		refId := buffer.ReadVarUint32(ctxErr)
 		r.readObject = r.GetReadObject(int32(refId))
 		return RefFlag
 	} else {
@@ -236,7 +236,7 @@ func (r *RefResolver) TryPreserveRefId(buffer *ByteBuffer) (int32, error) {
 	}
 	if headFlag == RefFlag {
 		// read ref id and get object from ref resolver
-		refId := buffer.ReadVaruint32(&ctxErr)
+		refId := buffer.ReadVarUint32(&ctxErr)
 		if ctxErr.HasError() {
 			return 0, ctxErr
 		}
@@ -293,6 +293,12 @@ func (r *RefResolver) SetReadObject(refId int32, value reflect.Value) {
 	}
 	if refId >= 0 {
 		r.readObjects[refId] = value
+		// Consume the preserved ref id if it's the most recent.
+		// This keeps the readRefIds stack in sync for serializers that
+		// set the object directly instead of calling Reference().
+		if n := len(r.readRefIds); n > 0 && r.readRefIds[n-1] == refId {
+			r.readRefIds = r.readRefIds[:n-1]
+		}
 	}
 }
 
@@ -373,7 +379,7 @@ func (w *RefWriter) TryWriteRef(ctx *WriteContext, ptr uintptr) bool {
 	}
 	if refId, exists := w.refs[ptr]; exists {
 		ctx.buffer.WriteInt8(RefFlag)
-		ctx.buffer.WriteVaruint32(uint32(refId))
+		ctx.buffer.WriteVarUint32(uint32(refId))
 		return true
 	}
 	// First time seeing this reference

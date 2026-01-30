@@ -28,59 +28,59 @@
 
 namespace fory {
 
-TEST(Buffer, ToString) {
+TEST(Buffer, to_string) {
   std::shared_ptr<Buffer> buffer;
-  AllocateBuffer(16, &buffer);
+  allocate_buffer(16, &buffer);
   for (int i = 0; i < 16; ++i) {
-    buffer->UnsafePutByte<int8_t>(i, static_cast<int8_t>('a' + i));
+    buffer->unsafe_put_byte<int8_t>(i, static_cast<int8_t>('a' + i));
   }
-  EXPECT_EQ(buffer->ToString(), "abcdefghijklmnop");
+  EXPECT_EQ(buffer->to_string(), "abcdefghijklmnop");
 
   float f = 1.11;
-  buffer->UnsafePut<float>(0, f);
-  EXPECT_EQ(buffer->Get<float>(0), f);
+  buffer->unsafe_put<float>(0, f);
+  EXPECT_EQ(buffer->get<float>(0), f);
 }
 
-void checkVarUint32(int32_t startOffset, std::shared_ptr<Buffer> buffer,
-                    int32_t value, uint32_t bytesWritten) {
-  uint32_t actualBytesWritten = buffer->PutVarUint32(startOffset, value);
-  EXPECT_EQ(actualBytesWritten, bytesWritten);
-  uint32_t readBytesLength;
-  int32_t varInt = buffer->GetVarUint32(startOffset, &readBytesLength);
-  EXPECT_EQ(value, varInt);
-  EXPECT_EQ(readBytesLength, bytesWritten);
+void check_var_uint32(int32_t start_offset, std::shared_ptr<Buffer> buffer,
+                      int32_t value, uint32_t bytes_written) {
+  uint32_t actual_bytes_written = buffer->put_var_uint32(start_offset, value);
+  EXPECT_EQ(actual_bytes_written, bytes_written);
+  uint32_t read_bytes_length;
+  int32_t var_int = buffer->get_var_uint32(start_offset, &read_bytes_length);
+  EXPECT_EQ(value, var_int);
+  EXPECT_EQ(read_bytes_length, bytes_written);
 }
 
 TEST(Buffer, TestVarUint) {
   std::shared_ptr<Buffer> buffer;
-  AllocateBuffer(64, &buffer);
+  allocate_buffer(64, &buffer);
   for (int i = 0; i < 32; ++i) {
-    checkVarUint32(i, buffer, 1, 1);
-    checkVarUint32(i, buffer, 1 << 6, 1);
-    checkVarUint32(i, buffer, 1 << 7, 2);
-    checkVarUint32(i, buffer, 1 << 13, 2);
-    checkVarUint32(i, buffer, 1 << 14, 3);
-    checkVarUint32(i, buffer, 1 << 20, 3);
-    checkVarUint32(i, buffer, 1 << 21, 4);
-    checkVarUint32(i, buffer, 1 << 27, 4);
-    checkVarUint32(i, buffer, 1 << 28, 5);
-    checkVarUint32(i, buffer, 1 << 30, 5);
+    check_var_uint32(i, buffer, 1, 1);
+    check_var_uint32(i, buffer, 1 << 6, 1);
+    check_var_uint32(i, buffer, 1 << 7, 2);
+    check_var_uint32(i, buffer, 1 << 13, 2);
+    check_var_uint32(i, buffer, 1 << 14, 3);
+    check_var_uint32(i, buffer, 1 << 20, 3);
+    check_var_uint32(i, buffer, 1 << 21, 4);
+    check_var_uint32(i, buffer, 1 << 27, 4);
+    check_var_uint32(i, buffer, 1 << 28, 5);
+    check_var_uint32(i, buffer, 1 << 30, 5);
   }
 }
 
-void checkVarUint64(int32_t startOffset, std::shared_ptr<Buffer> buffer,
-                    uint64_t value, uint32_t bytesWritten) {
-  uint32_t actualBytesWritten = buffer->PutVarUint64(startOffset, value);
-  EXPECT_EQ(actualBytesWritten, bytesWritten);
-  uint32_t readBytesLength;
-  uint64_t varInt = buffer->GetVarUint64(startOffset, &readBytesLength);
-  EXPECT_EQ(value, varInt);
-  EXPECT_EQ(readBytesLength, bytesWritten);
+void check_var_uint64(int32_t start_offset, std::shared_ptr<Buffer> buffer,
+                      uint64_t value, uint32_t bytes_written) {
+  uint32_t actual_bytes_written = buffer->put_var_uint64(start_offset, value);
+  EXPECT_EQ(actual_bytes_written, bytes_written);
+  uint32_t read_bytes_length;
+  uint64_t var_int = buffer->get_var_uint64(start_offset, &read_bytes_length);
+  EXPECT_EQ(value, var_int);
+  EXPECT_EQ(read_bytes_length, bytes_written);
 }
 
 TEST(Buffer, TestVarUint64) {
   std::shared_ptr<Buffer> buffer;
-  AllocateBuffer(256, &buffer);
+  allocate_buffer(256, &buffer);
   const std::vector<std::pair<uint64_t, uint32_t>> cases = {
       {0, 1},
       {1, 1},
@@ -104,19 +104,19 @@ TEST(Buffer, TestVarUint64) {
   };
   for (int i = 0; i < 32; ++i) {
     for (const auto &entry : cases) {
-      checkVarUint64(i, buffer, entry.first, entry.second);
+      check_var_uint64(i, buffer, entry.first, entry.second);
     }
   }
 }
 
 TEST(Buffer, TestGetBytesAsInt64) {
   std::shared_ptr<Buffer> buffer;
-  AllocateBuffer(64, &buffer);
-  buffer->UnsafePut<int32_t>(0, 100);
+  allocate_buffer(64, &buffer);
+  buffer->unsafe_put<int32_t>(0, 100);
   int64_t result = -1;
-  EXPECT_TRUE(buffer->GetBytesAsInt64(0, 0, &result).ok());
+  EXPECT_TRUE(buffer->get_bytes_as_int64(0, 0, &result).ok());
   EXPECT_EQ(result, 0);
-  EXPECT_TRUE(buffer->GetBytesAsInt64(0, 1, &result).ok());
+  EXPECT_TRUE(buffer->get_bytes_as_int64(0, 1, &result).ok());
   EXPECT_EQ(result, 100);
 }
 } // namespace fory

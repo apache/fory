@@ -143,7 +143,9 @@ except ImportError:
 
 def infer_schema(clz, types_path=None) -> Schema:
     types_path = list(types_path or [])
-    type_hints = typing.get_type_hints(clz)
+    from pyfory.type_util import get_type_hints
+
+    type_hints = get_type_hints(clz)
     keys = sorted(type_hints.keys())
     fields = [
         infer_field(

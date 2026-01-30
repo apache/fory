@@ -241,7 +241,7 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
   Error error;
   // Header is encoded with VarUint32Small7 on Java side, but wire
   // format is still standard varuint32.
-  uint32_t header = buffer.ReadVarUint32(error);
+  uint32_t header = buffer.read_var_uint32(error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }
@@ -256,26 +256,26 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
     return entries_[len_or_id - 1].decoded;
   }
 
-  constexpr uint32_t kSmallThreshold = 16;
+  constexpr uint32_t k_small_threshold = 16;
   uint32_t len = len_or_id;
 
   std::vector<uint8_t> bytes;
   MetaEncoding encoding = MetaEncoding::UTF8;
 
-  if (len > kSmallThreshold) {
+  if (len > k_small_threshold) {
     // Big string layout in Java MetaStringResolver:
-    //   header (len<<1 | flags) + hashCode(int64) + data[len]
+    //   header (len<<1 | flags) + hash_code(int64) + data[len]
     // The original encoding is not transmitted explicitly. For cross-language
     // purposes we treat the payload bytes as UTF8 and let callers handle any
     // higher-level semantics.
-    int64_t hash_code = buffer.ReadInt64(error);
+    int64_t hash_code = buffer.read_int64(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
     (void)hash_code; // hash_code is only used for Java-side caching.
     bytes.resize(len);
     if (len > 0) {
-      buffer.ReadBytes(bytes.data(), len, error);
+      buffer.read_bytes(bytes.data(), len, error);
       if (FORY_PREDICT_FALSE(!error.ok())) {
         return Unexpected(std::move(error));
       }
@@ -283,7 +283,7 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
     encoding = MetaEncoding::UTF8;
   } else {
     // Small string layout: encoding(byte) + data[len]
-    int8_t enc_byte_res = buffer.ReadInt8(error);
+    int8_t enc_byte_res = buffer.read_int8(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
@@ -295,10 +295,10 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
       }
       encoding = MetaEncoding::UTF8;
     } else {
-      FORY_TRY(enc, ToMetaEncoding(enc_byte));
+      FORY_TRY(enc, to_meta_encoding(enc_byte));
       encoding = enc;
       bytes.resize(len);
-      buffer.ReadBytes(bytes.data(), len, error);
+      buffer.read_bytes(bytes.data(), len, error);
       if (FORY_PREDICT_FALSE(!error.ok())) {
         return Unexpected(std::move(error));
       }
@@ -319,7 +319,7 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
 
 void MetaStringTable::reset() { entries_.clear(); }
 
-Result<MetaEncoding, Error> ToMetaEncoding(uint8_t value) {
+Result<MetaEncoding, Error> to_meta_encoding(uint8_t value) {
   switch (value) {
   case 0x00:
     return MetaEncoding::UTF8;

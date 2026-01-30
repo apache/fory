@@ -30,7 +30,7 @@ func writeArrayRefAndType(ctx *WriteContext, refMode RefMode, writeType bool, va
 		ctx.Buffer().WriteInt8(NotNullValueFlag)
 	}
 	if writeType {
-		ctx.Buffer().WriteVaruint32Small7(uint32(typeId))
+		ctx.Buffer().WriteVarUint32Small7(uint32(typeId))
 	}
 	return false
 }
@@ -55,7 +55,7 @@ func readArrayRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value
 		}
 	}
 	if readType {
-		typeID := buf.ReadVaruint32Small7(err)
+		typeID := buf.ReadVarUint32Small7(err)
 		if ctx.HasError() {
 			return false
 		}
@@ -73,7 +73,7 @@ type arraySerializer struct{}
 func (s arraySerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	length := value.Len()
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	for i := 0; i < length; i++ {
 		elem := value.Index(i)
 		buf.WriteInt8(NotNullValueFlag)
@@ -92,7 +92,7 @@ func (s arraySerializer) Write(ctx *WriteContext, refMode RefMode, writeType boo
 func (s arraySerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	length := int(buf.ReadVaruint32(err))
+	length := int(buf.ReadVarUint32(err))
 	for i := 0; i < length; i++ {
 		_ = buf.ReadInt8(err)
 	}
@@ -122,7 +122,7 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 	buf := ctx.Buffer()
 
 	// Write length
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -178,7 +178,7 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 	if IsNamespacedType(TypeId(internalTypeID)) {
 		ctx.TypeResolver().WriteTypeInfo(buf, elemTypeInfo, ctx.Err())
 	} else {
-		buf.WriteVaruint32Small7(uint32(internalTypeID))
+		buf.WriteVarUint32Small7(uint32(internalTypeID))
 	}
 
 	// Write elements
@@ -226,7 +226,7 @@ func (s *arrayConcreteValueSerializer) Write(ctx *WriteContext, refMode RefMode,
 func (s *arrayConcreteValueSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	err := ctx.Err()
-	length := int(buf.ReadVaruint32(err))
+	length := int(buf.ReadVarUint32(err))
 
 	var trackRefs bool
 	if length > 0 {
@@ -239,7 +239,7 @@ func (s *arrayConcreteValueSerializer) ReadData(ctx *ReadContext, value reflect.
 		// Read element type info if present
 		if (collectFlag & CollectionIsSameType) != 0 {
 			if (collectFlag & CollectionIsDeclElementType) == 0 {
-				typeID := buf.ReadVaruint32(err)
+				typeID := buf.ReadVarUint32(err)
 				if ctx.HasError() {
 					return
 				}

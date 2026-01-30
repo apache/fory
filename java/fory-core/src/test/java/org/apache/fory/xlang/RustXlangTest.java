@@ -19,13 +19,13 @@
 
 package org.apache.fory.xlang;
 
-import com.google.common.collect.ImmutableMap;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 
@@ -77,13 +77,11 @@ public class RustXlangTest extends XlangTestBase {
   protected CommandContext buildCommandContext(String caseName, Path dataFile) {
     List<String> command = new ArrayList<>(RUST_BASE_COMMAND);
     command.set(RUST_TESTCASE_INDEX, caseName);
-    ImmutableMap<String, String> env =
-        envBuilder(dataFile)
-            .put("RUSTFLAGS", "-Awarnings")
-            .put("RUST_BACKTRACE", "1")
-            .put("ENABLE_FORY_DEBUG_OUTPUT", "1")
-            .put("FORY_PANIC_ON_ERROR", "1")
-            .build();
+    Map<String, String> env = envBuilder(dataFile);
+    env.put("RUSTFLAGS", "-Awarnings");
+    env.put("RUST_BACKTRACE", "1");
+    env.put("ENABLE_FORY_DEBUG_OUTPUT", "1");
+    env.put("FORY_PANIC_ON_ERROR", "1");
     return new CommandContext(command, env, new File("../../rust"));
   }
 
@@ -164,6 +162,11 @@ public class RustXlangTest extends XlangTestBase {
   @Test(dataProvider = "enableCodegen")
   public void testStructWithMap(boolean enableCodegen) throws java.io.IOException {
     super.testStructWithMap(enableCodegen);
+  }
+
+  @Test(dataProvider = "enableCodegen")
+  public void testCollectionElementRefOverride(boolean enableCodegen) throws java.io.IOException {
+    super.testCollectionElementRefOverride(enableCodegen);
   }
 
   @Test(dataProvider = "enableCodegen")

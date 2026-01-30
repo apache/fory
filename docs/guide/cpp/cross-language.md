@@ -74,7 +74,7 @@ int main() {
   auto result = fory.serialize(msg);
   if (result.ok()) {
     auto bytes = std::move(result).value();
-    // Write to file, send over network, etc.
+    // write to file, send over network, etc.
     std::ofstream file("message.bin", std::ios::binary);
     file.write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
   }

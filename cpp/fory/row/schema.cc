@@ -42,12 +42,12 @@ static const std::vector<MetaEncoding> FIELD_NAME_ENCODINGS = {
 static MetaStringEncoder FIELD_NAME_ENCODER('$', '_');
 static MetaStringDecoder FIELD_NAME_DECODER('$', '_');
 
-Result<void, Error> WriteField(Buffer &buffer, const Field &field);
-Result<FieldPtr, Error> ReadField(Buffer &buffer);
-Result<void, Error> WriteType(Buffer &buffer, const DataType &type);
-Result<DataTypePtr, Error> ReadType(Buffer &buffer);
+Result<void, Error> write_field(Buffer &buffer, const Field &field);
+Result<FieldPtr, Error> read_field(Buffer &buffer);
+Result<void, Error> write_type(Buffer &buffer, const DataType &type);
+Result<DataTypePtr, Error> read_type(Buffer &buffer);
 
-Result<void, Error> WriteField(Buffer &buffer, const Field &field) {
+Result<void, Error> write_field(Buffer &buffer, const Field &field) {
   auto encode_result =
       FIELD_NAME_ENCODER.encode(field.name(), FIELD_NAME_ENCODINGS);
   if (!encode_result.ok()) {
@@ -78,21 +78,21 @@ Result<void, Error> WriteField(Buffer &buffer, const Field &field) {
   if (field.nullable()) {
     header |= 0x40; // bit 6: nullable
   }
-  buffer.WriteUint8(static_cast<uint8_t>(header));
+  buffer.write_uint8(static_cast<uint8_t>(header));
 
   if (big_size) {
-    buffer.WriteVarUint32(
+    buffer.write_var_uint32(
         static_cast<uint32_t>(name_size - FIELD_NAME_SIZE_THRESHOLD));
   }
-  buffer.WriteBytes(encoded.bytes.data(),
-                    static_cast<uint32_t>(encoded.bytes.size()));
+  buffer.write_bytes(encoded.bytes.data(),
+                     static_cast<uint32_t>(encoded.bytes.size()));
 
-  return WriteType(buffer, *field.type());
+  return write_type(buffer, *field.type());
 }
 
-Result<FieldPtr, Error> ReadField(Buffer &buffer) {
+Result<FieldPtr, Error> read_field(Buffer &buffer) {
   Error error;
-  uint8_t header_byte = buffer.ReadUint8(error);
+  uint8_t header_byte = buffer.read_uint8(error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }
@@ -103,7 +103,7 @@ Result<FieldPtr, Error> ReadField(Buffer &buffer) {
 
   size_t name_size;
   if (name_size_minus1 == FIELD_NAME_SIZE_THRESHOLD) {
-    uint32_t extra = buffer.ReadVarUint32(error);
+    uint32_t extra = buffer.read_var_uint32(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
@@ -113,7 +113,7 @@ Result<FieldPtr, Error> ReadField(Buffer &buffer) {
   }
 
   std::vector<uint8_t> name_bytes(name_size);
-  buffer.ReadBytes(name_bytes.data(), static_cast<uint32_t>(name_size), error);
+  buffer.read_bytes(name_bytes.data(), static_cast<uint32_t>(name_size), error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }
@@ -126,34 +126,34 @@ Result<FieldPtr, Error> ReadField(Buffer &buffer) {
   }
   std::string name = std::move(decode_result.value());
 
-  FORY_TRY(type, ReadType(buffer));
+  FORY_TRY(type, read_type(buffer));
   return std::make_shared<Field>(std::move(name), std::move(type), nullable);
 }
 
-Result<void, Error> WriteType(Buffer &buffer, const DataType &type) {
-  buffer.WriteUint8(static_cast<uint8_t>(type.id()));
+Result<void, Error> write_type(Buffer &buffer, const DataType &type) {
+  buffer.write_uint8(static_cast<uint8_t>(type.id()));
 
   if (auto *decimal_type = dynamic_cast<const DecimalType *>(&type)) {
-    buffer.WriteUint8(static_cast<uint8_t>(decimal_type->precision()));
-    buffer.WriteUint8(static_cast<uint8_t>(decimal_type->scale()));
+    buffer.write_uint8(static_cast<uint8_t>(decimal_type->precision()));
+    buffer.write_uint8(static_cast<uint8_t>(decimal_type->scale()));
   } else if (auto *list_type = dynamic_cast<const ListType *>(&type)) {
-    FORY_RETURN_NOT_OK(WriteField(buffer, *list_type->value_field()));
+    FORY_RETURN_NOT_OK(write_field(buffer, *list_type->value_field()));
   } else if (auto *map_type = dynamic_cast<const MapType *>(&type)) {
-    FORY_RETURN_NOT_OK(WriteField(buffer, *map_type->key_field()));
-    FORY_RETURN_NOT_OK(WriteField(buffer, *map_type->item_field()));
+    FORY_RETURN_NOT_OK(write_field(buffer, *map_type->key_field()));
+    FORY_RETURN_NOT_OK(write_field(buffer, *map_type->item_field()));
   } else if (auto *struct_type = dynamic_cast<const StructType *>(&type)) {
-    buffer.WriteVarUint32(struct_type->num_fields());
+    buffer.write_var_uint32(struct_type->num_fields());
     for (const auto &field : struct_type->fields()) {
-      FORY_RETURN_NOT_OK(WriteField(buffer, *field));
+      FORY_RETURN_NOT_OK(write_field(buffer, *field));
     }
   }
 
   return Result<void, Error>();
 }
 
-Result<DataTypePtr, Error> ReadType(Buffer &buffer) {
+Result<DataTypePtr, Error> read_type(Buffer &buffer) {
   Error error;
-  uint8_t type_id_byte = buffer.ReadUint8(error);
+  uint8_t type_id_byte = buffer.read_uint8(error);
   if (FORY_PREDICT_FALSE(!error.ok())) {
     return Unexpected(std::move(error));
   }
@@ -187,36 +187,36 @@ Result<DataTypePtr, Error> ReadType(Buffer &buffer) {
   case TypeId::DATE:
     return date32();
   case TypeId::DECIMAL: {
-    uint8_t precision = buffer.ReadUint8(error);
+    uint8_t precision = buffer.read_uint8(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
-    uint8_t scale = buffer.ReadUint8(error);
+    uint8_t scale = buffer.read_uint8(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
     return decimal(precision, scale);
   }
   case TypeId::LIST: {
-    FORY_TRY(value_field, ReadField(buffer));
+    FORY_TRY(value_field, read_field(buffer));
     return std::static_pointer_cast<DataType>(
         std::make_shared<ListType>(std::move(value_field)));
   }
   case TypeId::MAP: {
-    FORY_TRY(key_field, ReadField(buffer));
-    FORY_TRY(item_field, ReadField(buffer));
+    FORY_TRY(key_field, read_field(buffer));
+    FORY_TRY(item_field, read_field(buffer));
     return std::static_pointer_cast<DataType>(
         std::make_shared<MapType>(key_field->type(), item_field->type()));
   }
   case TypeId::STRUCT: {
-    uint32_t struct_num_fields = buffer.ReadVarUint32(error);
+    uint32_t struct_num_fields = buffer.read_var_uint32(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
     std::vector<FieldPtr> fields;
     fields.reserve(struct_num_fields);
     for (uint32_t i = 0; i < struct_num_fields; ++i) {
-      FORY_TRY(struct_field, ReadField(buffer));
+      FORY_TRY(struct_field, read_field(buffer));
       fields.push_back(std::move(struct_field));
     }
     return std::static_pointer_cast<DataType>(
@@ -230,34 +230,34 @@ Result<DataTypePtr, Error> ReadType(Buffer &buffer) {
 
 } // anonymous namespace
 
-std::vector<uint8_t> Schema::ToBytes() const {
+std::vector<uint8_t> Schema::to_bytes() const {
   Buffer buffer;
-  ToBytes(buffer);
+  to_bytes(buffer);
   std::vector<uint8_t> result(buffer.writer_index());
-  buffer.Copy(0, buffer.writer_index(), result.data());
+  buffer.copy(0, buffer.writer_index(), result.data());
   return result;
 }
 
-void Schema::ToBytes(Buffer &buffer) const {
-  buffer.WriteUint8(SCHEMA_VERSION);
-  buffer.WriteVarUint32(num_fields());
+void Schema::to_bytes(Buffer &buffer) const {
+  buffer.write_uint8(SCHEMA_VERSION);
+  buffer.write_var_uint32(num_fields());
   for (const auto &f : fields_) {
-    auto result = WriteField(buffer, *f);
+    auto result = write_field(buffer, *f);
     if (!result.ok()) {
       throw std::runtime_error(result.error().message());
     }
   }
 }
 
-SchemaPtr Schema::FromBytes(const std::vector<uint8_t> &bytes) {
+SchemaPtr Schema::from_bytes(const std::vector<uint8_t> &bytes) {
   Buffer buffer(const_cast<uint8_t *>(bytes.data()),
                 static_cast<uint32_t>(bytes.size()), false);
-  return FromBytes(buffer);
+  return from_bytes(buffer);
 }
 
-SchemaPtr Schema::FromBytes(Buffer &buffer) {
+SchemaPtr Schema::from_bytes(Buffer &buffer) {
   Error error;
-  uint8_t version = buffer.ReadUint8(error);
+  uint8_t version = buffer.read_uint8(error);
   if (!error.ok()) {
     throw std::runtime_error(error.message());
   }
@@ -267,7 +267,7 @@ SchemaPtr Schema::FromBytes(Buffer &buffer) {
         ", expected: " + std::to_string(SCHEMA_VERSION));
   }
 
-  uint32_t num_fields = buffer.ReadVarUint32(error);
+  uint32_t num_fields = buffer.read_var_uint32(error);
   if (!error.ok()) {
     throw std::runtime_error(error.message());
   }
@@ -275,7 +275,7 @@ SchemaPtr Schema::FromBytes(Buffer &buffer) {
   std::vector<FieldPtr> fields;
   fields.reserve(num_fields);
   for (uint32_t i = 0; i < num_fields; ++i) {
-    auto field_result = ReadField(buffer);
+    auto field_result = read_field(buffer);
     if (!field_result.ok()) {
       throw std::runtime_error(field_result.error().message());
     }

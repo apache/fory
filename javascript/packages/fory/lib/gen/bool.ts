@@ -32,20 +32,16 @@ class BoolSerializerGenerator extends BaseSerializerGenerator {
     this.typeInfo = typeInfo;
   }
 
-  writeStmt(accessor: string): string {
+  write(accessor: string): string {
     return this.builder.writer.uint8(`${accessor} ? 1 : 0`);
   }
 
-  readStmt(accessor: (expr: string) => string): string {
+  read(accessor: (expr: string) => string): string {
     return accessor(`${this.builder.reader.uint8()} === 1`);
   }
 
   getFixedSize(): number {
     return 4;
-  }
-
-  needToWriteRef(): boolean {
-    return false;
   }
 }
 

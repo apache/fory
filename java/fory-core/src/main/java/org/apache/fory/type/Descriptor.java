@@ -152,7 +152,7 @@ public class Descriptor {
   private Descriptor(Field field, Method readMethod) {
     this.field = field;
     // Compute typeRef from field's generic type to include generic info
-    this.typeRef = TypeRef.of(field.getGenericType());
+    this.typeRef = TypeRef.of(field.getAnnotatedType());
     // Use typeRef.getType().getTypeName() to include generic type info (e.g., Collection<Object>)
     // This ensures consistent typeName between serialization and deserialization.
     this.typeName = typeRef.getType().getTypeName();
@@ -172,7 +172,7 @@ public class Descriptor {
   private Descriptor(Method readMethod) {
     this.field = null;
     // Compute typeRef first to include generic info
-    this.typeRef = TypeRef.of(readMethod.getGenericReturnType());
+    this.typeRef = TypeRef.of(readMethod.getAnnotatedReturnType());
     // Use typeRef.getType().getTypeName() for consistent type name with generics
     this.typeName = typeRef.getType().getTypeName();
     this.name = readMethod.getName();
@@ -307,7 +307,7 @@ public class Descriptor {
   public TypeRef<?> getTypeRef() {
     TypeRef<?> typeRef = this.typeRef;
     if (typeRef == null && field != null) {
-      this.typeRef = typeRef = TypeRef.of(field.getGenericType());
+      this.typeRef = typeRef = TypeRef.of(field.getAnnotatedType());
     }
     return typeRef;
   }
@@ -576,11 +576,11 @@ public class Descriptor {
     } else if (TypeUtils.isCollection(fieldRawType) || TypeUtils.isMap(fieldRawType)) {
       // warm up generic type, sun.reflect.generics.repository.FieldRepository
       // is expensive.
-      compilationService.submit(() -> warmGenericTask(TypeRef.of(field.getGenericType())));
+      compilationService.submit(() -> warmGenericTask(TypeRef.of(field.getAnnotatedType())));
     } else if (fieldRawType.isArray()) {
       Class<?> componentType = fieldRawType.getComponentType();
       if (!componentType.isPrimitive()) {
-        compilationService.submit(() -> warmGenericTask(TypeRef.of(field.getGenericType())));
+        compilationService.submit(() -> warmGenericTask(TypeRef.of(field.getAnnotatedType())));
       }
     }
   }
@@ -671,7 +671,7 @@ public class Descriptor {
           setter = null;
         }
       }
-      TypeRef<?> fieldType = TypeRef.of(field.getGenericType());
+      TypeRef<?> fieldType = TypeRef.of(field.getAnnotatedType());
       descriptorMap.put(field, new Descriptor(field, fieldType, getter, setter));
     }
     // Don't cache descriptors using a static `WeakHashMap<Class<?>, SortedMap<Field, Descriptor>>`，

@@ -41,6 +41,8 @@ type ReadContext struct {
 	depth            int           // Current nesting depth for cycle detection
 	maxDepth         int           // Maximum allowed nesting depth
 	err              Error         // Accumulated error state for deferred checking
+	lastTypePtr      uintptr
+	lastTypeInfo     *TypeInfo
 }
 
 // IsXlang returns whether cross-language serialization mode is enabled
@@ -156,12 +158,12 @@ func (c *ReadContext) RawFloat32() float32   { return c.buffer.ReadFloat32(c.Err
 func (c *ReadContext) RawFloat64() float64   { return c.buffer.ReadFloat64(c.Err()) }
 func (c *ReadContext) ReadVarint32() int32   { return c.buffer.ReadVarint32(c.Err()) }
 func (c *ReadContext) ReadVarint64() int64   { return c.buffer.ReadVarint64(c.Err()) }
-func (c *ReadContext) ReadVaruint32() uint32 { return c.buffer.ReadVaruint32(c.Err()) }
+func (c *ReadContext) ReadVarUint32() uint32 { return c.buffer.ReadVarUint32(c.Err()) }
 func (c *ReadContext) ReadByte() byte        { return c.buffer.ReadByte(c.Err()) }
 
 func (c *ReadContext) RawString() string {
 	err := c.Err()
-	length := c.buffer.ReadVaruint32(err)
+	length := c.buffer.ReadVarUint32(err)
 	if length == 0 {
 		return ""
 	}
@@ -171,13 +173,29 @@ func (c *ReadContext) RawString() string {
 
 func (c *ReadContext) ReadBinary() []byte {
 	err := c.Err()
-	length := c.buffer.ReadVaruint32(err)
+	length := c.buffer.ReadVarUint32(err)
 	return c.buffer.ReadBinary(int(length), err)
 }
 
 func (c *ReadContext) ReadTypeId() TypeId {
-	// Use Varuint32Small7 encoding to match Java's xlang serialization
-	return TypeId(c.buffer.ReadVaruint32Small7(c.Err()))
+	// Use VarUint32Small7 encoding to match Java's xlang serialization
+	return TypeId(c.buffer.ReadVarUint32Small7(c.Err()))
+}
+
+func (c *ReadContext) getTypeInfoByType(type_ reflect.Type) *TypeInfo {
+	if type_ == nil {
+		return nil
+	}
+	typePtr := typePointer(type_)
+	if typePtr == c.lastTypePtr && c.lastTypeInfo != nil {
+		return c.lastTypeInfo
+	}
+	info := c.typeResolver.getTypeInfoByType(type_)
+	if info != nil {
+		c.lastTypePtr = typePtr
+		c.lastTypeInfo = info
+	}
+	return info
 }
 
 // readFast reads a value using fast path based on DispatchId
@@ -222,7 +240,7 @@ func (c *ReadContext) ReadAndValidateTypeId(expected TypeId) {
 // ReadLength reads a length value as varint (non-negative values)
 func (c *ReadContext) ReadLength() int {
 	err := c.Err()
-	return int(c.buffer.ReadVaruint32(err))
+	return int(c.buffer.ReadVarUint32(err))
 }
 
 // ============================================================================
@@ -246,7 +264,7 @@ func (c *ReadContext) ReadBoolSlice(refMode RefMode, readType bool) []bool {
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return ReadBoolSlice(c.buffer, err)
 }
@@ -260,7 +278,7 @@ func (c *ReadContext) ReadInt8Slice(refMode RefMode, readType bool) []int8 {
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return ReadInt8Slice(c.buffer, err)
 }
@@ -274,7 +292,7 @@ func (c *ReadContext) ReadInt16Slice(refMode RefMode, readType bool) []int16 {
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return ReadInt16Slice(c.buffer, err)
 }
@@ -288,7 +306,7 @@ func (c *ReadContext) ReadInt32Slice(refMode RefMode, readType bool) []int32 {
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return ReadInt32Slice(c.buffer, err)
 }
@@ -302,7 +320,7 @@ func (c *ReadContext) ReadInt64Slice(refMode RefMode, readType bool) []int64 {
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return ReadInt64Slice(c.buffer, err)
 }
@@ -316,7 +334,7 @@ func (c *ReadContext) ReadIntSlice(refMode RefMode, readType bool) []int {
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return ReadIntSlice(c.buffer, err)
 }
@@ -330,7 +348,7 @@ func (c *ReadContext) ReadUintSlice(refMode RefMode, readType bool) []uint {
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return ReadUintSlice(c.buffer, err)
 }
@@ -344,7 +362,7 @@ func (c *ReadContext) ReadFloat32Slice(refMode RefMode, readType bool) []float32
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return ReadFloat32Slice(c.buffer, err)
 }
@@ -358,7 +376,7 @@ func (c *ReadContext) ReadFloat64Slice(refMode RefMode, readType bool) []float64
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return ReadFloat64Slice(c.buffer, err)
 }
@@ -372,7 +390,7 @@ func (c *ReadContext) ReadByteSlice(refMode RefMode, readType bool) []byte {
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	size := c.buffer.ReadLength(err)
 	return c.buffer.ReadBinary(size, err)
@@ -387,7 +405,7 @@ func (c *ReadContext) ReadStringSlice(refMode RefMode, readType bool) []string {
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return ReadStringSlice(c.buffer, err)
 }
@@ -401,7 +419,7 @@ func (c *ReadContext) ReadStringStringMap(refMode RefMode, readType bool) map[st
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return readMapStringString(c.buffer, err)
 }
@@ -415,7 +433,7 @@ func (c *ReadContext) ReadStringInt64Map(refMode RefMode, readType bool) map[str
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return readMapStringInt64(c.buffer, err)
 }
@@ -429,7 +447,7 @@ func (c *ReadContext) ReadStringInt32Map(refMode RefMode, readType bool) map[str
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return readMapStringInt32(c.buffer, err)
 }
@@ -443,7 +461,7 @@ func (c *ReadContext) ReadStringIntMap(refMode RefMode, readType bool) map[strin
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return readMapStringInt(c.buffer, err)
 }
@@ -457,7 +475,7 @@ func (c *ReadContext) ReadStringFloat64Map(refMode RefMode, readType bool) map[s
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return readMapStringFloat64(c.buffer, err)
 }
@@ -471,7 +489,7 @@ func (c *ReadContext) ReadStringBoolMap(refMode RefMode, readType bool) map[stri
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return readMapStringBool(c.buffer, err)
 }
@@ -485,7 +503,7 @@ func (c *ReadContext) ReadInt32Int32Map(refMode RefMode, readType bool) map[int3
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return readMapInt32Int32(c.buffer, err)
 }
@@ -499,7 +517,7 @@ func (c *ReadContext) ReadInt64Int64Map(refMode RefMode, readType bool) map[int6
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return readMapInt64Int64(c.buffer, err)
 }
@@ -513,7 +531,7 @@ func (c *ReadContext) ReadIntIntMap(refMode RefMode, readType bool) map[int]int 
 		}
 	}
 	if readType {
-		_ = c.buffer.ReadVaruint32Small7(err)
+		_ = c.buffer.ReadVarUint32Small7(err)
 	}
 	return readMapIntInt(c.buffer, err)
 }
@@ -671,9 +689,15 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		return
 	}
 
-	// For struct types, use optimized ReadStruct path when using full ref tracking and type info
+	if typeInfo := c.getTypeInfoByType(value.Type()); typeInfo != nil && typeInfo.Serializer != nil {
+		typeInfo.Serializer.Read(c, refMode, readType, false, value)
+		return
+	}
+
+	// For struct types, use optimized ReadStruct path when using full ref tracking and type info.
+	// Unions use a custom serializer and must bypass ReadStruct.
 	valueType := value.Type()
-	if refMode == RefModeTracking && readType {
+	if refMode == RefModeTracking && readType && !c.typeResolver.IsUnionType(valueType) {
 		if valueType.Kind() == reflect.Struct {
 			c.ReadStruct(value)
 			return
@@ -813,7 +837,7 @@ func (c *ReadContext) ReadArrayValue(target reflect.Value, refMode RefMode, read
 
 	// Read type ID if requested (will be slice type in stream)
 	if readType {
-		c.buffer.ReadVaruint32Small7(c.Err())
+		c.buffer.ReadVarUint32Small7(c.Err())
 	}
 
 	// Get slice serializer to read the data

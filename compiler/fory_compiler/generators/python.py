@@ -18,9 +18,11 @@
 """Python code generator."""
 
 import keyword
-from typing import List, Optional, Set
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.ir.ast import (
     Message,
     Enum,
@@ -31,6 +33,7 @@ from fory_compiler.ir.ast import (
     NamedType,
     ListType,
     MapType,
+    Schema,
 )
 from fory_compiler.ir.types import PrimitiveKind
 
@@ -144,6 +147,104 @@ class PythonGenerator(BaseGenerator):
             return f"{name}_"
         return name
 
+    def is_imported_type(self, type_def: object) -> bool:
+        """Return True if a type definition comes from an imported IDL file."""
+        if not self.schema.source_file:
+            return False
+        location = getattr(type_def, "location", None)
+        if location is None or not location.file:
+            return False
+        try:
+            return (
+                Path(location.file).resolve() != Path(self.schema.source_file).resolve()
+            )
+        except Exception:
+            return location.file != self.schema.source_file
+
+    def split_imported_types(
+        self, items: List[object]
+    ) -> Tuple[List[object], List[object]]:
+        imported: List[object] = []
+        local: List[object] = []
+        for item in items:
+            if self.is_imported_type(item):
+                imported.append(item)
+            else:
+                local.append(item)
+        return imported, local
+
+    def _load_schema(self, file_path: str) -> Optional[Schema]:
+        if not file_path:
+            return None
+        if not hasattr(self, "_schema_cache"):
+            self._schema_cache = {}
+        cache: Dict[Path, Schema] = self._schema_cache
+        path = Path(file_path).resolve()
+        if path in cache:
+            return cache[path]
+        try:
+            schema = parse_idl_file(path)
+        except Exception:
+            return None
+        cache[path] = schema
+        return schema
+
+    def _module_name_for_schema(self, schema: Schema) -> str:
+        if schema.package:
+            return schema.package.replace(".", "_")
+        return "generated"
+
+    def _module_name_for_type(self, type_def: object) -> Optional[str]:
+        location = getattr(type_def, "location", None)
+        file_path = getattr(location, "file", None) if location else None
+        schema = self._load_schema(file_path)
+        if schema is None:
+            return None
+        return self._module_name_for_schema(schema)
+
+    def _collect_imported_modules(self) -> List[str]:
+        modules: Set[str] = set()
+        for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
+            if not self.is_imported_type(type_def):
+                continue
+            module = self._module_name_for_type(type_def)
+            if module:
+                modules.add(module)
+        ordered: List[str] = []
+        used: Set[str] = set()
+        if self.schema.source_file:
+            base_dir = Path(self.schema.source_file).resolve().parent
+            for imp in self.schema.imports:
+                candidate = (base_dir / imp.path).resolve()
+                schema = self._load_schema(str(candidate))
+                if schema is None:
+                    continue
+                module = self._module_name_for_schema(schema)
+                if module in used:
+                    continue
+                ordered.append(module)
+                used.add(module)
+        for module in sorted(modules):
+            if module in used:
+                continue
+            ordered.append(module)
+        return ordered
+
+    def generate_bytes_methods(self, return_type: str, indent: int) -> List[str]:
+        ind = "    " * indent
+        lines = []
+        lines.append(f"{ind}    def to_bytes(self) -> bytes:")
+        lines.append(f"{ind}        return _get_fory().serialize(self)")
+        lines.append("")
+        lines.append(f"{ind}    @classmethod")
+        lines.append(f'{ind}    def from_bytes(cls, data: bytes) -> "{return_type}":')
+        lines.append(f"{ind}        return _get_fory().deserialize(data)")
+        lines.append("")
+        lines.append(f"{ind}    def __bytes__(self) -> bytes:")
+        lines.append(f"{ind}        return self.to_bytes()")
+        lines.append("")
+        return lines
+
     def generate(self) -> List[GeneratedFile]:
         """Generate Python files for the schema."""
         files = []
@@ -169,6 +270,11 @@ class PythonGenerator(BaseGenerator):
         imports.add("from enum import Enum, IntEnum")
         imports.add("from typing import Dict, List, Optional, cast")
         imports.add("import pyfory")
+        imports.add("import threading")
+        if self.schema_has_ref_elements():
+            imports.add("from pyfory import Ref")
+        for module in self._collect_imported_modules():
+            imports.add(f"import {module}")
 
         for message in self.schema.messages:
             self.collect_message_imports(message, imports)
@@ -189,24 +295,32 @@ class PythonGenerator(BaseGenerator):
 
         # Generate enums (top-level only)
         for enum in self.schema.enums:
+            if self.is_imported_type(enum):
+                continue
             lines.extend(self.generate_enum(enum))
             lines.append("")
             lines.append("")
 
         # Generate unions (top-level only)
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             lines.extend(self.generate_union(union))
             lines.append("")
             lines.append("")
 
         # Generate messages (including nested types)
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             lines.extend(self.generate_message(message, indent=0))
             lines.append("")
             lines.append("")
 
         # Generate registration function
         lines.extend(self.generate_registration())
+        lines.append("")
+        lines.extend(self.generate_fory_helpers())
         lines.append("")
 
         return GeneratedFile(
@@ -281,25 +395,20 @@ class PythonGenerator(BaseGenerator):
             lines.append("")
 
         # Generate fields
-        if (
-            not message.fields
-            and not message.nested_enums
-            and not message.nested_unions
-            and not message.nested_messages
-        ):
-            lines.append(f"{ind}    pass")
-            return lines
-
         for field in message.fields:
             field_lines = self.generate_field(field, lineage)
             for line in field_lines:
                 lines.append(f"{ind}    {line}")
 
-        # If there are nested types but no fields, add pass to avoid empty class body issues
-        if not message.fields and (
-            message.nested_enums or message.nested_unions or message.nested_messages
+        if (
+            message.fields
+            or message.nested_enums
+            or message.nested_unions
+            or message.nested_messages
         ):
-            lines.append(f"{ind}    pass")
+            lines.append("")
+
+        lines.extend(self.generate_bytes_methods(message.name, indent))
 
         return lines
 
@@ -424,6 +533,8 @@ class PythonGenerator(BaseGenerator):
             lines.append(f"{ind}        self._validate()")
             lines.append("")
 
+        lines.extend(self.generate_bytes_methods(union_ref, indent))
+
         lines.extend(self.generate_union_serializer(union, indent, parent_stack))
 
         return lines
@@ -472,6 +583,7 @@ class PythonGenerator(BaseGenerator):
             field.field_type,
             nullable,
             field.element_optional,
+            field.element_ref,
             parent_stack,
         )
         field_name = self.safe_name(self.to_snake_case(field.name))
@@ -533,6 +645,7 @@ class PythonGenerator(BaseGenerator):
         field_type: FieldType,
         nullable: bool = False,
         element_optional: bool = False,
+        element_ref: bool = False,
         parent_stack: Optional[List[Message]] = None,
     ) -> str:
         """Generate Python type hint."""
@@ -546,6 +659,11 @@ class PythonGenerator(BaseGenerator):
 
         elif isinstance(field_type, NamedType):
             type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
+            named_type = self.schema.get_type(field_type.name)
+            if named_type is not None and self.is_imported_type(named_type):
+                module = self._module_name_for_type(named_type)
+                if module:
+                    type_name = f"{module}.{type_name}"
             if nullable:
                 return f"Optional[{type_name}]"
             return type_name
@@ -560,23 +678,50 @@ class PythonGenerator(BaseGenerator):
                     else:
                         element_type = self.generate_type(
                             field_type.element_type,
-                            element_optional,
+                            False,
+                            False,
+                            False,
                             parent_stack,
                         )
+                        element_type = self.wrap_ref_type(
+                            field_type.element_type,
+                            element_type,
+                            element_ref=element_ref,
+                        )
+                        if element_optional:
+                            element_type = f"Optional[{element_type}]"
                         list_type = f"List[{element_type}]"
                 else:
                     element_type = self.generate_type(
                         field_type.element_type,
-                        element_optional,
+                        False,
+                        False,
+                        False,
                         parent_stack,
                     )
+                    element_type = self.wrap_ref_type(
+                        field_type.element_type,
+                        element_type,
+                        element_ref=element_ref,
+                    )
+                    if element_optional:
+                        element_type = f"Optional[{element_type}]"
                     list_type = f"List[{element_type}]"
             else:
                 element_type = self.generate_type(
                     field_type.element_type,
-                    element_optional,
+                    False,
+                    False,
+                    False,
                     parent_stack,
                 )
+                element_type = self.wrap_ref_type(
+                    field_type.element_type,
+                    element_type,
+                    element_ref=element_ref,
+                )
+                if element_optional:
+                    element_type = f"Optional[{element_type}]"
                 list_type = f"List[{element_type}]"
             if nullable:
                 return f"Optional[{list_type}]"
@@ -584,10 +729,15 @@ class PythonGenerator(BaseGenerator):
 
         elif isinstance(field_type, MapType):
             key_type = self.generate_type(
-                field_type.key_type, False, False, parent_stack
+                field_type.key_type, False, False, False, parent_stack
             )
             value_type = self.generate_type(
-                field_type.value_type, False, False, parent_stack
+                field_type.value_type, False, False, False, parent_stack
+            )
+            value_type = self.wrap_ref_type(
+                field_type.value_type,
+                value_type,
+                element_ref=field_type.value_ref,
             )
             map_type = f"Dict[{key_type}, {value_type}]"
             if nullable:
@@ -595,6 +745,54 @@ class PythonGenerator(BaseGenerator):
             return map_type
 
         return "object"
+
+    def schema_has_ref_elements(self) -> bool:
+        for message in self.schema.messages:
+            if self.message_has_ref_elements(message):
+                return True
+        for union in self.schema.unions:
+            for field in union.fields:
+                if self.field_uses_ref_type(field):
+                    return True
+        return False
+
+    def message_has_ref_elements(self, message: Message) -> bool:
+        for field in message.fields:
+            if self.field_uses_ref_type(field):
+                return True
+        for nested_msg in message.nested_messages:
+            if self.message_has_ref_elements(nested_msg):
+                return True
+        for nested_union in message.nested_unions:
+            for field in nested_union.fields:
+                if self.field_uses_ref_type(field):
+                    return True
+        return False
+
+    def field_uses_ref_type(self, field: Field) -> bool:
+        if isinstance(field.field_type, ListType):
+            return self.is_ref_target_type(field.field_type.element_type)
+        if isinstance(field.field_type, MapType):
+            return self.is_ref_target_type(field.field_type.value_type)
+        return False
+
+    def is_ref_target_type(self, field_type: FieldType) -> bool:
+        if not isinstance(field_type, NamedType):
+            return False
+        resolved = self.schema.get_type(field_type.name)
+        return isinstance(resolved, (Message, Union))
+
+    def wrap_ref_type(
+        self,
+        field_type: FieldType,
+        element_type: str,
+        element_ref: bool,
+    ) -> str:
+        if not self.is_ref_target_type(field_type):
+            return element_type
+        if element_ref:
+            return f"Ref[{element_type}]"
+        return f"Ref[{element_type}, False]"
 
     def get_union_case_type(
         self, field: Field, parent_stack: Optional[List[Message]] = None
@@ -604,6 +802,7 @@ class PythonGenerator(BaseGenerator):
             field.field_type,
             nullable=False,
             element_optional=field.element_optional,
+            element_ref=field.element_ref,
             parent_stack=parent_stack,
         )
 
@@ -712,6 +911,13 @@ class PythonGenerator(BaseGenerator):
             self.collect_imports(field_type.key_type, imports)
             self.collect_imports(field_type.value_type, imports)
 
+        elif isinstance(field_type, NamedType):
+            named_type = self.schema.get_type(field_type.name)
+            if named_type is not None and self.is_imported_type(named_type):
+                module = self._module_name_for_type(named_type)
+                if module:
+                    imports.add(f"import {module}")
+
     def collect_field_imports(self, field: Field, imports: Set[str]):
         """Collect imports for a field, including list modifiers."""
         self.collect_imports(field.field_type, imports, field.element_optional)
@@ -733,16 +939,45 @@ class PythonGenerator(BaseGenerator):
 
         # Register enums (top-level)
         for enum in self.schema.enums:
+            if self.is_imported_type(enum):
+                continue
             self.generate_enum_registration(lines, enum, "")
 
         # Register unions (top-level)
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             self.generate_union_registration(lines, union, "")
 
         # Register messages (including nested types)
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             self.generate_message_registration(lines, message, "")
 
+        return lines
+
+    def generate_fory_helpers(self) -> List[str]:
+        lines = []
+        lines.append("_fory_lock = threading.Lock()")
+        lines.append("_threadsafe_fory = None")
+        lines.append("")
+        lines.append("def _create_fory() -> pyfory.Fory:")
+        lines.append("    fory = pyfory.Fory(xlang=True, ref=True, compatible=True)")
+        for module in self._collect_imported_modules():
+            lines.append(f"    {module}.register_{module}_types(fory)")
+        lines.append(f"    register_{self.get_module_name()}_types(fory)")
+        lines.append("    return fory")
+        lines.append("")
+        lines.append("def _get_fory() -> pyfory.ThreadSafeFory:")
+        lines.append("    global _threadsafe_fory")
+        lines.append("    if _threadsafe_fory is None:")
+        lines.append("        with _fory_lock:")
+        lines.append("            if _threadsafe_fory is None:")
+        lines.append(
+            "                _threadsafe_fory = pyfory.ThreadSafeFory(fory_factory=_create_fory)"
+        )
+        lines.append("    return _threadsafe_fory")
         return lines
 
     def generate_enum_registration(

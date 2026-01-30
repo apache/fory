@@ -35,7 +35,7 @@ namespace detail {
 
 template <typename Enum>
 using AdlEnumInfoDescriptor =
-    decltype(ForyEnumInfo(std::declval<Identity<Enum>>()));
+    decltype(fory_enum_info(std::declval<Identity<Enum>>()));
 
 template <typename Enum, typename = void>
 struct HasAdlEnumInfo : std::false_type {};
@@ -208,7 +208,7 @@ struct EnumMetadata<Enum, std::enable_if_t<EnumInfo<Enum>::defined>> {
       return std::string_view();                                               \
     }                                                                          \
   };                                                                           \
-  constexpr auto ForyEnumInfo(::fory::meta::Identity<EnumType>) {              \
+  constexpr auto fory_enum_info(::fory::meta::Identity<EnumType>) {            \
     return FORY_ENUM_DESCRIPTOR_NAME(line){};                                  \
   }                                                                            \
   static_assert(true)

@@ -159,7 +159,7 @@ FORY_STRUCT(MediaContent, media, images);
 // Test data creation
 // ============================================================================
 
-NumericStruct CreateNumericStruct() {
+NumericStruct create_numeric_struct() {
   // Use mixed positive/negative int32 values for realistic benchmark
   return NumericStruct{
       -12345,     // f1: negative
@@ -179,7 +179,7 @@ NumericStruct CreateNumericStruct() {
 // ============================================================================
 
 /// Convert plain C++ struct to protobuf message (for serialization)
-inline protobuf::Struct ToPbStruct(const NumericStruct &obj) {
+inline protobuf::Struct to_pb_struct(const NumericStruct &obj) {
   protobuf::Struct pb;
   pb.set_f1(obj.f1);
   pb.set_f2(obj.f2);
@@ -193,7 +193,7 @@ inline protobuf::Struct ToPbStruct(const NumericStruct &obj) {
 }
 
 /// Convert protobuf message to plain C++ struct (for deserialization)
-inline NumericStruct FromPbStruct(const protobuf::Struct &pb) {
+inline NumericStruct from_pb_struct(const protobuf::Struct &pb) {
   NumericStruct obj;
   obj.f1 = pb.f1();
   obj.f2 = pb.f2();
@@ -206,11 +206,11 @@ inline NumericStruct FromPbStruct(const protobuf::Struct &pb) {
   return obj;
 }
 
-protobuf::Struct CreateProtoStruct() {
-  return ToPbStruct(CreateNumericStruct());
+protobuf::Struct create_proto_struct() {
+  return to_pb_struct(create_numeric_struct());
 }
 
-Sample CreateSample() {
+Sample create_sample() {
   // Consistent with Java Sample.populate() for fair cross-language comparison
   Sample sample;
   sample.int_value = 123;
@@ -245,7 +245,7 @@ Sample CreateSample() {
   return sample;
 }
 
-protobuf::Sample CreateProtoSample() {
+protobuf::Sample create_proto_sample() {
   // Consistent with Java Sample.populate() for fair cross-language comparison
   protobuf::Sample sample;
   sample.set_int_value(123);
@@ -292,7 +292,7 @@ protobuf::Sample CreateProtoSample() {
   return sample;
 }
 
-MediaContent CreateMediaContent() {
+MediaContent create_media_content() {
   // Matches Java MediaContent.populate(false) - no circular reference
   MediaContent content;
 
@@ -321,7 +321,7 @@ MediaContent CreateMediaContent() {
 }
 
 /// Convert Image to protobuf
-inline protobuf::Image ToPbImage(const Image &img) {
+inline protobuf::Image to_pb_image(const Image &img) {
   protobuf::Image pb;
   pb.set_uri(img.uri);
   if (!img.title.empty()) {
@@ -334,7 +334,7 @@ inline protobuf::Image ToPbImage(const Image &img) {
 }
 
 /// Convert Media to protobuf
-inline protobuf::Media ToPbMedia(const Media &m) {
+inline protobuf::Media to_pb_media(const Media &m) {
   protobuf::Media pb;
   pb.set_uri(m.uri);
   if (!m.title.empty()) {
@@ -356,17 +356,17 @@ inline protobuf::Media ToPbMedia(const Media &m) {
 }
 
 /// Convert MediaContent to protobuf
-inline protobuf::MediaContent ToPbMediaContent(const MediaContent &mc) {
+inline protobuf::MediaContent to_pb_mediaContent(const MediaContent &mc) {
   protobuf::MediaContent pb;
-  *pb.mutable_media() = ToPbMedia(mc.media);
+  *pb.mutable_media() = to_pb_media(mc.media);
   for (const auto &img : mc.images) {
-    *pb.add_images() = ToPbImage(img);
+    *pb.add_images() = to_pb_image(img);
   }
   return pb;
 }
 
 /// Convert protobuf to Image
-inline Image FromPbImage(const protobuf::Image &pb) {
+inline Image from_pb_image(const protobuf::Image &pb) {
   Image img;
   img.uri = pb.uri();
   img.title = pb.has_title() ? pb.title() : "";
@@ -377,7 +377,7 @@ inline Image FromPbImage(const protobuf::Image &pb) {
 }
 
 /// Convert protobuf to Media
-inline Media FromPbMedia(const protobuf::Media &pb) {
+inline Media from_pb_media(const protobuf::Media &pb) {
   Media m;
   m.uri = pb.uri();
   m.title = pb.has_title() ? pb.title() : "";
@@ -397,24 +397,24 @@ inline Media FromPbMedia(const protobuf::Media &pb) {
 }
 
 /// Convert protobuf to MediaContent
-inline MediaContent FromPbMediaContent(const protobuf::MediaContent &pb) {
+inline MediaContent from_pb_mediaContent(const protobuf::MediaContent &pb) {
   MediaContent mc;
-  mc.media = FromPbMedia(pb.media());
+  mc.media = from_pb_media(pb.media());
   for (const auto &img : pb.images()) {
-    mc.images.push_back(FromPbImage(img));
+    mc.images.push_back(from_pb_image(img));
   }
   return mc;
 }
 
-protobuf::MediaContent CreateProtoMediaContent() {
-  return ToPbMediaContent(CreateMediaContent());
+protobuf::MediaContent create_proto_media_content() {
+  return to_pb_mediaContent(create_media_content());
 }
 
 // ============================================================================
 // Helper to configure Fory instance
 // ============================================================================
 
-void RegisterForyTypes(fory::serialization::Fory &fory) {
+void register_fory_types(fory::serialization::Fory &fory) {
   fory.register_struct<NumericStruct>(1);
   fory.register_struct<Sample>(2);
   fory.register_struct<Media>(3);
@@ -432,15 +432,15 @@ static void BM_Fory_Struct_Serialize(benchmark::State &state) {
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
-  RegisterForyTypes(fory);
-  NumericStruct obj = CreateNumericStruct();
+  register_fory_types(fory);
+  NumericStruct obj = create_numeric_struct();
 
   // Reuse internal buffer
   fory::Buffer buffer;
-  buffer.Reserve(64);
+  buffer.reserve(64);
 
   for (auto _ : state) {
-    buffer.WriterIndex(0);
+    buffer.writer_index(0);
     fory.serialize_to(buffer, obj);
     benchmark::DoNotOptimize(buffer.data());
   }
@@ -450,13 +450,13 @@ BENCHMARK(BM_Fory_Struct_Serialize);
 // Fair comparison: convert plain C++ struct to protobuf, then serialize
 // (Same pattern as Java benchmark's buildPBStruct().toByteArray())
 static void BM_Protobuf_Struct_Serialize(benchmark::State &state) {
-  NumericStruct obj = CreateNumericStruct();
-  protobuf::Struct pb = ToPbStruct(obj);
+  NumericStruct obj = create_numeric_struct();
+  protobuf::Struct pb = to_pb_struct(obj);
   std::vector<uint8_t> output;
   output.resize(pb.ByteSizeLong());
 
   for (auto _ : state) {
-    pb = ToPbStruct(obj);
+    pb = to_pb_struct(obj);
     pb.SerializeToArray(output.data(), static_cast<int>(output.size()));
     benchmark::DoNotOptimize(output);
   }
@@ -469,8 +469,8 @@ static void BM_Fory_Struct_Deserialize(benchmark::State &state) {
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
-  RegisterForyTypes(fory);
-  NumericStruct obj = CreateNumericStruct();
+  register_fory_types(fory);
+  NumericStruct obj = create_numeric_struct();
   auto serialized = fory.serialize(obj);
   if (!serialized.ok()) {
     state.SkipWithError("Serialization failed");
@@ -496,14 +496,14 @@ BENCHMARK(BM_Fory_Struct_Deserialize);
 // Fair comparison: deserialize and convert protobuf to plain C++ struct
 // (Same pattern as Java benchmark's fromPBObject())
 static void BM_Protobuf_Struct_Deserialize(benchmark::State &state) {
-  protobuf::Struct obj = CreateProtoStruct();
+  protobuf::Struct obj = create_proto_struct();
   std::string serialized;
   obj.SerializeToString(&serialized);
 
   for (auto _ : state) {
     protobuf::Struct pb_result;
     pb_result.ParseFromString(serialized);
-    NumericStruct result = FromPbStruct(pb_result);
+    NumericStruct result = from_pb_struct(pb_result);
     benchmark::DoNotOptimize(result);
   }
 }
@@ -519,15 +519,15 @@ static void BM_Fory_Sample_Serialize(benchmark::State &state) {
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
-  RegisterForyTypes(fory);
-  Sample obj = CreateSample();
+  register_fory_types(fory);
+  Sample obj = create_sample();
 
   // Pre-allocate buffer (like Protobuf benchmark does)
   fory::Buffer buffer;
-  buffer.Reserve(4096);
+  buffer.reserve(4096);
 
   for (auto _ : state) {
-    buffer.WriterIndex(0);
+    buffer.writer_index(0);
     auto result = fory.serialize_to(buffer, obj);
     benchmark::DoNotOptimize(result);
     benchmark::DoNotOptimize(buffer.data());
@@ -536,7 +536,7 @@ static void BM_Fory_Sample_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Fory_Sample_Serialize);
 
 static void BM_Protobuf_Sample_Serialize(benchmark::State &state) {
-  protobuf::Sample obj = CreateProtoSample();
+  protobuf::Sample obj = create_proto_sample();
   std::vector<uint8_t> output;
   output.resize(obj.ByteSizeLong());
 
@@ -553,8 +553,8 @@ static void BM_Fory_Sample_Deserialize(benchmark::State &state) {
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
-  RegisterForyTypes(fory);
-  Sample obj = CreateSample();
+  register_fory_types(fory);
+  Sample obj = create_sample();
   auto serialized = fory.serialize(obj);
   if (!serialized.ok()) {
     state.SkipWithError("Serialization failed");
@@ -577,7 +577,7 @@ static void BM_Fory_Sample_Deserialize(benchmark::State &state) {
 BENCHMARK(BM_Fory_Sample_Deserialize);
 
 static void BM_Protobuf_Sample_Deserialize(benchmark::State &state) {
-  protobuf::Sample obj = CreateProtoSample();
+  protobuf::Sample obj = create_proto_sample();
   std::string serialized;
   obj.SerializeToString(&serialized);
 
@@ -599,15 +599,15 @@ static void BM_Fory_MediaContent_Serialize(benchmark::State &state) {
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
-  RegisterForyTypes(fory);
-  MediaContent obj = CreateMediaContent();
+  register_fory_types(fory);
+  MediaContent obj = create_media_content();
 
   // Pre-allocate buffer
   fory::Buffer buffer;
-  buffer.Reserve(4096);
+  buffer.reserve(4096);
 
   for (auto _ : state) {
-    buffer.WriterIndex(0);
+    buffer.writer_index(0);
     auto result = fory.serialize_to(buffer, obj);
     benchmark::DoNotOptimize(result);
     benchmark::DoNotOptimize(buffer.data());
@@ -616,13 +616,13 @@ static void BM_Fory_MediaContent_Serialize(benchmark::State &state) {
 BENCHMARK(BM_Fory_MediaContent_Serialize);
 
 static void BM_Protobuf_MediaContent_Serialize(benchmark::State &state) {
-  MediaContent obj = CreateMediaContent();
-  protobuf::MediaContent pb = ToPbMediaContent(obj);
+  MediaContent obj = create_media_content();
+  protobuf::MediaContent pb = to_pb_mediaContent(obj);
   std::vector<uint8_t> output;
   output.resize(pb.ByteSizeLong());
 
   for (auto _ : state) {
-    pb = ToPbMediaContent(obj);
+    pb = to_pb_mediaContent(obj);
     pb.SerializeToArray(output.data(), static_cast<int>(output.size()));
     benchmark::DoNotOptimize(output);
   }
@@ -635,8 +635,8 @@ static void BM_Fory_MediaContent_Deserialize(benchmark::State &state) {
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
-  RegisterForyTypes(fory);
-  MediaContent obj = CreateMediaContent();
+  register_fory_types(fory);
+  MediaContent obj = create_media_content();
   auto serialized = fory.serialize(obj);
   if (!serialized.ok()) {
     state.SkipWithError("Serialization failed");
@@ -659,14 +659,14 @@ static void BM_Fory_MediaContent_Deserialize(benchmark::State &state) {
 BENCHMARK(BM_Fory_MediaContent_Deserialize);
 
 static void BM_Protobuf_MediaContent_Deserialize(benchmark::State &state) {
-  protobuf::MediaContent obj = CreateProtoMediaContent();
+  protobuf::MediaContent obj = create_proto_media_content();
   std::string serialized;
   obj.SerializeToString(&serialized);
 
   for (auto _ : state) {
     protobuf::MediaContent pb_result;
     pb_result.ParseFromString(serialized);
-    MediaContent result = FromPbMediaContent(pb_result);
+    MediaContent result = from_pb_mediaContent(pb_result);
     benchmark::DoNotOptimize(result);
   }
 }
@@ -683,18 +683,18 @@ static void BM_PrintSerializedSizes(benchmark::State &state) {
                   .track_ref(false)
                   .check_struct_version(false)
                   .build();
-  RegisterForyTypes(fory);
-  NumericStruct fory_struct = CreateNumericStruct();
-  Sample fory_sample = CreateSample();
-  MediaContent fory_media = CreateMediaContent();
+  register_fory_types(fory);
+  NumericStruct fory_struct = create_numeric_struct();
+  Sample fory_sample = create_sample();
+  MediaContent fory_media = create_media_content();
   auto fory_struct_bytes = fory.serialize(fory_struct).value();
   auto fory_sample_bytes = fory.serialize(fory_sample).value();
   auto fory_media_bytes = fory.serialize(fory_media).value();
 
   // Protobuf
-  protobuf::Struct proto_struct = CreateProtoStruct();
-  protobuf::Sample proto_sample = CreateProtoSample();
-  protobuf::MediaContent proto_media = CreateProtoMediaContent();
+  protobuf::Struct proto_struct = create_proto_struct();
+  protobuf::Sample proto_sample = create_proto_sample();
+  protobuf::MediaContent proto_media = create_proto_media_content();
   std::string proto_struct_bytes, proto_sample_bytes, proto_media_bytes;
   proto_struct.SerializeToString(&proto_struct_bytes);
   proto_sample.SerializeToString(&proto_sample_bytes);

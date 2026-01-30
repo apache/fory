@@ -27,7 +27,8 @@ import addressbook.Dog;
 import addressbook.Person;
 import addressbook.Person.PhoneNumber;
 import addressbook.Person.PhoneType;
-import addressbook.PrimitiveTypes;
+import complex_pb.ComplexPbForyRegistration;
+import complex_pb.PrimitiveTypes;
 import any_example.AnyExampleForyRegistration;
 import any_example.AnyHolder;
 import any_example.AnyInner;
@@ -43,6 +44,7 @@ import graph.Edge;
 import graph.Graph;
 import graph.GraphForyRegistration;
 import graph.Node;
+import root.MultiHolder;
 import optional_types.AllOptionalTypes;
 import optional_types.OptionalHolder;
 import optional_types.OptionalTypesForyRegistration;
@@ -105,9 +107,59 @@ public class IdlRoundTripTest {
   }
 
   @Test
+  public void testToBytesFromBytes() {
+    AddressBook book = buildAddressBook();
+    byte[] bookBytes = book.toBytes();
+    AddressBook decodedBook = AddressBook.fromBytes(bookBytes);
+    Assert.assertEquals(decodedBook, book);
+
+    Dog dog = new Dog();
+    dog.setName("Rex");
+    dog.setBarkVolume(5);
+    Animal animal = Animal.ofDog(dog);
+    byte[] animalBytes = animal.toBytes();
+    Animal decodedAnimal = Animal.fromBytes(animalBytes);
+    Assert.assertEquals(decodedAnimal, animal);
+
+    Person owner = new Person();
+    owner.setName("Alice");
+    owner.setId(123);
+    owner.setEmail("");
+    owner.setTags(Collections.emptyList());
+    owner.setScores(new HashMap<>());
+    owner.setSalary(0.0);
+    owner.setPhones(Collections.emptyList());
+    Dog rootDog = new Dog();
+    rootDog.setName("Rex");
+    rootDog.setBarkVolume(5);
+    owner.setPet(Animal.ofDog(rootDog));
+
+    AddressBook multiBook = new AddressBook();
+    multiBook.setPeople(Arrays.asList(owner));
+    Map<String, Person> peopleByName = new HashMap<>();
+    peopleByName.put(owner.getName(), owner);
+    multiBook.setPeopleByName(peopleByName);
+
+    TreeNode rootNode = new TreeNode();
+    rootNode.setId("root");
+    rootNode.setName("root");
+    rootNode.setChildren(Collections.emptyList());
+
+    MultiHolder multi = new MultiHolder();
+    multi.setBook(multiBook);
+    multi.setRoot(rootNode);
+    multi.setOwner(owner);
+
+    byte[] multiBytes = multi.toBytes();
+    MultiHolder decodedMulti = MultiHolder.fromBytes(multiBytes);
+    Assert.assertEquals(decodedMulti, multi);
+  }
+
+  @Test
   public void testPrimitiveTypesRoundTrip() throws Exception {
     Fory fory = Fory.builder().withLanguage(Language.XLANG).build();
     AddressbookForyRegistration.register(fory);
+    ComplexPbForyRegistration.register(fory);
 
     PrimitiveTypes types = buildPrimitiveTypes();
     byte[] bytes = fory.serialize(types);

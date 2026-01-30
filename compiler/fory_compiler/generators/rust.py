@@ -17,9 +17,11 @@
 
 """Rust code generator."""
 
-from typing import List, Optional, Set
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
 
 from fory_compiler.generators.base import BaseGenerator, GeneratedFile
+from fory_compiler.frontend.utils import parse_idl_file
 from fory_compiler.ir.ast import (
     Message,
     Enum,
@@ -30,6 +32,7 @@ from fory_compiler.ir.ast import (
     NamedType,
     ListType,
     MapType,
+    Schema,
 )
 from fory_compiler.ir.types import PrimitiveKind
 
@@ -82,6 +85,114 @@ class RustGenerator(BaseGenerator):
             return self.package.replace(".", "_")
         return "generated"
 
+    def is_imported_type(self, type_def: object) -> bool:
+        """Return True if a type definition comes from an imported IDL file."""
+        if not self.schema.source_file:
+            return False
+        location = getattr(type_def, "location", None)
+        if location is None or not location.file:
+            return False
+        try:
+            return (
+                Path(location.file).resolve() != Path(self.schema.source_file).resolve()
+            )
+        except Exception:
+            return location.file != self.schema.source_file
+
+    def split_imported_types(
+        self, items: List[object]
+    ) -> Tuple[List[object], List[object]]:
+        imported: List[object] = []
+        local: List[object] = []
+        for item in items:
+            if self.is_imported_type(item):
+                imported.append(item)
+            else:
+                local.append(item)
+        return imported, local
+
+    def _load_schema(self, file_path: str) -> Optional[Schema]:
+        if not file_path:
+            return None
+        if not hasattr(self, "_schema_cache"):
+            self._schema_cache = {}
+        cache: Dict[Path, Schema] = self._schema_cache
+        path = Path(file_path).resolve()
+        if path in cache:
+            return cache[path]
+        try:
+            schema = parse_idl_file(path)
+        except Exception:
+            return None
+        cache[path] = schema
+        return schema
+
+    def _module_name_for_schema(self, schema: Schema) -> str:
+        if schema.package:
+            return schema.package.replace(".", "_")
+        return "generated"
+
+    def _module_name_for_type(self, type_def: object) -> Optional[str]:
+        location = getattr(type_def, "location", None)
+        file_path = getattr(location, "file", None) if location else None
+        schema = self._load_schema(file_path)
+        if schema is None:
+            return None
+        return self._module_name_for_schema(schema)
+
+    def _collect_imported_modules(self) -> List[str]:
+        modules: Set[str] = set()
+        for type_def in self.schema.enums + self.schema.unions + self.schema.messages:
+            if not self.is_imported_type(type_def):
+                continue
+            module = self._module_name_for_type(type_def)
+            if module:
+                modules.add(module)
+        ordered: List[str] = []
+        used: Set[str] = set()
+        if self.schema.source_file:
+            base_dir = Path(self.schema.source_file).resolve().parent
+            for imp in self.schema.imports:
+                candidate = (base_dir / imp.path).resolve()
+                schema = self._load_schema(str(candidate))
+                if schema is None:
+                    continue
+                module = self._module_name_for_schema(schema)
+                if module in used:
+                    continue
+                ordered.append(module)
+                used.add(module)
+        for module in sorted(modules):
+            if module in used:
+                continue
+            ordered.append(module)
+        return ordered
+
+    def _format_imported_type_name(self, type_name: str, module: str) -> str:
+        if "." in type_name:
+            parts = type_name.split(".")
+            parents = [self.to_snake_case(name) for name in parts[:-1]]
+            path = "::".join(parents + [parts[-1]])
+            return f"crate::{module}::{path}"
+        return f"crate::{module}::{type_name}"
+
+    def generate_bytes_impl(self, type_name: str) -> List[str]:
+        lines = []
+        lines.append(f"impl {type_name} {{")
+        lines.append("    pub fn to_bytes(&self) -> Result<Vec<u8>, fory::Error> {")
+        lines.append("        let fory = detail::get_fory();")
+        lines.append("        fory.serialize(self)")
+        lines.append("    }")
+        lines.append("")
+        lines.append(
+            f"    pub fn from_bytes(data: &[u8]) -> Result<{type_name}, fory::Error> {{"
+        )
+        lines.append("        let fory = detail::get_fory();")
+        lines.append("        fory.deserialize(data)")
+        lines.append("    }")
+        lines.append("}")
+        return lines
+
     def generate_module(self) -> GeneratedFile:
         """Generate a Rust module with all types."""
         lines = []
@@ -89,6 +200,7 @@ class RustGenerator(BaseGenerator):
 
         # Collect uses (including from nested types)
         uses.add("use fory::{Fory, ForyObject}")
+        uses.add("use std::sync::OnceLock")
 
         for message in self.schema.messages:
             self.collect_message_uses(message, uses)
@@ -106,16 +218,22 @@ class RustGenerator(BaseGenerator):
 
         # Generate enums (top-level)
         for enum in self.schema.enums:
+            if self.is_imported_type(enum):
+                continue
             lines.extend(self.generate_enum(enum))
             lines.append("")
 
         # Generate unions (top-level)
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             lines.extend(self.generate_union(union))
             lines.append("")
 
         # Generate modules for nested types
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             module_lines = self.generate_nested_module(message)
             if module_lines:
                 lines.extend(module_lines)
@@ -123,11 +241,15 @@ class RustGenerator(BaseGenerator):
 
         # Generate messages (top-level only)
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             lines.extend(self.generate_message(message))
             lines.append("")
 
         # Generate registration function
         lines.extend(self.generate_registration())
+        lines.append("")
+        lines.extend(self.generate_fory_helpers())
         lines.append("")
 
         return GeneratedFile(
@@ -268,6 +390,9 @@ class RustGenerator(BaseGenerator):
             lines.append(f"        Self::{first_variant}(Default::default())")
             lines.append("    }")
             lines.append("}")
+            lines.append("")
+
+        lines.extend(self.generate_bytes_impl(union.name))
 
         return lines
 
@@ -297,6 +422,8 @@ class RustGenerator(BaseGenerator):
                 lines.append(f"    {line}")
 
         lines.append("}")
+        lines.append("")
+        lines.extend(self.generate_bytes_impl(type_name))
 
         return lines
 
@@ -495,6 +622,11 @@ class RustGenerator(BaseGenerator):
 
         elif isinstance(field_type, NamedType):
             type_name = self.resolve_nested_type_name(field_type.name, parent_stack)
+            named_type = self.schema.get_type(field_type.name)
+            if named_type is not None and self.is_imported_type(named_type):
+                module = self._module_name_for_type(named_type)
+                if module:
+                    type_name = self._format_imported_type_name(field_type.name, module)
             if ref:
                 type_name = f"{pointer_type}<{type_name}>"
             if nullable:
@@ -636,19 +768,50 @@ class RustGenerator(BaseGenerator):
 
         # Register enums (top-level)
         for enum in self.schema.enums:
+            if self.is_imported_type(enum):
+                continue
             self.generate_enum_registration(lines, enum, None)
 
         # Register unions (top-level)
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             self.generate_union_registration(lines, union, None)
 
         # Register messages (including nested types)
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             self.generate_message_registration(lines, message, None)
 
         lines.append("    Ok(())")
         lines.append("}")
 
+        return lines
+
+    def generate_fory_helpers(self) -> List[str]:
+        lines: List[str] = []
+        lines.append("mod detail {")
+        lines.append("    use super::*;")
+        lines.append("")
+        lines.append("    pub(super) fn get_fory() -> &'static Fory {")
+        lines.append("        static FORY: OnceLock<Fory> = OnceLock::new();")
+        lines.append("        FORY.get_or_init(|| {")
+        lines.append("            let mut fory = Fory::default()")
+        lines.append("                .xlang(true)")
+        lines.append("                .track_ref(true)")
+        lines.append("                .compatible(true);")
+        for module in self._collect_imported_modules():
+            lines.append(
+                f'            crate::{module}::register_types(&mut fory).expect("failed to register fory types");'
+            )
+        lines.append(
+            '            register_types(&mut fory).expect("failed to register fory types");'
+        )
+        lines.append("            fory")
+        lines.append("        })")
+        lines.append("    }")
+        lines.append("}")
         return lines
 
     def generate_enum_registration(

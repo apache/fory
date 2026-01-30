@@ -23,6 +23,39 @@ import typing
 from typing import TypeVar
 from abc import ABC, abstractmethod
 
+from pyfory.types import RefMeta
+
+
+def get_type_hints(type_):
+    try:
+        return typing.get_type_hints(type_, include_extras=True)
+    except TypeError:
+        return typing.get_type_hints(type_)
+
+
+def unwrap_ref(type_):
+    origin = typing.get_origin(type_) if hasattr(typing, "get_origin") else getattr(type_, "__origin__", None)
+    if origin is getattr(typing, "Annotated", None):
+        args = typing.get_args(type_) if hasattr(typing, "get_args") else getattr(type_, "__args__", ())
+        if args:
+            base = args[0]
+            for meta in args[1:]:
+                if isinstance(meta, RefMeta):
+                    return base, meta.enable
+            return base, None
+    if origin is typing.Union:
+        args = typing.get_args(type_) if hasattr(typing, "get_args") else getattr(type_, "__args__", ())
+        new_args = list(args)
+        ref_override = None
+        for i, arg in enumerate(args):
+            base, override = unwrap_ref(arg)
+            if override is not None:
+                new_args[i] = base
+                ref_override = override
+        if ref_override is not None:
+            return typing.Union[tuple(new_args)], ref_override
+    return type_, None
+
 
 # modified from `fluent python`
 def record_class_factory(cls_name, field_names):
@@ -158,7 +191,7 @@ class TypeVisitor(ABC):
 
 
 def infer_field_types(type_, field_nullable=False):
-    type_hints = typing.get_type_hints(type_)
+    type_hints = get_type_hints(type_)
     from pyfory.struct import StructTypeVisitor
 
     visitor = StructTypeVisitor(type_)
@@ -189,6 +222,7 @@ def unwrap_optional(type_, field_nullable=False):
 
 def infer_field(field_name, type_, visitor: TypeVisitor, types_path=None):
     types_path = list(types_path or [])
+    type_, _ = unwrap_ref(type_)
     types_path.append(type_)
     origin = typing.get_origin(type_) if hasattr(typing, "get_origin") else getattr(type_, "__origin__", type_)
     origin = origin or type_

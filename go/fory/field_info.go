@@ -126,7 +126,7 @@ func (g *FieldGroup) ForEachField(fn func(*FieldInfo)) {
 
 // DebugPrint prints field group information for debugging.
 func (g *FieldGroup) DebugPrint(typeName string) {
-	if !DebugOutputEnabled() {
+	if !DebugOutputEnabled {
 		return
 	}
 	fmt.Printf("[Go] ========== Sorted fields for %s ==========\n", typeName)
@@ -262,7 +262,7 @@ func fieldHasNonPrimitiveSerializer(field *FieldInfo) bool {
 	}
 	// ENUM (numeric ID), NAMED_ENUM (namespace/typename), NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT
 	// all require special serialization and should not use the primitive fast path
-	// Note: ENUM uses unsigned Varuint32Small7 for ordinals, not signed zigzag varint
+	// Note: ENUM uses unsigned VarUint32Small7 for ordinals, not signed zigzag varint
 	// Use internal type ID (low 8 bits) since registered types have composite TypeIds like (userID << 8) | internalID
 	internalTypeId := TypeId(field.Meta.TypeId & 0xFF)
 	switch internalTypeId {
@@ -445,6 +445,7 @@ func isInternalTypeWithoutTypeMeta(t reflect.Type) bool {
 }
 
 var (
+	unionMarkerType = reflect.TypeOf((*UnionMarker)(nil)).Elem()
 	unionGetterType = reflect.TypeOf((*UnionGetter)(nil)).Elem()
 	unionSetterType = reflect.TypeOf((*UnionSetter)(nil)).Elem()
 )
@@ -456,6 +457,9 @@ func isUnionType(t reflect.Type) bool {
 	}
 	if info, ok := getOptionalInfo(t); ok {
 		t = info.valueType
+	}
+	if t.Implements(unionMarkerType) || reflect.PtrTo(t).Implements(unionMarkerType) {
+		return true
 	}
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -653,11 +657,14 @@ func sortFields(
 		if tagIDs != nil && i < len(tagIDs) {
 			tagID = tagIDs[i]
 		}
-		if ser == nil {
-			others = append(others, triple{UNKNOWN, nil, name, nullables[i], tagID})
+		typeID := typeIds[i]
+		if typeID == UNKNOWN {
+			// Unknown stays in "other" group regardless of serializer presence.
+			others = append(others, triple{UNKNOWN, ser, name, nullables[i], tagID})
 			continue
 		}
-		typeTriples = append(typeTriples, triple{typeIds[i], ser, name, nullables[i], tagID})
+		// Serializer may be nil for dynamic element types; field ordering must rely on typeId only.
+		typeTriples = append(typeTriples, triple{typeID, ser, name, nullables[i], tagID})
 	}
 	// Ordering:
 	// 1) primitives (nullable=false), 2) primitives (nullable=true),
@@ -780,10 +787,7 @@ func typesCompatible(actual, expected reflect.Type) bool {
 	if actual == expected {
 		return true
 	}
-	if (actual.Kind() == reflect.Int && expected.Kind() == reflect.Int64) ||
-		(actual.Kind() == reflect.Int64 && expected.Kind() == reflect.Int) ||
-		(actual.Kind() == reflect.Uint && expected.Kind() == reflect.Uint64) ||
-		(actual.Kind() == reflect.Uint64 && expected.Kind() == reflect.Uint) {
+	if isIntUintWidthCompatible(actual.Kind(), expected.Kind()) {
 		return true
 	}
 	// any can accept any value
@@ -799,21 +803,15 @@ func typesCompatible(actual, expected reflect.Type) bool {
 	if expected.Kind() == reflect.Ptr && expected.Elem() == actual {
 		return true
 	}
+	// Handle pointer vs non-pointer width compatibility in both directions.
 	if actual.Kind() == reflect.Ptr && expected.Kind() != reflect.Ptr {
-		elem := actual.Elem()
-		if (elem.Kind() == reflect.Int && expected.Kind() == reflect.Int64) ||
-			(elem.Kind() == reflect.Int64 && expected.Kind() == reflect.Int) ||
-			(elem.Kind() == reflect.Uint && expected.Kind() == reflect.Uint64) ||
-			(elem.Kind() == reflect.Uint64 && expected.Kind() == reflect.Uint) {
+		if isIntUintWidthCompatible(actual.Elem().Kind(), expected.Kind()) {
 			return true
 		}
 	}
+	// Symmetric case: expected is pointer, actual is non-pointer.
 	if expected.Kind() == reflect.Ptr && actual.Kind() != reflect.Ptr {
-		elem := expected.Elem()
-		if (elem.Kind() == reflect.Int && actual.Kind() == reflect.Int64) ||
-			(elem.Kind() == reflect.Int64 && actual.Kind() == reflect.Int) ||
-			(elem.Kind() == reflect.Uint && actual.Kind() == reflect.Uint64) ||
-			(elem.Kind() == reflect.Uint64 && actual.Kind() == reflect.Uint) {
+		if isIntUintWidthCompatible(actual.Kind(), expected.Elem().Kind()) {
 			return true
 		}
 	}
@@ -832,6 +830,13 @@ func typesCompatible(actual, expected reflect.Type) bool {
 	return false
 }
 
+func isIntUintWidthCompatible(actualKind, expectedKind reflect.Kind) bool {
+	return (actualKind == reflect.Int && expectedKind == reflect.Int64) ||
+		(actualKind == reflect.Int64 && expectedKind == reflect.Int) ||
+		(actualKind == reflect.Uint && expectedKind == reflect.Uint64) ||
+		(actualKind == reflect.Uint64 && expectedKind == reflect.Uint)
+}
+
 func elementTypesCompatible(actual, expected reflect.Type) bool {
 	if actual == nil || expected == nil {
 		return false
@@ -845,13 +850,16 @@ func elementTypesCompatible(actual, expected reflect.Type) bool {
 	if actual == expected || actual.AssignableTo(expected) || expected.AssignableTo(actual) {
 		return true
 	}
-	if (actual.Kind() == reflect.Int && expected.Kind() == reflect.Int64) ||
-		(actual.Kind() == reflect.Int64 && expected.Kind() == reflect.Int) ||
-		(actual.Kind() == reflect.Uint && expected.Kind() == reflect.Uint64) ||
-		(actual.Kind() == reflect.Uint64 && expected.Kind() == reflect.Uint) {
+	if isIntUintWidthCompatible(actual.Kind(), expected.Kind()) {
 		return true
 	}
-	if actual.Kind() == reflect.Ptr {
+	if actual.Kind() == reflect.Ptr && expected.Kind() == reflect.Ptr {
+		return elementTypesCompatible(actual.Elem(), expected.Elem())
+	}
+	if actual.Kind() == reflect.Ptr && expected.Kind() != reflect.Ptr {
+		return elementTypesCompatible(actual.Elem(), expected)
+	}
+	if expected.Kind() == reflect.Ptr && actual.Kind() != reflect.Ptr {
 		return elementTypesCompatible(actual, expected.Elem())
 	}
 	return false

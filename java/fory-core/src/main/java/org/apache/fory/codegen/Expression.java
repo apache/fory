@@ -486,6 +486,43 @@ public interface Expression {
     }
   }
 
+  class EnumExpression extends AbstractExpression {
+    private final Enum<?> value;
+    private final TypeRef<?> type;
+
+    public EnumExpression(Enum<?> value) {
+      super(new Expression[0]);
+      Preconditions.checkNotNull(value, "Enum value must not be null");
+      this.value = value;
+      this.type = TypeRef.of(value.getDeclaringClass());
+    }
+
+    public Enum<?> getEnumValue() {
+      return value;
+    }
+
+    @Override
+    public TypeRef<?> type() {
+      return type;
+    }
+
+    @Override
+    public ExprCode doGenCode(CodegenContext ctx) {
+      String enumClassName = ReflectionUtils.getLiteralName(value.getDeclaringClass());
+      String enumValue = enumClassName + "." + value.name();
+      return new ExprCode(FalseLiteral, Code.exprValue(getRawType(type), enumValue));
+    }
+
+    public Enum<?> getValue() {
+      return value;
+    }
+
+    @Override
+    public String toString() {
+      return value.getDeclaringClass().getName() + "." + value.name();
+    }
+  }
+
   class Null extends AbstractExpression {
     private TypeRef<?> type;
     private final boolean typedNull;
@@ -975,6 +1012,9 @@ public interface Expression {
       this.functionName = functionName;
       this.type = type;
       this.arguments = arguments;
+      for (Expression argument : arguments) {
+        Preconditions.checkNotNull(argument);
+      }
       this.returnNamePrefix = returnNamePrefix;
       this.returnNullable = returnNullable;
       inlineCall = inline;
@@ -2221,6 +2261,9 @@ public interface Expression {
       this.predicate = predicate;
       this.action = action;
       this.cutPoints = cutPoints;
+      for (Expression cutPoint : cutPoints) {
+        Preconditions.checkNotNull(cutPoint);
+      }
     }
 
     @Override

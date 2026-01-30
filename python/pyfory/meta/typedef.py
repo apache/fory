@@ -216,6 +216,7 @@ class FieldType:
         self.is_monomorphic = is_monomorphic
         self.is_nullable = is_nullable
         self.is_tracking_ref = is_tracking_ref
+        self.tracking_ref_override = None
 
     def xwrite(self, buffer: Buffer, write_flags: bool = True):
         xtype_id = self.type_id
@@ -225,7 +226,7 @@ class FieldType:
                 xtype_id |= 0b10
             if self.is_tracking_ref:
                 xtype_id |= 0b1
-        buffer.write_varuint32(xtype_id)
+        buffer.write_var_uint32(xtype_id)
         # Handle nested types
         if self.type_id in [TypeId.LIST, TypeId.SET]:
             self.element_type.xwrite(buffer, True)
@@ -235,7 +236,7 @@ class FieldType:
 
     @classmethod
     def xread(cls, buffer: Buffer, resolver):
-        xtype_id = buffer.read_varuint32()
+        xtype_id = buffer.read_var_uint32()
         is_tracking_ref = (xtype_id & 0b1) != 0
         is_nullable = (xtype_id & 0b10) != 0
         xtype_id = xtype_id >> 2
@@ -270,6 +271,9 @@ class FieldType:
             TypeId.NAMED_STRUCT,
             TypeId.COMPATIBLE_STRUCT,
             TypeId.NAMED_COMPATIBLE_STRUCT,
+            TypeId.UNION,
+            TypeId.TYPED_UNION,
+            TypeId.NAMED_UNION,
             TypeId.UNKNOWN,
         ]:
             return None
@@ -312,10 +316,11 @@ class CollectionFieldType(FieldType):
 
         elem_type = type_[1] if type_ and len(type_) >= 2 else None
         elem_serializer = self.element_type.create_serializer(resolver, elem_type)
+        elem_override = getattr(self.element_type, "tracking_ref_override", None)
         if self.type_id == TypeId.LIST:
-            return ListSerializer(resolver.fory, list, elem_serializer)
+            return ListSerializer(resolver.fory, list, elem_serializer, elem_override)
         elif self.type_id == TypeId.SET:
-            return SetSerializer(resolver.fory, set, elem_serializer)
+            return SetSerializer(resolver.fory, set, elem_serializer, elem_override)
         else:
             raise ValueError(f"Unknown collection type: {self.type_id}")
 
@@ -342,9 +347,18 @@ class MapFieldType(FieldType):
             value_type = type_[2]
         key_serializer = self.key_type.create_serializer(resolver, key_type)
         value_serializer = self.value_type.create_serializer(resolver, value_type)
+        key_override = getattr(self.key_type, "tracking_ref_override", None)
+        value_override = getattr(self.value_type, "tracking_ref_override", None)
         from pyfory.serializer import MapSerializer
 
-        return MapSerializer(resolver.fory, dict, key_serializer, value_serializer)
+        return MapSerializer(
+            resolver.fory,
+            dict,
+            key_serializer,
+            value_serializer,
+            key_override,
+            value_override,
+        )
 
     def __repr__(self):
         return (
@@ -379,7 +393,9 @@ def build_field_infos(type_resolver, cls):
     import dataclasses
 
     field_names = get_field_names(cls)
-    type_hints = typing.get_type_hints(cls)
+    from pyfory.type_util import get_type_hints
+
+    type_hints = get_type_hints(cls)
 
     # Extract field metadata from dataclass fields if available
     field_metas = {}
@@ -453,13 +469,31 @@ def build_field_type_with_ref(type_resolver, field_name: str, type_hint, visitor
     """Build field type from type hint with explicit ref tracking control."""
     type_ids = infer_field(field_name, type_hint, visitor)
     try:
-        return build_field_type_from_type_ids_with_ref(type_resolver, field_name, type_ids, visitor, is_nullable, is_tracking_ref)
+        return build_field_type_from_type_ids_with_ref(
+            type_resolver,
+            field_name,
+            type_ids,
+            visitor,
+            is_nullable,
+            is_tracking_ref,
+            type_hint=type_hint,
+        )
     except Exception as e:
         raise TypeError(f"Error building field type for field: {field_name} with type hint: {type_hint} in class: {visitor.cls}") from e
 
 
-def build_field_type_from_type_ids_with_ref(type_resolver, field_name: str, type_ids, visitor, is_nullable=False, is_tracking_ref=True):
+def build_field_type_from_type_ids_with_ref(
+    type_resolver,
+    field_name: str,
+    type_ids,
+    visitor,
+    is_nullable=False,
+    is_tracking_ref=True,
+    type_hint=None,
+):
     """Build field type from type IDs with explicit ref tracking control."""
+    from pyfory.type_util import unwrap_ref
+
     type_id = type_ids[0]
     if type_id is None:
         type_id = TypeId.UNKNOWN
@@ -467,19 +501,81 @@ def build_field_type_from_type_ids_with_ref(type_resolver, field_name: str, type
     type_id = type_id & 0xFF
     morphic = not is_polymorphic_type(type_id)
     if type_id in [TypeId.SET, TypeId.LIST]:
+        elem_hint = None
+        elem_ref_override = None
+        if type_hint is not None:
+            origin = typing.get_origin(type_hint) if hasattr(typing, "get_origin") else getattr(type_hint, "__origin__", None)
+            if origin in (list, typing.List, set, typing.Set):
+                args = typing.get_args(type_hint) if hasattr(typing, "get_args") else getattr(type_hint, "__args__", ())
+                if args:
+                    elem_hint, elem_ref_override = unwrap_ref(args[0])
+        elem_tracking_ref = is_tracking_ref
+        if elem_ref_override is not None:
+            elem_tracking_ref = elem_ref_override and is_tracking_ref
         elem_type = build_field_type_from_type_ids_with_ref(
-            type_resolver, field_name, type_ids[1], visitor, is_nullable=False, is_tracking_ref=is_tracking_ref
+            type_resolver,
+            field_name,
+            type_ids[1],
+            visitor,
+            is_nullable=False,
+            is_tracking_ref=elem_tracking_ref,
+            type_hint=elem_hint,
         )
+        if elem_ref_override is not None:
+            elem_type.tracking_ref_override = elem_ref_override
         return CollectionFieldType(type_id, morphic, is_nullable, is_tracking_ref, elem_type)
     elif type_id == TypeId.MAP:
+        key_hint = None
+        value_hint = None
+        key_ref_override = None
+        value_ref_override = None
+        if type_hint is not None:
+            origin = typing.get_origin(type_hint) if hasattr(typing, "get_origin") else getattr(type_hint, "__origin__", None)
+            if origin in (dict, typing.Dict):
+                args = typing.get_args(type_hint) if hasattr(typing, "get_args") else getattr(type_hint, "__args__", ())
+                if len(args) >= 2:
+                    key_hint, key_ref_override = unwrap_ref(args[0])
+                    value_hint, value_ref_override = unwrap_ref(args[1])
+        key_tracking_ref = is_tracking_ref
+        if key_ref_override is not None:
+            key_tracking_ref = key_ref_override and is_tracking_ref
+        value_tracking_ref = is_tracking_ref
+        if value_ref_override is not None:
+            value_tracking_ref = value_ref_override and is_tracking_ref
         key_type = build_field_type_from_type_ids_with_ref(
-            type_resolver, field_name, type_ids[1], visitor, is_nullable=False, is_tracking_ref=is_tracking_ref
+            type_resolver,
+            field_name,
+            type_ids[1],
+            visitor,
+            is_nullable=False,
+            is_tracking_ref=key_tracking_ref,
+            type_hint=key_hint,
         )
         value_type = build_field_type_from_type_ids_with_ref(
-            type_resolver, field_name, type_ids[2], visitor, is_nullable=False, is_tracking_ref=is_tracking_ref
+            type_resolver,
+            field_name,
+            type_ids[2],
+            visitor,
+            is_nullable=False,
+            is_tracking_ref=value_tracking_ref,
+            type_hint=value_hint,
         )
+        if key_ref_override is not None:
+            key_type.tracking_ref_override = key_ref_override
+        if value_ref_override is not None:
+            value_type.tracking_ref_override = value_ref_override
         return MapFieldType(type_id, morphic, is_nullable, is_tracking_ref, key_type, value_type)
-    elif type_id in [TypeId.UNKNOWN, TypeId.EXT, TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT]:
+    elif type_id in [
+        TypeId.UNKNOWN,
+        TypeId.EXT,
+        TypeId.STRUCT,
+        TypeId.NAMED_STRUCT,
+        TypeId.COMPATIBLE_STRUCT,
+        TypeId.NAMED_COMPATIBLE_STRUCT,
+        TypeId.UNION,
+        TypeId.TYPED_UNION,
+        TypeId.NAMED_UNION,
+    ]:
         return DynamicFieldType(type_id, False, is_nullable, is_tracking_ref)
     else:
         if type_id <= 0 or type_id >= TypeId.BOUND:
@@ -511,7 +607,17 @@ def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, vis
         key_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor, is_nullable=False)
         value_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[2], visitor, is_nullable=False)
         return MapFieldType(type_id, morphic, is_nullable, tracking_ref, key_type, value_type)
-    elif type_id in [TypeId.UNKNOWN, TypeId.EXT, TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT]:
+    elif type_id in [
+        TypeId.UNKNOWN,
+        TypeId.EXT,
+        TypeId.STRUCT,
+        TypeId.NAMED_STRUCT,
+        TypeId.COMPATIBLE_STRUCT,
+        TypeId.NAMED_COMPATIBLE_STRUCT,
+        TypeId.UNION,
+        TypeId.TYPED_UNION,
+        TypeId.NAMED_UNION,
+    ]:
         return DynamicFieldType(type_id, False, is_nullable, tracking_ref)
     else:
         if type_id <= 0 or type_id >= TypeId.BOUND:

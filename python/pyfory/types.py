@@ -191,6 +191,32 @@ tagged_uint64 = TypeVar("tagged_uint64", bound=int)
 float32 = TypeVar("float32", bound=float)
 float64 = TypeVar("float64", bound=float)
 
+
+class RefMeta:
+    __slots__ = ("enable",)
+
+    def __init__(self, enable: bool = True):
+        self.enable = enable
+
+
+class Ref:
+    def __class_getitem__(cls, params):
+        if not isinstance(params, tuple):
+            params = (params,)
+        if len(params) == 0 or len(params) > 2:
+            raise TypeError("Ref expects Ref[T] or Ref[T, bool]")
+        target = params[0]
+        enable = True
+        if len(params) == 2:
+            enable = params[1]
+        if not isinstance(enable, bool):
+            raise TypeError("Ref enable must be a bool")
+        annotated = getattr(typing, "Annotated", None)
+        if annotated is None:
+            return target
+        return annotated[target, RefMeta(enable)]
+
+
 _primitive_types = {
     int,
     float,

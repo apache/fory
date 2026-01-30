@@ -15,6 +15,8 @@
 package org.apache.fory.reflect;
 
 import java.lang.annotation.Annotation;
+import java.lang.reflect.AnnotatedArrayType;
+import java.lang.reflect.AnnotatedParameterizedType;
 import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Array;
 import java.lang.reflect.GenericArrayType;
@@ -34,14 +36,19 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.annotation.CheckForNull;
+import org.apache.fory.annotation.Ref;
 import org.apache.fory.meta.TypeExtMeta;
 import org.apache.fory.type.TypeUtils;
+import org.apache.fory.type.Types;
 
 // Mostly derived from Guava 32.1.2 com.google.common.reflect.TypeToken
 // https://github.com/google/guava/blob/9f6a3840/guava/src/com/google/common/reflect/TypeToken.java
 public class TypeRef<T> {
   private final Type type;
   private final TypeExtMeta typeExtMeta;
+  private final List<TypeRef<?>> typeArguments;
+  private final TypeRef<?> componentType;
+  private final boolean hasTypeExtMeta;
   private transient Class<? super T> rawType;
   private transient Map<TypeVariableKey, Type> typeMappings;
 
@@ -60,26 +67,53 @@ public class TypeRef<T> {
   protected TypeRef() {
     this.type = capture();
     this.typeExtMeta = null;
+    this.typeArguments = null;
+    this.componentType = null;
+    this.hasTypeExtMeta = false;
   }
 
   protected TypeRef(TypeExtMeta typeExtMeta) {
     this.type = capture();
     this.typeExtMeta = typeExtMeta;
+    this.typeArguments = null;
+    this.componentType = null;
+    this.hasTypeExtMeta = typeExtMeta != null;
   }
 
   private TypeRef(Class<T> declaringClass) {
-    this.type = declaringClass;
-    this.typeExtMeta = null;
+    this(declaringClass, null, null, null);
   }
 
   private TypeRef(Class<T> declaringClass, TypeExtMeta typeExtMeta) {
-    this.type = declaringClass;
-    this.typeExtMeta = typeExtMeta;
+    this(declaringClass, typeExtMeta, null, null);
   }
 
   private TypeRef(Type type) {
+    this(type, null, null, null);
+  }
+
+  private TypeRef(
+      Type type,
+      TypeExtMeta typeExtMeta,
+      List<TypeRef<?>> typeArguments,
+      TypeRef<?> componentType) {
     this.type = type;
-    this.typeExtMeta = null;
+    this.typeExtMeta = typeExtMeta;
+    this.typeArguments = typeArguments;
+    this.componentType = componentType;
+    boolean hasMeta = typeExtMeta != null;
+    if (!hasMeta && typeArguments != null) {
+      for (TypeRef<?> typeArg : typeArguments) {
+        if (typeArg != null && typeArg.hasTypeExtMeta()) {
+          hasMeta = true;
+          break;
+        }
+      }
+    }
+    if (!hasMeta && componentType != null) {
+      hasMeta = componentType.hasTypeExtMeta();
+    }
+    this.hasTypeExtMeta = hasMeta;
   }
 
   /** Returns an instance of type token that wraps {@code type}. */
@@ -94,6 +128,55 @@ public class TypeRef<T> {
   /** Returns an instance of type token that wraps {@code type}. */
   public static <T> TypeRef<T> of(Type type) {
     return new TypeRef<>(type);
+  }
+
+  public static <T> TypeRef<T> of(AnnotatedType annotatedType) {
+    @SuppressWarnings("unchecked")
+    TypeRef<T> ref = (TypeRef<T>) ofAnnotatedType(annotatedType, false);
+    return ref;
+  }
+
+  private static TypeRef<?> ofAnnotatedType(AnnotatedType annotatedType, boolean includeRefMeta) {
+    if (annotatedType == null) {
+      return null;
+    }
+    Type type = annotatedType.getType();
+    List<TypeRef<?>> typeArguments = null;
+    TypeRef<?> componentType = null;
+    if (annotatedType instanceof AnnotatedParameterizedType) {
+      AnnotatedType[] annotatedArgs =
+          ((AnnotatedParameterizedType) annotatedType).getAnnotatedActualTypeArguments();
+      Type[] args = ((ParameterizedType) type).getActualTypeArguments();
+      List<TypeRef<?>> argRefs = new ArrayList<>(args.length);
+      boolean hasChildMeta = false;
+      for (int i = 0; i < args.length; i++) {
+        AnnotatedType annotatedArg = i < annotatedArgs.length ? annotatedArgs[i] : null;
+        TypeRef<?> argRef =
+            annotatedArg != null ? ofAnnotatedType(annotatedArg, true) : TypeRef.of(args[i]);
+        if (argRef != null && argRef.hasTypeExtMeta()) {
+          hasChildMeta = true;
+        }
+        argRefs.add(argRef);
+      }
+      if (hasChildMeta) {
+        typeArguments = Collections.unmodifiableList(argRefs);
+      }
+    } else if (annotatedType instanceof AnnotatedArrayType) {
+      AnnotatedType annotatedComponent =
+          ((AnnotatedArrayType) annotatedType).getAnnotatedGenericComponentType();
+      TypeRef<?> component = ofAnnotatedType(annotatedComponent, true);
+      if (component != null && component.hasTypeExtMeta()) {
+        componentType = component;
+      }
+    }
+    TypeExtMeta meta = null;
+    if (includeRefMeta) {
+      Ref ref = annotatedType.getAnnotation(Ref.class);
+      if (ref != null) {
+        meta = TypeExtMeta.of(Types.UNKNOWN, true, ref.enable());
+      }
+    }
+    return new TypeRef<>(type, meta, typeArguments, componentType);
   }
 
   /** Returns the captured type. */
@@ -161,6 +244,27 @@ public class TypeRef<T> {
 
   public TypeExtMeta getTypeExtMeta() {
     return typeExtMeta;
+  }
+
+  public boolean hasTypeExtMeta() {
+    return hasTypeExtMeta;
+  }
+
+  public boolean hasExplicitTypeArguments() {
+    return typeArguments != null;
+  }
+
+  public List<TypeRef<?>> getTypeArguments() {
+    if (typeArguments != null) {
+      return typeArguments;
+    }
+    if (type instanceof ParameterizedType) {
+      ParameterizedType parameterizedType = (ParameterizedType) type;
+      return Arrays.stream(parameterizedType.getActualTypeArguments())
+          .map(TypeRef::of)
+          .collect(Collectors.toList());
+    }
+    return new ArrayList<>();
   }
 
   /** Returns true if this type is one of the primitive types (including {@code void}). */
@@ -344,6 +448,9 @@ public class TypeRef<T> {
    * {@code <? extends Map<String, Integer>[]>} etc.), or else {@code null} is returned.
    */
   public TypeRef<?> getComponentType() {
+    if (componentType != null) {
+      return componentType;
+    }
     return of(getComponentType(type));
   }
 

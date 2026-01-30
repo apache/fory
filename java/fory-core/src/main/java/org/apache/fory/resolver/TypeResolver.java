@@ -23,6 +23,7 @@ import static org.apache.fory.type.TypeUtils.getSizeOfPrimitiveType;
 
 import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
+import java.lang.reflect.AnnotatedType;
 import java.lang.reflect.Field;
 import java.lang.reflect.Member;
 import java.lang.reflect.Type;
@@ -252,21 +253,26 @@ public abstract class TypeResolver {
    * ignored too.
    */
   public final boolean needToWriteRef(TypeRef<?> typeRef) {
+    if (!fory.trackingRef()) {
+      return false;
+    }
+    Class<?> cls = typeRef.getRawType();
+    if (cls == String.class && !fory.isCrossLanguage()) {
+      // for string, ignore `TypeExtMeta` for java native mode
+      return !fory.getConfig().isStringRefIgnored();
+    }
     TypeExtMeta meta = typeRef.getTypeExtMeta();
     if (meta != null) {
       return meta.trackingRef();
     }
-    Class<?> cls = typeRef.getRawType();
-    if (fory.trackingRef()) {
-      ClassInfo classInfo = classInfoMap.get(cls);
-      if (classInfo == null || classInfo.serializer == null) {
-        // TODO group related logic together for extendability and consistency.
-        return !cls.isEnum();
-      } else {
-        return classInfo.serializer.needToWriteRef();
-      }
+
+    ClassInfo classInfo = classInfoMap.get(cls);
+    if (classInfo == null || classInfo.serializer == null) {
+      // TODO group related logic together for extendability and consistency.
+      return !cls.isEnum();
+    } else {
+      return classInfo.serializer.needToWriteRef();
     }
-    return false;
   }
 
   public final boolean needToWriteClassDef(Serializer serializer) {
@@ -1354,11 +1360,15 @@ public abstract class TypeResolver {
     for (Field field : ReflectionUtils.getFields(cls, true)) {
       Type type = field.getGenericType();
       GenericType genericType = buildGenericType(type);
+      AnnotatedType annotatedType = field.getAnnotatedType();
+      TypeUtils.applyRefTrackingOverride(genericType, annotatedType, fory.trackingRef());
       buildGenericMap(map, genericType);
       TypeRef<?> typeRef = TypeRef.of(type);
       buildGenericMap(map2, typeRef);
     }
-    map.putAll(map2);
+    for (Map.Entry<String, GenericType> entry : map2.entrySet()) {
+      map.putIfAbsent(entry.getKey(), entry.getValue());
+    }
     return map;
   }
 

@@ -152,7 +152,7 @@ template <typename T> struct Serializer<std::optional<T>> {
 
     if constexpr (inner_is_nullable) {
       // Rewind so the inner serializer can consume the reference metadata.
-      ctx.buffer().ReaderIndex(flag_pos);
+      ctx.buffer().reader_index(flag_pos);
       // Pass ref_mode directly - let inner serializer handle ref tracking
       T value = Serializer<T>::read(ctx, ref_mode, read_type);
       if (ctx.has_error()) {
@@ -201,7 +201,7 @@ template <typename T> struct Serializer<std::optional<T>> {
 
     if constexpr (inner_is_nullable) {
       // Rewind so the inner serializer can consume the reference metadata.
-      ctx.buffer().ReaderIndex(flag_pos);
+      ctx.buffer().reader_index(flag_pos);
       // Pass ref_mode directly - let inner serializer handle ref tracking
       T value = Serializer<T>::read_with_type_info(ctx, ref_mode, type_info);
       if (ctx.has_error()) {
@@ -270,7 +270,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
   static inline void write_type_info(WriteContext &ctx) {
     if constexpr (std::is_polymorphic_v<T>) {
       // For polymorphic types, type info must be written dynamically
-      ctx.write_varuint32(static_cast<uint32_t>(TypeId::UNKNOWN));
+      ctx.write_var_uint32(static_cast<uint32_t>(TypeId::UNKNOWN));
     } else {
       Serializer<T>::write_type_info(ctx);
     }
@@ -341,7 +341,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
 
     // For polymorphic types, serialize the concrete type dynamically
     if constexpr (is_polymorphic) {
-      // Get the concrete type_index from the actual object
+      // get the concrete type_index from the actual object
       std::type_index concrete_type_id = std::type_index(typeid(*ptr));
 
       // Look up the TypeInfo for the concrete type
@@ -352,7 +352,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       }
       const TypeInfo *type_info = type_info_res.value();
 
-      // Write type info if requested
+      // write type info if requested
       if (write_type) {
         auto write_res = ctx.write_any_typeinfo(
             static_cast<uint32_t>(TypeId::UNKNOWN), concrete_type_id);
@@ -477,7 +477,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
             "Reference flag encountered when reference tracking disabled"));
         return nullptr;
       }
-      uint32_t ref_id = ctx.read_varuint32(ctx.error());
+      uint32_t ref_id = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return nullptr;
       }
@@ -569,7 +569,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
       //
       // For circular references: we need to pre-allocate the shared_ptr and
       // store it BEFORE reading the struct fields. This allows forward
-      // references (like selfRef pointing back to the parent) to resolve.
+      // references (like self_ref pointing back to the parent) to resolve.
       if (is_first_occurrence) {
         // Pre-allocate with default construction and store immediately
         auto result = std::make_shared<T>();
@@ -635,7 +635,7 @@ template <typename T> struct Serializer<std::shared_ptr<T>> {
             "Reference flag encountered when reference tracking disabled"));
         return nullptr;
       }
-      uint32_t ref_id = ctx.read_varuint32(ctx.error());
+      uint32_t ref_id = ctx.read_var_uint32(ctx.error());
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return nullptr;
       }

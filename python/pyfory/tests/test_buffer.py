@@ -121,9 +121,9 @@ def test_write_varint32():
 
 def check_varuint32(buf: Buffer, value: int, bytes_written: int):
     assert buf.get_writer_index() == buf.get_reader_index()
-    actual_bytes_written = buf.write_varuint32(value)
+    actual_bytes_written = buf.write_var_uint32(value)
     assert actual_bytes_written == bytes_written
-    varint = buf.read_varuint32()
+    varint = buf.read_var_uint32()
     assert buf.get_writer_index() == buf.get_reader_index()
     assert value == varint
 
@@ -156,7 +156,7 @@ def test_grow():
     assert buffer.own_data()
 
 
-def test_write_varuint64():
+def test_write_var_uint64():
     buf = Buffer.allocate(32)
     check_varuint64(buf, -1, 9)
     for i in range(32):
@@ -212,13 +212,13 @@ def test_write_varuint64():
 def check_varuint64(buf: Buffer, value: int, bytes_written: int):
     reader_index = buf.get_reader_index()
     assert buf.get_writer_index() == buf.get_reader_index()
-    actual_bytes_written = buf.write_varuint64(value)
+    actual_bytes_written = buf.write_var_uint64(value)
     assert actual_bytes_written == bytes_written
-    varint = buf.read_varuint64()
+    varint = buf.read_var_uint64()
     assert buf.get_writer_index() == buf.get_reader_index()
     assert value == varint
     # test slow read branch in `read_varint64`
-    assert buf.slice(reader_index, buf.get_reader_index() - reader_index).read_varuint64() == value
+    assert buf.slice(reader_index, buf.get_reader_index() - reader_index).read_var_uint64() == value
 
 
 def test_write_buffer():

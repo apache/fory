@@ -30,12 +30,26 @@ type Fory struct {
 	pool sync.Pool
 }
 
-// New creates a new thread-safe Fory instance
+// New creates a new thread-safe Fory instance.
 func New(opts ...fory.Option) *Fory {
+	return NewWithFactory(func() *fory.Fory {
+		return fory.New(opts...)
+	})
+}
+
+// NewWithFactory creates a new thread-safe Fory instance using a custom factory.
+func NewWithFactory(factory func() *fory.Fory) *Fory {
+	if factory == nil {
+		panic("threadsafe.NewWithFactory requires a non-nil factory")
+	}
 	f := &Fory{}
 	f.pool = sync.Pool{
 		New: func() any {
-			return fory.New(opts...)
+			inner := factory()
+			if inner == nil {
+				panic("threadsafe.NewWithFactory factory returned nil")
+			}
+			return inner
 		},
 	}
 	return f
@@ -57,7 +71,7 @@ func (f *Fory) release(inner *fory.Fory) {
 // Serialize serializes a value using a pooled Fory instance
 func (f *Fory) Serialize(v any) ([]byte, error) {
 	inner := f.acquire()
-	data, err := inner.Marshal(v)
+	data, err := inner.Serialize(v)
 	if err != nil {
 		f.release(inner)
 		return nil, err
@@ -73,7 +87,7 @@ func (f *Fory) Serialize(v any) ([]byte, error) {
 func (f *Fory) Deserialize(data []byte, v any) error {
 	inner := f.acquire()
 	defer f.release(inner)
-	return inner.Unmarshal(data, v)
+	return inner.Deserialize(data, v)
 }
 
 // RegisterNamedStruct registers a named struct type for cross-language serialization

@@ -48,6 +48,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.apache.fory.Fory;
 import org.apache.fory.ForyTestBase;
+import org.apache.fory.annotation.Ref;
 import org.apache.fory.collection.LazyMap;
 import org.apache.fory.collection.MapEntry;
 import org.apache.fory.config.CompatibleMode;
@@ -629,6 +630,54 @@ public class MapSerializersTest extends ForyTestBase {
     }
   }
 
+  @Test(dataProvider = "enableCodegen")
+  public void testMapElementRefOverrideReadRespectsHeader(boolean enableCodegen) {
+    Fory foryNoRef =
+        builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(true)
+            .withCodegen(enableCodegen)
+            .requireClassRegistration(true)
+            .build();
+    Fory foryRef =
+        builder()
+            .withLanguage(Language.JAVA)
+            .withRefTracking(true)
+            .withCodegen(enableCodegen)
+            .requireClassRegistration(true)
+            .build();
+    foryNoRef.register(MapRefItem.class, 9101);
+    foryNoRef.register(MapOuterNoRef.class, 9102);
+    foryRef.register(MapRefItem.class, 9101);
+    foryRef.register(MapOuterRef.class, 9102);
+
+    MapRefItem shared = new MapRefItem();
+    shared.id = 1;
+    shared.name = "shared";
+    MapOuterNoRef outerNoRef = new MapOuterNoRef();
+    outerNoRef.map = new HashMap<>();
+    outerNoRef.map.put(shared, shared);
+
+    byte[] noRefBytes = foryNoRef.serialize(outerNoRef);
+    MapOuterRef readNoRef = (MapOuterRef) foryRef.deserialize(noRefBytes);
+    Map.Entry<MapRefItem, MapRefItem> entry = readNoRef.map.entrySet().iterator().next();
+    Assert.assertNotSame(
+        entry.getKey(), entry.getValue(), "No-ref header should not preserve key/value identity");
+
+    MapRefItem refShared = entry.getKey();
+    MapOuterRef outerRef = new MapOuterRef();
+    outerRef.map = new HashMap<>();
+    outerRef.map.put(refShared, refShared);
+
+    byte[] refBytes = foryRef.serialize(outerRef);
+    MapOuterNoRef result = (MapOuterNoRef) foryNoRef.deserialize(refBytes);
+    Map.Entry<MapRefItem, MapRefItem> resultEntry = result.map.entrySet().iterator().next();
+    Assert.assertSame(
+        resultEntry.getKey(),
+        resultEntry.getValue(),
+        "Ref header should preserve key/value identity even with @Ref disabled");
+  }
+
   @Test(dataProvider = "foryCopyConfig")
   public void testStringKeyMapSerializer(Fory fory) {
     fory.registerSerializer(StringKeyMap.class, MapSerializers.StringKeyMapSerializer.class);
@@ -737,6 +786,22 @@ public class MapSerializersTest extends ForyTestBase {
   public static class LazyMapCollectionFieldStruct {
     List<PrivateMap<String, Integer>> mapList;
     PrivateMap<String, Integer> map;
+  }
+
+  @Data
+  public static class MapRefItem {
+    int id;
+    String name;
+  }
+
+  @Data
+  public static class MapOuterNoRef {
+    Map<@Ref(enable = false) MapRefItem, @Ref(enable = false) MapRefItem> map;
+  }
+
+  @Data
+  public static class MapOuterRef {
+    Map<@Ref(enable = true) MapRefItem, @Ref(enable = true) MapRefItem> map;
   }
 
   @Test

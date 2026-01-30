@@ -52,7 +52,7 @@ fn test_varint32() {
     for &data in &test_data {
         let mut buffer = vec![];
         let mut writer = Writer::from_buffer(&mut buffer);
-        writer.write_varuint32(data as u32);
+        writer.write_var_uint32(data as u32);
         let binding = writer.dump();
         let mut reader = Reader::new(binding.as_slice());
         let res = reader.read_varuint32().unwrap();
@@ -88,7 +88,7 @@ fn test_varuint36_small() {
     for &data in &test_data {
         let mut buffer = vec![];
         let mut writer = Writer::from_buffer(&mut buffer);
-        writer.write_varuint36_small(data);
+        writer.write_var_uint36_small(data);
         let buf = writer.dump();
 
         let mut reader = Reader::new(buf.as_slice());
