@@ -151,6 +151,6 @@ public class Union {
 
   @Override
   public String toString() {
-    return "Union{index=" + index + ", value=" + value + "}";
+    return getClass().getSimpleName() + "{index=" + index + ", value=" + value + "}";
   }
 }
