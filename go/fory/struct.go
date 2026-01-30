@@ -1428,19 +1428,19 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 				if !ok {
 					v = 0
 				}
-				offset += buf.UnsafePutVaruint32(offset, v)
+				offset += buf.UnsafePutVarUint32(offset, v)
 			case PrimitiveVarUint64DispatchId:
 				v, ok := loadFieldValue[uint64](field.Kind, fieldPtr, optInfo)
 				if !ok {
 					v = 0
 				}
-				offset += buf.UnsafePutVaruint64(offset, v)
+				offset += buf.UnsafePutVarUint64(offset, v)
 			case PrimitiveUintDispatchId:
 				v, ok := loadFieldValue[uint](field.Kind, fieldPtr, optInfo)
 				if !ok {
 					v = 0
 				}
-				offset += buf.UnsafePutVaruint64(offset, uint64(v))
+				offset += buf.UnsafePutVarUint64(offset, uint64(v))
 			case PrimitiveTaggedInt64DispatchId:
 				v, ok := loadFieldValue[int64](field.Kind, fieldPtr, optInfo)
 				if !ok {
@@ -1807,7 +1807,7 @@ func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Poi
 				return
 			}
 			buf.WriteInt8(NotNullValueFlag)
-			buf.WriteVaruint32(*ptr)
+			buf.WriteVarUint32(*ptr)
 			return
 		case NullableVarint64DispatchId:
 			ptr := *(**int64)(fieldPtr)
@@ -1825,7 +1825,7 @@ func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Poi
 				return
 			}
 			buf.WriteInt8(NotNullValueFlag)
-			buf.WriteVaruint64(*ptr)
+			buf.WriteVarUint64(*ptr)
 			return
 		}
 	}
@@ -2143,9 +2143,9 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 	case NullableVarUint32DispatchId:
 		if field.RefMode == RefModeNone {
 			if has {
-				buf.WriteVaruint32(*(*uint32)(valuePtr))
+				buf.WriteVarUint32(*(*uint32)(valuePtr))
 			} else {
-				buf.WriteVaruint32(0)
+				buf.WriteVarUint32(0)
 			}
 			return true
 		}
@@ -2154,7 +2154,7 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 			return true
 		}
 		buf.WriteInt8(NotNullValueFlag)
-		buf.WriteVaruint32(*(*uint32)(valuePtr))
+		buf.WriteVarUint32(*(*uint32)(valuePtr))
 		return true
 	case NullableVarint64DispatchId:
 		if field.RefMode == RefModeNone {
@@ -2175,9 +2175,9 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 	case NullableVarUint64DispatchId:
 		if field.RefMode == RefModeNone {
 			if has {
-				buf.WriteVaruint64(*(*uint64)(valuePtr))
+				buf.WriteVarUint64(*(*uint64)(valuePtr))
 			} else {
-				buf.WriteVaruint64(0)
+				buf.WriteVarUint64(0)
 			}
 			return true
 		}
@@ -2186,7 +2186,7 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 			return true
 		}
 		buf.WriteInt8(NotNullValueFlag)
-		buf.WriteVaruint64(*(*uint64)(valuePtr))
+		buf.WriteVarUint64(*(*uint64)(valuePtr))
 		return true
 	case PrimitiveBoolDispatchId:
 		if has {
@@ -2267,9 +2267,9 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 		return true
 	case PrimitiveVarUint32DispatchId:
 		if has {
-			buf.WriteVaruint32(*(*uint32)(valuePtr))
+			buf.WriteVarUint32(*(*uint32)(valuePtr))
 		} else {
-			buf.WriteVaruint32(0)
+			buf.WriteVarUint32(0)
 		}
 		return true
 	case PrimitiveUint64DispatchId:
@@ -2281,16 +2281,16 @@ func writeOptionFast(ctx *WriteContext, field *FieldInfo, optPtr unsafe.Pointer)
 		return true
 	case PrimitiveVarUint64DispatchId:
 		if has {
-			buf.WriteVaruint64(*(*uint64)(valuePtr))
+			buf.WriteVarUint64(*(*uint64)(valuePtr))
 		} else {
-			buf.WriteVaruint64(0)
+			buf.WriteVarUint64(0)
 		}
 		return true
 	case PrimitiveUintDispatchId:
 		if has {
-			buf.WriteVaruint64(uint64(*(*uint)(valuePtr)))
+			buf.WriteVarUint64(uint64(*(*uint)(valuePtr)))
 		} else {
-			buf.WriteVaruint64(0)
+			buf.WriteVarUint64(0)
 		}
 		return true
 	case PrimitiveTaggedInt64DispatchId:
@@ -2352,7 +2352,7 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 	}
 	if readType {
 		if !ctx.Compatible() && s.type_ != nil {
-			typeID := buf.ReadVaruint32Small7(ctxErr)
+			typeID := buf.ReadVarUint32Small7(ctxErr)
 			if ctxErr.HasError() {
 				return
 			}
@@ -2405,7 +2405,7 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 			return
 		}
 		// Fallback: read type info based on typeID when expected type is unknown
-		typeID := buf.ReadVaruint32Small7(ctxErr)
+		typeID := buf.ReadVarUint32Small7(ctxErr)
 		internalTypeID := TypeId(typeID & 0xFF)
 		if IsNamespacedType(TypeId(typeID)) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
 			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
@@ -2582,11 +2582,11 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				case PrimitiveIntDispatchId:
 					storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.UnsafeReadVarint64()))
 				case PrimitiveVarUint32DispatchId:
-					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVaruint32())
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarUint32())
 				case PrimitiveVarUint64DispatchId:
-					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVaruint64())
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.UnsafeReadVarUint64())
 				case PrimitiveUintDispatchId:
-					storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.UnsafeReadVaruint64()))
+					storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.UnsafeReadVarUint64()))
 				case PrimitiveTaggedInt64DispatchId:
 					// Tagged INT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
 					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
@@ -2610,11 +2610,11 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 				case PrimitiveIntDispatchId:
 					storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.ReadVarint64(err)))
 				case PrimitiveVarUint32DispatchId:
-					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint32(err))
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint32(err))
 				case PrimitiveVarUint64DispatchId:
-					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint64(err))
+					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint64(err))
 				case PrimitiveUintDispatchId:
-					storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVaruint64(err)))
+					storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVarUint64(err)))
 				case PrimitiveTaggedInt64DispatchId:
 					// Tagged INT64: use buffer's tagged decoding (4 bytes for small, 9 for large)
 					storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
@@ -2951,7 +2951,7 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 				return
 			}
 			v := new(uint32)
-			*v = buf.ReadVaruint32(ctxErr)
+			*v = buf.ReadVarUint32(ctxErr)
 			*(**uint32)(fieldPtr) = v
 			return
 		case NullableVarint64DispatchId:
@@ -2969,7 +2969,7 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 				return
 			}
 			v := new(uint64)
-			*v = buf.ReadVaruint64(ctxErr)
+			*v = buf.ReadVarUint64(ctxErr)
 			*(**uint64)(fieldPtr) = v
 			return
 		}
@@ -3179,7 +3179,7 @@ func readOptionFast(ctx *ReadContext, field *FieldInfo, optPtr unsafe.Pointer) b
 			}
 		}
 		*hasPtr = true
-		*(*uint32)(valuePtr) = buf.ReadVaruint32(err)
+		*(*uint32)(valuePtr) = buf.ReadVarUint32(err)
 		return true
 	case NullableVarint64DispatchId:
 		if field.RefMode != RefModeNone {
@@ -3203,7 +3203,7 @@ func readOptionFast(ctx *ReadContext, field *FieldInfo, optPtr unsafe.Pointer) b
 			}
 		}
 		*hasPtr = true
-		*(*uint64)(valuePtr) = buf.ReadVaruint64(err)
+		*(*uint64)(valuePtr) = buf.ReadVarUint64(err)
 		return true
 	case PrimitiveBoolDispatchId:
 		*hasPtr = true
@@ -3251,7 +3251,7 @@ func readOptionFast(ctx *ReadContext, field *FieldInfo, optPtr unsafe.Pointer) b
 		return true
 	case PrimitiveVarUint32DispatchId:
 		*hasPtr = true
-		*(*uint32)(valuePtr) = buf.ReadVaruint32(err)
+		*(*uint32)(valuePtr) = buf.ReadVarUint32(err)
 		return true
 	case PrimitiveUint64DispatchId:
 		*hasPtr = true
@@ -3259,11 +3259,11 @@ func readOptionFast(ctx *ReadContext, field *FieldInfo, optPtr unsafe.Pointer) b
 		return true
 	case PrimitiveVarUint64DispatchId:
 		*hasPtr = true
-		*(*uint64)(valuePtr) = buf.ReadVaruint64(err)
+		*(*uint64)(valuePtr) = buf.ReadVarUint64(err)
 		return true
 	case PrimitiveUintDispatchId:
 		*hasPtr = true
-		*(*uint)(valuePtr) = uint(buf.ReadVaruint64(err))
+		*(*uint)(valuePtr) = uint(buf.ReadVarUint64(err))
 		return true
 	case PrimitiveTaggedInt64DispatchId:
 		*hasPtr = true
@@ -3346,9 +3346,9 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			case PrimitiveVarint64DispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint64(err))
 			case PrimitiveVarUint32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint32(err))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint32(err))
 			case PrimitiveVarUint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint64(err))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint64(err))
 			case PrimitiveTaggedInt64DispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
 			case PrimitiveTaggedUint64DispatchId:
@@ -3356,7 +3356,7 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			case PrimitiveIntDispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.ReadVarint64(err)))
 			case PrimitiveUintDispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVaruint64(err)))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVarUint64(err)))
 			}
 			return
 		}
@@ -3417,9 +3417,9 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			case NullableVarint64DispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarint64(err))
 			case NullableVarUint32DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint32(err))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint32(err))
 			case NullableVarUint64DispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVaruint64(err))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadVarUint64(err))
 			case NullableTaggedInt64DispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, buf.ReadTaggedInt64(err))
 			case NullableTaggedUint64DispatchId:
@@ -3427,7 +3427,7 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 			case NullableIntDispatchId:
 				storeFieldValue(field.Kind, fieldPtr, optInfo, int(buf.ReadVarint64(err)))
 			case NullableUintDispatchId:
-				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVaruint64(err)))
+				storeFieldValue(field.Kind, fieldPtr, optInfo, uint(buf.ReadVarUint64(err)))
 			}
 			return
 		}
@@ -3487,7 +3487,7 @@ func (s *structSerializer) skipField(ctx *ReadContext, field *FieldInfo) {
 }
 
 // writeEnumField writes an enum field respecting the field's RefMode.
-// Java writes enum ordinals as unsigned Varuint32Small7, not signed zigzag.
+// Java writes enum ordinals as unsigned VarUint32Small7, not signed zigzag.
 // RefMode determines whether null flag is written, regardless of whether the local type is a pointer.
 // This is important for compatible mode where remote TypeDef's nullable flag controls the wire format.
 func writeEnumField(ctx *WriteContext, field *FieldInfo, fieldValue reflect.Value) {
@@ -3573,7 +3573,7 @@ func readEnumFieldUnsafe(ctx *ReadContext, field *FieldInfo, fieldPtr unsafe.Poi
 		}
 	}
 
-	ordinal := buf.ReadVaruint32Small7(ctx.Err())
+	ordinal := buf.ReadVarUint32Small7(ctx.Err())
 	if ctx.HasError() {
 		return
 	}

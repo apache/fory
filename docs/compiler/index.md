@@ -106,10 +106,10 @@ message Person [id=100] {
 
 ```bash
 # Generate for all languages
-fory compile example.fdl --output ./generated
+foryc example.fdl --output ./generated
 
 # Generate for specific languages
-fory compile example.fdl --lang java,python --output ./generated
+foryc example.fdl --lang java,python --output ./generated
 ```
 
 ### 4. Use Generated Code

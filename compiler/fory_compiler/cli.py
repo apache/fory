@@ -207,34 +207,32 @@ def resolve_go_output_dir(base_go_out: Path, schema: Schema) -> Path:
 def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        prog="fory",
+        prog="foryc",
         description="Fory IDL compiler",
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
-
-    # compile command
-    compile_parser = subparsers.add_parser(
-        "compile",
-        help="Compile IDL files (.fdl, .proto, .fbs) to language-specific code",
+    parser.add_argument(
+        "--scan-generated",
+        action="store_true",
+        help="Scan for generated files under the current directory",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "files",
-        nargs="+",
+        nargs="*",
         type=Path,
         metavar="FILE",
         help="IDL files to compile",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "--lang",
         type=str,
         default="all",
         help="Comma-separated list of target languages (java,python,cpp,rust,go). Default: all",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "--output",
         "-o",
         type=Path,
@@ -242,14 +240,14 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Output directory. Default: ./generated",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "--package",
         type=str,
         default=None,
         help="Override package name from FDL file",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "-I",
         "--proto_path",
         "--import_path",
@@ -262,7 +260,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     # Language-specific output directories (protoc-style)
-    compile_parser.add_argument(
+    parser.add_argument(
         "--java_out",
         type=Path,
         default=None,
@@ -270,7 +268,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Generate Java code in DST_DIR",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "--python_out",
         type=Path,
         default=None,
@@ -278,7 +276,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Generate Python code in DST_DIR",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "--cpp_out",
         type=Path,
         default=None,
@@ -286,7 +284,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Generate C++ code in DST_DIR",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "--go_out",
         type=Path,
         default=None,
@@ -294,7 +292,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Generate Go code in DST_DIR",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "--rust_out",
         type=Path,
         default=None,
@@ -302,7 +300,7 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Generate Rust code in DST_DIR",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "--go_nested_type_style",
         type=str,
         default=None,
@@ -310,35 +308,31 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Go nested type naming style: camelcase or underscore (default)",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "--emit-fdl",
         action="store_true",
         help="Emit translated FDL (for non-FDL inputs) for debugging",
     )
 
-    compile_parser.add_argument(
+    parser.add_argument(
         "--emit-fdl-path",
         type=Path,
         default=None,
         help="Write translated FDL to this path (file or directory)",
     )
 
-    scan_parser = subparsers.add_parser(
-        "scan-generated",
-        help="Scan for generated files under the current directory",
-    )
-    scan_parser.add_argument(
+    parser.add_argument(
         "--root",
         type=Path,
         default=Path("."),
         help="Root directory to scan (default: current directory)",
     )
-    scan_parser.add_argument(
+    parser.add_argument(
         "--relative",
         action="store_true",
         help="Print paths relative to the scan root",
     )
-    delete_group = scan_parser.add_mutually_exclusive_group()
+    delete_group = parser.add_mutually_exclusive_group()
     delete_group.add_argument(
         "--delete",
         action="store_true",
@@ -351,6 +345,23 @@ def parse_args(args: Optional[List[str]] = None) -> argparse.Namespace:
     )
 
     return parser.parse_args(args)
+
+
+def normalize_args(args: Optional[List[str]]) -> List[str]:
+    """Normalize args so compile is the default command."""
+    if args is None:
+        args = sys.argv[1:]
+    if not args:
+        return []
+    if args[0] in {"-h", "--help"}:
+        return args
+    if args[0] == "--scan-generated":
+        return args
+    if args[0] == "scan-generated":
+        return ["--scan-generated", *args[1:]]
+    if args[0] == "compile":
+        return args[1:]
+    return args
 
 
 def get_languages(lang_arg: str) -> List[str]:
@@ -656,20 +667,17 @@ def cmd_scan_generated(args: argparse.Namespace) -> int:
 
 def main(args: Optional[List[str]] = None) -> int:
     """Main entry point."""
-    parsed = parse_args(args)
+    parsed = parse_args(normalize_args(args))
 
-    if parsed.command is None:
-        print("Usage: fory <command> [options]", file=sys.stderr)
-        print("Commands: compile, scan-generated", file=sys.stderr)
-        print("Use 'fory <command> --help' for more information", file=sys.stderr)
-        return 1
-
-    if parsed.command == "compile":
-        return cmd_compile(parsed)
-    if parsed.command == "scan-generated":
+    if parsed.scan_generated:
         return cmd_scan_generated(parsed)
 
-    return 0
+    if not parsed.files:
+        print("Usage: foryc [--scan-generated] [options] FILES...", file=sys.stderr)
+        print("Use 'foryc --help' for more information", file=sys.stderr)
+        return 1
+
+    return cmd_compile(parsed)
 
 
 if __name__ == "__main__":

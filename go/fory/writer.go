@@ -159,25 +159,25 @@ func (c *WriteContext) RawFloat32(v float32)    { c.buffer.WriteFloat32(v) }
 func (c *WriteContext) RawFloat64(v float64)    { c.buffer.WriteFloat64(v) }
 func (c *WriteContext) WriteVarint32(v int32)   { c.buffer.WriteVarint32(v) }
 func (c *WriteContext) WriteVarint64(v int64)   { c.buffer.WriteVarint64(v) }
-func (c *WriteContext) WriteVaruint32(v uint32) { c.buffer.WriteVaruint32(v) }
+func (c *WriteContext) WriteVarUint32(v uint32) { c.buffer.WriteVarUint32(v) }
 func (c *WriteContext) WriteByte(v byte)        { c.buffer.WriteByte_(v) }
 func (c *WriteContext) WriteBytes(v []byte)     { c.buffer.WriteBinary(v) }
 
 func (c *WriteContext) RawString(v string) {
-	c.buffer.WriteVaruint32(uint32(len(v)))
+	c.buffer.WriteVarUint32(uint32(len(v)))
 	if len(v) > 0 {
 		c.buffer.WriteBinary(unsafe.Slice(unsafe.StringData(v), len(v)))
 	}
 }
 
 func (c *WriteContext) WriteBinary(v []byte) {
-	c.buffer.WriteVaruint32(uint32(len(v)))
+	c.buffer.WriteVarUint32(uint32(len(v)))
 	c.buffer.WriteBinary(v)
 }
 
 func (c *WriteContext) WriteTypeId(id TypeId) {
-	// Use Varuint32Small7 encoding to match Java's xlang serialization
-	c.buffer.WriteVaruint32Small7(uint32(id))
+	// Use VarUint32Small7 encoding to match Java's xlang serialization
+	c.buffer.WriteVarUint32Small7(uint32(id))
 }
 
 // writeFast writes a value using fast path based on DispatchId
@@ -214,7 +214,7 @@ func (c *WriteContext) WriteLength(length int) {
 		c.SetError(SerializationErrorf("length %d exceeds int32 range", length))
 		return
 	}
-	c.buffer.WriteVaruint32(uint32(length))
+	c.buffer.WriteVarUint32(uint32(length))
 }
 
 // ============================================================================

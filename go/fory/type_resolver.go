@@ -1356,8 +1356,8 @@ func (r *TypeResolver) WriteTypeInfo(buffer *ByteBuffer, typeInfo *TypeInfo, err
 	// Extract the internal type ID (lower 8 bits)
 	typeID := typeInfo.TypeID
 	internalTypeID := TypeId(typeID & 0xFF)
-	// WriteData the type ID to buffer using Varuint32Small7 encoding (matches Java)
-	buffer.WriteVaruint32Small7(typeID)
+	// WriteData the type ID to buffer using VarUint32Small7 encoding (matches Java)
+	buffer.WriteVarUint32Small7(typeID)
 
 	// Handle type meta based on internal type ID (matching Java XtypeResolver.writeClassInfo)
 	switch internalTypeID {
@@ -1384,13 +1384,13 @@ func (r *TypeResolver) writeSharedTypeMeta(buffer *ByteBuffer, typeInfo *TypeInf
 
 	if index, exists := context.typeMap[typ]; exists {
 		// Reference to previously written type: (index << 1) | 1, LSB=1
-		buffer.WriteVaruint32((index << 1) | 1)
+		buffer.WriteVarUint32((index << 1) | 1)
 		return
 	}
 
 	// New type: index << 1, LSB=0, followed by TypeDef bytes inline
 	newIndex := uint32(len(context.typeMap))
-	buffer.WriteVaruint32(newIndex << 1)
+	buffer.WriteVarUint32(newIndex << 1)
 	context.typeMap[typ] = newIndex
 
 	// Only build TypeDef for struct types - enums don't have field definitions
@@ -1439,7 +1439,7 @@ func (r *TypeResolver) readSharedTypeMeta(buffer *ByteBuffer, err *Error) *TypeI
 	}
 
 	// Read index marker using streaming protocol
-	indexMarker := buffer.ReadVaruint32(err)
+	indexMarker := buffer.ReadVarUint32(err)
 	if err.HasError() {
 		return nil
 	}
@@ -1943,8 +1943,8 @@ func (r *TypeResolver) readTypeByReadTag(buffer *ByteBuffer, err *Error) reflect
 // ReadTypeInfo reads type info from buffer and returns it.
 // This is exported for use by generated code.
 func (r *TypeResolver) ReadTypeInfo(buffer *ByteBuffer, err *Error) *TypeInfo {
-	// ReadData variable-length type ID using Varuint32Small7 encoding (matches Java)
-	typeID := buffer.ReadVaruint32Small7(err)
+	// ReadData variable-length type ID using VarUint32Small7 encoding (matches Java)
+	typeID := buffer.ReadVarUint32Small7(err)
 	internalTypeID := TypeId(typeID & 0xFF)
 
 	// Handle type meta based on internal type ID (matching Java XtypeResolver.readClassInfo)
@@ -2249,7 +2249,7 @@ func (r *TypeResolver) readTypeInfoWithTypeID(buffer *ByteBuffer, typeID uint32,
 // For STRUCT/NAMED_STRUCT: Gets serializer directly by the passed type (skips type resolution)
 // For COMPATIBLE_STRUCT/NAMED_COMPATIBLE_STRUCT: Reads type def and creates serializer with passed type
 func (r *TypeResolver) ReadTypeInfoForType(buffer *ByteBuffer, expectedType reflect.Type, err *Error) Serializer {
-	typeID := buffer.ReadVaruint32Small7(err)
+	typeID := buffer.ReadVarUint32Small7(err)
 	internalTypeID := TypeId(typeID & 0xFF)
 
 	switch internalTypeID {
@@ -2307,7 +2307,7 @@ func (r *TypeResolver) writeMetaString(buffer *ByteBuffer, str string, err *Erro
 		r.dynamicStringId += 1
 		r.dynamicStringToId[str] = dynamicStringId
 		length := len(str)
-		buffer.WriteVaruint32(uint32(length << 1))
+		buffer.WriteVarUint32(uint32(length << 1))
 		if length <= SMALL_STRING_THRESHOLD {
 			buffer.WriteByte_(uint8(meta.UTF_8))
 		} else {
@@ -2326,12 +2326,12 @@ func (r *TypeResolver) writeMetaString(buffer *ByteBuffer, str string, err *Erro
 		}
 		buffer.WriteBinary(unsafeGetBytes(str))
 	} else {
-		buffer.WriteVaruint32(uint32(((id + 1) << 1) | 1))
+		buffer.WriteVarUint32(uint32(((id + 1) << 1) | 1))
 	}
 }
 
 func (r *TypeResolver) readMetaString(buffer *ByteBuffer, err *Error) string {
-	header := buffer.ReadVaruint32(err)
+	header := buffer.ReadVarUint32(err)
 	var length = int(header >> 1)
 	if header&0b1 == 0 {
 		if length <= SMALL_STRING_THRESHOLD {

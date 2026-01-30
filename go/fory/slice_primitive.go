@@ -473,7 +473,7 @@ func (s stringSliceSerializer) writeDataWithGenerics(ctx *WriteContext, value re
 	v := value.Interface().([]string)
 	buf := ctx.Buffer()
 	length := len(v)
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length == 0 {
 		return
 	}
@@ -485,7 +485,7 @@ func (s stringSliceSerializer) writeDataWithGenerics(ctx *WriteContext, value re
 	} else {
 		// When element type is not known, write CollectionIsSameType and element type info
 		buf.WriteInt8(int8(CollectionIsSameType))
-		buf.WriteVaruint32Small7(uint32(STRING))
+		buf.WriteVarUint32Small7(uint32(STRING))
 	}
 
 	// Write elements directly (no ref flag for strings)
@@ -525,7 +525,7 @@ func (s stringSliceSerializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMod
 func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	buf := ctx.Buffer()
 	ctxErr := ctx.Err()
-	length := int(buf.ReadVaruint32(ctxErr))
+	length := int(buf.ReadVarUint32(ctxErr))
 	ptr := (*[]string)(value.Addr().UnsafePointer())
 	if length == 0 {
 		*ptr = make([]string, 0)
@@ -537,7 +537,7 @@ func (s stringSliceSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 
 	// Read element type info if present (when CollectionIsSameType but not CollectionIsDeclElementType)
 	if (collectFlag&CollectionIsSameType) != 0 && (collectFlag&CollectionIsDeclElementType) == 0 {
-		_ = buf.ReadVaruint32Small7(ctxErr) // Read and discard type ID (we know it's STRING)
+		_ = buf.ReadVarUint32Small7(ctxErr) // Read and discard type ID (we know it's STRING)
 	}
 
 	result := make([]string, length)
@@ -973,7 +973,7 @@ func ReadUintSlice(buf *ByteBuffer, err *Error) []uint {
 //go:inline
 func WriteStringSlice(buf *ByteBuffer, value []string, hasGenerics bool) {
 	length := len(value)
-	buf.WriteVaruint32(uint32(length))
+	buf.WriteVarUint32(uint32(length))
 	if length > 0 {
 		// Use CollectionDeclSameType when element type is known from TypeDef/generics
 		// This matches Java's writeNullabilityHeader behavior for monomorphic types
@@ -981,7 +981,7 @@ func WriteStringSlice(buf *ByteBuffer, value []string, hasGenerics bool) {
 			buf.WriteInt8(int8(CollectionDeclSameType))
 		} else {
 			buf.WriteInt8(int8(CollectionIsSameType))
-			buf.WriteVaruint32Small7(uint32(STRING))
+			buf.WriteVarUint32Small7(uint32(STRING))
 		}
 		for i := 0; i < length; i++ {
 			writeString(buf, value[i])
@@ -993,13 +993,13 @@ func WriteStringSlice(buf *ByteBuffer, value []string, hasGenerics bool) {
 //
 //go:inline
 func ReadStringSlice(buf *ByteBuffer, err *Error) []string {
-	length := int(buf.ReadVaruint32(err))
+	length := int(buf.ReadVarUint32(err))
 	if length == 0 {
 		return make([]string, 0)
 	}
 	collectFlag := buf.ReadInt8(err)
 	if (collectFlag&CollectionIsSameType) != 0 && (collectFlag&CollectionIsDeclElementType) == 0 {
-		_ = buf.ReadVaruint32Small7(err) // Read and discard element type ID
+		_ = buf.ReadVarUint32Small7(err) // Read and discard element type ID
 	}
 	result := make([]string, length)
 	trackRefs := (collectFlag & CollectionTrackingRef) != 0

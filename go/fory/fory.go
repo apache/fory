@@ -307,7 +307,7 @@ func (f *Fory) RegisterNamedStruct(type_ any, typeName string) error {
 
 // RegisterEnum registers an enum type with a numeric ID for cross-language serialization.
 // In Go, enums are typically defined as int-based types (e.g., type Color int32).
-// This method creates an enum serializer that writes/reads the enum value as Varuint32Small7.
+// This method creates an enum serializer that writes/reads the enum value as VarUint32Small7.
 // type_ can be either a reflect.Type or an instance of the enum type
 // typeID should be the user type ID in the range 0-8192 (the internal type ID will be added automatically)
 func (f *Fory) RegisterEnum(type_ any, typeID uint32) error {
@@ -868,7 +868,7 @@ func Serialize[T any](f *Fory, value T) ([]byte, error) {
 	case string:
 		f.writeCtx.buffer.WriteInt8(NotNullValueFlag)
 		f.writeCtx.WriteTypeId(STRING)
-		f.writeCtx.buffer.WriteVaruint32(uint32(len(val)))
+		f.writeCtx.buffer.WriteVarUint32(uint32(len(val)))
 		if len(val) > 0 {
 			f.writeCtx.buffer.WriteBinary(unsafe.Slice(unsafe.StringData(val), len(val)))
 		}
@@ -993,47 +993,47 @@ func Deserialize[T any](f *Fory, data []byte, target *T) error {
 	switch t := any(target).(type) {
 	case *bool:
 		_ = buf.ReadInt8(err)            // null flag
-		_ = buf.ReadVaruint32Small7(err) // type ID
+		_ = buf.ReadVarUint32Small7(err) // type ID
 		*t = buf.ReadBool(err)
 		return f.readCtx.CheckError()
 	case *int8:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVaruint32Small7(err)
+		_ = buf.ReadVarUint32Small7(err)
 		*t = buf.ReadInt8(err)
 		return f.readCtx.CheckError()
 	case *int16:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVaruint32Small7(err)
+		_ = buf.ReadVarUint32Small7(err)
 		*t = buf.ReadInt16(err)
 		return f.readCtx.CheckError()
 	case *int32:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVaruint32Small7(err)
+		_ = buf.ReadVarUint32Small7(err)
 		*t = buf.ReadVarint32(err)
 		return f.readCtx.CheckError()
 	case *int64:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVaruint32Small7(err)
+		_ = buf.ReadVarUint32Small7(err)
 		*t = buf.ReadVarint64(err)
 		return f.readCtx.CheckError()
 	case *int:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVaruint32Small7(err)
+		_ = buf.ReadVarUint32Small7(err)
 		*t = int(buf.ReadVarint64(err))
 		return f.readCtx.CheckError()
 	case *float32:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVaruint32Small7(err)
+		_ = buf.ReadVarUint32Small7(err)
 		*t = buf.ReadFloat32(err)
 		return f.readCtx.CheckError()
 	case *float64:
 		_ = buf.ReadInt8(err)
-		_ = buf.ReadVaruint32Small7(err)
+		_ = buf.ReadVarUint32Small7(err)
 		*t = buf.ReadFloat64(err)
 		return f.readCtx.CheckError()
 	case *string:
 		_ = buf.ReadInt8(err)            // null flag
-		_ = buf.ReadVaruint32Small7(err) // type ID
+		_ = buf.ReadVarUint32Small7(err) // type ID
 		*t = f.readCtx.ReadString()
 		return f.readCtx.CheckError()
 	case *[]byte:

@@ -168,7 +168,7 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\t\tisXlang := ctx.TypeResolver().IsXlang()\n")
 			fmt.Fprintf(buf, "\t\tif isXlang {\n")
 			fmt.Fprintf(buf, "\t\t\t// xlang mode: slices are not nullable, read directly without null flag\n")
-			fmt.Fprintf(buf, "\t\t\tsliceLen := int(buf.ReadVaruint32(err))\n")
+			fmt.Fprintf(buf, "\t\t\tsliceLen := int(buf.ReadVarUint32(err))\n")
 			fmt.Fprintf(buf, "\t\t\tif sliceLen == 0 {\n")
 			fmt.Fprintf(buf, "\t\t\t\t%s = make([]any, 0)\n", fieldAccess)
 			fmt.Fprintf(buf, "\t\t\t} else {\n")
@@ -187,7 +187,7 @@ func generateFieldReadTyped(buf *bytes.Buffer, field *FieldInfo) error {
 			fmt.Fprintf(buf, "\t\t\tif nullFlag == -3 {\n") // NullFlag
 			fmt.Fprintf(buf, "\t\t\t\t%s = nil\n", fieldAccess)
 			fmt.Fprintf(buf, "\t\t\t} else {\n")
-			fmt.Fprintf(buf, "\t\t\t\tsliceLen := int(buf.ReadVaruint32(err))\n")
+			fmt.Fprintf(buf, "\t\t\t\tsliceLen := int(buf.ReadVarUint32(err))\n")
 			fmt.Fprintf(buf, "\t\t\t\tif sliceLen == 0 {\n")
 			fmt.Fprintf(buf, "\t\t\t\t\t%s = make([]any, 0)\n", fieldAccess)
 			fmt.Fprintf(buf, "\t\t\t\t} else {\n")
@@ -379,7 +379,7 @@ func generateSliceRead(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess st
 	// Use block scope to avoid variable redeclaration across multiple slice fields
 	fmt.Fprintf(buf, "\t// ReadData slice %s\n", fieldAccess)
 	fmt.Fprintf(buf, "\t{\n")
-	fmt.Fprintf(buf, "\t\tsliceLen := int(buf.ReadVaruint32())\n")
+	fmt.Fprintf(buf, "\t\tsliceLen := int(buf.ReadVarUint32())\n")
 	fmt.Fprintf(buf, "\t\tif sliceLen == 0 {\n")
 	fmt.Fprintf(buf, "\t\t\t// Empty slice - matching reflection behavior where nil and empty are treated the same\n")
 	fmt.Fprintf(buf, "\t\t\t%s = nil\n", fieldAccess)
@@ -391,7 +391,7 @@ func generateSliceRead(buf *bytes.Buffer, sliceType *types.Slice, fieldAccess st
 	fmt.Fprintf(buf, "\t\t\t// Check if CollectionIsDeclElementType flag is NOT set (meaning we need to read type ID)\n")
 	fmt.Fprintf(buf, "\t\t\tif (collectFlag & 4) == 0 {\n")
 	fmt.Fprintf(buf, "\t\t\t\t// ReadData element type ID (not declared, so we need to read it)\n")
-	fmt.Fprintf(buf, "\t\t\t\t_ = buf.ReadVaruint32()\n")
+	fmt.Fprintf(buf, "\t\t\t\t_ = buf.ReadVarUint32()\n")
 	fmt.Fprintf(buf, "\t\t\t}\n")
 
 	// Create slice
@@ -517,7 +517,7 @@ func generateSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAcc
 	fmt.Fprintf(buf, "\t\tisXlang := ctx.TypeResolver().IsXlang()\n")
 	fmt.Fprintf(buf, "\t\tif isXlang {\n")
 	fmt.Fprintf(buf, "\t\t\t// xlang mode: slices are not nullable, read directly without null flag\n")
-	fmt.Fprintf(buf, "\t\t\tsliceLen := int(buf.ReadVaruint32(err))\n")
+	fmt.Fprintf(buf, "\t\t\tsliceLen := int(buf.ReadVarUint32(err))\n")
 	fmt.Fprintf(buf, "\t\t\tif sliceLen == 0 {\n")
 	fmt.Fprintf(buf, "\t\t\t\t%s = make(%s, 0)\n", fieldAccess, sliceType.String())
 	fmt.Fprintf(buf, "\t\t\t} else {\n")
@@ -532,7 +532,7 @@ func generateSliceReadInline(buf *bytes.Buffer, sliceType *types.Slice, fieldAcc
 	fmt.Fprintf(buf, "\t\t\tif nullFlag == -3 {\n") // NullFlag
 	fmt.Fprintf(buf, "\t\t\t\t%s = nil\n", fieldAccess)
 	fmt.Fprintf(buf, "\t\t\t} else {\n")
-	fmt.Fprintf(buf, "\t\t\t\tsliceLen := int(buf.ReadVaruint32(err))\n")
+	fmt.Fprintf(buf, "\t\t\t\tsliceLen := int(buf.ReadVarUint32(err))\n")
 	fmt.Fprintf(buf, "\t\t\t\tif sliceLen == 0 {\n")
 	fmt.Fprintf(buf, "\t\t\t\t\t%s = make(%s, 0)\n", fieldAccess, sliceType.String())
 	fmt.Fprintf(buf, "\t\t\t\t} else {\n")
@@ -555,7 +555,7 @@ func generateSliceReadInlineNoNull(buf *bytes.Buffer, sliceType *types.Slice, fi
 	unwrappedElem := types.Unalias(elemType)
 	if iface, ok := unwrappedElem.(*types.Interface); ok && iface.Empty() {
 		fmt.Fprintf(buf, "%s// Dynamic slice []any handling - no null flag\n", indent)
-		fmt.Fprintf(buf, "%ssliceLen := int(buf.ReadVaruint32(err))\n", indent)
+		fmt.Fprintf(buf, "%ssliceLen := int(buf.ReadVarUint32(err))\n", indent)
 		fmt.Fprintf(buf, "%sif sliceLen == 0 {\n", indent)
 		fmt.Fprintf(buf, "%s\t%s = make([]any, 0)\n", indent, fieldAccess)
 		fmt.Fprintf(buf, "%s} else {\n", indent)
@@ -573,7 +573,7 @@ func generateSliceReadInlineNoNull(buf *bytes.Buffer, sliceType *types.Slice, fi
 	}
 
 	elemIsReferencable := isReferencableType(elemType)
-	fmt.Fprintf(buf, "%ssliceLen := int(buf.ReadVaruint32(err))\n", indent)
+	fmt.Fprintf(buf, "%ssliceLen := int(buf.ReadVarUint32(err))\n", indent)
 	fmt.Fprintf(buf, "%sif sliceLen == 0 {\n", indent)
 	fmt.Fprintf(buf, "%s\t%s = make(%s, 0)\n", indent, fieldAccess, sliceType.String())
 	fmt.Fprintf(buf, "%s} else {\n", indent)
@@ -641,7 +641,7 @@ func writeSliceReadElements(buf *bytes.Buffer, sliceType *types.Slice, elemType 
 	fmt.Fprintf(buf, "%s\t// Need to read type ID once if CollectionIsSameType is set\n", indent)
 	fmt.Fprintf(buf, "%s\tif (collectFlag & 8) != 0 {\n", indent)
 	fmt.Fprintf(buf, "%s\t\t// ReadData element type ID once for all elements\n", indent)
-	fmt.Fprintf(buf, "%s\t\t_ = buf.ReadVaruint32(err)\n", indent)
+	fmt.Fprintf(buf, "%s\t\t_ = buf.ReadVarUint32(err)\n", indent)
 	fmt.Fprintf(buf, "%s\t}\n", indent)
 	fmt.Fprintf(buf, "%s\tfor i := 0; i < sliceLen; i++ {\n", indent)
 	if elemIsReferencable {
@@ -762,7 +762,7 @@ func generateElementTypeIDReadInline(buf *bytes.Buffer, elemType types.Type) err
 		}
 
 		fmt.Fprintf(buf, "\t\t\t\t// ReadData and verify element type ID\n")
-		fmt.Fprintf(buf, "\t\t\t\tif typeID := buf.ReadVaruint32(); typeID != %d {\n", expectedTypeID)
+		fmt.Fprintf(buf, "\t\t\t\tif typeID := buf.ReadVarUint32(); typeID != %d {\n", expectedTypeID)
 		fmt.Fprintf(buf, "\t\t\t\t\treturn fmt.Errorf(\"expected element type ID %d, got %%d\", typeID)\n", expectedTypeID)
 		fmt.Fprintf(buf, "\t\t\t\t}\n")
 
@@ -925,7 +925,7 @@ func generateMapReadInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess st
 	fmt.Fprintf(buf, "\t\tisXlang := ctx.TypeResolver().IsXlang()\n")
 	fmt.Fprintf(buf, "\t\tif isXlang {\n")
 	fmt.Fprintf(buf, "\t\t\t// xlang mode: maps are not nullable, read directly without null flag\n")
-	fmt.Fprintf(buf, "\t\t\tmapLen := int(buf.ReadVaruint32(err))\n")
+	fmt.Fprintf(buf, "\t\t\tmapLen := int(buf.ReadVarUint32(err))\n")
 	fmt.Fprintf(buf, "\t\t\tif mapLen == 0 {\n")
 	fmt.Fprintf(buf, "\t\t\t\t%s = make(%s)\n", fieldAccess, mapType.String())
 	fmt.Fprintf(buf, "\t\t\t} else {\n")
@@ -940,7 +940,7 @@ func generateMapReadInline(buf *bytes.Buffer, mapType *types.Map, fieldAccess st
 	fmt.Fprintf(buf, "\t\t\tif nullFlag == -3 {\n") // NullFlag
 	fmt.Fprintf(buf, "\t\t\t\t%s = nil\n", fieldAccess)
 	fmt.Fprintf(buf, "\t\t\t} else {\n")
-	fmt.Fprintf(buf, "\t\t\t\tmapLen := int(buf.ReadVaruint32(err))\n")
+	fmt.Fprintf(buf, "\t\t\t\tmapLen := int(buf.ReadVarUint32(err))\n")
 	fmt.Fprintf(buf, "\t\t\t\tif mapLen == 0 {\n")
 	fmt.Fprintf(buf, "\t\t\t\t\t%s = make(%s)\n", fieldAccess, mapType.String())
 	fmt.Fprintf(buf, "\t\t\t\t} else {\n")
@@ -972,7 +972,7 @@ func generateMapReadInlineNoNull(buf *bytes.Buffer, mapType *types.Map, fieldAcc
 	}
 
 	indent := "\t\t\t"
-	fmt.Fprintf(buf, "%smapLen := int(buf.ReadVaruint32(err))\n", indent)
+	fmt.Fprintf(buf, "%smapLen := int(buf.ReadVarUint32(err))\n", indent)
 	fmt.Fprintf(buf, "%sif mapLen == 0 {\n", indent)
 	fmt.Fprintf(buf, "%s\t%s = make(%s)\n", indent, fieldAccess, mapType.String())
 	fmt.Fprintf(buf, "%s} else {\n", indent)

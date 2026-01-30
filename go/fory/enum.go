@@ -22,7 +22,7 @@ import (
 )
 
 // enumSerializer serializes Go enum types (which are typically int-based types)
-// For xlang serialization, enums are written as Varuint32Small7 of their ordinal value
+// For xlang serialization, enums are written as VarUint32Small7 of their ordinal value
 type enumSerializer struct {
 	type_  reflect.Type
 	typeID uint32 // Full type ID including user ID
@@ -40,7 +40,7 @@ func (s *enumSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 		ctx.SetError(SerializationErrorf("enum serializer: unsupported kind %v", value.Kind()))
 		return
 	}
-	ctx.buffer.WriteVaruint32Small7(ordinal)
+	ctx.buffer.WriteVarUint32Small7(ordinal)
 }
 
 func (s *enumSerializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
@@ -61,7 +61,7 @@ func (s *enumSerializer) Write(ctx *WriteContext, refMode RefMode, writeType boo
 
 func (s *enumSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 	err := ctx.Err()
-	ordinal := ctx.buffer.ReadVaruint32Small7(err)
+	ordinal := ctx.buffer.ReadVarUint32Small7(err)
 	if ctx.HasError() {
 		return
 	}
@@ -85,7 +85,7 @@ func (s *enumSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, 
 		}
 	}
 	if readType {
-		_ = ctx.buffer.ReadVaruint32Small7(err)
+		_ = ctx.buffer.ReadVarUint32Small7(err)
 	}
 	if ctx.HasError() {
 		return
