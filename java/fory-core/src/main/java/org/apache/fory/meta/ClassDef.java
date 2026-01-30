@@ -292,7 +292,8 @@ public class ClassDef implements Serializable {
     if (this.fieldsInfo.size() == localDef.fieldsInfo.size()) {
       boolean orderDifferent = false;
       for (int i = 0; i < this.fieldsInfo.size(); i++) {
-        if (!Objects.equals(fieldKey(this.fieldsInfo.get(i)), fieldKey(localDef.fieldsInfo.get(i)))) {
+        if (!Objects.equals(
+            fieldKey(this.fieldsInfo.get(i)), fieldKey(localDef.fieldsInfo.get(i)))) {
           orderDifferent = true;
           break;
         }

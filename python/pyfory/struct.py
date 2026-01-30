@@ -304,6 +304,7 @@ _ENABLE_FORY_DEBUG_OUTPUT = os.environ.get("ENABLE_FORY_DEBUG_OUTPUT", "False").
     "1",
 )
 
+
 class DataClassSerializer(Serializer):
     def __init__(
         self,
@@ -1037,8 +1038,10 @@ class DataClassSerializer(Serializer):
             is_nullable = self._nullable_fields.get(field_name, False)
             is_dynamic = self._dynamic_fields.get(field_name, False)
             if _ENABLE_FORY_DEBUG_OUTPUT:
-                print(f"xwrite field '{field_name}': {field_value!r}, writer_index={buffer.get_writer_index()}, "
-                      f"nullable={is_nullable}, dynamic={is_dynamic}, serializer={serializer}")
+                print(
+                    f"xwrite field '{field_name}': {field_value!r}, writer_index={buffer.get_writer_index()}, "
+                    f"nullable={is_nullable}, dynamic={is_dynamic}, serializer={serializer}"
+                )
             if is_nullable:
                 if field_value is None:
                     buffer.write_int8(-3)
@@ -1077,8 +1080,10 @@ class DataClassSerializer(Serializer):
             is_nullable = self._nullable_fields.get(field_name, False)
             is_dynamic = self._dynamic_fields.get(field_name, False)
             if _ENABLE_FORY_DEBUG_OUTPUT:
-                print(f"xread field '{field_name}': reader_index={buffer.get_reader_index()}, "
-                      f"nullable={is_nullable}, dynamic={is_dynamic}, serializer={serializer}")
+                print(
+                    f"xread field '{field_name}': reader_index={buffer.get_reader_index()}, "
+                    f"nullable={is_nullable}, dynamic={is_dynamic}, serializer={serializer}"
+                )
             if is_nullable:
                 ref_id = buffer.read_int8()
                 if ref_id == -3:

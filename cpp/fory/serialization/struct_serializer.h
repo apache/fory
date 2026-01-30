@@ -555,9 +555,8 @@ template <typename T> struct CompileTimeFieldHelpers {
       // Else if FORY_FIELD_CONFIG is defined, use nullable from config
       else if constexpr (::fory::detail::has_field_config_v<T>) {
         if constexpr (::fory::detail::GetFieldConfigEntry<T,
-                                                         Index>::has_entry &&
-                      ::fory::detail::GetFieldConfigEntry<T,
-                                                         Index>::nullable) {
+                                                          Index>::has_entry &&
+                      ::fory::detail::GetFieldConfigEntry<T, Index>::nullable) {
           return true;
         }
         return field_is_nullable_v<RawFieldType>;
@@ -633,7 +632,7 @@ template <typename T> struct CompileTimeFieldHelpers {
       // Else if FORY_FIELD_CONFIG is defined, use ref from config
       else if constexpr (::fory::detail::has_field_config_v<T>) {
         if constexpr (::fory::detail::GetFieldConfigEntry<T,
-                                                         Index>::has_entry &&
+                                                          Index>::has_entry &&
                       ::fory::detail::GetFieldConfigEntry<T, Index>::ref) {
           return true;
         }
@@ -2152,9 +2151,9 @@ void read_single_field_by_index(T &obj, ReadContext &ctx) {
   // - FALSE (0): never read type info for this field
   // - AUTO (-1): read type info if is_polymorphic_field (auto-detected)
   // Struct/EXT fields need type info in compatible mode for TypeMeta.
-  bool read_type =
-      (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic_field) ||
-      ((is_struct_field || is_ext_field) && ctx.is_compatible());
+  bool read_type = (dynamic_val == 1) ||
+                   (dynamic_val == -1 && is_polymorphic_field) ||
+                   ((is_struct_field || is_ext_field) && ctx.is_compatible());
 
   // get field metadata from fory::field<> or FORY_FIELD_TAGS or defaults
   constexpr bool is_nullable = Helpers::template field_nullable<Index>();
@@ -2325,9 +2324,9 @@ void read_single_field_by_index_compatible(T &obj, ReadContext &ctx,
   // - FALSE (0): never read type info for this field
   // - AUTO (-1): read type info if is_polymorphic_field (auto-detected)
   // Struct/EXT fields need type info in compatible mode for TypeMeta.
-  bool read_type =
-      (dynamic_val == 1) || (dynamic_val == -1 && is_polymorphic_field) ||
-      ((is_struct_field || is_ext_field) && ctx.is_compatible());
+  bool read_type = (dynamic_val == 1) ||
+                   (dynamic_val == -1 && is_polymorphic_field) ||
+                   ((is_struct_field || is_ext_field) && ctx.is_compatible());
 
   // In compatible mode, trust the remote field metadata (remote_ref_mode)
   // to tell us whether a ref/null flag was written before the value payload.
@@ -3000,7 +2999,8 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
             // Remote sent non-compatible type id (STRUCT/NAMED_STRUCT) without
             // TypeMeta. Fall back to schema-consistent read after validating
             // type id equivalence.
-            uint32_t normalized_remote = normalize_struct_type_id(remote_type_id);
+            uint32_t normalized_remote =
+                normalize_struct_type_id(remote_type_id);
             uint32_t normalized_local = normalize_struct_type_id(local_type_id);
             if (normalized_remote != normalized_local) {
               ctx.set_error(

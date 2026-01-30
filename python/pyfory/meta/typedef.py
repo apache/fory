@@ -384,8 +384,10 @@ class DynamicFieldType(FieldType):
         # to write/read the union payload correctly.
         if isinstance(type_, list):
             type_ = type_[0]
-        assert not is_union_type(self.type_id), "Union fields don't write field type info, \
+        assert not is_union_type(self.type_id), (
+            "Union fields don't write field type info, \
             they are not dynamic field types"
+        )
         return None
 
     def __repr__(self):
@@ -581,7 +583,7 @@ def build_field_type_from_type_ids_with_ref(
             key_type.tracking_ref_override = key_ref_override
         if value_ref_override is not None:
             value_type.tracking_ref_override = value_ref_override
-        return MapFieldType(type_id, morphic, is_nullable, is_tracking_ref, key_type, value_type)        
+        return MapFieldType(type_id, morphic, is_nullable, is_tracking_ref, key_type, value_type)
     elif type_id in [
         TypeId.UNKNOWN,
         TypeId.EXT,
