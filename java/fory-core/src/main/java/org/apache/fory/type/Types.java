@@ -253,6 +253,7 @@ public class Types {
     return isStructType(typeId)
         || isExtType(typeId)
         || isEnumType(typeId)
+        || typeId == UNION
         || typeId == TYPED_UNION
         || typeId == NAMED_UNION;
   }

@@ -83,6 +83,7 @@ import org.apache.fory.serializer.DeferedLazySerializer;
 import org.apache.fory.serializer.DeferedLazySerializer.DeferredLazyObjectSerializer;
 import org.apache.fory.serializer.EnumSerializer;
 import org.apache.fory.serializer.NonexistentClass;
+import org.apache.fory.serializer.NonexistentClass.NonexistentEnum;
 import org.apache.fory.serializer.NonexistentClass.NonexistentMetaShared;
 import org.apache.fory.serializer.NonexistentClassSerializers;
 import org.apache.fory.serializer.NonexistentClassSerializers.NonexistentClassSerializer;
@@ -591,8 +592,11 @@ public class XtypeResolver extends TypeResolver {
     if (clz.isArray()) {
       return true;
     }
-    if (clz == NonexistentMetaShared.class) {
+    if (clz == NonexistentEnum.class) {
       return true;
+    }
+    if (clz == NonexistentMetaShared.class) {
+      return false;
     }
     ClassInfo classInfo = getClassInfo(clz, false);
     if (classInfo != null) {
@@ -615,8 +619,8 @@ public class XtypeResolver extends TypeResolver {
   public boolean isBuildIn(Descriptor descriptor) {
     Class<?> rawType = descriptor.getRawType();
     byte typeIdByte = getInternalTypeId(descriptor);
-    if (rawType == NonexistentMetaShared.class) {
-      return true;
+    if (NonexistentClass.class.isAssignableFrom(rawType)) {
+      return false;
     }
     return !Types.isUserDefinedType(typeIdByte) && typeIdByte != Types.UNKNOWN;
   }
