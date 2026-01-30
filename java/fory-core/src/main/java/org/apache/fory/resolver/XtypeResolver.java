@@ -111,6 +111,7 @@ import org.apache.fory.type.GenericType;
 import org.apache.fory.type.Generics;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
+import org.apache.fory.type.union.Union;
 import org.apache.fory.type.unsigned.Uint16;
 import org.apache.fory.type.unsigned.Uint32;
 import org.apache.fory.type.unsigned.Uint8;
@@ -563,6 +564,9 @@ public class XtypeResolver extends TypeResolver {
           return false;
         }
         if (rawType.isEnum()) {
+          return true;
+        }
+        if (Union.class.isAssignableFrom(rawType)) {
           return true;
         }
         if (rawType == NonexistentMetaShared.class) {
