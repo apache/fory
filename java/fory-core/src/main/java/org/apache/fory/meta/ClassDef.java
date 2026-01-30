@@ -240,43 +240,45 @@ public class ClassDef implements Serializable {
     // Build field maps for comparison
     Map<String, FieldInfo> remoteFields = new HashMap<>();
     for (FieldInfo fi : this.fieldsInfo) {
-      remoteFields.put(fi.getFieldName(), fi);
+      remoteFields.put(fieldKey(fi), fi);
     }
     Map<String, FieldInfo> localFields = new HashMap<>();
     for (FieldInfo fi : localDef.fieldsInfo) {
-      localFields.put(fi.getFieldName(), fi);
+      localFields.put(fieldKey(fi), fi);
     }
 
     // Find fields only in remote
-    for (String fieldName : remoteFields.keySet()) {
-      if (!localFields.containsKey(fieldName)) {
+    for (String fieldKey : remoteFields.keySet()) {
+      if (!localFields.containsKey(fieldKey)) {
+        FieldInfo remoteField = remoteFields.get(fieldKey);
         diff.append("  field '")
-            .append(fieldName)
+            .append(fieldLabel(remoteField))
             .append("': only in remote, type=")
-            .append(remoteFields.get(fieldName).getFieldType())
+            .append(remoteField.getFieldType())
             .append("\n");
       }
     }
 
     // Find fields only in local
-    for (String fieldName : localFields.keySet()) {
-      if (!remoteFields.containsKey(fieldName)) {
+    for (String fieldKey : localFields.keySet()) {
+      if (!remoteFields.containsKey(fieldKey)) {
+        FieldInfo localField = localFields.get(fieldKey);
         diff.append("  field '")
-            .append(fieldName)
+            .append(fieldLabel(localField))
             .append("': only in local, type=")
-            .append(localFields.get(fieldName).getFieldType())
+            .append(localField.getFieldType())
             .append("\n");
       }
     }
 
     // Compare common fields
-    for (String fieldName : remoteFields.keySet()) {
-      if (localFields.containsKey(fieldName)) {
-        FieldInfo remoteField = remoteFields.get(fieldName);
-        FieldInfo localField = localFields.get(fieldName);
+    for (String fieldKey : remoteFields.keySet()) {
+      if (localFields.containsKey(fieldKey)) {
+        FieldInfo remoteField = remoteFields.get(fieldKey);
+        FieldInfo localField = localFields.get(fieldKey);
         if (!Objects.equals(remoteField.getFieldType(), localField.getFieldType())) {
           diff.append("  field '")
-              .append(fieldName)
+              .append(fieldLabel(remoteField))
               .append("': type mismatch, remote=")
               .append(remoteField.getFieldType())
               .append(", local=")
@@ -290,8 +292,7 @@ public class ClassDef implements Serializable {
     if (this.fieldsInfo.size() == localDef.fieldsInfo.size()) {
       boolean orderDifferent = false;
       for (int i = 0; i < this.fieldsInfo.size(); i++) {
-        if (!Objects.equals(
-            this.fieldsInfo.get(i).getFieldName(), localDef.fieldsInfo.get(i).getFieldName())) {
+        if (!Objects.equals(fieldKey(this.fieldsInfo.get(i)), fieldKey(localDef.fieldsInfo.get(i)))) {
           orderDifferent = true;
           break;
         }
@@ -303,7 +304,7 @@ public class ClassDef implements Serializable {
           if (i > 0) {
             diff.append(", ");
           }
-          diff.append(this.fieldsInfo.get(i).getFieldName());
+          diff.append(fieldLabel(this.fieldsInfo.get(i)));
         }
         diff.append("]\n");
         diff.append("    local:  [");
@@ -311,13 +312,31 @@ public class ClassDef implements Serializable {
           if (i > 0) {
             diff.append(", ");
           }
-          diff.append(localDef.fieldsInfo.get(i).getFieldName());
+          diff.append(fieldLabel(localDef.fieldsInfo.get(i)));
         }
         diff.append("]\n");
       }
     }
 
     return diff.length() > 0 ? diff.toString() : null;
+  }
+
+  private static String fieldKey(FieldInfo fieldInfo) {
+    if (fieldInfo.hasFieldId()) {
+      return "id:" + fieldInfo.getFieldId();
+    }
+    return "name:" + fieldInfo.getFieldName();
+  }
+
+  private static String fieldLabel(FieldInfo fieldInfo) {
+    if (fieldInfo.hasFieldId()) {
+      String name = fieldInfo.getFieldName();
+      if (name == null || name.startsWith("$tag")) {
+        return "id=" + fieldInfo.getFieldId();
+      }
+      return name + "(id=" + fieldInfo.getFieldId() + ")";
+    }
+    return fieldInfo.getFieldName();
   }
 
   /** Write class definition to buffer. */
