@@ -999,8 +999,8 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 		if field.Meta.FieldIndex < 0 {
 			// Field exists in remote TypeDef but not locally
 			if DebugOutputEnabled && s.type_ != nil {
-				fmt.Printf("[Go][fory-debug] typeDefDiffers: missing local field for remote def idx=%d name=%q tagID=%d typeId=%d\n",
-					i, s.fieldDefs[i].name, s.fieldDefs[i].tagID, s.fieldDefs[i].fieldType.TypeId())
+				fmt.Printf("[Go][fory-debug] [%s] typeDefDiffers: missing local field for remote def idx=%d name=%q tagID=%d typeId=%d\n",
+					s.name, i, s.fieldDefs[i].name, s.fieldDefs[i].tagID, s.fieldDefs[i].fieldType.TypeId())
 			}
 			s.typeDefDiffers = true
 			break
@@ -1014,8 +1014,22 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			localNullable := localNullableByIndex[field.Meta.FieldIndex]
 			if remoteNullable != localNullable {
 				if DebugOutputEnabled && s.type_ != nil {
-					fmt.Printf("[Go][fory-debug] typeDefDiffers: nullable mismatch idx=%d name=%q tagID=%d remote=%v local=%v\n",
-						i, s.fieldDefs[i].name, s.fieldDefs[i].tagID, remoteNullable, localNullable)
+					fmt.Printf("[Go][fory-debug] [%s] typeDefDiffers: nullable mismatch idx=%d name=%q tagID=%d remote=%v local=%v\n",
+						s.name, i, s.fieldDefs[i].name, s.fieldDefs[i].tagID, remoteNullable, localNullable)
+				}
+				s.typeDefDiffers = true
+				break
+			}
+			remoteTypeId := TypeId(s.fieldDefs[i].fieldType.TypeId() & 0xFF)
+			localTypeId := typeResolver.getTypeIdByType(field.Meta.Type)
+			if localTypeId == 0 {
+				localTypeId = typeIdFromKind(field.Meta.Type)
+			}
+			localTypeId = TypeId(localTypeId & 0xFF)
+			if !typeIdEqualForDiff(remoteTypeId, localTypeId) {
+				if DebugOutputEnabled && s.type_ != nil {
+					fmt.Printf("[Go][fory-debug] [%s] typeDefDiffers: type ID mismatch idx=%d name=%q tagID=%d remote=%d local=%d\n",
+						s.name, i, s.fieldDefs[i].name, s.fieldDefs[i].tagID, remoteTypeId, localTypeId)
 				}
 				s.typeDefDiffers = true
 				break
@@ -1028,6 +1042,19 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 	}
 
 	return nil
+}
+
+func typeIdEqualForDiff(remoteTypeId TypeId, localTypeId TypeId) bool {
+	if remoteTypeId == localTypeId {
+		return true
+	}
+	if remoteTypeId == UNION && (localTypeId == TYPED_UNION || localTypeId == NAMED_UNION) {
+		return true
+	}
+	if localTypeId == UNION && (remoteTypeId == TYPED_UNION || remoteTypeId == NAMED_UNION) {
+		return true
+	}
+	return false
 }
 
 func (s *structSerializer) computeHash() int32 {
@@ -1051,14 +1078,14 @@ func (s *structSerializer) computeHash() int32 {
 				}
 			}
 			// Unions use UNION type ID in fingerprints, regardless of typed/named variants.
-			internalId := TypeId(typeId & 0xFF)
+			internalId := typeId & 0xFF
 			if internalId == TYPED_UNION || internalId == NAMED_UNION || internalId == UNION {
 				typeId = UNION
 			}
 			// For user-defined types (struct, ext types), use UNKNOWN in fingerprint
 			// This matches Java's behavior where user-defined types return UNKNOWN
 			// to ensure consistent fingerprint computation across languages
-			if isUserDefinedType(int16(typeId)) {
+			if isUserDefinedType(typeId) {
 				typeId = UNKNOWN
 			}
 			fieldTypeForHash := field.Meta.Type
@@ -2608,6 +2635,10 @@ func (s *structSerializer) ReadData(ctx *ReadContext, value reflect.Value) {
 // readRemainingField reads a non-primitive field (string, slice, map, struct, enum)
 func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Pointer, field *FieldInfo, value reflect.Value) {
 	buf := ctx.Buffer()
+	if DebugOutputEnabled {
+		fmt.Printf("[fory-debug] read remaining field %s: fieldInfo=%v typeId=%v, buffer readerIndex=%d\n",
+			field.Meta.Name, field.Meta.FieldDef, field.Meta.TypeId, buf.readerIndex)
+	}
 	ctxErr := ctx.Err()
 	if field.Kind == FieldKindOptional {
 		if ptr != nil {
@@ -2939,11 +2970,6 @@ func (s *structSerializer) readRemainingField(ctx *ReadContext, ptr unsafe.Point
 			return
 		}
 	}
-
-	if DebugOutputEnabled {
-		fmt.Printf("[fory-debug] read normal field %s: fieldInfo=%v typeId=%v serializer=%T, buffer readerIndex=%d\n",
-			field.Meta.Name, field.Meta.FieldDef, field.Meta.TypeId, field.Serializer, buf.readerIndex)
-	}
 	// Slow path for RefModeTracking cases that break from the switch above
 	fieldValue := value.Field(field.Meta.FieldIndex)
 	if field.Serializer != nil {
@@ -3266,15 +3292,6 @@ func (s *structSerializer) readFieldsInOrder(ctx *ReadContext, value reflect.Val
 	readField := func(field *FieldInfo) {
 		if field.Meta.FieldIndex < 0 {
 			s.skipField(ctx, field)
-			return
-		}
-		if field.Kind == FieldKindOptional {
-			fieldValue := value.Field(field.Meta.FieldIndex)
-			if field.Serializer != nil {
-				field.Serializer.Read(ctx, field.RefMode, field.Meta.WriteType, field.Meta.HasGenerics, fieldValue)
-			} else {
-				ctx.ReadValue(fieldValue, RefModeTracking, true)
-			}
 			return
 		}
 

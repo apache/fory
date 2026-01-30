@@ -18,10 +18,12 @@
 package fory
 
 import (
+	"bytes"
+	"compress/zlib"
 	"fmt"
-	"strings"
-
+	"io"
 	"reflect"
+	"strings"
 
 	"github.com/apache/fory/go/fory/meta"
 )
@@ -107,43 +109,43 @@ func (td *TypeDef) ComputeDiff(localDef *TypeDef) string {
 	// Build field maps for comparison
 	remoteFields := make(map[string]FieldDef)
 	for _, fd := range td.fieldDefs {
-		remoteFields[fd.name] = fd
+		remoteFields[fieldKey(fd)] = fd
 	}
 	localFields := make(map[string]FieldDef)
 	for _, fd := range localDef.fieldDefs {
-		localFields[fd.name] = fd
+		localFields[fieldKey(fd)] = fd
 	}
 
 	// Find fields only in remote
-	for fieldName, fd := range remoteFields {
-		if _, exists := localFields[fieldName]; !exists {
+	for fieldKey, fd := range remoteFields {
+		if _, exists := localFields[fieldKey]; !exists {
 			diff.WriteString(fmt.Sprintf("  field '%s': only in remote, type=%s, nullable=%v\n",
-				fieldName, fieldTypeToString(fd.fieldType), fd.nullable))
+				fieldLabel(fd), fieldTypeToString(fd.fieldType), fd.nullable))
 		}
 	}
 
 	// Find fields only in local
-	for fieldName, fd := range localFields {
-		if _, exists := remoteFields[fieldName]; !exists {
+	for fieldKey, fd := range localFields {
+		if _, exists := remoteFields[fieldKey]; !exists {
 			diff.WriteString(fmt.Sprintf("  field '%s': only in local, type=%s, nullable=%v\n",
-				fieldName, fieldTypeToString(fd.fieldType), fd.nullable))
+				fieldLabel(fd), fieldTypeToString(fd.fieldType), fd.nullable))
 		}
 	}
 
 	// Compare common fields
-	for fieldName, remoteField := range remoteFields {
-		if localField, exists := localFields[fieldName]; exists {
+	for fieldKey, remoteField := range remoteFields {
+		if localField, exists := localFields[fieldKey]; exists {
 			// Compare field types
 			remoteTypeStr := fieldTypeToString(remoteField.fieldType)
 			localTypeStr := fieldTypeToString(localField.fieldType)
 			if remoteTypeStr != localTypeStr {
 				diff.WriteString(fmt.Sprintf("  field '%s': type mismatch, remote=%s, local=%s\n",
-					fieldName, remoteTypeStr, localTypeStr))
+					fieldLabel(remoteField), remoteTypeStr, localTypeStr))
 			}
 			// Compare nullable
 			if remoteField.nullable != localField.nullable {
 				diff.WriteString(fmt.Sprintf("  field '%s': nullable mismatch, remote=%v, local=%v\n",
-					fieldName, remoteField.nullable, localField.nullable))
+					fieldLabel(remoteField), remoteField.nullable, localField.nullable))
 			}
 		}
 	}
@@ -152,7 +154,7 @@ func (td *TypeDef) ComputeDiff(localDef *TypeDef) string {
 	if len(td.fieldDefs) == len(localDef.fieldDefs) {
 		orderDifferent := false
 		for i := range td.fieldDefs {
-			if td.fieldDefs[i].name != localDef.fieldDefs[i].name {
+			if fieldKey(td.fieldDefs[i]) != fieldKey(localDef.fieldDefs[i]) {
 				orderDifferent = true
 				break
 			}
@@ -164,7 +166,7 @@ func (td *TypeDef) ComputeDiff(localDef *TypeDef) string {
 				if i > 0 {
 					diff.WriteString(", ")
 				}
-				diff.WriteString(fd.name)
+				diff.WriteString(fieldLabel(fd))
 			}
 			diff.WriteString("]\n")
 			diff.WriteString("    local:  [")
@@ -172,13 +174,30 @@ func (td *TypeDef) ComputeDiff(localDef *TypeDef) string {
 				if i > 0 {
 					diff.WriteString(", ")
 				}
-				diff.WriteString(fd.name)
+				diff.WriteString(fieldLabel(fd))
 			}
 			diff.WriteString("]\n")
 		}
 	}
 
 	return diff.String()
+}
+
+func fieldKey(fd FieldDef) string {
+	if fd.tagID >= 0 {
+		return fmt.Sprintf("id:%d", fd.tagID)
+	}
+	return "name:" + fd.name
+}
+
+func fieldLabel(fd FieldDef) string {
+	if fd.tagID >= 0 {
+		if fd.name != "" {
+			return fmt.Sprintf("%s(id=%d)", fd.name, fd.tagID)
+		}
+		return fmt.Sprintf("id=%d", fd.tagID)
+	}
+	return fd.name
 }
 
 func (td *TypeDef) writeTypeDef(buffer *ByteBuffer, err *Error) {
@@ -931,7 +950,7 @@ type SimpleFieldType struct {
 func NewSimpleFieldType(typeId TypeId) *SimpleFieldType {
 	return &SimpleFieldType{
 		BaseFieldType: BaseFieldType{
-			typeId: typeId,
+			typeId: typeId & 0xff,
 		},
 	}
 }
@@ -996,6 +1015,9 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 	if info, ok := getOptionalInfo(fieldType); ok {
 		fieldType = info.valueType
 		fieldValue = reflect.Zero(fieldType)
+	}
+	if isUnionType(fieldType) {
+		return NewSimpleFieldType(UNION), nil
 	}
 	// Handle Interface type, we can't determine the actual type here, so leave it as dynamic type
 	if fieldType.Kind() == reflect.Interface {
@@ -1088,7 +1110,8 @@ func buildFieldType(fory *Fory, fieldValue reflect.Value) (FieldType, error) {
 
 	if isUserDefinedType(typeId) {
 		internalTypeId := TypeId(typeId & 0xFF)
-		if internalTypeId == UNION || internalTypeId == TYPED_UNION || internalTypeId == NAMED_UNION {
+		switch internalTypeId {
+		case UNION, TYPED_UNION, NAMED_UNION, ENUM, NAMED_ENUM:
 			return NewSimpleFieldType(typeId), nil
 		}
 		return NewDynamicFieldType(typeId), nil
@@ -1403,20 +1426,28 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 	globalHeader := header
 	hasFieldsMeta := (globalHeader & HAS_FIELDS_META_FLAG) != 0
 	isCompressed := (globalHeader & COMPRESS_META_FLAG) != 0
-	metaSize := int(globalHeader & META_SIZE_MASK)
-	if metaSize == META_SIZE_MASK {
-		metaSize += int(buffer.ReadVaruint32(&bufErr))
+	metaSizeBits := int(globalHeader & META_SIZE_MASK)
+	metaSize := metaSizeBits
+	extraMetaSize := 0
+	if metaSizeBits == META_SIZE_MASK {
+		extraMetaSize = int(buffer.ReadVaruint32(&bufErr))
+		metaSize += extraMetaSize
 	}
 
 	// Store the encoded bytes for the TypeDef (including meta header and metadata)
-	// todo: handle compression if is_compressed is true
-	if isCompressed {
-	}
-	encoded := buffer.ReadBinary(metaSize, &bufErr)
+	encodedMeta := buffer.ReadBinary(metaSize, &bufErr)
 	if bufErr.HasError() {
 		return nil, bufErr.TakeError()
 	}
-	metaBuffer := NewByteBuffer(encoded)
+	decodedMeta := encodedMeta
+	if isCompressed {
+		decodedMetaBytes, err := decompressMeta(encodedMeta)
+		if err != nil {
+			return nil, err
+		}
+		decodedMeta = decodedMetaBytes
+	}
+	metaBuffer := NewByteBuffer(decodedMeta)
 	var metaErr Error
 
 	// ReadData 1-byte meta header
@@ -1558,6 +1589,8 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		}
 	}
 
+	encoded := buildTypeDefEncoded(globalHeader, metaSizeBits, extraMetaSize, encodedMeta)
+
 	// Create TypeDef
 	typeDef := NewTypeDef(typeId, nsBytes, nameBytes, registeredByName, isCompressed, fieldInfos)
 	typeDef.encoded = encoded
@@ -1580,6 +1613,30 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 		}
 	}
 	return typeDef, nil
+}
+
+func buildTypeDefEncoded(header int64, metaSizeBits, extraMetaSize int, metaBytes []byte) []byte {
+	capacity := 8 + len(metaBytes) + 5
+	buffer := NewByteBuffer(make([]byte, 0, capacity))
+	buffer.WriteInt64(header)
+	if metaSizeBits == META_SIZE_MASK {
+		buffer.WriteVaruint32(uint32(extraMetaSize))
+	}
+	buffer.WriteBinary(metaBytes)
+	return buffer.Bytes()
+}
+
+func decompressMeta(encoded []byte) ([]byte, error) {
+	reader, err := zlib.NewReader(bytes.NewReader(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create meta decompressor: %w", err)
+	}
+	defer reader.Close()
+	decoded, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decompress meta: %w", err)
+	}
+	return decoded, nil
 }
 
 /*

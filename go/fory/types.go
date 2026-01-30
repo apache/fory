@@ -275,6 +275,7 @@ func isUserDefinedType(typeID int16) bool {
 		id == NAMED_EXT ||
 		id == ENUM ||
 		id == NAMED_ENUM ||
+		id == UNION ||
 		id == TYPED_UNION ||
 		id == NAMED_UNION
 }
