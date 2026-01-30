@@ -1620,7 +1620,7 @@ func buildTypeDefEncoded(header int64, metaSizeBits, extraMetaSize int, metaByte
 	buffer := NewByteBuffer(make([]byte, 0, capacity))
 	buffer.WriteInt64(header)
 	if metaSizeBits == META_SIZE_MASK {
-		buffer.WriteVaruint32(uint32(extraMetaSize))
+		buffer.WriteVarUint32(uint32(extraMetaSize))
 	}
 	buffer.WriteBinary(metaBytes)
 	return buffer.Bytes()
