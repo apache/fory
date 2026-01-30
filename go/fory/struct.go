@@ -1472,6 +1472,10 @@ func (s *structSerializer) WriteData(ctx *WriteContext, value reflect.Value) {
 // writeRemainingField writes a non-primitive field (string, slice, map, struct, enum)
 func (s *structSerializer) writeRemainingField(ctx *WriteContext, ptr unsafe.Pointer, field *FieldInfo, value reflect.Value) {
 	buf := ctx.Buffer()
+	if DebugOutputEnabled {
+		fmt.Printf("[fory-debug] write field %s: fieldInfo=%v typeId=%v serializer=%T, buffer writerIndex=%d\n",
+			field.Meta.Name, field.Meta.FieldDef, field.Meta.TypeId, field.Serializer, buf.writerIndex)
+	}
 	if field.Kind == FieldKindOptional {
 		if ptr != nil {
 			if writeOptionFast(ctx, field, unsafe.Add(ptr, field.Offset)) {
@@ -3509,11 +3513,6 @@ func writeEnumField(ctx *WriteContext, field *FieldInfo, fieldValue reflect.Valu
 		} else {
 			targetValue = fieldValue.Elem()
 		}
-	}
-
-	if DebugOutputEnabled {
-		fmt.Printf("[fory-debug] write field %s: fieldInfo=%v typeId=%v serializer=%T, buffer writerIndex=%d\n",
-			field.Meta.Name, field.Meta.FieldDef, field.Meta.TypeId, field.Serializer, buf.writerIndex)
 	}
 	// For pointer enum fields, the serializer is ptrToValueSerializer wrapping enumSerializer.
 	// We need to call the inner enumSerializer directly with the dereferenced value.
