@@ -1373,7 +1373,8 @@ def compute_struct_fingerprint(type_resolver, field_names, serializers, nullable
         else:
             type_id = type_resolver.get_typeinfo(serializer.type_).type_id & 0xFF
             if is_union_type(type_id):
-                type_id = TypeId.UNION
+                # customized types can't be detected at compile time for some languages
+                type_id = TypeId.UNKNOWN
             is_nullable = nullable_map.get(field_name, False)
 
             # For polymorphic or enum types, set type_id to UNKNOWN but preserve nullable from map
