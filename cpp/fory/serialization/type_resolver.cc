@@ -857,6 +857,10 @@ void TypeMeta::assign_field_ids(const TypeMeta *local_type,
     case TypeId::EXT:
     case TypeId::NAMED_EXT:
       return static_cast<uint32_t>(TypeId::EXT);
+    case TypeId::BINARY:
+    case TypeId::INT8_ARRAY:
+    case TypeId::UINT8_ARRAY:
+      return static_cast<uint32_t>(TypeId::BINARY);
     default:
       return tid;
     }

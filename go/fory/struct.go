@@ -1054,6 +1054,11 @@ func typeIdEqualForDiff(remoteTypeId TypeId, localTypeId TypeId) bool {
 	if localTypeId == UNION && (remoteTypeId == TYPED_UNION || remoteTypeId == NAMED_UNION) {
 		return true
 	}
+	// Treat byte array encodings as compatible for diffing.
+	if (remoteTypeId == INT8_ARRAY || remoteTypeId == UINT8_ARRAY || remoteTypeId == BINARY) &&
+		(localTypeId == INT8_ARRAY || localTypeId == UINT8_ARRAY || localTypeId == BINARY) {
+		return true
+	}
 	return false
 }
 
