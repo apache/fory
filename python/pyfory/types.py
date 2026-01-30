@@ -414,6 +414,12 @@ _struct_type_ids = {
     TypeId.NAMED_COMPATIBLE_STRUCT,
 }
 
+_union_type_ids = {
+    TypeId.UNION,
+    TypeId.TYPED_UNION,
+    TypeId.NAMED_UNION,
+}
+
 
 def is_polymorphic_type(type_id: int) -> bool:
     return type_id in _polymorphic_type_ids
@@ -421,3 +427,15 @@ def is_polymorphic_type(type_id: int) -> bool:
 
 def is_struct_type(type_id: int) -> bool:
     return type_id in _struct_type_ids
+
+
+def is_union_type(type_or_id) -> bool:
+    if type_or_id is None:
+        return False
+    if isinstance(type_or_id, int):
+        type_id = type_or_id
+    else:
+        type_id = getattr(type_or_id, "type_id", None)
+    if type_id is None or not isinstance(type_id, int):
+        return False
+    return (type_id & 0xFF) in _union_type_ids
