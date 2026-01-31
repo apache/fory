@@ -182,7 +182,7 @@ export type Serializer<T = any, T2 = any> = {
   write: (v: T2) => void;
   writeRef: (v: T2) => void;
   writeNoRef: (v: T2) => void;
-  writeRefOrNull: (v: T2) => void;
+  writeRefOrNull: (v: T2) => boolean;
   writeClassInfo: (v: T2) => void;
 
   read: (fromRef: boolean) => T2;

@@ -25,7 +25,7 @@ import { Mode, RefFlags, Serializer, TypeId } from "../type";
 import { Scope } from "./scope";
 import Fory from "../fory";
 
-class AnyHelper {
+export class AnyHelper {
   static detectSerializer(fory: Fory) {
     const typeId = fory.binaryReader.readVarUint32Small7();
     let serializer: Serializer | undefined;
