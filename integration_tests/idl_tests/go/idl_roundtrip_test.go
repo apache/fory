@@ -78,7 +78,7 @@ func buildAutoIdEnvelope() autoid.Envelope {
 	detail := autoid.PayloadEnvelope_Detail(&payload)
 	return autoid.Envelope{
 		Id:      "env-1",
-		Payload: payload,
+		Payload: &payload,
 		Detail:  detail,
 		Status:  autoid.StatusOk,
 	}

@@ -183,12 +183,13 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
   MetaString encodeByAllowedEncodings(String input, List<MetaStringEncoding> encodings) {
     if (input.isEmpty) return MetaString(input, MetaStringEncoding.extended, specialChar1, specialChar2, Uint8List(0));
     if (_isNumberString(input)) {
+      final Uint8List? encoded = _encodeNumberString(input);
       return MetaString(
         input,
         MetaStringEncoding.extended,
         specialChar1,
         specialChar2,
-        _encodeNumberString(input),
+        encoded ?? _encodeExtendedUtf8(input),
       );
     }
     if (StringUtil.hasNonLatin(input)){

@@ -239,10 +239,39 @@ static const MetaEncoding k_type_name_encodings[] = {
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
     MetaEncoding::FIRST_TO_LOWER_SPECIAL};
 
-inline Result<void, Error> write_meta_name(Buffer &buffer,
-                                           const std::string &name) {
-  const uint8_t encoding_idx = 0; // EXTENDED in both encoding tables
-  const size_t len = name.size();
+static const std::vector<MetaEncoding> k_namespace_encoding_list = {
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
+
+static const std::vector<MetaEncoding> k_type_name_encoding_list = {
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
+    MetaEncoding::FIRST_TO_LOWER_SPECIAL};
+
+static const MetaStringEncoder k_namespace_encoder('.', '_');
+static const MetaStringEncoder k_type_name_encoder('$', '_');
+
+inline Result<uint8_t, Error> encoding_to_index(MetaEncoding encoding,
+                                                const MetaEncoding *encodings,
+                                                size_t enc_count) {
+  for (size_t i = 0; i < enc_count; ++i) {
+    if (encodings[i] == encoding) {
+      return static_cast<uint8_t>(i);
+    }
+  }
+  return Unexpected(Error::encoding_error(
+      "Unsupported meta string encoding: " +
+      std::to_string(static_cast<int>(encoding))));
+}
+
+inline Result<void, Error> write_meta_name(
+    Buffer &buffer, const std::string &name, const MetaStringEncoder &encoder,
+    const std::vector<MetaEncoding> &allowed_encodings,
+    const MetaEncoding *encodings, size_t enc_count) {
+  FORY_TRY(encoded, encoder.encode(name, allowed_encodings));
+  FORY_TRY(encoding_idx,
+           encoding_to_index(encoded.encoding, encodings, enc_count));
+  const size_t len = encoded.bytes.size();
 
   if (len >= BIG_NAME_THRESHOLD) {
     uint8_t header =
@@ -254,9 +283,8 @@ inline Result<void, Error> write_meta_name(Buffer &buffer,
     buffer.write_uint8(header);
   }
 
-  if (!name.empty()) {
-    buffer.write_bytes(reinterpret_cast<const uint8_t *>(name.data()),
-                       static_cast<uint32_t>(name.size()));
+  if (len > 0) {
+    buffer.write_bytes(encoded.bytes.data(), static_cast<uint32_t>(len));
   }
   return Result<void, Error>();
 }
@@ -338,8 +366,14 @@ Result<std::vector<uint8_t>, Error> TypeMeta::to_bytes() const {
   // write namespace and type name (if registered by name) using the
   // same compact meta string format as Rust/Java.
   if (register_by_name) {
-    FORY_RETURN_NOT_OK(write_meta_name(layer_buffer, namespace_str));
-    FORY_RETURN_NOT_OK(write_meta_name(layer_buffer, type_name));
+    FORY_RETURN_NOT_OK(write_meta_name(
+        layer_buffer, namespace_str, k_namespace_encoder,
+        k_namespace_encoding_list, k_namespace_encodings,
+        sizeof(k_namespace_encodings) / sizeof(k_namespace_encodings[0])));
+    FORY_RETURN_NOT_OK(write_meta_name(
+        layer_buffer, type_name, k_type_name_encoder, k_type_name_encoding_list,
+        k_type_name_encodings,
+        sizeof(k_type_name_encodings) / sizeof(k_type_name_encodings[0])));
   } else {
     layer_buffer.write_var_uint32(type_id);
   }

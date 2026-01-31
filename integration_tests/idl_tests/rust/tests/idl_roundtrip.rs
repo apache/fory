@@ -111,7 +111,7 @@ fn build_auto_id_envelope() -> auto_id::Envelope {
     let detail = auto_id::envelope::Detail::Payload(payload.clone());
     auto_id::Envelope {
         id: "env-1".to_string(),
-        payload,
+        payload: Some(payload),
         detail,
         status: auto_id::Status::Ok,
     }

@@ -1185,7 +1185,7 @@ impl TypeResolver {
         let internal_type_info_by_id: Vec<Option<Rc<TypeInfo>>> = self
             .internal_type_info_by_id
             .iter()
-            .map(|opt| opt.as_ref().map(|info| get_or_clone_type_info(info)))
+            .map(|opt| opt.as_ref().map(&mut get_or_clone_type_info))
             .collect();
 
         let user_type_info_by_id: HashMap<u32, Rc<TypeInfo>> = self

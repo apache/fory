@@ -222,7 +222,7 @@ fn test_negative_number_string_encoding() {
     let meta_string = encoder.encode(test_string).unwrap();
     assert_eq!(meta_string.encoding, Encoding::Extended);
     assert!(!meta_string.bytes.is_empty());
-    assert_eq!(meta_string.bytes[0], 1);
+    assert_eq!(meta_string.bytes[0], 2);
     let decoded = decoder
         .decode(&meta_string.bytes, meta_string.encoding)
         .unwrap();

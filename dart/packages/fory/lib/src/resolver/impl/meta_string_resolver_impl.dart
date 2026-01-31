@@ -21,6 +21,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 import 'package:fory/src/codec/encoders.dart';
 import 'package:fory/src/codec/meta_string_decoder.dart';
+import 'package:fory/src/codec/meta_string_encoding.dart';
 import 'package:fory/src/collection/long_long_key.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/memory/byte_reader.dart';

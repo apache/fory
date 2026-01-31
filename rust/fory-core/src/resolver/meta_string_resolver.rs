@@ -25,7 +25,7 @@ use crate::buffer::Writer;
 use crate::error::Error;
 use crate::meta::{murmurhash3_x64_128, NAMESPACE_DECODER};
 use crate::meta::{Encoding, MetaString};
-use crate::{ensure, Reader};
+use crate::Reader;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MetaStringBytes {
