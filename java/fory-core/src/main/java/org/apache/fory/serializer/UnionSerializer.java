@@ -21,13 +21,20 @@ package org.apache.fory.serializer;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.BiFunction;
 import org.apache.fory.Fory;
+import org.apache.fory.collection.LongMap;
+import org.apache.fory.logging.Logger;
+import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
-import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.type.Types;
 import org.apache.fory.type.union.Union;
 import org.apache.fory.type.union.Union2;
@@ -35,6 +42,7 @@ import org.apache.fory.type.union.Union3;
 import org.apache.fory.type.union.Union4;
 import org.apache.fory.type.union.Union5;
 import org.apache.fory.type.union.Union6;
+import org.apache.fory.util.Preconditions;
 
 /**
  * Serializer for {@link Union} and its subclasses ({@link Union2}, {@link Union3}, {@link Union4},
@@ -51,9 +59,11 @@ import org.apache.fory.type.union.Union6;
  * deserialization, not from the serialized data. This allows cross-language interoperability with
  * union types in other languages like C++'s std::variant, Rust's enum, or Python's typing.Union.
  */
+@SuppressWarnings({"rawtypes", "unchecked"})
 public class UnionSerializer extends Serializer<Union> {
+  private static final Logger LOG = LoggerFactory.getLogger(UnionSerializer.class);
+
   /** Array of factories for creating Union instances by type tag. */
-  @SuppressWarnings("unchecked")
   private static final BiFunction<Integer, Object, Union>[] FACTORIES =
       new BiFunction[] {
         (BiFunction<Integer, Object, Union>) Union::new,
@@ -65,8 +75,11 @@ public class UnionSerializer extends Serializer<Union> {
       };
 
   private final BiFunction<Integer, Object, Union> factory;
+  private final Map<Integer, Class<?>> caseValueTypes;
+  private final LongMap<ClassInfo> finalCaseClassInfo;
+  private boolean finalCaseSerializersResolved;
+  private final TypeResolver resolver;
 
-  @SuppressWarnings("unchecked")
   public UnionSerializer(Fory fory, Class<? extends Union> cls) {
     super(fory, (Class<Union>) cls);
     int typeIndex = getTypeIndex(cls);
@@ -75,6 +88,9 @@ public class UnionSerializer extends Serializer<Union> {
     } else {
       this.factory = createFactory(cls);
     }
+    finalCaseClassInfo = new LongMap<>();
+    this.caseValueTypes = resolveCaseValueTypes(cls);
+    resolver = fory.getTypeResolver();
   }
 
   private static int getTypeIndex(Class<? extends Union> cls) {
@@ -103,7 +119,7 @@ public class UnionSerializer extends Serializer<Union> {
       MethodHandle handle = MethodHandles.lookup().unreflectConstructor(ctor);
       return (index, value) -> {
         try {
-          return (Union) handle.invoke(index.intValue(), value);
+          return (Union) handle.invoke(index, value);
         } catch (Throwable t) {
           throw new IllegalStateException("Failed to construct union type " + cls.getName(), t);
         }
@@ -131,13 +147,17 @@ public class UnionSerializer extends Serializer<Union> {
     int valueTypeId = union.getValueTypeId();
     if (valueTypeId == Types.UNKNOWN) {
       if (value != null) {
-        fory.xwriteRef(buffer, value);
+        if (fory.isCrossLanguage()) {
+          fory.xwriteRef(buffer, value);
+        } else {
+          fory.writeRef(buffer, value);
+        }
       } else {
         buffer.writeByte(Fory.NULL_FLAG);
       }
       return;
     }
-    writeCaseValue(buffer, value, valueTypeId);
+    writeCaseValue(buffer, value, valueTypeId, index);
   }
 
   @Override
@@ -148,8 +168,22 @@ public class UnionSerializer extends Serializer<Union> {
   @Override
   public Union xread(MemoryBuffer buffer) {
     int index = buffer.readVarUint32();
-    Object value = fory.xreadRef(buffer);
-    return factory.apply(index, value);
+    Object caseValue;
+    int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+    if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
+      // ref value or not-null value
+      ClassInfo declared = getFinalCaseClassInfo(index);
+      ClassInfo readClassInfo = resolver.readClassInfo(buffer, declared);
+      if (declared != null) {
+        caseValue = Serializers.read(buffer, declared.getSerializer());
+      } else {
+        caseValue = Serializers.read(buffer, readClassInfo.getSerializer());
+      }
+      refResolver.setReadObject(nextReadRefId, caseValue);
+    } else {
+      caseValue = refResolver.getReadObject();
+    }
+    return factory.apply(index, caseValue);
   }
 
   @Override
@@ -162,66 +196,40 @@ public class UnionSerializer extends Serializer<Union> {
     return factory.apply(union.getIndex(), copiedValue);
   }
 
-  private void writeCaseValue(MemoryBuffer buffer, Object value, int typeId) {
-    Serializer serializer = null;
-    if (value != null) {
-      serializer = getSerializer(typeId, value);
+  private void writeCaseValue(MemoryBuffer buffer, Object value, int typeId, int caseId) {
+    byte internalTypeId = (byte) (typeId & 0xff);
+    boolean primitiveArray = Types.isPrimitiveArray(internalTypeId);
+    Serializer serializer;
+    ClassInfo classInfo;
+    if (value == null) {
+      buffer.writeByte(Fory.NULL_FLAG);
+      return;
     }
+    classInfo = getFinalCaseClassInfo(caseId);
+    if (classInfo == null) {
+      Preconditions.checkArgument(!primitiveArray);
+      if (!Types.isUserDefinedType(internalTypeId)) {
+        classInfo = resolver.getClassInfoByTypeId(internalTypeId);
+      } else {
+        classInfo = resolver.getClassInfo(value.getClass());
+      }
+    }
+    Preconditions.checkArgument(classInfo != null);
+    serializer = classInfo.getSerializer();
     RefResolver refResolver = fory.getRefResolver();
     if (serializer != null && serializer.needToWriteRef()) {
       if (refResolver.writeRefOrNull(buffer, value)) {
         return;
       }
     } else {
-      if (value == null) {
-        buffer.writeByte(Fory.NULL_FLAG);
-        return;
-      }
       buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
     }
-    writeTypeInfo(buffer, typeId, value);
-    writeValue(buffer, value, typeId, serializer);
-  }
-
-  private Serializer getSerializer(int typeId, Object value) {
-    int internalTypeId = typeId & 0xff;
-    if (isPrimitiveType(internalTypeId)) {
-      return null;
-    }
-    ClassInfo classInfo = getClassInfo(typeId, value);
-    return classInfo == null ? null : classInfo.getSerializer();
-  }
-
-  private void writeTypeInfo(MemoryBuffer buffer, int typeId, Object value) {
-    ClassInfo classInfo = getClassInfo(typeId, value);
-    if (classInfo == null) {
+    if (!Types.isUserDefinedType(internalTypeId)) {
       buffer.writeVarUint32Small7(typeId);
-      return;
+    } else {
+      resolver.writeClassInfo(buffer, classInfo);
     }
-    fory.getTypeResolver().writeClassInfo(buffer, classInfo);
-  }
-
-  private ClassInfo getClassInfo(int typeId, Object value) {
-    TypeResolver resolver = fory.getTypeResolver();
-    int internalTypeId = typeId & 0xff;
-    if (typeId >= 256 && resolver instanceof XtypeResolver) {
-      ClassInfo classInfo = ((XtypeResolver) resolver).getUserTypeInfo(typeId >>> 8);
-      if (classInfo != null) {
-        if ((classInfo.getTypeId() & 0xff) == internalTypeId) {
-          return classInfo;
-        }
-      }
-    }
-    if (isNamedType(internalTypeId)) {
-      return resolver.getClassInfo(value.getClass());
-    }
-    if (resolver instanceof XtypeResolver) {
-      ClassInfo classInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
-      if (classInfo != null) {
-        return classInfo;
-      }
-    }
-    return resolver.getClassInfo(value.getClass());
+    writeValue(buffer, value, typeId, serializer);
   }
 
   private void writeValue(MemoryBuffer buffer, Object value, int typeId, Serializer serializer) {
@@ -280,45 +288,116 @@ public class UnionSerializer extends Serializer<Union> {
         break;
     }
     if (serializer != null) {
-      serializer.xwrite(buffer, value);
+      Serializers.write(buffer, serializer, value);
       return;
     }
     throw new IllegalStateException("Missing serializer for union type id " + typeId);
   }
 
-  private static boolean isNamedType(int internalTypeId) {
-    return internalTypeId == Types.NAMED_ENUM
-        || internalTypeId == Types.NAMED_STRUCT
-        || internalTypeId == Types.NAMED_EXT
-        || internalTypeId == Types.NAMED_UNION
-        || internalTypeId == Types.NAMED_COMPATIBLE_STRUCT;
+  private ClassInfo getFinalCaseClassInfo(int caseId) {
+    if (!finalCaseSerializersResolved) {
+      resolveFinalCaseClassInfo();
+      finalCaseSerializersResolved = true;
+    }
+    return finalCaseClassInfo.get(caseId);
   }
 
-  private static boolean isPrimitiveType(int internalTypeId) {
-    switch (internalTypeId) {
-      case Types.BOOL:
-      case Types.INT8:
-      case Types.INT16:
-      case Types.INT32:
-      case Types.VARINT32:
-      case Types.INT64:
-      case Types.VARINT64:
-      case Types.TAGGED_INT64:
-      case Types.UINT8:
-      case Types.UINT16:
-      case Types.UINT32:
-      case Types.VAR_UINT32:
-      case Types.UINT64:
-      case Types.VAR_UINT64:
-      case Types.TAGGED_UINT64:
-      case Types.FLOAT16:
-      case Types.FLOAT32:
-      case Types.FLOAT64:
-      case Types.STRING:
-      case Types.BINARY:
-        return true;
-      default:
-        return false;
+  private void resolveFinalCaseClassInfo() {
+    for (Map.Entry<Integer, Class<?>> entry : caseValueTypes.entrySet()) {
+      Class<?> expectedType = entry.getValue();
+      if (!isFinalCaseType(expectedType)) {
+        continue;
+      }
+      if (expectedType.isPrimitive()) {
+        continue;
+      }
+      ClassInfo classInfo = fory.getTypeResolver().getClassInfo(expectedType);
+      finalCaseClassInfo.put(entry.getKey(), classInfo);
     }
+  }
+
+  private static boolean isFinalCaseType(Class<?> expectedType) {
+    return expectedType.isArray() || Modifier.isFinal(expectedType.getModifiers());
+  }
+
+  private Map<Integer, Class<?>> resolveCaseValueTypes(Class<? extends Union> unionClass) {
+    Map<Integer, Class<?>> mapping = new HashMap<>();
+    Class<? extends Enum<?>> caseEnum = null;
+    Field idField = null;
+    for (Class<?> nested : unionClass.getDeclaredClasses()) {
+      if (nested.isEnum() && nested.getSimpleName().endsWith("Case")) {
+        @SuppressWarnings("unchecked")
+        Class<? extends Enum<?>> enumClass = (Class<? extends Enum<?>>) nested;
+        try {
+          Field field = enumClass.getDeclaredField("id");
+          if (field.getType() == int.class) {
+            caseEnum = enumClass;
+            idField = field;
+            idField.setAccessible(true);
+            break;
+          }
+        } catch (NoSuchFieldException ignored) {
+          // try next enum
+        }
+      }
+    }
+    if (caseEnum == null) {
+      return mapping;
+    }
+    for (Enum<?> constant : caseEnum.getEnumConstants()) {
+      int caseId;
+      try {
+        caseId = (int) idField.get(constant);
+      } catch (IllegalAccessException e) {
+        continue;
+      }
+      String suffix = toPascalCase(constant.name());
+      Class<?> expected = findCaseValueType(unionClass, suffix);
+      if (expected != null) {
+        mapping.put(caseId, expected);
+      }
+    }
+    return mapping;
+  }
+
+  private static Class<?> findCaseValueType(Class<? extends Union> unionClass, String suffix) {
+    String setterName = "set" + suffix;
+    for (Method method : unionClass.getMethods()) {
+      if (!Modifier.isPublic(method.getModifiers())) {
+        continue;
+      }
+      if (method.getName().equals(setterName) && method.getParameterCount() == 1) {
+        return method.getParameterTypes()[0];
+      }
+    }
+    String getterName = "get" + suffix;
+    for (Method method : unionClass.getMethods()) {
+      if (!Modifier.isPublic(method.getModifiers())) {
+        continue;
+      }
+      if (method.getName().equals(getterName) && method.getParameterCount() == 0) {
+        Class<?> returnType = method.getReturnType();
+        if (returnType != void.class) {
+          return returnType;
+        }
+      }
+    }
+    return null;
+  }
+
+  private static String toPascalCase(String upperSnake) {
+    StringBuilder builder = new StringBuilder();
+    String[] parts = upperSnake.split("_");
+    for (String part : parts) {
+      if (part.isEmpty()) {
+        continue;
+      }
+      String lower = part.toLowerCase();
+      builder.append(Character.toUpperCase(lower.charAt(0)));
+      if (lower.length() > 1) {
+        builder.append(lower.substring(1));
+      }
+    }
+    return builder.toString();
   }
 }

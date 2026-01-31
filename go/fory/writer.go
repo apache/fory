@@ -203,6 +203,9 @@ func (c *WriteContext) writeFast(ptr unsafe.Pointer, ct DispatchId) {
 		c.buffer.WriteFloat32(*(*float32)(ptr))
 	case PrimitiveFloat64DispatchId:
 		c.buffer.WriteFloat64(*(*float64)(ptr))
+	case PrimitiveFloat16DispatchId:
+		// Float16 is uint16 in Go
+		c.buffer.WriteUint16(*(*uint16)(ptr))
 	case StringDispatchId:
 		writeString(c.buffer, *(*string)(ptr))
 	}
@@ -302,6 +305,51 @@ func (c *WriteContext) WriteInt64Slice(value []int64, refMode RefMode, writeType
 		c.WriteTypeId(INT64_ARRAY)
 	}
 	WriteInt64Slice(c.buffer, value)
+}
+
+// WriteUint16Slice writes []uint16 with ref/type info
+func (c *WriteContext) WriteUint16Slice(value []uint16, refMode RefMode, writeTypeInfo bool) {
+	if refMode != RefModeNone {
+		if value == nil {
+			c.buffer.WriteInt8(NullFlag)
+			return
+		}
+		c.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeTypeInfo {
+		c.WriteTypeId(UINT16_ARRAY)
+	}
+	WriteUint16Slice(c.buffer, value)
+}
+
+// WriteUint32Slice writes []uint32 with ref/type info
+func (c *WriteContext) WriteUint32Slice(value []uint32, refMode RefMode, writeTypeInfo bool) {
+	if refMode != RefModeNone {
+		if value == nil {
+			c.buffer.WriteInt8(NullFlag)
+			return
+		}
+		c.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeTypeInfo {
+		c.WriteTypeId(UINT32_ARRAY)
+	}
+	WriteUint32Slice(c.buffer, value)
+}
+
+// WriteUint64Slice writes []uint64 with ref/type info
+func (c *WriteContext) WriteUint64Slice(value []uint64, refMode RefMode, writeTypeInfo bool) {
+	if refMode != RefModeNone {
+		if value == nil {
+			c.buffer.WriteInt8(NullFlag)
+			return
+		}
+		c.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeTypeInfo {
+		c.WriteTypeId(UINT64_ARRAY)
+	}
+	WriteUint64Slice(c.buffer, value)
 }
 
 // WriteIntSlice writes []int with ref/type info

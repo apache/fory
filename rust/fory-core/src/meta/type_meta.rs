@@ -23,8 +23,8 @@ use crate::meta::{
 };
 use crate::resolver::type_resolver::{TypeInfo, TypeResolver};
 use crate::types::{
-    TypeId, COMPATIBLE_STRUCT, ENUM, EXT, NAMED_COMPATIBLE_STRUCT, NAMED_ENUM, NAMED_EXT,
-    NAMED_STRUCT, PRIMITIVE_TYPES, STRUCT, UNKNOWN,
+    TypeId, BINARY, COMPATIBLE_STRUCT, ENUM, EXT, INT8_ARRAY, NAMED_COMPATIBLE_STRUCT, NAMED_ENUM,
+    NAMED_EXT, NAMED_STRUCT, PRIMITIVE_TYPES, STRUCT, UINT8_ARRAY, UNKNOWN,
 };
 use crate::util::to_snake_case;
 
@@ -32,7 +32,7 @@ use crate::util::to_snake_case;
 /// This treats all struct variants (STRUCT, COMPATIBLE_STRUCT, NAMED_STRUCT,
 /// NAMED_COMPATIBLE_STRUCT) and UNKNOWN as equivalent to STRUCT.
 /// UNKNOWN (0) is used for polymorphic types (interfaces) in cross-language serialization.
-/// Similarly for ENUM and EXT variants.
+/// Similarly for ENUM and EXT variants, and byte array encodings.
 fn normalize_type_id_for_eq(type_id: u32) -> u32 {
     let low = type_id & 0xff;
     match low {
@@ -49,6 +49,8 @@ fn normalize_type_id_for_eq(type_id: u32) -> u32 {
         _ if low == ENUM || low == NAMED_ENUM => ENUM,
         // All ext variants normalize to EXT
         _ if low == EXT || low == NAMED_EXT => EXT,
+        // Byte array encodings normalize to BINARY
+        _ if low == BINARY || low == INT8_ARRAY || low == UINT8_ARRAY => BINARY,
         // Everything else stays the same
         _ => type_id,
     }

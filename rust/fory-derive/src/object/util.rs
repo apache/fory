@@ -1435,8 +1435,12 @@ fn compute_struct_fingerprint(fields: &[&Field]) -> String {
         };
         let nullable_flag = if nullable { "1" } else { "0" };
 
-        // User-defined types (UNKNOWN) use 0 in fingerprint, matching Java behavior
-        let effective_type_id = if info.type_id == TypeId::UNKNOWN as u32 {
+        // User-defined types (UNKNOWN) and unions use 0 in fingerprint, matching Java behavior
+        let effective_type_id = if info.type_id == TypeId::UNKNOWN as u32
+            || info.type_id == TypeId::UNION as u32
+            || info.type_id == TypeId::TYPED_UNION as u32
+            || info.type_id == TypeId::NAMED_UNION as u32
+        {
             0
         } else {
             info.type_id

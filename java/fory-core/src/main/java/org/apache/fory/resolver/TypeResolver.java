@@ -992,15 +992,19 @@ public abstract class TypeResolver {
 
   public abstract <T> void setSerializerIfAbsent(Class<T> cls, Serializer<T> serializer);
 
-  public final Serializer<?> getSerializerByTypeId(int typeId) {
+  public final ClassInfo getClassInfoByTypeId(int typeId) {
     int internalTypeId = typeId & 0xFF;
     if (Types.isUserDefinedType((byte) internalTypeId)) {
       int userId = typeId >>> 8;
       if (userId != 0) {
-        return requireUserTypeInfoByTypeId(userId).getSerializer();
+        return requireUserTypeInfoByTypeId(userId);
       }
     }
-    return requireInternalTypeInfoByTypeId(internalTypeId).getSerializer();
+    return requireInternalTypeInfoByTypeId(internalTypeId);
+  }
+
+  public final Serializer<?> getSerializerByTypeId(int typeId) {
+    return getClassInfoByTypeId(typeId).getSerializer();
   }
 
   public final ClassInfo nilClassInfo() {
@@ -1144,6 +1148,9 @@ public abstract class TypeResolver {
   }
 
   public final boolean isCollection(Class<?> cls) {
+    if (TypeUtils.isPrimitiveListClass(cls)) {
+      return false;
+    }
     if (Collection.class.isAssignableFrom(cls)) {
       return true;
     }

@@ -857,6 +857,10 @@ void TypeMeta::assign_field_ids(const TypeMeta *local_type,
     case TypeId::EXT:
     case TypeId::NAMED_EXT:
       return static_cast<uint32_t>(TypeId::EXT);
+    case TypeId::BINARY:
+    case TypeId::INT8_ARRAY:
+    case TypeId::UINT8_ARRAY:
+      return static_cast<uint32_t>(TypeId::BINARY);
     default:
       return tid;
     }
@@ -1072,7 +1076,8 @@ std::string TypeMeta::compute_struct_fingerprint(
     if (effective_type_id == static_cast<uint32_t>(TypeId::ENUM) ||
         effective_type_id == static_cast<uint32_t>(TypeId::NAMED_ENUM) ||
         effective_type_id == static_cast<uint32_t>(TypeId::STRUCT) ||
-        effective_type_id == static_cast<uint32_t>(TypeId::NAMED_STRUCT)) {
+        effective_type_id == static_cast<uint32_t>(TypeId::NAMED_STRUCT) ||
+        effective_type_id == static_cast<uint32_t>(TypeId::UNION)) {
       effective_type_id = static_cast<uint32_t>(TypeId::UNKNOWN);
     }
     fingerprint.append(std::to_string(effective_type_id));

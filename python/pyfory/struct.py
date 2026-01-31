@@ -52,6 +52,7 @@ from pyfory.types import (
     get_primitive_type_size,
     is_polymorphic_type,
     is_primitive_type,
+    is_union_type,
 )
 from pyfory.type_util import (
     TypeVisitor,
@@ -295,6 +296,10 @@ _jit_context = locals()
 
 
 _ENABLE_FORY_PYTHON_JIT = os.environ.get("ENABLE_FORY_PYTHON_JIT", "True").lower() in (
+    "true",
+    "1",
+)
+_ENABLE_FORY_DEBUG_OUTPUT = os.environ.get("ENABLE_FORY_DEBUG_OUTPUT", "False").lower() in (
     "true",
     "1",
 )
@@ -1032,6 +1037,11 @@ class DataClassSerializer(Serializer):
             serializer = self._serializers[index]
             is_nullable = self._nullable_fields.get(field_name, False)
             is_dynamic = self._dynamic_fields.get(field_name, False)
+            if _ENABLE_FORY_DEBUG_OUTPUT:
+                print(
+                    f"xwrite field '{field_name}': {field_value!r}, writer_index={buffer.get_writer_index()}, "
+                    f"nullable={is_nullable}, dynamic={is_dynamic}, serializer={serializer}"
+                )
             if is_nullable:
                 if field_value is None:
                     buffer.write_int8(-3)
@@ -1069,6 +1079,11 @@ class DataClassSerializer(Serializer):
             serializer = self._serializers[index]
             is_nullable = self._nullable_fields.get(field_name, False)
             is_dynamic = self._dynamic_fields.get(field_name, False)
+            if _ENABLE_FORY_DEBUG_OUTPUT:
+                print(
+                    f"xread field '{field_name}': reader_index={buffer.get_reader_index()}, "
+                    f"nullable={is_nullable}, dynamic={is_dynamic}, serializer={serializer}"
+                )
             if is_nullable:
                 ref_id = buffer.read_int8()
                 if ref_id == -3:
@@ -1261,7 +1276,7 @@ def group_fields(type_resolver, field_names, serializers, nullable_map=None, fie
                 )
             )
     for type_id, serializer, field_name, sort_key in type_ids:
-        if type_id in {TypeId.TYPED_UNION, TypeId.NAMED_UNION}:
+        if is_union_type(type_id):
             type_id = TypeId.UNION
         is_nullable = nullable_map.get(field_name, False)
         if is_primitive_type(type_id):
@@ -1272,11 +1287,7 @@ def group_fields(type_resolver, field_names, serializers, nullable_map=None, fie
             container = collection_types
         elif is_map_type(serializer.type_):
             container = map_types
-        elif is_polymorphic_type(type_id) or type_id in {
-            TypeId.ENUM,
-            TypeId.NAMED_ENUM,
-            TypeId.UNION,
-        }:
+        elif is_polymorphic_type(type_id) or type_id in {TypeId.ENUM, TypeId.NAMED_ENUM} or is_union_type(type_id):
             container = other_types
         elif type_id >= TypeId.BOUND:
             # Native mode user-registered types have type_id >= BOUND
@@ -1361,8 +1372,9 @@ def compute_struct_fingerprint(type_resolver, field_names, serializers, nullable
             nullable_flag = "1" if nullable_map.get(field_name, False) else "0"
         else:
             type_id = type_resolver.get_typeinfo(serializer.type_).type_id & 0xFF
-            if type_id in {TypeId.TYPED_UNION, TypeId.NAMED_UNION}:
-                type_id = TypeId.UNION
+            if is_union_type(type_id):
+                # customized types can't be detected at compile time for some languages
+                type_id = TypeId.UNKNOWN
             is_nullable = nullable_map.get(field_name, False)
 
             # For polymorphic or enum types, set type_id to UNKNOWN but preserve nullable from map

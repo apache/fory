@@ -23,6 +23,17 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.fory.Fory;
 import org.apache.fory.annotation.ForyField;
+import org.apache.fory.collection.BoolList;
+import org.apache.fory.collection.Float32List;
+import org.apache.fory.collection.Float64List;
+import org.apache.fory.collection.Int16List;
+import org.apache.fory.collection.Int32List;
+import org.apache.fory.collection.Int64List;
+import org.apache.fory.collection.Int8List;
+import org.apache.fory.collection.Uint16List;
+import org.apache.fory.collection.Uint32List;
+import org.apache.fory.collection.Uint64List;
+import org.apache.fory.collection.Uint8List;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.reflect.ReflectionUtils;
@@ -144,6 +155,10 @@ public class Fingerprint {
 
   private static int getTypeId(Fory fory, Descriptor descriptor) {
     Class<?> cls = descriptor.getTypeRef().getRawType();
+    Integer primitiveListTypeId = getPrimitiveListTypeId(cls);
+    if (primitiveListTypeId != null) {
+      return primitiveListTypeId;
+    }
     TypeResolver resolver = fory.getTypeResolver();
     if (resolver.isSet(cls)) {
       return Types.SET;
@@ -161,13 +176,49 @@ public class Fingerprint {
       }
       int typeId = Types.getDescriptorTypeId(fory, descriptor);
       int internalTypeId = typeId & 0xff;
-      if (Types.isUnionType(internalTypeId)) {
-        return Types.UNION;
-      }
+      // union must also be set to `UNKNOWN`, we can't know a type is union at compile-time for some
+      // languages.
       if (Types.isUserDefinedType((byte) internalTypeId)) {
         return Types.UNKNOWN;
       }
       return typeId;
     }
+  }
+
+  private static Integer getPrimitiveListTypeId(Class<?> cls) {
+    if (cls == BoolList.class) {
+      return Types.BOOL_ARRAY;
+    }
+    if (cls == Int8List.class) {
+      return Types.INT8_ARRAY;
+    }
+    if (cls == Int16List.class) {
+      return Types.INT16_ARRAY;
+    }
+    if (cls == Int32List.class) {
+      return Types.INT32_ARRAY;
+    }
+    if (cls == Int64List.class) {
+      return Types.INT64_ARRAY;
+    }
+    if (cls == Uint8List.class) {
+      return Types.UINT8_ARRAY;
+    }
+    if (cls == Uint16List.class) {
+      return Types.UINT16_ARRAY;
+    }
+    if (cls == Uint32List.class) {
+      return Types.UINT32_ARRAY;
+    }
+    if (cls == Uint64List.class) {
+      return Types.UINT64_ARRAY;
+    }
+    if (cls == Float32List.class) {
+      return Types.FLOAT32_ARRAY;
+    }
+    if (cls == Float64List.class) {
+      return Types.FLOAT64_ARRAY;
+    }
+    return null;
   }
 }

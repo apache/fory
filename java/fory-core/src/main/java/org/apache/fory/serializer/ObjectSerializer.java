@@ -155,6 +155,13 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
 
   private void writeOtherFields(MemoryBuffer buffer, T value) {
     for (SerializationFieldInfo fieldInfo : otherFields) {
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        LOG.info(
+            "[Java] write field {} of type {}, writer index {}",
+            fieldInfo.descriptor.getName(),
+            fieldInfo.typeRef,
+            buffer.writerIndex());
+      }
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       Object fieldValue = fieldAccessor.getObject(value);
       binding.writeField(fieldInfo, buffer, fieldValue);
@@ -163,6 +170,13 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
 
   private void writeBuildInFields(MemoryBuffer buffer, T value, Fory fory) {
     for (SerializationFieldInfo fieldInfo : this.buildInFields) {
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        LOG.info(
+            "[Java] write field {} of type {}, writer index {}",
+            fieldInfo.descriptor.getName(),
+            fieldInfo.typeRef,
+            buffer.writerIndex());
+      }
       AbstractObjectSerializer.writeBuildInField(binding, fieldInfo, buffer, value);
     }
   }
@@ -171,6 +185,13 @@ public final class ObjectSerializer<T> extends AbstractObjectSerializer<T> {
       MemoryBuffer buffer, T value, Fory fory, RefResolver refResolver) {
     Generics generics = fory.getGenerics();
     for (SerializationFieldInfo fieldInfo : containerFields) {
+      if (Utils.DEBUG_OUTPUT_ENABLED) {
+        LOG.info(
+            "[Java] write field {} of type {}, writer index {}",
+            fieldInfo.descriptor.getName(),
+            fieldInfo.typeRef,
+            buffer.writerIndex());
+      }
       FieldAccessor fieldAccessor = fieldInfo.fieldAccessor;
       Object fieldValue = fieldAccessor.getObject(value);
       writeContainerFieldValue(binding, refResolver, generics, fieldInfo, buffer, fieldValue);

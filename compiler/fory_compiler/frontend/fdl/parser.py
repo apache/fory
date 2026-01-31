@@ -67,6 +67,7 @@ KNOWN_FIELD_OPTIONS: Set[str] = {
     "nullable",
     "thread_safe_pointer",
     "weak_ref",
+    "java_array",
 }
 
 KNOWN_REF_OPTIONS: Set[str] = {
@@ -530,17 +531,23 @@ class Parser:
 
         if self.check(TokenType.OPTIONAL) or self.check(TokenType.REF):
             raise self.error("Union cases do not support optional/ref modifiers")
+
+        repeated = False
         if self.check(TokenType.REPEATED):
-            raise self.error("Union cases do not support repeated modifiers")
+            self.advance()
+            repeated = True
 
         field_type = self.parse_type()
+        if repeated:
+            field_type = ListType(field_type, location=self.make_location(start))
         name = self.consume(TokenType.IDENT, "Expected union case name").value
         self.consume(TokenType.EQUALS, "Expected '=' after union case name")
         number_token = self.consume(TokenType.INT, "Expected union case id")
         number = int(number_token.value)
 
+        field_options = {}
         if self.check(TokenType.LBRACKET):
-            raise self.error("Union cases do not support field options")
+            field_options = self.parse_field_options(name)
 
         self.consume(TokenType.SEMI, "Expected ';' after union case")
 
@@ -549,6 +556,7 @@ class Parser:
             field_type=field_type,
             number=number,
             tag_id=number,
+            options=field_options,
             line=start.line,
             column=start.column,
             location=self.make_location(start),

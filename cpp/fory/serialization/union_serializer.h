@@ -547,7 +547,6 @@ struct Serializer<T, std::enable_if_t<detail::is_union_type_v<T>>> {
     if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return default_value();
     }
-
     T result{};
     bool matched = detail::dispatch_union_case<T>(case_id, [&](auto tag) {
       constexpr size_t index = decltype(tag)::value;

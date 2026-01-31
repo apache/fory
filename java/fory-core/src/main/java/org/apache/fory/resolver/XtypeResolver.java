@@ -83,6 +83,7 @@ import org.apache.fory.serializer.DeferedLazySerializer;
 import org.apache.fory.serializer.DeferedLazySerializer.DeferredLazyObjectSerializer;
 import org.apache.fory.serializer.EnumSerializer;
 import org.apache.fory.serializer.NonexistentClass;
+import org.apache.fory.serializer.NonexistentClass.NonexistentEnum;
 import org.apache.fory.serializer.NonexistentClass.NonexistentMetaShared;
 import org.apache.fory.serializer.NonexistentClassSerializers;
 import org.apache.fory.serializer.NonexistentClassSerializers.NonexistentClassSerializer;
@@ -111,6 +112,7 @@ import org.apache.fory.type.GenericType;
 import org.apache.fory.type.Generics;
 import org.apache.fory.type.TypeUtils;
 import org.apache.fory.type.Types;
+import org.apache.fory.type.union.Union;
 import org.apache.fory.type.unsigned.Uint16;
 import org.apache.fory.type.unsigned.Uint32;
 import org.apache.fory.type.unsigned.Uint8;
@@ -520,6 +522,7 @@ public class XtypeResolver extends TypeResolver {
     switch (typeId) {
       case Types.NAMED_COMPATIBLE_STRUCT:
       case Types.NAMED_ENUM:
+      case Types.NAMED_UNION:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
         return false;
@@ -538,6 +541,7 @@ public class XtypeResolver extends TypeResolver {
     switch (typeId) {
       case Types.NAMED_COMPATIBLE_STRUCT:
       case Types.NAMED_ENUM:
+      case Types.NAMED_UNION:
       case Types.NAMED_STRUCT:
       case Types.NAMED_EXT:
         return true;
@@ -557,10 +561,16 @@ public class XtypeResolver extends TypeResolver {
         return true;
       default:
         Class<?> rawType = descriptor.getRawType();
+        if (TypeUtils.isPrimitiveListClass(rawType)) {
+          return true;
+        }
         if (rawType == Object.class) {
           return false;
         }
         if (rawType.isEnum()) {
+          return true;
+        }
+        if (Union.class.isAssignableFrom(rawType)) {
           return true;
         }
         if (rawType == NonexistentMetaShared.class) {
@@ -576,6 +586,9 @@ public class XtypeResolver extends TypeResolver {
 
   @Override
   public boolean isMonomorphic(Class<?> clz) {
+    if (TypeUtils.isPrimitiveListClass(clz)) {
+      return true;
+    }
     if (clz == Object.class) {
       return false;
     }
@@ -585,8 +598,11 @@ public class XtypeResolver extends TypeResolver {
     if (clz.isArray()) {
       return true;
     }
-    if (clz == NonexistentMetaShared.class) {
+    if (clz == NonexistentEnum.class) {
       return true;
+    }
+    if (clz == NonexistentMetaShared.class) {
+      return false;
     }
     ClassInfo classInfo = getClassInfo(clz, false);
     if (classInfo != null) {
@@ -608,9 +624,12 @@ public class XtypeResolver extends TypeResolver {
 
   public boolean isBuildIn(Descriptor descriptor) {
     Class<?> rawType = descriptor.getRawType();
-    byte typeIdByte = getInternalTypeId(descriptor);
-    if (rawType == NonexistentMetaShared.class) {
+    if (TypeUtils.isPrimitiveListClass(rawType)) {
       return true;
+    }
+    byte typeIdByte = getInternalTypeId(descriptor);
+    if (NonexistentClass.class.isAssignableFrom(rawType)) {
+      return false;
     }
     return !Types.isUserDefinedType(typeIdByte) && typeIdByte != Types.UNKNOWN;
   }

@@ -605,3 +605,61 @@ func (s float64Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 func (s float64Serializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
 	s.Read(ctx, refMode, false, false, value)
 }
+
+// ============================================================================
+// float16Serializer - optimized float16 serialization
+// ============================================================================
+
+// float16Serializer handles float16 type
+type float16Serializer struct{}
+
+var globalFloat16Serializer = float16Serializer{}
+
+func (s float16Serializer) WriteData(ctx *WriteContext, value reflect.Value) {
+	// Value is effectively uint16 (alias)
+	// We can use WriteUint16, but we check if it is indeed float16 compatible
+	// The value comes from reflection, likely an interface or concrete type
+	// Since Float16 is uint16, value.Uint() works.
+	ctx.buffer.WriteUint16(uint16(value.Uint()))
+}
+
+func (s float16Serializer) Write(ctx *WriteContext, refMode RefMode, writeType bool, hasGenerics bool, value reflect.Value) {
+	if refMode != RefModeNone {
+		ctx.buffer.WriteInt8(NotNullValueFlag)
+	}
+	if writeType {
+		ctx.buffer.WriteVarUint32Small7(uint32(FLOAT16))
+	}
+	s.WriteData(ctx, value)
+}
+
+func (s float16Serializer) ReadData(ctx *ReadContext, value reflect.Value) {
+	err := ctx.Err()
+	// Read uint16 bits
+	bits := ctx.buffer.ReadUint16(err)
+	if ctx.HasError() {
+		return
+	}
+	// Set the value. Since Float16 is uint16, SetUint works.
+	value.SetUint(uint64(bits))
+}
+
+func (s float16Serializer) Read(ctx *ReadContext, refMode RefMode, readType bool, hasGenerics bool, value reflect.Value) {
+	err := ctx.Err()
+	if refMode != RefModeNone {
+		if ctx.buffer.ReadInt8(err) == NullFlag {
+			return
+		}
+	}
+	if readType {
+		_ = ctx.buffer.ReadVarUint32Small7(err)
+	}
+	if ctx.HasError() {
+		return
+	}
+	s.ReadData(ctx, value)
+}
+
+func (s float16Serializer) ReadWithTypeInfo(ctx *ReadContext, refMode RefMode, typeInfo *TypeInfo, value reflect.Value) {
+	s.Read(ctx, refMode, false, false, value)
+}
