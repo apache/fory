@@ -35,6 +35,7 @@ import org.apache.fory.collection.Int16List;
 import org.apache.fory.collection.Int32List;
 import org.apache.fory.collection.Int64List;
 import org.apache.fory.collection.Int8List;
+import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.Uint16List;
 import org.apache.fory.collection.Uint32List;
 import org.apache.fory.collection.Uint64List;
@@ -86,6 +87,7 @@ public class UnionSerializer extends Serializer<Union> {
 
   private final BiFunction<Integer, Object, Union> factory;
   private final Map<Integer, Class<?>> caseValueTypes;
+  private final LongMap<Serializer> finalCaseSerializers;
 
   @SuppressWarnings("unchecked")
   public UnionSerializer(Fory fory, Class<? extends Union> cls) {
@@ -97,6 +99,7 @@ public class UnionSerializer extends Serializer<Union> {
       this.factory = createFactory(cls);
     }
     this.caseValueTypes = resolveCaseValueTypes(cls);
+    this.finalCaseSerializers = resolveFinalCaseSerializers();
   }
 
   private static int getTypeIndex(Class<? extends Union> cls) {
@@ -159,7 +162,7 @@ public class UnionSerializer extends Serializer<Union> {
       }
       return;
     }
-    writeCaseValue(buffer, value, valueTypeId);
+    writeCaseValue(buffer, value, valueTypeId, index);
   }
 
   @Override
@@ -193,16 +196,19 @@ public class UnionSerializer extends Serializer<Union> {
     return factory.apply(union.getIndex(), copiedValue);
   }
 
-  private void writeCaseValue(MemoryBuffer buffer, Object value, int typeId) {
+  private void writeCaseValue(MemoryBuffer buffer, Object value, int typeId, int caseId) {
     int internalTypeId = typeId & 0xff;
     boolean primitiveArray = Types.isPrimitiveArray(internalTypeId);
     Serializer serializer = null;
     if (value != null) {
-      if (primitiveArray) {
-        ClassInfo classInfo = fory.getTypeResolver().getClassInfo(value.getClass());
-        serializer = classInfo == null ? null : classInfo.getSerializer();
-      } else {
-        serializer = getSerializer(typeId, value);
+      serializer = getFinalCaseSerializer(caseId, value);
+      if (serializer == null) {
+        if (primitiveArray) {
+          ClassInfo classInfo = fory.getTypeResolver().getClassInfo(value.getClass());
+          serializer = classInfo == null ? null : classInfo.getSerializer();
+        } else {
+          serializer = getSerializer(typeId, value);
+        }
       }
     }
     RefResolver refResolver = fory.getRefResolver();
@@ -365,6 +371,51 @@ public class UnionSerializer extends Serializer<Union> {
       default:
         return false;
     }
+  }
+
+  private Serializer getFinalCaseSerializer(int caseId, Object value) {
+    if (finalCaseSerializers == null) {
+      return null;
+    }
+    Serializer serializer = finalCaseSerializers.get(caseId);
+    if (serializer == null) {
+      return null;
+    }
+    Class<?> expectedType = caseValueTypes.get(caseId);
+    if (expectedType != null && !expectedType.isInstance(value)) {
+      return null;
+    }
+    return serializer;
+  }
+
+  private LongMap<Serializer> resolveFinalCaseSerializers() {
+    if (caseValueTypes.isEmpty()) {
+      return null;
+    }
+    LongMap<Serializer> serializers = new LongMap<>(caseValueTypes.size());
+    for (Map.Entry<Integer, Class<?>> entry : caseValueTypes.entrySet()) {
+      Class<?> expectedType = entry.getValue();
+      if (!isFinalCaseType(expectedType)) {
+        continue;
+      }
+      Serializer serializer = resolveFinalCaseSerializer(expectedType);
+      if (serializer != null) {
+        serializers.put(entry.getKey(), serializer);
+      }
+    }
+    return serializers.size == 0 ? null : serializers;
+  }
+
+  private Serializer resolveFinalCaseSerializer(Class<?> expectedType) {
+    if (expectedType.isPrimitive()) {
+      return null;
+    }
+    ClassInfo classInfo = fory.getTypeResolver().getClassInfo(expectedType);
+    return classInfo == null ? null : classInfo.getSerializer();
+  }
+
+  private static boolean isFinalCaseType(Class<?> expectedType) {
+    return expectedType.isArray() || Modifier.isFinal(expectedType.getModifiers());
   }
 
   private Map<Integer, Class<?>> resolveCaseValueTypes(Class<? extends Union> unionClass) {
