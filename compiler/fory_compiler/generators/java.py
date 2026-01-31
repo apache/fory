@@ -441,8 +441,9 @@ class JavaGenerator(BaseGenerator):
                 lines.append(f"import {imp};")
             lines.append("")
 
-        # Class declaration
-        lines.append(f"public class {message.name} {{")
+        # Class declaration with semantic line wrapping
+        class_lines = self.format_long_line("public class ", message.name, " {")
+        lines.extend(class_lines)
 
         # Generate nested enums as static inner classes
         for nested_enum in message.nested_enums:
@@ -669,7 +670,8 @@ class JavaGenerator(BaseGenerator):
             lines.append(f"{ind}                return {type_id_expr};")
         lines.append(f"{ind}            default:")
         lines.append(
-            f'{ind}                throw new IllegalStateException("Unknown {union.name} case id: " + caseId);'
+            f'{ind}                throw new IllegalStateException("Unknown " + '
+            f'"{union.name} case id: " + caseId);'
         )
         lines.append(f"{ind}        }}")
         lines.append(f"{ind}    }}")
@@ -705,7 +707,8 @@ class JavaGenerator(BaseGenerator):
             lines.append(f"{ind}                return {case_enum}.{case_enum_name};")
         lines.append(f"{ind}            default:")
         lines.append(
-            f'{ind}                throw new IllegalStateException("Unknown {union.name} case id: " + index);'
+            f'{ind}                throw new IllegalStateException("Unknown " + '
+            f'"{union.name} case id: " + index);'
         )
         lines.append(f"{ind}        }}")
         lines.append(f"{ind}    }}")
@@ -1074,14 +1077,28 @@ class JavaGenerator(BaseGenerator):
         field_name = self.to_camel_case(field.name)
         pascal_name = self.to_pascal_case(field.name)
 
-        # Getter
-        lines.append(f"public {java_type} get{pascal_name}() {{")
+        # Getter with semantic line wrapping
+        getter_sig = f"public {java_type} get{pascal_name}()"
+        if len(getter_sig) > 80:
+            getter_lines = self.format_long_line(
+                "public ", f"{java_type} get{pascal_name}()", " {"
+            )
+        else:
+            getter_lines = [f"{getter_sig} {{"]
+        lines.extend(getter_lines)
         lines.append(f"    return {field_name};")
         lines.append("}")
         lines.append("")
 
-        # Setter
-        lines.append(f"public void set{pascal_name}({java_type} {field_name}) {{")
+        # Setter with semantic line wrapping
+        setter_sig = f"public void set{pascal_name}({java_type} {field_name})"
+        if len(setter_sig) > 80:
+            setter_lines = self.format_long_line(
+                "public void ", f"set{pascal_name}({java_type} {field_name})", " {"
+            )
+        else:
+            setter_lines = [f"{setter_sig} {{"]
+        lines.extend(setter_lines)
         lines.append(f"    this.{field_name} = {field_name};")
         lines.append("}")
         lines.append("")
