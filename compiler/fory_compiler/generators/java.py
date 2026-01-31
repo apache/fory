@@ -1013,7 +1013,9 @@ class JavaGenerator(BaseGenerator):
         # Getter with semantic line wrapping
         getter_sig = f"public {java_type} get{pascal_name}()"
         if len(getter_sig) > 80:
-            getter_lines = self.format_long_line("public ", f"{java_type} get{pascal_name}()", " {")
+            getter_lines = self.format_long_line(
+                "public ", f"{java_type} get{pascal_name}()", " {"
+            )
         else:
             getter_lines = [f"{getter_sig} {{"]
         lines.extend(getter_lines)
@@ -1024,7 +1026,9 @@ class JavaGenerator(BaseGenerator):
         # Setter with semantic line wrapping
         setter_sig = f"public void set{pascal_name}({java_type} {field_name})"
         if len(setter_sig) > 80:
-            setter_lines = self.format_long_line("public void ", f"set{pascal_name}({java_type} {field_name})", " {")
+            setter_lines = self.format_long_line(
+                "public void ", f"set{pascal_name}({java_type} {field_name})", " {"
+            )
         else:
             setter_lines = [f"{setter_sig} {{"]
         lines.extend(setter_lines)

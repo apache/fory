@@ -567,7 +567,11 @@ class GoGenerator(BaseGenerator):
         # Type declaration with semantic wrapping for Go
         type_decl = f"type {type_name} struct {{"
         if len(type_decl) > 80:
-            lines.extend(self.format_long_line("type ", type_name, " struct {", continuation_indent="\t"))
+            lines.extend(
+                self.format_long_line(
+                    "type ", type_name, " struct {", continuation_indent="\t"
+                )
+            )
         else:
             lines.append(type_decl)
         lines.append(f"\tcase_ {case_type}")
