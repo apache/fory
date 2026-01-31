@@ -340,3 +340,51 @@ class BaseGenerator(ABC):
             else:
                 result.extend(self.wrap_line(line, max_width))
         return result
+
+    def format_long_line(
+        self,
+        prefix: str,
+        content: str,
+        suffix: str = "",
+        max_width: int = 80,
+        continuation_indent: str = "    ",
+    ) -> List[str]:
+        """Format a long line with semantic understanding.
+
+        This is for semantic line wrapping where we know the structure.
+        Use this when generating code to avoid breaking in wrong places.
+
+        Args:
+            prefix: The prefix part (e.g., "public class ")
+            content: The main content that might be long
+            suffix: The suffix part (e.g., " {")
+            max_width: Maximum line width
+            continuation_indent: Indentation for continuation lines
+
+        Returns:
+            List of formatted lines
+
+        Example:
+            format_long_line("public class ", "VeryLongClassName", " {")
+            => ["public class VeryLongClassName {"]  # if fits
+            => ["public class", "    VeryLongClassName {"]  # if too long
+        """
+        full_line = prefix + content + suffix
+        if len(full_line) <= max_width:
+            return [full_line]
+
+        # If content alone with suffix fits on next line
+        if len(continuation_indent + content + suffix) <= max_width:
+            return [prefix.rstrip(), continuation_indent + content + suffix]
+
+        # Content is too long even on its own line
+        # Put each part on separate lines
+        lines = [prefix.rstrip()]
+        if len(continuation_indent + content) <= max_width:
+            lines.append(continuation_indent + content)
+        else:
+            # Content itself needs wrapping
+            lines.append(continuation_indent + content)
+        if suffix:
+            lines.append(suffix)
+        return lines

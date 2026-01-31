@@ -381,12 +381,9 @@ class PythonGenerator(BaseGenerator):
         lines.extend(self.generate_fory_helpers())
         lines.append("")
 
-        # Wrap long lines at 80 characters
-        wrapped_lines = self.wrap_lines(lines, max_width=80)
-
         return GeneratedFile(
             path=f"{self.get_module_name()}.py",
-            content="\n".join(wrapped_lines),
+            content="\n".join(lines),
         )
 
     def collect_message_imports(self, message: Message, imports: Set[str]):
@@ -676,7 +673,14 @@ class PythonGenerator(BaseGenerator):
             else:
                 field_default = f"{default_expr}{trailing_comment}"
 
-        lines.append(f"{field_name}: {python_type} = {field_default}")
+        # Build field line with semantic wrapping for Python
+        field_line = f"{field_name}: {python_type} = {field_default}"
+        if len(field_line) > 80:
+            # Use Python line continuation with proper indentation
+            lines.append(f"{field_name}: {python_type} = \\")
+            lines.append(f"    {field_default}")
+        else:
+            lines.append(field_line)
 
         return lines
 

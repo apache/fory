@@ -252,12 +252,9 @@ class RustGenerator(BaseGenerator):
         lines.extend(self.generate_fory_helpers())
         lines.append("")
 
-        # Wrap long lines at 80 characters
-        wrapped_lines = self.wrap_lines(lines, max_width=80)
-
         return GeneratedFile(
             path=f"{self.get_module_name()}.rs",
-            content="\n".join(wrapped_lines),
+            content="\n".join(lines),
         )
 
     def collect_message_uses(self, message: Message, uses: Set[str]):

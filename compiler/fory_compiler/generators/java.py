@@ -366,9 +366,7 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{enum.name}.java"
 
-        # Wrap long lines at 80 characters
-        wrapped_lines = self.wrap_lines(lines, max_width=80)
-        return GeneratedFile(path=path, content="\n".join(wrapped_lines))
+        return GeneratedFile(path=path, content="\n".join(lines))
 
     def generate_union_file(self, union: Union) -> GeneratedFile:
         """Generate a Java union class file."""
@@ -399,9 +397,7 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{union.name}.java"
 
-        # Wrap long lines at 80 characters
-        wrapped_lines = self.wrap_lines(lines, max_width=80)
-        return GeneratedFile(path=path, content="\n".join(wrapped_lines))
+        return GeneratedFile(path=path, content="\n".join(lines))
 
     def generate_message_file(self, message: Message) -> GeneratedFile:
         """Generate a Java class file for a message."""
@@ -427,8 +423,9 @@ class JavaGenerator(BaseGenerator):
                 lines.append(f"import {imp};")
             lines.append("")
 
-        # Class declaration
-        lines.append(f"public class {message.name} {{")
+        # Class declaration with semantic line wrapping
+        class_lines = self.format_long_line("public class ", message.name, " {")
+        lines.extend(class_lines)
 
         # Generate nested enums as static inner classes
         for nested_enum in message.nested_enums:
@@ -490,9 +487,7 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{message.name}.java"
 
-        # Wrap long lines at 80 characters
-        wrapped_lines = self.wrap_lines(lines, max_width=80)
-        return GeneratedFile(path=path, content="\n".join(wrapped_lines))
+        return GeneratedFile(path=path, content="\n".join(lines))
 
     def generate_outer_class_file(self, outer_classname: str) -> GeneratedFile:
         """Generate a single Java file with all types as inner classes of an outer class.
@@ -565,9 +560,7 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{outer_classname}.java"
 
-        # Wrap long lines at 80 characters
-        wrapped_lines = self.wrap_lines(lines, max_width=80)
-        return GeneratedFile(path=path, content="\n".join(wrapped_lines))
+        return GeneratedFile(path=path, content="\n".join(lines))
 
     def collect_message_imports(self, message: Message, imports: Set[str]):
         """Collect imports for a message and all its nested types recursively."""
@@ -1017,14 +1010,24 @@ class JavaGenerator(BaseGenerator):
         field_name = self.to_camel_case(field.name)
         pascal_name = self.to_pascal_case(field.name)
 
-        # Getter
-        lines.append(f"public {java_type} get{pascal_name}() {{")
+        # Getter with semantic line wrapping
+        getter_sig = f"public {java_type} get{pascal_name}()"
+        if len(getter_sig) > 80:
+            getter_lines = self.format_long_line("public ", f"{java_type} get{pascal_name}()", " {")
+        else:
+            getter_lines = [f"{getter_sig} {{"]
+        lines.extend(getter_lines)
         lines.append(f"    return {field_name};")
         lines.append("}")
         lines.append("")
 
-        # Setter
-        lines.append(f"public void set{pascal_name}({java_type} {field_name}) {{")
+        # Setter with semantic line wrapping
+        setter_sig = f"public void set{pascal_name}({java_type} {field_name})"
+        if len(setter_sig) > 80:
+            setter_lines = self.format_long_line("public void ", f"set{pascal_name}({java_type} {field_name})", " {")
+        else:
+            setter_lines = [f"{setter_sig} {{"]
+        lines.extend(setter_lines)
         lines.append(f"    this.{field_name} = {field_name};")
         lines.append("}")
         lines.append("")
@@ -1457,9 +1460,7 @@ class JavaGenerator(BaseGenerator):
         else:
             path = f"{class_name}.java"
 
-        # Wrap long lines at 80 characters
-        wrapped_lines = self.wrap_lines(lines, max_width=80)
-        return GeneratedFile(path=path, content="\n".join(wrapped_lines))
+        return GeneratedFile(path=path, content="\n".join(lines))
 
     def generate_enum_registration(
         self, lines: List[str], enum: Enum, parent_path: str

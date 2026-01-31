@@ -492,12 +492,9 @@ class GoGenerator(BaseGenerator):
         lines.extend(self.generate_fory_helpers())
         lines.append("")
 
-        # Wrap long lines at 80 characters
-        wrapped_lines = self.wrap_lines(lines, max_width=80)
-
         return GeneratedFile(
             path=f"{self.get_file_name()}.go",
-            content="\n".join(wrapped_lines),
+            content="\n".join(lines),
         )
 
     def collect_message_imports(self, message: Message, imports: Set[str]):
@@ -567,7 +564,12 @@ class GoGenerator(BaseGenerator):
         lines.append(")")
         lines.append("")
 
-        lines.append(f"type {type_name} struct {{")
+        # Type declaration with semantic wrapping for Go
+        type_decl = f"type {type_name} struct {{"
+        if len(type_decl) > 80:
+            lines.extend(self.format_long_line("type ", type_name, " struct {", continuation_indent="\t"))
+        else:
+            lines.append(type_decl)
         lines.append(f"\tcase_ {case_type}")
         lines.append("\tvalue any")
         lines.append("}")
