@@ -153,6 +153,7 @@ def resolve_imports(
     # Create merged schema with imported types first (so they can be referenced)
     merged_schema = Schema(
         package=schema.package,
+        package_alias=schema.package_alias,
         imports=schema.imports,
         enums=imported_enums + schema.enums,
         messages=imported_messages + schema.messages,

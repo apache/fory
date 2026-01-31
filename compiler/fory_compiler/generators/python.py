@@ -993,9 +993,13 @@ class PythonGenerator(BaseGenerator):
         # In Python, nested class references use Outer.Inner syntax
         class_ref = f"{parent_path}.{enum.name}" if parent_path else enum.name
         type_name = class_ref if parent_path else enum.name
-
-        if enum.type_id is not None:
+        auto_name = self.get_auto_id_registration_name(enum)
+        if self.should_register_by_id(enum):
             lines.append(f"    fory.register_type({class_ref}, type_id={enum.type_id})")
+        elif auto_name is not None:
+            lines.append(
+                f'    fory.register_type({class_ref}, namespace="", typename="{auto_name}")'
+            )
         else:
             ns = self.package or "default"
             lines.append(
@@ -1009,10 +1013,14 @@ class PythonGenerator(BaseGenerator):
         # In Python, nested class references use Outer.Inner syntax
         class_ref = f"{parent_path}.{message.name}" if parent_path else message.name
         type_name = class_ref if parent_path else message.name
-
-        if message.type_id is not None:
+        auto_name = self.get_auto_id_registration_name(message)
+        if self.should_register_by_id(message):
             lines.append(
                 f"    fory.register_type({class_ref}, type_id={message.type_id})"
+            )
+        elif auto_name is not None:
+            lines.append(
+                f'    fory.register_type({class_ref}, namespace="", typename="{auto_name}")'
             )
         else:
             ns = self.package or "default"
@@ -1043,10 +1051,14 @@ class PythonGenerator(BaseGenerator):
             if parent_path
             else f"{union.name}Serializer"
         )
-
-        if union.type_id is not None:
+        auto_name = self.get_auto_id_registration_name(union)
+        if self.should_register_by_id(union):
             lines.append(
                 f"    fory.register_union({class_ref}, type_id={union.type_id}, serializer={serializer_ref}(fory))"
+            )
+        elif auto_name is not None:
+            lines.append(
+                f'    fory.register_union({class_ref}, namespace="", typename="{auto_name}", serializer={serializer_ref}(fory))'
             )
         else:
             ns = self.package or "default"

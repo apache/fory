@@ -76,6 +76,43 @@ def test_alias_used_for_auto_id():
     assert msg.id_source == "demo.PersonAlias"
 
 
+def test_package_alias_used_for_auto_id():
+    source = """
+    package demo alias alias_demo;
+
+    message User {
+        string name = 1;
+    }
+    """
+    schema = parse_schema(source)
+    validator = SchemaValidator(schema)
+    assert validator.validate()
+
+    msg = schema.messages[0]
+    assert msg.type_id == compute_registered_type_id("alias_demo.User")
+    assert msg.id_generated is True
+    assert msg.id_source == "alias_demo.User"
+
+
+def test_auto_id_generation_for_enum():
+    source = """
+    package demo;
+
+    enum Status {
+        OK = 0;
+        ERROR = 1;
+    }
+    """
+    schema = parse_schema(source)
+    validator = SchemaValidator(schema)
+    assert validator.validate()
+
+    enum = schema.enums[0]
+    assert enum.type_id == compute_registered_type_id("demo.Status")
+    assert enum.id_generated is True
+    assert enum.id_source == "demo.Status"
+
+
 def test_explicit_id_not_overwritten():
     source = """
     package demo;

@@ -19,6 +19,7 @@
 
 package org.apache.fory.meta;
 
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import org.apache.fory.meta.MetaString.Encoding;
 import org.apache.fory.util.Preconditions;
@@ -55,13 +56,21 @@ public class MetaStringEncoder {
     if (input.isEmpty()) {
       return MetaString.EMPTY;
     }
+    if (isNumberString(input)) {
+      return new MetaString(
+          input,
+          Encoding.EXTENDED,
+          specialChar1,
+          specialChar2,
+          encodeNumberString(input));
+    }
     if (!StringUtils.isLatin(input.toCharArray())) {
       return new MetaString(
           input,
-          Encoding.UTF_8,
+          Encoding.EXTENDED,
           specialChar1,
           specialChar2,
-          input.getBytes(StandardCharsets.UTF_8));
+          encodeExtendedUtf8(input));
     }
     Encoding encoding = computeEncoding(input, encodings);
     return encode(input, encoding);
@@ -77,7 +86,7 @@ public class MetaStringEncoder {
   public MetaString encode(String input, Encoding encoding) {
     Preconditions.checkArgument(
         input.length() < Short.MAX_VALUE, "Long meta string than 32767 is not allowed");
-    if (encoding != Encoding.UTF_8 && !StringUtils.isLatin(input.toCharArray())) {
+    if (encoding != Encoding.EXTENDED && !StringUtils.isLatin(input.toCharArray())) {
       throw new IllegalArgumentException("Non-ASCII characters in meta string are not allowed");
     }
     if (input.isEmpty()) {
@@ -99,15 +108,21 @@ public class MetaStringEncoder {
         int upperCount = countUppers(chars);
         bytes = encodeAllToLowerSpecial(chars, upperCount);
         return new MetaString(input, encoding, specialChar1, specialChar2, bytes);
+      case EXTENDED:
+        bytes = encodeExtended(input);
+        return new MetaString(input, Encoding.EXTENDED, specialChar1, specialChar2, bytes);
       default:
-        bytes = input.getBytes(StandardCharsets.UTF_8);
-        return new MetaString(input, Encoding.UTF_8, specialChar1, specialChar2, bytes);
+        bytes = encodeExtendedUtf8(input);
+        return new MetaString(input, Encoding.EXTENDED, specialChar1, specialChar2, bytes);
     }
   }
 
   public Encoding computeEncoding(String input, Encoding[] encodings) {
     if (input.isEmpty()) {
       return Encoding.forEmptyStr();
+    }
+    if (isNumberString(input)) {
+      return Encoding.EXTENDED;
     }
     boolean[] encodingFlags = new boolean[Encoding.values().length];
     for (Encoding encoding : encodings) {
@@ -141,7 +156,7 @@ public class MetaStringEncoder {
         return Encoding.LOWER_UPPER_DIGIT_SPECIAL;
       }
     }
-    return Encoding.UTF_8;
+    return Encoding.EXTENDED;
   }
 
   private static class StringStatistics {
@@ -202,6 +217,50 @@ public class MetaStringEncoder {
       }
     }
     return upperCount;
+  }
+
+  private boolean isNumberString(String input) {
+    int length = input.length();
+    if (length == 0) {
+      return false;
+    }
+    int start = 0;
+    if (input.charAt(0) == '-') {
+      if (length == 1) {
+        return false;
+      }
+      start = 1;
+    }
+    for (int i = start; i < length; i++) {
+      if (!Character.isDigit(input.charAt(i))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private byte[] encodeExtended(String input) {
+    if (isNumberString(input)) {
+      return encodeNumberString(input);
+    }
+    return encodeExtendedUtf8(input);
+  }
+
+  private byte[] encodeExtendedUtf8(String input) {
+    byte[] utf8 = input.getBytes(StandardCharsets.UTF_8);
+    byte[] bytes = new byte[utf8.length + 1];
+    bytes[0] = MetaString.EXTENDED_ENCODING_UTF8;
+    System.arraycopy(utf8, 0, bytes, 1, utf8.length);
+    return bytes;
+  }
+
+  private byte[] encodeNumberString(String input) {
+    BigInteger value = new BigInteger(input);
+    byte[] numberBytes = value.toByteArray();
+    byte[] bytes = new byte[numberBytes.length + 1];
+    bytes[0] = MetaString.EXTENDED_ENCODING_NUMBER_STRING;
+    System.arraycopy(numberBytes, 0, bytes, 1, numberBytes.length);
+    return bytes;
   }
 
   public byte[] encodeLowerSpecial(String input) {

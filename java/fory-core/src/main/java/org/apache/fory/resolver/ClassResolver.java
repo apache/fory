@@ -491,7 +491,7 @@ public class ClassResolver extends TypeResolver {
     checkRegistration(cls, (short) -1, fullname, false);
     MetaStringBytes fullNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
-            GENERIC_ENCODER.encode(fullname, MetaString.Encoding.UTF_8));
+            GENERIC_ENCODER.encode(fullname, MetaString.Encoding.EXTENDED));
     MetaStringBytes nsBytes =
         metaStringResolver.getOrCreateMetaStringBytes(encodePackage(namespace));
     MetaStringBytes nameBytes = metaStringResolver.getOrCreateMetaStringBytes(encodeTypeName(name));
@@ -546,7 +546,7 @@ public class ClassResolver extends TypeResolver {
     checkRegistration(cls, (short) -1, fullname, false);
     MetaStringBytes fullNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
-            GENERIC_ENCODER.encode(fullname, MetaString.Encoding.UTF_8));
+            GENERIC_ENCODER.encode(fullname, MetaString.Encoding.EXTENDED));
     MetaStringBytes nsBytes =
         metaStringResolver.getOrCreateMetaStringBytes(encodePackage(namespace));
     MetaStringBytes nameBytes = metaStringResolver.getOrCreateMetaStringBytes(encodeTypeName(name));
@@ -1818,7 +1818,7 @@ public class ClassResolver extends TypeResolver {
     ClassSpec classSpec = Encoders.decodePkgAndClass(packageName, className);
     MetaStringBytes fullClassNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
-            PACKAGE_ENCODER.encode(classSpec.entireClassName, MetaString.Encoding.UTF_8));
+            PACKAGE_ENCODER.encode(classSpec.entireClassName, MetaString.Encoding.EXTENDED));
     Class<?> cls = loadClass(classSpec.entireClassName, classSpec.isEnum, classSpec.dimension);
     int typeId = buildUnregisteredTypeId(cls, null);
     ClassInfo classInfo =

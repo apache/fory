@@ -723,6 +723,7 @@ public class IdlRoundTripTest {
     envelope.setId("env-1");
     envelope.setPayload(payload);
     envelope.setDetail(detail);
+    envelope.setStatus(auto_id.Status.OK);
     return envelope;
   }
 

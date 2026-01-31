@@ -27,6 +27,13 @@ import (
 	threadsafe "github.com/apache/fory/go/fory/threadsafe"
 )
 
+type Status int32
+
+const (
+	StatusUnknown Status = 0
+	StatusOk Status = 1
+)
+
 type WrapperCase uint32
 
 const (
@@ -247,7 +254,7 @@ func (u *Envelope_Detail) FromBytes(data []byte) error {
 	return getFory().Deserialize(data, u)
 }
 
-// Type ID 715094189 is generated from auto_id.Envelope.Payload
+// Type ID 2862577837 is generated from auto_id.Envelope.Payload
 type Envelope_Payload struct {
 	Value int32 `fory:"id=1,compress=true"`
 }
@@ -260,11 +267,12 @@ func (m *Envelope_Payload) FromBytes(data []byte) error {
 	return getFory().Deserialize(data, m)
 }
 
-// Type ID 874961588 is generated from auto_id.Envelope
+// Type ID 3022445236 is generated from auto_id.Envelope
 type Envelope struct {
 	Id string `fory:"id=1"`
 	Payload *Envelope_Payload `fory:"id=2,nullable"`
 	Detail Envelope_Detail `fory:"id=3"`
+	Status Status `fory:"id=4"`
 }
 
 func (m *Envelope) ToBytes() ([]byte, error) {
@@ -276,16 +284,19 @@ func (m *Envelope) FromBytes(data []byte) error {
 }
 
 func RegisterTypes(f *fory.Fory) error {
-	if err := f.RegisterUnion(Wrapper{}, 1471345060, fory.NewUnionSerializer(fory.UnionCase{ID: 1, Type: reflect.TypeOf((*Envelope)(nil)), TypeID: fory.STRUCT}, fory.UnionCase{ID: 2, Type: reflect.TypeOf((*string)(nil)).Elem(), TypeID: fory.STRING})); err != nil {
+	if err := f.RegisterNamedEnum(Status(0), "1124725126"); err != nil {
 		return err
 	}
-	if err := f.RegisterUnion(Envelope_Detail{}, 1609214087, fory.NewUnionSerializer(fory.UnionCase{ID: 1, Type: reflect.TypeOf((*Envelope_Payload)(nil)), TypeID: fory.STRUCT}, fory.UnionCase{ID: 2, Type: reflect.TypeOf((*string)(nil)).Elem(), TypeID: fory.STRING})); err != nil {
+	if err := f.RegisterNamedUnion(Wrapper{}, "1471345060", fory.NewUnionSerializer(fory.UnionCase{ID: 1, Type: reflect.TypeOf((*Envelope)(nil)), TypeID: fory.NAMED_STRUCT}, fory.UnionCase{ID: 2, Type: reflect.TypeOf((*string)(nil)).Elem(), TypeID: fory.STRING})); err != nil {
 		return err
 	}
-	if err := f.RegisterStruct(Envelope_Payload{}, 715094189); err != nil {
+	if err := f.RegisterNamedUnion(Envelope_Detail{}, "1609214087", fory.NewUnionSerializer(fory.UnionCase{ID: 1, Type: reflect.TypeOf((*Envelope_Payload)(nil)), TypeID: fory.NAMED_STRUCT}, fory.UnionCase{ID: 2, Type: reflect.TypeOf((*string)(nil)).Elem(), TypeID: fory.STRING})); err != nil {
 		return err
 	}
-	if err := f.RegisterStruct(Envelope{}, 874961588); err != nil {
+	if err := f.RegisterNamedStruct(Envelope_Payload{}, "2862577837"); err != nil {
+		return err
+	}
+	if err := f.RegisterNamedStruct(Envelope{}, "3022445236"); err != nil {
 		return err
 	}
 	return nil

@@ -66,5 +66,4 @@ def murmurhash3_32(data: bytes, seed: int = 0) -> int:
 
 def compute_registered_type_id(full_name: str) -> int:
     """Compute a registered type ID for a qualified name."""
-    digest = murmurhash3_32(full_name.encode("utf-8"))
-    return digest & 0x7FFFFFFF
+    return murmurhash3_32(full_name.encode("utf-8"))

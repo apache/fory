@@ -88,6 +88,9 @@ class MetaStringResolverImpl extends MetaStringResolver {
   /// [v1] and [v2] are the two parts of the long long key
   /// [encoding] is the encoding of the string bytes
   MetaStringBytes _readSmallStringBytes(ByteReader reader, int len) {
+    if (len == 0) {
+      return MetaStringBytes.of(MetaString('', MetaStringEncoding.extended, 0, 0, Uint8List(0)));
+    }
     late final int v1;
     int v2 = 0;
     int encoding = reader.readInt8();

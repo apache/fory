@@ -280,7 +280,7 @@ const BIG_NAME_THRESHOLD = 0b111111 // 6 bits for size when using 2 bits for enc
 
 // readPkgName reads package name from TypeDef (not the meta string format with dynamic IDs)
 // Java format: 6 bits size | 2 bits encoding flags
-// Package encodings: UTF_8=0, ALL_TO_LOWER_SPECIAL=1, LOWER_UPPER_DIGIT_SPECIAL=2
+// Package encodings: EXTENDED=0, ALL_TO_LOWER_SPECIAL=1, LOWER_UPPER_DIGIT_SPECIAL=2
 func readPkgName(buffer *ByteBuffer, namespaceDecoder *meta.Decoder, err *Error) (string, error) {
 	header := int(buffer.ReadInt8(err)) & 0xff
 	encodingFlags := header & 0b11 // 2 bits for encoding
@@ -292,7 +292,7 @@ func readPkgName(buffer *ByteBuffer, namespaceDecoder *meta.Decoder, err *Error)
 	var encoding meta.Encoding
 	switch encodingFlags {
 	case 0:
-		encoding = meta.UTF_8
+		encoding = meta.EXTENDED
 	case 1:
 		encoding = meta.ALL_TO_LOWER_SPECIAL
 	case 2:
@@ -311,7 +311,7 @@ func readPkgName(buffer *ByteBuffer, namespaceDecoder *meta.Decoder, err *Error)
 
 // readTypeName reads type name from TypeDef (not the meta string format with dynamic IDs)
 // Java format: 6 bits size | 2 bits encoding flags
-// TypeName encodings: UTF_8=0, ALL_TO_LOWER_SPECIAL=1, LOWER_UPPER_DIGIT_SPECIAL=2, FIRST_TO_LOWER_SPECIAL=3
+// TypeName encodings: EXTENDED=0, ALL_TO_LOWER_SPECIAL=1, LOWER_UPPER_DIGIT_SPECIAL=2, FIRST_TO_LOWER_SPECIAL=3
 func readTypeName(buffer *ByteBuffer, typeNameDecoder *meta.Decoder, err *Error) (string, error) {
 	header := int(buffer.ReadInt8(err)) & 0xff
 	encodingFlags := header & 0b11 // 2 bits for encoding
@@ -323,7 +323,7 @@ func readTypeName(buffer *ByteBuffer, typeNameDecoder *meta.Decoder, err *Error)
 	var encoding meta.Encoding
 	switch encodingFlags {
 	case 0:
-		encoding = meta.UTF_8
+		encoding = meta.EXTENDED
 	case 1:
 		encoding = meta.ALL_TO_LOWER_SPECIAL
 	case 2:
@@ -1128,16 +1128,16 @@ const (
 
 // Field name encoding flags (2 bits in header)
 const (
-	FieldNameEncodingUTF8              = 0 // UTF-8 encoding
+	FieldNameEncodingExtended          = 0 // EXTENDED encoding
 	FieldNameEncodingAllToLowerSpecial = 1 // ALL_TO_LOWER_SPECIAL encoding
 	FieldNameEncodingLowerUpperDigit   = 2 // LOWER_UPPER_DIGIT_SPECIAL encoding
 	FieldNameEncodingTagID             = 3 // Use tag ID instead of field name
 )
 
-// Encoding `UTF8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL` for fieldName
+// Encoding `EXTENDED/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL` for fieldName
 // Note: TAG_ID (0b11) is a special encoding that uses tag ID instead of field name
 var fieldNameEncodings = []meta.Encoding{
-	meta.UTF_8,
+	meta.EXTENDED,
 	meta.ALL_TO_LOWER_SPECIAL,
 	meta.LOWER_UPPER_DIGIT_SPECIAL,
 }
@@ -1148,7 +1148,7 @@ func getFieldNameEncodingIndex(encoding meta.Encoding) int {
 			return i
 		}
 	}
-	return 0 // Default to UTF_8 if not found
+	return 0 // Default to EXTENDED if not found
 }
 
 /*
@@ -1173,10 +1173,10 @@ func writeSimpleName(buffer *ByteBuffer, metaBytes *MetaStringBytes, encoder *me
 	encoding := metaBytes.Encoding
 
 	// Get encoding flags (0-2) - Java uses 2 bits for package encoding:
-	// 0=UTF8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL
+	// 0=EXTENDED, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL
 	var encodingFlags byte
 	switch encoding {
-	case meta.UTF_8:
+	case meta.EXTENDED:
 		encodingFlags = 0
 	case meta.ALL_TO_LOWER_SPECIAL:
 		encodingFlags = 1
@@ -1216,10 +1216,10 @@ func writeSimpleTypeName(buffer *ByteBuffer, metaBytes *MetaStringBytes, encoder
 	encoding := metaBytes.Encoding
 
 	// Get encoding flags (0-3) - Java uses 2 bits for typename encoding:
-	// 0=UTF8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL, 3=FIRST_TO_LOWER_SPECIAL
+	// 0=EXTENDED, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL, 3=FIRST_TO_LOWER_SPECIAL
 	var encodingFlags byte
 	switch encoding {
-	case meta.UTF_8:
+	case meta.EXTENDED:
 		encodingFlags = 0
 	case meta.ALL_TO_LOWER_SPECIAL:
 		encodingFlags = 1
@@ -1475,11 +1475,11 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 			nsSize = int(metaBuffer.ReadVarUint32Small7(&metaErr)) + BIG_NAME_THRESHOLD
 		}
 
-		// Java pkg encoding: 0=UTF8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL
+		// Java pkg encoding: 0=EXTENDED, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL
 		var nsEncoding meta.Encoding
 		switch nsEncodingFlags {
 		case 0:
-			nsEncoding = meta.UTF_8
+			nsEncoding = meta.EXTENDED
 		case 1:
 			nsEncoding = meta.ALL_TO_LOWER_SPECIAL
 		case 2:
@@ -1501,11 +1501,11 @@ func decodeTypeDef(fory *Fory, buffer *ByteBuffer, header int64) (*TypeDef, erro
 			typeSize = int(metaBuffer.ReadVarUint32Small7(&metaErr)) + BIG_NAME_THRESHOLD
 		}
 
-		// Java typename encoding: 0=UTF8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL, 3=FIRST_TO_LOWER_SPECIAL
+		// Java typename encoding: 0=EXTENDED, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL, 3=FIRST_TO_LOWER_SPECIAL
 		var typeEncoding meta.Encoding
 		switch typeEncodingFlags {
 		case 0:
-			typeEncoding = meta.UTF_8
+			typeEncoding = meta.EXTENDED
 		case 1:
 			typeEncoding = meta.ALL_TO_LOWER_SPECIAL
 		case 2:
@@ -1676,7 +1676,7 @@ func readFieldDef(typeResolver *TypeResolver, buffer *ByteBuffer) (FieldDef, err
 
 		return FieldDef{
 			name:         "", // No field name when using tag ID
-			nameEncoding: meta.UTF_8,
+			nameEncoding: meta.EXTENDED,
 			fieldType:    ft,
 			nullable:     isNullable,
 			trackingRef:  refTracking,

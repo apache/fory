@@ -163,8 +163,8 @@ class ForyMetaStringDecoder extends MetaStringDecoder {
         return _decodeRepFirstLowerSpecial(data);
       case MetaStringEncoding.atls:
         return _decodeRepAllToLowerSpecial(data);
-      case MetaStringEncoding.utf8:
-        return utf8.decode(data);
+      case MetaStringEncoding.extended:
+        return _decodeExtended(data);
       // default:
       //   throw ArgumentError('Unsupported encoding: $encoding');
     }
@@ -174,6 +174,55 @@ class ForyMetaStringDecoder extends MetaStringDecoder {
   @inline
   String decodeMetaString(MetaStringBytes data) {
     return decode(data.bytes, data.encoding);
+  }
+
+  String _decodeExtended(Uint8List data) {
+    if (data.isEmpty) return '';
+    final int actual = data[0];
+    final Uint8List payload = data.sublist(1);
+    switch (actual) {
+      case extendedEncodingUtf8:
+        return utf8.decode(payload);
+      case extendedEncodingNumberString:
+        return _decodeNumberString(payload);
+      default:
+        throw ArgumentError('Unsupported extended encoding: $actual');
+    }
+  }
+
+  String _decodeNumberString(Uint8List payload) {
+    if (payload.isEmpty) return '';
+    bool negative = (payload[0] & 0x80) != 0;
+    List<int> bytes = payload.toList();
+    if (negative) {
+      for (int i = 0; i < bytes.length; i++) {
+        bytes[i] = (~bytes[i]) & 0xFF;
+      }
+      int carry = 1;
+      for (int i = bytes.length - 1; i >= 0; i--) {
+        int sum = bytes[i] + carry;
+        bytes[i] = sum & 0xFF;
+        carry = sum >> 8;
+        if (carry == 0) {
+          break;
+        }
+      }
+      while (bytes.length > 1 && bytes[0] == 0) {
+        bytes.removeAt(0);
+      }
+    } else {
+      while (bytes.length > 1 && bytes[0] == 0) {
+        bytes.removeAt(0);
+      }
+    }
+    BigInt value = BigInt.zero;
+    for (final int b in bytes) {
+      value = (value << 8) | BigInt.from(b);
+    }
+    if (negative && value != BigInt.zero) {
+      value = -value;
+    }
+    return value.toString();
   }
 
 }

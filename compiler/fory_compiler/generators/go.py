@@ -675,16 +675,16 @@ class GoGenerator(BaseGenerator):
         if isinstance(field.field_type, NamedType):
             type_def = self.resolve_named_type(field.field_type.name, parent_stack)
             if isinstance(type_def, Enum):
-                if type_def.type_id is None:
+                if type_def.type_id is None or getattr(type_def, "id_generated", False):
                     return "fory.NAMED_ENUM"
                 return "fory.ENUM"
             if isinstance(type_def, Union):
-                if type_def.type_id is None:
+                if type_def.type_id is None or getattr(type_def, "id_generated", False):
                     return "fory.NAMED_UNION"
                 return "fory.UNION"
             if isinstance(type_def, Message):
                 evolving = bool(type_def.options.get("evolving"))
-                if type_def.type_id is None:
+                if type_def.type_id is None or getattr(type_def, "id_generated", False):
                     if evolving:
                         return "fory.NAMED_COMPATIBLE_STRUCT"
                     return "fory.NAMED_STRUCT"
@@ -1173,9 +1173,16 @@ class GoGenerator(BaseGenerator):
         code_name = self.get_type_name(enum.name, parent_stack)
         type_name = self.get_registration_type_name(enum.name, parent_stack)
 
-        if enum.type_id is not None:
+        auto_name = self.get_auto_id_registration_name(enum)
+        if self.should_register_by_id(enum):
             lines.append(
                 f"\tif err := f.RegisterEnum({code_name}(0), {enum.type_id}); err != nil {{"
+            )
+            lines.append("\t\treturn err")
+            lines.append("\t}")
+        elif auto_name is not None:
+            lines.append(
+                f'\tif err := f.RegisterNamedEnum({code_name}(0), "{auto_name}"); err != nil {{'
             )
             lines.append("\t\treturn err")
             lines.append("\t}")
@@ -1216,9 +1223,16 @@ class GoGenerator(BaseGenerator):
             )
 
         # Register this message
-        if message.type_id is not None:
+        auto_name = self.get_auto_id_registration_name(message)
+        if self.should_register_by_id(message):
             lines.append(
                 f"\tif err := f.RegisterStruct({code_name}{{}}, {message.type_id}); err != nil {{"
+            )
+            lines.append("\t\treturn err")
+            lines.append("\t}")
+        elif auto_name is not None:
+            lines.append(
+                f'\tif err := f.RegisterNamedStruct({code_name}{{}}, "{auto_name}"); err != nil {{'
             )
             lines.append("\t\treturn err")
             lines.append("\t}")
@@ -1249,9 +1263,16 @@ class GoGenerator(BaseGenerator):
             )
         serializer_expr = f"fory.NewUnionSerializer({', '.join(cases)})"
 
-        if union.type_id is not None:
+        auto_name = self.get_auto_id_registration_name(union)
+        if self.should_register_by_id(union):
             lines.append(
                 f"\tif err := f.RegisterUnion({code_name}{{}}, {union.type_id}, {serializer_expr}); err != nil {{"
+            )
+            lines.append("\t\treturn err")
+            lines.append("\t}")
+        elif auto_name is not None:
+            lines.append(
+                f'\tif err := f.RegisterNamedUnion({code_name}{{}}, "{auto_name}", {serializer_expr}); err != nil {{'
             )
             lines.append("\t\treturn err")
             lines.append("\t}")

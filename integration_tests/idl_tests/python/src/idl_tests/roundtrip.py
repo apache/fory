@@ -101,6 +101,7 @@ def build_auto_id_envelope() -> "auto_id.Envelope":
         id="env-1",
         payload=payload,
         detail=detail,
+        status=auto_id.Status.OK,
     )
 
 

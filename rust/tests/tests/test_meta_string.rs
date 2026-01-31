@@ -109,7 +109,7 @@ fn test_meta_string() {
         for i in 1..=127 {
             let origin_string = create_string(i, special_char1, special_char2);
             let meta_string = encoder.encode(&origin_string).unwrap();
-            assert_ne!(meta_string.encoding, Encoding::Utf8);
+            assert_ne!(meta_string.encoding, Encoding::Extended);
             assert_eq!(meta_string.original, origin_string);
             let decoder = MetaStringDecoder::new(special_char1, special_char2);
             let new_string = decoder
@@ -129,7 +129,7 @@ fn test_encode_empty_string() {
         Encoding::LowerUpperDigitSpecial,
         Encoding::FirstToLowerSpecial,
         Encoding::AllToLowerSpecial,
-        Encoding::Utf8,
+        Encoding::Extended,
     ] {
         let meta_string = encoder.encode_with_encoding("", encoding).unwrap();
         assert_eq!(meta_string.bytes.len(), 0);
@@ -145,7 +145,7 @@ fn test_encode_characters_outside_of_lower_special() {
     let encoder = &TYPE_NAME_ENCODER;
     let test_string = "abcdefABCDEF1234!@#";
     let meta_string = encoder.encode(test_string).unwrap();
-    assert_eq!(meta_string.encoding, Encoding::Utf8);
+    assert_eq!(meta_string.encoding, Encoding::Extended);
 }
 
 #[test]
@@ -175,11 +175,13 @@ fn test_first_to_lower_special_encoding() {
 }
 
 #[test]
-fn test_utf8_encoding() {
+fn test_extended_encoding() {
     let encoder = &NAMESPACE_ENCODER;
     let test_string = "你好，世界";
     let meta_string = encoder.encode(test_string).unwrap();
-    assert_eq!(meta_string.encoding, Encoding::Utf8);
+    assert_eq!(meta_string.encoding, Encoding::Extended);
+    assert!(!meta_string.bytes.is_empty());
+    assert_eq!(meta_string.bytes[0], 0);
     let decoder = &TYPE_NAME_DECODER;
     let decoded_string = decoder
         .decode(&meta_string.bytes, meta_string.encoding)
@@ -187,12 +189,44 @@ fn test_utf8_encoding() {
     assert_eq!(decoded_string.original, test_string);
     let test_string = "aA$";
     let meta_string = encoder.encode(test_string).unwrap();
-    assert_eq!(meta_string.encoding, Encoding::Utf8);
+    assert_eq!(meta_string.encoding, Encoding::Extended);
+    assert!(!meta_string.bytes.is_empty());
+    assert_eq!(meta_string.bytes[0], 0);
     let decoder = &TYPE_NAME_DECODER;
     let decoded_string = decoder
         .decode(&meta_string.bytes, meta_string.encoding)
         .unwrap();
     assert_eq!(decoded_string.original, test_string);
+}
+
+#[test]
+fn test_number_string_encoding() {
+    let encoder = &TYPE_NAME_ENCODER;
+    let decoder = &TYPE_NAME_DECODER;
+    let test_string = "1234567890";
+    let meta_string = encoder.encode(test_string).unwrap();
+    assert_eq!(meta_string.encoding, Encoding::Extended);
+    assert!(!meta_string.bytes.is_empty());
+    assert_eq!(meta_string.bytes[0], 1);
+    let decoded = decoder
+        .decode(&meta_string.bytes, meta_string.encoding)
+        .unwrap();
+    assert_eq!(decoded.original, test_string);
+}
+
+#[test]
+fn test_negative_number_string_encoding() {
+    let encoder = &TYPE_NAME_ENCODER;
+    let decoder = &TYPE_NAME_DECODER;
+    let test_string = "-324345545454";
+    let meta_string = encoder.encode(test_string).unwrap();
+    assert_eq!(meta_string.encoding, Encoding::Extended);
+    assert!(!meta_string.bytes.is_empty());
+    assert_eq!(meta_string.bytes[0], 1);
+    let decoded = decoder
+        .decode(&meta_string.bytes, meta_string.encoding)
+        .unwrap();
+    assert_eq!(decoded.original, test_string);
 }
 
 #[test]
@@ -224,7 +258,7 @@ fn test_ascii_encoding() {
     let encoder = &TYPE_NAME_ENCODER;
     let test_string = "asciiOnly";
     let encoded_meta_string = encoder.encode(test_string).unwrap();
-    assert_ne!(encoded_meta_string.encoding, Encoding::Utf8);
+    assert_ne!(encoded_meta_string.encoding, Encoding::Extended);
     assert_eq!(encoded_meta_string.encoding, Encoding::AllToLowerSpecial);
 }
 
@@ -233,7 +267,7 @@ fn test_non_ascii_encoding() {
     let encoder = &TYPE_NAME_ENCODER;
     let test_string = "こんにちは";
     let encoded_meta_string = encoder.encode(test_string).unwrap();
-    assert_eq!(encoded_meta_string.encoding, Encoding::Utf8);
+    assert_eq!(encoded_meta_string.encoding, Encoding::Extended);
 }
 
 #[test]
@@ -252,6 +286,6 @@ fn test_non_ascii_encoding_and_non_utf8() {
                 "Non-ASCII characters in meta string are not allowed"
             );
         }
-        Ok(_) => panic!("Expected an error due to non-ASCII character with non-UTF8 encoding"),
+        Ok(_) => panic!("Expected an error due to non-ASCII character with non-Extended encoding"),
     }
 }

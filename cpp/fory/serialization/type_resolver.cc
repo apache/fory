@@ -129,7 +129,7 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
   // header: | field_name_encoding:2bits | size:4bits | nullability:1bit |
   // ref_tracking:1bit |
   const bool use_tag_id = field_id >= 0;
-  uint8_t encoding_idx = use_tag_id ? 3 : 0; // TAG_ID or UTF8
+  uint8_t encoding_idx = use_tag_id ? 3 : 0; // TAG_ID or EXTENDED
   size_t name_size =
       use_tag_id ? static_cast<size_t>(field_id) + 1 : field_name.size();
   uint8_t header =
@@ -202,7 +202,7 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
 
   // Read and decode field name. Java encodes field names using
   // MetaString with encodings:
-  //   UTF8 / ALL_TO_LOWER_SPECIAL / LOWER_UPPER_DIGIT_SPECIAL
+  //   EXTENDED / ALL_TO_LOWER_SPECIAL / LOWER_UPPER_DIGIT_SPECIAL
   // and writes the encoding index into the top 2 bits.
   // We mirror that here using MetaStringDecoder with '$' and '_' as
   // special characters (same as Encoders.FIELD_NAME_DECODER).
@@ -231,17 +231,17 @@ namespace {
 // Meta string encodings for namespace and type name, aligned with
 // rust/fory-core/src/meta/type_meta.rs and Java Encoders.
 static const MetaEncoding k_namespace_encodings[] = {
-    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
 static const MetaEncoding k_type_name_encodings[] = {
-    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
     MetaEncoding::FIRST_TO_LOWER_SPECIAL};
 
 inline Result<void, Error> write_meta_name(Buffer &buffer,
                                            const std::string &name) {
-  const uint8_t encoding_idx = 0; // UTF8 in both encoding tables
+  const uint8_t encoding_idx = 0; // EXTENDED in both encoding tables
   const size_t len = name.size();
 
   if (len >= BIG_NAME_THRESHOLD) {
@@ -1159,7 +1159,7 @@ encode_meta_string(const std::string &value, bool is_namespace) {
 
   if (value.empty()) {
     // For empty strings, use a minimal encoding
-    cached->encoding = 0; // UTF8
+    cached->encoding = 0; // EXTENDED
     cached->bytes.clear();
     cached->hash = 0;
     return cached;
@@ -1170,11 +1170,11 @@ encode_meta_string(const std::string &value, bool is_namespace) {
   static const MetaStringEncoder k_type_name_encoder('$', '_');
 
   static const std::vector<MetaEncoding> k_namespace_encodings = {
-      MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+      MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
       MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
   static const std::vector<MetaEncoding> k_type_name_encodings = {
-      MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+      MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
       MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
       MetaEncoding::FIRST_TO_LOWER_SPECIAL};
 

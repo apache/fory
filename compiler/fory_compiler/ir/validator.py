@@ -83,8 +83,9 @@ class SchemaValidator:
                 used_ids[t.type_id] = t
 
         def qualify(full_name: str) -> str:
-            if self.schema.package:
-                return f"{self.schema.package}.{full_name}"
+            package = self.schema.package_alias or self.schema.package
+            if package:
+                return f"{package}.{full_name}"
             return full_name
 
         def resolve_hash_source(full_name: str, alias: Optional[str]) -> str:
@@ -92,8 +93,9 @@ class SchemaValidator:
                 return qualify(full_name)
             if "." in alias:
                 return alias
-            if self.schema.package:
-                return f"{self.schema.package}.{alias}"
+            package = self.schema.package_alias or self.schema.package
+            if package:
+                return f"{package}.{alias}"
             return alias
 
         def assign_id(type_def, full_name: str) -> None:
@@ -114,12 +116,17 @@ class SchemaValidator:
         def walk_message(message: Message, parent_path: str = "") -> None:
             full_name = f"{parent_path}.{message.name}" if parent_path else message.name
             assign_id(message, full_name)
+            for nested_enum in message.nested_enums:
+                nested_name = f"{full_name}.{nested_enum.name}"
+                assign_id(nested_enum, nested_name)
             for nested_union in message.nested_unions:
                 nested_name = f"{full_name}.{nested_union.name}"
                 assign_id(nested_union, nested_name)
             for nested_msg in message.nested_messages:
                 walk_message(nested_msg, full_name)
 
+        for enum in self.schema.enums:
+            assign_id(enum, enum.name)
         for union in self.schema.unions:
             assign_id(union, union.name)
         for message in self.schema.messages:

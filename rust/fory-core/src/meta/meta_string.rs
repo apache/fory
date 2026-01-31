@@ -36,11 +36,18 @@ pub static TYPE_NAME_DECODER: MetaStringDecoder = MetaStringDecoder::new('$', '_
 #[repr(i16)]
 pub enum Encoding {
     #[default]
-    Utf8 = 0x00,
+    Extended = 0x00,
     LowerSpecial = 0x01,
     LowerUpperDigitSpecial = 0x02,
     FirstToLowerSpecial = 0x03,
     AllToLowerSpecial = 0x04,
+}
+
+#[derive(Debug, PartialEq, Hash, Eq, Clone, Copy)]
+#[repr(u8)]
+pub enum ExtendedEncoding {
+    Utf8 = 0x00,
+    NumberString = 0x01,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -78,7 +85,7 @@ impl MetaString {
         special_char2: char,
     ) -> Result<Self, Error> {
         let mut strip_last_char = false;
-        if encoding != Encoding::Utf8 {
+        if encoding != Encoding::Extended {
             if bytes.is_empty() {
                 return Err(Error::encode_error("Encoded data cannot be empty"));
             }
@@ -131,6 +138,153 @@ struct StringStatistics {
     can_lower_special_encoded: bool,
 }
 
+fn is_number_string(input: &str) -> bool {
+    if input.is_empty() {
+        return false;
+    }
+    let mut chars = input.chars();
+    let first = chars.next().unwrap();
+    let mut has_digit = false;
+    if first == '-' {
+        for c in chars {
+            if !c.is_ascii_digit() {
+                return false;
+            }
+            has_digit = true;
+        }
+        return has_digit;
+    }
+    if !first.is_ascii_digit() {
+        return false;
+    }
+    has_digit = true;
+    for c in chars {
+        if !c.is_ascii_digit() {
+            return false;
+        }
+    }
+    has_digit
+}
+
+fn is_all_zero(bytes: &[u8]) -> bool {
+    bytes.iter().all(|b| *b == 0)
+}
+
+fn encode_decimal_to_bytes(digits: &str) -> Vec<u8> {
+    let mut magnitude: Vec<u8> = vec![0];
+    for b in digits.bytes() {
+        let mut carry: u16 = (b - b'0') as u16;
+        for i in (0..magnitude.len()).rev() {
+            let value = magnitude[i] as u16 * 10 + carry;
+            magnitude[i] = (value & 0xFF) as u8;
+            carry = value >> 8;
+        }
+        while carry != 0 {
+            magnitude.insert(0, (carry & 0xFF) as u8);
+            carry >>= 8;
+        }
+    }
+    while magnitude.len() > 1 && magnitude[0] == 0 {
+        magnitude.remove(0);
+    }
+    magnitude
+}
+
+fn encode_number_string(input: &str) -> Vec<u8> {
+    let mut negative = input.starts_with('-');
+    let digits = if negative { &input[1..] } else { input };
+    let mut magnitude = encode_decimal_to_bytes(digits);
+    if is_all_zero(&magnitude) {
+        negative = false;
+    }
+
+    if negative {
+        for b in &mut magnitude {
+            *b = !*b;
+        }
+        let mut carry: u16 = 1;
+        for i in (0..magnitude.len()).rev() {
+            let sum = magnitude[i] as u16 + carry;
+            magnitude[i] = (sum & 0xFF) as u8;
+            carry = sum >> 8;
+        }
+        if carry != 0 {
+            magnitude.insert(0, 0xFF);
+        }
+        while magnitude.len() > 1
+            && magnitude[0] == 0xFF
+            && (magnitude[1] & 0x80) != 0
+        {
+            magnitude.remove(0);
+        }
+    } else if (magnitude[0] & 0x80) != 0 {
+        magnitude.insert(0, 0);
+    }
+
+    let mut bytes = Vec::with_capacity(magnitude.len() + 1);
+    bytes.push(ExtendedEncoding::NumberString as u8);
+    bytes.extend_from_slice(&magnitude);
+    bytes
+}
+
+fn encode_extended_utf8(input: &str) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(input.len() + 1);
+    bytes.push(ExtendedEncoding::Utf8 as u8);
+    bytes.extend_from_slice(input.as_bytes());
+    bytes
+}
+
+fn decode_number_string(bytes: &[u8]) -> String {
+    if bytes.is_empty() {
+        return String::new();
+    }
+    let mut magnitude = bytes.to_vec();
+    let negative = (magnitude[0] & 0x80) != 0;
+    if negative {
+        for b in &mut magnitude {
+            *b = !*b;
+        }
+        let mut carry: u16 = 1;
+        for i in (0..magnitude.len()).rev() {
+            let sum = magnitude[i] as u16 + carry;
+            magnitude[i] = (sum & 0xFF) as u8;
+            carry = sum >> 8;
+        }
+        while magnitude.len() > 1 && magnitude[0] == 0 {
+            magnitude.remove(0);
+        }
+    } else {
+        while magnitude.len() > 1 && magnitude[0] == 0 {
+            magnitude.remove(0);
+        }
+    }
+
+    if is_all_zero(&magnitude) {
+        return "0".to_string();
+    }
+
+    let mut temp = magnitude;
+    let mut digits: Vec<char> = Vec::new();
+    while !temp.is_empty() {
+        let mut remainder: u32 = 0;
+        for b in &mut temp {
+            let value = (remainder << 8) | (*b as u32);
+            *b = (value / 10) as u8;
+            remainder = value % 10;
+        }
+        digits.push((b'0' + remainder as u8) as char);
+        while !temp.is_empty() && temp[0] == 0 {
+            temp.remove(0);
+        }
+    }
+    digits.reverse();
+    let mut result: String = digits.into_iter().collect();
+    if negative {
+        result.insert(0, '-');
+    }
+    result
+}
+
 impl MetaStringEncoder {
     pub const fn new(special_char1: char, special_char2: char) -> Self {
         Self {
@@ -147,7 +301,7 @@ impl MetaStringEncoder {
         if input.is_empty() {
             return Ok(Some(MetaString::new(
                 input.to_string(),
-                Encoding::Utf8,
+                Encoding::Extended,
                 vec![],
                 self.special_char1,
                 self.special_char2,
@@ -162,11 +316,21 @@ impl MetaStringEncoder {
             ))
         );
 
+        if is_number_string(input) {
+            return Ok(Some(MetaString::new(
+                input.to_string(),
+                Encoding::Extended,
+                encode_number_string(input),
+                self.special_char1,
+                self.special_char2,
+            )?));
+        }
+
         if !self.is_latin(input) {
             return Ok(Some(MetaString::new(
                 input.to_string(),
-                Encoding::Utf8,
-                input.as_bytes().to_vec(),
+                Encoding::Extended,
+                encode_extended_utf8(input),
                 self.special_char1,
                 self.special_char2,
             )?));
@@ -197,6 +361,9 @@ impl MetaStringEncoder {
 
     fn compute_encoding(&self, input: &str, encodings: Option<&[Encoding]>) -> Encoding {
         let allow = |e: Encoding| encodings.map_or(true, |opts| opts.contains(&e));
+        if is_number_string(input) {
+            return Encoding::Extended;
+        }
         let statistics = self.compute_statistics(input);
         if statistics.can_lower_special_encoded && allow(Encoding::LowerSpecial) {
             return Encoding::LowerSpecial;
@@ -221,7 +388,7 @@ impl MetaStringEncoder {
                 return Encoding::LowerUpperDigitSpecial;
             }
         }
-        Encoding::Utf8
+        Encoding::Extended
     }
 
     fn compute_statistics(&self, chars: &str) -> StringStatistics {
@@ -266,7 +433,7 @@ impl MetaStringEncoder {
         if input.is_empty() {
             return MetaString::new(
                 input.to_string(),
-                Encoding::Utf8,
+                Encoding::Extended,
                 vec![],
                 self.special_char1,
                 self.special_char2,
@@ -280,14 +447,14 @@ impl MetaStringEncoder {
             ))
         );
         ensure!(
-            encoding == Encoding::Utf8 || self.is_latin(input),
+            encoding == Encoding::Extended || self.is_latin(input),
             Error::encode_error("Non-ASCII characters in meta string are not allowed")
         );
 
         if input.is_empty() {
             return MetaString::new(
                 input.to_string(),
-                Encoding::Utf8,
+                Encoding::Extended,
                 vec![],
                 self.special_char1,
                 self.special_char2,
@@ -336,11 +503,15 @@ impl MetaStringEncoder {
                     self.special_char2,
                 )
             }
-            Encoding::Utf8 => {
-                let encoded_data = input.as_bytes().to_vec();
+            Encoding::Extended => {
+                let encoded_data = if is_number_string(input) {
+                    encode_number_string(input)
+                } else {
+                    encode_extended_utf8(input)
+                };
                 MetaString::new(
                     input.to_string(),
-                    Encoding::Utf8,
+                    Encoding::Extended,
                     encoded_data,
                     self.special_char1,
                     self.special_char2,
@@ -478,7 +649,7 @@ impl MetaStringDecoder {
                     Encoding::AllToLowerSpecial => {
                         self.decode_rep_all_to_lower_special(encoded_data)
                     }
-                    Encoding::Utf8 => Ok(String::from_utf8_lossy(encoded_data).into_owned()),
+                    Encoding::Extended => self.decode_extended(encoded_data),
                 }
             }
         }?;
@@ -544,6 +715,23 @@ impl MetaStringDecoder {
             decoded.push(self.decode_lower_upper_digit_special_char(char_value as u8)?);
         }
         Ok(decoded)
+    }
+
+    fn decode_extended(&self, data: &[u8]) -> Result<String, Error> {
+        if data.is_empty() {
+            return Ok(String::new());
+        }
+        let actual = data[0];
+        let payload = &data[1..];
+        match actual {
+            x if x == ExtendedEncoding::Utf8 as u8 => {
+                Ok(String::from_utf8_lossy(payload).into_owned())
+            }
+            x if x == ExtendedEncoding::NumberString as u8 => Ok(decode_number_string(payload)),
+            _ => Err(Error::encode_error(format!(
+                "Unsupported extended meta string encoding value: {actual}",
+            ))),
+        }
     }
 
     fn decode_lower_special_char(&self, char_value: u8) -> Result<char, Error> {

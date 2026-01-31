@@ -42,12 +42,12 @@ static const MetaStringEncoder k_type_name_encoder('$', '_');
 
 // Allowed encodings for package/namespace (same as Java's pkg_encodings)
 static const std::vector<MetaEncoding> k_pkg_encodings = {
-    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
 // Allowed encodings for type name (same as Java's type_name_encodings)
 static const std::vector<MetaEncoding> k_type_name_encodings = {
-    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
     MetaEncoding::FIRST_TO_LOWER_SPECIAL};
 

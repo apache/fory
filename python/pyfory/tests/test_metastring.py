@@ -20,6 +20,8 @@ from pyfory.meta.metastring import (
     MetaStringEncoder,
     MetaStringDecoder,
     Encoding,
+    EXTENDED_ENCODING_NUMBER_STRING,
+    EXTENDED_ENCODING_UTF8,
 )
 
 
@@ -84,7 +86,7 @@ def test_metastring():
         try:
             string = create_string(i)
             metastring = encoder.encode(string)
-            assert metastring.encoding != Encoding.UTF_8
+            assert metastring.encoding != Encoding.EXTENDED
             assert metastring.original == string
 
             new_string = decoder.decode(metastring.encoded_data, metastring.encoding)
@@ -102,7 +104,7 @@ def test_encode_empty_string():
         Encoding.LOWER_UPPER_DIGIT_SPECIAL,
         Encoding.FIRST_TO_LOWER_SPECIAL,
         Encoding.ALL_TO_LOWER_SPECIAL,
-        Encoding.UTF_8,
+        Encoding.EXTENDED,
     ]:
         metastring = encoder.encode_with_encoding("", encoding)
         assert len(metastring.encoded_data) == 0
@@ -115,7 +117,8 @@ def test_encode_characters_outside_of_lower_special():
 
     test_string = "abcdefABCDEF1234!@#"
     metastring = encoder.encode(test_string)
-    assert metastring.encoding == Encoding.UTF_8
+    assert metastring.encoding == Encoding.EXTENDED
+    assert metastring.encoded_data[0] == EXTENDED_ENCODING_UTF8
 
 
 def test_all_to_upper_special_encoding():
@@ -146,7 +149,32 @@ def test_utf8_encoding():
 
     test_string = "你好，世界"  # Non-Latin characters
     metastring = encoder.encode(test_string)
-    assert metastring.encoding == Encoding.UTF_8
+    assert metastring.encoding == Encoding.EXTENDED
+    assert metastring.encoded_data[0] == EXTENDED_ENCODING_UTF8
+    decoded_string = decoder.decode(metastring.encoded_data, metastring.encoding)
+    assert decoded_string == test_string
+
+
+def test_number_string_encoding():
+    encoder = MetaStringEncoder(special_char1=".", special_char2="_")
+    decoder = MetaStringDecoder(special_char1=".", special_char2="_")
+
+    test_string = "1234567890"
+    metastring = encoder.encode(test_string)
+    assert metastring.encoding == Encoding.EXTENDED
+    assert metastring.encoded_data[0] == EXTENDED_ENCODING_NUMBER_STRING
+    decoded_string = decoder.decode(metastring.encoded_data, metastring.encoding)
+    assert decoded_string == test_string
+
+
+def test_negative_number_string_encoding():
+    encoder = MetaStringEncoder(special_char1=".", special_char2="_")
+    decoder = MetaStringDecoder(special_char1=".", special_char2="_")
+
+    test_string = "-324345545454"
+    metastring = encoder.encode(test_string)
+    assert metastring.encoding == Encoding.EXTENDED
+    assert metastring.encoded_data[0] == EXTENDED_ENCODING_NUMBER_STRING
     decoded_string = decoder.decode(metastring.encoded_data, metastring.encoding)
     assert decoded_string == test_string
 
@@ -179,7 +207,7 @@ def test_ascii_encoding():
 
     test_string = "asciiOnly"
     encoded_metastring = encoder.encode(test_string)
-    assert encoded_metastring.encoding != Encoding.UTF_8
+    assert encoded_metastring.encoding != Encoding.EXTENDED
     assert encoded_metastring.encoding == Encoding.ALL_TO_LOWER_SPECIAL
 
 
@@ -188,7 +216,8 @@ def test_non_ascii_encoding():
 
     test_string = "こんにちは"  # Non-ASCII string
     encoded_metastring = encoder.encode(test_string)
-    assert encoded_metastring.encoding == Encoding.UTF_8
+    assert encoded_metastring.encoding == Encoding.EXTENDED
+    assert encoded_metastring.encoded_data[0] == EXTENDED_ENCODING_UTF8
 
 
 def test_non_ascii_encoding_and_non_utf8():

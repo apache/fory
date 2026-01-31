@@ -67,12 +67,19 @@ The package declaration defines the namespace for all types in the file.
 package com.example.models;
 ```
 
+You can optionally specify a package alias used only for auto-generated type IDs:
+
+```protobuf
+package com.example.models alias models_v1;
+```
+
 **Rules:**
 
 - Optional but recommended
 - Must appear before any type definitions
 - Only one package declaration per file
 - Used for namespace-based type registration
+- Package alias (if present) is used for auto-ID hashing only
 
 **Language Mapping:**
 
@@ -557,8 +564,9 @@ message Person {
 ```
 
 If `id` is omitted, the compiler generates one using
-`MurmurHash3(utf8(package.typename)) & 0x7fffffff`. Use
-`[alias="..."]` to change the hash source without renaming the type.
+`MurmurHash3(utf8(hash_namespace.typename))` (32-bit). `hash_namespace` is the
+package alias if specified, otherwise the package name. Use `[alias="..."]` to
+change the hash source without renaming the type.
 
 ### Reserved Fields
 
@@ -721,7 +729,8 @@ message Person [id=100] {
 - Union cases do not support field options
 - Case types can be primitives, enums, messages, or other named types
 - Union type IDs (`[id=...]`) are mandatory; if omitted, the compiler auto-generates one
-  using `MurmurHash3(utf8(package.typename)) & 0x7fffffff`
+  using `MurmurHash3(utf8(hash_namespace.typename))` (32-bit)
+- `hash_namespace` is the package alias if specified, otherwise the package name
 - Use `[alias="..."]` to change the hash source without renaming the union
 
 **Grammar:**
@@ -957,7 +966,7 @@ message Example {
 
 Type IDs enable efficient cross-language serialization and are mandatory for
 messages and unions. If `id` is omitted, the compiler auto-generates one using
-`MurmurHash3(utf8(package.typename)) & 0x7fffffff` and annotates it in generated
+`MurmurHash3(utf8(hash_namespace.typename))` (32-bit) and annotates it in generated
 code. Collisions are detected at compile-time across the current file and all
 imports; when a collision occurs, the compiler silently falls back to
 name-based registration for the conflicting type, so there is no runtime ID
@@ -969,7 +978,7 @@ message User [id=101] { ... }
 union Event [id=102] { ... }
 ```
 
-Enum type IDs remain optional but recommended for cross-language use.
+Enum type IDs remain optional; if omitted they are auto-generated using the same hash.
 
 ### With Explicit Type ID
 
@@ -992,7 +1001,7 @@ Type ID Specification
 
 - Mandatory IDs: Every message and union must have a unique ID.
 - Auto-generation: If no ID is provided, fory generates one using
-  MurmurHash3(utf8(package.typename)) & 0x7fffffff.
+  MurmurHash3(utf8(hash_namespace.typename)) (32-bit).
 - Space Efficiency:
   - Manual IDs (0-127): Encoded as 1 byte (Varint). Ideal for high-frequency messages.
   - Generated IDs: Usually large integers, taking 4-5 bytes in the wire format (varuint32).
@@ -1263,7 +1272,7 @@ message ForyFieldOptions {
 ```
 file         := [package_decl] file_option* import_decl* type_def*
 
-package_decl := 'package' package_name ';'
+package_decl := 'package' package_name ['alias' package_name] ';'
 package_name := IDENTIFIER ('.' IDENTIFIER)*
 
 file_option  := 'option' option_name '=' option_value ';'

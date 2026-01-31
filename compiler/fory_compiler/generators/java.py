@@ -886,15 +886,15 @@ class JavaGenerator(BaseGenerator):
         if isinstance(field.field_type, NamedType):
             type_def = self.resolve_named_type(field.field_type.name, parent_stack)
             if isinstance(type_def, Enum):
-                if type_def.type_id is None:
+                if type_def.type_id is None or getattr(type_def, "id_generated", False):
                     return "Types.NAMED_ENUM"
                 return f"({type_def.type_id} << 8) | Types.ENUM"
             if isinstance(type_def, Union):
-                if type_def.type_id is None:
+                if type_def.type_id is None or getattr(type_def, "id_generated", False):
                     return "Types.NAMED_UNION"
                 return f"({type_def.type_id} << 8) | Types.UNION"
             if isinstance(type_def, Message):
-                if type_def.type_id is None:
+                if type_def.type_id is None or getattr(type_def, "id_generated", False):
                     return "Types.NAMED_STRUCT"
                 return f"({type_def.type_id} << 8) | Types.STRUCT"
         return "Types.UNKNOWN"
@@ -1563,8 +1563,13 @@ class JavaGenerator(BaseGenerator):
         class_ref = f"{parent_path}.{enum.name}" if parent_path else enum.name
         type_name = class_ref if parent_path else enum.name
 
-        if enum.type_id is not None:
+        auto_name = self.get_auto_id_registration_name(enum)
+        if self.should_register_by_id(enum):
             lines.append(f"        fory.register({class_ref}.class, {enum.type_id});")
+        elif auto_name is not None:
+            lines.append(
+                f'        fory.register({class_ref}.class, "", "{auto_name}");'
+            )
         else:
             # Use FDL package for namespace (consistent across languages)
             ns = self.schema.package or "default"
@@ -1580,9 +1585,14 @@ class JavaGenerator(BaseGenerator):
         class_ref = f"{parent_path}.{message.name}" if parent_path else message.name
         type_name = class_ref if parent_path else message.name
 
-        if message.type_id is not None:
+        auto_name = self.get_auto_id_registration_name(message)
+        if self.should_register_by_id(message):
             lines.append(
                 f"        fory.register({class_ref}.class, {message.type_id});"
+            )
+        elif auto_name is not None:
+            lines.append(
+                f'        fory.register({class_ref}.class, "", "{auto_name}");'
             )
         else:
             # Use FDL package for namespace (consistent across languages)
@@ -1613,9 +1623,14 @@ class JavaGenerator(BaseGenerator):
             f"new org.apache.fory.serializer.UnionSerializer(fory, {class_ref}.class)"
         )
 
-        if union.type_id is not None:
+        auto_name = self.get_auto_id_registration_name(union)
+        if self.should_register_by_id(union):
             lines.append(
                 f"        fory.registerUnion({class_ref}.class, {union.type_id}, {serializer_ref});"
+            )
+        elif auto_name is not None:
+            lines.append(
+                f'        fory.registerUnion({class_ref}.class, "", "{auto_name}", {serializer_ref});'
             )
         else:
             ns = self.schema.package or "default"

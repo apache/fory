@@ -20,6 +20,14 @@
 use fory::{Fory, ForyObject};
 use std::sync::OnceLock;
 
+#[derive(ForyObject, Debug, Clone, PartialEq, Default)]
+#[repr(i32)]
+pub enum Status {
+    #[default]
+    Unknown = 0,
+    Ok = 1,
+}
+
 // Type ID 1471345060 is generated from auto_id.Wrapper
 #[derive(ForyObject, Debug, Clone, PartialEq)]
 pub enum Wrapper {
@@ -77,7 +85,7 @@ pub mod envelope {
         }
     }
 
-    // Type ID 715094189 is generated from auto_id.Envelope.Payload
+    // Type ID 2862577837 is generated from auto_id.Envelope.Payload
     #[derive(ForyObject, Debug, Clone, PartialEq, Default)]
     pub struct Payload {
         #[fory(id = 1)]
@@ -97,7 +105,7 @@ pub mod envelope {
     }
 }
 
-// Type ID 874961588 is generated from auto_id.Envelope
+// Type ID 3022445236 is generated from auto_id.Envelope
 #[derive(ForyObject, Debug, Clone, PartialEq, Default)]
 pub struct Envelope {
     #[fory(id = 1)]
@@ -106,6 +114,8 @@ pub struct Envelope {
     pub payload: Option<envelope::Payload>,
     #[fory(id = 3, type_id = "union")]
     pub detail: envelope::Detail,
+    #[fory(id = 4)]
+    pub status: Status,
 }
 
 impl Envelope {
@@ -121,10 +131,11 @@ impl Envelope {
 }
 
 pub fn register_types(fory: &mut Fory) -> Result<(), fory::Error> {
-    fory.register_union::<Wrapper>(1471345060)?;
-    fory.register_union::<envelope::Detail>(1609214087)?;
-    fory.register::<envelope::Payload>(715094189)?;
-    fory.register::<Envelope>(874961588)?;
+    fory.register_by_namespace::<Status>("", "1124725126")?;
+    fory.register_union_by_namespace::<Wrapper>("", "1471345060")?;
+    fory.register_union_by_namespace::<envelope::Detail>("", "1609214087")?;
+    fory.register_by_namespace::<envelope::Payload>("", "2862577837")?;
+    fory.register_by_namespace::<Envelope>("", "3022445236")?;
     Ok(())
 }
 

@@ -530,7 +530,7 @@ Each field is encoded as:
 
 Field header layout:
 
-- Bits 6-7: field name encoding (`UTF8`, `ALL_TO_LOWER_SPECIAL`,
+- Bits 6-7: field name encoding (`EXTENDED`, `ALL_TO_LOWER_SPECIAL`,
   `LOWER_UPPER_DIGIT_SPECIAL`, or `TAG_ID`)
 - Bits 2-5: size
   - For name encoding: `size = (name_bytes_length - 1)`
@@ -566,13 +566,27 @@ This compression significantly reduces the size of type metadata in serialized d
 
 ### Encoding Type IDs
 
-| ID  | Name                      | Bits/Char | Character Set                        |
-| --- | ------------------------- | --------- | ------------------------------------ |
-| 0   | UTF8                      | 8         | Any UTF-8 character                  |
-| 1   | LOWER_SPECIAL             | 5         | `a-z . _ $ \|`                       |
-| 2   | LOWER_UPPER_DIGIT_SPECIAL | 6         | `a-z A-Z 0-9 . _`                    |
-| 3   | FIRST_TO_LOWER_SPECIAL    | 5         | First char uppercase, rest `a-z . _` |
-| 4   | ALL_TO_LOWER_SPECIAL      | 5         | `a-z A-Z . _` (uppercase escaped)    |
+| ID  | Name                      | Bits/Char | Character Set / Payload                     |
+| --- | ------------------------- | --------- | ------------------------------------------- |
+| 0   | EXTENDED                  | -         | Payload encoding byte + payload (see below) |
+| 1   | LOWER_SPECIAL             | 5         | `a-z . _ $ \|`                              |
+| 2   | LOWER_UPPER_DIGIT_SPECIAL | 6         | `a-z A-Z 0-9 . _`                           |
+| 3   | FIRST_TO_LOWER_SPECIAL    | 5         | First char uppercase, rest `a-z . _`        |
+| 4   | ALL_TO_LOWER_SPECIAL      | 5         | `a-z A-Z . _` (uppercase escaped)           |
+
+#### EXTENDED Payload Encoding
+
+When encoding type is `EXTENDED`, the encoded bytes start with a 1-byte payload
+encoding flag:
+
+| Value | Payload Encoding | Description                                                                    |
+| ----- | ---------------- | ------------------------------------------------------------------------------ |
+| 0     | UTF8             | UTF-8 bytes of the string                                                      |
+| 1     | NUMBER_STRING    | Two's-complement signed integer bytes (big-endian) of the decimal string value |
+| other | reserved         | Reserved for future extensions                                                 |
+
+`NUMBER_STRING` supports negative values (e.g. `-324345545454`). Decoding yields the
+canonical decimal representation of the numeric value.
 
 ### Character Mapping Tables
 
@@ -657,6 +671,9 @@ Example: `MyType` → `|my|type` → encoded with LOWER_SPECIAL
 
 ```
 function choose_encoding(str):
+    if str matches /^-?[0-9]+$/:
+        return EXTENDED  // NUMBER_STRING payload
+
     if all chars in str are in [a-z . _ $ |]:
         return LOWER_SPECIAL
 
@@ -674,7 +691,7 @@ function choose_encoding(str):
     if all chars are in [a-z A-Z 0-9 . _]:
         return LOWER_UPPER_DIGIT_SPECIAL
 
-    return UTF8
+    return EXTENDED
 ```
 
 ### Meta String Header Format
@@ -689,6 +706,9 @@ Or for larger strings:
 
 ```
 | varuint: (length << 3) | encoding | encoded bytes |
+
+For `EXTENDED`, the encoded bytes begin with a 1-byte payload encoding flag
+followed by the payload bytes.
 ```
 
 ### Special Character Sets by Context
@@ -713,6 +733,7 @@ Reference:         | ((id + 1) << 1) | 1 |
 - Bit 0 of the header indicates: 0 = new string, 1 = reference to previous
 - Large strings (> 16 bytes) include 64-bit hash for content-based deduplication
 - Small strings use exact byte comparison
+- If `length == 0`, the encoding byte is omitted
 
 ## Value Format
 

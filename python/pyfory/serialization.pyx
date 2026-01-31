@@ -310,6 +310,9 @@ cdef class MetaStringBytes:
         return f"MetaStringBytes(data={self.data}, hashcode={self.hashcode})"
 
 
+EMPTY_META_STRING_BYTES = MetaStringBytes(b"", 0)
+
+
 @cython.final
 cdef class MetaStringResolver:
     cdef:
@@ -337,7 +340,8 @@ cdef class MetaStringResolver:
             self._c_dynamic_written_enum_string.push_back(<PyObject *> metastr_bytes)
             buffer.write_var_uint32(length << 1)
             if length <= SMALL_STRING_THRESHOLD:
-                buffer.write_int8(metastr_bytes.encoding)
+                if length != 0:
+                    buffer.write_int8(metastr_bytes.encoding)
             else:
                 buffer.write_int64(metastr_bytes.hashcode)
             buffer.write_bytes(metastr_bytes.data)
@@ -354,6 +358,10 @@ cdef class MetaStringResolver:
         cdef int32_t reader_index
         cdef encoding = 0
         if length <= SMALL_STRING_THRESHOLD:
+            if length == 0:
+                enum_str_ptr = <PyObject *> EMPTY_META_STRING_BYTES
+                self._c_dynamic_id_to_enum_string_vec.push_back(enum_str_ptr)
+                return <MetaStringBytes> enum_str_ptr
             encoding = buffer.read_int8()
             if length <= 8:
                 v1 = buffer.read_bytes_as_int64(length)
@@ -390,6 +398,9 @@ cdef class MetaStringResolver:
             return metastr_bytes
         cdef int64_t v1 = 0, v2 = 0, hashcode
         length = len(metastr.encoded_data)
+        if length == 0:
+            self._metastr_to_metastr_bytes[metastr] = EMPTY_META_STRING_BYTES
+            return EMPTY_META_STRING_BYTES
         if length <= SMALL_STRING_THRESHOLD:
             data_buf = Buffer(metastr.encoded_data)
             if length <= 8:

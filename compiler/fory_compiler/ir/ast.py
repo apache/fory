@@ -206,6 +206,8 @@ class Enum:
     line: int = 0
     column: int = 0
     location: Optional[SourceLocation] = None
+    id_generated: bool = False
+    id_source: Optional[str] = None
 
     def __repr__(self) -> str:
         id_str = f" [id={self.type_id}]" if self.type_id is not None else ""
@@ -238,6 +240,7 @@ class Schema:
     """The root AST node representing a complete FDL file."""
 
     package: Optional[str]
+    package_alias: Optional[str] = None
     imports: List[Import] = field(default_factory=list)
     enums: List[Enum] = field(default_factory=list)
     messages: List[Message] = field(default_factory=list)
@@ -250,7 +253,11 @@ class Schema:
 
     def __repr__(self) -> str:
         opts = f", options={len(self.options)}" if self.options else ""
-        return f"Schema(package={self.package}, imports={len(self.imports)}, enums={len(self.enums)}, messages={len(self.messages)}, unions={len(self.unions)}{opts})"
+        alias = f", package_alias={self.package_alias}" if self.package_alias else ""
+        return (
+            f"Schema(package={self.package}{alias}, imports={len(self.imports)}, "
+            f"enums={len(self.enums)}, messages={len(self.messages)}, unions={len(self.unions)}{opts})"
+        )
 
     def get_option(self, name: str, default: Optional[str] = None) -> Optional[str]:
         """Get a file-level option value."""

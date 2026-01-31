@@ -23,11 +23,16 @@ import "errors"
 type Encoding uint8
 
 const (
-	UTF_8                     Encoding = 0x00
+	EXTENDED                  Encoding = 0x00
 	LOWER_SPECIAL             Encoding = 0x01
 	LOWER_UPPER_DIGIT_SPECIAL Encoding = 0x02
 	FIRST_TO_LOWER_SPECIAL    Encoding = 0x03
 	ALL_TO_LOWER_SPECIAL      Encoding = 0x04
+)
+
+const (
+	ExtendedEncodingUTF8         byte = 0
+	ExtendedEncodingNumberString byte = 1
 )
 
 // MetaString saves the serialized data
@@ -50,7 +55,7 @@ func NewMetaString(input string, encoding Encoding, special1, special2 byte, enc
 }
 
 func NewEmptyMetaString() *MetaString {
-	return NewMetaString("", UTF_8, 0, 0, []byte{})
+	return NewMetaString("", EXTENDED, 0, 0, []byte{})
 }
 
 func (ms *MetaString) GetInputString() string { return ms.inputString }
@@ -66,7 +71,7 @@ func (ms *MetaString) GetEncodedBytes() []byte { return ms.encodedBytes }
 // EncodingFromByte maps a byte value to an Encoding
 func EncodingFromByte(b byte) (Encoding, error) {
 	switch Encoding(b) {
-	case UTF_8, LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL, ALL_TO_LOWER_SPECIAL:
+	case EXTENDED, LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL, ALL_TO_LOWER_SPECIAL:
 		return Encoding(b), nil
 	}
 	return 0, errors.New("Encoding flag not recognized: " + string(b))
@@ -74,7 +79,7 @@ func EncodingFromByte(b byte) (Encoding, error) {
 
 // StripLastChar return true if last char should be stripped
 func (ms *MetaString) StripLastChar() bool {
-	if ms.encoding == UTF_8 || ms.encodedBytes == nil {
+	if ms.encoding == EXTENDED || ms.encodedBytes == nil {
 		return false
 	}
 	return (ms.encodedBytes[0] & 0x80) > 0

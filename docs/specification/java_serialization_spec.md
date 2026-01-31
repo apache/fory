@@ -279,7 +279,7 @@ type info:
 
 Field name encoding:
 
-- 0: UTF8
+- 0: EXTENDED
 - 1: ALL_TO_LOWER_SPECIAL
 - 2: LOWER_UPPER_DIGIT_SPECIAL
 - 3: TAG_ID (field name omitted, tag ID stored in size field)
@@ -332,8 +332,8 @@ Header format:
 
 Encodings:
 
-- Package name: UTF8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL
-- Type name: UTF8, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL, ALL_TO_LOWER_SPECIAL
+- Package name: EXTENDED, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL
+- Type name: EXTENDED, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL, ALL_TO_LOWER_SPECIAL
 
 ### Field names
 

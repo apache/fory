@@ -27,6 +27,11 @@ import pyfory
 import threading
 
 
+class Status(IntEnum):
+    UNKNOWN = 0
+    OK = 1
+
+
 class WrapperCase(Enum):
     ENVELOPE = 1
     RAW = 2
@@ -121,7 +126,7 @@ class WrapperSerializer(UnionSerializer):
 
 
 
-# Type ID 874961588 is generated from auto_id.Envelope
+# Type ID 3022445236 is generated from auto_id.Envelope
 @dataclass
 class Envelope:
     class DetailCase(Enum):
@@ -217,7 +222,7 @@ class Envelope:
             })
 
 
-    # Type ID 715094189 is generated from auto_id.Envelope.Payload
+    # Type ID 2862577837 is generated from auto_id.Envelope.Payload
     @dataclass
     class Payload:
         value: pyfory.int32 = pyfory.field(id=1, default=0)
@@ -236,6 +241,7 @@ class Envelope:
     id: str = pyfory.field(id=1, default="")
     payload: Optional[Envelope.Payload] = pyfory.field(id=2, nullable=True, default=None)
     detail: Envelope.Detail = pyfory.field(id=3, default=None)
+    status: Status = pyfory.field(id=4, default=None)
 
     def to_bytes(self) -> bytes:
         return _get_fory().serialize(self)
@@ -250,10 +256,11 @@ class Envelope:
 
 
 def register_auto_id_types(fory: pyfory.Fory):
-    fory.register_union(Wrapper, type_id=1471345060, serializer=WrapperSerializer(fory))
-    fory.register_type(Envelope, type_id=874961588)
-    fory.register_union(Envelope.Detail, type_id=1609214087, serializer=Envelope.DetailSerializer(fory))
-    fory.register_type(Envelope.Payload, type_id=715094189)
+    fory.register_type(Status, namespace="", typename="1124725126")
+    fory.register_union(Wrapper, namespace="", typename="1471345060", serializer=WrapperSerializer(fory))
+    fory.register_type(Envelope, namespace="", typename="3022445236")
+    fory.register_union(Envelope.Detail, namespace="", typename="1609214087", serializer=Envelope.DetailSerializer(fory))
+    fory.register_type(Envelope.Payload, namespace="", typename="2862577837")
 
 _fory_lock = threading.Lock()
 _threadsafe_fory = None

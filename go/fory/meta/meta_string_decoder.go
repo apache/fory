@@ -19,6 +19,7 @@ package meta
 
 import (
 	"fmt"
+	"math/big"
 )
 
 type Decoder struct {
@@ -54,8 +55,8 @@ func (d *Decoder) Decode(data []byte, encoding Encoding) (result string, err err
 		}
 	case ALL_TO_LOWER_SPECIAL:
 		chars, err = d.decodeRepAllToLowerSpecial(data, LOWER_SPECIAL)
-	case UTF_8:
-		chars = data
+	case EXTENDED:
+		return d.decodeExtended(data)
 	default:
 		err = fmt.Errorf("Unexpected encoding flag: %v\n", encoding)
 	}
@@ -63,6 +64,57 @@ func (d *Decoder) Decode(data []byte, encoding Encoding) (result string, err err
 		return "", err
 	}
 	return string(chars), err
+}
+
+func (d *Decoder) decodeExtended(data []byte) (string, error) {
+	if len(data) == 0 {
+		return "", nil
+	}
+	actual := data[0]
+	payload := data[1:]
+	switch actual {
+	case ExtendedEncodingUTF8:
+		return string(payload), nil
+	case ExtendedEncodingNumberString:
+		return decodeNumberString(payload), nil
+	default:
+		return "", fmt.Errorf("Unexpected extended encoding flag: %v\n", actual)
+	}
+}
+
+func decodeNumberString(payload []byte) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	negative := (payload[0] & 0x80) != 0
+	bytes := make([]byte, len(payload))
+	copy(bytes, payload)
+	if negative {
+		for i := range bytes {
+			bytes[i] = ^bytes[i]
+		}
+		carry := byte(1)
+		for i := len(bytes) - 1; i >= 0; i-- {
+			sum := uint16(bytes[i]) + uint16(carry)
+			bytes[i] = byte(sum & 0xFF)
+			carry = byte(sum >> 8)
+			if carry == 0 {
+				break
+			}
+		}
+		for len(bytes) > 1 && bytes[0] == 0 {
+			bytes = bytes[1:]
+		}
+	} else {
+		for len(bytes) > 1 && bytes[0] == 0 {
+			bytes = bytes[1:]
+		}
+	}
+	value := new(big.Int).SetBytes(bytes)
+	if negative && value.Sign() != 0 {
+		value.Neg(value)
+	}
+	return value.String()
 }
 
 // DecodeGeneric

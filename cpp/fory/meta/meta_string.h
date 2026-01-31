@@ -34,11 +34,16 @@ namespace meta {
 // Encoding for meta strings, aligned with Rust/Java Encoding
 // definitions in fory-core.
 enum class MetaEncoding : uint8_t {
-  UTF8 = 0x00,
+  EXTENDED = 0x00,
   LOWER_SPECIAL = 0x01,
   LOWER_UPPER_DIGIT_SPECIAL = 0x02,
   FIRST_TO_LOWER_SPECIAL = 0x03,
   ALL_TO_LOWER_SPECIAL = 0x04,
+};
+
+enum class MetaExtendedEncoding : uint8_t {
+  UTF8 = 0x00,
+  NUMBER_STRING = 0x01,
 };
 
 // Decoder for meta strings used by xlang type metadata and

@@ -113,6 +113,7 @@ fn build_auto_id_envelope() -> auto_id::Envelope {
         id: "env-1".to_string(),
         payload,
         detail,
+        status: auto_id::Status::Ok,
     }
 }
 

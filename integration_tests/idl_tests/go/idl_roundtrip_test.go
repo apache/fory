@@ -24,10 +24,10 @@ import (
 	"time"
 
 	fory "github.com/apache/fory/go/fory"
-	autoid "github.com/apache/fory/integration_tests/idl_tests/go/auto_id"
 	"github.com/apache/fory/go/fory/optional"
 	addressbook "github.com/apache/fory/integration_tests/idl_tests/go/addressbook"
 	anyexample "github.com/apache/fory/integration_tests/idl_tests/go/any_example"
+	autoid "github.com/apache/fory/integration_tests/idl_tests/go/auto_id"
 	collection "github.com/apache/fory/integration_tests/idl_tests/go/collection"
 	complexfbs "github.com/apache/fory/integration_tests/idl_tests/go/complex_fbs"
 	complexpb "github.com/apache/fory/integration_tests/idl_tests/go/complex_pb"
@@ -80,6 +80,7 @@ func buildAutoIdEnvelope() autoid.Envelope {
 		Id:      "env-1",
 		Payload: payload,
 		Detail:  detail,
+		Status:  autoid.StatusOk,
 	}
 }
 

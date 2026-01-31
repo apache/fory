@@ -17,6 +17,11 @@
 
 package auto_id;
 
+enum Status {
+    UNKNOWN = 0;
+    OK = 1;
+}
+
 message Envelope {
     string id = 1;
 
@@ -31,6 +36,7 @@ message Envelope {
 
     Payload payload = 2;
     Detail detail = 3;
+    Status status = 4;
 }
 
 union Wrapper {

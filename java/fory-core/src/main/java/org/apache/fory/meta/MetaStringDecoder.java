@@ -19,6 +19,7 @@
 
 package org.apache.fory.meta;
 
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import org.apache.fory.meta.MetaString.Encoding;
 import org.apache.fory.util.StringUtils;
@@ -60,8 +61,8 @@ public class MetaStringDecoder {
         return decodeRepFirstLowerSpecial(encodedData);
       case ALL_TO_LOWER_SPECIAL:
         return decodeRepAllToLowerSpecial(encodedData);
-      case UTF_8:
-        return new String(encodedData, StandardCharsets.UTF_8);
+      case EXTENDED:
+        return decodeExtended(encodedData);
       default:
         throw new IllegalStateException("Unexpected encoding flag: " + encoding);
     }
@@ -173,5 +174,25 @@ public class MetaStringDecoder {
       }
     }
     return builder.toString();
+  }
+
+  private String decodeExtended(byte[] encodedData) {
+    if (encodedData.length == 0) {
+      return "";
+    }
+    int actualEncoding = encodedData[0] & 0xff;
+    byte[] payload = new byte[encodedData.length - 1];
+    System.arraycopy(encodedData, 1, payload, 0, payload.length);
+    switch (actualEncoding) {
+      case MetaString.EXTENDED_ENCODING_UTF8:
+        return new String(payload, StandardCharsets.UTF_8);
+      case MetaString.EXTENDED_ENCODING_NUMBER_STRING:
+        if (payload.length == 0) {
+          return "";
+        }
+        return new BigInteger(payload).toString();
+      default:
+        throw new IllegalStateException("Unexpected extended encoding flag: " + actualEncoding);
+    }
   }
 }

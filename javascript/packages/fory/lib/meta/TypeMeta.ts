@@ -183,7 +183,7 @@ class FieldInfo {
   static u8ToEncoding(value: number) {
     switch (value) {
       case 0x00:
-        return Encoding.UTF_8;
+        return Encoding.EXTENDED;
       case 0x01:
         return Encoding.ALL_TO_LOWER_SPECIAL;
       case 0x02:
@@ -196,9 +196,9 @@ const SMALL_NUM_FIELDS_THRESHOLD = 0b11111;
 const REGISTER_BY_NAME_FLAG = 0b100000;
 const FIELD_NAME_SIZE_THRESHOLD = 0b1111;
 
-const pkgNameEncoding = [Encoding.UTF_8, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL];
-const fieldNameEncoding = [Encoding.UTF_8, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL];
-const typeNameEncoding = [Encoding.UTF_8, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL];
+const pkgNameEncoding = [Encoding.EXTENDED, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL];
+const fieldNameEncoding = [Encoding.EXTENDED, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL];
+const typeNameEncoding = [Encoding.EXTENDED, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL];
 export class TypeMeta {
   private constructor(private fields: FieldInfo[], private type: {
     typeId: number;
@@ -293,7 +293,7 @@ export class TypeMeta {
     } else {
       // Read field name
       const encoding = FieldInfo.u8ToEncoding(encodingFlags);
-      fieldName = fieldDecoder.decode(reader, size + 1, encoding || Encoding.UTF_8);
+      fieldName = fieldDecoder.decode(reader, size + 1, encoding || Encoding.EXTENDED);
     }
 
     return new FieldInfo(fieldName, typeId, trackingRef, nullable, options);

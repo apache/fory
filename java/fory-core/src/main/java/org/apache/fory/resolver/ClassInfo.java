@@ -94,7 +94,7 @@ public class ClassInfo {
     if (cls != null && classResolver.getFory().isCrossLanguage()) {
       this.fullNameBytes =
           metaStringResolver.getOrCreateMetaStringBytes(
-              GENERIC_ENCODER.encode(cls.getName(), Encoding.UTF_8));
+              GENERIC_ENCODER.encode(cls.getName(), Encoding.EXTENDED));
     } else {
       this.fullNameBytes = null;
     }

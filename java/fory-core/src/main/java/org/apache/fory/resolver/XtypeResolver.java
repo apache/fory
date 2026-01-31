@@ -401,7 +401,7 @@ public class XtypeResolver extends TypeResolver {
       Class<?> type, Serializer<?> serializer, String namespace, String typeName, int typeId) {
     MetaStringBytes fullClassNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
-            GENERIC_ENCODER.encode(type.getName(), MetaString.Encoding.UTF_8));
+            GENERIC_ENCODER.encode(type.getName(), MetaString.Encoding.EXTENDED));
     MetaStringBytes nsBytes =
         metaStringResolver.getOrCreateMetaStringBytes(Encoders.encodePackage(namespace));
     MetaStringBytes classNameBytes =
@@ -1125,7 +1125,7 @@ public class XtypeResolver extends TypeResolver {
       }
       MetaStringBytes fullClassNameBytes =
           metaStringResolver.getOrCreateMetaStringBytes(
-              PACKAGE_ENCODER.encode(qualifiedName, MetaString.Encoding.UTF_8));
+              PACKAGE_ENCODER.encode(qualifiedName, MetaString.Encoding.EXTENDED));
       classInfo =
           new ClassInfo(
               type,

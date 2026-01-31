@@ -148,9 +148,9 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
   MetaString _encode(String input, MetaStringEncoding encoding) {
     // TODO: Do not check input length here, this check should be done earlier (remove this comment after writing)
     assert(input.length < MetaStringConst.metaStrMaxLen);
-    assert(encoding == MetaStringEncoding.utf8 || input.isNotEmpty); // Only utf8 encoding can be empty
+    assert(encoding == MetaStringEncoding.extended || input.isNotEmpty); // Only extended encoding can be empty
     if (input.isEmpty) return MetaString(input, encoding, specialChar1, specialChar2, Uint8List(0));
-    if (encoding != MetaStringEncoding.utf8 && StringUtil.hasNonLatin(input)){
+    if (encoding != MetaStringEncoding.extended && StringUtil.hasNonLatin(input)){
       throw ArgumentError('non-latin characters are not allowed in non-utf8 encoding');
     }
     late final Uint8List bytes;
@@ -168,8 +168,8 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
         final int upperCount = StringUtil.upperCount(input);
         bytes = _encodeRepAllToLowerSpecial(input, upperCount);
         break;
-      case MetaStringEncoding.utf8:
-        bytes = Uint8List.fromList(utf8.encode(input));
+      case MetaStringEncoding.extended:
+        bytes = _encodeExtended(input);
         break;
       // default:
       //   throw ArgumentError('Unsupported encoding: $encoding');
@@ -179,17 +179,107 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
 
   @override
   MetaString encodeByAllowedEncodings(String input, List<MetaStringEncoding> encodings) {
-    if (input.isEmpty) return MetaString(input, MetaStringEncoding.utf8, specialChar1, specialChar2, Uint8List(0));
+    if (input.isEmpty) return MetaString(input, MetaStringEncoding.extended, specialChar1, specialChar2, Uint8List(0));
+    if (_isNumberString(input)) {
+      return MetaString(
+        input,
+        MetaStringEncoding.extended,
+        specialChar1,
+        specialChar2,
+        _encodeNumberString(input),
+      );
+    }
     if (StringUtil.hasNonLatin(input)){
       return MetaString(
         input,
-        MetaStringEncoding.utf8,
+        MetaStringEncoding.extended,
         specialChar1,
         specialChar2,
-        utf8.encode(input),
+        _encodeExtendedUtf8(input),
       );
     }
     MetaStringEncoding encoding = decideEncoding(input, encodings);
     return _encode(input, encoding);
+  }
+
+  bool _isNumberString(String input) {
+    if (input.isEmpty) {
+      return false;
+    }
+    int start = 0;
+    if (input.startsWith('-')) {
+      if (input.length == 1) {
+        return false;
+      }
+      start = 1;
+    }
+    for (int i = start; i < input.length; i++) {
+      final int code = input.codeUnitAt(i);
+      if (code < 48 || code > 57) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Uint8List _encodeExtended(String input) {
+    if (_isNumberString(input)) {
+      return _encodeNumberString(input);
+    }
+    return _encodeExtendedUtf8(input);
+  }
+
+  Uint8List _encodeExtendedUtf8(String input) {
+    final Uint8List payload = Uint8List.fromList(utf8.encode(input));
+    final Uint8List bytes = Uint8List(payload.length + 1);
+    bytes[0] = extendedEncodingUtf8;
+    bytes.setAll(1, payload);
+    return bytes;
+  }
+
+  Uint8List _encodeNumberString(String input) {
+    BigInt value = BigInt.parse(input);
+    bool negative = value.isNegative;
+    if (negative) {
+      value = -value;
+    }
+    final List<int> magnitude = <int>[];
+    if (value == BigInt.zero) {
+      magnitude.add(0);
+    } else {
+      while (value > BigInt.zero) {
+        magnitude.add((value & BigInt.from(0xFF)).toInt());
+        value = value >> 8;
+      }
+      magnitude.reverse();
+    }
+    if (negative) {
+      for (int i = 0; i < magnitude.length; i++) {
+        magnitude[i] = (~magnitude[i]) & 0xFF;
+      }
+      int carry = 1;
+      for (int i = magnitude.length - 1; i >= 0; i--) {
+        final int sum = magnitude[i] + carry;
+        magnitude[i] = sum & 0xFF;
+        carry = sum >> 8;
+        if (carry == 0) {
+          break;
+        }
+      }
+      if (carry != 0) {
+        magnitude.insert(0, 0xFF);
+      }
+      while (magnitude.length > 1 &&
+          magnitude[0] == 0xFF &&
+          (magnitude[1] & 0x80) != 0) {
+        magnitude.removeAt(0);
+      }
+    } else if ((magnitude[0] & 0x80) != 0) {
+      magnitude.insert(0, 0);
+    }
+    final Uint8List bytes = Uint8List(magnitude.length + 1);
+    bytes[0] = extendedEncodingNumberString;
+    bytes.setAll(1, magnitude);
+    return bytes;
   }
 }
