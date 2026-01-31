@@ -871,7 +871,7 @@ public class ClassResolver extends TypeResolver {
    */
   @Override
   public boolean isMonomorphic(Class<?> clz) {
-    if (isPrimitiveListClass(clz)) {
+    if (TypeUtils.isPrimitiveListClass(clz)) {
       return true;
     }
     if (fory.getConfig().isMetaShareEnabled()) {
@@ -896,24 +896,10 @@ public class ClassResolver extends TypeResolver {
   }
 
   public boolean isBuildIn(Descriptor descriptor) {
-    if (isPrimitiveListClass(descriptor.getRawType())) {
+    if (TypeUtils.isPrimitiveListClass(descriptor.getRawType())) {
       return true;
     }
     return isMonomorphic(descriptor);
-  }
-
-  private static boolean isPrimitiveListClass(Class<?> cls) {
-    return cls == BoolList.class
-        || cls == Int8List.class
-        || cls == Int16List.class
-        || cls == Int32List.class
-        || cls == Int64List.class
-        || cls == Uint8List.class
-        || cls == Uint16List.class
-        || cls == Uint32List.class
-        || cls == Uint64List.class
-        || cls == Float32List.class
-        || cls == Float64List.class;
   }
 
   public boolean isInternalRegistered(int classId) {

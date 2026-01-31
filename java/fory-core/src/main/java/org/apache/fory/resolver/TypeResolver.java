@@ -49,21 +49,10 @@ import org.apache.fory.builder.JITContext;
 import org.apache.fory.codegen.CodeGenerator;
 import org.apache.fory.codegen.Expression;
 import org.apache.fory.codegen.Expression.Invoke;
-import org.apache.fory.collection.BoolList;
-import org.apache.fory.collection.Float32List;
-import org.apache.fory.collection.Float64List;
 import org.apache.fory.collection.IdentityMap;
 import org.apache.fory.collection.IdentityObjectIntMap;
-import org.apache.fory.collection.Int16List;
-import org.apache.fory.collection.Int32List;
-import org.apache.fory.collection.Int64List;
-import org.apache.fory.collection.Int8List;
 import org.apache.fory.collection.LongMap;
 import org.apache.fory.collection.Tuple2;
-import org.apache.fory.collection.Uint16List;
-import org.apache.fory.collection.Uint32List;
-import org.apache.fory.collection.Uint64List;
-import org.apache.fory.collection.Uint8List;
 import org.apache.fory.config.CompatibleMode;
 import org.apache.fory.exception.ForyException;
 import org.apache.fory.logging.Logger;
@@ -1003,15 +992,19 @@ public abstract class TypeResolver {
 
   public abstract <T> void setSerializerIfAbsent(Class<T> cls, Serializer<T> serializer);
 
-  public final Serializer<?> getSerializerByTypeId(int typeId) {
+  public final ClassInfo getClassInfoByTypeId(int typeId) {
     int internalTypeId = typeId & 0xFF;
     if (Types.isUserDefinedType((byte) internalTypeId)) {
       int userId = typeId >>> 8;
       if (userId != 0) {
-        return requireUserTypeInfoByTypeId(userId).getSerializer();
+        return requireUserTypeInfoByTypeId(userId);
       }
     }
-    return requireInternalTypeInfoByTypeId(internalTypeId).getSerializer();
+    return requireInternalTypeInfoByTypeId(internalTypeId);
+  }
+
+  public final Serializer<?> getSerializerByTypeId(int typeId) {
+    return getClassInfoByTypeId(typeId).getSerializer();
   }
 
   public final ClassInfo nilClassInfo() {
@@ -1155,7 +1148,7 @@ public abstract class TypeResolver {
   }
 
   public final boolean isCollection(Class<?> cls) {
-    if (isPrimitiveListClass(cls)) {
+    if (TypeUtils.isPrimitiveListClass(cls)) {
       return false;
     }
     if (Collection.class.isAssignableFrom(cls)) {
@@ -1170,20 +1163,6 @@ public abstract class TypeResolver {
     } else {
       return false;
     }
-  }
-
-  private boolean isPrimitiveListClass(Class<?> cls) {
-    return cls == BoolList.class
-        || cls == Int8List.class
-        || cls == Int16List.class
-        || cls == Int32List.class
-        || cls == Int64List.class
-        || cls == Uint8List.class
-        || cls == Uint16List.class
-        || cls == Uint32List.class
-        || cls == Uint64List.class
-        || cls == Float32List.class
-        || cls == Float64List.class;
   }
 
   public final boolean isSet(Class<?> cls) {

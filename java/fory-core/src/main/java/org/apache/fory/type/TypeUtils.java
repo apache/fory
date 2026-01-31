@@ -672,7 +672,7 @@ public class TypeUtils {
     return cls == ArrayList.class || Collection.class.isAssignableFrom(cls);
   }
 
-  private static boolean isPrimitiveListClass(Class<?> cls) {
+  public static boolean isPrimitiveListClass(Class<?> cls) {
     return cls == BoolList.class
         || cls == Int8List.class
         || cls == Int16List.class

@@ -28,25 +28,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiFunction;
 import org.apache.fory.Fory;
-import org.apache.fory.collection.BoolList;
-import org.apache.fory.collection.Float32List;
-import org.apache.fory.collection.Float64List;
-import org.apache.fory.collection.Int16List;
-import org.apache.fory.collection.Int32List;
-import org.apache.fory.collection.Int64List;
-import org.apache.fory.collection.Int8List;
 import org.apache.fory.collection.LongMap;
-import org.apache.fory.collection.Uint16List;
-import org.apache.fory.collection.Uint32List;
-import org.apache.fory.collection.Uint64List;
-import org.apache.fory.collection.Uint8List;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.memory.MemoryBuffer;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.RefResolver;
 import org.apache.fory.resolver.TypeResolver;
-import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.type.Types;
 import org.apache.fory.type.union.Union;
 import org.apache.fory.type.union.Union2;
@@ -54,6 +42,7 @@ import org.apache.fory.type.union.Union3;
 import org.apache.fory.type.union.Union4;
 import org.apache.fory.type.union.Union5;
 import org.apache.fory.type.union.Union6;
+import org.apache.fory.util.Preconditions;
 
 /**
  * Serializer for {@link Union} and its subclasses ({@link Union2}, {@link Union3}, {@link Union4},
@@ -70,11 +59,11 @@ import org.apache.fory.type.union.Union6;
  * deserialization, not from the serialized data. This allows cross-language interoperability with
  * union types in other languages like C++'s std::variant, Rust's enum, or Python's typing.Union.
  */
+@SuppressWarnings({"rawtypes", "unchecked"})
 public class UnionSerializer extends Serializer<Union> {
   private static final Logger LOG = LoggerFactory.getLogger(UnionSerializer.class);
 
   /** Array of factories for creating Union instances by type tag. */
-  @SuppressWarnings("unchecked")
   private static final BiFunction<Integer, Object, Union>[] FACTORIES =
       new BiFunction[] {
         (BiFunction<Integer, Object, Union>) Union::new,
@@ -87,10 +76,10 @@ public class UnionSerializer extends Serializer<Union> {
 
   private final BiFunction<Integer, Object, Union> factory;
   private final Map<Integer, Class<?>> caseValueTypes;
-  private LongMap<Serializer> finalCaseSerializers;
+  private final LongMap<ClassInfo> finalCaseClassInfo;
   private boolean finalCaseSerializersResolved;
+  private final TypeResolver resolver;
 
-  @SuppressWarnings("unchecked")
   public UnionSerializer(Fory fory, Class<? extends Union> cls) {
     super(fory, (Class<Union>) cls);
     int typeIndex = getTypeIndex(cls);
@@ -99,7 +88,9 @@ public class UnionSerializer extends Serializer<Union> {
     } else {
       this.factory = createFactory(cls);
     }
+    finalCaseClassInfo = new LongMap<>();
     this.caseValueTypes = resolveCaseValueTypes(cls);
+    resolver = fory.getTypeResolver();
   }
 
   private static int getTypeIndex(Class<? extends Union> cls) {
@@ -128,7 +119,7 @@ public class UnionSerializer extends Serializer<Union> {
       MethodHandle handle = MethodHandles.lookup().unreflectConstructor(ctor);
       return (index, value) -> {
         try {
-          return (Union) handle.invoke(index.intValue(), value);
+          return (Union) handle.invoke(index, value);
         } catch (Throwable t) {
           throw new IllegalStateException("Failed to construct union type " + cls.getName(), t);
         }
@@ -156,7 +147,11 @@ public class UnionSerializer extends Serializer<Union> {
     int valueTypeId = union.getValueTypeId();
     if (valueTypeId == Types.UNKNOWN) {
       if (value != null) {
-        fory.xwriteRef(buffer, value);
+        if (fory.isCrossLanguage()) {
+          fory.xwriteRef(buffer, value);
+        } else {
+          fory.writeRef(buffer, value);
+        }
       } else {
         buffer.writeByte(Fory.NULL_FLAG);
       }
@@ -173,17 +168,22 @@ public class UnionSerializer extends Serializer<Union> {
   @Override
   public Union xread(MemoryBuffer buffer) {
     int index = buffer.readVarUint32();
-    Object value = fory.xreadRef(buffer);
-    if (value != null && !caseValueTypes.isEmpty()) {
-      Class<?> expectedType = caseValueTypes.get(index);
-      if (expectedType != null && !expectedType.isInstance(value)) {
-        Object converted = convertUnionValue(expectedType, value);
-        if (converted != null) {
-          value = converted;
-        }
+    Object caseValue;
+    int nextReadRefId = refResolver.tryPreserveRefId(buffer);
+    if (nextReadRefId >= Fory.NOT_NULL_VALUE_FLAG) {
+      // ref value or not-null value
+      ClassInfo declared = getFinalCaseClassInfo(index);
+      ClassInfo readClassInfo = resolver.readClassInfo(buffer, declared);
+      if (declared != null) {
+        caseValue = Serializers.read(buffer, declared.getSerializer());
+      } else {
+        caseValue = Serializers.read(buffer, readClassInfo.getSerializer());
       }
+      refResolver.setReadObject(nextReadRefId, caseValue);
+    } else {
+      caseValue = refResolver.getReadObject();
     }
-    return factory.apply(index, value);
+    return factory.apply(index, caseValue);
   }
 
   @Override
@@ -197,82 +197,39 @@ public class UnionSerializer extends Serializer<Union> {
   }
 
   private void writeCaseValue(MemoryBuffer buffer, Object value, int typeId, int caseId) {
-    int internalTypeId = typeId & 0xff;
+    byte internalTypeId = (byte) (typeId & 0xff);
     boolean primitiveArray = Types.isPrimitiveArray(internalTypeId);
-    Serializer serializer = null;
-    if (value != null) {
-      serializer = getFinalCaseSerializer(caseId, value);
-      if (serializer == null) {
-        if (primitiveArray) {
-          ClassInfo classInfo = fory.getTypeResolver().getClassInfo(value.getClass());
-          serializer = classInfo == null ? null : classInfo.getSerializer();
-        } else {
-          serializer = getSerializer(typeId, value);
-        }
+    Serializer serializer;
+    ClassInfo classInfo;
+    if (value == null) {
+      buffer.writeByte(Fory.NULL_FLAG);
+      return;
+    }
+    classInfo = getFinalCaseClassInfo(caseId);
+    if (classInfo == null) {
+      Preconditions.checkArgument(!primitiveArray);
+      if (!Types.isUserDefinedType(internalTypeId)) {
+        classInfo = resolver.getClassInfoByTypeId(internalTypeId);
+      } else {
+        classInfo = resolver.getClassInfo(value.getClass());
       }
     }
+    Preconditions.checkArgument(classInfo != null);
+    serializer = classInfo.getSerializer();
     RefResolver refResolver = fory.getRefResolver();
     if (serializer != null && serializer.needToWriteRef()) {
       if (refResolver.writeRefOrNull(buffer, value)) {
         return;
       }
     } else {
-      if (value == null) {
-        buffer.writeByte(Fory.NULL_FLAG);
-        return;
-      }
       buffer.writeByte(Fory.NOT_NULL_VALUE_FLAG);
     }
-    if (primitiveArray) {
+    if (!Types.isUserDefinedType(internalTypeId)) {
       buffer.writeVarUint32Small7(typeId);
     } else {
-      writeTypeInfo(buffer, typeId, value);
+      resolver.writeClassInfo(buffer, classInfo);
     }
     writeValue(buffer, value, typeId, serializer);
-  }
-
-  private Serializer getSerializer(int typeId, Object value) {
-    int internalTypeId = typeId & 0xff;
-    if (isPrimitiveType(internalTypeId)) {
-      return null;
-    }
-    ClassInfo classInfo = getClassInfo(typeId, value);
-    return classInfo == null ? null : classInfo.getSerializer();
-  }
-
-  private void writeTypeInfo(MemoryBuffer buffer, int typeId, Object value) {
-    ClassInfo classInfo = getClassInfo(typeId, value);
-    if (classInfo == null) {
-      buffer.writeVarUint32Small7(typeId);
-      return;
-    }
-    fory.getTypeResolver().writeClassInfo(buffer, classInfo);
-  }
-
-  private ClassInfo getClassInfo(int typeId, Object value) {
-    TypeResolver resolver = fory.getTypeResolver();
-    int internalTypeId = typeId & 0xff;
-    if (typeId >= 256 && resolver instanceof XtypeResolver) {
-      ClassInfo classInfo = ((XtypeResolver) resolver).getUserTypeInfo(typeId >>> 8);
-      if (classInfo != null) {
-        if ((classInfo.getTypeId() & 0xff) == internalTypeId) {
-          return classInfo;
-        }
-      }
-    }
-    if (isNamedType(internalTypeId)) {
-      return resolver.getClassInfo(value.getClass());
-    }
-    if (resolver instanceof XtypeResolver) {
-      ClassInfo classInfo = ((XtypeResolver) resolver).getXtypeInfo(typeId);
-      if (classInfo != null) {
-        if (Types.isPrimitiveArray(internalTypeId) && !classInfo.getCls().isInstance(value)) {
-          return resolver.getClassInfo(value.getClass());
-        }
-        return classInfo;
-      }
-    }
-    return resolver.getClassInfo(value.getClass());
   }
 
   private void writeValue(MemoryBuffer buffer, Object value, int typeId, Serializer serializer) {
@@ -331,91 +288,32 @@ public class UnionSerializer extends Serializer<Union> {
         break;
     }
     if (serializer != null) {
-      serializer.xwrite(buffer, value);
+      Serializers.write(buffer, serializer, value);
       return;
     }
     throw new IllegalStateException("Missing serializer for union type id " + typeId);
   }
 
-  private static boolean isNamedType(int internalTypeId) {
-    return internalTypeId == Types.NAMED_ENUM
-        || internalTypeId == Types.NAMED_STRUCT
-        || internalTypeId == Types.NAMED_EXT
-        || internalTypeId == Types.NAMED_UNION
-        || internalTypeId == Types.NAMED_COMPATIBLE_STRUCT;
-  }
-
-  private static boolean isPrimitiveType(int internalTypeId) {
-    switch (internalTypeId) {
-      case Types.BOOL:
-      case Types.INT8:
-      case Types.INT16:
-      case Types.INT32:
-      case Types.VARINT32:
-      case Types.INT64:
-      case Types.VARINT64:
-      case Types.TAGGED_INT64:
-      case Types.UINT8:
-      case Types.UINT16:
-      case Types.UINT32:
-      case Types.VAR_UINT32:
-      case Types.UINT64:
-      case Types.VAR_UINT64:
-      case Types.TAGGED_UINT64:
-      case Types.FLOAT16:
-      case Types.FLOAT32:
-      case Types.FLOAT64:
-      case Types.STRING:
-      case Types.BINARY:
-        return true;
-      default:
-        return false;
-    }
-  }
-
-  private Serializer getFinalCaseSerializer(int caseId, Object value) {
+  private ClassInfo getFinalCaseClassInfo(int caseId) {
     if (!finalCaseSerializersResolved) {
-      finalCaseSerializers = resolveFinalCaseSerializers();
+      resolveFinalCaseClassInfo();
       finalCaseSerializersResolved = true;
     }
-    if (finalCaseSerializers == null) {
-      return null;
-    }
-    Serializer serializer = finalCaseSerializers.get(caseId);
-    if (serializer == null) {
-      return null;
-    }
-    Class<?> expectedType = caseValueTypes.get(caseId);
-    if (expectedType != null && !expectedType.isInstance(value)) {
-      return null;
-    }
-    return serializer;
+    return finalCaseClassInfo.get(caseId);
   }
 
-  private LongMap<Serializer> resolveFinalCaseSerializers() {
-    if (caseValueTypes.isEmpty()) {
-      return null;
-    }
-    LongMap<Serializer> serializers = new LongMap<>(caseValueTypes.size());
+  private void resolveFinalCaseClassInfo() {
     for (Map.Entry<Integer, Class<?>> entry : caseValueTypes.entrySet()) {
       Class<?> expectedType = entry.getValue();
       if (!isFinalCaseType(expectedType)) {
         continue;
       }
-      Serializer serializer = resolveFinalCaseSerializer(expectedType);
-      if (serializer != null) {
-        serializers.put(entry.getKey(), serializer);
+      if (expectedType.isPrimitive()) {
+        continue;
       }
+      ClassInfo classInfo = fory.getTypeResolver().getClassInfo(expectedType);
+      finalCaseClassInfo.put(entry.getKey(), classInfo);
     }
-    return serializers.size == 0 ? null : serializers;
-  }
-
-  private Serializer resolveFinalCaseSerializer(Class<?> expectedType) {
-    if (expectedType.isPrimitive()) {
-      return null;
-    }
-    ClassInfo classInfo = fory.getTypeResolver().getClassInfo(expectedType);
-    return classInfo == null ? null : classInfo.getSerializer();
   }
 
   private static boolean isFinalCaseType(Class<?> expectedType) {
@@ -443,7 +341,7 @@ public class UnionSerializer extends Serializer<Union> {
         }
       }
     }
-    if (caseEnum == null || idField == null) {
+    if (caseEnum == null) {
       return mapping;
     }
     for (Enum<?> constant : caseEnum.getEnumConstants()) {
@@ -501,75 +399,5 @@ public class UnionSerializer extends Serializer<Union> {
       }
     }
     return builder.toString();
-  }
-
-  private static Object convertUnionValue(Class<?> expectedType, Object value) {
-    if (expectedType == Int8List.class && value instanceof byte[]) {
-      return new Int8List((byte[]) value);
-    }
-    if (expectedType == Int16List.class && value instanceof short[]) {
-      return new Int16List((short[]) value);
-    }
-    if (expectedType == Int32List.class && value instanceof int[]) {
-      return new Int32List((int[]) value);
-    }
-    if (expectedType == Int64List.class && value instanceof long[]) {
-      return new Int64List((long[]) value);
-    }
-    if (expectedType == Uint8List.class && value instanceof byte[]) {
-      return new Uint8List((byte[]) value);
-    }
-    if (expectedType == Uint16List.class && value instanceof short[]) {
-      return new Uint16List((short[]) value);
-    }
-    if (expectedType == Uint32List.class && value instanceof int[]) {
-      return new Uint32List((int[]) value);
-    }
-    if (expectedType == Uint64List.class && value instanceof long[]) {
-      return new Uint64List((long[]) value);
-    }
-    if (expectedType == BoolList.class && value instanceof boolean[]) {
-      return new BoolList((boolean[]) value);
-    }
-    if (expectedType == Float32List.class && value instanceof float[]) {
-      return new Float32List((float[]) value);
-    }
-    if (expectedType == Float64List.class && value instanceof double[]) {
-      return new Float64List((double[]) value);
-    }
-    if (expectedType == byte[].class && value instanceof Int8List) {
-      return ((Int8List) value).copyArray();
-    }
-    if (expectedType == short[].class && value instanceof Int16List) {
-      return ((Int16List) value).copyArray();
-    }
-    if (expectedType == int[].class && value instanceof Int32List) {
-      return ((Int32List) value).copyArray();
-    }
-    if (expectedType == long[].class && value instanceof Int64List) {
-      return ((Int64List) value).copyArray();
-    }
-    if (expectedType == byte[].class && value instanceof Uint8List) {
-      return ((Uint8List) value).copyArray();
-    }
-    if (expectedType == short[].class && value instanceof Uint16List) {
-      return ((Uint16List) value).copyArray();
-    }
-    if (expectedType == int[].class && value instanceof Uint32List) {
-      return ((Uint32List) value).copyArray();
-    }
-    if (expectedType == long[].class && value instanceof Uint64List) {
-      return ((Uint64List) value).copyArray();
-    }
-    if (expectedType == boolean[].class && value instanceof BoolList) {
-      return ((BoolList) value).copyArray();
-    }
-    if (expectedType == float[].class && value instanceof Float32List) {
-      return ((Float32List) value).copyArray();
-    }
-    if (expectedType == double[].class && value instanceof Float64List) {
-      return ((Float64List) value).copyArray();
-    }
-    return null;
   }
 }
