@@ -87,7 +87,8 @@ public class UnionSerializer extends Serializer<Union> {
 
   private final BiFunction<Integer, Object, Union> factory;
   private final Map<Integer, Class<?>> caseValueTypes;
-  private final LongMap<Serializer> finalCaseSerializers;
+  private LongMap<Serializer> finalCaseSerializers;
+  private boolean finalCaseSerializersResolved;
 
   @SuppressWarnings("unchecked")
   public UnionSerializer(Fory fory, Class<? extends Union> cls) {
@@ -99,7 +100,6 @@ public class UnionSerializer extends Serializer<Union> {
       this.factory = createFactory(cls);
     }
     this.caseValueTypes = resolveCaseValueTypes(cls);
-    this.finalCaseSerializers = resolveFinalCaseSerializers();
   }
 
   private static int getTypeIndex(Class<? extends Union> cls) {
@@ -374,6 +374,10 @@ public class UnionSerializer extends Serializer<Union> {
   }
 
   private Serializer getFinalCaseSerializer(int caseId, Object value) {
+    if (!finalCaseSerializersResolved) {
+      finalCaseSerializers = resolveFinalCaseSerializers();
+      finalCaseSerializersResolved = true;
+    }
     if (finalCaseSerializers == null) {
       return null;
     }
