@@ -166,6 +166,8 @@ class Message:
     line: int = 0
     column: int = 0
     location: Optional[SourceLocation] = None
+    id_generated: bool = False
+    id_source: Optional[str] = None
 
     def __repr__(self) -> str:
         id_str = f" [id={self.type_id}]" if self.type_id is not None else ""
@@ -222,6 +224,8 @@ class Union:
     line: int = 0
     column: int = 0
     location: Optional[SourceLocation] = None
+    id_generated: bool = False
+    id_source: Optional[str] = None
 
     def __repr__(self) -> str:
         id_str = f" [id={self.type_id}]" if self.type_id is not None else ""

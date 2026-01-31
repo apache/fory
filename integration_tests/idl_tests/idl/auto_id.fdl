@@ -15,15 +15,25 @@
 // specific language governing permissions and limitations
 // under the License.
 
-pub mod addressbook;
-pub mod any_example;
-pub mod any_example_pb;
-pub mod auto_id;
-pub mod complex_fbs;
-pub mod complex_pb;
-pub mod collection;
-pub mod monster;
-pub mod root;
-pub mod optional_types;
-pub mod graph;
-pub mod tree;
+package auto_id;
+
+message Envelope {
+    string id = 1;
+
+    message Payload {
+        int32 value = 1;
+    }
+
+    union Detail {
+        Payload payload = 1;
+        string note = 2;
+    }
+
+    Payload payload = 2;
+    Detail detail = 3;
+}
+
+union Wrapper {
+    Envelope envelope = 1;
+    string raw = 2;
+}

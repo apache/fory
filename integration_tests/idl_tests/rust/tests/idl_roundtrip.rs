@@ -26,6 +26,7 @@ use idl_tests::addressbook::{
     person::{PhoneNumber, PhoneType},
     AddressBook, Animal, Cat, Dog, Person,
 };
+use idl_tests::auto_id;
 use idl_tests::complex_pb::{self, PrimitiveTypes};
 use idl_tests::complex_fbs::{self, Container, Note, Payload, ScalarPack, Status};
 use idl_tests::collection::{self, NumericCollectionArrayUnion, NumericCollectionUnion, NumericCollections, NumericCollectionsArray};
@@ -103,6 +104,20 @@ fn build_root_holder() -> root::MultiHolder {
         root: Some(root_node),
         owner: Some(owner),
     }
+}
+
+fn build_auto_id_envelope() -> auto_id::Envelope {
+    let payload = auto_id::envelope::Payload { value: 42 };
+    let detail = auto_id::envelope::Detail::Payload(payload.clone());
+    auto_id::Envelope {
+        id: "env-1".to_string(),
+        payload,
+        detail,
+    }
+}
+
+fn build_auto_id_wrapper(envelope: auto_id::Envelope) -> auto_id::Wrapper {
+    auto_id::Wrapper::Envelope(envelope)
 }
 
 #[test]
@@ -488,6 +503,7 @@ fn run_address_book_roundtrip(compatible: bool) {
     let mut fory = Fory::default().xlang(true).compatible(compatible);
     complex_pb::register_types(&mut fory).expect("register complex pb types");
     addressbook::register_types(&mut fory).expect("register types");
+    auto_id::register_types(&mut fory).expect("register auto_id types");
     monster::register_types(&mut fory).expect("register monster types");
     complex_fbs::register_types(&mut fory).expect("register flatbuffers types");
     collection::register_types(&mut fory).expect("register collection types");
@@ -500,6 +516,20 @@ fn run_address_book_roundtrip(compatible: bool) {
 
     assert_eq!(book, roundtrip);
 
+    let auto_env = build_auto_id_envelope();
+    let auto_bytes = fory.serialize(&auto_env).expect("serialize auto_id");
+    let auto_roundtrip: auto_id::Envelope =
+        fory.deserialize(&auto_bytes).expect("deserialize auto_id");
+    assert_eq!(auto_env, auto_roundtrip);
+
+    let auto_wrapper = build_auto_id_wrapper(auto_env.clone());
+    let wrapper_bytes = fory
+        .serialize(&auto_wrapper)
+        .expect("serialize auto_id wrapper");
+    let wrapper_roundtrip: auto_id::Wrapper =
+        fory.deserialize(&wrapper_bytes).expect("deserialize auto_id wrapper");
+    assert_eq!(auto_wrapper, wrapper_roundtrip);
+
     let data_file = match env::var("DATA_FILE") {
         Ok(path) => path,
         Err(_) => return,
@@ -511,6 +541,16 @@ fn run_address_book_roundtrip(compatible: bool) {
     assert_eq!(book, peer_book);
     let encoded = fory.serialize(&peer_book).expect("serialize peer payload");
     fs::write(data_file, encoded).expect("write data file");
+
+    if let Ok(data_file) = env::var("DATA_FILE_AUTO_ID") {
+        let payload = fs::read(&data_file).expect("read auto_id data file");
+        let peer_env: auto_id::Envelope = fory
+            .deserialize(&payload)
+            .expect("deserialize auto_id peer payload");
+        assert_eq!(auto_env, peer_env);
+        let encoded = fory.serialize(&peer_env).expect("serialize auto_id payload");
+        fs::write(data_file, encoded).expect("write auto_id data file");
+    }
 
     let types = build_primitive_types();
     let bytes = fory.serialize(&types).expect("serialize");

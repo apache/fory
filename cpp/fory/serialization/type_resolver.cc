@@ -1331,6 +1331,9 @@ void TypeResolver::register_builtin_types() {
   // Register internal type IDs without harnesses (deserialization is static)
   // These are needed so read_any_typeinfo can find them by type_id
   auto register_type_id_only = [this](TypeId type_id) {
+    FORY_CHECK(static_cast<uint32_t>(type_id) < 256)
+        << "Internal type id overflow: "
+        << static_cast<uint32_t>(type_id);
     auto info = std::make_unique<TypeInfo>();
     info->type_id = static_cast<uint32_t>(type_id);
     info->register_by_name = false;

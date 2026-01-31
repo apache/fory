@@ -34,6 +34,7 @@ from fory_compiler.ir.ast import (
     SourceLocation,
 )
 from fory_compiler.ir.types import PrimitiveKind
+from fory_compiler.ir.type_id import compute_registered_type_id
 
 
 @dataclass
@@ -60,6 +61,7 @@ class SchemaValidator:
 
     def validate(self) -> bool:
         self._apply_field_defaults()
+        self._apply_type_id_defaults()
         self._check_duplicate_type_names()
         self._check_duplicate_type_ids()
         self._check_messages()
@@ -70,6 +72,58 @@ class SchemaValidator:
 
     def _error(self, message: str, location: Optional[SourceLocation]) -> None:
         self.errors.append(ValidationIssue(message, location, "error"))
+
+    def _warning(self, message: str, location: Optional[SourceLocation]) -> None:
+        self.warnings.append(ValidationIssue(message, location, "warning"))
+
+    def _apply_type_id_defaults(self) -> None:
+        used_ids = {}
+        for t in self.schema.get_all_types():
+            if t.type_id is not None:
+                used_ids[t.type_id] = t
+
+        def qualify(full_name: str) -> str:
+            if self.schema.package:
+                return f"{self.schema.package}.{full_name}"
+            return full_name
+
+        def resolve_hash_source(full_name: str, alias: Optional[str]) -> str:
+            if not alias:
+                return qualify(full_name)
+            if "." in alias:
+                return alias
+            if self.schema.package:
+                return f"{self.schema.package}.{alias}"
+            return alias
+
+        def assign_id(type_def, full_name: str) -> None:
+            if type_def.type_id is not None:
+                return
+            alias = type_def.options.get("alias")
+            source_name = resolve_hash_source(full_name, alias)
+            generated_id = compute_registered_type_id(source_name)
+            if generated_id in used_ids:
+                # Fall back to name-based registration on hash collision.
+                return
+            type_def.type_id = generated_id
+            type_def.id_generated = True
+            type_def.id_source = source_name
+            used_ids[generated_id] = type_def
+            # Do not emit warnings for generated ids.
+
+        def walk_message(message: Message, parent_path: str = "") -> None:
+            full_name = f"{parent_path}.{message.name}" if parent_path else message.name
+            assign_id(message, full_name)
+            for nested_union in message.nested_unions:
+                nested_name = f"{full_name}.{nested_union.name}"
+                assign_id(nested_union, nested_name)
+            for nested_msg in message.nested_messages:
+                walk_message(nested_msg, full_name)
+
+        for union in self.schema.unions:
+            assign_id(union, union.name)
+        for message in self.schema.messages:
+            walk_message(message)
 
     def _check_duplicate_type_names(self) -> None:
         names = {}

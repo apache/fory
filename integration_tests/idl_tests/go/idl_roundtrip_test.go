@@ -24,6 +24,7 @@ import (
 	"time"
 
 	fory "github.com/apache/fory/go/fory"
+	autoid "github.com/apache/fory/integration_tests/idl_tests/go/auto_id"
 	"github.com/apache/fory/go/fory/optional"
 	addressbook "github.com/apache/fory/integration_tests/idl_tests/go/addressbook"
 	anyexample "github.com/apache/fory/integration_tests/idl_tests/go/any_example"
@@ -72,12 +73,34 @@ func buildAddressBook() addressbook.AddressBook {
 	}
 }
 
+func buildAutoIdEnvelope() autoid.Envelope {
+	payload := autoid.Envelope_Payload{Value: 42}
+	detail := autoid.PayloadEnvelope_Detail(&payload)
+	return autoid.Envelope{
+		Id:      "env-1",
+		Payload: payload,
+		Detail:  detail,
+	}
+}
+
+func buildAutoIdWrapper(envelope autoid.Envelope) autoid.Wrapper {
+	return autoid.EnvelopeWrapper(&envelope)
+}
+
 func TestAddressBookRoundTripCompatible(t *testing.T) {
 	runAddressBookRoundTrip(t, true)
 }
 
 func TestAddressBookRoundTripSchemaConsistent(t *testing.T) {
 	runAddressBookRoundTrip(t, false)
+}
+
+func TestAutoIdRoundTripCompatible(t *testing.T) {
+	runAutoIdRoundTrip(t, true)
+}
+
+func TestAutoIdRoundTripSchemaConsistent(t *testing.T) {
+	runAutoIdRoundTrip(t, false)
 }
 
 func runAddressBookRoundTrip(t *testing.T, compatible bool) {
@@ -155,6 +178,23 @@ func runAddressBookRoundTrip(t *testing.T, compatible bool) {
 	graphValue := buildGraph()
 	runLocalGraphRoundTrip(t, refFory, graphValue)
 	runFileGraphRoundTrip(t, refFory, graphValue)
+}
+
+func runAutoIdRoundTrip(t *testing.T, compatible bool) {
+	f := fory.NewFory(
+		fory.WithXlang(true),
+		fory.WithRefTracking(false),
+		fory.WithCompatible(compatible),
+	)
+	if err := autoid.RegisterTypes(f); err != nil {
+		t.Fatalf("register auto_id types: %v", err)
+	}
+
+	envelope := buildAutoIdEnvelope()
+	wrapper := buildAutoIdWrapper(envelope)
+	runLocalAutoIdEnvelopeRoundTrip(t, f, envelope)
+	runLocalAutoIdWrapperRoundTrip(t, f, wrapper)
+	runFileAutoIdRoundTrip(t, f, envelope)
 }
 
 func TestToBytesFromBytes(t *testing.T) {
@@ -424,6 +464,65 @@ func runFileRoundTrip(t *testing.T, f *fory.Fory, book addressbook.AddressBook) 
 	}
 	if err := os.WriteFile(dataFile, out, 0o644); err != nil {
 		t.Fatalf("write data file: %v", err)
+	}
+}
+
+func runLocalAutoIdEnvelopeRoundTrip(t *testing.T, f *fory.Fory, env autoid.Envelope) {
+	data, err := f.Serialize(&env)
+	if err != nil {
+		t.Fatalf("serialize auto_id envelope: %v", err)
+	}
+
+	var out autoid.Envelope
+	if err := f.Deserialize(data, &out); err != nil {
+		t.Fatalf("deserialize auto_id envelope: %v", err)
+	}
+
+	if !reflect.DeepEqual(env, out) {
+		t.Fatalf("auto_id envelope mismatch: %#v != %#v", env, out)
+	}
+}
+
+func runLocalAutoIdWrapperRoundTrip(t *testing.T, f *fory.Fory, wrapper autoid.Wrapper) {
+	data, err := f.Serialize(&wrapper)
+	if err != nil {
+		t.Fatalf("serialize auto_id wrapper: %v", err)
+	}
+
+	var out autoid.Wrapper
+	if err := f.Deserialize(data, &out); err != nil {
+		t.Fatalf("deserialize auto_id wrapper: %v", err)
+	}
+
+	if !reflect.DeepEqual(wrapper, out) {
+		t.Fatalf("auto_id wrapper mismatch: %#v != %#v", wrapper, out)
+	}
+}
+
+func runFileAutoIdRoundTrip(t *testing.T, f *fory.Fory, env autoid.Envelope) {
+	dataFile := os.Getenv("DATA_FILE_AUTO_ID")
+	if dataFile == "" {
+		return
+	}
+	payload, err := os.ReadFile(dataFile)
+	if err != nil {
+		t.Fatalf("read auto_id data file: %v", err)
+	}
+
+	var decoded autoid.Envelope
+	if err := f.Deserialize(payload, &decoded); err != nil {
+		t.Fatalf("deserialize auto_id peer payload: %v", err)
+	}
+	if !reflect.DeepEqual(env, decoded) {
+		t.Fatalf("auto_id peer payload mismatch: %#v != %#v", env, decoded)
+	}
+
+	out, err := f.Serialize(&decoded)
+	if err != nil {
+		t.Fatalf("serialize auto_id peer payload: %v", err)
+	}
+	if err := os.WriteFile(dataFile, out, 0o644); err != nil {
+		t.Fatalf("write auto_id data file: %v", err)
 	}
 }
 

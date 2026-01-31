@@ -35,6 +35,7 @@ SCHEMAS = [
     IDL_DIR / "idl" / "any_example.proto",
     IDL_DIR / "idl" / "monster.fbs",
     IDL_DIR / "idl" / "complex_fbs.fbs",
+    IDL_DIR / "idl" / "auto_id.fdl",
 ]
 
 LANG_OUTPUTS = {
@@ -57,6 +58,7 @@ GO_OUTPUT_OVERRIDES = {
     "any_example.fdl": IDL_DIR / "go" / "any_example",
     "any_example.proto": IDL_DIR / "go" / "any_example_pb",
     "complex_pb.proto": IDL_DIR / "go" / "complex_pb",
+    "auto_id.fdl": IDL_DIR / "go" / "auto_id",
 }
 
 

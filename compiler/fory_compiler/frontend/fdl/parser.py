@@ -92,6 +92,7 @@ KNOWN_ENUM_OPTIONS: Set[str] = {
 
 KNOWN_MESSAGE_OPTIONS: Set[str] = {
     "id",
+    "alias",
     "evolving",
     "use_record_for_java",
     "deprecated",
@@ -100,6 +101,7 @@ KNOWN_MESSAGE_OPTIONS: Set[str] = {
 
 KNOWN_UNION_OPTIONS: Set[str] = {
     "id",
+    "alias",
     "deprecated",
 }
 

@@ -442,6 +442,9 @@ class JavaGenerator(BaseGenerator):
             lines.append("")
 
         # Class declaration
+        comment = self.format_type_id_comment(message, "//")
+        if comment:
+            lines.append(comment)
         lines.append(f"public class {message.name} {{")
 
         # Generate nested enums as static inner classes
@@ -646,6 +649,9 @@ class JavaGenerator(BaseGenerator):
         class_prefix = "public static final class" if nested else "public final class"
         case_enum = f"{union.name}Case"
 
+        comment = self.format_type_id_comment(union, f"{ind}//")
+        if comment:
+            lines.append(comment)
         lines.append(f"{ind}{class_prefix} {union.name} extends Union {{")
         lines.append(f"{ind}    public enum {case_enum} {{")
 
@@ -952,6 +958,9 @@ class JavaGenerator(BaseGenerator):
         lineage = (parent_stack or []) + [message]
 
         # Class declaration
+        comment = self.format_type_id_comment(message, "    " * indent + "//")
+        if comment:
+            lines.append(comment)
         lines.append(f"public static class {message.name} {{")
 
         # Generate nested enums

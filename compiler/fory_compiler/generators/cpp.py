@@ -880,6 +880,9 @@ class CppGenerator(BaseGenerator):
         lineage = parent_stack + [message]
         body_indent = f"{indent}  "
         field_indent = f"{indent}    "
+        comment = self.format_type_id_comment(message, f"{indent}//")
+        if comment:
+            lines.append(comment)
         lines.append(f"{indent}class {class_name} final {{")
         lines.append(f"{body_indent}public:")
         if message.fields:
@@ -982,6 +985,9 @@ class CppGenerator(BaseGenerator):
         ]
         variant_type = f"std::variant<{', '.join(case_types)}>"
 
+        comment = self.format_type_id_comment(union, f"{indent}//")
+        if comment:
+            lines.append(comment)
         lines.append(f"{indent}class {class_name} final {{")
         lines.append(f"{body_indent}public:")
         lines.append(f"{body_indent}  enum class {case_enum} : uint32_t {{")

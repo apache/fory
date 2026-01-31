@@ -365,6 +365,9 @@ class RustGenerator(BaseGenerator):
         )
         if self.to_pascal_case(union.name) != union.name:
             lines.append("#[allow(non_camel_case_types)]")
+        comment = self.format_type_id_comment(union, "//")
+        if comment:
+            lines.append(comment)
         derives = ["ForyObject", "Debug"]
         if not has_any:
             derives.extend(["Clone", "PartialEq"])
@@ -413,6 +416,9 @@ class RustGenerator(BaseGenerator):
         type_name = message.name
 
         # Derive macros
+        comment = self.format_type_id_comment(message, "//")
+        if comment:
+            lines.append(comment)
         derives = ["ForyObject", "Debug"]
         if not self.message_has_any(message):
             derives.extend(["Clone", "PartialEq", "Default"])

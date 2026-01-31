@@ -521,6 +521,9 @@ class GoGenerator(BaseGenerator):
         lines.append(")")
         lines.append("")
 
+        comment = self.format_type_id_comment(union, "//")
+        if comment:
+            lines.append(comment)
         lines.append(f"type {type_name} struct {{")
         lines.append(f"\tcase_ {case_type}")
         lines.append("\tvalue any")
@@ -745,6 +748,9 @@ class GoGenerator(BaseGenerator):
         type_name = self.get_type_name(message.name, parent_stack)
         lineage = (parent_stack or []) + [message]
 
+        comment = self.format_type_id_comment(message, "//")
+        if comment:
+            lines.append(comment)
         lines.append(f"type {type_name} struct {{")
 
         # Fields

@@ -426,7 +426,7 @@ enum Status {
 }
 ```
 
-### With Type ID
+### With Explicit Type ID
 
 ```protobuf
 enum Status [id=100] {
@@ -508,7 +508,7 @@ enum_value   := IDENTIFIER '=' INTEGER ';'
 - Enum names must be unique within the file
 - Enum values must have explicit integer assignments
 - Value integers must be unique within the enum (no aliases)
-- Type ID (`[id=100]`) is optional but recommended for cross-language use
+- Type ID (`[id=100]`) is optional for enums but recommended for cross-language use
 
 **Example with All Features:**
 
@@ -538,7 +538,7 @@ message Person {
 }
 ```
 
-### With Type ID
+### With Explicit Type ID
 
 ```protobuf
 message Person [id=101] {
@@ -546,6 +546,19 @@ message Person [id=101] {
     int32 age = 2;
 }
 ```
+
+### Without Explicit Type ID (Auto-Generated)
+
+```protobuf
+message Person {
+    string name = 1;
+    int32 age = 2;
+}
+```
+
+If `id` is omitted, the compiler generates one using
+`MurmurHash3(utf8(package.typename)) & 0x7fffffff`. Use
+`[alias="..."]` to change the hash source without renaming the type.
 
 ### Reserved Fields
 
@@ -581,6 +594,12 @@ type_option  := IDENTIFIER '=' option_value
 message_body := (option_stmt | reserved_stmt | nested_type | field_def)*
 nested_type  := enum_def | message_def
 ```
+
+**Rules:**
+
+- Message and union type IDs are mandatory; omitted IDs are auto-generated (see [Type IDs](#type-ids)).
+- Numeric type IDs (manual or auto-generated) must be globally unique (including nested types).
+  If an auto-generated ID conflicts, the compiler falls back to name-based registration.
 
 ## Nested Types
 
@@ -668,7 +687,8 @@ message OtherMessage {
 
 - Nested type names must be unique within their parent message
 - Nested types can have their own type IDs
-- Type IDs must be globally unique (including nested types)
+- Numeric type IDs must be globally unique (including nested types); if an auto-generated ID
+  conflicts, the compiler falls back to name-based registration for the conflicting type
 - Within a message, you can reference nested types by simple name
 - From outside, use the qualified name (Parent.Child)
 
@@ -700,7 +720,9 @@ message Person [id=100] {
 - Cases cannot be `optional`, `repeated`, or `ref`
 - Union cases do not support field options
 - Case types can be primitives, enums, messages, or other named types
-- Union type IDs (`[id=...]`) are optional but recommended for cross-language use
+- Union type IDs (`[id=...]`) are mandatory; if omitted, the compiler auto-generates one
+  using `MurmurHash3(utf8(package.typename)) & 0x7fffffff`
+- Use `[alias="..."]` to change the hash source without renaming the union
 
 **Grammar:**
 
@@ -933,36 +955,53 @@ message Example {
 
 ## Type IDs
 
-Type IDs enable efficient cross-language serialization:
+Type IDs enable efficient cross-language serialization and are mandatory for
+messages and unions. If `id` is omitted, the compiler auto-generates one using
+`MurmurHash3(utf8(package.typename)) & 0x7fffffff` and annotates it in generated
+code. Collisions are detected at compile-time across the current file and all
+imports; when a collision occurs, the compiler silently falls back to
+name-based registration for the conflicting type, so there is no runtime ID
+conflict risk.
 
 ```protobuf
 enum Color [id=100] { ... }
 message User [id=101] { ... }
-message Order [id=102] { ... }
+union Event [id=102] { ... }
 ```
 
-### With Type ID (Recommended)
+Enum type IDs remain optional but recommended for cross-language use.
+
+### With Explicit Type ID
 
 ```protobuf
 message User [id=101] { ... }
 message User [id=101, deprecated=true] { ... }  // Multiple options
 ```
 
-- Serialized as compact integer
-- Fast lookup during deserialization
-- Must be globally unique across all types
-- Recommended for production use
-
-### Without Type ID
+### Without Explicit Type ID (Auto-Generated)
 
 ```protobuf
 message Config { ... }
 ```
 
-- Registered using namespace + name
-- More flexible for development
-- Slightly larger serialized size
-- Uses package as namespace: `"package.Config"`
+You can set `[alias="..."]` to change the hash source without renaming the type.
+
+### Pay-as-you-go principle
+
+Type ID Specification
+
+- Mandatory IDs: Every message and union must have a unique ID.
+- Auto-generation: If no ID is provided, fory generates one using
+  MurmurHash3(utf8(package.typename)) & 0x7fffffff.
+- Space Efficiency:
+  - Manual IDs (0-127): Encoded as 1 byte (Varint). Ideal for high-frequency messages.
+  - Generated IDs: Usually large integers, taking 4-5 bytes in the wire format (varuint32).
+- Conflict Resolution: While the collision probability is extremely low, conflicts are detected
+  at compile-time. The compiler falls back to name-based registration for the conflicting type,
+  so there is no runtime ID conflict risk; use the alias option or assign a manual ID if you want
+  a numeric registration.
+
+Explicit is better than implicit, but automation is better than toil.
 
 ### ID Assignment Strategy
 
@@ -1048,7 +1087,7 @@ message Order [id=204] {
     optional timestamp shipped_at = 9;
 }
 
-// Config without type ID (uses namespace registration)
+// Config without explicit type ID (auto-generated)
 message ShopConfig {
     string store_name = 1;
     string currency = 2;
@@ -1088,13 +1127,28 @@ message MyMessage {
 
 | Option                | Type   | Description                                                                         |
 | --------------------- | ------ | ----------------------------------------------------------------------------------- |
-| `id`                  | int    | Type ID for serialization (sets type_id)                                            |
+| `id`                  | int    | Type ID for serialization (mandatory; auto-generated if omitted)                    |
+| `alias`               | string | Alternate name used as hash source for auto-generated IDs                           |
 | `evolving`            | bool   | Schema evolution support (default: true). When false, schema is fixed like a struct |
 | `use_record_for_java` | bool   | Generate Java record for this message                                               |
 | `deprecated`          | bool   | Mark this message as deprecated                                                     |
 | `namespace`           | string | Custom namespace for type registration                                              |
 
 **Note:** `option (fory).id = 100` is equivalent to the inline syntax `message MyMessage [id=100]`.
+
+### Union-Level Fory Options
+
+```protobuf
+union MyUnion [id=100, alias="MyUnionAlias"] {
+    string text = 1;
+}
+```
+
+| Option       | Type   | Description                                                      |
+| ------------ | ------ | ---------------------------------------------------------------- |
+| `id`         | int    | Type ID for serialization (mandatory; auto-generated if omitted) |
+| `alias`      | string | Alternate name used as hash source for auto-generated IDs        |
+| `deprecated` | bool   | Mark this union as deprecated                                    |
 
 ### Enum-Level Fory Options
 

@@ -367,6 +367,9 @@ class PythonGenerator(BaseGenerator):
         ind = "    " * indent
         lineage = (parent_stack or []) + [message]
 
+        comment = self.format_type_id_comment(message, f"{ind}#")
+        if comment:
+            lines.append(comment)
         lines.append(f"{ind}@dataclass")
         lines.append(f"{ind}class {message.name}:")
 
@@ -434,6 +437,9 @@ class PythonGenerator(BaseGenerator):
             lines.append(f"{ind}    {case_name} = {field.number}")
         lines.append("")
 
+        comment = self.format_type_id_comment(union, f"{ind}#")
+        if comment:
+            lines.append(comment)
         lines.append(f"{ind}class {union.name}(Union):")
         lines.append(f'{ind}    __slots__ = ("_case",)')
         lines.append("")

@@ -50,6 +50,8 @@ const (
 	useStringValue          = 0
 	useStringId             = 1
 	SMALL_STRING_THRESHOLD  = 16
+	maxUserTypeID           = 0x7fffffff
+	internalTypeIDLimit     = 0xFF
 )
 
 var (
@@ -700,6 +702,9 @@ func (r *TypeResolver) RegisterNamedStruct(
 	if typeName == "" && namespace != "" {
 		return fmt.Errorf("typeName cannot be empty if namespace is provided")
 	}
+	if typeId > 0 && typeId > maxUserTypeID {
+		return fmt.Errorf("typeId must be in range [0, 0x7fffffff], got %d", typeId)
+	}
 	var tag string
 	if namespace == "" {
 		tag = typeName
@@ -877,6 +882,9 @@ func (r *TypeResolver) RegisterExtension(
 	userTypeID uint32,
 	userSerializer ExtensionSerializer,
 ) error {
+	if userTypeID > maxUserTypeID {
+		return fmt.Errorf("typeID must be in range [0, 0x7fffffff], got %d", userTypeID)
+	}
 	if userSerializer == nil {
 		return fmt.Errorf("serializer cannot be nil for extension type %s", type_)
 	}
@@ -1254,6 +1262,9 @@ func (r *TypeResolver) registerType(
 	}
 	if typeName == "" && namespace != "" {
 		panic("namespace provided without typeName")
+	}
+	if internal && typeID > internalTypeIDLimit {
+		panic(fmt.Sprintf("internal type id overflow: %d", typeID))
 	}
 	if internal && serializer != nil {
 		if err := r.registerSerializer(type_, TypeId(typeID&0xFF), serializer); err != nil {
