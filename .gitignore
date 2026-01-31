@@ -49,9 +49,11 @@ integration_tests/idl_tests/go/monster/
 integration_tests/idl_tests/go/optional_types/
 integration_tests/idl_tests/go/tree/
 integration_tests/idl_tests/go/graph/
+integration_tests/idl_tests/go/collection/
 integration_tests/idl_tests/java/src/main/
 integration_tests/idl_tests/go/root/
 integration_tests/idl_tests/go/addressbook/
+integration_tests/idl_tests/java/src/main/java/collection/
 integration_tests/idl_tests/java/src/main/java/addressbook/
 integration_tests/idl_tests/java/src/main/java/complex_fbs/
 integration_tests/idl_tests/java/src/main/java/complex_pb/
@@ -67,6 +69,7 @@ integration_tests/idl_tests/python/src/complex_fbs.py
 integration_tests/idl_tests/python/src/complex_pb.py
 integration_tests/idl_tests/python/src/monster.py
 integration_tests/idl_tests/python/src/optional_types.py
+integration_tests/idl_tests/python/src/collection.py
 integration_tests/idl_tests/python/src/tree.py
 integration_tests/idl_tests/python/src/graph.py
 integration_tests/idl_tests/python/src/root.py
@@ -77,6 +80,7 @@ integration_tests/idl_tests/rust/src/complex_fbs.rs
 integration_tests/idl_tests/rust/src/complex_pb.rs
 integration_tests/idl_tests/rust/src/monster.rs
 integration_tests/idl_tests/rust/src/optional_types.rs
+integration_tests/idl_tests/rust/src/collection.rs
 integration_tests/idl_tests/rust/src/tree.rs
 integration_tests/idl_tests/rust/src/graph.rs
 integration_tests/idl_tests/rust/src/root.rs

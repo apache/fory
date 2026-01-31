@@ -25,6 +25,7 @@
 #include "fory/util/error.h"
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace fory {
@@ -753,17 +754,22 @@ template <> struct Serializer<std::vector<uint16_t>> {
 
   static inline void write_data(const std::vector<uint16_t> &vec,
                                 WriteContext &ctx) {
+    uint64_t total_bytes = static_cast<uint64_t>(vec.size()) * sizeof(uint16_t);
+    if (total_bytes > std::numeric_limits<uint32_t>::max()) {
+      ctx.set_error(Error::invalid("Vector byte size exceeds uint32_t range"));
+      return;
+    }
     Buffer &buffer = ctx.buffer();
-    size_t data_size = vec.size() * sizeof(uint16_t);
-    size_t max_size = 8 + data_size;
+    size_t max_size = 8 + static_cast<size_t>(total_bytes);
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
     writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(vec.size()));
-    if (!vec.empty()) {
-      buffer.unsafe_put(writer_index, vec.data(), data_size);
+        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(total_bytes));
+    if (total_bytes > 0) {
+      buffer.unsafe_put(writer_index, vec.data(),
+                        static_cast<uint32_t>(total_bytes));
     }
-    buffer.writer_index(writer_index + static_cast<uint32_t>(data_size));
+    buffer.writer_index(writer_index + static_cast<uint32_t>(total_bytes));
   }
 
   static inline void write_data_generic(const std::vector<uint16_t> &vec,
@@ -788,16 +794,24 @@ template <> struct Serializer<std::vector<uint16_t>> {
   }
 
   static inline std::vector<uint16_t> read_data(ReadContext &ctx) {
-    uint32_t length = ctx.read_var_uint32(ctx.error());
-    if (FORY_PREDICT_FALSE(length * sizeof(uint16_t) >
-                           ctx.buffer().remaining_size())) {
-      ctx.set_error(
-          Error::invalid_data("Invalid length: " + std::to_string(length)));
+    uint32_t total_bytes = ctx.read_var_uint32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<uint16_t>();
     }
+    if (total_bytes % sizeof(uint16_t) != 0) {
+      ctx.set_error(Error::invalid_data("Invalid length: " +
+                                        std::to_string(total_bytes)));
+      return std::vector<uint16_t>();
+    }
+    if (FORY_PREDICT_FALSE(total_bytes > ctx.buffer().remaining_size())) {
+      ctx.set_error(Error::invalid_data("Invalid length: " +
+                                        std::to_string(total_bytes)));
+      return std::vector<uint16_t>();
+    }
+    size_t length = total_bytes / sizeof(uint16_t);
     std::vector<uint16_t> vec(length);
-    if (length > 0) {
-      ctx.read_bytes(vec.data(), length * sizeof(uint16_t), ctx.error());
+    if (total_bytes > 0) {
+      ctx.read_bytes(vec.data(), total_bytes, ctx.error());
     }
     return vec;
   }
@@ -842,17 +856,22 @@ template <> struct Serializer<std::vector<uint32_t>> {
 
   static inline void write_data(const std::vector<uint32_t> &vec,
                                 WriteContext &ctx) {
+    uint64_t total_bytes = static_cast<uint64_t>(vec.size()) * sizeof(uint32_t);
+    if (total_bytes > std::numeric_limits<uint32_t>::max()) {
+      ctx.set_error(Error::invalid("Vector byte size exceeds uint32_t range"));
+      return;
+    }
     Buffer &buffer = ctx.buffer();
-    size_t data_size = vec.size() * sizeof(uint32_t);
-    size_t max_size = 8 + data_size;
+    size_t max_size = 8 + static_cast<size_t>(total_bytes);
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
     writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(vec.size()));
-    if (!vec.empty()) {
-      buffer.unsafe_put(writer_index, vec.data(), data_size);
+        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(total_bytes));
+    if (total_bytes > 0) {
+      buffer.unsafe_put(writer_index, vec.data(),
+                        static_cast<uint32_t>(total_bytes));
     }
-    buffer.writer_index(writer_index + static_cast<uint32_t>(data_size));
+    buffer.writer_index(writer_index + static_cast<uint32_t>(total_bytes));
   }
 
   static inline void write_data_generic(const std::vector<uint32_t> &vec,
@@ -877,16 +896,24 @@ template <> struct Serializer<std::vector<uint32_t>> {
   }
 
   static inline std::vector<uint32_t> read_data(ReadContext &ctx) {
-    uint32_t length = ctx.read_var_uint32(ctx.error());
-    if (FORY_PREDICT_FALSE(length * sizeof(uint32_t) >
-                           ctx.buffer().remaining_size())) {
-      ctx.set_error(
-          Error::invalid_data("Invalid length: " + std::to_string(length)));
+    uint32_t total_bytes = ctx.read_var_uint32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<uint32_t>();
     }
+    if (total_bytes % sizeof(uint32_t) != 0) {
+      ctx.set_error(Error::invalid_data("Invalid length: " +
+                                        std::to_string(total_bytes)));
+      return std::vector<uint32_t>();
+    }
+    if (FORY_PREDICT_FALSE(total_bytes > ctx.buffer().remaining_size())) {
+      ctx.set_error(Error::invalid_data("Invalid length: " +
+                                        std::to_string(total_bytes)));
+      return std::vector<uint32_t>();
+    }
+    size_t length = total_bytes / sizeof(uint32_t);
     std::vector<uint32_t> vec(length);
-    if (length > 0) {
-      ctx.read_bytes(vec.data(), length * sizeof(uint32_t), ctx.error());
+    if (total_bytes > 0) {
+      ctx.read_bytes(vec.data(), total_bytes, ctx.error());
     }
     return vec;
   }
@@ -931,17 +958,22 @@ template <> struct Serializer<std::vector<uint64_t>> {
 
   static inline void write_data(const std::vector<uint64_t> &vec,
                                 WriteContext &ctx) {
+    uint64_t total_bytes = static_cast<uint64_t>(vec.size()) * sizeof(uint64_t);
+    if (total_bytes > std::numeric_limits<uint32_t>::max()) {
+      ctx.set_error(Error::invalid("Vector byte size exceeds uint32_t range"));
+      return;
+    }
     Buffer &buffer = ctx.buffer();
-    size_t data_size = vec.size() * sizeof(uint64_t);
-    size_t max_size = 8 + data_size;
+    size_t max_size = 8 + static_cast<size_t>(total_bytes);
     buffer.grow(static_cast<uint32_t>(max_size));
     uint32_t writer_index = buffer.writer_index();
     writer_index +=
-        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(vec.size()));
-    if (!vec.empty()) {
-      buffer.unsafe_put(writer_index, vec.data(), data_size);
+        buffer.put_var_uint32(writer_index, static_cast<uint32_t>(total_bytes));
+    if (total_bytes > 0) {
+      buffer.unsafe_put(writer_index, vec.data(),
+                        static_cast<uint32_t>(total_bytes));
     }
-    buffer.writer_index(writer_index + static_cast<uint32_t>(data_size));
+    buffer.writer_index(writer_index + static_cast<uint32_t>(total_bytes));
   }
 
   static inline void write_data_generic(const std::vector<uint64_t> &vec,
@@ -966,16 +998,24 @@ template <> struct Serializer<std::vector<uint64_t>> {
   }
 
   static inline std::vector<uint64_t> read_data(ReadContext &ctx) {
-    uint32_t length = ctx.read_var_uint32(ctx.error());
-    if (FORY_PREDICT_FALSE(length * sizeof(uint64_t) >
-                           ctx.buffer().remaining_size())) {
-      ctx.set_error(
-          Error::invalid_data("Invalid length: " + std::to_string(length)));
+    uint32_t total_bytes = ctx.read_var_uint32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
       return std::vector<uint64_t>();
     }
+    if (total_bytes % sizeof(uint64_t) != 0) {
+      ctx.set_error(Error::invalid_data("Invalid length: " +
+                                        std::to_string(total_bytes)));
+      return std::vector<uint64_t>();
+    }
+    if (FORY_PREDICT_FALSE(total_bytes > ctx.buffer().remaining_size())) {
+      ctx.set_error(Error::invalid_data("Invalid length: " +
+                                        std::to_string(total_bytes)));
+      return std::vector<uint64_t>();
+    }
+    size_t length = total_bytes / sizeof(uint64_t);
     std::vector<uint64_t> vec(length);
-    if (length > 0) {
-      ctx.read_bytes(vec.data(), length * sizeof(uint64_t), ctx.error());
+    if (total_bytes > 0) {
+      ctx.read_bytes(vec.data(), total_bytes, ctx.error());
     }
     return vec;
   }

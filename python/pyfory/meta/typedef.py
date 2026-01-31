@@ -18,7 +18,7 @@
 import enum
 import typing
 from typing import List
-from pyfory.types import TypeId, is_primitive_type, is_polymorphic_type
+from pyfory.types import TypeId, is_primitive_type, is_polymorphic_type, is_union_type
 from pyfory.buffer import Buffer
 from pyfory.type_util import infer_field
 from pyfory.meta.metastring import Encoding
@@ -141,6 +141,8 @@ class TypeDef:
                 from pyfory.serializer import NonExistEnumSerializer
 
                 return NonExistEnumSerializer(resolver.fory)
+        if self.type_id & 0xFF == TypeId.NAMED_UNION:
+            return resolver.get_typeinfo_by_name(self.namespace, self.typename).serializer
 
         from pyfory.struct import DataClassSerializer
 
@@ -262,6 +264,13 @@ class FieldType:
         # Handle list wrapper
         if isinstance(type_, list):
             type_ = type_[0]
+        if is_union_type(self.type_id):
+            if type_ is None:
+                return None
+            try:
+                return resolver.get_typeinfo(cls=type_).serializer
+            except Exception:
+                return None
         # Types that need to be handled dynamically during deserialization
         # For these types, we don't know the concrete type at compile time
         if self.type_id & 0xFF in [
@@ -271,9 +280,6 @@ class FieldType:
             TypeId.NAMED_STRUCT,
             TypeId.COMPATIBLE_STRUCT,
             TypeId.NAMED_COMPATIBLE_STRUCT,
-            TypeId.UNION,
-            TypeId.TYPED_UNION,
-            TypeId.NAMED_UNION,
             TypeId.UNKNOWN,
         ]:
             return None
@@ -372,9 +378,16 @@ class DynamicFieldType(FieldType):
         super().__init__(type_id, is_monomorphic, is_nullable, is_tracking_ref)
 
     def create_serializer(self, resolver, type_):
-        # For dynamic field types (UNKNOWN, STRUCT, etc.), always return None
-        # This ensures type info is written/read at runtime, which is required
-        # for cross-language compatibility (Java always writes type info for struct fields)
+        # For dynamic field types (UNKNOWN, STRUCT, etc.), default to None so
+        # type info is written/read at runtime for cross-language compatibility.
+        # Exception: union fields are declared, so we should use the union serializer
+        # to write/read the union payload correctly.
+        if isinstance(type_, list):
+            type_ = type_[0]
+        assert not is_union_type(self.type_id), (
+            "Union fields don't write field type info, \
+            they are not dynamic field types"
+        )
         return None
 
     def __repr__(self):
@@ -456,7 +469,13 @@ def build_field_infos(type_resolver, cls):
 
     # Get just the field names for sorting
     current_field_names = [fi.name for fi in field_infos]
-    sorted_field_names, serializers = _sort_fields(type_resolver, current_field_names, serializers, nullable_map)
+    sorted_field_names, serializers = _sort_fields(
+        type_resolver,
+        current_field_names,
+        serializers,
+        nullable_map,
+        field_infos,
+    )
     field_infos_map = {field_info.name: field_info for field_info in field_infos}
     new_field_infos = []
     for field_name in sorted_field_names:
@@ -572,14 +591,12 @@ def build_field_type_from_type_ids_with_ref(
         TypeId.NAMED_STRUCT,
         TypeId.COMPATIBLE_STRUCT,
         TypeId.NAMED_COMPATIBLE_STRUCT,
-        TypeId.UNION,
-        TypeId.TYPED_UNION,
-        TypeId.NAMED_UNION,
     ]:
         return DynamicFieldType(type_id, False, is_nullable, is_tracking_ref)
     else:
         if type_id <= 0 or type_id >= TypeId.BOUND:
             raise TypeError(f"Unknown type: {type_id} for field: {field_name}")
+        # union/enum go here too
         return FieldType(type_id, morphic, is_nullable, is_tracking_ref)
 
 
@@ -614,10 +631,7 @@ def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, vis
         TypeId.NAMED_STRUCT,
         TypeId.COMPATIBLE_STRUCT,
         TypeId.NAMED_COMPATIBLE_STRUCT,
-        TypeId.UNION,
-        TypeId.TYPED_UNION,
-        TypeId.NAMED_UNION,
-    ]:
+    ] or is_union_type(type_id):
         return DynamicFieldType(type_id, False, is_nullable, tracking_ref)
     else:
         if type_id <= 0 or type_id >= TypeId.BOUND:

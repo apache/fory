@@ -871,6 +871,9 @@ public class ClassResolver extends TypeResolver {
    */
   @Override
   public boolean isMonomorphic(Class<?> clz) {
+    if (TypeUtils.isPrimitiveListClass(clz)) {
+      return true;
+    }
     if (fory.getConfig().isMetaShareEnabled()) {
       // can't create final map/collection type using TypeUtils.mapOf(TypeToken<K>,
       // TypeToken<V>)
@@ -893,6 +896,9 @@ public class ClassResolver extends TypeResolver {
   }
 
   public boolean isBuildIn(Descriptor descriptor) {
+    if (TypeUtils.isPrimitiveListClass(descriptor.getRawType())) {
+      return true;
+    }
     return isMonomorphic(descriptor);
   }
 

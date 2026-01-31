@@ -535,11 +535,11 @@ class TypeResolver:
             if type_id not in self._type_id_to_typeinfo or not internal:
                 self._type_id_to_typeinfo[type_id] = typeinfo
         self._types_info[cls] = typeinfo
-        # Create TypeDef for NAMED_ENUM and NAMED_EXT when meta_share is enabled
+        # Create TypeDef for named non-struct types when meta_share is enabled
         if self.meta_share and type_id is not None:
             base_type_id = type_id & 0xFF
-            if base_type_id in (TypeId.NAMED_ENUM, TypeId.NAMED_EXT):
-                type_def = encode_typedef(self, cls)
+            if base_type_id in (TypeId.NAMED_ENUM, TypeId.NAMED_EXT, TypeId.NAMED_UNION):
+                type_def = encode_typedef(self, cls, include_fields=is_struct_type(base_type_id))
                 if type_def is not None:
                     typeinfo.type_def = type_def
         return typeinfo

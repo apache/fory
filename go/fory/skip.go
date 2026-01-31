@@ -604,6 +604,30 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 			return
 		}
 		_ = ctx.buffer.ReadBinary(int(length), err)
+	case BOOL_ARRAY, INT8_ARRAY, UINT8_ARRAY:
+		length := ctx.buffer.ReadLength(err)
+		if ctx.HasError() {
+			return
+		}
+		_ = ctx.buffer.ReadBinary(length, err)
+	case INT16_ARRAY, UINT16_ARRAY, FLOAT16_ARRAY:
+		length := ctx.buffer.ReadLength(err)
+		if ctx.HasError() {
+			return
+		}
+		_ = ctx.buffer.ReadBinary(length*2, err)
+	case INT32_ARRAY, UINT32_ARRAY, FLOAT32_ARRAY:
+		length := ctx.buffer.ReadLength(err)
+		if ctx.HasError() {
+			return
+		}
+		_ = ctx.buffer.ReadBinary(length*4, err)
+	case INT64_ARRAY, UINT64_ARRAY, FLOAT64_ARRAY:
+		length := ctx.buffer.ReadLength(err)
+		if ctx.HasError() {
+			return
+		}
+		_ = ctx.buffer.ReadBinary(length*8, err)
 
 	// Date/Time types
 	case DATE:

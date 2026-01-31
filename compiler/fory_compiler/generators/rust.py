@@ -203,8 +203,12 @@ class RustGenerator(BaseGenerator):
         uses.add("use std::sync::OnceLock")
 
         for message in self.schema.messages:
+            if self.is_imported_type(message):
+                continue
             self.collect_message_uses(message, uses)
         for union in self.schema.unions:
+            if self.is_imported_type(union):
+                continue
             self.collect_union_uses(union, uses)
 
         # License header
@@ -359,6 +363,8 @@ class RustGenerator(BaseGenerator):
         has_any = any(
             self.field_type_has_any(field.field_type) for field in union.fields
         )
+        if self.to_pascal_case(union.name) != union.name:
+            lines.append("#[allow(non_camel_case_types)]")
         derives = ["ForyObject", "Debug"]
         if not has_any:
             derives.extend(["Clone", "PartialEq"])

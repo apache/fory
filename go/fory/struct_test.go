@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/apache/fory/go/fory/float16"
 	"github.com/apache/fory/go/fory/optional"
 	"github.com/stretchr/testify/require"
 )
@@ -473,4 +474,37 @@ func TestSkipAnyValueReadsSharedTypeMeta(t *testing.T) {
 	result, ok := out.(*Second)
 	require.True(t, ok)
 	require.Equal(t, "ok", result.Name)
+}
+
+func TestFloat16StructField(t *testing.T) {
+	type StructWithFloat16 struct {
+		F16      float16.Float16
+		SliceF16 []float16.Float16
+		ArrayF16 [3]float16.Float16
+	}
+
+	f := New(WithXlang(true))
+	require.NoError(t, f.RegisterStruct(StructWithFloat16{}, 3001))
+
+	val := &StructWithFloat16{
+		F16:      float16.Float16FromFloat32(1.5),
+		SliceF16: []float16.Float16{float16.Float16FromFloat32(1.0), float16.Float16FromFloat32(2.5)},
+		ArrayF16: [3]float16.Float16{float16.Zero, float16.One, float16.NegZero},
+	}
+
+	data, err := f.Serialize(val)
+	require.NoError(t, err)
+
+	// Create new instance
+	res := &StructWithFloat16{}
+	err = f.Deserialize(data, res)
+	require.NoError(t, err)
+
+	// Verify
+	require.Equal(t, val.F16, res.F16)
+	require.Equal(t, val.SliceF16, res.SliceF16)
+	require.Equal(t, val.ArrayF16, res.ArrayF16)
+
+	// Specific value check
+	require.Equal(t, float32(1.5), res.F16.Float32())
 }
