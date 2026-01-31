@@ -19,7 +19,6 @@
 
 package org.apache.fory.meta;
 
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import org.apache.fory.meta.MetaString.Encoding;
 import org.apache.fory.util.StringUtils;

@@ -411,7 +411,8 @@ class PythonGenerator(BaseGenerator):
         ):
             lines.append("")
 
-        lines.extend(self.generate_bytes_methods(message.name, indent))
+        return_type = ".".join([msg.name for msg in lineage])
+        lines.extend(self.generate_bytes_methods(return_type, indent))
 
         return lines
 

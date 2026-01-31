@@ -259,15 +259,16 @@ inline Result<uint8_t, Error> encoding_to_index(MetaEncoding encoding,
       return static_cast<uint8_t>(i);
     }
   }
-  return Unexpected(Error::encoding_error(
-      "Unsupported meta string encoding: " +
-      std::to_string(static_cast<int>(encoding))));
+  return Unexpected(
+      Error::encoding_error("Unsupported meta string encoding: " +
+                            std::to_string(static_cast<int>(encoding))));
 }
 
-inline Result<void, Error> write_meta_name(
-    Buffer &buffer, const std::string &name, const MetaStringEncoder &encoder,
-    const std::vector<MetaEncoding> &allowed_encodings,
-    const MetaEncoding *encodings, size_t enc_count) {
+inline Result<void, Error>
+write_meta_name(Buffer &buffer, const std::string &name,
+                const MetaStringEncoder &encoder,
+                const std::vector<MetaEncoding> &allowed_encodings,
+                const MetaEncoding *encodings, size_t enc_count) {
   FORY_TRY(encoded, encoder.encode(name, allowed_encodings));
   FORY_TRY(encoding_idx,
            encoding_to_index(encoded.encoding, encodings, enc_count));

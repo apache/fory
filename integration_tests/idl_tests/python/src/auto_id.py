@@ -241,7 +241,7 @@ class Envelope:
             return _get_fory().serialize(self)
 
         @classmethod
-        def from_bytes(cls, data: bytes) -> "Payload":
+        def from_bytes(cls, data: bytes) -> "Envelope.Payload":
             return _get_fory().deserialize(data)
 
         def __bytes__(self) -> bytes:

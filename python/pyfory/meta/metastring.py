@@ -147,9 +147,7 @@ class MetaStringDecoder:
         if len(payload) == 0:
             return ""
         if len(payload) > 8:
-            raise ValueError(
-                f"NUMBER_STRING payload length exceeds uint64 size: {len(payload)}"
-            )
+            raise ValueError(f"NUMBER_STRING payload length exceeds uint64 size: {len(payload)}")
         value = int.from_bytes(payload, "little", signed=False)
         result = str(value)
         return f"-{result}" if negative else result
@@ -569,11 +567,7 @@ class MetaStringEncoder:
         else:
             length = (value.bit_length() + 7) // 8
             payload = value.to_bytes(length, "little", signed=False)
-        encoding = (
-            EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING
-            if negative
-            else EXTENDED_ENCODING_NUMBER_STRING
-        )
+        encoding = EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING if negative else EXTENDED_ENCODING_NUMBER_STRING
         return bytes([encoding]) + payload
 
     def _parse_uint64_digits(self, digits: str) -> Optional[int]:
