@@ -187,12 +187,27 @@ public class MetaStringDecoder {
       case MetaString.EXTENDED_ENCODING_UTF8:
         return new String(payload, StandardCharsets.UTF_8);
       case MetaString.EXTENDED_ENCODING_NUMBER_STRING:
-        if (payload.length == 0) {
-          return "";
-        }
-        return new BigInteger(payload).toString();
+        return decodeNumberString(payload, false);
+      case MetaString.EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING:
+        return decodeNumberString(payload, true);
       default:
         throw new IllegalStateException("Unexpected extended encoding flag: " + actualEncoding);
     }
+  }
+
+  private String decodeNumberString(byte[] payload, boolean negative) {
+    if (payload.length == 0) {
+      return "";
+    }
+    if (payload.length > Long.BYTES) {
+      throw new IllegalStateException(
+          "NUMBER_STRING payload length exceeds uint64 size: " + payload.length);
+    }
+    long value = 0;
+    for (int i = payload.length - 1; i >= 0; i--) {
+      value = (value << 8) | (payload[i] & 0xFFL);
+    }
+    String result = Long.toUnsignedString(value);
+    return negative ? "-" + result : result;
   }
 }

@@ -48,6 +48,7 @@ pub enum Encoding {
 pub enum ExtendedEncoding {
     Utf8 = 0x00,
     NumberString = 0x01,
+    NegativeNumberString = 0x02,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -166,62 +167,42 @@ fn is_number_string(input: &str) -> bool {
     has_digit
 }
 
-fn is_all_zero(bytes: &[u8]) -> bool {
-    bytes.iter().all(|b| *b == 0)
+fn parse_uint64_digits(digits: &str) -> Option<u64> {
+    if digits.is_empty() {
+        return None;
+    }
+    let stripped = digits.trim_start_matches('0');
+    if stripped.is_empty() {
+        return Some(0);
+    }
+    if stripped.len() > 20 {
+        return None;
+    }
+    if stripped.len() == 20 && stripped > "18446744073709551615" {
+        return None;
+    }
+    stripped.parse::<u64>().ok()
 }
 
-fn encode_decimal_to_bytes(digits: &str) -> Vec<u8> {
-    let mut magnitude: Vec<u8> = vec![0];
-    for b in digits.bytes() {
-        let mut carry: u16 = (b - b'0') as u16;
-        for i in (0..magnitude.len()).rev() {
-            let value = magnitude[i] as u16 * 10 + carry;
-            magnitude[i] = (value & 0xFF) as u8;
-            carry = value >> 8;
-        }
-        while carry != 0 {
-            magnitude.insert(0, (carry & 0xFF) as u8);
-            carry >>= 8;
-        }
-    }
-    while magnitude.len() > 1 && magnitude[0] == 0 {
-        magnitude.remove(0);
-    }
-    magnitude
-}
-
-fn encode_number_string(input: &str) -> Vec<u8> {
-    let mut negative = input.starts_with('-');
+fn try_encode_number_string(input: &str) -> Option<Vec<u8>> {
+    let negative = input.starts_with('-');
     let digits = if negative { &input[1..] } else { input };
-    let mut magnitude = encode_decimal_to_bytes(digits);
-    if is_all_zero(&magnitude) {
-        negative = false;
+    let value = parse_uint64_digits(digits)?;
+    let mut bytes = Vec::with_capacity(9);
+    bytes.push(if negative {
+        ExtendedEncoding::NegativeNumberString as u8
+    } else {
+        ExtendedEncoding::NumberString as u8
+    });
+    let mut v = value;
+    loop {
+        bytes.push((v & 0xFF) as u8);
+        v >>= 8;
+        if v == 0 {
+            break;
+        }
     }
-
-    if negative {
-        for b in &mut magnitude {
-            *b = !*b;
-        }
-        let mut carry: u16 = 1;
-        for i in (0..magnitude.len()).rev() {
-            let sum = magnitude[i] as u16 + carry;
-            magnitude[i] = (sum & 0xFF) as u8;
-            carry = sum >> 8;
-        }
-        if carry != 0 {
-            magnitude.insert(0, 0xFF);
-        }
-        while magnitude.len() > 1 && magnitude[0] == 0xFF && (magnitude[1] & 0x80) != 0 {
-            magnitude.remove(0);
-        }
-    } else if (magnitude[0] & 0x80) != 0 {
-        magnitude.insert(0, 0);
-    }
-
-    let mut bytes = Vec::with_capacity(magnitude.len() + 1);
-    bytes.push(ExtendedEncoding::NumberString as u8);
-    bytes.extend_from_slice(&magnitude);
-    bytes
+    Some(bytes)
 }
 
 fn encode_extended_utf8(input: &str) -> Vec<u8> {
@@ -231,55 +212,25 @@ fn encode_extended_utf8(input: &str) -> Vec<u8> {
     bytes
 }
 
-fn decode_number_string(bytes: &[u8]) -> String {
+fn decode_number_string(bytes: &[u8], negative: bool) -> Result<String, Error> {
     if bytes.is_empty() {
-        return String::new();
+        return Ok(String::new());
     }
-    let mut magnitude = bytes.to_vec();
-    let negative = (magnitude[0] & 0x80) != 0;
-    if negative {
-        for b in &mut magnitude {
-            *b = !*b;
-        }
-        let mut carry: u16 = 1;
-        for i in (0..magnitude.len()).rev() {
-            let sum = magnitude[i] as u16 + carry;
-            magnitude[i] = (sum & 0xFF) as u8;
-            carry = sum >> 8;
-        }
-        while magnitude.len() > 1 && magnitude[0] == 0 {
-            magnitude.remove(0);
-        }
-    } else {
-        while magnitude.len() > 1 && magnitude[0] == 0 {
-            magnitude.remove(0);
-        }
+    if bytes.len() > 8 {
+        return Err(Error::encode_error(format!(
+            "NUMBER_STRING payload length exceeds uint64 size: {}",
+            bytes.len()
+        )));
     }
-
-    if is_all_zero(&magnitude) {
-        return "0".to_string();
+    let mut value: u64 = 0;
+    for (idx, b) in bytes.iter().enumerate() {
+        value |= (*b as u64) << (8 * idx);
     }
-
-    let mut temp = magnitude;
-    let mut digits: Vec<char> = Vec::new();
-    while !temp.is_empty() {
-        let mut remainder: u32 = 0;
-        for b in &mut temp {
-            let value = (remainder << 8) | (*b as u32);
-            *b = (value / 10) as u8;
-            remainder = value % 10;
-        }
-        digits.push((b'0' + remainder as u8) as char);
-        while !temp.is_empty() && temp[0] == 0 {
-            temp.remove(0);
-        }
-    }
-    digits.reverse();
-    let mut result: String = digits.into_iter().collect();
+    let mut result = value.to_string();
     if negative {
         result.insert(0, '-');
     }
-    result
+    Ok(result)
 }
 
 impl MetaStringEncoder {
@@ -314,10 +265,19 @@ impl MetaStringEncoder {
         );
 
         if is_number_string(input) {
+            if let Some(encoded) = try_encode_number_string(input) {
+                return Ok(Some(MetaString::new(
+                    input.to_string(),
+                    Encoding::Extended,
+                    encoded,
+                    self.special_char1,
+                    self.special_char2,
+                )?));
+            }
             return Ok(Some(MetaString::new(
                 input.to_string(),
                 Encoding::Extended,
-                encode_number_string(input),
+                encode_extended_utf8(input),
                 self.special_char1,
                 self.special_char2,
             )?));
@@ -502,7 +462,7 @@ impl MetaStringEncoder {
             }
             Encoding::Extended => {
                 let encoded_data = if is_number_string(input) {
-                    encode_number_string(input)
+                    try_encode_number_string(input).unwrap_or_else(|| encode_extended_utf8(input))
                 } else {
                     encode_extended_utf8(input)
                 };
@@ -724,7 +684,10 @@ impl MetaStringDecoder {
             x if x == ExtendedEncoding::Utf8 as u8 => {
                 Ok(String::from_utf8_lossy(payload).into_owned())
             }
-            x if x == ExtendedEncoding::NumberString as u8 => Ok(decode_number_string(payload)),
+            x if x == ExtendedEncoding::NumberString as u8 => decode_number_string(payload, false),
+            x if x == ExtendedEncoding::NegativeNumberString as u8 => {
+                decode_number_string(payload, true)
+            }
             _ => Err(Error::encode_error(format!(
                 "Unsupported extended meta string encoding value: {actual}",
             ))),

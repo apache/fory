@@ -37,6 +37,7 @@ func TestEncodeAndDecodeMetaString(t *testing.T) {
 		"Apple_banana":                   5,
 		"你好，世界":                          0, // not used
 		"1234567890":                     0, // not used
+		"-324345545454":                  0, // not used
 	}
 	str2encoding := map[string]Encoding{
 		"abc_def":                        LOWER_SPECIAL,
@@ -46,6 +47,7 @@ func TestEncodeAndDecodeMetaString(t *testing.T) {
 		"Apple_banana":                   FIRST_TO_LOWER_SPECIAL,
 		"你好，世界":                          EXTENDED,
 		"1234567890":                     EXTENDED,
+		"-324345545454":                  EXTENDED,
 	}
 	encoder := NewEncoder('.', '_')
 	decoder := NewDecoder('.', '_')
@@ -64,6 +66,10 @@ func TestEncodeAndDecodeMetaString(t *testing.T) {
 		if src == "1234567890" {
 			require.True(t, len(data.GetEncodedBytes()) > 0)
 			require.Equal(t, ExtendedEncodingNumberString, data.GetEncodedBytes()[0])
+		}
+		if src == "-324345545454" {
+			require.True(t, len(data.GetEncodedBytes()) > 0)
+			require.Equal(t, ExtendedEncodingNegativeNumberString, data.GetEncodedBytes()[0])
 		}
 		dst, err = decoder.Decode(data.GetEncodedBytes(), data.GetEncoding())
 		require.Equal(t, nil, err)

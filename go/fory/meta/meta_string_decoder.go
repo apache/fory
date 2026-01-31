@@ -19,7 +19,7 @@ package meta
 
 import (
 	"fmt"
-	"math/big"
+	"strconv"
 )
 
 type Decoder struct {
@@ -76,45 +76,33 @@ func (d *Decoder) decodeExtended(data []byte) (string, error) {
 	case ExtendedEncodingUTF8:
 		return string(payload), nil
 	case ExtendedEncodingNumberString:
-		return decodeNumberString(payload), nil
+		return decodeNumberString(payload, false)
+	case ExtendedEncodingNegativeNumberString:
+		return decodeNumberString(payload, true)
 	default:
 		return "", fmt.Errorf("Unexpected extended encoding flag: %v\n", actual)
 	}
 }
 
-func decodeNumberString(payload []byte) string {
+func decodeNumberString(payload []byte, negative bool) (string, error) {
 	if len(payload) == 0 {
-		return ""
+		return "", nil
 	}
-	negative := (payload[0] & 0x80) != 0
-	bytes := make([]byte, len(payload))
-	copy(bytes, payload)
+	if len(payload) > 8 {
+		return "", fmt.Errorf("NUMBER_STRING payload length exceeds uint64 size: %d", len(payload))
+	}
+	var value uint64
+	for i := len(payload) - 1; i >= 0; i-- {
+		value = (value << 8) | uint64(payload[i])
+		if i == 0 {
+			break
+		}
+	}
+	result := strconv.FormatUint(value, 10)
 	if negative {
-		for i := range bytes {
-			bytes[i] = ^bytes[i]
-		}
-		carry := byte(1)
-		for i := len(bytes) - 1; i >= 0; i-- {
-			sum := uint16(bytes[i]) + uint16(carry)
-			bytes[i] = byte(sum & 0xFF)
-			carry = byte(sum >> 8)
-			if carry == 0 {
-				break
-			}
-		}
-		for len(bytes) > 1 && bytes[0] == 0 {
-			bytes = bytes[1:]
-		}
-	} else {
-		for len(bytes) > 1 && bytes[0] == 0 {
-			bytes = bytes[1:]
-		}
+		return "-" + result, nil
 	}
-	value := new(big.Int).SetBytes(bytes)
-	if negative && value.Sign() != 0 {
-		value.Neg(value)
-	}
-	return value.String()
+	return result, nil
 }
 
 // DecodeGeneric

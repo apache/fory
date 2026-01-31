@@ -63,6 +63,7 @@ public class MetaString {
 
   public static final byte EXTENDED_ENCODING_UTF8 = 0;
   public static final byte EXTENDED_ENCODING_NUMBER_STRING = 1;
+  public static final byte EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING = 2;
 
   public static final MetaString EMPTY =
       new MetaString("", Encoding.forEmptyStr(), '\0', '\0', new byte[0]);

@@ -40,3 +40,4 @@ enum MetaStringEncoding{
 
 const int extendedEncodingUtf8 = 0;
 const int extendedEncodingNumberString = 1;
+const int extendedEncodingNegativeNumberString = 2;

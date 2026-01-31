@@ -503,7 +503,7 @@ TEST_F(MetaStringTest, AllLowercaseAlphabet) {
 }
 
 TEST_F(MetaStringTest, AllDigits) {
-  const std::string input = "0123456789";
+  const std::string input = "1234567890";
   auto encode_result = encoder_.encode(input);
   ASSERT_TRUE(encode_result.ok());
   EXPECT_EQ(encode_result.value().encoding, MetaEncoding::EXTENDED);
@@ -525,7 +525,7 @@ TEST_F(MetaStringTest, NegativeNumberString) {
   EXPECT_EQ(encode_result.value().encoding, MetaEncoding::EXTENDED);
   ASSERT_FALSE(encode_result.value().bytes.empty());
   EXPECT_EQ(encode_result.value().bytes[0],
-            static_cast<uint8_t>(MetaExtendedEncoding::NUMBER_STRING));
+            static_cast<uint8_t>(MetaExtendedEncoding::NEGATIVE_NUMBER_STRING));
 
   auto decode_result = decoder_.decode(encode_result.value().bytes.data(),
                                        encode_result.value().bytes.size(),

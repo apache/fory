@@ -267,7 +267,7 @@ public class MetaStringTest {
     MetaString encoded = encoder.encode(testString);
     assertEquals(encoded.getEncoding(), MetaString.Encoding.EXTENDED);
     assertTrue(encoded.getBytes().length > 0);
-    assertEquals(encoded.getBytes()[0], MetaString.EXTENDED_ENCODING_NUMBER_STRING);
+    assertEquals(encoded.getBytes()[0], MetaString.EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING);
 
     MetaStringDecoder decoder = new MetaStringDecoder('_', '$');
     String decoded = decoder.decode(encoded.getBytes(), encoded.getEncoding());

@@ -20,7 +20,7 @@ package meta
 import (
 	"errors"
 	"fmt"
-	"math/big"
+	"strconv"
 )
 
 type Encoder struct {
@@ -38,12 +38,21 @@ func NewEncoder(specialCh1 byte, specialCh2 byte) *Encoder {
 // Encode the input string to MetaString using adaptive encoding
 func (e *Encoder) Encode(input string) (MetaString, error) {
 	if isNumberString(input) {
+		if encoded, ok := tryEncodeNumberString(input); ok {
+			return MetaString{
+				inputString:  input,
+				encoding:     EXTENDED,
+				specialChar1: e.specialChar1,
+				specialChar2: e.specialChar2,
+				encodedBytes: encoded,
+			}, nil
+		}
 		return MetaString{
 			inputString:  input,
 			encoding:     EXTENDED,
 			specialChar1: e.specialChar1,
 			specialChar2: e.specialChar2,
-			encodedBytes: encodeNumberString(input),
+			encodedBytes: encodeExtendedUtf8(input),
 		}, nil
 	}
 	if !isASCII(input) {
@@ -247,7 +256,9 @@ func isNumberString(input string) bool {
 
 func encodeExtended(input string) []byte {
 	if isNumberString(input) {
-		return encodeNumberString(input)
+		if encoded, ok := tryEncodeNumberString(input); ok {
+			return encoded
+		}
 	}
 	return encodeExtendedUtf8(input)
 }
@@ -260,45 +271,40 @@ func encodeExtendedUtf8(input string) []byte {
 	return encoded
 }
 
-func encodeNumberString(input string) []byte {
-	value, ok := new(big.Int).SetString(input, 10)
-	if !ok {
-		return []byte{ExtendedEncodingNumberString, 0}
-	}
-	negative := value.Sign() < 0
+func tryEncodeNumberString(input string) ([]byte, bool) {
+	negative := input[0] == '-'
+	digits := input
 	if negative {
-		value.Neg(value)
+		digits = input[1:]
 	}
-	magnitude := value.Bytes()
-	if len(magnitude) == 0 {
-		magnitude = []byte{0}
+	if digits == "" {
+		return nil, false
 	}
+	value, err := strconv.ParseUint(digits, 10, 64)
+	if err != nil {
+		return nil, false
+	}
+	payload := encodeUint64LE(value)
+	encoding := ExtendedEncodingNumberString
 	if negative {
-		for i := range magnitude {
-			magnitude[i] = ^magnitude[i]
-		}
-		carry := byte(1)
-		for i := len(magnitude) - 1; i >= 0; i-- {
-			sum := uint16(magnitude[i]) + uint16(carry)
-			magnitude[i] = byte(sum & 0xFF)
-			carry = byte(sum >> 8)
-			if carry == 0 {
-				break
-			}
-		}
-		if carry != 0 {
-			magnitude = append([]byte{0xFF}, magnitude...)
-		}
-		for len(magnitude) > 1 && magnitude[0] == 0xFF && (magnitude[1]&0x80) != 0 {
-			magnitude = magnitude[1:]
-		}
-	} else if (magnitude[0] & 0x80) != 0 {
-		magnitude = append([]byte{0x00}, magnitude...)
+		encoding = ExtendedEncodingNegativeNumberString
 	}
-	encoded := make([]byte, len(magnitude)+1)
-	encoded[0] = ExtendedEncodingNumberString
-	copy(encoded[1:], magnitude)
-	return encoded
+	encoded := make([]byte, len(payload)+1)
+	encoded[0] = encoding
+	copy(encoded[1:], payload)
+	return encoded, true
+}
+
+func encodeUint64LE(value uint64) []byte {
+	if value == 0 {
+		return []byte{0}
+	}
+	payload := make([]byte, 0, 8)
+	for value != 0 {
+		payload = append(payload, byte(value&0xFF))
+		value >>= 8
+	}
+	return payload
 }
 
 func isASCII(input string) bool {

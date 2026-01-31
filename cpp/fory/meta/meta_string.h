@@ -44,6 +44,7 @@ enum class MetaEncoding : uint8_t {
 enum class MetaExtendedEncoding : uint8_t {
   UTF8 = 0x00,
   NUMBER_STRING = 0x01,
+  NEGATIVE_NUMBER_STRING = 0x02,
 };
 
 // Decoder for meta strings used by xlang type metadata and

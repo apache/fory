@@ -184,45 +184,26 @@ class ForyMetaStringDecoder extends MetaStringDecoder {
       case extendedEncodingUtf8:
         return utf8.decode(payload);
       case extendedEncodingNumberString:
-        return _decodeNumberString(payload);
+        return _decodeNumberString(payload, false);
+      case extendedEncodingNegativeNumberString:
+        return _decodeNumberString(payload, true);
       default:
         throw ArgumentError('Unsupported extended encoding: $actual');
     }
   }
 
-  String _decodeNumberString(Uint8List payload) {
+  String _decodeNumberString(Uint8List payload, bool negative) {
     if (payload.isEmpty) return '';
-    bool negative = (payload[0] & 0x80) != 0;
-    List<int> bytes = payload.toList();
-    if (negative) {
-      for (int i = 0; i < bytes.length; i++) {
-        bytes[i] = (~bytes[i]) & 0xFF;
-      }
-      int carry = 1;
-      for (int i = bytes.length - 1; i >= 0; i--) {
-        int sum = bytes[i] + carry;
-        bytes[i] = sum & 0xFF;
-        carry = sum >> 8;
-        if (carry == 0) {
-          break;
-        }
-      }
-      while (bytes.length > 1 && bytes[0] == 0) {
-        bytes.removeAt(0);
-      }
-    } else {
-      while (bytes.length > 1 && bytes[0] == 0) {
-        bytes.removeAt(0);
-      }
+    if (payload.length > 8) {
+      throw ArgumentError(
+          'NUMBER_STRING payload length exceeds uint64 size: ${payload.length}');
     }
     BigInt value = BigInt.zero;
-    for (final int b in bytes) {
-      value = (value << 8) | BigInt.from(b);
+    for (int i = payload.length - 1; i >= 0; i--) {
+      value = (value << 8) | BigInt.from(payload[i]);
     }
-    if (negative && value != BigInt.zero) {
-      value = -value;
-    }
-    return value.toString();
+    final String result = value.toString();
+    return negative ? '-$result' : result;
   }
 
 }

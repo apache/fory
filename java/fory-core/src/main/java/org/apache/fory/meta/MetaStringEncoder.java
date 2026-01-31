@@ -19,7 +19,6 @@
 
 package org.apache.fory.meta;
 
-import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import org.apache.fory.meta.MetaString.Encoding;
 import org.apache.fory.util.Preconditions;
@@ -57,8 +56,11 @@ public class MetaStringEncoder {
       return MetaString.EMPTY;
     }
     if (isNumberString(input)) {
-      return new MetaString(
-          input, Encoding.EXTENDED, specialChar1, specialChar2, encodeNumberString(input));
+      byte[] bytes = tryEncodeNumberString(input);
+      if (bytes == null) {
+        bytes = encodeExtendedUtf8(input);
+      }
+      return new MetaString(input, Encoding.EXTENDED, specialChar1, specialChar2, bytes);
     }
     if (!StringUtils.isLatin(input.toCharArray())) {
       return new MetaString(
@@ -233,7 +235,10 @@ public class MetaStringEncoder {
 
   private byte[] encodeExtended(String input) {
     if (isNumberString(input)) {
-      return encodeNumberString(input);
+      byte[] bytes = tryEncodeNumberString(input);
+      if (bytes != null) {
+        return bytes;
+      }
     }
     return encodeExtendedUtf8(input);
   }
@@ -246,13 +251,43 @@ public class MetaStringEncoder {
     return bytes;
   }
 
-  private byte[] encodeNumberString(String input) {
-    BigInteger value = new BigInteger(input);
-    byte[] numberBytes = value.toByteArray();
-    byte[] bytes = new byte[numberBytes.length + 1];
-    bytes[0] = MetaString.EXTENDED_ENCODING_NUMBER_STRING;
-    System.arraycopy(numberBytes, 0, bytes, 1, numberBytes.length);
+  private byte[] tryEncodeNumberString(String input) {
+    boolean negative = input.charAt(0) == '-';
+    String digits = negative ? input.substring(1) : input;
+    if (digits.isEmpty()) {
+      return null;
+    }
+    long value;
+    try {
+      value = Long.parseUnsignedLong(digits);
+    } catch (NumberFormatException e) {
+      return null;
+    }
+    byte encoding =
+        negative
+            ? MetaString.EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING
+            : MetaString.EXTENDED_ENCODING_NUMBER_STRING;
+    byte[] payload = encodeUnsignedLong(value);
+    byte[] bytes = new byte[payload.length + 1];
+    bytes[0] = encoding;
+    System.arraycopy(payload, 0, bytes, 1, payload.length);
     return bytes;
+  }
+
+  private byte[] encodeUnsignedLong(long value) {
+    int length = 0;
+    long temp = value;
+    do {
+      length++;
+      temp >>>= 8;
+    } while (temp != 0);
+    byte[] payload = new byte[length];
+    temp = value;
+    for (int i = 0; i < length; i++) {
+      payload[i] = (byte) (temp & 0xFF);
+      temp >>>= 8;
+    }
+    return payload;
   }
 
   public byte[] encodeLowerSpecial(String input) {

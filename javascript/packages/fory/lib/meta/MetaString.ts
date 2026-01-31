@@ -30,6 +30,7 @@ export enum Encoding {
 
 const EXTENDED_ENCODING_UTF8 = 0;
 const EXTENDED_ENCODING_NUMBER_STRING = 1;
+const EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING = 2;
 export class MetaString {
   /** Defines the types of supported encodings for MetaStrings. */
 
@@ -239,47 +240,27 @@ export class MetaStringDecoder {
       case EXTENDED_ENCODING_UTF8:
         return new TextDecoder().decode(payload);
       case EXTENDED_ENCODING_NUMBER_STRING:
-        return this.decodeNumberString(payload);
+        return this.decodeNumberString(payload, false);
+      case EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING:
+        return this.decodeNumberString(payload, true);
       default:
         throw new Error("Unexpected extended encoding flag: " + actual);
     }
   }
 
-  private decodeNumberString(payload: Uint8Array) {
+  private decodeNumberString(payload: Uint8Array, negative: boolean) {
     if (!payload.length) {
       return "";
     }
-    let negative = (payload[0] & 0x80) !== 0;
-    let bytes = Array.from(payload);
-    if (negative) {
-      for (let i = 0; i < bytes.length; i++) {
-        bytes[i] = (~bytes[i]) & 0xFF;
-      }
-      let carry = 1;
-      for (let i = bytes.length - 1; i >= 0; i--) {
-        const sum = bytes[i] + carry;
-        bytes[i] = sum & 0xFF;
-        carry = sum >> 8;
-        if (!carry) {
-          break;
-        }
-      }
-      while (bytes.length > 1 && bytes[0] === 0) {
-        bytes.shift();
-      }
-    } else {
-      while (bytes.length > 1 && bytes[0] === 0) {
-        bytes.shift();
-      }
+    if (payload.length > 8) {
+      throw new Error("NUMBER_STRING payload length exceeds uint64 size: " + payload.length);
     }
     let value = 0n;
-    for (const b of bytes) {
-      value = (value << 8n) | BigInt(b);
+    for (let i = payload.length - 1; i >= 0; i--) {
+      value = (value << 8n) | BigInt(payload[i]);
     }
-    if (negative && value !== 0n) {
-      value = -value;
-    }
-    return value.toString();
+    const result = value.toString();
+    return negative ? "-" + result : result;
   }
 }
 
@@ -335,7 +316,7 @@ export class MetaStringEncoder {
         Encoding.EXTENDED,
         this.specialChar1,
         this.specialChar2,
-        this.encodeNumberString(input));
+        this.encodeNumberString(input) ?? this.encodeExtendedUtf8(input));
     }
     if (!this.isLatin1(input)) {
       return new MetaString(
@@ -464,7 +445,10 @@ export class MetaStringEncoder {
 
   private encodeExtended(input: string) {
     if (this.isNumberString(input)) {
-      return this.encodeNumberString(input);
+      const encoded = this.encodeNumberString(input);
+      if (encoded) {
+        return encoded;
+      }
     }
     return this.encodeExtendedUtf8(input);
   }
@@ -478,47 +462,40 @@ export class MetaStringEncoder {
   }
 
   private encodeNumberString(input: string) {
-    let value = BigInt(input);
-    const negative = value < 0n;
-    if (negative) {
-      value = -value;
+    const negative = input[0] === "-";
+    const digits = negative ? input.slice(1) : input;
+    const value = this.parseUint64Digits(digits);
+    if (value === null) {
+      return null;
     }
-    let magnitude: number[] = [];
-    if (value === 0n) {
-      magnitude = [0];
-    } else {
-      while (value > 0n) {
-        magnitude.push(Number(value & 0xFFn));
-        value >>= 8n;
-      }
-      magnitude.reverse();
-    }
-    if (negative) {
-      for (let i = 0; i < magnitude.length; i++) {
-        magnitude[i] = (~magnitude[i]) & 0xFF;
-      }
-      let carry = 1;
-      for (let i = magnitude.length - 1; i >= 0; i--) {
-        const sum = magnitude[i] + carry;
-        magnitude[i] = sum & 0xFF;
-        carry = sum >> 8;
-        if (!carry) {
-          break;
-        }
-      }
-      if (carry) {
-        magnitude.unshift(0xFF);
-      }
-      while (magnitude.length > 1 && magnitude[0] === 0xFF && (magnitude[1] & 0x80) !== 0) {
-        magnitude.shift();
-      }
-    } else if ((magnitude[0] & 0x80) !== 0) {
-      magnitude.unshift(0);
-    }
-    const bytes = new Uint8Array(magnitude.length + 1);
-    bytes[0] = EXTENDED_ENCODING_NUMBER_STRING;
-    bytes.set(magnitude, 1);
+    let v = value;
+    const payload: number[] = [];
+    do {
+      payload.push(Number(v & 0xFFn));
+      v >>= 8n;
+    } while (v !== 0n);
+    const encoding = negative ? EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING : EXTENDED_ENCODING_NUMBER_STRING;
+    const bytes = new Uint8Array(payload.length + 1);
+    bytes[0] = encoding;
+    bytes.set(payload, 1);
     return bytes;
+  }
+
+  private parseUint64Digits(digits: string): bigint | null {
+    if (!digits.length) {
+      return null;
+    }
+    const trimmed = digits.replace(/^0+/, "");
+    if (!trimmed.length) {
+      return 0n;
+    }
+    if (trimmed.length > 20) {
+      return null;
+    }
+    if (trimmed.length === 20 && trimmed > "18446744073709551615") {
+      return null;
+    }
+    return BigInt(trimmed);
   }
 
   private computeStatistics(chars: string[]) {

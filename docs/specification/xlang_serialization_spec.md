@@ -579,14 +579,19 @@ This compression significantly reduces the size of type metadata in serialized d
 When encoding type is `EXTENDED`, the encoded bytes start with a 1-byte payload
 encoding flag:
 
-| Value | Payload Encoding | Description                                                                    |
-| ----- | ---------------- | ------------------------------------------------------------------------------ |
-| 0     | UTF8             | UTF-8 bytes of the string                                                      |
-| 1     | NUMBER_STRING    | Two's-complement signed integer bytes (big-endian) of the decimal string value |
-| other | reserved         | Reserved for future extensions                                                 |
+| Value | Payload Encoding       | Description                                                           |
+| ----- | ---------------------- | --------------------------------------------------------------------- |
+| 0     | UTF8                   | UTF-8 bytes of the string                                             |
+| 1     | NUMBER_STRING          | Unsigned uint64 encoded as little-endian minimal bytes                |
+| 2     | NEGATIVE_NUMBER_STRING | Absolute value encoded as NUMBER_STRING, with a leading `-` on decode |
+| other | reserved               | Reserved for future extensions                                        |
 
-`NUMBER_STRING` supports negative values (e.g. `-324345545454`). Decoding yields the
-canonical decimal representation of the numeric value.
+`NUMBER_STRING` encodes numeric strings in the range `[0, 2^64-1]`. The payload length
+must be 1–8 bytes. `NEGATIVE_NUMBER_STRING` is used when the input starts with `-` and
+encodes the absolute value with the same uint64 rules; decoding prepends `-`, yielding
+the canonical decimal representation.
+
+If parsing fails or the value is out of range, encoders must fall back to UTF8 payloads.
 
 ### Character Mapping Tables
 
@@ -671,8 +676,10 @@ Example: `MyType` → `|my|type` → encoded with LOWER_SPECIAL
 
 ```
 function choose_encoding(str):
+    if str matches /^-?[0-9]+$/ and parse_uint64(str without leading '-'):
+        return EXTENDED  // NUMBER_STRING or NEGATIVE_NUMBER_STRING payload
     if str matches /^-?[0-9]+$/:
-        return EXTENDED  // NUMBER_STRING payload
+        return EXTENDED  // fallback to UTF8 payload
 
     if all chars in str are in [a-z . _ $ |]:
         return LOWER_SPECIAL

@@ -20,6 +20,7 @@ from pyfory.meta.metastring import (
     MetaStringEncoder,
     MetaStringDecoder,
     Encoding,
+    EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING,
     EXTENDED_ENCODING_NUMBER_STRING,
     EXTENDED_ENCODING_UTF8,
 )
@@ -174,7 +175,7 @@ def test_negative_number_string_encoding():
     test_string = "-324345545454"
     metastring = encoder.encode(test_string)
     assert metastring.encoding == Encoding.EXTENDED
-    assert metastring.encoded_data[0] == EXTENDED_ENCODING_NUMBER_STRING
+    assert metastring.encoded_data[0] == EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING
     decoded_string = decoder.decode(metastring.encoded_data, metastring.encoding)
     assert decoded_string == test_string
 

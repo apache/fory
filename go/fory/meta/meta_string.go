@@ -31,8 +31,9 @@ const (
 )
 
 const (
-	ExtendedEncodingUTF8         byte = 0
-	ExtendedEncodingNumberString byte = 1
+	ExtendedEncodingUTF8                 byte = 0
+	ExtendedEncodingNumberString         byte = 1
+	ExtendedEncodingNegativeNumberString byte = 2
 )
 
 // MetaString saves the serialized data

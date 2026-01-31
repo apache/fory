@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -50,119 +51,64 @@ bool is_number_string(const std::string &input) {
   return true;
 }
 
-bool is_all_zero(const std::vector<uint8_t> &bytes) {
-  for (uint8_t b : bytes) {
-    if (b != 0) {
+bool try_parse_uint64(const std::string &digits, uint64_t *value) {
+  if (digits.empty()) {
+    return false;
+  }
+  uint64_t result = 0;
+  const uint64_t max = std::numeric_limits<uint64_t>::max();
+  for (char c : digits) {
+    if (!std::isdigit(static_cast<unsigned char>(c))) {
       return false;
     }
+    const uint64_t digit = static_cast<uint64_t>(c - '0');
+    if (result > (max - digit) / 10) {
+      return false;
+    }
+    result = result * 10 + digit;
   }
+  *value = result;
   return true;
 }
 
-std::vector<uint8_t> encode_decimal_to_bytes(const std::string &digits) {
-  std::vector<uint8_t> magnitude(1, 0);
-  for (char c : digits) {
-    uint16_t carry = static_cast<uint16_t>(c - '0');
-    for (size_t i = magnitude.size(); i-- > 0;) {
-      uint16_t value = static_cast<uint16_t>(magnitude[i]) * 10 + carry;
-      magnitude[i] = static_cast<uint8_t>(value & 0xFF);
-      carry = value >> 8;
-    }
-    while (carry != 0) {
-      magnitude.insert(magnitude.begin(), static_cast<uint8_t>(carry & 0xFF));
-      carry >>= 8;
-    }
-  }
-  while (magnitude.size() > 1 && magnitude[0] == 0) {
-    magnitude.erase(magnitude.begin());
-  }
-  return magnitude;
-}
-
-std::vector<uint8_t> encode_number_string(const std::string &input) {
+bool try_encode_number_string(const std::string &input,
+                              std::vector<uint8_t> *bytes) {
   bool negative = !input.empty() && input[0] == '-';
-  std::string digits = negative ? input.substr(1) : input;
-  std::vector<uint8_t> magnitude = encode_decimal_to_bytes(digits);
-  if (is_all_zero(magnitude)) {
-    negative = false;
+  const std::string digits = negative ? input.substr(1) : input;
+  uint64_t value = 0;
+  if (!try_parse_uint64(digits, &value)) {
+    return false;
   }
-
-  if (negative) {
-    for (uint8_t &b : magnitude) {
-      b = static_cast<uint8_t>(~b);
-    }
-    int carry = 1;
-    for (size_t i = magnitude.size(); i-- > 0;) {
-      int sum = static_cast<int>(magnitude[i]) + carry;
-      magnitude[i] = static_cast<uint8_t>(sum & 0xFF);
-      carry = sum >> 8;
-    }
-    if (carry != 0) {
-      magnitude.insert(magnitude.begin(), 0xFF);
-    }
-    while (magnitude.size() > 1 && magnitude[0] == 0xFF &&
-           (magnitude[1] & 0x80) != 0) {
-      magnitude.erase(magnitude.begin());
-    }
-  } else if ((magnitude[0] & 0x80) != 0) {
-    magnitude.insert(magnitude.begin(), 0x00);
-  }
-
-  std::vector<uint8_t> bytes;
-  bytes.reserve(magnitude.size() + 1);
-  bytes.push_back(static_cast<uint8_t>(MetaExtendedEncoding::NUMBER_STRING));
-  bytes.insert(bytes.end(), magnitude.begin(), magnitude.end());
-  return bytes;
+  bytes->clear();
+  bytes->reserve(9);
+  bytes->push_back(static_cast<uint8_t>(
+      negative ? MetaExtendedEncoding::NEGATIVE_NUMBER_STRING
+               : MetaExtendedEncoding::NUMBER_STRING));
+  do {
+    bytes->push_back(static_cast<uint8_t>(value & 0xFF));
+    value >>= 8;
+  } while (value != 0);
+  return true;
 }
 
-std::string decode_number_string(const uint8_t *data, size_t len) {
+Result<std::string, Error> decode_number_string(const uint8_t *data, size_t len,
+                                                bool negative) {
   if (len == 0) {
-    return "";
+    return std::string();
   }
-  std::vector<uint8_t> bytes(data, data + len);
-  bool negative = (bytes[0] & 0x80) != 0;
+  if (len > sizeof(uint64_t)) {
+    return Unexpected(Error::encoding_error(
+        "NUMBER_STRING payload length exceeds uint64 size"));
+  }
+  uint64_t value = 0;
+  for (size_t i = 0; i < len; ++i) {
+    value |= static_cast<uint64_t>(data[i]) << (8 * i);
+  }
+  std::string result = std::to_string(static_cast<unsigned long long>(value));
   if (negative) {
-    for (uint8_t &b : bytes) {
-      b = static_cast<uint8_t>(~b);
-    }
-    int carry = 1;
-    for (size_t i = bytes.size(); i-- > 0;) {
-      int sum = static_cast<int>(bytes[i]) + carry;
-      bytes[i] = static_cast<uint8_t>(sum & 0xFF);
-      carry = sum >> 8;
-    }
-    while (bytes.size() > 1 && bytes[0] == 0) {
-      bytes.erase(bytes.begin());
-    }
-  } else {
-    while (bytes.size() > 1 && bytes[0] == 0) {
-      bytes.erase(bytes.begin());
-    }
+    result.insert(result.begin(), '-');
   }
-
-  if (is_all_zero(bytes)) {
-    return "0";
-  }
-
-  std::string digits;
-  std::vector<uint8_t> temp = bytes;
-  while (!temp.empty()) {
-    uint32_t remainder = 0;
-    for (size_t i = 0; i < temp.size(); ++i) {
-      uint32_t value = (remainder << 8) | temp[i];
-      temp[i] = static_cast<uint8_t>(value / 10);
-      remainder = value % 10;
-    }
-    digits.push_back(static_cast<char>('0' + remainder));
-    while (!temp.empty() && temp[0] == 0) {
-      temp.erase(temp.begin());
-    }
-  }
-  std::reverse(digits.begin(), digits.end());
-  if (negative) {
-    digits.insert(digits.begin(), '-');
-  }
-  return digits;
+  return result;
 }
 
 std::vector<uint8_t> encode_extended_utf8(const std::string &input) {
@@ -230,9 +176,22 @@ MetaStringDecoder::decode(const uint8_t *data, size_t len,
       case MetaExtendedEncoding::UTF8:
         decoded.assign(reinterpret_cast<const char *>(payload), payload_len);
         break;
-      case MetaExtendedEncoding::NUMBER_STRING:
-        decoded = decode_number_string(payload, payload_len);
+      case MetaExtendedEncoding::NUMBER_STRING: {
+        auto res = decode_number_string(payload, payload_len, false);
+        if (!res.ok()) {
+          return Unexpected(res.error());
+        }
+        decoded = std::move(res.value());
         break;
+      }
+      case MetaExtendedEncoding::NEGATIVE_NUMBER_STRING: {
+        auto res = decode_number_string(payload, payload_len, true);
+        if (!res.ok()) {
+          return Unexpected(res.error());
+        }
+        decoded = std::move(res.value());
+        break;
+      }
       default:
         return Unexpected(Error::encoding_error(
             "Unsupported extended meta string encoding value: " +
@@ -717,7 +676,10 @@ MetaStringEncoder::encode(const std::string &input,
 
   if (is_number_string(input)) {
     result.encoding = MetaEncoding::EXTENDED;
-    result.bytes = encode_number_string(input);
+    if (try_encode_number_string(input, &result.bytes)) {
+      return result;
+    }
+    result.bytes = encode_extended_utf8(input);
     return result;
   }
 
