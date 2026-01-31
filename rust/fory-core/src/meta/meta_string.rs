@@ -211,10 +211,7 @@ fn encode_number_string(input: &str) -> Vec<u8> {
         if carry != 0 {
             magnitude.insert(0, 0xFF);
         }
-        while magnitude.len() > 1
-            && magnitude[0] == 0xFF
-            && (magnitude[1] & 0x80) != 0
-        {
+        while magnitude.len() > 1 && magnitude[0] == 0xFF && (magnitude[1] & 0x80) != 0 {
             magnitude.remove(0);
         }
     } else if (magnitude[0] & 0x80) != 0 {

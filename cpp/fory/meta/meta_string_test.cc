@@ -192,8 +192,8 @@ TEST_F(MetaStringTest, DecodeExtendedUtf8) {
   encoded.reserve(input.size() + 1);
   encoded.push_back(static_cast<uint8_t>(MetaExtendedEncoding::UTF8));
   encoded.insert(encoded.end(), input.begin(), input.end());
-  auto result = decoder_.decode(encoded.data(), encoded.size(),
-                                MetaEncoding::EXTENDED);
+  auto result =
+      decoder_.decode(encoded.data(), encoded.size(), MetaEncoding::EXTENDED);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result.value(), input);
 }

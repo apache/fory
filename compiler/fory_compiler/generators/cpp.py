@@ -1868,9 +1868,7 @@ class CppGenerator(BaseGenerator):
         if self.should_register_by_id(enum):
             lines.append(f"    fory.register_enum<{code_name}>({enum.type_id});")
         elif auto_name is not None:
-            lines.append(
-                f'    fory.register_enum<{code_name}>("", "{auto_name}");'
-            )
+            lines.append(f'    fory.register_enum<{code_name}>("", "{auto_name}");')
         else:
             ns = self.package or "default"
             lines.append(f'    fory.register_enum<{code_name}>("{ns}", "{type_name}");')
@@ -1904,9 +1902,7 @@ class CppGenerator(BaseGenerator):
         if self.should_register_by_id(message):
             lines.append(f"    fory.register_struct<{code_name}>({message.type_id});")
         elif auto_name is not None:
-            lines.append(
-                f'    fory.register_struct<{code_name}>("", "{auto_name}");'
-            )
+            lines.append(f'    fory.register_struct<{code_name}>("", "{auto_name}");')
         else:
             ns = self.package or "default"
             lines.append(
@@ -1924,9 +1920,7 @@ class CppGenerator(BaseGenerator):
         if self.should_register_by_id(union):
             lines.append(f"    fory.register_union<{code_name}>({union.type_id});")
         elif auto_name is not None:
-            lines.append(
-                f'    fory.register_union<{code_name}>("", "{auto_name}");'
-            )
+            lines.append(f'    fory.register_union<{code_name}>("", "{auto_name}");')
         else:
             ns = self.package or "default"
             lines.append(

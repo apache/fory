@@ -55,11 +55,11 @@ def murmurhash3_32(data: bytes, seed: int = 0) -> int:
         h1 ^= k1
 
     h1 ^= length
-    h1 ^= (h1 >> 16)
+    h1 ^= h1 >> 16
     h1 = (h1 * 0x85EBCA6B) & 0xFFFFFFFF
-    h1 ^= (h1 >> 13)
+    h1 ^= h1 >> 13
     h1 = (h1 * 0xC2B2AE35) & 0xFFFFFFFF
-    h1 ^= (h1 >> 16)
+    h1 ^= h1 >> 16
 
     return h1
 

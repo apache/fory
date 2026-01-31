@@ -20,9 +20,9 @@
 package org.apache.fory.meta;
 
 import static org.apache.fory.meta.MetaString.Encoding.ALL_TO_LOWER_SPECIAL;
+import static org.apache.fory.meta.MetaString.Encoding.EXTENDED;
 import static org.apache.fory.meta.MetaString.Encoding.FIRST_TO_LOWER_SPECIAL;
 import static org.apache.fory.meta.MetaString.Encoding.LOWER_UPPER_DIGIT_SPECIAL;
-import static org.apache.fory.meta.MetaString.Encoding.EXTENDED;
 
 import java.util.Arrays;
 import java.util.List;

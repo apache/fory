@@ -100,8 +100,7 @@ std::vector<uint8_t> encode_number_string(const std::string &input) {
     if (carry != 0) {
       magnitude.insert(magnitude.begin(), 0xFF);
     }
-    while (magnitude.size() > 1 &&
-           magnitude[0] == 0xFF &&
+    while (magnitude.size() > 1 && magnitude[0] == 0xFF &&
            (magnitude[1] & 0x80) != 0) {
       magnitude.erase(magnitude.begin());
     }

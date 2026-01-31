@@ -58,19 +58,11 @@ public class MetaStringEncoder {
     }
     if (isNumberString(input)) {
       return new MetaString(
-          input,
-          Encoding.EXTENDED,
-          specialChar1,
-          specialChar2,
-          encodeNumberString(input));
+          input, Encoding.EXTENDED, specialChar1, specialChar2, encodeNumberString(input));
     }
     if (!StringUtils.isLatin(input.toCharArray())) {
       return new MetaString(
-          input,
-          Encoding.EXTENDED,
-          specialChar1,
-          specialChar2,
-          encodeExtendedUtf8(input));
+          input, Encoding.EXTENDED, specialChar1, specialChar2, encodeExtendedUtf8(input));
     }
     Encoding encoding = computeEncoding(input, encodings);
     return encode(input, encoding);

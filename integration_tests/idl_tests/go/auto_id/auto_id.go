@@ -21,25 +21,25 @@ package auto_id
 
 import (
 	"fmt"
-	"reflect"
-	"sync"
 	fory "github.com/apache/fory/go/fory"
 	threadsafe "github.com/apache/fory/go/fory/threadsafe"
+	"reflect"
+	"sync"
 )
 
 type Status int32
 
 const (
 	StatusUnknown Status = 0
-	StatusOk Status = 1
+	StatusOk      Status = 1
 )
 
 type WrapperCase uint32
 
 const (
-	WrapperCaseInvalid WrapperCase = WrapperCase(0)
+	WrapperCaseInvalid  WrapperCase = WrapperCase(0)
 	WrapperCaseEnvelope WrapperCase = 1
-	WrapperCaseRaw WrapperCase = 2
+	WrapperCaseRaw      WrapperCase = 2
 )
 
 // Type ID 1471345060 is generated from auto_id.Wrapper
@@ -60,7 +60,7 @@ func RawWrapper(v string) Wrapper {
 }
 
 func (u Wrapper) Case() WrapperCase { return u.case_ }
-func (u Wrapper) IsSet() bool { return u.case_ != WrapperCaseInvalid && u.value != nil }
+func (u Wrapper) IsSet() bool       { return u.case_ != WrapperCaseInvalid && u.value != nil }
 
 func (u Wrapper) AsEnvelope() (*Envelope, bool) {
 	if u.case_ != WrapperCaseEnvelope {
@@ -123,9 +123,9 @@ func (u Wrapper) Visit(visitor WrapperVisitor) error {
 }
 
 type WrapperVisitor struct {
-	Invalid func() error
+	Invalid  func() error
 	Envelope func(*Envelope) error
-	Raw func(string) error
+	Raw      func(string) error
 }
 
 func (u Wrapper) ForyUnionMarker() {}
@@ -149,7 +149,7 @@ type Envelope_DetailCase uint32
 const (
 	Envelope_DetailCaseInvalid Envelope_DetailCase = Envelope_DetailCase(0)
 	Envelope_DetailCasePayload Envelope_DetailCase = 1
-	Envelope_DetailCaseNote Envelope_DetailCase = 2
+	Envelope_DetailCaseNote    Envelope_DetailCase = 2
 )
 
 // Type ID 1609214087 is generated from auto_id.Envelope.Detail
@@ -170,7 +170,7 @@ func NoteEnvelope_Detail(v string) Envelope_Detail {
 }
 
 func (u Envelope_Detail) Case() Envelope_DetailCase { return u.case_ }
-func (u Envelope_Detail) IsSet() bool { return u.case_ != Envelope_DetailCaseInvalid && u.value != nil }
+func (u Envelope_Detail) IsSet() bool               { return u.case_ != Envelope_DetailCaseInvalid && u.value != nil }
 
 func (u Envelope_Detail) AsPayload() (*Envelope_Payload, bool) {
 	if u.case_ != Envelope_DetailCasePayload {
@@ -235,7 +235,7 @@ func (u Envelope_Detail) Visit(visitor Envelope_DetailVisitor) error {
 type Envelope_DetailVisitor struct {
 	Invalid func() error
 	Payload func(*Envelope_Payload) error
-	Note func(string) error
+	Note    func(string) error
 }
 
 func (u Envelope_Detail) ForyUnionMarker() {}
@@ -269,10 +269,10 @@ func (m *Envelope_Payload) FromBytes(data []byte) error {
 
 // Type ID 3022445236 is generated from auto_id.Envelope
 type Envelope struct {
-	Id string `fory:"id=1"`
+	Id      string            `fory:"id=1"`
 	Payload *Envelope_Payload `fory:"id=2,nullable"`
-	Detail Envelope_Detail `fory:"id=3"`
-	Status Status `fory:"id=4"`
+	Detail  Envelope_Detail   `fory:"id=3"`
+	Status  Status            `fory:"id=4"`
 }
 
 func (m *Envelope) ToBytes() ([]byte, error) {
@@ -311,7 +311,7 @@ func createFory() *fory.Fory {
 }
 
 var (
-	foryOnce sync.Once
+	foryOnce     sync.Once
 	foryInstance *threadsafe.Fory
 )
 

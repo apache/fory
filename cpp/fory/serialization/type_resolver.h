@@ -1125,8 +1125,8 @@ template <typename T>
 Result<void, Error> TypeResolver::register_ext_type_by_id(uint32_t type_id) {
   check_registration_thread();
   if (type_id > 0x7FFFFFFF) {
-    return Unexpected(Error::invalid(
-        "type_id must be in range [0, 0x7fffffff] for register_ext_type_by_id"));
+    return Unexpected(Error::invalid("type_id must be in range [0, 0x7fffffff] "
+                                     "for register_ext_type_by_id"));
   }
 
   constexpr uint64_t ctid = type_index<T>();
