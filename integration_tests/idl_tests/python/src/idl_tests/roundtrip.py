@@ -462,9 +462,7 @@ def local_roundtrip_collections(
 
     decoded_array_union = fory.deserialize(fory.serialize(array_union_value))
     assert isinstance(decoded_array_union, collection.NumericCollectionArrayUnion)
-    assert_numeric_collection_array_union_equal(
-        decoded_array_union, array_union_value
-    )
+    assert_numeric_collection_array_union_equal(decoded_array_union, array_union_value)
 
 
 def file_roundtrip_collections(
@@ -503,9 +501,7 @@ def file_roundtrip_collections(
         payload = Path(array_union_file).read_bytes()
         decoded = fory.deserialize(payload)
         assert isinstance(decoded, collection.NumericCollectionArrayUnion)
-        assert_numeric_collection_array_union_equal(
-            decoded, array_union_value
-        )
+        assert_numeric_collection_array_union_equal(decoded, array_union_value)
         Path(array_union_file).write_bytes(fory.serialize(decoded))
 
 

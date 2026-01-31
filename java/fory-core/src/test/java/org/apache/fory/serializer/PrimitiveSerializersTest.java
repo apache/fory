@@ -188,8 +188,7 @@ public class PrimitiveSerializersTest extends ForyTestBase {
 
   @Test(dataProvider = "compatibleMode")
   public void testPrimitiveArrayListRoundTrip(boolean compatible) {
-    CompatibleMode mode =
-        compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT;
+    CompatibleMode mode = compatible ? CompatibleMode.COMPATIBLE : CompatibleMode.SCHEMA_CONSISTENT;
     Fory arrayFory =
         Fory.builder()
             .withLanguage(Language.XLANG)

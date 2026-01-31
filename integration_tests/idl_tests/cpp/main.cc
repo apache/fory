@@ -313,9 +313,8 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
   }
 
   collection::NumericCollections collections;
-  *collections.mutable_int8_values() = {static_cast<int8_t>(1),
-                                        static_cast<int8_t>(-2),
-                                        static_cast<int8_t>(3)};
+  *collections.mutable_int8_values() = {
+      static_cast<int8_t>(1), static_cast<int8_t>(-2), static_cast<int8_t>(3)};
   *collections.mutable_int16_values() = {static_cast<int16_t>(100),
                                          static_cast<int16_t>(-200),
                                          static_cast<int16_t>(300)};
@@ -335,9 +334,8 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
           std::vector<int32_t>{7, 8, 9});
 
   collection::NumericCollectionsArray collections_array;
-  *collections_array.mutable_int8_values() = {static_cast<int8_t>(1),
-                                              static_cast<int8_t>(-2),
-                                              static_cast<int8_t>(3)};
+  *collections_array.mutable_int8_values() = {
+      static_cast<int8_t>(1), static_cast<int8_t>(-2), static_cast<int8_t>(3)};
   *collections_array.mutable_int16_values() = {static_cast<int16_t>(100),
                                                static_cast<int16_t>(-200),
                                                static_cast<int16_t>(300)};
@@ -383,7 +381,8 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
         fory::Error::invalid("collection array roundtrip mismatch"));
   }
 
-  FORY_TRY(collection_array_union_bytes, fory.serialize(collection_array_union));
+  FORY_TRY(collection_array_union_bytes,
+           fory.serialize(collection_array_union));
   FORY_TRY(collection_array_union_roundtrip,
            fory.deserialize<collection::NumericCollectionArrayUnion>(
                collection_array_union_bytes.data(),
@@ -554,9 +553,8 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
   const char *collection_file = std::getenv("DATA_FILE_COLLECTION");
   if (collection_file != nullptr && collection_file[0] != '\0') {
     FORY_TRY(payload, ReadFile(collection_file));
-    FORY_TRY(peer_collections,
-             fory.deserialize<collection::NumericCollections>(payload.data(),
-                                                              payload.size()));
+    FORY_TRY(peer_collections, fory.deserialize<collection::NumericCollections>(
+                                   payload.data(), payload.size()));
     if (!(peer_collections == collections)) {
       return fory::Unexpected(
           fory::Error::invalid("peer collection payload mismatch"));
@@ -568,9 +566,8 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
   const char *collection_union_file = std::getenv("DATA_FILE_COLLECTION_UNION");
   if (collection_union_file != nullptr && collection_union_file[0] != '\0') {
     FORY_TRY(payload, ReadFile(collection_union_file));
-    FORY_TRY(peer_union,
-             fory.deserialize<collection::NumericCollectionUnion>(
-                 payload.data(), payload.size()));
+    FORY_TRY(peer_union, fory.deserialize<collection::NumericCollectionUnion>(
+                             payload.data(), payload.size()));
     if (!(peer_union == collection_union)) {
       return fory::Unexpected(
           fory::Error::invalid("peer collection union payload mismatch"));
@@ -582,9 +579,8 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
   const char *collection_array_file = std::getenv("DATA_FILE_COLLECTION_ARRAY");
   if (collection_array_file != nullptr && collection_array_file[0] != '\0') {
     FORY_TRY(payload, ReadFile(collection_array_file));
-    FORY_TRY(peer_array,
-             fory.deserialize<collection::NumericCollectionsArray>(
-                 payload.data(), payload.size()));
+    FORY_TRY(peer_array, fory.deserialize<collection::NumericCollectionsArray>(
+                             payload.data(), payload.size()));
     if (!(peer_array == collections_array)) {
       return fory::Unexpected(
           fory::Error::invalid("peer collection array payload mismatch"));
