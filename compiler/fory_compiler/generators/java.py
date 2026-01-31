@@ -726,7 +726,7 @@ class JavaGenerator(BaseGenerator):
                 isinstance(field.field_type, ListType)
                 and isinstance(field.field_type.element_type, PrimitiveType)
                 and field.field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
-                and not self.use_java_array(field)
+                and not self.java_array(field)
             ):
                 kind = field.field_type.element_type.kind
                 wrap_list_type = self.PRIMITIVE_LIST_MAP[kind]
@@ -1120,7 +1120,7 @@ class JavaGenerator(BaseGenerator):
                 ):
                     if (
                         field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
-                        and not self.use_java_array(field)
+                        and not self.java_array(field)
                     ):
                         return self.PRIMITIVE_LIST_MAP[field_type.element_type.kind]
                     return self.PRIMITIVE_ARRAY_MAP[field_type.element_type.kind]
@@ -1167,7 +1167,7 @@ class JavaGenerator(BaseGenerator):
                 ):
                     if (
                         field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
-                        and not self.use_java_array(field)
+                        and not self.java_array(field)
                     ):
                         imports.add(
                             "org.apache.fory.collection."
@@ -1210,16 +1210,16 @@ class JavaGenerator(BaseGenerator):
         resolved = self.schema.get_type(field_type.name)
         return isinstance(resolved, (Message, Union))
 
-    def use_java_array(self, field: Optional[Field]) -> bool:
+    def java_array(self, field: Optional[Field]) -> bool:
         if field is None:
             return False
-        return bool(field.options.get("use_java_array"))
+        return bool(field.options.get("java_array"))
 
     def collect_array_imports(self, field: Field, imports: Set[str]) -> None:
         """Collect imports for primitive array type annotations."""
         if not isinstance(field.field_type, ListType):
             return
-        if not self.use_java_array(field):
+        if not self.java_array(field):
             return
         if field.element_optional or field.element_ref:
             return
@@ -1297,7 +1297,7 @@ class JavaGenerator(BaseGenerator):
         """Return array type annotation for primitive list fields."""
         if not isinstance(field.field_type, ListType):
             return None
-        if not self.use_java_array(field):
+        if not self.java_array(field):
             return None
         if field.element_optional or field.element_ref:
             return None
@@ -1339,7 +1339,7 @@ class JavaGenerator(BaseGenerator):
             if isinstance(field.field_type.element_type, PrimitiveType):
                 if (
                     field.field_type.element_type.kind in self.PRIMITIVE_LIST_MAP
-                    and not self.use_java_array(field)
+                    and not self.java_array(field)
                 ):
                     return False
                 return (

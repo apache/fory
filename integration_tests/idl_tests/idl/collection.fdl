@@ -44,27 +44,27 @@ union NumericCollectionUnion [id=211] {
 }
 
 message NumericCollectionsArray [id=212] {
-    repeated int8 int8_values = 1 [use_java_array = true];
-    repeated int16 int16_values = 2 [use_java_array = true];
-    repeated int32 int32_values = 3 [use_java_array = true];
-    repeated int64 int64_values = 4 [use_java_array = true];
-    repeated uint8 uint8_values = 5 [use_java_array = true];
-    repeated uint16 uint16_values = 6 [use_java_array = true];
-    repeated uint32 uint32_values = 7 [use_java_array = true];
-    repeated uint64 uint64_values = 8 [use_java_array = true];
-    repeated float32 float32_values = 9 [use_java_array = true];
-    repeated float64 float64_values = 10 [use_java_array = true];
+    repeated int8 int8_values = 1 [java_array = true];
+    repeated int16 int16_values = 2 [java_array = true];
+    repeated int32 int32_values = 3 [java_array = true];
+    repeated int64 int64_values = 4 [java_array = true];
+    repeated uint8 uint8_values = 5 [java_array = true];
+    repeated uint16 uint16_values = 6 [java_array = true];
+    repeated uint32 uint32_values = 7 [java_array = true];
+    repeated uint64 uint64_values = 8 [java_array = true];
+    repeated float32 float32_values = 9 [java_array = true];
+    repeated float64 float64_values = 10 [java_array = true];
 }
 
 union NumericCollectionArrayUnion [id=213] {
-    repeated int8 int8_values = 1 [use_java_array = true];
-    repeated int16 int16_values = 2 [use_java_array = true];
-    repeated int32 int32_values = 3 [use_java_array = true];
-    repeated int64 int64_values = 4 [use_java_array = true];
-    repeated uint8 uint8_values = 5 [use_java_array = true];
-    repeated uint16 uint16_values = 6 [use_java_array = true];
-    repeated uint32 uint32_values = 7 [use_java_array = true];
-    repeated uint64 uint64_values = 8 [use_java_array = true];
-    repeated float32 float32_values = 9 [use_java_array = true];
-    repeated float64 float64_values = 10 [use_java_array = true];
+    repeated int8 int8_values = 1 [java_array = true];
+    repeated int16 int16_values = 2 [java_array = true];
+    repeated int32 int32_values = 3 [java_array = true];
+    repeated int64 int64_values = 4 [java_array = true];
+    repeated uint8 uint8_values = 5 [java_array = true];
+    repeated uint16 uint16_values = 6 [java_array = true];
+    repeated uint32 uint32_values = 7 [java_array = true];
+    repeated uint64 uint64_values = 8 [java_array = true];
+    repeated float32 float32_values = 9 [java_array = true];
+    repeated float64 float64_values = 10 [java_array = true];
 }

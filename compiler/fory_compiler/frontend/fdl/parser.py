@@ -67,7 +67,7 @@ KNOWN_FIELD_OPTIONS: Set[str] = {
     "nullable",
     "thread_safe_pointer",
     "weak_ref",
-    "use_java_array",
+    "java_array",
 }
 
 KNOWN_REF_OPTIONS: Set[str] = {

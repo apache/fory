@@ -145,7 +145,31 @@ public final class Uint8List extends AbstractList<Uint8> implements RandomAccess
     return array[index];
   }
 
-  /** Returns the live backing array; elements beyond {@code size()} are undefined. */
+  /**
+   * Returns {@code true} if this list is backed by an accessible heap array.
+   *
+   * <p>If this method returns {@code true}, then {@link #getArray()} may be safely called to obtain
+   * the underlying storage without incurring a data copy.
+   *
+   * @return {@code true} if this list is backed by a primitive array and is not read-only
+   */
+  public boolean hasArray() {
+    return array != null;
+  }
+
+  /**
+   * Returns the underlying heap array that backs this list.
+   *
+   * <p><b>Warning:</b> Users should check {@link #hasArray()} before calling this method. If {@code
+   * hasArray()} returns {@code false}, this method will return a copy that does not reflect
+   * subsequent mutations.
+   *
+   * <p>Modifying the returned array will directly affect the list, and vice versa. Elements beyond
+   * {@link #size()} are undefined.
+   *
+   * @return the backing array
+   * @throws UnsupportedOperationException if this list is not backed by an accessible heap array
+   */
   public byte[] getArray() {
     return array;
   }
