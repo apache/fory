@@ -263,8 +263,16 @@ fory::Result<void, fory::Error> RunRoundTrip(bool compatible) {
         fory::Error::invalid("auto_id envelope roundtrip mismatch"));
   }
 
+  auto_id::Envelope auto_envelope_for_wrapper;
+  auto_envelope_for_wrapper.set_id(auto_envelope.id());
+  if (auto_envelope.has_payload()) {
+    *auto_envelope_for_wrapper.mutable_payload() = auto_envelope.payload();
+  }
+  *auto_envelope_for_wrapper.mutable_detail() = auto_envelope.detail();
+  auto_envelope_for_wrapper.set_status(auto_envelope.status());
+
   auto_id::Wrapper auto_wrapper =
-      auto_id::Wrapper::envelope(std::move(auto_envelope));
+      auto_id::Wrapper::envelope(std::move(auto_envelope_for_wrapper));
   FORY_TRY(auto_wrapper_bytes, fory.serialize(auto_wrapper));
   FORY_TRY(auto_wrapper_roundtrip,
            fory.deserialize<auto_id::Wrapper>(auto_wrapper_bytes.data(),

@@ -34,7 +34,7 @@ def test_metastring_resolver():
     # Test 2: Manually constructed MetaStringBytes
     metabytes2 = MetaStringBytes(
         data=b"\xbf\x05\xa4q\xa9\x92S\x96\xa6IOr\x9ch)\x80",
-        hashcode=-5456063526933366015,
+        hashcode=-2270219110992250879,
     )
     resolver.write_meta_string_bytes(buffer, metabytes2)
     assert resolver.read_meta_string_bytes(buffer) == metabytes2
