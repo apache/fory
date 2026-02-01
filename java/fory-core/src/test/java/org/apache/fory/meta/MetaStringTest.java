@@ -109,7 +109,7 @@ public class MetaStringTest {
       try {
         String str = createString(i, specialChar1, specialChar2);
         MetaString metaString = encoder.encode(str);
-        assertNotSame(metaString.getEncoding(), MetaString.Encoding.EXTENDED);
+        assertNotSame(metaString.getEncoding(), MetaString.Encoding.UTF_8);
         assertEquals(metaString.getString(), str);
         assertEquals(metaString.getSpecialChar1(), specialChar1);
         assertEquals(metaString.getSpecialChar2(), specialChar2);
@@ -129,7 +129,7 @@ public class MetaStringTest {
       {MetaString.Encoding.LOWER_UPPER_DIGIT_SPECIAL},
       {MetaString.Encoding.FIRST_TO_LOWER_SPECIAL},
       {MetaString.Encoding.ALL_TO_LOWER_SPECIAL},
-      {MetaString.Encoding.EXTENDED}
+      {MetaString.Encoding.UTF_8}
     };
   }
 
@@ -149,7 +149,7 @@ public class MetaStringTest {
     String testString = "abcdefABCDEF1234!@#";
     MetaStringEncoder encoder = new MetaStringEncoder('_', '$');
     MetaString encodedMetaString = encoder.encode(testString);
-    assertSame(encodedMetaString.getEncoding(), MetaString.Encoding.EXTENDED);
+    assertSame(encodedMetaString.getEncoding(), MetaString.Encoding.UTF_8);
   }
 
   @Test
@@ -183,9 +183,7 @@ public class MetaStringTest {
     String testString = "你好，世界"; // Non-Latin characters
     MetaStringEncoder encoder = new MetaStringEncoder('_', '$');
     MetaString encodedMetaString = encoder.encode(testString);
-    assertEquals(encodedMetaString.getEncoding(), MetaString.Encoding.EXTENDED);
-    assertTrue(encodedMetaString.getBytes().length > 0);
-    assertEquals(encodedMetaString.getBytes()[0], MetaString.EXTENDED_ENCODING_UTF8);
+    assertEquals(encodedMetaString.getEncoding(), MetaString.Encoding.UTF_8);
 
     MetaStringDecoder decoder = new MetaStringDecoder('_', '$');
     String decodedString =
@@ -222,7 +220,7 @@ public class MetaStringTest {
     MetaStringEncoder encoder = new MetaStringEncoder('_', '$');
     String testString = "asciiOnly";
     MetaString encodedMetaString = encoder.encode(testString);
-    assertNotSame(encodedMetaString.getEncoding(), MetaString.Encoding.EXTENDED);
+    assertNotSame(encodedMetaString.getEncoding(), MetaString.Encoding.UTF_8);
     assertEquals(encodedMetaString.getEncoding(), MetaString.Encoding.ALL_TO_LOWER_SPECIAL);
   }
 
@@ -231,7 +229,7 @@ public class MetaStringTest {
     MetaStringEncoder encoder = new MetaStringEncoder('_', '$');
     String testString = "こんにちは"; // Non-ASCII string
     MetaString encodedMetaString = encoder.encode(testString);
-    assertEquals(encodedMetaString.getEncoding(), MetaString.Encoding.EXTENDED);
+    assertEquals(encodedMetaString.getEncoding(), MetaString.Encoding.UTF_8);
   }
 
   @Test
@@ -244,33 +242,5 @@ public class MetaStringTest {
     } catch (IllegalArgumentException e) {
       assertEquals(e.getMessage(), "Non-ASCII characters in meta string are not allowed");
     }
-  }
-
-  @Test
-  public void testNumberStringEncoding() {
-    MetaStringEncoder encoder = new MetaStringEncoder('_', '$');
-    String testString = "1234567890";
-    MetaString encoded = encoder.encode(testString);
-    assertEquals(encoded.getEncoding(), MetaString.Encoding.EXTENDED);
-    assertTrue(encoded.getBytes().length > 0);
-    assertEquals(encoded.getBytes()[0], MetaString.EXTENDED_ENCODING_NUMBER_STRING);
-
-    MetaStringDecoder decoder = new MetaStringDecoder('_', '$');
-    String decoded = decoder.decode(encoded.getBytes(), encoded.getEncoding());
-    assertEquals(decoded, testString);
-  }
-
-  @Test
-  public void testNegativeNumberStringEncoding() {
-    MetaStringEncoder encoder = new MetaStringEncoder('_', '$');
-    String testString = "-324345545454";
-    MetaString encoded = encoder.encode(testString);
-    assertEquals(encoded.getEncoding(), MetaString.Encoding.EXTENDED);
-    assertTrue(encoded.getBytes().length > 0);
-    assertEquals(encoded.getBytes()[0], MetaString.EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING);
-
-    MetaStringDecoder decoder = new MetaStringDecoder('_', '$');
-    String decoded = decoder.decode(encoded.getBytes(), encoded.getEncoding());
-    assertEquals(decoded, testString);
   }
 }

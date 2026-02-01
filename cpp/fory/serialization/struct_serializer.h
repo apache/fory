@@ -2845,10 +2845,9 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
       uint32_t tid = type_info->type_id;
 
       // Fast path: check if this is a simple STRUCT type (no meta needed)
-      uint32_t type_id_low = tid & 0xff;
-      if (type_id_low == static_cast<uint32_t>(TypeId::STRUCT)) {
+      if (tid == static_cast<uint32_t>(TypeId::STRUCT)) {
         // Simple STRUCT - just write the type_id directly
-        ctx.write_struct_type_id_direct(tid);
+        ctx.write_struct_type_id_direct(tid, type_info->user_type_id);
       } else {
         // Complex type (NAMED_STRUCT, COMPATIBLE_STRUCT, etc.) - use TypeInfo*
         ctx.write_struct_type_info(type_info);
@@ -2949,12 +2948,19 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
           if (FORY_PREDICT_FALSE(ctx.has_error())) {
             return T{};
           }
-          uint8_t remote_type_id_low = remote_type_id & 0xff;
+          uint32_t remote_user_type_id = 0;
+          if (::fory::needs_user_type_id(remote_type_id)) {
+            remote_user_type_id = ctx.read_var_uint32(ctx.error());
+            if (FORY_PREDICT_FALSE(ctx.has_error())) {
+              return T{};
+            }
+          }
           const bool remote_has_meta =
-              remote_type_id_low ==
+              remote_type_id ==
                   static_cast<uint8_t>(TypeId::COMPATIBLE_STRUCT) ||
-              remote_type_id_low ==
+              remote_type_id ==
                   static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT);
+          (void)remote_user_type_id;
           if (remote_has_meta) {
             // Read TypeMeta inline using streaming protocol
             auto remote_type_info_res = ctx.read_type_meta();
@@ -2991,23 +2997,42 @@ struct Serializer<T, std::enable_if_t<is_fory_serializable_v<T>>> {
 
           // FAST PATH: For simple numeric type IDs (not named types), we can
           // just read the varint and compare directly without hash lookup.
-          // Named types have type_id_low in ranges that require metadata
-          // parsing.
-          uint8_t expected_type_id_low = expected_type_id & 0xff;
-          if (expected_type_id_low !=
+          // Named types require metadata parsing.
+          if (expected_type_id !=
                   static_cast<uint8_t>(TypeId::NAMED_ENUM) &&
-              expected_type_id_low != static_cast<uint8_t>(TypeId::NAMED_EXT) &&
-              expected_type_id_low !=
-                  static_cast<uint8_t>(TypeId::NAMED_STRUCT)) {
+              expected_type_id != static_cast<uint8_t>(TypeId::NAMED_EXT) &&
+              expected_type_id !=
+                  static_cast<uint8_t>(TypeId::NAMED_STRUCT) &&
+              expected_type_id !=
+                  static_cast<uint8_t>(TypeId::NAMED_UNION) &&
+              expected_type_id !=
+                  static_cast<uint8_t>(TypeId::NAMED_COMPATIBLE_STRUCT)) {
             // Simple type ID - just read and compare varint directly
             uint32_t remote_type_id = ctx.read_var_uint32(ctx.error());
             if (FORY_PREDICT_FALSE(ctx.has_error())) {
               return T{};
             }
+            uint32_t remote_user_type_id = 0;
+            if (::fory::needs_user_type_id(remote_type_id)) {
+              remote_user_type_id = ctx.read_var_uint32(ctx.error());
+              if (FORY_PREDICT_FALSE(ctx.has_error())) {
+                return T{};
+              }
+            }
             if (remote_type_id != expected_type_id) {
               ctx.set_error(
                   Error::type_mismatch(remote_type_id, expected_type_id));
               return T{};
+            }
+            if (::fory::needs_user_type_id(expected_type_id)) {
+              if (type_info->user_type_id < 0 ||
+                  remote_user_type_id !=
+                      static_cast<uint32_t>(type_info->user_type_id)) {
+                ctx.set_error(Error::type_mismatch(
+                    remote_user_type_id,
+                    static_cast<uint32_t>(type_info->user_type_id)));
+                return T{};
+              }
             }
           } else {
             // Named type - need to parse full type info

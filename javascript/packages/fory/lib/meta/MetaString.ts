@@ -21,16 +21,12 @@ import { fromString } from "../platformBuffer";
 import { BinaryReader } from "../reader";
 
 export enum Encoding {
-  EXTENDED, // Extended encoding with payload encoding byte
+  UTF_8, // Using UTF-8 as the fallback
   LOWER_SPECIAL,
   LOWER_UPPER_DIGIT_SPECIAL,
   FIRST_TO_LOWER_SPECIAL,
   ALL_TO_LOWER_SPECIAL,
 }
-
-const EXTENDED_ENCODING_UTF8 = 0;
-const EXTENDED_ENCODING_NUMBER_STRING = 1;
-const EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING = 2;
 export class MetaString {
   /** Defines the types of supported encodings for MetaStrings. */
 
@@ -54,7 +50,7 @@ export class MetaString {
     this.specialChar1 = specialChar1;
     this.specialChar2 = specialChar2;
     this.bytes = bytes;
-    if (encoding != Encoding.EXTENDED) {
+    if (encoding != Encoding.UTF_8) {
       this.stripLastChar = (bytes[0] & 0x80) != 0;
     } else {
       this.stripLastChar = false;
@@ -109,8 +105,8 @@ export class MetaStringDecoder {
         return this.decodeRepFirstLowerSpecial(reader.bufferRef(len));
       case Encoding.ALL_TO_LOWER_SPECIAL:
         return this.decodeRepAllToLowerSpecial(reader.bufferRef(len));
-      case Encoding.EXTENDED:
-        return this.decodeExtended(reader.bufferRef(len));
+      case Encoding.UTF_8:
+        return reader.stringUtf8(len);
       default:
         throw new Error("Unexpected encoding flag: " + encoding);
     }
@@ -229,39 +225,6 @@ export class MetaStringDecoder {
     }
     return builder.join("");
   }
-
-  private decodeExtended(data: Uint8Array) {
-    if (!data.length) {
-      return "";
-    }
-    const actual = data[0];
-    const payload = data.subarray(1);
-    switch (actual) {
-      case EXTENDED_ENCODING_UTF8:
-        return new TextDecoder().decode(payload);
-      case EXTENDED_ENCODING_NUMBER_STRING:
-        return this.decodeNumberString(payload, false);
-      case EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING:
-        return this.decodeNumberString(payload, true);
-      default:
-        throw new Error("Unexpected extended encoding flag: " + actual);
-    }
-  }
-
-  private decodeNumberString(payload: Uint8Array, negative: boolean) {
-    if (!payload.length) {
-      return "";
-    }
-    if (payload.length > 8) {
-      throw new Error("NUMBER_STRING payload length exceeds uint64 size: " + payload.length);
-    }
-    let value = 0n;
-    for (let i = payload.length - 1; i >= 0; i--) {
-      value = (value << 8n) | BigInt(payload[i]);
-    }
-    const result = value.toString();
-    return negative ? "-" + result : result;
-  }
 }
 
 class StringStatistics {
@@ -299,7 +262,7 @@ export class MetaStringEncoder {
    * @return A MetaString object representing the encoded string.
    */
   public encode(input: string): MetaString {
-    return this.encodeByEncodings(input, [Encoding.ALL_TO_LOWER_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL, Encoding.LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.EXTENDED]);
+    return this.encodeByEncodings(input, [Encoding.ALL_TO_LOWER_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL, Encoding.LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.UTF_8]);
   }
 
   public isLatin1(str: string) {
@@ -308,23 +271,15 @@ export class MetaStringEncoder {
 
   public encodeByEncodings(input: string, encodings: Encoding[]) {
     if (!input) {
-      return new MetaString(input, Encoding.EXTENDED, this.specialChar1, this.specialChar2, new Uint8Array());
-    }
-    if (this.isNumberString(input)) {
-      return new MetaString(
-        input,
-        Encoding.EXTENDED,
-        this.specialChar1,
-        this.specialChar2,
-        this.encodeNumberString(input) ?? this.encodeExtendedUtf8(input));
+      return new MetaString(input, Encoding.UTF_8, this.specialChar1, this.specialChar2, new Uint8Array());
     }
     if (!this.isLatin1(input)) {
       return new MetaString(
         input,
-        Encoding.EXTENDED,
+        Encoding.UTF_8,
         this.specialChar1,
         this.specialChar2,
-        this.encodeExtendedUtf8(input));
+        new TextEncoder().encode(input));
     }
     const encoding = this.computeEncodingByEncodings(input, encodings);
     return this.encodeByEncoding(input, encoding);
@@ -338,11 +293,11 @@ export class MetaStringEncoder {
    * @return A MetaString object representing the encoded string.
    */
   public encodeByEncoding(input: string, encoding: Encoding) {
-    if (encoding != Encoding.EXTENDED && !this.isLatin1(input)) {
+    if (encoding != Encoding.UTF_8 && !this.isLatin1(input)) {
       throw new Error("Non-ASCII characters in meta string are not allowed");
     }
     if (!input) {
-      return new MetaString(input, Encoding.EXTENDED, this.specialChar1, this.specialChar2, new Uint8Array());
+      return new MetaString(input, Encoding.UTF_8, this.specialChar1, this.specialChar2, new Uint8Array());
     }
     let bytes: Uint8Array;
     switch (encoding) {
@@ -363,13 +318,13 @@ export class MetaStringEncoder {
         return new MetaString(input, encoding, this.specialChar1, this.specialChar2, bytes);
       }
       default:
-        bytes = this.encodeExtended(input);
-        return new MetaString(input, Encoding.EXTENDED, this.specialChar1, this.specialChar2, bytes);
+        bytes = new TextEncoder().encode(input);
+        return new MetaString(input, Encoding.UTF_8, this.specialChar1, this.specialChar2, bytes);
     }
   }
 
   public computeEncoding(input: string) {
-    return this.computeEncodingByEncodings(input, [Encoding.ALL_TO_LOWER_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL, Encoding.LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.EXTENDED]);
+    return this.computeEncodingByEncodings(input, [Encoding.ALL_TO_LOWER_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL, Encoding.LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.UTF_8]);
   }
 
   public computeEncodingByEncodings(input: string, encodings: Encoding[]) {
@@ -378,9 +333,6 @@ export class MetaStringEncoder {
       if (encodingSet.has(Encoding.LOWER_SPECIAL)) {
         return Encoding.LOWER_SPECIAL;
       }
-    }
-    if (this.isNumberString(input)) {
-      return Encoding.EXTENDED;
     }
     const chars = [...input];
     const statistics = this.computeStatistics(chars);
@@ -410,7 +362,7 @@ export class MetaStringEncoder {
         return Encoding.LOWER_UPPER_DIGIT_SPECIAL;
       }
     }
-    return Encoding.EXTENDED;
+    return Encoding.UTF_8;
   }
 
   isUpperCase(str: string) {
@@ -431,71 +383,6 @@ export class MetaStringEncoder {
 
     // Use a regular expression to check whether all alphabetic characters are uppercase
     return /^[0-9]+$/.test(str);
-  }
-
-  isNumberString(str: string) {
-    if (!str) {
-      return false;
-    }
-    if (str[0] === "-") {
-      return str.length > 1 && /^[0-9]+$/.test(str.slice(1));
-    }
-    return /^[0-9]+$/.test(str);
-  }
-
-  private encodeExtended(input: string) {
-    if (this.isNumberString(input)) {
-      const encoded = this.encodeNumberString(input);
-      if (encoded) {
-        return encoded;
-      }
-    }
-    return this.encodeExtendedUtf8(input);
-  }
-
-  private encodeExtendedUtf8(input: string) {
-    const payload = new TextEncoder().encode(input);
-    const bytes = new Uint8Array(payload.length + 1);
-    bytes[0] = EXTENDED_ENCODING_UTF8;
-    bytes.set(payload, 1);
-    return bytes;
-  }
-
-  private encodeNumberString(input: string) {
-    const negative = input[0] === "-";
-    const digits = negative ? input.slice(1) : input;
-    const value = this.parseUint64Digits(digits);
-    if (value === null) {
-      return null;
-    }
-    let v = value;
-    const payload: number[] = [];
-    do {
-      payload.push(Number(v & 0xFFn));
-      v >>= 8n;
-    } while (v !== 0n);
-    const encoding = negative ? EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING : EXTENDED_ENCODING_NUMBER_STRING;
-    const bytes = new Uint8Array(payload.length + 1);
-    bytes[0] = encoding;
-    bytes.set(payload, 1);
-    return bytes;
-  }
-
-  private parseUint64Digits(digits: string): bigint | null {
-    if (!digits.length) {
-      return null;
-    }
-    const trimmed = digits.replace(/^0+/, "");
-    if (!trimmed.length) {
-      return 0n;
-    }
-    if (trimmed.length > 20) {
-      return null;
-    }
-    if (trimmed.length === 20 && trimmed > "18446744073709551615") {
-      return null;
-    }
-    return BigInt(trimmed);
   }
 
   private computeStatistics(chars: string[]) {

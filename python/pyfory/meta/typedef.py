@@ -19,6 +19,7 @@ import enum
 import typing
 from typing import List
 from pyfory.types import TypeId, is_primitive_type, is_polymorphic_type, is_union_type
+from pyfory._fory import NO_USER_TYPE_ID
 from pyfory.buffer import Buffer
 from pyfory.type_util import infer_field
 from pyfory.meta.metastring import Encoding
@@ -35,15 +36,15 @@ HAS_FIELDS_META_FLAG = 0b1 << 8
 META_SIZE_MASKS = 0xFF
 NUM_HASH_BITS = 50
 
-NAMESPACE_ENCODINGS = [Encoding.EXTENDED, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL]
-TYPE_NAME_ENCODINGS = [Encoding.EXTENDED, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL]
+NAMESPACE_ENCODINGS = [Encoding.UTF_8, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL]
+TYPE_NAME_ENCODINGS = [Encoding.UTF_8, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL]
 
 # Field name encoding constants
-FIELD_NAME_ENCODING_EXTENDED = 0b00
+FIELD_NAME_ENCODING_UTF8 = 0b00
 FIELD_NAME_ENCODING_ALL_TO_LOWER_SPECIAL = 0b01
 FIELD_NAME_ENCODING_LOWER_UPPER_DIGIT_SPECIAL = 0b10
 FIELD_NAME_ENCODING_TAG_ID = 0b11
-FIELD_NAME_ENCODINGS = [Encoding.EXTENDED, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL]
+FIELD_NAME_ENCODINGS = [Encoding.UTF_8, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL]
 
 # TAG_ID encoding constants
 TAG_ID_SIZE_THRESHOLD = 0b1111  # 4-bit threshold for tag IDs (0-14 inline, 15 = overflow)
@@ -51,12 +52,21 @@ TAG_ID_SIZE_THRESHOLD = 0b1111  # 4-bit threshold for tag IDs (0-14 inline, 15 =
 
 class TypeDef:
     def __init__(
-        self, namespace: str, typename: str, cls: type, type_id: int, fields: List["FieldInfo"], encoded: bytes = None, is_compressed: bool = False
+        self,
+        namespace: str,
+        typename: str,
+        cls: type,
+        type_id: int,
+        fields: List["FieldInfo"],
+        encoded: bytes = None,
+        is_compressed: bool = False,
+        user_type_id: int = NO_USER_TYPE_ID,
     ):
         self.namespace = namespace
         self.typename = typename
         self.cls = cls
         self.type_id = type_id
+        self.user_type_id = user_type_id
         self.fields = fields
         self.encoded = encoded
         self.is_compressed = is_compressed
@@ -132,16 +142,16 @@ class TypeDef:
         return resolved_names
 
     def create_serializer(self, resolver):
-        if self.type_id & 0xFF == TypeId.NAMED_EXT:
+        if self.type_id == TypeId.NAMED_EXT:
             return resolver.get_typeinfo_by_name(self.namespace, self.typename).serializer
-        if self.type_id & 0xFF == TypeId.NAMED_ENUM:
+        if self.type_id == TypeId.NAMED_ENUM:
             try:
                 return resolver.get_typeinfo_by_name(self.namespace, self.typename).serializer
             except Exception:
                 from pyfory.serializer import NonExistEnumSerializer
 
                 return NonExistEnumSerializer(resolver.fory)
-        if self.type_id & 0xFF == TypeId.NAMED_UNION:
+        if self.type_id == TypeId.NAMED_UNION:
             return resolver.get_typeinfo_by_name(self.namespace, self.typename).serializer
 
         from pyfory.struct import DataClassSerializer
@@ -167,7 +177,11 @@ class TypeDef:
         )
 
     def __repr__(self):
-        return f"TypeDef(namespace={self.namespace}, typename={self.typename}, cls={self.cls}, type_id={self.type_id}, fields={self.fields}, is_compressed={self.is_compressed})"
+        return (
+            f"TypeDef(namespace={self.namespace}, typename={self.typename}, cls={self.cls}, "
+            f"type_id={self.type_id}, user_type_id={self.user_type_id}, "
+            f"fields={self.fields}, is_compressed={self.is_compressed})"
+        )
 
 
 def _snake_to_camel(s: str) -> str:
@@ -273,7 +287,7 @@ class FieldType:
                 return None
         # Types that need to be handled dynamically during deserialization
         # For these types, we don't know the concrete type at compile time
-        if self.type_id & 0xFF in [
+        if self.type_id in [
             TypeId.EXT,
             TypeId.NAMED_EXT,
             TypeId.STRUCT,
@@ -283,7 +297,7 @@ class FieldType:
             TypeId.UNKNOWN,
         ]:
             return None
-        if self.type_id & 0xFF in [TypeId.ENUM, TypeId.NAMED_ENUM]:
+        if self.type_id in [TypeId.ENUM, TypeId.NAMED_ENUM]:
             try:
                 if issubclass(type_, enum.Enum):
                     return resolver.get_typeinfo(cls=type_).serializer
@@ -296,11 +310,8 @@ class FieldType:
         return typeinfo.serializer
 
     def __repr__(self):
-        type_id = self.type_id
-        if type_id > 128:
-            type_id = f"{type_id}, fory_id={type_id & 0xFF}, user_id={type_id >> 8}"
         return (
-            f"FieldType(type_id={type_id}, is_monomorphic={self.is_monomorphic}, "
+            f"FieldType(type_id={self.type_id}, is_monomorphic={self.is_monomorphic}, "
             f"is_nullable={self.is_nullable}, is_tracking_ref={self.is_tracking_ref})"
         )
 
@@ -517,7 +528,6 @@ def build_field_type_from_type_ids_with_ref(
     if type_id is None:
         type_id = TypeId.UNKNOWN
     assert type_id >= 0, f"Unknown type: {type_id} for field: {field_name}"
-    type_id = type_id & 0xFF
     morphic = not is_polymorphic_type(type_id)
     if type_id in [TypeId.SET, TypeId.LIST]:
         elem_hint = None
@@ -615,7 +625,6 @@ def build_field_type_from_type_ids(type_resolver, field_name: str, type_ids, vis
     if type_id is None:
         type_id = TypeId.UNKNOWN
     assert type_id >= 0, f"Unknown type: {type_id} for field: {field_name}"
-    type_id = type_id & 0xFF
     morphic = not is_polymorphic_type(type_id)
     if type_id in [TypeId.SET, TypeId.LIST]:
         elem_type = build_field_type_from_type_ids(type_resolver, field_name, type_ids[1], visitor, is_nullable=False)

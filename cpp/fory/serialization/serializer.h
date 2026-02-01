@@ -192,15 +192,14 @@ FORY_ALWAYS_INLINE bool read_null_only_flag(ReadContext &ctx,
 inline bool type_id_matches(uint32_t actual, uint32_t expected) {
   if (actual == expected)
     return true;
-  uint32_t low_actual = actual & 0xffu;
   // For structs, allow STRUCT/COMPATIBLE_STRUCT/NAMED_*/etc.
   if (expected == static_cast<uint32_t>(TypeId::STRUCT)) {
-    return low_actual == static_cast<uint32_t>(TypeId::STRUCT) ||
-           low_actual == static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT) ||
-           low_actual == static_cast<uint32_t>(TypeId::NAMED_STRUCT) ||
-           low_actual == static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT);
+    return actual == static_cast<uint32_t>(TypeId::STRUCT) ||
+           actual == static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT) ||
+           actual == static_cast<uint32_t>(TypeId::NAMED_STRUCT) ||
+           actual == static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT);
   }
-  return low_actual == expected;
+  return actual == expected;
 }
 
 // ============================================================================

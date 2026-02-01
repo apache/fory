@@ -18,7 +18,7 @@
  */
 
 enum MetaStringEncoding{
-  extended(0x00, -1),
+  utf8(0x00, -1),
   ls(0x01, 5),
   luds(0x02, 6),
   ftls(0x03, 5),
@@ -37,7 +37,3 @@ enum MetaStringEncoding{
     throw ArgumentError('Invalid MetaStringEncoding id: $id');
   }
 }
-
-const int extendedEncodingUtf8 = 0;
-const int extendedEncodingNumberString = 1;
-const int extendedEncodingNegativeNumberString = 2;

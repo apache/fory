@@ -164,7 +164,7 @@ class FieldInfo {
       }
     }
     writer.writeVarUint32Small7(typeId);
-    switch (typeInfo.typeId & 0xff) {
+    switch (typeInfo.typeId) {
       case TypeId.LIST:
         FieldInfo.writeTypeId(writer, typeInfo.options!.inner!, true);
         break;
@@ -183,7 +183,7 @@ class FieldInfo {
   static u8ToEncoding(value: number) {
     switch (value) {
       case 0x00:
-        return Encoding.EXTENDED;
+        return Encoding.UTF_8;
       case 0x01:
         return Encoding.ALL_TO_LOWER_SPECIAL;
       case 0x02:
@@ -196,14 +196,15 @@ const SMALL_NUM_FIELDS_THRESHOLD = 0b11111;
 const REGISTER_BY_NAME_FLAG = 0b100000;
 const FIELD_NAME_SIZE_THRESHOLD = 0b1111;
 
-const pkgNameEncoding = [Encoding.EXTENDED, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL];
-const fieldNameEncoding = [Encoding.EXTENDED, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL];
-const typeNameEncoding = [Encoding.EXTENDED, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL];
+const pkgNameEncoding = [Encoding.UTF_8, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL];
+const fieldNameEncoding = [Encoding.UTF_8, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL];
+const typeNameEncoding = [Encoding.UTF_8, Encoding.ALL_TO_LOWER_SPECIAL, Encoding.LOWER_UPPER_DIGIT_SPECIAL, Encoding.FIRST_TO_LOWER_SPECIAL];
 export class TypeMeta {
   private constructor(private fields: FieldInfo[], private type: {
     typeId: number;
     typeName: string;
     namespace: string;
+    userTypeId: number;
   }) {
   }
 
@@ -220,6 +221,7 @@ export class TypeMeta {
       typeId: typeInfo.typeId,
       namespace: typeInfo.namespace,
       typeName: typeInfo.typeName,
+      userTypeId: typeInfo.userTypeId ?? -1,
     });
   }
 
@@ -244,6 +246,7 @@ export class TypeMeta {
     }
 
     let typeId: number;
+    let userTypeId = -1;
     let namespace = "";
     let typeName = "";
 
@@ -254,6 +257,9 @@ export class TypeMeta {
       typeId = TypeId.NAMED_STRUCT; // Default for named types
     } else {
       typeId = reader.varUInt32();
+      if (TypeId.needsUserTypeId(typeId)) {
+        userTypeId = reader.varUInt32();
+      }
     }
 
     // Read fields
@@ -268,6 +274,7 @@ export class TypeMeta {
       typeId,
       namespace,
       typeName,
+      userTypeId,
     };
 
     return new TypeMeta(fields, typeInfo);
@@ -293,7 +300,7 @@ export class TypeMeta {
     } else {
       // Read field name
       const encoding = FieldInfo.u8ToEncoding(encodingFlags);
-      fieldName = fieldDecoder.decode(reader, size + 1, encoding || Encoding.EXTENDED);
+      fieldName = fieldDecoder.decode(reader, size + 1, encoding || Encoding.UTF_8);
     }
 
     return new FieldInfo(fieldName, typeId, trackingRef, nullable, options);
@@ -310,7 +317,7 @@ export class TypeMeta {
       typeId = typeId >> 2;
     }
 
-    const baseTypeId = typeId & 0xff;
+    const baseTypeId = typeId;
 
     // Handle nested type IDs for collections
     switch (baseTypeId) {
@@ -365,6 +372,10 @@ export class TypeMeta {
     return this.type.typeName;
   }
 
+  getUserTypeId(): number {
+    return this.type.userTypeId;
+  }
+
   getFieldInfo(): FieldInfo[] {
     return this.fields;
   }
@@ -381,6 +392,9 @@ export class TypeMeta {
 
     if (!TypeId.isNamedType(this.type.typeId)) {
       writer.varUInt32(this.type.typeId);
+      if (TypeId.needsUserTypeId(this.type.typeId)) {
+        writer.varUInt32(this.type.userTypeId);
+      }
     } else {
       currentClassHeader |= REGISTER_BY_NAME_FLAG;
       const ns = this.type.namespace;

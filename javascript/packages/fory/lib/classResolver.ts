@@ -137,17 +137,35 @@ export default class ClassResolver {
   constructor(private fory: Fory) {
   }
 
+  private makeUserTypeKey(typeId: number, userTypeId: number) {
+    return `u:${typeId}:${userTypeId}`;
+  }
+
   init() {
     this.initInternalSerializer();
   }
 
-  getTypeInfo(typeIdOrName: number | string) {
+  getTypeInfo(typeIdOrName: number | string, userTypeId?: number) {
+    if (typeof typeIdOrName === "number" && userTypeId !== undefined && TypeId.needsUserTypeId(typeIdOrName)) {
+      return this.typeInfoMap.get(this.makeUserTypeKey(typeIdOrName, userTypeId));
+    }
     return this.typeInfoMap.get(typeIdOrName);
   }
 
   registerSerializer(typeInfo: TypeInfo, serializer: Serializer = uninitSerialize) {
-    if (!TypeId.isNamedType(typeInfo.typeId)) {
-      const id = typeInfo.typeId;
+    const typeId = typeInfo.typeId;
+    if (!TypeId.isNamedType(typeId)) {
+      if (TypeId.needsUserTypeId(typeId) && typeInfo.userTypeId >= 0) {
+        const key = this.makeUserTypeKey(typeId, typeInfo.userTypeId);
+        this.typeInfoMap.set(key, typeInfo);
+        if (this.customSerializer.has(key)) {
+          Object.assign(this.customSerializer.get(key)!, serializer);
+        } else {
+          this.customSerializer.set(key, { ...serializer });
+        }
+        return this.customSerializer.get(key);
+      }
+      const id = typeId;
       this.typeInfoMap.set(id, typeInfo);
       if (id <= 0xFF) {
         if (this.internalSerializer[id]) {
@@ -156,14 +174,13 @@ export default class ClassResolver {
           this.internalSerializer[id] = { ...serializer };
         }
         return this.internalSerializer[id];
-      } else {
-        if (this.customSerializer.has(id)) {
-          Object.assign(this.customSerializer.get(id)!, serializer);
-        } else {
-          this.customSerializer.set(id, { ...serializer });
-        }
-        return this.customSerializer.get(id);
       }
+      if (this.customSerializer.has(id)) {
+        Object.assign(this.customSerializer.get(id)!, serializer);
+      } else {
+        this.customSerializer.set(id, { ...serializer });
+      }
+      return this.customSerializer.get(id);
     } else {
       const namedTypeInfo = typeInfo.castToStruct();
       const name = namedTypeInfo.named!;
@@ -181,6 +198,9 @@ export default class ClassResolver {
     if (typeInfo.isNamedType()) {
       return this.typeInfoMap.has((typeInfo.castToStruct()).named!);
     }
+    if (TypeId.needsUserTypeId(typeInfo.typeId) && typeInfo.userTypeId >= 0) {
+      return this.typeInfoMap.has(this.makeUserTypeKey(typeInfo.typeId, typeInfo.userTypeId));
+    }
     return this.typeInfoMap.has(typeInfo.typeId);
   }
 
@@ -189,10 +209,13 @@ export default class ClassResolver {
     if (TypeId.isNamedType(typeId)) {
       return this.customSerializer.get((typeInfo.castToStruct()).named!);
     }
-    return this.getSerializerById(typeId);
+    return this.getSerializerById(typeId, typeInfo.userTypeId);
   }
 
-  getSerializerById(id: number) {
+  getSerializerById(id: number, userTypeId?: number) {
+    if (TypeId.needsUserTypeId(id) && userTypeId !== undefined && userTypeId >= 0) {
+      return this.customSerializer.get(this.makeUserTypeKey(id, userTypeId))!;
+    }
     if (id <= 0xff) {
       return this.internalSerializer[id]!;
     } else {

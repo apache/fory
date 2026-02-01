@@ -55,16 +55,13 @@ public class MetaStringEncoder {
     if (input.isEmpty()) {
       return MetaString.EMPTY;
     }
-    if (isNumberString(input)) {
-      byte[] bytes = tryEncodeNumberString(input);
-      if (bytes == null) {
-        bytes = encodeExtendedUtf8(input);
-      }
-      return new MetaString(input, Encoding.EXTENDED, specialChar1, specialChar2, bytes);
-    }
     if (!StringUtils.isLatin(input.toCharArray())) {
       return new MetaString(
-          input, Encoding.EXTENDED, specialChar1, specialChar2, encodeExtendedUtf8(input));
+          input,
+          Encoding.UTF_8,
+          specialChar1,
+          specialChar2,
+          input.getBytes(StandardCharsets.UTF_8));
     }
     Encoding encoding = computeEncoding(input, encodings);
     return encode(input, encoding);
@@ -80,7 +77,7 @@ public class MetaStringEncoder {
   public MetaString encode(String input, Encoding encoding) {
     Preconditions.checkArgument(
         input.length() < Short.MAX_VALUE, "Long meta string than 32767 is not allowed");
-    if (encoding != Encoding.EXTENDED && !StringUtils.isLatin(input.toCharArray())) {
+    if (encoding != Encoding.UTF_8 && !StringUtils.isLatin(input.toCharArray())) {
       throw new IllegalArgumentException("Non-ASCII characters in meta string are not allowed");
     }
     if (input.isEmpty()) {
@@ -102,21 +99,15 @@ public class MetaStringEncoder {
         int upperCount = countUppers(chars);
         bytes = encodeAllToLowerSpecial(chars, upperCount);
         return new MetaString(input, encoding, specialChar1, specialChar2, bytes);
-      case EXTENDED:
-        bytes = encodeExtended(input);
-        return new MetaString(input, Encoding.EXTENDED, specialChar1, specialChar2, bytes);
       default:
-        bytes = encodeExtendedUtf8(input);
-        return new MetaString(input, Encoding.EXTENDED, specialChar1, specialChar2, bytes);
+        bytes = input.getBytes(StandardCharsets.UTF_8);
+        return new MetaString(input, Encoding.UTF_8, specialChar1, specialChar2, bytes);
     }
   }
 
   public Encoding computeEncoding(String input, Encoding[] encodings) {
     if (input.isEmpty()) {
       return Encoding.forEmptyStr();
-    }
-    if (isNumberString(input)) {
-      return Encoding.EXTENDED;
     }
     boolean[] encodingFlags = new boolean[Encoding.values().length];
     for (Encoding encoding : encodings) {
@@ -150,7 +141,7 @@ public class MetaStringEncoder {
         return Encoding.LOWER_UPPER_DIGIT_SPECIAL;
       }
     }
-    return Encoding.EXTENDED;
+    return Encoding.UTF_8;
   }
 
   private static class StringStatistics {
@@ -211,83 +202,6 @@ public class MetaStringEncoder {
       }
     }
     return upperCount;
-  }
-
-  private boolean isNumberString(String input) {
-    int length = input.length();
-    if (length == 0) {
-      return false;
-    }
-    int start = 0;
-    if (input.charAt(0) == '-') {
-      if (length == 1) {
-        return false;
-      }
-      start = 1;
-    }
-    for (int i = start; i < length; i++) {
-      if (!Character.isDigit(input.charAt(i))) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  private byte[] encodeExtended(String input) {
-    if (isNumberString(input)) {
-      byte[] bytes = tryEncodeNumberString(input);
-      if (bytes != null) {
-        return bytes;
-      }
-    }
-    return encodeExtendedUtf8(input);
-  }
-
-  private byte[] encodeExtendedUtf8(String input) {
-    byte[] utf8 = input.getBytes(StandardCharsets.UTF_8);
-    byte[] bytes = new byte[utf8.length + 1];
-    bytes[0] = MetaString.EXTENDED_ENCODING_UTF8;
-    System.arraycopy(utf8, 0, bytes, 1, utf8.length);
-    return bytes;
-  }
-
-  private byte[] tryEncodeNumberString(String input) {
-    boolean negative = input.charAt(0) == '-';
-    String digits = negative ? input.substring(1) : input;
-    if (digits.isEmpty()) {
-      return null;
-    }
-    long value;
-    try {
-      value = Long.parseUnsignedLong(digits);
-    } catch (NumberFormatException e) {
-      return null;
-    }
-    byte encoding =
-        negative
-            ? MetaString.EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING
-            : MetaString.EXTENDED_ENCODING_NUMBER_STRING;
-    byte[] payload = encodeUnsignedLong(value);
-    byte[] bytes = new byte[payload.length + 1];
-    bytes[0] = encoding;
-    System.arraycopy(payload, 0, bytes, 1, payload.length);
-    return bytes;
-  }
-
-  private byte[] encodeUnsignedLong(long value) {
-    int length = 0;
-    long temp = value;
-    do {
-      length++;
-      temp >>>= 8;
-    } while (temp != 0);
-    byte[] payload = new byte[length];
-    temp = value;
-    for (int i = 0; i < length; i++) {
-      payload[i] = (byte) (temp & 0xFF);
-      temp >>>= 8;
-    }
-    return payload;
   }
 
   public byte[] encodeLowerSpecial(String input) {

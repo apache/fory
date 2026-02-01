@@ -27,8 +27,6 @@ import 'package:fory/src/meta/meta_string.dart';
 import 'package:fory/src/util/char_util.dart';
 import 'package:fory/src/util/string_util.dart';
 
-final BigInt _maxUint64 = BigInt.parse('18446744073709551615');
-
 final class ForyMetaStringEncoder extends MetaStringEncoder {
 
   const ForyMetaStringEncoder(super.specialChar1, super.specialChar2);
@@ -150,9 +148,9 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
   MetaString _encode(String input, MetaStringEncoding encoding) {
     // TODO: Do not check input length here, this check should be done earlier (remove this comment after writing)
     assert(input.length < MetaStringConst.metaStrMaxLen);
-    assert(encoding == MetaStringEncoding.extended || input.isNotEmpty); // Only extended encoding can be empty
+    assert(encoding == MetaStringEncoding.utf8 || input.isNotEmpty); // Only utf8 encoding can be empty
     if (input.isEmpty) return MetaString(input, encoding, specialChar1, specialChar2, Uint8List(0));
-    if (encoding != MetaStringEncoding.extended && StringUtil.hasNonLatin(input)){
+    if (encoding != MetaStringEncoding.utf8 && StringUtil.hasNonLatin(input)){
       throw ArgumentError('non-latin characters are not allowed in non-utf8 encoding');
     }
     late final Uint8List bytes;
@@ -170,8 +168,8 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
         final int upperCount = StringUtil.upperCount(input);
         bytes = _encodeRepAllToLowerSpecial(input, upperCount);
         break;
-      case MetaStringEncoding.extended:
-        bytes = _encodeExtended(input);
+      case MetaStringEncoding.utf8:
+        bytes = Uint8List.fromList(utf8.encode(input));
         break;
       // default:
       //   throw ArgumentError('Unsupported encoding: $encoding');
@@ -181,106 +179,17 @@ final class ForyMetaStringEncoder extends MetaStringEncoder {
 
   @override
   MetaString encodeByAllowedEncodings(String input, List<MetaStringEncoding> encodings) {
-    if (input.isEmpty) return MetaString(input, MetaStringEncoding.extended, specialChar1, specialChar2, Uint8List(0));
-    if (_isNumberString(input)) {
-      final Uint8List? encoded = _encodeNumberString(input);
-      return MetaString(
-        input,
-        MetaStringEncoding.extended,
-        specialChar1,
-        specialChar2,
-        encoded ?? _encodeExtendedUtf8(input),
-      );
-    }
+    if (input.isEmpty) return MetaString(input, MetaStringEncoding.utf8, specialChar1, specialChar2, Uint8List(0));
     if (StringUtil.hasNonLatin(input)){
       return MetaString(
         input,
-        MetaStringEncoding.extended,
+        MetaStringEncoding.utf8,
         specialChar1,
         specialChar2,
-        _encodeExtendedUtf8(input),
+        utf8.encode(input),
       );
     }
     MetaStringEncoding encoding = decideEncoding(input, encodings);
     return _encode(input, encoding);
-  }
-
-  bool _isNumberString(String input) {
-    if (input.isEmpty) {
-      return false;
-    }
-    int start = 0;
-    if (input.startsWith('-')) {
-      if (input.length == 1) {
-        return false;
-      }
-      start = 1;
-    }
-    for (int i = start; i < input.length; i++) {
-      final int code = input.codeUnitAt(i);
-      if (code < 48 || code > 57) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  Uint8List _encodeExtended(String input) {
-    if (_isNumberString(input)) {
-      final Uint8List? encoded = _encodeNumberString(input);
-      if (encoded != null) {
-        return encoded;
-      }
-    }
-    return _encodeExtendedUtf8(input);
-  }
-
-  Uint8List _encodeExtendedUtf8(String input) {
-    final Uint8List payload = Uint8List.fromList(utf8.encode(input));
-    final Uint8List bytes = Uint8List(payload.length + 1);
-    bytes[0] = extendedEncodingUtf8;
-    bytes.setAll(1, payload);
-    return bytes;
-  }
-
-  Uint8List? _encodeNumberString(String input) {
-    final bool negative = input.startsWith('-');
-    final String digits = negative ? input.substring(1) : input;
-    final BigInt? value = _parseUint64Digits(digits);
-    if (value == null) {
-      return null;
-    }
-    final List<int> payload = <int>[];
-    BigInt v = value;
-    do {
-      payload.add((v & BigInt.from(0xFF)).toInt());
-      v = v >> 8;
-    } while (v > BigInt.zero);
-    final int encoding = negative
-        ? extendedEncodingNegativeNumberString
-        : extendedEncodingNumberString;
-    final Uint8List bytes = Uint8List(payload.length + 1);
-    bytes[0] = encoding;
-    bytes.setAll(1, payload);
-    return bytes;
-  }
-
-  BigInt? _parseUint64Digits(String digits) {
-    if (digits.isEmpty) {
-      return null;
-    }
-    final String stripped = digits.replaceFirst(RegExp(r'^0+'), '');
-    if (stripped.isEmpty) {
-      return BigInt.zero;
-    }
-    if (stripped.length > 20) {
-      return null;
-    }
-    if (stripped.length == 20 &&
-        stripped.compareTo('18446744073709551615') > 0) {
-      return null;
-    }
-    final BigInt value = BigInt.parse(stripped);
-    return value <= _maxUint64 ? value : null;
   }
 }

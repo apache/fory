@@ -40,7 +40,7 @@ const HEADER_MASK: i64 = 0xff;
 
 fn byte_to_encoding(byte: u8) -> Encoding {
     match byte {
-        0 => Encoding::Extended,
+        0 => Encoding::Utf8,
         1 => Encoding::LowerSpecial,
         2 => Encoding::LowerUpperDigitSpecial,
         3 => Encoding::FirstToLowerSpecial,

@@ -215,17 +215,24 @@ inline constexpr bool is_internal_type(uint32_t type_id) {
     return false;
   }
   // Internal types are all types that are NOT user types or UNKNOWN
-  uint32_t tid_low = type_id & 0xff;
-  return tid_low != static_cast<uint32_t>(TypeId::ENUM) &&
-         tid_low != static_cast<uint32_t>(TypeId::NAMED_ENUM) &&
-         tid_low != static_cast<uint32_t>(TypeId::STRUCT) &&
-         tid_low != static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT) &&
-         tid_low != static_cast<uint32_t>(TypeId::NAMED_STRUCT) &&
-         tid_low != static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT) &&
-         tid_low != static_cast<uint32_t>(TypeId::EXT) &&
-         tid_low != static_cast<uint32_t>(TypeId::NAMED_EXT) &&
-         tid_low != static_cast<uint32_t>(TypeId::TYPED_UNION) &&
-         tid_low != static_cast<uint32_t>(TypeId::NAMED_UNION) &&
-         tid_low != static_cast<uint32_t>(TypeId::UNKNOWN);
+  return type_id != static_cast<uint32_t>(TypeId::ENUM) &&
+         type_id != static_cast<uint32_t>(TypeId::NAMED_ENUM) &&
+         type_id != static_cast<uint32_t>(TypeId::STRUCT) &&
+         type_id != static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT) &&
+         type_id != static_cast<uint32_t>(TypeId::NAMED_STRUCT) &&
+         type_id != static_cast<uint32_t>(TypeId::NAMED_COMPATIBLE_STRUCT) &&
+         type_id != static_cast<uint32_t>(TypeId::EXT) &&
+         type_id != static_cast<uint32_t>(TypeId::NAMED_EXT) &&
+         type_id != static_cast<uint32_t>(TypeId::TYPED_UNION) &&
+         type_id != static_cast<uint32_t>(TypeId::NAMED_UNION) &&
+         type_id != static_cast<uint32_t>(TypeId::UNKNOWN);
+}
+
+inline constexpr bool needs_user_type_id(uint32_t type_id) {
+  return type_id == static_cast<uint32_t>(TypeId::ENUM) ||
+         type_id == static_cast<uint32_t>(TypeId::STRUCT) ||
+         type_id == static_cast<uint32_t>(TypeId::COMPATIBLE_STRUCT) ||
+         type_id == static_cast<uint32_t>(TypeId::EXT) ||
+         type_id == static_cast<uint32_t>(TypeId::TYPED_UNION);
 }
 } // namespace fory

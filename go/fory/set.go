@@ -202,7 +202,11 @@ func (s setSerializer) writeHeader(ctx *WriteContext, buf *ByteBuffer, keys []re
 	// 1. All elements have same type (IS_SAME_TYPE is set)
 	// 2. Element type is NOT declared from schema (IS_DECL_ELEMENT_TYPE is NOT set)
 	if hasSameType && !hasGenerics && elemTypeInfo != nil {
-		buf.WriteVarUint32Small7(uint32(elemTypeInfo.TypeID))
+		if IsNamespacedType(TypeId(elemTypeInfo.TypeID)) || needsUserTypeID(TypeId(elemTypeInfo.TypeID)) {
+			ctx.TypeResolver().WriteTypeInfo(buf, elemTypeInfo, ctx.Err())
+		} else {
+			buf.WriteVarUint32Small7(uint32(elemTypeInfo.TypeID))
+		}
 	}
 
 	return byte(collectFlag), elemTypeInfo
@@ -269,7 +273,11 @@ func (s setSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuffer, k
 				ctx.SetError(FromError(err))
 				return
 			}
-			buf.WriteVarUint32Small7(uint32(typeInfo.TypeID))
+			if IsNamespacedType(TypeId(typeInfo.TypeID)) || needsUserTypeID(TypeId(typeInfo.TypeID)) {
+				ctx.TypeResolver().WriteTypeInfo(buf, typeInfo, ctx.Err())
+			} else {
+				buf.WriteVarUint32Small7(uint32(typeInfo.TypeID))
+			}
 			if !refWritten {
 				typeInfo.Serializer.WriteData(ctx, key)
 				if ctx.HasError() {
@@ -279,14 +287,22 @@ func (s setSerializer) writeDifferentTypes(ctx *WriteContext, buf *ByteBuffer, k
 		} else if hasNull {
 			// No ref tracking but may have nulls - write NotNullValueFlag before type + data
 			buf.WriteInt8(NotNullValueFlag)
-			buf.WriteVarUint32Small7(uint32(typeInfo.TypeID))
+			if IsNamespacedType(TypeId(typeInfo.TypeID)) || needsUserTypeID(TypeId(typeInfo.TypeID)) {
+				ctx.TypeResolver().WriteTypeInfo(buf, typeInfo, ctx.Err())
+			} else {
+				buf.WriteVarUint32Small7(uint32(typeInfo.TypeID))
+			}
 			typeInfo.Serializer.WriteData(ctx, key)
 			if ctx.HasError() {
 				return
 			}
 		} else {
 			// No ref tracking and no nulls - write type + data directly
-			buf.WriteVarUint32Small7(uint32(typeInfo.TypeID))
+			if IsNamespacedType(TypeId(typeInfo.TypeID)) || needsUserTypeID(TypeId(typeInfo.TypeID)) {
+				ctx.TypeResolver().WriteTypeInfo(buf, typeInfo, ctx.Err())
+			} else {
+				buf.WriteVarUint32Small7(uint32(typeInfo.TypeID))
+			}
 			typeInfo.Serializer.WriteData(ctx, key)
 			if ctx.HasError() {
 				return
@@ -484,7 +500,7 @@ func (s setSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool, ha
 	if readType {
 		// ReadData and discard type info for sets
 		typeID := uint32(buf.ReadVarUint32Small7(ctxErr))
-		if IsNamespacedType(TypeId(typeID)) {
+		if IsNamespacedType(TypeId(typeID)) || needsUserTypeID(TypeId(typeID)) {
 			ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
 		}
 	}

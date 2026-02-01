@@ -218,8 +218,15 @@ void skip_struct(ReadContext &ctx, const FieldType &) {
     return;
   }
 
-  uint32_t type_id_low = remote_type_id & 0xff;
-  TypeId remote_tid = static_cast<TypeId>(type_id_low);
+  uint32_t user_type_id = 0;
+  bool has_user_type_id = ::fory::needs_user_type_id(remote_type_id);
+  if (has_user_type_id) {
+    user_type_id = ctx.read_var_uint32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+  }
+  TypeId remote_tid = static_cast<TypeId>(remote_type_id);
 
   const TypeInfo *type_info = nullptr;
 
@@ -235,8 +242,11 @@ void skip_struct(ReadContext &ctx, const FieldType &) {
     type_info = type_info_res.value();
   } else {
     // Plain STRUCT: look up by type_id, read struct_version if enabled
-    auto type_info_res =
-        ctx.type_resolver().get_type_info_by_id(remote_type_id);
+    auto type_info_res = has_user_type_id
+                             ? ctx.type_resolver().get_user_type_info_by_id(
+                                   remote_type_id, user_type_id)
+                             : ctx.type_resolver().get_type_info_by_id(
+                                   remote_type_id);
     if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
       ctx.set_error(std::move(type_info_res).error());
       return;
@@ -287,8 +297,15 @@ void skip_ext(ReadContext &ctx, const FieldType &) {
     return;
   }
 
-  uint32_t low = remote_type_id & 0xffu;
-  TypeId remote_tid = static_cast<TypeId>(low);
+  uint32_t user_type_id = 0;
+  bool has_user_type_id = ::fory::needs_user_type_id(remote_type_id);
+  if (has_user_type_id) {
+    user_type_id = ctx.read_var_uint32(ctx.error());
+    if (FORY_PREDICT_FALSE(ctx.has_error())) {
+      return;
+    }
+  }
+  TypeId remote_tid = static_cast<TypeId>(remote_type_id);
 
   const TypeInfo *type_info = nullptr;
 
@@ -303,8 +320,8 @@ void skip_ext(ReadContext &ctx, const FieldType &) {
     type_info = type_info_res.value();
   } else {
     // ID-based ext: look up by remote type_id we just read
-    auto type_info_res =
-        ctx.type_resolver().get_type_info_by_id(remote_type_id);
+    auto type_info_res = ctx.type_resolver().get_user_type_info_by_id(
+        remote_type_id, user_type_id);
     if (FORY_PREDICT_FALSE(!type_info_res.ok())) {
       ctx.set_error(std::move(type_info_res).error());
       return;
@@ -363,8 +380,7 @@ void skip_unknown(ReadContext &ctx) {
   }
 
   // Check the actual type and skip accordingly
-  uint32_t low = type_info->type_id & 0xffu;
-  TypeId actual_tid = static_cast<TypeId>(low);
+  TypeId actual_tid = static_cast<TypeId>(type_info->type_id);
 
   switch (actual_tid) {
   case TypeId::STRUCT:
@@ -455,14 +471,8 @@ void skip_field_value(ReadContext &ctx, const FieldType &field_type,
     }
   }
 
-  // skip based on low 8 bits of the type ID.
-  //
-  // xlang user types encode the user type id in the high bits and the
-  // logical TypeId in the low 8 bits (see Java XtypeResolver and Rust
-  // TypeId conventions). For skipping we only care about the logical
-  // category (STRUCT/ENUM/EXT/etc.), so mask off the user id portion.
-  uint32_t low = field_type.type_id & 0xffu;
-  TypeId tid = static_cast<TypeId>(low);
+  // skip based on the logical TypeId (already in 0..255)
+  TypeId tid = static_cast<TypeId>(field_type.type_id);
 
   switch (tid) {
   case TypeId::BOOL:

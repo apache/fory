@@ -46,6 +46,19 @@ import org.apache.fory.util.Preconditions;
  * href="https://fory.apache.org/docs/specification/fory_java_serialization_spec">...</a>
  */
 class ClassDefDecoder {
+  private static boolean needsUserTypeId(int typeId) {
+    switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.COMPATIBLE_STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   static Tuple2<byte[], byte[]> decodeClassDefBuf(
       MemoryBuffer inputBuffer, TypeResolver resolver, long id) {
     MemoryBuffer encoded = MemoryBuffer.newHeapBuffer(64);
@@ -84,13 +97,17 @@ class ClassDefDecoder {
       int numFields = currentClassHeader >>> 1;
       if (isRegistered) {
         int typeId = classDefBuf.readVarUint32Small7();
-        Class<?> cls = resolver.getRegisteredClassByTypeId(typeId);
+        int userTypeId = -1;
+        if (needsUserTypeId(typeId)) {
+          userTypeId = classDefBuf.readVarUint32();
+        }
+        Class<?> cls = resolver.getRegisteredClassByTypeId(typeId, userTypeId);
         if (cls == null) {
-          classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class, typeId);
+          classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class, typeId, userTypeId);
           className = classSpec.entireClassName;
         } else {
           className = cls.getName();
-          classSpec = new ClassSpec(cls, typeId);
+          classSpec = new ClassSpec(cls, typeId, userTypeId);
         }
       } else {
         String pkg = readPkgName(classDefBuf);
@@ -100,7 +117,8 @@ class ClassDefDecoder {
         if (resolver.isRegisteredByName(className)) {
           Class<?> cls = resolver.getRegisteredClass(className);
           className = cls.getName();
-          classSpec = new ClassSpec(cls, resolver.getTypeIdForClassDef(cls));
+          classSpec =
+              new ClassSpec(cls, resolver.getTypeIdForClassDef(cls), resolver.getUserTypeIdForClassDef(cls));
         } else {
           Class<?> cls =
               resolver.loadClassForMeta(
@@ -121,12 +139,13 @@ class ClassDefDecoder {
                     decodedSpec.isEnum,
                     decodedSpec.isArray,
                     decodedSpec.dimension,
-                    typeId);
+                    typeId,
+                    -1);
             classSpec.type = cls;
             className = classSpec.entireClassName;
           } else {
             int typeId = resolver.getTypeIdForClassDef(cls);
-            classSpec = new ClassSpec(cls, typeId);
+            classSpec = new ClassSpec(cls, typeId, resolver.getUserTypeIdForClassDef(cls));
             className = classSpec.entireClassName;
           }
         }
@@ -183,7 +202,7 @@ class ClassDefDecoder {
 
   static String readPkgName(MemoryBuffer buffer) {
     // - Package name encoding(omitted when class is registered):
-    //    - encoding algorithm: `EXTENDED/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
+    //    - encoding algorithm: `UTF_8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
     //    - Header: `6 bits size | 2 bits encoding flags`.
     //      The `6 bits size: 0~63`  will be used to indicate size `0~63`,
     //      the value `63` the size need more byte to read, the encoding will encode `size - 63` as
@@ -194,7 +213,7 @@ class ClassDefDecoder {
   static String readTypeName(MemoryBuffer buffer) {
     // - Class name encoding(omitted when class is registered):
     //     - encoding algorithm:
-    // `EXTENDED/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
+    // `UTF_8/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
     //     - header: `6 bits size | 2 bits encoding flags`.
     //      The `6 bits size: 0~63`  will be used to indicate size `0~63`,
     //       the value `63` the size need more byte to read, the encoding will encode `size - 63` as

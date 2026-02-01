@@ -474,6 +474,14 @@ pub const fn is_user_type(type_id: u32) -> bool {
     )
 }
 
+#[inline(always)]
+pub const fn needs_user_type_id(type_id: u32) -> bool {
+    matches!(
+        type_id,
+        ENUM | STRUCT | COMPATIBLE_STRUCT | EXT | TYPED_UNION
+    )
+}
+
 pub fn compute_field_hash(hash: u32, id: i16) -> u32 {
     let mut new_hash: u64 = (hash as u64) * 31 + (id as u64);
     while new_hash >= MAX_UNT32 {
@@ -531,29 +539,11 @@ impl TryFrom<u8> for Language {
 // every object start with i8 i16 reference flag and type flag
 pub const SIZE_OF_REF_AND_TYPE: usize = mem::size_of::<i8>() + mem::size_of::<i16>();
 
-/// Formats a combined type ID into a human-readable string.
+/// Formats a type ID into a human-readable string.
 ///
-/// Combined type IDs have the format: `(registered_id << 8) + internal_type_id`.
-/// This function extracts both parts and formats them for debugging.
-///
-/// For internal types (type_id < BOUND), returns just the type name.
-/// For user-registered types, returns format like "registered_id=3(STRUCT)".
-///
-/// # Examples
-/// ```
-/// use fory_core::types::format_type_id;
-///
-/// // Internal type (e.g., BOOL = 1)
-/// assert_eq!(format_type_id(1), "BOOL");
-///
-/// // User registered struct with id=3: (3 << 8) + 25 = 793
-/// assert_eq!(format_type_id(793), "registered_id=3(STRUCT)");
-/// ```
+/// Type IDs are internal Fory type IDs in the range 0..=255.
 pub fn format_type_id(type_id: u32) -> String {
-    let internal_type_id = type_id & 0xff;
-    let registered_id = type_id >> 8;
-
-    let type_name = match internal_type_id {
+    let type_name = match type_id {
         0 => "UNKNOWN",
         1 => "BOOL",
         2 => "INT8",
@@ -619,24 +609,14 @@ pub fn format_type_id(type_id: u32) -> String {
         _ => "UNKNOWN_TYPE",
     };
 
-    // If it's a pure internal type (no registered_id), just return the type name
-    if registered_id == 0 {
-        type_name.to_string()
-    } else {
-        // For user-registered types, show both the registered ID and internal type
-        format!("registered_id={}({})", registered_id, type_name)
-    }
+    type_name.to_string()
 }
 
-/// Computes the actual type ID for extension types.
-///
-/// Extension types combine a user-registered type ID with an internal EXT or NAMED_EXT marker.
-/// The format is: `(type_id << 8) + internal_type_id`.
-pub fn get_ext_actual_type_id(type_id: u32, register_by_name: bool) -> u32 {
-    (type_id << 8)
-        + if register_by_name {
-            TypeId::NAMED_EXT as u32
-        } else {
-            TypeId::EXT as u32
-        }
+/// Returns the internal type ID for extension types.
+pub fn get_ext_actual_type_id(_type_id: u32, register_by_name: bool) -> u32 {
+    if register_by_name {
+        TypeId::NAMED_EXT as u32
+    } else {
+        TypeId::EXT as u32
+    }
 }

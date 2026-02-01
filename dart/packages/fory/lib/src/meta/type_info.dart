@@ -27,6 +27,7 @@ class TypeInfo {
   final String? tag;
   final MetaStringBytes? typeNameBytes;
   final MetaStringBytes? nsBytes;
+  final int userTypeId;
   late Serializer ser;
 
   TypeInfo(
@@ -35,6 +36,7 @@ class TypeInfo {
     this.tag,
     this.typeNameBytes,
     this.nsBytes,
+    {this.userTypeId = -1}
   );
 
   TypeInfo.fromInnerType(
@@ -43,5 +45,6 @@ class TypeInfo {
     this.ser,
   ) : tag = null,
       typeNameBytes = null,
-      nsBytes = null;
+      nsBytes = null,
+      userTypeId = -1;
 }

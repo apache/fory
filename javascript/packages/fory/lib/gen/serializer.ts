@@ -18,7 +18,7 @@
  */
 
 import { CodecBuilder } from "./builder";
-import { RefFlags } from "../type";
+import { RefFlags, TypeId } from "../type";
 import { Scope } from "./scope";
 import { TypeInfo } from "../typeInfo";
 import { refTrackingAbleTypeId } from "../meta/TypeMeta";
@@ -149,8 +149,14 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
   }
 
   writeClassInfo(accessor: string) {
+    const typeId = this.getTypeId();
+    const userTypeId = this.typeInfo.userTypeId;
+    const userTypeStmt = TypeId.needsUserTypeId(typeId)
+      ? this.builder.writer.writeVarUint32Small7(userTypeId)
+      : "";
     return ` 
-      ${this.builder.writer.writeVarUint32Small7(this.getTypeId())};
+      ${this.builder.writer.writeVarUint32Small7(typeId)};
+      ${userTypeStmt}
     `;
   }
 
@@ -162,18 +168,24 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
     return this.typeInfo.typeId;
   }
 
+  getUserTypeId() {
+    return this.typeInfo.userTypeId;
+  }
+
   getInternalTypeId() {
-    if (this.getTypeId() <= 0xff) {
-      return this.getTypeId();
-    }
-    return this.getTypeId() & 0xff;
+    return this.getTypeId();
   }
 
   abstract read(assignStmt: (v: string) => string, refState: string): string;
 
   readClassInfo(): string {
+    const typeId = this.getTypeId();
+    const readUserTypeStmt = TypeId.needsUserTypeId(typeId)
+      ? `${this.builder.reader.readVarUint32Small7()};`
+      : "";
     return `
       ${this.builder.reader.readVarUint32Small7()};
+      ${readUserTypeStmt}
     `;
   }
 
@@ -271,6 +283,7 @@ export abstract class BaseSerializerGenerator implements SerializerGenerator {
               fixedSize: ${this.getFixedSize()},
               needToWriteRef: () => ${this.needToWriteRef()},
               getTypeId: () => ${this.getTypeId()},
+              getUserTypeId: () => ${this.getUserTypeId()},
               getHash,
 
               write,

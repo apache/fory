@@ -31,7 +31,7 @@ import org.apache.fory.util.Preconditions;
 public class MetaString {
   /** Defines the types of supported encodings for MetaStrings. */
   public enum Encoding {
-    EXTENDED(0x00), // Extended encoding with payload encoding byte
+    UTF_8(0x00), // Using UTF-8 as the fallback
     LOWER_SPECIAL(0x01),
     LOWER_UPPER_DIGIT_SPECIAL(0x02),
     FIRST_TO_LOWER_SPECIAL(0x03),
@@ -57,13 +57,9 @@ public class MetaString {
     }
 
     public static Encoding forEmptyStr() {
-      return EXTENDED;
+      return UTF_8;
     }
   }
-
-  public static final byte EXTENDED_ENCODING_UTF8 = 0;
-  public static final byte EXTENDED_ENCODING_NUMBER_STRING = 1;
-  public static final byte EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING = 2;
 
   public static final MetaString EMPTY =
       new MetaString("", Encoding.forEmptyStr(), '\0', '\0', new byte[0]);
@@ -88,7 +84,7 @@ public class MetaString {
     this.specialChar1 = specialChar1;
     this.specialChar2 = specialChar2;
     this.bytes = bytes;
-    if (encoding != Encoding.EXTENDED) {
+    if (encoding != Encoding.UTF_8) {
       Preconditions.checkArgument(bytes.length > 0);
       this.stripLastChar = (bytes[0] & 0x80) != 0;
     } else {

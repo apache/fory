@@ -163,8 +163,8 @@ class ForyMetaStringDecoder extends MetaStringDecoder {
         return _decodeRepFirstLowerSpecial(data);
       case MetaStringEncoding.atls:
         return _decodeRepAllToLowerSpecial(data);
-      case MetaStringEncoding.extended:
-        return _decodeExtended(data);
+      case MetaStringEncoding.utf8:
+        return utf8.decode(data);
       // default:
       //   throw ArgumentError('Unsupported encoding: $encoding');
     }
@@ -174,36 +174,6 @@ class ForyMetaStringDecoder extends MetaStringDecoder {
   @inline
   String decodeMetaString(MetaStringBytes data) {
     return decode(data.bytes, data.encoding);
-  }
-
-  String _decodeExtended(Uint8List data) {
-    if (data.isEmpty) return '';
-    final int actual = data[0];
-    final Uint8List payload = data.sublist(1);
-    switch (actual) {
-      case extendedEncodingUtf8:
-        return utf8.decode(payload);
-      case extendedEncodingNumberString:
-        return _decodeNumberString(payload, false);
-      case extendedEncodingNegativeNumberString:
-        return _decodeNumberString(payload, true);
-      default:
-        throw ArgumentError('Unsupported extended encoding: $actual');
-    }
-  }
-
-  String _decodeNumberString(Uint8List payload, bool negative) {
-    if (payload.isEmpty) return '';
-    if (payload.length > 8) {
-      throw ArgumentError(
-          'NUMBER_STRING payload length exceeds uint64 size: ${payload.length}');
-    }
-    BigInt value = BigInt.zero;
-    for (int i = payload.length - 1; i >= 0; i--) {
-      value = (value << 8) | BigInt.from(payload[i]);
-    }
-    final String result = value.toString();
-    return negative ? '-$result' : result;
   }
 
 }

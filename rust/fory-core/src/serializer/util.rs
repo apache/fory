@@ -42,11 +42,10 @@ pub(crate) fn read_basic_type_info<T: Serializer>(context: &mut ReadContext) -> 
 /// Keep as const fn for compile time evaluation or constant folding
 #[inline]
 pub const fn field_need_read_type_info(type_id: u32) -> bool {
-    let internal_type_id = type_id & 0xff;
-    if internal_type_id == ENUM || internal_type_id == NAMED_ENUM || internal_type_id == UNION {
+    if type_id == ENUM || type_id == NAMED_ENUM || type_id == UNION {
         return false;
     }
-    is_user_type(internal_type_id)
+    is_user_type(type_id)
 }
 
 /// Keep as const fn for compile time evaluation or constant folding

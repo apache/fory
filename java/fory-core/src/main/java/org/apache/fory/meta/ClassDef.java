@@ -169,21 +169,20 @@ public class ClassDef implements Serializable {
   }
 
   public boolean isNamed() {
-    return classSpec.typeId < 0 || Types.isNamedType(classSpec.typeId & 0xff);
+    return classSpec.typeId < 0 || Types.isNamedType(classSpec.typeId);
   }
 
   public boolean isCompatible() {
     if (classSpec.typeId < 0) {
       return false;
     }
-    int internalTypeId = classSpec.typeId & 0xff;
-    return internalTypeId == Types.COMPATIBLE_STRUCT
-        || internalTypeId == Types.NAMED_COMPATIBLE_STRUCT;
+    return classSpec.typeId == Types.COMPATIBLE_STRUCT
+        || classSpec.typeId == Types.NAMED_COMPATIBLE_STRUCT;
   }
 
   public int getUserTypeId() {
     Preconditions.checkArgument(!isNamed(), "Named types don't have user type id");
-    return classSpec.typeId >>> 8;
+    return classSpec.userTypeId;
   }
 
   @Override

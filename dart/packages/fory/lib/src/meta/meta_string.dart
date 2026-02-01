@@ -33,7 +33,7 @@ class MetaString {
   int? _hash;
   
   MetaString(this.value, this.encoding, this.specialChar1, this.specialChar2, this.bytes){
-    if (encoding != MetaStringEncoding.extended){
+    if (encoding != MetaStringEncoding.utf8){
       // if not utf8, then the bytes should not be empty
       assert(bytes.isNotEmpty);
       stripLastChar = (bytes[0] & 0x80) != 0;

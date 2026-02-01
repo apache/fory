@@ -194,17 +194,7 @@ class BaseGenerator(ABC):
     def should_register_by_id(self, type_def) -> bool:
         """Return True if a type should be registered by numeric ID."""
         type_id = getattr(type_def, "type_id", None)
-        if type_id is None:
-            return False
-        return not getattr(type_def, "id_generated", False)
-
-    def get_auto_id_registration_name(self, type_def) -> Optional[str]:
-        """Return the hash-based typename for auto ID registration."""
-        if getattr(type_def, "id_generated", False):
-            type_id = getattr(type_def, "type_id", None)
-            if type_id is not None:
-                return str(type_id & 0xFFFFFFFF)
-        return None
+        return type_id is not None
 
     def get_license_header(self, comment_prefix: str = "//") -> str:
         """Get the Apache license header."""

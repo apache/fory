@@ -30,6 +30,7 @@ public class ClassSpec {
   public final boolean isArray;
   public final int dimension;
   public final int typeId;
+  public final int userTypeId;
   public Class<?> type;
 
   public ClassSpec(Class<?> cls) {
@@ -38,6 +39,7 @@ public class ClassSpec {
         cls.isEnum(),
         cls.isArray(),
         cls.isArray() ? TypeUtils.getArrayDimensions(cls) : 0,
+        -1,
         -1);
     type = cls;
   }
@@ -48,20 +50,37 @@ public class ClassSpec {
         cls.isEnum(),
         cls.isArray(),
         cls.isArray() ? TypeUtils.getArrayDimensions(cls) : 0,
-        typeId);
+        typeId,
+        -1);
+  }
+
+  public ClassSpec(Class<?> cls, int typeId, int userTypeId) {
+    this(
+        cls.getName(),
+        cls.isEnum(),
+        cls.isArray(),
+        cls.isArray() ? TypeUtils.getArrayDimensions(cls) : 0,
+        typeId,
+        userTypeId);
   }
 
   public ClassSpec(String entireClassName, boolean isEnum, boolean isArray, int dimension) {
-    this(entireClassName, isEnum, isArray, dimension, -1);
+    this(entireClassName, isEnum, isArray, dimension, -1, -1);
   }
 
   public ClassSpec(
-      String entireClassName, boolean isEnum, boolean isArray, int dimension, int typeId) {
+      String entireClassName,
+      boolean isEnum,
+      boolean isArray,
+      int dimension,
+      int typeId,
+      int userTypeId) {
     this.entireClassName = entireClassName;
     this.isEnum = isEnum;
     this.isArray = isArray;
     this.dimension = dimension;
     this.typeId = typeId;
+    this.userTypeId = userTypeId;
   }
 
   @Override

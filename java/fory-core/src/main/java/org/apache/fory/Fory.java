@@ -578,8 +578,8 @@ public final class Fory implements BaseFory {
   }
 
   public void xwriteData(MemoryBuffer buffer, ClassInfo classInfo, Object obj) {
-    int internalTypeId = classInfo.getTypeId() & 0xff;
-    switch (internalTypeId) {
+    int typeId = classInfo.getTypeId();
+    switch (typeId) {
       case Types.BOOL:
         buffer.writeBoolean((Boolean) obj);
         break;
@@ -614,8 +614,8 @@ public final class Fory implements BaseFory {
 
   /** Write not null data to buffer. */
   private void writeData(MemoryBuffer buffer, ClassInfo classInfo, Object obj) {
-    int internalTypeId = classInfo.getTypeId() & 0xff;
-    switch (internalTypeId) {
+    int typeId = classInfo.getTypeId();
+    switch (typeId) {
       case Types.BOOL:
         buffer.writeBoolean((Boolean) obj);
         break;
@@ -1019,8 +1019,8 @@ public final class Fory implements BaseFory {
   }
 
   private Object readDataInternal(MemoryBuffer buffer, ClassInfo classInfo) {
-    int internalTypeId = classInfo.getTypeId() & 0xff;
-    switch (internalTypeId) {
+    int typeId = classInfo.getTypeId();
+    switch (typeId) {
       case Types.BOOL:
         return buffer.readBoolean();
       case Types.INT8:
@@ -1052,8 +1052,8 @@ public final class Fory implements BaseFory {
   }
 
   private Object xreadDataInternal(MemoryBuffer buffer, ClassInfo classInfo) {
-    int internalTypeId = classInfo.getTypeId() & 0xff;
-    switch (internalTypeId) {
+    int typeId = classInfo.getTypeId();
+    switch (typeId) {
       case Types.BOOL:
         return buffer.readBoolean();
       case Types.INT8:
@@ -1156,8 +1156,8 @@ public final class Fory implements BaseFory {
 
   public Object xreadNonRef(MemoryBuffer buffer, ClassInfo classInfo) {
     assert classInfo != null;
-    int internalTypeId = classInfo.getTypeId() & 0xff;
-    switch (internalTypeId) {
+    int typeId = classInfo.getTypeId();
+    switch (typeId) {
       case Types.BOOL:
         return buffer.readBoolean();
       case Types.INT8:
@@ -1439,8 +1439,8 @@ public final class Fory implements BaseFory {
     }
     Object copy;
     ClassInfo classInfo = classResolver.getOrUpdateClassInfo(obj.getClass());
-    int internalTypeId = classInfo.getTypeId() & 0xff;
-    switch (internalTypeId) {
+    int typeId = classInfo.getTypeId();
+    switch (typeId) {
       case Types.BOOL:
       case Types.INT8:
       case ClassResolver.CHAR_ID:

@@ -420,6 +420,14 @@ _union_type_ids = {
     TypeId.NAMED_UNION,
 }
 
+_user_type_id_required = {
+    TypeId.ENUM,
+    TypeId.STRUCT,
+    TypeId.COMPATIBLE_STRUCT,
+    TypeId.EXT,
+    TypeId.TYPED_UNION,
+}
+
 
 def is_polymorphic_type(type_id: int) -> bool:
     return type_id in _polymorphic_type_ids
@@ -438,4 +446,8 @@ def is_union_type(type_or_id) -> bool:
         type_id = getattr(type_or_id, "type_id", None)
     if type_id is None or not isinstance(type_id, int):
         return False
-    return (type_id & 0xFF) in _union_type_ids
+    return type_id in _union_type_ids
+
+
+def needs_user_type_id(type_id: int) -> bool:
+    return type_id in _user_type_id_required

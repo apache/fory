@@ -57,9 +57,10 @@ export class TypeMetaResolver {
     const typeName = typeMeta.getTypeName();
     const ns = typeMeta.getNs();
     const typeId = typeMeta.getTypeId();
+    const userTypeId = typeMeta.getUserTypeId();
     let typeInfo;
     if (!TypeId.isNamedType(typeId)) {
-      typeInfo = this.fory.classResolver.getTypeInfo(typeId);
+      typeInfo = this.fory.classResolver.getTypeInfo(typeId, userTypeId);
     } else {
       typeInfo = this.fory.classResolver.getTypeInfo(`${ns}$${typeName}`);
     }

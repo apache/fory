@@ -129,18 +129,18 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
   // header: | field_name_encoding:2bits | size:4bits | nullability:1bit |
   // ref_tracking:1bit |
   const bool use_tag_id = field_id >= 0;
-  uint8_t encoding_idx = use_tag_id ? 3 : 0; // TAG_ID or EXTENDED
+  uint8_t encoding_idx = use_tag_id ? 3 : 0; // TAG_ID or UTF8
   std::vector<uint8_t> encoded_name;
   if (!use_tag_id) {
     static const MetaStringEncoder k_field_name_encoder('$', '_');
     static const std::vector<MetaEncoding> k_field_name_encoding_list = {
-        MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+        MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
         MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
     FORY_TRY(encoded, k_field_name_encoder.encode(field_name,
                                                   k_field_name_encoding_list));
     switch (encoded.encoding) {
-    case MetaEncoding::EXTENDED:
+    case MetaEncoding::UTF8:
       encoding_idx = 0;
       break;
     case MetaEncoding::ALL_TO_LOWER_SPECIAL:
@@ -227,7 +227,7 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
 
   // Read and decode field name. Java encodes field names using
   // MetaString with encodings:
-  //   EXTENDED / ALL_TO_LOWER_SPECIAL / LOWER_UPPER_DIGIT_SPECIAL
+  //   UTF8 / ALL_TO_LOWER_SPECIAL / LOWER_UPPER_DIGIT_SPECIAL
   // and writes the encoding index into the top 2 bits.
   // We mirror that here using MetaStringDecoder with '$' and '_' as
   // special characters (same as Encoders.FIELD_NAME_DECODER).
@@ -240,7 +240,7 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
 
   static const MetaStringDecoder k_field_name_decoder('$', '_');
   static const MetaEncoding k_field_name_encodings[] = {
-      MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+      MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
       MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
   if (encoding_idx >=
       sizeof(k_field_name_encodings) / sizeof(k_field_name_encodings[0])) {
@@ -264,20 +264,20 @@ namespace {
 // Meta string encodings for namespace and type name, aligned with
 // rust/fory-core/src/meta/type_meta.rs and Java Encoders.
 static const MetaEncoding k_namespace_encodings[] = {
-    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
 static const MetaEncoding k_type_name_encodings[] = {
-    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
     MetaEncoding::FIRST_TO_LOWER_SPECIAL};
 
 static const std::vector<MetaEncoding> k_namespace_encoding_list = {
-    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
 static const std::vector<MetaEncoding> k_type_name_encoding_list = {
-    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
     MetaEncoding::FIRST_TO_LOWER_SPECIAL};
 
@@ -366,6 +366,7 @@ read_meta_name(Buffer &buffer, const MetaStringDecoder &decoder,
 
 TypeMeta TypeMeta::from_fields(uint32_t tid, const std::string &ns,
                                const std::string &name, bool by_name,
+                               int32_t user_type_id,
                                std::vector<FieldInfo> fields) {
   for (const auto &field : fields) {
     FORY_CHECK(!field.field_name.empty())
@@ -373,6 +374,7 @@ TypeMeta TypeMeta::from_fields(uint32_t tid, const std::string &ns,
   }
   TypeMeta meta;
   meta.type_id = tid;
+  meta.user_type_id = user_type_id;
   meta.namespace_str = ns;
   meta.type_name = name;
   meta.register_by_name = by_name;
@@ -410,6 +412,13 @@ Result<std::vector<uint8_t>, Error> TypeMeta::to_bytes() const {
         sizeof(k_type_name_encodings) / sizeof(k_type_name_encodings[0])));
   } else {
     layer_buffer.write_var_uint32(type_id);
+    if (::fory::needs_user_type_id(type_id)) {
+      if (user_type_id < 0) {
+        return Unexpected(
+            Error::type_error("User type id is required for this type"));
+      }
+      layer_buffer.write_var_uint32(static_cast<uint32_t>(user_type_id));
+    }
   }
 
   // write field infos
@@ -490,6 +499,7 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
 
   // Read type ID or namespace/type name
   uint32_t type_id = 0;
+  int32_t user_type_id = -1;
   std::string namespace_str;
   std::string type_name;
 
@@ -514,6 +524,13 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
       return Unexpected(std::move(error));
     }
     type_id = tid;
+    if (::fory::needs_user_type_id(type_id)) {
+      uint32_t uid = buffer.read_var_uint32(error);
+      if (FORY_PREDICT_FALSE(!error.ok())) {
+        return Unexpected(std::move(error));
+      }
+      user_type_id = static_cast<int32_t>(uid);
+    }
   }
 
   // Read field infos
@@ -544,6 +561,7 @@ TypeMeta::from_bytes(Buffer &buffer, const TypeMeta *local_type_info) {
   auto meta = std::make_unique<TypeMeta>();
   meta->hash = meta_hash;
   meta->type_id = type_id;
+  meta->user_type_id = user_type_id;
   meta->namespace_str = std::move(namespace_str);
   meta->type_name = std::move(type_name);
   meta->register_by_name = register_by_name;
@@ -589,6 +607,7 @@ TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header) {
 
   // Read type ID or namespace/type name
   uint32_t type_id = 0;
+  int32_t user_type_id = -1;
   std::string namespace_str;
   std::string type_name;
 
@@ -613,6 +632,13 @@ TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header) {
       return Unexpected(std::move(error));
     }
     type_id = tid;
+    if (::fory::needs_user_type_id(type_id)) {
+      uint32_t uid = buffer.read_var_uint32(error);
+      if (FORY_PREDICT_FALSE(!error.ok())) {
+        return Unexpected(std::move(error));
+      }
+      user_type_id = static_cast<int32_t>(uid);
+    }
   }
 
   // Read field infos
@@ -637,6 +663,7 @@ TypeMeta::from_bytes_with_header(Buffer &buffer, int64_t header) {
   auto meta = std::make_unique<TypeMeta>();
   meta->hash = meta_hash;
   meta->type_id = type_id;
+  meta->user_type_id = user_type_id;
   meta->namespace_str = std::move(namespace_str);
   meta->type_name = std::move(type_name);
   meta->register_by_name = register_by_name;
@@ -909,8 +936,7 @@ void TypeMeta::assign_field_ids(const TypeMeta *local_type,
   // NAMED_ENUM, EXT vs NAMED_EXT, and their ID-based variants) are
   // treated as equal for schema-evolution matching.
   auto normalize_type_id = [](uint32_t tid) {
-    uint32_t low = tid & 0xffu;
-    switch (static_cast<TypeId>(low)) {
+    switch (static_cast<TypeId>(tid)) {
     case TypeId::STRUCT:
     case TypeId::COMPATIBLE_STRUCT:
     case TypeId::NAMED_STRUCT:
@@ -1185,6 +1211,7 @@ int32_t TypeMeta::compute_struct_version(const TypeMeta &meta) {
 std::unique_ptr<TypeInfo> TypeInfo::deep_clone() const {
   auto cloned = std::make_unique<TypeInfo>();
   cloned->type_id = type_id;
+  cloned->user_type_id = user_type_id;
   cloned->namespace_name = namespace_name;
   cloned->type_name = type_name;
   cloned->register_by_name = register_by_name;
@@ -1227,7 +1254,7 @@ encode_meta_string(const std::string &value, bool is_namespace) {
 
   if (value.empty()) {
     // For empty strings, use a minimal encoding
-    cached->encoding = 0; // EXTENDED
+    cached->encoding = 0; // UTF8
     cached->bytes.clear();
     cached->hash = 0;
     return cached;
@@ -1238,11 +1265,11 @@ encode_meta_string(const std::string &value, bool is_namespace) {
   static const MetaStringEncoder k_type_name_encoder('$', '_');
 
   static const std::vector<MetaEncoding> k_namespace_encodings = {
-      MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+      MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
       MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
   static const std::vector<MetaEncoding> k_type_name_encodings = {
-      MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+      MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
       MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
       MetaEncoding::FIRST_TO_LOWER_SPECIAL};
 
@@ -1301,6 +1328,9 @@ TypeResolver::build_final_type_resolver() {
   for (const auto &[key, old_ptr] : type_info_by_id_) {
     final_resolver->type_info_by_id_.put(key, ptr_map[old_ptr]);
   }
+  for (const auto &[key, old_ptr] : user_type_info_by_id_) {
+    final_resolver->user_type_info_by_id_.put(key, ptr_map[old_ptr]);
+  }
   for (const auto &[key, old_ptr] : type_info_by_name_) {
     final_resolver->type_info_by_name_[key] = ptr_map[old_ptr];
   }
@@ -1327,7 +1357,7 @@ TypeResolver::build_final_type_resolver() {
     TypeMeta meta = TypeMeta::from_fields(
         partial_ptr->type_id, partial_ptr->namespace_name,
         partial_ptr->type_name, partial_ptr->register_by_name,
-        std::move(sorted_fields));
+        partial_ptr->user_type_id, std::move(sorted_fields));
 
     // Serialize TypeMeta to bytes
     auto type_def_result = meta.to_bytes();
@@ -1382,6 +1412,9 @@ std::unique_ptr<TypeResolver> TypeResolver::clone() const {
   }
   for (const auto &[key, old_ptr] : type_info_by_id_) {
     cloned->type_info_by_id_.put(key, ptr_map[old_ptr]);
+  }
+  for (const auto &[key, old_ptr] : user_type_info_by_id_) {
+    cloned->user_type_info_by_id_.put(key, ptr_map[old_ptr]);
   }
   for (const auto &[key, old_ptr] : type_info_by_name_) {
     cloned->type_info_by_name_[key] = ptr_map[old_ptr];

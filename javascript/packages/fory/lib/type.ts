@@ -137,31 +137,38 @@ export const TypeId = {
       TypeId.NAMED_EXT,
       TypeId.NAMED_STRUCT,
       TypeId.NAMED_UNION,
-    ].includes((id & 0xff) as any);
+    ].includes(id as any);
   },
   polymorphicType(id: number) {
-    return [TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT, TypeId.EXT, TypeId.NAMED_EXT].includes((id & 0xff) as any);
+    return [TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT, TypeId.EXT, TypeId.NAMED_EXT].includes(id as any);
   },
   structType(id: number) {
-    return [TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT].includes((id & 0xff) as any);
+    return [TypeId.STRUCT, TypeId.NAMED_STRUCT, TypeId.COMPATIBLE_STRUCT, TypeId.NAMED_COMPATIBLE_STRUCT].includes(id as any);
   },
   extType(id: number) {
-    return [TypeId.EXT, TypeId.NAMED_EXT].includes((id & 0xff) as any);
+    return [TypeId.EXT, TypeId.NAMED_EXT].includes(id as any);
   },
   enumType(id: number) {
-    return [TypeId.ENUM, TypeId.NAMED_ENUM].includes((id & 0xff) as any);
+    return [TypeId.ENUM, TypeId.NAMED_ENUM].includes(id as any);
   },
   userDefinedType(id: number) {
-    const internalId = id & 0xff;
     return this.structType(id)
       || this.extType(id)
       || this.enumType(id)
-      || internalId == TypeId.TYPED_UNION
-      || internalId == TypeId.NAMED_UNION;
+      || id == TypeId.TYPED_UNION
+      || id == TypeId.NAMED_UNION;
   },
   isBuiltin(id: number) {
-    const internalId = id & 0xff;
-    return !this.userDefinedType(id) && internalId !== TypeId.UNKNOWN;
+    return !this.userDefinedType(id) && id !== TypeId.UNKNOWN;
+  },
+  needsUserTypeId(id: number) {
+    return [
+      TypeId.ENUM,
+      TypeId.STRUCT,
+      TypeId.COMPATIBLE_STRUCT,
+      TypeId.EXT,
+      TypeId.TYPED_UNION,
+    ].includes(id as any);
   },
 } as const;
 
@@ -176,6 +183,7 @@ export type Serializer<T = any, T2 = any> = {
   fixedSize: number;
   needToWriteRef: () => boolean;
   getTypeId: () => number;
+  getUserTypeId: () => number;
   getHash: () => number;
 
   // for writing

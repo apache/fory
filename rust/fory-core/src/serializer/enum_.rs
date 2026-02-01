@@ -28,7 +28,7 @@ pub fn actual_type_id(type_id: u32, register_by_name: bool, _compatible: bool) -
     if register_by_name {
         TypeId::NAMED_ENUM as u32
     } else {
-        (type_id << 8) + TypeId::ENUM as u32
+        TypeId::ENUM as u32
     }
 }
 
@@ -52,11 +52,16 @@ pub fn write<T: Serializer>(
 pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), Error> {
     let type_id = T::fory_get_type_id(context.get_type_resolver())?;
     context.writer.write_var_uint32(type_id);
-    let is_named_enum = type_id & 0xff == TypeId::NAMED_ENUM as u32;
+    let rs_type_id = std::any::TypeId::of::<T>();
+    if crate::types::needs_user_type_id(type_id) {
+        let type_info = context.get_type_resolver().get_type_info(&rs_type_id)?;
+        let user_type_id = type_info.get_user_type_id();
+        context.writer.write_var_uint32(user_type_id as u32);
+    }
+    let is_named_enum = type_id == TypeId::NAMED_ENUM as u32;
     if !is_named_enum {
         return Ok(());
     }
-    let rs_type_id = std::any::TypeId::of::<T>();
     if context.is_share_meta() {
         // Write type meta inline using streaming protocol
         context.write_type_meta(rs_type_id)?;
@@ -102,11 +107,23 @@ pub fn read<T: Serializer + ForyDefault>(
 pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
     let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
     let remote_type_id = context.reader.read_varuint32()?;
+    let rs_type_id = std::any::TypeId::of::<T>();
+    if crate::types::needs_user_type_id(remote_type_id) {
+        let remote_user_type_id = context.reader.read_varuint32()?;
+        let local_user_type_id = context
+            .get_type_resolver()
+            .get_type_info(&rs_type_id)?
+            .get_user_type_id();
+        ensure!(
+            local_user_type_id as u32 == remote_user_type_id,
+            Error::type_mismatch(local_user_type_id as u32, remote_user_type_id)
+        );
+    }
     ensure!(
         local_type_id == remote_type_id,
         Error::type_mismatch(local_type_id, remote_type_id)
     );
-    let is_named_enum = local_type_id & 0xff == TypeId::NAMED_ENUM as u32;
+    let is_named_enum = local_type_id == TypeId::NAMED_ENUM as u32;
     if !is_named_enum {
         return Ok(());
     }

@@ -29,12 +29,12 @@ pub fn actual_type_id(type_id: u32, register_by_name: bool, compatible: bool) ->
         if register_by_name {
             TypeId::NAMED_COMPATIBLE_STRUCT as u32
         } else {
-            (type_id << 8) + TypeId::COMPATIBLE_STRUCT as u32
+            TypeId::COMPATIBLE_STRUCT as u32
         }
     } else if register_by_name {
         TypeId::NAMED_STRUCT as u32
     } else {
-        (type_id << 8) + TypeId::STRUCT as u32
+        TypeId::STRUCT as u32
     }
 }
 
@@ -43,8 +43,13 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), 
     let type_id = T::fory_get_type_id(context.get_type_resolver())?;
     context.writer.write_var_uint32(type_id);
     let rs_type_id = std::any::TypeId::of::<T>();
+    if crate::types::needs_user_type_id(type_id) {
+        let type_info = context.get_type_resolver().get_type_info(&rs_type_id)?;
+        let user_type_id = type_info.get_user_type_id();
+        context.writer.write_var_uint32(user_type_id as u32);
+    }
 
-    if type_id & 0xff == TypeId::NAMED_STRUCT as u32 {
+    if type_id == TypeId::NAMED_STRUCT as u32 {
         if context.is_share_meta() {
             // Write type meta inline using streaming protocol
             context.write_type_meta(rs_type_id)?;
@@ -55,8 +60,8 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), 
             context.write_meta_string_bytes(namespace)?;
             context.write_meta_string_bytes(type_name)?;
         }
-    } else if type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
-        || type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32
+    } else if type_id == TypeId::NAMED_COMPATIBLE_STRUCT as u32
+        || type_id == TypeId::COMPATIBLE_STRUCT as u32
     {
         // Write type meta inline using streaming protocol
         context.write_type_meta(rs_type_id)?;
@@ -68,12 +73,24 @@ pub fn write_type_info<T: Serializer>(context: &mut WriteContext) -> Result<(), 
 pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Error> {
     let remote_type_id = context.reader.read_varuint32()?;
     let local_type_id = T::fory_get_type_id(context.get_type_resolver())?;
+    let rs_type_id = std::any::TypeId::of::<T>();
+    if crate::types::needs_user_type_id(remote_type_id) {
+        let remote_user_type_id = context.reader.read_varuint32()?;
+        let local_user_type_id = context
+            .get_type_resolver()
+            .get_type_info(&rs_type_id)?
+            .get_user_type_id();
+        ensure!(
+            local_user_type_id as u32 == remote_user_type_id,
+            Error::type_mismatch(local_user_type_id as u32, remote_user_type_id)
+        );
+    }
     ensure!(
         local_type_id == remote_type_id,
         Error::type_mismatch(local_type_id, remote_type_id)
     );
 
-    if local_type_id & 0xff == TypeId::NAMED_STRUCT as u32 {
+    if local_type_id == TypeId::NAMED_STRUCT as u32 {
         if context.is_share_meta() {
             // Read type meta inline using streaming protocol
             let _type_info = context.read_type_meta()?;
@@ -81,8 +98,8 @@ pub fn read_type_info<T: Serializer>(context: &mut ReadContext) -> Result<(), Er
             let _namespace_msb = context.read_meta_string()?;
             let _type_name_msb = context.read_meta_string()?;
         }
-    } else if local_type_id & 0xff == TypeId::NAMED_COMPATIBLE_STRUCT as u32
-        || local_type_id & 0xff == TypeId::COMPATIBLE_STRUCT as u32
+    } else if local_type_id == TypeId::NAMED_COMPATIBLE_STRUCT as u32
+        || local_type_id == TypeId::COMPATIBLE_STRUCT as u32
     {
         // Read type meta inline using streaming protocol
         let _type_info = context.read_type_meta()?;

@@ -135,7 +135,7 @@ const (
 
 // IsNamespacedType checks whether the given type ID is a namespace type
 func IsNamespacedType(typeID TypeId) bool {
-	switch typeID & 0xFF {
+	switch typeID {
 	case NAMED_EXT, NAMED_ENUM, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_UNION:
 		return true
 	default:
@@ -146,9 +146,17 @@ func IsNamespacedType(typeID TypeId) bool {
 // NeedsTypeMetaWrite checks whether a type needs additional type meta written after type ID
 // This includes namespaced types and struct types that need meta share in compatible mode
 func NeedsTypeMetaWrite(typeID TypeId) bool {
-	internalID := typeID & 0xFF
-	switch TypeId(internalID) {
+	switch typeID {
 	case NAMED_EXT, NAMED_ENUM, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_UNION, COMPATIBLE_STRUCT, STRUCT:
+		return true
+	default:
+		return false
+	}
+}
+
+func needsUserTypeID(typeID TypeId) bool {
+	switch typeID {
+	case ENUM, STRUCT, COMPATIBLE_STRUCT, EXT, TYPED_UNION:
 		return true
 	default:
 		return false
@@ -269,18 +277,17 @@ func getPrimitiveTypeSize(typeID int16) int {
 }
 
 func isUserDefinedType(typeID int16) bool {
-	id := int(typeID & 0xff)
-	return id == STRUCT ||
-		id == COMPATIBLE_STRUCT ||
-		id == NAMED_STRUCT ||
-		id == NAMED_COMPATIBLE_STRUCT ||
-		id == EXT ||
-		id == NAMED_EXT ||
-		id == ENUM ||
-		id == NAMED_ENUM ||
-		id == UNION ||
-		id == TYPED_UNION ||
-		id == NAMED_UNION
+	return typeID == STRUCT ||
+		typeID == COMPATIBLE_STRUCT ||
+		typeID == NAMED_STRUCT ||
+		typeID == NAMED_COMPATIBLE_STRUCT ||
+		typeID == EXT ||
+		typeID == NAMED_EXT ||
+		typeID == ENUM ||
+		typeID == NAMED_ENUM ||
+		typeID == UNION ||
+		typeID == TYPED_UNION ||
+		typeID == NAMED_UNION
 }
 
 // ============================================================================
@@ -728,8 +735,7 @@ func getVarintMaxSizeByDispatchId(dispatchId DispatchId) int {
 
 // getEncodingFromTypeId returns the encoding string ("fixed", "varint", "tagged") from a TypeId.
 func getEncodingFromTypeId(typeId TypeId) string {
-	internalId := typeId & 0xFF
-	switch TypeId(internalId) {
+	switch typeId {
 	case INT32, INT64, UINT32, UINT64:
 		return "fixed"
 	case VARINT32, VARINT64, VAR_UINT32, VAR_UINT64:

@@ -36,7 +36,8 @@ from pyfory.meta.metastring import Encoding
 from pyfory.types import is_primitive_type
 from pyfory.policy import DeserializationPolicy, DEFAULT_POLICY
 from pyfory.includes.libserialization cimport \
-    (TypeId, is_namespaced_type, is_type_share_meta, Fory_PyBooleanSequenceWriteToBuffer, Fory_PyFloatSequenceWriteToBuffer)
+    (TypeId, is_namespaced_type, is_type_share_meta, needs_user_type_id,
+     Fory_PyBooleanSequenceWriteToBuffer, Fory_PyFloatSequenceWriteToBuffer)
 
 from libc.stdint cimport int8_t, int16_t, int32_t, int64_t, uint64_t
 from libc.stdint cimport *
@@ -269,6 +270,7 @@ cdef int8_t USE_TYPE_NAME = 0
 cdef int8_t USE_TYPE_ID = 1
 # preserve 0 as flag for type id not set in TypeInfo`
 cdef int8_t NO_TYPE_ID = 0
+cdef int8_t NO_USER_TYPE_ID = -1
 cdef int8_t DEFAULT_DYNAMIC_WRITE_META_STR_ID = fmod.DEFAULT_DYNAMIC_WRITE_META_STR_ID
 cdef int8_t INT64_TYPE_ID = fmod.INT64_TYPE_ID
 cdef int8_t FLOAT64_TYPE_ID = fmod.FLOAT64_TYPE_ID
@@ -468,6 +470,7 @@ cdef class TypeInfo:
     """
     cdef public object cls
     cdef public int32_t type_id
+    cdef public int32_t user_type_id
     cdef public Serializer serializer
     cdef public MetaStringBytes namespace_bytes
     cdef public MetaStringBytes typename_bytes
@@ -478,6 +481,7 @@ cdef class TypeInfo:
             self,
             cls: Union[type, TypeVar] = None,
             type_id: int = NO_TYPE_ID,
+            user_type_id: int = NO_USER_TYPE_ID,
             serializer: Serializer = None,
             namespace_bytes: MetaStringBytes = None,
             typename_bytes: MetaStringBytes = None,
@@ -486,6 +490,7 @@ cdef class TypeInfo:
     ):
         self.cls = cls
         self.type_id = type_id
+        self.user_type_id = user_type_id
         self.serializer = serializer
         self.namespace_bytes = namespace_bytes
         self.typename_bytes = typename_bytes
@@ -493,8 +498,10 @@ cdef class TypeInfo:
         self.type_def = type_def
 
     def __repr__(self):
-        return f"TypeInfo(cls={self.cls}, type_id={self.type_id}, " \
-               f"serializer={self.serializer})"
+        return (
+            f"TypeInfo(cls={self.cls}, type_id={self.type_id}, "
+            f"user_type_id={self.user_type_id}, serializer={self.serializer})"
+        )
 
     cpdef str decode_namespace(self):
         if self.namespace_bytes is None:
@@ -533,6 +540,7 @@ cdef class TypeResolver:
         readonly MetaStringResolver metastring_resolver
         object _resolver
         vector[PyObject *] _c_registered_id_to_type_info
+        flat_hash_map[uint64_t, PyObject *] _c_user_type_id_to_type_info
         # cls -> TypeInfo
         flat_hash_map[uint64_t, PyObject *] _c_types_info
         # hash -> TypeInfo
@@ -602,11 +610,16 @@ cdef class TypeResolver:
         self._populate_typeinfo(typeinfo)
 
     cdef _populate_typeinfo(self, typeinfo):
+        cdef uint64_t key
         type_id = typeinfo.type_id
-        if type_id >= self._c_registered_id_to_type_info.size():
-            self._c_registered_id_to_type_info.resize(type_id * 2, NULL)
-        if type_id > 0 and (self.fory.language == Language.PYTHON or not is_namespaced_type(type_id)):
-            self._c_registered_id_to_type_info[type_id] = <PyObject *> typeinfo
+        if needs_user_type_id(type_id) and typeinfo.user_type_id >= 0:
+            key = ((<uint64_t> type_id) << 32) | (<uint32_t> typeinfo.user_type_id)
+            self._c_user_type_id_to_type_info[key] = <PyObject *> typeinfo
+        else:
+            if type_id >= self._c_registered_id_to_type_info.size():
+                self._c_registered_id_to_type_info.resize(type_id * 2, NULL)
+            if type_id > 0 and (self.fory.language == Language.PYTHON or not is_namespaced_type(type_id)):
+                self._c_registered_id_to_type_info[type_id] = <PyObject *> typeinfo
         self._c_types_info[<uintptr_t> <PyObject *> typeinfo.cls] = <PyObject *> typeinfo
         # Resize if load factor >= 0.4 (using integer arithmetic: size/capacity >= 4/10)
         if self._c_types_info.size() * 10 >= self._c_types_info.bucket_count() * 5:
@@ -615,11 +628,16 @@ cdef class TypeResolver:
             self._load_bytes_to_typeinfo(type_id, typeinfo.namespace_bytes, typeinfo.typename_bytes)
 
     def register_serializer(self, cls: Union[type, TypeVar], serializer):
+        cdef uint64_t key
         typeinfo1 = self._resolver.get_typeinfo(cls)
         self._resolver.register_serializer(cls, serializer)
         typeinfo2 = self._resolver.get_typeinfo(cls)
-        if typeinfo1.type_id != typeinfo2.type_id:
-            self._c_registered_id_to_type_info[typeinfo1.type_id] = NULL
+        if typeinfo1.type_id != typeinfo2.type_id or typeinfo1.user_type_id != typeinfo2.user_type_id:
+            if needs_user_type_id(typeinfo1.type_id) and typeinfo1.user_type_id >= 0:
+                key = ((<uint64_t> typeinfo1.type_id) << 32) | (<uint32_t> typeinfo1.user_type_id)
+                self._c_user_type_id_to_type_info[key] = NULL
+            else:
+                self._c_registered_id_to_type_info[typeinfo1.type_id] = NULL
             self._populate_typeinfo(typeinfo2)
 
     cpdef inline Serializer get_serializer(self, cls):
@@ -677,14 +695,17 @@ cdef class TypeResolver:
             return
         cdef:
             int32_t type_id = typeinfo.type_id
-            int32_t internal_type_id = type_id & 0xFF
 
         if self.meta_share:
             self.write_shared_type_meta(buffer, typeinfo)
             return
 
         buffer.write_var_uint32(type_id)
-        if is_namespaced_type(internal_type_id):
+        if needs_user_type_id(type_id):
+            if typeinfo.user_type_id < 0:
+                raise ValueError(f"user_type_id required for type_id {type_id}")
+            buffer.write_var_uint32(typeinfo.user_type_id)
+        if is_namespaced_type(type_id):
             self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.namespace_bytes)
             self.metastring_resolver.write_meta_string_bytes(buffer, typeinfo.typename_bytes)
 
@@ -693,17 +714,21 @@ cdef class TypeResolver:
             int32_t type_id = buffer.read_var_uint32()
         if type_id < 0:
             type_id = -type_id
-        if type_id >= self._c_registered_id_to_type_info.size():
-            raise ValueError(f"Unexpected type_id {type_id}")
         cdef:
-            int32_t internal_type_id = type_id & 0xFF
+            int32_t user_type_id = NO_USER_TYPE_ID
             MetaStringBytes namespace_bytes, typename_bytes
         if self.meta_share:
             return self.serialization_context.meta_context.read_shared_typeinfo_with_type_id(buffer, type_id)
-        if is_namespaced_type(internal_type_id):
+        if needs_user_type_id(type_id):
+            user_type_id = buffer.read_var_uint32()
+        if is_namespaced_type(type_id):
             namespace_bytes = self.metastring_resolver.read_meta_string_bytes(buffer)
             typename_bytes = self.metastring_resolver.read_meta_string_bytes(buffer)
             return self._load_bytes_to_typeinfo(type_id, namespace_bytes, typename_bytes)
+        if needs_user_type_id(type_id):
+            return self.get_user_typeinfo_by_id(type_id, user_type_id)
+        if type_id >= self._c_registered_id_to_type_info.size():
+            raise ValueError(f"Unexpected type_id {type_id}")
         typeinfo_ptr = self._c_registered_id_to_type_info[type_id]
         if typeinfo_ptr == NULL:
             raise ValueError(f"Unexpected type_id {type_id}")
@@ -711,13 +736,20 @@ cdef class TypeResolver:
         return typeinfo
 
     cpdef inline TypeInfo get_typeinfo_by_id(self, int32_t type_id):
-        if type_id >= self._c_registered_id_to_type_info.size() or type_id < 0 or is_namespaced_type(type_id & 0xFF):
+        if type_id >= self._c_registered_id_to_type_info.size() or type_id < 0 or is_namespaced_type(type_id):
             raise ValueError(f"Unexpected type_id {type_id}")
         typeinfo_ptr = self._c_registered_id_to_type_info[type_id]
         if typeinfo_ptr == NULL:
             raise ValueError(f"Unexpected type_id {type_id}")
         typeinfo = <TypeInfo> typeinfo_ptr
         return typeinfo
+
+    cpdef inline TypeInfo get_user_typeinfo_by_id(self, int32_t type_id, int32_t user_type_id):
+        cdef uint64_t key = ((<uint64_t> type_id) << 32) | (<uint32_t> user_type_id)
+        typeinfo_ptr = self._c_user_type_id_to_type_info[key]
+        if typeinfo_ptr == NULL:
+            raise ValueError(f"Unexpected type_id {type_id} with user_type_id {user_type_id}")
+        return <TypeInfo> typeinfo_ptr
 
     cpdef inline get_typeinfo_by_name(self, namespace, typename):
         return self._resolver.get_typeinfo_by_name(namespace=namespace, typename=typename)
@@ -789,9 +821,12 @@ cdef class MetaContext:
         """write type info with streaming inline TypeDef."""
         type_cls = typeinfo.cls
         cdef int32_t type_id = typeinfo.type_id
-        cdef int32_t internal_type_id = type_id & 0xFF
         buffer.write_var_uint32(type_id)
-        if not is_type_share_meta(internal_type_id):
+        if needs_user_type_id(type_id):
+            if typeinfo.user_type_id < 0:
+                raise ValueError(f"user_type_id required for type_id {type_id}")
+            buffer.write_var_uint32(typeinfo.user_type_id)
+        if not is_type_share_meta(type_id):
             return
 
         cdef uint64_t type_addr = <uint64_t> <PyObject *> type_cls
@@ -827,7 +862,12 @@ cdef class MetaContext:
 
     cpdef inline read_shared_typeinfo_with_type_id(self, Buffer buffer, int32_t type_id):
         """Read shared type info when type_id is already consumed."""
-        if not is_type_share_meta(type_id & 0xFF):
+        cdef int32_t user_type_id = NO_USER_TYPE_ID
+        if needs_user_type_id(type_id):
+            user_type_id = buffer.read_var_uint32()
+        if not is_type_share_meta(type_id):
+            if needs_user_type_id(type_id):
+                return self.type_resolver.get_user_typeinfo_by_id(type_id, user_type_id)
             return self.type_resolver.get_typeinfo_by_id(type_id)
 
         cdef int32_t index_marker = buffer.read_var_uint32()

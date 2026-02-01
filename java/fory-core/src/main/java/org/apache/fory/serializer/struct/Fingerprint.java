@@ -175,10 +175,9 @@ public class Fingerprint {
         return Types.UNKNOWN;
       }
       int typeId = Types.getDescriptorTypeId(fory, descriptor);
-      int internalTypeId = typeId & 0xff;
       // union must also be set to `UNKNOWN`, we can't know a type is union at compile-time for some
       // languages.
-      if (Types.isUserDefinedType((byte) internalTypeId)) {
+      if (Types.isUserDefinedType((byte) typeId)) {
         return Types.UNKNOWN;
       }
       return typeId;

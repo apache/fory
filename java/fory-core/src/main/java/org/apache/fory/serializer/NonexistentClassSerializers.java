@@ -134,23 +134,28 @@ public final class NonexistentClassSerializers {
         if (classDef.isNamed()) {
           return Types.NAMED_ENUM;
         }
-        return (classDef.getUserTypeId() << 8) | Types.ENUM;
+        return Types.ENUM;
       }
       if (classDef.isNamed()) {
         return classDef.isCompatible() ? Types.NAMED_COMPATIBLE_STRUCT : Types.NAMED_STRUCT;
       }
-      int internalTypeId = classDef.isCompatible() ? Types.COMPATIBLE_STRUCT : Types.STRUCT;
-      return (classDef.getUserTypeId() << 8) | internalTypeId;
+      return classDef.isCompatible() ? Types.COMPATIBLE_STRUCT : Types.STRUCT;
     }
 
     @Override
     public void write(MemoryBuffer buffer, Object v) {
       NonexistentClass.NonexistentMetaShared value = (NonexistentClass.NonexistentMetaShared) v;
       int typeId = resolveTypeId(value.classDef);
+      int userTypeId = value.classDef.isNamed() ? -1 : value.classDef.getUserTypeId();
       int typeIdSize = computeVarUint32Size(typeId);
-      if (typeIdSize == NONEXISTENT_META_SHARED_ID_SIZE) {
+      int userTypeIdSize = userTypeId >= 0 ? computeVarUint32Size(userTypeId) : 0;
+      int totalSize = typeIdSize + userTypeIdSize;
+      if (totalSize == NONEXISTENT_META_SHARED_ID_SIZE) {
         buffer.increaseWriterIndex(-NONEXISTENT_META_SHARED_ID_SIZE);
         buffer.writeVarUint32Small7(typeId);
+        if (userTypeIdSize > 0) {
+          buffer.writeVarUint32(userTypeId);
+        }
       } else {
         int originalWriterIndex = buffer.writerIndex();
         int placeholderStart = originalWriterIndex - NONEXISTENT_META_SHARED_ID_SIZE;
@@ -159,6 +164,9 @@ public final class NonexistentClassSerializers {
         byte[] payload = buffer.getBytes(payloadStart, payloadLength);
         buffer.writerIndex(placeholderStart);
         buffer.writeVarUint32Small7(typeId);
+        if (userTypeIdSize > 0) {
+          buffer.writeVarUint32(userTypeId);
+        }
         buffer.writeBytes(payload);
       }
       writeClassDef(buffer, value);

@@ -59,6 +59,19 @@ import org.apache.fory.util.Utils;
 class TypeDefEncoder {
   private static final Logger LOG = LoggerFactory.getLogger(TypeDefEncoder.class);
 
+  private static boolean needsUserTypeId(int typeId) {
+    switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.COMPATIBLE_STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   /** Build class definition from fields of class. */
   static ClassDef buildTypeDef(Fory fory, Class<?> type) {
     DescriptorGrouper descriptorGrouper =
@@ -70,7 +83,7 @@ class TypeDefEncoder {
     ClassInfo classInfo = fory.getTypeResolver().getClassInfo(type);
     List<Field> fields;
     int typeId = classInfo.getTypeId();
-    if (Types.isStructType(typeId & 0xff)) {
+    if (Types.isStructType(typeId)) {
       fields =
           descriptorGrouper.getSortedDescriptors().stream()
               .map(Descriptor::getField)
@@ -113,11 +126,12 @@ class TypeDefEncoder {
   static ClassDef buildClassDefWithFieldInfos(
       XtypeResolver resolver, Class<?> type, List<FieldInfo> fieldInfos) {
     fieldInfos = new ArrayList<>(getClassFields(type, fieldInfos).values());
+    ClassInfo classInfo = resolver.getClassInfo(type);
     MemoryBuffer encodeClassDef = encodeClassDef(resolver, type, fieldInfos);
     byte[] classDefBytes = encodeClassDef.getBytes(0, encodeClassDef.writerIndex());
     ClassDef classDef =
         new ClassDef(
-            Encoders.buildClassSpec(type),
+            new ClassSpec(type, classInfo.getTypeId(), classInfo.getUserTypeId()),
             fieldInfos,
             true,
             encodeClassDef.getInt64(0),
@@ -145,7 +159,10 @@ class TypeDefEncoder {
       buffer.writeVarUint32(fields.size() - SMALL_NUM_FIELDS_THRESHOLD);
     }
     if (resolver.isRegisteredById(type)) {
-      buffer.writeVarUint32(classInfo.getTypeId());
+      buffer.writeVarUint32Small7(classInfo.getTypeId());
+      if (needsUserTypeId(classInfo.getTypeId())) {
+        buffer.writeVarUint32(classInfo.getUserTypeId());
+      }
     } else {
       Preconditions.checkArgument(resolver.isRegisteredByName(type));
       currentClassHeader |= REGISTER_BY_NAME_FLAG;
@@ -201,7 +218,7 @@ class TypeDefEncoder {
         // Convert camelCase field names to snake_case for xlang interoperability
         String fieldName = StringUtils.lowerCamelToLowerUnderscore(fieldInfo.getFieldName());
         MetaString metaString = Encoders.encodeFieldName(fieldName);
-        // Encoding `EXTENDED/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID`
+        // Encoding `UTF_8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID`
         encodingFlags = fieldNameEncodingsList.indexOf(metaString.getEncoding());
         encoded = metaString.getBytes();
         size = (encoded.length - 1);

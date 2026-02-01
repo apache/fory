@@ -115,6 +115,7 @@ struct CachedMetaString {
 /// type information across language boundaries (xlang serialization).
 struct TypeInfo {
   uint32_t type_id = 0;
+  int32_t user_type_id = -1;
   std::string namespace_name;
   std::string type_name;
   bool register_by_name = false;

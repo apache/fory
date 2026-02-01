@@ -62,7 +62,12 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
 
     // Read type_id first
     let type_id = context.reader.read_varuint32()?;
-    let internal_id = type_id & 0xff;
+    let internal_id = type_id;
+    let _user_type_id = if types::needs_user_type_id(type_id) {
+        Some(context.reader.read_varuint32()?)
+    } else {
+        None
+    };
 
     // NONE type has no data - return early
     if internal_id == types::NONE {
@@ -103,8 +108,10 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
                 Some(type_info),
             )
         }
-        types::STRUCT | types::NAMED_STRUCT | types::NAMED_UNION => {
-            // For non-compatible struct types with share_meta enabled, read type meta inline
+        types::NAMED_ENUM
+        | types::NAMED_EXT
+        | types::NAMED_STRUCT
+        | types::NAMED_UNION => {
             if context.is_share_meta() {
                 let type_info = context.read_type_meta()?;
                 (
@@ -117,7 +124,6 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
                     Some(type_info),
                 )
             } else {
-                // Without share_meta, read namespace and type_name
                 let namespace = context.read_meta_string()?.to_owned();
                 let type_name = context.read_meta_string()?.to_owned();
                 let rc_namespace = Rc::from(namespace);
@@ -137,15 +143,24 @@ pub fn skip_any_value(context: &mut ReadContext, read_ref_flag: bool) -> Result<
                 )
             }
         }
-        _ => (
-            FieldType {
-                type_id,
-                nullable: true,
-                ref_tracking: false,
-                generics: vec![],
-            },
-            None,
-        ),
+        _ => {
+            let type_info = if let Some(user_type_id) = _user_type_id {
+                context
+                    .get_type_resolver()
+                    .get_user_type_info_by_id(type_id, user_type_id)
+            } else {
+                None
+            };
+            (
+                FieldType {
+                    type_id,
+                    nullable: true,
+                    ref_tracking: false,
+                    generics: vec![],
+                },
+                type_info,
+            )
+        }
     };
     // Don't read ref flag again in skip_value since we already handled it.
     // Pass type_info so skip_struct doesn't try to read type_id/meta_index again.
@@ -310,13 +325,12 @@ fn skip_struct(
 ) -> Result<(), Error> {
     let type_info_rc: Option<Rc<crate::TypeInfo>>;
     let type_info_value = if type_info.is_none() {
-        let remote_type_id = context.reader.read_varuint32()?;
+        let remote_type_info = context.read_any_typeinfo()?;
         ensure!(
-            type_id_num == remote_type_id,
-            Error::type_mismatch(type_id_num, remote_type_id)
+            type_id_num == remote_type_info.get_type_id(),
+            Error::type_mismatch(type_id_num, remote_type_info.get_type_id())
         );
-        // Read type meta inline using streaming protocol
-        type_info_rc = Some(context.read_type_meta()?);
+        type_info_rc = Some(remote_type_info);
         type_info_rc.as_ref().unwrap()
     } else {
         type_info.as_ref().unwrap()
@@ -337,7 +351,7 @@ fn skip_struct(
                 "[skip_struct] field: {:?}, type_id: {}, internal_id: {}",
                 field_info.field_name,
                 field_info.field_type.type_id,
-                field_info.field_type.type_id & 0xff
+                field_info.field_type.type_id
             );
         }
         let read_ref_flag = util::field_need_write_ref_into(
@@ -357,59 +371,17 @@ fn skip_ext(
 ) -> Result<(), Error> {
     let type_info_rc: Option<Rc<crate::TypeInfo>>;
     let type_info_value = if type_info.is_none() {
-        let remote_type_id = context.reader.read_varuint32()?;
+        let remote_type_info = context.read_any_typeinfo()?;
         ensure!(
-            type_id_num == remote_type_id,
-            Error::type_mismatch(type_id_num, remote_type_id)
+            type_id_num == remote_type_info.get_type_id(),
+            Error::type_mismatch(type_id_num, remote_type_info.get_type_id())
         );
-        // Read type meta inline using streaming protocol
-        type_info_rc = Some(context.read_type_meta()?);
+        type_info_rc = Some(remote_type_info);
         type_info_rc.as_ref().unwrap()
     } else {
         type_info.as_ref().unwrap()
     };
-    let type_resolver = context.get_type_resolver();
-    let type_meta = type_info_value.get_type_meta();
-    type_resolver
-        .get_ext_name_harness(type_meta.get_namespace(), type_meta.get_type_name())?
-        .get_read_data_fn()(context)?;
-    Ok(())
-}
-
-fn skip_user_struct(context: &mut ReadContext, _type_id_num: u32) -> Result<(), Error> {
-    let remote_type_id = context.reader.read_varuint32()?;
-    // Read type meta inline using streaming protocol
-    let type_info = context.read_type_meta()?;
-    let type_meta = type_info.get_type_meta();
-    ensure!(
-        type_meta.get_type_id() == remote_type_id,
-        Error::type_mismatch(type_meta.get_type_id(), remote_type_id)
-    );
-    let field_infos = type_meta.get_field_infos().to_vec();
-    context.inc_depth()?;
-    for field_info in field_infos.iter() {
-        let read_ref_flag = util::field_need_write_ref_into(
-            field_info.field_type.type_id,
-            field_info.field_type.nullable,
-        );
-        skip_value(context, &field_info.field_type, read_ref_flag, true, &None)?;
-    }
-    context.dec_depth();
-    Ok(())
-}
-
-fn skip_user_ext(context: &mut ReadContext, type_id_num: u32) -> Result<(), Error> {
-    let remote_type_id = context.reader.read_varuint32()?;
-    ensure!(
-        type_id_num == remote_type_id,
-        Error::type_mismatch(type_id_num, remote_type_id)
-    );
-    context.inc_depth()?;
-    let type_resolver = context.get_type_resolver();
-    type_resolver
-        .get_ext_harness(type_id_num)?
-        .get_read_data_fn()(context)?;
-    context.dec_depth();
+    type_info_value.get_harness().get_read_data_fn()(context)?;
     Ok(())
 }
 
@@ -436,32 +408,29 @@ fn skip_value(
     }
     let type_id_num = field_type.type_id;
 
-    // Check if it's a user-defined type (high bits set, meaning type_id > 255)
-    if type_id_num > 255 {
-        let internal_id = type_id_num & 0xff;
-        // Handle struct-like types including UNKNOWN (0) which is used for polymorphic types
-        if internal_id == types::COMPATIBLE_STRUCT
-            || internal_id == types::STRUCT
-            || internal_id == types::NAMED_STRUCT
-            || internal_id == types::NAMED_COMPATIBLE_STRUCT
-            || internal_id == types::UNKNOWN
+    // Handle user-defined types (struct/enum/ext/union)
+    if types::is_user_type(type_id_num) || type_id_num == types::UNKNOWN {
+        if type_id_num == types::COMPATIBLE_STRUCT
+            || type_id_num == types::STRUCT
+            || type_id_num == types::NAMED_STRUCT
+            || type_id_num == types::NAMED_COMPATIBLE_STRUCT
+            || type_id_num == types::UNKNOWN
         {
-            // If type_info is provided (from skip_any_value), use skip_struct directly
-            // which won't try to re-read type_id/meta_index. Otherwise use skip_user_struct.
-            if type_info.is_some() {
-                return skip_struct(context, type_id_num, type_info);
-            }
-            return skip_user_struct(context, type_id_num);
-        } else if internal_id == types::ENUM || internal_id == types::NAMED_ENUM {
+            return skip_struct(context, type_id_num, type_info);
+        } else if type_id_num == types::ENUM
+            || type_id_num == types::NAMED_ENUM
+            || type_id_num == types::UNION
+            || type_id_num == types::TYPED_UNION
+            || type_id_num == types::NAMED_UNION
+        {
             let _ordinal = context.reader.read_varuint32()?;
             return Ok(());
-        } else if internal_id == types::EXT || internal_id == types::NAMED_EXT {
-            return skip_user_ext(context, type_id_num);
+        } else if type_id_num == types::EXT || type_id_num == types::NAMED_EXT {
+            return skip_ext(context, type_id_num, type_info);
         } else {
             return Err(Error::type_error(format!(
-                "Unknown type id: {} (internal_id: {}, type_info provided: {})",
+                "Unknown type id: {} (type_info provided: {})",
                 type_id_num,
-                internal_id,
                 type_info.is_some()
             )));
         }

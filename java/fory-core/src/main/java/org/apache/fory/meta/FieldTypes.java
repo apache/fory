@@ -163,12 +163,12 @@ public class FieldTypes {
       }
     }
 
-    boolean isUnionType = Types.isUnionType(typeId & 0xff);
+    boolean isUnionType = Types.isUnionType(typeId);
     if (isUnionType) {
       typeId = Types.UNION;
     }
 
-    if (Types.isPrimitiveArray(typeId & 0xff)) {
+    if (Types.isPrimitiveArray(typeId)) {
       return new RegisteredFieldType(nullable, trackingRef, typeId);
     }
 
@@ -381,7 +381,7 @@ public class FieldTypes {
       }
       buffer.writeVarUint32Small7(typeId);
       // Use the original typeId for the switch (not the one with flags)
-      switch (this.typeId & 0xff) {
+      switch (this.typeId) {
         case Types.LIST:
         case Types.SET:
           ((CollectionFieldType) this).getElementType().xwrite(buffer, true);
@@ -411,7 +411,7 @@ public class FieldTypes {
         int typeId,
         boolean nullable,
         boolean trackingRef) {
-      switch (typeId & 0xff) {
+      switch (typeId) {
         case Types.LIST:
         case Types.SET:
           return new CollectionFieldType(typeId, nullable, trackingRef, xread(buffer, resolver));
@@ -464,7 +464,7 @@ public class FieldTypes {
     @Override
     public TypeRef<?> toTypeToken(TypeResolver resolver, TypeRef<?> declared) {
       Class<?> cls;
-      int internalTypeId = typeId & 0xff;
+      int internalTypeId = typeId;
       if (Types.isPrimitiveType(internalTypeId)) {
         if (declared != null) {
           ClassInfo declaredInfo = resolver.getClassInfo(declared.getRawType(), false);

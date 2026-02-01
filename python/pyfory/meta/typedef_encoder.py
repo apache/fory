@@ -36,6 +36,8 @@ from pyfory.meta.typedef import (
     TAG_ID_SIZE_THRESHOLD,
 )
 from pyfory.meta.metastring import MetaStringEncoder
+from pyfory.types import needs_user_type_id
+from pyfory._fory import NO_USER_TYPE_ID
 
 from pyfory.buffer import Buffer
 from pyfory.lib.mmh3 import hash_buffer
@@ -85,16 +87,18 @@ def encode_typedef(type_resolver, cls, include_fields: bool = True):
         buffer.write_uint8(header)
 
     # Write type info
+    type_id, user_type_id = type_resolver.get_registered_type_ids(cls)
     if type_resolver.is_registered_by_name(cls):
         namespace, typename = type_resolver.get_registered_name(cls)
         write_namespace(buffer, namespace)
         write_typename(buffer, typename)
-        # Use the actual type_id from the resolver, not a generic one
-        type_id = type_resolver.get_registered_id(cls)
     else:
         assert type_resolver.is_registered_by_id(cls=cls), "Class must be registered by name or id"
-        type_id = type_resolver.get_registered_id(cls)
         buffer.write_var_uint32(type_id)
+        if needs_user_type_id(type_id):
+            if user_type_id in {None, NO_USER_TYPE_ID}:
+                raise ValueError(f"user_type_id required for type_id {type_id}")
+            buffer.write_var_uint32(user_type_id)
 
     # Write fields info
     write_fields_info(type_resolver, buffer, field_infos)
@@ -118,7 +122,7 @@ def encode_typedef(type_resolver, cls, include_fields: bool = True):
             splits.insert(0, "")
         namespace, typename = splits
 
-    result = TypeDef(namespace, typename, cls, type_id, field_infos, binary, is_compressed)
+    result = TypeDef(namespace, typename, cls, type_id, field_infos, binary, is_compressed, user_type_id=user_type_id)
     return result
 
 
@@ -147,7 +151,7 @@ def prepend_header(buffer: bytes, is_compressed: bool, has_fields_meta: bool):
 def write_namespace(buffer: Buffer, namespace: str):
     """Write namespace using meta string encoding."""
     # - Package name encoding(omitted when class is registered):
-    #    - encoding algorithm: `EXTENDED/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
+    #    - encoding algorithm: `UTF_8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
     #    - Header: `6 bits size | 2 bits encoding flags`.
     #      The `6 bits size: 0~63`  will be used to indicate size `0~62`,
     #      the value `63` the size need more byte to read, the encoding will encode `size - 62` as a varint next.
@@ -159,7 +163,7 @@ def write_typename(buffer: Buffer, typename: str):
     """Write typename using meta string encoding."""
     # - Class name encoding(omitted when class is registered):
     #     - encoding algorithm:
-    # `EXTENDED/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
+    # `UTF_8/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
     #     - header: `6 bits size | 2 bits encoding flags`.
     #       The `6 bits size: 0~63`  will be used to indicate size `1~64`,
     #       the value `63` the size need more byte to read, the encoding will encode `size - 63` as a varint next.

@@ -60,8 +60,8 @@ public class MetaStringDecoder {
         return decodeRepFirstLowerSpecial(encodedData);
       case ALL_TO_LOWER_SPECIAL:
         return decodeRepAllToLowerSpecial(encodedData);
-      case EXTENDED:
-        return decodeExtended(encodedData);
+      case UTF_8:
+        return new String(encodedData, StandardCharsets.UTF_8);
       default:
         throw new IllegalStateException("Unexpected encoding flag: " + encoding);
     }
@@ -173,40 +173,5 @@ public class MetaStringDecoder {
       }
     }
     return builder.toString();
-  }
-
-  private String decodeExtended(byte[] encodedData) {
-    if (encodedData.length == 0) {
-      return "";
-    }
-    int actualEncoding = encodedData[0] & 0xff;
-    byte[] payload = new byte[encodedData.length - 1];
-    System.arraycopy(encodedData, 1, payload, 0, payload.length);
-    switch (actualEncoding) {
-      case MetaString.EXTENDED_ENCODING_UTF8:
-        return new String(payload, StandardCharsets.UTF_8);
-      case MetaString.EXTENDED_ENCODING_NUMBER_STRING:
-        return decodeNumberString(payload, false);
-      case MetaString.EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING:
-        return decodeNumberString(payload, true);
-      default:
-        throw new IllegalStateException("Unexpected extended encoding flag: " + actualEncoding);
-    }
-  }
-
-  private String decodeNumberString(byte[] payload, boolean negative) {
-    if (payload.length == 0) {
-      return "";
-    }
-    if (payload.length > Long.BYTES) {
-      throw new IllegalStateException(
-          "NUMBER_STRING payload length exceeds uint64 size: " + payload.length);
-    }
-    long value = 0;
-    for (int i = payload.length - 1; i >= 0; i--) {
-      value = (value << 8) | (payload[i] & 0xFFL);
-    }
-    String result = Long.toUnsignedString(value);
-    return negative ? "-" + result : result;
   }
 }

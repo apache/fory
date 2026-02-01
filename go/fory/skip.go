@@ -52,17 +52,16 @@ func SkipFieldValueWithTypeFlag(ctx *ReadContext, fieldDef FieldDef, readRefFlag
 
 		// Read type info (typeID + meta_index)
 		wroteTypeID := ctx.buffer.ReadVarUint32Small7(err)
-		internalID := wroteTypeID & 0xff
+		internalID := TypeId(wroteTypeID)
 
 		// Check if it's an EXT type first - EXT types don't have meta info like structs
-		if internalID == uint32(EXT) {
-			// EXT types with numeric ID - try to find the registered serializer
-			serializer := ctx.TypeResolver().getSerializerByTypeID(wroteTypeID)
-			if serializer != nil {
+		if internalID == EXT {
+			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, wroteTypeID, err)
+			if typeInfo != nil && typeInfo.Serializer != nil {
 				// Use the serializer to read and discard the value
 				var dummy any
 				dummyVal := reflect.ValueOf(&dummy).Elem()
-				serializer.Read(ctx, RefModeNone, false, false, dummyVal)
+				typeInfo.Serializer.Read(ctx, RefModeNone, false, false, dummyVal)
 				return
 			}
 			// If no serializer is registered, we can't skip this type
@@ -71,7 +70,7 @@ func SkipFieldValueWithTypeFlag(ctx *ReadContext, fieldDef FieldDef, readRefFlag
 		}
 
 		// Check if it's a NAMED_EXT type - need to read type info to find serializer
-		if internalID == uint32(NAMED_EXT) {
+		if internalID == NAMED_EXT {
 			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, wroteTypeID, err)
 			if typeInfo.Serializer != nil {
 				// Use the serializer to read and discard the value
@@ -85,15 +84,15 @@ func SkipFieldValueWithTypeFlag(ctx *ReadContext, fieldDef FieldDef, readRefFlag
 		}
 
 		// Check if it's a struct type - need to read type info and skip struct data
-		if internalID == uint32(COMPATIBLE_STRUCT) || internalID == uint32(STRUCT) ||
-			internalID == uint32(NAMED_STRUCT) || internalID == uint32(NAMED_COMPATIBLE_STRUCT) {
+		if internalID == COMPATIBLE_STRUCT || internalID == STRUCT ||
+			internalID == NAMED_STRUCT || internalID == NAMED_COMPATIBLE_STRUCT {
 			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, wroteTypeID, err)
 			// Now skip the struct data using the typeInfo from the written type
 			skipStruct(ctx, typeInfo)
 			return
 		}
 
-		if IsNamespacedType(TypeId(wroteTypeID)) {
+		if IsNamespacedType(internalID) {
 			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, wroteTypeID, err)
 			// Now skip the struct data using the typeInfo from the written type
 			skipStruct(ctx, typeInfo)
@@ -137,13 +136,13 @@ func SkipAnyValue(ctx *ReadContext, readRefFlag bool) {
 	if ctx.HasError() {
 		return
 	}
-	internalID := typeID & 0xff
+	internalID := TypeId(typeID)
 
 	// For struct-like types, also read meta_index to get type_info
 	var fieldDef FieldDef
 	var typeInfo *TypeInfo
 
-	switch TypeId(internalID) {
+	switch internalID {
 	case LIST, SET:
 		fieldDef = FieldDef{
 			fieldType: NewCollectionFieldType(TypeId(typeID), NewSimpleFieldType(UNKNOWN)),
@@ -168,7 +167,7 @@ func SkipAnyValue(ctx *ReadContext, readRefFlag bool) {
 			fieldType: NewSimpleFieldType(TypeId(typeID)),
 			nullable:  true,
 		}
-	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT, STRUCT, NAMED_STRUCT:
+	case COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT, STRUCT, NAMED_STRUCT, EXT, TYPED_UNION:
 		// Read type info using the shared meta reader when enabled.
 		typeInfo = ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeID, err)
 		if ctx.HasError() {
@@ -179,6 +178,12 @@ func SkipAnyValue(ctx *ReadContext, readRefFlag bool) {
 			nullable:  true,
 		}
 	default:
+		if needsUserTypeID(internalID) {
+			ctx.buffer.ReadVarUint32(err)
+			if ctx.HasError() {
+				return
+			}
+		}
 		fieldDef = FieldDef{
 			fieldType: NewSimpleFieldType(TypeId(typeID)),
 			nullable:  true,
@@ -518,43 +523,39 @@ func skipValue(ctx *ReadContext, fieldDef FieldDef, readRefFlag bool, isField bo
 
 	typeIDNum := uint32(fieldDef.fieldType.TypeId())
 
-	// Check if it's a user-defined type (high bits set, meaning type_id > 255)
-	if typeIDNum > 255 {
-		internalID := typeIDNum & 0xff
-		// Handle struct-like types
-		if internalID == uint32(COMPATIBLE_STRUCT) || internalID == uint32(STRUCT) ||
-			internalID == uint32(NAMED_STRUCT) || internalID == uint32(NAMED_COMPATIBLE_STRUCT) ||
-			internalID == uint32(UNKNOWN) {
-			// If type_info is provided (from SkipAnyValue), use skipStruct directly
-			if typeInfo != nil {
-				skipStruct(ctx, typeInfo)
-				return
-			}
-			// Otherwise we need to read type info
-			ti := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeIDNum, err)
-			skipStruct(ctx, ti)
-			return
-		} else if internalID == uint32(ENUM) || internalID == uint32(NAMED_ENUM) {
-			_ = ctx.buffer.ReadVarUint32(err)
-			return
-		} else if internalID == uint32(EXT) || internalID == uint32(NAMED_EXT) {
-			// EXT types use custom serializers - try to find the registered serializer
-			serializer := ctx.TypeResolver().getSerializerByTypeID(typeIDNum)
-			if serializer != nil {
-				// Use the serializer to read and discard the value
-				// Create a dummy value to read into
-				var dummy any
-				dummyVal := reflect.ValueOf(&dummy).Elem()
-				serializer.Read(ctx, RefModeNone, false, false, dummyVal)
-				return
-			}
-			// If no serializer is registered, we can't skip this type
-			ctx.SetError(DeserializationErrorf("cannot skip EXT type %d: no serializer registered", typeIDNum))
-			return
-		} else {
-			ctx.SetError(DeserializationErrorf("unknown type id: %d (internal_id: %d)", typeIDNum, internalID))
+	internalID := TypeId(typeIDNum)
+	// Handle struct-like types
+	if internalID == COMPATIBLE_STRUCT || internalID == STRUCT ||
+		internalID == NAMED_STRUCT || internalID == NAMED_COMPATIBLE_STRUCT ||
+		internalID == UNKNOWN {
+		// If type_info is provided (from SkipAnyValue), use skipStruct directly
+		if typeInfo != nil {
+			skipStruct(ctx, typeInfo)
 			return
 		}
+		// Otherwise we need to read type info
+		ti := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeIDNum, err)
+		skipStruct(ctx, ti)
+		return
+	}
+	if internalID == ENUM || internalID == NAMED_ENUM {
+		if internalID == ENUM {
+			_ = ctx.buffer.ReadVarUint32(err) // userTypeId
+		}
+		_ = ctx.buffer.ReadVarUint32(err) // enum ordinal
+		return
+	}
+	if internalID == EXT || internalID == NAMED_EXT || internalID == TYPED_UNION || internalID == NAMED_UNION {
+		typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(ctx.buffer, typeIDNum, err)
+		if typeInfo != nil && typeInfo.Serializer != nil {
+			// Use the serializer to read and discard the value
+			var dummy any
+			dummyVal := reflect.ValueOf(&dummy).Elem()
+			typeInfo.Serializer.Read(ctx, RefModeNone, false, false, dummyVal)
+			return
+		}
+		ctx.SetError(DeserializationErrorf("cannot skip type %d: no serializer registered", typeIDNum))
+		return
 	}
 
 	// Match on built-in types

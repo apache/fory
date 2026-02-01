@@ -168,9 +168,9 @@ import org.apache.fory.util.record.RecordUtils;
  *
  * <h2>Class ID Space</h2>
  *
- * <p>Fory separates internal IDs (built-in types) from user IDs by encoding user-registered types
- * with their internal type tag (ENUM/STRUCT/EXT). User IDs start from 0 and are encoded into the
- * unified type ID as {@code (userId << 8) | internalTypeId}.
+ * <p>Fory separates internal IDs (built-in types) from user IDs by storing the internal type tag
+ * (ENUM/STRUCT/EXT) in {@code typeId} and keeping the user-registered ID in {@code userTypeId}.
+ * User IDs start from 0.
  *
  * <h2>Registration Methods</h2>
  *
@@ -451,15 +451,8 @@ public class ClassResolver extends TypeResolver {
   /**
    * Registers a class with a user-specified ID.
    *
-   * <p>The ID is in the user ID space, starting from 0. The unified type ID is encoded as {@code
-   * (userId << 8) | internalTypeId}.
-   *
-   * <p>Example:
-   *
-   * <pre>{@code
-   * fory.register(MyClass.class, 0);      // User ID 0 -> typeId 0x000019 (STRUCT)
-   * fory.register(AnotherClass.class, 1); // User ID 1 -> typeId 0x000119 (STRUCT)
-   * }</pre>
+   * <p>The ID is in the user ID space, starting from 0. The class will store the internal type
+   * tag (STRUCT/ENUM/EXT/UNION) in {@code typeId} and the provided value in {@code userTypeId}.
    *
    * @param cls the class to register
    * @param id the user ID to assign (0-based)
@@ -491,7 +484,7 @@ public class ClassResolver extends TypeResolver {
     checkRegistration(cls, (short) -1, fullname, false);
     MetaStringBytes fullNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
-            GENERIC_ENCODER.encode(fullname, MetaString.Encoding.EXTENDED));
+            GENERIC_ENCODER.encode(fullname, MetaString.Encoding.UTF_8));
     MetaStringBytes nsBytes =
         metaStringResolver.getOrCreateMetaStringBytes(encodePackage(namespace));
     MetaStringBytes nameBytes = metaStringResolver.getOrCreateMetaStringBytes(encodeTypeName(name));
@@ -515,7 +508,7 @@ public class ClassResolver extends TypeResolver {
     short id = (short) userId;
     checkRegistration(cls, id, cls.getName(), false);
     extRegistry.registeredClassIdMap.put(cls, id);
-    int typeId = (userId << 8) | Types.TYPED_UNION;
+    int typeId = Types.TYPED_UNION;
     ClassInfo classInfo = classInfoMap.get(cls);
     if (classInfo == null) {
       classInfo = new ClassInfo(this, cls, serializer, typeId);
@@ -524,6 +517,7 @@ public class ClassResolver extends TypeResolver {
       classInfo.typeId = typeId;
       classInfo.setSerializer(this, serializer);
     }
+    classInfo.userTypeId = userId;
     putUserTypeInfo(id, classInfo);
     extRegistry.registeredClasses.put(cls.getName(), cls);
     GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
@@ -546,7 +540,7 @@ public class ClassResolver extends TypeResolver {
     checkRegistration(cls, (short) -1, fullname, false);
     MetaStringBytes fullNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
-            GENERIC_ENCODER.encode(fullname, MetaString.Encoding.EXTENDED));
+            GENERIC_ENCODER.encode(fullname, MetaString.Encoding.UTF_8));
     MetaStringBytes nsBytes =
         metaStringResolver.getOrCreateMetaStringBytes(encodePackage(namespace));
     MetaStringBytes nameBytes = metaStringResolver.getOrCreateMetaStringBytes(encodeTypeName(name));
@@ -646,7 +640,7 @@ public class ClassResolver extends TypeResolver {
     short id = (short) userId;
     checkRegistration(cls, id, cls.getName(), false);
     extRegistry.registeredClassIdMap.put(cls, id);
-    int typeId = buildUserTypeId(cls, userId, null);
+    int typeId = buildUserTypeId(cls, null);
     ClassInfo classInfo = classInfoMap.get(cls);
     if (classInfo != null) {
       classInfo.typeId = typeId;
@@ -654,21 +648,20 @@ public class ClassResolver extends TypeResolver {
       classInfo = new ClassInfo(this, cls, null, typeId);
       classInfoMap.put(cls, classInfo);
     }
+    classInfo.userTypeId = userId;
     putUserTypeInfo(id, classInfo);
     extRegistry.registeredClasses.put(cls.getName(), cls);
     GraalvmSupport.registerClass(cls, fory.getConfig().getConfigHash());
   }
 
-  private int buildUserTypeId(Class<?> cls, int userId, Serializer<?> serializer) {
-    int internalTypeId;
+  private int buildUserTypeId(Class<?> cls, Serializer<?> serializer) {
     if (cls.isEnum()) {
-      internalTypeId = Types.ENUM;
+      return Types.ENUM;
     } else if (serializer != null && !isStructSerializer(serializer)) {
-      internalTypeId = Types.EXT;
+      return Types.EXT;
     } else {
-      internalTypeId = metaContextShareEnabled ? Types.COMPATIBLE_STRUCT : Types.STRUCT;
+      return metaContextShareEnabled ? Types.COMPATIBLE_STRUCT : Types.STRUCT;
     }
-    return (userId << 8) | internalTypeId;
   }
 
   @Override
@@ -775,23 +768,28 @@ public class ClassResolver extends TypeResolver {
   }
 
   public Class<?> getRegisteredClassByTypeId(int typeId) {
-    ClassInfo classInfo = getRegisteredClassInfoByTypeId(typeId);
+    ClassInfo classInfo = getRegisteredClassInfoByTypeId(typeId, -1);
     return classInfo == null ? null : classInfo.cls;
   }
 
-  public ClassInfo getRegisteredClassInfoByTypeId(int typeId) {
-    int internalTypeId = typeId & 0xff;
-    if (Types.isNamedType(internalTypeId)) {
+  public Class<?> getRegisteredClassByTypeId(int typeId, int userTypeId) {
+    ClassInfo classInfo = getRegisteredClassInfoByTypeId(typeId, userTypeId);
+    return classInfo == null ? null : classInfo.cls;
+  }
+
+  public ClassInfo getRegisteredClassInfoByTypeId(int typeId, int userTypeId) {
+    if (Types.isNamedType(typeId)) {
       return null;
     }
-    if (Types.isUserDefinedType((byte) internalTypeId)) {
-      int userId = typeId >>> 8;
-      ClassInfo classInfo = userTypeIdToClassInfo.get(userId);
+    if (needsUserTypeId(typeId)) {
+      if (userTypeId < 0) {
+        return null;
+      }
+      ClassInfo classInfo = userTypeIdToClassInfo.get(userTypeId);
       if (classInfo == null) {
         return null;
       }
-      int existingInternalTypeId = classInfo.typeId & 0xff;
-      if (existingInternalTypeId != internalTypeId) {
+      if (classInfo.typeId != typeId) {
         return null;
       }
       return classInfo;
@@ -846,6 +844,22 @@ public class ClassResolver extends TypeResolver {
       compositeNameBytes2ClassInfo.put(typeNameBytes, classInfo);
     }
     return typeId;
+  }
+
+  /**
+   * Compute the user type id used in ClassDef without forcing serializer creation. Returns -1 when
+   * the class isn't registered by numeric id.
+   */
+  public int getUserTypeIdForClassDef(Class<?> cls) {
+    ClassInfo classInfo = classInfoMap.get(cls);
+    if (classInfo != null) {
+      return classInfo.userTypeId;
+    }
+    Short classId = extRegistry.registeredClassIdMap.get(cls);
+    if (classId != null && !isInternalRegisteredClassId(cls, classId)) {
+      return classId;
+    }
+    return -1;
   }
 
   @Override
@@ -903,8 +917,7 @@ public class ClassResolver extends TypeResolver {
   }
 
   public boolean isInternalRegistered(int classId) {
-    int internalTypeId = classId & 0xff;
-    if (Types.isUserDefinedType((byte) internalTypeId)) {
+    if (Types.isUserDefinedType((byte) classId)) {
       return false;
     }
     return classId > 0 && classId < typeIdToClassInfo.length && typeIdToClassInfo[classId] != null;
@@ -1125,7 +1138,7 @@ public class ClassResolver extends TypeResolver {
     if (registered) {
       int id = classId;
       boolean internal = isInternalRegisteredClassId(type, (short) id);
-      int typeId = internal ? id : buildUserTypeId(type, id, serializer);
+      int typeId = internal ? id : buildUserTypeId(type, serializer);
       classInfo = classInfoMap.get(type);
       if (classInfo == null) {
         classInfo = new ClassInfo(this, type, null, typeId);
@@ -1136,6 +1149,7 @@ public class ClassResolver extends TypeResolver {
       if (internal) {
         putInternalTypeInfo(id, classInfo);
       } else {
+        classInfo.userTypeId = id;
         putUserTypeInfo(id, classInfo);
       }
     } else {
@@ -1718,7 +1732,7 @@ public class ClassResolver extends TypeResolver {
         typeId = buildUnregisteredTypeId(cls, null);
       } else {
         boolean internal = isInternalRegisteredClassId(cls, classId);
-        typeId = internal ? classId : buildUserTypeId(cls, classId, null);
+        typeId = internal ? classId : buildUserTypeId(cls, null);
       }
       classInfo = new ClassInfo(this, cls, null, typeId);
       classInfoMap.put(cls, classInfo);
@@ -1728,10 +1742,12 @@ public class ClassResolver extends TypeResolver {
 
   public void writeClassInternal(MemoryBuffer buffer, ClassInfo classInfo) {
     int typeId = classInfo.typeId;
-    int internalTypeId = typeId & 0xff;
-    boolean writeById = typeId != REPLACE_STUB_ID && !Types.isNamedType(internalTypeId);
+    boolean writeById = typeId != REPLACE_STUB_ID && !Types.isNamedType(typeId);
     if (writeById) {
       buffer.writeVarUint32(typeId << 1);
+      if (needsUserTypeId(typeId)) {
+        buffer.writeVarUint32(classInfo.userTypeId);
+      }
     } else {
       // let the lowermost bit of next byte be set, so the deserialization can know
       // whether need to read class by name in advance
@@ -1755,23 +1771,40 @@ public class ClassResolver extends TypeResolver {
       MetaStringBytes simpleClassNameBytes = metaStringResolver.readMetaStringBytes(buffer);
       classInfo = loadBytesToClassInfo(packageBytes, simpleClassNameBytes);
     } else {
-      classInfo = getClassInfoByTypeIdForReadClassInternal(header >> 1);
+      int typeId = header >> 1;
+      int userTypeId = -1;
+      if (needsUserTypeId(typeId)) {
+        userTypeId = buffer.readVarUint32();
+      }
+      classInfo = getClassInfoByTypeIdForReadClassInternal(typeId, userTypeId);
     }
     final Class<?> cls = classInfo.cls;
     currentReadClass = cls;
     return cls;
   }
 
-  private ClassInfo getClassInfoByTypeIdForReadClassInternal(int typeId) {
-    int internalTypeId = typeId & 0xff;
+  private ClassInfo getClassInfoByTypeIdForReadClassInternal(int typeId, int userTypeId) {
     ClassInfo classInfo;
-    if (Types.isUserDefinedType((byte) internalTypeId) && !Types.isNamedType(internalTypeId)) {
-      classInfo = getUserTypeInfoByTypeId(typeId);
+    if (needsUserTypeId(typeId)) {
+      classInfo = getUserTypeInfoByTypeId(typeId, userTypeId);
     } else {
       classInfo = getInternalTypeInfoByTypeId(typeId);
     }
     Preconditions.checkArgument(classInfo != null, "Type id %s not registered", typeId);
     return classInfo;
+  }
+
+  private static boolean needsUserTypeId(int typeId) {
+    switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.COMPATIBLE_STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        return true;
+      default:
+        return false;
+    }
   }
 
   @Override
@@ -1818,7 +1851,7 @@ public class ClassResolver extends TypeResolver {
     ClassSpec classSpec = Encoders.decodePkgAndClass(packageName, className);
     MetaStringBytes fullClassNameBytes =
         metaStringResolver.getOrCreateMetaStringBytes(
-            PACKAGE_ENCODER.encode(classSpec.entireClassName, MetaString.Encoding.EXTENDED));
+            PACKAGE_ENCODER.encode(classSpec.entireClassName, MetaString.Encoding.UTF_8));
     Class<?> cls = loadClass(classSpec.entireClassName, classSpec.isEnum, classSpec.dimension);
     int typeId = buildUnregisteredTypeId(cls, null);
     ClassInfo classInfo =

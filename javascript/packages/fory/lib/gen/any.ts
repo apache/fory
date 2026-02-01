@@ -28,10 +28,12 @@ import Fory from "../fory";
 class AnyHelper {
   static detectSerializer(fory: Fory) {
     const typeId = fory.binaryReader.readVarUint32Small7();
+    let userTypeId = -1;
+    if (TypeId.needsUserTypeId(typeId)) {
+      userTypeId = fory.binaryReader.readVarUint32Small7();
+    }
     let serializer: Serializer | undefined;
-    const internalTypeId = typeId & 0xff;
-
-    switch (internalTypeId) {
+    switch (typeId) {
       case TypeId.NAMED_ENUM:
       case TypeId.NAMED_STRUCT:
       case TypeId.NAMED_EXT:
@@ -59,7 +61,7 @@ class AnyHelper {
       case TypeId.COMPATIBLE_STRUCT:
         if (fory.config.mode === Mode.Compatible) {
           const typeMeta = fory.typeMetaResolver.readTypeMeta(fory.binaryReader);
-          serializer = fory.classResolver.getSerializerById(typeId);
+          serializer = fory.classResolver.getSerializerById(typeId, userTypeId);
           if (!serializer) {
             throw new Error(`can't find implements of typeId: ${typeId}`);
           }
@@ -68,11 +70,11 @@ class AnyHelper {
             serializer = fory.typeMetaResolver.genSerializerByTypeMetaRuntime(typeMeta);
           }
         } else {
-          serializer = fory.classResolver.getSerializerById(typeId);
+          serializer = fory.classResolver.getSerializerById(typeId, userTypeId);
         }
         break;
       default:
-        serializer = fory.classResolver.getSerializerById(typeId);
+        serializer = fory.classResolver.getSerializerById(typeId, userTypeId);
         break;
     }
     if (!serializer) {

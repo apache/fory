@@ -71,6 +71,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
   named = "";
   namespace = "";
   typeName = "";
+  userTypeId = -1;
   options?: any;
   dynamic: "TRUE" | "FALSE" | "AUTO" = "AUTO";
   static fory: WeakRef<Fory> | null = null;
@@ -83,7 +84,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     TypeInfo.fory = null;
   }
 
-  private constructor(private _typeId: number) {
+  private constructor(private _typeId: number, userTypeId = -1) {
     super(function (target: any, key?: string | { name?: string }) {
       if (key === undefined) {
         initMeta(target, that as unknown as StructTypeInfo);
@@ -97,10 +98,11 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     });
     // eslint-disable-next-line
     const that = this;
+    this.userTypeId = userTypeId;
   }
 
   computeTypeId(fory?: Fory) {
-    const internalTypeId = this._typeId & 0xff;
+    const internalTypeId = this._typeId;
     if (internalTypeId !== TypeId.STRUCT && internalTypeId !== TypeId.NAMED_STRUCT) {
       return this._typeId;
     }
@@ -108,10 +110,10 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       throw new Error("fory is not attached")
     }
     if (internalTypeId === TypeId.NAMED_STRUCT && fory.config.mode === Mode.Compatible) {
-      return ((this._typeId >> 8) << 8) | TypeId.NAMED_COMPATIBLE_STRUCT
+      return TypeId.NAMED_COMPATIBLE_STRUCT;
     }
     if (internalTypeId === TypeId.STRUCT && fory.config.mode === Mode.Compatible) {
-      return ((this._typeId >> 8) << 8) | TypeId.COMPATIBLE_STRUCT
+      return TypeId.COMPATIBLE_STRUCT;
     }
     return this._typeId;
   }
@@ -133,7 +135,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
         if (TypeId.enumType(this._typeId)) {
           return true;
         }
-        const internalTypeId = this._typeId & 0xff;
+        const internalTypeId = this._typeId;
         const fory = TypeInfo.fory?.deref();
         if (!fory) {
           throw new Error("fory is not attached")
@@ -194,12 +196,14 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       }
     }
     let finalTypeId = 0;
+    let userTypeId = -1;
     if (typeId !== undefined) {
-        finalTypeId = (typeId << 8) | TypeId.STRUCT;
+      finalTypeId = TypeId.STRUCT;
+      userTypeId = typeId;
     } else {
-        finalTypeId = TypeId.NAMED_STRUCT;
+      finalTypeId = TypeId.NAMED_STRUCT;
     }
-    const typeInfo = new TypeInfo<T>(finalTypeId).cast<StructTypeInfo>();
+    const typeInfo = new TypeInfo<T>(finalTypeId, userTypeId).cast<StructTypeInfo>();
     typeInfo.options = {
       props: props || {},
       withConstructor,
@@ -252,8 +256,9 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
         typeName = splits.slice(1).join(".");
       }
     }
-    const finalTypeId = typeId !== undefined ? ((typeId << 8) | TypeId.ENUM) : TypeId.NAMED_ENUM;
-    const typeInfo = new TypeInfo<T>(finalTypeId);
+    const finalTypeId = typeId !== undefined ? TypeId.ENUM : TypeId.NAMED_ENUM;
+    const userTypeId = typeId !== undefined ? typeId : -1;
+    const typeInfo = new TypeInfo<T>(finalTypeId, userTypeId);
     typeInfo.cast<EnumTypeInfo>().options = {
       inner: props,
     };

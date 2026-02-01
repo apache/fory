@@ -20,9 +20,9 @@
 package org.apache.fory.meta;
 
 import static org.apache.fory.meta.MetaString.Encoding.ALL_TO_LOWER_SPECIAL;
-import static org.apache.fory.meta.MetaString.Encoding.EXTENDED;
 import static org.apache.fory.meta.MetaString.Encoding.FIRST_TO_LOWER_SPECIAL;
 import static org.apache.fory.meta.MetaString.Encoding.LOWER_UPPER_DIGIT_SPECIAL;
+import static org.apache.fory.meta.MetaString.Encoding.UTF_8;
 
 import java.util.Arrays;
 import java.util.List;
@@ -53,17 +53,17 @@ public class Encoders {
   private static final ConcurrentMap<String, MetaString> fieldMetaStringCache =
       new ConcurrentHashMap<>();
   static final Encoding[] pkgEncodings =
-      new Encoding[] {EXTENDED, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL};
+      new Encoding[] {UTF_8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL};
   static final List<Encoding> pkgEncodingsList = Arrays.asList(pkgEncodings);
 
   static final Encoding[] typeNameEncodings =
       new Encoding[] {
-        EXTENDED, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL
+        UTF_8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL
       };
   static final List<Encoding> typeNameEncodingsList = Arrays.asList(typeNameEncodings);
 
   static final Encoding[] fieldNameEncodings =
-      new Encoding[] {EXTENDED, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL};
+      new Encoding[] {UTF_8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL};
   static final List<Encoding> fieldNameEncodingsList = Arrays.asList(fieldNameEncodings);
 
   public static MetaString encodePackage(String pkg) {

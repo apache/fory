@@ -836,13 +836,8 @@ class RustGenerator(BaseGenerator):
         type_name = self.get_type_path(enum.name, parent_stack)
         reg_name = self.get_registration_type_name(enum.name, parent_stack)
 
-        auto_name = self.get_auto_id_registration_name(enum)
         if self.should_register_by_id(enum):
             lines.append(f"    fory.register::<{type_name}>({enum.type_id})?;")
-        elif auto_name is not None:
-            lines.append(
-                f'    fory.register_by_namespace::<{type_name}>("", "{auto_name}")?;'
-            )
         else:
             ns = self.package or "default"
             lines.append(
@@ -877,13 +872,8 @@ class RustGenerator(BaseGenerator):
             )
 
         # Register this message
-        auto_name = self.get_auto_id_registration_name(message)
         if self.should_register_by_id(message):
             lines.append(f"    fory.register::<{type_name}>({message.type_id})?;")
-        elif auto_name is not None:
-            lines.append(
-                f'    fory.register_by_namespace::<{type_name}>("", "{auto_name}")?;'
-            )
         else:
             ns = self.package or "default"
             lines.append(
@@ -900,13 +890,8 @@ class RustGenerator(BaseGenerator):
         type_name = self.get_type_path(union.name, parent_stack)
         reg_name = self.get_registration_type_name(union.name, parent_stack)
 
-        auto_name = self.get_auto_id_registration_name(union)
         if self.should_register_by_id(union):
             lines.append(f"    fory.register_union::<{type_name}>({union.type_id})?;")
-        elif auto_name is not None:
-            lines.append(
-                f'    fory.register_union_by_namespace::<{type_name}>("", "{auto_name}")?;'
-            )
         else:
             ns = self.package or "default"
             lines.append(

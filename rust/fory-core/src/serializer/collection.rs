@@ -289,16 +289,8 @@ where
         let type_info = if !is_declared {
             context.read_any_typeinfo()?
         } else if T::fory_is_shared_ref() {
-            let type_id = T::fory_get_type_id(context.get_type_resolver())?;
-            context
-                .get_type_resolver()
-                .get_type_info_by_id(type_id)
-                .ok_or_else(|| {
-                    Error::type_error(format!(
-                        "Type ID {} not found for shared ref element",
-                        type_id
-                    ))
-                })?
+            let rs_type_id = std::any::TypeId::of::<T>();
+            context.get_type_resolver().get_type_info(&rs_type_id)?
         } else {
             let rs_type_id = std::any::TypeId::of::<T>();
             context.get_type_resolver().get_type_info(&rs_type_id)?

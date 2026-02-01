@@ -36,7 +36,7 @@ protected:
 // ============================================================================
 
 TEST_F(MetaStringTest, ToMetaEncodingValidValues) {
-  EXPECT_EQ(to_meta_encoding(0x00).value(), MetaEncoding::EXTENDED);
+  EXPECT_EQ(to_meta_encoding(0x00).value(), MetaEncoding::UTF8);
   EXPECT_EQ(to_meta_encoding(0x01).value(), MetaEncoding::LOWER_SPECIAL);
   EXPECT_EQ(to_meta_encoding(0x02).value(),
             MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL);
@@ -57,7 +57,7 @@ TEST_F(MetaStringTest, ToMetaEncodingInvalidValue) {
 TEST_F(MetaStringTest, EncodeEmptyString) {
   auto result = encoder_.encode("");
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ(result.value().encoding, MetaEncoding::EXTENDED);
+  EXPECT_EQ(result.value().encoding, MetaEncoding::UTF8);
   EXPECT_TRUE(result.value().bytes.empty());
 }
 
@@ -131,7 +131,7 @@ TEST_F(MetaStringTest, EncodeFirstToLowerSpecialPackage) {
   // LOWER_SPECIAL
   EXPECT_TRUE(result.value().encoding == MetaEncoding::FIRST_TO_LOWER_SPECIAL ||
               result.value().encoding == MetaEncoding::ALL_TO_LOWER_SPECIAL ||
-              result.value().encoding == MetaEncoding::EXTENDED);
+              result.value().encoding == MetaEncoding::UTF8);
 }
 
 // ============================================================================
@@ -151,25 +151,19 @@ TEST_F(MetaStringTest, EncodeAllToLowerSpecial) {
 }
 
 // ============================================================================
-// Encoder tests - EXTENDED encoding
+// Encoder tests - UTF8 encoding
 // ============================================================================
 
-TEST_F(MetaStringTest, EncodeExtendedUtf8NonAscii) {
+TEST_F(MetaStringTest, EncodeUTF8NonAscii) {
   auto result = encoder_.encode("hello\xC0world");
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ(result.value().encoding, MetaEncoding::EXTENDED);
-  ASSERT_FALSE(result.value().bytes.empty());
-  EXPECT_EQ(result.value().bytes[0],
-            static_cast<uint8_t>(MetaExtendedEncoding::UTF8));
+  EXPECT_EQ(result.value().encoding, MetaEncoding::UTF8);
 }
 
-TEST_F(MetaStringTest, EncodeExtendedUtf8WithInvalidChars) {
+TEST_F(MetaStringTest, EncodeUTF8WithInvalidChars) {
   auto result = encoder_.encode("hello@world");
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ(result.value().encoding, MetaEncoding::EXTENDED);
-  ASSERT_FALSE(result.value().bytes.empty());
-  EXPECT_EQ(result.value().bytes[0],
-            static_cast<uint8_t>(MetaExtendedEncoding::UTF8));
+  EXPECT_EQ(result.value().encoding, MetaEncoding::UTF8);
 }
 
 // ============================================================================
@@ -177,23 +171,19 @@ TEST_F(MetaStringTest, EncodeExtendedUtf8WithInvalidChars) {
 // ============================================================================
 
 TEST_F(MetaStringTest, DecodeEmptyString) {
-  auto result = decoder_.decode(nullptr, 0, MetaEncoding::EXTENDED);
+  auto result = decoder_.decode(nullptr, 0, MetaEncoding::UTF8);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result.value(), "");
 }
 
 // ============================================================================
-// Decoder tests - EXTENDED encoding
+// Decoder tests - UTF8 encoding
 // ============================================================================
 
-TEST_F(MetaStringTest, DecodeExtendedUtf8) {
+TEST_F(MetaStringTest, DecodeUTF8) {
   const std::string input = "hello world";
-  std::vector<uint8_t> encoded;
-  encoded.reserve(input.size() + 1);
-  encoded.push_back(static_cast<uint8_t>(MetaExtendedEncoding::UTF8));
-  encoded.insert(encoded.end(), input.begin(), input.end());
-  auto result =
-      decoder_.decode(encoded.data(), encoded.size(), MetaEncoding::EXTENDED);
+  auto result = decoder_.decode(reinterpret_cast<const uint8_t *>(input.data()),
+                                input.size(), MetaEncoding::UTF8);
   ASSERT_TRUE(result.ok());
   EXPECT_EQ(result.value(), input);
 }
@@ -253,11 +243,11 @@ TEST_F(MetaStringTest, RoundtripLowerUpperDigitSpecial) {
   EXPECT_EQ(decode_result.value(), input);
 }
 
-TEST_F(MetaStringTest, RoundtripExtended) {
+TEST_F(MetaStringTest, RoundtripUTF8) {
   const std::string input = "hello@world#test";
   auto encode_result = encoder_.encode(input);
   ASSERT_TRUE(encode_result.ok());
-  EXPECT_EQ(encode_result.value().encoding, MetaEncoding::EXTENDED);
+  EXPECT_EQ(encode_result.value().encoding, MetaEncoding::UTF8);
 
   auto decode_result = decoder_.decode(encode_result.value().bytes.data(),
                                        encode_result.value().bytes.size(),
@@ -414,9 +404,10 @@ TEST_F(MetaStringTest, MetaStringTableEmptyString) {
   MetaStringTable table;
   Buffer buffer;
 
-  // Empty string: len=0, no encoding byte
+  // Empty string: len=0, encoding=UTF8
   uint32_t header = 0 << 1; // len=0, not a reference
   buffer.write_var_uint32(header);
+  buffer.write_int8(0); // UTF8 encoding
 
   buffer.reader_index(0);
   auto result = table.read_string(buffer, decoder_);
@@ -469,20 +460,20 @@ TEST_F(MetaStringTest, ForcedEncodingLowerSpecial) {
   EXPECT_EQ(result.value().encoding, MetaEncoding::LOWER_SPECIAL);
 }
 
-TEST_F(MetaStringTest, ForcedEncodingExtended) {
+TEST_F(MetaStringTest, ForcedEncodingUTF8) {
   const std::string input = "test";
-  auto result = encoder_.encode(input, {MetaEncoding::EXTENDED});
+  auto result = encoder_.encode(input, {MetaEncoding::UTF8});
   ASSERT_TRUE(result.ok());
-  EXPECT_EQ(result.value().encoding, MetaEncoding::EXTENDED);
+  EXPECT_EQ(result.value().encoding, MetaEncoding::UTF8);
 }
 
-TEST_F(MetaStringTest, ForcedEncodingFallbackToExtended) {
+TEST_F(MetaStringTest, ForcedEncodingFallbackToUTF8) {
   // String with @ cannot be encoded with LOWER_SPECIAL
   const std::string input = "test@example";
   auto result = encoder_.encode(input, {MetaEncoding::LOWER_SPECIAL});
   ASSERT_TRUE(result.ok());
-  // Should fall back to EXTENDED since LOWER_SPECIAL can't encode @
-  EXPECT_EQ(result.value().encoding, MetaEncoding::EXTENDED);
+  // Should fall back to UTF8 since LOWER_SPECIAL can't encode @
+  EXPECT_EQ(result.value().encoding, MetaEncoding::UTF8);
 }
 
 // ============================================================================
@@ -503,29 +494,11 @@ TEST_F(MetaStringTest, AllLowercaseAlphabet) {
 }
 
 TEST_F(MetaStringTest, AllDigits) {
-  const std::string input = "1234567890";
+  const std::string input = "0123456789";
   auto encode_result = encoder_.encode(input);
   ASSERT_TRUE(encode_result.ok());
-  EXPECT_EQ(encode_result.value().encoding, MetaEncoding::EXTENDED);
-  ASSERT_FALSE(encode_result.value().bytes.empty());
-  EXPECT_EQ(encode_result.value().bytes[0],
-            static_cast<uint8_t>(MetaExtendedEncoding::NUMBER_STRING));
-
-  auto decode_result = decoder_.decode(encode_result.value().bytes.data(),
-                                       encode_result.value().bytes.size(),
-                                       encode_result.value().encoding);
-  ASSERT_TRUE(decode_result.ok());
-  EXPECT_EQ(decode_result.value(), input);
-}
-
-TEST_F(MetaStringTest, NegativeNumberString) {
-  const std::string input = "-324345545454";
-  auto encode_result = encoder_.encode(input);
-  ASSERT_TRUE(encode_result.ok());
-  EXPECT_EQ(encode_result.value().encoding, MetaEncoding::EXTENDED);
-  ASSERT_FALSE(encode_result.value().bytes.empty());
-  EXPECT_EQ(encode_result.value().bytes[0],
-            static_cast<uint8_t>(MetaExtendedEncoding::NEGATIVE_NUMBER_STRING));
+  EXPECT_EQ(encode_result.value().encoding,
+            MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL);
 
   auto decode_result = decoder_.decode(encode_result.value().bytes.data(),
                                        encode_result.value().bytes.size(),

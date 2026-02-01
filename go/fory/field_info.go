@@ -263,9 +263,7 @@ func fieldHasNonPrimitiveSerializer(field *FieldInfo) bool {
 	// ENUM (numeric ID), NAMED_ENUM (namespace/typename), NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT
 	// all require special serialization and should not use the primitive fast path
 	// Note: ENUM uses unsigned VarUint32Small7 for ordinals, not signed zigzag varint
-	// Use internal type ID (low 8 bits) since registered types have composite TypeIds like (userID << 8) | internalID
-	internalTypeId := TypeId(field.Meta.TypeId & 0xFF)
-	switch internalTypeId {
+	switch TypeId(field.Meta.TypeId) {
 	case ENUM, NAMED_ENUM, NAMED_STRUCT, NAMED_COMPATIBLE_STRUCT, NAMED_EXT:
 		return true
 	default:
@@ -278,7 +276,7 @@ func isEnumField(field *FieldInfo) bool {
 	if field.Serializer == nil {
 		return false
 	}
-	internalTypeId := field.Meta.TypeId & 0xFF
+	internalTypeId := field.Meta.TypeId
 	return internalTypeId == ENUM || internalTypeId == NAMED_ENUM
 }
 
@@ -292,7 +290,7 @@ func getFieldCategory(field *FieldInfo) int {
 	if isNullableFixedSizePrimitive(field.DispatchId) || isNullableVarintPrimitive(field.DispatchId) {
 		return 0
 	}
-	internalId := int16(field.Meta.TypeId & 0xFF)
+	internalId := int16(field.Meta.TypeId)
 	if internalId == UNKNOWN {
 		return 4
 	}
@@ -518,10 +516,7 @@ func isStructFieldType(ft FieldType) bool {
 	}
 	typeId := ft.TypeId()
 	// Check base type IDs that need type info (struct and ext, NOT enum)
-	// Always check the internal type ID (low byte) to handle composite type IDs
-	// which may be negative when stored as int32 (e.g., -2288 = (short)128784)
-	internalTypeId := TypeId(typeId & 0xFF)
-	switch internalTypeId {
+	switch TypeId(typeId) {
 	case STRUCT, NAMED_STRUCT, COMPATIBLE_STRUCT, NAMED_COMPATIBLE_STRUCT,
 		EXT, NAMED_EXT:
 		return true

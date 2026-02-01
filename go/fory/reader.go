@@ -678,7 +678,7 @@ func (c *ReadContext) ReadValue(value reflect.Value, refMode RefMode, readType b
 		// Create a new instance
 		var newValue reflect.Value
 		var valueToSet reflect.Value
-		internalTypeID := TypeId(typeInfo.TypeID & 0xFF)
+		internalTypeID := TypeId(typeInfo.TypeID)
 
 		// For named struct types, create a pointer type to support circular references.
 		// In Java/xlang serialization, objects are always by reference, so when deserializing

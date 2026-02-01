@@ -58,11 +58,15 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
   }
 
   readClassInfo(): string {
+    const readUserTypeIdStmt = TypeId.needsUserTypeId(this.getTypeId())
+      ? `${this.builder.reader.readVarUint32Small7()};`
+      : "";
     return `
       ${
       // skip the typeId
       this.builder.reader.readVarUint32Small7()
       }
+      ${readUserTypeIdStmt}
 
       ${
         TypeId.isNamedType(this.getTypeId())
@@ -99,8 +103,12 @@ class EnumSerializerGenerator extends BaseSerializerGenerator {
       default:
         break;
     }
+    const writeUserTypeIdStmt = TypeId.needsUserTypeId(this.getTypeId())
+      ? this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId)
+      : "";
     return ` 
         ${this.builder.writer.writeVarUint32Small7(this.getTypeId())};
+        ${writeUserTypeIdStmt}
         ${typeMeta}
       `;
   }

@@ -30,14 +30,14 @@ final class TagStringEncodeResolverImpl extends TagStringEncodeResolver {
   final MetaStringEncoder _nsEncoder = Encoders.packageEncoder;
   
   static const List<MetaStringEncoding> _tagAllowedEncodings = [
-    MetaStringEncoding.extended,
+    MetaStringEncoding.utf8,
     MetaStringEncoding.luds,
     MetaStringEncoding.ftls,
     MetaStringEncoding.atls,
   ];
 
   static const List<MetaStringEncoding> _nsAllowedEncodings = [
-    MetaStringEncoding.extended,
+    MetaStringEncoding.utf8,
     MetaStringEncoding.luds,
     MetaStringEncoding.ftls,
     MetaStringEncoding.atls,

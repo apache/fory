@@ -39,6 +39,7 @@ import org.apache.fory.meta.MetaString.Encoding;
 import org.apache.fory.resolver.ClassInfo;
 import org.apache.fory.resolver.XtypeResolver;
 import org.apache.fory.serializer.NonexistentClass;
+import org.apache.fory.type.Types;
 import org.apache.fory.util.StringUtils;
 import org.apache.fory.util.Utils;
 
@@ -50,6 +51,19 @@ import org.apache.fory.util.Utils;
  */
 class TypeDefDecoder {
   private static final Logger LOG = LoggerFactory.getLogger(TypeDefDecoder.class);
+
+  private static boolean needsUserTypeId(int typeId) {
+    switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.COMPATIBLE_STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        return true;
+      default:
+        return false;
+    }
+  }
 
   public static ClassDef decodeClassDef(XtypeResolver resolver, MemoryBuffer inputBuffer, long id) {
     Tuple2<byte[], byte[]> decoded = decodeClassDefBuf(inputBuffer, resolver, id);
@@ -74,11 +88,15 @@ class TypeDefDecoder {
       }
     } else {
       int typeId = buffer.readVarUint32Small7();
-      ClassInfo userTypeInfo = resolver.getUserTypeInfo(typeId);
+      int userTypeId = -1;
+      if (needsUserTypeId(typeId)) {
+        userTypeId = buffer.readVarUint32();
+      }
+      ClassInfo userTypeInfo = resolver.getUserTypeInfo(userTypeId);
       if (userTypeInfo == null) {
-        classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class, typeId);
+        classSpec = new ClassSpec(NonexistentClass.NonexistentMetaShared.class, typeId, userTypeId);
       } else {
-        classSpec = new ClassSpec(userTypeInfo.getCls(), typeId);
+        classSpec = new ClassSpec(userTypeInfo.getCls(), typeId, userTypeId);
       }
     }
     List<FieldInfo> classFields =

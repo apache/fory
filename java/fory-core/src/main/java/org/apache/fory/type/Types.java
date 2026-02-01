@@ -356,8 +356,8 @@ public class Types {
     if (classInfo == null) {
       return -1;
     }
-    int internalTypeId = classInfo.getTypeId() & 0xff;
-    if (Types.isUnionType(internalTypeId)) {
+    int typeId = classInfo.getTypeId();
+    if (Types.isUnionType(typeId)) {
       return Types.UNION;
     }
     return -1;

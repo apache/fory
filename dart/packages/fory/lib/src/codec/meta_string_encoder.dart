@@ -76,6 +76,6 @@ abstract base class MetaStringEncoder extends MetaStringCodecs {
         return MetaStringEncoding.luds;
       }
     }
-    return MetaStringEncoding.extended;
+    return MetaStringEncoding.utf8;
   }
 }

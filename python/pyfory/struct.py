@@ -270,7 +270,7 @@ def _extract_field_infos(
 
         # Get type_id from serializer
         if serializer is not None:
-            type_id = fory.type_resolver.get_typeinfo(serializer.type_).type_id & 0xFF
+            type_id = fory.type_resolver.get_typeinfo(serializer.type_).type_id
         else:
             type_id = TypeId.UNKNOWN
 
@@ -1269,7 +1269,7 @@ def group_fields(type_resolver, field_names, serializers, nullable_map=None, fie
         else:
             type_ids.append(
                 (
-                    type_resolver.get_typeinfo(serializer.type_).type_id & 0xFF,
+                    type_resolver.get_typeinfo(serializer.type_).type_id,
                     serializer,
                     field_name,
                     sort_key,
@@ -1371,7 +1371,7 @@ def compute_struct_fingerprint(type_resolver, field_names, serializers, nullable
             # For unknown serializers, use nullable from map (defaults to False for xlang)
             nullable_flag = "1" if nullable_map.get(field_name, False) else "0"
         else:
-            type_id = type_resolver.get_typeinfo(serializer.type_).type_id & 0xFF
+            type_id = type_resolver.get_typeinfo(serializer.type_).type_id
             if is_union_type(type_id):
                 # customized types can't be detected at compile time for some languages
                 type_id = TypeId.UNKNOWN

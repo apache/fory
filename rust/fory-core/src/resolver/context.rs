@@ -238,8 +238,15 @@ impl<'a> WriteContext<'a> {
         let namespace = type_info.get_namespace();
         let type_name = type_info.get_type_name();
         self.writer.write_var_uint32(fory_type_id);
+        if types::needs_user_type_id(fory_type_id) {
+            let user_type_id = type_info.get_user_type_id();
+            if user_type_id < 0 {
+                return Err(Error::type_error("User type id is required for this type"));
+            }
+            self.writer.write_var_uint32(user_type_id as u32);
+        }
         // should be compiled to jump table generation
-        match fory_type_id & 0xff {
+        match fory_type_id {
             types::NAMED_COMPATIBLE_STRUCT | types::COMPATIBLE_STRUCT => {
                 // Write type meta inline using streaming protocol
                 self.meta_resolver.write_type_meta(
@@ -413,8 +420,13 @@ impl<'a> ReadContext<'a> {
 
     pub fn read_any_typeinfo(&mut self) -> Result<Rc<TypeInfo>, Error> {
         let fory_type_id = self.reader.read_varuint32()?;
+        let user_type_id = if types::needs_user_type_id(fory_type_id) {
+            Some(self.reader.read_varuint32()?)
+        } else {
+            None
+        };
         // should be compiled to jump table generation
-        match fory_type_id & 0xff {
+        match fory_type_id {
             types::NAMED_COMPATIBLE_STRUCT | types::COMPATIBLE_STRUCT => {
                 // Read type meta inline using streaming protocol
                 self.read_type_meta()
@@ -433,10 +445,17 @@ impl<'a> ReadContext<'a> {
                         .ok_or_else(|| Error::type_error("Name harness not found"))
                 }
             }
-            _ => self
-                .type_resolver
-                .get_type_info_by_id(fory_type_id)
-                .ok_or_else(|| Error::type_error("ID harness not found")),
+            _ => {
+                if let Some(user_type_id) = user_type_id {
+                    self.type_resolver
+                        .get_user_type_info_by_id(fory_type_id, user_type_id)
+                        .ok_or_else(|| Error::type_error("ID harness not found"))
+                } else {
+                    self.type_resolver
+                        .get_type_info_by_id(fory_type_id)
+                        .ok_or_else(|| Error::type_error("ID harness not found"))
+                }
+            }
         }
     }
 

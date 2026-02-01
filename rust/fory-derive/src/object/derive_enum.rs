@@ -43,7 +43,7 @@ pub fn gen_actual_type_id(data_enum: &DataEnum) -> TokenStream {
                 if register_by_name {
                     fory_core::types::TypeId::NAMED_UNION as u32
                 } else {
-                    (type_id << 8) | (fory_core::types::TypeId::TYPED_UNION as u32)
+                    fory_core::types::TypeId::TYPED_UNION as u32
                 }
             } else {
                 fory_core::serializer::enum_::actual_type_id(type_id, register_by_name, compatible)

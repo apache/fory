@@ -277,8 +277,14 @@ public:
   /// Only for STRUCT types (not NAMED_STRUCT, COMPATIBLE_STRUCT, etc.)
   ///
   /// @param type_id The pre-computed Fory type_id
-  inline void write_struct_type_id_direct(uint32_t type_id) {
+  inline void write_struct_type_id_direct(uint32_t type_id,
+                                          int32_t user_type_id) {
     buffer_.write_var_uint32(type_id);
+    if (::fory::needs_user_type_id(type_id)) {
+      FORY_CHECK(user_type_id >= 0)
+          << "User type id is required for struct type";
+      buffer_.write_var_uint32(static_cast<uint32_t>(user_type_id));
+    }
   }
 
   /// get the type_id for a type. Used to cache type_id for fast writes.

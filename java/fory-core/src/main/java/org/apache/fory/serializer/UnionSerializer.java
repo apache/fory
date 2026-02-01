@@ -197,7 +197,7 @@ public class UnionSerializer extends Serializer<Union> {
   }
 
   private void writeCaseValue(MemoryBuffer buffer, Object value, int typeId, int caseId) {
-    byte internalTypeId = (byte) (typeId & 0xff);
+    byte internalTypeId = (byte) typeId;
     boolean primitiveArray = Types.isPrimitiveArray(internalTypeId);
     Serializer serializer;
     ClassInfo classInfo;
@@ -233,7 +233,7 @@ public class UnionSerializer extends Serializer<Union> {
   }
 
   private void writeValue(MemoryBuffer buffer, Object value, int typeId, Serializer serializer) {
-    int internalTypeId = typeId & 0xff;
+    int internalTypeId = typeId;
     switch (internalTypeId) {
       case Types.BOOL:
         buffer.writeBoolean((Boolean) value);

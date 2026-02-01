@@ -23,103 +23,9 @@
 
 #include <algorithm>
 #include <cctype>
-#include <limits>
-#include <string>
-#include <vector>
 
 namespace fory {
 namespace meta {
-
-namespace {
-
-bool is_number_string(const std::string &input) {
-  if (input.empty()) {
-    return false;
-  }
-  size_t start = 0;
-  if (input[0] == '-') {
-    if (input.size() == 1) {
-      return false;
-    }
-    start = 1;
-  }
-  for (size_t i = start; i < input.size(); ++i) {
-    if (!std::isdigit(static_cast<unsigned char>(input[i]))) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool try_parse_uint64(const std::string &digits, uint64_t *value) {
-  if (digits.empty()) {
-    return false;
-  }
-  uint64_t result = 0;
-  const uint64_t max = std::numeric_limits<uint64_t>::max();
-  for (char c : digits) {
-    if (!std::isdigit(static_cast<unsigned char>(c))) {
-      return false;
-    }
-    const uint64_t digit = static_cast<uint64_t>(c - '0');
-    if (result > (max - digit) / 10) {
-      return false;
-    }
-    result = result * 10 + digit;
-  }
-  *value = result;
-  return true;
-}
-
-bool try_encode_number_string(const std::string &input,
-                              std::vector<uint8_t> *bytes) {
-  bool negative = !input.empty() && input[0] == '-';
-  const std::string digits = negative ? input.substr(1) : input;
-  uint64_t value = 0;
-  if (!try_parse_uint64(digits, &value)) {
-    return false;
-  }
-  bytes->clear();
-  bytes->reserve(9);
-  bytes->push_back(static_cast<uint8_t>(
-      negative ? MetaExtendedEncoding::NEGATIVE_NUMBER_STRING
-               : MetaExtendedEncoding::NUMBER_STRING));
-  do {
-    bytes->push_back(static_cast<uint8_t>(value & 0xFF));
-    value >>= 8;
-  } while (value != 0);
-  return true;
-}
-
-Result<std::string, Error> decode_number_string(const uint8_t *data, size_t len,
-                                                bool negative) {
-  if (len == 0) {
-    return std::string();
-  }
-  if (len > sizeof(uint64_t)) {
-    return Unexpected(Error::encoding_error(
-        "NUMBER_STRING payload length exceeds uint64 size"));
-  }
-  uint64_t value = 0;
-  for (size_t i = 0; i < len; ++i) {
-    value |= static_cast<uint64_t>(data[i]) << (8 * i);
-  }
-  std::string result = std::to_string(static_cast<unsigned long long>(value));
-  if (negative) {
-    result.insert(result.begin(), '-');
-  }
-  return result;
-}
-
-std::vector<uint8_t> encode_extended_utf8(const std::string &input) {
-  std::vector<uint8_t> bytes;
-  bytes.reserve(input.size() + 1);
-  bytes.push_back(static_cast<uint8_t>(MetaExtendedEncoding::UTF8));
-  bytes.insert(bytes.end(), input.begin(), input.end());
-  return bytes;
-}
-
-} // namespace
 
 MetaStringDecoder::MetaStringDecoder(char special_char1, char special_char2)
     : special_char1_(special_char1), special_char2_(special_char2) {}
@@ -164,41 +70,7 @@ MetaStringDecoder::decode(const uint8_t *data, size_t len,
       decoded = std::move(res.value());
       break;
     }
-    case MetaEncoding::EXTENDED: {
-      if (len == 0) {
-        decoded = "";
-        break;
-      }
-      uint8_t actual = data[0];
-      const uint8_t *payload = data + 1;
-      size_t payload_len = len - 1;
-      switch (static_cast<MetaExtendedEncoding>(actual)) {
-      case MetaExtendedEncoding::UTF8:
-        decoded.assign(reinterpret_cast<const char *>(payload), payload_len);
-        break;
-      case MetaExtendedEncoding::NUMBER_STRING: {
-        auto res = decode_number_string(payload, payload_len, false);
-        if (!res.ok()) {
-          return Unexpected(res.error());
-        }
-        decoded = std::move(res.value());
-        break;
-      }
-      case MetaExtendedEncoding::NEGATIVE_NUMBER_STRING: {
-        auto res = decode_number_string(payload, payload_len, true);
-        if (!res.ok()) {
-          return Unexpected(res.error());
-        }
-        decoded = std::move(res.value());
-        break;
-      }
-      default:
-        return Unexpected(Error::encoding_error(
-            "Unsupported extended meta string encoding value: " +
-            std::to_string(static_cast<int>(actual))));
-      }
-      break;
-    }
+    case MetaEncoding::UTF8:
     default:
       decoded.assign(reinterpret_cast<const char *>(data), len);
       break;
@@ -388,18 +260,19 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
   uint32_t len = len_or_id;
 
   std::vector<uint8_t> bytes;
-  MetaEncoding encoding = MetaEncoding::EXTENDED;
+  MetaEncoding encoding = MetaEncoding::UTF8;
 
   if (len > k_small_threshold) {
     // Big string layout in Java MetaStringResolver:
     //   header (len<<1 | flags) + hash_code(int64) + data[len]
+    // The original encoding is not transmitted explicitly. For cross-language
+    // purposes we treat the payload bytes as UTF8 and let callers handle any
+    // higher-level semantics.
     int64_t hash_code = buffer.read_int64(error);
     if (FORY_PREDICT_FALSE(!error.ok())) {
       return Unexpected(std::move(error));
     }
-    uint8_t encoding_byte = static_cast<uint8_t>(hash_code & 0xFF);
-    FORY_TRY(enc, to_meta_encoding(encoding_byte));
-    encoding = enc;
+    (void)hash_code; // hash_code is only used for Java-side caching.
     bytes.resize(len);
     if (len > 0) {
       buffer.read_bytes(bytes.data(), len, error);
@@ -407,16 +280,21 @@ MetaStringTable::read_string(Buffer &buffer, const MetaStringDecoder &decoder) {
         return Unexpected(std::move(error));
       }
     }
+    encoding = MetaEncoding::UTF8;
   } else {
     // Small string layout: encoding(byte) + data[len]
+    int8_t enc_byte_res = buffer.read_int8(error);
+    if (FORY_PREDICT_FALSE(!error.ok())) {
+      return Unexpected(std::move(error));
+    }
+    uint8_t enc_byte = static_cast<uint8_t>(enc_byte_res);
     if (len == 0) {
-      encoding = MetaEncoding::EXTENDED;
-    } else {
-      int8_t enc_byte_res = buffer.read_int8(error);
-      if (FORY_PREDICT_FALSE(!error.ok())) {
-        return Unexpected(std::move(error));
+      if (enc_byte != 0) {
+        return Unexpected(
+            Error::encoding_error("Empty meta string must use UTF8 encoding"));
       }
-      uint8_t enc_byte = static_cast<uint8_t>(enc_byte_res);
+      encoding = MetaEncoding::UTF8;
+    } else {
       FORY_TRY(enc, to_meta_encoding(enc_byte));
       encoding = enc;
       bytes.resize(len);
@@ -444,7 +322,7 @@ void MetaStringTable::reset() { entries_.clear(); }
 Result<MetaEncoding, Error> to_meta_encoding(uint8_t value) {
   switch (value) {
   case 0x00:
-    return MetaEncoding::EXTENDED;
+    return MetaEncoding::UTF8;
   case 0x01:
     return MetaEncoding::LOWER_SPECIAL;
   case 0x02:
@@ -500,9 +378,6 @@ MetaStringEncoder::compute_statistics(const std::string &input) const {
 MetaEncoding MetaStringEncoder::compute_encoding(
     const std::string &input,
     const std::vector<MetaEncoding> &encodings) const {
-  if (is_number_string(input)) {
-    return MetaEncoding::EXTENDED;
-  }
   auto allow = [&encodings](MetaEncoding e) {
     return encodings.empty() ||
            std::find(encodings.begin(), encodings.end(), e) != encodings.end();
@@ -539,7 +414,7 @@ MetaEncoding MetaStringEncoder::compute_encoding(
     }
   }
 
-  return MetaEncoding::EXTENDED;
+  return MetaEncoding::UTF8;
 }
 
 int MetaStringEncoder::lower_special_char_value(char c) const {
@@ -669,25 +544,16 @@ MetaStringEncoder::encode(const std::string &input,
   EncodedMetaString result;
 
   if (input.empty()) {
-    result.encoding = MetaEncoding::EXTENDED;
+    result.encoding = MetaEncoding::UTF8;
     result.bytes.clear();
-    return result;
-  }
-
-  if (is_number_string(input)) {
-    result.encoding = MetaEncoding::EXTENDED;
-    if (try_encode_number_string(input, &result.bytes)) {
-      return result;
-    }
-    result.bytes = encode_extended_utf8(input);
     return result;
   }
 
   // Check for non-ASCII characters - use UTF8 for those
   for (char c : input) {
     if (static_cast<unsigned char>(c) > 127) {
-      result.encoding = MetaEncoding::EXTENDED;
-      result.bytes = encode_extended_utf8(input);
+      result.encoding = MetaEncoding::UTF8;
+      result.bytes.assign(input.begin(), input.end());
       return result;
     }
   }
@@ -708,9 +574,9 @@ MetaStringEncoder::encode(const std::string &input,
   case MetaEncoding::ALL_TO_LOWER_SPECIAL:
     result.bytes = encode_all_to_lower_special(input);
     break;
-  case MetaEncoding::EXTENDED:
+  case MetaEncoding::UTF8:
   default:
-    result.bytes = encode_extended_utf8(input);
+    result.bytes.assign(input.begin(), input.end());
     break;
   }
 

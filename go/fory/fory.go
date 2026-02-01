@@ -230,10 +230,7 @@ func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
 		internalTypeID = STRUCT
 	}
 
-	// Calculate full type ID: (userID << 8) | internalTypeID
-	fullTypeID := (typeID << 8) | uint32(internalTypeID)
-
-	return f.typeResolver.RegisterStruct(t, fullTypeID)
+	return f.typeResolver.RegisterStruct(t, internalTypeID, typeID)
 }
 
 // RegisterUnion registers a union type with a numeric ID for cross-language serialization.
@@ -259,8 +256,7 @@ func (f *Fory) RegisterUnion(type_ any, typeID uint32, serializer Serializer) er
 	if t.Kind() != reflect.Struct {
 		return fmt.Errorf("RegisterUnion only supports struct types; got: %v", t.Kind())
 	}
-	fullTypeID := (typeID << 8) | uint32(TYPED_UNION)
-	return f.typeResolver.RegisterUnion(t, fullTypeID, serializer)
+	return f.typeResolver.RegisterUnion(t, typeID, serializer)
 }
 
 // RegisterNamedUnion registers a union type with a namespace + type name for cross-language serialization.
@@ -346,10 +342,7 @@ func (f *Fory) RegisterEnum(type_ any, typeID uint32) error {
 		return fmt.Errorf("RegisterEnum only supports numeric types (Go enums); got: %v", t.Kind())
 	}
 
-	// Calculate full type ID: (userID << 8) | ENUM
-	fullTypeID := (typeID << 8) | uint32(ENUM)
-
-	return f.typeResolver.RegisterEnum(t, fullTypeID)
+	return f.typeResolver.RegisterEnum(t, typeID)
 }
 
 // RegisterNamedEnum registers an enum type with a name for cross-language serialization.

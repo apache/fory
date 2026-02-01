@@ -59,7 +59,7 @@ func readArrayRefAndType(ctx *ReadContext, refMode RefMode, readType bool, value
 		if ctx.HasError() {
 			return false
 		}
-		if IsNamespacedType(TypeId(typeID)) {
+		if IsNamespacedType(TypeId(typeID)) || needsUserTypeID(TypeId(typeID)) {
 			ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, err)
 		}
 	}
@@ -175,7 +175,7 @@ func (s *arrayConcreteValueSerializer) WriteData(ctx *WriteContext, value reflec
 	if elemTypeInfo != nil {
 		internalTypeID = elemTypeInfo.TypeID
 	}
-	if IsNamespacedType(TypeId(internalTypeID)) {
+	if IsNamespacedType(TypeId(internalTypeID)) || needsUserTypeID(TypeId(internalTypeID)) {
 		ctx.TypeResolver().WriteTypeInfo(buf, elemTypeInfo, ctx.Err())
 	} else {
 		buf.WriteVarUint32Small7(uint32(internalTypeID))

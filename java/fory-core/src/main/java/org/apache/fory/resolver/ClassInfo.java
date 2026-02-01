@@ -42,11 +42,12 @@ public class ClassInfo {
   final MetaStringBytes namespaceBytes;
   final MetaStringBytes typeNameBytes;
   final boolean isDynamicGeneratedClass;
-  // Unified type ID for both native and xlang modes.
+  // Fory type ID for both native and xlang modes.
   // - Types 0-30: Shared internal types (Types.BOOL, Types.STRING, etc.)
   // - Types 31-255: Native-only internal types (VOID_ID, CHAR_ID, etc.)
-  // - Types 256+: User-registered types encoded as (userTypeId << 8) | internalTypeId
   int typeId;
+  // User-registered type ID for types registered by numeric id, or -1 if not registered by id.
+  int userTypeId = -1;
   Serializer<?> serializer;
   ClassDef classDef;
   boolean needToWriteClassDef;
@@ -84,6 +85,7 @@ public class ClassInfo {
     this.isDynamicGeneratedClass = false;
     this.serializer = null;
     this.typeId = classDef == null ? Types.UNKNOWN : classDef.getClassSpec().typeId;
+    this.userTypeId = classDef == null ? -1 : classDef.getClassSpec().userTypeId;
   }
 
   ClassInfo(TypeResolver classResolver, Class<?> cls, Serializer<?> serializer, int typeId) {
@@ -94,7 +96,7 @@ public class ClassInfo {
     if (cls != null && classResolver.getFory().isCrossLanguage()) {
       this.fullNameBytes =
           metaStringResolver.getOrCreateMetaStringBytes(
-              GENERIC_ENCODER.encode(cls.getName(), Encoding.EXTENDED));
+              GENERIC_ENCODER.encode(cls.getName(), Encoding.UTF_8));
     } else {
       this.fullNameBytes = null;
     }
@@ -148,20 +150,14 @@ public class ClassInfo {
   }
 
   /**
-   * Returns the unified type ID for this class.
-   *
-   * <p>Type ID encoding:
-   *
-   * <ul>
-   *   <li>0-30: Shared internal types (Types.BOOL, Types.STRING, etc.)
-   *   <li>31-255: Native-only internal types (VOID_ID, CHAR_ID, etc.)
-   *   <li>256+: User-registered types encoded as (userTypeId << 8) | internalTypeId
-   * </ul>
-   *
-   * @return the unified type ID
+   * Returns the fory type ID for this class.
    */
   public int getTypeId() {
     return typeId;
+  }
+
+  public int getUserTypeId() {
+    return userTypeId;
   }
 
   @SuppressWarnings("unchecked")
@@ -199,6 +195,8 @@ public class ClassInfo {
         + serializer
         + ", typeId="
         + typeId
+        + ", userTypeId="
+        + userTypeId
         + '}';
   }
 }

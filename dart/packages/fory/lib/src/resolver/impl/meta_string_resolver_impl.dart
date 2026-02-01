@@ -21,7 +21,6 @@ import 'dart:collection';
 import 'dart:typed_data';
 import 'package:fory/src/codec/encoders.dart';
 import 'package:fory/src/codec/meta_string_decoder.dart';
-import 'package:fory/src/codec/meta_string_encoding.dart';
 import 'package:fory/src/collection/long_long_key.dart';
 import 'package:fory/src/dev_annotation/optimize.dart';
 import 'package:fory/src/memory/byte_reader.dart';
@@ -89,9 +88,6 @@ class MetaStringResolverImpl extends MetaStringResolver {
   /// [v1] and [v2] are the two parts of the long long key
   /// [encoding] is the encoding of the string bytes
   MetaStringBytes _readSmallStringBytes(ByteReader reader, int len) {
-    if (len == 0) {
-      return MetaStringBytes.of(MetaString('', MetaStringEncoding.extended, 0, 0, Uint8List(0)));
-    }
     late final int v1;
     int v2 = 0;
     int encoding = reader.readInt8();

@@ -47,6 +47,7 @@ import org.apache.fory.reflect.ReflectionUtils;
 import org.apache.fory.resolver.ClassResolver;
 import org.apache.fory.resolver.TypeResolver;
 import org.apache.fory.type.DescriptorGrouper;
+import org.apache.fory.type.Types;
 import org.apache.fory.util.MurmurHash3;
 
 /**
@@ -58,6 +59,19 @@ import org.apache.fory.util.MurmurHash3;
 public class ClassDefEncoder {
   // a flag to mark a type is not struct.
   static final int NUM_CLASS_THRESHOLD = 0b1111;
+
+  private static boolean needsUserTypeId(int typeId) {
+    switch (typeId) {
+      case Types.ENUM:
+      case Types.STRUCT:
+      case Types.COMPATIBLE_STRUCT:
+      case Types.EXT:
+      case Types.TYPED_UNION:
+        return true;
+      default:
+        return false;
+    }
+  }
 
   static List<Field> buildFields(Fory fory, Class<?> cls, boolean resolveParent) {
     DescriptorGrouper descriptorGrouper =
@@ -148,7 +162,8 @@ public class ClassDefEncoder {
     MemoryBuffer encodeClassDef = encodeClassDef(classResolver, type, classLayers, hasFieldsMeta);
     byte[] classDefBytes = encodeClassDef.getBytes(0, encodeClassDef.writerIndex());
     int typeId = classResolver.getTypeIdForClassDef(type);
-    ClassSpec classSpec = new ClassSpec(type, typeId);
+    int userTypeId = classResolver.getUserTypeIdForClassDef(type);
+    ClassSpec classSpec = new ClassSpec(type, typeId, userTypeId);
     return new ClassDef(
         classSpec, fieldInfos, hasFieldsMeta, encodeClassDef.getInt64(0), classDefBytes);
   }
@@ -178,7 +193,12 @@ public class ClassDefEncoder {
       if (classResolver.isRegisteredById(currentType)) {
         currentClassHeader |= 1;
         classDefBuf.writeVarUint32Small7(currentClassHeader);
-        classDefBuf.writeVarUint32Small7(classResolver.getTypeIdForClassDef(currentType));
+        int typeId = classResolver.getTypeIdForClassDef(currentType);
+        classDefBuf.writeVarUint32Small7(typeId);
+        if (needsUserTypeId(typeId)) {
+          int userTypeId = classResolver.getUserTypeIdForClassDef(currentType);
+          classDefBuf.writeVarUint32(userTypeId);
+        }
       } else {
         classDefBuf.writeVarUint32Small7(currentClassHeader);
         String ns, typename;
@@ -282,7 +302,7 @@ public class ClassDefEncoder {
       // `3 bits size + 2 bits field name encoding + nullability flag + ref tracking flag`
       int header = ((fieldType.nullable() ? 1 : 0) << 1);
       header |= ((fieldType.trackingRef() ? 1 : 0));
-      // Encoding `EXTENDED/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID`
+      // Encoding `UTF_8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID`
       MetaString metaString = Encoders.encodeFieldName(fieldInfo.getFieldName());
       int encodingFlags = fieldNameEncodingsList.indexOf(metaString.getEncoding());
       byte[] encoded = metaString.getBytes();
@@ -310,7 +330,7 @@ public class ClassDefEncoder {
 
   static void writePkgName(MemoryBuffer buffer, String pkg) {
     // - Package name encoding(omitted when class is registered):
-    //    - encoding algorithm: `EXTENDED/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
+    //    - encoding algorithm: `UTF_8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
     //    - Header: `6 bits size | 2 bits encoding flags`.
     //      The `6 bits size: 0~63`  will be used to indicate size `0~62`,
     //      the value `63` the size need more byte to read, the encoding will encode `size - 62` as
@@ -323,7 +343,7 @@ public class ClassDefEncoder {
   static void writeTypeName(MemoryBuffer buffer, String typeName) {
     // - Class name encoding(omitted when class is registered):
     //     - encoding algorithm:
-    // `EXTENDED/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
+    // `UTF_8/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
     //     - header: `6 bits size | 2 bits encoding flags`.
     //       The `6 bits size: 0~63`  will be used to indicate size `1~64`,
     //       the value `63` the size need more byte to read, the encoding will encode `size - 63` as

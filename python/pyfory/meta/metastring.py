@@ -17,7 +17,7 @@
 
 from collections import namedtuple
 from enum import Enum
-from typing import List, Optional
+from typing import List
 
 
 class Encoding(Enum):
@@ -25,18 +25,11 @@ class Encoding(Enum):
     Defines the types of supported encodings for MetaStrings.
     """
 
-    EXTENDED = 0x00
+    UTF_8 = 0x00
     LOWER_SPECIAL = 0x01
     LOWER_UPPER_DIGIT_SPECIAL = 0x02
     FIRST_TO_LOWER_SPECIAL = 0x03
     ALL_TO_LOWER_SPECIAL = 0x04
-
-
-EXTENDED_ENCODING_UTF8 = 0
-EXTENDED_ENCODING_NUMBER_STRING = 1
-EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING = 2
-
-_MAX_UINT64 = (1 << 64) - 1
 
 
 Statistics = namedtuple(
@@ -69,7 +62,7 @@ class MetaString:
         self.length = length
         self.special_char1 = special_char1
         self.special_char2 = special_char2
-        if self.encoding != Encoding.EXTENDED:
+        if self.encoding != Encoding.UTF_8:
             self.strip_last_char = (encoded_data[0] & 0x80) != 0
         else:
             self.strip_last_char = False
@@ -125,32 +118,10 @@ class MetaStringDecoder:
             return self._decode_rep_first_lower_special(encoded_data)
         elif encoding == Encoding.ALL_TO_LOWER_SPECIAL:
             return self._decode_rep_all_to_lower_special(encoded_data)
-        elif encoding == Encoding.EXTENDED:
-            return self._decode_extended(encoded_data)
+        elif encoding == Encoding.UTF_8:
+            return encoded_data.decode("utf-8")
         else:
             raise ValueError(f"Unexpected encoding flag: {encoding}")
-
-    def _decode_extended(self, encoded_data: bytes) -> str:
-        if len(encoded_data) == 0:
-            return ""
-        actual = encoded_data[0]
-        payload = encoded_data[1:]
-        if actual == EXTENDED_ENCODING_UTF8:
-            return payload.decode("utf-8")
-        if actual == EXTENDED_ENCODING_NUMBER_STRING:
-            return self._decode_number_string(payload, False)
-        if actual == EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING:
-            return self._decode_number_string(payload, True)
-        raise ValueError(f"Unexpected extended encoding flag: {actual}")
-
-    def _decode_number_string(self, payload: bytes, negative: bool) -> str:
-        if len(payload) == 0:
-            return ""
-        if len(payload) > 8:
-            raise ValueError(f"NUMBER_STRING payload length exceeds uint64 size: {len(payload)}")
-        value = int.from_bytes(payload, "little", signed=False)
-        result = str(value)
-        return f"-{result}" if negative else result
 
     def _decode_lower_special(self, data: bytes) -> str:
         """
@@ -313,7 +284,7 @@ class MetaStringEncoder:
         if not input_string:
             return MetaString(
                 input_string,
-                Encoding.EXTENDED,
+                Encoding.UTF_8,
                 bytes(),
                 0,
                 self.special_char1,
@@ -340,7 +311,7 @@ class MetaStringEncoder:
         if not input_string:
             return MetaString(
                 input_string,
-                Encoding.EXTENDED,
+                Encoding.UTF_8,
                 bytes(),
                 0,
                 self.special_char1,
@@ -390,18 +361,16 @@ class MetaStringEncoder:
                 self.special_char1,
                 self.special_char2,
             )
-        elif encoding == Encoding.EXTENDED:
-            encoded_data = self._encode_extended(input_string)
+        else:
+            encoded_data = bytes(input_string, "utf-8")
             return MetaString(
                 input_string,
-                Encoding.EXTENDED,
+                Encoding.UTF_8,
                 encoded_data,
                 len(encoded_data) * 8,
                 self.special_char1,
                 self.special_char2,
             )
-        else:
-            raise ValueError(f"Unexpected encoding flag: {encoding}")
 
     def compute_encoding(self, input_string: str, encodings: List[Encoding] = None) -> Encoding:
         """
@@ -414,9 +383,7 @@ class MetaStringEncoder:
             Encoding: The encoding type.
         """
         if not input_string:
-            return Encoding.EXTENDED
-        if self._is_number_string(input_string):
-            return Encoding.EXTENDED
+            return Encoding.LOWER_SPECIAL
         if encodings is None:
             encodings = list(Encoding.__members__.values())
 
@@ -436,8 +403,8 @@ class MetaStringEncoder:
                 else:
                     if Encoding.LOWER_UPPER_DIGIT_SPECIAL in encodings:
                         return Encoding.LOWER_UPPER_DIGIT_SPECIAL
-        if Encoding.EXTENDED in encodings:
-            return Encoding.EXTENDED
+        if Encoding.UTF_8 in encodings:
+            return Encoding.UTF_8
         raise ValueError(f"No encoding found for string: {input_string}, encodings: {encodings}")
 
     def _compute_statistics(self, chars: List[str]) -> Statistics:
@@ -531,59 +498,6 @@ class MetaStringEncoder:
             else:
                 new_chars.append(c)
         return self._encode_generic(new_chars, 5)
-
-    def _is_number_string(self, input_string: str) -> bool:
-        if not input_string:
-            return False
-        start = 0
-        if input_string[0] == "-":
-            if len(input_string) == 1:
-                return False
-            start = 1
-        for c in input_string[start:]:
-            if not c.isdigit():
-                return False
-        return True
-
-    def _encode_extended(self, input_string: str) -> bytes:
-        if self._is_number_string(input_string):
-            encoded = self._encode_number_string(input_string)
-            if encoded is not None:
-                return encoded
-        return self._encode_extended_utf8(input_string)
-
-    def _encode_extended_utf8(self, input_string: str) -> bytes:
-        utf8 = bytes(input_string, "utf-8")
-        return bytes([EXTENDED_ENCODING_UTF8]) + utf8
-
-    def _encode_number_string(self, input_string: str) -> Optional[bytes]:
-        negative = input_string[0] == "-"
-        digits = input_string[1:] if negative else input_string
-        value = self._parse_uint64_digits(digits)
-        if value is None:
-            return None
-        if value == 0:
-            payload = b"\x00"
-        else:
-            length = (value.bit_length() + 7) // 8
-            payload = value.to_bytes(length, "little", signed=False)
-        encoding = EXTENDED_ENCODING_NEGATIVE_NUMBER_STRING if negative else EXTENDED_ENCODING_NUMBER_STRING
-        return bytes([encoding]) + payload
-
-    def _parse_uint64_digits(self, digits: str) -> Optional[int]:
-        if not digits:
-            return None
-        stripped = digits.lstrip("0")
-        if stripped == "":
-            return 0
-        if len(stripped) > 20:
-            return None
-        if len(stripped) == 20 and stripped > "18446744073709551615":
-            return None
-        value = int(stripped)
-        if value > _MAX_UINT64:
-            return None
-        return value
 
     def _encode_generic(self, chars: List[str], bits_per_char: int) -> bytes:
         """

@@ -640,9 +640,8 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
     quote! {
         {
             let mut type_id = #get_type_id;
-            let internal_type_id = type_id & 0xff;
-            if internal_type_id == fory_core::types::TypeId::TYPED_UNION as u32
-                || internal_type_id == fory_core::types::TypeId::NAMED_UNION as u32 {
+            if type_id == fory_core::types::TypeId::TYPED_UNION as u32
+                || type_id == fory_core::types::TypeId::NAMED_UNION as u32 {
                 type_id = fory_core::types::TypeId::UNION as u32;
             }
             let mut generics = vec![#(#children_tokens),*] as Vec<fory_core::meta::FieldType>;
@@ -657,7 +656,7 @@ pub(super) fn generic_tree_to_tokens(node: &TypeNode) -> TokenStream {
                     vec![]
                 ));
             }
-            let is_custom = !fory_core::types::is_internal_type(type_id & 0xff);
+            let is_custom = !fory_core::types::is_internal_type(type_id);
             if is_custom {
                 if type_resolver.is_xlang() && generics.len() > 0 {
                     return Err(fory_core::error::Error::unsupported("serialization of generic structs and enums is not supported in xlang mode"));

@@ -211,6 +211,13 @@ enum ObjType {
         || this == NAMED_COMPATIBLE_STRUCT;
   }
 
+  bool needsUserTypeId() {
+    return this == ENUM
+        || this == STRUCT
+        || this == COMPATIBLE_STRUCT
+        || this == EXT;
+  }
+
   bool isTimeType() {
     return this == TIMESTAMP
         || this == DATE

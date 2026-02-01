@@ -36,8 +36,6 @@ func TestEncodeAndDecodeMetaString(t *testing.T) {
 		"MediaContent":                   5,
 		"Apple_banana":                   5,
 		"你好，世界":                          0, // not used
-		"1234567890":                     0, // not used
-		"-324345545454":                  0, // not used
 	}
 	str2encoding := map[string]Encoding{
 		"abc_def":                        LOWER_SPECIAL,
@@ -45,9 +43,7 @@ func TestEncodeAndDecodeMetaString(t *testing.T) {
 		"MediaContent":                   ALL_TO_LOWER_SPECIAL,
 		"HelloWorld__123.2024":           LOWER_UPPER_DIGIT_SPECIAL,
 		"Apple_banana":                   FIRST_TO_LOWER_SPECIAL,
-		"你好，世界":                          EXTENDED,
-		"1234567890":                     EXTENDED,
-		"-324345545454":                  EXTENDED,
+		"你好，世界":                          UTF_8,
 	}
 	encoder := NewEncoder('.', '_')
 	decoder := NewDecoder('.', '_')
@@ -56,21 +52,7 @@ func TestEncodeAndDecodeMetaString(t *testing.T) {
 		data, err = encoder.Encode(src)
 		require.Equal(t, nil, err)
 		require.Equal(t, str2encoding[src], data.GetEncoding())
-		if data.GetEncoding() != EXTENDED {
-			require.Equal(t, calcTotalBytes(src, bitsPerChar, data.GetEncoding()), len(data.GetEncodedBytes()))
-		}
-		if src == "你好，世界" {
-			require.True(t, len(data.GetEncodedBytes()) > 0)
-			require.Equal(t, ExtendedEncodingUTF8, data.GetEncodedBytes()[0])
-		}
-		if src == "1234567890" {
-			require.True(t, len(data.GetEncodedBytes()) > 0)
-			require.Equal(t, ExtendedEncodingNumberString, data.GetEncodedBytes()[0])
-		}
-		if src == "-324345545454" {
-			require.True(t, len(data.GetEncodedBytes()) > 0)
-			require.Equal(t, ExtendedEncodingNegativeNumberString, data.GetEncodedBytes()[0])
-		}
+		require.Equal(t, calcTotalBytes(src, bitsPerChar, data.GetEncoding()), len(data.GetEncodedBytes()))
 		dst, err = decoder.Decode(data.GetEncodedBytes(), data.GetEncoding())
 		require.Equal(t, nil, err)
 		require.Equal(t, src, dst)
@@ -90,7 +72,7 @@ func TestEncodeAndDecodeMetaString(t *testing.T) {
 }
 
 func calcTotalBytes(src string, bitsPerChar int, encoding Encoding) int {
-	if encoding == EXTENDED {
+	if encoding == UTF_8 {
 		return len(src)
 	}
 	ret := len(src)*bitsPerChar + 1
@@ -105,7 +87,7 @@ func TestAsciiEncoding(t *testing.T) {
 
 	data, err := encoder.Encode("asciiOnly")
 	require.NoError(t, err)
-	require.NotEqual(t, EXTENDED, data.GetEncoding(), "Encoding should not be EXTENDED for ASCII strings")
+	require.NotEqual(t, UTF_8, data.GetEncoding(), "Encoding should not be UTF-8 for ASCII strings")
 }
 
 func TestNonAsciiEncoding(t *testing.T) {
@@ -113,13 +95,13 @@ func TestNonAsciiEncoding(t *testing.T) {
 
 	data, err := encoder.Encode("こんにちは") // Non-ASCII String
 	require.NoError(t, err)
-	require.Equal(t, EXTENDED, data.GetEncoding(), "Encoding should be EXTENDED for non-ASCII strings")
+	require.Equal(t, UTF_8, data.GetEncoding(), "Encoding should be UTF-8 for non-ASCII strings")
 }
 
 func TestEncodeWithEncodingNonAscii(t *testing.T) {
 	encoder := NewEncoder('.', '_')
 
 	_, err := encoder.EncodeWithEncoding("こんにちは", LOWER_SPECIAL)
-	require.Error(t, err, "Expected error for non-ASCII characters in non-extended encoding")
+	require.Error(t, err, "Expected error for non-ASCII characters in non-UTF-8 encoding")
 	require.Equal(t, "non-ASCII characters in meta string are not allowed", err.Error())
 }

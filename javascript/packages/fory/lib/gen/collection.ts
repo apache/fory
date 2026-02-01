@@ -75,7 +75,11 @@ class CollectionAnySerializer {
     }
     this.fory.binaryWriter.uint8(flag);
     if (isSame) {
-      this.fory.binaryWriter.int16(serializer ? serializer!.getTypeId() : 0);
+      const typeId = serializer ? serializer!.getTypeId() : 0;
+      this.fory.binaryWriter.int16(typeId);
+      if (TypeId.needsUserTypeId(typeId)) {
+        this.fory.binaryWriter.writeVarUint32Small7(serializer!.getUserTypeId());
+      }
     }
     return {
       serializer,
@@ -100,7 +104,11 @@ class CollectionAnySerializer {
       let finalSerializer = serializer;
       if (!isSame) {
         finalSerializer = this.fory.classResolver.getSerializerByData(item);
-        this.fory.binaryWriter.uint16(finalSerializer!.getTypeId());
+        const typeId = finalSerializer!.getTypeId();
+        this.fory.binaryWriter.uint16(typeId);
+        if (TypeId.needsUserTypeId(typeId)) {
+          this.fory.binaryWriter.writeVarUint32Small7(finalSerializer!.getUserTypeId());
+        }
       }
       finalSerializer!.write(item);
     }
@@ -113,7 +121,12 @@ class CollectionAnySerializer {
 
     let serializer: Serializer;
     if (isSame) {
-      serializer = this.fory.classResolver.getSerializerById(this.fory.binaryReader.int16());
+      const typeId = this.fory.binaryReader.int16();
+      let userTypeId = -1;
+      if (TypeId.needsUserTypeId(typeId)) {
+        userTypeId = this.fory.binaryReader.readVarUint32Small7();
+      }
+      serializer = this.fory.classResolver.getSerializerById(typeId, userTypeId);
     }
     const len = this.fory.binaryReader.varUInt32();
     const result = createCollection(len);
@@ -129,7 +142,12 @@ class CollectionAnySerializer {
         }
       }
       if (!isSame) {
-        serializer = this.fory.classResolver.getSerializerById(this.fory.binaryReader.int16());
+        const typeId = this.fory.binaryReader.int16();
+        let userTypeId = -1;
+        if (TypeId.needsUserTypeId(typeId)) {
+          userTypeId = this.fory.binaryReader.readVarUint32Small7();
+        }
+        serializer = this.fory.classResolver.getSerializerById(typeId, userTypeId);
       }
       accessor(result, index, serializer!.read(false));
     }
@@ -188,6 +206,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
             let ${flags} = 0;
             ${this.writeElementsHeader(accessor, flags)}
             ${this.builder.writer.int16(this.typeInfo.typeId)}
+            ${TypeId.needsUserTypeId(this.typeInfo.typeId) ? this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId) : ""}
             ${this.builder.writer.varUInt32(`${accessor}.${this.sizeProp()}`)}
             ${this.builder.writer.reserve(`${this.innerGenerator.getFixedSize()} * ${accessor}.${this.sizeProp()}`)};
             if (${flags} & ${CollectionFlags.TRACKING_REF}) {
@@ -240,6 +259,7 @@ export abstract class CollectionSerializerGenerator extends BaseSerializerGenera
     return `
             const ${flags} = ${this.builder.reader.uint8()};
             ${this.builder.reader.skip(2)};
+            ${TypeId.needsUserTypeId(this.typeInfo.typeId) ? this.builder.reader.readVarUint32Small7() : ""}
             const ${len} = ${this.builder.reader.varUInt32()};
             const ${result} = ${this.newCollection(len)};
             ${this.maybeReference(result, refState)}

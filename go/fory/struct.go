@@ -45,6 +45,7 @@ type structSerializer struct {
 	type_      reflect.Type
 	structHash int32
 	typeID     uint32
+	userTypeID int32
 
 	// Pre-sorted and categorized fields (embedded for cache locality)
 	fieldGroup FieldGroup
@@ -135,7 +136,7 @@ func computeLocalNullable(typeResolver *TypeResolver, field reflect.StructField,
 		fieldType = optionalInfo.valueType
 	}
 	typeId := typeResolver.getTypeIdByType(fieldType)
-	internalId := TypeId(typeId & 0xFF)
+	internalId := TypeId(typeId)
 	isEnum := internalId == ENUM || internalId == NAMED_ENUM
 	var nullableFlag bool
 	if typeResolver.fory.config.IsXlang {
@@ -376,7 +377,7 @@ func (s *structSerializer) initFields(typeResolver *TypeResolver) error {
 		// - In native mode: Go's natural semantics apply - slice/map/interface can be nil,
 		//   so they are nullable by default.
 		// Can be overridden by explicit fory tag `fory:"nullable"`.
-		internalId := fieldTypeId & 0xFF
+		internalId := fieldTypeId
 		isEnum := internalId == ENUM || internalId == NAMED_ENUM
 
 		// Determine nullable based on mode
@@ -688,8 +689,7 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 			isPolymorphicField := def.fieldType.TypeId() == UNKNOWN
 			defTypeId := def.fieldType.TypeId()
 			// Check if field is an enum - either by type ID or by serializer type
-			// The type ID may be a composite value with namespace bits, so check the low 8 bits
-			internalDefTypeId := defTypeId & 0xFF
+			internalDefTypeId := defTypeId
 			isEnumField := internalDefTypeId == NAMED_ENUM || internalDefTypeId == ENUM
 			if !isEnumField && fieldSerializer != nil {
 				_, isEnumField = fieldSerializer.(*enumSerializer)
@@ -1020,12 +1020,12 @@ func (s *structSerializer) initFieldsFromTypeDef(typeResolver *TypeResolver) err
 				s.typeDefDiffers = true
 				break
 			}
-			remoteTypeId := TypeId(s.fieldDefs[i].fieldType.TypeId() & 0xFF)
+			remoteTypeId := TypeId(s.fieldDefs[i].fieldType.TypeId())
 			localTypeId := typeResolver.getTypeIdByType(field.Meta.Type)
 			if localTypeId == 0 {
 				localTypeId = typeIdFromKind(field.Meta.Type)
 			}
-			localTypeId = TypeId(localTypeId & 0xFF)
+			localTypeId = TypeId(localTypeId)
 			if !typeIdEqualForDiff(remoteTypeId, localTypeId) {
 				if DebugOutputEnabled && s.type_ != nil {
 					fmt.Printf("[Go][fory-debug] [%s] typeDefDiffers: type ID mismatch idx=%d name=%q tagID=%d remote=%d local=%d\n",
@@ -1083,7 +1083,7 @@ func (s *structSerializer) computeHash() int32 {
 				}
 			}
 			// Unions use UNION type ID in fingerprints, regardless of typed/named variants.
-			internalId := typeId & 0xFF
+			internalId := typeId
 			if internalId == TYPED_UNION || internalId == NAMED_UNION || internalId == UNION {
 				typeId = UNION
 			}
@@ -2390,11 +2390,21 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 			if ctxErr.HasError() {
 				return
 			}
-			if s.typeID != 0 && typeID == s.typeID && !IsNamespacedType(TypeId(typeID)) {
-				s.ReadData(ctx, value)
-				return
+			internalTypeID := TypeId(typeID)
+			userTypeID := int32(-1)
+			if needsUserTypeID(internalTypeID) {
+				userTypeID = int32(buf.ReadVarUint32(ctxErr))
+				if ctxErr.HasError() {
+					return
+				}
 			}
-			if IsNamespacedType(TypeId(typeID)) {
+			if s.typeID != 0 && typeID == s.typeID && !IsNamespacedType(internalTypeID) {
+				if !needsUserTypeID(internalTypeID) || s.userTypeID == userTypeID {
+					s.ReadData(ctx, value)
+					return
+				}
+			}
+			if IsNamespacedType(internalTypeID) {
 				// Expected type is known: skip namespace/type meta and read data directly.
 				ctx.TypeResolver().metaStringResolver.ReadMetaStringBytes(buf, ctxErr)
 				ctx.TypeResolver().metaStringResolver.ReadMetaStringBytes(buf, ctxErr)
@@ -2404,19 +2414,19 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 				s.ReadData(ctx, value)
 				return
 			}
-			internalTypeID := TypeId(typeID & 0xFF)
 			if internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
-				typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
-				if ctxErr.HasError() {
-					return
-				}
-				if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
-					structSer.ReadData(ctx, value)
-					return
-				}
-				if s.typeID != 0 && typeID == s.typeID {
-					s.ReadData(ctx, value)
-					return
+				if needsUserTypeID(internalTypeID) {
+					typeInfo := ctx.TypeResolver().getUserTypeInfoById(internalTypeID, userTypeID)
+					if typeInfo != nil {
+						if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
+							structSer.ReadData(ctx, value)
+							return
+						}
+						if s.typeID != 0 && typeID == s.typeID && s.userTypeID == userTypeID {
+							s.ReadData(ctx, value)
+							return
+						}
+					}
 				}
 			}
 			ctx.SetError(DeserializationError("unexpected type id for struct"))
@@ -2440,8 +2450,8 @@ func (s *structSerializer) Read(ctx *ReadContext, refMode RefMode, readType bool
 		}
 		// Fallback: read type info based on typeID when expected type is unknown
 		typeID := buf.ReadVarUint32Small7(ctxErr)
-		internalTypeID := TypeId(typeID & 0xFF)
-		if IsNamespacedType(TypeId(typeID)) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
+		internalTypeID := TypeId(typeID)
+		if IsNamespacedType(internalTypeID) || internalTypeID == COMPATIBLE_STRUCT || internalTypeID == STRUCT {
 			typeInfo := ctx.TypeResolver().readTypeInfoWithTypeID(buf, typeID, ctxErr)
 			if structSer, ok := typeInfo.Serializer.(*structSerializer); ok && len(structSer.fieldDefs) > 0 {
 				structSer.ReadData(ctx, value)

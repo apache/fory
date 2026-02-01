@@ -235,10 +235,14 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       }
       `;
     }
+    const readUserTypeIdStmt = TypeId.needsUserTypeId(this.getTypeId())
+      ? `${this.builder.reader.readVarUint32Small7()};`
+      : "";
     return `
       ${
         this.builder.reader.readVarUint32Small7()
       };
+      ${readUserTypeIdStmt}
       ${
         namesStmt
       }
@@ -256,7 +260,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
             "tag_ser",
             TypeId.isNamedType(this.typeInfo.typeId)
               ? this.builder.classResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
-              : this.builder.classResolver.getSerializerById(this.typeInfo.typeId)
+              : this.builder.classResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
           );
           return accessor(`${name}.${prop}(${args.join(",")})`);
         };
@@ -272,7 +276,7 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
             "tag_ser",
             TypeId.isNamedType(this.typeInfo.typeId)
               ? this.builder.classResolver.getSerializerByName(CodecBuilder.replaceBackslashAndQuote(this.typeInfo.named!))
-              : this.builder.classResolver.getSerializerById(this.typeInfo.typeId)
+              : this.builder.classResolver.getSerializerById(this.typeInfo.typeId, this.typeInfo.userTypeId)
           );
           return `${name}.${prop}(${accessor})`;
         };
@@ -308,8 +312,12 @@ class StructSerializerGenerator extends BaseSerializerGenerator {
       default:
         break;
     }
+    const writeUserTypeIdStmt = TypeId.needsUserTypeId(this.getTypeId())
+      ? this.builder.writer.writeVarUint32Small7(this.typeInfo.userTypeId)
+      : "";
     return ` 
       ${this.builder.writer.writeVarUint32Small7(this.getTypeId())};
+      ${writeUserTypeIdStmt}
       ${typeMeta}
     `;
   }

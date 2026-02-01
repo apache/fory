@@ -656,8 +656,7 @@ struct Serializer<
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::vector<T, Alloc>();
       }
-      uint32_t low = type_id_read & 0xffu;
-      if (low != static_cast<uint32_t>(type_id)) {
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
         return std::vector<T, Alloc>();
@@ -948,8 +947,7 @@ template <typename T, typename Alloc> struct Serializer<std::list<T, Alloc>> {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::list<T, Alloc>();
       }
-      uint32_t low = type_id_read & 0xffu;
-      if (low != static_cast<uint32_t>(type_id)) {
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
         return std::list<T, Alloc>();
@@ -1139,8 +1137,7 @@ template <typename T, typename Alloc> struct Serializer<std::deque<T, Alloc>> {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::deque<T, Alloc>();
       }
-      uint32_t low = type_id_read & 0xffu;
-      if (low != static_cast<uint32_t>(type_id)) {
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
         return std::deque<T, Alloc>();
@@ -1331,8 +1328,7 @@ struct Serializer<std::forward_list<T, Alloc>> {
       if (FORY_PREDICT_FALSE(ctx.has_error())) {
         return std::forward_list<T, Alloc>();
       }
-      uint32_t low = type_id_read & 0xffu;
-      if (low != static_cast<uint32_t>(type_id)) {
+      if (type_id_read != static_cast<uint32_t>(type_id)) {
         ctx.set_error(
             Error::type_mismatch(type_id_read, static_cast<uint32_t>(type_id)));
         return std::forward_list<T, Alloc>();
