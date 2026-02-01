@@ -35,7 +35,7 @@ constexpr int FIELD_NAME_SIZE_THRESHOLD = 15;
 
 // Field name encodings used for schema serialization
 static const std::vector<MetaEncoding> FIELD_NAME_ENCODINGS = {
-    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
 // Encoder and decoder for field names

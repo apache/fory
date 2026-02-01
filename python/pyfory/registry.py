@@ -410,6 +410,12 @@ class TypeResolver:
     ):
         """Register type with given type id or typename. If typename is not None, it will be used for
         cross-language serialization."""
+        if internal:
+            if type_id is not None and type_id >= 0 and type_id > 0xFF:
+                raise ValueError(f"Internal type id overflow: {type_id}")
+        else:
+            if type_id is not None and type_id > 0x7FFFFFFF:
+                raise ValueError(f"type_id must be in range [0, 0x7fffffff], got {type_id}")
         if serializer is not None and not isinstance(serializer, Serializer):
             try:
                 serializer = serializer(self.fory, cls)

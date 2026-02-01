@@ -189,12 +189,22 @@ func NewFory(opts ...Option) *Fory {
 	return New(opts...)
 }
 
+func validateUserTypeID(typeID uint32) error {
+	if typeID > maxUserTypeID {
+		return fmt.Errorf("typeID must be in range [0, 0x7fffffff], got %d", typeID)
+	}
+	return nil
+}
+
 // RegisterStruct registers a struct type with a numeric ID for cross-language serialization.
 // This is compatible with Java's fory.register(Class, int) method.
 // type_ can be either a reflect.Type or an instance of the type
-// typeID should be the user type ID in the range 0-8192 (the internal type ID will be added automatically)
+// typeID should be the user type ID in the range 0-0x7fffffff (the internal type ID will be added automatically)
 // Note: For enum types, use RegisterEnum instead.
 func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
+	if err := validateUserTypeID(typeID); err != nil {
+		return err
+	}
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
 		t = rt
@@ -228,11 +238,14 @@ func (f *Fory) RegisterStruct(type_ any, typeID uint32) error {
 
 // RegisterUnion registers a union type with a numeric ID for cross-language serialization.
 // type_ can be either a reflect.Type or an instance of the union type.
-// typeID should be the user type ID in the range 0-8192 (the internal type ID will be added automatically).
+// typeID should be the user type ID in the range 0-0x7fffffff (the internal type ID will be added automatically).
 // serializer must implement union payload encoding/decoding.
 func (f *Fory) RegisterUnion(type_ any, typeID uint32, serializer Serializer) error {
 	if serializer == nil {
 		return fmt.Errorf("RegisterUnion requires a non-nil serializer")
+	}
+	if err := validateUserTypeID(typeID); err != nil {
+		return err
 	}
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
@@ -309,8 +322,11 @@ func (f *Fory) RegisterNamedStruct(type_ any, typeName string) error {
 // In Go, enums are typically defined as int-based types (e.g., type Color int32).
 // This method creates an enum serializer that writes/reads the enum value as VarUint32Small7.
 // type_ can be either a reflect.Type or an instance of the enum type
-// typeID should be the user type ID in the range 0-8192 (the internal type ID will be added automatically)
+// typeID should be the user type ID in the range 0-0x7fffffff (the internal type ID will be added automatically)
 func (f *Fory) RegisterEnum(type_ any, typeID uint32) error {
+	if err := validateUserTypeID(typeID); err != nil {
+		return err
+	}
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
 		t = rt
@@ -372,8 +388,11 @@ func (f *Fory) RegisterNamedEnum(type_ any, typeName string) error {
 
 // RegisterExtension registers a type as an extension type with a numeric ID.
 // Extension types use a custom serializer provided by the user.
-// typeID should be the user type ID in the range 0-8192.
+// typeID should be the user type ID in the range 0-0x7fffffff.
 func (f *Fory) RegisterExtension(type_ any, typeID uint32, serializer ExtensionSerializer) error {
+	if err := validateUserTypeID(typeID); err != nil {
+		return err
+	}
 	var t reflect.Type
 	if rt, ok := type_.(reflect.Type); ok {
 		t = rt

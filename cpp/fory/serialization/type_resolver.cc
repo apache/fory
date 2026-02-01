@@ -129,9 +129,35 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
   // header: | field_name_encoding:2bits | size:4bits | nullability:1bit |
   // ref_tracking:1bit |
   const bool use_tag_id = field_id >= 0;
-  uint8_t encoding_idx = use_tag_id ? 3 : 0; // TAG_ID or UTF8
+  uint8_t encoding_idx = use_tag_id ? 3 : 0; // TAG_ID or EXTENDED
+  std::vector<uint8_t> encoded_name;
+  if (!use_tag_id) {
+    static const MetaStringEncoder k_field_name_encoder('$', '_');
+    static const std::vector<MetaEncoding> k_field_name_encoding_list = {
+        MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+        MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
+
+    FORY_TRY(encoded, k_field_name_encoder.encode(field_name,
+                                                  k_field_name_encoding_list));
+    switch (encoded.encoding) {
+    case MetaEncoding::EXTENDED:
+      encoding_idx = 0;
+      break;
+    case MetaEncoding::ALL_TO_LOWER_SPECIAL:
+      encoding_idx = 1;
+      break;
+    case MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL:
+      encoding_idx = 2;
+      break;
+    default:
+      return Unexpected(Error::encoding_error(
+          "Unsupported field name encoding: " +
+          std::to_string(static_cast<int>(encoded.encoding))));
+    }
+    encoded_name = std::move(encoded.bytes);
+  }
   size_t name_size =
-      use_tag_id ? static_cast<size_t>(field_id) + 1 : field_name.size();
+      use_tag_id ? static_cast<size_t>(field_id) + 1 : encoded_name.size();
   uint8_t header =
       (std::min(FIELD_NAME_SIZE_THRESHOLD, name_size - 1) << 2) & 0x3C;
 
@@ -154,8 +180,7 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
 
   // write field name only when tag ID is not used.
   if (!use_tag_id) {
-    buffer.write_bytes(reinterpret_cast<const uint8_t *>(field_name.data()),
-                       field_name.size());
+    buffer.write_bytes(encoded_name.data(), encoded_name.size());
   }
 
   // CRITICAL FIX: Use writer_index() not size() to get actual bytes written!
@@ -202,7 +227,7 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
 
   // Read and decode field name. Java encodes field names using
   // MetaString with encodings:
-  //   UTF8 / ALL_TO_LOWER_SPECIAL / LOWER_UPPER_DIGIT_SPECIAL
+  //   EXTENDED / ALL_TO_LOWER_SPECIAL / LOWER_UPPER_DIGIT_SPECIAL
   // and writes the encoding index into the top 2 bits.
   // We mirror that here using MetaStringDecoder with '$' and '_' as
   // special characters (same as Encoders.FIELD_NAME_DECODER).
@@ -214,8 +239,16 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
   }
 
   static const MetaStringDecoder k_field_name_decoder('$', '_');
-
-  FORY_TRY(encoding, to_meta_encoding(encoding_idx));
+  static const MetaEncoding k_field_name_encodings[] = {
+      MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+      MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
+  if (encoding_idx >=
+      sizeof(k_field_name_encodings) / sizeof(k_field_name_encodings[0])) {
+    return Unexpected(
+        Error::encoding_error("Invalid field name encoding index: " +
+                              std::to_string(static_cast<int>(encoding_idx))));
+  }
+  MetaEncoding encoding = k_field_name_encodings[encoding_idx];
   FORY_TRY(decoded_name, k_field_name_decoder.decode(
                              name_bytes.data(), name_bytes.size(), encoding));
 
@@ -231,18 +264,48 @@ namespace {
 // Meta string encodings for namespace and type name, aligned with
 // rust/fory-core/src/meta/type_meta.rs and Java Encoders.
 static const MetaEncoding k_namespace_encodings[] = {
-    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
 static const MetaEncoding k_type_name_encodings[] = {
-    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
     MetaEncoding::FIRST_TO_LOWER_SPECIAL};
 
-inline Result<void, Error> write_meta_name(Buffer &buffer,
-                                           const std::string &name) {
-  const uint8_t encoding_idx = 0; // UTF8 in both encoding tables
-  const size_t len = name.size();
+static const std::vector<MetaEncoding> k_namespace_encoding_list = {
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
+
+static const std::vector<MetaEncoding> k_type_name_encoding_list = {
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
+    MetaEncoding::FIRST_TO_LOWER_SPECIAL};
+
+static const MetaStringEncoder k_namespace_encoder('.', '_');
+static const MetaStringEncoder k_type_name_encoder('$', '_');
+
+inline Result<uint8_t, Error> encoding_to_index(MetaEncoding encoding,
+                                                const MetaEncoding *encodings,
+                                                size_t enc_count) {
+  for (size_t i = 0; i < enc_count; ++i) {
+    if (encodings[i] == encoding) {
+      return static_cast<uint8_t>(i);
+    }
+  }
+  return Unexpected(
+      Error::encoding_error("Unsupported meta string encoding: " +
+                            std::to_string(static_cast<int>(encoding))));
+}
+
+inline Result<void, Error>
+write_meta_name(Buffer &buffer, const std::string &name,
+                const MetaStringEncoder &encoder,
+                const std::vector<MetaEncoding> &allowed_encodings,
+                const MetaEncoding *encodings, size_t enc_count) {
+  FORY_TRY(encoded, encoder.encode(name, allowed_encodings));
+  FORY_TRY(encoding_idx,
+           encoding_to_index(encoded.encoding, encodings, enc_count));
+  const size_t len = encoded.bytes.size();
 
   if (len >= BIG_NAME_THRESHOLD) {
     uint8_t header =
@@ -254,9 +317,8 @@ inline Result<void, Error> write_meta_name(Buffer &buffer,
     buffer.write_uint8(header);
   }
 
-  if (!name.empty()) {
-    buffer.write_bytes(reinterpret_cast<const uint8_t *>(name.data()),
-                       static_cast<uint32_t>(name.size()));
+  if (len > 0) {
+    buffer.write_bytes(encoded.bytes.data(), static_cast<uint32_t>(len));
   }
   return Result<void, Error>();
 }
@@ -338,8 +400,14 @@ Result<std::vector<uint8_t>, Error> TypeMeta::to_bytes() const {
   // write namespace and type name (if registered by name) using the
   // same compact meta string format as Rust/Java.
   if (register_by_name) {
-    FORY_RETURN_NOT_OK(write_meta_name(layer_buffer, namespace_str));
-    FORY_RETURN_NOT_OK(write_meta_name(layer_buffer, type_name));
+    FORY_RETURN_NOT_OK(write_meta_name(
+        layer_buffer, namespace_str, k_namespace_encoder,
+        k_namespace_encoding_list, k_namespace_encodings,
+        sizeof(k_namespace_encodings) / sizeof(k_namespace_encodings[0])));
+    FORY_RETURN_NOT_OK(write_meta_name(
+        layer_buffer, type_name, k_type_name_encoder, k_type_name_encoding_list,
+        k_type_name_encodings,
+        sizeof(k_type_name_encodings) / sizeof(k_type_name_encodings[0])));
   } else {
     layer_buffer.write_var_uint32(type_id);
   }
@@ -1159,7 +1227,7 @@ encode_meta_string(const std::string &value, bool is_namespace) {
 
   if (value.empty()) {
     // For empty strings, use a minimal encoding
-    cached->encoding = 0; // UTF8
+    cached->encoding = 0; // EXTENDED
     cached->bytes.clear();
     cached->hash = 0;
     return cached;
@@ -1170,11 +1238,11 @@ encode_meta_string(const std::string &value, bool is_namespace) {
   static const MetaStringEncoder k_type_name_encoder('$', '_');
 
   static const std::vector<MetaEncoding> k_namespace_encodings = {
-      MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+      MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
       MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
   static const std::vector<MetaEncoding> k_type_name_encodings = {
-      MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+      MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
       MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
       MetaEncoding::FIRST_TO_LOWER_SPECIAL};
 
@@ -1331,6 +1399,8 @@ void TypeResolver::register_builtin_types() {
   // Register internal type IDs without harnesses (deserialization is static)
   // These are needed so read_any_typeinfo can find them by type_id
   auto register_type_id_only = [this](TypeId type_id) {
+    FORY_CHECK(static_cast<uint32_t>(type_id) < 256)
+        << "Internal type id overflow: " << static_cast<uint32_t>(type_id);
     auto info = std::make_unique<TypeInfo>();
     info->type_id = static_cast<uint32_t>(type_id);
     info->register_by_name = false;

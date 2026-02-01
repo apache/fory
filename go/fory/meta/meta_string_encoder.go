@@ -20,6 +20,7 @@ package meta
 import (
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 type Encoder struct {
@@ -36,13 +37,31 @@ func NewEncoder(specialCh1 byte, specialCh2 byte) *Encoder {
 
 // Encode the input string to MetaString using adaptive encoding
 func (e *Encoder) Encode(input string) (MetaString, error) {
+	if isNumberString(input) {
+		if encoded, ok := tryEncodeNumberString(input); ok {
+			return MetaString{
+				inputString:  input,
+				encoding:     EXTENDED,
+				specialChar1: e.specialChar1,
+				specialChar2: e.specialChar2,
+				encodedBytes: encoded,
+			}, nil
+		}
+		return MetaString{
+			inputString:  input,
+			encoding:     EXTENDED,
+			specialChar1: e.specialChar1,
+			specialChar2: e.specialChar2,
+			encodedBytes: encodeExtendedUtf8(input),
+		}, nil
+	}
 	if !isASCII(input) {
 		return MetaString{
 			inputString:  input,
-			encoding:     UTF_8,
+			encoding:     EXTENDED,
 			specialChar1: e.specialChar1,
 			specialChar2: e.specialChar2,
-			encodedBytes: []byte(input),
+			encodedBytes: encodeExtendedUtf8(input),
 		}, nil
 	}
 	encoding := e.ComputeEncoding(input)
@@ -51,7 +70,7 @@ func (e *Encoder) Encode(input string) (MetaString, error) {
 
 // EncodeWithEncoding Encodes the input string to MetaString using specified encoding.
 func (e *Encoder) EncodeWithEncoding(input string, encoding Encoding) (MetaString, error) {
-	if encoding != UTF_8 && !isASCII(input) {
+	if encoding != EXTENDED && !isASCII(input) {
 		return MetaString{}, errors.New("non-ASCII characters in meta string are not allowed")
 	}
 	if len(input) > 32767 {
@@ -62,7 +81,7 @@ func (e *Encoder) EncodeWithEncoding(input string, encoding Encoding) (MetaStrin
 		// so checking empty here will be convenient for encoding procedure
 		return MetaString{
 			inputString:  input,
-			encoding:     encoding,
+			encoding:     EXTENDED,
 			specialChar1: e.specialChar1,
 			specialChar2: e.specialChar2,
 			encodedBytes: nil,
@@ -71,6 +90,7 @@ func (e *Encoder) EncodeWithEncoding(input string, encoding Encoding) (MetaStrin
 	// execute encoding algorithm according to the encoding mode
 	var encodedBytes []byte
 	var err error
+	resultEncoding := encoding
 	switch encoding {
 	case LOWER_SPECIAL:
 		encodedBytes, err = e.EncodeLowerSpecial(input)
@@ -81,12 +101,12 @@ func (e *Encoder) EncodeWithEncoding(input string, encoding Encoding) (MetaStrin
 	case ALL_TO_LOWER_SPECIAL:
 		encodedBytes, err = e.EncodeAllToLowerSpecial(input)
 	default:
-		// UTF-8 Encoding, stay the same
-		encodedBytes = []byte(input)
+		encodedBytes = encodeExtended(input)
+		resultEncoding = EXTENDED
 	}
 	return MetaString{
 		inputString:  input,
-		encoding:     encoding,
+		encoding:     resultEncoding,
 		specialChar1: e.specialChar1,
 		specialChar2: e.specialChar2,
 		encodedBytes: encodedBytes,
@@ -157,24 +177,24 @@ func (e *Encoder) EncodeGeneric(chars []byte, bitsPerChar int) (result []byte, e
 }
 
 func (e *Encoder) ComputeEncoding(input string) Encoding {
-	allEncodings := []Encoding{LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL, ALL_TO_LOWER_SPECIAL, UTF_8}
+	allEncodings := []Encoding{LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL, ALL_TO_LOWER_SPECIAL, EXTENDED}
 	return e.ComputeEncodingWith(input, allEncodings)
 }
 
 // EncodePackage encodes a package/namespace string using Java-compatible encodings.
-// Java uses: UTF_8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL for packages.
+// Java uses: EXTENDED, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL for packages.
 func (e *Encoder) EncodePackage(input string) (MetaString, error) {
-	// Java pkgEncodings = {UTF_8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL}
-	pkgEncodings := []Encoding{ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, UTF_8}
+	// Java pkgEncodings = {EXTENDED, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL}
+	pkgEncodings := []Encoding{ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, EXTENDED}
 	encoding := e.ComputeEncodingWith(input, pkgEncodings)
 	return e.EncodeWithEncoding(input, encoding)
 }
 
 // EncodeTypeName encodes a typename string using Java-compatible encodings.
-// Java uses: UTF_8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL for typenames.
+// Java uses: EXTENDED, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL for typenames.
 func (e *Encoder) EncodeTypeName(input string) (MetaString, error) {
-	// Java typeNameEncodings = {UTF_8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL}
-	typeNameEncodings := []Encoding{ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL, UTF_8}
+	// Java typeNameEncodings = {EXTENDED, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL}
+	typeNameEncodings := []Encoding{ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL, FIRST_TO_LOWER_SPECIAL, EXTENDED}
 	encoding := e.ComputeEncodingWith(input, typeNameEncodings)
 	return e.EncodeWithEncoding(input, encoding)
 }
@@ -184,9 +204,12 @@ func (e *Encoder) ComputeEncodingWith(input string, encodings []Encoding) Encodi
 	for _, enc := range encodings {
 		encodingFlags[enc] = true
 	}
-	// Special case for empty string: default to UTF_8 encoding
+	// Special case for empty string: default to EXTENDED encoding
 	if len(input) == 0 {
-		return UTF_8
+		return EXTENDED
+	}
+	if isNumberString(input) {
+		return EXTENDED
 	}
 	statistics := e.computeStringStatistics(input)
 	if statistics.canLowerSpecialEncoded && encodingFlags[LOWER_SPECIAL] {
@@ -209,7 +232,79 @@ func (e *Encoder) ComputeEncodingWith(input string, encodings []Encoding) Encodi
 			return LOWER_UPPER_DIGIT_SPECIAL
 		}
 	}
-	return UTF_8
+	return EXTENDED
+}
+
+func isNumberString(input string) bool {
+	if input == "" {
+		return false
+	}
+	start := 0
+	if input[0] == '-' {
+		if len(input) == 1 {
+			return false
+		}
+		start = 1
+	}
+	for i := start; i < len(input); i++ {
+		if input[i] < '0' || input[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func encodeExtended(input string) []byte {
+	if isNumberString(input) {
+		if encoded, ok := tryEncodeNumberString(input); ok {
+			return encoded
+		}
+	}
+	return encodeExtendedUtf8(input)
+}
+
+func encodeExtendedUtf8(input string) []byte {
+	payload := []byte(input)
+	encoded := make([]byte, len(payload)+1)
+	encoded[0] = ExtendedEncodingUTF8
+	copy(encoded[1:], payload)
+	return encoded
+}
+
+func tryEncodeNumberString(input string) ([]byte, bool) {
+	negative := input[0] == '-'
+	digits := input
+	if negative {
+		digits = input[1:]
+	}
+	if digits == "" {
+		return nil, false
+	}
+	value, err := strconv.ParseUint(digits, 10, 64)
+	if err != nil {
+		return nil, false
+	}
+	payload := encodeUint64LE(value)
+	encoding := ExtendedEncodingNumberString
+	if negative {
+		encoding = ExtendedEncodingNegativeNumberString
+	}
+	encoded := make([]byte, len(payload)+1)
+	encoded[0] = encoding
+	copy(encoded[1:], payload)
+	return encoded, true
+}
+
+func encodeUint64LE(value uint64) []byte {
+	if value == 0 {
+		return []byte{0}
+	}
+	payload := make([]byte, 0, 8)
+	for value != 0 {
+		payload = append(payload, byte(value&0xFF))
+		value >>= 8
+	}
+	return payload
 }
 
 func isASCII(input string) bool {

@@ -42,12 +42,12 @@ static const MetaStringEncoder k_type_name_encoder('$', '_');
 
 // Allowed encodings for package/namespace (same as Java's pkg_encodings)
 static const std::vector<MetaEncoding> k_pkg_encodings = {
-    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
 
 // Allowed encodings for type name (same as Java's type_name_encodings)
 static const std::vector<MetaEncoding> k_type_name_encodings = {
-    MetaEncoding::UTF8, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+    MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
     MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL,
     MetaEncoding::FIRST_TO_LOWER_SPECIAL};
 
@@ -101,7 +101,7 @@ static void write_encoded_meta_string(Buffer &buffer,
   if (encoded_len > k_small_string_threshold) {
     // For large strings, write pre-computed hash
     buffer.write_int64(encoded.hash);
-  } else {
+  } else if (encoded_len > 0) {
     // For small strings, write encoding byte
     buffer.write_int8(static_cast<int8_t>(encoded.encoding));
   }

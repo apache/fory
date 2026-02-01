@@ -76,20 +76,20 @@ const HAS_FIELDS_META_FLAG: i64 = 0b1 << 8;
 const NUM_HASH_BITS: i8 = 50;
 
 pub static NAMESPACE_ENCODINGS: &[Encoding] = &[
-    Encoding::Utf8,
+    Encoding::Extended,
     Encoding::AllToLowerSpecial,
     Encoding::LowerUpperDigitSpecial,
 ];
 
 pub static TYPE_NAME_ENCODINGS: &[Encoding] = &[
-    Encoding::Utf8,
+    Encoding::Extended,
     Encoding::AllToLowerSpecial,
     Encoding::LowerUpperDigitSpecial,
     Encoding::FirstToLowerSpecial,
 ];
 
 static FIELD_NAME_ENCODINGS: &[Encoding] = &[
-    Encoding::Utf8,
+    Encoding::Extended,
     Encoding::AllToLowerSpecial,
     Encoding::LowerUpperDigitSpecial,
 ];
@@ -234,7 +234,7 @@ impl FieldInfo {
 
     fn u8_to_encoding(value: u8) -> Result<Encoding, Error> {
         match value {
-            0x00 => Ok(Encoding::Utf8),
+            0x00 => Ok(Encoding::Extended),
             0x01 => Ok(Encoding::AllToLowerSpecial),
             0x02 => Ok(Encoding::LowerUpperDigitSpecial),
             _ => Err(Error::encoding_error(format!(
@@ -712,7 +712,7 @@ impl TypeMeta {
         if num_fields == SMALL_NUM_FIELDS_THRESHOLD {
             num_fields += reader.read_varuint32()? as usize;
         }
-        let type_id;
+        let mut type_id;
         let namespace;
         let type_name;
         if register_by_name {
@@ -736,6 +736,7 @@ impl TypeMeta {
             if let Some(type_info_current) =
                 type_resolver.get_type_info_by_name(&namespace.original, &type_name.original)
             {
+                type_id = type_info_current.get_type_id();
                 Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
             }
         } else if let Some(type_info_current) = type_resolver.get_type_info_by_id(type_id) {

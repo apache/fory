@@ -201,7 +201,7 @@ class TypeDefEncoder {
         // Convert camelCase field names to snake_case for xlang interoperability
         String fieldName = StringUtils.lowerCamelToLowerUnderscore(fieldInfo.getFieldName());
         MetaString metaString = Encoders.encodeFieldName(fieldName);
-        // Encoding `UTF8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID`
+        // Encoding `EXTENDED/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID`
         encodingFlags = fieldNameEncodingsList.indexOf(metaString.getEncoding());
         encoded = metaString.getBytes();
         size = (encoded.length - 1);

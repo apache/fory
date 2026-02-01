@@ -86,7 +86,7 @@ public final class MetaStringResolver {
       buffer.writeVarUint32Small7(length << 2 | 0b1);
       if (length > SMALL_STRING_THRESHOLD) {
         buffer.writeInt64(byteString.hashCode);
-      } else {
+      } else if (length != 0) {
         buffer.writeByte(byteString.encoding.getValue());
       }
       buffer.writeBytes(byteString.bytes);
@@ -111,7 +111,7 @@ public final class MetaStringResolver {
       buffer.writeVarUint32Small7(length << 1);
       if (length > SMALL_STRING_THRESHOLD) {
         buffer.writeInt64(byteString.hashCode);
-      } else {
+      } else if (length != 0) {
         buffer.writeByte(byteString.encoding.getValue());
       }
       buffer.writeBytes(byteString.bytes);
@@ -222,11 +222,10 @@ public final class MetaStringResolver {
   }
 
   private MetaStringBytes readSmallMetaStringBytes(MemoryBuffer buffer, int len) {
-    byte encoding = buffer.readByte();
     if (len == 0) {
-      assert encoding == MetaString.Encoding.UTF_8.getValue();
       return MetaStringBytes.EMPTY;
     }
+    byte encoding = buffer.readByte();
     long v1, v2 = 0;
     if (len <= 8) {
       v1 = buffer.readBytesAsInt64(len);
@@ -243,11 +242,10 @@ public final class MetaStringResolver {
 
   private MetaStringBytes readSmallMetaStringBytes(
       MemoryBuffer buffer, MetaStringBytes cache, int len) {
-    byte encoding = buffer.readByte();
     if (len == 0) {
-      assert encoding == MetaString.Encoding.UTF_8.getValue();
       return MetaStringBytes.EMPTY;
     }
+    byte encoding = buffer.readByte();
     long v1, v2 = 0;
     if (len <= 8) {
       v1 = buffer.readBytesAsInt64(len);

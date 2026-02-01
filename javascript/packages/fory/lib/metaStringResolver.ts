@@ -51,8 +51,11 @@ export class MetaStringResolver {
       bytes.dynamicWriteStringId = this.dynamicNameId;
       this.dynamicNameId += 1;
       this.disposeMetaStringBytes.push(bytes);
-      writer.varUInt32(bytes.bytes.getBytes().byteLength << 1);
-      writer.uint8(bytes.bytes.getEncoding());
+      const len = bytes.bytes.getBytes().byteLength;
+      writer.varUInt32(len << 1);
+      if (len !== 0) {
+        writer.uint8(bytes.bytes.getEncoding());
+      }
       writer.buffer(bytes.bytes.getBytes());
     }
   }
@@ -70,7 +73,11 @@ export class MetaStringResolver {
     if (idOrLen & 1) {
       return this.names[idOrLen >> 1];
     } else {
-      const len = idOrLen >> 1; // not used
+      const len = idOrLen >> 1;
+      if (len === 0) {
+        this.names.push("");
+        return "";
+      }
       const encoding = reader.uint8();
       const name = this.typenameDecoder.decode(reader, len, encoding);
       this.names.push(name);
@@ -83,7 +90,11 @@ export class MetaStringResolver {
     if (idOrLen & 1) {
       return this.names[idOrLen >> 1];
     } else {
-      const len = idOrLen >> 1; // not used
+      const len = idOrLen >> 1;
+      if (len === 0) {
+        this.names.push("");
+        return "";
+      }
       const encoding = reader.uint8();
       const name = this.namespaceDecoder.decode(reader, len, encoding);
       this.names.push(name);

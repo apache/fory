@@ -282,7 +282,7 @@ public class ClassDefEncoder {
       // `3 bits size + 2 bits field name encoding + nullability flag + ref tracking flag`
       int header = ((fieldType.nullable() ? 1 : 0) << 1);
       header |= ((fieldType.trackingRef() ? 1 : 0));
-      // Encoding `UTF8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID`
+      // Encoding `EXTENDED/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL/TAG_ID`
       MetaString metaString = Encoders.encodeFieldName(fieldInfo.getFieldName());
       int encodingFlags = fieldNameEncodingsList.indexOf(metaString.getEncoding());
       byte[] encoded = metaString.getBytes();
@@ -310,7 +310,7 @@ public class ClassDefEncoder {
 
   static void writePkgName(MemoryBuffer buffer, String pkg) {
     // - Package name encoding(omitted when class is registered):
-    //    - encoding algorithm: `UTF8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
+    //    - encoding algorithm: `EXTENDED/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
     //    - Header: `6 bits size | 2 bits encoding flags`.
     //      The `6 bits size: 0~63`  will be used to indicate size `0~62`,
     //      the value `63` the size need more byte to read, the encoding will encode `size - 62` as
@@ -323,7 +323,7 @@ public class ClassDefEncoder {
   static void writeTypeName(MemoryBuffer buffer, String typeName) {
     // - Class name encoding(omitted when class is registered):
     //     - encoding algorithm:
-    // `UTF8/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
+    // `EXTENDED/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
     //     - header: `6 bits size | 2 bits encoding flags`.
     //       The `6 bits size: 0~63`  will be used to indicate size `1~64`,
     //       the value `63` the size need more byte to read, the encoding will encode `size - 63` as

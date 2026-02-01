@@ -50,6 +50,8 @@ const (
 	useStringValue          = 0
 	useStringId             = 1
 	SMALL_STRING_THRESHOLD  = 16
+	maxUserTypeID           = 0x7fffffff
+	internalTypeIDLimit     = 0xFF
 )
 
 var (
@@ -700,6 +702,9 @@ func (r *TypeResolver) RegisterNamedStruct(
 	if typeName == "" && namespace != "" {
 		return fmt.Errorf("typeName cannot be empty if namespace is provided")
 	}
+	if typeId > 0 && typeId > maxUserTypeID {
+		return fmt.Errorf("typeId must be in range [0, 0x7fffffff], got %d", typeId)
+	}
 	var tag string
 	if namespace == "" {
 		tag = typeName
@@ -877,6 +882,9 @@ func (r *TypeResolver) RegisterExtension(
 	userTypeID uint32,
 	userSerializer ExtensionSerializer,
 ) error {
+	if userTypeID > maxUserTypeID {
+		return fmt.Errorf("typeID must be in range [0, 0x7fffffff], got %d", userTypeID)
+	}
 	if userSerializer == nil {
 		return fmt.Errorf("serializer cannot be nil for extension type %s", type_)
 	}
@@ -1254,6 +1262,9 @@ func (r *TypeResolver) registerType(
 	}
 	if typeName == "" && namespace != "" {
 		panic("namespace provided without typeName")
+	}
+	if internal && typeID > internalTypeIDLimit {
+		panic(fmt.Sprintf("internal type id overflow: %d", typeID))
 	}
 	if internal && serializer != nil {
 		if err := r.registerSerializer(type_, TypeId(typeID&0xFF), serializer); err != nil {
@@ -2325,14 +2336,22 @@ func (r *TypeResolver) writeMetaString(buffer *ByteBuffer, str string, err *Erro
 		dynamicStringId := r.dynamicStringId
 		r.dynamicStringId += 1
 		r.dynamicStringToId[str] = dynamicStringId
-		length := len(str)
+		encodedMeta, encErr := r.namespaceEncoder.EncodeWithEncoding(str, meta.EXTENDED)
+		if encErr != nil {
+			err.SetError(encErr)
+			return
+		}
+		encoded := encodedMeta.GetEncodedBytes()
+		length := len(encoded)
 		buffer.WriteVarUint32(uint32(length << 1))
 		if length <= SMALL_STRING_THRESHOLD {
-			buffer.WriteByte_(uint8(meta.UTF_8))
+			if length != 0 {
+				buffer.WriteByte_(uint8(meta.EXTENDED))
+			}
 		} else {
 			// TODO this hash should be unique, since we don't compare data equality for performance
 			h := fnv.New64a()
-			if _, hashErr := h.Write([]byte(str)); hashErr != nil {
+			if _, hashErr := h.Write(encoded); hashErr != nil {
 				err.SetError(hashErr)
 				return
 			}
@@ -2343,7 +2362,7 @@ func (r *TypeResolver) writeMetaString(buffer *ByteBuffer, str string, err *Erro
 			err.SetError(fmt.Errorf("too long string: %s", str))
 			return
 		}
-		buffer.WriteBinary(unsafeGetBytes(str))
+		buffer.WriteBinary(encoded)
 	} else {
 		buffer.WriteVarUint32(uint32(((id + 1) << 1) | 1))
 	}
@@ -2353,13 +2372,26 @@ func (r *TypeResolver) readMetaString(buffer *ByteBuffer, err *Error) string {
 	header := buffer.ReadVarUint32(err)
 	var length = int(header >> 1)
 	if header&0b1 == 0 {
+		encoding := meta.EXTENDED
 		if length <= SMALL_STRING_THRESHOLD {
-			buffer.ReadByte(err)
+			if length != 0 {
+				encoding = meta.Encoding(buffer.ReadByte(err))
+			}
 		} else {
 			// TODO support use computed hash
-			buffer.ReadInt64(err)
+			hash := buffer.ReadInt64(err)
+			encoding = meta.Encoding(hash & 0xFF)
 		}
-		str := string(buffer.ReadBinary(length, err))
+		raw := buffer.ReadBinary(length, err)
+		if length == 0 {
+			raw = nil
+		}
+		decoder := meta.NewDecoder('.', '_')
+		str, decErr := decoder.Decode(raw, encoding)
+		if decErr != nil {
+			err.SetError(decErr)
+			return ""
+		}
 		dynamicStringId := r.dynamicStringId
 		r.dynamicStringId += 1
 		r.dynamicIdToString[dynamicStringId] = str

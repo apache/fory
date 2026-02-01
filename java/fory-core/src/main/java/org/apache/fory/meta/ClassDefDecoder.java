@@ -183,7 +183,7 @@ class ClassDefDecoder {
 
   static String readPkgName(MemoryBuffer buffer) {
     // - Package name encoding(omitted when class is registered):
-    //    - encoding algorithm: `UTF8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
+    //    - encoding algorithm: `EXTENDED/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
     //    - Header: `6 bits size | 2 bits encoding flags`.
     //      The `6 bits size: 0~63`  will be used to indicate size `0~63`,
     //      the value `63` the size need more byte to read, the encoding will encode `size - 63` as
@@ -194,7 +194,7 @@ class ClassDefDecoder {
   static String readTypeName(MemoryBuffer buffer) {
     // - Class name encoding(omitted when class is registered):
     //     - encoding algorithm:
-    // `UTF8/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
+    // `EXTENDED/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
     //     - header: `6 bits size | 2 bits encoding flags`.
     //      The `6 bits size: 0~63`  will be used to indicate size `0~63`,
     //       the value `63` the size need more byte to read, the encoding will encode `size - 63` as

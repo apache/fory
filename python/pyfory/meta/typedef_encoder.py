@@ -147,7 +147,7 @@ def prepend_header(buffer: bytes, is_compressed: bool, has_fields_meta: bool):
 def write_namespace(buffer: Buffer, namespace: str):
     """Write namespace using meta string encoding."""
     # - Package name encoding(omitted when class is registered):
-    #    - encoding algorithm: `UTF8/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
+    #    - encoding algorithm: `EXTENDED/ALL_TO_LOWER_SPECIAL/LOWER_UPPER_DIGIT_SPECIAL`
     #    - Header: `6 bits size | 2 bits encoding flags`.
     #      The `6 bits size: 0~63`  will be used to indicate size `0~62`,
     #      the value `63` the size need more byte to read, the encoding will encode `size - 62` as a varint next.
@@ -159,7 +159,7 @@ def write_typename(buffer: Buffer, typename: str):
     """Write typename using meta string encoding."""
     # - Class name encoding(omitted when class is registered):
     #     - encoding algorithm:
-    # `UTF8/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
+    # `EXTENDED/LOWER_UPPER_DIGIT_SPECIAL/FIRST_TO_LOWER_SPECIAL/ALL_TO_LOWER_SPECIAL`
     #     - header: `6 bits size | 2 bits encoding flags`.
     #       The `6 bits size: 0~63`  will be used to indicate size `1~64`,
     #       the value `63` the size need more byte to read, the encoding will encode `size - 63` as a varint next.

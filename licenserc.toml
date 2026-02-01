@@ -25,6 +25,7 @@ excludes = [
 
     # Generated
     "benchmarks/java_benchmark/src/main/java/org/apache/fory/benchmark/state/generated/**",
+    "integration_tests/idl_tests/**/auto_id.*",
 
     # Derived
     "ci/format.sh",

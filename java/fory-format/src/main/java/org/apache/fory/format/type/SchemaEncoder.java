@@ -20,8 +20,8 @@
 package org.apache.fory.format.type;
 
 import static org.apache.fory.meta.MetaString.Encoding.ALL_TO_LOWER_SPECIAL;
+import static org.apache.fory.meta.MetaString.Encoding.EXTENDED;
 import static org.apache.fory.meta.MetaString.Encoding.LOWER_UPPER_DIGIT_SPECIAL;
-import static org.apache.fory.meta.MetaString.Encoding.UTF_8;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -44,7 +44,7 @@ import org.apache.fory.type.Types;
  * | header (1 byte) | name_size (varint if big) | name_bytes | type_info |
  *
  * Header byte:
- * - bits 0-1: encoding (0=UTF8, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL)
+ * - bits 0-1: encoding (0=EXTENDED, 1=ALL_TO_LOWER_SPECIAL, 2=LOWER_UPPER_DIGIT_SPECIAL)
  * - bits 2-5: name size - 1 (0-15, if 15 then varint follows for larger sizes)
  * - bit 6: nullable flag
  * - bit 7: reserved
@@ -63,7 +63,7 @@ public class SchemaEncoder {
   private static final int FIELD_NAME_SIZE_THRESHOLD = 15;
 
   private static final MetaString.Encoding[] FIELD_NAME_ENCODINGS =
-      new MetaString.Encoding[] {UTF_8, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL};
+      new MetaString.Encoding[] {EXTENDED, ALL_TO_LOWER_SPECIAL, LOWER_UPPER_DIGIT_SPECIAL};
   private static final List<MetaString.Encoding> FIELD_NAME_ENCODINGS_LIST =
       Arrays.asList(FIELD_NAME_ENCODINGS);
 
