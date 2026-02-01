@@ -282,6 +282,27 @@ cdef int32_t NOT_NULL_STRING_FLAG = fmod.NOT_NULL_STRING_FLAG
 cdef int32_t SMALL_STRING_THRESHOLD = fmod.SMALL_STRING_THRESHOLD
 
 
+cdef inline uint64_t _mix64(uint64_t x):
+    x ^= x >> 33
+    x *= <uint64_t> 0xff51afd7ed558ccd
+    x ^= x >> 33
+    x *= <uint64_t> 0xc4ceb9fe1a85ec53
+    x ^= x >> 33
+    return x
+
+
+cdef inline int64_t _hash_small_metastring(int64_t v1,
+                                           int64_t v2,
+                                           int32_t length,
+                                           uint8_t encoding):
+    cdef uint64_t k = <uint64_t> 0x9e3779b97f4a7c15
+    cdef uint64_t x = (<uint64_t> v1) ^ ((<uint64_t> v2) * k)
+    x ^= (<uint64_t> length) << 56
+    cdef uint64_t h = _mix64(x)
+    h = (h & <uint64_t> 0xffffffffffffff00) | encoding
+    return <int64_t> h
+
+
 @cython.final
 cdef class MetaStringBytes:
     cdef public bytes data
@@ -356,7 +377,7 @@ cdef class MetaStringResolver:
         cdef int64_t v1 = 0, v2 = 0, hashcode
         cdef PyObject * enum_str_ptr
         cdef int32_t reader_index
-        cdef encoding = 0
+        cdef int8_t encoding = 0
         if length <= SMALL_STRING_THRESHOLD:
             if length == 0:
                 enum_str_ptr = <PyObject *> EMPTY_META_STRING_BYTES
@@ -368,7 +389,8 @@ cdef class MetaStringResolver:
             else:
                 v1 = buffer.read_int64()
                 v2 = buffer.read_bytes_as_int64(length - 8)
-            hashcode = ((v1 * 31 + v2) >> 8 << 8) | encoding
+            hashcode = _hash_small_metastring(
+                v1, v2, length, <uint8_t> encoding)
             enum_str_ptr = self._c_hash_to_small_metastring_bytes[hashcode]
             if enum_str_ptr == NULL:
                 reader_index = buffer.get_reader_index()
@@ -408,12 +430,12 @@ cdef class MetaStringResolver:
             else:
                 v1 = data_buf.read_int64()
                 v2 = data_buf.read_bytes_as_int64(length - 8)
-            value_hash = ((v1 * 31 + v2) >> 8 << 8) | metastr.encoding.value
+            hashcode = _hash_small_metastring(
+                v1, v2, length, <uint8_t> metastr.encoding.value)
         else:
-            value_hash = mmh3.hash_buffer(metastr.encoded_data, seed=47)[0]
-            value_hash = value_hash >> 8 << 8
-            value_hash |= metastr.encoding.value & 0xFF
-        self._metastr_to_metastr_bytes[metastr] = metastr_bytes = MetaStringBytes(metastr.encoded_data, value_hash)
+            hashcode = mmh3.hash_buffer(metastr.encoded_data, seed=47)[0]
+            hashcode = (hashcode >> 8 << 8) | (metastr.encoding.value & 0xFF)
+        self._metastr_to_metastr_bytes[metastr] = metastr_bytes = MetaStringBytes(metastr.encoded_data, hashcode)
         return metastr_bytes
 
     cpdef inline reset_read(self):
