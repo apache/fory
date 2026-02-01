@@ -24,7 +24,6 @@ def test_metastring_resolver():
     resolver = MetaStringResolver()
     encoder = MetaStringEncoder("$", "_")
     try:
-
         # Test 1: Regular English string
         metastr1 = encoder.encode("hello, world")
         metabytes1 = resolver.get_metastr_bytes(metastr1)
