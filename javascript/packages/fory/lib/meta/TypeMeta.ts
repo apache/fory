@@ -48,7 +48,6 @@ const PRIMITIVE_TYPE_IDS = [
 /**
  * Logic for skipping reference tracking.
  * We ONLY skip for primitives, strings, and time types.
- * We MUST NOT skip for STRUCT/NAMED_STRUCT or we hit infinite recursion.
  */
 export const refTrackingAbleTypeId = (typeId: number): boolean => {
   return PRIMITIVE_TYPE_IDS.includes(typeId as any) || 
@@ -144,6 +143,7 @@ class FieldInfo {
     }
     
     if (writeFlags) {
+      // Pack flags into the lower 2 bits: [Type ID bits][Nullable bit][Tracking bit]
       typeId = (typeId << 2);
       if (typeInfo.nullable) typeId |= 0b10;
       if (typeInfo.trackingRef) typeId |= 0b1;
@@ -295,17 +295,31 @@ export class TypeMeta {
 
   private static readTypeId(reader: BinaryReader, readFlag = false): InnerFieldInfo {
     const options: InnerFieldInfoOptions = {};
+<<<<<<< HEAD
+=======
+    let rawId = reader.readVarUint32Small7();
+    let typeId: number;
+>>>>>>> d30231d5 (fix(javascript): resolve bit-shifting corruption and infinite recursion in ref tracking)
     let nullable = false;
     let trackingRef = false;
     let typeId: number;
     
     if (readFlag) {
+<<<<<<< HEAD
       typeId = reader.readVarUint32Small7();
       nullable = Boolean(typeId & 0b10);
       trackingRef = Boolean(typeId & 0b1);
       typeId = typeId >> 2;
     } else {
       typeId = reader.uint8();
+=======
+      // Corrected bit extraction: recovery of typeId from shifted position
+      nullable = (rawId & 0b10) !== 0;
+      trackingRef = (rawId & 0b01) !== 0;
+      typeId = rawId >> 2;
+    } else {
+      typeId = rawId;
+>>>>>>> d30231d5 (fix(javascript): resolve bit-shifting corruption and infinite recursion in ref tracking)
     }
 
     if (typeId === TypeId.NAMED_ENUM) {
@@ -402,7 +416,7 @@ export class TypeMeta {
           nullable: fieldInfo.nullable,
           trackingRef: fieldInfo.trackingRef,
           options: fieldInfo.options
-      });
+      }, true); // Important: writeFlags=true here
       writer.buffer(encoded);
     }
   }
