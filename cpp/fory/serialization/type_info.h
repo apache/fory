@@ -57,12 +57,12 @@ struct Harness {
   using WriteFn = void (*)(const void *value, WriteContext &ctx,
                            RefMode ref_mode, bool write_type_info,
                            bool has_generics);
-  using ReadFn = void *(*)(ReadContext & ctx, RefMode ref_mode,
+  using ReadFn = void *(*)(ReadContext &ctx, RefMode ref_mode,
                            bool read_type_info);
   using WriteDataFn = void (*)(const void *value, WriteContext &ctx,
                                bool has_generics);
-  using ReadDataFn = void *(*)(ReadContext & ctx);
-  using ReadCompatibleFn = void *(*)(ReadContext & ctx,
+  using ReadDataFn = void *(*)(ReadContext &ctx);
+  using ReadCompatibleFn = void *(*)(ReadContext &ctx,
                                      const struct TypeInfo *type_info);
   using SortedFieldInfosFn =
       Result<std::vector<FieldInfo>, Error> (*)(TypeResolver &);
