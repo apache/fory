@@ -17,12 +17,13 @@
  * under the License.
  */
 
-import { ForyTypeInfoSymbol, WithForyClsInfo, Serializer, TypeId, MaxInt32, MinInt32 } from "./type";
+import { ForyTypeInfoSymbol, WithForyClsInfo, Serializer, TypeId } from "./type";
 import { Gen } from "./gen";
 import { Type, TypeInfo } from "./typeInfo";
 import Fory from "./fory";
 
-const uninitSerialize = {
+/* eslint-disable @typescript-eslint/no-unused-vars */
+const uninitSerialize: Serializer = {
   // for writer
   fixedSize: 0,
   getTypeId: () => {
@@ -37,43 +38,37 @@ const uninitSerialize = {
   getHash: () => {
     throw new Error("uninitSerialize");
   },
-  write: (v: any) => {
-    void v;
+  write: (_v: any) => {
     throw new Error("uninitSerialize");
   },
-  writeRef: (v: any) => {
-    void v;
+  writeRef: (_v: any) => {
     throw new Error("uninitSerialize");
   },
-  writeNoRef: (v: any) => {
-    void v;
+  writeNoRef: (_v: any) => {
     throw new Error("uninitSerialize");
   },
-  writeRefOrNull: (v: any) => {
-    void v;
+  writeRefOrNull: (_v: any) => {
     throw new Error("uninitSerialize");
   },
-  writeTypeInfo: (v: any) => {
-    void v;
+  writeTypeInfo: (_v: any) => {
     throw new Error("uninitSerialize");
   },
-  read: (fromRef: boolean) => {
-    void fromRef;
+  read: (_fromRef: boolean) => {
     throw new Error("uninitSerialize");
   },
   readRef: () => {
     throw new Error("uninitSerialize");
   },
-  readNoRef: (fromRef: boolean) => {
-    void fromRef;
+  readNoRef: (_fromRef: boolean) => {
     throw new Error("uninitSerialize");
   },
   readTypeInfo: () => {
     throw new Error("uninitSerialize");
   },
 };
+/* eslint-enable @typescript-eslint/no-unused-vars */
 
-export default class TypeResolver {
+export default class ClassResolver {
   private internalSerializer: Serializer[] = new Array(300);
   private customSerializer: Map<number | string, Serializer> = new Map();
   private typeInfoMap: Map<number | string, TypeInfo> = new Map();
@@ -91,8 +86,6 @@ export default class TypeResolver {
     registerSerializer(Type.int16());
     registerSerializer(Type.int32());
     registerSerializer(Type.varInt32());
-    registerSerializer(Type.varUInt64());
-    registerSerializer(Type.varInt64());
     registerSerializer(Type.int64());
     registerSerializer(Type.sliInt64());
     registerSerializer(Type.float16());
@@ -111,10 +104,7 @@ export default class TypeResolver {
     registerSerializer(Type.float32Array());
     registerSerializer(Type.float64Array());
 
-    this.float64Serializer = this.getSerializerById(TypeId.FLOAT64);
-    this.float32Serializer = this.getSerializerById(TypeId.FLOAT32);
-    this.varint32Serializer = this.getSerializerById(TypeId.VARINT32);
-    this.taggedint64Serializer = this.getSerializerById(TypeId.TAGGED_INT64);
+    this.numberSerializer = this.getSerializerById(TypeId.FLOAT64);
     this.int64Serializer = this.getSerializerById((TypeId.INT64));
     this.boolSerializer = this.getSerializerById((TypeId.BOOL));
     this.dateSerializer = this.getSerializerById((TypeId.TIMESTAMP));
@@ -132,10 +122,7 @@ export default class TypeResolver {
     this.int64ArraySerializer = this.getSerializerById(TypeId.INT64_ARRAY);
   }
 
-  private float64Serializer: null | Serializer = null;
-  private float32Serializer: null | Serializer = null;
-  private varint32Serializer: null | Serializer = null;
-  private taggedint64Serializer: null | Serializer = null;
+  private numberSerializer: null | Serializer = null;
   private int64Serializer: null | Serializer = null;
   private boolSerializer: null | Serializer = null;
   private dateSerializer: null | Serializer = null;
@@ -155,35 +142,17 @@ export default class TypeResolver {
   constructor(private fory: Fory) {
   }
 
-  private makeUserTypeKey(userTypeId: number) {
-    return `u:${userTypeId}`;
-  }
-
   init() {
     this.initInternalSerializer();
   }
 
-  getTypeInfo(typeIdOrName: number | string, userTypeId?: number) {
-    if (typeof typeIdOrName === "number" && userTypeId !== undefined && TypeId.needsUserTypeId(typeIdOrName)) {
-      return this.typeInfoMap.get(this.makeUserTypeKey(userTypeId));
-    }
+  getTypeInfo(typeIdOrName: number | string) {
     return this.typeInfoMap.get(typeIdOrName);
   }
 
   registerSerializer(typeInfo: TypeInfo, serializer: Serializer = uninitSerialize) {
-    const typeId = typeof typeInfo.computeTypeId === 'function' ? typeInfo.computeTypeId(this.fory) : typeInfo.typeId;
-    if (!TypeId.isNamedType(typeId)) {
-      if (TypeId.needsUserTypeId(typeId) && typeInfo.userTypeId !== -1) {
-        const key = this.makeUserTypeKey(typeInfo.userTypeId);
-        this.typeInfoMap.set(key, typeInfo);
-        if (this.customSerializer.has(key)) {
-          Object.assign(this.customSerializer.get(key)!, serializer);
-        } else {
-          this.customSerializer.set(key, { ...serializer });
-        }
-        return this.customSerializer.get(key);
-      }
-      const id = typeId;
+    if (!TypeId.isNamedType(typeInfo.typeId)) {
+      const id = typeInfo.typeId;
       this.typeInfoMap.set(id, typeInfo);
       if (id <= 0xFF) {
         if (this.internalSerializer[id]) {
@@ -192,13 +161,14 @@ export default class TypeResolver {
           this.internalSerializer[id] = { ...serializer };
         }
         return this.internalSerializer[id];
-      }
-      if (this.customSerializer.has(id)) {
-        Object.assign(this.customSerializer.get(id)!, serializer);
       } else {
-        this.customSerializer.set(id, { ...serializer });
+        if (this.customSerializer.has(id)) {
+          Object.assign(this.customSerializer.get(id)!, serializer);
+        } else {
+          this.customSerializer.set(id, { ...serializer });
+        }
+        return this.customSerializer.get(id);
       }
-      return this.customSerializer.get(id);
     } else {
       const namedTypeInfo = typeInfo.castToStruct();
       const name = namedTypeInfo.named!;
@@ -213,32 +183,22 @@ export default class TypeResolver {
   }
 
   typeInfoExists(typeInfo: TypeInfo) {
+    // Corrected to call the property access properly if isNamedType is a property
     if (typeInfo.isNamedType) {
       return this.typeInfoMap.has((typeInfo.castToStruct()).named!);
     }
-    const typeId = typeof typeInfo.computeTypeId === 'function' ? typeInfo.computeTypeId(this.fory) : typeInfo.typeId;
-    if (TypeId.needsUserTypeId(typeId) && typeInfo.userTypeId !== -1) {
-      return this.typeInfoMap.has(this.makeUserTypeKey(typeInfo.userTypeId));
-    }
-    return this.typeInfoMap.has(typeId);
+    return this.typeInfoMap.has(typeInfo.typeId);
   }
 
   getSerializerByTypeInfo(typeInfo: TypeInfo) {
-    // Robust check for computeTypeId function presence
-    const typeId = typeof typeInfo.computeTypeId === 'function' 
-        ? typeInfo.computeTypeId(this.fory) 
-        : (typeInfo.typeId ?? (typeInfo as any)._typeId);
-
+    const typeId = typeInfo.computeTypeId(this.fory);
     if (TypeId.isNamedType(typeId)) {
       return this.customSerializer.get((typeInfo.castToStruct()).named!);
     }
-    return this.getSerializerById(typeId, typeInfo.userTypeId);
+    return this.getSerializerById(typeId);
   }
 
-  getSerializerById(id: number, userTypeId?: number) {
-    if (TypeId.needsUserTypeId(id) && userTypeId !== undefined && userTypeId !== -1) {
-      return this.customSerializer.get(this.makeUserTypeKey(userTypeId))!;
-    }
+  getSerializerById(id: number) {
     if (id <= 0xff) {
       return this.internalSerializer[id]!;
     } else {
@@ -253,20 +213,7 @@ export default class TypeResolver {
   getSerializerByData(v: any) {
     // internal types
     if (typeof v === "number") {
-      if (Number.isInteger(v)) {
-        if (v > MaxInt32 || v < MinInt32) {
-          return this.taggedint64Serializer;
-        }
-        return this.varint32Serializer;
-      }
-      if (v > MaxInt32 || v < MinInt32) {
-        return this.float64Serializer;
-      }
-      return this.float32Serializer;
-    }
-
-    if (typeof v === "bigint") {
-      return this.taggedint64Serializer;
+      return this.numberSerializer;
     }
 
     if (typeof v === "string") {
@@ -311,6 +258,10 @@ export default class TypeResolver {
 
     if (typeof v === "boolean") {
       return this.boolSerializer;
+    }
+
+    if (typeof v === "bigint") {
+      return this.int64Serializer;
     }
 
     if (v instanceof Date) {

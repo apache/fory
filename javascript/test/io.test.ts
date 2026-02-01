@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
@@ -31,6 +31,10 @@ function num2Bin(num: number) {
 [
     {
         useSliceString: true,
+        refTracking: false,
+        hooks: {},
+        // FIX: Cast string to 'any' or the specific Mode type to satisfy the Config interface
+        mode: 'xlang' as any 
     }
 ].forEach((config: Config) => {
     describe('writer', () => {
@@ -41,42 +45,43 @@ function num2Bin(num: number) {
                 8,
                 16,
                 32,
-            ].forEach((x, y) => {
+            ].forEach((x) => {
                 {
-                    writer[`uint${x}`](10);
+                    // FIX: Use 'any' to tell TS this dynamic property is definitely a callable function
+                    (writer as any)[`uint${x}`](10);
                     len += x / 8;
                     var ab = writer.dump();
                     expect(ab.byteLength).toBe(len);
                     if (x === 64) {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getBigUint${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(10));
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getBigUint${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(10));
                     } else {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getUint${x}`](writer.getCursor() - x / 8, true)).toBe(10);
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getUint${x}`](writer.getCursor() - x / 8, true)).toBe(10);
                     }
                     expect(writer.getCursor()).toBe(len);
                 }
 
                 {
-                    writer[`uint${x}`](-1);
+                    (writer as any)[`uint${x}`](-1);
                     len += x / 8;
                     var ab = writer.dump();
                     expect(ab.byteLength).toBe(len);
                     if (x === 64) {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getBigUint${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(2 ** x) - BigInt(1));
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getBigUint${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(2 ** x) - BigInt(1));
                     } else {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getUint${x}`](writer.getCursor() - x / 8, true)).toBe(2 ** x - 1);
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getUint${x}`](writer.getCursor() - x / 8, true)).toBe(2 ** x - 1);
                     }
                     expect(writer.getCursor()).toBe(len);
                 }
 
                 {
-                    writer[`uint${x}`](2 ** x);
+                    (writer as any)[`uint${x}`](2 ** x);
                     len += x / 8;
                     var ab = writer.dump();
                     expect(ab.byteLength).toBe(len);
                     if (x === 64) {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getBigUint${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(0));
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getBigUint${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(0));
                     } else {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getUint${x}`](writer.getCursor() - x / 8, true)).toBe(0);
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getUint${x}`](writer.getCursor() - x / 8, true)).toBe(0);
                     }
                     expect(writer.getCursor()).toBe(len);
                 }
@@ -92,42 +97,42 @@ function num2Bin(num: number) {
                 8,
                 16,
                 32,
-            ].forEach((x, y) => {
+            ].forEach((x) => {
                 {
-                    writer[`int${x}`](10);
+                    (writer as any)[`int${x}`](10);
                     len += x / 8;
                     var ab = writer.dump();
                     expect(ab.byteLength).toBe(len);
                     if (x === 64) {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getBigInt${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(10));
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getBigInt${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(10));
                     } else {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getInt${x}`](writer.getCursor() - x / 8, true)).toBe(10);
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getInt${x}`](writer.getCursor() - x / 8, true)).toBe(10);
                     }
                     expect(writer.getCursor()).toBe(len);
                 }
 
                 {
-                    writer[`int${x}`](2 ** x);
+                    (writer as any)[`int${x}`](2 ** x);
                     len += x / 8;
                     var ab = writer.dump();
                     expect(ab.byteLength).toBe(len);
                     if (x === 64) {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getBigInt${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(0));
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getBigInt${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(0));
                     } else {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getInt${x}`](writer.getCursor() - x / 8, true)).toBe(0);
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getInt${x}`](writer.getCursor() - x / 8, true)).toBe(0);
                     }
                     expect(writer.getCursor()).toBe(len);
                 }
 
                 {
-                    writer[`int${x}`](-1);
+                    (writer as any)[`int${x}`](-1);
                     len += x / 8;
                     var ab = writer.dump();
                     expect(ab.byteLength).toBe(len);
                     if (x === 64) {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getBigInt${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(-1));
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getBigInt${x}`](writer.getCursor() - x / 8, true)).toBe(BigInt(-1));
                     } else {
-                        expect(new DataView(ab.buffer, ab.byteOffset)[`getInt${x}`](writer.getCursor() - x / 8, true)).toBe(-1);
+                        expect((new DataView(ab.buffer, ab.byteOffset) as any)[`getInt${x}`](writer.getCursor() - x / 8, true)).toBe(-1);
                     }
                     expect(writer.getCursor()).toBe(len);
                 }

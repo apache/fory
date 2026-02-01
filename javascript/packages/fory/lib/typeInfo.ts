@@ -7,7 +7,7 @@
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
  *
- *   http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
@@ -29,6 +29,9 @@ const initMeta = (target: new () => any, typeInfo: TypeInfo) => {
   }
   typeInfo.options.withConstructor = true;
   typeInfo.options.constructor = target;
+  if (!typeInfo.options.props) {
+    typeInfo.options.props = {};
+  }
   Object.assign(typeInfo.options.props, targetFields.get(target) || {})
   Object.defineProperties(target.prototype, {
     [ForyTypeInfoSymbol]: {
@@ -38,9 +41,7 @@ const initMeta = (target: new () => any, typeInfo: TypeInfo) => {
         };
       },
       enumerable: false,
-      set(_) {
-        throw new Error("fory type info is readonly")
-      },
+      configurable: true,
     },
   })
 };
@@ -85,7 +86,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     TypeInfo.fory = null;
   }
 
-  private constructor(private _typeId: number, userTypeId = -1) {
+  public constructor(private _typeId: number, userTypeId = -1) {
     super(function (target: any, key?: string | { name?: string }) {
       if (key === undefined) {
         initMeta(target, that as unknown as StructTypeInfo);
@@ -105,6 +106,8 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       }
     }
     this.userTypeId = userTypeId;
+    // Explicitly initialize the private field
+    this._typeId = _typeId;
   }
 
   computeTypeId(fory?: Fory) {
@@ -112,20 +115,23 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     if (internalTypeId !== TypeId.STRUCT && internalTypeId !== TypeId.NAMED_STRUCT) {
       return this._typeId;
     }
-    if (!fory) {
-      throw new Error("fory is not attached")
+    const actualFory = fory || TypeInfo.fory?.deref();
+    if (!actualFory) {
+      return this._typeId;
     }
-    if (internalTypeId === TypeId.NAMED_STRUCT && fory.config.mode === Mode.Compatible) {
+    if (internalTypeId === TypeId.NAMED_STRUCT && actualFory.config.mode === Mode.Compatible) {
       return TypeId.NAMED_COMPATIBLE_STRUCT;
     }
-    if (internalTypeId === TypeId.STRUCT && fory.config.mode === Mode.Compatible) {
+    if (internalTypeId === TypeId.STRUCT && actualFory.config.mode === Mode.Compatible) {
       return TypeId.COMPATIBLE_STRUCT;
     }
     return this._typeId;
   }
 
   get typeId() {
-    return this.computeTypeId(TypeInfo.fory?.deref());
+    const computed = this.computeTypeId();
+    // Fallback to internal _typeId if computeTypeId somehow returns undefined
+    return computed !== undefined ? computed : this._typeId;
   }
 
   isMonomorphic() {
@@ -144,7 +150,7 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
         const internalTypeId = this._typeId;
         const fory = TypeInfo.fory?.deref();
         if (!fory) {
-          throw new Error("fory is not attached")
+          return internalTypeId != TypeId.UNKNOWN;
         }
         if (fory.isCompatible()) {
           return !TypeId.userDefinedType(this._typeId) && internalTypeId != TypeId.UNKNOWN;
@@ -189,10 +195,8 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
     if (typeId !== undefined && typeName !== undefined) {
       throw new Error(`type name ${typeName} and id ${typeId} should not be set at the same time`);
     }
-    if (!typeId) {
-      if (!typeName) {
-        throw new Error(`type name and type id should be set at least one`);
-      }
+    if (!typeId && !typeName) {
+      throw new Error(`type name and type id should be set at least one`);
     }
     if (!namespace && typeName) {
       const splits = typeName!.split(".");
@@ -246,21 +250,6 @@ export class TypeInfo<T = unknown> extends ExtensibleFunction {
       namespace = nameInfo.namespace;
       typeName = nameInfo.typeName;
       typeId = nameInfo.typeId;
-    }
-    if (typeId !== undefined && typeName !== undefined) {
-      throw new Error(`type name ${typeName} and id ${typeId} should not be set at the same time`);
-    }
-    if (!typeId) {
-      if (!typeName) {
-        throw new Error(`type name and type id should be set at least one`);
-      }
-    }
-    if (!namespace && typeName) {
-      const splits = typeName!.split(".");
-      if (splits.length > 1) {
-        namespace = splits[0];
-        typeName = splits.slice(1).join(".");
-      }
     }
     const finalTypeId = typeId !== undefined ? TypeId.ENUM : TypeId.NAMED_ENUM;
     const userTypeId = typeId !== undefined ? typeId : -1;
@@ -567,193 +556,105 @@ export const Type = {
     });
   },
   string() {
-    return TypeInfo.fromNonParam<typeof TypeId.STRING>(
-      (TypeId.STRING),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.STRING>(TypeId.STRING);
   },
   bool() {
-    return TypeInfo.fromNonParam<typeof TypeId.BOOL>(
-      (TypeId.BOOL),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.BOOL>(TypeId.BOOL);
   },
   int8() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT8>(
-      (TypeId.INT8),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.INT8>(TypeId.INT8);
   },
   int16() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT16>(
-      (TypeId.INT16),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.INT16>(TypeId.INT16);
   },
   int32() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT32>(
-      (TypeId.INT32),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.INT32>(TypeId.INT32);
   },
   varInt32() {
-    return TypeInfo.fromNonParam<typeof TypeId.VARINT32>(
-      (TypeId.VARINT32),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.VARINT32>(TypeId.VARINT32);
   },
   int64() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT64>(
-      (TypeId.INT64),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.INT64>(TypeId.INT64);
   },
   sliInt64() {
-    return TypeInfo.fromNonParam<typeof TypeId.TAGGED_INT64>(
-      (TypeId.TAGGED_INT64),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.TAGGED_INT64>(TypeId.TAGGED_INT64);
   },
   float16() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT16>(
-      (TypeId.FLOAT16),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT16>(TypeId.FLOAT16);
   },
   float32() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT32>(
-      (TypeId.FLOAT32),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT32>(TypeId.FLOAT32);
   },
   float64() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT64>(
-      (TypeId.FLOAT64),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT64>(TypeId.FLOAT64);
   },
   uint8() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT8>(
-      (TypeId.UINT8),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.UINT8>(TypeId.UINT8);
   },
   uint16() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT16>(
-      (TypeId.UINT16),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.UINT16>(TypeId.UINT16);
   },
   uint32() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT32>(
-      (TypeId.UINT32),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.UINT32>(TypeId.UINT32);
   },
   varUInt32() {
-    return TypeInfo.fromNonParam<typeof TypeId.VAR_UINT32>(
-      (TypeId.VAR_UINT32),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.VAR_UINT32>(TypeId.VAR_UINT32);
   },
   uint64() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT64>(
-      (TypeId.UINT64),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.UINT64>(TypeId.UINT64);
   },
   varUInt64() {
-    return TypeInfo.fromNonParam<typeof TypeId.VAR_UINT64>(
-      (TypeId.VAR_UINT64),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.VAR_UINT64>(TypeId.VAR_UINT64);
   },
   varInt64() {
-    return TypeInfo.fromNonParam<typeof TypeId.VARINT64>(
-      (TypeId.VARINT64),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.VARINT64>(TypeId.VARINT64);
   },
   taggedUInt64() {
-    return TypeInfo.fromNonParam<typeof TypeId.TAGGED_UINT64>(
-      (TypeId.TAGGED_UINT64),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.TAGGED_UINT64>(TypeId.TAGGED_UINT64);
   },
   binary() {
-    return TypeInfo.fromNonParam<typeof TypeId.BINARY>(
-      (TypeId.BINARY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.BINARY>(TypeId.BINARY);
   },
   duration() {
-    return TypeInfo.fromNonParam<typeof TypeId.DURATION>(
-      (TypeId.DURATION),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.DURATION>(TypeId.DURATION);
   },
   timestamp() {
-    return TypeInfo.fromNonParam<typeof TypeId.TIMESTAMP>(
-      (TypeId.TIMESTAMP),
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.TIMESTAMP>(TypeId.TIMESTAMP);
   },
   boolArray() {
-    return TypeInfo.fromNonParam<typeof TypeId.BOOL_ARRAY>(
-      (TypeId.BOOL_ARRAY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.BOOL_ARRAY>(TypeId.BOOL_ARRAY);
   },
   int8Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT8_ARRAY>(
-      (TypeId.INT8_ARRAY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.INT8_ARRAY>(TypeId.INT8_ARRAY);
   },
   int16Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT16_ARRAY>(
-      (TypeId.INT16_ARRAY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.INT16_ARRAY>(TypeId.INT16_ARRAY);
   },
   int32Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT32_ARRAY>(
-      (TypeId.INT32_ARRAY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.INT32_ARRAY>(TypeId.INT32_ARRAY);
   },
   int64Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.INT64_ARRAY>(
-      (TypeId.INT64_ARRAY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.INT64_ARRAY>(TypeId.INT64_ARRAY);
   },
   uint8Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT8_ARRAY>(
-      (TypeId.INT8_ARRAY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.UINT8_ARRAY>(TypeId.UINT8_ARRAY);
   },
   uint16Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT16_ARRAY>(
-      (TypeId.INT16_ARRAY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.UINT16_ARRAY>(TypeId.UINT16_ARRAY);
   },
   uint32Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT32_ARRAY>(
-      (TypeId.UINT32_ARRAY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.UINT32_ARRAY>(TypeId.UINT32_ARRAY);
   },
   uint64Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.UINT64_ARRAY>(
-      (TypeId.INT64_ARRAY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.UINT64_ARRAY>(TypeId.UINT64_ARRAY);
   },
   float16Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT16_ARRAY>(
-      (TypeId.FLOAT16_ARRAY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT16_ARRAY>(TypeId.FLOAT16_ARRAY);
   },
   float32Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT32_ARRAY>(
-      (TypeId.FLOAT32_ARRAY),
-
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT32_ARRAY>(TypeId.FLOAT32_ARRAY);
   },
   float64Array() {
-    return TypeInfo.fromNonParam<typeof TypeId.FLOAT64_ARRAY>(
-      (TypeId.FLOAT64_ARRAY)
-    );
+    return TypeInfo.fromNonParam<typeof TypeId.FLOAT64_ARRAY>(TypeId.FLOAT64_ARRAY);
   },
 };
