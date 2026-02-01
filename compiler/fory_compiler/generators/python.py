@@ -141,6 +141,64 @@ class PythonGenerator(BaseGenerator):
         PrimitiveKind.ANY: "None",
     }
 
+    def wrap_line(
+        self,
+        line: str,
+        max_width: int = 80,
+        indent: str = "",
+        continuation_indent: str = None,
+    ) -> List[str]:
+        """Override base wrap_line to handle Python-specific syntax.
+
+        Python has specific constructs that should not be wrapped:
+        1. Assignment statements - must not split between variable and value
+        2. Conditional statements with logical operators (and, or, not)
+        3. Raise statements with string literals
+        """
+        if continuation_indent is None:
+            continuation_indent = indent + "    "
+
+        # If line is already short enough, return as is
+        if len(line) <= max_width:
+            return [line]
+
+        stripped = line.lstrip()
+
+        # Don't wrap comments
+        if stripped.startswith("#"):
+            return [line]
+
+        # Don't wrap raise statements (they often have long string literals)
+        if stripped.startswith("raise "):
+            return [line]
+
+        # Don't wrap assignment statements (lines containing " = " at the statement level)
+        # This prevents splitting like: _threadsafe_fory = pyfory.ThreadSafeFory(...)
+        # Only check for simple assignments (not comparisons or keyword args)
+        if (
+            " = " in line
+            and not line.strip().startswith("if ")
+            and not line.strip().startswith("elif ")
+            and not line.strip().startswith("while ")
+        ):
+            # Check if this looks like a simple assignment (has = but not == or <= or >=)
+            # and the = comes before any opening parentheses
+            eq_pos = line.find(" = ")
+            paren_pos = line.find("(")
+            if eq_pos > 0 and (paren_pos < 0 or eq_pos < paren_pos):
+                # This is likely an assignment statement, don't wrap it
+                return [line]
+
+        # Don't wrap conditional statements (if/elif/while) with logical operators
+        # This prevents splitting like: if condition and not\n    isinstance(...)
+        if stripped.startswith(("if ", "elif ", "while ")) and (
+            " and " in line or " or " in line
+        ):
+            return [line]
+
+        # For all other cases, use base class wrapping
+        return super().wrap_line(line, max_width, indent, continuation_indent)
+
     def safe_name(self, name: str) -> str:
         """Return a Python-safe identifier."""
         if keyword.iskeyword(name):
@@ -615,7 +673,14 @@ class PythonGenerator(BaseGenerator):
             else:
                 field_default = f"{default_expr}{trailing_comment}"
 
-        lines.append(f"{field_name}: {python_type} = {field_default}")
+        # Build field line with semantic wrapping for Python
+        field_line = f"{field_name}: {python_type} = {field_default}"
+        if len(field_line) > 80:
+            # Use Python line continuation with proper indentation
+            lines.append(f"{field_name}: {python_type} = \\")
+            lines.append(f"    {field_default}")
+        else:
+            lines.append(field_line)
 
         return lines
 
