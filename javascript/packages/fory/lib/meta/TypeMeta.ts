@@ -1,6 +1,20 @@
 /*
  * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
  */
 
 import { BinaryWriter } from "../writer";
@@ -32,14 +46,13 @@ const PRIMITIVE_TYPE_IDS = [
 ];
 
 /**
- * Combined logic for reference tracking. 
- * Includes structured types (NAMED_STRUCT, STRUCT) and specific internal types.
+ * Logic for skipping reference tracking.
+ * We ONLY skip for primitives, strings, and time types.
+ * We MUST NOT skip for STRUCT/NAMED_STRUCT or we hit infinite recursion.
  */
 export const refTrackingAbleTypeId = (typeId: number): boolean => {
-    return typeId === TypeId.NAMED_STRUCT || 
-           typeId === TypeId.STRUCT ||
-           PRIMITIVE_TYPE_IDS.includes(typeId as any) || 
-           [TypeId.DURATION, TypeId.DATE, TypeId.TIMESTAMP, TypeId.STRING].includes(typeId as any);
+  return PRIMITIVE_TYPE_IDS.includes(typeId as any) || 
+         [TypeId.DURATION, TypeId.DATE, TypeId.TIMESTAMP, TypeId.STRING].includes(typeId as any);
 };
 
 export const isPrimitiveTypeId = (typeId: number): boolean => {
@@ -144,13 +157,13 @@ class FieldInfo {
       case TypeId.LIST:
       case TypeId.SET:
         if (typeInfo.options?.inner) {
-            FieldInfo.writeTypeId(writer, typeInfo.options.inner, true);
+          FieldInfo.writeTypeId(writer, typeInfo.options.inner, true);
         }
         break;
       case TypeId.MAP:
         if (typeInfo.options?.key && typeInfo.options?.value) {
-            FieldInfo.writeTypeId(writer, typeInfo.options.key, true);
-            FieldInfo.writeTypeId(writer, typeInfo.options.value, true);
+          FieldInfo.writeTypeId(writer, typeInfo.options.key, true);
+          FieldInfo.writeTypeId(writer, typeInfo.options.value, true);
         }
         break;
     }
