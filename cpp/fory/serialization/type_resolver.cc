@@ -130,8 +130,34 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
   // ref_tracking:1bit |
   const bool use_tag_id = field_id >= 0;
   uint8_t encoding_idx = use_tag_id ? 3 : 0; // TAG_ID or EXTENDED
+  std::vector<uint8_t> encoded_name;
+  if (!use_tag_id) {
+    static const MetaStringEncoder k_field_name_encoder('$', '_');
+    static const std::vector<MetaEncoding> k_field_name_encoding_list = {
+        MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+        MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
+
+    FORY_TRY(encoded, k_field_name_encoder.encode(field_name,
+                                                  k_field_name_encoding_list));
+    switch (encoded.encoding) {
+    case MetaEncoding::EXTENDED:
+      encoding_idx = 0;
+      break;
+    case MetaEncoding::ALL_TO_LOWER_SPECIAL:
+      encoding_idx = 1;
+      break;
+    case MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL:
+      encoding_idx = 2;
+      break;
+    default:
+      return Unexpected(Error::encoding_error(
+          "Unsupported field name encoding: " +
+          std::to_string(static_cast<int>(encoded.encoding))));
+    }
+    encoded_name = std::move(encoded.bytes);
+  }
   size_t name_size =
-      use_tag_id ? static_cast<size_t>(field_id) + 1 : field_name.size();
+      use_tag_id ? static_cast<size_t>(field_id) + 1 : encoded_name.size();
   uint8_t header =
       (std::min(FIELD_NAME_SIZE_THRESHOLD, name_size - 1) << 2) & 0x3C;
 
@@ -154,8 +180,7 @@ Result<std::vector<uint8_t>, Error> FieldInfo::to_bytes() const {
 
   // write field name only when tag ID is not used.
   if (!use_tag_id) {
-    buffer.write_bytes(reinterpret_cast<const uint8_t *>(field_name.data()),
-                       field_name.size());
+    buffer.write_bytes(encoded_name.data(), encoded_name.size());
   }
 
   // CRITICAL FIX: Use writer_index() not size() to get actual bytes written!
@@ -214,8 +239,16 @@ Result<FieldInfo, Error> FieldInfo::from_bytes(Buffer &buffer) {
   }
 
   static const MetaStringDecoder k_field_name_decoder('$', '_');
-
-  FORY_TRY(encoding, to_meta_encoding(encoding_idx));
+  static const MetaEncoding k_field_name_encodings[] = {
+      MetaEncoding::EXTENDED, MetaEncoding::ALL_TO_LOWER_SPECIAL,
+      MetaEncoding::LOWER_UPPER_DIGIT_SPECIAL};
+  if (encoding_idx >=
+      sizeof(k_field_name_encodings) / sizeof(k_field_name_encodings[0])) {
+    return Unexpected(
+        Error::encoding_error("Invalid field name encoding index: " +
+                              std::to_string(static_cast<int>(encoding_idx))));
+  }
+  MetaEncoding encoding = k_field_name_encodings[encoding_idx];
   FORY_TRY(decoded_name, k_field_name_decoder.decode(
                              name_bytes.data(), name_bytes.size(), encoding));
 

@@ -101,7 +101,7 @@ static void write_encoded_meta_string(Buffer &buffer,
   if (encoded_len > k_small_string_threshold) {
     // For large strings, write pre-computed hash
     buffer.write_int64(encoded.hash);
-  } else {
+  } else if (encoded_len > 0) {
     // For small strings, write encoding byte
     buffer.write_int8(static_cast<int8_t>(encoded.encoding));
   }

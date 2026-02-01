@@ -712,7 +712,7 @@ impl TypeMeta {
         if num_fields == SMALL_NUM_FIELDS_THRESHOLD {
             num_fields += reader.read_varuint32()? as usize;
         }
-        let type_id;
+        let mut type_id;
         let namespace;
         let type_name;
         if register_by_name {
@@ -736,6 +736,7 @@ impl TypeMeta {
             if let Some(type_info_current) =
                 type_resolver.get_type_info_by_name(&namespace.original, &type_name.original)
             {
+                type_id = type_info_current.get_type_id();
                 Self::assign_field_ids(&type_info_current, &mut sorted_field_infos);
             }
         } else if let Some(type_info_current) = type_resolver.get_type_info_by_id(type_id) {

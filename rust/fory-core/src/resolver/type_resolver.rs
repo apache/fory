@@ -248,8 +248,9 @@ impl TypeInfo {
     pub fn from_remote_meta(
         remote_meta: Rc<TypeMeta>,
         local_harness: Option<&Harness>,
+        type_id_override: Option<u32>,
     ) -> TypeInfo {
-        let type_id = remote_meta.get_type_id();
+        let type_id = type_id_override.unwrap_or_else(|| remote_meta.get_type_id());
         let namespace = remote_meta.get_namespace();
         let type_name = remote_meta.get_type_name();
         let type_def_bytes = remote_meta.get_bytes().to_owned();
