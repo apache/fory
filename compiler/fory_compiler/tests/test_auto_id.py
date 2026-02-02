@@ -130,7 +130,7 @@ def test_explicit_id_not_overwritten():
     assert msg.id_generated is False
 
 
-def test_auto_id_conflict_falls_back_to_name_registration():
+def test_auto_id_conflict_requires_explicit_resolution():
     source = """
     package demo;
 
@@ -144,10 +144,5 @@ def test_auto_id_conflict_falls_back_to_name_registration():
     """
     schema = parse_schema(source)
     validator = SchemaValidator(schema)
-    assert validator.validate()
-
-    first, second = schema.messages
-    assert first.type_id == compute_registered_type_id("demo.Shared")
-    assert first.id_generated is True
-    assert second.type_id is None
-    assert second.id_generated is False
+    assert validator.validate() is False
+    assert validator.errors

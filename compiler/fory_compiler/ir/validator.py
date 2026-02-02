@@ -105,7 +105,14 @@ class SchemaValidator:
             source_name = resolve_hash_source(full_name, alias)
             generated_id = compute_registered_type_id(source_name)
             if generated_id in used_ids:
-                # Fall back to name-based registration on hash collision.
+                self._error(
+                    (
+                        "Auto-generated type id collision for "
+                        f"'{source_name}'. Specify an explicit [id=...] or "
+                        "use [alias=\"...\"] to change the hash source."
+                    ),
+                    type_def.location,
+                )
                 return
             type_def.type_id = generated_id
             type_def.id_generated = True

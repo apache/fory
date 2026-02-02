@@ -606,7 +606,8 @@ nested_type  := enum_def | message_def
 
 - Message and union type IDs are mandatory; omitted IDs are auto-generated (see [Type IDs](#type-ids)).
 - Numeric type IDs (manual or auto-generated) must be globally unique (including nested types).
-  If an auto-generated ID conflicts, the compiler falls back to name-based registration.
+  If an auto-generated ID conflicts, the compiler raises an error and asks for an explicit `id`
+  or an `alias` to change the hash source.
 
 ## Nested Types
 
@@ -695,7 +696,7 @@ message OtherMessage {
 - Nested type names must be unique within their parent message
 - Nested types can have their own type IDs
 - Numeric type IDs must be globally unique (including nested types); if an auto-generated ID
-  conflicts, the compiler falls back to name-based registration for the conflicting type
+  conflicts, the compiler raises an error and asks for an explicit `id` or an `alias`
 - Within a message, you can reference nested types by simple name
 - From outside, use the qualified name (Parent.Child)
 
@@ -962,13 +963,14 @@ message Example {
 
 ## Type IDs
 
-Type IDs enable efficient cross-language serialization and are mandatory for
-messages and unions. If `id` is omitted, the compiler auto-generates one using
+Type IDs enable efficient cross-language serialization and are used for
+messages, unions, and enums. IDs are mandatory for messages and unions; enums
+may omit IDs and use auto-generated ones. If `id` is omitted, the compiler
+auto-generates one using
 `MurmurHash3(utf8(package.name))` (32-bit) and annotates it in generated
 code. Collisions are detected at compile-time across the current file and all
-imports; when a collision occurs, the compiler silently falls back to
-name-based registration for the conflicting type, so there is no runtime ID
-conflict risk.
+imports; when a collision occurs, the compiler raises an error and asks for an
+explicit `id` or an `alias`.
 
 ```protobuf
 enum Color [id=100] { ... }
@@ -997,16 +999,16 @@ You can set `[alias="..."]` to change the hash source without renaming the type.
 
 Type ID Specification
 
-- Mandatory IDs: Every message and union must have a unique ID.
+- Mandatory IDs: Every message and union must have a unique ID. Enums use IDs for
+  registration and may omit IDs to use auto-generated ones.
 - Auto-generation: If no ID is provided, fory generates one using
   MurmurHash3(utf8(package.name)) (32-bit).
 - Space Efficiency:
   - Manual IDs (0-127): Encoded as 1 byte (Varint). Ideal for high-frequency messages.
   - Generated IDs: Usually large integers, taking 4-5 bytes in the wire format (varuint32).
 - Conflict Resolution: While the collision probability is extremely low, conflicts are detected
-  at compile-time. The compiler falls back to name-based registration for the conflicting type,
-  so there is no runtime ID conflict risk; use the alias option or assign a manual ID if you want
-  a numeric registration.
+  at compile-time. The compiler raises an error and asks you to specify an explicit `id` or use
+  the `alias` option to change the hash source.
 
 Explicit is better than implicit, but automation is better than toil.
 

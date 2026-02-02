@@ -154,7 +154,8 @@ data = fory.serialize(person)
 
 ### Type Registration
 
-FDL uses numeric type IDs for message and union registration. IDs are mandatory; if
+FDL uses numeric type IDs for message, union, and enum registration. IDs are mandatory for
+messages and unions; enums may omit IDs and use auto-generated ones. If
 you omit `id`, the compiler auto-generates one using
 `MurmurHash3(utf8(package.name))` (32-bit). Package aliases do not affect
 auto-generated IDs; use `[alias="..."]` to change the hash source without
@@ -168,8 +169,8 @@ message Config { ... }         // ID auto-generated
 Namespace-based registration is still available when calling runtime APIs
 directly. IDL-generated code uses explicit IDs when provided; auto-generated IDs
 are also registered by numeric ID. If an auto-generated ID conflicts, the
-compiler falls back to name-based registration using the package and type name,
-so there is no runtime ID conflict risk.
+compiler raises an error and asks you to specify an explicit `id` or an `alias`
+to change the hash source.
 
 ### Field Modifiers
 
